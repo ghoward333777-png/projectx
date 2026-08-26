@@ -1,0 +1,166 @@
+<title>Core Tech Reconciliation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Companion palette to the Core Technology Overview artifact: same paper ground,
+     oxblood for corrections/flags, deep green for additions. */
+  :root {
+    --paper:   #FAF9F7;
+    --sheet:   #FFFFFF;
+    --ink:     #1A1714;
+    --muted:   #5F5952;
+    --faint:   #8B847B;
+    --rule:    #E2DED7;
+    --flag:    #8C3030;
+    --flag-soft: #F3E9E7;
+    --add:     #2F5347;
+    --add-soft: #EBF1EE;
+    --shadow:  0 1px 2px rgba(26,23,20,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14120F; --sheet: #1B1815; --ink: #EAE5DD; --muted: #A79F94;
+      --faint: #7A7369; --rule: #2E2A25; --flag: #D98D8D; --flag-soft: #2A1E1E;
+      --add: #86BCA8; --add-soft: #1A231F; --shadow: 0 1px 2px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14120F; --sheet: #1B1815; --ink: #EAE5DD; --muted: #A79F94;
+    --faint: #7A7369; --rule: #2E2A25; --flag: #D98D8D; --flag-soft: #2A1E1E;
+    --add: #86BCA8; --add-soft: #1A231F; --shadow: 0 1px 2px rgba(0,0,0,.5);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17.5px; line-height: 1.64; -webkit-font-smoothing: antialiased;
+  }
+  main { padding: 0 26px 110px; }
+  .col { max-width: 46rem; margin: 0 auto; }
+  header.plate { padding: 60px 0 28px; border-bottom: 2px solid var(--ink); margin-bottom: 30px; }
+  .eyebrow {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 11px; font-weight: 600; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 5vw, 42px); font-weight: 700; line-height: 1.12;
+    margin: 0 0 14px; letter-spacing: -.01em; text-wrap: balance;
+  }
+  .standfirst { font-size: 18.5px; color: var(--muted); margin: 0; max-width: 40rem; }
+  h2 {
+    font-size: 24px; font-weight: 700; margin: 52px 0 6px; letter-spacing: -.005em;
+    text-wrap: balance;
+  }
+  h2 .no {
+    font-family: "IBM Plex Mono", monospace; font-size: 14px; font-weight: 500;
+    color: var(--faint); margin-right: 10px; letter-spacing: 0;
+  }
+  .h2rule { height: 1px; background: var(--rule); margin: 0 0 18px; }
+  p { margin: 0 0 16px; }
+  strong { font-weight: 600; }
+  .tag {
+    display: inline-block; font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    padding: 2px 8px 3px; border-radius: 3px; vertical-align: 1px;
+  }
+  .tag.flag { color: var(--flag); background: var(--flag-soft); }
+  .tag.add { color: var(--add); background: var(--add-soft); }
+  .term { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
+  .tablewrap { overflow-x: auto; margin: 6px 0 22px; }
+  table {
+    border-collapse: collapse; width: 100%; background: var(--sheet);
+    box-shadow: var(--shadow); font-size: 15.5px;
+  }
+  th {
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 11.5px;
+    font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+    text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--ink);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td.was { color: var(--flag); font-family: "IBM Plex Mono", monospace; font-size: 14px; }
+  td.now { font-weight: 600; }
+  .decision {
+    background: var(--sheet); border-left: 3px solid var(--flag);
+    box-shadow: var(--shadow); padding: 16px 20px 6px; margin: 0 0 18px;
+  }
+  .decision .dtitle {
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 600;
+    font-size: 15.5px; margin: 0 0 6px; color: var(--ink);
+  }
+  .decision p { font-size: 15.5px; color: var(--muted); }
+  .decision p strong { color: var(--ink); }
+  .footer {
+    margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--rule);
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12.5px; color: var(--faint);
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<main><div class="col">
+  <header class="plate">
+    <div class="eyebrow">Review memo · August 26, 2026 · Confidential</div>
+    <h1>Core Tech Reconciliation</h1>
+    <p class="standfirst">The Expanded Core Technology Section draft of August 26, checked term by term against the Core Technology Overview of August 22. Every topic in the draft was retained; errors were corrected in place; thin areas were filled from the specified mechanisms. Nothing here has been adopted into the provisional patent application.</p>
+  </header>
+
+  <p>The reviewed draft is delivered as a separate Word document, <strong>Expanded_Core_Tech_Section_Reviewed_8_26.docx</strong>, written entirely in paragraph form with no bullet points, per your instruction. It grew from roughly 4,500 words to roughly 6,500: nothing was cut or summarized, duplicated passages were collapsed to a single occurrence, and gaps were filled with the relevant mechanisms and their advantages. This memo is the record of what changed and why, and it lists the handful of decisions that are yours to make before any of this text moves into the provisional application.</p>
+
+  <h2><span class="no">1</span>Terminology corrected to canonical form</h2>
+  <div class="h2rule"></div>
+  <p>The overview establishes canonical names, and the draft used several variants and misspellings of them. Each was normalized in place; no content was lost in the renaming.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Draft said</th><th>Corrected to</th></tr>
+    <tr><td class="was">Neuromorphic Brain Layer / Neuromorphic Reasoning Layer</td><td class="now">Neuromorphic Cognitive Layer (NCL) — one layer, one name</td></tr>
+    <tr><td class="was">World View Model / World Veiw / "the World View"</td><td class="now">World-View Model (WVM)</td></tr>
+    <tr><td class="was">cloud, on-premises (topologies)</td><td class="now">multi-tenant hosted, single-tenant local (the specified five: hosted, local, single-device, hybrid, edge)</td></tr>
+    <tr><td class="was">Factu Unit</td><td class="now">Fact Unit</td></tr>
+    <tr><td class="was">Introcution / Intergrative Intellegnece / Cogitive / abstractio / physics-alligned / intellegence / QuereyBook / authoris / neutral perception</td><td class="now">Introduction / Integrative Intelligence / Cognitive / abstraction / physics-aligned / intelligence / QueryBook / authors / neural perception</td></tr>
+    <tr><td class="was">"governed ontology" (unnamed)</td><td class="now">the Ontology Mesh</td></tr>
+  </table></div>
+  <p>Mechanical repairs alongside the renames: the duplicated "Autonomous Cognitive Evolution" section (it appeared twice, once as "Future"), the duplicated hippocampus-and-consolidation paragraph, the twice-stated Concept Compression Layer sentence, and the self-duplicating Applications passage were each collapsed to one occurrence. The sentence fragment "And a feedback" was completed as the outcome-feedback loop. The Prime Directive's double-colon formatting was repaired; its quoted text matched the overview verbatim and was kept exactly.</p>
+
+  <h2><span class="no">2</span>Claims kept, but corrected to what the specification supports</h2>
+  <div class="h2rule"></div>
+  <p>Your mid-review instruction was to correct errors without cutting content, so each of these claims stays in the draft, reworded to the defensible form the overview itself uses. <strong>"Cannot hallucinate" and "ungrounded assertions are structurally impossible"</strong> now read as the overview's structural-groundedness guarantee: an ungrounded assertion is structurally unavailable to the generation process, because the permissible output vocabulary is constrained to terms traceable to specific Fact Units — a stronger and more precise claim than an absolute that invites challenge. <strong>"Structurally incapable of harming humans"</strong> became "structurally constrained against causing harm," with all six supporting mechanisms retained and the measurable trial architecture added as evidence. <strong>"Does not rely on transformer embeddings"</strong> was qualified, because the overview specifies that each Fact Unit carries an embedding representation and that the ingestion domain is the sole location of any trained component; the corrected text says no answer rests on statistical generation, which is the claim that is actually true. <strong>"Becomes more stable as it grows because atomic universes naturally stabilize with size"</strong> conflicted with the specified capacity ceiling — a first-order phase boundary at which retrieval states disappear discontinuously — so stability at scale is now attributed to its engineered sources: energy-descent convergence, the conservative operating ceiling, and the elective unique-equilibrium regime. <strong>"Replaces GPU-heavy matrix computation… yielding cost savings"</strong> was restated as the architectural difference, with a sentence noting that specific compute-cost comparisons are deliberately not asserted, matching the overview's stated practice of citing only claims traceable to specified mechanisms. <strong>"Probable questions… saved and used forever"</strong> now carries the invalidation rule: a pre-computed answer is invalidated upon revision of any contributing record, so a served answer is never stale. <strong>"Self-evolving and capable of autonomous conceptual growth"</strong> was reframed as conceptual growth within the knowledge substrate under the non-bypassable human gate, since the overview makes every self-improvement finding a proposal requiring a named human's approval. And the broad brain analogies — edges as axons, exceptions as inhibitory microcircuits, "a functional analog of the brain," the hippocampus and prefrontal-cortex parallels — were kept as plain-language analogies but placed explicitly outside the five claimed correspondences, because the overview's Drafting Record deliberately declined to carry the brain-region mapping table and admits correspondences only under the Chapter 101 methodology.</p>
+
+  <h2><span class="no">3</span>Flags — your decisions before adoption <span class="tag flag">Flag</span></h2>
+  <div class="h2rule"></div>
+  <p>Six terms in the draft name things the current overview does not. Each is retained in the reviewed document, grounded to the nearest specified mechanism where one exists, but each needs either a specification entry or a rename before this text can move into the provisional application.</p>
+  <div class="decision">
+    <p class="dtitle">Atomic Universe Layer</p>
+    <p>The draft's second foundational layer — particles as data atoms, bonds as semantic relationships, quantum transitions as inference leaps — appears nowhere in the overview. The nearest specified mechanism is the physical-constraint layer (§53.9): registered constraints with closed-form residuals, tolerances, SI units, and applicability predicates, under which an impossible completion is excluded at any score. The reviewed draft presents the layer through that specified mechanism while keeping your framing. <strong>Decide:</strong> specify "Atomic Universe Layer" as its own subject matter, or adopt it as informal narrative for §53.9.</p>
+  </div>
+  <div class="decision">
+    <p class="dtitle">Skill Inventory Layer · Meta-Learning Layer · Adaptive Schema Engine · Memory Consolidation Cycle</p>
+    <p>None is named in the overview. The Memory Consolidation Cycle partially maps to specified consolidation (concept formation gated by a consolidation count; long-term concept consolidation). The other three are new. <strong>Decide:</strong> add them to the specification or mark them as future work in any adopted text.</p>
+  </div>
+  <div class="decision">
+    <p class="dtitle">Neuro-Symbolic Integration Layer · Hypergraph Reasoning Layer · Concept Compression Layer</p>
+    <p>The functions exist under specified mechanisms — hyperedge-granularity convergence, the worldview hypergraph, noise elimination and abstraction — but the layer names are new. <strong>Decide:</strong> register the names as terminology or restate using the specified mechanism names.</p>
+  </div>
+  <div class="decision">
+    <p class="dtitle">Brain-Grade Knowledge Engine · Biological Cognition Parallel Architecture</p>
+    <p>Both are used as proper names in the draft and neither appears in the overview. They read well as product language; they are not yet specification terms. <strong>Decide:</strong> keep as marketing vocabulary only, or register them.</p>
+  </div>
+  <div class="decision">
+    <p class="dtitle">Semantic audio/video compression and media colorization</p>
+    <p>"Storing meaning rather than pixels" and "colorize historical media" have no specified mechanism. The nearest is attractor stabilization (§36), which permits reconstruction only marked as reconstruction, confidence-bounded, and inadmissible as grounding. The reviewed draft keeps both claims and attaches those constraints, which is the form in which they are defensible. <strong>Decide:</strong> whether to specify these as extensions before any adopted text relies on them.</p>
+  </div>
+  <div class="decision">
+    <p class="dtitle">Forecasting scope</p>
+    <p>"Stock-market analysis" was retained under the specified forecasting discipline: subjects restricted to institutions, systems, and organisational processes; individual natural persons refused; projected-future results carry credible intervals and are never admitted as records. If consumer-facing stock advice is intended, that is a scope change the specification would need to address.</p>
+  </div>
+
+  <h2><span class="no">4</span>Gaps filled from the overview <span class="tag add">Added</span></h2>
+  <div class="h2rule"></div>
+  <p>Where the draft was thin or silent, the reviewed document now carries the specified mechanism and its advantage, woven into the existing sections as prose. Into the introduction went the FUID derivation and Fact Unit immutability, the evidence-pair confidence model with its Beta representation and credible intervals, the source-class diversity measure, the Semantic Brain and World Brain dual architecture, the three non-overlapping correctness guarantees, and the context lock with its eight enumerated locked dimensions — the machinery that makes "deterministic" a testable claim rather than an adjective. The Neuromorphic Cognitive Layer section gained the four convergence properties (energy descent, the named capacity boundary, the elective unique-equilibrium regime, hyperedge-granularity completion) and the analog crossbar realization. The ingestion paragraphs gained the eight defined modalities with their stated fallback and the two further pathways for computational-substrate output and elicited engine replies. The dynamic-ontology paragraph gained the Ontology Mesh governance that makes it safe: poly-hierarchy, selective open- and closed-world reasoning, the fixed upper ontology with federated stewarded domains, the governed predicate catalog, and backward-compatible versioning. The World-View Model section gained the semantic consistency engine and the inheritance mechanics — confidence as the product of traversed edges, exception overrides by specificity, and equal-depth conflicts recorded rather than arbitrarily resolved.</p>
+  <p>The cognitive-AI section now names all fifteen predictive mechanisms the draft referenced only by count: the eight existing (Temporal Memory Module, Associative Recall Engine, Predictive Inference Engine, Scenario Graph System, ConceptStabilityWeight, contradiction detection, World Brain concept formation, Thematic Similarity Engine), the four additions (Hierarchical Error Propagation, Predictive Pre-Retrieval Engine, Competitive Candidate Resolution, Active Inference Query Generation), and the three amplifications. The Baconian-reasoning passage gained the reasoning-mode gate — deduction may write to the knowledge store, induction and abduction may not — plus observation diversity and discriminating-instance selection, which is Bacon's method made arithmetic. The self-monitoring section gained the Without-Information Rule, the Domain 0 placement with its four owned mechanisms, and the trial architecture. The empty <strong>Digital Rights</strong> heading was filled completely: license-scoped query restriction enforced at the execution layer, intersection-bounded shared sessions, zero-knowledge encryption with cryptographic erasure, per-tenant key custody, role-based portals with time-scoped grants, open-format export, per-title blockchain resale verification, and moderation appeals. The query-response section gained the bounded non-Turing-complete program representation, the accessibility suite, and the supplemental-submission source class; applications gained offline operation with deterministic merge, the forecasting discipline, and the commerce layer's structural non-interference; and the extensions section gained the three translation refinements, the reconstruction constraints, the robotics boundaries including the vehicle-control prohibition, and the AI-Engine Ingestion Module.</p>
+
+  <h2><span class="no">5</span>What was deliberately not done</h2>
+  <div class="h2rule"></div>
+  <p>Nothing was adopted into the provisional patent application, and the Core Technology Overview artifact was not modified — this memo and the reviewed Word document are separate outputs, exactly as you asked. The reviewed draft also keeps every one of your topics and claims; where a claim needed correction it was reworded, never removed. The six flags above are the only open items, and each is a decision reserved to you.</p>
+
+  <div class="footer">QueryBook — confidential, proprietary and patent-sensitive. Reviewed against the Core Technology Overview, updated August 22, 2026. Section citations refer to the specification.</div>
+</div></main>
