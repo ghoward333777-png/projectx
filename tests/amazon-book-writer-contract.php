@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../AmazonBookWriter.php';
+require_once __DIR__ . '/../WordManuscriptExporter.php';
 
 function contract_check(bool $condition, string $message): void
 {
@@ -83,6 +84,33 @@ foreach ($result['book']['chapters'] as $chapter) {
     );
 }
 contract_check(!str_contains($html, '<script'), 'manuscript export must not contain scripts');
+
+// --- Word (.docx) export ---------------------------------------------------
+$docx = (new WordManuscriptExporter())->export($result['book'], $meta);
+contract_check(str_starts_with($docx, 'PK'), 'Word export must be a ZIP (OOXML) package');
+$tmp = tempnam(sys_get_temp_dir(), 'docxtest');
+file_put_contents($tmp, $docx);
+$zip = new ZipArchive();
+contract_check($zip->open($tmp) === true, 'Word export must open as a ZIP archive');
+$documentXml = (string) $zip->getFromName('word/document.xml');
+$stylesXml = (string) $zip->getFromName('word/styles.xml');
+contract_check($zip->getFromName('[Content_Types].xml') !== false, 'Word export must declare content types');
+$zip->close();
+unlink($tmp);
+contract_check(str_contains($stylesXml, 'Times New Roman'), 'Word styles must set the manuscript font');
+contract_check(str_contains($documentXml, '<w:pgSz w:w="8640" w:h="12960"/>'), 'Word export must use the 6x9 KDP trim');
+foreach ($result['book']['chapters'] as $chapter) {
+    contract_check(
+        str_contains($documentXml, 'Chapter ' . $chapter['number'] . ': ' . htmlspecialchars((string) $chapter['title'], ENT_XML1 | ENT_QUOTES, 'UTF-8')),
+        'Word export must contain every chapter heading',
+    );
+}
+$domAvailable = class_exists(DOMDocument::class);
+if ($domAvailable) {
+    $dom = new DOMDocument();
+    contract_check($dom->loadXML($documentXml) !== false, 'Word document.xml must be well-formed XML');
+}
+contract_check(count($result['book']['chapters'][0]['blocks']) > 1, 'chapters must keep paragraph structure after word-target trimming');
 
 // --- Metadata export -------------------------------------------------------
 $export = $writer->exportMetadata($result['kdp']);

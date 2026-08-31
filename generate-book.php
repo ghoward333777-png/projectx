@@ -133,7 +133,8 @@ foreach ($styles as $writingStyle) {
         </div>
         <div>
             <a href="index.php">← Back to intelligence kit</a><br>
-            <a href="amazon-book-writer.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">Package for Amazon KDP →</a>
+            <a href="amazon-book-writer.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">Package for Amazon KDP →</a><br>
+            <a href="user-guide.php">User guide</a>
         </div>
     </header>
 
