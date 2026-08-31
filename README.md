@@ -46,8 +46,9 @@ package) and produces everything the KDP setup screens ask for:
   prices, and per-copy royalty using the published `(60% × list price) − printing cost`
   model; Kindle pricing with automatic 70%/35% plan selection and delivery-fee estimate.
 - **Publishing checklist** — the ordered KDP flow from manuscript review to proof copy.
-- **Exports** — a KDP-ready single-file HTML manuscript (title page, copyright page,
-  linked table of contents, chapters; opens in Kindle Create or Word) and a metadata
+- **Exports** — a real Word manuscript (.docx: 6 x 9 trim, Times New Roman 12pt at
+  1.5 spacing, title and copyright pages, Heading 1 chapters so Word's dynamic TOC
+  and navigation pane work), a KDP-ready single-file HTML manuscript, and a metadata
   JSON file that mirrors the KDP setup screens.
 
 All prices and royalties are directional planning estimates from published KDP rate
@@ -115,6 +116,7 @@ php tests/audiobook-contract.php
 - `BookIntelligenceEngine.php` — dependency-free application engine
 - `AmazonBookWriter.php` — Amazon KDP packaging: metadata, pricing, editions, checklist, exports
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
+- `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine
 - `index.php` — strategy analysis and JSON endpoint
 - `generate-book.php` — editable TOC, writing-style, page-style, and manuscript interface

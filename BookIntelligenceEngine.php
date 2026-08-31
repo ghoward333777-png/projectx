@@ -335,6 +335,7 @@ final class BookIntelligenceEngine
             $content = $this->isTeenJobsTopic($topic)
                 ? $this->composeTeenJobsChapterDraft($topic, $audience, $chapter['title'], $chapter['purpose'], $chapter['detail'], $plan, $index)
                 : $this->composeExpandedChapterDraft($topic, $audience, $promise, $chapter['title'], $chapter['purpose'], $chapter['detail'], $style, $plan, $index);
+            $content = trim(preg_replace('/\R{3,}/u', "\n\n", $content) ?? $content);
             $draftChapters[] = [
                 'number' => count($draftChapters) + 1,
                 'title' => $chapter['title'],
@@ -786,11 +787,15 @@ final class BookIntelligenceEngine
 
     private function trimToWordTarget(string $value, int $target): string
     {
-        $words = preg_split('/\s+/u', trim($value), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if (count($words) <= $target) {
-            return trim($value);
+        $value = trim($value);
+        preg_match_all('/\S+/u', $value, $matches, PREG_OFFSET_CAPTURE);
+        if (count($matches[0]) <= $target) {
+            return $value;
         }
-        return implode(' ', array_slice($words, 0, $target));
+        // Cut after the target-th word while preserving the paragraph
+        // structure between the words that remain.
+        [$word, $offset] = $matches[0][$target - 1];
+        return substr($value, 0, $offset + strlen($word));
     }
 
     private function composeChapterDraft(

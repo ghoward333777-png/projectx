@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/AmazonBookWriter.php';
+require_once __DIR__ . '/WordManuscriptExporter.php';
 
 session_start();
 
@@ -79,6 +80,17 @@ if ($result !== null && $download === 'manuscript') {
     header('Content-Type: text/html; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata']);
+    exit;
+}
+
+if ($result !== null && $download === 'word') {
+    $exporter = new WordManuscriptExporter();
+    $bytes = $exporter->export($result['book'], $result['kdp']['metadata']);
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-manuscript.docx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . strlen($bytes));
+    echo $bytes;
     exit;
 }
 
@@ -370,6 +382,7 @@ $downloadQuery = http_build_query(array_filter([
             <h3>Download the KDP upload files</h3>
             <p>The manuscript export is a clean single-file HTML document that Kindle Create and Word open directly; the metadata export mirrors the KDP setup screens for copy-paste.</p>
             <div class="downloads">
+                <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=word">Download Word manuscript (.docx)</a>
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manuscript">Download KDP manuscript (.html)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=metadata">Download KDP metadata (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=narration">Download narration script (.txt)</a>
