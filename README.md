@@ -53,20 +53,73 @@ package) and produces everything the KDP setup screens ask for:
 All prices and royalties are directional planning estimates from published KDP rate
 cards — confirm live numbers inside KDP before publishing.
 
+## Editions: Kindle, paperback, hardcover, audiobook
+
+The KDP package now plans all four editions of the same title:
+
+- **Kindle** — the existing eBook plan (70%/35% royalty selection, delivery fee).
+- **Paperback** — 6 x 9 B&W, 24–828 pages, `(60% × list) − printing cost`.
+- **Hardcover** — case laminate, 75–550 pages, `$6.80` flat up to 108 pages then
+  `$5.65 + $0.012/page`, 60% royalty; optional `hardcover_price` override.
+- **Audiobook** — runtime estimate (~9,300 words per finished hour), Audible-style
+  retail band, synthesis cost estimate, and the ACX delivery specs.
+
+## Audiobook production
+
+`AudiobookProducer.php` turns the manuscript into a narration package: opening and
+closing credits, a per-chapter narration script, sentence-aware chunks sized to each
+provider's request limit, and a synthesis manifest with ready-to-send payloads.
+
+Three voice providers are supported:
+
+1. **Google Cloud Text-to-Speech** — uses your Google account's API key
+   (`GOOGLE_TTS_API_KEY`); Neural2/WaveNet voices, 5,000-byte request cap respected.
+2. **ElevenLabs** — uses `ELEVENLABS_API_KEY`; stock voices by `voice_id`, or clone a
+   voice once from sample recordings and then synthesize with the new `voice_id`.
+3. **Internal voice clone** — a local engine (XTTS-style) driven by a command
+   template, synthesizing from a sampled recording on your own hardware.
+
+**Voice-cloning consent is a hard gate:** any mode that clones from a sampled human
+recording refuses to produce jobs until the recorded speaker's explicit consent is
+confirmed (the `voice_consent` option on the page, `--consent` on the CLI).
+
+Synthesize from a manifest downloaded on the Amazon Book Writer page:
+
+```bash
+# Google (uses GOOGLE_TTS_API_KEY, or pass --key)
+php bin/synthesize-audiobook.php --manifest my-book-audiobook-manifest.json --out audio/
+
+# ElevenLabs one-time voice clone, then synthesis
+php bin/synthesize-audiobook.php --clone-name "My Voice" --clone-sample narrator.wav --consent --key KEY
+php bin/synthesize-audiobook.php --manifest manifest.json --out audio/ --key KEY
+
+# Internal cloning engine (runs your command per chunk)
+php bin/synthesize-audiobook.php --manifest manifest.json --out audio/ --consent \
+  --engine-cmd 'tts --text {text} --speaker_wav {sample} --language_idx {language} --out_path {out}'
+```
+
+Synthesis is resumable (existing chunk files are skipped). Afterwards, join each
+section's chunks (ffmpeg concat) and master to ACX specs: 192 kbps CBR MP3,
+RMS −23…−18 dB, peaks ≤ −3 dB, 0.5–1 s of room tone at head and tail.
+
 ## Run the contract tests
 
 ```bash
 php tests/rich-chapter-contract.php
 php tests/amazon-book-writer-contract.php
+php tests/audiobook-contract.php
 ```
 
 ## Included files
 
 - `BookIntelligenceEngine.php` — dependency-free application engine
-- `AmazonBookWriter.php` — Amazon KDP packaging: metadata, pricing, checklist, exports
+- `AmazonBookWriter.php` — Amazon KDP packaging: metadata, pricing, editions, checklist, exports
+- `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
+- `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine
 - `index.php` — strategy analysis and JSON endpoint
 - `generate-book.php` — editable TOC, writing-style, page-style, and manuscript interface
 - `amazon-book-writer.php` — Amazon KDP publishing package interface and exports
 - `data/teen-jobs.json` — canonical teen-job catalog
 - `tests/rich-chapter-contract.php` — PHP output contract checks
 - `tests/amazon-book-writer-contract.php` — Amazon Book Writer contract checks
+- `tests/audiobook-contract.php` — editions and audiobook production contract checks

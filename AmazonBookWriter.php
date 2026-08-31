@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/BookIntelligenceEngine.php';
+require_once __DIR__ . '/AudiobookProducer.php';
 
 /**
  * Amazon Book Writer
@@ -27,6 +28,9 @@ final class AmazonBookWriter
     private const PAPERBACK_MIN_PAGES = 24;
     private const PAPERBACK_MAX_PAGES = 828;
     private const PAPERBACK_ROYALTY_RATE = 0.60;
+    private const HARDCOVER_MIN_PAGES = 75;
+    private const HARDCOVER_MAX_PAGES = 550;
+    private const HARDCOVER_ROYALTY_RATE = 0.60;
     private const EBOOK_ROYALTY_HIGH = 0.70;
     private const EBOOK_ROYALTY_LOW = 0.35;
     private const EBOOK_70_MIN_PRICE = 2.99;
@@ -34,15 +38,22 @@ final class AmazonBookWriter
     private const EBOOK_DELIVERY_FEE_PER_MB = 0.15;
 
     private BookIntelligenceEngine $engine;
+    private AudiobookProducer $audiobook;
 
-    public function __construct(?BookIntelligenceEngine $engine = null)
+    public function __construct(?BookIntelligenceEngine $engine = null, ?AudiobookProducer $audiobook = null)
     {
         $this->engine = $engine ?? new BookIntelligenceEngine();
+        $this->audiobook = $audiobook ?? new AudiobookProducer();
     }
 
     public function engine(): BookIntelligenceEngine
     {
         return $this->engine;
+    }
+
+    public function audiobookProducer(): AudiobookProducer
+    {
+        return $this->audiobook;
     }
 
     /**
@@ -99,6 +110,17 @@ final class AmazonBookWriter
             (int) ($book['total_word_count'] ?? 0),
             isset($options['ebook_price']) ? (float) $options['ebook_price'] : null,
         );
+        $hardcover = $this->hardcoverPlan(
+            (int) $manuscriptPlan['kdp_page_estimate'],
+            isset($options['hardcover_price']) ? (float) $options['hardcover_price'] : null,
+        );
+        $audiobookProvider = in_array($options['audiobook_provider'] ?? '', AudiobookProducer::PROVIDERS, true)
+            ? (string) $options['audiobook_provider']
+            : 'google';
+        $audiobookPlan = $this->audiobook->plan($book, $metadata, $audiobookProvider, [
+            'voice' => is_array($options['audiobook_voice'] ?? null) ? $options['audiobook_voice'] : [],
+            'voice_consent' => (bool) ($options['voice_consent'] ?? false),
+        ]);
 
         return [
             'marketplace' => 'Amazon.com (KDP)',
@@ -108,7 +130,73 @@ final class AmazonBookWriter
             'manuscript' => $manuscriptPlan,
             'paperback' => $paperback,
             'ebook' => $ebook,
-            'checklist' => $this->publishingChecklist($metadata, $manuscriptPlan, $paperback, $ebook),
+            'editions' => [
+                'kindle' => [
+                    'label' => 'Kindle eBook',
+                    'channel' => 'KDP · Kindle Store',
+                    'price' => $ebook['price'],
+                    'royalty_per_copy' => $ebook['royalty_per_copy'],
+                    'royalty_plan' => $ebook['royalty_plan'],
+                    'deliverable' => 'Manuscript HTML export (imports into Kindle Create; export as KPF or EPUB)',
+                ],
+                'paperback' => [
+                    'label' => 'Paperback',
+                    'channel' => 'KDP Print · ' . $manuscriptPlan['trim_size'],
+                    'price' => $paperback['list_price'],
+                    'royalty_per_copy' => $paperback['royalty_per_copy'],
+                    'royalty_plan' => '60% of list − printing cost',
+                    'deliverable' => 'Interior PDF at ' . $manuscriptPlan['trim_size'] . ' + cover at spine width for ' . $paperback['page_count'] . ' pages',
+                ],
+                'hardcover' => [
+                    'label' => 'Hardcover',
+                    'channel' => 'KDP Print · case laminate · ' . $manuscriptPlan['trim_size'],
+                    'price' => $hardcover['list_price'],
+                    'royalty_per_copy' => $hardcover['royalty_per_copy'],
+                    'royalty_plan' => '60% of list − printing cost',
+                    'deliverable' => 'Same interior PDF + hardcover case wrap for ' . $hardcover['page_count'] . ' pages',
+                ],
+                'audiobook' => [
+                    'label' => 'Audiobook',
+                    'channel' => 'Audible via ACX / KDP Virtual Voice',
+                    'price' => $audiobookPlan['suggested_retail']['suggested_price'],
+                    'royalty_per_copy' => round($audiobookPlan['suggested_retail']['suggested_price'] * 0.40, 2),
+                    'royalty_plan' => '≈40% exclusive / 25% non-exclusive of Audible retail',
+                    'deliverable' => number_format($audiobookPlan['runtime_estimate_hours'], 1) . ' finished hours · ' . $audiobookPlan['provider_label'],
+                ],
+            ],
+            'hardcover' => $hardcover,
+            'audiobook' => $audiobookPlan,
+            'checklist' => $this->publishingChecklist($metadata, $manuscriptPlan, $paperback, $ebook, $hardcover, $audiobookPlan),
+        ];
+    }
+
+    /**
+     * Hardcover printing cost and royalty model (US marketplace, B&W interior,
+     * case laminate). KDP hardcovers run 75–550 pages.
+     *
+     * @return array<string, mixed>
+     */
+    public function hardcoverPlan(int $pageCount, ?float $listPrice = null): array
+    {
+        $pageCount = max(self::HARDCOVER_MIN_PAGES, min(self::HARDCOVER_MAX_PAGES, $pageCount));
+        $printingCost = $pageCount <= 108
+            ? 6.80
+            : 5.65 + ($pageCount * 0.012);
+        $printingCost = round($printingCost, 2);
+        $minListPrice = $this->roundUpTo99($printingCost / self::HARDCOVER_ROYALTY_RATE);
+        $suggestedListPrice = $this->roundUpTo99(max($minListPrice, min(34.99, 14.99 + ($pageCount * 0.02))));
+        $listPrice = $listPrice !== null ? round(max($minListPrice, $listPrice), 2) : $suggestedListPrice;
+        $royalty = round((self::HARDCOVER_ROYALTY_RATE * $listPrice) - $printingCost, 2);
+
+        return [
+            'page_count' => $pageCount,
+            'printing_cost' => $printingCost,
+            'royalty_rate' => self::HARDCOVER_ROYALTY_RATE,
+            'minimum_list_price' => $minListPrice,
+            'suggested_list_price' => $suggestedListPrice,
+            'list_price' => $listPrice,
+            'royalty_per_copy' => max(0.0, $royalty),
+            'formula' => 'royalty = (60% × list price) − printing cost',
         ];
     }
 
@@ -352,9 +440,31 @@ final class AmazonBookWriter
      * @param array<string, mixed> $ebook
      * @return array<int, array{step:string, status:string, detail:string}>
      */
-    public function publishingChecklist(array $metadata, array $manuscript, array $paperback, array $ebook): array
-    {
-        return [
+    public function publishingChecklist(
+        array $metadata,
+        array $manuscript,
+        array $paperback,
+        array $ebook,
+        array $hardcover = [],
+        array $audiobook = [],
+    ): array {
+        $extra = [];
+        if ($hardcover !== []) {
+            $extra[] = ['step' => 'Hardcover edition', 'status' => 'Ready', 'detail' => 'Case-laminate hardcover at $' . number_format((float) $hardcover['list_price'], 2) . ' (≈ $' . number_format((float) $hardcover['royalty_per_copy'], 2) . '/copy, printing $' . number_format((float) $hardcover['printing_cost'], 2) . '). Enable it as a second format on the same KDP title.'];
+        }
+        if ($audiobook !== []) {
+            $consentBlocked = ($audiobook['clone_consent']['required'] ?? false) && !($audiobook['clone_consent']['confirmed'] ?? false);
+            $extra[] = [
+                'step' => 'Audiobook production',
+                'status' => $consentBlocked ? 'Action needed' : 'Ready',
+                'detail' => number_format((float) $audiobook['runtime_estimate_hours'], 1) . ' finished hours via ' . $audiobook['provider_label']
+                    . ' · est. synthesis cost $' . number_format((float) $audiobook['estimated_synthesis_cost_usd'], 2)
+                    . '. ' . ($consentBlocked
+                        ? 'Blocked until the sampled speaker\'s cloning consent is confirmed.'
+                        : 'Generate the manifest, run bin/synthesize-audiobook.php, master to ACX specs.'),
+            ];
+        }
+        return array_merge([
             ['step' => 'Draft manuscript', 'status' => 'Ready', 'detail' => number_format((int) $manuscript['total_word_count']) . ' words across ' . number_format((int) $manuscript['draft_page_count']) . ' draft pages. Review voice, claims, and examples before upload.'],
             ['step' => 'Listing metadata', 'status' => 'Ready', 'detail' => 'Title, subtitle, description, ' . count((array) $metadata['keywords']) . ' keywords, and ' . count((array) $metadata['categories']) . ' category suggestions generated within KDP limits.'],
             ['step' => 'Interior formatting', 'status' => 'Action needed', 'detail' => 'Export the manuscript file below, open it in Kindle Create or Word, and confirm ' . (string) $manuscript['trim_size'] . ' with mirrored margins.'],
@@ -362,7 +472,7 @@ final class AmazonBookWriter
             ['step' => 'Pricing', 'status' => 'Ready', 'detail' => 'Paperback $' . number_format((float) $paperback['list_price'], 2) . ' (≈ $' . number_format((float) $paperback['royalty_per_copy'], 2) . '/copy) · Kindle $' . number_format((float) $ebook['price'], 2) . ' (≈ $' . number_format((float) $ebook['royalty_per_copy'], 2) . '/copy).'],
             ['step' => 'Rights & tax interview', 'status' => 'Action needed', 'detail' => 'Confirm you hold worldwide rights and complete the KDP tax interview before the first upload.'],
             ['step' => 'Publish & review proof', 'status' => 'Pending', 'detail' => 'Order a printed proof, check the physical copy, then press Publish. Amazon review typically takes up to 72 hours.'],
-        ];
+        ], $extra);
     }
 
     /**
@@ -448,7 +558,10 @@ final class AmazonBookWriter
             'kdp_pricing' => [
                 'paperback' => $kdp['paperback'] ?? [],
                 'ebook' => $kdp['ebook'] ?? [],
+                'hardcover' => $kdp['hardcover'] ?? [],
             ],
+            'editions' => $kdp['editions'] ?? [],
+            'audiobook' => $kdp['audiobook'] ?? [],
             'checklist' => $kdp['checklist'] ?? [],
             'disclaimer' => $kdp['disclaimer'] ?? '',
         ];

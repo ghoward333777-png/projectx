@@ -16,18 +16,46 @@ $style = trim((string) ($_POST['style'] ?? $_GET['style'] ?? 'conversational'));
 $length = trim((string) ($_POST['length'] ?? $_GET['length'] ?? 'standard'));
 $listPriceInput = trim((string) ($_POST['list_price'] ?? $_GET['list_price'] ?? ''));
 $ebookPriceInput = trim((string) ($_POST['ebook_price'] ?? $_GET['ebook_price'] ?? ''));
+$hardcoverPriceInput = trim((string) ($_POST['hardcover_price'] ?? $_GET['hardcover_price'] ?? ''));
+$audiobookProvider = trim((string) ($_POST['audiobook_provider'] ?? $_GET['audiobook_provider'] ?? 'google'));
+$voiceName = trim((string) ($_POST['voice_name'] ?? $_GET['voice_name'] ?? ''));
+$cloneSamplePath = trim((string) ($_POST['clone_sample'] ?? $_GET['clone_sample'] ?? ''));
+$voiceConsent = (bool) ($_POST['voice_consent'] ?? $_GET['voice_consent'] ?? false);
+
+$audiobookVoice = [];
+if ($audiobookProvider === 'google' && $voiceName !== '') {
+    $audiobookVoice['voice_name'] = $voiceName;
+}
+if ($audiobookProvider === 'elevenlabs') {
+    if ($voiceName !== '') {
+        $audiobookVoice['voice_id'] = $voiceName;
+    }
+    if ($cloneSamplePath !== '') {
+        $audiobookVoice['clone_sample_path'] = $cloneSamplePath;
+        $audiobookVoice['cloned_from_sample'] = true;
+    }
+}
+if ($audiobookProvider === 'local-clone' && $cloneSamplePath !== '') {
+    $audiobookVoice['sample_path'] = $cloneSamplePath;
+}
 
 $options = [
     'reader' => $reader,
     'author' => $author,
     'style' => $style,
     'length' => $length,
+    'audiobook_provider' => $audiobookProvider,
+    'audiobook_voice' => $audiobookVoice,
+    'voice_consent' => $voiceConsent,
 ];
 if ($listPriceInput !== '' && is_numeric($listPriceInput)) {
     $options['list_price'] = (float) $listPriceInput;
 }
 if ($ebookPriceInput !== '' && is_numeric($ebookPriceInput)) {
     $options['ebook_price'] = (float) $ebookPriceInput;
+}
+if ($hardcoverPriceInput !== '' && is_numeric($hardcoverPriceInput)) {
+    $options['hardcover_price'] = (float) $hardcoverPriceInput;
 }
 
 $error = null;
@@ -52,6 +80,34 @@ if ($result !== null && $download === 'manuscript') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata']);
     exit;
+}
+
+if ($result !== null && $download === 'narration') {
+    $producer = $writer->audiobookProducer();
+    $script = $producer->narrationScript($result['book'], $result['kdp']['metadata']);
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-narration-script.txt';
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo $producer->narrationScriptText($script);
+    exit;
+}
+
+if ($result !== null && $download === 'manifest') {
+    try {
+        $manifest = $writer->audiobookProducer()->synthesisManifest(
+            $result['book'],
+            $result['kdp']['metadata'],
+            $audiobookProvider,
+            ['voice' => $audiobookVoice, 'voice_consent' => $voiceConsent],
+        );
+        $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-audiobook-manifest.json';
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (Throwable $exception) {
+        $error = $exception->getMessage();
+    }
 }
 
 if ($result !== null && $download === 'metadata') {
@@ -86,6 +142,11 @@ $downloadQuery = http_build_query(array_filter([
     'length' => $length,
     'list_price' => $listPriceInput,
     'ebook_price' => $ebookPriceInput,
+    'hardcover_price' => $hardcoverPriceInput,
+    'audiobook_provider' => $audiobookProvider,
+    'voice_name' => $voiceName,
+    'clone_sample' => $cloneSamplePath,
+    'voice_consent' => $voiceConsent ? '1' : '',
 ], static fn (string $value): bool => $value !== ''));
 ?>
 <!doctype html>
@@ -179,6 +240,35 @@ $downloadQuery = http_build_query(array_filter([
                 <label for="ebook_price">Kindle price · USD (optional)</label>
                 <input id="ebook_price" name="ebook_price" type="number" step="0.01" min="0" value="<?= htmlspecialchars($ebookPriceInput, ENT_QUOTES, 'UTF-8') ?>" placeholder="Leave blank for a suggestion">
             </div>
+            <div>
+                <label for="hardcover_price">Hardcover price · USD (optional)</label>
+                <input id="hardcover_price" name="hardcover_price" type="number" step="0.01" min="0" value="<?= htmlspecialchars($hardcoverPriceInput, ENT_QUOTES, 'UTF-8') ?>" placeholder="Leave blank for a suggestion">
+            </div>
+        </div>
+
+        <h2>Audiobook narration</h2>
+        <div class="grid">
+            <div>
+                <label for="audiobook_provider">Voice provider</label>
+                <select id="audiobook_provider" name="audiobook_provider">
+                    <option value="google" <?= $audiobookProvider === 'google' ? 'selected' : '' ?>>Google Cloud Text-to-Speech</option>
+                    <option value="elevenlabs" <?= $audiobookProvider === 'elevenlabs' ? 'selected' : '' ?>>ElevenLabs</option>
+                    <option value="local-clone" <?= $audiobookProvider === 'local-clone' ? 'selected' : '' ?>>Internal voice clone (sampled recording)</option>
+                </select>
+            </div>
+            <div>
+                <label for="voice_name">Voice name / voice ID (optional)</label>
+                <input id="voice_name" name="voice_name" value="<?= htmlspecialchars($voiceName, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. en-US-Neural2-D or an ElevenLabs voice_id">
+            </div>
+            <div>
+                <label for="clone_sample">Voice sample recording · path (for cloning)</label>
+                <input id="clone_sample" name="clone_sample" value="<?= htmlspecialchars($cloneSamplePath, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. samples/narrator.wav">
+            </div>
+            <div>
+                <label for="voice_consent">Cloning consent</label>
+                <label style="font-weight:400"><input type="hidden" name="voice_consent" value="0"><input id="voice_consent" type="checkbox" name="voice_consent" value="1" <?= $voiceConsent ? 'checked' : '' ?>> The recorded speaker has given explicit consent to clone their voice</label>
+                <div class="note">Required before any cloning job is generated. Not needed for stock Google or ElevenLabs voices.</div>
+            </div>
         </div>
         <button type="submit">Build the Amazon publishing package</button>
     </form>
@@ -224,6 +314,47 @@ $downloadQuery = http_build_query(array_filter([
         </section>
 
         <section>
+            <div class="eyebrow">Editions</div>
+            <div class="grid">
+                <?php foreach ((array) ($kdp['editions'] ?? []) as $edition): ?>
+                    <div class="metric">
+                        <strong><?= htmlspecialchars((string) $edition['label'], ENT_QUOTES, 'UTF-8') ?> · $<?= number_format((float) $edition['price'], 2) ?></strong>
+                        <span><?= htmlspecialchars((string) $edition['channel'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <span>≈ $<?= number_format((float) $edition['royalty_per_copy'], 2) ?>/copy · <?= htmlspecialchars((string) $edition['royalty_plan'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <span><?= htmlspecialchars((string) $edition['deliverable'], ENT_QUOTES, 'UTF-8') ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <?php $ab = $kdp['audiobook'] ?? null; ?>
+        <?php if ($ab !== null): ?>
+        <section>
+            <div class="eyebrow">Audiobook studio</div>
+            <div class="grid">
+                <div class="metric"><strong><?= number_format((float) $ab['runtime_estimate_hours'], 1) ?> hours</strong><span>Estimated finished runtime at ~<?= number_format(AudiobookProducer::WORDS_PER_FINISHED_HOUR) ?> words/hour</span></div>
+                <div class="metric"><strong><?= number_format((int) $ab['chunk_count']) ?> chunks</strong><span><?= number_format((int) $ab['total_char_count']) ?> characters, ≤ <?= number_format((int) $ab['chunk_char_limit']) ?> chars per request</span></div>
+                <div class="metric"><strong>$<?= number_format((float) $ab['estimated_synthesis_cost_usd'], 2) ?></strong><span>Estimated synthesis cost · <?= htmlspecialchars((string) $ab['provider_label'], ENT_QUOTES, 'UTF-8') ?></span></div>
+                <div class="metric"><strong>$<?= number_format((float) $ab['suggested_retail']['suggested_price'], 2) ?></strong><span>Suggested retail (<?= htmlspecialchars((string) $ab['suggested_retail']['band'], ENT_QUOTES, 'UTF-8') ?> band) · <?= htmlspecialchars((string) $ab['suggested_retail']['royalty_note'], ENT_QUOTES, 'UTF-8') ?></span></div>
+            </div>
+            <p class="note"><strong>Voice cloning consent:</strong> <?= htmlspecialchars((string) $ab['clone_consent']['status'], ENT_QUOTES, 'UTF-8') ?></p>
+            <h3>Production workflow</h3>
+            <ul>
+                <?php foreach ((array) $ab['workflow'] as $step): ?>
+                    <li><?= htmlspecialchars((string) $step, ENT_QUOTES, 'UTF-8') ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <h3>ACX / Audible delivery specs</h3>
+            <ul>
+                <?php foreach ((array) $ab['acx_specs'] as $spec): ?>
+                    <li><?= htmlspecialchars((string) $spec, ENT_QUOTES, 'UTF-8') ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <p class="note">Synthesis runs locally via <code style="color:#ffd9a0">php bin/synthesize-audiobook.php --manifest &lt;file&gt; --out audio/</code> with your own Google or ElevenLabs API key, or your internal cloning engine via <code style="color:#ffd9a0">--engine-cmd</code>. One-time ElevenLabs cloning: <code style="color:#ffd9a0">--clone-name "My Voice" --clone-sample narrator.wav --consent</code>.</p>
+        </section>
+        <?php endif; ?>
+
+        <section>
             <div class="eyebrow">Publishing checklist</div>
             <?php foreach ((array) $kdp['checklist'] as $item): ?>
                 <?php $statusClass = $item['status'] === 'Ready' ? 'ready' : ($item['status'] === 'Pending' ? 'pending' : 'action'); ?>
@@ -241,6 +372,8 @@ $downloadQuery = http_build_query(array_filter([
             <div class="downloads">
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manuscript">Download KDP manuscript (.html)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=metadata">Download KDP metadata (.json)</a>
+                <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=narration">Download narration script (.txt)</a>
+                <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manifest">Download audiobook manifest (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;format=json">View package as JSON</a>
             </div>
             <p class="note">Want to edit the table of contents or page design first? Draft in <a href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">the book generator</a>, then come back here to package it.</p>
