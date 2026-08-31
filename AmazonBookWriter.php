@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/BookIntelligenceEngine.php';
 require_once __DIR__ . '/AudiobookProducer.php';
+require_once __DIR__ . '/IllustrationStudio.php';
 
 /**
  * Amazon Book Writer
@@ -56,6 +57,13 @@ final class AmazonBookWriter
         return $this->audiobook;
     }
 
+    public function illustrationStudio(): IllustrationStudio
+    {
+        return $this->illustrations ??= new IllustrationStudio();
+    }
+
+    private ?IllustrationStudio $illustrations = null;
+
     /**
      * Run the full pipeline: strategy kit, manuscript draft, and KDP package.
      *
@@ -82,10 +90,17 @@ final class AmazonBookWriter
             is_array($options['page_style'] ?? null) ? $options['page_style'] : [],
         );
 
+        $kdp = $this->buildKdpPackage($topic, $kit, $book, $options);
+
         return [
             'kit' => $kit,
             'book' => $book,
-            'kdp' => $this->buildKdpPackage($topic, $kit, $book, $options),
+            'kdp' => $kdp,
+            'media' => $this->illustrationStudio()->planBookMedia(
+                $book,
+                $kdp['metadata'],
+                is_array($options['extra_media'] ?? null) ? $options['extra_media'] : [],
+            ),
         ];
     }
 
@@ -482,8 +497,15 @@ final class AmazonBookWriter
      * @param array<string, mixed> $book
      * @param array<string, mixed> $metadata
      */
-    public function exportManuscriptHtml(array $book, array $metadata): string
+    /**
+     * @param array<string, mixed>|null $media Output of IllustrationStudio::planBookMedia().
+     */
+    public function exportManuscriptHtml(array $book, array $metadata, ?array $media = null): string
     {
+        $mediaByChapter = [];
+        foreach ((array) ($media['chapters'] ?? []) as $mediaChapter) {
+            $mediaByChapter[(int) $mediaChapter['number']] = (array) $mediaChapter['items'];
+        }
         $e = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
         $title = (string) ($metadata['title'] ?? 'Untitled');
         $subtitle = (string) ($metadata['subtitle'] ?? '');
@@ -521,6 +543,27 @@ final class AmazonBookWriter
                     continue; // the chapter heading is already rendered above
                 }
                 $html .= '<p>' . nl2br($e($content)) . "</p>\n";
+            }
+            foreach ($mediaByChapter[$number] ?? [] as $figureIndex => $item) {
+                $html .= '<figure style="margin: 1.5em 0; page-break-inside: avoid;">' . "\n";
+                if (isset($item['svg'])) {
+                    $html .= $item['svg'] . "\n"; // studio-generated SVG, already escaped internally
+                } elseif (isset($item['table']['columns'], $item['table']['rows'])) {
+                    $html .= '<table style="border-collapse: collapse; width: 100%; font-size: 10pt;"><thead><tr>';
+                    foreach ($item['table']['columns'] as $column) {
+                        $html .= '<th style="border: 1px solid #999; padding: 4pt 6pt; text-align: left;">' . $e((string) $column) . '</th>';
+                    }
+                    $html .= '</tr></thead><tbody>';
+                    foreach ($item['table']['rows'] as $row) {
+                        $html .= '<tr>';
+                        foreach ($row as $cell) {
+                            $html .= '<td style="border: 1px solid #bbb; padding: 4pt 6pt; vertical-align: top;">' . $e((string) $cell) . '</td>';
+                        }
+                        $html .= '</tr>';
+                    }
+                    $html .= "</tbody></table>\n";
+                }
+                $html .= '<figcaption style="font-size: 10pt; text-align: center; font-style: italic;">Figure ' . $number . '.' . ($figureIndex + 1) . ' — ' . $e((string) ($item['title'] ?? '')) . '. ' . $e((string) ($item['caption'] ?? '')) . '</figcaption>' . "\n</figure>\n";
             }
         }
 

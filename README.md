@@ -67,6 +67,31 @@ The KDP package now plans all four editions of the same title:
 - **Audiobook** — runtime estimate (~9,300 words per finished hour), Audible-style
   retail band, synthesis cost estimate, and the ACX delivery specs.
 
+## Figures & illustrations
+
+`IllustrationStudio.php` gives every chapter a visual layer: it finds the
+important topics inside the drafted text and generates media after each one —
+step-flow **diagrams**, attention **charts**, momentum **graphs**, data
+**tables** (job cards or topic overviews), seeded **illustrations**, and
+**AI-image** prompts. Diagrams, charts, graphs, tables, and illustrations
+render instantly as SVG/HTML with no keys; the figure palette is validated
+for contrast and color-vision separation on the book's paper surface.
+
+Users can add more illustrations to any specific chapter or section from the
+“Add an illustration” panel on the writer page; added items are planned,
+rendered, and exported with the rest.
+
+AI images follow the audiobook pattern: download the image manifest, then run
+
+```bash
+php bin/generate-images.php --manifest my-book-images-manifest.json --out images/
+```
+
+with your own key — Google Imagen (`GOOGLE_AI_API_KEY`), OpenAI
+(`OPENAI_API_KEY`), or Stability (`STABILITY_API_KEY`). Generation is
+resumable. Figures are embedded in the HTML manuscript export and appear as
+captioned placeholders in the Word export.
+
 ## Audiobook production
 
 `AudiobookProducer.php` turns the manuscript into a narration package: opening and
@@ -126,6 +151,8 @@ no API keys.
 - `BookIntelligenceEngine.php` — dependency-free application engine
 - `AmazonBookWriter.php` — Amazon KDP packaging: metadata, pricing, editions, checklist, exports
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
+- `IllustrationStudio.php` — per-topic diagrams, charts, graphs, tables, illustrations, AI-image prompts
+- `bin/generate-images.php` — CLI image synthesis via Google Imagen, OpenAI, or Stability
 - `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine
 - `SitePackageExporter.php` + `download-app.php` — one-click hosting package (.zip with INSTALL.txt)

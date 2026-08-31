@@ -40,6 +40,35 @@ if ($audiobookProvider === 'local-clone' && $cloneSamplePath !== '') {
     $audiobookVoice['sample_path'] = $cloneSamplePath;
 }
 
+$extraMedia = [];
+$rawExtraMedia = $_POST['extra_media'] ?? $_GET['extra_media'] ?? [];
+if (is_array($rawExtraMedia)) {
+    foreach ($rawExtraMedia as $chapterNumber => $rows) {
+        if (!is_array($rows)) {
+            continue;
+        }
+        foreach ($rows as $row) {
+            if (is_array($row) && trim((string) ($row['topic'] ?? '')) !== '') {
+                $extraMedia[(int) $chapterNumber][] = [
+                    'kind' => (string) ($row['kind'] ?? 'illustration'),
+                    'topic' => trim((string) ($row['topic'] ?? '')),
+                    'caption' => trim((string) ($row['caption'] ?? '')),
+                    'section' => trim((string) ($row['section'] ?? '')),
+                ];
+            }
+        }
+    }
+}
+$newMedia = $_POST['extra_media_new'] ?? [];
+if (is_array($newMedia) && trim((string) ($newMedia['topic'] ?? '')) !== '') {
+    $extraMedia[(int) ($newMedia['chapter'] ?? 1)][] = [
+        'kind' => (string) ($newMedia['kind'] ?? 'illustration'),
+        'topic' => trim((string) $newMedia['topic']),
+        'caption' => trim((string) ($newMedia['caption'] ?? '')),
+        'section' => trim((string) ($newMedia['section'] ?? '')),
+    ];
+}
+
 $options = [
     'reader' => $reader,
     'author' => $author,
@@ -48,6 +77,7 @@ $options = [
     'audiobook_provider' => $audiobookProvider,
     'audiobook_voice' => $audiobookVoice,
     'voice_consent' => $voiceConsent,
+    'extra_media' => $extraMedia,
 ];
 if ($listPriceInput !== '' && is_numeric($listPriceInput)) {
     $options['list_price'] = (float) $listPriceInput;
@@ -79,13 +109,25 @@ if ($result !== null && $download === 'manuscript') {
     $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-kdp-manuscript.html';
     header('Content-Type: text/html; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
-    echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata']);
+    echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata'], $result['media']);
+    exit;
+}
+
+if ($result !== null && $download === 'images') {
+    $manifest = $writer->illustrationStudio()->imageManifest(
+        $result['media'],
+        trim((string) ($_GET['image_provider'] ?? 'google')),
+    );
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-images-manifest.json';
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
 if ($result !== null && $download === 'word') {
     $exporter = new WordManuscriptExporter();
-    $bytes = $exporter->export($result['book'], $result['kdp']['metadata']);
+    $bytes = $exporter->export($result['book'], $result['kdp']['metadata'], $result['media']);
     $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-manuscript.docx';
     header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -159,7 +201,7 @@ $downloadQuery = http_build_query(array_filter([
     'voice_name' => $voiceName,
     'clone_sample' => $cloneSamplePath,
     'voice_consent' => $voiceConsent ? '1' : '',
-], static fn (string $value): bool => $value !== ''));
+], static fn (string $value): bool => $value !== '') + ($extraMedia !== [] ? ['extra_media' => $extraMedia] : []));
 ?>
 <!doctype html>
 <html lang="en">
@@ -285,6 +327,45 @@ $downloadQuery = http_build_query(array_filter([
                 <div class="note">Required before any cloning job is generated. Not needed for stock Google or ElevenLabs voices.</div>
             </div>
         </div>
+        <?php foreach ($extraMedia as $chapterNumber => $rows): ?>
+            <?php foreach ($rows as $rowIndex => $row): ?>
+                <?php foreach (['kind', 'topic', 'caption', 'section'] as $field): ?>
+                    <input type="hidden" name="extra_media[<?= (int) $chapterNumber ?>][<?= (int) $rowIndex ?>][<?= $field ?>]" value="<?= htmlspecialchars((string) ($row[$field] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+        <?php endforeach; ?>
+
+        <h2>Add an illustration to a chapter</h2>
+        <p class="note">Every chapter already gets figures after its important topics. Use this to add more to a specific chapter or section — it is included when you rebuild.</p>
+        <div class="grid">
+            <div>
+                <label for="extra-chapter">Chapter number</label>
+                <input id="extra-chapter" name="extra_media_new[chapter]" type="number" min="1" max="99" placeholder="e.g. 3">
+            </div>
+            <div>
+                <label for="extra-kind">Type</label>
+                <select id="extra-kind" name="extra_media_new[kind]">
+                    <option value="illustration">Illustration (drawn emblem)</option>
+                    <option value="diagram">Diagram (step flow)</option>
+                    <option value="chart">Chart (bars)</option>
+                    <option value="graph">Graph (line)</option>
+                    <option value="table">Table</option>
+                    <option value="ai-image">AI image (prompt + manifest)</option>
+                </select>
+            </div>
+            <div>
+                <label for="extra-topic">What should it show?</label>
+                <input id="extra-topic" name="extra_media_new[topic]" placeholder="e.g. How to compare two job offers">
+            </div>
+            <div>
+                <label for="extra-section">After which section? (optional)</label>
+                <input id="extra-section" name="extra_media_new[section]" placeholder="e.g. A practical test">
+            </div>
+            <div>
+                <label for="extra-caption">Caption (optional)</label>
+                <input id="extra-caption" name="extra_media_new[caption]" placeholder="Shown under the figure">
+            </div>
+        </div>
         <button type="submit">Build the Amazon publishing package</button>
     </form>
 
@@ -390,9 +471,43 @@ $downloadQuery = http_build_query(array_filter([
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=metadata">Download KDP metadata (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=narration">Download narration script (.txt)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manifest">Download audiobook manifest (.json)</a>
+                <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=images&amp;image_provider=google">Download AI-image manifest (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;format=json">View package as JSON</a>
             </div>
             <p class="note">Want to edit the table of contents or page design first? Draft in <a href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">the book generator</a>, then come back here to package it.</p>
+        </section>
+
+        <?php $media = $result['media'] ?? ['chapters' => [], 'figure_count' => 0, 'ai_image_count' => 0]; ?>
+        <section>
+            <div class="eyebrow">Figures &amp; illustrations · <?= (int) $media['figure_count'] ?> figures · <?= (int) $media['ai_image_count'] ?> AI images planned</div>
+            <p class="note">Every chapter gets a figure after each important topic: diagrams, charts, graphs, tables, and illustrations render instantly; AI images ship as prompts in the manifest below and are generated locally with <code style="color:#ffd9a0">php bin/generate-images.php --manifest &lt;file&gt; --out images/</code> using your Google, OpenAI, or Stability key. Use “Add an illustration” above to give any chapter or section more.</p>
+            <?php foreach ((array) $media['chapters'] as $mediaChapter): ?>
+                <details class="job-catalog" <?= !empty(array_filter((array) $mediaChapter['items'], static fn (array $i): bool => !empty($i['user_added']))) ? 'open' : '' ?>>
+                    <summary>Chapter <?= (int) $mediaChapter['number'] ?>: <?= htmlspecialchars((string) $mediaChapter['title'], ENT_QUOTES, 'UTF-8') ?> · <?= count((array) $mediaChapter['items']) ?> figures</summary>
+                    <div style="padding: 0 14px 14px;">
+                        <?php foreach ((array) $mediaChapter['items'] as $item): ?>
+                            <div style="margin-top: 14px; background: #f8f4eb; border-radius: 10px; padding: 16px 18px; color: #202431;">
+                                <div style="font: 11px/1.4 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: #5a6070;">
+                                    <?= htmlspecialchars((string) $item['kind'], ENT_QUOTES, 'UTF-8') ?> · after “<?= htmlspecialchars((string) $item['after_section'], ENT_QUOTES, 'UTF-8') ?>”<?= !empty($item['user_added']) ? ' · added by you' : '' ?>
+                                </div>
+                                <?php if (isset($item['svg'])): ?>
+                                    <?= $item['svg'] ?>
+                                <?php elseif (isset($item['table'])): ?>
+                                    <div style="overflow-x: auto;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;"><thead><tr>
+                                        <?php foreach ((array) $item['table']['columns'] as $column): ?><th style="border: 1px solid #b9b2a2; padding: 5px 8px; text-align: left;"><?= htmlspecialchars((string) $column, ENT_QUOTES, 'UTF-8') ?></th><?php endforeach; ?>
+                                    </tr></thead><tbody>
+                                        <?php foreach ((array) $item['table']['rows'] as $row): ?><tr><?php foreach ($row as $cell): ?><td style="border: 1px solid #cfc8b8; padding: 5px 8px; vertical-align: top;"><?= htmlspecialchars((string) $cell, ENT_QUOTES, 'UTF-8') ?></td><?php endforeach; ?></tr><?php endforeach; ?>
+                                    </tbody></table></div>
+                                <?php endif; ?>
+                                <div style="font-size: 12px; font-style: italic; margin-top: 8px;"><?= htmlspecialchars((string) $item['title'], ENT_QUOTES, 'UTF-8') ?> — <?= htmlspecialchars((string) $item['caption'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php if (isset($item['ai']['prompt'])): ?>
+                                    <div style="font-size: 11px; margin-top: 6px; color: #5a6070;"><b>Prompt:</b> <?= htmlspecialchars((string) $item['ai']['prompt'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            <?php endforeach; ?>
         </section>
 
         <section>

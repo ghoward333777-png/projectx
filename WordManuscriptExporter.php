@@ -19,14 +19,25 @@ final class WordManuscriptExporter
     private const PAGE_HEIGHT = 12960;
     private const PAGE_MARGIN = 1080; // 0.75 in
 
+    /** @var array<int, array<int, array<string, mixed>>> */
+    private array $mediaByChapter = [];
+
     /**
      * Render the manuscript as .docx bytes.
      *
      * @param array<string, mixed> $book Output of generateBookFromTableOfContents().
      * @param array<string, mixed> $metadata Listing metadata (title, subtitle, author).
      */
-    public function export(array $book, array $metadata): string
+    /**
+     * @param array<string, mixed>|null $media Output of IllustrationStudio::planBookMedia();
+     *   figures become captioned placeholders the author replaces in Word.
+     */
+    public function export(array $book, array $metadata, ?array $media = null): string
     {
+        $this->mediaByChapter = [];
+        foreach ((array) ($media['chapters'] ?? []) as $mediaChapter) {
+            $this->mediaByChapter[(int) $mediaChapter['number']] = (array) $mediaChapter['items'];
+        }
         if (!class_exists(ZipArchive::class)) {
             throw new RuntimeException('The PHP zip extension is required for Word export.');
         }
@@ -126,13 +137,23 @@ final class WordManuscriptExporter
         }
 
         foreach ((array) ($book['chapters'] ?? []) as $chapter) {
-            $body .= $this->paragraph('Chapter ' . (int) ($chapter['number'] ?? 0) . ': ' . (string) ($chapter['title'] ?? ''), 'Heading1');
+            $chapterNumber = (int) ($chapter['number'] ?? 0);
+            $body .= $this->paragraph('Chapter ' . $chapterNumber . ': ' . (string) ($chapter['title'] ?? ''), 'Heading1');
             foreach ((array) ($chapter['blocks'] ?? []) as $index => $block) {
                 $content = (string) ($block['content'] ?? '');
                 if ($content === '' || ($index === 0 && ($block['kind'] ?? '') === 'heading')) {
                     continue; // the chapter heading is already rendered above
                 }
                 $body .= $this->paragraph($content);
+            }
+            foreach ($this->mediaByChapter[$chapterNumber] ?? [] as $figureIndex => $item) {
+                $body .= $this->paragraph(
+                    '[Figure ' . $chapterNumber . '.' . ($figureIndex + 1) . ' — ' . (string) ($item['title'] ?? '')
+                        . '. ' . (string) ($item['caption'] ?? '')
+                        . ' Insert the exported figure here; the HTML manuscript export contains the rendered version.]',
+                    null,
+                    ['italic' => true, 'center' => true],
+                );
             }
         }
 

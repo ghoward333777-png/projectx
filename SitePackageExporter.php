@@ -17,6 +17,7 @@ final class SitePackageExporter
         'BookIntelligenceEngine.php',
         'AmazonBookWriter.php',
         'AudiobookProducer.php',
+        'IllustrationStudio.php',
         'WordManuscriptExporter.php',
         'SitePackageExporter.php',
         'index.php',
@@ -26,10 +27,12 @@ final class SitePackageExporter
         'download-app.php',
         'data/teen-jobs.json',
         'bin/synthesize-audiobook.php',
+        'bin/generate-images.php',
         'tests/rich-chapter-contract.php',
         'tests/amazon-book-writer-contract.php',
         'tests/audiobook-contract.php',
         'tests/site-package-contract.php',
+        'tests/illustration-contract.php',
         'README.md',
     ];
 
