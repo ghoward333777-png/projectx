@@ -92,6 +92,30 @@ with your own key — Google Imagen (`GOOGLE_AI_API_KEY`), OpenAI
 resumable. Figures are embedded in the HTML manuscript export and appear as
 captioned placeholders in the Word export.
 
+## Book Development Lab
+
+`book-lab.php` is the quality-certification layer, powered by `QualityLab.php`:
+
+- **Quality Scoring Engine** — 30 metrics in three groups (editorial, media,
+  format), each with a note explaining the number; group scores earn
+  Bronze/Silver/Gold/Platinum badges, and the weighted **Universal Nonfiction
+  Rating** (45% editorial + 30% media + 25% format) certifies the whole book.
+- **Document Complexity Analyzer** — pages, words, sections, TOC depth,
+  figures, audio segments, case-study moments, exercises, and density.
+- **KDP Compatibility Checker** — 11 explicit pass/warn checks: trim size,
+  page limits for both print formats, margins, image quality, TOC, every
+  metadata limit, eBook structure, and ACX audiobook specs.
+- **Metadata Optimization Report** — how fully the listing uses Amazon's
+  limits, plus keyword opportunities to test later.
+- **QueryBook Enhancement Plan** — three quiz questions, a key takeaway, and
+  a learning-path step per chapter (Read → Quiz → Apply).
+- **Best-Seller Production Kit** — everything above plus the blueprint,
+  chapter outline, media map, competitive gap, and best-seller probability,
+  downloadable as a printable HTML report or JSON.
+
+All scores are deterministic diagnostics computed from the draft — honest
+revision guidance, not sales guarantees.
+
 ## Audiobook production
 
 `AudiobookProducer.php` turns the manuscript into a narration package: opening and
@@ -137,6 +161,8 @@ php tests/rich-chapter-contract.php
 php tests/amazon-book-writer-contract.php
 php tests/audiobook-contract.php
 php tests/site-package-contract.php
+php tests/illustration-contract.php
+php tests/quality-lab-contract.php
 ```
 
 ## Install on a hosting site
@@ -152,6 +178,7 @@ no API keys.
 - `AmazonBookWriter.php` — Amazon KDP packaging: metadata, pricing, editions, checklist, exports
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
 - `IllustrationStudio.php` — per-topic diagrams, charts, graphs, tables, illustrations, AI-image prompts
+- `QualityLab.php` + `book-lab.php` — 30-metric scoring, complexity, KDP compliance, production kit
 - `bin/generate-images.php` — CLI image synthesis via Google Imagen, OpenAI, or Stability
 - `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine

@@ -255,7 +255,8 @@ $downloadQuery = http_build_query(array_filter([
         </div>
         <div>
             <a href="index.php">← Back to intelligence kit</a><br>
-            <a href="user-guide.php">User guide</a>
+            <a href="user-guide.php">User guide</a><br>
+            <a href="book-lab.php">Book Development Lab</a>
         </div>
     </header>
 

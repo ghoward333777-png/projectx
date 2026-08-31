@@ -18,11 +18,13 @@ final class SitePackageExporter
         'AmazonBookWriter.php',
         'AudiobookProducer.php',
         'IllustrationStudio.php',
+        'QualityLab.php',
         'WordManuscriptExporter.php',
         'SitePackageExporter.php',
         'index.php',
         'generate-book.php',
         'amazon-book-writer.php',
+        'book-lab.php',
         'user-guide.php',
         'download-app.php',
         'data/teen-jobs.json',
@@ -33,6 +35,7 @@ final class SitePackageExporter
         'tests/audiobook-contract.php',
         'tests/site-package-contract.php',
         'tests/illustration-contract.php',
+        'tests/quality-lab-contract.php',
         'README.md',
     ];
 

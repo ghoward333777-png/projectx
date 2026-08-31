@@ -588,8 +588,10 @@ final class BookIntelligenceEngine
             $beat++;
         }
 
-        $content .= "\n\nChapter takeaway\n\nFor " . strtolower($title) . ", start with one safe, realistic conversation and one small action. The goal is to learn more about the work while protecting your time, safety, school responsibilities, and future choices.";
-        return $this->trimToWordTarget($content, $plan['word_count']);
+        $closing = "\n\nChapter takeaway\n\nFor " . strtolower($title) . ", start with one safe, realistic conversation and one small action. The goal is to learn more about the work while protecting your time, safety, school responsibilities, and future choices.";
+        // Reserve room for the takeaway so the word-target trim never cuts it off.
+        $body = $this->trimToWordTarget($content, max(1, $plan['word_count'] - $this->wordCount($closing)));
+        return $body . $closing;
     }
 
     /** @return array<int, array<string, string>> */
@@ -711,8 +713,9 @@ final class BookIntelligenceEngine
         }
 
         $closing = "\n\nChapter synthesis\n\nThe durable takeaway from “{$title}” is connected to its stated purpose: {$purpose}. A reader who can apply the detail—{$detail}—has a stronger path toward the larger promise of " . strtolower($promise) . '.';
-        $content .= $closing;
-        return $this->trimToWordTarget($content, $plan['word_count']);
+        // Reserve room for the synthesis so the word-target trim never cuts it off.
+        $body = $this->trimToWordTarget($content, max(1, $plan['word_count'] - $this->wordCount($closing)));
+        return $body . $closing;
     }
 
     private function wordCount(string $value): int
