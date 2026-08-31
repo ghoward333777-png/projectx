@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/AmazonBookWriter.php';
 require_once __DIR__ . '/WordManuscriptExporter.php';
+require_once __DIR__ . '/EpubExporter.php';
+require_once __DIR__ . '/PrintMediaCompanion.php';
 
 session_start();
 
@@ -109,7 +111,37 @@ if ($result !== null && $download === 'manuscript') {
     $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-kdp-manuscript.html';
     header('Content-Type: text/html; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
-    echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata'], $result['media']);
+    $companionPlan = (new PrintMediaCompanion())->companionPlan($result['book'], $result['kdp']['metadata'], $result['media'], $companionBaseUrl);
+    echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata'], $result['media'], $companionPlan);
+    exit;
+}
+
+$companionBaseUrl = trim((string) ($_POST['companion_url'] ?? $_GET['companion_url'] ?? ''));
+
+if ($result !== null && $download === 'epub') {
+    $bytes = (new EpubExporter())->export($result['book'], $result['kdp']['metadata'], $result['media']);
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '.epub';
+    header('Content-Type: application/epub+zip');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . strlen($bytes));
+    echo $bytes;
+    exit;
+}
+
+if ($result !== null && ($download === 'companion' || $download === 'qr-sheet')) {
+    $companion = new PrintMediaCompanion();
+    if ($download === 'companion') {
+        $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-companion.html';
+        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo $companion->exportCompanionHtml($result['book'], $result['kdp']['metadata'], $result['media'], $companionBaseUrl);
+    } else {
+        $plan = $companion->companionPlan($result['book'], $result['kdp']['metadata'], $result['media'], $companionBaseUrl);
+        $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-qr-sheet.html';
+        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo $companion->exportQrSheetHtml($plan, $result['kdp']['metadata']);
+    }
     exit;
 }
 
@@ -201,6 +233,7 @@ $downloadQuery = http_build_query(array_filter([
     'voice_name' => $voiceName,
     'clone_sample' => $cloneSamplePath,
     'voice_consent' => $voiceConsent ? '1' : '',
+    'companion_url' => $companionBaseUrl,
 ], static fn (string $value): bool => $value !== '') + ($extraMedia !== [] ? ['extra_media' => $extraMedia] : []));
 ?>
 <!doctype html>
@@ -301,6 +334,10 @@ $downloadQuery = http_build_query(array_filter([
             <div>
                 <label for="hardcover_price">Hardcover price · USD (optional)</label>
                 <input id="hardcover_price" name="hardcover_price" type="number" step="0.01" min="0" value="<?= htmlspecialchars($hardcoverPriceInput, ENT_QUOTES, 'UTF-8') ?>" placeholder="Leave blank for a suggestion">
+            </div>
+            <div>
+                <label for="companion_url">Companion page web address (for print QR codes)</label>
+                <input id="companion_url" name="companion_url" value="<?= htmlspecialchars($companionBaseUrl, ENT_QUOTES, 'UTF-8') ?>" placeholder="<?= htmlspecialchars(PrintMediaCompanion::DEFAULT_BASE_URL, ENT_QUOTES, 'UTF-8') ?>">
             </div>
         </div>
 
@@ -451,6 +488,27 @@ $downloadQuery = http_build_query(array_filter([
         </section>
         <?php endif; ?>
 
+        <?php $companionPlanView = (new PrintMediaCompanion())->companionPlan($book, $meta, $result['media'] ?? null, $companionBaseUrl); ?>
+        <section>
+            <div class="eyebrow">Print media companion · QR-linked</div>
+            <p class="note">Print can't play audio or show color media — so every chapter of the print edition gets a QR code pointing readers to your companion web page. Set the web address above (currently <strong style="color:#ffd9a0;"><?= htmlspecialchars($companionPlanView['base_url'], ENT_QUOTES, 'UTF-8') ?></strong>), download the companion page below, upload it there, and print the QR sheet or use the QR codes already embedded in the HTML manuscript export.</p>
+            <div class="grid">
+                <div style="background:#f8f4eb;border-radius:10px;padding:14px;text-align:center;color:#202431;">
+                    <?= $companionPlanView['master']['qr_svg'] ?>
+                    <div style="font-size:12px;font-weight:700;">Whole book</div>
+                    <div style="font-size:10px;color:#5a6070;word-break:break-all;"><?= htmlspecialchars($companionPlanView['master']['url'], ENT_QUOTES, 'UTF-8') ?></div>
+                </div>
+                <?php foreach (array_slice($companionPlanView['chapters'], 0, 3) as $entry): ?>
+                    <div style="background:#f8f4eb;border-radius:10px;padding:14px;text-align:center;color:#202431;">
+                        <?= $entry['qr_svg'] ?>
+                        <div style="font-size:12px;font-weight:700;">Ch. <?= (int) $entry['chapter'] ?> · <?= (int) $entry['figure_count'] ?> figures</div>
+                        <div style="font-size:10px;color:#5a6070;word-break:break-all;"><?= htmlspecialchars($entry['url'], ENT_QUOTES, 'UTF-8') ?></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <p class="note">All <?= count($companionPlanView['chapters']) ?> chapter codes are on the downloadable QR sheet. The QR codes are generated by the app itself — scannable with any phone camera.</p>
+        </section>
+
         <section>
             <div class="eyebrow">Publishing checklist</div>
             <?php foreach ((array) $kdp['checklist'] as $item): ?>
@@ -468,11 +526,14 @@ $downloadQuery = http_build_query(array_filter([
             <p>The manuscript export is a clean single-file HTML document that Kindle Create and Word open directly; the metadata export mirrors the KDP setup screens for copy-paste.</p>
             <div class="downloads">
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=word">Download Word manuscript (.docx)</a>
+                <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=epub">Download eBook (.epub)</a>
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manuscript">Download KDP manuscript (.html)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=metadata">Download KDP metadata (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=narration">Download narration script (.txt)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manifest">Download audiobook manifest (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=images&amp;image_provider=google">Download AI-image manifest (.json)</a>
+                <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=companion">Download companion page (.html)</a>
+                <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=qr-sheet">Download QR sheet (.html)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;format=json">View package as JSON</a>
             </div>
             <p class="note">Want to edit the table of contents or page design first? Draft in <a href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">the book generator</a>, then come back here to package it.</p>

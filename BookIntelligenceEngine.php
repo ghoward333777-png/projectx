@@ -340,6 +340,7 @@ final class BookIntelligenceEngine
                 'number' => count($draftChapters) + 1,
                 'title' => $chapter['title'],
                 'purpose' => $chapter['purpose'],
+                'detail' => $chapter['detail'],
                 'content' => $content,
                 'blocks' => $this->documentBlocks($content, $chapter['title']),
                 'page_count' => $plan['page_count'],

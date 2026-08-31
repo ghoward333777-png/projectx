@@ -499,12 +499,18 @@ final class AmazonBookWriter
      */
     /**
      * @param array<string, mixed>|null $media Output of IllustrationStudio::planBookMedia().
+     * @param array<string, mixed>|null $companion Output of PrintMediaCompanion::companionPlan();
+     *   when given, each chapter ends with its QR code to the companion page.
      */
-    public function exportManuscriptHtml(array $book, array $metadata, ?array $media = null): string
+    public function exportManuscriptHtml(array $book, array $metadata, ?array $media = null, ?array $companion = null): string
     {
         $mediaByChapter = [];
         foreach ((array) ($media['chapters'] ?? []) as $mediaChapter) {
             $mediaByChapter[(int) $mediaChapter['number']] = (array) $mediaChapter['items'];
+        }
+        $companionByChapter = [];
+        foreach ((array) ($companion['chapters'] ?? []) as $entry) {
+            $companionByChapter[(int) $entry['chapter']] = $entry;
         }
         $e = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
         $title = (string) ($metadata['title'] ?? 'Untitled');
@@ -544,7 +550,12 @@ final class AmazonBookWriter
                 }
                 $html .= '<p>' . nl2br($e($content)) . "</p>\n";
             }
-            foreach ($mediaByChapter[$number] ?? [] as $figureIndex => $item) {
+            $figureNumber = 0;
+            foreach ($mediaByChapter[$number] ?? [] as $item) {
+                if (!empty($item['placeholder'])) {
+                    continue; // AI images join the manuscript once actually generated
+                }
+                $figureNumber++;
                 $html .= '<figure style="margin: 1.5em 0; page-break-inside: avoid;">' . "\n";
                 if (isset($item['svg'])) {
                     $html .= $item['svg'] . "\n"; // studio-generated SVG, already escaped internally
@@ -563,7 +574,13 @@ final class AmazonBookWriter
                     }
                     $html .= "</tbody></table>\n";
                 }
-                $html .= '<figcaption style="font-size: 10pt; text-align: center; font-style: italic;">Figure ' . $number . '.' . ($figureIndex + 1) . ' — ' . $e((string) ($item['title'] ?? '')) . '. ' . $e((string) ($item['caption'] ?? '')) . '</figcaption>' . "\n</figure>\n";
+                $html .= '<figcaption style="font-size: 10pt; text-align: center; font-style: italic;">Figure ' . $number . '.' . $figureNumber . ' — ' . $e((string) ($item['title'] ?? '')) . '. ' . $e((string) ($item['caption'] ?? '')) . '</figcaption>' . "\n</figure>\n";
+            }
+            if (isset($companionByChapter[$number])) {
+                $entry = $companionByChapter[$number];
+                $html .= '<figure style="margin: 1.5em 0; text-align: center; page-break-inside: avoid;">' . $entry['qr_svg']
+                    . '<figcaption style="font-size: 9pt; font-style: italic;">Scan for this chapter\'s media — audio, images, and figures: '
+                    . $e((string) $entry['url']) . '</figcaption></figure>' . "\n";
             }
         }
 
