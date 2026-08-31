@@ -211,7 +211,10 @@ $downloadQuery = http_build_query(array_filter([
             <h1>Write it, package it, publish it on Amazon.</h1>
             <p>Generate the manuscript and a complete Amazon KDP publishing package: listing metadata, keywords, categories, pricing and royalty estimates, and a KDP-ready manuscript export.</p>
         </div>
-        <a href="index.php">← Back to intelligence kit</a>
+        <div>
+            <a href="index.php">← Back to intelligence kit</a><br>
+            <a href="user-guide.php">User guide</a>
+        </div>
     </header>
 
     <?php if ($error !== null): ?>

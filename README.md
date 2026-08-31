@@ -23,6 +23,8 @@ Then open:
 - `http://127.0.0.1:8082/index.php` — strategy workspace
 - `http://127.0.0.1:8082/generate-book.php` — editable TOC and manuscript generator
 - `http://127.0.0.1:8082/amazon-book-writer.php` — Amazon KDP publishing package builder
+- `http://127.0.0.1:8082/user-guide.php` — friendly user guide
+- `http://127.0.0.1:8082/download-app.php` — download the whole app as a hosting-ready .zip
 - `http://127.0.0.1:8082/index.php?format=json` — generated strategy kit JSON
 - `http://127.0.0.1:8082/index.php?format=json&part=toc` — table of contents JSON
 - `http://127.0.0.1:8082/index.php?format=json&part=jobs` — 120-job catalog JSON
@@ -109,7 +111,15 @@ RMS −23…−18 dB, peaks ≤ −3 dB, 0.5–1 s of room tone at head and tail
 php tests/rich-chapter-contract.php
 php tests/amazon-book-writer-contract.php
 php tests/audiobook-contract.php
+php tests/site-package-contract.php
 ```
+
+## Install on a hosting site
+
+Click **Download the app for your website (.zip)** on the front page or user guide
+(or fetch `download-app.php`). The zip contains the entire app plus `INSTALL.txt`:
+upload to any PHP 8.1+ host (public_html), extract, done — no database, no Composer,
+no API keys.
 
 ## Included files
 
@@ -118,6 +128,8 @@ php tests/audiobook-contract.php
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
 - `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine
+- `SitePackageExporter.php` + `download-app.php` — one-click hosting package (.zip with INSTALL.txt)
+- `user-guide.php` — friendly plain-language user guide
 - `index.php` — strategy analysis and JSON endpoint
 - `generate-book.php` — editable TOC, writing-style, page-style, and manuscript interface
 - `amazon-book-writer.php` — Amazon KDP publishing package interface and exports

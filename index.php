@@ -109,6 +109,7 @@ $score = $kit['probability']['score']['value'] ?? 0;
         <div class="eyebrow">Book Intelligence Studio · PHP reference app</div>
         <h1>Turn a topic into a book strategy.</h1>
         <p>Run the five-engine analysis locally, inspect the scoring breakdown, and request the complete kit as JSON at <code>?format=json</code>.</p>
+        <p><a href="user-guide.php">New here? Read the friendly user guide</a> · <a href="download-app.php">Download the app for your own website (.zip)</a></p>
     </header>
 
     <form method="post">
