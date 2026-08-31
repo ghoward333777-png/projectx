@@ -34,6 +34,9 @@
         summary { cursor: pointer; padding: 13px 16px; font-weight: 700; color: #eef0f6; }
         details p { padding: 0 16px 14px; margin: 0; }
         footer { color: #8d91a3; font-size: 12px; margin-top: 26px; text-align: center; }
+        nav.menu { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+        nav.menu a { display: inline-block; background: #1e2c24; border: 1px solid #2f4b3a; border-radius: 999px; color: #a9ecc6; padding: 8px 15px; font-size: 13px; font-weight: 700; text-decoration: none; }
+        nav.menu a:hover { background: #24382c; }
         @media (max-width: 700px) { main { padding: 26px 14px 60px; } section { padding: 18px; } }
     </style>
 </head>
@@ -43,7 +46,13 @@
         <div class="eyebrow">Book Intelligence Studio · User Guide</div>
         <h1>Write a book. Publish it on Amazon. Start here.</h1>
         <p>This guide walks you through everything in plain language. No experience needed — if you can type a topic, you can make a book.</p>
-        <p><a href="index.php">← Back to the app</a></p>
+        <nav class="menu" aria-label="App menu">
+            <a href="index.php">🏛 Strategy</a>
+            <a href="generate-book.php">📝 Draft</a>
+            <a href="amazon-book-writer.php">📦 Amazon Book Writer</a>
+            <a href="book-lab.php">🔬 Book Development Lab</a>
+            <a href="download-app.php">⬇ Get the app (.zip)</a>
+        </nav>
     </header>
 
     <section>
@@ -98,6 +107,8 @@
             <li><strong>A best-seller score</strong> — a friendly estimate of how promising your topic is, and why.</li>
             <li><strong>Your Amazon listing, ready to paste</strong> — title, subtitle, book description, all 7 search keywords, and category suggestions, each kept within Amazon's rules.</li>
             <li><strong>Four editions, priced</strong> — Kindle eBook, paperback, hardcover, and audiobook, with printing costs and how much you earn per copy.</li>
+            <li><strong>Figures in every chapter</strong> — diagrams, charts, tables, illustrations, and AI-image prompts, generated after each important topic (see below).</li>
+            <li><strong>A quality report card</strong> — 30 metrics, certification badges, and the full Best-Seller Production Kit from the Book Development Lab.</li>
             <li><strong>A publishing checklist</strong> — every step from “review the draft” to “order a proof copy”, marked Ready or Action needed.</li>
             <li><strong>Your files</strong>:
                 <ul>
@@ -108,6 +119,38 @@
                 </ul>
             </li>
         </ul>
+    </section>
+
+    <section>
+        <h2>Pictures for every chapter</h2>
+        <p>Your book isn't just words. After each important topic in every chapter, the app automatically creates a figure:</p>
+        <ul>
+            <li><strong>Diagrams</strong> — the chapter's path, drawn as numbered steps.</li>
+            <li><strong>Charts and graphs</strong> — where the chapter spends its attention, and how it builds.</li>
+            <li><strong>Tables</strong> — real data side by side (the teen-jobs book gets job-card tables automatically).</li>
+            <li><strong>Illustrations</strong> — a drawn emblem, unique to each chapter.</li>
+            <li><strong>AI images</strong> — a ready-made art prompt for each chapter, in a matching style.</li>
+        </ul>
+        <p><strong>Want more?</strong> On the writer page, use <em>“Add an illustration to a chapter”</em>: pick the chapter, the type,
+        and describe what it should show. It appears instantly, marked “added by you”, and rides along into every export.</p>
+        <p>Diagrams, charts, tables, and illustrations appear immediately — no accounts needed. For the AI images, download the
+        <strong>AI-image manifest</strong> and run one command with your Google, OpenAI, or Stability key:</p>
+        <p><code>php bin/generate-images.php --manifest your-manifest.json --out images/</code></p>
+    </section>
+
+    <section>
+        <h2>Check your quality in the Book Development Lab</h2>
+        <p>Before you publish, run your book through <a href="book-lab.php">the Lab</a>. It grades the draft on
+        <strong>30 honest metrics</strong> — editorial depth, media richness, and format readiness — and awards
+        <strong>Bronze, Silver, Gold, or Platinum</strong> badges plus one overall number, the Universal Nonfiction Rating.</p>
+        <ul>
+            <li><strong>Every metric explains itself</strong> — “0 of 27 chapters end with a takeaway” tells you exactly what to fix.</li>
+            <li><strong>KDP compatibility</strong> — 11 checks against Amazon's real rules (page limits, metadata limits, trim, TOC, audio specs).</li>
+            <li><strong>Document complexity</strong> — pages, sections, figures, audio hours, case studies, exercises.</li>
+            <li><strong>QueryBook learning plan</strong> — a three-question quiz and takeaway for every chapter, ready for study editions.</li>
+            <li><strong>The Best-Seller Production Kit</strong> — everything in one downloadable, printable report.</li>
+        </ul>
+        <div class="tip"><b>Honest numbers:</b> the scores are diagnostics computed from your actual draft to guide revision — nobody can guarantee sales.</div>
     </section>
 
     <section>
