@@ -143,63 +143,192 @@ final class IllustrationStudio
     {
         $number = (int) ($chapter['number'] ?? 0);
         $title = (string) ($chapter['title'] ?? '');
+        $detail = (string) ($chapter['detail'] ?? '');
         $sections = $this->chapterSections($chapter);
         $jobs = $this->chapterJobRows($chapter, $book);
+        $clauses = $this->detailClauses($detail);
+        $lastSection = $sections !== [] ? $sections[count($sections) - 1]['title'] : 'Opening';
         $items = [];
 
+        // The chapter-opener AI image: planned and prompted, but excluded from
+        // manuscript exports until the real image is generated.
         $items[] = $this->aiImageItem($number, $title, $chapter, $metadata);
-        if (count($sections) >= 2) {
+
+        // Diagram: the chapter's own instructions, drawn as steps.
+        if (count($clauses) >= 3) {
             $items[] = [
                 'id' => 'ch' . $number . '-diagram',
                 'kind' => 'diagram',
-                'title' => 'The path through this chapter',
-                'caption' => 'Each step is one of the chapter\'s important topics, in reading order.',
-                'after_section' => $sections[0]['title'],
-                'svg' => $this->renderDiagram(array_column($sections, 'title'), $title),
+                'title' => $this->titleShort($title) . ', step by step',
+                'caption' => 'The moves this chapter walks through: ' . strtolower((string) ($chapter['purpose'] ?? 'the chapter\'s plan')) . '.',
+                'after_section' => $sections !== [] ? $sections[0]['title'] : 'Opening',
+                'svg' => $this->renderDiagram($clauses, $title),
             ];
+        }
+
+        // Chart: only where real data exists.
+        if ($jobs !== []) {
+            $mix = $this->scheduleMix($jobs);
+            if (count($mix) >= 2) {
+                $items[] = [
+                    'id' => 'ch' . $number . '-chart',
+                    'kind' => 'chart',
+                    'title' => 'When these jobs happen',
+                    'caption' => 'Schedules named in the job cards above — how many of this chapter\'s jobs mention each.',
+                    'after_section' => $lastSection,
+                    'svg' => $this->renderBarChart($mix, 'jobs mentioning it', 'Schedules for ' . $title),
+                ];
+            }
+        } elseif ($this->wantsCatalogOverview($title) && ($book['job_catalog'] ?? []) !== []) {
             $items[] = [
                 'id' => 'ch' . $number . '-chart',
                 'kind' => 'chart',
-                'title' => 'Where this chapter spends its attention',
-                'caption' => 'Words devoted to each topic — longer bars carry more of the argument.',
-                'after_section' => $sections[(int) floor(count($sections) / 2)]['title'],
-                'svg' => $this->renderChart($sections, $title),
+                'title' => 'The 120 jobs, by kind of work',
+                'caption' => 'Every job in this book\'s catalog, grouped the way the chapters explore them.',
+                'after_section' => $lastSection,
+                'svg' => $this->renderBarChart($this->categoryCounts((array) $book['job_catalog']), 'jobs', 'Catalog overview for ' . $title),
             ];
         }
-        if (count($sections) >= 4) {
-            $items[] = [
-                'id' => 'ch' . $number . '-graph',
-                'kind' => 'graph',
-                'title' => 'Reading momentum',
-                'caption' => 'How the chapter accumulates, topic by topic, to its full length.',
-                'after_section' => $sections[count($sections) - 2]['title'],
-                'svg' => $this->renderGraph($sections, $title),
-            ];
-        }
-        $table = $jobs !== []
-            ? $this->buildJobTable($jobs)
-            : (count($sections) >= 2 ? $this->buildSectionTable($sections) : null);
-        if ($table !== null) {
+
+        // Table: real job cards, or a worksheet built from the chapter's criteria.
+        if ($jobs !== []) {
             $items[] = [
                 'id' => 'ch' . $number . '-table',
                 'kind' => 'table',
-                'title' => $jobs !== [] ? 'Job cards at a glance' : 'Chapter topics at a glance',
-                'caption' => $jobs !== []
-                    ? 'The jobs this chapter explores, side by side.'
-                    : 'Every important topic with its role and weight.',
-                'after_section' => $sections !== [] ? $sections[count($sections) - 1]['title'] : 'Opening',
-                'table' => $table,
+                'title' => 'Job cards at a glance',
+                'caption' => 'The jobs this chapter explores, side by side.',
+                'after_section' => $lastSection,
+                'table' => $this->buildJobTable($jobs),
+            ];
+        } elseif (count($clauses) >= 3) {
+            $items[] = [
+                'id' => 'ch' . $number . '-table',
+                'kind' => 'table',
+                'title' => 'Worksheet: ' . strtolower($this->titleShort($title)),
+                'caption' => 'The chapter\'s own checkpoints, ready to work through.',
+                'after_section' => $lastSection,
+                'table' => $this->buildWorksheetTable($clauses),
             ];
         }
-        $items[] = [
-            'id' => 'ch' . $number . '-illustration',
-            'kind' => 'illustration',
-            'title' => 'Chapter emblem',
-            'caption' => 'A closing mark for “' . $title . '”.',
-            'after_section' => $sections !== [] ? $sections[count($sections) - 1]['title'] : 'Opening',
-            'svg' => $this->renderIllustration($number . ':' . $title, $title),
-        ];
+
+        // Illustration: the chapter's takeaway as a pull-quote card.
+        $quote = $this->takeawayQuote((string) ($chapter['content'] ?? ''));
+        if ($quote !== '') {
+            $items[] = [
+                'id' => 'ch' . $number . '-illustration',
+                'kind' => 'illustration',
+                'title' => 'The takeaway',
+                'caption' => 'This chapter\'s message, worth keeping.',
+                'after_section' => $lastSection,
+                'svg' => $this->renderQuoteCard($quote, $title),
+            ];
+        }
         return $items;
+    }
+
+    /**
+     * Split an outline detail into its meaningful instruction clauses —
+     * the same segmentation the chapter composer develops.
+     *
+     * @return array<int, string>
+     */
+    public function detailClauses(string $detail): array
+    {
+        $clauses = preg_split('/[,.;:]+|\band\b/i', $detail, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        return array_values(array_filter(array_map('trim', $clauses), static fn (string $part): bool => mb_strlen($part) > 12));
+    }
+
+    /** The chapter's closing takeaway sentence, if the draft carries one. */
+    public function takeawayQuote(string $content): string
+    {
+        foreach (["\nChapter takeaway\n\n", "\nChapter synthesis\n\n"] as $marker) {
+            $pos = strrpos($content, $marker);
+            if ($pos !== false) {
+                $tail = trim(substr($content, $pos + strlen($marker)));
+                $end = strpos($tail, '. ');
+                $sentence = $end !== false ? substr($tail, 0, $end + 1) : $tail;
+                return trim(mb_substr($sentence, 0, 220));
+            }
+        }
+        return '';
+    }
+
+    /**
+     * How this chapter's jobs distribute across schedule patterns, counted
+     * from the catalog's own schedule fields.
+     *
+     * @param array<int, array<string, string>> $jobs
+     * @return array<int, array{label: string, value: int}>
+     */
+    public function scheduleMix(array $jobs): array
+    {
+        $patterns = [
+            'After school' => 'after school',
+            'Weekends' => 'weekend',
+            'Summer' => 'summer',
+            'Seasonal' => 'seasonal',
+            'Evenings' => 'evening',
+            'Flexible' => 'flexible',
+        ];
+        $rows = [];
+        foreach ($patterns as $label => $needle) {
+            $count = 0;
+            foreach ($jobs as $job) {
+                if (str_contains(strtolower((string) ($job['schedule'] ?? '')), $needle)) {
+                    $count++;
+                }
+            }
+            if ($count > 0) {
+                $rows[] = ['label' => $label, 'value' => $count];
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * @param array<int, array<string, string>> $catalog
+     * @return array<int, array{label: string, value: int}>
+     */
+    public function categoryCounts(array $catalog): array
+    {
+        $counts = [];
+        foreach ($catalog as $job) {
+            $category = (string) ($job['category'] ?? '');
+            if ($category === '') {
+                continue;
+            }
+            $label = preg_replace('/^Jobs in /', '', $category) ?? $category;
+            $counts[$label] = ($counts[$label] ?? 0) + 1;
+        }
+        $rows = [];
+        foreach ($counts as $label => $value) {
+            $rows[] = ['label' => $label, 'value' => $value];
+        }
+        return $rows;
+    }
+
+    /** Whether a chapter is about the catalog as a whole. */
+    private function wantsCatalogOverview(string $title): bool
+    {
+        return preg_match('/how this list|find real opportunities|compare jobs|use this book/i', $title) === 1;
+    }
+
+    /**
+     * @param array<int, string> $clauses
+     * @return array{columns: array<int, string>, rows: array<int, array<int, string>>}
+     */
+    public function buildWorksheetTable(array $clauses): array
+    {
+        $rows = [];
+        foreach (array_slice($clauses, 0, 8) as $index => $clause) {
+            $rows[] = [(string) ($index + 1), ucfirst($clause), '☐'];
+        }
+        return ['columns' => ['#', 'Work through this', 'Done'], 'rows' => $rows];
+    }
+
+    private function titleShort(string $title): string
+    {
+        return mb_strlen($title) > 40 ? rtrim(mb_substr($title, 0, 39)) . '…' : $title;
     }
 
     /**
@@ -245,6 +374,7 @@ final class IllustrationStudio
                 'alt' => $topic,
             ];
             $item['svg'] = $this->renderAiPlaceholder($topic);
+            $item['placeholder'] = true;
         }
         return $item;
     }
@@ -351,7 +481,71 @@ final class IllustrationStudio
         return $svg . '</svg>';
     }
 
-    /** Horizontal bar chart: words per important topic. */
+    /**
+     * Horizontal bar chart over real labeled data rows.
+     *
+     * @param array<int, array{label: string, value: int}> $rows
+     */
+    public function renderBarChart(array $rows, string $valueLabel, string $context): string
+    {
+        $rows = array_slice($rows, 0, 9);
+        if ($rows === []) {
+            return $this->renderIllustration('chart:' . $context, $context);
+        }
+        $max = 1;
+        foreach ($rows as $row) {
+            $max = max($max, (int) $row['value']);
+        }
+        $barHeight = 20;
+        $gap = 14;
+        $chartLeft = 230;
+        $chartWidth = 360;
+        $height = count($rows) * ($barHeight + $gap) - $gap + 44;
+        $svg = $this->svgOpen(640, $height, 'Bar chart: ' . $context);
+        foreach ($rows as $index => $row) {
+            $y = 16 + $index * ($barHeight + $gap);
+            $width = max(6, intdiv(((int) $row['value']) * $chartWidth, $max));
+            $svg .= '<text x="' . ($chartLeft - 10) . '" y="' . ($y + 15) . '" text-anchor="end" font-size="13" fill="' . self::INK . '">' . $this->svgText((string) $row['label'], 30) . '</text>';
+            $svg .= '<rect x="' . $chartLeft . '" y="' . $y . '" width="' . $width . '" height="' . $barHeight . '" rx="4" fill="' . self::DATA . '"><title>' . $this->svgText((string) $row['label'] . ': ' . $row['value'], 90) . '</title></rect>';
+            $svg .= '<text x="' . ($chartLeft + $width + 8) . '" y="' . ($y + 15) . '" font-size="12" fill="' . self::MUTED . '">' . (int) $row['value'] . '</text>';
+        }
+        $axisY = 16 + count($rows) * ($barHeight + $gap) - $gap + 8;
+        $svg .= '<line x1="' . $chartLeft . '" y1="10" x2="' . $chartLeft . '" y2="' . $axisY . '" stroke="' . self::GRID . '" stroke-width="1"/>';
+        $svg .= '<text x="' . $chartLeft . '" y="' . ($axisY + 16) . '" font-size="11" fill="' . self::MUTED . '">' . $this->svgText($valueLabel, 40) . '</text>';
+        return $svg . '</svg>';
+    }
+
+    /** The chapter's takeaway sentence set as a pull-quote card. */
+    public function renderQuoteCard(string $quote, string $context): string
+    {
+        $words = preg_split('/\s+/u', trim($quote), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $lines = [];
+        $current = '';
+        foreach ($words as $word) {
+            $candidate = $current === '' ? $word : $current . ' ' . $word;
+            if (mb_strlen($candidate) > 46) {
+                $lines[] = $current;
+                $current = $word;
+            } else {
+                $current = $candidate;
+            }
+        }
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+        $lines = array_slice($lines, 0, 6);
+        $height = 90 + count($lines) * 30;
+        $svg = $this->svgOpen(640, $height, 'Takeaway: ' . $context);
+        $svg .= '<rect x="8" y="8" width="624" height="' . ($height - 16) . '" rx="12" fill="none" stroke="' . self::GRID . '" stroke-width="2"/>';
+        $svg .= '<rect x="8" y="8" width="6" height="' . ($height - 16) . '" rx="3" fill="' . self::EMPHASIS . '"/>';
+        $svg .= '<text x="44" y="52" font-size="40" fill="' . self::EMPHASIS . '" font-weight="700">&#8220;</text>';
+        foreach ($lines as $index => $line) {
+            $svg .= '<text x="70" y="' . (58 + $index * 30) . '" font-size="18" font-style="italic" fill="' . self::INK . '">' . $this->svgText($line, 60) . '</text>';
+        }
+        return $svg . '</svg>';
+    }
+
+    /** Horizontal bar chart: words per important topic (used by user-added charts). */
     public function renderChart(array $sections, string $context): string
     {
         $rows = array_slice($sections, 0, 8);
@@ -511,6 +705,7 @@ final class IllustrationStudio
             'after_section' => 'Opening',
             'ai' => ['prompt' => $prompt, 'alt' => 'Illustration for chapter: ' . $title],
             'svg' => $this->renderAiPlaceholder($title),
+            'placeholder' => true,
         ];
     }
 

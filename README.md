@@ -92,6 +92,23 @@ with your own key — Google Imagen (`GOOGLE_AI_API_KEY`), OpenAI
 resumable. Figures are embedded in the HTML manuscript export and appear as
 captioned placeholders in the Word export.
 
+## Native EPUB and QR-linked print media
+
+- **EPUB builder** (`EpubExporter.php`): a native EPUB 3 package built with
+  ZipArchive — stored `mimetype`, OCF container, EPUB 3 package document with
+  an EPUB 2 NCX fallback, XHTML navigation, styled per-chapter XHTML with the
+  Illustration Studio figures embedded inline. Deterministic identifiers.
+  Download from the writer page: **Download eBook (.epub)**.
+- **QR-linked print media** (`PrintMediaCompanion.php` + `QrCode.php`): every
+  chapter of the print edition gets a QR code linking to a companion web page
+  carrying that chapter's media. The QR codes come from the app's own
+  pure-PHP encoder (byte mode, ECC M, versions 1–10, full Reed–Solomon —
+  verified module-for-module against a reference encoder and decoded with
+  OpenCV). Set your companion web address on the writer page, then download
+  the **companion page (.html)** to upload to your site and the printable
+  **QR sheet (.html)**; the HTML manuscript export embeds each chapter's QR
+  automatically.
+
 ## Book Development Lab
 
 `book-lab.php` is the quality-certification layer, powered by `QualityLab.php`:
@@ -163,6 +180,8 @@ php tests/audiobook-contract.php
 php tests/site-package-contract.php
 php tests/illustration-contract.php
 php tests/quality-lab-contract.php
+php tests/epub-contract.php
+php tests/print-media-contract.php
 ```
 
 ## Install on a hosting site

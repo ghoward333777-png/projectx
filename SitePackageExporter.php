@@ -19,6 +19,9 @@ final class SitePackageExporter
         'AudiobookProducer.php',
         'IllustrationStudio.php',
         'QualityLab.php',
+        'QrCode.php',
+        'EpubExporter.php',
+        'PrintMediaCompanion.php',
         'WordManuscriptExporter.php',
         'SitePackageExporter.php',
         'index.php',
@@ -36,6 +39,8 @@ final class SitePackageExporter
         'tests/site-package-contract.php',
         'tests/illustration-contract.php',
         'tests/quality-lab-contract.php',
+        'tests/epub-contract.php',
+        'tests/print-media-contract.php',
         'README.md',
     ];
 

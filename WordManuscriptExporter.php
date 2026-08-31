@@ -19,8 +19,18 @@ final class WordManuscriptExporter
     private const PAGE_HEIGHT = 12960;
     private const PAGE_MARGIN = 1080; // 0.75 in
 
+    /** EMU per inch; figures fill the 4.5 in text column of the 6x9 page. */
+    private const EMU_PER_INCH = 914400;
+    private const FIGURE_WIDTH_EMU = 4114800; // 4.5 in
+
     /** @var array<int, array<int, array<string, mixed>>> */
     private array $mediaByChapter = [];
+
+    /** @var array<int, string> SVG bytes keyed by figure index. */
+    private array $svgParts = [];
+
+    /** @var int Bookmark id counter. */
+    private int $bookmarkId = 0;
 
     /**
      * Render the manuscript as .docx bytes.
@@ -35,6 +45,8 @@ final class WordManuscriptExporter
     public function export(array $book, array $metadata, ?array $media = null): string
     {
         $this->mediaByChapter = [];
+        $this->svgParts = [];
+        $this->bookmarkId = 0;
         foreach ((array) ($media['chapters'] ?? []) as $mediaChapter) {
             $this->mediaByChapter[(int) $mediaChapter['number']] = (array) $mediaChapter['items'];
         }
@@ -49,11 +61,18 @@ final class WordManuscriptExporter
         if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
             throw new RuntimeException('Could not open the Word archive for writing.');
         }
+        $documentXml = $this->documentXml($book, $metadata); // fills svgParts
         $zip->addFromString('[Content_Types].xml', $this->contentTypesXml());
         $zip->addFromString('_rels/.rels', $this->packageRelsXml());
         $zip->addFromString('word/_rels/document.xml.rels', $this->documentRelsXml());
         $zip->addFromString('word/styles.xml', $this->stylesXml());
-        $zip->addFromString('word/document.xml', $this->documentXml($book, $metadata));
+        $zip->addFromString('word/document.xml', $documentXml);
+        if ($this->svgParts !== []) {
+            $zip->addFromString('word/media/fallback.png', $this->fallbackPng());
+            foreach ($this->svgParts as $index => $svg) {
+                $zip->addFromString('word/media/figure' . $index . '.svg', $svg);
+            }
+        }
         $zip->close();
         $bytes = file_get_contents($path);
         unlink($path);
@@ -69,6 +88,8 @@ final class WordManuscriptExporter
             . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Default Extension="png" ContentType="image/png"/>'
+            . '<Default Extension="svg" ContentType="image/svg+xml"/>'
             . '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
             . '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
             . '</Types>';
@@ -84,10 +105,104 @@ final class WordManuscriptExporter
 
     private function documentRelsXml(): string
     {
+        $rels = '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+        if ($this->svgParts !== []) {
+            $rels .= '<Relationship Id="rIdPng" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/fallback.png"/>';
+            foreach (array_keys($this->svgParts) as $index) {
+                $rels .= '<Relationship Id="rIdSvg' . $index . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/figure' . $index . '.svg"/>';
+            }
+        }
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            . $rels
             . '</Relationships>';
+    }
+
+    /** A small white PNG used as the raster fallback beneath each SVG figure. */
+    private function fallbackPng(): string
+    {
+        $width = 8;
+        $height = 8;
+        $raw = '';
+        for ($y = 0; $y < $height; $y++) {
+            $raw .= "\x00" . str_repeat("\xFF", $width * 3);
+        }
+        $chunk = static function (string $type, string $data): string {
+            return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+        };
+        return "\x89PNG\r\n\x1a\n"
+            . $chunk('IHDR', pack('NN', $width, $height) . "\x08\x02\x00\x00\x00")
+            . $chunk('IDAT', gzcompress($raw, 9))
+            . $chunk('IEND', '');
+    }
+
+    /** Inline drawing referencing the SVG part (with PNG fallback). */
+    private function figureDrawing(int $index, string $svg, string $name): string
+    {
+        $this->svgParts[$index] = $svg;
+        $width = 640;
+        $height = 200;
+        if (preg_match('/viewBox="0 0 (\d+) (\d+)"/', $svg, $m) === 1) {
+            $width = max(1, (int) $m[1]);
+            $height = max(1, (int) $m[2]);
+        }
+        $cx = self::FIGURE_WIDTH_EMU;
+        $cy = (int) round($cx * $height / max(1, $width));
+        $nameEsc = $this->escape($name);
+        return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>'
+            . '<wp:inline distT="0" distB="0" distL="0" distR="0">'
+            . '<wp:extent cx="' . $cx . '" cy="' . $cy . '"/>'
+            . '<wp:docPr id="' . ($index + 1000) . '" name="' . $nameEsc . '"/>'
+            . '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            . '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+            . '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+            . '<pic:nvPicPr><pic:cNvPr id="' . ($index + 1000) . '" name="' . $nameEsc . '"/><pic:cNvPicPr/></pic:nvPicPr>'
+            . '<pic:blipFill><a:blip r:embed="rIdPng">'
+            . '<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">'
+            . '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="rIdSvg' . $index . '"/>'
+            . '</a:ext></a:extLst></a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+            . '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
+            . '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>'
+            . '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+    }
+
+    /**
+     * A native Word table with borders and a bold header row.
+     *
+     * @param array{columns: array<int, string>, rows: array<int, array<int, string>>} $table
+     */
+    private function tableXml(array $table): string
+    {
+        $xml = '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>'
+            . '<w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/>'
+            . '<w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/>'
+            . '<w:insideH w:val="single" w:sz="4" w:color="BBBBBB"/><w:insideV w:val="single" w:sz="4" w:color="BBBBBB"/>'
+            . '</w:tblBorders></w:tblPr><w:tblGrid/>';
+        $cell = function (string $text, bool $bold): string {
+            $runs = '';
+            foreach (preg_split('/\R/u', $text) ?: [$text] as $lineIndex => $line) {
+                if ($lineIndex > 0) {
+                    $runs .= '<w:r><w:br/></w:r>';
+                }
+                $runs .= '<w:r><w:rPr>' . ($bold ? '<w:b/>' : '') . '<w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>'
+                    . '<w:t xml:space="preserve">' . $this->escape($line) . '</w:t></w:r>';
+            }
+            return '<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>'
+                . '<w:p><w:pPr><w:spacing w:line="240" w:lineRule="auto" w:after="40"/><w:ind w:firstLine="0"/></w:pPr>' . $runs . '</w:p></w:tc>';
+        };
+        $xml .= '<w:tr>';
+        foreach ($table['columns'] as $column) {
+            $xml .= $cell((string) $column, true);
+        }
+        $xml .= '</w:tr>';
+        foreach ($table['rows'] as $row) {
+            $xml .= '<w:tr>';
+            foreach ($row as $value) {
+                $xml .= $cell((string) $value, false);
+            }
+            $xml .= '</w:tr>';
+        }
+        return $xml . '</w:tbl>';
     }
 
     private function stylesXml(): string
@@ -133,12 +248,23 @@ final class WordManuscriptExporter
 
         $body .= $this->paragraph('Contents', 'Heading2');
         foreach ((array) ($book['table_of_contents'] ?? []) as $entry) {
-            $body .= $this->paragraph(((int) ($entry['number'] ?? 0)) . '. ' . (string) ($entry['title'] ?? ''));
+            $n = (int) ($entry['number'] ?? 0);
+            // Clickable contents: internal hyperlink to the chapter bookmark.
+            $body .= '<w:p><w:pPr><w:ind w:firstLine="0"/></w:pPr><w:hyperlink w:anchor="chapter' . $n . '" w:history="1">'
+                . '<w:r><w:rPr><w:color w:val="1F4E79"/><w:u w:val="single"/></w:rPr>'
+                . '<w:t xml:space="preserve">' . $n . '. ' . $this->escape((string) ($entry['title'] ?? '')) . '</w:t></w:r>'
+                . '</w:hyperlink></w:p>';
         }
 
+        $figureCounter = 0;
         foreach ((array) ($book['chapters'] ?? []) as $chapter) {
             $chapterNumber = (int) ($chapter['number'] ?? 0);
-            $body .= $this->paragraph('Chapter ' . $chapterNumber . ': ' . (string) ($chapter['title'] ?? ''), 'Heading1');
+            $headingText = 'Chapter ' . $chapterNumber . ': ' . (string) ($chapter['title'] ?? '');
+            $bid = ++$this->bookmarkId;
+            $body .= '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+                . '<w:bookmarkStart w:id="' . $bid . '" w:name="chapter' . $chapterNumber . '"/>'
+                . '<w:r><w:t xml:space="preserve">' . $this->escape($headingText) . '</w:t></w:r>'
+                . '<w:bookmarkEnd w:id="' . $bid . '"/></w:p>';
             foreach ((array) ($chapter['blocks'] ?? []) as $index => $block) {
                 $content = (string) ($block['content'] ?? '');
                 if ($content === '' || ($index === 0 && ($block['kind'] ?? '') === 'heading')) {
@@ -146,13 +272,21 @@ final class WordManuscriptExporter
                 }
                 $body .= $this->paragraph($content);
             }
-            foreach ($this->mediaByChapter[$chapterNumber] ?? [] as $figureIndex => $item) {
+            $figureNumber = 0;
+            foreach ($this->mediaByChapter[$chapterNumber] ?? [] as $item) {
+                if (!empty($item['placeholder'])) {
+                    continue; // AI images join the manuscript once actually generated
+                }
+                $label = 'Figure ' . $chapterNumber . '.' . (++$figureNumber);
+                if (isset($item['svg'])) {
+                    $body .= $this->figureDrawing($figureCounter++, (string) $item['svg'], $label);
+                } elseif (isset($item['table']['columns'], $item['table']['rows'])) {
+                    $body .= $this->tableXml($item['table']);
+                }
                 $body .= $this->paragraph(
-                    '[Figure ' . $chapterNumber . '.' . ($figureIndex + 1) . ' — ' . (string) ($item['title'] ?? '')
-                        . '. ' . (string) ($item['caption'] ?? '')
-                        . ' Insert the exported figure here; the HTML manuscript export contains the rendered version.]',
+                    $label . ' — ' . (string) ($item['title'] ?? '') . '. ' . (string) ($item['caption'] ?? ''),
                     null,
-                    ['italic' => true, 'center' => true],
+                    ['italic' => true, 'center' => true, 'small' => true],
                 );
             }
         }
@@ -166,7 +300,9 @@ final class WordManuscriptExporter
             . '</w:sectPr>';
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+            . ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
             . '<w:body>' . $body . $sectPr . '</w:body></w:document>';
     }
 

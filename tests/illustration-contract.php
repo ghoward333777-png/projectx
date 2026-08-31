@@ -55,9 +55,30 @@ foreach ($media['chapters'] as $chapter) {
         $kindsSeen[$item['kind']] = true;
     }
 }
-foreach (['diagram', 'chart', 'table', 'illustration', 'ai-image'] as $kind) {
+foreach (['diagram', 'table', 'illustration', 'ai-image'] as $kind) {
     contract_check(isset($kindsSeen[$kind]), "the default plan must include a {$kind}");
 }
+// Content relevance: diagrams and worksheets come from the chapter's own outline detail.
+$ch5 = $media['chapters'][4];
+$diagram = null;
+$worksheet = null;
+foreach ($ch5['items'] as $item) {
+    if ($item['kind'] === 'diagram') {
+        $diagram = $item;
+    }
+    if ($item['kind'] === 'table') {
+        $worksheet = $item;
+    }
+}
+contract_check($diagram !== null && str_contains($diagram['svg'], 'diagnose the situation'), 'diagram steps must come from the chapter\'s own instructions');
+contract_check($worksheet !== null && str_contains(json_encode($worksheet['table']), 'Run a small test'), 'worksheet rows must come from the chapter\'s own criteria');
+$quote = null;
+foreach ($media['chapters'][0]['items'] as $item) {
+    if ($item['kind'] === 'illustration') {
+        $quote = $item;
+    }
+}
+contract_check($quote !== null && str_contains($quote['svg'], 'takeaway'), 'the illustration must carry the chapter\'s takeaway');
 
 // --- User-added media -------------------------------------------------------
 $chapter2 = $media['chapters'][1];
@@ -107,10 +128,26 @@ foreach ($foodChapter['items'] as $item) {
 }
 contract_check($jobTable !== null && $jobTable['table']['columns'][0] === 'Job', 'teen job chapters must get a job-card table');
 contract_check(count($jobTable['table']['rows']) > 0, 'job table must carry rows from the catalog');
+$jobChart = null;
+foreach ($foodChapter['items'] as $item) {
+    if ($item['kind'] === 'chart') {
+        $jobChart = $item;
+    }
+}
+contract_check($jobChart !== null && str_contains($jobChart['svg'], 'jobs mentioning it'), 'teen job chapters must chart real schedule data from the catalog');
 
 // --- Exports carry the figures ---------------------------------------------
+$exportableFigures = 0;
+foreach ($media['chapters'] as $chapter) {
+    foreach ($chapter['items'] as $item) {
+        if (empty($item['placeholder'])) {
+            $exportableFigures++;
+        }
+    }
+}
 $html = $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata'], $media);
-contract_check(substr_count($html, '<figure') === $media['figure_count'], 'HTML manuscript must embed every planned figure');
+contract_check(substr_count($html, '<figure') === $exportableFigures, 'HTML manuscript must embed every real figure and skip placeholders');
+contract_check(!str_contains($html, 'AI image — generate with'), 'AI placeholders must stay out of the manuscript exports');
 contract_check(str_contains($html, '<svg '), 'HTML manuscript must embed rendered SVGs');
 $docx = (new WordManuscriptExporter())->export($result['book'], $result['kdp']['metadata'], $media);
 $tmp = tempnam(sys_get_temp_dir(), 'docxfig');
@@ -120,6 +157,9 @@ contract_check($zip->open($tmp) === true, 'Word export with media must remain a 
 $documentXml = (string) $zip->getFromName('word/document.xml');
 $zip->close();
 unlink($tmp);
-contract_check(str_contains($documentXml, '[Figure 1.1'), 'Word export must carry figure placeholders');
+contract_check(str_contains($documentXml, 'Figure 1.1'), 'Word export must carry figure captions');
+contract_check(str_contains($documentXml, 'svgBlip'), 'Word export must embed the SVG figures as drawings');
+contract_check(str_contains($documentXml, '<w:tbl>'), 'Word export must render media tables as native Word tables');
+contract_check(str_contains($documentXml, '<w:hyperlink w:anchor="chapter1"'), 'Word contents must link to chapter bookmarks');
 
 fwrite(STDOUT, "Illustration studio contract passed\n");
