@@ -266,6 +266,7 @@ $downloadQuery = http_build_query(array_filter([
         form, section { background: #1a1d28; border: 1px solid #343747; border-radius: 18px; padding: 24px; margin-top: 18px; }
         label { display: block; color: #dfe2eb; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
         input, select, textarea { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 9px; color: #fff; padding: 12px 13px; font: inherit; margin-bottom: 15px; }
+        input::placeholder, textarea::placeholder { color: #6a6e80; opacity: 1; font-style: italic; }
         button { border: 0; border-radius: 999px; background: #ffb84d; color: #241a08; padding: 12px 18px; font: inherit; font-weight: 800; cursor: pointer; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
         .metric { background: #222534; border-radius: 14px; padding: 18px; }
@@ -319,8 +320,27 @@ $downloadQuery = http_build_query(array_filter([
                 <input id="reader" name="reader" value="<?= htmlspecialchars($reader, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. curious practitioners">
             </div>
             <div style="grid-column: 1 / -1;">
-                <label for="custom_toc">Your table of contents (optional — one chapter per line; add “| purpose | detail” to steer a chapter; leave empty to let the studio suggest one)</label>
-                <textarea id="custom_toc" name="custom_toc" rows="6" style="width:100%; box-sizing:border-box; resize:vertical;" placeholder="1. Traditional gender relations before WWII&#10;2. During WWII — women were financially independent for the first time&#10;3. Families then functioned without a parent at home"><?= htmlspecialchars($customTocInput, ENT_QUOTES, 'UTF-8') ?></textarea>
+                <label for="custom_toc">Your table of contents (optional — one chapter per line; add “| purpose | detail” to steer a chapter; leave empty to let the studio suggest one) <a href="#" id="toc-example" style="color:#ffd9a0; font-weight:400;">insert an example</a></label>
+                <textarea id="custom_toc" name="custom_toc" rows="10" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; resize:vertical; min-height:170px; line-height:1.55;" placeholder="Type or paste your chapters here — one per line."><?= htmlspecialchars($customTocInput, ENT_QUOTES, 'UTF-8') ?></textarea>
+                <script>
+                    (function () {
+                        var box = document.getElementById('custom_toc');
+                        var grow = function () { box.style.height = 'auto'; box.style.height = Math.max(170, box.scrollHeight + 4) + 'px'; };
+                        box.addEventListener('input', grow);
+                        if (box.value.trim() !== '') { grow(); }
+                        document.getElementById('toc-example').addEventListener('click', function (e) {
+                            e.preventDefault();
+                            box.value = '1. Traditional gender relations before WWII\n'
+                                + '2. During WWII — women were financially independent for the first time\n'
+                                + '3. Families then functioned without a parent at home\n'
+                                + '4. The feminist movement discouraged chivalry and manners toward women\n'
+                                + '5. Competition between men and women — men retreat from powerful, intelligent women\n'
+                                + '6. Fear of being called a harasser has chilled social interaction';
+                            grow();
+                            box.focus();
+                        });
+                    })();
+                </script>
             </div>
             <div>
                 <label for="author">Author name (as it appears on Amazon)</label>
