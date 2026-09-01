@@ -241,7 +241,7 @@ final class IllustrationStudio
     /** The chapter's closing takeaway sentence, if the draft carries one. */
     public function takeawayQuote(string $content): string
     {
-        foreach (["\nChapter takeaway\n\n", "\nChapter synthesis\n\n"] as $marker) {
+        foreach (["\nChapter takeaway\n\n", "\nThe takeaway\n\n", "\nChapter synthesis\n\n"] as $marker) {
             $pos = strrpos($content, $marker);
             if ($pos !== false) {
                 $tail = trim(substr($content, $pos + strlen($marker)));
