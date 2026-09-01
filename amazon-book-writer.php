@@ -71,6 +71,12 @@ if (is_array($newMedia) && trim((string) ($newMedia['topic'] ?? '')) !== '') {
     ];
 }
 
+$customTocInput = (string) ($_POST['custom_toc'] ?? $_GET['custom_toc'] ?? $_SESSION['book_custom_toc'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['custom_toc'])) {
+    $customTocInput = '';
+}
+$customChapters = AmazonBookWriter::parseOutline($customTocInput);
+
 $options = [
     'reader' => $reader,
     'author' => $author,
@@ -81,6 +87,9 @@ $options = [
     'voice_consent' => $voiceConsent,
     'extra_media' => $extraMedia,
 ];
+if ($customChapters !== []) {
+    $options['chapters'] = $customChapters;
+}
 if ($listPriceInput !== '' && is_numeric($listPriceInput)) {
     $options['list_price'] = (float) $listPriceInput;
 }
@@ -102,6 +111,7 @@ if ($wantsResult) {
         $_SESSION['book_topic'] = $topic;
         $_SESSION['book_reader'] = $reader;
         $_SESSION['book_author'] = $author;
+        $_SESSION['book_custom_toc'] = $customTocInput;
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
@@ -234,6 +244,7 @@ $downloadQuery = http_build_query(array_filter([
     'clone_sample' => $cloneSamplePath,
     'voice_consent' => $voiceConsent ? '1' : '',
     'companion_url' => $companionBaseUrl,
+    'custom_toc' => $customTocInput,
 ], static fn (string $value): bool => $value !== '') + ($extraMedia !== [] ? ['extra_media' => $extraMedia] : []));
 ?>
 <!doctype html>
@@ -254,7 +265,7 @@ $downloadQuery = http_build_query(array_filter([
         a { color: #ffd9a0; }
         form, section { background: #1a1d28; border: 1px solid #343747; border-radius: 18px; padding: 24px; margin-top: 18px; }
         label { display: block; color: #dfe2eb; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-        input, select { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 9px; color: #fff; padding: 12px 13px; font: inherit; margin-bottom: 15px; }
+        input, select, textarea { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 9px; color: #fff; padding: 12px 13px; font: inherit; margin-bottom: 15px; }
         button { border: 0; border-radius: 999px; background: #ffb84d; color: #241a08; padding: 12px 18px; font: inherit; font-weight: 800; cursor: pointer; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
         .metric { background: #222534; border-radius: 14px; padding: 18px; }
@@ -306,6 +317,10 @@ $downloadQuery = http_build_query(array_filter([
             <div>
                 <label for="reader">Reader description</label>
                 <input id="reader" name="reader" value="<?= htmlspecialchars($reader, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. curious practitioners">
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label for="custom_toc">Your table of contents (optional — one chapter per line; add “| purpose | detail” to steer a chapter; leave empty to let the studio suggest one)</label>
+                <textarea id="custom_toc" name="custom_toc" rows="6" style="width:100%; box-sizing:border-box; resize:vertical;" placeholder="1. Traditional gender relations before WWII&#10;2. During WWII — women were financially independent for the first time&#10;3. Families then functioned without a parent at home"><?= htmlspecialchars($customTocInput, ENT_QUOTES, 'UTF-8') ?></textarea>
             </div>
             <div>
                 <label for="author">Author name (as it appears on Amazon)</label>
@@ -408,7 +423,28 @@ $downloadQuery = http_build_query(array_filter([
     </form>
 
     <?php if ($result !== null): ?>
-        <?php $kdp = $result['kdp']; $meta = $kdp['metadata']; $book = $result['book']; ?>
+        <?php $kdp = $result['kdp']; $meta = $kdp['metadata']; $book = $result['book']; $outlineReview = $result['outline_review'] ?? null; ?>
+
+        <?php if ($outlineReview !== null): ?>
+        <section>
+            <div class="eyebrow">Outline review · <?= htmlspecialchars((string) $outlineReview['agent']['name'], ENT_QUOTES, 'UTF-8') ?></div>
+            <h2><?= (int) $outlineReview['score'] ?>/100 · <?= htmlspecialchars((string) $outlineReview['verdict'], ENT_QUOTES, 'UTF-8') ?></h2>
+            <p class="note"><?= htmlspecialchars((string) $outlineReview['agent']['mission'], ENT_QUOTES, 'UTF-8') ?> Reviewed <?= (int) $outlineReview['chapter_count'] ?> chapters as a <?= htmlspecialchars((string) $outlineReview['genre'], ENT_QUOTES, 'UTF-8') ?> book.</p>
+            <ul>
+                <?php foreach ((array) $outlineReview['checks'] as $check): ?>
+                    <li><?= $check['passed'] ? '✅' : '⚠️' ?> <?= htmlspecialchars((string) $check['label'], ENT_QUOTES, 'UTF-8') ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <?php if ((array) $outlineReview['suggestions'] !== []): ?>
+                <h3>Editor's suggestions</h3>
+                <ul>
+                    <?php foreach ((array) $outlineReview['suggestions'] as $suggestion): ?>
+                        <li><?= htmlspecialchars((string) $suggestion, ENT_QUOTES, 'UTF-8') ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </section>
+        <?php endif; ?>
         <section>
             <div class="eyebrow">Amazon listing metadata</div>
             <h2><?= htmlspecialchars($meta['title'], ENT_QUOTES, 'UTF-8') ?></h2>

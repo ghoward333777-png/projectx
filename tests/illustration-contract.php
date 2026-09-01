@@ -59,10 +59,16 @@ foreach (['diagram', 'table', 'illustration', 'ai-image'] as $kind) {
     contract_check(isset($kindsSeen[$kind]), "the default plan must include a {$kind}");
 }
 // Content relevance: diagrams and worksheets come from the chapter's own outline detail.
-$ch5 = $media['chapters'][4];
+$frameworkChapter = null;
+foreach ($media['chapters'] as $chapterMedia) {
+    if (str_contains($chapterMedia['title'], 'Framework for Practice')) {
+        $frameworkChapter = $chapterMedia;
+    }
+}
+contract_check($frameworkChapter !== null, 'practical books must keep a framework chapter');
 $diagram = null;
 $worksheet = null;
-foreach ($ch5['items'] as $item) {
+foreach ($frameworkChapter['items'] as $item) {
     if ($item['kind'] === 'diagram') {
         $diagram = $item;
     }

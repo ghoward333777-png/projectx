@@ -65,6 +65,34 @@ final class AmazonBookWriter
     private ?IllustrationStudio $illustrations = null;
 
     /**
+     * Parse a hand-written table of contents into editable chapter rows.
+     *
+     * One chapter per line. Leading numbering ("1.", "2)", "Chapter 3:") is
+     * stripped, and a line may add its own purpose and detail with pipes:
+     * "Title | purpose | detail".
+     *
+     * @return array<int, array{title:string, purpose:string, detail:string}>
+     */
+    public static function parseOutline(string $outline): array
+    {
+        $chapters = [];
+        foreach (preg_split('/\R+/u', $outline) ?: [] as $line) {
+            $line = trim($line);
+            $line = trim((string) preg_replace('/^(?:chapter\s+\d+\s*[:.\-)]?|\d+\s*[:.\-)])\s*/i', '', $line));
+            if ($line === '') {
+                continue;
+            }
+            $columns = array_map('trim', explode('|', $line, 3));
+            $chapters[] = [
+                'title' => $columns[0],
+                'purpose' => ($columns[1] ?? '') !== '' ? $columns[1] : 'Advance the book\'s argument with this chapter\'s own story',
+                'detail' => ($columns[2] ?? '') !== '' ? $columns[2] : 'Document the current state of this part of the story, contrast it with how things used to be, deconstruct the causes with concrete examples, support the account with evidence, and close with what the reader should take from it.',
+            ];
+        }
+        return $chapters;
+    }
+
+    /**
      * Run the full pipeline: strategy kit, manuscript draft, and KDP package.
      *
      * @param array<string, mixed> $options Supports: reader, author, style,
@@ -96,6 +124,7 @@ final class AmazonBookWriter
             'kit' => $kit,
             'book' => $book,
             'kdp' => $kdp,
+            'outline_review' => $this->engine->reviewOutline($topic, $chapters),
             'media' => $this->illustrationStudio()->planBookMedia(
                 $book,
                 $kdp['metadata'],

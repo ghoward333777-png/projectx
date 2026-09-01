@@ -124,4 +124,34 @@ contract_check(count($teen['book']['job_catalog']) === 120, 'teen-jobs package m
 $teenCategories = implode(' ', $teen['kdp']['metadata']['categories']);
 contract_check(str_contains($teenCategories, 'Teen & Young Adult'), 'teen-jobs listing must suggest a Teen & Young Adult category');
 
+// --- Curated social-issue outlines ----------------------------------------
+$engine = new BookIntelligenceEngine();
+$approachToc = $engine->suggestTableOfContents("Why men don't approach women");
+$approachTitles = implode(' | ', array_column($approachToc, 'title'));
+contract_check(count($approachToc) >= 15, 'the approach book must get a full curated outline, not a template');
+foreach (['Before World War II', 'When the Men Went to War', 'The Home Without a Parent', 'Chivalry on Trial', 'Rivals, Not Partners', 'Gloria Allred', 'A Date Through the Decades', 'Two Courtships', 'The Paycheck Gap Flips', 'The Retreating Man', 'Relearning the Approach'] as $expected) {
+    contract_check(str_contains($approachTitles, $expected), "approach outline must cover: {$expected}");
+}
+$socialToc = $engine->suggestTableOfContents('The decline of the American family');
+contract_check(count($socialToc) === 10 && $socialToc[0]['title'] === 'The State of Affairs Today', 'social topics must get the narrated-history arc');
+contract_check(!str_contains(strtolower(implode(' ', array_column($socialToc, 'title'))), 'system'), 'social outlines must never talk about systems');
+contract_check($engine->suggestTableOfContents('Leadership strategy')[5]['title'] === 'A Framework for Practice', 'practical topics must keep the how-to arc');
+
+// --- Author-supplied outlines ----------------------------------------------
+$rows = AmazonBookWriter::parseOutline("1. Traditional gender relations Pre-WW II\n2) During WWII | Show the rupture | Men overseas, women in factories, first paychecks in their own names.\nChapter 3: Families without a parent at home\n\n");
+contract_check(count($rows) === 3, 'outline parsing must keep one chapter per non-empty line');
+contract_check($rows[0]['title'] === 'Traditional gender relations Pre-WW II', 'outline parsing must strip leading numbering');
+contract_check($rows[1]['purpose'] === 'Show the rupture' && str_contains($rows[1]['detail'], 'first paychecks'), 'pipe-separated purpose and detail must be honored');
+$custom = $writer->writeBook("Why men don't approach women", ['chapters' => $rows, 'length' => 12]);
+contract_check(count($custom['book']['chapters']) === 3 && $custom['book']['chapters'][0]['title'] === $rows[0]['title'], 'writeBook must draft from the author-supplied outline');
+
+// --- Nonfiction Outline Editor ---------------------------------------------
+$review = $engine->reviewOutline("Why men don't approach women", $approachToc);
+contract_check($review['agent']['name'] === 'The Nonfiction Outline Editor', 'outline review must come from the editor agent');
+contract_check($review['score'] === 100 && $review['verdict'] === 'Ready to draft', 'the curated approach outline must pass every editorial rule');
+contract_check($custom['outline_review']['chapter_count'] === 3, 'writeBook must review the outline it actually drafted from');
+contract_check($custom['outline_review']['suggestions'] !== [], 'a three-chapter outline must draw editorial suggestions');
+$thinReview = $engine->reviewOutline('The decline of community', [['title' => 'Systems Overview', 'purpose' => 'x', 'detail' => 'y']]);
+contract_check($thinReview['score'] < 70 && $thinReview['verdict'] === 'Needs restructuring', 'a thin abstract outline must be flagged for restructuring');
+
 fwrite(STDOUT, "Amazon Book Writer contract passed\n");

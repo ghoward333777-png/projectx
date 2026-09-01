@@ -219,19 +219,213 @@ final class BookIntelligenceEngine
         if ($this->isTeenJobsTopic($topic)) {
             return $this->teenJobsTableOfContents();
         }
+        if ($this->isApproachTopic($topic)) {
+            return $this->approachTableOfContents();
+        }
 
         $audience = $this->normalizeTopic($audience) ?: 'the reader';
         $promise = $this->normalizeTopic($promise) ?: 'understand the topic and make a better decision';
         $topicLabel = $this->titleCase($topic);
+        $topicLower = strtolower($topic);
+
+        if ($this->isSocialTopic($topic)) {
+            // Social-science books document people and their behavior:
+            // establish the current state of affairs, contrast it with the
+            // past, deconstruct the origins of the change, support the
+            // account with evidence, and propose solutions — never "systems".
+            return [
+                ['number' => 1, 'title' => 'The State of Affairs Today', 'purpose' => 'Document the current state of the phenomenon', 'detail' => 'Open with what ordinary people see every day about ' . $topicLower . ', put honest numbers behind the anecdotes, show who is living with the consequences right now, and explain why the question can no longer be waved away.'],
+                ['number' => 2, 'title' => 'How It Used to Be', 'purpose' => 'Contrast the present with the world before the change', 'detail' => 'Recreate the customs, expectations, and unwritten rules earlier generations lived by, show how those arrangements actually worked day to day, give credit for what they got right, and be honest about what they got wrong.'],
+                ['number' => 3, 'title' => 'The Turning Points', 'purpose' => 'Deconstruct the origins: the events that changed everything', 'detail' => 'Move era by era through the wars, laws, movements, and inventions that remade ' . $topicLower . ', show what each turning point changed in real households, and trace how the changes compounded into the world we have now.'],
+                ['number' => 4, 'title' => 'Who Gained and Who Lost', 'purpose' => 'Deconstruct the origins: the interests behind the change', 'detail' => 'Identify who benefited from the new arrangements and who paid for them, resist the temptation to declare simple villains, follow the money and the status where they moved, and show why both winners and losers often misread each other.'],
+                ['number' => 5, 'title' => 'How It Plays Out in Daily Life', 'purpose' => 'Show the causes operating in ordinary days', 'detail' => 'Follow the change into kitchens, workplaces, and neighborhoods, show real people making the small choices that add up to ' . $topicLower . ', and let the reader recognize scenes from their own life in the pattern.'],
+                ['number' => 6, 'title' => 'The Stories Each Side Tells', 'purpose' => 'Deconstruct the competing explanations in their own voices', 'detail' => 'Lay out the explanations people give for ' . $topicLower . ' through composite stories and reported conversations, let each side make its best case in its own words, test each story against the strongest evidence available, and keep only the claims a fair reader can defend.'],
+                ['number' => 7, 'title' => 'What the Evidence Shows', 'purpose' => 'Support the account with data', 'detail' => 'Assemble the surveys, statistics, and long-running studies that bear on ' . $topicLower . ', show how the trend lines moved decade by decade, be candid about what the data cannot settle, and give readers numbers they can quote with confidence.'],
+                ['number' => 8, 'title' => 'What It Costs Us', 'purpose' => 'Count the human consequences', 'detail' => 'Tally the price paid by individuals, families, and communities, connect the private pain to the public statistics, show the costs that never make the news, and explain why everyone has a stake in the outcome.'],
+                ['number' => 9, 'title' => 'What\'s Been Tried', 'purpose' => 'Weigh the fixes already attempted', 'detail' => 'Review the programs, movements, and personal experiments already aimed at ' . $topicLower . ', be honest about which ones failed and why, profile the people and communities quietly bucking the trend, and show what the exceptions reveal about the rule.'],
+                ['number' => 10, 'title' => 'The Way Forward', 'purpose' => 'Propose solutions the reader can act on', 'detail' => 'Draw the lessons of the history into practical terms, propose what individuals and communities can actually do, name what must be accepted because it will not reverse, and end with a vision ' . $audience . ' can act on.'],
+            ];
+        }
 
         return [
-            ['number' => 1, 'title' => 'The question beneath ' . $topicLabel, 'purpose' => 'Earn attention and establish the stakes', 'detail' => 'Open with the tension this book resolves for ' . $audience . '. Make the reader feel why ' . strtolower($promise) . ' matters now.'],
-            ['number' => 2, 'title' => 'A clear map of ' . $topicLabel, 'purpose' => 'Give the reader a usable foundation', 'detail' => 'Define the essential vocabulary, history, and competing interpretations without burying the main idea in background.'],
-            ['number' => 3, 'title' => 'How the system actually works', 'purpose' => 'Turn complexity into a mental model', 'detail' => 'Explain the moving parts, feedback loops, and constraints with one memorable model readers can redraw from memory.'],
-            ['number' => 4, 'title' => 'The decisions that change outcomes', 'purpose' => 'Make the argument credible through proof', 'detail' => 'Build the center of the book around three to five case studies that show context, choice, trade-off, and result.'],
-            ['number' => 5, 'title' => 'A framework for practice', 'purpose' => 'Move from insight to action', 'detail' => 'Give readers a repeatable loop: diagnose the situation, choose a move, run a small test, and learn from the result.'],
-            ['number' => 6, 'title' => 'What happens next', 'purpose' => 'Create a durable ending', 'detail' => 'Close with future implications, a short reader toolkit, and a way to keep applying the book as the category changes.'],
+            ['number' => 1, 'title' => 'The Question Beneath ' . $topicLabel, 'purpose' => 'Earn attention and establish the stakes', 'detail' => 'Open with the tension this book resolves for ' . $audience . ', show what changes once readers ' . strtolower($promise) . ', name the real cost of leaving the question unanswered, and preview the road the book will travel.'],
+            ['number' => 2, 'title' => 'Where ' . $topicLabel . ' Came From', 'purpose' => 'Ground the reader in the essential history', 'detail' => 'Trace the origins and turning points that created the present landscape, walk through the key eras and what each one changed, separate durable facts from comfortable folklore, and show why the past still steers what happens today.'],
+            ['number' => 3, 'title' => 'The Forces at Work', 'purpose' => 'Turn complexity into a usable explanation', 'detail' => 'Explain the moving parts and pressures behind ' . $topicLower . ', map the incentives of every major player, expose the constraints none of them can escape, and leave readers one memorable explanation they can retell from memory.'],
+            ['number' => 4, 'title' => 'What Everyone Gets Wrong', 'purpose' => 'Clear away the myths so the truth can land', 'detail' => 'Take the most common beliefs about ' . $topicLower . ', test each one against the strongest available evidence, explain why the appealing myths survive, and replace them with claims a careful reader can defend.'],
+            ['number' => 5, 'title' => 'The Decisions That Change Outcomes', 'purpose' => 'Make the argument credible through proof', 'detail' => 'Build the center of the book around three to five case studies that show context, choice, trade-off, and result.'],
+            ['number' => 6, 'title' => 'A Framework for Practice', 'purpose' => 'Move from insight to action', 'detail' => 'Give readers a repeatable loop: diagnose the situation, choose a move, run a small test, and learn from the result.'],
+            ['number' => 7, 'title' => 'When It Goes Wrong', 'purpose' => 'Prepare readers for the predictable failures', 'detail' => 'Catalog the most common mistakes and traps around ' . $topicLower . ', show the early warning signs of each one, explain how to recover once a plan breaks, and turn the failure stories into reusable lessons.'],
+            ['number' => 8, 'title' => 'What Happens Next', 'purpose' => 'Create a durable ending', 'detail' => 'Close with future implications, a short reader toolkit, and a way to keep applying the book as the category changes.'],
         ];
+    }
+
+    /**
+     * The Nonfiction Outline Editor: an editorial agent that reviews any
+     * table of contents against the social-science documentation method —
+     * current state, contrast with the past, deconstructed origins,
+     * supporting evidence, and proposed solutions.
+     *
+     * @param array<int, array<string, mixed>> $chapters Rows with title/purpose/detail.
+     * @return array<string, mixed>
+     */
+    public function reviewOutline(string $topic, array $chapters): array
+    {
+        $titles = array_map(static fn (array $c): string => (string) ($c['title'] ?? ''), $chapters);
+        $all = array_map(
+            static fn (array $c): string => strtolower(((string) ($c['title'] ?? '')) . ' ' . ((string) ($c['purpose'] ?? '')) . ' ' . ((string) ($c['detail'] ?? ''))),
+            $chapters,
+        );
+        $count = count($chapters);
+        $social = $this->isSocialTopic($topic) || $this->isApproachTopic($topic);
+        $matches = static function (array $rows, string $pattern): bool {
+            foreach ($rows as $row) {
+                if (preg_match($pattern, $row) === 1) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $checks = [];
+        $suggest = [];
+        $opener = $all[0] ?? '';
+        $closerWindow = array_slice($all, -2);
+        $checks[] = ['id' => 'present-state-opener', 'label' => $social ? 'Opens by documenting the current state of affairs' : 'Opens by establishing the stakes', 'passed' => preg_match($social ? '/\btoday|current|now\b|state of|vanish|notice|these days|right now/' : '/\btoday|current|now\b|state of|question|stakes|matter|more than|why\b/', $opener) === 1];
+        $checks[] = ['id' => 'past-contrast', 'label' => 'Contrasts the present with the past', 'passed' => $matches($all, '/used to|before|old order|history|earlier generations|decades|the past|era by era/')];
+        $checks[] = ['id' => 'origins-deconstructed', 'label' => 'Deconstructs the origins of the change', 'passed' => $matches($all, '/turning point|war|revolution|movement|origin|cause|what changed|rupture/')];
+        $checks[] = ['id' => 'evidence-support', 'label' => 'Supports the account with evidence', 'passed' => $matches($all, '/evidence|data|numbers|survey|statistic|studies|cost|price|document/')];
+        $checks[] = ['id' => 'solutions-closer', 'label' => $social ? 'Closes by proposing solutions' : 'Closes with next steps the reader can take', 'passed' => $matches($closerWindow, $social ? '/forward|solution|relearn|way back|truce|practice|\bwhat\b.*\bcan\b.*\bdo\b|path|heal/' : '/forward|solution|next|toolkit|tools|step|path|apply/')];
+        $checks[] = ['id' => 'human-actors', 'label' => 'Chapters are about people and their behavior', 'passed' => $matches($all, '/\b(men|women|people|families|readers|parents|children|couples|communities|workers|voices)\b/')];
+        $abstractTitles = array_values(array_filter($titles, static fn (string $t): bool => preg_match('/\b(system|framework|model|overview|module|paradigm)\b/i', $t) === 1));
+        $checks[] = ['id' => 'concrete-titles', 'label' => $social ? 'Titles name eras, events, and actors — not systems or frameworks' : 'Titles stay concrete', 'passed' => !$social || $abstractTitles === []];
+        $checks[] = ['id' => 'chapter-count', 'label' => 'Enough chapters to sustain a book (8–30)', 'passed' => $count >= 8 && $count <= 30];
+        $thinDetails = 0;
+        foreach ($chapters as $chapter) {
+            if (mb_strlen(trim((string) ($chapter['detail'] ?? ''))) < 80) {
+                $thinDetails++;
+            }
+        }
+        $checks[] = ['id' => 'substantive-details', 'label' => 'Every chapter brief is substantive enough to draft from', 'passed' => $thinDetails === 0];
+        $checks[] = ['id' => 'no-duplicate-titles', 'label' => 'No two chapters cover the same ground', 'passed' => count(array_unique(array_map('strtolower', $titles))) === $count];
+        $lastCost = -1;
+        $firstSolution = PHP_INT_MAX;
+        foreach ($all as $i => $row) {
+            if (preg_match('/\bcost|price|toll|consequence/', $row) === 1) {
+                $lastCost = $i;
+            }
+            if ($firstSolution === PHP_INT_MAX && preg_match('/forward|solution|relearn|way back|truce|\bwhat\b.*\bcan\b.*\bdo\b|repair|heal/', $row) === 1) {
+                $firstSolution = $i;
+            }
+        }
+        $checks[] = ['id' => 'costs-before-solutions', 'label' => 'Counts the costs before proposing the cures', 'passed' => $lastCost === -1 || $firstSolution === PHP_INT_MAX || $lastCost <= $firstSolution || $firstSolution > (int) ($count * 0.6)];
+        $longTitles = array_values(array_filter($titles, static fn (string $t): bool => mb_strlen($t) > 60));
+        $checks[] = ['id' => 'title-economy', 'label' => 'Titles stay short enough to remember (≤60 characters)', 'passed' => $longTitles === []];
+
+        foreach ($checks as $check) {
+            if ($check['passed']) {
+                continue;
+            }
+            $suggest[] = match ($check['id']) {
+                'present-state-opener' => 'Open with a chapter that documents the state of affairs today, so the reader sees the phenomenon before the explanation.',
+                'past-contrast' => 'Add a chapter that recreates how things used to be — the contrast with the past is what makes the change visible.',
+                'origins-deconstructed' => 'Add chapters that deconstruct the origins: the wars, laws, movements, and inventions that caused the change.',
+                'evidence-support' => 'Add a chapter that supports the account with surveys, statistics, and documented costs.',
+                'solutions-closer' => 'End by proposing solutions the reader can act on, not just a summary.',
+                'human-actors' => 'Recenter the chapters on people and their behavior — social books are about actors, not mechanisms.',
+                'concrete-titles' => 'Rewrite these abstract titles with concrete eras, events, or actors: ' . implode('; ', $abstractTitles) . '.',
+                'chapter-count' => $count < 8 ? 'Split the big causal factors into their own chapters — a full book needs at least eight.' : 'Merge overlapping chapters — past thirty, chapters stop earning their place.',
+                'substantive-details' => 'Flesh out the thin chapter briefs — each needs enough concrete instruction to draft a full chapter from.',
+                'no-duplicate-titles' => 'Rename or merge the chapters that repeat a title.',
+                'costs-before-solutions' => 'Move the costs and consequences ahead of the solutions — readers need to feel the stakes before the cures.',
+                'title-economy' => 'Shorten these titles to something a reader can remember: ' . implode('; ', $longTitles) . '.',
+                default => 'Revisit this chapter plan.',
+            };
+        }
+
+        $passed = count(array_filter($checks, static fn (array $c): bool => (bool) $c['passed']));
+        $score = $count === 0 ? 0 : (int) round(($passed / count($checks)) * 100);
+
+        return [
+            'agent' => [
+                'name' => 'The Nonfiction Outline Editor',
+                'mission' => 'Reviews every table of contents against the social-science method: document the present, contrast the past, deconstruct the origins, support with evidence, and propose solutions.',
+            ],
+            'genre' => $social ? 'social' : 'practical',
+            'chapter_count' => $count,
+            'score' => $score,
+            'verdict' => $score >= 90 ? 'Ready to draft' : ($score >= 70 ? 'Strong, with gaps to close' : 'Needs restructuring'),
+            'checks' => $checks,
+            'suggestions' => $suggest,
+        ];
+    }
+
+    /**
+     * Detect social and cultural topics, which read as narrated history
+     * rather than how-to instruction.
+     */
+    private function isSocialTopic(string $topic): bool
+    {
+        $t = ' ' . strtolower($topic) . ' ';
+        if (str_starts_with(trim($t), 'why ')) {
+            return true;
+        }
+        foreach (['men', 'women', 'man', 'woman', 'people', 'society', 'culture', 'marriage', 'dating', 'family', 'families', 'love', 'friendship', 'community', 'church', 'religion', 'generation', 'parents', 'children', 'america', 'loneliness', 'divorce', 'gender', 'masculinity', 'femininity', 'courtship', 'relationships'] as $keyword) {
+            if (str_contains($t, ' ' . $keyword . ' ')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Detect books about why men no longer approach or court women. */
+    private function isApproachTopic(string $topic): bool
+    {
+        $t = strtolower($topic);
+        return str_contains($t, 'approach') && (str_contains($t, 'women') || str_contains($t, 'woman'));
+    }
+
+    /**
+     * A curated, historically sequenced outline for "Why Men Don't Approach Women".
+     *
+     * @return array<int, array{number:int, title:string, purpose:string, detail:string}>
+     */
+    private function approachTableOfContents(): array
+    {
+        $chapters = [
+            ['The Vanishing Approach', 'Establish the phenomenon and its stakes', 'Document how rarely men now initiate in person, how couples increasingly meet only through screens, how many young men report never approaching a woman at all, and why the question matters to women as much as to men.'],
+            ['A Date Through the Decades: 1950 to 2026', 'Contrast one ordinary date across eight eras', 'Follow the same evening as it changes decade by decade: the 1950s soda-fountain date arranged by a call to the family telephone, the 1960s drive-in evening set free by the automobile, the 1970s disco and the new singles scene, the 1980s dinner-and-a-movie of the dating-handbook era, the 1990s office romance and the first online personals, the 2000s courtship conducted over text message, and the 2026 date that began with a swipe and a background search — noting in every era who asked, where they met, who paid, and what happened next.'],
+            ['Two Courtships, Side by Side', 'Show real courtship and its modern abandonment through paired stories', 'Tell one full old-fashioned courtship — the introduction at a church social, calling on the family parlor, the handwritten letter, meeting her father, the six-month engagement — beside its modern counterpart: the app match, three weeks of texting, one coffee that goes nowhere, the slow fade of ghosting, and the situationship that never earns a name.'],
+            ['Courtship in the Old Order: Before World War II', 'Show the traditional system this book measures change against', 'Describe pre-war gender relations built on clear scripts: the formal introduction and the family vetting, the dance card and the chaperoned social, the man as initiator and provider, marriage as an economic partnership, and manners as the currency that made approaching a stranger safe and legible.'],
+            ['When the Men Went to War', 'Explain the first great rupture in the old order', 'Follow the Second World War as men shipped overseas, women filled factories and offices, first paychecks and bank accounts arrived in millions of women\'s names, and a taste of financial independence entered the culture that would never fully recede.'],
+            ['The Home Without a Parent', 'Trace how family structure stopped teaching courtship', 'Examine the two-earner household and the latchkey childhood, the divorce revolution that removed fathers from daily life, sons who grew up with no model of how a man approaches a woman, and daughters raised on self-reliance rather than reliance.'],
+            ['The Sexual Revolution Rewrites the Rules', 'Mark the collapse of the formal courtship script', 'Show how the pill, casual dating, and no-fault divorce dismantled the old sequence of courtship, replaced public rituals with private negotiation, promised freedom for both sexes, and quietly removed the instructions men had relied on for generations.'],
+            ['Cheap Sex and the Devalued Approach', 'Explain why approaching lost its market logic', 'Follow the mating-market economics: when sex decoupled from commitment, the formal approach lost the leverage it once carried, courtship stopped being the price of companionship, and the men willing to do it stopped being rewarded for the effort.'],
+            ['Chivalry on Trial', 'Examine how the feminist movement recast manners toward women', 'Explore how opening a door came to read as condescension, how paying the bill could be taken as an insult, how compliments became suspect, and how many men responded to the new uncertainty not by adapting but by opting out of gallantry altogether.'],
+            ['Rivals, Not Partners', 'Explain the new competition between men and women', 'Look at classrooms and workplaces where the sexes now compete directly, men who feel threatened rather than attracted, the retreat many men beat from powerful and intelligent women, and the quiet resentment that competition breeds on both sides.'],
+            ['The Paycheck Gap Flips', 'Ground the rivalry in the economic record', 'Chart women out-graduating men on every campus, young women out-earning young men in the big cities, male wages stagnant since the 1970s, and what it does to the old provider script when she no longer needs what he was raised to offer.'],
+            ['The Provider Nobody Ordered', 'Show why traditional roles now repel the women they once won', 'Contrast young women who want companionship between equals with men still offering to care for and protect, explain how an offer of provision can read as an attempt at control, and show both sexes talking past each other in good faith.'],
+            ['"Gloria Allred-itis": The Fear of the Accusation', 'Name the chilling effect on ordinary social risk', 'Trace how harassment headlines, workplace policies, and viral shaming taught men that one misread signal could cost a reputation or a career, how the compliment and the invitation became legal hazards in men\'s minds, and how the safest move became no move at all.'],
+            ['The App Took the Approach', 'Show how dating apps replaced the skill they promised to assist', 'Explain how swipe platforms outsourced the introduction, concentrated most matches on a small minority of men, privatized rejection into silence, and let the muscle of walking up and saying hello atrophy across an entire generation.'],
+            ['Nowhere Left to Meet', 'Document the disappearance of the places where approaches happened', 'Chart the decline of churches, dance halls, clubs, bowling leagues, and front-porch neighborhoods, the workplace ruled out as a courting ground, and the shrinking list of settings where a respectful introduction is even possible.'],
+            ['Substitute Lives on a Screen', 'Confront the easy substitutes for real courtship', 'Weigh pornography, gaming, and parasocial attachment as low-risk replacements for approaching a real woman, show how each delivers reward without the possibility of rejection, and ask what happens to motivation when the substitute is always available.'],
+            ['The Numbers: Sexlessness and Singleness', 'Support the whole account with the data record', 'Assemble the statistics that anchor the argument: the share of young men reporting no sex in a year, the never-married lines crossing historic highs, couples meeting online overtaking every other way of meeting, and the surveys showing how few men still approach in person.'],
+            ['The Retreating Man', 'Measure the impact where it lands hardest: on men themselves', 'Document the male retreat behind the numbers: friendship circles shrinking to zero, confidence eroding from disuse, young men checking out of dating and then of ambition itself, and the resentment subcultures that recruit from that despair.'],
+            ['The Price Society Pays', 'Widen the lens to the costs everyone shares', 'Assemble the broader evidence: rising loneliness in both sexes, marriage postponed or abandoned, falling birth rates, communities losing the families that once anchored them, and women who openly wish men would still approach them with confidence and respect.'],
+            ['What Women Actually Want From an Approach', 'Replace guesswork with what women themselves report', 'Distinguish the welcome approach from the intrusion: reading context and body language, choosing the right setting and moment, leading with warmth instead of strategy, and taking a polite no with grace.'],
+            ['Relearning the Approach', 'Give men a practical path back to social courage', 'Treat approaching as a learnable skill: small graduated risks, conversation before flirtation, manners without servility, rejection reframed as information, and daily practice that rebuilds confidence the culture no longer teaches.'],
+            ['A Truce Between the Sexes', 'Close with a vision both sexes can accept', 'Argue for rebuilding mutual trust, extending good faith to those who err honestly, keeping accountability for genuine misconduct, and describing the healthier courtship culture that becomes possible when men and women stop treating each other as adversaries.'],
+        ];
+
+        return array_map(
+            static fn (array $chapter, int $index): array => [
+                'number' => $index + 1,
+                'title' => $chapter[0],
+                'purpose' => $chapter[1],
+                'detail' => $chapter[2],
+            ],
+            $chapters,
+            array_keys($chapters),
+        );
     }
 
     /**
