@@ -59,67 +59,6 @@ function fail(string $message): never
     exit(1);
 }
 
-/** Dependency-free HTTPS POST with retries; works with or without ext-curl. */
-function httpPostJson(string $url, array $headers, array $body): array
-{
-    $payload = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    if ($payload === false) {
-        fail('Could not encode the request body.');
-    }
-    $headerLines = [];
-    foreach ($headers as $name => $value) {
-        $headerLines[] = $name . ': ' . $value;
-    }
-    $attempts = 0;
-    while (true) {
-        $attempts++;
-        if (function_exists('curl_init')) {
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => $headerLines,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 600,
-            ]);
-            $raw = curl_exec($ch);
-            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-            $error = curl_error($ch);
-            curl_close($ch);
-        } else {
-            $context = stream_context_create(['http' => [
-                'method' => 'POST',
-                'header' => implode("\r\n", $headerLines),
-                'content' => $payload,
-                'timeout' => 600,
-                'ignore_errors' => true,
-            ]]);
-            $raw = @file_get_contents($url, false, $context);
-            $status = 0;
-            foreach ($http_response_header ?? [] as $line) {
-                if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m) === 1) {
-                    $status = (int) $m[1];
-                }
-            }
-            $error = $raw === false ? 'connection failed' : '';
-        }
-        if ($raw !== false && $status >= 200 && $status < 300) {
-            $decoded = json_decode((string) $raw, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-            $error = 'response was not JSON';
-        }
-        $retryable = $raw === false || $status === 429 || $status >= 500;
-        if ($attempts >= 4 || !$retryable) {
-            fail('API call failed (HTTP ' . $status . ($error !== '' ? ', ' . $error : '') . '): ' . substr((string) $raw, 0, 400));
-        }
-        $delay = 2 ** $attempts;
-        fwrite(STDERR, "  retrying in {$delay}s (HTTP {$status})…\n");
-        sleep($delay);
-    }
-}
-
 $args = array_slice($argv, 1);
 $topic = argValue($args, 'topic') ?? fail('Usage: --topic "…" [--author "…"] [--reader "…"] [--style id] [--length pages] [--outline file] [--provider anthropic|google|openai] [--model id] [--out dir] [--no-edit] [--limit N]');
 $provider = argValue($args, 'provider', 'anthropic');
@@ -170,13 +109,6 @@ if ($key === null || $key === '') {
     echo "All chapter files already exist — assembling without an API key.\n";
 }
 
-$injectKey = static function (array $headers, string $key): array {
-    foreach ($headers as $name => $value) {
-        $headers[$name] = preg_replace('/\{[A-Z_]+\}/', $key, (string) $value);
-    }
-    return $headers;
-};
-
 echo "\nPass 2 — writing chapters…\n";
 $done = 0;
 foreach ($plan['writer_jobs'] as $job) {
@@ -190,10 +122,12 @@ foreach ($plan['writer_jobs'] as $job) {
         break;
     }
     echo "  chapter {$job['chapter']}: {$job['title']} ({$job['word_target']}w)…\n";
-    $response = httpPostJson((string) $job['request']['endpoint'], $injectKey((array) $job['request']['headers'], (string) $key), (array) $job['request']['body']);
-    $text = $developer->extractText((string) $provider, $response);
-    str_starts_with(trim($text), 'Chapter ') || fail("Chapter {$job['chapter']} reply did not start with the chapter heading; response saved nowhere — re-run to retry.");
-    file_put_contents($file, trim($text) . "\n");
+    try {
+        $text = $developer->developChapterText((string) $provider, $job, (string) $key);
+    } catch (Throwable $exception) {
+        fail($exception->getMessage());
+    }
+    file_put_contents($file, $text . "\n");
     $done++;
 }
 
@@ -228,7 +162,11 @@ if (!hasFlag($args, 'no-edit') && $key !== null && $key !== '') {
         ]);
         $spec = $developer->requestSpec((string) $plan['provider'], (string) $plan['model'], (string) $plan['style_contract'], $prompt);
         echo "  chapter {$number}: editing…\n";
-        $response = httpPostJson((string) $spec['endpoint'], $injectKey((array) $spec['headers'], (string) $key), (array) $spec['body']);
+        try {
+            $response = $developer->send($spec, (string) $key);
+        } catch (Throwable $exception) {
+            fail($exception->getMessage());
+        }
         $edited = $developer->extractText((string) $provider, $response);
         file_put_contents($target, (str_starts_with(trim($edited), 'Chapter ') ? trim($edited) : $text) . "\n");
     }
