@@ -1,0 +1,72 @@
+{
+ "generated": "QueryBook technical registry",
+ "counts": {
+  "features": 279,
+  "claims": 341,
+  "worked_expressions": 229,
+  "domains": 15,
+  "layers": 5,
+  "independent_claims": 7
+ },
+ "claim_integrity": {
+  "contiguous": true,
+  "dangling": 0,
+  "forward": 0,
+  "multiple_dependent": 0,
+  "max_depth": 5,
+  "independent": [
+   1,
+   28,
+   30,
+   31,
+   45,
+   50,
+   113
+  ]
+ },
+ "feature_integrity": {
+  "blank_fields": {
+   "name": 0,
+   "category": 0,
+   "citation": 0,
+   "actor": 0,
+   "algorithm": 0,
+   "rule": 0,
+   "domain": 0,
+   "layer": 0
+  },
+  "features_per_domain": {
+   "D0 Prime Directive": 6,
+   "D1 Ingestion & Sensory Intake": 23,
+   "D10 Authoring, Editions & Publication": 15,
+   "D11 Platform Governance & Evolution": 27,
+   "D12 External Integration & Analysis": 15,
+   "D13 Commerce & Entitlement Tokens": 15,
+   "D14 Learning & Assessment": 5,
+   "D2 Knowledge Substrate": 5,
+   "D3 Ontology & Conceptual Structure": 11,
+   "D4 Retrieval & Response": 29,
+   "D5 Inference, Prediction & Calibration": 34,
+   "D6 World Model & Perception": 38,
+   "D7 Grounded Expression": 17,
+   "D8 Access, Rights & Retention": 15,
+   "D9 Interaction Surfaces": 24
+  },
+  "features_per_layer": {
+   "Experience": 59,
+   "Governance (vertical)": 6,
+   "Knowledge": 77,
+   "Platform": 57,
+   "Reasoning": 80
+  }
+ },
+ "provenance": {
+  "provisional_application": "63/975,036 filed 2026-02-03",
+  "expiry": "2027-02-03",
+  "assignee": "Mediagration, LLC",
+  "inventors": [
+   "Garry Stephan Howard",
+   "Christopher Reichert Caile"
+  ]
+ }
+}

@@ -1,0 +1,73 @@
+{
+ "paths": [
+  {
+   "name": "query",
+   "sequence": [
+    "D8",
+    "D4",
+    "D5?",
+    "D7"
+   ],
+   "note": "D5 optional. Latency-critical."
+  },
+  {
+   "name": "ingestion",
+   "sequence": [
+    "D1",
+    "D2",
+    "D3",
+    "D6"
+   ],
+   "note": "D5 pre-computes. Batch-dominant."
+  },
+  {
+   "name": "commerce",
+   "sequence": [
+    "D8",
+    "D4",
+    "D7",
+    "D13"
+   ],
+   "note": "Invoked only after the query path completes."
+  },
+  {
+   "name": "equipment",
+   "sequence": [
+    "D8",
+    "D4",
+    "D6",
+    "equipment"
+   ],
+   "note": "Halt bypasses D4, D5 and D7 entirely."
+  },
+  {
+   "name": "agent",
+   "sequence": [
+    "D11",
+    "D8",
+    "D4",
+    "D5?",
+    "D11"
+   ],
+   "note": "Resolves scope through D8; inherits no ambient entitlement."
+  },
+  {
+   "name": "feedback",
+   "sequence": [
+    "external",
+    "D1",
+    "D2",
+    "D5"
+   ],
+   "note": "No privileged channel; ordinary ingestion."
+  }
+ ],
+ "intersection_of_query_and_ingestion": [
+  "D0",
+  "D2"
+ ],
+ "invariants": [
+  "D4 performs no ingestion work: a retrieval never blocks on an extractor.",
+  "D1 holds no retrieval authority: an extraction never blocks on the convergence."
+ ]
+}

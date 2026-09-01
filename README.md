@@ -248,6 +248,25 @@ and the full manuscript text — and listed on the **Book projects** page
 CLI saves a record after every assembled run, so no outline or manuscript is
 ever lost.
 
+## QueryBook Technical Registry
+
+`registry/` carries the machine-readable QueryBook Technical Registry — every
+specified feature, function and claim (currently 279 features, 341 claims,
+15 domains, 5 layers), including the current Fact Unit definition (`Fact Unit
+Schema`, Chapter 3 / Appendix A) and the event-fact-unit specification
+(`Event Type Catalogue`, `Environment Vector Normalization`, `Causal Edge
+Temporal Validation`, §104). See `registry/README.md` and `registry/SCHEMA.md`
+for the layout and field descriptions.
+
+**Registry syncs are additive.** A newer registry drop must be a super-set of
+the one it replaces: features and claims are only ever added, never removed.
+To sync, replace the contents of `registry/` with the new drop, then run both
+gates — `python3 registry/validate.py` (the registry's own integrity checks)
+and `php tests/registry-contract.php` (the same checks in dependency-free PHP,
+plus the super-set floors and the Fact Unit / event-fact anchor features).
+After a sync that grows the registry, raise the floors in
+`tests/registry-contract.php` to the new counts.
+
 ## Run the contract tests
 
 ```bash
@@ -259,6 +278,8 @@ php tests/illustration-contract.php
 php tests/quality-lab-contract.php
 php tests/epub-contract.php
 php tests/print-media-contract.php
+php tests/manuscript-developer-contract.php
+php tests/registry-contract.php
 ```
 
 ## Install on a hosting site

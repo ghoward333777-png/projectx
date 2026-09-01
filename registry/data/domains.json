@@ -1,0 +1,107 @@
+[
+ {
+  "id": "D0",
+  "name": "Prime Directive",
+  "layer": "Governance (vertical)",
+  "mandate": "Harm prevention of universal scope. Owns the safety enforcement plane, transfer matrix, path-separation invariant, scheduling priority ordering and the permanently-excluded set.",
+  "feature_count": 6
+ },
+ {
+  "id": "D1",
+  "name": "Ingestion & Sensory Intake",
+  "layer": "Knowledge",
+  "mandate": "Conversion of external content in any modality into candidate records. The sole location of any trained component.",
+  "feature_count": 23
+ },
+ {
+  "id": "D2",
+  "name": "Knowledge Substrate",
+  "layer": "Knowledge",
+  "mandate": "Custody of records and lineage. The only domain with write authority over the store.",
+  "feature_count": 5
+ },
+ {
+  "id": "D3",
+  "name": "Ontology & Conceptual Structure",
+  "layer": "Knowledge",
+  "mandate": "What concepts exist and how they relate. Readable by all, writable only by itself.",
+  "feature_count": 11
+ },
+ {
+  "id": "D4",
+  "name": "Retrieval & Response",
+  "layer": "Reasoning",
+  "mandate": "Answering a bounded query. The latency-critical path.",
+  "feature_count": 29
+ },
+ {
+  "id": "D5",
+  "name": "Inference, Prediction & Calibration",
+  "layer": "Reasoning",
+  "mandate": "What the records imply and how well it was derived. Deduction may write; induction may not.",
+  "feature_count": 34
+ },
+ {
+  "id": "D6",
+  "name": "World Model & Perception",
+  "layer": "Knowledge",
+  "mandate": "How the world behaves, held distinctly from what sources asserted. Includes equipment control.",
+  "feature_count": 38
+ },
+ {
+  "id": "D7",
+  "name": "Grounded Expression",
+  "layer": "Reasoning",
+  "mandate": "Rendering under the vocabulary constraint. No retrieval authority, no write path.",
+  "feature_count": 17
+ },
+ {
+  "id": "D8",
+  "name": "Access, Rights & Retention",
+  "layer": "Experience",
+  "mandate": "What a requester may reach, retention, key custody. Executes before retrieval.",
+  "feature_count": 15
+ },
+ {
+  "id": "D9",
+  "name": "Interaction Surfaces",
+  "layer": "Experience",
+  "mandate": "Presentation. No authority over content, retrieval or rights.",
+  "feature_count": 24
+ },
+ {
+  "id": "D10",
+  "name": "Authoring, Editions & Publication",
+  "layer": "Experience",
+  "mandate": "Admission and shaping of authored work; emission in distributable form.",
+  "feature_count": 15
+ },
+ {
+  "id": "D11",
+  "name": "Platform Governance & Evolution",
+  "layer": "Platform",
+  "mandate": "Change under human authority. Structurally forbidden from changing D0.",
+  "feature_count": 27
+ },
+ {
+  "id": "D12",
+  "name": "External Integration & Analysis",
+  "layer": "Platform",
+  "mandate": "Reach beyond the boundary. Analytical output quarantined.",
+  "feature_count": 15
+ },
+ {
+  "id": "D13",
+  "name": "Commerce & Entitlement Tokens",
+  "layer": "Platform",
+  "mandate": "Commercial presentation and entitlement. Lowest scheduling priority.",
+  "feature_count": 15
+ },
+ {
+  "id": "D14",
+  "name": "Learning & Assessment",
+  "layer": "Experience",
+  "mandate": "Assessment from grounding records, mastery measurement, credential issuance.",
+  "feature_count": 5
+ }
+]

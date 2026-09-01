@@ -48,6 +48,12 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
 ## Housekeeping
 
 - New app files must be added to `SitePackageExporter::FILES` or the hosting zip
-  self-test fails.
+  self-test fails. The `registry/` data is spec-side, not an app file — it stays
+  out of the hosting zip.
+- **Registry syncs are additive.** `registry/` holds the QueryBook Technical
+  Registry (features + claims). A newer drop must be a super-set — never remove
+  a feature or claim. After replacing `registry/`, run `python3
+  registry/validate.py` and `php tests/registry-contract.php`, and raise the
+  floors in the contract test to the new counts.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).

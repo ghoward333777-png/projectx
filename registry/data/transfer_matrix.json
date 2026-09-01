@@ -1,0 +1,104 @@
+[
+ {
+  "from": "D12",
+  "to": "D4",
+  "permission": "denied",
+  "guarantee": "External output and analysis of it can never enter retrieval. Excepted: a reply elicited by a prompt this system composed, carrying a derivation marking."
+ },
+ {
+  "from": "D13",
+  "to": "D4",
+  "permission": "denied",
+  "guarantee": "Commerce cannot influence what is retrieved."
+ },
+ {
+  "from": "D13",
+  "to": "D7",
+  "permission": "denied",
+  "guarantee": "Commerce cannot influence what is generated."
+ },
+ {
+  "from": "D13",
+  "to": "D8",
+  "permission": "denied",
+  "guarantee": "Commerce cannot widen an entitlement to make an item eligible."
+ },
+ {
+  "from": "D9",
+  "to": "D2",
+  "permission": "denied",
+  "guarantee": "A surface cannot read or write the store directly; scope via D8, content via D4."
+ },
+ {
+  "from": "D9",
+  "to": "D0",
+  "permission": "denied",
+  "guarantee": "A surface cannot invoke, suspend or configure a safety evaluation."
+ },
+ {
+  "from": "D11",
+  "to": "D0",
+  "permission": "denied",
+  "guarantee": "The mechanism that changes the system cannot change the Prime Directive."
+ },
+ {
+  "from": "D7",
+  "to": "D2",
+  "permission": "denied",
+  "guarantee": "Generation cannot write. Output never becomes a record."
+ },
+ {
+  "from": "D14",
+  "to": "D13",
+  "permission": "denied",
+  "guarantee": "A learner's assessment record cannot reach commercial selection."
+ },
+ {
+  "from": "D1",
+  "to": "D2",
+  "permission": "conversion",
+  "guarantee": "Safety evaluation, type validation, confidence calibration. The sole route into the store."
+ },
+ {
+  "from": "D5",
+  "to": "D2",
+  "permission": "conversion",
+  "guarantee": "Marking as derived inference. Inductive conclusions are not converted; they are proposed."
+ },
+ {
+  "from": "D4",
+  "to": "D13",
+  "permission": "conversion",
+  "guarantee": "Concept identifier plus one-hop adjacency, read-only, after retrieval and generation complete."
+ },
+ {
+  "from": "D12",
+  "to": "D2",
+  "permission": "conversion",
+  "guarantee": "Marking as an analysis record, which scope descriptions exclude."
+ },
+ {
+  "from": "D10",
+  "to": "D2",
+  "permission": "conversion",
+  "guarantee": "Rights validation before ingestion begins."
+ },
+ {
+  "from": "D6",
+  "to": "equipment",
+  "permission": "conversion",
+  "guarantee": "Constraint set evaluation. A violating command is withheld, not converted."
+ },
+ {
+  "from": "D0",
+  "to": "*",
+  "permission": "permitted",
+  "guarantee": "Governance reaches everywhere. The definition of a vertical domain."
+ },
+ {
+  "from": "*",
+  "to": "D3",
+  "permission": "permitted",
+  "guarantee": "Read only. Writing to D3 is reserved to D3."
+ }
+]

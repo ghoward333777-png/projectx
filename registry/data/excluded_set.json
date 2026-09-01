@@ -1,0 +1,38 @@
+[
+ {
+  "subsystem": "Prime Directive and enforcement plane",
+  "reason": "A harm constraint a system may amend is not a constraint."
+ },
+ {
+  "subsystem": "Transfer matrix",
+  "reason": "A matrix a domain may amend permits that domain to grant itself the transfer the matrix denies it."
+ },
+ {
+  "subsystem": "Path-separation invariant",
+  "reason": "An invariant relaxable under load is relaxed exactly when it matters."
+ },
+ {
+  "subsystem": "Scheduling priority ordering",
+  "reason": "A system able to reprioritise could serve commerce ahead of safety evaluation."
+ },
+ {
+  "subsystem": "Human approval mechanism",
+  "reason": "A system able to modify the gate can widen it, and the widening would require only the widened gate."
+ },
+ {
+  "subsystem": "Convergence regime election",
+  "reason": "The capacity-bounded regime permits freer weight updates; a system electing its own regime has an incentive to elect the weaker."
+ },
+ {
+  "subsystem": "Context lock dimension set",
+  "reason": "Unlocking a dimension restores apparent determinism by narrowing what determinism means."
+ },
+ {
+  "subsystem": "Trial measurement parameters",
+  "reason": "A mechanism able to adjust the terms on which it is judged is not measured."
+ },
+ {
+  "subsystem": "The excluded set itself",
+  "reason": "Otherwise every exclusion is removable in two steps."
+ }
+]
