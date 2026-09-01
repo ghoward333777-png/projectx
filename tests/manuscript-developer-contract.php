@@ -38,6 +38,26 @@ $job = $plan['writer_jobs'][4];
 contract_check(str_contains((string) $job['prompt'], (string) $result['book']['chapters'][4]['detail']), 'writer prompts must carry the chapter\'s draft directions');
 contract_check(str_contains((string) $plan['editor_jobs'][4]['prompt_template'], '{CHAPTER_TEXT}'), 'editor prompts must be templates awaiting the drafted text');
 
+// --- Voice contract (a MUST) ------------------------------------------------
+$voiced = $writer->writeBook("Why men don't approach women", [
+    'author' => 'Garry S. Howard',
+    'style' => 'memoir',
+    'length' => 40,
+    'narrative_voice' => 'first-person',
+    'perspectives' => ['emotional-testimony', 'experiential', 'bogus-factor'],
+    'author_voice' => 'a retired engineer in his sixties, plain-spoken and wry',
+]);
+contract_check(($voiced['book']['voice']['narrative'] ?? '') === 'first-person', 'the narrative voice must travel with the book');
+contract_check($voiced['book']['voice']['perspectives'] === ['emotional-testimony', 'experiential'], 'unknown perspective factors must be dropped');
+$voicedContract = (string) $developer->developmentPlan($voiced['book'], $voiced['kdp']['metadata'], 'anthropic')['style_contract'];
+contract_check(str_contains($voicedContract, 'VOICE CONTRACT (a MUST'), 'the style contract must mark the voice as a hard requirement');
+contract_check(str_contains($voicedContract, 'speaks as "I"'), 'the contract must spell out the narrative person');
+contract_check(str_contains($voicedContract, 'Emotional testimony') && str_contains($voicedContract, 'lived experience carries the argument'), 'chosen perspective factors must appear in the contract');
+contract_check(str_contains($voicedContract, 'retired engineer in his sixties'), 'the author\'s own voice description must appear in the contract');
+contract_check(str_contains((string) $developer->developmentPlan($voiced['book'], $voiced['kdp']['metadata'], 'anthropic')['editor_jobs'][0]['prompt_template'], 'VOICE CONTRACT'), 'the editor pass must police voice drift');
+$defaultContract = (string) $plan['style_contract'];
+contract_check(str_contains($defaultContract, 'Third person'), 'books default to third person');
+
 // --- Response extraction ----------------------------------------------------
 contract_check($developer->extractText('anthropic', ['content' => [['type' => 'text', 'text' => 'Chapter 1: A']]]) === 'Chapter 1: A', 'anthropic responses must parse');
 contract_check($developer->extractText('google', ['candidates' => [['content' => ['parts' => [['text' => 'Chapter 1: B']]]]]]) === 'Chapter 1: B', 'google responses must parse');

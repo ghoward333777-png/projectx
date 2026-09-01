@@ -71,6 +71,9 @@ $options = array_filter([
     'style' => argValue($args, 'style', 'conversational'),
 ], static fn (string $v): bool => $v !== '');
 $options['length'] = argValue($args, 'length', '250');
+$options['author_voice'] = (string) argValue($args, 'author-voice', '');
+$options['narrative_voice'] = (string) argValue($args, 'narrative-voice', 'third-person');
+$options['perspectives'] = array_values(array_filter(array_map('trim', explode(',', (string) argValue($args, 'perspectives', '')))));
 $outlineFile = argValue($args, 'outline');
 if ($outlineFile !== null) {
     is_file($outlineFile) || fail('Outline file not found: ' . $outlineFile);

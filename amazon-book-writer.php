@@ -26,6 +26,20 @@ $voiceName = trim((string) ($_POST['voice_name'] ?? $_GET['voice_name'] ?? ''));
 $cloneSamplePath = trim((string) ($_POST['clone_sample'] ?? $_GET['clone_sample'] ?? ''));
 $voiceConsent = (bool) ($_POST['voice_consent'] ?? $_GET['voice_consent'] ?? false);
 
+$authorVoice = trim((string) ($_POST['author_voice'] ?? $_GET['author_voice'] ?? $_SESSION['book_author_voice'] ?? ''));
+$narrativeVoice = trim((string) ($_POST['narrative_voice'] ?? $_GET['narrative_voice'] ?? $_SESSION['book_narrative_voice'] ?? 'third-person'));
+if (!isset(ManuscriptDeveloper::NARRATIVE_VOICES[$narrativeVoice])) {
+    $narrativeVoice = 'third-person';
+}
+$rawPerspectives = $_POST['perspectives'] ?? $_GET['perspectives'] ?? $_SESSION['book_perspectives'] ?? [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['perspectives'])) {
+    $rawPerspectives = [];
+}
+$perspectives = array_values(array_filter(
+    array_map('strval', is_array($rawPerspectives) ? $rawPerspectives : []),
+    static fn (string $factor): bool => isset(ManuscriptDeveloper::PERSPECTIVE_FACTORS[$factor]),
+));
+
 $audiobookVoice = [];
 if ($audiobookProvider === 'google' && $voiceName !== '') {
     $audiobookVoice['voice_name'] = $voiceName;
@@ -87,6 +101,9 @@ $options = [
     'audiobook_voice' => $audiobookVoice,
     'voice_consent' => $voiceConsent,
     'extra_media' => $extraMedia,
+    'author_voice' => $authorVoice,
+    'narrative_voice' => $narrativeVoice,
+    'perspectives' => $perspectives,
 ];
 if ($customChapters !== []) {
     $options['chapters'] = $customChapters;
@@ -112,7 +129,7 @@ foreach (ManuscriptDeveloper::KEY_ENV as $providerName => $envName) {
         break;
     }
 }
-$paramsHash = md5(json_encode([$topic, $reader, $style, $length, $customTocInput]));
+$paramsHash = md5(json_encode([$topic, $reader, $style, $length, $customTocInput, $authorVoice, $narrativeVoice, $perspectives]));
 $aiDeveloped = (array) ($_SESSION['ai_developed'][$paramsHash] ?? []);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_develop_chapter'])) {
@@ -156,6 +173,9 @@ if ($wantsResult) {
         $_SESSION['book_reader'] = $reader;
         $_SESSION['book_author'] = $author;
         $_SESSION['book_custom_toc'] = $customTocInput;
+        $_SESSION['book_author_voice'] = $authorVoice;
+        $_SESSION['book_narrative_voice'] = $narrativeVoice;
+        $_SESSION['book_perspectives'] = $perspectives;
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Every generation is a project: keep its TOC and manuscript record.
             try {
@@ -306,7 +326,9 @@ $downloadQuery = http_build_query(array_filter([
     'voice_consent' => $voiceConsent ? '1' : '',
     'companion_url' => $companionBaseUrl,
     'custom_toc' => $customTocInput,
-], static fn (string $value): bool => $value !== '') + ($extraMedia !== [] ? ['extra_media' => $extraMedia] : []));
+    'author_voice' => $authorVoice,
+    'narrative_voice' => $narrativeVoice,
+], static fn (string $value): bool => $value !== '') + ($extraMedia !== [] ? ['extra_media' => $extraMedia] : []) + ($perspectives !== [] ? ['perspectives' => $perspectives] : []));
 ?>
 <!doctype html>
 <html lang="en">
@@ -403,6 +425,38 @@ $downloadQuery = http_build_query(array_filter([
                         });
                     })();
                 </script>
+            </div>
+            <div style="grid-column: 1 / -1; border: 1px solid #4a4d61; border-radius: 12px; padding: 14px 16px 6px;">
+                <label style="margin-bottom: 10px;">Author's voice &amp; perspective — the AI writer must hold this voice exactly</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 14px;">
+                    <div>
+                        <label for="author_voice" style="font-weight: 400;">The author's voice, in your words</label>
+                        <input id="author_voice" name="author_voice" value="<?= htmlspecialchars($authorVoice, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. a retired engineer in his sixties, plain-spoken, wry, drawing on his own dating years">
+                    </div>
+                    <div>
+                        <label for="narrative_voice" style="font-weight: 400;">Narrative voice (grammatical person)</label>
+                        <select id="narrative_voice" name="narrative_voice">
+                            <?php foreach (['third-person' => 'Third person (he / she / they)', 'first-person' => 'First person (I)', 'first-person-plural' => 'First person plural (we)', 'second-person' => 'Second person (you)'] as $voiceId => $voiceLabel): ?>
+                                <option value="<?= $voiceId ?>" <?= $narrativeVoice === $voiceId ? 'selected' : '' ?>><?= htmlspecialchars($voiceLabel, ENT_QUOTES, 'UTF-8') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 2px 14px; margin-bottom: 12px;">
+                    <?php foreach ([
+                        'emotional-testimony' => 'Emotional testimony',
+                        'subjective-bias' => 'Openly subjective, argued point of view',
+                        'experiential' => 'Experiential — lived experience leads',
+                        'objective' => 'Objective and evidence-led',
+                        'highly-technical' => 'Highly technical',
+                        'detached-observant' => 'Detached and observant',
+                    ] as $factorId => $factorLabel): ?>
+                        <label style="font-weight: 400; display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+                            <input type="checkbox" name="perspectives[]" value="<?= $factorId ?>" style="width: auto; margin: 0;" <?= in_array($factorId, $perspectives, true) ? 'checked' : '' ?>>
+                            <span><?= htmlspecialchars($factorLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
             </div>
             <div>
                 <label for="author">Author name (as it appears on Amazon)</label>
