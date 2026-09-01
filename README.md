@@ -205,6 +205,49 @@ Synthesis is resumable (existing chunk files are skipped). Afterwards, join each
 section's chunks (ffmpeg concat) and master to ACX specs: 192 kbps CBR MP3,
 RMS −23…−18 dB, peaks ≤ −3 dB, 0.5–1 s of room tone at head and tail.
 
+## First run to finished prose: the AI Manuscript Developer
+
+Analysis of early book runs showed a clear gap: the engine's deterministic first
+draft is a set of **development directions** (an outline with per-chapter purpose
+and detail), while a finished book needs an AI writer to **execute** those
+directions. The Manuscript Developer closes that gap so a single first run ends
+in real book prose:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-…       # or GOOGLE_AI_API_KEY / OPENAI_API_KEY
+php bin/develop-manuscript.php \
+  --topic "Why men don't approach women" \
+  --author "Garry S. Howard" --style journalistic --length 250 \
+  --provider anthropic --out build/approach-book
+```
+
+One command runs all three passes and the assembly:
+
+1. **Pass 1 (engine)** — outline + per-chapter draft directions (deterministic).
+2. **Pass 2 (writer)** — one AI job per chapter follows its directions and
+   writes the finished prose under a shared style contract (no meta-language,
+   no fabricated statistics, a "The takeaway" closer, exact format rules).
+3. **Pass 3 (editor)** — one AI job per chapter sweeps for repetition against
+   its neighbors, smooths transitions, and enforces the contract.
+4. **Assembly** — the developed chapters flow back through the KDP pipeline:
+   figures, tables, the print contents page, Word + EPUB + HTML + metadata.
+
+Runs are resumable (existing chapter files are skipped), `--outline file.txt`
+uses your own table of contents, `--no-edit` skips pass 3, and without an API
+key the run still writes the complete **drafting kit** (every writer and editor
+prompt as JSON — also downloadable from the writer page) so the prompts can be
+executed with any AI tooling and re-assembled later. `writeBook()` accepts the
+finished texts directly via the `developed_chapters` option.
+
+## Book projects
+
+Every generation in the Amazon Book Writer is saved automatically as a project
+record under `projects/` — topic, options, table of contents, listing metadata,
+and the full manuscript text — and listed on the **Book projects** page
+(`book-projects.php`) with per-project view and JSON download. The developer
+CLI saves a record after every assembled run, so no outline or manuscript is
+ever lost.
+
 ## Run the contract tests
 
 ```bash

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/BookIntelligenceEngine.php';
 require_once __DIR__ . '/AudiobookProducer.php';
 require_once __DIR__ . '/IllustrationStudio.php';
+require_once __DIR__ . '/ManuscriptDeveloper.php';
 
 /**
  * Amazon Book Writer
@@ -62,7 +63,14 @@ final class AmazonBookWriter
         return $this->illustrations ??= new IllustrationStudio();
     }
 
+    public function manuscriptDeveloper(): ManuscriptDeveloper
+    {
+        return $this->developer ??= new ManuscriptDeveloper();
+    }
+
     private ?IllustrationStudio $illustrations = null;
+
+    private ?ManuscriptDeveloper $developer = null;
 
     /**
      * Parse a hand-written table of contents into editable chapter rows.
@@ -117,6 +125,12 @@ final class AmazonBookWriter
             (string) ($kit['blueprint']['positioning']['core_promise'] ?? ''),
             is_array($options['page_style'] ?? null) ? $options['page_style'] : [],
         );
+
+        // Developed prose (from the AI Manuscript Developer or pasted by the
+        // author) replaces the engine's draft directions chapter by chapter.
+        if (is_array($options['developed_chapters'] ?? null) && $options['developed_chapters'] !== []) {
+            $book = $this->manuscriptDeveloper()->applyDevelopedChapters($book, $options['developed_chapters']);
+        }
 
         $kdp = $this->buildKdpPackage($topic, $kit, $book, $options);
 

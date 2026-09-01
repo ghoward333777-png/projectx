@@ -33,6 +33,18 @@ as prose. Keep them intact in `BookIntelligenceEngine::composeExpandedChapterDra
 - **User-supplied outlines** via `AmazonBookWriter::parseOutline()` (one chapter per
   line, optional `| purpose | detail`) must keep flowing into `writeBook()` untouched.
 
+## Manuscript development (first run ends in prose)
+
+The engine draft is pass 1 — development directions, never the finished book.
+`ManuscriptDeveloper` + `bin/develop-manuscript.php` execute passes 2 (AI
+writer per chapter) and 3 (AI editor per chapter) and assemble the developed
+chapters back through the exporters; `writeBook()` accepts finished texts via
+`developed_chapters`. Keep the writer/editor prompts carrying the hard rules
+(real prose only, follow the draft directions, no fabricated precision, "The
+takeaway" closer, exact format contract). Default Anthropic model:
+`claude-opus-5`. `BookProjectStore` records every generation's TOC + manuscript
+under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI.
+
 ## Housekeeping
 
 - New app files must be added to `SitePackageExporter::FILES` or the hosting zip

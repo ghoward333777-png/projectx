@@ -76,7 +76,8 @@ foreach ($frameworkChapter['items'] as $item) {
         $worksheet = $item;
     }
 }
-contract_check($diagram !== null && str_contains($diagram['svg'], 'diagnose the situation'), 'diagram steps must come from the chapter\'s own instructions');
+contract_check($diagram !== null && stripos($diagram['svg'], 'diagnose the situation') !== false, 'diagram steps must come from the chapter\'s own material');
+contract_check(!str_contains(strtolower($diagram['caption']), 'this chapter'), 'diagram captions must describe the subject, not the writing plan');
 contract_check($worksheet !== null && str_contains(json_encode($worksheet['table']), 'Run a small test'), 'worksheet rows must come from the chapter\'s own criteria');
 $quote = null;
 foreach ($media['chapters'][0]['items'] as $item) {

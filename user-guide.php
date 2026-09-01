@@ -77,6 +77,12 @@
                 (today's state of affairs, how it used to be, the turning points, the evidence, the way forward),
                 while practical topics get a how-to arc. The built-in Nonfiction Outline Editor reviews whichever
                 outline you use and suggests improvements.</p>
+                <p><strong>Want finished prose on the first run?</strong> The quick draft is a development
+                plan. Run <code>php bin/develop-manuscript.php</code> with an AI API key and one command has an
+                AI writer develop every chapter, an AI editor polish it, and the finished book export itself —
+                or download the <em>AI drafting kit</em> from the results page to run the prompts anywhere.
+                Every generated book is also saved automatically on the <a href="book-projects.php">Book
+                projects</a> page, with its table of contents and full manuscript on record.</p>
             </div>
         </div>
         <div class="step">
