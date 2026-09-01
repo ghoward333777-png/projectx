@@ -38,6 +38,24 @@ final class ManuscriptDeveloper
         'openai' => 'OPENAI_API_KEY',
     ];
 
+    /** Narrative person options for the voice contract. */
+    public const NARRATIVE_VOICES = [
+        'third-person' => 'Third person — the narrator writes about people and events from outside ("he", "she", "they"); the author never says "I".',
+        'first-person' => 'First person singular — the author speaks as "I" throughout, telling, remembering, and arguing from their own standpoint.',
+        'first-person-plural' => 'First person plural — the author speaks as "we", placing themselves and the reader inside a shared experience.',
+        'second-person' => 'Second person — the text addresses the reader directly as "you" throughout.',
+    ];
+
+    /** Perspective factors that shape the voice contract. */
+    public const PERSPECTIVE_FACTORS = [
+        'emotional-testimony' => 'Emotional testimony: real feeling shows on the page — grief, anger, longing, hope — testified to honestly rather than reported at arm\'s length.',
+        'subjective-bias' => 'Openly subjective: the author holds a stated point of view and argues it with conviction; the text never pretends to neutrality.',
+        'experiential' => 'Experiential: lived experience carries the argument — scenes, memories, sensory detail, and firsthand observation before abstraction.',
+        'objective' => 'Objective and evidence-led: claims rest on evidence, presented plainly; personal feeling stays out of the way of the facts.',
+        'highly-technical' => 'Highly technical: precise terminology, mechanisms, and exact reasoning; assumes a reader who wants rigor over comfort.',
+        'detached-observant' => 'Detached and observant: a cool, watchful narrator who describes exactly what is there and lets the reader draw the conclusions.',
+    ];
+
     /**
      * The full development plan for a generated book: the style contract and
      * one writer + one editor job per chapter.
@@ -111,10 +129,26 @@ final class ManuscriptDeveloper
             $tocLines[] = ((int) ($chapter['number'] ?? 0)) . '. ' . (string) ($chapter['title'] ?? '');
         }
 
+        $voice = (array) ($book['voice'] ?? []);
+        $narrative = self::NARRATIVE_VOICES[(string) ($voice['narrative'] ?? '')] ?? self::NARRATIVE_VOICES['third-person'];
+        $voiceLines = ["- Narrative person: {$narrative} Hold this grammatical person in every paragraph of every chapter — never drift."];
+        foreach ((array) ($voice['perspectives'] ?? []) as $factor) {
+            if (isset(self::PERSPECTIVE_FACTORS[(string) $factor])) {
+                $voiceLines[] = '- ' . self::PERSPECTIVE_FACTORS[(string) $factor];
+            }
+        }
+        $authorVoice = trim((string) ($voice['author_voice'] ?? ''));
+        if ($authorVoice !== '') {
+            $voiceLines[] = "- The author's own voice, in their words: {$authorVoice}. Write as this person would write.";
+        }
+        $voiceLines[] = '- When these factors pull against each other, blend them deliberately — never abandon one.';
+
         return "You are one of a team of writers producing the finished prose of the book \"{$title}\" by {$author}.\n"
             . "The first draft was a set of development directions; your job is to FOLLOW those directions and write the real chapter — legitimate book text a reader would buy. Voice: {$styleLabel}. Reader: {$audience}.\n"
             . ($description !== '' ? "About the book: {$description}\n" : '')
             . "The chapters (stay in your lane — each theme belongs to its chapter):\n" . implode("\n", $tocLines) . "\n"
+            . "VOICE CONTRACT (a MUST — voice accuracy is a hard requirement of this book; no rule below overrides it):\n"
+            . implode("\n", $voiceLines) . "\n"
             . "HARD RULES:\n"
             . "1. Real prose only. Never write about outlines, drafts, plans, purposes, \"this chapter\", \"this book\", or how the text is built. The text discusses its subject — never the writing of it.\n"
             . "2. Follow the chapter's draft directions (its purpose and detail). Every element listed in the detail must appear, developed, in the chapter.\n"
@@ -160,7 +194,7 @@ final class ManuscriptDeveloper
             . "Edit for: (a) removing anything that reads as writing directions instead of book prose; (b) repetition of neighboring chapters' territory — "
             . ($previous !== null ? 'the previous chapter covered "' . (string) ($previous['title'] ?? '') . '"; ' : '')
             . ($next !== null ? 'the next chapter covers "' . (string) ($next['title'] ?? '') . '"; ' : '')
-            . "(c) a closing that hands off naturally to what follows; (d) hedging any too-precise statistic and removing any invented named expert or quote; (e) flab.\n"
+            . "(c) a closing that hands off naturally to what follows; (d) hedging any too-precise statistic and removing any invented named expert or quote; (e) flab; (f) ANY drift from the VOICE CONTRACT — the narrative person and perspective are a hard requirement, so rewrite any sentence that breaks them.\n"
             . ($previous !== null ? "The previous chapter closes with:\n{PREVIOUS_CLOSE}\n" : '')
             . ($next !== null ? "The next chapter opens with:\n{NEXT_OPEN}\n" : '')
             . "The drafted chapter:\n{CHAPTER_TEXT}";

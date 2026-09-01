@@ -126,6 +126,19 @@ final class AmazonBookWriter
             is_array($options['page_style'] ?? null) ? $options['page_style'] : [],
         );
 
+        // The voice contract travels with the book so every AI drafting pass
+        // holds it exactly — narrative person, perspective factors, and the
+        // author's own voice description.
+        $narrative = (string) ($options['narrative_voice'] ?? '');
+        $book['voice'] = [
+            'narrative' => isset(ManuscriptDeveloper::NARRATIVE_VOICES[$narrative]) ? $narrative : 'third-person',
+            'perspectives' => array_values(array_filter(
+                array_map('strval', (array) ($options['perspectives'] ?? [])),
+                static fn (string $factor): bool => isset(ManuscriptDeveloper::PERSPECTIVE_FACTORS[$factor]),
+            )),
+            'author_voice' => trim((string) ($options['author_voice'] ?? '')),
+        ];
+
         // Developed prose (from the AI Manuscript Developer or pasted by the
         // author) replaces the engine's draft directions chapter by chapter.
         if (is_array($options['developed_chapters'] ?? null) && $options['developed_chapters'] !== []) {
