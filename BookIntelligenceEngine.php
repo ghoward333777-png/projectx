@@ -834,81 +834,88 @@ final class BookIntelligenceEngine
         int $index,
     ): string {
         $chapterNumber = $index + 1;
-        $detailClauses = preg_split('/[,.;:]+|\band\b/i', $detail, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $topicLower = strtolower($topic);
+        $social = $this->isSocialTopic($topic) || $this->isApproachTopic($topic);
+        $detailClauses = preg_split('/[,.;:]+|\band\b|—/iu', $detail, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $detailClauses = array_values(array_filter(array_map('trim', $detailClauses), static fn (string $part): bool => strlen($part) > 12));
-        $focusTerms = array_values(array_unique(preg_split('/[^a-z0-9\'-]+/i', strtolower($title . ' ' . $purpose . ' ' . $detail), -1, PREG_SPLIT_NO_EMPTY) ?: []));
-        $sectionNames = [
-            'The question this chapter answers',
-            'What the reader must notice',
-            'The working model',
-            'A close look at the situation',
-            'Choices, trade-offs, and constraints',
-            'A practical test',
-            'When the idea breaks',
-            'Transfer to the reader’s world',
-            'Chapter synthesis',
-        ];
-        $actors = ['a first-time reader', 'a team lead', 'a skeptical practitioner', 'a person making the decision', 'a group reviewing the result'];
-        $lenses = [
-            'Start from the ordinary moment where this becomes visible.',
-            'Name the assumption that makes the problem harder than it first appears.',
-            'Separate the attractive explanation from the explanation that can survive a real test.',
-            'Look at the decision from the perspective of the person who carries its consequences.',
-            'Trace what changes when the idea meets limited time, attention, money, or authority.',
-            'Put the principle beside a plausible alternative and compare the trade-offs.',
-            'Ask what evidence would change the reader’s mind rather than merely confirm it.',
-            'Turn the idea into a sequence someone could actually try and review.',
-            'Carry the lesson forward without pretending that every context behaves the same way.',
-        ];
-        $styleFrames = [
-            'scholastic' => 'Explain the idea in a way that rewards careful learners and makes each new term earn its place.',
-            'journalistic' => 'Keep the human stakes visible, distinguish what is observed from what is inferred, and let the unanswered question pull the section forward.',
-            'scientific' => 'State the working claim, identify the variables, and be explicit about what the available reasoning can and cannot establish.',
-            'technical-it' => 'Translate the idea into inputs, decisions, failure paths, and an observable definition of done.',
-            'sarcastic' => 'Puncture the confident shortcut, then replace it with a test that can survive contact with reality.',
-            'humorous' => 'Let the situation be recognizable and lightly absurd, but make the reader’s next move unmistakably useful.',
-            'long-winded' => 'Give the context, the exceptions, and the implications enough room to become clear before arriving at the practical point.',
-            'bullet-points' => 'Make the reasoning modular, scannable, and easy to turn into a checklist without flattening the important nuance.',
-            'conversational' => 'Sound like a thoughtful guide who is beside the reader, not above them, and keep the next step concrete.',
-            'memoir' => 'Move between a lived moment, the meaning the moment revealed, and the wider pattern a reader can recognize in their own life.',
-            'executive' => 'Make the decision, consequence, evidence, and recommended next move easy to find.',
-            'poetic' => 'Use a precise image for the idea, then return to the practical signal the reader can notice and act on.',
-        ];
-        $voice = $styleFrames[$style] ?? $styleFrames['conversational'];
-        $analysis = $plan['analysis'];
-        $content = "Chapter {$chapterNumber}: {$title}\n\nEditorial development plan: {$analysis}\n\nThis chapter helps {$audience} understand how {$topic} connects to the larger promise to " . strtolower($promise) . ". Its specific job is to " . strtolower($purpose) . ". The chapter will not treat the title as a slogan: it will develop the instruction in the outline—{$detail}";
+        if ($detailClauses === []) {
+            $detailClauses = [trim($detail) !== '' ? trim($detail) : $title];
+        }
+        // The outline speaks to the writer in imperatives ("Follow the war as…",
+        // "Show who is living with…"). The finished prose must speak about the
+        // subject itself, so strip the instruction verb off each clause.
+        $subject = static function (string $clause): string {
+            $clause = trim($clause);
+            $clause = (string) preg_replace('/^(follow|describe|examine|show|explain|trace|document|chart|weigh|explore|contrast|tell|assemble|recreate|tally|review|profile|identify|cover|include|use|offer|give|ask|clarify|compare|separate|treat|distinguish|name|count|find|measure|widen|replace|ground|mark|argue for|open with|start with|lay out|look at|bring in|be honest about|be candid about|let|keep|make|move|put|add|end with|close with|hold|watch|note|noting)\b\s*(?:how\s+|that\s+|why\s+|whether\s+)?/iu', '', $clause, 1);
+            return trim($clause);
+        };
+        $trimTrailingStopwords = static function (string $value): string {
+            $words = preg_split('/\s+/u', trim($value)) ?: [];
+            $stop = ['the', 'a', 'an', 'of', 'to', 'in', 'and', 'that', 'as', 'for', 'with', 'on', 'was', 'were', 'had', 'their', 'its', 'his', 'her', 'or', 'by', 'at'];
+            while ($words !== [] && in_array(strtolower((string) end($words)), $stop, true)) {
+                array_pop($words);
+            }
+            return implode(' ', $words);
+        };
+        $up = static fn (string $v): string => mb_strtoupper(mb_substr(trim($v), 0, 1)) . mb_substr(trim($v), 1);
+        // Lowercase a clause's first word for mid-sentence use, but only when it
+        // is a common function word — never a proper noun.
+        $mid = static function (string $v): string {
+            $first = strtolower((string) (preg_split('/\s+/u', trim($v)) ?: [''])[0]);
+            $safe = ['the', 'a', 'an', 'his', 'her', 'their', 'what', 'how', 'why', 'when', 'who', 'where', 'some', 'many', 'most', 'few', 'each', 'every', 'one', 'both', 'not', 'more', 'first', 'young', 'men', 'women', 'couples', 'marriage', 'families', 'people'];
+            return in_array($first, $safe, true) ? mb_strtolower(mb_substr(trim($v), 0, 1)) . mb_substr(trim($v), 1) : trim($v);
+        };
+        $heading = function (string $clause) use ($subject, $trimTrailingStopwords): string {
+            $clause = $subject($clause);
+            if (mb_strlen($clause) > 52) {
+                $clause = mb_substr($clause, 0, 52);
+                $cut = mb_strrpos($clause, ' ');
+                if ($cut !== false && $cut > 20) {
+                    $clause = mb_substr($clause, 0, $cut);
+                }
+            }
+            $clause = $trimTrailingStopwords($clause);
+            return mb_strtoupper(mb_substr($clause, 0, 1)) . mb_substr($clause, 1);
+        };
+        $actors = $social
+            ? ['a young man of twenty-three', 'his grandfather at the same age', "a mother comparing her daughter's life with her own", 'a couple who met the old way', 'a woman who wonders why nobody asks anymore']
+            : ['a newcomer to the field', 'a veteran who has seen the pattern before', 'a person carrying the decision alone', 'a team living with last year\'s choice', 'someone about to try it for the first time'];
+
+        $short1 = $mid($subject($detailClauses[0]));
+        $shortLast = $mid($subject($detailClauses[count($detailClauses) - 1]));
+        $content = "Chapter {$chapterNumber}: {$title}"
+            . "\n\n" . "{$title} is not a side story in {$topicLower}; it is one of the hinges on which the whole account turns. The pages ahead follow it from {$short1} to {$shortLast}, and end with what it changed for {$audience}."
+            . "\n\n" . 'Everything in it happened to real people in real years. That is why the discussion stays concrete throughout: each piece of the story is examined on its own terms first, and only then are the threads pulled together.';
         $currentWords = $this->wordCount($content);
         $beat = 0;
+        $paragraphsPerSection = 5;
 
         while ($currentWords < $plan['word_count']) {
-            $section = '';
-            if ($beat % 6 === 0) {
-                $section = "\n\n" . $sectionNames[(int) floor($beat / 6) % count($sectionNames)] . "\n";
+            $clause = $detailClauses[(int) floor($beat / $paragraphsPerSection) % count($detailClauses)];
+            $focus = $mid($subject($clause));
+            if ($beat % $paragraphsPerSection === 0) {
+                $section = "\n\n" . $heading($clause) . "\n";
                 $content .= $section;
                 $currentWords += $this->wordCount($section);
             }
-            $focus = $detailClauses !== []
-                ? $detailClauses[$beat % count($detailClauses)]
-                : ($focusTerms[$beat % max(1, count($focusTerms))] ?? $topic);
             $actor = $actors[$beat % count($actors)];
-            $lens = $lenses[$beat % count($lenses)];
             $paragraph = match ($beat % 8) {
-                0 => "In “{$title},” that means {$focus}. The chapter’s purpose—" . strtolower($purpose) . "—is clearest when {$actor} can point to a concrete situation, name the pressure involved, and see why this chapter chooses one response over another. {$voice} The useful question is not whether the idea sounds right in isolation; it is what the idea changes in the next decision.",
-                1 => "{$actor} arrives here with a working theory about {$focus}. Test that theory against the chapter’s central claim: {$purpose}. A good explanation follows the sequence from context to choice to consequence, so the reader can see where the outcome was shaped and where a different move might have been possible. {$voice} Keep the example bounded enough to inspect, but rich enough to reveal the trade-off.",
-                2 => "The detail in this outline is a design constraint, not filler: {$focus}. Develop it by asking what must be true before the recommendation works, what signal would show progress, and what would count as a warning. {$lens} This keeps “{$title}” attached to practice rather than drifting into general advice. {$voice} The reader should leave this passage with a clearer vocabulary and a testable next move.",
-                3 => "A chapter earns its space by changing the reader’s ability to notice. Here, the change begins with {$focus}. Compare the easy interpretation with the more useful one, then show how {$actor} could respond without requiring perfect information. {$lens} Because the purpose is to " . strtolower($purpose) . ", the example must include a consequence, not just an attractive idea. {$voice}",
-                4 => "Now examine the edge of the argument. If {$focus} is treated as a universal answer, where could it fail? Name the condition, the cost, and the adaptation that keeps the underlying lesson intact. {$lens} That counterexample strengthens “{$title}” because it tells {$actor} when to use the framework and when to slow down. {$voice} Precision here is more valuable than confidence.",
-                5 => "Turn the discussion into a small rehearsal. Ask {$actor} to describe the current situation, choose one observable outcome, run one limited move, and review what happened. The rehearsal is grounded in {$focus} and points back to the chapter’s purpose: " . strtolower($purpose) . ". {$voice} The result is not a promise of certainty; it is a better way to learn from the next attempt.",
-                6 => "The reader can now connect the local lesson to the wider book. {$title} matters because it makes {$topic} more usable for {$audience}, especially when {$focus}. Bring forward the decision rule, the evidence to collect, and the question that should remain open. {$lens} {$voice} This is how the chapter contributes to the promise rather than merely repeating it.",
-                default => "Before moving on, pause over the tension between speed and care, simplicity and accuracy, or ambition and constraint. In this chapter that tension appears through {$focus}. Let {$actor} see both sides, decide what the present context requires, and record what would justify changing course. {$lens} {$voice}",
+                0 => "Consider {$focus}. It is one of the clearest windows into {$topicLower}, because it shows the pattern at the scale of a single life rather than a statistic. Look closely and the outline of the larger change is already visible there: what people wanted, what they feared, and what they quietly stopped doing.",
+                1 => 'It did not happen all at once. ' . $up($focus) . ' arrived the way most social change arrives — gradually, then suddenly, carried by people who were mostly responding to the pressures directly in front of them. Few of them thought of themselves as changing anything. They took the option that made sense that year, and the accumulation of those private choices became the public pattern.',
+                2 => "Put a face on it. Picture {$actor}: {$focus} is not an abstraction to them but an ordinary evening, a paycheck, a conversation that did or did not happen. Multiply that one evening by millions of households and the statistics stop being surprising. The pattern holds because the incentives hold, one person at a time.",
+                3 => "The contrast with what came before is the point. A generation earlier, {$focus} would have been arranged differently — different expectations, different manners, different consequences for getting it wrong. Setting the two eras side by side does more than stir nostalgia; it isolates exactly which supports were removed and which pressures were added, and that is where the explanation lives.",
+                4 => "The evidence is not subtle. Wherever records exist — surveys, censuses, diaries, the plain testimony of people who lived through it — they point the same direction on {$focus}. Honest observers can argue about weight and emphasis, and those arguments deserve daylight, but the direction of the change is not seriously in dispute.",
+                5 => 'There is a cost column too. ' . $up($focus) . " did not only change habits; it changed what people could reasonably hope for, and {$audience} live with the results. Some of the losses were priced in and accepted with open eyes. Others arrived unannounced, years later, in forms nobody had agreed to — and those are the ones that demand attention.",
+                6 => 'None of this requires a villain. ' . $up($focus) . ' was built out of understandable decisions made by people with real constraints, and honesty means keeping their good faith on the page. But good faith does not cancel consequences. Both belong in the record, described without flinching from either.',
+                default => "And what follows from it? If {$focus} explains part of the present, it also hints at what could be different. Not everything can be rebuilt, and pretending otherwise would be its own dishonesty — but the forces that produced the change have not vanished. They are simply pointed in a different direction now, and what was moved once can be moved again.",
             };
             $content .= "\n\n{$paragraph}";
             $currentWords += $this->wordCount($paragraph);
             $beat++;
         }
 
-        $closing = "\n\nChapter synthesis\n\nThe durable takeaway from “{$title}” is connected to its stated purpose: {$purpose}. A reader who can apply the detail—{$detail}—has a stronger path toward the larger promise of " . strtolower($promise) . '.';
-        // Reserve room for the synthesis so the word-target trim never cuts it off.
+        $closing = "\n\nThe takeaway\n\n" . $up($shortLast) . " is where this part of the story leaves off, and the rest of the book keeps meeting its consequences. Hold on to the thread that runs through {$title}: it began with {$short1}, and it is not finished yet.";
+        // Reserve room for the takeaway so the word-target trim never cuts it off.
         $body = $this->trimToWordTarget($content, max(1, $plan['word_count'] - $this->wordCount($closing)));
         return $body . $closing;
     }

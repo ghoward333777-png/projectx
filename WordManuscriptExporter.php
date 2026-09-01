@@ -247,13 +247,15 @@ final class WordManuscriptExporter
         $body .= $this->pageBreakParagraph();
 
         $body .= $this->paragraph('Contents', 'Heading2');
+        $tocTab = self::PAGE_WIDTH - 2 * self::PAGE_MARGIN;
         foreach ((array) ($book['table_of_contents'] ?? []) as $entry) {
             $n = (int) ($entry['number'] ?? 0);
-            // Clickable contents: internal hyperlink to the chapter bookmark.
-            $body .= '<w:p><w:pPr><w:ind w:firstLine="0"/></w:pPr><w:hyperlink w:anchor="chapter' . $n . '" w:history="1">'
-                . '<w:r><w:rPr><w:color w:val="1F4E79"/><w:u w:val="single"/></w:rPr>'
-                . '<w:t xml:space="preserve">' . $n . '. ' . $this->escape((string) ($entry['title'] ?? '')) . '</w:t></w:r>'
-                . '</w:hyperlink></w:p>';
+            $page = (int) ($entry['page_number'] ?? 0);
+            // Standard print contents row: plain text, dot leader, page number.
+            $body .= '<w:p><w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="' . $tocTab . '"/></w:tabs><w:ind w:firstLine="0"/></w:pPr>'
+                . '<w:r><w:t xml:space="preserve">' . $n . '. ' . $this->escape((string) ($entry['title'] ?? '')) . '</w:t></w:r>'
+                . '<w:r><w:tab/><w:t xml:space="preserve">' . $page . '</w:t></w:r>'
+                . '</w:p>';
         }
 
         $figureCounter = 0;

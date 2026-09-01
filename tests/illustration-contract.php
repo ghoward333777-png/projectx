@@ -84,7 +84,7 @@ foreach ($media['chapters'][0]['items'] as $item) {
         $quote = $item;
     }
 }
-contract_check($quote !== null && str_contains($quote['svg'], 'takeaway'), 'the illustration must carry the chapter\'s takeaway');
+contract_check($quote !== null && $quote['title'] === 'The takeaway' && str_contains($quote['svg'], 'leaves off'), 'the illustration must carry the chapter\'s takeaway');
 
 // --- User-added media -------------------------------------------------------
 $chapter2 = $media['chapters'][1];
@@ -166,6 +166,7 @@ unlink($tmp);
 contract_check(str_contains($documentXml, 'Figure 1.1'), 'Word export must carry figure captions');
 contract_check(str_contains($documentXml, 'svgBlip'), 'Word export must embed the SVG figures as drawings');
 contract_check(str_contains($documentXml, '<w:tbl>'), 'Word export must render media tables as native Word tables');
-contract_check(str_contains($documentXml, '<w:hyperlink w:anchor="chapter1"'), 'Word contents must link to chapter bookmarks');
+contract_check(!str_contains($documentXml, '<w:hyperlink'), 'Word contents must use standard text, not hyperlinks');
+contract_check(str_contains($documentXml, '<w:tab w:val="right" w:leader="dot"'), 'Word contents must carry a dot-leader tab for page numbers');
 
 fwrite(STDOUT, "Illustration studio contract passed\n");
