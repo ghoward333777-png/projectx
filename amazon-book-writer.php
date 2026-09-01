@@ -798,6 +798,13 @@ $downloadQuery = http_build_query(array_filter([
 
         <section>
             <div class="eyebrow">Manuscript preview · <?= count((array) $book['chapters']) ?> chapters</div>
+            <?php if ($aiProvider !== null && $developedCount >= $chapterTotal && $chapterTotal > 0): ?>
+                <p class="note" style="color: #7ee2a8;">✅ Finished prose — every chapter below was written by the AI writer under the voice contract.</p>
+            <?php elseif ($aiProvider !== null): ?>
+                <div class="error" style="background: #3a2f16; border-color: #7a6337; color: #ffd9a0;">✍️ The AI writer is producing the finished prose now (<?= (int) $developedCount ?> of <?= (int) $chapterTotal ?> chapters done) — the chapters below are still the development plan until the page refreshes with the complete book. Don't export yet.</div>
+            <?php else: ?>
+                <div class="error">⚠️ What follows is the DEVELOPMENT PLAN — draft directions addressed to a writer, NOT book text, and downloads made now would carry it. Configure an AI key on the server (or run <code>php bin/develop-manuscript.php</code>) and generate again to get the finished book on the first run.</div>
+            <?php endif; ?>
             <ul>
                 <?php foreach ((array) $book['table_of_contents'] as $entry): ?>
                     <li><strong><?= (int) $entry['number'] ?>. <?= htmlspecialchars((string) $entry['title'], ENT_QUOTES, 'UTF-8') ?></strong> — <?= (int) $entry['page_count'] ?> planned pages</li>
