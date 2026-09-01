@@ -145,6 +145,14 @@ contract_check($rows[1]['purpose'] === 'Show the rupture' && str_contains($rows[
 $custom = $writer->writeBook("Why men don't approach women", ['chapters' => $rows, 'length' => 12]);
 contract_check(count($custom['book']['chapters']) === 3 && $custom['book']['chapters'][0]['title'] === $rows[0]['title'], 'writeBook must draft from the author-supplied outline');
 
+// --- Manuscript quality: the prose follows the plan, never recites it -------
+$approachBook = $writer->writeBook("Why men don't approach women", ['author' => 'Garry S. Howard', 'style' => 'journalistic', 'length' => 30]);
+$allProse = implode("\n", array_column($approachBook['book']['chapters'], 'content'));
+foreach (['Editorial development plan', 'design constraint', 'this chapter helps', 'the instruction in the outline', 'chapter’s purpose', 'develop the instruction'] as $meta) {
+    contract_check(stripos($allProse, $meta) === false, "manuscript prose must never carry meta rhetoric: {$meta}");
+}
+contract_check(str_contains($allProse, "\nThe takeaway\n"), 'every manuscript must close chapters with a takeaway section');
+
 // --- Nonfiction Outline Editor ---------------------------------------------
 $review = $engine->reviewOutline("Why men don't approach women", $approachToc);
 contract_check($review['agent']['name'] === 'The Nonfiction Outline Editor', 'outline review must come from the editor agent');
