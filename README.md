@@ -56,6 +56,40 @@ package) and produces everything the KDP setup screens ask for:
 All prices and royalties are directional planning estimates from published KDP rate
 cards — confirm live numbers inside KDP before publishing.
 
+## How chapters are composed (the manuscript-quality fix)
+
+Early drafts had a serious defect: the chapter composer printed its *editorial plan* as
+if it were the manuscript. Chapters opened with "Editorial development plan: …" and
+filled their sections with instructions about how to write the chapter ("develop the
+instruction in the outline", "the detail in this outline is a design constraint").
+The plan was passed off as the book. That has been fixed, and the fix is a set of
+composition rules the engine now enforces — they greatly improved manuscript quality
+and must be preserved in any future change to `composeExpandedChapterDraft()`:
+
+1. **The prose follows the plan; it never recites it.** No chapter may contain
+   meta-language about outlines, purposes, drafting, or "this chapter will…". The
+   contract tests fail if "Editorial development plan" ever reappears.
+2. **The outline's instruction verbs are stripped.** Outline details speak to the
+   writer in imperatives ("Follow the war as…", "Show who is living with…"). The
+   composer removes the leading verb so the text discusses the subject itself
+   ("the Second World War as men shipped overseas…").
+3. **Section headings come from the chapter's own material** — each detail clause
+   becomes a section developed across five discussion paragraphs (the phenomenon
+   stated concretely, how it arrived, a human face on it, the contrast with the era
+   before, the evidence, the costs, what follows). No generic scaffold headings.
+4. **Every chapter closes with "The takeaway"** — one concrete closing thought that
+   the pull-quote figure and the Quality Lab takeaway metric both read.
+5. **Outlines are genre-aware.** Social and cultural topics get a narrated-history
+   table of contents built on the social-science method — document the current state,
+   contrast the past, deconstruct the origins, support with evidence, propose
+   solutions — with chapters named for eras, events, and actors (never "systems" or
+   "frameworks"). Practical topics keep a how-to arc. Authors can also paste their
+   own table of contents, and the Nonfiction Outline Editor agent scores every
+   outline against 12 machine-checkable editorial rules.
+6. **The Word contents page is standard print style** — plain text rows with dot
+   leaders and page numbers from the book's page plan, no hyperlinks (invisible
+   chapter bookmarks keep Word's navigation pane working).
+
 ## Editions: Kindle, paperback, hardcover, audiobook
 
 The KDP package now plans all four editions of the same title:
