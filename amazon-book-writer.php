@@ -101,6 +101,49 @@ if ($hardcoverPriceInput !== '' && is_numeric($hardcoverPriceInput)) {
     $options['hardcover_price'] = (float) $hardcoverPriceInput;
 }
 
+// --- First-run AI prose -----------------------------------------------------
+// With an AI key configured, the generation run itself develops every chapter
+// into finished prose (the browser drives one request per chapter; results are
+// held in the session per parameter set and injected into writeBook below).
+$aiProvider = null;
+foreach (ManuscriptDeveloper::KEY_ENV as $providerName => $envName) {
+    if ((string) getenv($envName) !== '') {
+        $aiProvider = $providerName;
+        break;
+    }
+}
+$paramsHash = md5(json_encode([$topic, $reader, $style, $length, $customTocInput]));
+$aiDeveloped = (array) ($_SESSION['ai_developed'][$paramsHash] ?? []);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_develop_chapter'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        $aiProvider !== null || throw new RuntimeException('No AI key configured on the server.');
+        $chapterNumber = max(1, (int) $_POST['ai_develop_chapter']);
+        $clean = $writer->writeBook($topic, $options);
+        $plan = $writer->manuscriptDeveloper()->developmentPlan($clean['book'], $clean['kdp']['metadata'], $aiProvider);
+        $job = null;
+        foreach ($plan['writer_jobs'] as $candidate) {
+            if ((int) $candidate['chapter'] === $chapterNumber) {
+                $job = $candidate;
+            }
+        }
+        $job !== null || throw new RuntimeException('No such chapter: ' . $chapterNumber);
+        $text = $writer->manuscriptDeveloper()->developChapterText($aiProvider, $job, (string) getenv(ManuscriptDeveloper::KEY_ENV[$aiProvider]), 2);
+        $_SESSION['ai_developed'][$paramsHash][$chapterNumber] = $text;
+        preg_match_all('/\S+/u', $text, $m);
+        echo json_encode(['ok' => true, 'chapter' => $chapterNumber, 'words' => count($m[0]), 'total' => count($plan['writer_jobs']), 'done' => count((array) $_SESSION['ai_developed'][$paramsHash])]);
+    } catch (Throwable $exception) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $exception->getMessage()]);
+    }
+    exit;
+}
+
+if ($aiDeveloped !== []) {
+    $options['developed_chapters'] = $aiDeveloped;
+}
+
 $error = null;
 $result = null;
 $download = trim((string) ($_GET['download'] ?? ''));
@@ -465,6 +508,54 @@ $downloadQuery = http_build_query(array_filter([
         <?php $kdp = $result['kdp']; $meta = $kdp['metadata']; $book = $result['book']; $outlineReview = $result['outline_review'] ?? null; ?>
         <?php if (($savedProjectId ?? null) !== null): ?>
             <p class="note">💾 Project saved — the table of contents and full manuscript are on record as <strong><?= htmlspecialchars((string) $savedProjectId, ENT_QUOTES, 'UTF-8') ?></strong>. Find every book on the <a href="book-projects.php">Book projects</a> page.</p>
+        <?php endif; ?>
+
+        <?php $chapterTotal = count((array) $book['chapters']); $developedCount = count($aiDeveloped); ?>
+        <?php if ($aiProvider !== null && $developedCount >= $chapterTotal && $chapterTotal > 0): ?>
+            <p class="note">✍️ <strong>AI-developed prose</strong> — all <?= $chapterTotal ?> chapters were written by the AI writer (<?= htmlspecialchars($aiProvider, ENT_QUOTES, 'UTF-8') ?>) on this run. Every export below carries the finished book text.</p>
+        <?php elseif ($aiProvider !== null): ?>
+            <section id="ai-progress-panel">
+                <div class="eyebrow">First-run AI prose</div>
+                <h2 id="ai-progress-title">Writing the book…</h2>
+                <p class="note" id="ai-progress-note">The outline below is ready. The AI writer (<?= htmlspecialchars($aiProvider, ENT_QUOTES, 'UTF-8') ?>) is now developing each chapter's draft directions into finished prose — the page refreshes with the complete book when it's done.</p>
+                <p id="ai-progress" style="font-weight:700">Starting…</p>
+                <button type="button" id="ai-stop" style="background:#3a2a2a;border:1px solid #5a3a3a;color:#f0c0c0;border-radius:9px;padding:8px 14px;cursor:pointer">Stop (keep chapters written so far)</button>
+            </section>
+            <script>
+                (function () {
+                    var total = <?= (int) $chapterTotal ?>;
+                    var done = <?= (int) $developedCount ?>;
+                    var words = 0;
+                    var stopped = false;
+                    var form = document.querySelector('form');
+                    document.getElementById('ai-stop').addEventListener('click', function () { stopped = true; this.disabled = true; });
+                    function finish() {
+                        document.getElementById('ai-progress').textContent = 'Applying the developed prose…';
+                        form.requestSubmit ? form.requestSubmit() : form.submit();
+                    }
+                    function next(chapter) {
+                        if (stopped || chapter > total) { finish(); return; }
+                        document.getElementById('ai-progress').textContent = 'Writing chapter ' + chapter + ' of ' + total + '…' + (words ? ' (' + words.toLocaleString() + ' words so far)' : '');
+                        var data = new FormData(form);
+                        data.set('ai_develop_chapter', String(chapter));
+                        fetch('amazon-book-writer.php', { method: 'POST', body: data })
+                            .then(function (r) { return r.json(); })
+                            .then(function (info) {
+                                if (!info.ok) { throw new Error(info.error || 'development failed'); }
+                                words += info.words | 0;
+                                done = info.done | 0;
+                                next(chapter + 1);
+                            })
+                            .catch(function (e) {
+                                document.getElementById('ai-progress').textContent = 'Stopped at chapter ' + chapter + ': ' + e.message + ' — chapters already written are kept; regenerate to continue.';
+                                document.getElementById('ai-stop').disabled = true;
+                            });
+                    }
+                    next(done + 1);
+                })();
+            </script>
+        <?php else: ?>
+            <p class="note">✍️ Want finished prose on the first run? Configure an AI key on the server (<?= htmlspecialchars(implode(', ', ManuscriptDeveloper::KEY_ENV), ENT_QUOTES, 'UTF-8') ?>) and the generate button will write every chapter automatically — or run <code>php bin/develop-manuscript.php</code>, or use the AI drafting kit download below.</p>
         <?php endif; ?>
 
         <?php if ($outlineReview !== null): ?>

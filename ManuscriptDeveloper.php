@@ -242,6 +242,92 @@ final class ManuscriptDeveloper
     }
 
     /**
+     * Execute one request spec against its provider. The API key replaces the
+     * `{ENV_NAME}` placeholder in the headers at send time. Dependency-free:
+     * uses ext-curl when present, PHP's HTTPS stream wrapper otherwise.
+     *
+     * @param array<string, mixed> $spec Output of requestSpec().
+     * @return array<string, mixed> Decoded JSON response.
+     */
+    public function send(array $spec, string $key, int $attempts = 4): array
+    {
+        $payload = json_encode((array) ($spec['body'] ?? []), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($payload === false) {
+            throw new RuntimeException('Could not encode the request body.');
+        }
+        $headerLines = [];
+        foreach ((array) ($spec['headers'] ?? []) as $name => $value) {
+            $headerLines[] = $name . ': ' . preg_replace('/\{[A-Z_]+\}/', $key, (string) $value);
+        }
+        $url = (string) ($spec['endpoint'] ?? '');
+        $attempt = 0;
+        while (true) {
+            $attempt++;
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => $payload,
+                    CURLOPT_HTTPHEADER => $headerLines,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 600,
+                ]);
+                $raw = curl_exec($ch);
+                $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                $error = (string) curl_error($ch);
+                curl_close($ch);
+            } else {
+                $context = stream_context_create(['http' => [
+                    'method' => 'POST',
+                    'header' => implode("\r\n", $headerLines),
+                    'content' => $payload,
+                    'timeout' => 600,
+                    'ignore_errors' => true,
+                ]]);
+                $raw = @file_get_contents($url, false, $context);
+                $status = 0;
+                foreach ($http_response_header ?? [] as $line) {
+                    if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m) === 1) {
+                        $status = (int) $m[1];
+                    }
+                }
+                $error = $raw === false ? 'connection failed' : '';
+            }
+            if ($raw !== false && $status >= 200 && $status < 300) {
+                $decoded = json_decode((string) $raw, true);
+                if (is_array($decoded)) {
+                    return $decoded;
+                }
+                $error = 'response was not JSON';
+            }
+            $retryable = $raw === false || $status === 429 || $status >= 500;
+            if ($attempt >= $attempts || !$retryable) {
+                throw new RuntimeException('API call failed (HTTP ' . $status . ($error !== '' ? ', ' . $error : '') . '): ' . substr((string) $raw, 0, 400));
+            }
+            sleep(2 ** $attempt);
+        }
+    }
+
+    /**
+     * Develop one chapter now: send its writer job and return the prose,
+     * with the chapter heading guaranteed on the first line.
+     *
+     * @param array<string, mixed> $job A writer_jobs entry from developmentPlan().
+     */
+    public function developChapterText(string $provider, array $job, string $key, int $attempts = 4): string
+    {
+        $response = $this->send((array) $job['request'], $key, $attempts);
+        $text = $this->extractText($provider, $response);
+        if ($text === '') {
+            throw new RuntimeException('The AI writer returned no text for chapter ' . (int) ($job['chapter'] ?? 0) . '.');
+        }
+        if (!str_starts_with(trim($text), 'Chapter ')) {
+            $text = 'Chapter ' . (int) ($job['chapter'] ?? 0) . ': ' . (string) ($job['title'] ?? '') . "\n\n" . trim($text);
+        }
+        return trim($text);
+    }
+
+    /**
      * Swap developed chapter texts into a generated book: content, blocks,
      * word counts, page counts, and the contents page numbers all recompute.
      *
