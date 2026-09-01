@@ -71,6 +71,12 @@
             <div><strong>Type your topic.</strong>
                 <p>Open <a href="amazon-book-writer.php">the Amazon Book Writer</a> and fill in your book topic
                 (for example, “Jobs and work for teens”), who it's for, and your author name.</p>
+                <p>Know how your book should flow? Type your own table of contents in the outline box —
+                one chapter per line — and the studio writes the book to <em>your</em> plan. Leave it empty and
+                the studio suggests an outline instead: social and cultural topics get a narrated-history arc
+                (today's state of affairs, how it used to be, the turning points, the evidence, the way forward),
+                while practical topics get a how-to arc. The built-in Nonfiction Outline Editor reviews whichever
+                outline you use and suggests improvements.</p>
             </div>
         </div>
         <div class="step">
