@@ -154,15 +154,20 @@ final class IllustrationStudio
         // manuscript exports until the real image is generated.
         $items[] = $this->aiImageItem($number, $title, $chapter, $metadata);
 
-        // Diagram: the chapter's own instructions, drawn as steps.
+        // Diagram: the chapter's ground drawn as a step flow — subjects, never
+        // the outline's writer-facing instructions.
         if (count($clauses) >= 3) {
+            $steps = array_map(
+                fn (string $clause): string => mb_strtoupper(mb_substr($this->subjectClause($clause), 0, 1)) . mb_substr($this->subjectClause($clause), 1),
+                $clauses,
+            );
             $items[] = [
                 'id' => 'ch' . $number . '-diagram',
                 'kind' => 'diagram',
-                'title' => $this->titleShort($title) . ', step by step',
-                'caption' => 'The moves this chapter walks through: ' . strtolower((string) ($chapter['purpose'] ?? 'the chapter\'s plan')) . '.',
+                'title' => $this->titleShort($title) . ' at a glance',
+                'caption' => 'The ground covered here: ' . $this->subjectClause((string) ($chapter['purpose'] ?? $title)) . '.',
                 'after_section' => $sections !== [] ? $sections[0]['title'] : 'Opening',
-                'svg' => $this->renderDiagram($clauses, $title),
+                'svg' => $this->renderDiagram($steps, $title),
             ];
         }
 
@@ -236,6 +241,17 @@ final class IllustrationStudio
     {
         $clauses = preg_split('/[,.;:]+|\band\b/i', $detail, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         return array_values(array_filter(array_map('trim', $clauses), static fn (string $part): bool => mb_strlen($part) > 12));
+    }
+
+    /**
+     * Convert a writer-facing instruction clause into the subject it names —
+     * the same verb-stripping rule the chapter composer applies to prose.
+     */
+    private function subjectClause(string $clause): string
+    {
+        $clause = trim($clause);
+        $clause = (string) preg_replace('/^(follow|describe|examine|show|explain|trace|document|chart|weigh|explore|contrast|tell|assemble|recreate|tally|review|profile|identify|cover|include|use|offer|give|ask|clarify|compare|separate|treat|distinguish|name|count|find|measure|widen|replace|ground|mark|argue for|open with|start with|lay out|look at|bring in|be honest about|be candid about|let|keep|make|move|put|add|end with|close with|hold|watch|note|noting)\b\s*(?:how\s+|that\s+|why\s+|whether\s+)?/iu', '', $clause, 1);
+        return trim($clause);
     }
 
     /** The chapter's closing takeaway sentence, if the draft carries one. */

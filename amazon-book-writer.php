@@ -6,6 +6,7 @@ require_once __DIR__ . '/AmazonBookWriter.php';
 require_once __DIR__ . '/WordManuscriptExporter.php';
 require_once __DIR__ . '/EpubExporter.php';
 require_once __DIR__ . '/PrintMediaCompanion.php';
+require_once __DIR__ . '/BookProjectStore.php';
 
 session_start();
 
@@ -112,6 +113,14 @@ if ($wantsResult) {
         $_SESSION['book_reader'] = $reader;
         $_SESSION['book_author'] = $author;
         $_SESSION['book_custom_toc'] = $customTocInput;
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // Every generation is a project: keep its TOC and manuscript record.
+            try {
+                $savedProjectId = (new BookProjectStore())->save($topic, $options, $result);
+            } catch (Throwable) {
+                $savedProjectId = null; // a read-only host must not break generation
+            }
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
@@ -175,6 +184,15 @@ if ($result !== null && $download === 'word') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Content-Length: ' . strlen($bytes));
     echo $bytes;
+    exit;
+}
+
+if ($result !== null && $download === 'drafting-kit') {
+    $plan = $writer->manuscriptDeveloper()->developmentPlan($result['book'], $result['kdp']['metadata'], in_array($_GET['ai_provider'] ?? '', ManuscriptDeveloper::PROVIDERS, true) ? (string) $_GET['ai_provider'] : 'anthropic');
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic)) . '-drafting-kit.json';
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo json_encode($plan, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -301,7 +319,8 @@ $downloadQuery = http_build_query(array_filter([
         <div>
             <a href="index.php">← Back to intelligence kit</a><br>
             <a href="user-guide.php">User guide</a><br>
-            <a href="book-lab.php">Book Development Lab</a>
+            <a href="book-lab.php">Book Development Lab</a><br>
+            <a href="book-projects.php">Book projects</a>
         </div>
     </header>
 
@@ -444,6 +463,9 @@ $downloadQuery = http_build_query(array_filter([
 
     <?php if ($result !== null): ?>
         <?php $kdp = $result['kdp']; $meta = $kdp['metadata']; $book = $result['book']; $outlineReview = $result['outline_review'] ?? null; ?>
+        <?php if (($savedProjectId ?? null) !== null): ?>
+            <p class="note">💾 Project saved — the table of contents and full manuscript are on record as <strong><?= htmlspecialchars((string) $savedProjectId, ENT_QUOTES, 'UTF-8') ?></strong>. Find every book on the <a href="book-projects.php">Book projects</a> page.</p>
+        <?php endif; ?>
 
         <?php if ($outlineReview !== null): ?>
         <section>
@@ -583,6 +605,7 @@ $downloadQuery = http_build_query(array_filter([
             <div class="downloads">
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=word">Download Word manuscript (.docx)</a>
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=epub">Download eBook (.epub)</a>
+                <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=drafting-kit">Download AI drafting kit (.json)</a>
                 <a class="primary" href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=manuscript">Download KDP manuscript (.html)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=metadata">Download KDP metadata (.json)</a>
                 <a href="amazon-book-writer.php?<?= htmlspecialchars($downloadQuery, ENT_QUOTES, 'UTF-8') ?>&amp;download=narration">Download narration script (.txt)</a>
