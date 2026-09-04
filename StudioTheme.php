@@ -305,7 +305,7 @@ a:hover { text-decoration: underline; }
 .writer-media-options { display: grid; gap: 13px; border-top: 1px solid hsl(var(--border)); margin-top: 24px; padding-top: 18px; }
 .writer-media-options > div:first-child small { display: block; max-width: 560px; color: hsl(var(--muted-foreground)); font-size: 10px; line-height: 1.45; margin-top: 5px; }
 .writer-media-options .visual-agent-label { margin-top: 8px; }
-.media-option-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.media-option-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 8px; }
 .media-option { display: flex; align-items: flex-start; gap: 8px; min-height: 112px; padding: 11px 10px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: transparent; cursor: pointer; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
 .media-option:hover { border-color: hsl(var(--accent) / .55); transform: translateY(-1px); }
 .media-option.active { border-color: hsl(var(--accent)); background: hsl(var(--accent) / .08); }

@@ -132,6 +132,192 @@ final class IllustrationStudio
     }
 
     /**
+     * The section beats of a chapter with the prose each one carries — the
+     * text the visual-selection formula analyzes.
+     *
+     * @param array<string, mixed> $chapter
+     * @return array<int, array{title: string, text: string, word_count: int}>
+     */
+    public function chapterSectionTexts(array $chapter): array
+    {
+        $blocks = (array) ($chapter['blocks'] ?? []);
+        $sections = [];
+        $current = null;
+        foreach ($blocks as $index => $block) {
+            $content = trim((string) ($block['content'] ?? ''));
+            if ($content === '') {
+                continue;
+            }
+            $isHeading = $index > 0
+                && mb_strlen($content) <= 60
+                && !str_contains($content, '. ')
+                && !str_ends_with($content, '.')
+                && substr_count($content, "\n") === 0;
+            if ($isHeading) {
+                if ($current !== null) {
+                    $sections[] = $current;
+                }
+                $current = ['title' => $content, 'text' => '', 'word_count' => 0];
+                continue;
+            }
+            if ($current === null) {
+                $current = ['title' => 'Opening', 'text' => '', 'word_count' => 0];
+            }
+            $current['text'] .= ($current['text'] === '' ? '' : "\n") . $content;
+            $current['word_count'] += count(preg_split('/\s+/u', $content, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+        }
+        if ($current !== null) {
+            $sections[] = $current;
+        }
+        return $sections;
+    }
+
+    /**
+     * Score a passage 0–3 on each signal the visual-selection formula reads.
+     * Deterministic keyword and pattern counting — no services, no keys.
+     *
+     * @return array<string, int>
+     */
+    public function scoreVisualSignals(string $text): array
+    {
+        $patterns = [
+            'comparability' => '/\b(compar\w*|versus|vs\.?|alternat\w*|options?\b|trade-?offs?|side by side|either\b|choos\w*|choices?|criteri\w*|differen\w*|contrast\w*|pros and cons)\b/iu',
+            'temporal_dynamics' => '/\b(over time|trends?\b|trajector\w*|yearly|decades?\b|monthly|quarters?\b|q[1-4]\b|grow(s|th|ing)?\b|grew\b|declin\w*|increas\w*|decreas\w*|accelerat\w*|timeline|steadily|gradually|history|historical|evolution|era\b|generations?\b)\b/iu',
+            'magnitude_contrast' => '/\b(rank\w*|largest|smallest|biggest|highest|lowest|twice\b|doubl(e[sd]?|ing)|tripl(e[sd]?|ing)|times (more|less|as)|outnumber\w*|far (more|less|fewer)|by far|magnitude)\b/iu',
+            'proportion_insight' => '/(\d+\s?(%|percent)|\bpercent\w*|\bshares?\b|\bproportions?\b|\bportion\b|\bfraction\b|\bmajority\b|\bminority\b|out of every|\bcomposition\b|of the whole|\bmakeup\b)/iu',
+            'mechanism_clarity' => '/\b(steps?\b|process\w*|mechanis\w*|sequences?\b|stages?\b|procedures?\b|workflow|cycles?\b|how it works|first,? then|instructions?\b|methods?\b|pipeline|diagnos\w*|checklists?\b)\b/iu',
+            'real_world_anchoring' => '/\b(people|person\b|residents?|faces?\b|hands\b|streets?\b|buildings?\b|houses?\b|rooms?\b|towns?\b|cit(y|ies)|landscapes?\b|fields?\b|scenes?\b|photograph\w*|wearing|standing|machin\w*|storefronts?|farms?\b|kitchens?\b)\b/iu',
+            'structure_insight' => '/\b(frameworks?\b|models?\b|concepts?\b|theor\w*|abstract\w*|architecture|structures?\b|relationships?\b|hierarch\w*|layers?\b|components?\b|principles?\b)\b/iu',
+            'decision_support' => '/\b(decid\w*|decisions?\b|should (you|we|they)\b|which one|recommend\w*|evaluat\w*|weigh\w*|worth it|whether to|best (choice|option|fit)|pick the|before you commit|small test)\b/iu',
+        ];
+        $signals = [];
+        foreach ($patterns as $name => $pattern) {
+            $signals[$name] = min(3, (int) preg_match_all($pattern, $text));
+        }
+        // Data density: how many numeric facts the passage carries.
+        $signals['data_density'] = min(3, intdiv((int) preg_match_all('/(?<![\w.])\d[\d,.]*/', $text), 3));
+        // Structure beats keywords: three or more clauses that each open with
+        // a process verb are a step sequence, whatever words follow.
+        $imperatives = 0;
+        foreach (preg_split('/[,;.:]\s*(?:and\s+|then\s+)?/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $clause) {
+            if (preg_match('/^(diagnose|choose|run|review|test|apply|map|list|measure|plan|build|draft|check|gather|sort|schedule|practice|repeat|learn|compare|name|observe|set up|write down|pick)\b/iu', trim($clause)) === 1) {
+                $imperatives++;
+            }
+        }
+        if ($imperatives >= 3) {
+            $signals['mechanism_clarity'] = 3;
+        }
+        return $signals;
+    }
+
+    /**
+     * The visual-selection formula: Visual = argmax over V of Wp + Ws + Wn.
+     *
+     *  - Wp (0 or 3): the primary decision tree — the first information type
+     *    the passage clearly matches (signal ≥ 2) sets the default visual.
+     *  - Ws (0–3): the secondary scoring model — each visual takes the
+     *    strongest of the signals that argue for it.
+     *  - Wn (0 or 2): the narrative function of the section (from its
+     *    purpose) breaks ties: decision→table, persuasion→chart,
+     *    insight→graph, instruction→diagram, emotion→photo.
+     *
+     * Deterministic: equal totals resolve in the tree's own order.
+     *
+     * @return array{visual: string, kind: string, variant: string, total: int,
+     *               scores: array<string, int>, signals: array<string, int>, reason: string}
+     */
+    public function selectVisual(string $text, string $purpose = ''): array
+    {
+        $signals = $this->scoreVisualSignals($text);
+
+        // Visual → the signals that argue for it (the decision table).
+        $advocates = [
+            'table' => ['comparability', 'data_density', 'decision_support'],
+            'line graph' => ['temporal_dynamics', 'decision_support'],
+            'bar chart' => ['magnitude_contrast', 'comparability'],
+            'pie chart' => ['proportion_insight'],
+            'illustration' => ['mechanism_clarity'],
+            'figure' => ['structure_insight'],
+            'photo' => ['real_world_anchoring'],
+        ];
+        // Primary decision tree, in order; first signal ≥ 2 wins the default.
+        $tree = [
+            'comparability' => 'table',
+            'temporal_dynamics' => 'line graph',
+            'magnitude_contrast' => 'bar chart',
+            'proportion_insight' => 'pie chart',
+            'mechanism_clarity' => 'illustration',
+            'structure_insight' => 'figure',
+            'real_world_anchoring' => 'photo',
+        ];
+        $primary = null;
+        foreach ($tree as $signal => $visual) {
+            if ($signals[$signal] >= 2) {
+                $primary = $visual;
+                break;
+            }
+        }
+        // Narrative function of the section (the tie-breaker weight).
+        $narrative = null;
+        foreach ([
+            'table' => '/\b(decid\w*|decision|choose|weigh|evaluate|compare)\b/iu',
+            'bar chart' => '/\b(persuad\w*|convinc\w*|case for|argu\w*|prove)\b/iu',
+            'line graph' => '/\b(insight|discover\w*|understand\w*|reveal\w*|explain\w*|pattern)\b/iu',
+            'illustration' => '/\b(instruct\w*|teach\w*|guide\w*|how to|learn\w*|practice|apply)\b/iu',
+            'photo' => '/\b(emotion\w*|feel\w*|story|human|life|moment|remember)\b/iu',
+        ] as $visual => $pattern) {
+            if (preg_match($pattern, $purpose) === 1) {
+                $narrative = $visual;
+                break;
+            }
+        }
+
+        $scores = [];
+        foreach ($advocates as $visual => $advocateSignals) {
+            $ws = 0;
+            foreach ($advocateSignals as $signal) {
+                $ws = max($ws, $signals[$signal]);
+            }
+            $scores[$visual] = $ws + ($primary === $visual ? 3 : 0) + ($narrative === $visual ? 2 : 0);
+        }
+        // argmax; ties resolve in the tree's own order (the array order above).
+        $best = 'table';
+        foreach ($scores as $visual => $score) {
+            if ($score > $scores[$best]) {
+                $best = $visual;
+            }
+        }
+
+        $kinds = [
+            'table' => ['table', 'table'],
+            'line graph' => ['graph', 'line'],
+            'bar chart' => ['chart', 'bar'],
+            'pie chart' => ['chart', 'pie'],
+            'illustration' => ['diagram', 'steps'],
+            'figure' => ['illustration', 'emblem'],
+            'photo' => ['ai-image', 'photo'],
+        ];
+        $reasons = [
+            'table' => 'the passage compares items the reader must weigh side by side',
+            'line graph' => 'the passage follows change over time',
+            'bar chart' => 'the passage turns on differences in size and rank',
+            'pie chart' => 'the passage describes parts of a whole',
+            'illustration' => 'the passage explains a process the reader must follow',
+            'figure' => 'the passage builds an abstract structure worth drawing',
+            'photo' => 'the passage describes real people, places, or objects',
+        ];
+        return [
+            'visual' => $best,
+            'kind' => $kinds[$best][0],
+            'variant' => $kinds[$best][1],
+            'total' => $scores[$best],
+            'scores' => $scores,
+            'signals' => $signals,
+            'reason' => $reasons[$best],
+        ];
+    }
+
+    /**
      * The default media set for one chapter: one figure after each important topic.
      *
      * @param array<string, mixed> $chapter
@@ -144,37 +330,83 @@ final class IllustrationStudio
         $number = (int) ($chapter['number'] ?? 0);
         $title = (string) ($chapter['title'] ?? '');
         $detail = (string) ($chapter['detail'] ?? '');
+        $purpose = (string) ($chapter['purpose'] ?? '');
         $sections = $this->chapterSections($chapter);
         $jobs = $this->chapterJobRows($chapter, $book);
         $clauses = $this->detailClauses($detail);
         $lastSection = $sections !== [] ? $sections[count($sections) - 1]['title'] : 'Opening';
         $items = [];
 
-        // The chapter-opener AI image: planned and prompted, but excluded from
-        // manuscript exports until the real image is generated.
+        // The formula's photo layer: real objects, people, and places anchor
+        // the reader, so every chapter plans its opener image — prompted
+        // here, excluded from exports until the real image is generated.
         $items[] = $this->aiImageItem($number, $title, $chapter, $metadata);
 
-        // Diagram: the chapter's ground drawn as a step flow — subjects, never
-        // the outline's writer-facing instructions.
-        if (count($clauses) >= 3) {
-            $steps = array_map(
-                fn (string $clause): string => mb_strtoupper(mb_substr($this->subjectClause($clause), 0, 1)) . mb_substr($this->subjectClause($clause), 1),
-                $clauses,
-            );
-            $items[] = [
-                'id' => 'ch' . $number . '-diagram',
-                'kind' => 'diagram',
-                'title' => $this->titleShort($title) . ' at a glance',
-                'caption' => 'The ground covered here: ' . $this->subjectClause((string) ($chapter['purpose'] ?? $title)) . '.',
-                'after_section' => $sections !== [] ? $sections[0]['title'] : 'Opening',
-                'svg' => $this->renderDiagram($steps, $title),
+        // The visual-selection formula, section by section: score every
+        // prose beat, let the highest-scoring beats carry a figure, and let
+        // each beat's winning information type decide which figure that is.
+        $candidates = [];
+        $sectionTexts = $this->chapterSectionTexts($chapter);
+        foreach ($sectionTexts as $order => $section) {
+            if (preg_match('/takeaway|synthesis/i', $section['title']) === 1) {
+                continue; // the closer gets its own pull-quote card below
+            }
+            $candidates[] = [
+                'order' => (int) $order,
+                'section' => $section['title'],
+                'choice' => $this->selectVisual($section['text'], $purpose . ' ' . $section['title']),
             ];
         }
+        // A practice chapter's outline detail is itself reader-facing text —
+        // a step sequence the reader will follow — so it competes too.
+        $isPracticeChapter = preg_match('/framework|practice|how to|playbook|loop|method|steps|guide|checklist|use this/i', $title . ' ' . $purpose) === 1;
+        if ($isPracticeChapter && $detail !== '') {
+            $candidates[] = [
+                'order' => -1,
+                'section' => $sectionTexts !== [] ? $sectionTexts[0]['title'] : 'Opening',
+                'choice' => $this->selectVisual($purpose . '. ' . $detail, $purpose),
+            ];
+        }
+        usort($candidates, static fn (array $a, array $b): int =>
+            [$b['choice']['total'], $a['order']] <=> [$a['choice']['total'], $b['order']]);
+        $chosen = [];
+        $slots = [];
+        foreach ($candidates as $candidate) {
+            if (count($chosen) >= 3) {
+                break;
+            }
+            $slot = $candidate['choice']['kind'] . ':' . $candidate['choice']['variant'];
+            if (isset($slots[$slot]) || $candidate['choice']['total'] < 2) {
+                continue;
+            }
+            $item = $this->materializeVisual($candidate, $number, $chapter, $book, $sections, $clauses, $jobs);
+            if ($item === null) {
+                continue;
+            }
+            $slots[$slot] = true;
+            $chosen[] = ['order' => $candidate['order'], 'item' => $item];
+        }
+        usort($chosen, static fn (array $a, array $b): int => $a['order'] <=> $b['order']);
+        foreach ($chosen as $entry) {
+            $items[] = $entry['item'];
+        }
 
-        // Chart: only where real data exists.
+        // Real data always keeps its seat. Teen-job chapters carry their job
+        // cards and schedule chart — the formula's own reasoning (tables
+        // compare, bars rank) applied to real rows instead of prose signals.
         if ($jobs !== []) {
+            if (!isset($slots['table:table'])) {
+                $items[] = [
+                    'id' => 'ch' . $number . '-table',
+                    'kind' => 'table',
+                    'title' => 'Job cards at a glance',
+                    'caption' => 'The jobs this chapter explores, side by side.',
+                    'after_section' => $lastSection,
+                    'table' => $this->buildJobTable($jobs),
+                ];
+            }
             $mix = $this->scheduleMix($jobs);
-            if (count($mix) >= 2) {
+            if (!isset($slots['chart:bar']) && count($mix) >= 2) {
                 $items[] = [
                     'id' => 'ch' . $number . '-chart',
                     'kind' => 'chart',
@@ -184,7 +416,7 @@ final class IllustrationStudio
                     'svg' => $this->renderBarChart($mix, 'jobs mentioning it', 'Schedules for ' . $title),
                 ];
             }
-        } elseif ($this->wantsCatalogOverview($title) && ($book['job_catalog'] ?? []) !== []) {
+        } elseif (!isset($slots['chart:bar']) && $this->wantsCatalogOverview($title) && ($book['job_catalog'] ?? []) !== []) {
             $items[] = [
                 'id' => 'ch' . $number . '-chart',
                 'kind' => 'chart',
@@ -195,17 +427,10 @@ final class IllustrationStudio
             ];
         }
 
-        // Table: real job cards, or a worksheet built from the chapter's criteria.
-        if ($jobs !== []) {
-            $items[] = [
-                'id' => 'ch' . $number . '-table',
-                'kind' => 'table',
-                'title' => 'Job cards at a glance',
-                'caption' => 'The jobs this chapter explores, side by side.',
-                'after_section' => $lastSection,
-                'table' => $this->buildJobTable($jobs),
-            ];
-        } elseif (count($clauses) >= 3) {
+        // The instruction pairing: a step-flow diagram shows the how, the
+        // worksheet turns the same steps into work — a practice chapter that
+        // earned the first always ships the second.
+        if (isset($slots['diagram:steps']) && !isset($slots['table:table']) && $jobs === [] && count($clauses) >= 3) {
             $items[] = [
                 'id' => 'ch' . $number . '-table',
                 'kind' => 'table',
@@ -216,7 +441,8 @@ final class IllustrationStudio
             ];
         }
 
-        // Illustration: the chapter's takeaway as a pull-quote card.
+        // Illustration: the chapter's takeaway as a pull-quote card — the
+        // Quality Lab and the print companion read it.
         $quote = $this->takeawayQuote((string) ($chapter['content'] ?? ''));
         if ($quote !== '') {
             $items[] = [
@@ -229,6 +455,130 @@ final class IllustrationStudio
             ];
         }
         return $items;
+    }
+
+    /**
+     * Turn one formula decision into a rendered media item. Returns null
+     * when the chapter lacks the material the chosen visual needs — the
+     * next-best section then takes the slot.
+     *
+     * @param array{order: int, section: string, choice: array<string, mixed>} $candidate
+     * @param array<string, mixed> $chapter
+     * @param array<string, mixed> $book
+     * @param array<int, array{title: string, word_count: int, block_index: int}> $sections
+     * @param array<int, string> $clauses
+     * @param array<int, array<string, string>> $jobs
+     * @return array<string, mixed>|null
+     */
+    private function materializeVisual(array $candidate, int $number, array $chapter, array $book, array $sections, array $clauses, array $jobs): ?array
+    {
+        $choice = $candidate['choice'];
+        $title = (string) ($chapter['title'] ?? '');
+        $short = $this->titleShort($title);
+        $base = [
+            'id' => 'ch' . $number . '-s' . $candidate['order'] . '-' . str_replace(' ', '-', (string) $choice['visual']),
+            'kind' => (string) $choice['kind'],
+            'after_section' => $candidate['section'],
+            'decision' => [
+                'visual' => $choice['visual'],
+                'total' => $choice['total'],
+                'signals' => $choice['signals'],
+                'reason' => $choice['reason'],
+            ],
+        ];
+        switch ((string) $choice['visual']) {
+            case 'table':
+                if ($jobs !== []) {
+                    return $base + [
+                        'id' => 'ch' . $number . '-table',
+                        'title' => 'Job cards at a glance',
+                        'caption' => 'The jobs this chapter explores, side by side.',
+                        'table' => $this->buildJobTable($jobs),
+                    ];
+                }
+                if (count($clauses) >= 3) {
+                    return $base + [
+                        'id' => 'ch' . $number . '-table',
+                        'title' => 'Worksheet: ' . strtolower($short),
+                        'caption' => 'The chapter\'s own checkpoints, ready to work through.',
+                        'table' => $this->buildWorksheetTable($clauses),
+                    ];
+                }
+                if (count($sections) >= 2) {
+                    return $base + [
+                        'title' => 'The topics, side by side',
+                        'caption' => 'Each topic of ' . $short . ' and the attention it carries.',
+                        'table' => $this->buildSectionTable($sections),
+                    ];
+                }
+                return null;
+            case 'line graph':
+                if (count($sections) < 2) {
+                    return null;
+                }
+                return $base + [
+                    'title' => 'How ' . strtolower($short) . ' builds',
+                    'caption' => 'The ground gained topic by topic across ' . $short . '.',
+                    'svg' => $this->renderGraph($sections, $title),
+                ];
+            case 'bar chart':
+                if ($jobs !== []) {
+                    $mix = $this->scheduleMix($jobs);
+                    if (count($mix) >= 2) {
+                        return $base + [
+                            'id' => 'ch' . $number . '-chart',
+                            'title' => 'When these jobs happen',
+                            'caption' => 'Schedules named in the job cards above — how many of this chapter\'s jobs mention each.',
+                            'svg' => $this->renderBarChart($mix, 'jobs mentioning it', 'Schedules for ' . $title),
+                        ];
+                    }
+                }
+                if (count($sections) < 2) {
+                    return null;
+                }
+                return $base + [
+                    'title' => 'Where the weight falls',
+                    'caption' => 'The topics of ' . $short . ', ranked by the attention each receives.',
+                    'svg' => $this->renderChart($sections, $title),
+                ];
+            case 'pie chart':
+                if (count($sections) < 2) {
+                    return null;
+                }
+                return $base + [
+                    'title' => 'The whole, in parts',
+                    'caption' => 'How ' . $short . ' divides its ground among its topics.',
+                    'svg' => $this->renderPieChart(
+                        array_map(static fn (array $s): array => ['label' => (string) $s['title'], 'value' => (int) $s['word_count']], $sections),
+                        $title,
+                    ),
+                ];
+            case 'illustration':
+                if (count($clauses) < 3) {
+                    return null;
+                }
+                $steps = array_map(
+                    fn (string $clause): string => mb_strtoupper(mb_substr($this->subjectClause($clause), 0, 1)) . mb_substr($this->subjectClause($clause), 1),
+                    $clauses,
+                );
+                return $base + [
+                    'id' => 'ch' . $number . '-diagram',
+                    'title' => $short . ' at a glance',
+                    'caption' => 'The ground covered here: ' . $this->subjectClause((string) ($chapter['purpose'] ?? $title)) . '.',
+                    'svg' => $this->renderDiagram($steps, $title),
+                ];
+            case 'figure':
+                return $base + [
+                    'title' => $short . ', drawn',
+                    'caption' => 'The shape of ' . $short . ' — its pieces and how they sit together.',
+                    'svg' => $this->renderIllustration('figure:' . $number . ':' . $candidate['section'], $title),
+                ];
+            case 'photo':
+                // The chapter's opener image already anchors it in the real
+                // world; a second photo slot yields to the next candidate.
+                return null;
+        }
+        return null;
     }
 
     /**
@@ -588,6 +938,51 @@ final class IllustrationStudio
         $axisY = 16 + count($rows) * ($barHeight + $gap) - $gap + 8;
         $svg .= '<line x1="' . $chartLeft . '" y1="10" x2="' . $chartLeft . '" y2="' . $axisY . '" stroke="' . self::GRID . '" stroke-width="1"/>';
         $svg .= '<text x="' . $chartLeft . '" y="' . ($axisY + 16) . '" font-size="11" fill="' . self::MUTED . '">words per topic</text>';
+        return $svg . '</svg>';
+    }
+
+    /**
+     * Donut chart: each topic's share of the chapter, part to whole.
+     *
+     * @param array<int, array{label: string, value: int}> $rows
+     */
+    public function renderPieChart(array $rows, string $context): string
+    {
+        $rows = array_slice(array_values(array_filter($rows, static fn (array $r): bool => (int) $r['value'] > 0)), 0, 6);
+        $total = array_sum(array_map(static fn (array $r): int => (int) $r['value'], $rows));
+        if (count($rows) < 2 || $total < 1) {
+            return $this->renderIllustration('pie:' . $context, $context);
+        }
+        $cx = 150;
+        $cy = 110;
+        $radius = 82;
+        $palette = [self::DATA, self::EMPHASIS, self::MUTED, '#4c7fb8', '#c97b2d', '#7c86a0'];
+        $svg = $this->svgOpen(640, 220, 'Share chart: ' . $context);
+        $angle = -90.0;
+        foreach ($rows as $index => $row) {
+            $sweep = 360.0 * ((int) $row['value']) / $total;
+            $a0 = deg2rad($angle);
+            $a1 = deg2rad($angle + $sweep);
+            $x0 = $cx + $radius * cos($a0);
+            $y0 = $cy + $radius * sin($a0);
+            $x1 = $cx + $radius * cos($a1);
+            $y1 = $cy + $radius * sin($a1);
+            $large = $sweep > 180 ? 1 : 0;
+            $svg .= '<path d="M' . round($cx, 1) . ' ' . round($cy, 1)
+                . ' L' . round($x0, 1) . ' ' . round($y0, 1)
+                . ' A' . $radius . ' ' . $radius . ' 0 ' . $large . ' 1 ' . round($x1, 1) . ' ' . round($y1, 1)
+                . ' Z" fill="' . $palette[$index % count($palette)] . '" stroke="' . self::PAPER . '" stroke-width="2">'
+                . '<title>' . $this->svgText((string) $row['label'] . ': ' . round(100 * ((int) $row['value']) / $total) . '%', 90) . '</title></path>';
+            $angle += $sweep;
+        }
+        $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="40" fill="' . self::PAPER . '"/>';
+        $svg .= '<text x="' . $cx . '" y="' . ($cy + 5) . '" text-anchor="middle" font-size="13" font-weight="700" fill="' . self::INK . '">' . $total . '</text>';
+        foreach ($rows as $index => $row) {
+            $ly = 40 + $index * 28;
+            $svg .= '<rect x="300" y="' . ($ly - 11) . '" width="14" height="14" rx="3" fill="' . $palette[$index % count($palette)] . '"/>';
+            $svg .= '<text x="322" y="' . $ly . '" font-size="12" fill="' . self::INK . '">' . $this->svgText((string) $row['label'], 34) . '</text>';
+            $svg .= '<text x="620" y="' . $ly . '" text-anchor="end" font-size="12" fill="' . self::MUTED . '">' . round(100 * ((int) $row['value']) / $total) . '%</text>';
+        }
         return $svg . '</svg>';
     }
 

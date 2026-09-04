@@ -22,6 +22,17 @@ as prose. Keep them intact in `BookIntelligenceEngine::composeExpandedChapterDra
   section from the rotating discussion templates. No generic scaffold headings.
 - **Close every chapter with a `The takeaway` section.**
   `IllustrationStudio::takeawayQuote()` and the Quality Lab takeaway metric read it.
+- **Visuals are chosen by the selection formula**, not fixed heuristics:
+  `IllustrationStudio::selectVisual()` scores each section's text 0–3 on nine
+  signals (comparability, temporal dynamics, magnitude, proportion, mechanism,
+  anchoring, structure, data density, decision support) and takes
+  argmax(Wp + Ws + Wn) — primary decision tree (3), secondary signals (0–3),
+  narrative-function tie-breaker (2). Comparisons→table, change over
+  time→line graph, rankings→bar chart, part-to-whole→pie, processes→step
+  diagram, abstractions→figure, real people/places→the chapter's AI image.
+  Deterministic; `tests/visual-selection-contract.php` pins the tree, the
+  scoring bounds, the tie-breakers, and the instruction pairing (a practice
+  chapter's step diagram always ships with its worksheet).
 - **Genre-aware outlines** in `suggestTableOfContents()`: social/cultural topics get
   the narrated-history arc (current state → past contrast → origins → evidence →
   solutions; concrete titles, never "systems"/"frameworks"); practical topics get the

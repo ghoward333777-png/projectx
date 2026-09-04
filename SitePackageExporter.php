@@ -43,6 +43,7 @@ final class SitePackageExporter
         'tests/audiobook-contract.php',
         'tests/site-package-contract.php',
         'tests/illustration-contract.php',
+        'tests/visual-selection-contract.php',
         'tests/quality-lab-contract.php',
         'tests/epub-contract.php',
         'tests/print-media-contract.php',
