@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/BookIntelligenceEngine.php';
+require_once __DIR__ . '/StudioTheme.php';
 
 session_start();
 
@@ -75,98 +76,133 @@ if (isset($_GET['format']) && $_GET['format'] === 'json' && $kit !== null) {
 
 $score = $kit['probability']['score']['value'] ?? 0;
 ?>
+<?php $h = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); ?>
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Book Intelligence Studio</title>
-    <style>
-        :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #11141c; color: #eef0f6; }
-        body { margin: 0; background: radial-gradient(circle at top right, #2a2048, #11141c 42%); min-height: 100vh; }
-        main { max-width: 1000px; margin: 0 auto; padding: 48px 24px 80px; }
-        header { border-bottom: 1px solid #36384a; padding-bottom: 32px; margin-bottom: 32px; }
-        .eyebrow { color: #b49cff; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
-        h1 { font-size: clamp(36px, 8vw, 72px); line-height: .98; max-width: 680px; margin: 14px 0; letter-spacing: -.06em; }
-        p { color: #aeb2c2; line-height: 1.6; }
-        form, section { background: #1a1d28; border: 1px solid #343747; border-radius: 20px; padding: 24px; margin-top: 18px; }
-        label { display: block; color: #dfe2eb; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-        input { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 10px; color: #fff; padding: 13px 14px; font: inherit; margin-bottom: 16px; }
-        button { border: 0; border-radius: 999px; background: #b49cff; color: #171225; padding: 12px 18px; font: inherit; font-weight: 800; cursor: pointer; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
-        .metric { background: #222534; border-radius: 14px; padding: 18px; }
-        .metric strong { display: block; font-size: 32px; color: #fff; }
-        .metric span { color: #b2b5c3; font-size: 13px; }
-        .score { color: #b49cff; font-size: 64px; font-weight: 800; letter-spacing: -.07em; }
-        ul { color: #c8cad5; line-height: 1.8; padding-left: 20px; }
-        .error { color: #ff9cba; background: #3c1f32; border: 1px solid #7a3755; padding: 14px; border-radius: 10px; }
-        code { color: #d5caff; }
-    </style>
+    <?php StudioTheme::head('Book strategy workspace'); ?>
 </head>
 <body>
-<main>
-    <header>
-        <div class="eyebrow">Book Intelligence Studio · PHP reference app</div>
-        <h1>Turn a topic into a book strategy.</h1>
-        <p>Run the five-engine analysis locally, inspect the scoring breakdown, and request the complete kit as JSON at <code>?format=json</code>.</p>
-        <p><a href="user-guide.php">New here? Read the friendly user guide</a> · <a href="book-lab.php">Book Development Lab</a> · <a href="download-app.php">Download the app for your own website (.zip)</a></p>
-    </header>
+<?php StudioTheme::open([
+    'active' => 'topic',
+    'current' => 'Strategy kit',
+    'brief' => $topic,
+    'progress_label' => 'Strategy kit ready',
+    'progress_value' => $kit !== null ? '100% mapped' : 'Awaiting topic',
+    'progress_percent' => $kit !== null ? 100 : 10,
+]); ?>
 
-    <form method="post">
-        <label for="topic">Book topic</label>
-        <input id="topic" name="topic" value="<?= htmlspecialchars($topic, ENT_QUOTES, 'UTF-8') ?>" required>
-        <label for="reader">Optional reader description</label>
-        <input id="reader" name="reader" value="<?= htmlspecialchars($reader, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. curious practitioners who need a practical framework">
-        <button type="submit">Generate intelligence kit</button>
+    <div class="page-intro" id="topic">
+        <div>
+            <span class="section-label coral">THE STUDIO · FIVE ENGINES</span>
+            <h1>Turn a topic into a book strategy.</h1>
+            <p>Run the five-engine analysis locally, inspect the scoring breakdown, and carry the kit straight into the book generator. The complete kit is also available as JSON at <code>?format=json</code>.</p>
+        </div>
+        <div class="intro-action">
+            <a class="primary-button" href="generate-book.php"><?= StudioTheme::icon('pen', 14) ?> Open the book generator</a>
+            <a class="outline-button" href="download-app.php"><?= StudioTheme::icon('download', 14) ?> Download the app (.zip)</a>
+        </div>
+    </div>
+
+    <form method="post" class="panel">
+        <span class="section-label coral">STEP 01 · TOPIC</span>
+        <h2>Find the signal</h2>
+        <div class="grid" style="margin-top: 16px;">
+            <div>
+                <label for="topic-input">Book topic</label>
+                <input id="topic-input" name="topic" value="<?= $h($topic) ?>" required>
+            </div>
+            <div>
+                <label for="reader">Optional reader description</label>
+                <input id="reader" name="reader" value="<?= $h($reader) ?>" placeholder="e.g. curious practitioners who need a practical framework">
+            </div>
+        </div>
+        <button type="submit"><?= StudioTheme::icon('target', 14) ?> Generate intelligence kit</button>
     </form>
 
     <?php if ($error !== null): ?>
-        <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+        <div class="error"><?= $h($error) ?></div>
     <?php elseif ($kit !== null): ?>
-        <section>
-            <div class="eyebrow">Best-seller probability</div>
-            <div class="score"><?= $score ?>%</div>
-            <p><?= htmlspecialchars($kit['meta']['disclaimer'], ENT_QUOTES, 'UTF-8') ?></p>
+        <section id="probability">
+            <div class="eyebrow">Step 05 · Probability — make the bet</div>
+            <div class="score"><?= (int) $score ?>%</div>
+            <p><?= $h($kit['meta']['disclaimer']) ?></p>
             <div class="grid">
                 <?php foreach ($kit['probability']['components'] as $component): ?>
                     <div class="metric">
                         <strong><?= (int) $component['score']['value'] ?></strong>
-                        <span><?= htmlspecialchars($component['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <span><?= $h($component['label']) ?></span>
                     </div>
                 <?php endforeach; ?>
             </div>
         </section>
-        <section>
-            <div class="eyebrow">Topic demand</div>
-            <h2><?= htmlspecialchars($kit['kit']['title'], ENT_QUOTES, 'UTF-8') ?></h2>
-            <p><?= htmlspecialchars($kit['topic_analysis']['audience_size_estimate']['range'], ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars($kit['topic_analysis']['trend_status'], ENT_QUOTES, 'UTF-8') ?></p>
+
+        <section id="demand">
+            <div class="eyebrow">Step 01 · Topic demand</div>
+            <h2><?= $h($kit['kit']['title']) ?></h2>
+            <p><?= $h($kit['topic_analysis']['audience_size_estimate']['range']) ?> · <?= $h($kit['topic_analysis']['trend_status']) ?></p>
             <ul>
                 <?php foreach ($kit['topic_analysis']['best_angles'] as $angle): ?>
-                    <li><strong><?= htmlspecialchars($angle['title'], ENT_QUOTES, 'UTF-8') ?>:</strong> <?= htmlspecialchars($angle['description'], ENT_QUOTES, 'UTF-8') ?></li>
+                    <li><strong><?= $h($angle['title']) ?>:</strong> <?= $h($angle['description']) ?></li>
                 <?php endforeach; ?>
             </ul>
         </section>
-        <section>
-            <div class="eyebrow">Kit deliverables</div>
+
+        <section id="scan">
+            <div class="eyebrow">Step 02 · Competitive scan — see the field</div>
+            <h2><?= (int) $kit['competition']['rival_count'] ?> rivals mapped</h2>
+            <?php foreach ($kit['competition']['rivals'] as $rival): ?>
+                <div class="metric-row">
+                    <div><strong><?= $h((string) $rival['title']) ?></strong><em><?= $h((string) $rival['reader_reaction']) ?> · <?= $h((string) $rival['observed_gap']) ?></em></div>
+                    <div class="bar"><span style="width: <?= (int) $rival['editorial_depth']['value'] ?>%"></span></div>
+                    <div class="metric-value"><?= (int) $rival['editorial_depth']['value'] ?></div>
+                </div>
+            <?php endforeach; ?>
+        </section>
+
+        <section id="blueprint">
+            <div class="eyebrow">Step 03 · Blueprint — shape the argument</div>
+            <h2>Suggested table of contents</h2>
+            <div class="kit-outline">
+                <?php foreach ($kit['blueprint']['chapters'] as $chapter): ?>
+                    <div><span><?= str_pad((string) $chapter['number'], 2, '0', STR_PAD_LEFT) ?></span><b><?= $h($chapter['title']) ?></b><small><?= $h($chapter['purpose']) ?></small></div>
+                <?php endforeach; ?>
+            </div>
+            <p class="note" style="margin-top: 12px;">JSON endpoint: <code>?format=json&amp;part=toc</code> · Edit and draft it in the <a href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">book generator</a>, or go straight to <a href="amazon-book-writer.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">Amazon packaging</a>.</p>
+        </section>
+
+        <section id="media">
+            <div class="eyebrow">Step 04 · Media plan — build the flywheel</div>
+            <h2>Recommended media mix</h2>
+            <div class="grid">
+                <?php foreach ($kit['media']['recommended_mix'] as $mix): ?>
+                    <div class="metric"><strong><?= (int) $mix['count'] ?></strong><span><strong style="font-size:13px; font-family: var(--app-font-sans);"><?= $h((string) $mix['type']) ?></strong><br><?= $h((string) $mix['role']) ?></span></div>
+                <?php endforeach; ?>
+            </div>
+            <ul style="margin-top: 16px;">
+                <?php foreach ($kit['media']['placement_map'] as $placement): ?>
+                    <li><strong><?= $h((string) $placement['chapter']) ?>:</strong> <?= $h((string) $placement['media']) ?> — <?= $h((string) $placement['reason']) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </section>
+
+        <section id="kit">
+            <div class="eyebrow">Complete kit · Deliverables</div>
+            <h2><?= $h($kit['kit']['subtitle']) ?></h2>
             <ul>
                 <?php foreach ($kit['kit']['deliverables'] as $deliverable): ?>
-                    <li><?= htmlspecialchars($deliverable['label'], ENT_QUOTES, 'UTF-8') ?> — <?= htmlspecialchars($deliverable['status'], ENT_QUOTES, 'UTF-8') ?></li>
+                    <li><?= $h($deliverable['label']) ?> — <?= $h($deliverable['status']) ?></li>
                 <?php endforeach; ?>
             </ul>
-            <p><strong>Next move:</strong> <?= htmlspecialchars($kit['kit']['next_move'], ENT_QUOTES, 'UTF-8') ?></p>
-        </section>
-        <section>
-            <div class="eyebrow">Suggested table of contents</div>
-            <ul>
-                <?php foreach ($kit['blueprint']['chapters'] as $chapter): ?>
-                    <li><strong><?= (int) $chapter['number'] ?>. <?= htmlspecialchars($chapter['title'], ENT_QUOTES, 'UTF-8') ?></strong> — <?= htmlspecialchars($chapter['purpose'], ENT_QUOTES, 'UTF-8') ?></li>
-                <?php endforeach; ?>
-            </ul>
-            <p>JSON endpoint: <code>?format=json&amp;part=toc</code></p>
-            <p>Book generator page: <a href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">generate-book.php</a></p>
-            <p>Amazon publishing package: <a href="amazon-book-writer.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>">amazon-book-writer.php</a></p>
+            <p><strong>Next move:</strong> <?= $h($kit['kit']['next_move']) ?></p>
+            <div class="downloads">
+                <a class="primary" href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>"><?= StudioTheme::icon('pen', 13) ?> Draft the manuscript</a>
+                <a href="amazon-book-writer.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>"><?= StudioTheme::icon('sparkles', 13) ?> Package for Amazon KDP</a>
+                <a href="book-lab.php"><?= StudioTheme::icon('flask', 13) ?> Measure it in the quality lab</a>
+            </div>
         </section>
     <?php endif; ?>
-</main>
+
+<?php StudioTheme::close(); ?>
 </body>
 </html>

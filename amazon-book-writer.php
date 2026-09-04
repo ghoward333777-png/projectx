@@ -7,6 +7,7 @@ require_once __DIR__ . '/WordManuscriptExporter.php';
 require_once __DIR__ . '/EpubExporter.php';
 require_once __DIR__ . '/PrintMediaCompanion.php';
 require_once __DIR__ . '/BookProjectStore.php';
+require_once __DIR__ . '/StudioTheme.php';
 
 session_start();
 
@@ -333,67 +334,35 @@ $downloadQuery = http_build_query(array_filter([
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Amazon Book Writer · Book Intelligence Studio</title>
-    <style>
-        :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #11141c; color: #eef0f6; }
-        body { margin: 0; background: radial-gradient(circle at top right, #3b2a10, #11141c 42%); min-height: 100vh; }
-        main { max-width: 1100px; margin: 0 auto; padding: 42px 24px 80px; }
-        header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; border-bottom: 1px solid #36384a; padding-bottom: 30px; }
-        .eyebrow { color: #ffb84d; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
-        h1 { font-size: clamp(38px, 7vw, 68px); line-height: .96; max-width: 720px; margin: 14px 0; letter-spacing: -.06em; }
-        h2, h3 { letter-spacing: -.035em; }
-        p { color: #aeb2c2; line-height: 1.6; }
-        a { color: #ffd9a0; }
-        form, section { background: #1a1d28; border: 1px solid #343747; border-radius: 18px; padding: 24px; margin-top: 18px; }
-        label { display: block; color: #dfe2eb; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-        input, select, textarea { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 9px; color: #fff; padding: 12px 13px; font: inherit; margin-bottom: 15px; }
-        input::placeholder, textarea::placeholder { color: #6a6e80; opacity: 1; font-style: italic; }
-        button { border: 0; border-radius: 999px; background: #ffb84d; color: #241a08; padding: 12px 18px; font: inherit; font-weight: 800; cursor: pointer; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-        .metric { background: #222534; border-radius: 14px; padding: 18px; }
-        .metric strong { display: block; font-size: 26px; color: #fff; }
-        .metric span { color: #b2b5c3; font-size: 12px; line-height: 1.4; }
-        .keyword { display: inline-block; background: #2c2416; border: 1px solid #5a4a26; border-radius: 999px; color: #ffd9a0; padding: 6px 12px; margin: 0 6px 8px 0; font-size: 12px; }
-        .description-preview { background: #f8f4eb; color: #202431; border-radius: 10px; padding: 20px 24px; font-family: Georgia, serif; white-space: pre-wrap; line-height: 1.55; }
-        .check { border-top: 1px solid #36384a; padding: 13px 0; display: grid; grid-template-columns: 130px 1fr; gap: 14px; }
-        .check:first-of-type { border-top: 0; }
-        .status { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-        .status.ready { color: #7ee2a8; }
-        .status.action { color: #ffb84d; }
-        .status.pending { color: #8d91a3; }
-        .check p { margin: 4px 0 0; font-size: 13px; }
-        .downloads { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
-        .downloads a { display: inline-block; border-radius: 999px; background: #292d3d; color: #e9e6f4; padding: 12px 18px; font-weight: 800; text-decoration: none; }
-        .downloads a.primary { background: #ffb84d; color: #241a08; }
-        ul { color: #c8cad5; line-height: 1.8; padding-left: 20px; }
-        .error { color: #ff9cba; background: #3c1f32; border: 1px solid #7a3755; padding: 14px; border-radius: 10px; margin-top: 18px; }
-        .note { color: #8d91a3; font-size: 12px; }
-        @media (max-width: 700px) { header { display: block; } main { padding: 28px 16px 60px; } form, section { padding: 18px; } .check { grid-template-columns: 1fr; gap: 4px; } }
-    </style>
+    <?php StudioTheme::head('Amazon Book Writer'); ?>
 </head>
 <body>
-<main>
-    <header>
+<?php StudioTheme::open([
+    'active' => 'advanced',
+    'current' => 'Amazon packaging',
+    'brief' => $topic,
+    'progress_label' => 'Write, package, publish',
+    'progress_value' => 'Package ready',
+    'progress_percent' => 100,
+]); ?>
+
+    <div class="page-intro">
         <div>
-            <div class="eyebrow">Book Intelligence Studio · Amazon Book Writer</div>
+            <span class="section-label coral">AMAZON BOOK WRITER</span>
             <h1>Write it, package it, publish it on Amazon.</h1>
             <p>Generate the manuscript and a complete Amazon KDP publishing package: listing metadata, keywords, categories, pricing and royalty estimates, and a KDP-ready manuscript export.</p>
         </div>
-        <div>
-            <a href="index.php">← Back to intelligence kit</a><br>
-            <a href="user-guide.php">User guide</a><br>
-            <a href="book-lab.php">Book Development Lab</a><br>
-            <a href="book-projects.php">Book projects</a>
+        <div class="intro-action">
+            <a class="outline-button" href="generate-book.php?topic=<?= urlencode($topic) ?>&amp;reader=<?= urlencode($reader) ?>"><?= StudioTheme::icon('pen', 14) ?> Back to the book generator</a>
+            <a class="outline-button" href="book-projects.php"><?= StudioTheme::icon('archive', 14) ?> Book projects</a>
         </div>
-    </header>
+    </div>
 
     <?php if ($error !== null): ?>
         <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
 
-    <form method="post">
+    <form method="post" class="panel">
         <div class="grid">
             <div>
                 <label for="topic">Book topic</label>
@@ -812,6 +781,6 @@ $downloadQuery = http_build_query(array_filter([
             </ul>
         </section>
     <?php endif; ?>
-</main>
+<?php StudioTheme::close(); ?>
 </body>
 </html>

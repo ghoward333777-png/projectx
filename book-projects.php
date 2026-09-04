@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/BookProjectStore.php';
+require_once __DIR__ . '/StudioTheme.php';
 
 $store = new BookProjectStore();
 $downloadId = trim((string) ($_GET['download'] ?? ''));
@@ -25,36 +26,27 @@ $projects = $store->list();
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Book Projects · Book Intelligence Studio</title>
-    <style>
-        :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-        body { margin: 0; background: radial-gradient(circle at top left, #12313a, #11141c 45%), #11141c; color: #eef0f6; min-height: 100vh; }
-        main { max-width: 1000px; margin: 0 auto; padding: 42px 24px 80px; }
-        .eyebrow { color: #6fd6c3; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
-        h1 { font-size: clamp(34px, 6vw, 56px); letter-spacing: -.05em; line-height: 1; margin: 12px 0; }
-        p { color: #aeb2c2; line-height: 1.6; }
-        a { color: #8fe0d2; }
-        table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 14px; }
-        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #343747; vertical-align: top; }
-        th { color: #8d91a3; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
-        .panel { background: #1a1d28; border: 1px solid #343747; border-radius: 16px; padding: 22px; margin-top: 24px; }
-        .toc li { color: #cfd3df; line-height: 1.7; }
-        .empty { border: 1px dashed #3d4052; border-radius: 14px; padding: 28px; color: #8d91a3; margin-top: 24px; }
-        nav a { margin-right: 14px; }
-    </style>
+    <?php StudioTheme::head('Book projects'); ?>
 </head>
 <body>
-<main>
-    <div class="eyebrow">Book Intelligence Studio</div>
-    <h1>Book projects.</h1>
-    <p>Every book you generate is saved here automatically — topic, options, table of contents, and the full manuscript record — so no project is ever lost.</p>
-    <nav>
-        <a href="amazon-book-writer.php">📦 Amazon Book Writer</a>
-        <a href="book-lab.php">🔬 Book Development Lab</a>
-        <a href="user-guide.php">📖 User guide</a>
-    </nav>
+<?php StudioTheme::open([
+    'active' => 'library',
+    'current' => 'Library',
+    'progress_label' => 'Completed package archive',
+    'progress_value' => StudioTheme::projectCount() . ' saved',
+    'progress_percent' => 100,
+]); ?>
+
+    <div class="page-intro">
+        <div>
+            <span class="section-label coral">LIBRARY</span>
+            <h1>Book projects.</h1>
+            <p>Every book you generate is saved here automatically — topic, options, table of contents, and the full manuscript record — so no project is ever lost.</p>
+        </div>
+        <div class="intro-action">
+            <a class="primary-button" href="generate-book.php"><?= StudioTheme::icon('pen', 14) ?> Generate a new book</a>
+        </div>
+    </div>
 
     <?php if ($viewRecord !== null): ?>
         <div class="panel">
@@ -102,6 +94,6 @@ $projects = $store->list();
             </tbody>
         </table>
     <?php endif; ?>
-</main>
+<?php StudioTheme::close(); ?>
 </body>
 </html>

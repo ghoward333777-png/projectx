@@ -1,59 +1,28 @@
-<?php declare(strict_types=1); ?>
+<?php require_once __DIR__ . '/StudioTheme.php'; ?>
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>User Guide · Book Intelligence Studio</title>
-    <style>
-        :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #11141c; color: #eef0f6; }
-        body { margin: 0; background: radial-gradient(circle at top right, #16321f, #11141c 42%); min-height: 100vh; }
-        main { max-width: 860px; margin: 0 auto; padding: 42px 24px 90px; }
-        header { border-bottom: 1px solid #36384a; padding-bottom: 28px; }
-        .eyebrow { color: #7ee2a8; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
-        h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1; letter-spacing: -.05em; margin: 12px 0 10px; }
-        h2 { letter-spacing: -.03em; font-size: 24px; margin: 0 0 6px; }
-        h3 { font-size: 16px; margin: 18px 0 6px; }
-        p, li { color: #c3c7d4; line-height: 1.7; }
-        a { color: #a9ecc6; }
-        section { background: #1a1d28; border: 1px solid #343747; border-radius: 18px; padding: 26px 28px; margin-top: 18px; }
-        .step { display: flex; gap: 16px; margin-top: 14px; }
-        .step-number { flex: 0 0 34px; height: 34px; border-radius: 999px; background: #22452f; color: #7ee2a8; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-        .step p { margin: 5px 0 0; }
-        .step strong { color: #eef0f6; }
-        ul { padding-left: 22px; margin: 8px 0; }
-        .tip { background: #1d2a22; border: 1px solid #2f4b3a; border-radius: 10px; padding: 13px 16px; margin-top: 14px; color: #b9e6cc; font-size: 14px; }
-        .tip b { color: #7ee2a8; }
-        .pages { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; }
-        .page-card { background: #222534; border: 1px solid #383b4d; border-radius: 12px; padding: 15px; }
-        .page-card strong { display: block; color: #fff; margin-bottom: 5px; }
-        .page-card span { color: #aeb2c2; font-size: 13px; line-height: 1.5; }
-        .button-link { display: inline-block; border-radius: 999px; background: #7ee2a8; color: #0e2417; padding: 12px 20px; font-weight: 800; text-decoration: none; margin-top: 12px; }
-        code { background: #10121a; border: 1px solid #343747; border-radius: 6px; padding: 2px 7px; color: #a9ecc6; font-size: 13px; }
-        details { border: 1px solid #343747; border-radius: 10px; margin-top: 10px; background: #1e2130; }
-        summary { cursor: pointer; padding: 13px 16px; font-weight: 700; color: #eef0f6; }
-        details p { padding: 0 16px 14px; margin: 0; }
-        footer { color: #8d91a3; font-size: 12px; margin-top: 26px; text-align: center; }
-        nav.menu { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
-        nav.menu a { display: inline-block; background: #1e2c24; border: 1px solid #2f4b3a; border-radius: 999px; color: #a9ecc6; padding: 8px 15px; font-size: 13px; font-weight: 700; text-decoration: none; }
-        nav.menu a:hover { background: #24382c; }
-        @media (max-width: 700px) { main { padding: 26px 14px 60px; } section { padding: 18px; } }
-    </style>
+    <?php StudioTheme::head('User guide'); ?>
 </head>
 <body>
-<main>
-    <header>
-        <div class="eyebrow">Book Intelligence Studio · User Guide</div>
-        <h1>Write a book. Publish it on Amazon. Start here.</h1>
-        <p>This guide walks you through everything in plain language. No experience needed — if you can type a topic, you can make a book.</p>
-        <nav class="menu" aria-label="App menu">
-            <a href="index.php">🏛 Strategy</a>
-            <a href="generate-book.php">📝 Draft</a>
-            <a href="amazon-book-writer.php">📦 Amazon Book Writer</a>
-            <a href="book-lab.php">🔬 Book Development Lab</a>
-            <a href="download-app.php">⬇ Get the app (.zip)</a>
-        </nav>
-    </header>
+<?php StudioTheme::open([
+    'active' => 'guide',
+    'current' => 'User guide',
+    'progress_label' => 'How the studio works',
+    'progress_value' => 'Friendly guide',
+    'progress_percent' => 100,
+]); ?>
+
+    <div class="page-intro">
+        <div>
+            <span class="section-label coral">USER GUIDE</span>
+            <h1>How to use Book Intelligence Studio.</h1>
+            <p>A friendly walkthrough of the whole flow — from a topic, to a strategy kit, to a working manuscript, to a complete Amazon publishing package.</p>
+        </div>
+        <div class="intro-action">
+            <a class="primary-button" href="index.php"><?= StudioTheme::icon('target', 14) ?> Start with a topic</a>
+        </div>
+    </div>
 
     <section>
         <h2>What is this app?</h2>
@@ -221,6 +190,6 @@
     </section>
 
     <footer>Book Intelligence Studio · runs on plain PHP · no data leaves your site</footer>
-</main>
+<?php StudioTheme::close(); ?>
 </body>
 </html>

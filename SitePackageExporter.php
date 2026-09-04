@@ -26,6 +26,7 @@ final class SitePackageExporter
         'ManuscriptDeveloper.php',
         'BookProjectStore.php',
         'SitePackageExporter.php',
+        'StudioTheme.php',
         'index.php',
         'generate-book.php',
         'amazon-book-writer.php',
