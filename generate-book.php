@@ -27,11 +27,11 @@ $book = null;
 // The Visual Editor's blocks: which figure kinds join the manuscript preview,
 // and how many of each the whole manuscript may carry.
 $blockCatalog = [
-    'table' => ['label' => 'Tables', 'hint' => 'Comparisons the reader must weigh', 'default' => true, 'limit' => 3],
-    'graph' => ['label' => 'Graphs', 'hint' => 'Line graphs showing progression', 'default' => true, 'limit' => 2],
-    'chart' => ['label' => 'Charts', 'hint' => 'Bar and share charts from chapter data', 'default' => true, 'limit' => 2],
-    'diagram' => ['label' => 'Diagrams', 'hint' => 'Step flows for real processes', 'default' => true, 'limit' => 2],
-    'illustration' => ['label' => 'Figures', 'hint' => 'Takeaway and concept cards', 'default' => true, 'limit' => 3],
+    'table' => ['label' => 'Tables', 'hint' => 'Real rows: job cards, worksheets, stated figures', 'default' => true, 'limit' => 3],
+    'graph' => ['label' => 'Graphs', 'hint' => 'Line graphs over values the text states', 'default' => true, 'limit' => 2],
+    'chart' => ['label' => 'Charts', 'hint' => 'Bar and share charts from real data only', 'default' => true, 'limit' => 2],
+    'diagram' => ['label' => 'Diagrams', 'hint' => 'Step flows from the text\'s own sequences', 'default' => true, 'limit' => 2],
+    'illustration' => ['label' => 'Figures', 'hint' => 'The chapter\'s takeaway, as a pull quote', 'default' => true, 'limit' => 3],
     'ai-image' => ['label' => 'AI-generated images', 'hint' => 'One contextual prompt per chapter, generated locally', 'default' => false, 'limit' => 3],
 ];
 $postedBlocks = is_array($_POST['blocks'] ?? null) ? $_POST['blocks'] : null;

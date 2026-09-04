@@ -173,6 +173,124 @@ final class IllustrationStudio
     }
 
     /**
+     * Time series stated in the text: (year, value) pairs from sentences
+     * like "By 1950 the census counted 1,300 residents." The year itself is
+     * never mistaken for the value. Industry figure standards allow a line
+     * graph only over data like this — real, labeled, from the text.
+     *
+     * @return array<int, array{label: string, value: float}>
+     */
+    public function extractTimeSeries(string $text): array
+    {
+        $points = [];
+        foreach (preg_split('/(?<=[.!?])\s+/u', $text) ?: [] as $sentence) {
+            if (preg_match('/\b(1[6-9]\d{2}|20\d{2})\b/', $sentence, $year) !== 1) {
+                continue;
+            }
+            if (preg_match_all('/(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?!\s?(?:%|percent))\b/u', $sentence, $matches) < 1) {
+                continue;
+            }
+            foreach ($matches[1] as $raw) {
+                $value = (float) str_replace(',', '', $raw);
+                if (!str_contains($raw, ',') && !str_contains($raw, '.') && $value >= 1600 && $value <= 2099) {
+                    continue; // a year, not a measurement
+                }
+                if (!isset($points[$year[1]])) {
+                    $points[$year[1]] = $value;
+                }
+                break;
+            }
+        }
+        ksort($points);
+        $rows = [];
+        foreach ($points as $label => $value) {
+            $rows[] = ['label' => (string) $label, 'value' => $value];
+        }
+        return $rows;
+    }
+
+    /**
+     * Part-to-whole shares stated in the text: labeled percentages such as
+     * "Agriculture held 62 percent" or "28% came from services". A pie is
+     * honest only when at least two shares exist and they fit one whole.
+     *
+     * @return array<int, array{label: string, value: int}>
+     */
+    public function extractShares(string $text): array
+    {
+        $shares = [];
+        preg_match_all('/([A-Za-z][A-Za-z\s\-]{2,32}?)\s+(?:holds?|held|makes? up|made up|accounts? for|accounted for|represents?|represented|takes?|took|is|are|was|were|at)\s+(?:about |nearly |roughly |some )?(\d{1,3}(?:\.\d+)?)\s?(?:%|percent)/u', $text, $lead, PREG_SET_ORDER);
+        preg_match_all('/(\d{1,3}(?:\.\d+)?)\s?(?:%|percent)\s+(?:of\s+[a-z\s]{2,24}\s+)?(?:goes? to|went to|comes? from|came from|is|are|was|were|for)\s+(?:the\s+)?([A-Za-z][A-Za-z\s\-]{2,32}?)(?=[,.;:]|\s+(?:and|while|with)\b)/u', $text, $trail, PREG_SET_ORDER);
+        $clean = static fn (string $label): string => trim((string) preg_replace('/^(?:and|the|while)\\s+/i', '', trim($label)));
+        foreach ($lead as $m) {
+            $shares[$clean($m[1])] ??= (float) $m[2];
+        }
+        foreach ($trail as $m) {
+            $shares[$clean($m[2])] ??= (float) $m[1];
+        }
+        $rows = [];
+        $total = 0.0;
+        foreach ($shares as $label => $value) {
+            if ($value <= 0 || $value > 100) {
+                continue;
+            }
+            $total += $value;
+            $rows[] = ['label' => ucfirst($label), 'value' => (int) round($value)];
+        }
+        return (count($rows) >= 2 && $total <= 120) ? $rows : [];
+    }
+
+    /**
+     * Labeled quantities in one unit: "The cannery employed 400 workers,
+     * the packing sheds 250, and the railroad 80." Bars are honest only
+     * over at least three real, comparable magnitudes.
+     *
+     * @return array{rows: array<int, array{label: string, value: int}>, unit: string}
+     */
+    public function extractQuantities(string $text): array
+    {
+        preg_match_all('/(?:^|[.;]\s+|,\s+(?:and\s+)?)(?:the\s+)?([A-Za-z][A-Za-z\s\-]{2,32}?)\s+(?:has|have|had|counts?|counted|employs?|employed|holds?|held|houses?|housed|reached|totals?|totaled|numbers?|numbered|drew|drawing)\s+(?:about |nearly |roughly |some )?(\d{1,3}(?:,\d{3})+|\d+)\s*([a-z]{3,15})?/u', $text, $matches, PREG_SET_ORDER);
+        $rows = [];
+        $units = [];
+        foreach ($matches as $m) {
+            $value = (int) str_replace(',', '', $m[2]);
+            if ($value < 1 || (!str_contains($m[2], ',') && $value >= 1600 && $value <= 2099)) {
+                continue; // years are labels, not magnitudes
+            }
+            $rows[] = ['label' => ucfirst(trim((string) preg_replace('/^(?:and|the)\\s+/i', '', trim($m[1])))), 'value' => $value];
+            if (($m[3] ?? '') !== '') {
+                $units[] = $m[3];
+            }
+        }
+        $unitCounts = array_count_values($units);
+        arsort($unitCounts);
+        return ['rows' => count($rows) >= 3 ? array_slice($rows, 0, 8) : [], 'unit' => $unitCounts !== [] ? (string) array_key_first($unitCounts) : ''];
+    }
+
+    /**
+     * An ordered sequence the text itself narrates: "First, … Then, …
+     * Finally, …" or numbered steps. A flow diagram is honest only when
+     * the steps are the text's own.
+     *
+     * @return array<int, string>
+     */
+    public function extractSteps(string $text): array
+    {
+        $steps = [];
+        preg_match_all('/\b(?:first|second|third|fourth|fifth|then|next|after that|finally|last)\b[,:]?\s+([^.;\n]{8,90})[.;]/iu', $text, $matches);
+        foreach ($matches[1] as $step) {
+            $steps[] = mb_strtoupper(mb_substr(trim($step), 0, 1)) . mb_substr(trim($step), 1);
+        }
+        if (count($steps) < 3) {
+            preg_match_all('/(?:^|\s)\d[.)]\s+([^.;\n]{8,90})[.;]/u', $text, $numbered);
+            foreach ($numbered[1] as $step) {
+                $steps[] = mb_strtoupper(mb_substr(trim($step), 0, 1)) . mb_substr(trim($step), 1);
+            }
+        }
+        return count($steps) >= 3 ? array_slice($steps, 0, 7) : [];
+    }
+
+    /**
      * Score a passage 0–3 on each signal the visual-selection formula reads.
      * Deterministic keyword and pattern counting — no services, no keys.
      *
@@ -196,6 +314,12 @@ final class IllustrationStudio
         }
         // Data density: how many numeric facts the passage carries.
         $signals['data_density'] = min(3, intdiv((int) preg_match_all('/(?<![\w.])\d[\d,.]*/', $text), 3));
+        // Structure beats keywords: three or more distinct years mark a
+        // passage that moves through time, whatever verbs carry it.
+        preg_match_all('/\\b(1[6-9]\\d{2}|20\\d{2})\\b/', $text, $years);
+        if (count(array_unique($years[1])) >= 3) {
+            $signals['temporal_dynamics'] = 3;
+        }
         // Structure beats keywords: three or more clauses that each open with
         // a process verb are a step sequence, whatever words follow.
         $imperatives = 0;
@@ -475,6 +599,18 @@ final class IllustrationStudio
         $choice = $candidate['choice'];
         $title = (string) ($chapter['title'] ?? '');
         $short = $this->titleShort($title);
+        $isPracticeChapter = preg_match('/framework|practice|how to|playbook|loop|method|steps|guide|checklist|use this/i', $title . ' ' . (string) ($chapter['purpose'] ?? '')) === 1;
+        $sectionText = '';
+        foreach ($this->chapterSectionTexts($chapter) as $section) {
+            if ($section['title'] === $candidate['section']) {
+                $sectionText = $section['text'];
+                break;
+            }
+        }
+        if ($candidate['order'] < 0) {
+            // The chapter-level candidate analyzes the outline itself.
+            $sectionText = (string) ($chapter['purpose'] ?? '') . '. ' . (string) ($chapter['detail'] ?? '');
+        }
         $base = [
             'id' => 'ch' . $number . '-s' . $candidate['order'] . '-' . str_replace(' ', '-', (string) $choice['visual']),
             'kind' => (string) $choice['kind'],
@@ -486,6 +622,9 @@ final class IllustrationStudio
                 'reason' => $choice['reason'],
             ],
         ];
+
+        // The render gate: a figure only exists when the text supplies its
+        // content. No extractable data means no figure — never a decoration.
         switch ((string) $choice['visual']) {
             case 'table':
                 if ($jobs !== []) {
@@ -496,7 +635,7 @@ final class IllustrationStudio
                         'table' => $this->buildJobTable($jobs),
                     ];
                 }
-                if (count($clauses) >= 3) {
+                if ($isPracticeChapter && count($clauses) >= 3) {
                     return $base + [
                         'id' => 'ch' . $number . '-table',
                         'title' => 'Worksheet: ' . strtolower($short),
@@ -504,22 +643,28 @@ final class IllustrationStudio
                         'table' => $this->buildWorksheetTable($clauses),
                     ];
                 }
-                if (count($sections) >= 2) {
+                $quantities = $this->extractQuantities($sectionText);
+                if ($quantities['rows'] !== []) {
                     return $base + [
-                        'title' => 'The topics, side by side',
-                        'caption' => 'Each topic of ' . $short . ' and the attention it carries.',
-                        'table' => $this->buildSectionTable($sections),
+                        'title' => 'The figures, side by side',
+                        'caption' => 'Values as stated in the text' . ($quantities['unit'] !== '' ? ', in ' . $quantities['unit'] : '') . '.',
+                        'table' => [
+                            'columns' => ['Item', $quantities['unit'] !== '' ? ucfirst($quantities['unit']) : 'Value'],
+                            'rows' => array_map(static fn (array $r): array => [(string) $r['label'], number_format($r['value'])], $quantities['rows']),
+                        ],
                     ];
                 }
                 return null;
             case 'line graph':
-                if (count($sections) < 2) {
+                $series = $this->extractTimeSeries($sectionText);
+                if (count($series) < 3) {
                     return null;
                 }
                 return $base + [
-                    'title' => 'How ' . strtolower($short) . ' builds',
-                    'caption' => 'The ground gained topic by topic across ' . $short . '.',
-                    'svg' => $this->renderGraph($sections, $title),
+                    'title' => $short . ', by the numbers',
+                    'caption' => 'The values this passage reports, ' . $series[0]['label'] . '–' . $series[count($series) - 1]['label'] . '.',
+                    'svg' => $this->renderLineChart($series, '', $title),
+                    'data_rows' => $series,
                 ];
             case 'bar chart':
                 if ($jobs !== []) {
@@ -533,34 +678,37 @@ final class IllustrationStudio
                         ];
                     }
                 }
-                if (count($sections) < 2) {
+                $quantities = $this->extractQuantities($sectionText);
+                if ($quantities['rows'] === []) {
                     return null;
                 }
                 return $base + [
-                    'title' => 'Where the weight falls',
-                    'caption' => 'The topics of ' . $short . ', ranked by the attention each receives.',
-                    'svg' => $this->renderChart($sections, $title),
+                    'title' => 'How they compare',
+                    'caption' => 'Magnitudes as stated in the text' . ($quantities['unit'] !== '' ? ', in ' . $quantities['unit'] : '') . '.',
+                    'svg' => $this->renderBarChart($quantities['rows'], $quantities['unit'] !== '' ? $quantities['unit'] : 'as stated', $title),
+                    'data_rows' => $quantities['rows'],
                 ];
             case 'pie chart':
-                if (count($sections) < 2) {
+                $shares = $this->extractShares($sectionText);
+                if ($shares === []) {
                     return null;
                 }
                 return $base + [
                     'title' => 'The whole, in parts',
-                    'caption' => 'How ' . $short . ' divides its ground among its topics.',
-                    'svg' => $this->renderPieChart(
-                        array_map(static fn (array $s): array => ['label' => (string) $s['title'], 'value' => (int) $s['word_count']], $sections),
-                        $title,
-                    ),
+                    'caption' => 'Shares as stated in the text; the remainder is unaccounted.',
+                    'svg' => $this->renderPieChart($shares, $title),
+                    'data_rows' => $shares,
                 ];
             case 'illustration':
-                if (count($clauses) < 3) {
+                $steps = $candidate['order'] < 0 && count($clauses) >= 3
+                    ? array_map(
+                        fn (string $clause): string => mb_strtoupper(mb_substr($this->subjectClause($clause), 0, 1)) . mb_substr($this->subjectClause($clause), 1),
+                        $clauses,
+                    )
+                    : $this->extractSteps($sectionText);
+                if (count($steps) < 3) {
                     return null;
                 }
-                $steps = array_map(
-                    fn (string $clause): string => mb_strtoupper(mb_substr($this->subjectClause($clause), 0, 1)) . mb_substr($this->subjectClause($clause), 1),
-                    $clauses,
-                );
                 return $base + [
                     'id' => 'ch' . $number . '-diagram',
                     'title' => $short . ' at a glance',
@@ -568,14 +716,10 @@ final class IllustrationStudio
                     'svg' => $this->renderDiagram($steps, $title),
                 ];
             case 'figure':
-                return $base + [
-                    'title' => $short . ', drawn',
-                    'caption' => 'The shape of ' . $short . ' — its pieces and how they sit together.',
-                    'svg' => $this->renderIllustration('figure:' . $number . ':' . $candidate['section'], $title),
-                ];
             case 'photo':
-                // The chapter's opener image already anchors it in the real
-                // world; a second photo slot yields to the next candidate.
+                // Abstract emblems decorate rather than inform, and the
+                // chapter's opener image already anchors it in the real
+                // world — both slots yield to the next candidate.
                 return null;
         }
         return null;
@@ -983,6 +1127,56 @@ final class IllustrationStudio
             $svg .= '<text x="322" y="' . $ly . '" font-size="12" fill="' . self::INK . '">' . $this->svgText((string) $row['label'], 34) . '</text>';
             $svg .= '<text x="620" y="' . $ly . '" text-anchor="end" font-size="12" fill="' . self::MUTED . '">' . round(100 * ((int) $row['value']) / $total) . '%</text>';
         }
+        return $svg . '</svg>';
+    }
+
+    /**
+     * Line chart over a real extracted series: labeled x points (years),
+     * a scaled y axis with min and max called out, and the unit named —
+     * the self-sufficiency a published figure requires.
+     *
+     * @param array<int, array{label: string, value: float}> $rows
+     */
+    public function renderLineChart(array $rows, string $unit, string $context): string
+    {
+        $rows = array_slice($rows, 0, 10);
+        if (count($rows) < 3) {
+            return $this->renderIllustration('line:' . $context, $context);
+        }
+        $values = array_map(static fn (array $r): float => (float) $r['value'], $rows);
+        $min = min($values);
+        $max = max($values);
+        $span = max(1.0, $max - $min);
+        $left = 74;
+        $top = 24;
+        $plotWidth = 520;
+        $plotHeight = 170;
+        $coords = [];
+        foreach ($values as $index => $value) {
+            $px = $left + (int) round($index * $plotWidth / max(1, count($values) - 1));
+            $py = $top + $plotHeight - (int) round(($value - $min) * $plotHeight / $span);
+            $coords[] = [$px, $py];
+        }
+        $svg = $this->svgOpen(640, $plotHeight + 84, 'Line chart: ' . $context);
+        for ($i = 0; $i <= 4; $i++) {
+            $gy = $top + (int) round($plotHeight * $i / 4);
+            $svg .= '<line x1="' . $left . '" y1="' . $gy . '" x2="' . ($left + $plotWidth) . '" y2="' . $gy . '" stroke="' . self::GRID . '" stroke-width="1"/>';
+        }
+        $svg .= '<text x="' . ($left - 8) . '" y="' . ($top + 5) . '" text-anchor="end" font-size="11" fill="' . self::MUTED . '">' . number_format($max) . '</text>';
+        $svg .= '<text x="' . ($left - 8) . '" y="' . ($top + $plotHeight + 4) . '" text-anchor="end" font-size="11" fill="' . self::MUTED . '">' . number_format($min) . '</text>';
+        $path = '';
+        foreach ($coords as $index => [$px, $py]) {
+            $path .= ($index === 0 ? 'M' : 'L') . $px . ' ' . $py . ' ';
+            if ($index < count($coords) - 1) {
+                $svg .= '<circle cx="' . $px . '" cy="' . $py . '" r="3.5" fill="' . self::DATA . '"/>';
+            }
+            $svg .= '<text x="' . $px . '" y="' . ($top + $plotHeight + 22) . '" text-anchor="middle" font-size="11" fill="' . self::MUTED . '">' . $this->svgText((string) $rows[$index]['label'], 12) . '</text>';
+        }
+        $svg .= '<path d="' . trim($path) . '" fill="none" stroke="' . self::DATA . '" stroke-width="2"/>';
+        [$lastX, $lastY] = $coords[count($coords) - 1];
+        $svg .= '<circle cx="' . $lastX . '" cy="' . $lastY . '" r="5" fill="' . self::EMPHASIS . '"/>';
+        $svg .= '<text x="' . min($lastX, $left + $plotWidth - 4) . '" y="' . max(14, $lastY - 10) . '" text-anchor="end" font-size="12" font-weight="700" fill="' . self::INK . '">' . number_format($values[count($values) - 1]) . ($unit !== '' ? ' ' . $unit : '') . '</text>';
+        $svg .= '<text x="' . $left . '" y="' . ($top + $plotHeight + 44) . '" font-size="11" fill="' . self::MUTED . '">' . $this->svgText($unit !== '' ? $unit . ', as stated in the text' : 'values as stated in the text', 60) . '</text>';
         return $svg . '</svg>';
     }
 

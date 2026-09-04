@@ -33,6 +33,12 @@ as prose. Keep them intact in `BookIntelligenceEngine::composeExpandedChapterDra
   Deterministic; `tests/visual-selection-contract.php` pins the tree, the
   scoring bounds, the tie-breakers, and the instruction pairing (a practice
   chapter's step diagram always ships with its worksheet).
+  **The render gate**: a figure exists only when the text supplies its
+  content — extracted time series, shares, quantities, or narrated steps
+  (`extractTimeSeries` / `extractShares` / `extractQuantities` /
+  `extractSteps`). No extractable data means no figure: never chart the
+  document's own word counts, never emit decorative emblems. Data figures
+  carry their `data_rows`.
 - **Genre-aware outlines** in `suggestTableOfContents()`: social/cultural topics get
   the narrated-history arc (current state → past contrast → origins → evidence →
   solutions; concrete titles, never "systems"/"frameworks"); practical topics get the

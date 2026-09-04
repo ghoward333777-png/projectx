@@ -74,6 +74,37 @@ contract_check(@$dom->loadXML($pie) !== false, 'pie chart must be well-formed XM
 contract_check(str_contains($pie, '62%') && str_contains($pie, '28%') && str_contains($pie, '10%'), 'pie legend must name every share');
 contract_check(substr_count($pie, '<path ') === 3, 'pie must draw one slice per part');
 
+// --- Content extraction: figures take their data from the text ---------------
+$census = 'The census tells the story plainly. In 1920 the count reached 1,100. By 1950 the census counted 1,300 residents. In 1980 the town held 1,900. By 2020 the count stood at 2,225.';
+$series = $studio->extractTimeSeries($census);
+contract_check(count($series) === 4 && $series[0]['label'] === '1920' && $series[1]['value'] === 1300.0, 'time series must pair each year with its stated value');
+contract_check($studio->extractTimeSeries('The town changed in 1950 and again in 1980.') === [], 'years without values must extract nothing');
+
+$shares = $studio->extractShares('Agriculture held 62 percent of local work, while 28 percent came from the packing sheds, and services took 10 percent.');
+contract_check(count($shares) === 3 && in_array(['label' => 'Agriculture', 'value' => 62], $shares, true), 'shares must carry clean labels and stated percentages');
+contract_check($studio->extractShares('Growth was strong at 90 percent and stronger at 85 percent of capacity and 70 percent again.') === [], 'percentages that cannot form one whole must extract nothing');
+
+$quantities = $studio->extractQuantities('The cannery employed 400 workers, the packing sheds employed 250 workers, and the railroad employed 80 workers.');
+contract_check(count($quantities['rows']) === 3 && $quantities['unit'] === 'workers', 'quantities must keep their labels, values, and shared unit');
+
+$steps = $studio->extractSteps('First, walk the property line at dawn. Then, note every repair the season demands. Next, price the work against the harvest. Finally, decide what the land can carry.');
+contract_check(count($steps) === 4 && $steps[0] === 'Walk the property line at dawn', 'narrated sequences must extract in order');
+
+// --- The render gate: no data, no figure -------------------------------------
+$dataChapter = ['number' => 1, 'title' => 'The Population Story', 'purpose' => 'Reveal the pattern in the census', 'detail' => 'Follow the count.', 'content' => "\nThe takeaway\n\nNumbers are people.", 'blocks' => [
+    ['kind' => 'heading', 'content' => 'The Population Story'],
+    ['kind' => 'paragraph', 'content' => $census],
+    ['kind' => 'heading', 'content' => 'Where the work was'],
+    ['kind' => 'paragraph', 'content' => 'Agriculture held 62 percent of local work, while 28 percent came from the packing sheds, and services took 10 percent.'],
+]];
+$dataKinds = array_column($studio->planChapterMedia($dataChapter, [], []), 'kind');
+contract_check(in_array('graph', $dataKinds, true) && in_array('chart', $dataKinds, true), 'a chapter whose text carries data must earn its charts');
+foreach ($studio->planChapterMedia($dataChapter, [], []) as $item) {
+    if (in_array($item['kind'], ['graph', 'chart'], true)) {
+        contract_check(isset($item['data_rows']) && $item['data_rows'] !== [], 'every data figure must carry the rows it draws');
+    }
+}
+
 // --- The plan carries each figure's decision ---------------------------------
 require_once __DIR__ . '/../AmazonBookWriter.php';
 $writer = new AmazonBookWriter();
@@ -86,6 +117,13 @@ foreach ($result['media']['chapters'] as $chapter) {
             contract_check(isset($item['decision']['visual'], $item['decision']['signals'], $item['decision']['reason']), 'each formula-chosen figure must carry its decision');
             contract_check($item['decision']['total'] >= 2, 'a figure only earns its place with a clear signal');
         }
+        // The gate, book-wide: a pass-one draft with no stated data draws no
+        // data charts — only the opener image, the takeaway card, and the
+        // practice chapter's step flow and worksheet.
+        contract_check(
+            in_array($item['kind'], ['ai-image', 'illustration', 'diagram', 'table'], true),
+            'a draft without data must not draw charts or graphs, got ' . $item['kind'],
+        );
     }
 }
 contract_check($decided > 0, 'the media plan must carry formula-chosen figures');
