@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/AmazonBookWriter.php';
 require_once __DIR__ . '/QualityLab.php';
+require_once __DIR__ . '/StudioTheme.php';
 
 session_start();
 
@@ -65,69 +66,32 @@ $badgeColor = static fn (string $badge): string => match ($badge) {
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Book Development Lab · Book Intelligence Studio</title>
-    <style>
-        :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #11141c; color: #eef0f6; }
-        body { margin: 0; background: radial-gradient(circle at top right, #123340, #11141c 42%); min-height: 100vh; }
-        main { max-width: 1100px; margin: 0 auto; padding: 42px 24px 80px; }
-        header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; border-bottom: 1px solid #36384a; padding-bottom: 30px; }
-        .eyebrow { color: #5fd0dd; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
-        h1 { font-size: clamp(36px, 6vw, 62px); line-height: .98; max-width: 720px; margin: 14px 0; letter-spacing: -.06em; }
-        p { color: #aeb2c2; line-height: 1.6; }
-        a { color: #a7e4ec; }
-        form, section { background: #1a1d28; border: 1px solid #343747; border-radius: 18px; padding: 24px; margin-top: 18px; }
-        label { display: block; color: #dfe2eb; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-        input, select { box-sizing: border-box; width: 100%; background: #10121a; border: 1px solid #4a4d61; border-radius: 9px; color: #fff; padding: 12px 13px; font: inherit; margin-bottom: 15px; }
-        button { border: 0; border-radius: 999px; background: #5fd0dd; color: #082026; padding: 12px 18px; font: inherit; font-weight: 800; cursor: pointer; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-        .hero { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
-        .hero-score { font-size: 58px; font-weight: 800; letter-spacing: -.05em; color: #5fd0dd; line-height: 1; }
-        .hero-score small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: #8d91a3; margin-top: 6px; }
-        .badge { display: inline-block; border-radius: 999px; padding: 4px 14px; font-size: 12px; font-weight: 800; color: #10131b; }
-        .metric-row { display: grid; grid-template-columns: 210px 1fr 46px; gap: 12px; align-items: center; border-top: 1px solid #2c2f40; padding: 8px 0; font-size: 13px; }
-        .metric-row:first-of-type { border-top: 0; }
-        .bar { height: 8px; background: #262a3a; border-radius: 99px; overflow: hidden; }
-        .bar span { display: block; height: 100%; background: #5fd0dd; border-radius: 99px; }
-        .metric-row em { color: #8d91a3; font-style: normal; font-size: 11px; display: block; }
-        .metric-value { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
-        .stat { background: #222534; border-radius: 12px; padding: 14px 16px; }
-        .stat strong { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
-        .stat span { color: #aeb2c2; font-size: 12px; }
-        .check { display: grid; grid-template-columns: 64px 160px 1fr; gap: 12px; border-top: 1px solid #2c2f40; padding: 10px 0; font-size: 13px; }
-        .check:first-of-type { border-top: 0; }
-        .status-pass { color: #7ee2a8; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: .08em; }
-        .status-warn { color: #ffb84d; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: .08em; }
-        .downloads { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
-        .downloads a { display: inline-block; border-radius: 999px; background: #292d3d; color: #e9e6f4; padding: 12px 18px; font-weight: 800; text-decoration: none; }
-        .downloads a.primary { background: #5fd0dd; color: #082026; }
-        details { border: 1px solid #343747; border-radius: 10px; margin-top: 10px; background: #1e2130; }
-        summary { cursor: pointer; padding: 12px 15px; font-weight: 700; }
-        details div { padding: 0 15px 13px; color: #aeb2c2; font-size: 13px; line-height: 1.6; }
-        .error { color: #ff9cba; background: #3c1f32; border: 1px solid #7a3755; padding: 14px; border-radius: 10px; margin-top: 18px; }
-        .note { color: #8d91a3; font-size: 12px; }
-        @media (max-width: 700px) { header { display: block; } main { padding: 28px 16px 60px; } .metric-row { grid-template-columns: 1fr 60px; } .metric-row .bar { grid-column: 1 / -1; } .check { grid-template-columns: 64px 1fr; } .check span:last-child { grid-column: 1 / -1; } }
-    </style>
+    <?php StudioTheme::head('Book Development Lab'); ?>
 </head>
 <body>
-<main>
-    <header>
+<?php StudioTheme::open([
+    'active' => 'lab',
+    'current' => 'Quality lab',
+    'progress_label' => 'Quality certification',
+    'progress_value' => '30 metrics',
+    'progress_percent' => 100,
+]); ?>
+
+    <div class="page-intro">
         <div>
-            <div class="eyebrow">Book Intelligence Studio · Book Development Lab</div>
+            <span class="section-label coral">BOOK DEVELOPMENT LAB</span>
             <h1>Measure the book. Then make it better.</h1>
             <p>The quality-certification layer: 30 editorial, media, and format metrics, document complexity, KDP compatibility, metadata optimization, a QueryBook learning plan, and the complete Best-Seller Production Kit.</p>
         </div>
-        <div>
-            <a href="index.php">← Intelligence kit</a><br>
-            <a href="amazon-book-writer.php">Amazon Book Writer</a><br>
-            <a href="user-guide.php">User guide</a>
+        <div class="intro-action">
+            <a class="outline-button" href="generate-book.php"><?= StudioTheme::icon('pen', 14) ?> Book generator</a>
+            <a class="outline-button" href="amazon-book-writer.php"><?= StudioTheme::icon('sparkles', 14) ?> Amazon packaging</a>
         </div>
-    </header>
+    </div>
 
     <?php if ($error !== null): ?><div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
-    <form method="post">
+    <form method="post" class="panel">
         <div class="grid">
             <div><label for="topic">Book topic</label><input id="topic" name="topic" value="<?= htmlspecialchars($topic, ENT_QUOTES, 'UTF-8') ?>" required></div>
             <div><label for="reader">Reader description</label><input id="reader" name="reader" value="<?= htmlspecialchars($reader, ENT_QUOTES, 'UTF-8') ?>"></div>
@@ -224,6 +188,6 @@ $badgeColor = static fn (string $badge): string => match ($badge) {
             </div>
         </section>
     <?php endif; ?>
-</main>
+<?php StudioTheme::close(); ?>
 </body>
 </html>
