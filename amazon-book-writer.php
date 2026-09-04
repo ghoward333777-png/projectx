@@ -165,6 +165,7 @@ if ($aiDeveloped !== []) {
 $error = null;
 $result = null;
 $download = trim((string) ($_GET['download'] ?? ''));
+$companionBaseUrl = trim((string) ($_POST['companion_url'] ?? $_GET['companion_url'] ?? ''));
 $wantsResult = $_SERVER['REQUEST_METHOD'] === 'POST' || $download !== '' || isset($_GET['format']);
 
 if ($wantsResult) {
@@ -198,8 +199,6 @@ if ($result !== null && $download === 'manuscript') {
     echo $writer->exportManuscriptHtml($result['book'], $result['kdp']['metadata'], $result['media'], $companionPlan);
     exit;
 }
-
-$companionBaseUrl = trim((string) ($_POST['companion_url'] ?? $_GET['companion_url'] ?? ''));
 
 if ($result !== null && $download === 'epub') {
     $bytes = (new EpubExporter())->export($result['book'], $result['kdp']['metadata'], $result['media']);

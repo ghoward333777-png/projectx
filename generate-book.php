@@ -13,6 +13,10 @@ $studio = new IllustrationStudio();
 $topic = trim((string) ($_POST['topic'] ?? $_GET['topic'] ?? $_SESSION['book_topic'] ?? 'Jobs and work for teens'));
 $reader = trim((string) ($_POST['reader'] ?? $_GET['reader'] ?? $_SESSION['book_reader'] ?? 'teens exploring a first job while balancing school, safety, and real life'));
 $style = trim((string) ($_POST['style'] ?? 'conversational'));
+// The engine writes in its trusted default voice when a style it does not
+// know arrives; say so instead of silently presenting the fallback as chosen.
+$styleNotice = null;
+$requestedStyle = $style;
 $length = trim((string) ($_POST['length'] ?? 'standard'));
 $pageStyle = is_array($_POST['page_style'] ?? null) ? $_POST['page_style'] : [];
 $presetPages = ['short' => 120, 'standard' => 240, 'expanded' => 500];
@@ -78,6 +82,10 @@ try {
 }
 
 $styles = $engine->writingStyles();
+if (!in_array($style, array_column($styles, 'id'), true)) {
+    $style = 'conversational';
+    $styleNotice = 'The writing style “' . $requestedStyle . '” isn’t one of the studio’s voices, so this draft uses the Conversational voice. Pick a voice below and rewrite.';
+}
 $pageStyle = $book['page_style'] ?? $engine->defaultPageStyle();
 $selectedStyle = null;
 foreach ($styles as $writingStyle) {
@@ -157,6 +165,9 @@ $h = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 
     <?php if ($error !== null): ?>
         <div class="error"><?= $h($error) ?></div>
+    <?php endif; ?>
+    <?php if ($styleNotice !== null): ?>
+        <div class="error" role="status"><?= $h($styleNotice) ?></div>
     <?php endif; ?>
 
     <form method="post" id="writer-form">
