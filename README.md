@@ -239,6 +239,32 @@ prompt as JSON — also downloadable from the writer page) so the prompts can be
 executed with any AI tooling and re-assembled later. `writeBook()` accepts the
 finished texts directly via the `developed_chapters` option.
 
+## Prose quality: hygiene, rhythm, revision
+
+Three passes protect the finished text:
+
+- **Manuscript hygiene** (`ManuscriptHygiene`) — every developed chapter and
+  every pasted outline row is normalized to Unicode NFC, stripped of
+  zero-width characters, soft hyphens and byte-order marks, has exotic spaces
+  (non-breaking, thin, em) turned into ordinary spaces, line endings
+  normalized to LF, runs of spaces and tabs collapsed, trailing spaces removed
+  and blank-line runs reduced to a single paragraph break. This is standard
+  manuscript preparation: invisible junk breaks DOCX/EPUB validation and shows
+  up as boxes and gaps on a Kindle page. It is deterministic, and it degrades
+  gracefully when the `intl` extension is unavailable.
+- **Rhythm and variety** — the AI writing contract requires deliberate
+  sentence-length variation, varied paragraph shape and openings, and bans
+  filler transitions ("Moreover", "Furthermore", "In conclusion", "It is
+  important to note"). Each chapter also gets a rotating cadence directive, so
+  neighbouring chapters don't open the same way.
+- **Revision** — the editor pass revises structurally as well as line by line:
+  reordering a weak argument, compressing passages that circle a made point,
+  and spending the words won on the chapter's thinnest claim. Afterwards
+  `revisionReport()` runs locally (no API cost) and flags chapters that still
+  want a human hand: short or bloated against plan, missing takeaway, thin
+  paragraph count, monotonous sentence cadence, or repeated paragraph
+  openings. The writer page lists the flagged chapters with reasons.
+
 ## Book projects
 
 Every generation in the Amazon Book Writer is saved automatically as a project

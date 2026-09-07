@@ -22,6 +22,8 @@ declare(strict_types=1);
  * plan with an API key and assembles the developed chapters back into the
  * book (dependency-free raw HTTP by project constraint — no Composer).
  */
+require_once __DIR__ . '/ManuscriptHygiene.php';
+
 final class ManuscriptDeveloper
 {
     public const PROVIDERS = ['anthropic', 'google', 'openai'];
@@ -143,12 +145,22 @@ final class ManuscriptDeveloper
         }
         $voiceLines[] = '- When these factors pull against each other, blend them deliberately — never abandon one.';
 
+        $rhythmLines = [
+            '- Vary sentence length on purpose: put short, blunt sentences next to long ones that turn. A page of same-length sentences reads like machinery.',
+            '- Vary paragraph shape: no two consecutive paragraphs should open the same way or run the same length. Some paragraphs are three sentences; some are eight.',
+            '- Vary the connective tissue: do not lean on the same transitions. "Moreover", "Furthermore", "In conclusion", "It is important to note", "Indeed" and "That said" are banned outright; move between ideas with the sentence itself instead.',
+            '- Never open two sections, or two consecutive paragraphs, with the same word or construction.',
+            '- Prefer concrete nouns and active verbs; cut adverbs that prop up weak verbs; let one plain sentence carry the point rather than three that circle it.',
+        ];
+
         return "You are one of a team of writers producing the finished prose of the book \"{$title}\" by {$author}.\n"
             . "The first draft was a set of development directions; your job is to FOLLOW those directions and write the real chapter — legitimate book text a reader would buy. Voice: {$styleLabel}. Reader: {$audience}.\n"
             . ($description !== '' ? "About the book: {$description}\n" : '')
             . "The chapters (stay in your lane — each theme belongs to its chapter):\n" . implode("\n", $tocLines) . "\n"
             . "VOICE CONTRACT (a MUST — voice accuracy is a hard requirement of this book; no rule below overrides it):\n"
             . implode("\n", $voiceLines) . "\n"
+            . "RHYTHM AND VARIETY:\n"
+            . implode("\n", $rhythmLines) . "\n"
             . "HARD RULES:\n"
             . "1. Real prose only. Never write about outlines, drafts, plans, purposes, \"this chapter\", \"this book\", or how the text is built. The text discusses its subject — never the writing of it.\n"
             . "2. Follow the chapter's draft directions (its purpose and detail). Every element listed in the detail must appear, developed, in the chapter.\n"
@@ -171,10 +183,22 @@ final class ManuscriptDeveloper
         $detail = (string) ($chapter['detail'] ?? '');
         $words = (int) ($chapter['word_count'] ?? 2500);
 
+        // A rotating cadence directive keeps neighbouring chapters from
+        // falling into one shared rhythm.
+        $cadences = [
+            'Open this chapter on a concrete scene — a person, a place, a moment — before any argument.',
+            'Open this chapter on a flat, surprising statement of fact, then earn it.',
+            'Open this chapter on a question the reader has half-formed themselves, and answer it by the third paragraph.',
+            'Open this chapter on a contrast between two moments in time, and hold that contrast through the first section.',
+            'Open this chapter in the middle of an ordinary conversation, and widen out from it.',
+        ];
+        $cadence = $cadences[($number - 1) % count($cadences)];
+
         return "Write chapter {$number} of the book: \"{$title}\".\n"
             . "Draft directions to follow — purpose: {$purpose}\n"
             . "Draft directions to follow — detail: {$detail}\n"
             . "Word target: {$words} words (±10%).\n"
+            . "Cadence for this chapter: {$cadence}\n"
             . "Follow the writing contract exactly. Reply with ONLY the finished chapter text, beginning with the line `Chapter {$number}: {$title}`.";
     }
 
@@ -195,6 +219,7 @@ final class ManuscriptDeveloper
             . ($previous !== null ? 'the previous chapter covered "' . (string) ($previous['title'] ?? '') . '"; ' : '')
             . ($next !== null ? 'the next chapter covers "' . (string) ($next['title'] ?? '') . '"; ' : '')
             . "(c) a closing that hands off naturally to what follows; (d) hedging any too-precise statistic and removing any invented named expert or quote; (e) flab; (f) ANY drift from the VOICE CONTRACT — the narrative person and perspective are a hard requirement, so rewrite any sentence that breaks them.\n"
+            . "Then revise structurally, not just line by line: (g) if the argument arrives in a weak order, reorder the sections so each one earns the next; (h) compress any passage that circles a point already made, and spend the words won on the thinnest claim in the chapter — give it a concrete scene, example, or piece of evidence; (i) fix cadence: break up any stretch of same-length sentences, vary paragraph openings, and cut repeated transitions.\n"
             . ($previous !== null ? "The previous chapter closes with:\n{PREVIOUS_CLOSE}\n" : '')
             . ($next !== null ? "The next chapter opens with:\n{NEXT_OPEN}\n" : '')
             . "The drafted chapter:\n{CHAPTER_TEXT}";
@@ -362,6 +387,98 @@ final class ManuscriptDeveloper
     }
 
     /**
+     * Read the assembled manuscript and flag the chapters that still want a
+     * human hand: short or bloated against their target, missing a takeaway,
+     * thin on sections, monotonous cadence, or repeated paragraph openings.
+     * Deterministic and local — no API calls, no cost.
+     *
+     * @param array<string, mixed> $book
+     * @return array<string, mixed>
+     */
+    public function revisionReport(array $book): array
+    {
+        $chapters = [];
+        $flaggedCount = 0;
+        foreach ((array) ($book['chapters'] ?? []) as $chapter) {
+            $content = (string) ($chapter['content'] ?? '');
+            $paragraphs = array_values(array_filter(
+                array_map('trim', preg_split('/\R{2,}/u', $content) ?: []),
+                static fn (string $p): bool => $p !== '',
+            ));
+            $words = (int) ($chapter['word_count'] ?? 0);
+            $target = max(1, (int) ($chapter['plan_word_target'] ?? $words));
+            $flags = [];
+
+            $sentences = array_values(array_filter(
+                array_map('trim', preg_split('/(?<=[.!?])\s+/u', $content) ?: []),
+                static fn (string $s): bool => $s !== '',
+            ));
+            $lengths = array_map(fn (string $s): int => $this->wordCount($s), $sentences);
+            $mean = $lengths !== [] ? array_sum($lengths) / count($lengths) : 0.0;
+            $variance = 0.0;
+            foreach ($lengths as $length) {
+                $variance += ($length - $mean) ** 2;
+            }
+            $spread = $lengths !== [] ? sqrt($variance / count($lengths)) : 0.0;
+
+            if ($target > 0 && $words < $target * 0.8) {
+                $flags[] = 'Runs short against its plan (' . $words . ' of about ' . $target . ' words) — a claim here is probably under-developed.';
+            }
+            if ($target > 0 && $words > $target * 1.25) {
+                $flags[] = 'Runs long against its plan (' . $words . ' of about ' . $target . ' words) — look for a passage that circles a point already made.';
+            }
+            if (stripos($content, "\nThe takeaway\n") === false && stripos($content, 'takeaway') === false) {
+                $flags[] = 'No closing takeaway section.';
+            }
+            if (count($paragraphs) < 6) {
+                $flags[] = 'Only ' . count($paragraphs) . ' paragraphs — thin for a full chapter.';
+            }
+            if ($lengths !== [] && $spread < 5.0) {
+                $flags[] = 'Monotonous cadence: sentence lengths barely vary (spread ' . number_format($spread, 1) . ' words).';
+            }
+            $openings = [];
+            foreach ($paragraphs as $paragraph) {
+                $first = strtolower((string) (preg_split('/\s+/u', $paragraph)[0] ?? ''));
+                if ($first !== '') {
+                    $openings[$first] = ($openings[$first] ?? 0) + 1;
+                }
+            }
+            arsort($openings);
+            $topOpening = array_key_first($openings);
+            if ($topOpening !== null && $openings[$topOpening] >= 4) {
+                $flags[] = 'Repeated paragraph opening: ' . $openings[$topOpening] . ' paragraphs begin with "' . $topOpening . '".';
+            }
+
+            if ($flags !== []) {
+                $flaggedCount++;
+            }
+            $chapters[] = [
+                'number' => (int) ($chapter['number'] ?? 0),
+                'title' => (string) ($chapter['title'] ?? ''),
+                'word_count' => $words,
+                'paragraphs' => count($paragraphs),
+                'sentence_length_spread' => round($spread, 1),
+                'flags' => $flags,
+            ];
+        }
+
+        return [
+            'chapter_count' => count($chapters),
+            'flagged_count' => $flaggedCount,
+            'verdict' => $flaggedCount === 0
+                ? 'Every chapter passes the structural checks.'
+                : $flaggedCount . ' of ' . count($chapters) . ' chapters want a human pass.',
+            'chapters' => $chapters,
+        ];
+    }
+
+    private function wordCount(string $value): int
+    {
+        preg_match_all('/\S+/u', trim($value), $matches);
+        return count($matches[0]);
+    }
+
+    /**
      * Swap developed chapter texts into a generated book: content, blocks,
      * word counts, page counts, and the contents page numbers all recompute.
      *
@@ -375,8 +492,10 @@ final class ManuscriptDeveloper
         foreach ((array) ($book['chapters'] ?? []) as $i => $chapter) {
             $number = (int) ($chapter['number'] ?? 0);
             if (isset($chapterTexts[$number]) && trim((string) $chapterTexts[$number]) !== '') {
-                $content = trim((string) $chapterTexts[$number]);
-                $content = trim(preg_replace('/\R{3,}/u', "\n\n", preg_replace('/[ \t]+$/m', '', $content) ?? $content) ?? $content);
+                // Every chapter passes through manuscript hygiene before it
+                // becomes book text: NFC-normalized, no invisible characters,
+                // regular spacing and paragraph breaks.
+                $content = ManuscriptHygiene::clean((string) $chapterTexts[$number]);
                 $book['chapters'][$i]['content'] = $content;
                 $book['chapters'][$i]['blocks'] = $this->blocksFor($content);
             }

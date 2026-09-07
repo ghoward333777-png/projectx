@@ -24,6 +24,7 @@ final class SitePackageExporter
         'PrintMediaCompanion.php',
         'WordManuscriptExporter.php',
         'ManuscriptDeveloper.php',
+        'ManuscriptHygiene.php',
         'BookProjectStore.php',
         'SitePackageExporter.php',
         'index.php',
@@ -46,6 +47,7 @@ final class SitePackageExporter
         'tests/epub-contract.php',
         'tests/print-media-contract.php',
         'tests/manuscript-developer-contract.php',
+        'tests/hygiene-contract.php',
         'README.md',
     ];
 

@@ -612,6 +612,26 @@ $downloadQuery = http_build_query(array_filter([
             <p class="note">✍️ Want finished prose on the first run? Configure an AI key on the server (<?= htmlspecialchars(implode(', ', ManuscriptDeveloper::KEY_ENV), ENT_QUOTES, 'UTF-8') ?>) and the generate button will write every chapter automatically — or run <code>php bin/develop-manuscript.php</code>, or use the AI drafting kit download below.</p>
         <?php endif; ?>
 
+        <?php $revisionReport = $result['revision_report'] ?? null; ?>
+        <?php if ($revisionReport !== null && (int) $revisionReport['flagged_count'] > 0): ?>
+        <section>
+            <div class="eyebrow">Revision pass · chapters wanting a human hand</div>
+            <h2><?= htmlspecialchars((string) $revisionReport['verdict'], ENT_QUOTES, 'UTF-8') ?></h2>
+            <?php foreach ((array) $revisionReport['chapters'] as $chapterReport): ?>
+                <?php if ($chapterReport['flags'] === []) { continue; } ?>
+                <div class="check">
+                    <div class="status action">Ch <?= (int) $chapterReport['number'] ?></div>
+                    <div>
+                        <strong><?= htmlspecialchars((string) $chapterReport['title'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        <?php foreach ((array) $chapterReport['flags'] as $flag): ?>
+                            <p><?= htmlspecialchars((string) $flag, ENT_QUOTES, 'UTF-8') ?></p>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </section>
+        <?php endif; ?>
+
         <?php if ($outlineReview !== null): ?>
         <section>
             <div class="eyebrow">Outline review · <?= htmlspecialchars((string) $outlineReview['agent']['name'], ENT_QUOTES, 'UTF-8') ?></div>
