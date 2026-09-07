@@ -45,6 +45,22 @@ takeaway" closer, exact format contract). Default Anthropic model:
 `claude-opus-5`. `BookProjectStore` records every generation's TOC + manuscript
 under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI.
 
+## Prose quality controls
+
+- **Hygiene**: `ManuscriptHygiene::clean()` runs on every developed chapter and
+  `cleanLine()` on every pasted outline row — NFC normalization (skipped
+  gracefully without ext-intl), invisible-character stripping, exotic spaces to
+  ordinary spaces, LF line endings, collapsed runs, one blank line between
+  paragraphs. Deterministic; keep it that way.
+- **Rhythm**: the style contract carries a RHYTHM AND VARIETY section (sentence
+  and paragraph variation, banned filler transitions, no repeated openings) and
+  each chapter gets a rotating cadence directive so neighbours don't share one
+  voice.
+- **Revision**: the editor prompt does structural work (reorder weak argument
+  order, compress circling passages, spend the words on the thinnest claim) and
+  `ManuscriptDeveloper::revisionReport()` flags chapters wanting a human pass —
+  deterministic, local, no API cost — surfaced in the writer results page.
+
 ## Housekeeping
 
 - New app files must be added to `SitePackageExporter::FILES` or the hosting zip

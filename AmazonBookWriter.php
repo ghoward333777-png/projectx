@@ -6,6 +6,7 @@ require_once __DIR__ . '/BookIntelligenceEngine.php';
 require_once __DIR__ . '/AudiobookProducer.php';
 require_once __DIR__ . '/IllustrationStudio.php';
 require_once __DIR__ . '/ManuscriptDeveloper.php';
+require_once __DIR__ . '/ManuscriptHygiene.php';
 
 /**
  * Amazon Book Writer
@@ -85,7 +86,8 @@ final class AmazonBookWriter
     {
         $chapters = [];
         foreach (preg_split('/\R+/u', $outline) ?: [] as $line) {
-            $line = trim($line);
+            // Pasted outlines carry word-processor junk; clean before parsing.
+            $line = ManuscriptHygiene::cleanLine($line);
             $line = trim((string) preg_replace('/^(?:chapter\s+\d+\s*[:.\-)]?|\d+\s*[:.\-)])\s*/i', '', $line));
             if ($line === '') {
                 continue;
@@ -152,6 +154,7 @@ final class AmazonBookWriter
             'book' => $book,
             'kdp' => $kdp,
             'outline_review' => $this->engine->reviewOutline($topic, $chapters),
+            'revision_report' => $this->manuscriptDeveloper()->revisionReport($book),
             'media' => $this->illustrationStudio()->planBookMedia(
                 $book,
                 $kdp['metadata'],
