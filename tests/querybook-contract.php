@@ -110,12 +110,6 @@ contract_check(str_contains($modeTexts['quotes'], '” — chapter'), 'the quote
 contract_check($qb->ask('How do I build a leadership strategy?', ['mode' => 'study'])['follow_ups'] !== [], 'study mode must add self-check questions');
 contract_check(str_starts_with($modeTexts['argumentative'], 'The claim:'), 'argumentative mode must lead with the claim');
 
-// --- Canonical NarrativeStyle coverage (older Core Technology Specification) ----
-foreach (QueryBook::CANONICAL_STYLES as $canonical => $modeKey) {
-    contract_check(isset(QueryBook::MODES[$modeKey]), "canonical style {$canonical} must map to a real mode");
-}
-contract_check(count(QueryBook::CANONICAL_STYLES) === 7, 'all seven canonical narrative styles must stay mapped');
-
 // --- Canon of record: D4 mode coverage (Feature Inventory v59) -------------------
 foreach (QueryBook::CANONICAL_D4_MODES as $feature => [$kind, $key]) {
     $catalog = $kind === 'mode' ? QueryBook::MODES : QueryBook::FORMS;

@@ -41,22 +41,6 @@ final class QueryBook
     ];
 
     /**
-     * NarrativeStyle coverage from the older Core Technology Specification
-     * layer (its REGENERATE AS style enum). Kept total under the additive
-     * covenant; the current canon's vocabulary is CANONICAL_D4_MODES and
-     * REGISTERS below.
-     */
-    public const CANONICAL_STYLES = [
-        'EXPOSITORY' => 'expository',
-        'ARGUMENTATIVE' => 'argumentative',
-        'DESCRIPTIVE' => 'descriptive',
-        'ANALYTICAL' => 'research',
-        'INSTRUCTIONAL' => 'tutorial',
-        'CONVERSATIONAL' => 'conversational',
-        'EXECUTIVE_SUMMARY' => 'executive',
-    ];
-
-    /**
      * Canon of record (QueryBook Master Bible / Feature Inventory v59):
      * the D4 Retrieval & Response user-facing modes, each mapped to the
      * mode or output form that realizes it here at studio scale. All of

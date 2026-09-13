@@ -184,10 +184,8 @@ layer, restoring the original QueryBook concept in full:
   (the book answers verbatim, every line attributed), **Expository**
   (a plain, declarative explanation), **Argumentative** (claim, evidence,
   and the counterweight), or **Descriptive** (the picture the book
-  paints). The seven canonical QueryBook narrative styles all map onto
-  these modes (`QueryBook::CANONICAL_STYLES`), and `max_words` caps any
-  answer's length. Off-book questions come back low-confidence with
-  questions the book *can* answer.
+  paints). `max_words` caps any answer's length. Off-book questions come
+  back low-confidence with questions the book *can* answer.
 - **Expressive registers** — exactly one voice per answer, chosen from a
   governed set (plain, formal, academic, instructional, narrative,
   supportive, authoritative). A register governs voicing only: it never

@@ -75,10 +75,12 @@ the additive covenant, the canon record), assembled from **Bible v2.1**
 (Pass 113, with later passes — Pass 118 as of the Fact Unit Integration Map
 artifact), alongside the Core Technology Overview v9 and the Core Tech
 Reconciliation artifacts. The uploaded "Canonical Core Technology
-Specification" is an EARLIER layer of the spec (its REGENERATE AS style
-enum survives here as `CANONICAL_STYLES`); when it and the artifact canon
-disagree, the artifact canon wins. Consult the artifacts (Artifact tool,
-`action: "list"`) before re-deriving any of this.
+Specification" is an EARLIER layer of the spec; when it and the artifact
+canon disagree, the artifact canon wins (its superseded style-enum map was
+removed from this module by owner decision, Sept 13, 2026 — the expository,
+argumentative, and descriptive modes it motivated remain shipped). Consult
+the artifacts (Artifact tool, `action: "list"`) before re-deriving any of
+this.
 
 This module is the studio-scale realization of the canon's output layer:
 
