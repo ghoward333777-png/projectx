@@ -110,11 +110,62 @@ contract_check(str_contains($modeTexts['quotes'], '” — chapter'), 'the quote
 contract_check($qb->ask('How do I build a leadership strategy?', ['mode' => 'study'])['follow_ups'] !== [], 'study mode must add self-check questions');
 contract_check(str_starts_with($modeTexts['argumentative'], 'The claim:'), 'argumentative mode must lead with the claim');
 
-// --- Canonical NarrativeStyle coverage (QueryBook Bible §18.2.5 / §12.4.3) ------
+// --- Canonical NarrativeStyle coverage (older Core Technology Specification) ----
 foreach (QueryBook::CANONICAL_STYLES as $canonical => $modeKey) {
     contract_check(isset(QueryBook::MODES[$modeKey]), "canonical style {$canonical} must map to a real mode");
 }
 contract_check(count(QueryBook::CANONICAL_STYLES) === 7, 'all seven canonical narrative styles must stay mapped');
+
+// --- Canon of record: D4 mode coverage (Feature Inventory v59) -------------------
+foreach (QueryBook::CANONICAL_D4_MODES as $feature => [$kind, $key]) {
+    $catalog = $kind === 'mode' ? QueryBook::MODES : QueryBook::FORMS;
+    contract_check(isset($catalog[$key]), "canonical D4 feature '{$feature}' must map to a real {$kind}");
+}
+contract_check(count(QueryBook::CANONICAL_D4_MODES) === 8, 'all eight mapped D4 modes must stay mapped');
+
+// --- The additive covenant: catalog floors never shrink --------------------------
+contract_check(count(QueryBook::MODES) >= 10, 'the mode catalog must never shrink below its shipped floor');
+contract_check(count(QueryBook::FORMS) >= 17, 'the form catalog must never shrink below its shipped floor');
+contract_check(count(QueryBook::REGISTERS) >= 7, 'the register catalog must never shrink below its shipped floor');
+contract_check(count(QueryBook::DOMAINS) >= 7, 'the domain catalog must never shrink below its shipped floor');
+
+// --- Expressive registers: voicing only, one per response, refuse unregistered ---
+$plainAnswer = $qb->ask('How do I build a leadership strategy?');
+contract_check($plainAnswer['register'] === 'plain', 'the default register must be plain');
+foreach (array_keys(QueryBook::REGISTERS) as $registerKey) {
+    $voiced = $qb->ask('How do I build a leadership strategy?', ['register' => $registerKey]);
+    contract_check($voiced['register'] === $registerKey, "register {$registerKey} must be selectable");
+    contract_check($voiced['answer'][0] === $plainAnswer['answer'][0], "register {$registerKey} must not alter the evidence (voicing only)");
+    contract_check($voiced['sources'] === $plainAnswer['sources'], "register {$registerKey} must not alter the sources");
+}
+$refused = false;
+try {
+    $qb->ask('How do I lead?', ['register' => 'sarcastic']);
+} catch (InvalidArgumentException $exception) {
+    $refused = true;
+}
+contract_check($refused, 'an unregistered register must be refused, never approximated');
+
+// --- Context Lock: the determinism key --------------------------------------------
+contract_check($plainAnswer['context_key'] !== '', 'every answer must carry its context key');
+contract_check($qb->ask('How do I build a leadership strategy?')['context_key'] === $plainAnswer['context_key'], 'identical context must yield an identical key');
+contract_check($qb->ask('How do I build a leadership strategy?', ['register' => 'formal'])['context_key'] !== $plainAnswer['context_key'], 'a changed locked dimension must change the key');
+
+// --- Flashcards and timeline (canonical D4 forms) ---------------------------------
+$cards = $qb->flashcards();
+contract_check(count($cards) === $chapterCount, 'flashcards must deliver one card per chapter');
+foreach ($cards as $card) {
+    contract_check(str_contains($card['question'], (string) $book['chapters'][$card['chapter'] - 1]['title']), 'each card must derive from exactly its own chapter');
+    contract_check($card['answer'] !== '' && $card['source'] !== '', 'each card must carry an answer and its citation');
+}
+$timeline = $qb->timeline();
+contract_check(count($timeline['entries']) === $chapterCount, 'the timeline must cover every chapter');
+contract_check($timeline['entries'][0]['starts_on_page'] === 3, 'the timeline must start where the page plan starts');
+$previousStart = 0;
+foreach ($timeline['entries'] as $entry) {
+    contract_check($entry['starts_on_page'] > $previousStart, 'timeline entries must advance in reading order');
+    $previousStart = $entry['starts_on_page'];
+}
 
 // --- max_words: the MAX_TOKENS analog -------------------------------------------
 $capped = $qb->ask('How do I build a leadership strategy?', ['max_words' => 30]);

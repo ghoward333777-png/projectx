@@ -188,6 +188,13 @@ layer, restoring the original QueryBook concept in full:
   these modes (`QueryBook::CANONICAL_STYLES`), and `max_words` caps any
   answer's length. Off-book questions come back low-confidence with
   questions the book *can* answer.
+- **Expressive registers** — exactly one voice per answer, chosen from a
+  governed set (plain, formal, academic, instructional, narrative,
+  supportive, authoritative). A register governs voicing only: it never
+  changes the evidence, the sources, or a single claim, and an
+  unregistered register is refused rather than approximated. Every answer
+  also returns a **context key** — identical keys guarantee identical
+  answers; differing keys claim nothing.
 - **Industry / domain tailoring** — the same answer can be customized to a
   specific domain: education, healthcare, legal, finance, technology, or
   small business. The answer is reframed through that lens, given a tailored
@@ -209,7 +216,9 @@ Every form of user-requested output goes through one dispatcher,
 (`QueryBook::FORMS`): answer, summary (with brief/standard/detailed
 lengths), synopsis, abstract, analysis, **outline**, **glossary** (key
 terms defined in the book's own words), **FAQ**, **study guide**,
-**key quotes**, **reading plan** (a session-by-session schedule),
+**key quotes**, **flashcards** (one citing study card per chapter),
+**timeline** (the chapters in reading order, page by page),
+**reading plan** (a session-by-session schedule),
 chapter comparison, document comparison, document report, and related
 questions. Any deliverable renders on the page and downloads as
 **Markdown**, **plain text**, or **JSON** (`renderMarkdown()` /

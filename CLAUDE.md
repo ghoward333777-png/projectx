@@ -67,26 +67,43 @@ QueryBook (`QueryBook.php` + `query-book.php`) is the reader-side answer layer
 from the original QueryBook concept: answers in many forms, all linked to a
 target book.
 
-The canonical source of truth is the **QueryBook Bible** (Canonical Core
-Technology Specification) — a CONFIDENTIAL document kept OUTSIDE this
-repository; never commit it or quote it at length here. This module is the
-studio-scale realization of its output layer, and stays aligned with it:
+**Canon of record.** The QueryBook canon is CONFIDENTIAL and lives OUTSIDE
+this repository — never commit it or quote it at length here. It is
+documented in the owner's Claude artifacts: the **QueryBook Master Bible**
+artifact (Feature Inventory v59 — 279 features, 341 claims, domains D0–D14,
+the additive covenant, the canon record), assembled from **Bible v2.1**
+(Pass 113, with later passes — Pass 118 as of the Fact Unit Integration Map
+artifact), alongside the Core Technology Overview v9 and the Core Tech
+Reconciliation artifacts. The uploaded "Canonical Core Technology
+Specification" is an EARLIER layer of the spec (its REGENERATE AS style
+enum survives here as `CANONICAL_STYLES`); when it and the artifact canon
+disagree, the artifact canon wins. Consult the artifacts (Artifact tool,
+`action: "list"`) before re-deriving any of this.
 
-- `QueryBook::CANONICAL_STYLES` maps every canonical NarrativeStyle from the
-  Bible's REGENERATE AS clause (§18.2.5) and style-enforcement rules
-  (§12.4.3) — EXPOSITORY, ARGUMENTATIVE, DESCRIPTIVE, ANALYTICAL,
-  INSTRUCTIONAL, CONVERSATIONAL, EXECUTIVE_SUMMARY — to a mode in
-  `QueryBook::MODES`. Keep that map total (the contract test enforces it);
-  local modes beyond the canonical seven (qa, study, quotes) are a superset.
-- `QueryBook::DOMAINS` plays the Bible's Audience Model role (vocabulary,
-  domain expertise, detail level for a target audience).
-- The `max_words` option on `ask()` is the local MAX_TOKENS analog.
-- Grounding rule (Bible §16.3 stage 6, kept in spirit): every answer cites
-  the chapters it came from, and tailoring never adds claims the book
-  doesn't carry.
-- The "output templates available to all users" rule below is recorded HERE,
-  not in the Bible — the Bible specifies the technology, this file records
-  the availability policy.
+This module is the studio-scale realization of the canon's output layer:
+
+- `QueryBook::CANONICAL_D4_MODES` maps the canon's D4 user-facing modes
+  (Standard Q&A, Guided Exploration, Discussion, Tutorial, Semantic
+  Exploration, Timeline Reconstruction, Edition Comparison, Flashcard
+  Generation) to this module's modes and forms. Keep the map total.
+- `QueryBook::REGISTERS` carries the canon's D7 expressive registers
+  (plain, formal, academic, instructional, narrative, supportive,
+  authoritative): exactly one per response, VOICING ONLY — a register
+  never alters evidence, hedges, or claims — and an unregistered register
+  is refused, never approximated.
+- Every answer returns a `context_key` (the canon's Context Lock):
+  determinism is asserted between two answers only when their keys match.
+- `QueryBook::DOMAINS` plays the audience-model role (vocabulary, domain
+  expertise, detail level); `max_words` is the output-length constraint.
+- Grounding: every answer cites the chapters it came from, and tailoring
+  never adds claims the book doesn't carry.
+- **The additive covenant applies here**: once a mode, register, domain, or
+  form ships, it is never removed — the contract test enforces the floor.
+- **Community Query Mode was removed from the invention** (owner decision,
+  Aug 29, 2026). Never add community, shared-query, or cross-reader
+  features to this module.
+- The "output templates available to all users" rule below is recorded
+  HERE — this file is the availability policy's home.
 
 - **Output templates are available to all users.** Every answer mode
   (`QueryBook::MODES` — Q&A, conversational, research, executive brief,

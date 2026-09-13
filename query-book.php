@@ -18,6 +18,8 @@ $length = trim((string) ($_POST['length'] ?? $_GET['length'] ?? 'standard'));
 $question = trim((string) ($_POST['question'] ?? $_GET['question'] ?? ''));
 $mode = trim((string) ($_POST['mode'] ?? $_GET['mode'] ?? 'qa'));
 $domain = trim((string) ($_POST['domain'] ?? $_GET['domain'] ?? 'general'));
+$register = trim((string) ($_POST['register'] ?? $_GET['register'] ?? 'plain'));
+$register = isset(QueryBook::REGISTERS[$register]) ? $register : 'plain';
 $chapterScope = (int) ($_POST['chapter'] ?? $_GET['chapter'] ?? 0);
 $compareA = (int) ($_POST['compare_a'] ?? $_GET['compare_a'] ?? 0);
 $compareB = (int) ($_POST['compare_b'] ?? $_GET['compare_b'] ?? 0);
@@ -55,6 +57,7 @@ if ($wantsResult) {
             $answer = $queryBook->ask($question, array_filter([
                 'mode' => $mode,
                 'domain' => $domain,
+                'register' => $register,
                 'chapter' => $chapterScope > 0 ? $chapterScope : null,
             ]));
         }
@@ -74,6 +77,7 @@ if ($wantsResult) {
                     'question' => $question,
                     'mode' => $mode,
                     'domain' => $domain,
+                    'register' => $register,
                     'chapter' => $chapterScope > 0 ? $chapterScope : null,
                     'chapter_a' => $compareA,
                     'chapter_b' => $compareB,
@@ -256,6 +260,14 @@ function qb_render(mixed $value): string
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div>
+                <label for="register">Expressive register (voicing only)</label>
+                <select id="register" name="register">
+                    <?php foreach (QueryBook::REGISTERS as $registerKey => $registerProfile): ?>
+                        <option value="<?= $e($registerKey) ?>" <?= $registerKey === $register ? 'selected' : '' ?>><?= $e($registerProfile['label']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div><label for="chapter">Focus on one chapter (optional number)</label><input id="chapter" name="chapter" type="number" min="0" value="<?= $chapterScope > 0 ? $chapterScope : '' ?>"></div>
         </div>
 
@@ -284,8 +296,10 @@ function qb_render(mixed $value): string
             <div class="eyebrow">The answer · <?= $e((string) $answer['mode_label']) ?></div>
             <p>
                 <span class="pill">Domain: <?= $e((string) $answer['domain_label']) ?></span>
+                <span class="pill">Register: <?= $e((string) ($answer['register'] ?? 'plain')) ?></span>
                 <span class="pill">Scope: <?= $e((string) $answer['scope']) ?></span>
                 <span class="pill">Confidence: <?= $e((string) $answer['confidence']) ?></span>
+                <span class="pill">Context key: <?= $e((string) ($answer['context_key'] ?? '')) ?></span>
             </p>
             <?php foreach ((array) $answer['answer'] as $paragraph): ?><p><?= $e((string) $paragraph) ?></p><?php endforeach; ?>
             <?php if ((array) $answer['sources'] !== []): ?>
@@ -309,7 +323,7 @@ function qb_render(mixed $value): string
     <?php if ($deliverable !== null && $queryBook !== null): ?>
         <?php $deliverQuery = http_build_query(array_filter([
             'topic' => $topic, 'reader' => $reader, 'author' => $author, 'style' => $style, 'length' => $length,
-            'question' => $question, 'mode' => $mode, 'domain' => $domain,
+            'question' => $question, 'mode' => $mode, 'domain' => $domain, 'register' => $register,
             'chapter' => $chapterScope > 0 ? (string) $chapterScope : '',
             'compare_a' => $compareA > 0 ? (string) $compareA : '', 'compare_b' => $compareB > 0 ? (string) $compareB : '',
             'document' => $document, 'deliver' => $deliver,

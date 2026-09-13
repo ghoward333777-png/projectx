@@ -41,14 +41,10 @@ final class QueryBook
     ];
 
     /**
-     * Canonical NarrativeStyle coverage, per the QueryBook Bible (Canonical
-     * Core Technology Specification): the REGENERATE AS clause's style enum
-     * (§18.2.5) and its style-enforcement rules (§12.4.3). Every canonical
-     * style maps to a mode here; local modes beyond these are a superset.
-     * DOMAINS play the Bible's Audience Model role (vocabulary, domain
-     * expertise, detail level) and the `max_words` option is the local
-     * MAX_TOKENS analog. The Bible itself is confidential and lives outside
-     * this repository.
+     * NarrativeStyle coverage from the older Core Technology Specification
+     * layer (its REGENERATE AS style enum). Kept total under the additive
+     * covenant; the current canon's vocabulary is CANONICAL_D4_MODES and
+     * REGISTERS below.
      */
     public const CANONICAL_STYLES = [
         'EXPOSITORY' => 'expository',
@@ -58,6 +54,44 @@ final class QueryBook
         'INSTRUCTIONAL' => 'tutorial',
         'CONVERSATIONAL' => 'conversational',
         'EXECUTIVE_SUMMARY' => 'executive',
+    ];
+
+    /**
+     * Canon of record (QueryBook Master Bible / Feature Inventory v59):
+     * the D4 Retrieval & Response user-facing modes, each mapped to the
+     * mode or output form that realizes it here at studio scale. All of
+     * them are available to all users. Community Query Mode was removed
+     * from the invention and is never reintroduced — no community or
+     * shared-query feature belongs in this module.
+     */
+    public const CANONICAL_D4_MODES = [
+        'Standard Q&A' => ['mode', 'qa'],
+        'Guided Exploration' => ['mode', 'conversational'],
+        'Discussion Mode' => ['mode', 'argumentative'],
+        'Tutorial Mode' => ['mode', 'tutorial'],
+        'Semantic Exploration' => ['form', 'glossary'],
+        'Timeline Reconstruction' => ['form', 'timeline'],
+        'Edition Comparison' => ['form', 'compare-document'],
+        'Flashcard Generation' => ['form', 'flashcards'],
+    ];
+
+    /**
+     * Expressive registers, per the canon's D7 Grounded Expression feature
+     * (Expressive Register Selection): a governed set, exactly one per
+     * response, resolved before generation, distinct from the audience
+     * domain. A register governs VOICING ONLY — it never alters which
+     * evidence is asserted, never removes a hedge, never softens a claim —
+     * so it only varies the closing framing line. An unregistered register
+     * is refused, never approximated.
+     */
+    public const REGISTERS = [
+        'plain' => ['label' => 'Plain — the default voice', 'closer' => ''],
+        'formal' => ['label' => 'Formal — measured and exact', 'closer' => 'So the record stands: the book addresses this directly, and the chapters cited above are where it does so.'],
+        'academic' => ['label' => 'Academic — cites and defers to the treatment', 'closer' => 'For the full treatment, consult the cited chapters in order; the argument there carries the detail this answer compresses.'],
+        'instructional' => ['label' => 'Instructional — points at the next action', 'closer' => 'Next step: open the top-cited chapter and work it before returning to your question.'],
+        'narrative' => ['label' => 'Narrative — follows the story', 'closer' => 'That is where this thread of the book leads; the cited chapters carry the rest of the story.'],
+        'supportive' => ['label' => 'Supportive — meets the reader where they are', 'closer' => 'You have what you need here — the cited chapters will meet you wherever you are starting from.'],
+        'authoritative' => ['label' => 'Authoritative — plain verdicts', 'closer' => 'The cited chapters settle this; read them and act.'],
     ];
 
     /**
@@ -75,6 +109,8 @@ final class QueryBook
         'faq' => 'FAQ — the questions the book answers, chapter by chapter',
         'study-guide' => 'Study guide — summaries, terms, discussion questions',
         'quotes' => 'Key quotes — the most quotable line of every chapter',
+        'flashcards' => 'Flashcards — one citing study card per chapter',
+        'timeline' => 'Timeline — the chapters in reading order, page by page',
         'reading-plan' => 'Reading plan — a session-by-session schedule',
         'compare-chapters' => 'Comparison — chapter vs. chapter',
         'compare-document' => 'Comparison — the book vs. an outside document',
@@ -192,6 +228,11 @@ final class QueryBook
         $mode = isset(self::MODES[$options['mode'] ?? '']) ? (string) $options['mode'] : 'qa';
         $domainKey = isset(self::DOMAINS[$options['domain'] ?? '']) ? (string) $options['domain'] : 'general';
         $domain = self::DOMAINS[$domainKey];
+        $register = trim((string) ($options['register'] ?? '')) ?: 'plain';
+        if (!isset(self::REGISTERS[$register])) {
+            throw new InvalidArgumentException('Unregistered expressive register "' . $register . '". Registered: ' . implode(', ', array_keys(self::REGISTERS)) . '.');
+        }
+        $maxWords = (int) ($options['max_words'] ?? 0);
         $chapterFilter = isset($options['chapter']) && (int) $options['chapter'] > 0 ? (int) $options['chapter'] : null;
 
         $terms = $this->tokenize($question);
@@ -213,6 +254,12 @@ final class QueryBook
         usort($ranked, static fn (array $a, array $b): int => $b['score'] <=> $a['score'] ?: (int) $a['chapter']['number'] <=> (int) $b['chapter']['number']);
         $ranked = array_slice($ranked, 0, 3);
 
+        // The canon's Context Lock: the dimensions that must agree for the
+        // determinism guarantee to be asserted, returned as a key with the
+        // answer. Identical keys must mean identical output.
+        $scopeLabel = $chapterFilter === null ? 'book' : 'chapter ' . $chapterFilter;
+        $contextKey = substr(sha1('mode=' . $mode . '|domain=' . $domainKey . '|register=' . $register . '|scope=' . $scopeLabel . '|max_words=' . $maxWords), 0, 16);
+
         if ($question === '' || $terms === [] || $ranked === []) {
             return [
                 'question' => $question,
@@ -220,7 +267,10 @@ final class QueryBook
                 'mode_label' => self::MODES[$mode],
                 'domain' => $domainKey,
                 'domain_label' => $domain['label'],
-                'scope' => $chapterFilter === null ? 'book' : 'chapter ' . $chapterFilter,
+                'register' => $register,
+                'register_label' => self::REGISTERS[$register]['label'],
+                'scope' => $scopeLabel,
+                'context_key' => $contextKey,
                 'confidence' => 'low',
                 'answer' => [
                     ucfirst($this->title) . ' does not take that question up directly. It stays close to ' . strtolower($this->topic) . ', so the closest help it can offer is through one of its own chapters.',
@@ -319,9 +369,14 @@ final class QueryBook
             $followUps[] = 'Self-check: which part of that answer could you apply this week, and what would you expect to change?';
         }
 
+        // Expressive register: voicing only. Additive closing line, so no
+        // evidence sentence, hedge, or claim is ever altered by it.
+        if (self::REGISTERS[$register]['closer'] !== '') {
+            $paragraphs[] = self::REGISTERS[$register]['closer'];
+        }
+
         // Local analog of the canonical MAX_TOKENS constraint: cap the answer
         // at a word budget, cutting cleanly at paragraph or word boundaries.
-        $maxWords = (int) ($options['max_words'] ?? 0);
         if ($maxWords > 0) {
             $kept = [];
             $budget = $maxWords;
@@ -347,7 +402,10 @@ final class QueryBook
             'mode_label' => self::MODES[$mode],
             'domain' => $domainKey,
             'domain_label' => $domain['label'],
-            'scope' => $chapterFilter === null ? 'book' : 'chapter ' . $chapterFilter,
+            'register' => $register,
+            'register_label' => self::REGISTERS[$register]['label'],
+            'scope' => $scopeLabel,
+            'context_key' => $contextKey,
             'confidence' => $maxScore >= 8 ? 'high' : ($maxScore >= 4 ? 'medium' : 'low'),
             'answer' => $paragraphs,
             'sources' => array_map(static fn (array $entry): array => [
@@ -741,6 +799,56 @@ final class QueryBook
     }
 
     /**
+     * One citing study card per chapter — each card derives from exactly
+     * one chapter, never spanning two (the canon's flashcard rule, with the
+     * chapter as this module's knowledge atom).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function flashcards(): array
+    {
+        $cards = [];
+        foreach ($this->chapters as $chapter) {
+            $opening = $this->firstSentences((string) $chapter['content'], 1);
+            $cards[] = [
+                'chapter' => (int) $chapter['number'],
+                'question' => 'What is chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '", there to do — and how does it start doing it?',
+                'answer' => $this->purposeSentence($chapter) . ($opening === [] ? '' : ' It begins: ' . $opening[0]),
+                'source' => 'Chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '"',
+            ];
+        }
+        return $cards;
+    }
+
+    /**
+     * The chapters in reading order with their page positions — the
+     * studio-scale realization of timeline reconstruction, ordered by the
+     * book's own page plan.
+     *
+     * @return array<string, mixed>
+     */
+    public function timeline(): array
+    {
+        $entries = [];
+        $page = 3; // the manuscript's chapter numbering starts after the front matter, matching the contents page
+        foreach ($this->chapters as $chapter) {
+            $entries[] = [
+                'chapter' => (int) $chapter['number'],
+                'title' => (string) $chapter['title'],
+                'starts_on_page' => $page,
+                'pages' => (int) $chapter['page_count'],
+                'words' => (int) $chapter['word_count'],
+            ];
+            $page += max(1, (int) $chapter['page_count']);
+        }
+        return [
+            'title' => $this->title,
+            'entries' => $entries,
+            'total_pages' => $page - 3,
+        ];
+    }
+
+    /**
      * A session-by-session reading schedule for the whole book.
      *
      * @return array<string, mixed>
@@ -810,6 +918,8 @@ final class QueryBook
             'faq' => ['entries' => $this->faq()],
             'study-guide' => ['chapters' => $this->studyGuide()],
             'quotes' => ['quotes' => $this->keyQuotes()],
+            'flashcards' => ['cards' => $this->flashcards()],
+            'timeline' => $this->timeline(),
             'reading-plan' => $this->readingPlan((int) ($options['minutes_per_session'] ?? 45), (int) ($options['words_per_minute'] ?? 200)),
             'compare-chapters' => $this->compareChapters((int) $options['chapter_a'], (int) $options['chapter_b']),
             'compare-document' => $this->compareWithDocument((string) $options['document'], (string) ($options['document_label'] ?? 'the supplied document')),
