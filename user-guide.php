@@ -51,6 +51,7 @@
             <a href="generate-book.php">📝 Draft</a>
             <a href="amazon-book-writer.php">📦 Amazon Book Writer</a>
             <a href="book-lab.php">🔬 Book Development Lab</a>
+            <a href="query-book.php">💬 QueryBook</a>
             <a href="download-app.php">⬇ Get the app (.zip)</a>
         </nav>
     </header>
@@ -109,6 +110,7 @@
             <div class="page-card"><strong>generate-book.php · Draft</strong><span>Edit the chapter list before writing, choose the page design (font, margins, headers), and read the draft.</span></div>
             <div class="page-card"><strong>amazon-book-writer.php · Publish</strong><span>The whole package: listing, prices, royalties, checklist, audiobook plan, and all downloads.</span></div>
             <div class="page-card"><strong>book-lab.php · Quality</strong><span>The Book Development Lab: 30 quality metrics with Bronze–Platinum badges, KDP compatibility checks, and the downloadable Best-Seller Production Kit.</span></div>
+            <div class="page-card"><strong>query-book.php · QueryBook</strong><span>Ask the finished book questions in Q&amp;A, conversational, or research mode — answers tailored to your industry — plus summaries, analysis, synopses, abstracts, and comparisons.</span></div>
             <div class="page-card"><strong>user-guide.php · Help</strong><span>You are here! Come back any time.</span></div>
         </div>
     </section>
@@ -159,7 +161,7 @@
             <li><strong>Every metric explains itself</strong> — “0 of 27 chapters end with a takeaway” tells you exactly what to fix.</li>
             <li><strong>KDP compatibility</strong> — 11 checks against Amazon's real rules (page limits, metadata limits, trim, TOC, audio specs).</li>
             <li><strong>Document complexity</strong> — pages, sections, figures, audio hours, case studies, exercises.</li>
-            <li><strong>QueryBook learning plan</strong> — a three-question quiz and takeaway for every chapter, ready for study editions.</li>
+            <li><strong>QueryBook learning plan</strong> — a three-question quiz and takeaway for every chapter, ready for study editions. The full <a href="query-book.php">QueryBook page</a> goes further: ask the book anything and get the answer as Q&amp;A, a conversation, or a research briefing, tailored to your industry.</li>
             <li><strong>The Best-Seller Production Kit</strong> — everything in one downloadable, printable report.</li>
         </ul>
         <div class="tip"><b>Honest numbers:</b> the scores are diagnostics computed from your actual draft to guide revision — nobody can guarantee sales.</div>

@@ -23,6 +23,7 @@ Then open:
 - `http://127.0.0.1:8082/index.php` — strategy workspace
 - `http://127.0.0.1:8082/generate-book.php` — editable TOC and manuscript generator
 - `http://127.0.0.1:8082/amazon-book-writer.php` — Amazon KDP publishing package builder
+- `http://127.0.0.1:8082/query-book.php` — QueryBook: ask the finished book questions
 - `http://127.0.0.1:8082/user-guide.php` — friendly user guide
 - `http://127.0.0.1:8082/download-app.php` — download the whole app as a hosting-ready .zip
 - `http://127.0.0.1:8082/index.php?format=json` — generated strategy kit JSON
@@ -160,12 +161,44 @@ captioned placeholders in the Word export.
   limits, plus keyword opportunities to test later.
 - **QueryBook Enhancement Plan** — three quiz questions, a key takeaway, and
   a learning-path step per chapter (Read → Quiz → Apply).
+  The full reader-side QueryBook lives on its own page — see below.
 - **Best-Seller Production Kit** — everything above plus the blueprint,
   chapter outline, media map, competitive gap, and best-seller probability,
   downloadable as a printable HTML report or JSON.
 
 All scores are deterministic diagnostics computed from the draft — honest
 revision guidance, not sales guarantees.
+
+## QueryBook — answers in many forms, all linked to a target book
+
+`query-book.php`, powered by `QueryBook.php`, is the reader-side intelligence
+layer, restoring the original QueryBook concept in full:
+
+- **Answer modes** — every question is answered from the target book itself,
+  with the chapters it came from cited as sources. Choose **Q&A** (a direct
+  answer plus its sources), **Conversational** (a dialogue answer that ends
+  with follow-up questions), or **Research** (an evidence-forward briefing,
+  chapter by chapter). Off-book questions come back low-confidence with
+  questions the book *can* answer.
+- **Industry / domain tailoring** — the same answer can be customized to a
+  specific domain: education, healthcare, legal, finance, technology, or
+  small business. The answer is reframed through that lens, given a tailored
+  application sentence for that audience, and carries the domain's caution.
+- **Summaries** — book-level (with a chapter-by-chapter rundown) and
+  chapter-level, plus key terms.
+- **Synopsis** — the narrative walk through the book's arc, opening to close.
+- **Abstract** — one compact paragraph, capped at 200 words.
+- **Analysis** — structure and emphasis: chapter and word counts, longest and
+  shortest chapters, takeaway coverage, key terms, and the book's arc; also
+  available per chapter (sentence stats, takeaway closer, key terms).
+- **Comparisons** — chapter vs. chapter inside the book (shared ground,
+  distinct emphasis, a reading-order verdict), and book vs. an outside
+  document you paste in (document summary and abstract, shared ground, what
+  the document adds, and the closest chapters in the book).
+
+Everything is deterministic and local — same book + same question = same
+answer — and the whole result set is available as JSON via
+`query-book.php?format=json`.
 
 ## Audiobook production
 
@@ -285,6 +318,7 @@ php tests/illustration-contract.php
 php tests/quality-lab-contract.php
 php tests/epub-contract.php
 php tests/print-media-contract.php
+php tests/querybook-contract.php
 ```
 
 ## Install on a hosting site
@@ -301,6 +335,7 @@ no API keys.
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
 - `IllustrationStudio.php` — per-topic diagrams, charts, graphs, tables, illustrations, AI-image prompts
 - `QualityLab.php` + `book-lab.php` — 30-metric scoring, complexity, KDP compliance, production kit
+- `QueryBook.php` + `query-book.php` — Q&A/conversational/research answers, domain tailoring, summaries, analysis, synopses, abstracts, comparisons
 - `bin/generate-images.php` — CLI image synthesis via Google Imagen, OpenAI, or Stability
 - `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine
