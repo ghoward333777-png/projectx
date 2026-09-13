@@ -35,6 +35,29 @@ final class QueryBook
         'tutorial' => 'Tutorial — the answer as numbered steps in book order',
         'study' => 'Study — the answer plus self-check questions',
         'quotes' => 'Quotes — the book answers in its own words',
+        'expository' => 'Expository — a plain, declarative explanation',
+        'argumentative' => 'Argumentative — claim, evidence, and the counterweight',
+        'descriptive' => 'Descriptive — the picture the book paints',
+    ];
+
+    /**
+     * Canonical NarrativeStyle coverage, per the QueryBook Bible (Canonical
+     * Core Technology Specification): the REGENERATE AS clause's style enum
+     * (§18.2.5) and its style-enforcement rules (§12.4.3). Every canonical
+     * style maps to a mode here; local modes beyond these are a superset.
+     * DOMAINS play the Bible's Audience Model role (vocabulary, domain
+     * expertise, detail level) and the `max_words` option is the local
+     * MAX_TOKENS analog. The Bible itself is confidential and lives outside
+     * this repository.
+     */
+    public const CANONICAL_STYLES = [
+        'EXPOSITORY' => 'expository',
+        'ARGUMENTATIVE' => 'argumentative',
+        'DESCRIPTIVE' => 'descriptive',
+        'ANALYTICAL' => 'research',
+        'INSTRUCTIONAL' => 'tutorial',
+        'CONVERSATIONAL' => 'conversational',
+        'EXECUTIVE_SUMMARY' => 'executive',
     ];
 
     /**
@@ -252,6 +275,18 @@ final class QueryBook
         } elseif ($mode === 'study') {
             $paragraphs[] = implode(' ', $evidence);
             $paragraphs[] = 'Source: chapter ' . (int) $best['number'] . ', "' . $best['title'] . '". ' . $this->purposeSentence($best) . ' Answer the self-check questions below before moving on.';
+        } elseif ($mode === 'expository') {
+            $paragraphs[] = $evidence[0] . (isset($evidence[1]) ? ' Furthermore, the same chapter carries it forward: ' . $evidence[1] : '');
+            $paragraphs[] = 'That is the plain account, as chapter ' . (int) $best['number'] . ', "' . $best['title'] . '", lays it out. ' . $this->purposeSentence($best);
+        } elseif ($mode === 'argumentative') {
+            $paragraphs[] = 'The claim: ' . $evidence[0];
+            $paragraphs[] = 'The evidence: ' . ($evidence[1] ?? $this->purposeSentence($best)) . ' (Chapter ' . (int) $best['number'] . ', "' . $best['title'] . '".)';
+            $paragraphs[] = isset($ranked[1])
+                ? 'The counterweight: chapter ' . (int) $ranked[1]['chapter']['number'] . ', "' . $ranked[1]['chapter']['title'] . '", pushes on this from another side — read it before settling the question.'
+                : 'The book stages no counterargument to this; weigh it against your own experience before settling the question.';
+        } elseif ($mode === 'descriptive') {
+            $paragraphs[] = 'Here is the picture chapter ' . (int) $best['number'] . ', "' . $best['title'] . '", paints: ' . implode(' ', $evidence);
+            $paragraphs[] = ucfirst($this->clause((string) $best['purpose'])) . ' is what the scene is doing; the details are the argument.';
         } else { // qa
             $paragraphs[] = implode(' ', $evidence);
             $paragraphs[] = 'That answer comes from chapter ' . (int) $best['number'] . ', "' . $best['title'] . '". ' . $this->purposeSentence($best);
@@ -282,6 +317,27 @@ final class QueryBook
         } elseif ($mode === 'study') {
             $followUps[] = 'Self-check: in your own words, what does chapter ' . (int) $best['number'] . ', "' . $best['title'] . '", say about this?';
             $followUps[] = 'Self-check: which part of that answer could you apply this week, and what would you expect to change?';
+        }
+
+        // Local analog of the canonical MAX_TOKENS constraint: cap the answer
+        // at a word budget, cutting cleanly at paragraph or word boundaries.
+        $maxWords = (int) ($options['max_words'] ?? 0);
+        if ($maxWords > 0) {
+            $kept = [];
+            $budget = $maxWords;
+            foreach ($paragraphs as $paragraph) {
+                $words = preg_split('/\s+/u', trim($paragraph)) ?: [];
+                if (count($words) <= $budget) {
+                    $kept[] = $paragraph;
+                    $budget -= count($words);
+                    continue;
+                }
+                if ($budget > 0) {
+                    $kept[] = implode(' ', array_slice($words, 0, $budget)) . '…';
+                }
+                break;
+            }
+            $paragraphs = $kept;
         }
 
         $maxScore = max(1, $ranked[0]['score']);

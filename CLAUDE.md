@@ -67,6 +67,27 @@ QueryBook (`QueryBook.php` + `query-book.php`) is the reader-side answer layer
 from the original QueryBook concept: answers in many forms, all linked to a
 target book.
 
+The canonical source of truth is the **QueryBook Bible** (Canonical Core
+Technology Specification) — a CONFIDENTIAL document kept OUTSIDE this
+repository; never commit it or quote it at length here. This module is the
+studio-scale realization of its output layer, and stays aligned with it:
+
+- `QueryBook::CANONICAL_STYLES` maps every canonical NarrativeStyle from the
+  Bible's REGENERATE AS clause (§18.2.5) and style-enforcement rules
+  (§12.4.3) — EXPOSITORY, ARGUMENTATIVE, DESCRIPTIVE, ANALYTICAL,
+  INSTRUCTIONAL, CONVERSATIONAL, EXECUTIVE_SUMMARY — to a mode in
+  `QueryBook::MODES`. Keep that map total (the contract test enforces it);
+  local modes beyond the canonical seven (qa, study, quotes) are a superset.
+- `QueryBook::DOMAINS` plays the Bible's Audience Model role (vocabulary,
+  domain expertise, detail level for a target audience).
+- The `max_words` option on `ask()` is the local MAX_TOKENS analog.
+- Grounding rule (Bible §16.3 stage 6, kept in spirit): every answer cites
+  the chapters it came from, and tailoring never adds claims the book
+  doesn't carry.
+- The "output templates available to all users" rule below is recorded HERE,
+  not in the Bible — the Bible specifies the technology, this file records
+  the availability policy.
+
 - **Output templates are available to all users.** Every answer mode
   (`QueryBook::MODES` — Q&A, conversational, research, executive brief,
   tutorial, study, quotes), every domain profile (`QueryBook::DOMAINS`), and

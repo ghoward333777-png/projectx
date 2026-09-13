@@ -108,6 +108,19 @@ contract_check(str_starts_with($modeTexts['executive'], 'Bottom line:'), 'the ex
 contract_check(str_contains($modeTexts['tutorial'], 'Step 1'), 'the tutorial mode must answer in numbered steps');
 contract_check(str_contains($modeTexts['quotes'], '” — chapter'), 'the quotes mode must attribute every quote to its chapter');
 contract_check($qb->ask('How do I build a leadership strategy?', ['mode' => 'study'])['follow_ups'] !== [], 'study mode must add self-check questions');
+contract_check(str_starts_with($modeTexts['argumentative'], 'The claim:'), 'argumentative mode must lead with the claim');
+
+// --- Canonical NarrativeStyle coverage (QueryBook Bible §18.2.5 / §12.4.3) ------
+foreach (QueryBook::CANONICAL_STYLES as $canonical => $modeKey) {
+    contract_check(isset(QueryBook::MODES[$modeKey]), "canonical style {$canonical} must map to a real mode");
+}
+contract_check(count(QueryBook::CANONICAL_STYLES) === 7, 'all seven canonical narrative styles must stay mapped');
+
+// --- max_words: the MAX_TOKENS analog -------------------------------------------
+$capped = $qb->ask('How do I build a leadership strategy?', ['max_words' => 30]);
+$cappedWords = count(preg_split('/\s+/u', trim(implode(' ', $capped['answer']))));
+contract_check($cappedWords <= 31, 'max_words must cap the answer length');
+contract_check($capped['answer'] !== [], 'a capped answer must still say something');
 
 // --- Summary lengths -------------------------------------------------------------
 $brief = $qb->summarize(null, 'brief');

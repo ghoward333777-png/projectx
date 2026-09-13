@@ -180,9 +180,14 @@ layer, restoring the original QueryBook concept in full:
   with follow-up questions), **Research** (an evidence-forward briefing,
   chapter by chapter), **Executive brief** (bottom line first,
   decision-ready), **Tutorial** (the answer as numbered steps in book
-  order), **Study** (the answer plus self-check questions), or **Quotes**
-  (the book answers verbatim, every line attributed). Off-book questions
-  come back low-confidence with questions the book *can* answer.
+  order), **Study** (the answer plus self-check questions), **Quotes**
+  (the book answers verbatim, every line attributed), **Expository**
+  (a plain, declarative explanation), **Argumentative** (claim, evidence,
+  and the counterweight), or **Descriptive** (the picture the book
+  paints). The seven canonical QueryBook narrative styles all map onto
+  these modes (`QueryBook::CANONICAL_STYLES`), and `max_words` caps any
+  answer's length. Off-book questions come back low-confidence with
+  questions the book *can* answer.
 - **Industry / domain tailoring** — the same answer can be customized to a
   specific domain: education, healthcare, legal, finance, technology, or
   small business. The answer is reframed through that lens, given a tailored
