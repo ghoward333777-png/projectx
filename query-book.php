@@ -21,7 +21,9 @@ $domain = trim((string) ($_POST['domain'] ?? $_GET['domain'] ?? 'general'));
 $chapterScope = (int) ($_POST['chapter'] ?? $_GET['chapter'] ?? 0);
 $compareA = (int) ($_POST['compare_a'] ?? $_GET['compare_a'] ?? 0);
 $compareB = (int) ($_POST['compare_b'] ?? $_GET['compare_b'] ?? 0);
-$document = trim((string) ($_POST['document'] ?? ''));
+$document = trim((string) ($_POST['document'] ?? $_GET['document'] ?? ''));
+$deliver = trim((string) ($_POST['deliver'] ?? $_GET['deliver'] ?? ''));
+$download = trim((string) ($_GET['download'] ?? ''));
 
 $error = null;
 $queryBook = null;
@@ -31,7 +33,9 @@ $chapterSummary = null;
 $chapterAnalysis = null;
 $comparison = null;
 $documentComparison = null;
-$wantsResult = $_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['format']) || $question !== '';
+$deliverable = null;
+$deliverError = null;
+$wantsResult = $_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['format']) || $question !== '' || $deliver !== '';
 
 if ($wantsResult) {
     try {
@@ -64,10 +68,42 @@ if ($wantsResult) {
         if ($document !== '') {
             $documentComparison = $queryBook->compareWithDocument($document, 'your document');
         }
+        if ($deliver !== '') {
+            try {
+                $deliverable = $queryBook->request($deliver, [
+                    'question' => $question,
+                    'mode' => $mode,
+                    'domain' => $domain,
+                    'chapter' => $chapterScope > 0 ? $chapterScope : null,
+                    'chapter_a' => $compareA,
+                    'chapter_b' => $compareB,
+                    'document' => $document,
+                    'document_label' => 'your document',
+                ]);
+            } catch (InvalidArgumentException $formException) {
+                $deliverError = $formException->getMessage();
+            }
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
         $queryBook = null;
     }
+}
+
+if ($queryBook !== null && $deliverable !== null && in_array($download, ['md', 'txt', 'json'], true)) {
+    $filename = preg_replace('/[^a-z0-9]+/i', '-', strtolower($topic . '-' . $deliver)) . '.' . $download;
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    if ($download === 'json') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($deliverable, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    } elseif ($download === 'md') {
+        header('Content-Type: text/markdown; charset=utf-8');
+        echo $queryBook->renderMarkdown($deliverable);
+    } else {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $queryBook->renderPlainText($deliverable);
+    }
+    exit;
 }
 
 if ($queryBook !== null && ($_GET['format'] ?? '') === 'json') {
@@ -82,12 +118,39 @@ if ($queryBook !== null && ($_GET['format'] ?? '') === 'json') {
         'chapter_analysis' => $chapterAnalysis,
         'chapter_comparison' => $comparison,
         'document_comparison' => $documentComparison,
+        'deliverable' => $deliverable,
     ]), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 $styles = $writer->engine()->writingStyles();
 $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+
+/** Render any deliverable payload as HTML, whatever its shape. */
+function qb_render(mixed $value): string
+{
+    $escape = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    if (is_scalar($value) || $value === null) {
+        return '<p>' . $escape((string) $value) . '</p>';
+    }
+    $value = (array) $value;
+    if ($value === []) {
+        return '';
+    }
+    if (array_is_list($value)) {
+        $allScalar = array_reduce($value, static fn (bool $carry, mixed $item): bool => $carry && (is_scalar($item) || $item === null), true);
+        if ($allScalar) {
+            return '<ul>' . implode('', array_map(static fn (mixed $item): string => '<li>' . $escape((string) $item) . '</li>', $value)) . '</ul>';
+        }
+        return implode('', array_map(static fn (mixed $item): string => '<div class="item">' . qb_render($item) . '</div>', $value));
+    }
+    $out = '<dl>';
+    foreach ($value as $key => $item) {
+        $label = ucfirst(str_replace(['_', '-'], ' ', (string) $key));
+        $out .= '<dt>' . $escape($label) . '</dt><dd>' . (is_scalar($item) || $item === null ? $escape((string) $item) : qb_render($item)) . '</dd>';
+    }
+    return $out . '</dl>';
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -121,6 +184,13 @@ $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
         summary { cursor: pointer; padding: 12px 15px; font-weight: 700; }
         details div { padding: 0 15px 13px; color: #aeb2c2; font-size: 13px; line-height: 1.6; }
         .error { color: #ff9cba; background: #3c1f32; border: 1px solid #7a3755; padding: 14px; border-radius: 10px; margin-top: 18px; }
+        .item { border-top: 1px solid #2c2f40; padding: 10px 0; }
+        .item:first-child { border-top: 0; }
+        dl { margin: 0; }
+        dt { color: #c9a3f5; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-top: 10px; }
+        dd { margin: 4px 0 0; color: #cfd2e0; font-size: 14px; line-height: 1.6; }
+        .downloads { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+        .downloads a { display: inline-block; border-radius: 999px; background: #292d3d; color: #e9e6f4; padding: 10px 16px; font-weight: 800; text-decoration: none; font-size: 13px; }
         .note { color: #8d91a3; font-size: 12px; }
         @media (max-width: 700px) { header { display: block; } main { padding: 28px 16px 60px; } .source { grid-template-columns: 70px 1fr; } .source span:last-child { display: none; } }
     </style>
@@ -196,6 +266,15 @@ $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
         </div>
         <label for="document">Or paste an outside document to summarize and compare against the book</label>
         <textarea id="document" name="document" placeholder="Paste a memo, article, or draft here…"><?= $e($document) ?></textarea>
+
+        <h2>4 · Documents on demand (optional)</h2>
+        <label for="deliver">Request any output form — rendered on this page and downloadable as Markdown, plain text, or JSON</label>
+        <select id="deliver" name="deliver">
+            <option value="">— just the standard set (summary · synopsis · abstract · analysis) —</option>
+            <?php foreach (QueryBook::FORMS as $formKey => $formLabel): ?>
+                <option value="<?= $e($formKey) ?>" <?= $formKey === $deliver ? 'selected' : '' ?>><?= $e($formLabel) ?></option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit">Query the book</button>
         <p class="note">Deterministic and local: the same book and the same question always produce the same answer. No accounts, no API keys.</p>
     </form>
@@ -222,6 +301,28 @@ $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
             <?php if ((array) $answer['related_questions'] !== []): ?>
                 <p class="note">Questions this book answers well: <?= $e(implode(' · ', (array) $answer['related_questions'])) ?></p>
             <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
+    <?php if ($deliverError !== null): ?><div class="error"><?= $e($deliverError) ?></div><?php endif; ?>
+
+    <?php if ($deliverable !== null && $queryBook !== null): ?>
+        <?php $deliverQuery = http_build_query(array_filter([
+            'topic' => $topic, 'reader' => $reader, 'author' => $author, 'style' => $style, 'length' => $length,
+            'question' => $question, 'mode' => $mode, 'domain' => $domain,
+            'chapter' => $chapterScope > 0 ? (string) $chapterScope : '',
+            'compare_a' => $compareA > 0 ? (string) $compareA : '', 'compare_b' => $compareB > 0 ? (string) $compareB : '',
+            'document' => $document, 'deliver' => $deliver,
+        ], static fn (string $v): bool => $v !== '')); ?>
+        <section>
+            <div class="eyebrow">Requested deliverable · <?= $e((string) $deliverable['label']) ?></div>
+            <p class="note">Target book: <?= $e((string) $deliverable['book']) ?></p>
+            <?= qb_render($deliverable['result']) ?>
+            <div class="downloads">
+                <a href="query-book.php?<?= $e($deliverQuery) ?>&amp;download=md">Download (.md)</a>
+                <a href="query-book.php?<?= $e($deliverQuery) ?>&amp;download=txt">Download (.txt)</a>
+                <a href="query-book.php?<?= $e($deliverQuery) ?>&amp;download=json">Download (.json)</a>
+            </div>
         </section>
     <?php endif; ?>
 

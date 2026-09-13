@@ -177,9 +177,12 @@ layer, restoring the original QueryBook concept in full:
 - **Answer modes** — every question is answered from the target book itself,
   with the chapters it came from cited as sources. Choose **Q&A** (a direct
   answer plus its sources), **Conversational** (a dialogue answer that ends
-  with follow-up questions), or **Research** (an evidence-forward briefing,
-  chapter by chapter). Off-book questions come back low-confidence with
-  questions the book *can* answer.
+  with follow-up questions), **Research** (an evidence-forward briefing,
+  chapter by chapter), **Executive brief** (bottom line first,
+  decision-ready), **Tutorial** (the answer as numbered steps in book
+  order), **Study** (the answer plus self-check questions), or **Quotes**
+  (the book answers verbatim, every line attributed). Off-book questions
+  come back low-confidence with questions the book *can* answer.
 - **Industry / domain tailoring** — the same answer can be customized to a
   specific domain: education, healthcare, legal, finance, technology, or
   small business. The answer is reframed through that lens, given a tailored
@@ -195,6 +198,17 @@ layer, restoring the original QueryBook concept in full:
   distinct emphasis, a reading-order verdict), and book vs. an outside
   document you paste in (document summary and abstract, shared ground, what
   the document adds, and the closest chapters in the book).
+
+Every form of user-requested output goes through one dispatcher,
+`QueryBook::request($form, $options)`, covering the full catalog
+(`QueryBook::FORMS`): answer, summary (with brief/standard/detailed
+lengths), synopsis, abstract, analysis, **outline**, **glossary** (key
+terms defined in the book's own words), **FAQ**, **study guide**,
+**key quotes**, **reading plan** (a session-by-session schedule),
+chapter comparison, document comparison, document report, and related
+questions. Any deliverable renders on the page and downloads as
+**Markdown**, **plain text**, or **JSON** (`renderMarkdown()` /
+`renderPlainText()`, or `?deliver=<form>&download=md|txt|json`).
 
 Everything is deterministic and local — same book + same question = same
 answer — and the whole result set is available as JSON via

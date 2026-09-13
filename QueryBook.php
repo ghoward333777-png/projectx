@@ -31,6 +31,32 @@ final class QueryBook
         'qa' => 'Q&A — a direct answer with its sources',
         'conversational' => 'Conversational — a dialogue answer that invites follow-ups',
         'research' => 'Research — an evidence-forward briefing, chapter by chapter',
+        'executive' => 'Executive brief — bottom line first, decision-ready',
+        'tutorial' => 'Tutorial — the answer as numbered steps in book order',
+        'study' => 'Study — the answer plus self-check questions',
+        'quotes' => 'Quotes — the book answers in its own words',
+    ];
+
+    /**
+     * Every form of output a user can request. request() dispatches on these
+     * keys, so the whole catalog is drivable from one entry point.
+     */
+    public const FORMS = [
+        'answer' => 'Answer — a question, in any mode and domain',
+        'summary' => 'Summary — the book, or one chapter',
+        'synopsis' => 'Synopsis — the narrative arc',
+        'abstract' => 'Abstract — one compact paragraph',
+        'analysis' => 'Analysis — structure and emphasis',
+        'outline' => 'Outline — every chapter and its job',
+        'glossary' => 'Glossary — key terms, defined in the book\'s own words',
+        'faq' => 'FAQ — the questions the book answers, chapter by chapter',
+        'study-guide' => 'Study guide — summaries, terms, discussion questions',
+        'quotes' => 'Key quotes — the most quotable line of every chapter',
+        'reading-plan' => 'Reading plan — a session-by-session schedule',
+        'compare-chapters' => 'Comparison — chapter vs. chapter',
+        'compare-document' => 'Comparison — the book vs. an outside document',
+        'document-report' => 'Document report — summary and abstract of pasted text',
+        'related-questions' => 'Related questions — what this book answers well',
     ];
 
     /**
@@ -202,6 +228,30 @@ final class QueryBook
                 }
                 $paragraphs[] = 'Chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '": ' . implode(' ', $lines);
             }
+        } elseif ($mode === 'executive') {
+            $paragraphs[] = 'Bottom line: ' . $evidence[0];
+            if (isset($evidence[1])) {
+                $paragraphs[] = 'Why it matters: ' . $evidence[1];
+            }
+            $paragraphs[] = 'Where it lives: chapter ' . (int) $best['number'] . ', "' . $best['title'] . '". ' . $this->purposeSentence($best);
+        } elseif ($mode === 'tutorial') {
+            $ordered = $ranked;
+            usort($ordered, static fn (array $a, array $b): int => (int) $a['chapter']['number'] <=> (int) $b['chapter']['number']);
+            foreach ($ordered as $index => $entry) {
+                $chapter = $entry['chapter'];
+                $lines = $this->relevantSentences((string) $chapter['content'], $terms, 1);
+                $paragraphs[] = 'Step ' . ($index + 1) . ' — chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '": ' . ($lines[0] ?? $this->purposeSentence($chapter));
+            }
+            $paragraphs[] = 'Work the steps in book order; each of those chapters closes with its own takeaway to check yourself against.';
+        } elseif ($mode === 'quotes') {
+            foreach ($ranked as $entry) {
+                $chapter = $entry['chapter'];
+                $lines = $this->relevantSentences((string) $chapter['content'], $terms, 1);
+                $paragraphs[] = '“' . ($lines[0] ?? $this->purposeSentence($chapter)) . '” — chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '"';
+            }
+        } elseif ($mode === 'study') {
+            $paragraphs[] = implode(' ', $evidence);
+            $paragraphs[] = 'Source: chapter ' . (int) $best['number'] . ', "' . $best['title'] . '". ' . $this->purposeSentence($best) . ' Answer the self-check questions below before moving on.';
         } else { // qa
             $paragraphs[] = implode(' ', $evidence);
             $paragraphs[] = 'That answer comes from chapter ' . (int) $best['number'] . ', "' . $best['title'] . '". ' . $this->purposeSentence($best);
@@ -209,8 +259,11 @@ final class QueryBook
 
         // Domain tailoring: frame the answer through the industry lens and
         // add the tailored application sentence + the domain's caution.
+        // Quotes stay verbatim, so only the application sentence is added there.
         if ($domainKey !== 'general') {
-            $paragraphs[0] = 'Through ' . $domain['lens'] . ' lens: ' . $paragraphs[0];
+            if ($mode !== 'quotes') {
+                $paragraphs[0] = 'Through ' . $domain['lens'] . ' lens: ' . $paragraphs[0];
+            }
             $applied = 'For ' . $domain['audience'] . ', the working takeaway is to treat "' . $best['title'] . '" as the operating chapter and apply its steps inside your own ' . strtolower($domain['label']) . ' context.';
             if ($domain['note'] !== '') {
                 $applied .= ' ' . $domain['note'];
@@ -226,6 +279,9 @@ final class QueryBook
             if ($followUps === []) {
                 $followUps[] = 'Want the one-paragraph abstract of ' . $this->title . ' next?';
             }
+        } elseif ($mode === 'study') {
+            $followUps[] = 'Self-check: in your own words, what does chapter ' . (int) $best['number'] . ', "' . $best['title'] . '", say about this?';
+            $followUps[] = 'Self-check: which part of that answer could you apply this week, and what would you expect to change?';
         }
 
         $maxScore = max(1, $ranked[0]['score']);
@@ -251,32 +307,48 @@ final class QueryBook
     /**
      * Book-level or chapter-level summary.
      *
+     * @param string $length brief (one line), standard, or detailed.
      * @return array<string, mixed>
      */
-    public function summarize(?int $chapterNumber = null): array
+    public function summarize(?int $chapterNumber = null, string $length = 'standard'): array
     {
+        $length = in_array($length, ['brief', 'standard', 'detailed'], true) ? $length : 'standard';
         if ($chapterNumber !== null) {
             $chapter = $this->findChapter($chapterNumber);
-            $opening = $this->firstSentences((string) $chapter['content'], 2);
-            return [
-                'scope' => 'chapter',
-                'chapter' => (int) $chapter['number'],
-                'title' => (string) $chapter['title'],
-                'summary' => array_values(array_filter([
+            $opening = $this->firstSentences((string) $chapter['content'], $length === 'detailed' ? 3 : 2);
+            $lines = $length === 'brief'
+                ? [$this->purposeSentence($chapter)]
+                : array_values(array_filter([
                     $this->purposeSentence($chapter),
                     $opening === [] ? '' : 'It opens: ' . implode(' ', $opening),
                     'It runs ' . (int) $chapter['word_count'] . ' words across about ' . (int) $chapter['page_count'] . ' pages.',
-                ], static fn (string $line): bool => $line !== '')),
-                'key_terms' => $this->keyTerms((string) $chapter['content'], 6),
+                ], static fn (string $line): bool => $line !== ''));
+            return [
+                'scope' => 'chapter',
+                'length' => $length,
+                'chapter' => (int) $chapter['number'],
+                'title' => (string) $chapter['title'],
+                'summary' => $lines,
+                'key_terms' => $this->keyTerms((string) $chapter['content'], $length === 'brief' ? 4 : 6),
             ];
         }
 
         $lines = [];
-        foreach ($this->chapters as $chapter) {
-            $lines[] = 'Chapter ' . (int) $chapter['number'] . ' — ' . $chapter['title'] . ': ' . $this->clause((string) $chapter['purpose']) . '.';
+        if ($length !== 'brief') {
+            foreach ($this->chapters as $chapter) {
+                $line = 'Chapter ' . (int) $chapter['number'] . ' — ' . $chapter['title'] . ': ' . $this->clause((string) $chapter['purpose']) . '.';
+                if ($length === 'detailed') {
+                    $opening = $this->firstSentences((string) $chapter['content'], 1);
+                    if ($opening !== []) {
+                        $line .= ' It opens: ' . $opening[0];
+                    }
+                }
+                $lines[] = $line;
+            }
         }
         return [
             'scope' => 'book',
+            'length' => $length,
             'title' => $this->title,
             'summary' => [
                 ucfirst($this->title) . ' covers ' . strtolower($this->topic) . ' in ' . count($this->chapters) . ' chapters, about ' . $this->totalWords() . ' words in all.',
@@ -488,7 +560,260 @@ final class QueryBook
         return $questions;
     }
 
+    /**
+     * The book's outline: every chapter and its job.
+     *
+     * @return array<string, mixed>
+     */
+    public function outline(): array
+    {
+        $rows = [];
+        foreach ($this->chapters as $chapter) {
+            $rows[] = [
+                'chapter' => (int) $chapter['number'],
+                'title' => (string) $chapter['title'],
+                'purpose' => ucfirst($this->clause((string) $chapter['purpose'])) . '.',
+                'words' => (int) $chapter['word_count'],
+                'pages' => (int) $chapter['page_count'],
+            ];
+        }
+        return [
+            'title' => $this->title,
+            'chapter_count' => count($rows),
+            'total_words' => $this->totalWords(),
+            'chapters' => $rows,
+        ];
+    }
+
+    /**
+     * The book's key terms, each defined in the book's own words (the
+     * shortest sentence that uses the term).
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function glossary(int $limit = 10): array
+    {
+        $sentences = $this->sentences($this->allContent());
+        $entries = [];
+        foreach ($this->keyTerms($this->allContent(), $limit) as $term) {
+            $definition = '';
+            foreach ($sentences as $sentence) {
+                if (str_contains(mb_strtolower($sentence), $term) && ($definition === '' || mb_strlen($sentence) < mb_strlen($definition))) {
+                    $definition = $sentence;
+                }
+            }
+            $entries[] = [
+                'term' => $term,
+                'in_the_book' => $definition !== '' ? $definition : 'A recurring concern of ' . $this->title . '.',
+            ];
+        }
+        return $entries;
+    }
+
+    /**
+     * The questions the book answers, chapter by chapter, with the answers.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function faq(): array
+    {
+        $entries = [];
+        foreach ($this->chapters as $chapter) {
+            $content = (string) $chapter['content'];
+            $opening = $this->firstSentences($content, 1);
+            $entries[] = [
+                'question' => 'What does chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '", cover?',
+                'answer' => $this->purposeSentence($chapter) . ($opening === [] ? '' : ' ' . $opening[0]),
+            ];
+            $terms = $this->keyTerms($content, 1);
+            $line = $terms === [] ? [] : $this->relevantSentences($content, $terms, 1);
+            if ($line !== []) {
+                $entries[] = [
+                    'question' => 'How does the book handle ' . $terms[0] . '?',
+                    'answer' => $line[0] . ' (Chapter ' . (int) $chapter['number'] . ', "' . $chapter['title'] . '".)',
+                ];
+            }
+        }
+        return $entries;
+    }
+
+    /**
+     * A study guide: per-chapter summary, key terms, discussion questions.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function studyGuide(): array
+    {
+        $guide = [];
+        foreach ($this->chapters as $chapter) {
+            $guide[] = [
+                'chapter' => (int) $chapter['number'],
+                'title' => (string) $chapter['title'],
+                'summary' => $this->purposeSentence($chapter),
+                'key_terms' => $this->keyTerms((string) $chapter['content'], 5),
+                'discussion_questions' => [
+                    'Where do you already see what "' . $chapter['title'] . '" describes in your own situation?',
+                    'What would change for you if you acted on chapter ' . (int) $chapter['number'] . ' this month?',
+                ],
+            ];
+        }
+        return $guide;
+    }
+
+    /**
+     * The most quotable line of every chapter, with its attribution.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function keyQuotes(): array
+    {
+        $quotes = [];
+        foreach ($this->chapters as $chapter) {
+            $content = (string) $chapter['content'];
+            $line = $this->relevantSentences($content, $this->keyTerms($content, 6), 1);
+            $quote = $line[0] ?? ($this->firstSentences($content, 1)[0] ?? '');
+            if ($quote === '') {
+                continue;
+            }
+            $quotes[] = [
+                'chapter' => (int) $chapter['number'],
+                'title' => (string) $chapter['title'],
+                'quote' => $quote,
+            ];
+        }
+        return $quotes;
+    }
+
+    /**
+     * A session-by-session reading schedule for the whole book.
+     *
+     * @return array<string, mixed>
+     */
+    public function readingPlan(int $minutesPerSession = 45, int $wordsPerMinute = 200): array
+    {
+        $minutesPerSession = max(5, $minutesPerSession);
+        $wordsPerMinute = max(60, $wordsPerMinute);
+        $sessions = [];
+        $current = ['chapters' => [], 'minutes' => 0];
+        $total = 0;
+        foreach ($this->chapters as $chapter) {
+            $minutes = max(1, (int) ceil((int) $chapter['word_count'] / $wordsPerMinute));
+            $total += $minutes;
+            if ($current['chapters'] !== [] && $current['minutes'] + $minutes > $minutesPerSession) {
+                $sessions[] = $current;
+                $current = ['chapters' => [], 'minutes' => 0];
+            }
+            $current['chapters'][] = 'Chapter ' . (int) $chapter['number'] . ' — ' . $chapter['title'] . ' (' . $minutes . ' min)';
+            $current['minutes'] += $minutes;
+        }
+        if ($current['chapters'] !== []) {
+            $sessions[] = $current;
+        }
+        foreach ($sessions as $index => $session) {
+            $sessions[$index] = ['session' => $index + 1, 'minutes' => $session['minutes'], 'chapters' => $session['chapters']];
+        }
+        return [
+            'title' => $this->title,
+            'pace' => $wordsPerMinute . ' words per minute, sessions of up to ' . $minutesPerSession . ' minutes',
+            'session_count' => count($sessions),
+            'total_minutes' => $total,
+            'sessions' => $sessions,
+        ];
+    }
+
+    /**
+     * One entry point for every form of user-requested output.
+     *
+     * @param string $form A key of FORMS.
+     * @param array<string, mixed> $options Form-specific inputs: question,
+     *   mode, domain, chapter, length, max_words, chapter_a, chapter_b,
+     *   document, document_label, minutes_per_session, words_per_minute, limit.
+     * @return array{form:string, label:string, book:string, result:array<mixed>}
+     */
+    public function request(string $form, array $options = []): array
+    {
+        if (!isset(self::FORMS[$form])) {
+            throw new InvalidArgumentException('Unknown output form "' . $form . '". Pick one of: ' . implode(', ', array_keys(self::FORMS)) . '.');
+        }
+        $chapter = isset($options['chapter']) && (int) $options['chapter'] > 0 ? (int) $options['chapter'] : null;
+        if (in_array($form, ['compare-chapters'], true) && ((int) ($options['chapter_a'] ?? 0) <= 0 || (int) ($options['chapter_b'] ?? 0) <= 0)) {
+            throw new InvalidArgumentException('Comparing chapters needs the two chapter numbers (chapter_a and chapter_b).');
+        }
+        if (in_array($form, ['compare-document', 'document-report'], true) && trim((string) ($options['document'] ?? '')) === '') {
+            throw new InvalidArgumentException('That form needs a pasted document to work with.');
+        }
+
+        $result = match ($form) {
+            'answer' => $this->ask((string) ($options['question'] ?? ''), $options),
+            'summary' => $this->summarize($chapter, (string) ($options['length'] ?? 'standard')),
+            'synopsis' => ['paragraphs' => $this->synopsis()],
+            'abstract' => ['abstract' => $this->abstractText((int) ($options['max_words'] ?? 200))],
+            'analysis' => $this->analyze($chapter),
+            'outline' => $this->outline(),
+            'glossary' => ['terms' => $this->glossary((int) ($options['limit'] ?? 10))],
+            'faq' => ['entries' => $this->faq()],
+            'study-guide' => ['chapters' => $this->studyGuide()],
+            'quotes' => ['quotes' => $this->keyQuotes()],
+            'reading-plan' => $this->readingPlan((int) ($options['minutes_per_session'] ?? 45), (int) ($options['words_per_minute'] ?? 200)),
+            'compare-chapters' => $this->compareChapters((int) $options['chapter_a'], (int) $options['chapter_b']),
+            'compare-document' => $this->compareWithDocument((string) $options['document'], (string) ($options['document_label'] ?? 'the supplied document')),
+            'document-report' => $this->documentReport((string) $options['document'], (string) ($options['document_label'] ?? 'the document')),
+            'related-questions' => ['questions' => $this->relatedQuestions((int) ($options['limit'] ?? 5))],
+        };
+        return ['form' => $form, 'label' => self::FORMS[$form], 'book' => $this->title, 'result' => $result];
+    }
+
+    /** Render any request() result as portable Markdown. */
+    public function renderMarkdown(array $request): string
+    {
+        $md = '# ' . (string) ($request['label'] ?? 'QueryBook') . "\n\n"
+            . 'Target book: ' . $this->title . "\n\n"
+            . $this->markdownValue($request['result'] ?? [], 2);
+        return trim(preg_replace("/\n{3,}/", "\n\n", $md) ?? $md) . "\n";
+    }
+
+    /** Render any request() result as plain text. */
+    public function renderPlainText(array $request): string
+    {
+        $text = $this->renderMarkdown($request);
+        $text = preg_replace('/^#{1,6}\s*/m', '', $text) ?? $text;
+        $text = preg_replace('/^\-\s/m', '  • ', $text) ?? $text;
+        return str_replace('**', '', $text);
+    }
+
     // -- internals -----------------------------------------------------------
+
+    /** Recursive Markdown rendering for any deliverable's payload. */
+    private function markdownValue(mixed $value, int $depth): string
+    {
+        if (is_scalar($value) || $value === null) {
+            $line = trim((string) $value);
+            return $line === '' ? '' : $line . "\n\n";
+        }
+        $value = (array) $value;
+        if ($value === []) {
+            return '';
+        }
+        if (array_is_list($value)) {
+            $out = '';
+            foreach ($value as $item) {
+                $out .= is_scalar($item) || $item === null
+                    ? '- ' . trim((string) $item) . "\n"
+                    : $this->markdownValue($item, $depth + 1);
+            }
+            return $out . "\n";
+        }
+        $out = '';
+        foreach ($value as $key => $item) {
+            $label = ucfirst(str_replace(['_', '-'], ' ', (string) $key));
+            if (is_scalar($item) || $item === null) {
+                $out .= '**' . $label . ':** ' . trim((string) $item) . "\n\n";
+            } else {
+                $out .= str_repeat('#', min(6, $depth)) . ' ' . $label . "\n\n" . $this->markdownValue($item, $depth + 1);
+            }
+        }
+        return $out;
+    }
 
     /** @return array<string, mixed> */
     private function findChapter(int $number): array

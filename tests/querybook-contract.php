@@ -96,4 +96,73 @@ contract_check($docReport['summary'] !== [] && $docReport['abstract'] !== '', 'd
 $docComparison = $qb->compareWithDocument($docText, 'the memo');
 contract_check($docComparison['closest_chapters'] !== [], 'a related document must map onto the book\'s chapters');
 
+// --- Every answer mode ---------------------------------------------------------
+$modeTexts = [];
+foreach (array_keys(QueryBook::MODES) as $modeKey) {
+    $modeAnswer = $qb->ask('How do I build a leadership strategy?', ['mode' => $modeKey]);
+    contract_check($modeAnswer['mode'] === $modeKey && $modeAnswer['answer'] !== [], "mode {$modeKey} must produce an answer");
+    $modeTexts[$modeKey] = implode(' ', $modeAnswer['answer']);
+}
+contract_check(count(array_unique($modeTexts)) === count($modeTexts), 'every answer mode must read differently');
+contract_check(str_starts_with($modeTexts['executive'], 'Bottom line:'), 'the executive brief must lead with the bottom line');
+contract_check(str_contains($modeTexts['tutorial'], 'Step 1'), 'the tutorial mode must answer in numbered steps');
+contract_check(str_contains($modeTexts['quotes'], '” — chapter'), 'the quotes mode must attribute every quote to its chapter');
+contract_check($qb->ask('How do I build a leadership strategy?', ['mode' => 'study'])['follow_ups'] !== [], 'study mode must add self-check questions');
+
+// --- Summary lengths -------------------------------------------------------------
+$brief = $qb->summarize(null, 'brief');
+$detailed = $qb->summarize(null, 'detailed');
+contract_check($brief['chapters'] === [] && count($detailed['chapters']) === $chapterCount, 'summary lengths must change the depth');
+contract_check($qb->summarize(1, 'brief')['summary'] !== $qb->summarize(1, 'detailed')['summary'], 'chapter summaries must honor the length');
+
+// --- New deliverables ---------------------------------------------------------------
+contract_check($qb->outline()['chapter_count'] === $chapterCount, 'the outline must cover every chapter');
+$glossary = $qb->glossary(8);
+contract_check(count($glossary) === 8, 'the glossary must deliver the requested number of terms');
+foreach ($glossary as $entry) {
+    contract_check($entry['term'] !== '' && $entry['in_the_book'] !== '', 'every glossary term must carry a definition');
+}
+contract_check(count($qb->faq()) >= $chapterCount, 'the FAQ must cover every chapter');
+contract_check(count($qb->studyGuide()) === $chapterCount, 'the study guide must cover every chapter');
+foreach ($qb->studyGuide() as $guideChapter) {
+    contract_check(count($guideChapter['discussion_questions']) >= 2, 'every study-guide chapter needs discussion questions');
+}
+contract_check(count($qb->keyQuotes()) === $chapterCount, 'every chapter must yield a key quote');
+$plan = $qb->readingPlan();
+$expectedMinutes = 0;
+foreach ($book['chapters'] as $chapter) {
+    $expectedMinutes += max(1, (int) ceil((int) $chapter['word_count'] / 200));
+}
+contract_check($plan['total_minutes'] === $expectedMinutes, 'the reading plan must add up chapter by chapter');
+contract_check($plan['sessions'] !== [] && $plan['session_count'] === count($plan['sessions']), 'the reading plan must schedule sessions');
+
+// --- One dispatcher for every form of user-requested output -------------------------
+$formOptions = [
+    'answer' => ['question' => 'How do I build a leadership strategy?', 'mode' => 'executive', 'domain' => 'technology'],
+    'compare-chapters' => ['chapter_a' => 1, 'chapter_b' => 2],
+    'compare-document' => ['document' => $docText],
+    'document-report' => ['document' => $docText],
+];
+foreach (array_keys(QueryBook::FORMS) as $form) {
+    $request = $qb->request($form, $formOptions[$form] ?? []);
+    contract_check($request['form'] === $form && $request['result'] !== [], "form {$form} must produce output");
+    contract_check(trim($qb->renderMarkdown($request)) !== '', "form {$form} must render as Markdown");
+    contract_check(trim($qb->renderPlainText($request)) !== '', "form {$form} must render as plain text");
+    contract_check($qb->request($form, $formOptions[$form] ?? []) === $request, "form {$form} must be deterministic");
+}
+$failed = false;
+try {
+    $qb->request('compare-chapters');
+} catch (InvalidArgumentException $exception) {
+    $failed = true;
+}
+contract_check($failed, 'a form missing its inputs must fail with a clear message');
+$failed = false;
+try {
+    $qb->request('interpretive-dance');
+} catch (InvalidArgumentException $exception) {
+    $failed = true;
+}
+contract_check($failed, 'an unknown form must be rejected by name');
+
 echo "querybook-contract passed\n";
