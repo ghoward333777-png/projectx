@@ -210,6 +210,9 @@ questions. Any deliverable renders on the page and downloads as
 **Markdown**, **plain text**, or **JSON** (`renderMarkdown()` /
 `renderPlainText()`, or `?deliver=<form>&download=md|txt|json`).
 
+**Every QueryBook output template is available to all users** — no account,
+no tier, no API key, on the hosted site and in the self-hosted package alike.
+
 Everything is deterministic and local — same book + same question = same
 answer — and the whole result set is available as JSON via
 `query-book.php?format=json`.

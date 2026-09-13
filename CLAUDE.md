@@ -61,6 +61,32 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   `ManuscriptDeveloper::revisionReport()` flags chapters wanting a human pass —
   deterministic, local, no API cost — surfaced in the writer results page.
 
+## QueryBook (do not regress)
+
+QueryBook (`QueryBook.php` + `query-book.php`) is the reader-side answer layer
+from the original QueryBook concept: answers in many forms, all linked to a
+target book.
+
+- **Output templates are available to all users.** Every answer mode
+  (`QueryBook::MODES` — Q&A, conversational, research, executive brief,
+  tutorial, study, quotes), every domain profile (`QueryBook::DOMAINS`), and
+  every output form (`QueryBook::FORMS` — summaries, analysis, synopsis,
+  abstract, outline, glossary, FAQ, study guide, key quotes, reading plan,
+  comparisons, document reports, related questions) is exposed to every user
+  on `query-book.php` with no account, login, payment, or API key — and ships
+  in the hosting package so it stays that way on self-hosted installs. Never
+  gate a template behind a tier, flag, or key.
+- One dispatcher serves them all: `QueryBook::request($form, $options)` over
+  the `FORMS` catalog; new forms get a `FORMS` entry, a `request()` arm, page
+  exposure, and coverage in `tests/querybook-contract.php`.
+- Answers are tailored per industry/domain via the `domain` option; tailoring
+  reframes and appends — it never fabricates content the book doesn't carry.
+- Deterministic and local: same book + same question/form = same output.
+  Every deliverable renders via `renderMarkdown()`/`renderPlainText()` and
+  downloads as .md/.txt/.json.
+- The Quality Lab's `queryBookPlan()` (quiz/takeaway/learning path) is a
+  separate, older slice — keep it working; it is not a substitute for the page.
+
 ## Housekeeping
 
 - New app files must be added to `SitePackageExporter::FILES` or the hosting zip
