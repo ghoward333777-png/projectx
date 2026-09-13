@@ -25,12 +25,14 @@ final class SitePackageExporter
         'WordManuscriptExporter.php',
         'ManuscriptDeveloper.php',
         'ManuscriptHygiene.php',
+        'QueryBook.php',
         'BookProjectStore.php',
         'SitePackageExporter.php',
         'index.php',
         'generate-book.php',
         'amazon-book-writer.php',
         'book-lab.php',
+        'query-book.php',
         'book-projects.php',
         'user-guide.php',
         'download-app.php',
@@ -48,6 +50,7 @@ final class SitePackageExporter
         'tests/print-media-contract.php',
         'tests/manuscript-developer-contract.php',
         'tests/hygiene-contract.php',
+        'tests/querybook-contract.php',
         'README.md',
     ];
 
@@ -133,6 +136,7 @@ Install in 3 steps
    - index.php            -> analyze a book topic
    - generate-book.php    -> edit the chapter list and draft the book
    - amazon-book-writer.php -> build the Amazon publishing package
+   - query-book.php       -> ask the finished book questions (QueryBook)
    - user-guide.php       -> the friendly user guide
 
 Want it at the top of your domain instead? Upload the files inside the

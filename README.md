@@ -23,6 +23,7 @@ Then open:
 - `http://127.0.0.1:8082/index.php` — strategy workspace
 - `http://127.0.0.1:8082/generate-book.php` — editable TOC and manuscript generator
 - `http://127.0.0.1:8082/amazon-book-writer.php` — Amazon KDP publishing package builder
+- `http://127.0.0.1:8082/query-book.php` — QueryBook: ask the finished book questions
 - `http://127.0.0.1:8082/user-guide.php` — friendly user guide
 - `http://127.0.0.1:8082/download-app.php` — download the whole app as a hosting-ready .zip
 - `http://127.0.0.1:8082/index.php?format=json` — generated strategy kit JSON
@@ -160,12 +161,73 @@ captioned placeholders in the Word export.
   limits, plus keyword opportunities to test later.
 - **QueryBook Enhancement Plan** — three quiz questions, a key takeaway, and
   a learning-path step per chapter (Read → Quiz → Apply).
+  The full reader-side QueryBook lives on its own page — see below.
 - **Best-Seller Production Kit** — everything above plus the blueprint,
   chapter outline, media map, competitive gap, and best-seller probability,
   downloadable as a printable HTML report or JSON.
 
 All scores are deterministic diagnostics computed from the draft — honest
 revision guidance, not sales guarantees.
+
+## QueryBook — answers in many forms, all linked to a target book
+
+`query-book.php`, powered by `QueryBook.php`, is the reader-side intelligence
+layer, restoring the original QueryBook concept in full:
+
+- **Answer modes** — every question is answered from the target book itself,
+  with the chapters it came from cited as sources. Choose **Q&A** (a direct
+  answer plus its sources), **Conversational** (a dialogue answer that ends
+  with follow-up questions), **Research** (an evidence-forward briefing,
+  chapter by chapter), **Executive brief** (bottom line first,
+  decision-ready), **Tutorial** (the answer as numbered steps in book
+  order), **Study** (the answer plus self-check questions), **Quotes**
+  (the book answers verbatim, every line attributed), **Expository**
+  (a plain, declarative explanation), **Argumentative** (claim, evidence,
+  and the counterweight), or **Descriptive** (the picture the book
+  paints). `max_words` caps any answer's length. Off-book questions come
+  back low-confidence with questions the book *can* answer.
+- **Expressive registers** — exactly one voice per answer, chosen from a
+  governed set (plain, formal, academic, instructional, narrative,
+  supportive, authoritative). A register governs voicing only: it never
+  changes the evidence, the sources, or a single claim, and an
+  unregistered register is refused rather than approximated. Every answer
+  also returns a **context key** — identical keys guarantee identical
+  answers; differing keys claim nothing.
+- **Industry / domain tailoring** — the same answer can be customized to a
+  specific domain: education, healthcare, legal, finance, technology, or
+  small business. The answer is reframed through that lens, given a tailored
+  application sentence for that audience, and carries the domain's caution.
+- **Summaries** — book-level (with a chapter-by-chapter rundown) and
+  chapter-level, plus key terms.
+- **Synopsis** — the narrative walk through the book's arc, opening to close.
+- **Abstract** — one compact paragraph, capped at 200 words.
+- **Analysis** — structure and emphasis: chapter and word counts, longest and
+  shortest chapters, takeaway coverage, key terms, and the book's arc; also
+  available per chapter (sentence stats, takeaway closer, key terms).
+- **Comparisons** — chapter vs. chapter inside the book (shared ground,
+  distinct emphasis, a reading-order verdict), and book vs. an outside
+  document you paste in (document summary and abstract, shared ground, what
+  the document adds, and the closest chapters in the book).
+
+Every form of user-requested output goes through one dispatcher,
+`QueryBook::request($form, $options)`, covering the full catalog
+(`QueryBook::FORMS`): answer, summary (with brief/standard/detailed
+lengths), synopsis, abstract, analysis, **outline**, **glossary** (key
+terms defined in the book's own words), **FAQ**, **study guide**,
+**key quotes**, **flashcards** (one citing study card per chapter),
+**timeline** (the chapters in reading order, page by page),
+**reading plan** (a session-by-session schedule),
+chapter comparison, document comparison, document report, and related
+questions. Any deliverable renders on the page and downloads as
+**Markdown**, **plain text**, or **JSON** (`renderMarkdown()` /
+`renderPlainText()`, or `?deliver=<form>&download=md|txt|json`).
+
+**Every QueryBook output template is available to all users** — no account,
+no tier, no API key, on the hosted site and in the self-hosted package alike.
+
+Everything is deterministic and local — same book + same question = same
+answer — and the whole result set is available as JSON via
+`query-book.php?format=json`.
 
 ## Audiobook production
 
@@ -285,6 +347,7 @@ php tests/illustration-contract.php
 php tests/quality-lab-contract.php
 php tests/epub-contract.php
 php tests/print-media-contract.php
+php tests/querybook-contract.php
 ```
 
 ## Install on a hosting site
@@ -301,6 +364,7 @@ no API keys.
 - `AudiobookProducer.php` — narration script, chunking, provider payloads, consent gate
 - `IllustrationStudio.php` — per-topic diagrams, charts, graphs, tables, illustrations, AI-image prompts
 - `QualityLab.php` + `book-lab.php` — 30-metric scoring, complexity, KDP compliance, production kit
+- `QueryBook.php` + `query-book.php` — Q&A/conversational/research answers, domain tailoring, summaries, analysis, synopses, abstracts, comparisons
 - `bin/generate-images.php` — CLI image synthesis via Google Imagen, OpenAI, or Stability
 - `WordManuscriptExporter.php` — dependency-free .docx (OOXML) manuscript export
 - `bin/synthesize-audiobook.php` — CLI synthesis via Google TTS, ElevenLabs, or a local cloning engine

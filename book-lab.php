@@ -121,6 +121,7 @@ $badgeColor = static fn (string $badge): string => match ($badge) {
         <div>
             <a href="index.php">← Intelligence kit</a><br>
             <a href="amazon-book-writer.php">Amazon Book Writer</a><br>
+            <a href="query-book.php">QueryBook</a><br>
             <a href="user-guide.php">User guide</a>
         </div>
     </header>
