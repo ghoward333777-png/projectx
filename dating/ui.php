@@ -79,6 +79,10 @@ function sd_page_close(): void
 {
     ?>
 </main>
+<script>
+    // Chat logs open at the newest message, like any messenger.
+    document.querySelectorAll('.chat-log').forEach(function (log) { log.scrollTop = log.scrollHeight; });
+</script>
 </body>
 </html><?php
 }

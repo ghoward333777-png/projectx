@@ -46,6 +46,7 @@ final class SitePackageExporter
         'dating/ui.php',
         'dating/DESIGN_SPEC.md',
         'dating/openapi.yaml',
+        'dating/bin/seed-demo.php',
         'bin/synthesize-audiobook.php',
         'bin/generate-images.php',
         'bin/develop-manuscript.php',

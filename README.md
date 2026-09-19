@@ -11,7 +11,9 @@ storage). Start the same built-in server and open `http://127.0.0.1:8082/dating/
 (member app), `dating/partner-portal.php`, `dating/admin.php`, and `dating/safety-center.php`.
 Its consolidated design specification lives at `dating/DESIGN_SPEC.md` with the full API
 contract in `dating/openapi.yaml`; its tests are `tests/dating-engine-contract.php` and
-`tests/dating-api-contract.php`.
+`tests/dating-api-contract.php`. To explore it with realistic demo data (members mid
+slow-chat, an unlocked chat, partner venues, coupons, events, rewards), run
+`php dating/bin/seed-demo.php` — it prints the demo logins for all three portals.
 
 ## Requirements
 
