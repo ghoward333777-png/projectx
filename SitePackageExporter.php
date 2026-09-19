@@ -58,6 +58,7 @@ final class SitePackageExporter
         'dating/assets/tour/10-safety.jpg',
         'dating/assets/tour/11-smart-dating.jpg',
         'dating/DESIGN_SPEC.md',
+        'dating/FEATURE_SPEC.md',
         'dating/openapi.yaml',
         'dating/bin/seed-demo.php',
         'bin/synthesize-audiobook.php',
