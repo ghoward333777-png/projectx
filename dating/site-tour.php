@@ -21,6 +21,7 @@ $slides = [
     ['08-membership.jpg', 'Simple, honest membership', 'Member at $19/year, VIP with early chat unlock at $79, Elite with chaperone priority at $199. Ads and partners fund the rest.'],
     ['09-partner.jpg', 'A portal for partners', 'Restaurants, lounges, cruise lines, and experience providers run coupons, singles events, contests, and store products — with live analytics.'],
     ['10-safety.jpg', 'Safety first, women first', 'Contact filtering, red-flag detection, vetted venues, safety education, and VIP chaperone services — protection is the product, not an add-on.'],
+    ['11-smart-dating.jpg', 'Smart Dating: the science of choosing well', 'Nine short articles on why intense attraction misleads, the neuroscience underneath it, and why slow-built relationships hold — the research the whole platform is designed around.'],
 ];
 
 sd_page_open('Site Tour', 'SlowDating · see every page in one minute');
