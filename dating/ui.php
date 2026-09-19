@@ -67,6 +67,7 @@ function sd_page_open(string $title, string $eyebrow): void
         <h1><?= sd_e($title) ?></h1>
         <nav>
             <a href="index.php">Member app</a>
+            <a href="site-tour.php">Site Tour</a>
             <a href="partner-portal.php">Partner portal</a>
             <a href="admin.php">Admin console</a>
             <a href="safety-center.php">Safety center</a>
