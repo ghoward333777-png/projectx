@@ -5,6 +5,14 @@ It includes topic prospecting, competitive scanning, blueprint and table-of-cont
 media planning, probability modeling, deterministic manuscript drafting, editable chapter blocks,
 JSON endpoints, and an **Amazon Book Writer** that packages the manuscript for Amazon KDP.
 
+This repository also hosts **SlowDating** (`dating/`), a self-contained slow-chat dating SaaS
+application built on the same stack rules (dependency-free PHP 8.1+, no database, plain-file
+storage). Start the same built-in server and open `http://127.0.0.1:8082/dating/index.php`
+(member app), `dating/partner-portal.php`, `dating/admin.php`, and `dating/safety-center.php`.
+Its consolidated design specification lives at `dating/DESIGN_SPEC.md` with the full API
+contract in `dating/openapi.yaml`; its tests are `tests/dating-engine-contract.php` and
+`tests/dating-api-contract.php`.
+
 ## Requirements
 
 - PHP 8.1 or newer

@@ -1,0 +1,941 @@
+openapi: 3.0.3
+info:
+  title: SlowDating Platform API
+  description: >
+    The complete SlowDating API: member auth/profiles/search/matching/slow-chat,
+    popularity, the partner ecosystem (venues, coupons, events, contests, products,
+    analytics), the admin rewards program, safety, and inbound webhooks. This file is
+    the machine-readable companion to DESIGN_SPEC.md and matches the reference
+    implementation in dating/SlowDatingApi.php.
+  version: 1.0.0
+
+servers:
+  - url: https://api.slowdating.example
+  - url: http://127.0.0.1:8082/dating/api.php
+    description: Reference implementation (route via PATH_INFO or ?route=/...)
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Webhook-Signature
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error_code: { type: string }
+        message: { type: string }
+
+    SignupResult:
+      type: object
+      properties:
+        user_id: { type: string, example: U20260919-8F3K2 }
+        email: { type: string }
+        password_generated: { type: boolean }
+        auto_password:
+          type: string
+          nullable: true
+          description: Present exactly once when the platform generated the password.
+        token: { type: string }
+
+    UserProfile:
+      type: object
+      properties:
+        user_id: { type: string }
+        display_name: { type: string }
+        age: { type: integer, minimum: 18 }
+        gender: { type: string }
+        zip_code: { type: string }
+        interests: { type: array, items: { type: string } }
+        hobbies: { type: array, items: { type: string } }
+        outdoor_activities: { type: array, items: { type: string } }
+        dating_type:
+          type: string
+          enum: [long_term, short_term, casual, marriage, slow_dating]
+        faith: { type: string }
+        politics: { type: string }
+        income_range:
+          type: string
+          enum: [under_30k, 30k_60k, 60k_100k, 100k_150k, 150k_plus]
+        automobile:
+          type: string
+          enum: [none, economy, sedan, luxury, sports, suv, truck, ev]
+        occupation_category: { type: string }
+        videos:
+          type: array
+          items: { $ref: '#/components/schemas/YouTubeVideo' }
+
+    YouTubeVideo:
+      type: object
+      properties:
+        video_id: { type: string }
+        youtube_url: { type: string }
+        embed_url: { type: string }
+
+    PopularityScore:
+      type: object
+      properties:
+        user_id: { type: string }
+        popularity_score: { type: integer, minimum: 0, maximum: 100 }
+        percentile: { type: integer }
+        trend: { type: string, enum: [rising, stable, falling] }
+        last_updated: { type: integer, description: Unix timestamp }
+
+    PopularityBreakdown:
+      type: object
+      description: Owner-only. Raw counts never reach other members.
+      properties:
+        user_id: { type: string }
+        metrics: { type: object, additionalProperties: { type: integer } }
+        weights: { type: object, additionalProperties: { type: integer } }
+        raw_score: { type: integer }
+        normalized_score: { type: integer }
+
+    Match:
+      type: object
+      properties:
+        match_id: { type: string }
+        user_id: { type: string }
+        display_name: { type: string }
+        match_score: { type: integer, minimum: 0, maximum: 100 }
+        popularity_score: { type: integer }
+        zip_distance_km: { type: number }
+        shared_interests: { type: array, items: { type: string } }
+        shared_hobbies: { type: array, items: { type: string } }
+        compatibility_factors:
+          type: object
+          additionalProperties: { type: number }
+        recommended_venues: { type: array, items: { type: string } }
+
+    ChatStatus:
+      type: object
+      properties:
+        chat_id: { type: string }
+        stage: { type: string, enum: [slow_chat, real_time] }
+        age_days: { type: integer }
+        completed_sessions:
+          type: integer
+          description: Calendar days (UTC) on which both members sent a message.
+        sessions_required: { type: integer, example: 10 }
+        days_required: { type: integer, example: 30 }
+        unlocked: { type: boolean }
+        early_unlock: { type: boolean }
+        daily_message_limit: { type: integer, nullable: true }
+        message_size_limit: { type: integer, nullable: true }
+        contact_sharing_allowed: { type: boolean }
+
+    Message:
+      type: object
+      properties:
+        message_id: { type: string }
+        sender_id: { type: string }
+        text:
+          type: string
+          description: Stored post-filter; erased contact data never persists.
+        sent_at: { type: integer }
+        contact_data_removed: { type: integer }
+        red_flags: { type: array, items: { type: string } }
+
+    Venue:
+      type: object
+      properties:
+        id: { type: string }
+        partner_id: { type: string }
+        name: { type: string }
+        address: { type: string }
+        zip_code: { type: string }
+        category:
+          type: string
+          enum: [restaurant, lounge, cruise, tour, experience, bodyguard, vendor]
+        atmosphere_tags: { type: array, items: { type: string } }
+        safety_score: { type: integer }
+        status: { type: string }
+
+    Coupon:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        type: { type: string, enum: [random, targeted] }
+        discount_type: { type: string, enum: [percent, fixed] }
+        discount_amount: { type: number }
+        valid_from: { type: integer }
+        valid_to: { type: integer }
+        max_recipients: { type: integer }
+        estimated_reach: { type: integer }
+
+    CouponTargeting:
+      type: object
+      properties:
+        gender: { type: string }
+        age_min: { type: integer }
+        age_max: { type: integer }
+        zip_radius_km: { type: number }
+        interests: { type: array, items: { type: string } }
+        relationship_stage: { type: string }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        date_time: { type: integer }
+        capacity: { type: integer }
+        tags: { type: array, items: { type: string } }
+        ticket_price: { type: number }
+
+    Contest:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        prize: { type: string }
+        rules: { type: string }
+        eligibility_type: { type: string, enum: [ticket_buyers] }
+        event_id: { type: string }
+        start_date: { type: integer }
+        end_date: { type: integer }
+        draw_date: { type: integer }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string }
+        venue_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        price: { type: number }
+        inventory: { type: integer }
+
+    VenueAnalytics:
+      type: object
+      properties:
+        venue_id: { type: string }
+        total_coupons_created: { type: integer }
+        total_redemptions: { type: integer }
+        total_events: { type: integer }
+        total_tickets_sold: { type: integer }
+        ticket_revenue: { type: number }
+        total_contest_entries: { type: integer }
+
+    Reward:
+      type: object
+      properties:
+        campaign_id: { type: string }
+        user_id: { type: string }
+        reward_type:
+          type: string
+          enum: [free_membership, gift_certificate, product, event_tickets, promo_trip]
+        detail: { type: object }
+        granted_at: { type: integer }
+        status: { type: string }
+
+  parameters:
+    SearchFilters:
+      name: filters
+      in: query
+      description: >
+        Common member search filters, each an individual query parameter:
+        zip_code, zip_radius_km, gender, age_min, age_max, interests, hobbies,
+        outdoor_activities, dating_type, faith, politics, income_range, automobile,
+        occupation_category, min_popularity, max_popularity, limit.
+      schema: { type: string }
+
+paths:
+  # ---- Auth ---------------------------------------------------------------
+  /auth/signup:
+    post:
+      summary: Member signup (strong passwords enforced; auto-generation offered)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string }
+                password:
+                  type: string
+                  nullable: true
+                  description: Must satisfy the strong policy; omit for auto-generation.
+                use_auto_password: { type: boolean }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignupResult' }
+        '422':
+          description: Weak password or duplicate email
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/login:
+    post:
+      summary: Member login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200': { description: Token issued }
+        '422': { description: Invalid credentials }
+
+  # ---- Profile -------------------------------------------------------------
+  /users/me/profile:
+    get:
+      summary: Get my profile
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+    patch:
+      summary: Update my profile (all searchable fields)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserProfile' }
+      responses:
+        '200': { description: Updated profile }
+
+  /users/me/profile/videos:
+    post:
+      summary: Embed a YouTube video (embed URL derived server-side)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                youtube_url: { type: string }
+      responses:
+        '201':
+          description: Video added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/YouTubeVideo' }
+        '422': { description: Not a valid YouTube URL }
+
+  /users/me/profile/videos/{videoId}:
+    delete:
+      summary: Remove a profile video
+      parameters:
+        - { name: videoId, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Removed }
+
+  # ---- Search & popularity ----------------------------------------------------
+  /users/search:
+    get:
+      summary: Search members by every profile dimension
+      parameters:
+        - { $ref: '#/components/parameters/SearchFilters' }
+      responses:
+        '200':
+          description: Members ordered by popularity
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserProfile' }
+
+  /users/search/popular:
+    get:
+      summary: Search popular members (min_score defaults to 60)
+      parameters:
+        - { $ref: '#/components/parameters/SearchFilters' }
+      responses:
+        '200': { description: Popular members }
+
+  /users/{userId}/popularity:
+    get:
+      summary: Get a member's normalized popularity (records a profile_view)
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Popularity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PopularityScore' }
+
+  /users/me/popularity/breakdown:
+    get:
+      summary: Owner-only popularity metric breakdown
+      responses:
+        '200':
+          description: Breakdown
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PopularityBreakdown' }
+        '403': { description: Not the owner }
+
+  /popularity/events:
+    post:
+      summary: Log a popularity event (service-internal)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+                event_type:
+                  type: string
+                  enum: [chat_request, message_received, compliment, photo_received,
+                         profile_view, like, event_invite, coupon_target]
+      responses:
+        '201': { description: Recorded }
+
+  # ---- Matching --------------------------------------------------------------
+  /matches:
+    get:
+      summary: Ranked matches for the current member
+      parameters:
+        - { $ref: '#/components/parameters/SearchFilters' }
+      responses:
+        '200':
+          description: Matches, best first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Match' }
+
+  /matches/search:
+    get:
+      summary: Match search with the full filter set
+      parameters:
+        - { $ref: '#/components/parameters/SearchFilters' }
+      responses:
+        '200': { description: Filtered matches }
+
+  # ---- Slow chat ----------------------------------------------------------------
+  /chats:
+    post:
+      summary: Start (or return the existing) chat with another member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+      responses:
+        '201': { description: Chat }
+    get:
+      summary: List my chats
+      responses:
+        '200': { description: Chats }
+
+  /chats/{chatId}/messages:
+    post:
+      summary: Send a message (pacing enforced; contact data erased before unlock)
+      parameters:
+        - { name: chatId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+      responses:
+        '201':
+          description: Stored message (post-filter) plus live chat status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '422': { description: Over the size or daily limit }
+    get:
+      summary: Read the chat log
+      parameters:
+        - { name: chatId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Messages }
+
+  /chats/{chatId}/status:
+    get:
+      summary: Slow-chat pacing and unlock progress
+      parameters:
+        - { name: chatId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatStatus' }
+
+  /chats/{chatId}/unlock:
+    post:
+      summary: Purchase early unlock (VIP/Elite members)
+      parameters:
+        - { name: chatId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Unlocked status }
+        '422': { description: Not a VIP member }
+
+  /chats/{chatId}/concierge:
+    get:
+      summary: AI date concierge suggestions for this chat
+      parameters:
+        - { name: chatId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Up to 3 vetted venue suggestions with reasons }
+
+  # ---- Wallet, store, tickets, billing ---------------------------------------------
+  /users/me/coupons:
+    get:
+      summary: My unredeemed coupons
+      responses:
+        '200': { description: Coupons }
+
+  /coupons/{couponId}/redeem:
+    post:
+      summary: Redeem a coupon (once)
+      parameters:
+        - { name: couponId, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Redemption }
+        '422': { description: Not issued to this member / expired / already redeemed }
+
+  /products:
+    get:
+      summary: Marketplace catalog
+      responses:
+        '200': { description: Products }
+
+  /orders:
+    post:
+      summary: Order a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id: { type: string }
+                quantity: { type: integer }
+      responses:
+        '201': { description: Order }
+
+  /events/{eventId}/tickets:
+    post:
+      summary: Buy event tickets (auto-enters eligible contests)
+      parameters:
+        - { name: eventId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity: { type: integer }
+      responses:
+        '201': { description: Ticket }
+        '422': { description: Sold out }
+
+  /users/me/billing/subscribe:
+    post:
+      summary: Subscribe to a membership tier ($19 member / $79 vip / $199 elite, yearly)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier: { type: string, enum: [member, vip, elite] }
+      responses:
+        '200': { description: Membership active for one year }
+
+  # ---- Safety & rewards -----------------------------------------------------------
+  /safety/resources:
+    get:
+      summary: Public safety education (red flags, checklists, exit strategies)
+      security: []
+      responses:
+        '200': { description: Safety resources }
+
+  /users/me/safety/events:
+    get:
+      summary: Safety events raised to protect me
+      responses:
+        '200': { description: Safety events }
+
+  /users/me/safety/resources:
+    get:
+      summary: Safety education (member view)
+      responses:
+        '200': { description: Safety resources }
+
+  /users/me/rewards:
+    get:
+      summary: Rewards granted to me by admin campaigns
+      responses:
+        '200':
+          description: Rewards
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Reward' }
+
+  # ---- Partner portal -----------------------------------------------------------
+  /partners/v1/signup:
+    post:
+      summary: Partner self-service signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                business_name: { type: string }
+                email: { type: string }
+                password: { type: string, nullable: true }
+                plan_tier: { type: string, enum: [basic, pro, elite] }
+      responses:
+        '201': { description: Partner created (token + optional auto password) }
+
+  /partners/v1/login:
+    post:
+      summary: Partner login
+      security: []
+      responses:
+        '200': { description: Token issued }
+
+  /partners/v1/me:
+    get:
+      summary: Current partner
+      responses:
+        '200': { description: Partner }
+
+  /partners/v1/venues:
+    get:
+      summary: List my venues
+      responses:
+        '200':
+          description: Venues
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Venue' }
+    post:
+      summary: Create a venue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Venue' }
+      responses:
+        '201': { description: Venue created }
+
+  /partners/v1/venues/{venueId}:
+    patch:
+      summary: Update a venue
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Updated venue }
+
+  /partners/v1/venues/{venueId}/coupons/random:
+    post:
+      summary: Send a random coupon to nearby members
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                discount_type: { type: string, enum: [percent, fixed] }
+                discount_amount: { type: number }
+                valid_from: { type: integer }
+                valid_to: { type: integer }
+                max_recipients: { type: integer }
+      responses:
+        '201':
+          description: Coupon with estimated reach
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Coupon' }
+
+  /partners/v1/venues/{venueId}/coupons/targeted:
+    post:
+      summary: Send a targeted coupon to a member segment (Pro/Elite)
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                discount_type: { type: string }
+                discount_amount: { type: number }
+                max_recipients: { type: integer }
+                targeting: { $ref: '#/components/schemas/CouponTargeting' }
+      responses:
+        '201': { description: Coupon with estimated reach }
+        '422': { description: Requires Pro or Elite plan }
+
+  /partners/v1/venues/{venueId}/coupons:
+    get:
+      summary: List coupons for a venue
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Coupons }
+
+  /partners/v1/venues/{venueId}/events:
+    get:
+      summary: List venue events
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Events }
+    post:
+      summary: Announce a singles event
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Event' }
+      responses:
+        '201': { description: Event created }
+
+  /partners/v1/venues/{venueId}/contests:
+    get:
+      summary: List venue contests
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Contests }
+    post:
+      summary: Launch a contest for ticket buyers (Pro/Elite)
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Contest' }
+      responses:
+        '201': { description: Contest created }
+        '422': { description: Requires Pro or Elite plan }
+
+  /partners/v1/contests/{contestId}/entries:
+    get:
+      summary: Aggregated, privacy-preserving contest entry stats
+      parameters:
+        - { name: contestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '{contest_id, entries_count, winner_selected}' }
+
+  /partners/v1/venues/{venueId}/products:
+    get:
+      summary: List venue products
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Products }
+    post:
+      summary: List a product in the member store
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Product' }
+      responses:
+        '201': { description: Product created }
+
+  /partners/v1/venues/{venueId}/analytics:
+    get:
+      summary: Venue analytics rollup
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Analytics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VenueAnalytics' }
+
+  /partners/v1/billing/plan:
+    get:
+      summary: Current partner plan
+      responses:
+        '200': { description: Plan }
+
+  /partners/v1/billing/plan/change:
+    post:
+      summary: Change partner plan tier
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                new_plan_tier: { type: string, enum: [basic, pro, elite] }
+      responses:
+        '200': { description: Plan changed }
+
+  # ---- Admin ------------------------------------------------------------------
+  /admin/v1/bootstrap:
+    post:
+      summary: Create the first admin (rejected once any admin exists)
+      security: []
+      responses:
+        '201': { description: Admin created }
+        '422': { description: Already bootstrapped }
+
+  /admin/v1/login:
+    post:
+      summary: Admin login
+      security: []
+      responses:
+        '200': { description: Token issued }
+
+  /admin/v1/admins:
+    post:
+      summary: Create another admin (admin-only)
+      responses:
+        '201': { description: Admin created }
+
+  /admin/v1/leaderboard:
+    get:
+      summary: Popularity leaderboard (raw engagement ranking)
+      parameters:
+        - { name: count, in: query, schema: { type: integer, default: 100 } }
+      responses:
+        '200': { description: Ranked members }
+
+  /admin/v1/rewards/top:
+    post:
+      summary: Grant free benefits to the top 10 / 50 / 100 members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cohort, benefit]
+              properties:
+                cohort: { type: integer, enum: [10, 50, 100] }
+                benefit:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [free_membership, gift_certificate, product,
+                             event_tickets, promo_trip]
+                    membership_tier: { type: string }
+                    amount: { type: number }
+                    product_id: { type: string }
+                    event_id: { type: string }
+                    quantity: { type: integer }
+                    description: { type: string }
+      responses:
+        '201': { description: 'Campaign summary: {campaign_id, cohort, granted, reward_type}' }
+
+  # ---- Webhooks ---------------------------------------------------------------
+  /webhooks/tickets/purchased:
+    post:
+      summary: External ticketing systems report a purchase
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_id: { type: string }
+                external_ticket_id: { type: string }
+                user_external_id: { type: string }
+                purchase_time: { type: string, format: date-time }
+                quantity: { type: integer }
+                total_amount: { type: number }
+      responses:
+        '200': { description: Recorded (contest auto-entry applied) }
+        '401': { description: Bad or missing signature }
+
+  /webhooks/bookings/created:
+    post:
+      summary: Restaurant/venue reservation systems report a booking
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                booking_id: { type: string }
+                venue_external_id: { type: string }
+                user_external_id: { type: string }
+                date_time: { type: string, format: date-time }
+                party_size: { type: integer }
+                status: { type: string }
+      responses:
+        '200': { description: Recorded }
+        '401': { description: Bad or missing signature }
+
+  /webhooks/bodyguard/booked:
+    post:
+      summary: Bodyguard/chaperone partners report a booking
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                service_id: { type: string }
+                booking_id: { type: string }
+                user_external_id: { type: string }
+                date_time: { type: string, format: date-time }
+                duration_minutes: { type: integer }
+                status: { type: string }
+      responses:
+        '200': { description: Recorded }
+        '401': { description: Bad or missing signature }
