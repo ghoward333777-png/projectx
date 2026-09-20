@@ -8,12 +8,13 @@ require_once __DIR__ . '/ui.php';
 session_start();
 
 /**
- * Watch Party — a movie-night date on the web. Every day the platform
- * schedules one film from its independent playlist of 1,000 romance
- * films; a couple opens this page, presses play together, and talks in
- * the chat box under the player. Either partner can swap in any other
- * film from the romance library. The chat is the couple's normal slow
- * chat: pacing, contact filtering, and safety rules all still apply.
+ * Watch Party — a movie-night date on the web. The player and the
+ * couple's chat live on one page: video on top, a scrolling message
+ * panel with a text entry area (and image sharing) directly under it.
+ * Every day the platform schedules one film from its playlist of 1,000
+ * romance films; either partner can swap in any other film from the
+ * library. The chat is the couple's normal slow chat: pacing, contact
+ * filtering, and safety rules all still apply.
  */
 
 $engine = new SlowDatingEngine();
@@ -34,7 +35,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     try {
         switch ((string) ($_POST['action'] ?? '')) {
             case 'send':
-                $engine->sendMessage((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['text'] ?? ''));
+                $text = (string) ($_POST['text'] ?? '');
+                $upload = $_FILES['image'] ?? null;
+                if ($upload !== null && (int) $upload['error'] === UPLOAD_ERR_OK) {
+                    $engine->sendImageMessage(
+                        (string) ($_POST['chat_id'] ?? ''),
+                        $userId,
+                        (string) file_get_contents((string) $upload['tmp_name']),
+                        (string) $upload['type'],
+                        $text,
+                    );
+                } else {
+                    $engine->sendMessage((string) ($_POST['chat_id'] ?? ''), $userId, $text);
+                }
                 break;
             case 'pick':
                 $party = $engine->chooseWatchPartyFilm((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['film_id'] ?? 'daily'));
@@ -50,6 +63,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
 }
 
 sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
+?>
+<style>
+    /* Player + chat, one column — the Watch Party layout. */
+    #watchparty { display: flex; flex-direction: column; gap: 16px; }
+    #watchparty .video-wrapper {
+        position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;
+        border-radius: 12px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        border: 1px solid #1f2937; background: #020617;
+    }
+    #watchparty .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    #watchparty .video-fallback {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 12px; text-align: center; padding: 24px;
+    }
+    #watchparty .chat {
+        display: flex; flex-direction: column; gap: 12px;
+        background: #020617; border-radius: 12px; padding: 12px; border: 1px solid #1f2937;
+        margin-top: 0;
+    }
+    #watchparty .chat-header {
+        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
+        padding-bottom: 8px; border-bottom: 1px solid #1f2937;
+    }
+    #watchparty .chat-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+    #watchparty .chat-header span { font-size: 12px; color: #9ca3af; }
+    #watchparty .messages {
+        height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;
+    }
+    #watchparty .message {
+        display: inline-flex; flex-direction: column; max-width: 70%; padding: 8px 10px;
+        border-radius: 10px; background: #111827; border: 1px solid #1f2937; font-size: 13px; gap: 6px;
+        align-self: flex-start; color: #e5e7eb;
+    }
+    #watchparty .message.me { align-self: flex-end; background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+    #watchparty .message-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: #cbd5e1; opacity: .85; }
+    #watchparty .message-images { display: flex; flex-wrap: wrap; gap: 6px; }
+    #watchparty .message-images img {
+        max-width: 120px; max-height: 120px; border-radius: 6px; border: 1px solid #1f2937; object-fit: cover;
+    }
+    #watchparty .input-area { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #1f2937; padding-top: 8px; background: none; border-radius: 0; padding-left: 0; padding-right: 0; padding-bottom: 0; margin-top: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+    #watchparty .input-row { display: flex; gap: 8px; align-items: flex-end; }
+    #watchparty .input-row textarea {
+        flex: 1; resize: none; min-height: 60px; max-height: 140px; padding: 8px; border-radius: 8px;
+        border: 1px solid #374151; background: #020617; color: #e5e7eb; font-size: 13px; width: auto;
+    }
+    #watchparty .input-row textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+    #watchparty .input-controls { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    #watchparty .file-label {
+        display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px;
+        border: 1px dashed #4b5563; color: #9ca3af; font-size: 12px; cursor: pointer; background: #020617; margin: 0;
+    }
+    #watchparty .file-label input { display: none; }
+    #watchparty .send-btn {
+        background: #1d4ed8; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px;
+        font-size: 13px; font-weight: 700; cursor: pointer; margin: 0;
+    }
+    #watchparty .send-btn:hover { background: #3b82f6; }
+    #watchparty .hint { font-size: 11.5px; color: #9ca3af; }
+</style>
+<?php
 sd_flash($error, $notice);
 
 if ($userId === null) {
@@ -94,6 +168,7 @@ foreach ((array) $chat['participants'] as $participant) {
     }
 }
 $otherName = (string) ($engine->profile($otherId)['display_name'] ?: $otherId);
+$filmLabel = $film['title'] . ((int) $film['year'] > 0 ? ' (' . $film['year'] . ')' : '');
 
 $q = trim((string) ($_GET['q'] ?? ''));
 $page = max(0, (int) ($_GET['p'] ?? 0));
@@ -116,72 +191,95 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
             ?>
             <a href="?chat=<?= sd_e($optionId) ?>"<?= $optionId === $chatId ? ' style="font-weight:800;text-decoration:underline"' : '' ?>><?= sd_e($partnerName) ?></a>
         <?php endforeach; ?>
-    </p>
-</section>
-
-<section>
-    <h2><?= sd_e((string) $film['title']) ?><?= (int) $film['year'] > 0 ? ' (' . (int) $film['year'] . ')' : '' ?>
-        <span class="pill">#<?= (int) $film['rank'] ?> in the romance playlist</span>
-        <span class="pill"><?= sd_e((string) $film['tag']) ?></span>
-        <?php if ($party['custom_pick']): ?><span class="pill">your pick</span><?php endif; ?>
-    </h2>
-    <?php if (!$party['custom_pick']): ?>
-        <p>Tonight's scheduled movie — a new film from the playlist every day, the same one for every couple.</p>
-    <?php else: ?>
-        <p>You swapped tonight's schedule (<?= sd_e((string) $scheduled['title']) ?>, <?= (int) $scheduled['year'] ?>) for your own pick.
-            <?php if (($party['chosen_by'] ?? '') === $userId): ?>You chose this one.<?php else: ?><?= sd_e($otherName) ?> chose this one.<?php endif; ?></p>
-        <form method="post" style="background:none;border:0;padding:0;margin:0 0 10px">
+        <span class="pill" style="margin-left:8px"><?= sd_e((string) $film['title']) ?> · #<?= (int) $film['rank'] ?> in the playlist<?= $party['custom_pick'] ? ' · your pick' : ' · tonight\'s schedule' ?></span>
+        <?php if ($party['custom_pick']): ?>
+        <form method="post" style="display:inline;background:none;border:0;padding:0;margin:0">
             <input type="hidden" name="action" value="pick">
             <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
             <input type="hidden" name="film_id" value="daily">
-            <button type="submit">Back to tonight's scheduled movie</button>
+            <button type="submit" style="margin:0;padding:6px 12px;font-size:12px">Back to the scheduled movie (<?= sd_e((string) $scheduled['title']) ?>)</button>
         </form>
-    <?php endif; ?>
+        <?php endif; ?>
+    </p>
+</section>
 
-    <?php if (!empty($film['playable'])): ?>
-        <div style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000">
+<div id="watchparty">
+    <!-- Player -->
+    <div class="video-wrapper">
+        <?php if (!empty($film['playable'])): ?>
             <iframe src="<?= sd_e((string) $film['embed_url']) ?>" title="<?= sd_e((string) $film['title']) ?>"
-                    style="position:absolute;inset:0;width:100%;height:100%;border:0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen></iframe>
-        </div>
-        <p style="font-size:13px">A verified, legally free upload (public-domain classic). Press play together — playback runs on each screen.</p>
-    <?php else: ?>
-        <div class="card" style="padding:24px;text-align:center">
-            <p style="margin:0 0 10px"><strong style="color:#fff;font-size:18px"><?= sd_e((string) $film['title']) ?><?= (int) $film['year'] > 0 ? ' (' . (int) $film['year'] . ')' : '' ?></strong></p>
-            <p style="margin:0 0 14px">This film streams on YouTube from its own distributors. Open it in a second tab,
-                press play together, and keep this page for your chat.</p>
-            <a href="<?= sd_e((string) $film['watch_url']) ?>" target="_blank" rel="noopener"
-               style="display:inline-block;background:#ff9cc0;color:#2a0f1d;border-radius:999px;padding:11px 18px;font-weight:800;text-decoration:none">Open on YouTube</a>
-        </div>
-    <?php endif; ?>
-
-    <h2 style="margin-top:18px">Talk while you watch</h2>
-    <p style="margin:0 0 8px">
-        <?php if ($status['unlocked']): ?>
-            <span class="pill">Real-time chat</span>
         <?php else: ?>
-            <span class="pill">Slow chat · <?= (int) $status['daily_message_limit'] ?> messages today · <?= (int) $status['message_size_limit'] ?> characters each</span>
-        <?php endif; ?>
-        <span class="pill">Contact details stay filtered until day 30</span>
-    </p>
-    <div class="chat-log">
-        <?php foreach ((array) $chat['messages'] as $message): ?>
-            <div class="msg <?= $message['sender_id'] === $userId ? 'mine' : 'theirs' ?>">
-                <?= sd_e((string) $message['text']) ?>
-                <small><?= $message['sender_id'] === $userId ? 'You' : sd_e($otherName) ?> · <?= sd_e(gmdate('M j, H:i', (int) $message['sent_at'])) ?>
-                    <?= ((int) ($message['contact_data_removed'] ?? 0)) > 0 ? '· contact info erased' : '' ?></small>
+            <div class="video-fallback">
+                <strong style="color:#fff;font-size:18px"><?= sd_e($filmLabel) ?></strong>
+                <span style="color:#9ca3af;font-size:13px;max-width:48ch">This film streams on YouTube from its own distributors.
+                    Open it in a second tab, press play together, and keep chatting here.</span>
+                <a href="<?= sd_e((string) $film['watch_url']) ?>" target="_blank" rel="noopener"
+                   style="display:inline-block;background:#1d4ed8;color:#fff;border-radius:8px;padding:10px 18px;font-weight:700;text-decoration:none">Open on YouTube</a>
             </div>
-        <?php endforeach; ?>
+        <?php endif; ?>
     </div>
-    <form method="post" style="margin-top:10px">
-        <input type="hidden" name="action" value="send">
-        <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
-        <label>Message <?= sd_e($otherName) ?></label>
-        <textarea name="text" placeholder="That opening scene…" required></textarea>
-        <button type="submit">Send</button>
-    </form>
-</section>
+
+    <!-- Chat -->
+    <div class="chat">
+        <div class="chat-header">
+            <h2>Watching with <?= sd_e($otherName) ?></h2>
+            <span>
+                <?php if ($status['unlocked']): ?>
+                    Real-time chat · contact sharing open
+                <?php else: ?>
+                    Slow chat · <?= (int) $status['daily_message_limit'] ?> messages today · <?= (int) $status['message_size_limit'] ?> characters each · contact details filtered
+                <?php endif; ?>
+            </span>
+        </div>
+        <div class="messages" id="wp-messages">
+            <?php foreach ((array) $chat['messages'] as $message): ?>
+                <div class="message<?= $message['sender_id'] === $userId ? ' me' : '' ?>">
+                    <?php if (isset($message['image'])): ?>
+                        <div class="message-images">
+                            <img src="chatimage.php?chat=<?= urlencode($chatId) ?>&amp;m=<?= urlencode((string) $message['message_id']) ?>" alt="Shared image">
+                        </div>
+                    <?php endif; ?>
+                    <?php if ((string) $message['text'] !== ''): ?><span><?= sd_e((string) $message['text']) ?></span><?php endif; ?>
+                    <div class="message-meta">
+                        <span><?= $message['sender_id'] === $userId ? 'You' : sd_e($otherName) ?></span>
+                        <span><?= sd_e(gmdate('M j, H:i', (int) $message['sent_at'])) ?><?= ((int) ($message['contact_data_removed'] ?? 0)) > 0 ? ' · contact info erased' : '' ?></span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <form class="input-area" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="send">
+            <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
+            <div class="input-row">
+                <textarea name="text" placeholder="Say something about the movie…"<?= $status['unlocked'] ? '' : ' maxlength="' . (int) $status['message_size_limit'] . '"' ?>></textarea>
+                <div class="input-controls">
+                    <label class="file-label" id="wp-filelabel">
+                        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" id="wp-file">
+                        <span id="wp-filename">📎 Attach image</span>
+                    </label>
+                    <button type="submit" class="send-btn">Send</button>
+                </div>
+            </div>
+            <span class="hint">JPEG, PNG, or WebP up to 2 MB. An attached image sends with your text as its caption.
+                Contact details stay filtered until the chat unlocks.</span>
+        </form>
+    </div>
+</div>
+<script>
+    (function () {
+        var log = document.getElementById('wp-messages');
+        if (log) { log.scrollTop = log.scrollHeight; }
+        var file = document.getElementById('wp-file');
+        var name = document.getElementById('wp-filename');
+        if (file && name) {
+            file.addEventListener('change', function () {
+                name.textContent = file.files.length ? '📎 ' + file.files[0].name : '📎 Attach image';
+            });
+        }
+    })();
+</script>
 
 <section>
     <h2>The romance library — pick any film instead</h2>
