@@ -333,6 +333,12 @@ final class SlowDatingApi
         if ($method === 'POST' && $path === '/admin/v1/rewards/top') {
             return [201, $engine->grantTopMemberRewards($adminId, (int) ($body['cohort'] ?? 0), (array) ($body['benefit'] ?? []), $now)];
         }
+        if ($method === 'GET' && $path === '/admin/v1/settings') {
+            return [200, ['avatar_mode' => $engine->avatarMode()]];
+        }
+        if ($method === 'PATCH' && $path === '/admin/v1/settings') {
+            return [200, $engine->setAvatarMode($adminId, (string) ($body['avatar_mode'] ?? ''))];
+        }
         if ($method === 'POST' && $path === '/admin/v1/admins') {
             return [201, $engine->createAdmin((string) ($body['email'] ?? ''), isset($body['password']) ? (string) $body['password'] : null, $adminId, $now)];
         }

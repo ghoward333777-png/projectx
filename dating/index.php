@@ -56,6 +56,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Video added to your profile.';
                 }
                 break;
+            case 'upload_photo':
+                if ($userId !== null) {
+                    $upload = $_FILES['photo'] ?? null;
+                    if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                        throw new InvalidArgumentException('Choose a JPEG, PNG, or WebP photo up to 2 MB.');
+                    }
+                    $engine->setMemberPhoto($userId, (string) file_get_contents((string) $upload['tmp_name']), (string) $upload['type']);
+                    $notice = $engine->avatarMode() === 'uploads'
+                        ? 'Photo saved — it now shows on your cards.'
+                        : 'Photo saved. The site is currently showing generated artwork; your photo appears when the admin switches to uploaded images.';
+                }
+                break;
             case 'start_chat':
                 if ($userId !== null) {
                     $engine->startChat($userId, (string) ($_POST['user_id'] ?? ''));
@@ -193,6 +205,20 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         <label>Outdoor activities</label><input name="outdoor_activities" value="<?= sd_e(implode(', ', (array) $profile['outdoor_activities'])) ?>">
         <button type="submit">Save profile</button>
     </form>
+    <section>
+        <h2>Profile photo</h2>
+        <div class="who" style="margin-bottom:10px">
+            <img class="avatar" style="width:96px;height:96px" src="avatar.php?u=<?= urlencode($userId) ?>" alt="Your profile image">
+            <p style="margin:0">This is how you appear on Browse, Matches, and Search.
+                The site shows <?= $engine->avatarMode() === 'uploads' ? 'uploaded photos (generated artwork when a member has none)' : 'generated artwork for everyone right now' ?>.</p>
+        </div>
+        <form method="post" enctype="multipart/form-data" style="margin-top:0">
+            <input type="hidden" name="action" value="upload_photo">
+            <label>Upload a photo (JPEG, PNG, or WebP · max 2 MB)</label>
+            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+            <button type="submit">Save photo</button>
+        </form>
+    </section>
     <section>
         <h2>Profile videos</h2>
         <?php foreach ((array) $profile['videos'] as $video): ?>

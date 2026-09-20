@@ -55,6 +55,49 @@ $autos = SlowDatingEngine::AUTOMOBILES;
 $videoIds = ['dQw4w9WgXcQ', 'jNQXAC9IVRw', '9bZkp7q19f0', 'aqz-KE-bpKQ',
              'ScMzIvxBSi4', 'kJQP7kiw5Fk', 'ZZ5LpwO-An4', 'hY7m5jjJ9mM'];
 
+/**
+ * A deterministic sample "profile photo": abstract head-and-shoulders
+ * portrait art rendered with GD (PNG, 480x480). Clearly synthetic — no
+ * real faces — but reads as a profile picture in every card. Returns
+ * null when the GD extension is unavailable.
+ */
+function sample_portrait(int $i): ?string
+{
+    if (!extension_loaded('gd')) {
+        return null;
+    }
+    $palettes = [
+        [[59, 30, 63], [255, 156, 192]], [[30, 42, 74], [143, 184, 255]],
+        [[23, 58, 46], [127, 227, 168]], [[74, 36, 16], [255, 176, 138]],
+        [[58, 16, 58], [224, 138, 255]], [[16, 58, 58], [127, 222, 222]],
+        [[64, 50, 15], [255, 217, 122]], [[43, 17, 64], [180, 156, 255]],
+    ];
+    [$deep, $soft] = $palettes[$i % 8];
+    $img = imagecreatetruecolor(480, 480);
+    for ($y = 0; $y < 480; $y++) {
+        $t = $y / 480;
+        $line = imagecolorallocate(
+            $img,
+            (int) ($deep[0] + ($soft[0] - $deep[0]) * $t),
+            (int) ($deep[1] + ($soft[1] - $deep[1]) * $t),
+            (int) ($deep[2] + ($soft[2] - $deep[2]) * $t),
+        );
+        imageline($img, 0, $y, 480, $y, $line);
+    }
+    $halo = imagecolorallocatealpha($img, 255, 255, 255, 96);
+    imagefilledellipse($img, 240, 210, 300 + ($i * 13) % 60, 300 + ($i * 13) % 60, $halo);
+    $tone = imagecolorallocate($img, (int) ($deep[0] * .55), (int) ($deep[1] * .55), (int) ($deep[2] * .55));
+    if ($i % 2 === 0) { // longer hair silhouette on alternating portraits
+        imagefilledellipse($img, 240, 220, 232, 264, $tone);
+    }
+    imagefilledellipse($img, 240, 205, 176, 190, $tone);            // head
+    imagefilledellipse($img, 240, 470, 340, 230, $tone);            // shoulders
+    ob_start();
+    imagepng($img);
+    imagedestroy($img);
+    return (string) ob_get_clean();
+}
+
 $roster = [];
 foreach ($women as $i => $name) {
     $roster[] = ['female', $name, $i];
@@ -97,6 +140,10 @@ foreach ($roster as [$gender, $name, $i]) {
         'occupation_category' => $occupations[$i % 10],
     ]);
     $engine->addProfileVideo($id, 'https://www.youtube.com/watch?v=' . $videoIds[$i % 8]);
+    $portrait = sample_portrait($i);
+    if ($portrait !== null) {
+        $engine->setMemberPhoto($id, $portrait, 'image/png');
+    }
 
     // Layered popularity so Browse ranks with texture.
     $views = 4 + ($i * 11) % 40;
@@ -123,6 +170,11 @@ foreach ($roster as [$gender, $name, $i]) {
     $created++;
 }
 
+// Demo worlds show the sample portraits: switch the platform to uploaded
+// images (admins can flip back to generated artwork in the console).
+$engine->store()->put('settings', 'avatar_mode', ['value' => 'uploads']);
+
 echo "Browse library: {$created} members created, {$skipped} already present.\n";
+echo "Profile-image mode set to 'uploads' — sample portraits show on cards (admin can switch back).\n";
 echo "Women: " . count($women) . " · Men: " . count($men) . " · each with profile, avatar, video link, popularity, and saved preferences.\n";
 echo "Profile video policy: clips of 10 seconds or less.\n";

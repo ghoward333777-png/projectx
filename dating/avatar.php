@@ -16,6 +16,22 @@ require_once __DIR__ . '/SlowDatingEngine.php';
 
 $engine = new SlowDatingEngine();
 $userId = (string) ($_GET['u'] ?? '');
+
+// Admin-controlled image mode: when the platform runs on uploads and this
+// member has one, serve the stored photo (as a plain image, never HTML);
+// otherwise fall through to the generated artwork below.
+if ($engine->avatarMode() === 'uploads') {
+    $photo = $userId !== '' ? $engine->memberPhoto($userId) : null;
+    if ($photo !== null) {
+        header('Content-Type: ' . $photo['mime']);
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Security-Policy: default-src \'none\'');
+        header('Cache-Control: public, max-age=3600');
+        readfile($photo['path']);
+        exit;
+    }
+}
+
 $user = $userId !== '' ? $engine->store()->get('users', $userId) : null;
 $name = trim((string) ($user['profile']['display_name'] ?? ''));
 $initial = $name !== '' ? mb_strtoupper(mb_substr($name, 0, 1)) : '?';

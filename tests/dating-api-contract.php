@@ -149,6 +149,11 @@ contract_check($status === 200 && count($board) === 2, 'the admin leaderboard mu
 contract_check($status === 201 && $campaign['granted'] === 2, 'reward campaigns must grant to the whole cohort');
 [$status, $rewards] = call($api, 'GET', '/users/me/rewards', [], [], $alice['token'], $t0);
 contract_check($status === 200 && $rewards[0]['reward_type'] === 'gift_certificate', 'members must see their granted rewards');
+[$status, $settings] = call($api, 'PATCH', '/admin/v1/settings', [], ['avatar_mode' => 'uploads'], $admin['token'], $t0);
+contract_check($status === 200 && $settings['avatar_mode'] === 'uploads', 'admins must switch the image mode over the API');
+[$status, $settings] = call($api, 'GET', '/admin/v1/settings', [], [], $admin['token'], $t0);
+contract_check($status === 200 && $settings['avatar_mode'] === 'uploads', 'the image mode must read back');
+call($api, 'PATCH', '/admin/v1/settings', [], ['avatar_mode' => 'generated'], $admin['token'], $t0);
 [$status] = call($api, 'GET', '/admin/v1/leaderboard', [], [], $alice['token'], $t0);
 contract_check($status === 404, 'admin routes must not resolve for member tokens');
 

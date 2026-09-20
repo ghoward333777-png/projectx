@@ -340,6 +340,87 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Profile images: generated art or uploaded photos (admin-switched)
+    // ------------------------------------------------------------------
+
+    public const AVATAR_MODES = ['generated', 'uploads'];
+    public const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+    private const PHOTO_TYPES = [
+        'image/jpeg' => ['ext' => 'jpg', 'magic' => "\xFF\xD8\xFF"],
+        'image/png' => ['ext' => 'png', 'magic' => "\x89PNG"],
+        'image/webp' => ['ext' => 'webp', 'magic' => 'RIFF'],
+    ];
+
+    /** Platform-wide image source: 'generated' (SVG art) or 'uploads'. */
+    public function avatarMode(): string
+    {
+        $setting = $this->store->get('settings', 'avatar_mode');
+        $mode = (string) ($setting['value'] ?? 'generated');
+        return in_array($mode, self::AVATAR_MODES, true) ? $mode : 'generated';
+    }
+
+    /** Admin-only switch between generated art and uploaded photos. */
+    public function setAvatarMode(string $adminId, string $mode): array
+    {
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins can change the profile-image mode.');
+        }
+        if (!in_array($mode, self::AVATAR_MODES, true)) {
+            throw new InvalidArgumentException('Profile images are either "generated" or "uploads".');
+        }
+        $this->store->put('settings', 'avatar_mode', ['value' => $mode]);
+        return ['avatar_mode' => $mode];
+    }
+
+    /**
+     * Store a member's photo (JPEG, PNG, or WebP, max 2 MB). The bytes are
+     * validated against the declared type's magic signature and written
+     * under <state>/photos with a server-chosen name.
+     *
+     * @return array{file: string, mime: string}
+     */
+    public function setMemberPhoto(string $userId, string $bytes, string $mime): array
+    {
+        $user = $this->requireUser($userId);
+        $type = self::PHOTO_TYPES[strtolower(trim($mime))] ?? null;
+        if ($type === null) {
+            throw new InvalidArgumentException('Photos must be JPEG, PNG, or WebP.');
+        }
+        if ($bytes === '' || strlen($bytes) > self::PHOTO_MAX_BYTES) {
+            throw new InvalidArgumentException('Photos must be between 1 byte and 2 MB.');
+        }
+        if (!str_starts_with($bytes, $type['magic'])) {
+            throw new InvalidArgumentException('The file does not look like a ' . $mime . ' image.');
+        }
+        $dir = $this->store->directory() . '/photos';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RuntimeException('Could not create the photos directory.');
+        }
+        $file = $userId . '.' . $type['ext'];
+        foreach (self::PHOTO_TYPES as $other) {
+            @unlink($dir . '/' . $userId . '.' . $other['ext']);
+        }
+        if (file_put_contents($dir . '/' . $file, $bytes) === false) {
+            throw new RuntimeException('Could not store the photo.');
+        }
+        $user['photo'] = ['file' => $file, 'mime' => strtolower(trim($mime))];
+        $this->store->put('users', $userId, $user);
+        return $user['photo'];
+    }
+
+    /** @return array{path: string, mime: string}|null The stored photo, when one exists. */
+    public function memberPhoto(string $userId): ?array
+    {
+        $user = $this->store->get('users', $userId);
+        $photo = $user['photo'] ?? null;
+        if (!is_array($photo)) {
+            return null;
+        }
+        $path = $this->store->directory() . '/photos/' . basename((string) $photo['file']);
+        return is_file($path) ? ['path' => $path, 'mime' => (string) $photo['mime']] : null;
+    }
+
+    // ------------------------------------------------------------------
     // Membership billing
     // ------------------------------------------------------------------
 

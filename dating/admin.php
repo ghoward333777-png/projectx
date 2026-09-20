@@ -39,6 +39,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($_SESSION['sd_admin_token']);
                 $adminId = null;
                 break;
+            case 'avatar_mode':
+                if ($adminId !== null) {
+                    $engine->setAvatarMode($adminId, (string) ($_POST['mode'] ?? ''));
+                    $notice = 'Profile images now come from ' . ($engine->avatarMode() === 'uploads' ? 'member uploads (generated artwork as fallback).' : 'generated artwork for everyone.');
+                }
+                break;
             case 'grant_rewards':
                 if ($adminId !== null) {
                     $benefit = ['type' => (string) ($_POST['reward_type'] ?? '')];
@@ -98,6 +104,22 @@ if ($adminId === null) {
         <input type="hidden" name="action" value="logout"><button type="submit">Sign out</button>
     </form>
 </section>
+
+<form method="post">
+    <h2>Profile images</h2>
+    <p>Choose what member cards show across Browse, Matches, and Search.</p>
+    <input type="hidden" name="action" value="avatar_mode">
+    <?php $mode = $engine->avatarMode(); ?>
+    <label style="display:flex;gap:10px;align-items:center;font-weight:400">
+        <input type="radio" name="mode" value="generated" style="width:auto" <?= $mode === 'generated' ? 'checked' : '' ?>>
+        Generated SVG artwork for everyone (no uploads shown)
+    </label>
+    <label style="display:flex;gap:10px;align-items:center;font-weight:400">
+        <input type="radio" name="mode" value="uploads" style="width:auto" <?= $mode === 'uploads' ? 'checked' : '' ?>>
+        Member-uploaded photos, with generated artwork as the fallback
+    </label>
+    <button type="submit">Save image mode</button>
+</form>
 
 <form method="post">
     <h2>Grant free benefits to top members</h2>

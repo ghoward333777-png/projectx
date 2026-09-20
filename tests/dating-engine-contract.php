@@ -278,6 +278,37 @@ contract_check($threw, 'reward cohorts other than 10/50/100 must be rejected');
 $trip = $engine->grantTopMemberRewards($admin['admin_id'], 50, ['type' => 'promo_trip', 'description' => 'All-expense weekend at the launch gala'], $t0 + 40 * 86400);
 contract_check($trip['granted'] === 4, 'promo trip campaigns must cover every member of a small cohort');
 
+// ---- Profile images: mode + uploads ---------------------------------------------
+contract_check($engine->avatarMode() === 'generated', 'the platform defaults to generated artwork');
+$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+$photo = $engine->setMemberPhoto($alice['user_id'], $png, 'image/png');
+contract_check($photo['file'] === $alice['user_id'] . '.png', 'photos are stored under a server-chosen name');
+contract_check($engine->memberPhoto($alice['user_id']) !== null, 'a stored photo must be retrievable');
+$threw = false;
+try {
+    $engine->setMemberPhoto($alice['user_id'], 'GIF89a not allowed', 'image/gif');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unsupported photo types must be rejected');
+$threw = false;
+try {
+    $engine->setMemberPhoto($alice['user_id'], 'not really a png', 'image/png');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'bytes must match the declared image type');
+$threw = false;
+try {
+    $engine->setAvatarMode($alice['user_id'], 'uploads');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins may change the image mode');
+$engine->setAvatarMode($admin['admin_id'], 'uploads');
+contract_check($engine->avatarMode() === 'uploads', 'admins can switch to uploaded images');
+$engine->setAvatarMode($admin['admin_id'], 'generated');
+
 // ---- Webhooks -----------------------------------------------------------------
 $hook = $engine->ingestTicketWebhook([
     'event_id' => (string) $event['id'], 'external_ticket_id' => 'tix_987',
