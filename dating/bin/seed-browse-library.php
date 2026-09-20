@@ -147,10 +147,27 @@ foreach ($roster as [$gender, $name, $i]) {
     $engine->addProfileVideo($id, 'https://www.youtube.com/watch?v=' . $videoIds[$i % 8]);
     // Every profile carries its three pictures: generated artwork
     // (automatic), a real-picture stand-in, and a distinct private one.
-    $portrait = sample_portrait($i);
+    // Real headshots win: drop files named female-01.jpg … male-25.jpg
+    // into dating/assets/headshots/ and the library uses them.
+    $headshot = null;
+    $headshotName = sprintf('%s-%02d', $gender, ($i % 25) + 1);
+    foreach (['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'] as $ext => $mime) {
+        $file = dirname(__DIR__) . '/assets/headshots/' . $headshotName . '.' . $ext;
+        if (is_file($file)) {
+            $headshot = ['bytes' => (string) file_get_contents($file), 'mime' => $mime];
+            break;
+        }
+    }
+    if ($headshot !== null) {
+        $engine->setMemberPhoto($id, $headshot['bytes'], $headshot['mime'], 'public');
+    }
+    $portrait = $headshot !== null ? null : sample_portrait($i);
     if ($portrait !== null) {
         $engine->setMemberPhoto($id, $portrait, 'image/png', 'public');
-        $engine->setMemberPhoto($id, (string) sample_portrait($i + 61), 'image/png', 'private');
+    }
+    $private = sample_portrait($i + 61);
+    if ($private !== null) {
+        $engine->setMemberPhoto($id, $private, 'image/png', 'private');
     }
 
     // Layered popularity so Browse ranks with texture.

@@ -1217,7 +1217,10 @@ const TOUR = [
 
 // ---------------------------------------------------------------- browse
 const HOBBY = { bob: ['hiking', 'cooking'], marcus: ['chess', 'running'], james: ['guitar', 'hiking'], emma: ['salsa', 'painting'], sofia: ['sailing'] };
+// Real photo thumbnails: members with a headshot file show it; the SVG
+// artwork is only the fallback. Swap files in thumbs/ to change faces.
 function demoAvatar(id, name) {
+  if (['alice', 'emma', 'sofia', 'bob', 'marcus', 'james'].includes(id)) return 'thumbs/' + id + '.jpg';
   const seed = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const pals = [['#3b1e3f', '#ff9cc0'], ['#1e2a4a', '#8fb8ff'], ['#173a2e', '#7fe3a8'], ['#4a2410', '#ffb08a'], ['#3a103a', '#e08aff'], ['#103a3a', '#7fdede'], ['#40320f', '#ffd97a'], ['#2b1140', '#b49cff']];
   const [a, b] = pals[seed % 8];

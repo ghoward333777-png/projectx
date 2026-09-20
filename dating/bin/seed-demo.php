@@ -125,6 +125,65 @@ $engine->sendMessage($c2, $ids['alice'], 'Saved! Mine is 310-555-0126. See you a
 $engine->sendMessage($c2, $ids['marcus'], 'Dinner first? That little Italian place near the theater — are you free Saturday?', $now - $day);
 $engine->sendMessage($c2, $ids['alice'], 'Perfect. Pasta, then a late movie. It\'s a date.', $now - $day + 300);
 
+// ---- Real photo thumbnails ------------------------------------------------------
+// Every featured member gets a real public picture so cards show photo
+// thumbs (uploads mode). Drop real headshots into dating/assets/headshots/
+// named <member>.jpg|png (alice.jpg, bob.jpg, …) and they are used
+// instead of the generated stand-in portraits — no code change needed.
+function demo_portrait(int $i): ?string
+{
+    if (!extension_loaded('gd')) {
+        return null;
+    }
+    $palettes = [
+        [[59, 30, 63], [255, 156, 192]], [[30, 42, 74], [143, 184, 255]],
+        [[23, 58, 46], [127, 227, 168]], [[74, 36, 16], [255, 176, 138]],
+        [[58, 16, 58], [224, 138, 255]], [[16, 58, 58], [127, 222, 222]],
+    ];
+    [$deep, $soft] = $palettes[$i % 6];
+    $img = imagecreatetruecolor(480, 480);
+    for ($y = 0; $y < 480; $y++) {
+        $t = $y / 480;
+        $line = imagecolorallocate($img, (int) ($deep[0] + ($soft[0] - $deep[0]) * $t), (int) ($deep[1] + ($soft[1] - $deep[1]) * $t), (int) ($deep[2] + ($soft[2] - $deep[2]) * $t));
+        imageline($img, 0, $y, 480, $y, $line);
+    }
+    $tone = imagecolorallocate($img, (int) ($deep[0] * .55), (int) ($deep[1] * .55), (int) ($deep[2] * .55));
+    if ($i % 2 === 0) {
+        imagefilledellipse($img, 240, 220, 232, 264, $tone);
+    }
+    imagefilledellipse($img, 240, 205, 176, 190, $tone);
+    imagefilledellipse($img, 240, 470, 340, 230, $tone);
+    ob_start();
+    imagepng($img);
+    imagedestroy($img);
+    return (string) ob_get_clean();
+}
+
+$headshotDir = dirname(__DIR__) . '/assets/headshots';
+$seedIndex = 0;
+foreach ($ids as $who => $memberId) {
+    $stored = false;
+    foreach (['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'] as $ext => $mime) {
+        $file = $headshotDir . '/' . $who . '.' . $ext;
+        if (is_file($file)) {
+            $engine->setMemberPhoto($memberId, (string) file_get_contents($file), $mime, 'public');
+            $stored = true;
+            break;
+        }
+    }
+    if (!$stored) {
+        $portrait = demo_portrait($seedIndex);
+        if ($portrait !== null) {
+            $engine->setMemberPhoto($memberId, $portrait, 'image/png', 'public');
+        }
+    }
+    $private = demo_portrait($seedIndex + 3);
+    if ($private !== null) {
+        $engine->setMemberPhoto($memberId, $private, 'image/png', 'private');
+    }
+    $seedIndex++;
+}
+
 // ---- Extra popularity so the leaderboard has texture ---------------------------
 $sprinkle = [
     'alice' => ['profile_view' => 34, 'like' => 12, 'photo_received' => 3, 'event_invite' => 2],
