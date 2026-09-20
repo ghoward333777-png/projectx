@@ -342,32 +342,73 @@
   <!-- ================= WATCH PARTY ================= -->
   <div id="portal-watch" hidden>
     <main>
-      <section class="panel">
-        <h2>Watch Party — a movie date, right here</h2>
-        <p>Every day the platform schedules one film from its independent playlist of
-          <strong style="color:var(--text)">1,000 romance films</strong>. Open the party with your match, press play
-          together, and talk in the chat under the player — or swap in any film from the library.
-          You are watching with <strong style="color:var(--text)">Marcus</strong>.</p>
-        <div id="w-banner"></div>
-      </section>
-      <section class="panel">
-        <h2 style="margin-bottom:6px">Your player, your code</h2>
-        <p style="margin:0 0 8px">Paste YouTube embed code (the whole <code>&lt;iframe&gt;</code>), a video link, or a playlist
-          link — the player below uses <em>your</em> embed. Admins have this same box in the live site's Admin console.</p>
-        <div class="formgrid" style="align-items:end">
-          <label class="f" style="grid-column:1/-1">Embed code or YouTube link
-            <input id="w-embed" value="https://www.youtube.com/playlist?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij"></label>
+      <!-- Slim top bar: everything that used to sit above the player now
+           lives inside one pop-down — the movie comes first. -->
+      <section class="panel" style="padding:10px 14px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <details class="chmenu"><summary>☰ Watch Party menu ▾</summary>
+            <div class="chmenu-list" style="min-width:min(420px,92vw);padding:12px">
+              <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px">One scheduled film a day from the
+                1,000-film romance playlist — or anything from any channel below. You are watching with
+                <strong style="color:var(--text)">Marcus</strong>.</p>
+              <div id="w-banner"></div>
+              <label class="f" style="display:block;margin:8px 0 0;font-size:12px">Your player, your code — paste
+                YouTube embed code, a video link, or a playlist link
+                <input id="w-embed" value="https://www.youtube.com/playlist?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij" style="width:100%;margin-top:4px"></label>
+              <p style="margin:8px 0 0"><button class="act small" id="w-embed-apply">Use my embed</button>
+                <button class="quiet small" id="w-embed-clear">Clear</button></p>
+              <span class="counter" id="w-embed-note"></span>
+            </div>
+          </details>
+          <style>
+          .chmenu { position: relative; display: inline-block; }
+          .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
+            color: var(--accent); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+          .chmenu summary::-webkit-details-marker { display: none; }
+          .chmenu[open] summary { background: var(--accent); color: var(--accent-ink); }
+          .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
+            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
+            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
+          .chmenu-list button { text-align: left; background: none; border: 0; color: var(--accent);
+            padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+          .chmenu-list button:hover { background: #262030; }
+          .chmenu-list button.on { background: #4a2440; font-weight: 800; }
+        </style>
+          <span id="w-channels" style="display:contents">
+          <details class="chmenu" open><summary>Movies ▾</summary>
+            <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button></div>
+          </details>
+          <details class="chmenu"><summary>Live Nature ▾</summary>
+            <div class="chmenu-list"><button data-wch="nature">Live Nature cams</button></div>
+          </details>
+          <details class="chmenu"><summary>Relaxation ▾</summary>
+            <div class="chmenu-list">
+              <button data-wch="ambient">Ambient music</button>
+              <button data-wch="nature-sounds">Nature sounds</button>
+              <button data-wch="hybrid">Music + nature</button>
+              <button data-wch="lofi">Lofi &amp; chill beats</button>
+              <button data-wch="piano">Piano &amp; instrumental</button>
+              <button data-wch="asmr">ASMR nature</button>
+              <button data-wch="scenic">Scenic 4K</button>
+              <button data-wch="meditation">Meditation &amp; healing</button>
+              <button data-wch="official">Official relaxation</button>
+              <button data-wch="jazz-cafe">Jazz &amp; café</button>
+              <button data-wch="rain">Rain &amp; weather</button>
+              <button data-wch="world">World ambient</button>
+            </div>
+          </details>
+          <details class="chmenu"><summary>Faith ▾</summary>
+            <div class="chmenu-list">
+              <button data-wch="bible">Bible narration</button>
+              <button data-wch="church">Church videos</button>
+            </div>
+          </details>
+        
+          </span>
+          <button class="quiet small" id="w-mode-premium">Premium together · BYO YouTube</button>
         </div>
-        <p style="margin:8px 0 0"><button class="act" id="w-embed-apply">Use my embed</button>
-          <button class="quiet" id="w-embed-clear">Clear</button>
-          <span class="counter" id="w-embed-note"></span></p>
       </section>
       <section class="panel">
-        <p style="margin:0 0 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <strong style="color:var(--text)">Watch modes:</strong>
-          <button class="act small" id="w-mode-library">Romance library</button>
-          <button class="quiet small" id="w-mode-premium">Premium together · bring your own YouTube</button>
-        </p>
         <div id="w-title"></div>
         <div id="w-player"></div>
         <div id="w-premium" hidden>
@@ -411,51 +452,7 @@
         </div>
       </section>
       <section class="panel" id="w-library-panel">
-        <style>
-          .chmenu { position: relative; display: inline-block; }
-          .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
-            color: var(--accent); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
-          .chmenu summary::-webkit-details-marker { display: none; }
-          .chmenu[open] summary { background: var(--accent); color: var(--accent-ink); }
-          .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
-            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
-            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
-          .chmenu-list button { text-align: left; background: none; border: 0; color: var(--accent);
-            padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
-          .chmenu-list button:hover { background: #262030; }
-          .chmenu-list button.on { background: #4a2440; font-weight: 800; }
-        </style>
-        <p style="margin:0 0 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <strong style="color:var(--text)">Channels:</strong>
-          <details class="chmenu" open><summary>Movies ▾</summary>
-            <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button></div>
-          </details>
-          <details class="chmenu"><summary>Live Nature ▾</summary>
-            <div class="chmenu-list"><button data-wch="nature">Live Nature cams</button></div>
-          </details>
-          <details class="chmenu"><summary>Relaxation ▾</summary>
-            <div class="chmenu-list">
-              <button data-wch="ambient">Ambient music</button>
-              <button data-wch="nature-sounds">Nature sounds</button>
-              <button data-wch="hybrid">Music + nature</button>
-              <button data-wch="lofi">Lofi &amp; chill beats</button>
-              <button data-wch="piano">Piano &amp; instrumental</button>
-              <button data-wch="asmr">ASMR nature</button>
-              <button data-wch="scenic">Scenic 4K</button>
-              <button data-wch="meditation">Meditation &amp; healing</button>
-              <button data-wch="official">Official relaxation</button>
-              <button data-wch="jazz-cafe">Jazz &amp; café</button>
-              <button data-wch="rain">Rain &amp; weather</button>
-              <button data-wch="world">World ambient</button>
-            </div>
-          </details>
-          <details class="chmenu"><summary>Faith ▾</summary>
-            <div class="chmenu-list">
-              <button data-wch="bible">Bible narration</button>
-              <button data-wch="church">Church videos</button>
-            </div>
-          </details>
-        </p>
+        
         <h2 id="w-lib-title">The romance library — pick any film instead</h2>
         <p id="w-lib-blurb">Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
           public-domain classics that play in-page; the live site carries the full thousand.</p>
@@ -732,7 +729,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v32 · background games</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v34 · thumbs + top menus</div>
 
 <script>
 'use strict';
@@ -1495,7 +1492,7 @@ const NATURE = [
   [2004,'Smoky Mountains stream live cam',0,'river','R-pXviGSVEk',true],[2005,'River rapids relaxing live cam',0,'river','Jna1-ZtNXZ8',true],
   [2006,'Niagara Falls live cam',0,'waterfall','qx7gry390YA',true],[2007,'Tropical waterfall live cam',0,'waterfall','pd6Da8ARh-E',true],
   [2008,'Iguazu Falls live cam',0,'waterfall','enlQciM2mU0',true],[2009,'Forest waterfall 4K live cam',0,'waterfall','1FbGw1pdqx0',true],
-  [2010,'Redwood forest live cam',0,'forest','cgPcnSJ24Hg',true],[2011,'Rainforest canopy live cam',0,'forest','',true],
+  [2010,'Redwood forest live cam',0,'forest','cgPcnSJ24Hg',true],[2011,'Rainforest canopy live cam',0,'forest','qQgNWg96Rls',true],
   [2012,'Forest birdsong live cam',0,'forest','XxP8kxUn5bc',true],[2013,'Autumn forest live cam',0,'forest','D1VM6V6wmU0',true],
   [2014,'Lake Tahoe live cam',0,'lake','Lk0Z5ExUWL0',true],[2015,'Alpine lake live cam',0,'lake','uQGMUbBcDpA',true],
   [2016,'Loch Ness live cam',0,'lake','IrH--L0WdrY',true],[2017,'Mountain lake sunrise live cam',0,'lake','FlzeVwj-lgA',true],
@@ -1504,12 +1501,12 @@ const NATURE = [
   [2022,'Sonoran Desert live cam',0,'desert','oHOChWnGMpM',true],[2023,'Sahara desert dunes live cam',0,'desert','RdFkC6Gtb5A',true],
   [2024,'Desert oasis wildlife live cam',0,'desert','EDK-VORAglU',true],[2025,'Joshua Tree desert live cam',0,'desert','xJZlkr--jok',true],
   [2026,'Venice Grand Canal live cam',0,'harbor','r8N6IsoIkTk',true],[2027,'Sydney Harbour live cam',0,'harbor','5uZa3-RMFos',true],
-  [2028,'Alaska harbor live cam',0,'harbor','',true],[2029,'Mediterranean harbor live cam',0,'harbor','',true],
-  [2030,'African watering hole live cam',0,'wildlife','',true],[2031,'Bald eagle nest live cam',0,'wildlife','B4-L2nfGcuE',true],
+  [2028,'Alaska harbor live cam',0,'harbor','UHy_Cwgoc-Q',true],[2029,'Mediterranean harbor live cam',0,'harbor','dqUw64ec6Hw',true],
+  [2030,'African watering hole live cam',0,'wildlife','JMMoRwYo5kE',true],[2031,'Bald eagle nest live cam',0,'wildlife','B4-L2nfGcuE',true],
   [2032,'Brooks Falls brown bears live cam',0,'wildlife','J7ZrIDvqlic',true],[2033,'Hummingbird feeder live cam',0,'wildlife','Iu6kH-Dd2Vc',true],
   [2034,'Coral reef aquarium live cam',0,'wildlife','btiijqJVUIk',true],[2035,'Giant panda live cam',0,'wildlife','lGhwcJaoKjU',true],
   [2036,'Owl nest live cam',0,'wildlife','4igfY1_4lXo',true],[2037,'Northern lights live cam',0,'aurora','fVsONlc3OUY',true],
-  [2038,'Ocean waves beach live cam',0,'ocean','Ts_uWr9-lAU',true],[2039,'African savanna sunset live cam',0,'savanna','',true],
+  [2038,'Ocean waves beach live cam',0,'ocean','Ts_uWr9-lAU',true],[2039,'African savanna sunset live cam',0,'savanna','jnvfwi7NZbY',true],
   [2040,'Snowfall cabin live cam',0,'snow','v5TsJvtleAA',true],
 ];
 const AMBIENT = [
@@ -1534,17 +1531,17 @@ const LOFI = [
   [2445,'Cozy fireplace lofi beats',0,'cozy','Rik8YhvH09M',false],[2446,'Forest ambience lofi beats',0,'forest','NvftPSb5Xtw',false],
 ];
 const PIANO = [
-  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','kKJvGtqcnno',false],
+  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','K0-6reET2BY',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','kKJvGtqcnno',false],
   [2463,'Soft acoustic guitar relaxation',0,'guitar','j4OuCMnY43E',false],[2464,'Relaxing flute instrumental music',0,'flute','YNdFu6bnhfU',false],
   [2465,'Peaceful piano for reading',0,'piano','oiGmGFxsJi8',false],
 ];
 const ASMRN = [
-  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','fLA86E_zpL4',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','',false],
+  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','fLA86E_zpL4',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','AB7Saw7x7mo',false],
   [2483,'ASMR wind through leaves',0,'wind','7WPsftkv1ZY',false],[2484,'Relaxing white noise ASMR water',0,'water','jkLRith2wcc',false],
 ];
 const SCENIC = [
-  [2501,'Nature Relaxation Films 4K landscapes',0,'4k','',false],[2502,'National Geographic meditative ASMR nature',0,'documentary','ZVwENdOOjnM',false],
-  [2503,'4K drone landscapes with ambient music',0,'aerial','',false],[2504,'Scenic train journeys 4K',0,'journey','HH4tyPBIujU',false],
+  [2501,'4K nature film with peaceful music',0,'4k','UV0mhY2Dxr0',false],[2502,'National Geographic meditative ASMR nature',0,'documentary','ZVwENdOOjnM',false],
+  [2503,'4K drone film — Earth from above',0,'aerial','lM02vNMRRB0',false],[2504,'Scenic train journeys 4K',0,'journey','HH4tyPBIujU',false],
 ];
 const MEDIT = [
   [2521,'Peaceful Yourself healing sound nature',0,'healing','RJma4cwfqIY',false],[2522,'Nature relax stress relief sleep music',0,'sleep','1ZYbU82GVz4',false],
@@ -1564,7 +1561,7 @@ const RAINW = [
   [2585,'River flowing with birds chirping',0,'river','1GzKYoyrlkA',false],
 ];
 const WORLDA = [
-  [2601,'Sonorama world ambient flute music',0,'flute','',false],[2602,'Native American flute relaxation',0,'flute','dr2VyUvzrwI',false],
+  [2601,'Native American flute — healing music',0,'flute','2wiMtcb-jTo',false],[2602,'Native American flute relaxation',0,'flute','dr2VyUvzrwI',false],
   [2603,'Arabic oud ambient music',0,'oud','uDCjW-9mE2k',false],[2604,'Celtic harp ambience',0,'harp','2-M9-6OSYMY',false],
 ];
 const BIBLE = [
@@ -1603,18 +1600,31 @@ const WCHANNELS = {
 };
 let watchChannel = 'romance';
 const ALLFILMS = FILMS.concat(NATURE, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
+// The YouTube thumbnail for a row: the full stream's art when one
+// exists, otherwise the film's own trailer art. Every card sells its
+// video the way YouTube does.
+function wThumb(f) {
+  const id = f[4] || TRAILERS[f[0]];
+  return id ? 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg' : null;
+}
 function renderWatchGrid() {
   const c = WCHANNELS[watchChannel];
   $('w-lib-title').textContent = c.title;
   $('w-lib-blurb').textContent = c.blurb;
   const q = ($('w-search').value || '').toLowerCase().trim();
   const hits = c.rows.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
-  $('w-grid').innerHTML = hits.map(f =>
-    '<div class="card"><span class="name">' + (watchChannel === 'romance' && f[0] > 0 ? '#' + f[0] + ' · ' : (watchChannel === 'romance' ? '★ ' : '')) + esc(f[1]) + '</span>' +
-    '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
-    (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
-    (f[4] ? '<span class="pill ok">plays in-page</span>' : (TRAILERS[f[0]] ? '<span class="pill" style="background:#3a2a3e">trailer plays in-page</span>' : '')) + '</span>' +
-    '<button class="act" data-wfilm="' + f[0] + '">Watch this instead</button></div>').join('') ||
+  $('w-grid').innerHTML = hits.map(f => {
+    const thumb = wThumb(f);
+    return '<div class="card" style="padding:10px">' +
+      (thumb ? '<button class="wthumb" data-wfilm="' + f[0] + '" title="Watch ' + esc(f[1]) + '" style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">' +
+        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.parentNode.style.display=\'none\'">' +
+        '</button>' : '') +
+      '<span class="name">' + (watchChannel === 'romance' && f[0] > 0 ? '#' + f[0] + ' · ' : (watchChannel === 'romance' ? '★ ' : '')) + esc(f[1]) + '</span>' +
+      '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
+      (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
+      (f[4] ? '<span class="pill ok">plays in-page</span>' : (TRAILERS[f[0]] ? '<span class="pill" style="background:#3a2a3e">trailer plays in-page</span>' : '')) + '</span>' +
+      '<button class="act" data-wfilm="' + f[0] + '">Watch this instead</button></div>';
+  }).join('') ||
     '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
 }
 $('portal-watch').addEventListener('click', e => {
@@ -1677,12 +1687,10 @@ function wSyncSet(playing) {
 }
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'w-mode-premium' || b.id === 'w-mode-library') {
-    const premium = b.id === 'w-mode-premium';
-    $('w-premium').hidden = !premium;
-    $('w-library-panel').hidden = premium;
-    $('w-mode-premium').className = premium ? 'act small' : 'quiet small';
-    $('w-mode-library').className = premium ? 'quiet small' : 'act small';
+  if (b.id === 'w-mode-premium') {
+    $('w-premium').hidden = false;
+    $('w-library-panel').hidden = true;
+    $('w-mode-premium').className = 'act small';
   } else if (b.dataset.romcom) {
     const r = ROMCOMS[+b.dataset.romcom];
     wSync.video = r[0] + ' (' + r[1] + ')';

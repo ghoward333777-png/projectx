@@ -214,6 +214,11 @@ if ($view === null) {
         <div class="grid">
             <?php foreach ($mine as $room): ?>
                 <div class="card">
+                    <?php if (preg_match('#/embed/([A-Za-z0-9_-]{11})(?:[/?]|$)#', (string) $room['embed_url'], $thumbMatch) === 1): ?>
+                        <img src="https://i.ytimg.com/vi/<?= sd_e($thumbMatch[1]) ?>/mqdefault.jpg" alt="" loading="lazy"
+                             style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-bottom:8px"
+                             onerror="this.style.display='none'">
+                    <?php endif; ?>
                     <strong><?= sd_e((string) SlowDatingEngine::ADV_MODES[$room['mode']]['label']) ?> · <?= sd_e(ucfirst((string) $room['theme'])) ?></strong>
                     <p style="margin:6px 0"><span class="pill"><?= sd_e((string) $room['status']) ?></span>
                         <span class="pill">invite <?= sd_e((string) $room['invite_code']) ?></span>

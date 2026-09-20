@@ -312,9 +312,10 @@ if (!in_array($mode, ['library', 'premium'], true)) {
 }
 ?>
 
-<section>
-    <h2>Movie night with…</h2>
-    <p class="links" style="margin:0">
+<!-- Slim: everything that sat above the player lives in one pop-down. -->
+<section style="padding:10px 14px">
+    <details class="chmenu"><summary>☰ Watch Party menu ▾</summary>
+    <p class="links chmenu-list" style="margin:0;min-width:min(460px,92vw);padding:12px">
         <?php foreach ($chats as $option):
             $optionId = (string) $option['id'];
             $partnerId = '';
@@ -346,6 +347,37 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         </form>
         <?php endif; ?>
     </p>
+    </details>
+    <!-- Compact channel menu: pop-down submenus instead of a long row. -->
+    <style>
+        .chmenu { position: relative; display: inline-block; margin: 0 4px 0 0; }
+        .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
+            color: #ffc4da; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+        .chmenu summary::-webkit-details-marker { display: none; }
+        .chmenu[open] summary { background: #ff9cc0; color: #2a0f1d; }
+        .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
+            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
+            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
+        .chmenu-list a { display: block; padding: 7px 10px; border-radius: 8px; color: #ffb8d2;
+            text-decoration: none; font-size: 13px; margin: 0; }
+        .chmenu-list a:hover { background: #262030; text-decoration: none; }
+        .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
+    </style>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <strong style="color:#eadff0;font-size:13px">Channels:</strong>
+        <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
+            <details class="chmenu"<?= $mode === 'library' && in_array($ch, $groupChannels, true) ? ' open' : '' ?>>
+                <summary><?= sd_e($groupLabel) ?> ▾</summary>
+                <div class="chmenu-list">
+                    <?php foreach ($groupChannels as $slug): ?>
+                        <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+        <?php endforeach; ?>
+        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
+        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party →</a>
+    </div>
 </section>
 
 <div id="watchparty">
@@ -420,36 +452,7 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     </p>
     <?php endif; ?>
 
-    <!-- Compact channel menu: pop-down submenus instead of a long row. -->
-    <style>
-        .chmenu { position: relative; display: inline-block; margin: 0 4px 0 0; }
-        .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
-            color: #ffc4da; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
-        .chmenu summary::-webkit-details-marker { display: none; }
-        .chmenu[open] summary { background: #ff9cc0; color: #2a0f1d; }
-        .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
-            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
-            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
-        .chmenu-list a { display: block; padding: 7px 10px; border-radius: 8px; color: #ffb8d2;
-            text-decoration: none; font-size: 13px; margin: 0; }
-        .chmenu-list a:hover { background: #262030; text-decoration: none; }
-        .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
-    </style>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <strong style="color:#eadff0;font-size:13px">Channels:</strong>
-        <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
-            <details class="chmenu"<?= $mode === 'library' && in_array($ch, $groupChannels, true) ? ' open' : '' ?>>
-                <summary><?= sd_e($groupLabel) ?> ▾</summary>
-                <div class="chmenu-list">
-                    <?php foreach ($groupChannels as $slug): ?>
-                        <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
-                    <?php endforeach; ?>
-                </div>
-            </details>
-        <?php endforeach; ?>
-        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
-        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party →</a>
-    </div>
+
 
     <?php if ($mode === 'premium'): ?>
     <?php $sync = $engine->watchSync($chatId, $userId); ?>
@@ -1038,7 +1041,21 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <p style="margin:0 0 8px;font-size:13px"><?= (int) $library['total'] ?> title<?= $library['total'] === 1 ? '' : 's' ?><?= $q !== '' ? ' matching "' . sd_e($q) . '"' : ' in this channel' ?> · page <?= $page + 1 ?></p>
     <div class="grid">
         <?php foreach ($library['films'] as $entry): ?>
-            <div class="card">
+            <div class="card" style="padding:12px">
+                <?php if (!empty($entry['youtube_id'])): ?>
+                    <!-- The YouTube thumbnail IS the button: the art sells the video. -->
+                    <form method="post" style="background:none;border:0;padding:0;margin:0 0 8px">
+                        <input type="hidden" name="action" value="pick">
+                        <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
+                        <input type="hidden" name="film_id" value="<?= sd_e((string) $entry['id']) ?>">
+                        <button type="submit" title="Watch <?= sd_e((string) $entry['title']) ?>"
+                                style="display:block;width:100%;padding:0;margin:0;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">
+                            <img src="https://i.ytimg.com/vi/<?= sd_e((string) $entry['youtube_id']) ?>/mqdefault.jpg" alt=""
+                                 loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover"
+                                 onerror="this.parentNode.parentNode.style.display='none'">
+                        </button>
+                    </form>
+                <?php endif; ?>
                 <strong><?= (int) $entry['rank'] > 0 ? '#' . (int) $entry['rank'] . ' · ' : '' ?><?= sd_e((string) $entry['title']) ?></strong>
                 <p style="margin:6px 0"><?php if ((int) $entry['year'] > 0): ?><span class="pill"><?= (int) $entry['year'] ?></span><?php endif; ?>
                     <span class="pill"><?= sd_e((string) $entry['tag']) ?></span>
