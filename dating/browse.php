@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     try {
         switch ((string) ($_POST['action'] ?? '')) {
             case 'preferences':
-                $engine->updatePreferences($userId, $_POST);
+                $engine->updatePreferences($userId, $_POST + ['shared_categories' => (array) ($_POST['shared_categories'] ?? [])]);
                 $notice = 'Preferences saved — Browse now reflects them.';
                 break;
             case 'start_chat':
@@ -199,8 +199,51 @@ $views = ['grid' => 'Grid', 'swipe' => 'Swipe', 'top10' => 'Top 10', 'top20' => 
                 <?php endforeach; ?>
             </select>
         </div>
+        <div><label>Family plans</label>
+            <select name="family_plans">
+                <option value="">Any</option>
+                <?php foreach (SlowDatingEngine::FAMILY_PLANS as $option): ?>
+                    <option value="<?= $option ?>"<?= ($preferences['family_plans'] ?? '') === $option ? ' selected' : '' ?>><?= ucwords(str_replace('_', ' ', $option)) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div><label>Smoking</label>
+            <select name="smoking">
+                <option value="">Any</option>
+                <?php foreach (SlowDatingEngine::SMOKING as $option): ?>
+                    <option value="<?= $option ?>"<?= ($preferences['smoking'] ?? '') === $option ? ' selected' : '' ?>><?= ucfirst($option) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div><label>Drinking</label>
+            <select name="drinking">
+                <option value="">Any</option>
+                <?php foreach (SlowDatingEngine::DRINKING as $option): ?>
+                    <option value="<?= $option ?>"<?= ($preferences['drinking'] ?? '') === $option ? ' selected' : '' ?>><?= ucfirst($option) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div><label>Pets</label>
+            <select name="pets">
+                <option value="">Any</option>
+                <?php foreach (SlowDatingEngine::PETS as $option): ?>
+                    <option value="<?= $option ?>"<?= ($preferences['pets'] ?? '') === $option ? ' selected' : '' ?>><?= ucfirst($option) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
     </div>
-    <label>Must share these interests (comma separated, optional)</label>
+    <h3 style="margin:14px 0 4px">Must share (generic classifications — pick as many as matter)</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        <?php $chosenCategories = (array) ($preferences['shared_categories'] ?? []); ?>
+        <?php foreach (SlowDatingEngine::INTEREST_CATEGORIES as $slug => $label): ?>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:0">
+                <input type="checkbox" name="shared_categories[]" value="<?= sd_e($slug) ?>" style="width:auto"
+                    <?= in_array($slug, $chosenCategories, true) ? 'checked' : '' ?>>
+                <?= sd_e($label) ?>
+            </label>
+        <?php endforeach; ?>
+    </div>
+    <label>Specific shared interests (optional, comma separated — advanced)</label>
     <input name="interests" value="<?= sd_e(implode(', ', (array) $preferences['interests'])) ?>" placeholder="jazz, hiking">
     <button type="submit">Save preferences</button>
 </form>

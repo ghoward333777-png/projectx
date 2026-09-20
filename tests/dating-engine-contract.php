@@ -195,6 +195,38 @@ try {
 contract_check($threw, 'unknown education preferences must be rejected');
 contract_check(count($engine->searchUsers(['education' => 'masters'], $t0)) === 1, 'education must be searchable');
 
+// Generic classifications: raw items map to categories; requirements speak in categories.
+$aliceCategories = $engine->interestCategories($engine->store()->get('users', $alice['user_id'])['profile']);
+contract_check(in_array('music_nightlife', $aliceCategories, true) && in_array('food_dining', $aliceCategories, true), 'jazz and italian food must classify as music & nightlife and food & dining');
+$engine->updateProfile($dave['user_id'], ['interests' => 'escape rooms']);
+$daveCategories = $engine->interestCategories($engine->store()->get('users', $dave['user_id'])['profile']);
+contract_check(in_array('adventures', $daveCategories, true) && in_array('games', $daveCategories, true), '"escape rooms" must classify as Adventures and Games — never a raw menu item');
+$engine->updatePreferences($alice['user_id'], ['shared_categories' => ['music_nightlife']]);
+$byCategory = $engine->browseFor($alice['user_id'], 12, $t0);
+contract_check(count($byCategory) === 1 && $byCategory[0]['user_id'] === $bob['user_id'], 'a shared-category requirement must filter browse (only Bob shares music & nightlife)');
+$engine->updatePreferences($alice['user_id'], ['shared_categories' => []]);
+$threw = false;
+try {
+    $engine->updatePreferences($alice['user_id'], ['shared_categories' => ['juggling']]);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown shared categories must be rejected');
+
+// Lifestyle requirements: family plans, smoking, drinking, pets.
+$engine->updateProfile($bob['user_id'], ['family_plans' => 'wants_kids', 'smoking' => 'never', 'drinking' => 'socially', 'pets' => 'dog']);
+$engine->updatePreferences($alice['user_id'], ['family_plans' => 'wants_kids', 'smoking' => 'never']);
+$lifestyleMatches = $engine->browseFor($alice['user_id'], 12, $t0);
+contract_check(count($lifestyleMatches) === 1 && $lifestyleMatches[0]['user_id'] === $bob['user_id'], 'family-plans and smoking requirements must filter browse');
+$engine->updatePreferences($alice['user_id'], ['family_plans' => '', 'smoking' => '']);
+$threw = false;
+try {
+    $engine->updateProfile($bob['user_id'], ['smoking' => 'like a chimney']);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown lifestyle values must be rejected');
+
 $matches = $engine->matchesFor($bob['user_id'], [], $t0);
 contract_check($matches !== [] && $matches[0]['user_id'] === $alice['user_id'], 'the most compatible nearby member must rank first');
 contract_check(in_array('jazz', $matches[0]['shared_interests'], true), 'shared interests must surface in matches');

@@ -254,6 +254,38 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                 </select>
             </div>
             <div><label>Occupation category</label><input name="occupation_category" value="<?= sd_e((string) $profile['occupation_category']) ?>"></div>
+            <div><label>Family plans</label>
+                <select name="family_plans">
+                    <option value="">—</option>
+                    <?php foreach (SlowDatingEngine::FAMILY_PLANS as $option): ?>
+                        <option value="<?= sd_e($option) ?>"<?= ($profile['family_plans'] ?? '') === $option ? ' selected' : '' ?>><?= sd_e(ucwords(str_replace('_', ' ', $option))) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div><label>Smoking</label>
+                <select name="smoking">
+                    <option value="">—</option>
+                    <?php foreach (SlowDatingEngine::SMOKING as $option): ?>
+                        <option value="<?= sd_e($option) ?>"<?= ($profile['smoking'] ?? '') === $option ? ' selected' : '' ?>><?= sd_e(ucfirst($option)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div><label>Drinking</label>
+                <select name="drinking">
+                    <option value="">—</option>
+                    <?php foreach (SlowDatingEngine::DRINKING as $option): ?>
+                        <option value="<?= sd_e($option) ?>"<?= ($profile['drinking'] ?? '') === $option ? ' selected' : '' ?>><?= sd_e(ucfirst($option)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div><label>Pets</label>
+                <select name="pets">
+                    <option value="">—</option>
+                    <?php foreach (SlowDatingEngine::PETS as $option): ?>
+                        <option value="<?= sd_e($option) ?>"<?= ($profile['pets'] ?? '') === $option ? ' selected' : '' ?>><?= sd_e(ucfirst($option)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div><label>Education</label>
                 <select name="education">
                     <option value="">—</option>

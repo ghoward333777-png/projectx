@@ -62,6 +62,69 @@ final class SlowDatingEngine
     public const AUTOMOBILES = ['none', 'economy', 'sedan', 'luxury', 'sports', 'suv', 'truck', 'ev'];
     public const DATING_TYPES = ['long_term', 'short_term', 'casual', 'marriage', 'slow_dating'];
     public const EDUCATION_LEVELS = ['high_school', 'trade_school', 'some_college', 'bachelors', 'masters', 'doctorate'];
+    public const FAMILY_PLANS = ['wants_kids', 'has_kids', 'no_kids', 'open'];
+    public const SMOKING = ['never', 'socially', 'regularly'];
+    public const DRINKING = ['never', 'socially', 'regularly'];
+    public const PETS = ['none', 'dog', 'cat', 'other'];
+
+    /** Generic interest classifications — requirements speak in these, never in raw items. */
+    public const INTEREST_CATEGORIES = [
+        'adventures' => 'Adventures',
+        'arts_culture' => 'Arts & culture',
+        'food_dining' => 'Food & dining',
+        'music_nightlife' => 'Music & nightlife',
+        'outdoors' => 'Outdoors',
+        'sports_fitness' => 'Sports & fitness',
+        'travel' => 'Travel',
+        'games' => 'Games & trivia',
+        'wellness' => 'Wellness & mindfulness',
+        'film_tv' => 'Film & TV',
+        'reading_ideas' => 'Reading & ideas',
+        'faith_community' => 'Faith & community',
+    ];
+
+    /** How raw profile items map into the generic classifications. */
+    private const CATEGORY_PATTERNS = [
+        'adventures' => ['escape room', 'adventure', 'climbing', 'skydiv', 'kayak', 'camping', 'road trip', 'detective', 'mystery'],
+        'arts_culture' => ['art', 'museum', 'opera', 'painting', 'pottery', 'photography', 'poetry', 'theatre', 'gallery'],
+        'food_dining' => ['food', 'cooking', 'baking', 'dining', 'restaurant', 'wine', 'coffee', 'dessert', 'pizza', 'pasta', 'italian'],
+        'music_nightlife' => ['jazz', 'music', 'concert', 'danc', 'salsa', 'club', 'lounge', 'karaoke', 'guitar'],
+        'outdoors' => ['hik', 'beach', 'sail', 'fishing', 'garden', 'picnic', 'nature', 'camping', 'cycling', 'running'],
+        'sports_fitness' => ['gym', 'fitness', 'yoga', 'tennis', 'run', 'cycling', 'volleyball', 'sports', 'golf'],
+        'travel' => ['travel', 'cruise', 'trip', 'tour'],
+        'games' => ['board game', 'chess', 'trivia', 'puzzle', 'gaming', 'cards', 'escape room'],
+        'wellness' => ['yoga', 'meditation', 'mindful', 'wellness', 'spa'],
+        'film_tv' => ['film', 'movie', 'cinema', 'series'],
+        'reading_ideas' => ['read', 'book', 'writing', 'poetry', 'philosophy'],
+        'faith_community' => ['church', 'faith', 'volunteer', 'community'],
+    ];
+
+    /**
+     * The generic classifications a profile's interests, hobbies, and
+     * outdoor activities fall into — derived automatically, so "escape
+     * rooms" reads as Adventures and Games, never as a raw item.
+     *
+     * @param array<string, mixed> $profile
+     * @return array<int, string>
+     */
+    public function interestCategories(array $profile): array
+    {
+        $items = strtolower(implode(' | ', array_merge(
+            (array) ($profile['interests'] ?? []),
+            (array) ($profile['hobbies'] ?? []),
+            (array) ($profile['outdoor_activities'] ?? []),
+        )));
+        $categories = [];
+        foreach (self::CATEGORY_PATTERNS as $category => $patterns) {
+            foreach ($patterns as $pattern) {
+                if ($items !== '' && str_contains($items, $pattern)) {
+                    $categories[] = $category;
+                    break;
+                }
+            }
+        }
+        return $categories;
+    }
     public const MEMBER_TIERS = ['free', 'member', 'vip', 'elite'];
     public const PARTNER_TIERS = ['basic', 'pro', 'elite'];
     public const VENUE_CATEGORIES = ['restaurant', 'lounge', 'cruise', 'tour', 'experience', 'bodyguard', 'vendor'];
@@ -244,6 +307,7 @@ final class SlowDatingEngine
         foreach (['age' => 'int', 'gender' => 'string', 'zip_code' => 'string', 'dating_type' => 'string',
                   'faith' => 'string', 'politics' => 'string', 'income_range' => 'string',
                   'automobile' => 'string', 'occupation_category' => 'string', 'education' => 'string',
+                  'family_plans' => 'string', 'smoking' => 'string', 'drinking' => 'string', 'pets' => 'string',
                   'display_name' => 'string'] as $field => $type) {
             if (array_key_exists($field, $fields)) {
                 $profile[$field] = $type === 'int' ? (int) $fields[$field] : trim((string) $fields[$field]);
@@ -270,6 +334,12 @@ final class SlowDatingEngine
         }
         if (($profile['education'] ?? '') !== '' && !in_array($profile['education'], self::EDUCATION_LEVELS, true)) {
             throw new InvalidArgumentException('Unknown education level.');
+        }
+        foreach (['family_plans' => self::FAMILY_PLANS, 'smoking' => self::SMOKING,
+                  'drinking' => self::DRINKING, 'pets' => self::PETS] as $lifestyleField => $allowed) {
+            if (($profile[$lifestyleField] ?? '') !== '' && !in_array($profile[$lifestyleField], $allowed, true)) {
+                throw new InvalidArgumentException('Unknown ' . str_replace('_', ' ', $lifestyleField) . ' value.');
+            }
         }
         if ($profile['age'] !== 0 && $profile['age'] < 18) {
             throw new InvalidArgumentException('Members must be 18 or older.');
@@ -1349,13 +1419,34 @@ final class SlowDatingEngine
                 (array) $items,
             )));
         }
+        if (array_key_exists('shared_categories', $fields)) {
+            $value = $fields['shared_categories'];
+            $items = is_array($value) ? $value : preg_split('/\s*,\s*/', (string) $value, -1, PREG_SPLIT_NO_EMPTY);
+            $categories = [];
+            foreach ((array) $items as $category) {
+                $category = strtolower(trim((string) $category));
+                if ($category === '') {
+                    continue;
+                }
+                if (!isset(self::INTEREST_CATEGORIES[$category])) {
+                    throw new InvalidArgumentException('Unknown shared-interest category: ' . $category);
+                }
+                $categories[] = $category;
+            }
+            $preferences['shared_categories'] = array_values(array_unique($categories));
+        }
         // "Must match" criteria — each empty string means "any".
         $enumChecks = [
             'income_range' => self::INCOME_RANGES,
             'automobile' => self::AUTOMOBILES,
             'education' => self::EDUCATION_LEVELS,
+            'family_plans' => self::FAMILY_PLANS,
+            'smoking' => self::SMOKING,
+            'drinking' => self::DRINKING,
+            'pets' => self::PETS,
         ];
-        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category'] as $criterion) {
+        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category',
+                  'family_plans', 'smoking', 'drinking', 'pets'] as $criterion) {
             if (!array_key_exists($criterion, $fields)) {
                 continue;
             }
@@ -1397,10 +1488,14 @@ final class SlowDatingEngine
         if ($preferences['interests'] !== []) {
             $filters['interests'] = $preferences['interests'];
         }
-        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category'] as $criterion) {
+        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category',
+                  'family_plans', 'smoking', 'drinking', 'pets'] as $criterion) {
             if (($preferences[$criterion] ?? '') !== '') {
                 $filters[$criterion] = $preferences[$criterion];
             }
+        }
+        if ((array) ($preferences['shared_categories'] ?? []) !== []) {
+            $filters['shared_categories'] = $preferences['shared_categories'];
         }
         if ($filters['zip_code'] === '') {
             unset($filters['zip_code'], $filters['zip_radius_km']);
@@ -1418,12 +1513,17 @@ final class SlowDatingEngine
             'max_distance_km' => 100.0,
             'dating_type' => '',
             'interests' => [],
+            'shared_categories' => [],
             'faith' => '',
             'politics' => '',
             'income_range' => '',
             'automobile' => '',
             'education' => '',
             'occupation_category' => '',
+            'family_plans' => '',
+            'smoking' => '',
+            'drinking' => '',
+            'pets' => '',
         ];
     }
 
@@ -2715,6 +2815,10 @@ final class SlowDatingEngine
             'automobile' => static fn ($value): bool => (string) $profile['automobile'] === (string) $value,
             'occupation_category' => static fn ($value): bool => (string) $profile['occupation_category'] === (string) $value,
             'education' => static fn ($value): bool => (string) ($profile['education'] ?? '') === (string) $value,
+            'family_plans' => static fn ($value): bool => (string) ($profile['family_plans'] ?? '') === (string) $value,
+            'smoking' => static fn ($value): bool => (string) ($profile['smoking'] ?? '') === (string) $value,
+            'drinking' => static fn ($value): bool => (string) ($profile['drinking'] ?? '') === (string) $value,
+            'pets' => static fn ($value): bool => (string) ($profile['pets'] ?? '') === (string) $value,
             'age_min' => static fn ($value): bool => (int) $profile['age'] >= (int) $value,
             'age_max' => static fn ($value): bool => (int) $profile['age'] <= (int) $value,
         ];
@@ -2733,6 +2837,16 @@ final class SlowDatingEngine
             $have = array_map('strtolower', (array) $profile[$listField]);
             foreach ((array) $wantedList as $item) {
                 if (!in_array(strtolower(trim((string) $item)), $have, true)) {
+                    return false;
+                }
+            }
+        }
+        $wantedCategories = $filters['shared_categories'] ?? null;
+        if ($wantedCategories !== null && $wantedCategories !== [] && $wantedCategories !== '') {
+            $wantedList = is_array($wantedCategories) ? $wantedCategories : preg_split('/\s*,\s*/', (string) $wantedCategories, -1, PREG_SPLIT_NO_EMPTY);
+            $have = $this->interestCategories($profile);
+            foreach ((array) $wantedList as $category) {
+                if (!in_array((string) $category, $have, true)) {
                     return false;
                 }
             }
@@ -2763,6 +2877,10 @@ final class SlowDatingEngine
             'automobile' => '',
             'occupation_category' => '',
             'education' => '',
+            'family_plans' => '',
+            'smoking' => '',
+            'drinking' => '',
+            'pets' => '',
         ];
     }
 

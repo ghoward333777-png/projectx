@@ -139,6 +139,10 @@ foreach ($roster as [$gender, $name, $i]) {
         'automobile' => $autos[$i % 8],
         'occupation_category' => $occupations[$i % 10],
         'education' => SlowDatingEngine::EDUCATION_LEVELS[$i % 6],
+        'family_plans' => SlowDatingEngine::FAMILY_PLANS[$i % 4],
+        'smoking' => SlowDatingEngine::SMOKING[$i % 3],
+        'drinking' => SlowDatingEngine::DRINKING[($i + 1) % 3],
+        'pets' => SlowDatingEngine::PETS[$i % 4],
     ]);
     $engine->addProfileVideo($id, 'https://www.youtube.com/watch?v=' . $videoIds[$i % 8]);
     // Every profile carries its three pictures: generated artwork

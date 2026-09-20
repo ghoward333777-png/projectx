@@ -177,8 +177,10 @@ message still delivers (filtered per §8) so victims keep evidence and context.
 
 **Filters** — `zip_code` + `zip_radius_km`, `gender`, `age_min/max`, `interests`,
 `hobbies`, `outdoor_activities` (each: all requested items must be present),
-`dating_type`, `faith`, `politics`, `income_range`, `automobile`,
-`occupation_category`, `min_popularity`, `max_popularity`, `limit` (default 50).
+`shared_categories` (generic classifications derived from raw items — e.g. "escape
+rooms" reads as Adventures and Games), `dating_type`, `faith`, `politics`,
+`income_range`, `education`, `automobile`, `occupation_category`, `family_plans`,
+`smoking`, `drinking`, `pets`, `min_popularity`, `max_popularity`, `limit` (default 50).
 Results ordered by popularity desc, then user_id (deterministic); include distance when
 a zip filter is given.
 
