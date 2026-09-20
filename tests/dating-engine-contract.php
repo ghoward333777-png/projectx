@@ -428,6 +428,49 @@ try {
 }
 contract_check($threw, 'shared image bytes must match the declared type');
 
+// ---- Meet-up intent advertising ----------------------------------------------------
+$threw = false;
+try {
+    $engine->createMeetupAd($basicPartner['partner_id'], (string) $basicVenue['id'] ?? '', ['headline' => 'x', 'keys' => ['movies']], $t0);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'meet-up ads must require the Pro or Elite plan');
+$threw = false;
+try {
+    $engine->createMeetupAd($partner['partner_id'], $venueId, ['headline' => 'x', 'keys' => ['helicopters']], $t0);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown ad keys must be rejected');
+
+$italianVenue = $engine->createVenue($partner['partner_id'], ['name' => "Ralph's Italian Spot", 'zip_code' => '90210', 'category' => 'restaurant'], $t0);
+$engine->createMeetupAd($partner['partner_id'], (string) $italianVenue['id'], [
+    'headline' => "Make it Ralph's", 'message' => 'Pasta before the show.', 'keys' => ['italian_restaurant'],
+], $t0);
+$theaterVenue = $engine->createVenue($partner['partner_id'], ['name' => 'Double Feature Theater', 'zip_code' => '90211', 'category' => 'experience'], $t0);
+$engine->createMeetupAd($partner['partner_id'], (string) $theaterVenue['id'], [
+    'headline' => 'Two seats tonight', 'keys' => ['movies'],
+], $t0);
+$farVenue = $engine->createVenue($partner['partner_id'], ['name' => 'Far Away Pasta', 'zip_code' => '10001', 'category' => 'restaurant'], $t0);
+$engine->createMeetupAd($partner['partner_id'], (string) $farVenue['id'], [
+    'headline' => 'Fly to NYC for dinner', 'keys' => ['italian_restaurant'],
+], $t0);
+
+$preIntent = $engine->meetupIntent((string) $lockedChat['id']);
+contract_check($preIntent['meetup'] === false, 'ordinary chat does not read as a meet-up');
+$engine->sendMessage($chatId, $bob['user_id'], 'Are you free Saturday? Italian place first, then a movie at the theater?', $t0 + 41 * 86400);
+$engine->sendMessage($chatId, $alice['user_id'], 'Perfect — pasta then the late show. It\'s a date.', $t0 + 41 * 86400 + 60);
+$intent = $engine->meetupIntent($chatId);
+contract_check($intent['meetup'] === true, 'date-planning talk must register as meet-up intent');
+contract_check(in_array('italian_restaurant', $intent['keys'], true) && in_array('movies', $intent['keys'], true), 'the discussed plans must map to purchased keys');
+$ads = $engine->meetupAdsForChat($chatId, $t0 + 41 * 86400);
+contract_check(count($ads) === 2, 'both matching local advertisers must flash — the Italian spot and the theater');
+$names = array_column($ads, 'venue_name');
+contract_check(in_array("Ralph's Italian Spot", $names, true) && in_array('Double Feature Theater', $names, true), 'the right advertisers must be chosen');
+contract_check(!in_array('Far Away Pasta', $names, true), 'advertisers outside the couple\'s town never flash');
+contract_check($engine->venueAnalytics((string) $italianVenue['id'])['meetup_ad_impressions'] === 1, 'meet-up impressions must count in venue analytics');
+
 // ---- Webhooks -----------------------------------------------------------------
 $hook = $engine->ingestTicketWebhook([
     'event_id' => (string) $event['id'], 'external_ticket_id' => 'tix_987',

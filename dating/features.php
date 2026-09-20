@@ -44,6 +44,7 @@ $groups = [
         ['A shelf in the store', 'List date-night products with live inventory; the platform handles orders.'],
         ['Live analytics', 'Coupons sent, redemptions, tickets sold, revenue, and contest entries — computed from the actual records.'],
         ['System integration', 'External ticketing, reservation, and booking systems report in over signed webhooks.'],
+        ['Meet-up ads & keys', 'A second ad that flashes only when a couple starts arranging a real date. Buy keys like "italian restaurant" or "movies" and your ad shows to couples planning exactly that, in your town — you never learn who or where.'],
     ]],
     ['The platform', [
         ['Runs anywhere', 'Dependency-free PHP 8.1+ — no database server, no packages, no API keys. Deploys to any shared host by copying one folder.'],

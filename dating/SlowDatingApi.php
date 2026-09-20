@@ -273,6 +273,9 @@ final class SlowDatingApi
         if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'health') {
             return [200, $engine->conversationHealth($segments[1])];
         }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'ads') {
+            return [200, $engine->meetupAdsForChat($segments[1], $now)];
+        }
         if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'unlock') {
             return [200, $engine->purchaseEarlyUnlock($segments[1], $userId, $now)];
         }
@@ -366,6 +369,12 @@ final class SlowDatingApi
             }
             if ($tail === ['products'] && $method === 'GET') {
                 return [200, $engine->products($venueId)];
+            }
+            if ($tail === ['ads', 'meetup'] && $method === 'POST') {
+                return [201, $engine->createMeetupAd($partnerId, $venueId, $body, $now)];
+            }
+            if ($tail === ['ads'] && $method === 'GET') {
+                return [200, $engine->adsForVenue($venueId)];
             }
             if ($tail === ['analytics'] && $method === 'GET') {
                 return [200, $engine->venueAnalytics($venueId)];

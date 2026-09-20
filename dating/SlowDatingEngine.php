@@ -2135,6 +2135,198 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Meet-up intent advertising (second ad + purchasable keys)
+    // ------------------------------------------------------------------
+
+    /** Purchasable ad keys and the date-talk they match. */
+    public const AD_KEYS = [
+        'italian_restaurant' => ['italian', 'pasta', 'trattoria', 'pizza'],
+        'movies' => ['movie', 'cinema', 'film', 'theater', 'theatre', 'double feature'],
+        'coffee' => ['coffee', 'espresso', 'cafe'],
+        'jazz_lounge' => ['jazz', 'live music', 'lounge'],
+        'wine_bar' => ['wine', 'tasting'],
+        'dancing' => ['dance', 'dancing', 'salsa'],
+        'escape_room' => ['escape room', 'puzzle', 'mystery', 'detective'],
+        'fine_dining' => ['dinner', 'restaurant', 'reservation'],
+        'outdoors' => ['hike', 'picnic', 'beach', 'park'],
+        'dessert' => ['dessert', 'ice cream', 'gelato'],
+    ];
+
+    /** Signals that a chat has started arranging an in-person meet-up. */
+    private const MEETUP_PATTERNS = [
+        'meet up', 'meet in person', 'let\'s meet', 'lets meet', 'meet at', 'meet for',
+        'see you at', 'this weekend', 'saturday', 'sunday', 'friday night',
+        'grab dinner', 'grab a coffee', 'date night', 'pick you up', 'before the movie',
+        'are you free', 'when are you free',
+    ];
+
+    private const MEETUP_AD_RADIUS_KM = 40.0;
+    private const MEETUP_AD_WINDOW = 12;   // most recent messages considered
+
+    /**
+     * The advertiser's second ad: shown only when a chat starts arranging
+     * a real meet-up, matched by purchased keys. Pro/Elite plans only.
+     *
+     * @param array<string, mixed> $fields headline, message, offer, keys[]
+     * @return array<string, mixed>
+     */
+    public function createMeetupAd(string $partnerId, string $venueId, array $fields, ?int $now = null): array
+    {
+        $now ??= time();
+        $partner = $this->partner($partnerId);
+        if (!in_array((string) $partner['plan_tier'], ['pro', 'elite'], true)) {
+            throw new InvalidArgumentException('Meet-up ads and keys require the Pro or Elite partner plan.');
+        }
+        $venue = $this->requireVenue($venueId, $partnerId);
+        $headline = trim((string) ($fields['headline'] ?? ''));
+        if ($headline === '') {
+            throw new InvalidArgumentException('A meet-up ad needs a headline.');
+        }
+        $keys = array_values(array_unique(array_map('strval', (array) ($fields['keys'] ?? []))));
+        if ($keys === []) {
+            throw new InvalidArgumentException('Purchase at least one key so the ad knows which date-talk to match.');
+        }
+        foreach ($keys as $key) {
+            if (!isset(self::AD_KEYS[$key])) {
+                throw new InvalidArgumentException('Unknown ad key: ' . $key);
+            }
+        }
+        $adId = 'ad_' . substr(hash('sha256', $venueId . $headline . $now), 0, 12);
+        $ad = [
+            'venue_id' => $venueId,
+            'partner_id' => $partnerId,
+            'kind' => 'meetup',
+            'headline' => $headline,
+            'message' => trim((string) ($fields['message'] ?? '')),
+            'offer' => trim((string) ($fields['offer'] ?? '')),
+            'keys' => $keys,
+            'status' => 'active',
+            'created_at' => $now,
+        ];
+        $this->store->put('ads', $adId, $ad);
+        $this->logAnalytics('ad_key_purchase', null, $venueId, ['ad_id' => $adId, 'keys' => $keys], $now);
+        return $ad + ['id' => $adId];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function adsForVenue(string $venueId): array
+    {
+        return $this->store->where('ads', ['venue_id' => $venueId]);
+    }
+
+    /**
+     * Whether a chat has started arranging an in-person meet-up, and which
+     * purchased keys its date-talk matches. Reads only the on-platform
+     * conversation (the same consent boundary as the concierge); the
+     * actual meeting place is never known, stored, or shared.
+     *
+     * @return array{meetup: bool, keys: array<int, string>}
+     */
+    public function meetupIntent(string $chatId): array
+    {
+        $chat = $this->requireChat($chatId);
+        $recent = array_slice((array) $chat['messages'], -self::MEETUP_AD_WINDOW);
+        $text = strtolower(implode(' ', array_map(
+            static fn (array $message): string => (string) $message['text'],
+            $recent,
+        )));
+        $meetup = false;
+        foreach (self::MEETUP_PATTERNS as $pattern) {
+            if ($text !== '' && str_contains($text, $pattern)) {
+                $meetup = true;
+                break;
+            }
+        }
+        $keys = [];
+        if ($meetup) {
+            foreach (self::AD_KEYS as $key => $patterns) {
+                foreach ($patterns as $pattern) {
+                    if (str_contains($text, $pattern)) {
+                        $keys[] = $key;
+                        break;
+                    }
+                }
+            }
+        }
+        return ['meetup' => $meetup, 'keys' => $keys];
+    }
+
+    /**
+     * The meet-up ads to flash in a chat right now: shown only once the
+     * pair starts arranging to meet, matched to the date-talk keys, from
+     * advertisers near either member's town (Elite plans first, then
+     * proximity). At most two — e.g. the Italian spot AND the theater.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function meetupAdsForChat(string $chatId, ?int $now = null): array
+    {
+        $now ??= time();
+        $intent = $this->meetupIntent($chatId);
+        if (!$intent['meetup'] || $intent['keys'] === []) {
+            return [];
+        }
+        $chat = $this->requireChat($chatId);
+        $zips = [];
+        foreach ((array) $chat['participants'] as $participantId) {
+            $zip = (string) ($this->requireUser((string) $participantId)['profile']['zip_code'] ?? '');
+            if ($zip !== '') {
+                $zips[] = $zip;
+            }
+        }
+        $candidates = [];
+        foreach ($this->store->all('ads') as $ad) {
+            if ($ad['kind'] !== 'meetup' || $ad['status'] !== 'active') {
+                continue;
+            }
+            $matched = array_values(array_intersect((array) $ad['keys'], $intent['keys']));
+            if ($matched === []) {
+                continue;
+            }
+            $venue = $this->store->get('venues', (string) $ad['venue_id']);
+            if ($venue === null || $venue['status'] !== 'active') {
+                continue;
+            }
+            $distance = 999.0;
+            foreach ($zips as $zip) {
+                $distance = min($distance, $this->zipProximityKm($zip, (string) $venue['zip_code']));
+            }
+            if ($distance > self::MEETUP_AD_RADIUS_KM) {
+                continue;
+            }
+            $partner = $this->store->get('partners', (string) $ad['partner_id']);
+            $candidates[] = [
+                'ad_id' => (string) $ad['id'],
+                'venue_id' => (string) $ad['venue_id'],
+                'venue_name' => (string) $venue['name'],
+                'headline' => (string) $ad['headline'],
+                'message' => (string) $ad['message'],
+                'offer' => (string) $ad['offer'],
+                'matched_key' => $matched[0],
+                'distance_km' => $distance,
+                'elite' => ($partner['plan_tier'] ?? '') === 'elite',
+            ];
+        }
+        usort($candidates, static fn (array $a, array $b): int =>
+            [$b['elite'], -$a['distance_km'], $b['ad_id']] <=> [$a['elite'], -$b['distance_km'], $a['ad_id']]);
+        // One ad per key, so an Italian-then-a-movie plan surfaces BOTH businesses.
+        $chosen = [];
+        foreach ($candidates as $candidate) {
+            if (isset($chosen[$candidate['matched_key']])) {
+                continue;
+            }
+            $chosen[$candidate['matched_key']] = $candidate;
+            if (count($chosen) >= 2) {
+                break;
+            }
+        }
+        foreach ($chosen as $ad) {
+            $this->logAnalytics('meetup_ad_impression', null, $ad['venue_id'], ['ad_id' => $ad['ad_id'], 'key' => $ad['matched_key']], $now);
+        }
+        return array_values($chosen);
+    }
+
+    // ------------------------------------------------------------------
     // Admin: leaderboard rewards program
     // ------------------------------------------------------------------
 
@@ -2400,6 +2592,7 @@ final class SlowDatingEngine
             'total_tickets_sold' => $ticketsSold,
             'ticket_revenue' => round($ticketRevenue, 2),
             'total_contest_entries' => $entries,
+            'meetup_ad_impressions' => count($this->store->where('analytics_events', ['type' => 'meetup_ad_impression', 'venue_id' => $venueId])),
         ];
     }
 

@@ -523,6 +523,20 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                     </ul>
                 </div>
             <?php endif; ?>
+            <?php $meetupAds = $engine->meetupAdsForChat($chatId); ?>
+            <?php if ($meetupAds !== []): ?>
+                <div class="grid" style="margin-top:10px">
+                    <?php foreach ($meetupAds as $ad): ?>
+                        <div class="card" style="border:1px solid #574a61">
+                            <span style="color:#a294ad;font-size:11px;letter-spacing:.1em;text-transform:uppercase">Sponsored · you're planning a date</span>
+                            <strong><?= sd_e((string) $ad['headline']) ?></strong>
+                            <span style="color:#c4b8ce;font-size:13px"><?= sd_e((string) $ad['message']) ?></span>
+                            <?php if ($ad['offer'] !== ''): ?><span class="pill ok"><?= sd_e((string) $ad['offer']) ?></span><?php endif; ?>
+                            <span style="color:#a294ad;font-size:12px"><?= sd_e((string) $ad['venue_name']) ?> · ~<?= sd_e((string) $ad['distance_km']) ?> km from you</span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
             <?php $suggestions = $engine->conciergeSuggestions($chatId); ?>
             <?php if ($suggestions !== []): ?>
                 <h2 style="margin-top:16px">Date concierge suggestions</h2>

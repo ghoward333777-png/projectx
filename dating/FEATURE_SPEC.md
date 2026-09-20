@@ -470,7 +470,33 @@ depth, and niche community identity. All deterministic, like the rest of the eng
 `GET /communities`, `GET /communities/{slug}`, `POST|DELETE /users/me/communities/{slug}`;
 `GET /chats/{id}/icebreakers`, `GET /chats/{id}/health`.
 
-## 31. Engineering invariants & tests
+## 31. Meet-up intent advertising (second ad + keys)
+
+**Purpose** — Advertisers reach couples at the exact moment they start arranging a real
+date, matched to what the date will be — without the platform ever knowing or revealing
+the actual meeting place.
+
+**Rules**
+- **The second ad**: Pro/Elite partners create a meet-up ad per venue (headline,
+  message, optional offer) and purchase **keys** from a fixed catalog (`AD_KEYS`:
+  italian_restaurant, movies, coffee, jazz_lounge, wine_bar, dancing, escape_room,
+  fine_dining, outdoors, dessert), each key defined by the date-talk phrases it matches.
+  Unknown keys and non-Pro plans are rejected; each launch logs an `ad_key_purchase`.
+- **Intent detection**: `meetupIntent(chat)` scans only the last 12 on-platform
+  messages (the concierge's consent boundary) for meet-up phrases ("are you free",
+  "saturday", "meet up", …) and, when found, maps the conversation to matching keys.
+- **Flashing**: `meetupAdsForChat` fires only when intent AND keys are present; ads
+  must belong to active venues within 40 km of either participant; Elite plans rank
+  first, then proximity; **one ad per matched key, max two** — so "Italian, then a
+  movie" surfaces both the restaurant and the theater. Each flash logs a
+  `meetup_ad_impression`, counted in venue analytics.
+- **Privacy**: the meeting place stays private — detection reads topics, never
+  addresses; advertisers see only aggregate impression counts, never identities or
+  chat content.
+
+**API** — `POST /partners/v1/venues/{id}/ads/meetup`, `GET …/ads`, `GET /chats/{id}/ads`.
+
+## 32. Engineering invariants & tests
 
 - **Determinism**: every time-dependent rule takes an explicit `$now`; identical inputs
   produce identical pacing, unlock, popularity, matching, targeting, and concierge

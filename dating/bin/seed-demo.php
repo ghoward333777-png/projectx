@@ -122,6 +122,8 @@ for ($i = 0; $i < 10; $i++) {
 }
 $engine->sendMessage($c2, $ids['marcus'], "Real-time at last. Here's my actual number: 424-555-0177 — call me about Saturday.", $now - 2 * $day);
 $engine->sendMessage($c2, $ids['alice'], 'Saved! Mine is 310-555-0126. See you at the noir room, detective.', $now - 2 * $day + 600);
+$engine->sendMessage($c2, $ids['marcus'], 'Dinner first? That little Italian place near the theater — are you free Saturday?', $now - $day);
+$engine->sendMessage($c2, $ids['alice'], 'Perfect. Pasta, then a late movie. It\'s a date.', $now - $day + 300);
 
 // ---- Extra popularity so the leaderboard has texture ---------------------------
 $sprinkle = [
@@ -183,6 +185,31 @@ $engine->createProduct($cipher['partner_id'], (string) $cipherVenue['id'], [
     'name' => 'At-Home Mystery Box', 'description' => 'A two-player detective case in a box — 90 minutes of clues.',
     'category' => 'experience', 'price' => 44.5, 'inventory' => 30,
 ], $now - 8 * $day);
+
+// Meet-up advertisers: the second ad that flashes when a couple starts
+// arranging a date whose plans match the purchased keys.
+$ralphs = $engine->signupPartner("Ralph's Italian Spot", 'ralph@ralphsitalian.example', 'Demo!Partner2026#', 'pro', $now - 12 * $day);
+$ralphsVenue = $engine->createVenue($ralphs['partner_id'], [
+    'name' => "Ralph's Italian Spot", 'address' => '12 Vine St', 'zip_code' => '90210', 'category' => 'restaurant',
+    'atmosphere_tags' => ['romantic', 'quiet', 'no_kids'],
+], $now - 12 * $day);
+$engine->createMeetupAd($ralphs['partner_id'], (string) $ralphsVenue['id'], [
+    'headline' => "Make it Ralph's before the show",
+    'message' => 'Handmade pasta, corner tables, and out in time for the trailers.',
+    'offer' => 'Mention SlowDating for free tiramisu',
+    'keys' => ['italian_restaurant', 'fine_dining'],
+], $now - 12 * $day);
+$theater = $engine->signupPartner('Double Feature Theater', 'box@doublefeature.example', 'Demo!Partner2026#', 'pro', $now - 12 * $day);
+$theaterVenue = $engine->createVenue($theater['partner_id'], [
+    'name' => 'Double Feature Theater', 'address' => '48 Marquee Ave', 'zip_code' => '90211', 'category' => 'experience',
+    'atmosphere_tags' => ['no_kids', 'quiet'],
+], $now - 12 * $day);
+$engine->createMeetupAd($theater['partner_id'], (string) $theaterVenue['id'], [
+    'headline' => 'Two seats at the Double Feature',
+    'message' => 'Classic late showings, loveseat rows in the back.',
+    'offer' => 'Couples get two-for-one Saturdays',
+    'keys' => ['movies'],
+], $now - 12 * $day);
 
 $trattoria = $engine->signupPartner('Trattoria Luna', 'ciao@trattorialuna.example', 'Demo!Partner2026#', 'basic', $now - 15 * $day);
 $tratVenue = $engine->createVenue($trattoria['partner_id'], [

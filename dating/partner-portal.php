@@ -122,6 +122,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Product listed in the member store.';
                 }
                 break;
+            case 'create_meetup_ad':
+                if ($partnerId !== null) {
+                    $engine->createMeetupAd($partnerId, (string) ($_POST['venue_id'] ?? ''), [
+                        'headline' => $_POST['headline'] ?? '',
+                        'message' => $_POST['message'] ?? '',
+                        'offer' => $_POST['offer'] ?? '',
+                        'keys' => (array) ($_POST['keys'] ?? []),
+                    ]);
+                    $notice = 'Meet-up ad live. It flashes only when a couple starts arranging a date whose plans match your keys, near your town.';
+                }
+                break;
             case 'change_plan':
                 if ($partnerId !== null) {
                     $engine->changePartnerPlan($partnerId, (string) ($_POST['new_plan_tier'] ?? ''));
@@ -223,6 +234,7 @@ $venues = $engine->venuesForPartner($partnerId);
             <div class="metric card"><strong><?= (int) $analytics['total_tickets_sold'] ?></strong><span>tickets sold</span></div>
             <div class="metric card"><strong>$<?= number_format((float) $analytics['ticket_revenue'], 2) ?></strong><span>ticket revenue</span></div>
             <div class="metric card"><strong><?= (int) $analytics['total_contest_entries'] ?></strong><span>contest entries</span></div>
+            <div class="metric card"><strong><?= (int) $analytics['meetup_ad_impressions'] ?></strong><span>meet-up ad flashes</span></div>
         </div>
 
         <div class="grid">
@@ -278,6 +290,27 @@ $venues = $engine->venuesForPartner($partnerId);
                 </select>
                 <label>Rules</label><textarea name="rules"></textarea>
                 <button type="submit">Launch contest</button>
+            </form>
+
+            <form method="post" class="card" style="margin-top:14px">
+                <h2>Meet-up ad + keys (Pro/Elite)</h2>
+                <p style="margin:4px 0;font-size:12.5px;color:#a294ad">Your second ad. It flashes the moment a couple
+                    starts arranging a real date whose plans match your keys, in your town. You never learn who or where —
+                    only how many times it showed.</p>
+                <input type="hidden" name="action" value="create_meetup_ad">
+                <input type="hidden" name="venue_id" value="<?= sd_e($venueId) ?>">
+                <label>Headline</label><input name="headline" placeholder="Date night at <?= sd_e((string) $venue['name']) ?>?" required>
+                <label>Message</label><textarea name="message" placeholder="Quiet corner tables, perfect before a movie."></textarea>
+                <label>Offer (optional)</label><input name="offer" placeholder="Show this ad for a free dessert">
+                <label>Keys — the date-talk that triggers your ad</label>
+                <?php foreach (SlowDatingEngine::AD_KEYS as $key => $patterns): ?>
+                    <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:2px 0">
+                        <input type="checkbox" name="keys[]" value="<?= sd_e($key) ?>" style="width:auto">
+                        <?= sd_e(ucwords(str_replace('_', ' ', $key))) ?>
+                        <span style="color:#a294ad;font-size:11.5px">(<?= sd_e(implode(', ', array_slice($patterns, 0, 3))) ?>…)</span>
+                    </label>
+                <?php endforeach; ?>
+                <button type="submit">Buy keys &amp; launch ad</button>
             </form>
 
             <form method="post" class="card" style="margin-top:14px">

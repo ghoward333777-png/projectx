@@ -196,6 +196,15 @@ contract_check($status === 200 && $breakers !== [], 'ice breakers must serve ove
 [$status, $health] = call($api, 'GET', '/chats/' . $chatId . '/health', [], [], $alice['token'], $t0);
 contract_check($status === 200 && isset($health['score'], $health['label']), 'conversation health must serve over the API');
 
+// ---- Meet-up ads over the API ----------------------------------------------------------
+[$status, $ad] = call($api, 'POST', '/partners/v1/venues/' . $venueId . '/ads/meetup', [], [
+    'headline' => 'Date night here', 'message' => 'Quiet tables.', 'keys' => ['jazz_lounge', 'fine_dining'],
+], $partner['token'], $t0);
+contract_check($status === 201 && $ad['keys'] === ['jazz_lounge', 'fine_dining'], 'partners must buy keys and launch meet-up ads over the API');
+call($api, 'POST', '/chats/' . $chatId . '/messages', [], ['text' => 'Are you free Saturday? Dinner at that jazz lounge?'], $bob['token'], $t0 + 7200);
+[$status, $chatAds] = call($api, 'GET', '/chats/' . $chatId . '/ads', [], [], $alice['token'], $t0 + 7300);
+contract_check($status === 200 && count($chatAds) >= 1 && $chatAds[0]['venue_name'] === 'Blue Note Lounge', 'meet-up ads must flash in the chat over the API');
+
 // ---- Webhooks ---------------------------------------------------------------------------
 [$status] = call($api, 'POST', '/webhooks/tickets/purchased', [], ['event_id' => (string) $event['id']], null, $t0);
 contract_check($status === 401, 'webhooks without the shared secret must be rejected');
