@@ -581,7 +581,7 @@ together and talk about it in their own chat.
 romance films ranked by curated popularity (icons first, then by era and subgenre),
 built deterministically by `bin/build-romance-library.php`. Thirteen verified free
 uploads carry a real `youtube_id` and play in an in-page embed: the operator-featured
-premiere at #1 (She Races to Find a Husband — Romance Movie Central's full rom-com)
+premiere at #1 (Inevitable Hearts — a full romance movie streamed free by its distributor)
 plus twelve public-domain classics (Charade, His Girl Friday, My Man Godfrey, Penny
 Serenade, Made for Each Other, Love Affair, Royal Wedding, A Star Is Born '37,
 Nothing Sacred, Algiers, Cyrano de Bergerac '50, Second Chorus); every other film opens through a YouTube search link so the

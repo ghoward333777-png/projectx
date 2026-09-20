@@ -3412,7 +3412,7 @@ final class SlowDatingEngine
             'embed_url' => $id !== null ? 'https://www.youtube-nocookie.com/embed/' . $id : null,
             'watch_url' => $id !== null
                 ? 'https://www.youtube.com/watch?v=' . $id
-                : 'https://www.youtube.com/results?search_query=' . rawurlencode($film['title'] . ' ' . $film['year'] . ' full movie'),
+                : 'https://www.youtube.com/results?search_query=' . rawurlencode(trim($film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie')),
         ];
     }
 

@@ -40,7 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                 $party = $engine->chooseWatchPartyFilm((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['film_id'] ?? 'daily'));
                 $notice = ($_POST['film_id'] ?? '') === 'daily'
                     ? 'Back to tonight\'s scheduled movie.'
-                    : 'Movie changed — you are both watching ' . $party['film']['title'] . ' (' . $party['film']['year'] . ') now.';
+                    : 'Movie changed — you are both watching ' . $party['film']['title']
+                        . ((int) $party['film']['year'] > 0 ? ' (' . $party['film']['year'] . ')' : '') . ' now.';
                 break;
         }
     } catch (Throwable $exception) {
@@ -119,7 +120,7 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
 </section>
 
 <section>
-    <h2><?= sd_e((string) $film['title']) ?> (<?= (int) $film['year'] ?>)
+    <h2><?= sd_e((string) $film['title']) ?><?= (int) $film['year'] > 0 ? ' (' . (int) $film['year'] . ')' : '' ?>
         <span class="pill">#<?= (int) $film['rank'] ?> in the romance playlist</span>
         <span class="pill"><?= sd_e((string) $film['tag']) ?></span>
         <?php if ($party['custom_pick']): ?><span class="pill">your pick</span><?php endif; ?>
@@ -147,7 +148,7 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
         <p style="font-size:13px">A verified, legally free upload (public-domain classic). Press play together — playback runs on each screen.</p>
     <?php else: ?>
         <div class="card" style="padding:24px;text-align:center">
-            <p style="margin:0 0 10px"><strong style="color:#fff;font-size:18px"><?= sd_e((string) $film['title']) ?> (<?= (int) $film['year'] ?>)</strong></p>
+            <p style="margin:0 0 10px"><strong style="color:#fff;font-size:18px"><?= sd_e((string) $film['title']) ?><?= (int) $film['year'] > 0 ? ' (' . (int) $film['year'] . ')' : '' ?></strong></p>
             <p style="margin:0 0 14px">This film streams on YouTube from its own distributors. Open it in a second tab,
                 press play together, and keep this page for your chat.</p>
             <a href="<?= sd_e((string) $film['watch_url']) ?>" target="_blank" rel="noopener"
@@ -197,7 +198,7 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
         <?php foreach ($library['films'] as $entry): ?>
             <div class="card">
                 <strong>#<?= (int) $entry['rank'] ?> · <?= sd_e((string) $entry['title']) ?></strong>
-                <p style="margin:6px 0"><span class="pill"><?= (int) $entry['year'] ?></span>
+                <p style="margin:6px 0"><?php if ((int) $entry['year'] > 0): ?><span class="pill"><?= (int) $entry['year'] ?></span><?php endif; ?>
                     <span class="pill"><?= sd_e((string) $entry['tag']) ?></span>
                     <?php if (!empty($entry['playable'])): ?><span class="pill" style="background:#17351f;color:#b8ffd3">plays in-page</span><?php endif; ?></p>
                 <form method="post" style="background:none;border:0;padding:0;margin:0">

@@ -24,7 +24,7 @@ declare(strict_types=1);
 // rom-com premiere (Romance Movie Central's own upload) plus the
 // public-domain classics.
 $verified = [
-    'She Races to Find a Husband (Full Rom Com)|2023' => '5GicvbAbMYU',
+    'Inevitable Hearts|0' => 'jpejUwKLmfg',
     'Charade|1963' => 'VTeVIpBLVfg',
     'His Girl Friday|1940' => 'UzQWJNNg8DU',
     'My Man Godfrey|1936' => 'YcvDxEMiMTc',
@@ -41,10 +41,11 @@ $verified = [
 
 $catalog = [
 
-// The operator-featured premiere leads the playlist: a full rom-com the
-// site's own advertising channel streams free on YouTube.
+// The operator-featured premiere leads the playlist: a full romance movie
+// streamed free on YouTube by its distributor (year 0 = not stated by the
+// upload; the renderers omit it).
 'featured premiere' => [
-['She Races to Find a Husband (Full Rom Com)',2023],
+['Inevitable Hearts',0],
 ],
 
 'all-time icon' => [
@@ -226,7 +227,7 @@ foreach ($catalog as $tag => $entries) {
         $seen[$key] = true;
         $slug = strtolower(trim((string) preg_replace('/-+/', '-', (string) preg_replace('/[^a-z0-9]+/i', '-', $title)), '-'));
         $films[] = [
-            'id' => $slug . '-' . $year,
+            'id' => $slug . ($year > 0 ? '-' . $year : ''),
             'title' => $title,
             'year' => $year,
             'tag' => $tag,

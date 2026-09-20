@@ -298,7 +298,7 @@ $engine->createTestimonialScript($ralphs['partner_id'], (string) $ralphsVenue['i
 
 // ---- Watch Party: Alice & Marcus put on the featured premiere ---------------------
 if (is_file(dirname(__DIR__) . '/data/romance-films.json')) {
-    $engine->chooseWatchPartyFilm($c2, $ids['alice'], 'she-races-to-find-a-husband-full-rom-com-2023', $now - 3600);
+    $engine->chooseWatchPartyFilm($c2, $ids['alice'], 'inevitable-hearts', $now - 3600);
 }
 
 echo "Demo data seeded into {$stateDir}\n";
