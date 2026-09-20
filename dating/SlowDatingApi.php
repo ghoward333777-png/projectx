@@ -234,6 +234,15 @@ final class SlowDatingApi
         if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'image') {
             return [200, $engine->setChatImageChoice($segments[1], $userId, (string) ($body['choice'] ?? ''))];
         }
+        if ($method === 'GET' && $path === '/users/me/blocks') {
+            return [200, $engine->blockedMembers($userId)];
+        }
+        if ($method === 'POST' && $path === '/users/me/blocks') {
+            return [201, $engine->blockMember($userId, (string) ($body['user_id'] ?? ''))];
+        }
+        if ($method === 'DELETE' && count($segments) === 4 && $segments[0] === 'users' && $segments[1] === 'me' && $segments[2] === 'blocks') {
+            return [200, $engine->unblockMember($userId, $segments[3])];
+        }
         if ($method === 'GET' && $path === '/users/me/pictures') {
             return [200, $engine->pictureRoster($userId)];
         }

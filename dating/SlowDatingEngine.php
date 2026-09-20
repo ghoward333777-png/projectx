@@ -796,6 +796,69 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Blocking: every member can message/chat any other member — unless
+    // one of them blocked the other.
+    // ------------------------------------------------------------------
+
+    /** @return array{user_id: string, blocked: array<int, string>} */
+    public function blockMember(string $userId, string $targetId): array
+    {
+        $user = $this->requireUser($userId);
+        $this->requireUser($targetId);
+        if ($userId === $targetId) {
+            throw new InvalidArgumentException('You cannot block yourself.');
+        }
+        $blocked = (array) ($user['blocked'] ?? []);
+        if (!in_array($targetId, $blocked, true)) {
+            $blocked[] = $targetId;
+        }
+        $user['blocked'] = array_values($blocked);
+        $this->store->put('users', $userId, $user);
+        return ['user_id' => $userId, 'blocked' => $user['blocked']];
+    }
+
+    /** @return array{user_id: string, blocked: array<int, string>} */
+    public function unblockMember(string $userId, string $targetId): array
+    {
+        $user = $this->requireUser($userId);
+        $blocked = array_values(array_filter(
+            (array) ($user['blocked'] ?? []),
+            static fn (string $id): bool => $id !== $targetId,
+        ));
+        $user['blocked'] = $blocked;
+        $this->store->put('users', $userId, $user);
+        return ['user_id' => $userId, 'blocked' => $blocked];
+    }
+
+    /** Whether $userId has blocked $targetId. */
+    public function hasBlocked(string $userId, string $targetId): bool
+    {
+        $user = $this->store->get('users', $userId);
+        return in_array($targetId, (array) ($user['blocked'] ?? []), true);
+    }
+
+    /** Whether messaging is closed between two members (either direction). */
+    public function isBlockedEitherWay(string $a, string $b): bool
+    {
+        return $this->hasBlocked($a, $b) || $this->hasBlocked($b, $a);
+    }
+
+    /** @return array<int, array{user_id: string, display_name: string}> The members this member blocked. */
+    public function blockedMembers(string $userId): array
+    {
+        $user = $this->requireUser($userId);
+        $rows = [];
+        foreach ((array) ($user['blocked'] ?? []) as $blockedId) {
+            $blocked = $this->store->get('users', (string) $blockedId);
+            $rows[] = [
+                'user_id' => (string) $blockedId,
+                'display_name' => (string) ($blocked['profile']['display_name'] ?? ''),
+            ];
+        }
+        return $rows;
+    }
+
+    // ------------------------------------------------------------------
     // Slow chat
     // ------------------------------------------------------------------
 
@@ -807,6 +870,9 @@ final class SlowDatingEngine
         $this->requireUser($recipientId);
         if ($initiatorId === $recipientId) {
             throw new InvalidArgumentException('A chat needs two different members.');
+        }
+        if ($this->isBlockedEitherWay($initiatorId, $recipientId)) {
+            throw new InvalidArgumentException('Messaging is unavailable between blocked members.');
         }
         $pairKey = implode('|', [min($initiatorId, $recipientId), max($initiatorId, $recipientId)]);
         foreach ($this->store->all('chats') as $chat) {
@@ -883,6 +949,9 @@ final class SlowDatingEngine
         $chat = $this->requireChat($chatId);
         if (!in_array($senderId, (array) $chat['participants'], true)) {
             throw new InvalidArgumentException('Only chat participants can send messages.');
+        }
+        if ($this->isBlockedEitherWay($senderId, $this->otherParticipant($chat, $senderId))) {
+            throw new InvalidArgumentException('Messaging is unavailable between blocked members.');
         }
         $text = trim($text);
         if ($text === '') {
@@ -987,6 +1056,9 @@ final class SlowDatingEngine
         $chat = $this->requireChat($chatId);
         if (!in_array($senderId, (array) $chat['participants'], true)) {
             throw new InvalidArgumentException('Only chat participants can share images.');
+        }
+        if ($this->isBlockedEitherWay($senderId, $this->otherParticipant($chat, $senderId))) {
+            throw new InvalidArgumentException('Messaging is unavailable between blocked members.');
         }
         $type = self::PHOTO_TYPES[strtolower(trim($mime))] ?? null;
         if ($type === null) {
@@ -1854,6 +1926,9 @@ final class SlowDatingEngine
             $candidateId = (string) $candidate['id'];
             if ($candidateId === $userId) {
                 continue;
+            }
+            if ($this->isBlockedEitherWay($userId, $candidateId)) {
+                continue;   // blocked pairs never see each other in Browse or Matches
             }
             $profile = (array) $candidate['profile'];
             if (!$this->profileMatchesFilters($profile, $filters)) {

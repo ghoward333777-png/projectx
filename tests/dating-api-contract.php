@@ -101,6 +101,18 @@ contract_check($status === 422, 'invalid base64 must be rejected');
 contract_check($status === 200 && $profilePage['user_id'] === $alice['user_id'] && isset($profilePage['match_score']), 'a member profile page must be served over the API');
 contract_check($profilePage['private_photo'] === 'clear', 'the profile page must honor the chat invitation (Alice chose her private picture for the chat with Bob)');
 
+// ---- Blocking over the API --------------------------------------------------------
+[$status, $block] = call($api, 'POST', '/users/me/blocks', [], ['user_id' => $bob['user_id']], $alice['token'], $t0 + 3600);
+contract_check($status === 201 && in_array($bob['user_id'], $block['blocked'], true), 'a member must be able to block another over the API');
+[$status] = call($api, 'POST', '/chats/' . $chatId . '/messages', [], ['text' => 'are you there?'], $bob['token'], $t0 + 3700);
+contract_check($status === 422, 'a blocked member cannot message over the API');
+[$status, $blocks] = call($api, 'GET', '/users/me/blocks', [], [], $alice['token'], $t0 + 3700);
+contract_check($status === 200 && count($blocks) === 1, 'the block list must be readable');
+[$status, $unblock] = call($api, 'DELETE', '/users/me/blocks/' . $bob['user_id'], [], [], $alice['token'], $t0 + 3800);
+contract_check($status === 200 && $unblock['blocked'] === [], 'unblocking must work over the API');
+[$status] = call($api, 'POST', '/chats/' . $chatId . '/messages', [], ['text' => 'back again'], $bob['token'], $t0 + 3900);
+contract_check($status === 201, 'unblocking reopens messaging over the API');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',

@@ -53,6 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                     $notice = 'Liked. If they like you back, a chat opens for you both.';
                 }
                 break;
+            case 'block':
+                $engine->blockMember($userId, (string) ($_POST['user_id'] ?? ''));
+                $notice = 'Blocked. They can no longer message or chat with you, and you won\'t see each other in Browse or Matches.';
+                break;
+            case 'unblock':
+                $engine->unblockMember($userId, (string) ($_POST['user_id'] ?? ''));
+                $notice = 'Unblocked — messaging between you is open again.';
+                break;
             case 'upload_photo':
                 $upload = $_FILES['photo'] ?? null;
                 if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
@@ -133,7 +141,9 @@ sd_flash($error, $notice);
                 <?php endif; ?>
             </div>
             <?php if (!$own): ?>
+                <?php $blockedByMe = $engine->hasBlocked($userId, $targetId); ?>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <?php if (!$blockedByMe): ?>
                     <form method="post" style="background:none;border:0;padding:0;margin:0">
                         <input type="hidden" name="action" value="swipe">
                         <input type="hidden" name="user_id" value="<?= sd_e((string) $view['user_id']) ?>">
@@ -145,7 +155,16 @@ sd_flash($error, $notice);
                         <input type="hidden" name="user_id" value="<?= sd_e((string) $view['user_id']) ?>">
                         <button type="submit">Start slow chat</button>
                     </form>
+                    <?php endif; ?>
+                    <form method="post" style="background:none;border:0;padding:0;margin:0">
+                        <input type="hidden" name="action" value="<?= $blockedByMe ? 'unblock' : 'block' ?>">
+                        <input type="hidden" name="user_id" value="<?= sd_e((string) $view['user_id']) ?>">
+                        <button type="submit" style="background:#3a2a3e;color:#ffc4da"><?= $blockedByMe ? 'Unblock' : 'Block' ?></button>
+                    </form>
                 </div>
+                <?php if ($blockedByMe): ?>
+                    <p style="margin:8px 0 0;color:#a294ad;font-size:13px">You blocked <?= sd_e($name) ?> — no messages or chats can pass between you until you unblock them.</p>
+                <?php endif; ?>
             <?php else: ?>
                 <p style="margin:10px 0 0;color:#a294ad">This is your profile exactly as other members see it.
                     <a href="index.php" style="color:#ffb8d2">Edit your details in the member app</a>.</p>

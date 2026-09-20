@@ -785,5 +785,47 @@ contract_check(!isset($ownPage['match_score']) && $ownPage['private_photo'] === 
 $danaPage = $engine->profileView($dana['user_id'], $alice['user_id'], $tDay + 2 * 86400);
 contract_check($danaPage['private_photo'] === 'clear', 'the profile page honors the chat invitation for the private picture');
 
+// ---- Blocking: anyone can message anyone — unless blocked -------------------------
+$engine->blockMember($alice['user_id'], $dana['user_id']);
+contract_check($engine->hasBlocked($alice['user_id'], $dana['user_id']), 'a block must be recorded');
+$threw = false;
+try {
+    $engine->sendMessage($danaChatId, $dana['user_id'], 'hello?', $tDay + 3 * 86400);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'a blocked member cannot message into an existing chat');
+$threw = false;
+try {
+    $engine->sendMessage($danaChatId, $alice['user_id'], 'testing', $tDay + 3 * 86400);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'blocking closes the chat in both directions');
+$engine->blockMember($alice['user_id'], $stranger['user_id']);
+$threw = false;
+try {
+    $engine->startChat($stranger['user_id'], $alice['user_id'], $tDay + 3 * 86400);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'blocked members cannot start a chat');
+foreach ($engine->matchesFor($alice['user_id'], ['gender' => 'female'], $tDay + 3 * 86400) as $row) {
+    contract_check($row['user_id'] !== $dana['user_id'], 'blocked members must vanish from Browse and Matches');
+}
+foreach ($engine->matchesFor($dana['user_id'], [], $tDay + 3 * 86400) as $row) {
+    contract_check($row['user_id'] !== $alice['user_id'], 'the block hides both members from each other');
+}
+$engine->unblockMember($alice['user_id'], $dana['user_id']);
+$sent = $engine->sendMessage($danaChatId, $dana['user_id'], 'hello again', $tDay + 3 * 86400);
+contract_check(isset($sent['message_id']), 'unblocking reopens messaging');
+$threw = false;
+try {
+    $engine->blockMember($alice['user_id'], $alice['user_id']);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'members cannot block themselves');
+
 exec('rm -rf ' . escapeshellarg($stateDir));
 fwrite(STDOUT, "Dating engine contract passed\n");
