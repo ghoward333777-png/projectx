@@ -3372,9 +3372,37 @@ final class SlowDatingEngine
             'chat_id' => (string) $chat['id'],
             'scheduled' => $scheduled,
             'film' => $film,
+            'playlist' => $this->watchPlaylist((string) ($film['youtube_id'] ?? '')),
             'custom_pick' => $pick !== null && $film['id'] !== $scheduled['id'],
             'chosen_by' => $pick['chosen_by'] ?? null,
         ];
+    }
+
+    /**
+     * The "up next" playlist for the embedded player: more films from the
+     * romance library that already have a playable video (curated or
+     * resolved), so the movie is followed by a playlist of more — all
+     * inside the same player.
+     *
+     * @return array<int, string> YouTube video ids.
+     */
+    public function watchPlaylist(string $excludeVideoId = '', int $count = 12): array
+    {
+        $ids = [];
+        foreach ($this->loadRomanceLibrary() as $film) {
+            $videoId = $film['youtube_id'] ?? null;
+            if ($videoId === null) {
+                $cached = $this->store->get('film_videos', (string) $film['id']);
+                $videoId = is_array($cached) && ($cached['video_id'] ?? '') !== '' ? (string) $cached['video_id'] : null;
+            }
+            if ($videoId !== null && $videoId !== $excludeVideoId && !in_array($videoId, $ids, true)) {
+                $ids[] = $videoId;
+            }
+            if (count($ids) >= $count) {
+                break;
+            }
+        }
+        return $ids;
     }
 
     /**

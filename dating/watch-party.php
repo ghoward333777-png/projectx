@@ -103,7 +103,7 @@ sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
     #watchparty .message-images img {
         max-width: 120px; max-height: 120px; border-radius: 6px; border: 1px solid #1f2937; object-fit: cover;
     }
-    #watchparty .input-area { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #1f2937; padding-top: 8px; background: none; border-radius: 0; padding-left: 0; padding-right: 0; padding-bottom: 0; margin-top: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+    #watchparty .input-area { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #1f2937; padding-bottom: 10px; background: none; border-radius: 0; padding-left: 0; padding-right: 0; padding-top: 0; margin-top: 0; border-left: 0; border-right: 0; border-top: 0; }
     #watchparty .input-row { display: flex; gap: 8px; align-items: flex-end; }
     #watchparty .input-row textarea {
         flex: 1; resize: vertical; min-height: 90px; max-height: 220px; padding: 10px; border-radius: 8px;
@@ -207,8 +207,9 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
     <!-- Player: every film plays inside the page (YouTube's ads run in
          the embed), through the curated id or the resolved best upload. -->
     <div class="video-wrapper">
+        <?php $embedSrc = (string) $film['embed_url'] . '?rel=0' . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : ''); ?>
         <?php if (!empty($film['embed_url'])): ?>
-            <iframe src="<?= sd_e((string) $film['embed_url']) ?>" title="<?= sd_e((string) $film['title']) ?>"
+            <iframe src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen></iframe>
         <?php else: ?>
@@ -231,22 +232,9 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
                 <?php endif; ?>
             </span>
         </div>
-        <div class="messages" id="wp-messages">
-            <?php foreach ((array) $chat['messages'] as $message): ?>
-                <div class="message<?= $message['sender_id'] === $userId ? ' me' : '' ?>">
-                    <?php if (isset($message['image'])): ?>
-                        <div class="message-images">
-                            <img src="chatimage.php?chat=<?= urlencode($chatId) ?>&amp;m=<?= urlencode((string) $message['message_id']) ?>" alt="Shared image">
-                        </div>
-                    <?php endif; ?>
-                    <?php if ((string) $message['text'] !== ''): ?><span><?= sd_e((string) $message['text']) ?></span><?php endif; ?>
-                    <div class="message-meta">
-                        <span><?= $message['sender_id'] === $userId ? 'You' : sd_e($otherName) ?></span>
-                        <span><?= sd_e(gmdate('M j, H:i', (int) $message['sent_at'])) ?><?= ((int) ($message['contact_data_removed'] ?? 0)) > 0 ? ' · contact info erased' : '' ?></span>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
+        <!-- The entry area sits at the TOP of the chat, right under the
+             player, and stays there as the chat grows; the newest message
+             appears directly beneath it. -->
         <form class="input-area" method="post" enctype="multipart/form-data">
             <input type="hidden" name="action" value="send">
             <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
@@ -261,14 +249,30 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
                 </div>
             </div>
             <span class="hint">JPEG, PNG, or WebP up to 2 MB. An attached image sends with your text as its caption.
-                Contact details stay filtered until the chat unlocks.</span>
+                Contact details stay filtered until the chat unlocks. Newest messages appear right below.</span>
         </form>
+        <div class="messages" id="wp-messages">
+            <?php foreach (array_reverse((array) $chat['messages']) as $message): ?>
+                <div class="message<?= $message['sender_id'] === $userId ? ' me' : '' ?>">
+                    <?php if (isset($message['image'])): ?>
+                        <div class="message-images">
+                            <img src="chatimage.php?chat=<?= urlencode($chatId) ?>&amp;m=<?= urlencode((string) $message['message_id']) ?>" alt="Shared image">
+                        </div>
+                    <?php endif; ?>
+                    <?php if ((string) $message['text'] !== ''): ?><span><?= sd_e((string) $message['text']) ?></span><?php endif; ?>
+                    <div class="message-meta">
+                        <span><?= $message['sender_id'] === $userId ? 'You' : sd_e($otherName) ?></span>
+                        <span><?= sd_e(gmdate('M j, H:i', (int) $message['sent_at'])) ?><?= ((int) ($message['contact_data_removed'] ?? 0)) > 0 ? ' · contact info erased' : '' ?></span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 </div>
 <script>
     (function () {
-        var log = document.getElementById('wp-messages');
-        if (log) { log.scrollTop = log.scrollHeight; }
+        // Newest messages render first, so the log stays put at the top —
+        // the entry area never drifts away from the player.
         var file = document.getElementById('wp-file');
         var name = document.getElementById('wp-filename');
         if (file && name) {
