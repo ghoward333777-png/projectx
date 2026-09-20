@@ -3271,6 +3271,152 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Watch Party — the romance library and the couple's movie night
+    // ------------------------------------------------------------------
+
+    /** @var array<int, array<string, mixed>>|null */
+    private ?array $romanceLibrary = null;
+
+    /**
+     * The platform's independent playlist: 1,000 romance films ranked by
+     * curated popularity, built by bin/build-romance-library.php. Films
+     * with a verified public-domain upload carry a youtube_id and play
+     * in-page; every other film opens through a YouTube search.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function loadRomanceLibrary(): array
+    {
+        if ($this->romanceLibrary === null) {
+            $file = __DIR__ . '/data/romance-films.json';
+            $decoded = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+            if (!is_array($decoded) || $decoded === []) {
+                throw new RuntimeException('The romance library is missing — run dating/bin/build-romance-library.php.');
+            }
+            $this->romanceLibrary = array_values($decoded);
+        }
+        return $this->romanceLibrary;
+    }
+
+    /**
+     * Search or page through the romance playlist.
+     *
+     * @return array{total: int, films: array<int, array<string, mixed>>}
+     */
+    public function romanceFilms(string $query = '', int $limit = 24, int $offset = 0): array
+    {
+        $films = $this->loadRomanceLibrary();
+        $needle = mb_strtolower(trim($query));
+        if ($needle !== '') {
+            $films = array_values(array_filter(
+                $films,
+                static fn (array $film): bool => str_contains(mb_strtolower((string) $film['title']), $needle)
+                    || str_contains((string) $film['tag'], $needle)
+                    || (string) $film['year'] === $needle,
+            ));
+        }
+        return [
+            'total' => count($films),
+            'films' => array_map(
+                fn (array $film): array => $this->presentFilm($film),
+                array_slice($films, max(0, $offset), max(1, min(100, $limit))),
+            ),
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function romanceFilm(string $filmId): ?array
+    {
+        foreach ($this->loadRomanceLibrary() as $film) {
+            if ((string) $film['id'] === $filmId) {
+                return $this->presentFilm($film);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Tonight's scheduled movie: a deterministic daily rotation through
+     * the whole playlist — same film for every couple on the same UTC day.
+     *
+     * @return array<string, mixed>
+     */
+    public function filmOfTheDay(?int $now = null): array
+    {
+        $now ??= time();
+        $films = $this->loadRomanceLibrary();
+        $date = gmdate('Y-m-d', $now);
+        $index = (int) (hexdec(substr(md5('watch-party.' . $date), 0, 8)) % count($films));
+        return $this->presentFilm($films[$index]) + ['scheduled_for' => $date];
+    }
+
+    /**
+     * The Watch Party state for one chat: tonight's scheduled movie, and
+     * the film this couple actually has on (the schedule, unless one of
+     * them picked something else from the library).
+     *
+     * @return array<string, mixed>
+     */
+    public function watchPartyFor(string $chatId, string $viewerId, ?int $now = null): array
+    {
+        $now ??= time();
+        $chat = $this->requireChat($chatId);
+        if (!in_array($viewerId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the couple in this chat can join its watch party.');
+        }
+        $scheduled = $this->filmOfTheDay($now);
+        $pick = is_array($chat['watch_party'] ?? null) ? $chat['watch_party'] : null;
+        $film = $pick !== null ? ($this->romanceFilm((string) $pick['film_id']) ?? $scheduled) : $scheduled;
+        return [
+            'chat_id' => (string) $chat['id'],
+            'scheduled' => $scheduled,
+            'film' => $film,
+            'custom_pick' => $pick !== null && $film['id'] !== $scheduled['id'],
+            'chosen_by' => $pick['chosen_by'] ?? null,
+        ];
+    }
+
+    /**
+     * Pick any film from the romance library for this chat's watch party
+     * (both partners see the same film), or pass 'daily' to go back to
+     * tonight's scheduled movie.
+     *
+     * @return array<string, mixed>
+     */
+    public function chooseWatchPartyFilm(string $chatId, string $userId, string $filmId, ?int $now = null): array
+    {
+        $now ??= time();
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the couple in this chat can pick its movie.');
+        }
+        if ($filmId === 'daily') {
+            unset($chat['watch_party']);
+        } else {
+            if ($this->romanceFilm($filmId) === null) {
+                throw new InvalidArgumentException('That film is not in the romance library.');
+            }
+            $chat['watch_party'] = ['film_id' => $filmId, 'chosen_by' => $userId, 'chosen_at' => $now];
+        }
+        $this->store->put('chats', (string) $chat['id'], $chat);
+        $this->logAnalytics('watch_party_pick', $userId, null, ['chat_id' => (string) $chat['id'], 'film_id' => $filmId], $now);
+        return $this->watchPartyFor((string) $chat['id'], $userId, $now);
+    }
+
+    /** @param array<string, mixed> $film @return array<string, mixed> */
+    private function presentFilm(array $film): array
+    {
+        $id = $film['youtube_id'] ?? null;
+        return $film + [
+            'playable' => $id !== null,
+            'embed_url' => $id !== null ? 'https://www.youtube-nocookie.com/embed/' . $id : null,
+            'watch_url' => $id !== null
+                ? 'https://www.youtube.com/watch?v=' . $id
+                : 'https://www.youtube.com/results?search_query=' . rawurlencode($film['title'] . ' ' . $film['year'] . ' full movie'),
+        ];
+    }
+
+    // ------------------------------------------------------------------
     // Webhooks & analytics
     // ------------------------------------------------------------------
 

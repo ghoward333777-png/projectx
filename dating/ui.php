@@ -71,6 +71,7 @@ function sd_page_open(string $title, string $eyebrow): void
             <a href="index.php">Member app</a>
             <a href="browse.php">Browse</a>
             <a href="earn.php">Perks &amp; income</a>
+            <a href="watch-party.php">Watch Party</a>
             <a href="features.php">Features</a>
             <a href="smart-dating.php">Smart Dating</a>
             <a href="site-tour.php">Site Tour</a>

@@ -28,6 +28,7 @@ $groups = [
         ['Niche communities', 'Creatives, tech founders, spiritual, single parents, LGBTQ+, fitness, travelers, entrepreneurs — each with its own member grid.'],
         ['Perks & income for popular members', 'Popular members earn: profile ad revenue, a paying Premium Members Only gallery, paid chat hours (4–8 h responding or initiating), cash back on partner-event dates, partner-scripted testimonial videos, and opt-ins for videoed dates, multi-player games, and future programs.'],
         ['Pictures come second', 'Real pictures reveal only after a pair\'s chat reaches the admin-set day (first day, second, third…) — first impressions run on common interests, not appearance. Premium members hold the Peek early perk and see every picture immediately.'],
+        ['Watch Party dates', 'A movie night on the web: a playlist of 1,000 romance films, one scheduled every day, a player with your slow chat right underneath — and the freedom to swap in any film from the library. Verified public-domain classics play in-page.'],
     ]],
     ['Safety, women first', [
         ['Filtering before trust', 'Contact data cannot leave a chat before the 30-day unlock — the scammer\'s rush tactic simply doesn\'t work here.'],

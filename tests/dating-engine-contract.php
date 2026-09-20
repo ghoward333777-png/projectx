@@ -627,6 +627,56 @@ contract_check($engine->earningsFor($alice['user_id'])['total'] === round($befor
 $portal = $engine->earnPortal($alice['user_id'], $tEarn + 300);
 contract_check(count($portal['programs']) === 9 && $portal['earnings_total'] > 0, 'the portal must report all programs and the ledger total');
 
+// ---- Watch Party & the romance library ------------------------------------------------
+$library = $engine->romanceFilms('', 100, 0);
+contract_check($library['total'] === 1000, 'the romance playlist must hold exactly 1,000 films');
+$ids = [];
+$page = 0;
+do {
+    $slice = $engine->romanceFilms('', 100, $page * 100);
+    foreach ($slice['films'] as $entry) {
+        $ids[(string) $entry['id']] = true;
+        contract_check($entry['rank'] >= 1 && $entry['rank'] <= 1000, 'every film must carry a playlist rank');
+    }
+    $page++;
+} while ($page < 10);
+contract_check(count($ids) === 1000, 'every film in the playlist must be unique');
+$playable = $engine->romanceFilms('charade', 10, 0);
+contract_check($playable['films'][0]['playable'] === true && str_contains((string) $playable['films'][0]['embed_url'], 'youtube-nocookie.com/embed/'), 'verified public-domain films must embed in-page');
+$searchOnly = $engine->romanceFilm('titanic-1997');
+contract_check($searchOnly !== null && $searchOnly['playable'] === false && str_contains((string) $searchOnly['watch_url'], 'results?search_query='), 'unverified films must open through a YouTube search');
+
+$daily = $engine->filmOfTheDay($tDay);
+contract_check($daily['id'] === $engine->filmOfTheDay($tDay + 3600)['id'], 'the scheduled movie must hold steady all day');
+$week = [];
+for ($d = 0; $d < 7; $d++) {
+    $week[$engine->filmOfTheDay($tDay + $d * 86400)['id']] = true;
+}
+contract_check(count($week) >= 4, 'the schedule must rotate through different films across a week');
+
+$party = $engine->watchPartyFor($chatId, $alice['user_id'], $tDay);
+contract_check($party['film']['id'] === $daily['id'] && $party['custom_pick'] === false, 'a fresh watch party must show the scheduled movie');
+$threw = false;
+try {
+    $engine->watchPartyFor($chatId, $dana['user_id'], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'outsiders must not join a couple\'s watch party');
+$threw = false;
+try {
+    $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'not-a-real-film', $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only library films can be picked');
+$party = $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'charade-1963', $tDay);
+contract_check($party['film']['id'] === 'charade-1963' && $party['chosen_by'] === $alice['user_id'], 'either partner can swap in any library film');
+$asBob = $engine->watchPartyFor($chatId, $bob['user_id'], $tDay);
+contract_check($asBob['film']['id'] === 'charade-1963', 'both partners must see the same picked film');
+$party = $engine->chooseWatchPartyFilm($chatId, $bob['user_id'], 'daily', $tDay);
+contract_check($party['film']['id'] === $daily['id'] && $party['custom_pick'] === false, 'the party must return to the scheduled movie on demand');
+
 // ---- Photo reveal timeframe & the Peek early perk ------------------------------------
 $threw = false;
 try {

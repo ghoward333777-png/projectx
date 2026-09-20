@@ -256,6 +256,18 @@ contract_check($status === 200 && $reviewed['status'] === 'accepted', 'partners 
 [$status, $mine] = call($api, 'GET', '/users/me/testimonials', [], [], $alice['token'], $t0 + 4600);
 contract_check($status === 200 && $mine[0]['status'] === 'accepted', 'members must track their submissions over the API');
 
+// ---- Watch Party over the API --------------------------------------------------------
+[$status, $films] = call($api, 'GET', '/films', ['query' => 'notebook', 'limit' => 5], [], $alice['token'], $t0);
+contract_check($status === 200 && $films['films'][0]['title'] === 'The Notebook', 'the romance library must search over the API');
+[$status, $daily] = call($api, 'GET', '/films/daily', [], [], $alice['token'], $t0);
+contract_check($status === 200 && isset($daily['id'], $daily['rank'], $daily['watch_url']), 'the scheduled movie must serve over the API');
+[$status, $party] = call($api, 'GET', '/chats/' . $chatId . '/watch-party', [], [], $alice['token'], $t0);
+contract_check($status === 200 && $party['film']['id'] === $daily['id'], 'the watch party must open on the scheduled movie');
+[$status, $party] = call($api, 'POST', '/chats/' . $chatId . '/watch-party', [], ['film_id' => 'charade-1963'], $bob['token'], $t0);
+contract_check($status === 200 && $party['film']['id'] === 'charade-1963' && $party['film']['playable'] === true, 'a couple must be able to pick any library film over the API');
+[$status] = call($api, 'GET', '/chats/' . $chatId . '/watch-party', [], [], $quietCarol['token'], $t0);
+contract_check($status === 422, 'outsiders must be kept out of a watch party over the API');
+
 // ---- Photo reveal setting over the API ----------------------------------------------
 [$status, $settings] = call($api, 'PATCH', '/admin/v1/settings', [], ['photo_reveal_days' => 3], $admin['token'], $t0);
 contract_check($status === 200 && $settings['photo_reveal_days'] === 3, 'admins must set the photo reveal timeframe over the API');

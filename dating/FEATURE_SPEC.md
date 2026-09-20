@@ -572,7 +572,41 @@ appearance.
 **API** — `GET /admin/v1/settings` returns `avatar_mode` + `photo_reveal_days`;
 `PATCH /admin/v1/settings` accepts either or both.
 
-## 34. Engineering invariants & tests
+## 34. Watch Party — the romance library and the movie-night date
+
+**Purpose** — A date the couple can have tonight, on the site: watch a romance film
+together and talk about it in their own chat.
+
+**The library (independent playlist)** — `dating/data/romance-films.json`: 1,000 real
+romance films ranked by curated popularity (icons first, then by era and subgenre),
+built deterministically by `bin/build-romance-library.php`. Twelve verified
+public-domain classics (Charade, His Girl Friday, My Man Godfrey, Penny Serenade,
+Made for Each Other, Love Affair, Royal Wedding, A Star Is Born '37, Nothing Sacred,
+Algiers, Cyrano de Bergerac '50, Second Chorus) carry a real `youtube_id` and play
+in an in-page embed; every other film opens through a YouTube search link so the
+couple uses the best available upload from the film's own distributors. The builder
+is the harvesting point: ops can extend it with the YouTube Data API (key optional
+by design) to refresh popularity order.
+
+**Rules**
+- **Scheduled movie**: `filmOfTheDay` — deterministic daily rotation
+  (`md5('watch-party.' + UTC date)` mod 1000), the same film for every couple on the
+  same day.
+- **Watch Party page** (`watch-party.php`, "Watch Party" in the nav): pick which chat
+  partner to watch with, the player (embed for verified films, an "Open on YouTube"
+  card otherwise), and the couple's chat box directly under the player. The chat is
+  the pair's normal slow chat — pacing limits, contact-data erasure, and red-flag
+  detection all apply mid-movie.
+- **Any film instead**: either partner can swap the party to any library film
+  (`chooseWatchPartyFilm`; both partners see the same pick, recorded with who chose
+  it) and back to the schedule (`film_id: "daily"`). Searchable, paged library on the
+  page (title / year / era).
+- Participants only: non-participants can neither read a party nor pick its film.
+
+**API** — `GET /films` (query, limit, offset), `GET /films/daily`,
+`GET|POST /chats/{id}/watch-party`.
+
+## 35. Engineering invariants & tests
 
 - **Determinism**: every time-dependent rule takes an explicit `$now`; identical inputs
   produce identical pacing, unlock, popularity, matching, targeting, and concierge

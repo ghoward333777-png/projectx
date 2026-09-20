@@ -345,6 +345,24 @@ final class SlowDatingApi
         if ($method === 'GET' && $path === '/users/me/testimonials') {
             return [200, $engine->testimonialsForMember($userId)];
         }
+        if ($method === 'GET' && $path === '/films') {
+            return [200, $engine->romanceFilms(
+                (string) ($query['query'] ?? ''),
+                (int) ($query['limit'] ?? 24),
+                (int) ($query['offset'] ?? 0),
+            )];
+        }
+        if ($method === 'GET' && $path === '/films/daily') {
+            return [200, $engine->filmOfTheDay($now)];
+        }
+        if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-party') {
+            if ($method === 'GET') {
+                return [200, $engine->watchPartyFor($segments[1], $userId, $now)];
+            }
+            if ($method === 'POST') {
+                return [200, $engine->chooseWatchPartyFilm($segments[1], $userId, (string) ($body['film_id'] ?? 'daily'), $now)];
+            }
+        }
         if ($method === 'POST' && $path === '/users/me/billing/subscribe') {
             return [200, $engine->subscribeMembership($userId, (string) ($body['tier'] ?? 'member'), $now)];
         }
