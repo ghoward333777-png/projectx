@@ -315,14 +315,26 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         $overrideSrc = $override !== null
             ? $override . (str_contains($override, '?') ? '&' : '?') . 'enablejsapi=1'
             : null;
+        // The up-next playlist rides along ONLY on curated, verified
+        // films. On a search-resolved id it must never be attached:
+        // when a main video refuses to embed, YouTube silently plays
+        // the FIRST playlist item instead — the "every pick shows the
+        // same movie" bug. A broken resolved id now shows YouTube's
+        // own error, honestly, and the couple picks something else.
+        $curated = !empty($film['youtube_id']) && !isset($film['channel']);
         $filmSrc = !empty($film['embed_url'])
             ? (string) $film['embed_url'] . '?rel=0&enablejsapi=1'
-                . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : '')
+                . ($curated && $party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : '')
             : null;
+        // NOTE: YouTube IGNORES the index= URL parameter on playlist
+        // embeds — the only way to land on a slot is the player API's
+        // playVideoAt command, sent by the script below ($wpSlot).
+        $wpSlot = null;
         if ($party['custom_pick'] && $filmSrc !== null) {
             $embedSrc = $filmSrc;
         } elseif ($party['custom_pick'] && $overrideSrc !== null) {
-            $embedSrc = $overrideSrc . '&index=' . ((int) $film['rank'] % 60) . '&autoplay=1';
+            $embedSrc = $overrideSrc . '&autoplay=1';
+            $wpSlot = (int) $film['rank'] % 60;
         } else {
             $embedSrc = $overrideSrc ?? $filmSrc;
         }
@@ -522,15 +534,35 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             }, 7000);
         }
 
-        // ---- Local playlist rotation: swap the player's src in place. ----
+        // ---- Playlist slot control. YouTube ignores index= on playlist
+        // embeds, so slots are reached by commanding the RUNNING player
+        // with playVideoAt — never by reloading the iframe. ----
         var player = document.getElementById('wp-player');
-        var rotBase = <?= json_encode($overrideSrc) ?>;
-        var rotIndex = <?= $party['custom_pick'] ? ((int) $film['rank'] % 60) : 0 ?>;
+        var plIndex = -1;
+        window.addEventListener('message', function (event) {
+            try {
+                var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data && data.info && typeof data.info.playlistIndex === 'number') { plIndex = data.info.playlistIndex; }
+            } catch (ignored) {}
+        });
+        function wpPlaySlot(slot) {
+            var tries = 0;
+            var timer = setInterval(function () {
+                if (!player || plIndex === slot || tries++ > 10) { clearInterval(timer); return; }
+                if (player.contentWindow) {
+                    player.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
+                    player.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideoAt', args: [slot] }), '*');
+                }
+            }, 700);
+        }
+        var wpSlot = <?= json_encode($wpSlot) ?>;
+        if (wpSlot !== null) { wpPlaySlot(wpSlot); }
+        var rotIndex = <?= $wpSlot !== null ? $wpSlot : 0 ?>;
         document.querySelectorAll('button[data-wprot]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var step = btn.getAttribute('data-wprot');
                 rotIndex = step === 'r' ? Math.floor(Math.random() * 60) : (rotIndex + parseInt(step, 10) + 60) % 60;
-                if (player && rotBase) { player.src = rotBase + '&index=' + rotIndex + '&autoplay=1'; }
+                wpPlaySlot(rotIndex);
             });
         });
 
