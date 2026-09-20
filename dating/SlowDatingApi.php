@@ -430,6 +430,14 @@ final class SlowDatingApi
                 }
             }
         }
+        if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-game') {
+            if ($method === 'GET') {
+                return [200, $engine->watchGame($segments[1], $userId)];
+            }
+            if ($method === 'POST') {
+                return [200, $engine->setWatchGame($segments[1], $userId, (string) ($body['game'] ?? ''), (array) ($body['state'] ?? []), $now)];
+            }
+        }
         if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-sync') {
             if ($method === 'GET') {
                 return [200, $engine->watchSync($segments[1], $userId)];

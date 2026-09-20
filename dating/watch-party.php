@@ -75,6 +75,18 @@ if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'messages') {
     exit;
 }
 
+// Background games: the couple's one shared game state, polled by both.
+if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'game') {
+    header('Content-Type: application/json');
+    header('Cache-Control: private, no-store');
+    try {
+        echo json_encode($engine->watchGame($chatId, $userId));
+    } catch (Throwable) {
+        echo '{}';
+    }
+    exit;
+}
+
 // Premium rooms: the shared timecode authority, polled by both players.
 if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'sync') {
     header('Content-Type: application/json');
@@ -111,6 +123,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                     header('Content-Type: text/html; charset=utf-8');
                     header('Cache-Control: private, no-store');
                     echo wp_messages_html($engine, (string) ($_POST['chat_id'] ?? ''), $userId);
+                    exit;
+                }
+                break;
+            case 'game':
+                $gameState = json_decode((string) ($_POST['state'] ?? '{}'), true);
+                $gameResult = $engine->setWatchGame(
+                    (string) ($_POST['chat_id'] ?? ''),
+                    $userId,
+                    (string) ($_POST['game'] ?? ''),
+                    is_array($gameState) ? $gameState : [],
+                );
+                if ($ajax) {
+                    header('Content-Type: application/json');
+                    echo json_encode($gameResult);
                     exit;
                 }
                 break;
@@ -206,6 +232,23 @@ sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
     }
     #watchparty .send-btn:hover { background: #3b82f6; }
     #watchparty .hint { font-size: 11.5px; color: #9ca3af; }
+    /* Background games: a semi-transparent pop-up that floats over the
+       page — play while watching and chatting, nothing pauses. */
+    #wpg { position: fixed; top: 12%; right: 4%; width: 300px; z-index: 1000;
+        background: rgba(10, 8, 16, .68); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+        border: 1px solid rgba(255, 156, 192, .35); border-radius: 14px; padding: 12px; color: #fff; }
+    #wpg h3 { margin: 0; font-size: 14px; }
+    #wpg .wpg-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    #wpg .wpg-top button, #wpg .wpg-menu button, #wpg .wpg-body button { margin: 0; padding: 5px 10px; font-size: 12px;
+        border-radius: 8px; background: rgba(255, 255, 255, .14); color: #fff; }
+    #wpg .wpg-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    #wpg .wpg-menu button { text-align: left; padding: 8px 10px; }
+    #wpg .wpg-menu small { display: block; color: #c9bfd2; font-weight: 400; font-size: 10.5px; }
+    #wpg .wpg-status { font-size: 12px; color: #ffc4da; margin: 6px 0; min-height: 15px; }
+    #wpg .wpg-grid { display: grid; gap: 4px; }
+    #wpg .wpg-cell { display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .09);
+        border-radius: 7px; cursor: pointer; user-select: none; font-size: 22px; }
+    #wpg .wpg-cell:hover { background: rgba(255, 255, 255, .18); }
 </style>
 <?php
 sd_flash($error, $notice);
@@ -459,6 +502,7 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <div class="chat">
         <div class="chat-header">
             <h2>Watching with <?= sd_e($otherName) ?></h2>
+            <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da">🎲 Games</button>
             <span>
                 <?php if ($status['unlocked']): ?>
                     Real-time chat · contact sharing open
@@ -505,6 +549,19 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         </div>
     </div>
 </div>
+<!-- Background games pop-up: floats over player + chat, never pauses either. -->
+<div id="wpg" hidden>
+    <div class="wpg-top">
+        <h3 id="wpg-title">🎲 Background games</h3>
+        <div>
+            <button type="button" id="wpg-menu-btn" title="All games">☰</button>
+            <button type="button" id="wpg-close" title="Close">✕</button>
+        </div>
+    </div>
+    <div class="wpg-status" id="wpg-status">Pick a game — you can keep chatting and watching.</div>
+    <div id="wpg-body"></div>
+</div>
+
 <script>
     (function () {
         // Newest messages render first, so the log stays put at the top —
@@ -570,6 +627,262 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                     .catch(function () { /* transient network hiccup — the next poll retries */ });
             }, 7000);
         }
+
+        // Games adapter (live site): the couple's shared state on the chat.
+        var WPG_ME = <?= json_encode($userId) ?>;
+        var WPG_PARTNER = <?= json_encode($otherName) ?>;
+        var WPG_PLAYERS = <?= json_encode(array_values((array) $chat['participants'])) ?>;
+        var WPG_CHAT = <?= json_encode($chatId) ?>;
+        function WPG_PUSH(game, state, ack) {
+            var data = new FormData();
+            data.append('action', 'game');
+            data.append('ajax', '1');
+            data.append('chat_id', WPG_CHAT);
+            data.append('game', game);
+            data.append('state', JSON.stringify(state));
+            fetch('watch-party.php', { method: 'POST', body: data, credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) { if (d && d.updated_at) { ack(d.updated_at); } })
+                .catch(function () {});
+        }
+        function WPG_POLL(apply) {
+            setInterval(function () {
+                fetch('watch-party.php?fragment=game&chat=' + encodeURIComponent(WPG_CHAT), { credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(apply)
+                    .catch(function () {});
+            }, 3500);
+        }
+
+        // ---- Background games: shared state on the chat, both players
+        // poll it — the movie and the chat never pause for a move. ----
+        (function () {
+            var box = document.getElementById('wpg');
+            if (!box) { return; }
+            var me = WPG_ME;
+            var partnerName = WPG_PARTNER;
+            var players = WPG_PLAYERS;
+            var chatRef = WPG_CHAT;
+            var seat = Math.max(0, players.indexOf(me));
+            var bodyEl = document.getElementById('wpg-body');
+            var statusEl = document.getElementById('wpg-status');
+            var titleEl = document.getElementById('wpg-title');
+            var current = '';
+            var state = null;
+            var lastApplied = 0;
+            function rng(seed) { return function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+            function shuffled(list, seed) {
+                var copy = list.slice(); var r = rng(seed);
+                for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)); var t = copy[i]; copy[i] = copy[j]; copy[j] = t; }
+                return copy;
+            }
+            var WYR = [['Travel the world for a year', 'Buy a home right now'], ['Always know the movie ending', 'Never see a spoiler again'],
+                ['Dinner and dancing', 'Blanket fort and takeout'], ['Live by the ocean', 'Live in the mountains'],
+                ['Re-live your best day', 'Preview one day of the future'], ['Only sunrise dates', 'Only midnight dates'],
+                ['Sing everything you say', 'Dance everywhere you walk'], ['Cook together every night', 'Eat out every night'],
+                ['A road trip with no map', 'A planned trip, every detail'], ['Love letters only', 'Voice notes only']];
+            var TRIVIA = [['Which film says "You had me at hello"?', ['Jerry Maguire', 'Notting Hill', 'Ghost'], 0],
+                ['Casablanca is set in which country?', ['Morocco', 'France', 'Egypt'], 0],
+                ['In Titanic, Jack draws Rose wearing.', ['The Heart of the Ocean', 'A red scarf', 'A tiara'], 0],
+                ['The Notebook couple are Noah and.', ['Allie', 'Emma', 'Rose'], 0],
+                ['"To me, you are perfect" is from.', ['Love Actually', 'About Time', 'The Holiday'], 0],
+                ['Audrey Hepburn stars in.', ['Charade', 'Pillow Talk', 'Gilda'], 0],
+                ['Dirty Dancing: "Nobody puts ___ in a corner"', ['Baby', 'Frances', 'Penny'], 0],
+                ['When Harry Met Sally ends on.', ['New Year\'s Eve', 'Valentine\'s Day', 'Christmas'], 0]];
+            var BINGO_POOL = ['A kiss', 'Car chase', 'Plot twist', 'Sunset shot', 'Dance scene', 'Phone call', 'Rain scene', 'Flashback',
+                'Wedding', 'Airport run', 'Slow motion', 'Tears', 'Big laugh', 'Song moment', 'A letter', '"I love you"'];
+            var MEMO = ['❤️', '🌹', '🍷', '🎬', '🌙', '🎵', '☕', '💌'];
+            var GAMES = {
+                tictactoe: { name: 'Tic-Tac-Toe', tag: 'ultra-simple idle play',
+                    init: function () { return { b: ['', '', '', '', '', '', '', '', ''], n: 0, over: '' }; } },
+                connect4: { name: 'Connect Four', tag: 'drop tokens, four in a row',
+                    init: function () { var b = []; for (var i = 0; i < 42; i++) { b.push(0); } return { b: b, n: 0, over: 0 }; } },
+                memory: { name: 'Memory Match', tag: 'flip cards, find pairs',
+                    init: function () { return { seed: Date.now() % 1000000, up: [], done: [], n: 0, score: [0, 0] }; } },
+                wyr: { name: 'Would You Rather', tag: 'conversation cards',
+                    init: function () { return { i: Math.floor(Math.random() * WYR.length), picks: {} }; } },
+                trivia: { name: 'Trivia', tag: 'one easy question at a time',
+                    init: function () { return { i: Math.floor(Math.random() * TRIVIA.length), picks: {} }; } },
+                bingo: { name: 'Scene Bingo', tag: 'tap events as they happen',
+                    init: function () { return { seed: Date.now() % 1000000, marks: {} }; } },
+            };
+            function turnOf(s) { return s.n % 2; }
+            function myTurn(s) { return turnOf(s) === seat; }
+            function escapeHtml(text) { var d = document.createElement('span'); d.textContent = String(text); return d.innerHTML; }
+            function status(text) { statusEl.textContent = text; }
+            function menu() {
+                current = '';
+                titleEl.textContent = '🎲 Background games';
+                status('Pick a game - you can keep chatting and watching.');
+                var html = '';
+                for (var key in GAMES) {
+                    html += '<button data-wpg-pick="' + key + '"><strong>' + GAMES[key].name + '</strong><small>' + GAMES[key].tag + '</small></button>';
+                }
+                bodyEl.innerHTML = '<div class="wpg-menu">' + html + '</div>';
+            }
+            function render() {
+                if (!current || !state) { menu(); return; }
+                titleEl.textContent = '🎲 ' + GAMES[current].name;
+                var html = '';
+                var i;
+                if (current === 'tictactoe') {
+                    var sym = ['X', 'O'];
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(3,1fr)">';
+                    for (i = 0; i < 9; i++) { html += '<div class="wpg-cell" style="height:56px" data-wpg-m="' + i + '">' + (state.b[i] || '') + '</div>'; }
+                    html += '</div>';
+                    status(state.over ? (state.over === 'draw' ? 'Draw!' : state.over + ' wins!')
+                        : (myTurn(state) ? 'Your move - you are ' + sym[seat] : partnerName + "'s move (" + sym[1 - seat] + ')'));
+                } else if (current === 'connect4') {
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(7,1fr)">';
+                    for (i = 0; i < 42; i++) {
+                        var token = state.b[i] === 1 ? '🔴' : state.b[i] === 2 ? '🟡' : '';
+                        html += '<div class="wpg-cell" style="height:32px;font-size:16px" data-wpg-m="' + (i % 7) + '">' + token + '</div>';
+                    }
+                    html += '</div>';
+                    status(state.over ? (state.over === 3 ? 'Draw!' : (state.over === 1 ? 'Red' : 'Yellow') + ' wins!')
+                        : (myTurn(state) ? 'Your drop - you are ' + (seat === 0 ? 'red' : 'yellow') : partnerName + "'s drop"));
+                } else if (current === 'memory') {
+                    var deck = shuffled(MEMO.concat(MEMO), state.seed);
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(4,1fr)">';
+                    for (i = 0; i < 16; i++) {
+                        var shown = state.done.indexOf(i) >= 0 || state.up.indexOf(i) >= 0;
+                        html += '<div class="wpg-cell" style="height:44px" data-wpg-m="' + i + '">' + (shown ? deck[i] : '❔') + '</div>';
+                    }
+                    html += '</div>';
+                    status('You ' + state.score[seat] + ' · ' + partnerName + ' ' + state.score[1 - seat]
+                        + (state.done.length === 16 ? ' - finished!' : (myTurn(state) ? ' · your turn' : ' · their turn')));
+                } else if (current === 'wyr') {
+                    var pair = WYR[state.i % WYR.length];
+                    var mine = state.picks[me];
+                    html = '<p style="font-size:13px;margin:0 0 8px">Would you rather.</p>'
+                        + '<button style="display:block;width:100%;margin-bottom:6px' + (mine === 0 ? ';background:#4a2440' : '') + '" data-wpg-m="0">' + escapeHtml(pair[0]) + '</button>'
+                        + '<button style="display:block;width:100%' + (mine === 1 ? ';background:#4a2440' : '') + '" data-wpg-m="1">' + escapeHtml(pair[1]) + '</button>'
+                        + '<button style="margin-top:8px" data-wpg-m="next">Next card →</button>';
+                    var theirs = state.picks[players[1 - seat]];
+                    status(mine === undefined ? 'Tap your pick - talk it out!'
+                        : (theirs === undefined ? 'Waiting for ' + partnerName + '.'
+                            : (mine === theirs ? 'Same pick - you two agree!' : 'Opposite picks - discuss!')));
+                } else if (current === 'trivia') {
+                    var q = TRIVIA[state.i % TRIVIA.length];
+                    var picked = state.picks[me];
+                    html = '<p style="font-size:13px;margin:0 0 8px">' + escapeHtml(q[0]) + '</p>';
+                    for (i = 0; i < q[1].length; i++) {
+                        var mark = picked !== undefined ? (i === q[2] ? ' ✓' : (i === picked ? ' ✗' : '')) : '';
+                        html += '<button style="display:block;width:100%;margin-bottom:6px' + (picked !== undefined && i === q[2] ? ';background:#17351f' : '') + '" data-wpg-m="' + i + '">' + escapeHtml(q[1][i]) + mark + '</button>';
+                    }
+                    html += '<button style="margin-top:4px" data-wpg-m="next">Next question →</button>';
+                    status(picked === undefined ? 'No pressure - one question at a time.' : (picked === q[2] ? 'Right!' : 'The answer: ' + q[1][q[2]]));
+                } else if (current === 'bingo') {
+                    var card = shuffled(BINGO_POOL, state.seed + seat * 7919);
+                    var marks = state.marks[me] || [];
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(4,1fr)">';
+                    for (i = 0; i < 16; i++) {
+                        html += '<div class="wpg-cell" style="height:44px;font-size:9.5px;text-align:center;padding:2px'
+                            + (marks.indexOf(i) >= 0 ? ';background:#4a2440' : '') + '" data-wpg-m="' + i + '">' + escapeHtml(card[i]) + '</div>';
+                    }
+                    html += '</div>';
+                    var lines = [[0,1,2,3],[4,5,6,7],[8,9,10,11],[12,13,14,15],[0,4,8,12],[1,5,9,13],[2,6,10,14],[3,7,11,15],[0,5,10,15],[3,6,9,12]];
+                    var bingo = lines.some(function (line) { return line.every(function (cell) { return marks.indexOf(cell) >= 0; }); });
+                    var theirMarks = (state.marks[players[1 - seat]] || []).length;
+                    status(bingo ? 'BINGO! Tell ' + partnerName + '!' : 'Tap events as they happen · ' + partnerName + ' has ' + theirMarks + ' marked');
+                }
+                bodyEl.innerHTML = html + '<p style="margin:8px 0 0"><button data-wpg-reset="1">↺ New round</button></p>';
+            }
+            function push() { WPG_PUSH(current, state, function (at) { lastApplied = at; }); }
+            function ticWin(b) {
+                var wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+                for (var w = 0; w < wins.length; w++) {
+                    var a = wins[w];
+                    if (b[a[0]] && b[a[0]] === b[a[1]] && b[a[0]] === b[a[2]]) { return b[a[0]]; }
+                }
+                return b.every(function (cell) { return cell; }) ? 'draw' : '';
+            }
+            function c4Win(b, who) {
+                for (var r = 0; r < 6; r++) {
+                    for (var c = 0; c < 7; c++) {
+                        var dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+                        for (var d = 0; d < 4; d++) {
+                            var hit = 0;
+                            for (var k = 0; k < 4; k++) {
+                                var rr = r + dirs[d][0] * k, cc = c + dirs[d][1] * k;
+                                if (rr >= 0 && rr < 6 && cc >= 0 && cc < 7 && b[rr * 7 + cc] === who) { hit++; }
+                            }
+                            if (hit === 4) { return true; }
+                        }
+                    }
+                }
+                return false;
+            }
+            function move(action) {
+                if (!current || !state) { return; }
+                var i;
+                if (current === 'tictactoe') {
+                    i = +action;
+                    if (state.over || state.b[i] || !myTurn(state)) { return; }
+                    state.b[i] = seat === 0 ? 'X' : 'O';
+                    state.n++;
+                    state.over = ticWin(state.b);
+                } else if (current === 'connect4') {
+                    if (state.over || !myTurn(state)) { return; }
+                    var col = +action, row = -1;
+                    for (i = 5; i >= 0; i--) { if (!state.b[i * 7 + col]) { row = i; break; } }
+                    if (row < 0) { return; }
+                    var who = seat + 1;
+                    state.b[row * 7 + col] = who;
+                    state.n++;
+                    if (c4Win(state.b, who)) { state.over = who; } else if (state.n === 42) { state.over = 3; }
+                } else if (current === 'memory') {
+                    i = +action;
+                    if (!myTurn(state) || state.done.indexOf(i) >= 0 || state.up.indexOf(i) >= 0 || state.up.length === 2) { return; }
+                    state.up.push(i);
+                    if (state.up.length === 2) {
+                        var deck = shuffled(MEMO.concat(MEMO), state.seed);
+                        var a = state.up[0], b = state.up[1];
+                        if (deck[a] === deck[b]) {
+                            state.done.push(a, b); state.score[seat]++; state.up = [];
+                        } else {
+                            render(); push();
+                            setTimeout(function () { state.up = []; state.n++; render(); push(); }, 1100);
+                            return;
+                        }
+                    }
+                } else if (current === 'wyr') {
+                    if (action === 'next') { state = { i: (state.i + 1) % WYR.length, picks: {} }; }
+                    else { state.picks[me] = +action; }
+                } else if (current === 'trivia') {
+                    if (action === 'next') { state = { i: (state.i + 1) % TRIVIA.length, picks: {} }; }
+                    else if (state.picks[me] === undefined) { state.picks[me] = +action; }
+                } else if (current === 'bingo') {
+                    i = +action;
+                    var marks = state.marks[me] || [];
+                    var at = marks.indexOf(i);
+                    if (at >= 0) { marks.splice(at, 1); } else { marks.push(i); }
+                    state.marks[me] = marks;
+                }
+                render();
+                push();
+            }
+            document.getElementById('wpg-open').addEventListener('click', function () { box.hidden = false; if (!current) { menu(); } });
+            document.getElementById('wpg-close').addEventListener('click', function () { box.hidden = true; });
+            document.getElementById('wpg-menu-btn').addEventListener('click', menu);
+            box.addEventListener('click', function (event) {
+                var pick = event.target.closest('[data-wpg-pick]');
+                if (pick) { current = pick.getAttribute('data-wpg-pick'); state = GAMES[current].init(); render(); push(); return; }
+                var reset = event.target.closest('[data-wpg-reset]');
+                if (reset) { state = GAMES[current].init(); render(); push(); return; }
+                var action = event.target.closest('[data-wpg-m]');
+                if (action) { move(action.getAttribute('data-wpg-m')); }
+            });
+            WPG_POLL(function (d) {
+                if (!d || !d.updated_at || d.updated_at <= lastApplied || d.set_by === me) { return; }
+                lastApplied = d.updated_at;
+                current = d.game;
+                state = d.state;
+                if (!box.hidden) { render(); }
+                else if (d.game) { box.hidden = false; render(); }
+            });
+            window.WPG_TEST = { open: function () { box.hidden = false; menu(); }, pick: function (k) { current = k; state = GAMES[k].init(); render(); }, move: move, get: function () { return { current: current, state: state, seat: seat }; } };
+        })();
 
         // ---- Playlist slot control. YouTube ignores index= on playlist
         // embeds, so slots are reached by commanding the RUNNING player

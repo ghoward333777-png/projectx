@@ -127,6 +127,12 @@ contract_check($status === 200 && $syncSet['playing'] === true, 'a partner must 
 [$status, $syncGet] = call($api, 'GET', '/chats/' . $chatId . '/watch-sync', [], [], $bob['token'], $t0 + 4001);
 contract_check($status === 200 && $syncGet['video'] === 'Notting Hill (1999)', 'the other partner reads the same sync state over the API');
 
+// ---- Background games over the API ---------------------------------------------------
+[$status, $gameSet] = call($api, 'POST', '/chats/' . $chatId . '/watch-game', [], ['game' => 'bingo', 'state' => ['seed' => 42, 'marks' => []]], $alice['token'], $t0 + 4100);
+contract_check($status === 200 && $gameSet['game'] === 'bingo', 'a partner must set the shared game over the API');
+[$status, $gameGet] = call($api, 'GET', '/chats/' . $chatId . '/watch-game', [], [], $bob['token'], $t0 + 4101);
+contract_check($status === 200 && $gameGet['state']['seed'] === 42, 'the other partner reads the same game over the API');
+
 // ---- Advanced Watch Party over the API ------------------------------------------------
 [$status, $advRoom] = call($api, 'POST', '/advanced-rooms', [], [
     'mode' => 'friends', 'theme' => 'neon', 'video_url' => 'https://youtu.be/jpejUwKLmfg',

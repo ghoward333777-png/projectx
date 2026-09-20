@@ -771,6 +771,26 @@ try {
 contract_check($threw, 'unknown channel entries are rejected');
 $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'daily', $tDay);
 
+// ---- Background games: one shared state per chat ---------------------------------
+$game = $engine->setWatchGame($chatId, $alice['user_id'], 'tictactoe', ['b' => ['X', '', '', '', '', '', '', '', ''], 'n' => 1, 'over' => ''], $tDay);
+contract_check($game['game'] === 'tictactoe' && $game['set_by'] === $alice['user_id'], 'a partner stores the shared game state');
+$read = $engine->watchGame($chatId, $bob['user_id']);
+contract_check($read['state']['b'][0] === 'X' && $read['updated_at'] === $tDay, 'the other partner reads the same game state');
+$threw = false;
+try {
+    $engine->setWatchGame($chatId, $alice['user_id'], 'poker', [], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown games are rejected');
+$threw = false;
+try {
+    $engine->watchGame($chatId, $carol['user_id']);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'non-participants never see a chat\'s game');
+
 // ---- Premium together: rom-com playlist + the shared timecode authority ---------
 $romcoms = $engine->premiumRomcoms();
 contract_check(count($romcoms) >= 12, 'the Premium rooms carry a curated rom-com playlist');

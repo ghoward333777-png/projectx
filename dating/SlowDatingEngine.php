@@ -4160,6 +4160,50 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Watch Party background games — small two-player games that float
+    // over the page in a semi-transparent pop-up while the couple talks
+    // and watches. One shared state per chat; both players poll it.
+    // ------------------------------------------------------------------
+
+    public const WATCH_GAMES = ['tictactoe', 'connect4', 'memory', 'wyr', 'trivia', 'bingo'];
+
+    /**
+     * Store the couple's current game state (participants only). The
+     * state is the game module's own JSON — the server just keeps the
+     * one shared copy both players follow.
+     *
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
+    public function setWatchGame(string $chatId, string $userId, string $game, array $state, ?int $now = null): array
+    {
+        $now ??= time();
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the couple in this chat plays its games.');
+        }
+        if (!in_array($game, self::WATCH_GAMES, true)) {
+            throw new InvalidArgumentException('The games are ' . implode(', ', self::WATCH_GAMES) . '.');
+        }
+        if (strlen((string) json_encode($state)) > 8192) {
+            throw new InvalidArgumentException('Game state too large.');
+        }
+        $chat['watch_game'] = ['game' => $game, 'state' => $state, 'set_by' => $userId, 'updated_at' => $now];
+        $this->store->put('chats', (string) $chat['id'], $chat);
+        return ['chat_id' => (string) $chat['id']] + $chat['watch_game'];
+    }
+
+    /** @return array<string, mixed> The chat's current game (participants only). */
+    public function watchGame(string $chatId, string $userId): array
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the couple in this chat sees its games.');
+        }
+        return (array) ($chat['watch_game'] ?? ['game' => '', 'state' => [], 'set_by' => '', 'updated_at' => 0]);
+    }
+
+    // ------------------------------------------------------------------
     // Advanced Watch Party — a separate product from the couple's Watch
     // Party. Standalone paid rooms (BYOYA: each viewer signs into their
     // own YouTube account, so YouTube Premium plays ad-free on their own
