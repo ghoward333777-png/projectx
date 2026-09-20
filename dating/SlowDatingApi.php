@@ -204,6 +204,13 @@ final class SlowDatingApi
                 $engine->chatsFor($userId),
             )];
         }
+        if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'images') {
+            $bytes = base64_decode((string) ($body['image_base64'] ?? ''), true);
+            if ($bytes === false) {
+                return [422, ['error_code' => 'invalid_request', 'message' => 'image_base64 must be valid base64.']];
+            }
+            return [201, $engine->sendImageMessage($segments[1], $userId, $bytes, (string) ($body['mime'] ?? ''), (string) ($body['caption'] ?? ''), $now)];
+        }
         if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'messages') {
             if ($method === 'POST') {
                 return [201, $engine->sendMessage($segments[1], $userId, (string) ($body['text'] ?? ''), $now)];

@@ -332,6 +332,26 @@ $engine->setAvatarMode($admin['admin_id'], 'uploads');
 contract_check($engine->avatarMode() === 'uploads', 'admins can switch to uploaded images');
 $engine->setAvatarMode($admin['admin_id'], 'generated');
 
+// ---- Chat image sharing -----------------------------------------------------------
+$before = $engine->popularityBreakdown($alice['user_id'], $t0 + 40 * 86400)['metrics']['photo_received'];
+$shared = $engine->sendImageMessage($chatId, $bob['user_id'], $png, 'image/png', 'Sunset from my run: call me at 310-555-9999', $t0 + 40 * 86400);
+contract_check(isset($shared['image']['file']), 'shared images must be stored with the message');
+contract_check(str_contains($shared['text'], 'call me at'), 'captions in unlocked chats flow unfiltered');
+$after = $engine->popularityBreakdown($alice['user_id'], $t0 + 40 * 86400)['metrics']['photo_received'];
+contract_check($after === $before + 1, 'sharing an image credits the recipient a photo_received event');
+contract_check($engine->chatImage($chatId, (string) $shared['message_id'], $alice['user_id']) !== null, 'participants can retrieve a shared image');
+contract_check($engine->chatImage($chatId, (string) $shared['message_id'], $carol['user_id']) === null, 'non-participants never retrieve shared images');
+$lockedChat = $engine->startChat($carol['user_id'], $bob['user_id'], $t0 + 40 * 86400);
+$lockedShare = $engine->sendImageMessage((string) $lockedChat['id'], $carol['user_id'], $png, 'image/png', 'my email is carol@fast.example', $t0 + 40 * 86400 + 60);
+contract_check(!str_contains($lockedShare['text'], 'carol@fast'), 'captions are contact-filtered before unlock');
+$threw = false;
+try {
+    $engine->sendImageMessage($chatId, $bob['user_id'], 'not an image', 'image/png', '', $t0 + 40 * 86400);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'shared image bytes must match the declared type');
+
 // ---- Webhooks -----------------------------------------------------------------
 $hook = $engine->ingestTicketWebhook([
     'event_id' => (string) $event['id'], 'external_ticket_id' => 'tix_987',

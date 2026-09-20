@@ -88,6 +88,13 @@ contract_check($status === 200 && $choice['image_choice'] === 'private', 'a memb
 [$status] = call($api, 'POST', '/chats/' . $chatId . '/image', [], ['choice' => 'public'], $bob['token'], $t0);
 contract_check($status === 422, 'choosing a picture that is not uploaded must fail over the API');
 
+[$status, $sharedImage] = call($api, 'POST', '/chats/' . $chatId . '/images', [], [
+    'image_base64' => base64_encode($png), 'mime' => 'image/png', 'caption' => 'coffee spot',
+], $alice['token'], $t0 + 3600);
+contract_check($status === 201 && isset($sharedImage['image']['file']), 'images must be shareable in chat over the API');
+[$status] = call($api, 'POST', '/chats/' . $chatId . '/images', [], ['image_base64' => '!!!', 'mime' => 'image/png'], $alice['token'], $t0 + 3600);
+contract_check($status === 422, 'invalid base64 must be rejected');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',

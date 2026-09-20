@@ -69,6 +69,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : 'Real picture saved.';
                 }
                 break;
+            case 'share_image':
+                if ($userId !== null) {
+                    $upload = $_FILES['image'] ?? null;
+                    if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                        throw new InvalidArgumentException('Choose a JPEG, PNG, or WebP image up to 2 MB.');
+                    }
+                    $engine->sendImageMessage(
+                        (string) ($_POST['chat_id'] ?? ''),
+                        $userId,
+                        (string) file_get_contents((string) $upload['tmp_name']),
+                        (string) $upload['type'],
+                        (string) ($_POST['caption'] ?? ''),
+                    );
+                    $notice = 'Image shared — only the two of you can see it.';
+                }
+                break;
             case 'chat_image':
                 if ($userId !== null) {
                     $result = $engine->setChatImageChoice((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['choice'] ?? ''));
@@ -372,6 +388,10 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
             <div class="chat-log">
                 <?php foreach ((array) $chat['messages'] as $message): ?>
                     <div class="msg <?= $message['sender_id'] === $userId ? 'mine' : 'theirs' ?>">
+                        <?php if (isset($message['image'])): ?>
+                            <img src="chatimage.php?chat=<?= urlencode($chatId) ?>&amp;m=<?= urlencode((string) $message['message_id']) ?>"
+                                 alt="Shared image" style="display:block;max-width:220px;border-radius:10px;margin-bottom:<?= $message['text'] !== '' ? '6px' : '0' ?>">
+                        <?php endif; ?>
                         <?= sd_e((string) $message['text']) ?>
                         <small><?= gmdate('M j H:i', (int) $message['sent_at']) ?><?= ((int) $message['contact_data_removed']) > 0 ? ' · contact info removed' : '' ?></small>
                     </div>
@@ -383,6 +403,16 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
                 <label>Message<?= $status['unlocked'] ? '' : ' (max ' . (int) $status['message_size_limit'] . ' characters)' ?></label>
                 <textarea name="text" <?= $status['unlocked'] ? '' : 'maxlength="' . (int) $status['message_size_limit'] . '"' ?>></textarea>
                 <button type="submit">Send</button>
+            </form>
+            <form method="post" enctype="multipart/form-data" style="margin-top:10px">
+                <input type="hidden" name="action" value="share_image">
+                <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
+                <label>Share an image (JPEG, PNG, or WebP · max 2 MB · visible only to the two of you<?= $status['unlocked'] ? '' : ' · counts toward today\'s messages' ?>)</label>
+                <div class="grid" style="grid-template-columns:1fr 1fr auto;align-items:center;gap:10px">
+                    <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
+                    <input name="caption" placeholder="Optional caption">
+                    <button type="submit" class="act small" style="margin-top:0">Share</button>
+                </div>
             </form>
             <?php $suggestions = $engine->conciergeSuggestions($chatId); ?>
             <?php if ($suggestions !== []): ?>

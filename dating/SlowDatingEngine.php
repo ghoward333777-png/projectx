@@ -687,6 +687,105 @@ final class SlowDatingEngine
         return ['text' => $text, 'redactions' => $redactions];
     }
 
+    /**
+     * Share an image in a chat (JPEG, PNG, or WebP, max 2 MB, optional
+     * caption). An image message counts against the slow-chat daily quota
+     * like any other message; captions pass through the contact-data
+     * filter before unlock and red-flag detection always; the recipient
+     * is credited a photo_received popularity event. The file is visible
+     * only to the two participants (served by chatimage.php).
+     *
+     * @return array<string, mixed>
+     */
+    public function sendImageMessage(string $chatId, string $senderId, string $bytes, string $mime, string $caption = '', ?int $now = null): array
+    {
+        $now ??= time();
+        $chat = $this->requireChat($chatId);
+        if (!in_array($senderId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only chat participants can share images.');
+        }
+        $type = self::PHOTO_TYPES[strtolower(trim($mime))] ?? null;
+        if ($type === null) {
+            throw new InvalidArgumentException('Shared images must be JPEG, PNG, or WebP.');
+        }
+        if ($bytes === '' || strlen($bytes) > self::PHOTO_MAX_BYTES) {
+            throw new InvalidArgumentException('Shared images must be between 1 byte and 2 MB.');
+        }
+        if (!str_starts_with($bytes, $type['magic'])) {
+            throw new InvalidArgumentException('The file does not look like a ' . $mime . ' image.');
+        }
+        $status = $this->chatStatus($chatId, $now);
+        if (!$status['unlocked']) {
+            $sentToday = 0;
+            $dayStart = $now - ($now % 86400);
+            foreach ((array) $chat['messages'] as $message) {
+                if ($message['sender_id'] === $senderId && $message['sent_at'] >= $dayStart) {
+                    $sentToday++;
+                }
+            }
+            if ($sentToday >= $status['daily_message_limit']) {
+                throw new InvalidArgumentException(sprintf(
+                    'Slow-chat stage: you have used all %d messages for today. The pace opens up as the chat matures.',
+                    $status['daily_message_limit'],
+                ));
+            }
+        }
+        $caption = trim($caption);
+        $filtered = ['text' => $caption, 'redactions' => 0];
+        if ($caption !== '' && !$status['unlocked']) {
+            $filtered = $this->filterContactData($caption);
+        }
+        $recipientId = $this->otherParticipant($chat, $senderId);
+        $flags = [];
+        foreach (self::RED_FLAG_PATTERNS as $flag => $pattern) {
+            if ($caption !== '' && preg_match($pattern, $caption) === 1) {
+                $flags[] = $flag;
+            }
+        }
+        if ($flags !== []) {
+            $this->logSafetyEvent($recipientId, $senderId, $chatId, $flags, $now);
+        }
+        $dir = $this->store->directory() . '/chatmedia';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RuntimeException('Could not create the chat media directory.');
+        }
+        $messageId = 'msg_' . substr(hash('sha256', $chatId . $senderId . $now . count((array) $chat['messages'])), 0, 12);
+        $file = $messageId . '.' . $type['ext'];
+        if (file_put_contents($dir . '/' . $file, $bytes) === false) {
+            throw new RuntimeException('Could not store the shared image.');
+        }
+        $message = [
+            'message_id' => $messageId,
+            'sender_id' => $senderId,
+            'text' => $filtered['text'],
+            'sent_at' => $now,
+            'contact_data_removed' => $filtered['redactions'],
+            'red_flags' => $flags,
+            'image' => ['file' => $file, 'mime' => strtolower(trim($mime))],
+        ];
+        $chat['messages'][] = $message;
+        $chatRecordId = (string) $chat['id'];
+        $this->store->put('chats', $chatRecordId, $chat);
+        $this->recordPopularityEvent($recipientId, 'photo_received', $now);
+        return $message + ['chat_status' => $this->chatStatus($chatRecordId, $now)];
+    }
+
+    /** @return array{path: string, mime: string}|null A shared image, for participants only. */
+    public function chatImage(string $chatId, string $messageId, string $viewerId): ?array
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($viewerId, (array) $chat['participants'], true)) {
+            return null;
+        }
+        foreach ((array) $chat['messages'] as $message) {
+            if (($message['message_id'] ?? '') === $messageId && isset($message['image'])) {
+                $path = $this->store->directory() . '/chatmedia/' . basename((string) $message['image']['file']);
+                return is_file($path) ? ['path' => $path, 'mime' => (string) $message['image']['mime']] : null;
+            }
+        }
+        return null;
+    }
+
     /** VIP/Elite members may unlock a chat to real time before the schedule. */
     public function purchaseEarlyUnlock(string $chatId, string $userId, ?int $now = null): array
     {
