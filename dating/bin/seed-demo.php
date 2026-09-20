@@ -235,6 +235,67 @@ $admin = $engine->createAdmin('admin@slowdating.example', 'Demo!Admin2026#', nul
 $engine->grantTopMemberRewards($admin['admin_id'], 10, ['type' => 'gift_certificate', 'amount' => 100.0], $now - 6 * $day);
 $engine->grantTopMemberRewards($admin['admin_id'], 10, ['type' => 'promo_trip', 'description' => 'All-expense weekend at the SlowDating Spring Launch Gala in Napa'], $now - 1 * $day);
 
+// ---- Photo reveal timeframe ----------------------------------------------------
+// Pictures come second: real photos reveal on day 2 of a chat. Premium
+// members (Alice, Emma below) hold the "Peek early" perk and skip the wait.
+$engine->setPhotoRevealDays($admin['admin_id'], 2);
+
+// ---- Perks & income: Alice is popular, enrolled, and already earning -------------
+$engine->subscribeMembership($ids['alice'], 'vip', $now - 20 * $day);
+$engine->subscribeMembership($ids['emma'], 'member', $now - 15 * $day);
+foreach (['profile_ads', 'premium_gallery', 'chat_responder', 'chat_initiator', 'date_scheduler', 'testimonials'] as $program) {
+    $engine->enrollEarnProgram($ids['alice'], $program, $now - 7 * $day);
+}
+
+// Profile-ad revenue: enrolled, so every profile view pays a share.
+for ($j = 0; $j < 6; $j++) {
+    $engine->recordPopularityEvent($ids['alice'], 'profile_view', $now - $j * 3600 - 1800);
+}
+
+// Premium Members Only gallery: two photos, and Emma (premium) visits.
+if (extension_loaded('gd')) {
+    $galleryShot = static function (int $seed): string {
+        $img = imagecreatetruecolor(240, 240);
+        for ($y = 0; $y < 240; $y++) {
+            $shade = imagecolorallocate($img, (40 + $seed * 37 + $y) % 200 + 30, (90 + $seed * 53) % 180 + 40, (140 + $y + $seed * 71) % 190 + 40);
+            imageline($img, 0, $y, 239, $y, $shade);
+        }
+        ob_start();
+        imagepng($img);
+        imagedestroy($img);
+        return (string) ob_get_clean();
+    };
+    $engine->addGalleryPhoto($ids['alice'], $galleryShot(1), 'image/png', 'Golden hour on the pier', $now - 5 * $day);
+    $engine->addGalleryPhoto($ids['alice'], $galleryShot(2), 'image/png', 'Backstage at the jazz brunch', $now - 4 * $day);
+    $engine->viewGallery($ids['emma'], $ids['alice'], $now - 2 * $day);
+}
+
+// Paid chat hours: five active hours today responding to Marcus, then claimed.
+for ($h = 5; $h >= 1; $h--) {
+    $ts = $now - $h * 3600;
+    if ($ts > $now - ($now % 86400)) {   // keep every message inside today (UTC)
+        $engine->sendMessage($c2, $ids['alice'], 'Still here, detective — hour ' . (6 - $h) . ' of our marathon.', $ts);
+    }
+}
+$engine->claimActivityEarnings($ids['alice'], $now);
+
+// Scheduled date at a partner event: 10% of the ticket back.
+$engine->buyTicket((string) $bnEvent['id'], $ids['alice'], 1, $now - 6 * 3600);
+
+// Partner-scripted testimonials: one accepted (and paid), one open offer.
+$bnScript = $engine->createTestimonialScript($blueNote['partner_id'], (string) $bnVenue['id'], [
+    'title' => '30-second Jazz Night testimonial',
+    'script' => 'I met someone real at Blue Note\'s Singles Jazz Night. Low lights, live trio, actual conversation — this is how dates should start.',
+    'payout' => 40.0,
+], $now - 6 * $day);
+$aliceTestimonial = $engine->submitTestimonial($ids['alice'], (string) $bnScript['id'], 'https://youtu.be/dQw4w9WgXcQ', 'Recorded after the autumn session.', $now - 5 * $day);
+$engine->reviewTestimonial($blueNote['partner_id'], (string) $aliceTestimonial['id'], 'accept', ['note' => 'Perfect read — running it on our page.'], $now - 4 * $day);
+$engine->createTestimonialScript($ralphs['partner_id'], (string) $ralphsVenue['id'], [
+    'title' => 'Date night at Ralph\'s',
+    'script' => 'Our first real dinner was at Ralph\'s Italian Spot — handmade pasta, a corner table, and we still made the movie.',
+    'payout' => 55.0,
+], $now - 2 * $day);
+
 echo "Demo data seeded into {$stateDir}\n";
 echo "Member login:  alice@demo.example / Demo!Alice2026# (dating/index.php)\n";
 echo "Partner login: owner@bluenote.example / Demo!Partner2026# (dating/partner-portal.php)\n";

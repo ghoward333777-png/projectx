@@ -28,24 +28,32 @@ $servePhoto = static function (array $photo): never {
     exit;
 };
 
-// Chat context: inside a chat, each member chose which of their three
-// pictures the other person sees. The private picture is served only
-// here, only to the other participant, and only when its owner chose it.
-if ($artOnly) {
-    // fall through to the generated art below
-} elseif ($chatId !== '' && $userId !== '') {
+// Who is looking? The photo-reveal timeframe and the premium "Peek early"
+// perk are per-viewer, so every real-picture branch needs the session.
+$viewer = null;
+if (!$artOnly && $userId !== '') {
     session_start();
-    $viewer = null;
     if (isset($_SESSION['sd_member_token'])) {
         $auth = $engine->authenticate((string) $_SESSION['sd_member_token']);
         if ($auth !== null && $auth[1] === 'member') {
             $viewer = $auth[0];
         }
     }
+}
+
+// Chat context: inside a chat, each member chose which of their three
+// pictures the other person sees. The private picture is served only
+// here, only to the other participant, and only when its owner chose it.
+// Either way, real pictures wait for the admin-set reveal timeframe —
+// unless the viewer is premium ("Peek early").
+if ($artOnly) {
+    // fall through to the generated art below
+} elseif ($chatId !== '' && $userId !== '') {
     $chat = $engine->store()->get('chats', $chatId);
     $participants = (array) ($chat['participants'] ?? []);
     if ($chat !== null && $viewer !== null
-        && in_array($viewer, $participants, true) && in_array($userId, $participants, true)) {
+        && in_array($viewer, $participants, true) && in_array($userId, $participants, true)
+        && $engine->canSeeRealPhotos($viewer, $userId)) {
         $choice = $engine->chatImageChoice($chatId, $userId);
         if ($choice !== 'generated') {
             $photo = $engine->memberPhoto($userId, $choice) ?? $engine->memberPhoto($userId, 'public');
@@ -57,9 +65,13 @@ if ($artOnly) {
     // No entitlement (or artwork chosen): fall through to the generated art.
 } elseif ($engine->avatarMode() === 'uploads') {
     // Admin-controlled global mode: cards across Browse, Matches, and
-    // Search show the member's REAL picture when one exists. The private
+    // Search show the member's REAL picture — but only once the viewer has
+    // earned it (their chat with that member has aged past the reveal
+    // timeframe) or holds the premium "Peek early" perk. The private
     // picture never appears in any global context.
-    $photo = $userId !== '' ? $engine->memberPhoto($userId, 'public') : null;
+    $photo = ($viewer !== null && $engine->canSeeRealPhotos($viewer, $userId))
+        ? $engine->memberPhoto($userId, 'public')
+        : null;
     if ($photo !== null) {
         $servePhoto($photo);
     }

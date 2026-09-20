@@ -462,6 +462,66 @@ final class SlowDatingEngine
         return ['avatar_mode' => $mode];
     }
 
+    /**
+     * Photo reveal timeframe: relationships here start on common interests,
+     * not appearance. Real pictures stay hidden behind the generated
+     * artwork until a pair's chat is this many days old (admin-set, 0–30;
+     * 0 reveals as soon as a chat starts). Premium members hold the
+     * "Peek early" perk and see every member's pictures immediately.
+     */
+    public const PHOTO_REVEAL_MAX_DAYS = 30;
+
+    public function photoRevealDays(): int
+    {
+        $setting = $this->store->get('settings', 'photo_reveal_days');
+        return max(0, min(self::PHOTO_REVEAL_MAX_DAYS, (int) ($setting['value'] ?? 0)));
+    }
+
+    /** Admin-only: set how many days after the first chat pictures reveal. */
+    public function setPhotoRevealDays(string $adminId, int $days): array
+    {
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins can change the photo reveal timeframe.');
+        }
+        if ($days < 0 || $days > self::PHOTO_REVEAL_MAX_DAYS) {
+            throw new InvalidArgumentException('The photo reveal delay is 0 to ' . self::PHOTO_REVEAL_MAX_DAYS . ' days after the first chat.');
+        }
+        $this->store->put('settings', 'photo_reveal_days', ['value' => $days]);
+        return ['photo_reveal_days' => $days];
+    }
+
+    /** True when the member holds a paid membership tier. */
+    public function isPremium(string $userId): bool
+    {
+        $user = $this->store->get('users', $userId);
+        $tier = (string) ($user['membership_tier'] ?? 'free');
+        return $tier !== '' && $tier !== 'free';
+    }
+
+    /**
+     * Whether a viewer may see a member's real pictures yet. Owners always
+     * see their own; premium members see everyone's immediately ("Peek
+     * early"); everyone else waits until their chat with that member is
+     * photoRevealDays() old — no chat, no pictures.
+     */
+    public function canSeeRealPhotos(string $viewerId, string $ownerId, ?int $now = null): bool
+    {
+        $now ??= time();
+        if ($viewerId === '' || $ownerId === '') {
+            return false;
+        }
+        if ($viewerId === $ownerId || $this->isPremium($viewerId)) {
+            return true;
+        }
+        $pairKey = implode('|', [min($viewerId, $ownerId), max($viewerId, $ownerId)]);
+        foreach ($this->store->all('chats') as $chat) {
+            if (($chat['pair_key'] ?? '') === $pairKey) {
+                return intdiv(max(0, $now - (int) $chat['started_at']), 86400) >= $this->photoRevealDays();
+            }
+        }
+        return false;
+    }
+
     /** The three profile pictures: generated artwork plus two upload slots. */
     public const PHOTO_SLOTS = ['public', 'private'];
     public const IMAGE_CHOICES = ['generated', 'public', 'private'];
@@ -911,6 +971,17 @@ final class SlowDatingEngine
             'weight' => self::POPULARITY_WEIGHTS[$type],
             'timestamp' => $now,
         ]);
+        // Profile-ad income program: every profile view runs an ad next to
+        // the profile, and enrolled members keep a share of the impression.
+        if ($type === 'profile_view' && $this->earnEnrolled($userId, 'profile_ads')) {
+            $this->recordEarning(
+                $userId,
+                'profile_ads',
+                self::EARN_RATES['profile_ad_impression'],
+                'Ad impression on your profile',
+                $now,
+            );
+        }
     }
 
     /**
@@ -2045,6 +2116,19 @@ final class SlowDatingEngine
         ]);
         $this->logAnalytics('ticket_purchase', $userId, (string) $event['venue_id'], ['event_id' => $eventId, 'quantity' => $quantity], $now);
         $this->enterEligibleContests($eventId, $userId, $now);
+        // Date-scheduler income program: booking a date at an advertised
+        // partner event pays a share of the ticket price back.
+        if ($this->earnEnrolled($userId, 'date_scheduler')) {
+            $ticket = $this->store->get('tickets', $ticketId) ?? [];
+            $this->recordEarning(
+                $userId,
+                'date_scheduler',
+                (float) ($ticket['total_amount'] ?? 0) * self::EARN_RATES['date_ticket_share'],
+                'Date scheduled at ' . (string) $event['title'],
+                $now,
+                'dateshare.' . $ticketId,
+            );
+        }
         return $this->store->get('tickets', $ticketId) ?? [];
     }
 
@@ -2638,6 +2722,552 @@ final class SlowDatingEngine
     public function rewardsFor(string $userId): array
     {
         return $this->store->where('rewards', ['user_id' => $userId]);
+    }
+
+    // ------------------------------------------------------------------
+    // Perks & income for popular members
+    // ------------------------------------------------------------------
+
+    /**
+     * The income programs offered to popular members. 'live' programs pay
+     * out today through the earnings ledger; 'after_launch' programs take
+     * opt-ins now, with details announced after the site launches.
+     */
+    public const EARN_PROGRAMS = [
+        'profile_ads' => [
+            'label' => 'Profile ad revenue',
+            'status' => 'live',
+            'blurb' => 'Display ads run next to your profile and you keep a share of every impression.',
+            'pays' => '$0.05 per ad impression on your profile',
+        ],
+        'premium_gallery' => [
+            'label' => 'Premium Members Only gallery',
+            'status' => 'live',
+            'blurb' => 'Upload private photos to a gallery separate from your profile pictures — only premium members can open it, and every visit pays you.',
+            'pays' => '$0.25 per premium member per day who views your gallery',
+        ],
+        'chat_responder' => [
+            'label' => 'Chat responder hours',
+            'status' => 'live',
+            'blurb' => 'Stay logged in for 4 to 8 hours responding to chats other members started with you.',
+            'pays' => '$1.50 per active hour (4-hour daily minimum, 8-hour cap)',
+        ],
+        'chat_initiator' => [
+            'label' => 'Chat initiator hours',
+            'status' => 'live',
+            'blurb' => 'Stay logged in for 4 to 8 hours initiating chats and keeping them moving.',
+            'pays' => '$1.50 per active hour (4-hour daily minimum, 8-hour cap)',
+        ],
+        'date_scheduler' => [
+            'label' => 'Scheduled dates at partner events',
+            'status' => 'live',
+            'blurb' => 'Schedule dates on the web and buy tickets to advertised events from participating partners.',
+            'pays' => '10% of the ticket price back on every partner event ticket',
+        ],
+        'testimonials' => [
+            'label' => 'Partner testimonial videos',
+            'status' => 'live',
+            'blurb' => 'Record testimonial videos scripted by advertising partners. Partners accept, reject, edit, or extend each one.',
+            'pays' => 'the payout each partner sets on an accepted testimonial',
+        ],
+        'video_dates' => [
+            'label' => 'Videoed dates',
+            'status' => 'after_launch',
+            'blurb' => 'Agree to have actual dates videoed. Details to be announced after site launch.',
+            'pays' => 'announced after launch',
+        ],
+        'multiplayer_games' => [
+            'label' => 'Multi-player game ad revenue',
+            'status' => 'after_launch',
+            'blurb' => 'Stay online and play the multi-player games coming to the site; ad revenue is shared with players.',
+            'pays' => 'ad revenue share, announced with the games',
+        ],
+        'future_programs' => [
+            'label' => 'Future programs',
+            'status' => 'after_launch',
+            'blurb' => 'First in line for income programs still to be announced.',
+            'pays' => 'announced per program',
+        ],
+    ];
+
+    /** Popular means: top quartile of your cohort, or a strong score outright. */
+    public const EARN_TOP_PERCENTILE = 25;
+    public const EARN_MIN_SCORE = 60;
+
+    public const EARN_RATES = [
+        'profile_ad_impression' => 0.05,
+        'gallery_premium_view' => 0.25,
+        'active_hour' => 1.50,
+        'date_ticket_share' => 0.10,
+    ];
+    public const EARN_MIN_ACTIVE_HOURS = 4;
+    public const EARN_MAX_ACTIVE_HOURS = 8;
+    public const GALLERY_MAX_PHOTOS = 12;
+
+    /** @return array{user_id: string, eligible: bool, popularity_score: int, percentile: int, requirement: string} */
+    public function earnEligibility(string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $popularity = $this->popularity($userId, $now);
+        return [
+            'user_id' => $userId,
+            'eligible' => $popularity['percentile'] <= self::EARN_TOP_PERCENTILE
+                || $popularity['popularity_score'] >= self::EARN_MIN_SCORE,
+            'popularity_score' => $popularity['popularity_score'],
+            'percentile' => $popularity['percentile'],
+            'requirement' => sprintf(
+                'Be in the top %d%% of your cohort, or hold a popularity score of %d or more.',
+                self::EARN_TOP_PERCENTILE,
+                self::EARN_MIN_SCORE,
+            ),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function enrollEarnProgram(string $userId, string $program, ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        if (!isset(self::EARN_PROGRAMS[$program])) {
+            throw new InvalidArgumentException('Unknown income program: ' . $program);
+        }
+        $eligibility = $this->earnEligibility($userId, $now);
+        if (!$eligibility['eligible']) {
+            throw new InvalidArgumentException('Income programs are for popular members. ' . $eligibility['requirement']);
+        }
+        $id = $userId . '.' . $program;
+        $existing = $this->store->get('earn_enrollments', $id);
+        if ($existing === null) {
+            $this->store->put('earn_enrollments', $id, [
+                'user_id' => $userId,
+                'program' => $program,
+                'enrolled_at' => $now,
+            ]);
+            $this->logAnalytics('earn_enrollment', $userId, null, ['program' => $program], $now);
+        }
+        return ['user_id' => $userId, 'program' => $program, 'enrolled' => true];
+    }
+
+    /** @return array<string, mixed> */
+    public function withdrawEarnProgram(string $userId, string $program): array
+    {
+        $this->requireUser($userId);
+        if (!isset(self::EARN_PROGRAMS[$program])) {
+            throw new InvalidArgumentException('Unknown income program: ' . $program);
+        }
+        $this->store->delete('earn_enrollments', $userId . '.' . $program);
+        return ['user_id' => $userId, 'program' => $program, 'enrolled' => false];
+    }
+
+    private function earnEnrolled(string $userId, string $program): bool
+    {
+        return $this->store->get('earn_enrollments', $userId . '.' . $program) !== null;
+    }
+
+    /**
+     * Append to the member's earnings ledger. A dedupe key makes the credit
+     * idempotent (activity days, per-day gallery views, ticket shares);
+     * returns null when that credit was already recorded.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function recordEarning(string $userId, string $program, float $amount, string $note, int $now, ?string $dedupeKey = null): ?array
+    {
+        $id = $dedupeKey !== null
+            ? 'earn_' . substr(hash('sha256', $dedupeKey), 0, 16)
+            : 'earn_' . substr(hash('sha256', $userId . $program . $now . $this->store->count('earnings')), 0, 16);
+        if ($dedupeKey !== null && $this->store->get('earnings', $id) !== null) {
+            return null;
+        }
+        $entry = [
+            'user_id' => $userId,
+            'program' => $program,
+            'amount' => round($amount, 2),
+            'note' => $note,
+            'earned_at' => $now,
+        ];
+        $this->store->put('earnings', $id, $entry);
+        return $entry + ['id' => $id];
+    }
+
+    /** @return array{total: float, entries: array<int, array<string, mixed>>} */
+    public function earningsFor(string $userId): array
+    {
+        $entries = $this->store->where('earnings', ['user_id' => $userId]);
+        usort($entries, static fn (array $a, array $b): int => $b['earned_at'] <=> $a['earned_at']);
+        $total = 0.0;
+        foreach ($entries as $entry) {
+            $total += (float) $entry['amount'];
+        }
+        return ['total' => round($total, 2), 'entries' => $entries];
+    }
+
+    /**
+     * The Perks & Income portal in one payload: eligibility, every program
+     * with the member's enrollment state, the earnings ledger summary, and
+     * the member's gallery and testimonial standing.
+     *
+     * @return array<string, mixed>
+     */
+    public function earnPortal(string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        $programs = [];
+        foreach (self::EARN_PROGRAMS as $key => $program) {
+            $enrollment = $this->store->get('earn_enrollments', $userId . '.' . $key);
+            $programs[] = $program + [
+                'program' => $key,
+                'enrolled' => $enrollment !== null,
+                'enrolled_at' => $enrollment['enrolled_at'] ?? null,
+            ];
+        }
+        $earnings = $this->earningsFor($userId);
+        return [
+            'user_id' => $userId,
+            'eligibility' => $this->earnEligibility($userId, $now),
+            'programs' => $programs,
+            'earnings_total' => $earnings['total'],
+            'recent_earnings' => array_slice($earnings['entries'], 0, 10),
+            'gallery_photos' => count($this->store->where('gallery_photos', ['owner_id' => $userId])),
+            'gallery_limit' => self::GALLERY_MAX_PHOTOS,
+            'open_testimonial_scripts' => count($this->testimonialScripts()),
+        ];
+    }
+
+    /**
+     * Claim today's logged-in activity earnings. An active hour is a UTC
+     * hour in which the member sent at least one chat message — counted
+     * separately for chats they initiated and chats they are responding
+     * in. Four active hours unlock the payout; eight are the daily cap.
+     * Deterministic from the chat records and idempotent per day.
+     *
+     * @return array<string, mixed>
+     */
+    public function claimActivityEarnings(string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        $dayStart = $now - ($now % 86400);
+        $date = gmdate('Y-m-d', $now);
+        $initiatorHours = [];
+        $responderHours = [];
+        foreach ($this->chatsFor($userId) as $chat) {
+            $initiated = ((array) $chat['participants'])[0] === $userId;
+            foreach ((array) $chat['messages'] as $message) {
+                $sentAt = (int) $message['sent_at'];
+                if ($message['sender_id'] !== $userId || $sentAt < $dayStart || $sentAt >= $dayStart + 86400) {
+                    continue;
+                }
+                $hour = intdiv($sentAt - $dayStart, 3600);
+                if ($initiated) {
+                    $initiatorHours[$hour] = true;
+                } else {
+                    $responderHours[$hour] = true;
+                }
+            }
+        }
+        $results = [];
+        $tally = ['chat_initiator' => count($initiatorHours), 'chat_responder' => count($responderHours)];
+        foreach ($tally as $program => $hours) {
+            $hours = min($hours, self::EARN_MAX_ACTIVE_HOURS);
+            $qualified = $hours >= self::EARN_MIN_ACTIVE_HOURS && $this->earnEnrolled($userId, $program);
+            $entry = null;
+            if ($qualified) {
+                $entry = $this->recordEarning(
+                    $userId,
+                    $program,
+                    $hours * self::EARN_RATES['active_hour'],
+                    sprintf('%d active hours %s chats on %s', $hours, $program === 'chat_initiator' ? 'initiating' : 'responding to', $date),
+                    $now,
+                    'activity.' . $program . '.' . $userId . '.' . $date,
+                );
+            }
+            $results[$program] = [
+                'active_hours' => $hours,
+                'hours_required' => self::EARN_MIN_ACTIVE_HOURS,
+                'enrolled' => $this->earnEnrolled($userId, $program),
+                'claimed' => $entry !== null,
+                'amount' => $entry !== null ? $entry['amount'] : 0.0,
+            ];
+        }
+        return ['user_id' => $userId, 'date' => $date, 'programs' => $results];
+    }
+
+    // ---- Premium Members Only gallery ---------------------------------
+
+    /**
+     * Add a photo to the member's Premium Members Only gallery — a body of
+     * work separate from the three profile pictures. Requires enrollment
+     * in the premium_gallery income program.
+     *
+     * @return array<string, mixed>
+     */
+    public function addGalleryPhoto(string $userId, string $bytes, string $mime, string $caption = '', ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        if (!$this->earnEnrolled($userId, 'premium_gallery')) {
+            throw new InvalidArgumentException('Enroll in the Premium Members Only gallery program first.');
+        }
+        $type = self::PHOTO_TYPES[strtolower(trim($mime))] ?? null;
+        if ($type === null) {
+            throw new InvalidArgumentException('Gallery photos must be JPEG, PNG, or WebP.');
+        }
+        if ($bytes === '' || strlen($bytes) > self::PHOTO_MAX_BYTES) {
+            throw new InvalidArgumentException('Gallery photos must be between 1 byte and 2 MB.');
+        }
+        if (!str_starts_with($bytes, $type['magic'])) {
+            throw new InvalidArgumentException('The file does not look like a ' . $mime . ' image.');
+        }
+        $existing = $this->store->where('gallery_photos', ['owner_id' => $userId]);
+        if (count($existing) >= self::GALLERY_MAX_PHOTOS) {
+            throw new InvalidArgumentException('The gallery holds at most ' . self::GALLERY_MAX_PHOTOS . ' photos.');
+        }
+        $photoId = 'gal_' . substr(hash('sha256', $userId . $now . count($existing)), 0, 12);
+        $dir = $this->store->directory() . '/photos';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RuntimeException('Could not create the photos directory.');
+        }
+        $file = $userId . '.gallery.' . $photoId . '.' . $type['ext'];
+        if (file_put_contents($dir . '/' . $file, $bytes) === false) {
+            throw new RuntimeException('Could not store the gallery photo.');
+        }
+        $this->store->put('gallery_photos', $photoId, [
+            'owner_id' => $userId,
+            'file' => $file,
+            'mime' => strtolower(trim($mime)),
+            'caption' => trim($caption),
+            'uploaded_at' => $now,
+        ]);
+        return ['photo_id' => $photoId, 'caption' => trim($caption), 'uploaded_at' => $now];
+    }
+
+    public function removeGalleryPhoto(string $userId, string $photoId): void
+    {
+        $photo = $this->store->get('gallery_photos', $photoId);
+        if ($photo === null || (string) $photo['owner_id'] !== $userId) {
+            throw new InvalidArgumentException('That gallery photo is not yours to remove.');
+        }
+        @unlink($this->store->directory() . '/photos/' . basename((string) $photo['file']));
+        $this->store->delete('gallery_photos', $photoId);
+    }
+
+    /**
+     * Open a member's gallery. The owner always sees it; anyone else must
+     * hold a paid membership ("Premium Members Only"), and the visit pays
+     * the owner once per viewer per day when they are enrolled.
+     *
+     * @return array<string, mixed>
+     */
+    public function viewGallery(string $viewerId, string $ownerId, ?int $now = null): array
+    {
+        $now ??= time();
+        $viewer = $this->requireUser($viewerId);
+        $this->requireUser($ownerId);
+        if ($viewerId !== $ownerId) {
+            $tier = (string) ($viewer['membership_tier'] ?? 'free');
+            if ($tier === 'free' || $tier === '') {
+                throw new InvalidArgumentException('This gallery is for premium members only. Upgrade your membership to view it.');
+            }
+            if ($this->earnEnrolled($ownerId, 'premium_gallery')) {
+                $this->recordEarning(
+                    $ownerId,
+                    'premium_gallery',
+                    self::EARN_RATES['gallery_premium_view'],
+                    'Premium member gallery view on ' . gmdate('Y-m-d', $now),
+                    $now,
+                    'galview.' . $ownerId . '.' . $viewerId . '.' . gmdate('Y-m-d', $now),
+                );
+            }
+        }
+        $photos = $this->store->where('gallery_photos', ['owner_id' => $ownerId]);
+        usort($photos, static fn (array $a, array $b): int => $a['uploaded_at'] <=> $b['uploaded_at']);
+        return [
+            'owner_id' => $ownerId,
+            'photos' => array_map(static fn (array $photo): array => [
+                'photo_id' => (string) $photo['id'],
+                'caption' => (string) $photo['caption'],
+                'uploaded_at' => (int) $photo['uploaded_at'],
+            ], $photos),
+        ];
+    }
+
+    /** @return array{path: string, mime: string}|null Gallery bytes for the owner or a premium member. */
+    public function galleryPhoto(string $viewerId, string $photoId): ?array
+    {
+        $photo = $this->store->get('gallery_photos', $photoId);
+        if ($photo === null) {
+            return null;
+        }
+        $viewer = $this->store->get('users', $viewerId);
+        if ($viewer === null) {
+            return null;
+        }
+        $tier = (string) ($viewer['membership_tier'] ?? 'free');
+        if ((string) $photo['owner_id'] !== $viewerId && ($tier === 'free' || $tier === '')) {
+            return null;
+        }
+        $path = $this->store->directory() . '/photos/' . basename((string) $photo['file']);
+        return is_file($path) ? ['path' => $path, 'mime' => (string) $photo['mime']] : null;
+    }
+
+    // ---- Partner-scripted testimonials --------------------------------
+
+    public const TESTIMONIAL_ACTIONS = ['accept', 'reject', 'edit', 'extend'];
+
+    /**
+     * A partner publishes a scripted testimonial offer with a payout.
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    public function createTestimonialScript(string $partnerId, string $venueId, array $fields, ?int $now = null): array
+    {
+        $now ??= time();
+        $venue = $this->requireVenue($venueId, $partnerId);
+        $script = trim((string) ($fields['script'] ?? ''));
+        if ($script === '') {
+            throw new InvalidArgumentException('A testimonial offer needs the script the member will read.');
+        }
+        $payout = round((float) ($fields['payout'] ?? 0), 2);
+        if ($payout <= 0) {
+            throw new InvalidArgumentException('A testimonial offer needs a positive payout.');
+        }
+        $scriptId = 'tsc_' . substr(hash('sha256', $partnerId . $venueId . $now . $this->store->count('testimonial_scripts')), 0, 12);
+        $this->store->put('testimonial_scripts', $scriptId, [
+            'partner_id' => $partnerId,
+            'venue_id' => $venueId,
+            'venue_name' => (string) $venue['name'],
+            'title' => trim((string) ($fields['title'] ?? 'Testimonial')),
+            'script' => $script,
+            'payout' => $payout,
+            'status' => 'open',
+            'created_at' => $now,
+        ]);
+        return $this->store->get('testimonial_scripts', $scriptId) ?? [];
+    }
+
+    /** @return array<int, array<string, mixed>> Open offers (everyone), or every offer for one venue. */
+    public function testimonialScripts(?string $venueId = null): array
+    {
+        $criteria = $venueId !== null ? ['venue_id' => $venueId] : ['status' => 'open'];
+        $scripts = $this->store->where('testimonial_scripts', $criteria);
+        usort($scripts, static fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
+        return $scripts;
+    }
+
+    /**
+     * A popular member records the scripted testimonial and submits the
+     * video for the partner's review.
+     *
+     * @return array<string, mixed>
+     */
+    public function submitTestimonial(string $userId, string $scriptId, string $videoUrl, string $notes = '', ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        if (!$this->earnEnrolled($userId, 'testimonials')) {
+            throw new InvalidArgumentException('Enroll in the testimonial program first.');
+        }
+        $script = $this->store->get('testimonial_scripts', $scriptId);
+        if ($script === null || $script['status'] !== 'open') {
+            throw new InvalidArgumentException('That testimonial offer is not open.');
+        }
+        if (trim($videoUrl) === '') {
+            throw new InvalidArgumentException('A testimonial submission needs the video URL.');
+        }
+        $testimonialId = 'tst_' . substr(hash('sha256', $scriptId . $userId . $now), 0, 12);
+        $this->store->put('testimonials', $testimonialId, [
+            'script_id' => $scriptId,
+            'partner_id' => (string) $script['partner_id'],
+            'venue_id' => (string) $script['venue_id'],
+            'venue_name' => (string) $script['venue_name'],
+            'member_id' => $userId,
+            'video_url' => trim($videoUrl),
+            'notes' => trim($notes),
+            'script_text' => (string) $script['script'],
+            'payout' => (float) $script['payout'],
+            'status' => 'submitted',
+            'history' => [],
+            'submitted_at' => $now,
+        ]);
+        return $this->store->get('testimonials', $testimonialId) ?? [];
+    }
+
+    /**
+     * The partner reviews a submitted testimonial: accept (pays the member
+     * the offer's payout), reject, edit (replaces the script — the member
+     * re-records), or extend (appends to the script — the member records
+     * the extension).
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    public function reviewTestimonial(string $partnerId, string $testimonialId, string $action, array $fields = [], ?int $now = null): array
+    {
+        $now ??= time();
+        $testimonial = $this->store->get('testimonials', $testimonialId);
+        if ($testimonial === null || (string) $testimonial['partner_id'] !== $partnerId) {
+            throw new InvalidArgumentException('That testimonial is not yours to review.');
+        }
+        if (!in_array($action, self::TESTIMONIAL_ACTIONS, true)) {
+            throw new InvalidArgumentException('Testimonial reviews are accept, reject, edit, or extend.');
+        }
+        $note = trim((string) ($fields['note'] ?? ''));
+        switch ($action) {
+            case 'accept':
+                $testimonial['status'] = 'accepted';
+                $this->recordEarning(
+                    (string) $testimonial['member_id'],
+                    'testimonials',
+                    (float) $testimonial['payout'],
+                    'Accepted testimonial for ' . $testimonial['venue_name'],
+                    $now,
+                    'tstpay.' . $testimonialId,
+                );
+                break;
+            case 'reject':
+                $testimonial['status'] = 'rejected';
+                break;
+            case 'edit':
+                $script = trim((string) ($fields['script'] ?? ''));
+                if ($script === '') {
+                    throw new InvalidArgumentException('An edit needs the replacement script.');
+                }
+                $testimonial['script_text'] = $script;
+                $testimonial['status'] = 'revise';
+                break;
+            case 'extend':
+                $extension = trim((string) ($fields['script'] ?? ''));
+                if ($extension === '') {
+                    throw new InvalidArgumentException('An extension needs the added script.');
+                }
+                $testimonial['script_text'] = rtrim((string) $testimonial['script_text']) . "\n\n" . $extension;
+                $testimonial['status'] = 'extended';
+                break;
+        }
+        $history = (array) ($testimonial['history'] ?? []);
+        $history[] = ['action' => $action, 'note' => $note, 'at' => $now];
+        $testimonial['history'] = $history;
+        $this->store->put('testimonials', $testimonialId, $testimonial);
+        return $testimonial + ['id' => $testimonialId];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function testimonialsForMember(string $userId): array
+    {
+        $rows = $this->store->where('testimonials', ['member_id' => $userId]);
+        usort($rows, static fn (array $a, array $b): int => $b['submitted_at'] <=> $a['submitted_at']);
+        return $rows;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function testimonialsForVenue(string $venueId): array
+    {
+        $rows = $this->store->where('testimonials', ['venue_id' => $venueId]);
+        usort($rows, static fn (array $a, array $b): int => $b['submitted_at'] <=> $a['submitted_at']);
+        return $rows;
     }
 
     // ------------------------------------------------------------------

@@ -306,6 +306,45 @@ final class SlowDatingApi
         if ($method === 'GET' && $path === '/users/me/rewards') {
             return [200, $engine->rewardsFor($userId)];
         }
+        if ($method === 'GET' && $path === '/users/me/earn') {
+            return [200, $engine->earnPortal($userId, $now)];
+        }
+        if ($method === 'POST' && $path === '/users/me/earn/enroll') {
+            return [201, $engine->enrollEarnProgram($userId, (string) ($body['program'] ?? ''), $now)];
+        }
+        if ($method === 'POST' && $path === '/users/me/earn/withdraw') {
+            return [200, $engine->withdrawEarnProgram($userId, (string) ($body['program'] ?? ''))];
+        }
+        if ($method === 'GET' && $path === '/users/me/earn/earnings') {
+            return [200, $engine->earningsFor($userId)];
+        }
+        if ($method === 'POST' && $path === '/users/me/earn/activity/claim') {
+            return [200, $engine->claimActivityEarnings($userId, $now)];
+        }
+        if ($method === 'POST' && $path === '/users/me/gallery') {
+            $bytes = base64_decode((string) ($body['image_base64'] ?? ''), true);
+            if ($bytes === false) {
+                return [422, ['error_code' => 'invalid_request', 'message' => 'image_base64 must be valid base64.']];
+            }
+            return [201, $engine->addGalleryPhoto($userId, $bytes, (string) ($body['mime'] ?? ''), (string) ($body['caption'] ?? ''), $now)];
+        }
+        if ($method === 'DELETE' && count($segments) === 4 && $segments[0] === 'users' && $segments[1] === 'me' && $segments[2] === 'gallery') {
+            $engine->removeGalleryPhoto($userId, $segments[3]);
+            return [204, []];
+        }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'users' && $segments[2] === 'gallery') {
+            $target = $segments[1] === 'me' ? $userId : $segments[1];
+            return [200, $engine->viewGallery($userId, $target, $now)];
+        }
+        if ($method === 'GET' && $path === '/earn/testimonials') {
+            return [200, $engine->testimonialScripts()];
+        }
+        if ($method === 'POST' && count($segments) === 4 && $segments[0] === 'earn' && $segments[1] === 'testimonials' && $segments[3] === 'submit') {
+            return [201, $engine->submitTestimonial($userId, $segments[2], (string) ($body['video_url'] ?? ''), (string) ($body['notes'] ?? ''), $now)];
+        }
+        if ($method === 'GET' && $path === '/users/me/testimonials') {
+            return [200, $engine->testimonialsForMember($userId)];
+        }
         if ($method === 'POST' && $path === '/users/me/billing/subscribe') {
             return [200, $engine->subscribeMembership($userId, (string) ($body['tier'] ?? 'member'), $now)];
         }
@@ -376,9 +415,21 @@ final class SlowDatingApi
             if ($tail === ['ads'] && $method === 'GET') {
                 return [200, $engine->adsForVenue($venueId)];
             }
+            if ($tail === ['testimonials'] && $method === 'POST') {
+                return [201, $engine->createTestimonialScript($partnerId, $venueId, $body, $now)];
+            }
+            if ($tail === ['testimonials'] && $method === 'GET') {
+                return [200, [
+                    'scripts' => $engine->testimonialScripts($venueId),
+                    'submissions' => $engine->testimonialsForVenue($venueId),
+                ]];
+            }
             if ($tail === ['analytics'] && $method === 'GET') {
                 return [200, $engine->venueAnalytics($venueId)];
             }
+        }
+        if ($method === 'POST' && count($segments) === 5 && $segments[0] === 'partners' && $segments[2] === 'testimonials' && $segments[4] === 'review') {
+            return [200, $engine->reviewTestimonial($partnerId, $segments[3], (string) ($body['action'] ?? ''), $body, $now)];
         }
         if ($method === 'GET' && count($segments) === 5 && $segments[0] === 'partners' && $segments[2] === 'contests' && $segments[4] === 'entries') {
             return [200, $engine->contestEntries($segments[3])];
@@ -403,10 +454,20 @@ final class SlowDatingApi
             return [200, $engine->reviewVerification($adminId, $segments[3], (bool) ($body['approve'] ?? false), $now)];
         }
         if ($method === 'GET' && $path === '/admin/v1/settings') {
-            return [200, ['avatar_mode' => $engine->avatarMode()]];
+            return [200, ['avatar_mode' => $engine->avatarMode(), 'photo_reveal_days' => $engine->photoRevealDays()]];
         }
         if ($method === 'PATCH' && $path === '/admin/v1/settings') {
-            return [200, $engine->setAvatarMode($adminId, (string) ($body['avatar_mode'] ?? ''))];
+            $updated = [];
+            if (array_key_exists('avatar_mode', $body)) {
+                $updated += $engine->setAvatarMode($adminId, (string) $body['avatar_mode']);
+            }
+            if (array_key_exists('photo_reveal_days', $body)) {
+                $updated += $engine->setPhotoRevealDays($adminId, (int) $body['photo_reveal_days']);
+            }
+            if ($updated === []) {
+                return [422, ['error_code' => 'invalid_request', 'message' => 'Send avatar_mode and/or photo_reveal_days.']];
+            }
+            return [200, $updated];
         }
         if ($method === 'POST' && $path === '/admin/v1/admins') {
             return [201, $engine->createAdmin((string) ($body['email'] ?? ''), isset($body['password']) ? (string) $body['password'] : null, $adminId, $now)];

@@ -175,6 +175,16 @@ if ($userId === null) {
     <p>Slow-paced chat that speeds up as trust builds. Contact details stay filtered until a chat has lived
         <strong>30 days with 10 real conversations</strong> — then it opens to real time. Free to join, $19/year membership,
         real-world dates at vetted partner venues.</p>
+    <section>
+        <h2>Pictures come second — on purpose</h2>
+        <p>Here you meet the person before the picture. Everyone's profile shows generated artwork first;
+            real pictures reveal only after you and a member have been chatting for the platform's reveal
+            timeframe (set by our team — for example the first, second, or third day of your chat). It keeps
+            first impressions about common interests, values, and conversation — not appearance.</p>
+        <p><strong>Peek early — a premium perk.</strong> Paid members (Member $19/yr, VIP $79/yr, Elite $199/yr)
+            skip the wait entirely: they see every member's real pictures immediately, across Browse, Search,
+            Matches, and chats. Free members see pictures the moment each chat reaches the reveal day.</p>
+    </section>
     <div class="grid">
         <form method="post">
             <h2>Create account</h2>
@@ -663,7 +673,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                     <input type="hidden" name="action" value="subscribe">
                     <input type="hidden" name="tier" value="<?= sd_e($tier) ?>">
                     <strong><?= sd_e(ucfirst($tier)) ?></strong> — $<?= number_format($price, 2) ?>/year
-                    <p><?= $tier === 'member' ? 'Full membership: matches, coupons, events, store.' : ($tier === 'vip' ? 'Everything in Member plus early chat unlock and profile boost.' : 'Everything in VIP plus chaperone booking priority and elite events.') ?></p>
+                    <p><?= $tier === 'member' ? 'Full membership: matches, coupons, events, store — and Peek early: see every member\'s real pictures immediately.' : ($tier === 'vip' ? 'Everything in Member (including Peek early) plus early chat unlock and profile boost.' : 'Everything in VIP plus chaperone booking priority and elite events.') ?></p>
                     <button type="submit">Choose <?= sd_e($tier) ?></button>
                 </form>
             <?php endforeach; ?>

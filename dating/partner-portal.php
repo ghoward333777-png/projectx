@@ -133,6 +133,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Meet-up ad live. It flashes only when a couple starts arranging a date whose plans match your keys, near your town.';
                 }
                 break;
+            case 'create_testimonial':
+                if ($partnerId !== null) {
+                    $engine->createTestimonialScript($partnerId, (string) ($_POST['venue_id'] ?? ''), [
+                        'title' => $_POST['title'] ?? '',
+                        'script' => $_POST['script'] ?? '',
+                        'payout' => (float) ($_POST['payout'] ?? 0),
+                    ]);
+                    $notice = 'Testimonial offer published — popular members can now record it.';
+                }
+                break;
+            case 'review_testimonial':
+                if ($partnerId !== null) {
+                    $reviewAction = (string) ($_POST['review'] ?? '');
+                    $engine->reviewTestimonial($partnerId, (string) ($_POST['testimonial_id'] ?? ''), $reviewAction, [
+                        'script' => $_POST['script'] ?? '',
+                        'note' => $_POST['note'] ?? '',
+                    ]);
+                    $notice = match ($reviewAction) {
+                        'accept' => 'Testimonial accepted — the member has been paid the offer\'s payout.',
+                        'reject' => 'Testimonial rejected.',
+                        'edit' => 'Script replaced — the member re-records to the edited script.',
+                        'extend' => 'Script extended — the member records the addition.',
+                        default => 'Review recorded.',
+                    };
+                }
+                break;
             case 'change_plan':
                 if ($partnerId !== null) {
                     $engine->changePartnerPlan($partnerId, (string) ($_POST['new_plan_tier'] ?? ''));
@@ -314,6 +340,19 @@ $venues = $engine->venuesForPartner($partnerId);
             </form>
 
             <form method="post" class="card" style="margin-top:14px">
+                <h2>Testimonial offer</h2>
+                <p style="margin:4px 0;font-size:12.5px;color:#a294ad">Script a testimonial and set the payout.
+                    Popular members record it; you accept (they are paid), reject, edit the script for a
+                    re-record, or extend it.</p>
+                <input type="hidden" name="action" value="create_testimonial">
+                <input type="hidden" name="venue_id" value="<?= sd_e($venueId) ?>">
+                <label>Title</label><input name="title" placeholder="30-second date-night testimonial" required>
+                <label>Script the member reads</label><textarea name="script" required></textarea>
+                <label>Payout on acceptance ($)</label><input name="payout" type="number" step="0.01" min="0.01" required>
+                <button type="submit">Publish testimonial offer</button>
+            </form>
+
+            <form method="post" class="card" style="margin-top:14px">
                 <h2>List a store product</h2>
                 <input type="hidden" name="action" value="create_product">
                 <input type="hidden" name="venue_id" value="<?= sd_e($venueId) ?>">
@@ -340,6 +379,38 @@ $venues = $engine->venuesForPartner($partnerId);
                     </tr>
                 <?php endforeach; ?>
             </table>
+        <?php endif; ?>
+
+        <?php $submissions = $engine->testimonialsForVenue($venueId); ?>
+        <?php if ($submissions !== []): ?>
+            <h2 style="margin-top:16px">Testimonial submissions</h2>
+            <div class="grid">
+                <?php foreach ($submissions as $submission): ?>
+                    <div class="card">
+                        <strong><?= sd_e((string) $submission['video_url']) ?></strong>
+                        <span class="pill"><?= sd_e((string) $submission['status']) ?></span>
+                        <span class="pill">$<?= number_format((float) $submission['payout'], 2) ?></span>
+                        <?php if ((string) $submission['notes'] !== ''): ?><p style="margin:6px 0"><?= sd_e((string) $submission['notes']) ?></p><?php endif; ?>
+                        <p style="margin:6px 0;white-space:pre-line;font-size:13px;color:#c9bfd2"><?= sd_e((string) $submission['script_text']) ?></p>
+                        <form method="post" style="background:none;border:0;padding:0;margin:0">
+                            <input type="hidden" name="action" value="review_testimonial">
+                            <input type="hidden" name="testimonial_id" value="<?= sd_e((string) $submission['id']) ?>">
+                            <label>Decision</label>
+                            <select name="review">
+                                <option value="accept">Accept — pay the member</option>
+                                <option value="reject">Reject</option>
+                                <option value="edit">Edit — replace the script</option>
+                                <option value="extend">Extend — add to the script</option>
+                            </select>
+                            <label>New / added script (for edit or extend)</label>
+                            <textarea name="script"></textarea>
+                            <label>Note to the member (optional)</label>
+                            <input name="note">
+                            <button type="submit">Send review</button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
 
         <?php $contests = $engine->contestsForVenue($venueId); ?>

@@ -214,5 +214,55 @@ contract_check($status === 401, 'webhooks without the shared secret must be reje
 ], null, $t0, ['x-webhook-signature' => 'test-webhook-secret']);
 contract_check($status === 200 && $hook['status'] === 'recorded', 'signed booking webhooks must record');
 
+// ---- Perks & income over the API ---------------------------------------------------
+[, $quietCarol] = call($api, 'POST', '/auth/signup', [], ['email' => 'carol@example.com', 'use_auto_password' => true], null, $t0);
+call($api, 'PATCH', '/users/me/profile', [], ['display_name' => 'Carol', 'age' => 34, 'gender' => 'female', 'zip_code' => '90210'], $quietCarol['token'], $t0);
+for ($i = 0; $i < 20; $i++) {
+    $api->engine()->recordPopularityEvent($alice['user_id'], 'profile_view', $t0 + $i);
+}
+[$status, $portal] = call($api, 'GET', '/users/me/earn', [], [], $alice['token'], $t0 + 3600);
+contract_check($status === 200 && count($portal['programs']) === 9 && $portal['eligibility']['eligible'] === true, 'the earn portal must serve over the API');
+[$status] = call($api, 'POST', '/users/me/earn/enroll', [], ['program' => 'premium_gallery'], $alice['token'], $t0 + 3600);
+contract_check($status === 201, 'enrolling in an income program must work over the API');
+[$status] = call($api, 'POST', '/users/me/earn/enroll', [], ['program' => 'testimonials'], $alice['token'], $t0 + 3600);
+contract_check($status === 201, 'enrolling in the testimonial program must work over the API');
+$pngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+[$status, $shot] = call($api, 'POST', '/users/me/gallery', [], ['image_base64' => $pngB64, 'mime' => 'image/png', 'caption' => 'Pier'], $alice['token'], $t0 + 3700);
+contract_check($status === 201 && isset($shot['photo_id']), 'gallery uploads must work over the API');
+[$status] = call($api, 'GET', '/users/' . $alice['user_id'] . '/gallery', [], [], $bob['token'], $t0 + 3800);
+contract_check($status === 422, 'free members must be turned away from the gallery over the API');
+call($api, 'POST', '/users/me/billing/subscribe', [], ['tier' => 'member'], $bob['token'], $t0 + 3800);
+[$status, $galleryView] = call($api, 'GET', '/users/' . $alice['user_id'] . '/gallery', [], [], $bob['token'], $t0 + 3900);
+contract_check($status === 200 && count($galleryView['photos']) === 1, 'premium members must open the gallery over the API');
+[$status, $earnings] = call($api, 'GET', '/users/me/earn/earnings', [], [], $alice['token'], $t0 + 4000);
+contract_check($status === 200 && $earnings['total'] >= 0.25, 'the paid gallery visit must land in the ledger over the API');
+[$status, $claim] = call($api, 'POST', '/users/me/earn/activity/claim', [], [], $alice['token'], $t0 + 4100);
+contract_check($status === 200 && isset($claim['programs']['chat_responder']), 'activity claims must serve over the API');
+
+[$status, $offer] = call($api, 'POST', '/partners/v1/venues/' . $venueId . '/testimonials', [], [
+    'title' => 'Jazz Night testimonial', 'script' => 'I met someone real at Blue Note.', 'payout' => 40.0,
+], $partner['token'], $t0 + 4200);
+contract_check($status === 201 && $offer['payout'] === 40.0, 'partners must publish testimonial offers over the API');
+[$status, $offers] = call($api, 'GET', '/earn/testimonials', [], [], $alice['token'], $t0 + 4300);
+contract_check($status === 200 && count($offers) === 1, 'members must see open testimonial offers over the API');
+[$status, $submission] = call($api, 'POST', '/earn/testimonials/' . $offer['id'] . '/submit', [], [
+    'video_url' => 'https://youtu.be/demo123',
+], $alice['token'], $t0 + 4400);
+contract_check($status === 201 && $submission['status'] === 'submitted', 'testimonial submissions must work over the API');
+[$status, $reviewed] = call($api, 'POST', '/partners/v1/testimonials/' . $submission['id'] . '/review', [], [
+    'action' => 'accept', 'note' => 'Running it.',
+], $partner['token'], $t0 + 4500);
+contract_check($status === 200 && $reviewed['status'] === 'accepted', 'partners must review testimonials over the API');
+[$status, $mine] = call($api, 'GET', '/users/me/testimonials', [], [], $alice['token'], $t0 + 4600);
+contract_check($status === 200 && $mine[0]['status'] === 'accepted', 'members must track their submissions over the API');
+
+// ---- Photo reveal setting over the API ----------------------------------------------
+[$status, $settings] = call($api, 'PATCH', '/admin/v1/settings', [], ['photo_reveal_days' => 3], $admin['token'], $t0);
+contract_check($status === 200 && $settings['photo_reveal_days'] === 3, 'admins must set the photo reveal timeframe over the API');
+[$status, $settings] = call($api, 'GET', '/admin/v1/settings', [], [], $admin['token'], $t0);
+contract_check($status === 200 && $settings['photo_reveal_days'] === 3 && isset($settings['avatar_mode']), 'the reveal timeframe must read back with the image mode');
+[$status] = call($api, 'PATCH', '/admin/v1/settings', [], [], $admin['token'], $t0);
+contract_check($status === 422, 'an empty settings patch must be rejected');
+
 exec('rm -rf ' . escapeshellarg($stateDir));
 fwrite(STDOUT, "Dating API contract passed\n");

@@ -41,6 +41,7 @@ final class SitePackageExporter
         'dating/api.php',
         'dating/index.php',
         'dating/browse.php',
+        'dating/earn.php',
         'dating/avatar.php',
         'dating/photo.php',
         'dating/chatimage.php',

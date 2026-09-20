@@ -45,6 +45,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Profile images now come from ' . ($engine->avatarMode() === 'uploads' ? 'member uploads (generated artwork as fallback).' : 'generated artwork for everyone.');
                 }
                 break;
+            case 'photo_reveal':
+                if ($adminId !== null) {
+                    $engine->setPhotoRevealDays($adminId, (int) ($_POST['days'] ?? 0));
+                    $days = $engine->photoRevealDays();
+                    $notice = $days === 0
+                        ? 'Real pictures now reveal as soon as a chat starts. Premium members always see them immediately.'
+                        : sprintf('Real pictures now reveal %d day%s after a pair\'s first chat. Premium members always see them immediately.', $days, $days === 1 ? '' : 's');
+                }
+                break;
             case 'review_verification':
                 if ($adminId !== null) {
                     $result = $engine->reviewVerification($adminId, (string) ($_POST['user_id'] ?? ''), ($_POST['decision'] ?? '') === 'approve');
@@ -125,6 +134,17 @@ if ($adminId === null) {
         Member-uploaded photos, with generated artwork as the fallback
     </label>
     <button type="submit">Save image mode</button>
+</form>
+
+<form method="post">
+    <h2>Photo reveal timeframe</h2>
+    <p>Relationships here start on common interests, not appearance. Real pictures stay behind the generated
+        artwork until a pair's chat is this many days old — day 0 reveals at the first chat, day 1 after one
+        day, and so on. Premium members hold the "Peek early" perk and see every member's pictures immediately.</p>
+    <input type="hidden" name="action" value="photo_reveal">
+    <label>Days after the first chat (0–<?= (int) SlowDatingEngine::PHOTO_REVEAL_MAX_DAYS ?>)</label>
+    <input name="days" type="number" min="0" max="<?= (int) SlowDatingEngine::PHOTO_REVEAL_MAX_DAYS ?>" value="<?= (int) $engine->photoRevealDays() ?>">
+    <button type="submit">Save reveal timeframe</button>
 </form>
 
 <form method="post">

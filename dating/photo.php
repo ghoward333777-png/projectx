@@ -10,6 +10,8 @@ require_once __DIR__ . '/SlowDatingEngine.php';
  * enforces the platform image mode and per-chat reveal choices.
  *
  * Usage (signed-in member): photo.php?slot=public | private
+ * Gallery photos: photo.php?gallery=<photoId> — served to the photo's
+ * owner, or to premium members (the Premium Members Only gallery).
  */
 
 session_start();
@@ -23,10 +25,15 @@ if (isset($_SESSION['sd_member_token'])) {
     }
 }
 
-$slot = (string) ($_GET['slot'] ?? 'public');
-$photo = ($viewer !== null && in_array($slot, SlowDatingEngine::PHOTO_SLOTS, true))
-    ? $engine->memberPhoto($viewer, $slot)
-    : null;
+$galleryId = (string) ($_GET['gallery'] ?? '');
+if ($galleryId !== '') {
+    $photo = $viewer !== null ? $engine->galleryPhoto($viewer, $galleryId) : null;
+} else {
+    $slot = (string) ($_GET['slot'] ?? 'public');
+    $photo = ($viewer !== null && in_array($slot, SlowDatingEngine::PHOTO_SLOTS, true))
+        ? $engine->memberPhoto($viewer, $slot)
+        : null;
+}
 
 if ($photo === null) {
     http_response_code(404);

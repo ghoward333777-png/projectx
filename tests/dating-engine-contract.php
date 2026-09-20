@@ -531,5 +531,125 @@ contract_check($engine->contestEntries((string) $contest['id'])['entries_count']
 $booking = $engine->ingestBodyguardWebhook(['service_id' => 'svc_bg_001', 'booking_id' => 'bg_777', 'user_external_id' => $alice['user_id'], 'duration_minutes' => 120], $t0);
 contract_check($booking['status'] === 'recorded', 'bodyguard webhooks must record');
 
+// ---- Perks & income for popular members --------------------------------------------
+$tEarn = $t0 + 44 * 86400;
+for ($i = 0; $i < 20; $i++) {
+    $engine->recordPopularityEvent($alice['user_id'], 'profile_view', $tEarn - 3600 - $i);
+}
+contract_check($engine->earnEligibility($alice['user_id'], $tEarn)['eligible'], 'a highly engaged member must qualify for income programs');
+$dana = $engine->signupMember('dana@example.com', null, true, $tEarn);
+$threw = false;
+try {
+    $engine->enrollEarnProgram($dana['user_id'], 'profile_ads', $tEarn);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'income programs must reject members who are not popular yet');
+$threw = false;
+try {
+    $engine->enrollEarnProgram($alice['user_id'], 'lottery', $tEarn);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown income programs must be rejected');
+contract_check(count(SlowDatingEngine::EARN_PROGRAMS) === 9, 'all nine income programs must exist');
+
+$engine->enrollEarnProgram($alice['user_id'], 'profile_ads', $tEarn);
+$engine->recordPopularityEvent($alice['user_id'], 'profile_view', $tEarn + 60);
+$ledger = $engine->earningsFor($alice['user_id']);
+contract_check($ledger['total'] === 0.05 && $ledger['entries'][0]['program'] === 'profile_ads', 'profile views must pay enrolled members their ad share');
+
+// Premium Members Only gallery — separate from profile pictures, paid tiers only.
+$threw = false;
+try {
+    $engine->addGalleryPhoto($alice['user_id'], $png, 'image/png', 'x', $tEarn);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'the gallery must require enrollment first');
+$engine->enrollEarnProgram($alice['user_id'], 'premium_gallery', $tEarn);
+$shot = $engine->addGalleryPhoto($alice['user_id'], $png, 'image/png', 'Golden hour', $tEarn);
+$threw = false;
+try {
+    $engine->viewGallery($dana['user_id'], $alice['user_id'], $tEarn);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'free members must not open the Premium Members Only gallery');
+contract_check($engine->galleryPhoto($dana['user_id'], (string) $shot['photo_id']) === null, 'gallery bytes must not serve to free members');
+$engine->subscribeMembership($bob['user_id'], 'member', $tEarn);
+$view = $engine->viewGallery($bob['user_id'], $alice['user_id'], $tEarn + 120);
+contract_check(count($view['photos']) === 1 && $view['photos'][0]['caption'] === 'Golden hour', 'premium members must see the gallery');
+$engine->viewGallery($bob['user_id'], $alice['user_id'], $tEarn + 240);
+$ledger = $engine->earningsFor($alice['user_id']);
+contract_check($ledger['total'] === 0.30, 'a premium gallery visit must pay once per viewer per day');
+contract_check($engine->galleryPhoto($bob['user_id'], (string) $shot['photo_id']) !== null, 'gallery bytes must serve to premium members');
+
+// Paid chat hours: Alice responds across five UTC hours of one day.
+$engine->enrollEarnProgram($alice['user_id'], 'chat_responder', $tEarn);
+$tDay = $t0 + 45 * 86400;
+for ($h = 0; $h < 5; $h++) {
+    $engine->sendMessage($chatId, $alice['user_id'], 'Hour ' . $h . ' and still the best conversation on here.', $tDay + $h * 3600);
+}
+$claim = $engine->claimActivityEarnings($alice['user_id'], $tDay + 5 * 3600);
+contract_check($claim['programs']['chat_responder']['claimed'] && $claim['programs']['chat_responder']['amount'] === 7.5, 'five responder hours must pay at the hourly rate');
+contract_check(!$claim['programs']['chat_initiator']['claimed'], 'initiator hours must not pay when the member only responded');
+$again = $engine->claimActivityEarnings($alice['user_id'], $tDay + 6 * 3600);
+contract_check(!$again['programs']['chat_responder']['claimed'], 'a day of chat hours must pay only once');
+
+// Scheduled dates at partner events: 10% of the ticket back.
+$engine->enrollEarnProgram($alice['user_id'], 'date_scheduler', $tEarn);
+$before = $engine->earningsFor($alice['user_id'])['total'];
+$engine->buyTicket((string) $event['id'], $alice['user_id'], 1, $tDay + 7200);
+contract_check($engine->earningsFor($alice['user_id'])['total'] === round($before + 2.5, 2), 'a partner event ticket must pay the 10% date share');
+
+// Partner-scripted testimonials: accept pays, edit and extend rework the script.
+$threw = false;
+try {
+    $engine->createTestimonialScript($partner['partner_id'], $venueId, ['script' => 'x', 'payout' => 0], $tEarn);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'testimonial offers must carry a positive payout');
+$offer = $engine->createTestimonialScript($partner['partner_id'], $venueId, [
+    'title' => 'Jazz Night testimonial', 'script' => 'I met someone real at Blue Note.', 'payout' => 40.0,
+], $tEarn);
+$engine->enrollEarnProgram($alice['user_id'], 'testimonials', $tEarn);
+$submission = $engine->submitTestimonial($alice['user_id'], (string) $offer['id'], 'https://youtu.be/demo123', 'First take.', $tEarn + 60);
+$edited = $engine->reviewTestimonial($partner['partner_id'], (string) $submission['id'], 'edit', ['script' => 'I met someone REAL at Blue Note Lounge.'], $tEarn + 120);
+contract_check($edited['status'] === 'revise' && $edited['script_text'] === 'I met someone REAL at Blue Note Lounge.', 'an edit must replace the script for a re-record');
+$extended = $engine->reviewTestimonial($partner['partner_id'], (string) $submission['id'], 'extend', ['script' => 'Ask for the stage table.'], $tEarn + 180);
+contract_check($extended['status'] === 'extended' && str_contains((string) $extended['script_text'], 'Ask for the stage table.'), 'an extension must append to the script');
+$before = $engine->earningsFor($alice['user_id'])['total'];
+$accepted = $engine->reviewTestimonial($partner['partner_id'], (string) $submission['id'], 'accept', [], $tEarn + 240);
+contract_check($accepted['status'] === 'accepted' && count($accepted['history']) === 3, 'the review history must carry every decision');
+contract_check($engine->earningsFor($alice['user_id'])['total'] === round($before + 40.0, 2), 'an accepted testimonial must pay the offer payout');
+$portal = $engine->earnPortal($alice['user_id'], $tEarn + 300);
+contract_check(count($portal['programs']) === 9 && $portal['earnings_total'] > 0, 'the portal must report all programs and the ledger total');
+
+// ---- Photo reveal timeframe & the Peek early perk ------------------------------------
+$threw = false;
+try {
+    $engine->setPhotoRevealDays($alice['user_id'], 2);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins may set the photo reveal timeframe');
+$threw = false;
+try {
+    $engine->setPhotoRevealDays($admin['admin_id'], 45);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'the reveal delay must stay within 0-30 days');
+$engine->setPhotoRevealDays($admin['admin_id'], 2);
+contract_check($engine->photoRevealDays() === 2, 'the reveal timeframe must read back');
+contract_check($engine->canSeeRealPhotos($alice['user_id'], $alice['user_id'], $tDay), 'owners always see their own pictures');
+contract_check($engine->canSeeRealPhotos($bob['user_id'], $dana['user_id'], $tDay), 'premium members hold the Peek early perk everywhere');
+contract_check(!$engine->canSeeRealPhotos($dana['user_id'], $alice['user_id'], $tDay), 'no chat means no real pictures for free members');
+$engine->startChat($dana['user_id'], $alice['user_id'], $tDay);
+contract_check(!$engine->canSeeRealPhotos($dana['user_id'], $alice['user_id'], $tDay + 86400), 'pictures stay hidden before the reveal day');
+contract_check($engine->canSeeRealPhotos($dana['user_id'], $alice['user_id'], $tDay + 2 * 86400), 'pictures reveal once the chat reaches the admin-set day');
+
 exec('rm -rf ' . escapeshellarg($stateDir));
 fwrite(STDOUT, "Dating engine contract passed\n");

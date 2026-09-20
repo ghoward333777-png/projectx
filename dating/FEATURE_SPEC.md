@@ -498,7 +498,81 @@ the actual meeting place.
 
 **API** — `POST /partners/v1/venues/{id}/ads/meetup`, `GET …/ads`, `GET /chats/{id}/ads`.
 
-## 32. Engineering invariants & tests
+## 32. Perks & income for popular members
+
+**Purpose** — Popular members are the product's best advertisement; the platform pays
+them for the attention they attract and the energy they put in.
+
+**Eligibility** — `earnEligibility`: top 25% of the member's gender cohort
+(`EARN_TOP_PERCENTILE`) **or** popularity score ≥ 60 (`EARN_MIN_SCORE`). Enrollment
+(`enrollEarnProgram` / `withdrawEarnProgram`) is per program; ineligible members are
+rejected with the requirement spelled out.
+
+**Programs** (`EARN_PROGRAMS`) — nine, six live and three opt-in for after launch:
+- **profile_ads** — display ads run next to the profile; every `profile_view` credits
+  $0.05 (`EARN_RATES.profile_ad_impression`) to enrolled members.
+- **premium_gallery** — the *Premium Members Only gallery*: up to 12 photos
+  (`GALLERY_MAX_PHOTOS`), separate from the three profile pictures, magic-byte
+  validated like all uploads. Only paid-tier members can open another member's
+  gallery (`viewGallery`); each visit pays the owner $0.25, once per viewer per day
+  (deduped ledger key). Bytes served via `photo.php?gallery=<id>` to the owner or a
+  premium viewer only.
+- **chat_responder / chat_initiator** — stay logged in 4–8 hours keeping chats alive.
+  `claimActivityEarnings` counts *active hours* (UTC hours with ≥1 message sent) per
+  day, split by whether the member started the chat (`participants[0]`); ≥4 hours pays
+  $1.50/hour, capped at 8, idempotent per day. Deterministic from chat records.
+- **date_scheduler** — scheduling dates on the web: buying a ticket to an advertised
+  partner event pays 10% of the ticket total back (`buyTicket` hook, deduped per ticket).
+- **testimonials** — partner-scripted testimonial videos (§ below).
+- **video_dates / multiplayer_games / future_programs** — consent opt-ins now;
+  details announced after launch (videoed real dates, ad-revenue-sharing multi-player
+  games, programs TBA).
+
+**Ledger** — every payout is an `earnings` record (program, amount, note, timestamp);
+`earningsFor` totals it; dedupe keys make activity days, gallery visits, ticket shares,
+and testimonial payouts idempotent.
+
+**Portal** — `earn.php` ("Perks & income" in the nav): standing (score, percentile,
+total earned), all nine program cards with enroll/withdraw, chat-hour claiming, gallery
+management, testimonial offers + submission tracking, and the ledger. API:
+`GET /users/me/earn`, `POST /users/me/earn/enroll|withdraw`,
+`GET /users/me/earn/earnings`, `POST /users/me/earn/activity/claim`,
+`GET|POST /users/me/gallery`, `DELETE /users/me/gallery/{id}`, `GET /users/{id}/gallery`,
+`GET /earn/testimonials`, `POST /earn/testimonials/{scriptId}/submit`,
+`GET /users/me/testimonials`.
+
+**Testimonial workflow** — a partner publishes a scripted offer with a payout
+(`createTestimonialScript`; positive payout and non-empty script required). Enrolled
+members submit a recorded video URL (`submitTestimonial`). The partner reviews
+(`reviewTestimonial`): **accept** (pays the member the offer's payout, once),
+**reject**, **edit** (replaces the script — the member re-records), or **extend**
+(appends to the script — the member records the addition); every review is kept in the
+submission's history. Partner API: `POST|GET /partners/v1/venues/{id}/testimonials`,
+`POST /partners/v1/testimonials/{id}/review`.
+
+## 33. Photo reveal timeframe & the "Peek early" perk
+
+**Purpose** — First impressions run on common interests and conversation, not
+appearance.
+
+**Rules**
+- Admin sets `photo_reveal_days` (0–30, `setPhotoRevealDays`, default 0): real
+  pictures stay behind the generated artwork until a pair's chat is that many days
+  old — day 0 reveals at the first chat, day 1 after one day, and so on.
+- `canSeeRealPhotos(viewer, owner)`: owners always see their own pictures; **premium
+  (paid-tier) members hold the "Peek early" perk and see every member's real pictures
+  immediately**; everyone else needs a chat with that member aged past the reveal day
+  — no chat, no real pictures anywhere.
+- Enforced in `avatar.php` for both contexts: the global uploads mode (Browse,
+  Matches, Search cards) and the per-chat picture choice. The generated artwork is
+  always the fallback; the private picture still additionally requires the owner's
+  per-chat choice.
+- The perk is described plainly on the signup page and in the membership tab.
+
+**API** — `GET /admin/v1/settings` returns `avatar_mode` + `photo_reveal_days`;
+`PATCH /admin/v1/settings` accepts either or both.
+
+## 34. Engineering invariants & tests
 
 - **Determinism**: every time-dependent rule takes an explicit `$now`; identical inputs
   produce identical pacing, unlock, popularity, matching, targeting, and concierge

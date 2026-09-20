@@ -26,6 +26,8 @@ $groups = [
         ['Profile prompts', 'Answer up to three personality prompts; they become the ice breakers your matches see.'],
         ['AI co-pilot', 'A profile coach with a strength score and concrete next steps, ice-breaker suggestions per chat, and a conversation-health read on every conversation.'],
         ['Niche communities', 'Creatives, tech founders, spiritual, single parents, LGBTQ+, fitness, travelers, entrepreneurs — each with its own member grid.'],
+        ['Perks & income for popular members', 'Popular members earn: profile ad revenue, a paying Premium Members Only gallery, paid chat hours (4–8 h responding or initiating), cash back on partner-event dates, partner-scripted testimonial videos, and opt-ins for videoed dates, multi-player games, and future programs.'],
+        ['Pictures come second', 'Real pictures reveal only after a pair\'s chat reaches the admin-set day (first day, second, third…) — first impressions run on common interests, not appearance. Premium members hold the Peek early perk and see every picture immediately.'],
     ]],
     ['Safety, women first', [
         ['Filtering before trust', 'Contact data cannot leave a chat before the 30-day unlock — the scammer\'s rush tactic simply doesn\'t work here.'],
@@ -45,6 +47,7 @@ $groups = [
         ['Live analytics', 'Coupons sent, redemptions, tickets sold, revenue, and contest entries — computed from the actual records.'],
         ['System integration', 'External ticketing, reservation, and booking systems report in over signed webhooks.'],
         ['Meet-up ads & keys', 'A second ad that flashes only when a couple starts arranging a real date. Buy keys like "italian restaurant" or "movies" and your ad shows to couples planning exactly that, in your town — you never learn who or where.'],
+        ['Scripted testimonials', 'Write the script, set the payout, and popular members record it. Accept to pay, reject, edit the script for a re-record, or extend it with an addition — the full review loop in the portal.'],
     ]],
     ['The platform', [
         ['Runs anywhere', 'Dependency-free PHP 8.1+ — no database server, no packages, no API keys. Deploys to any shared host by copying one folder.'],
