@@ -1258,7 +1258,8 @@ function browseRows(all) {
     ? memberCats(p2).includes(c.slice(4)) && memberCats(me).includes(c.slice(4))
     : p2[c] === me[c]);
   return Object.entries(MEMBERS)
-    .filter(([id, p]) => id !== 'alice' && (all || ((!g || p.gender === g) && p.age >= lo && p.age <= hi && p.km <= dist &&
+    .filter(([id, p]) => id !== 'alice' && (!g || p.gender === g) &&   // seeking gender ALWAYS applies, in every view
+      (all || (p.age >= lo && p.age <= hi && p.km <= dist &&
       (!need || memberCats(p).includes(need)) && (!income || p.income === income) && (!faith || p.faith === faith) && shares(p))))
     .map(([id, p]) => {
       const known = MATCHES.find(x => x.id === id);

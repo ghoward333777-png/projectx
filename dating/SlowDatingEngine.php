@@ -1704,6 +1704,15 @@ final class SlowDatingEngine
     {
         $now ??= time();
         $me = $this->requireUser($userId);
+        // The member's saved "seeking" gender always applies unless the
+        // caller explicitly overrides it: someone looking for women never
+        // sees men — on Matches, Top 10/20, or anywhere else built on this.
+        if (!isset($filters['gender'])) {
+            $seeking = (string) ($this->preferences($userId)['seeking_gender'] ?? '');
+            if ($seeking !== '') {
+                $filters['gender'] = $seeking;
+            }
+        }
         $myProfile = (array) $me['profile'];
         $myPopularity = $this->popularity($userId, $now)['popularity_score'];
         $rows = [];

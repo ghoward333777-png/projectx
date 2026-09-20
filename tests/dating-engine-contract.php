@@ -685,6 +685,23 @@ $party = $engine->watchPartyFor($chatId, $alice['user_id'], $tDay);
 contract_check($party['film']['playable'] === true && $party['film']['embed_url'] === 'https://www.youtube.com/embed/abcDEF12345', 'resolved films must embed in-page like curated ones');
 $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'daily', $tDay);
 
+// ---- Seeking gender is absolute on every discovery surface ---------------------------
+$genderOf = static function (array $row) use ($engine): string {
+    $user = $engine->store()->get('users', (string) $row['user_id']);
+    return (string) ($user['profile']['gender'] ?? '');
+};
+$engine->updatePreferences($alice['user_id'], ['seeking_gender' => 'male']);
+$rows = $engine->topMatches($alice['user_id'], 20, $tDay);
+contract_check($rows !== [], 'seeking men must return matches');
+foreach ($rows as $row) {
+    contract_check($genderOf($row) === 'male', 'Top matches must never show a gender the member is not seeking');
+}
+$engine->updatePreferences($alice['user_id'], ['seeking_gender' => 'female']);
+foreach ($engine->topMatches($alice['user_id'], 20, $tDay) as $row) {
+    contract_check($genderOf($row) === 'female', 'flipping the seeking gender must flip every result');
+}
+$engine->updatePreferences($alice['user_id'], ['seeking_gender' => 'male']);
+
 // ---- Admin-pasted Watch Party embed ---------------------------------------------------
 contract_check($engine->youtubeEmbedUrl('<iframe width="560" src="https://www.youtube.com/embed/videoseries?list=PLabc123DEF456" allowfullscreen></iframe>') === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'pasted iframe embed code must parse');
 contract_check($engine->youtubeEmbedUrl('https://www.youtube.com/playlist?list=PLabc123DEF456') === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'playlist links must convert to playlist embeds');
