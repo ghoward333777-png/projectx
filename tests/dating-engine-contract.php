@@ -870,5 +870,59 @@ try {
 }
 contract_check($threw, 'members cannot block themselves');
 
+// ---- Advanced Watch Party: rooms, split payments, sync, recap --------------------
+$room = $engine->createAdvancedRoom($alice['user_id'], 'couples', 'romance', 'https://youtu.be/jpejUwKLmfg', 2.0, 2, $tDay);
+contract_check($room['status'] === 'locked' && $room['invite_code'] !== '' && $room['price_per_user'] === 2.0, 'a paid room starts locked with an invite code');
+$threw = false;
+try {
+    $engine->createAdvancedRoom($alice['user_id'], 'couples', 'neon', 'https://youtu.be/jpejUwKLmfg', 2.0, 2, $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'themes must belong to their mode');
+$roomId = (string) $room['room_id'];
+$joined = $engine->joinAdvancedRoom((string) $room['invite_code'], $bob['user_id'], $tDay);
+contract_check(count($joined['participants']) === 2, 'guests join by invite code');
+$threw = false;
+try {
+    $engine->setAdvancedSync($roomId, $alice['user_id'], ['playing' => true], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'a locked room has no playback — payment first');
+$afterAlice = $engine->payAdvancedShare($roomId, $alice['user_id'], $tDay);
+contract_check(!$afterAlice['unlocked'] && $afterAlice['paid_count'] === 1, 'one paid share of two keeps the room locked');
+$afterBob = $engine->payAdvancedShare($roomId, $bob['user_id'], $tDay);
+contract_check($afterBob['unlocked'] && $afterBob['status'] === 'unlocked', 'the room unlocks when every required share is paid');
+$sync = $engine->setAdvancedSync($roomId, $alice['user_id'], ['position' => 90, 'playing' => true], $tDay + 60);
+contract_check($sync['playing'] === true && $sync['position'] === 90.0, 'the owner drives the room timeline');
+$threw = false;
+try {
+    $engine->setAdvancedSync($roomId, $bob['user_id'], ['playing' => false], $tDay + 61);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'without the remote a guest cannot drive playback');
+$engine->passAdvancedRemote($roomId, $alice['user_id'], $bob['user_id']);
+$sync = $engine->setAdvancedSync($roomId, $bob['user_id'], ['position' => 120, 'playing' => false], $tDay + 62);
+contract_check($sync['set_by'] === $bob['user_id'], 'passing the remote hands over the controls');
+$engine->addAdvancedReaction($roomId, $alice['user_id'], 'laugh', 100.0, $tDay + 70);
+$engine->addAdvancedReaction($roomId, $bob['user_id'], 'love', 100.5, $tDay + 71);
+$engine->addAdvancedReaction($roomId, $alice['user_id'], 'cry', 300.0, $tDay + 72);
+$engine->markAdvancedHighlight($roomId, $alice['user_id'], 100.0, 'that line!', $tDay + 73);
+$sent = $engine->sendAdvancedMessage($roomId, $bob['user_id'], 'Email me at bob@fastmail.com', $tDay + 74);
+contract_check($sent['contact_data_removed'] === 1, 'room chat filters contact data like everywhere else');
+$recap = $engine->endAdvancedRoom($roomId, $alice['user_id'], $tDay + 7200);
+contract_check($recap['reaction_totals']['laugh'] === 1 && $recap['reaction_totals']['love'] === 1, 'the recap counts the emotion timeline');
+contract_check(count($recap['sync_moments']) === 1 && $recap['sync_moments'][0]['t'] === 100.0, 'reactions within a second of each other are emotion sync moments');
+contract_check(count($recap['highlights']) === 1, 'marked moments survive into the recap');
+$threw = false;
+try {
+    $engine->advancedRoomView($roomId, $carol['user_id']);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'non-participants never see a room');
+
 exec('rm -rf ' . escapeshellarg($stateDir));
 fwrite(STDOUT, "Dating engine contract passed\n");

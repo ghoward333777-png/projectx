@@ -356,6 +356,7 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' style="font-weight:800;text-decoration:underline"' : '' ?>><?= sd_e((string) $meta['label']) ?></a>
         <?php endforeach; ?>
         <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together · bring your own YouTube</a>
+        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party · rooms &amp; split payments →</a>
     </p>
 
     <?php if ($mode === 'premium'): ?>

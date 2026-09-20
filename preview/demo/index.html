@@ -424,6 +424,36 @@
         <div class="formgrid"><label class="f">Search this channel<input id="w-search" placeholder="Notebook, waterfall, psalms…"></label></div>
         <div class="cards" id="w-grid" style="margin-top:12px"></div>
       </section>
+      <section class="panel">
+        <h2>Advanced Watch Party — a separate product</h2>
+        <p>Paid rooms in <strong style="color:var(--text)">Couples, Friends, Family, or Creator</strong> mode with
+          their own themes. Everyone watches on their own YouTube account (Premium plays ad-free on their own
+          subscription); the session fee <strong style="color:var(--text)">splits between participants</strong> and
+          the room unlocks only when every required share is paid. Inside: a server-authoritative timeline with a
+          passable remote, reaction bursts on an emotion timeline, marked highlights, room chat, and a recap that
+          closes every session. Try the split payment:</p>
+        <div class="card">
+          <span class="name">Couples room · Romance theme · $2.00 per person · invite 7D3202</span>
+          <p class="meta" id="awp-state" style="margin:6px 0">0 of 2 shares paid — the room is locked.</p>
+          <button class="act small" id="awp-pay-a">Alice: pay my $2 share</button>
+          <button class="act small" id="awp-pay-b">Marcus: pay his $2 share</button>
+        </div>
+        <div class="card" id="awp-room" hidden style="margin-top:10px">
+          <span class="name">🎬 Room unlocked — both players locked to the shared timecode</span>
+          <p class="meta" style="margin:6px 0">React together (Marcus reacts back — reactions within a second
+            become emotion sync moments):</p>
+          <p style="margin:0">
+            <button class="quiet small" data-awpr="😂">😂</button>
+            <button class="quiet small" data-awpr="😱">😱</button>
+            <button class="quiet small" data-awpr="😢">😢</button>
+            <button class="quiet small" data-awpr="❤️">❤️</button>
+            <button class="quiet small" data-awpr="🤩">🤩</button>
+          </p>
+          <p class="meta" id="awp-tally" style="margin:6px 0">Reactions: 0 · emotion sync moments: 0</p>
+          <button class="quiet small" id="awp-end">End the session → recap</button>
+          <p class="meta" id="awp-recap" style="margin:6px 0" hidden></p>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -1385,6 +1415,37 @@ $('portal-watch').addEventListener('click', e => {
   } else if (b.id === 'w-sync-play') { wSyncSet(true); }
   else if (b.id === 'w-sync-pause') { wSyncSet(false); }
   else if (b.id === 'w-sync-re') { wSyncSet(wSync.playing); $('w-sync-state').textContent += ' · Marcus re-synced'; }
+});
+
+// ---- Advanced Watch Party mock: split payment → unlock → reactions → recap ----
+const awp = { a: false, b: false, reactions: 0, syncs: 0 };
+function awpState() {
+  const paid = (awp.a ? 1 : 0) + (awp.b ? 1 : 0);
+  $('awp-state').textContent = paid === 2
+    ? 'Both shares paid — the room is unlocked. On the live site this is where Stripe payment links land.'
+    : paid + ' of 2 shares paid — the room is locked until every required share clears.';
+  $('awp-room').hidden = paid !== 2;
+}
+$('portal-watch').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'awp-pay-a' || b.id === 'awp-pay-b') {
+    awp[b.id === 'awp-pay-a' ? 'a' : 'b'] = true;
+    b.disabled = true;
+    b.textContent = '✓ share paid';
+    awpState();
+  } else if (b.dataset.awpr) {
+    awp.reactions++;
+    setTimeout(() => {   // Marcus reacts within a second — a sync moment
+      awp.reactions++;
+      awp.syncs++;
+      $('awp-tally').textContent = 'Reactions: ' + awp.reactions + ' · emotion sync moments: ' + awp.syncs;
+    }, 500);
+    $('awp-tally').textContent = 'Reactions: ' + awp.reactions + ' · emotion sync moments: ' + awp.syncs;
+  } else if (b.id === 'awp-end') {
+    $('awp-recap').hidden = false;
+    $('awp-recap').textContent = 'Recap — ' + awp.reactions + ' reactions, ' + awp.syncs +
+      ' emotion sync moments, most intense stretch around 01:12:40. On the live site the recap also lists every marked highlight.';
+  }
 });
 $('w-search').addEventListener('input', renderWatchGrid);   // searching never touches the player
 // The operator's own playlist is the player's source.

@@ -127,6 +127,22 @@ contract_check($status === 200 && $syncSet['playing'] === true, 'a partner must 
 [$status, $syncGet] = call($api, 'GET', '/chats/' . $chatId . '/watch-sync', [], [], $bob['token'], $t0 + 4001);
 contract_check($status === 200 && $syncGet['video'] === 'Notting Hill (1999)', 'the other partner reads the same sync state over the API');
 
+// ---- Advanced Watch Party over the API ------------------------------------------------
+[$status, $advRoom] = call($api, 'POST', '/advanced-rooms', [], [
+    'mode' => 'friends', 'theme' => 'neon', 'video_url' => 'https://youtu.be/jpejUwKLmfg',
+    'price_per_user' => 3, 'required_participants' => 2,
+], $alice['token'], $t0 + 5000);
+contract_check($status === 201 && $advRoom['status'] === 'locked', 'an advanced room must open over the API');
+[$status] = call($api, 'POST', '/advanced-rooms/join', [], ['invite_code' => $advRoom['invite_code']], $bob['token'], $t0 + 5001);
+contract_check($status === 200, 'joining by invite code must work over the API');
+[$status] = call($api, 'POST', '/advanced-rooms/' . $advRoom['room_id'] . '/pay', [], [], $alice['token'], $t0 + 5002);
+[$status, $paidRoom] = call($api, 'POST', '/advanced-rooms/' . $advRoom['room_id'] . '/pay', [], [], $bob['token'], $t0 + 5003);
+contract_check($status === 200 && $paidRoom['unlocked'], 'the split payment unlocks the room over the API');
+[$status, $advSync] = call($api, 'POST', '/advanced-rooms/' . $advRoom['room_id'] . '/sync', [], ['position' => 30, 'playing' => true], $alice['token'], $t0 + 5004);
+contract_check($status === 200 && $advSync['playing'] === true, 'the room timeline must be drivable over the API');
+[$status, $advRecap] = call($api, 'POST', '/advanced-rooms/' . $advRoom['room_id'] . '/end', [], [], $alice['token'], $t0 + 5005);
+contract_check($status === 200 && isset($advRecap['reaction_totals']), 'ending the room returns the recap over the API');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',
