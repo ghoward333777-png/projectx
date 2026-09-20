@@ -1120,6 +1120,8 @@ $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.wfilm) {
     watchState.film = FILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
+    watchState.embedOverride = null;   // a picked film takes the player over from the pasted embed
+    if ($('w-embed-note')) $('w-embed-note').textContent = 'Library film selected — paste and apply above to switch back to your own embed.';
     renderWatch();
   } else if (b.id === 'w-yt') {
     $('w-player').innerHTML =
