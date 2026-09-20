@@ -30,7 +30,7 @@ $day = 86400;
 
 $women = ['Ava', 'Mia', 'Zoe', 'Lily', 'Nora', 'Ruby', 'Isla', 'Cora', 'Jade', 'Elle',
           'Maya', 'Tess', 'Rosa', 'Iris', 'Faye', 'Nina', 'Skye', 'Vera', 'Luna', 'Dana',
-          'Gwen', 'Hope', 'June', 'Kira', 'Wren'];
+          'Gwen', 'Hope', 'June', 'Kira', 'Wren', 'Sage', 'Demi', 'Lena', 'Mara', 'Bree', 'Cleo', 'Dara'];
 $men = ['Liam', 'Noah', 'Owen', 'Eli', 'Jack', 'Cole', 'Ryan', 'Seth', 'Adam', 'Joel',
         'Finn', 'Dean', 'Hugo', 'Marc', 'Theo', 'Reid', 'Kyle', 'Evan', 'Luke', 'Sam',
         'Nate', 'Paul', 'Ross', 'Todd', 'Wade'];
@@ -100,15 +100,15 @@ function sample_portrait(int $i): ?string
 
 $roster = [];
 foreach ($women as $i => $name) {
-    $roster[] = ['female', $name, $i];
+    $roster[] = ['female', $name, $i, $i + 1];
 }
 foreach ($men as $i => $name) {
-    $roster[] = ['male', $name, $i + 25];
+    $roster[] = ['male', $name, $i + count($women), $i + 1];
 }
 
 $created = 0;
 $skipped = 0;
-foreach ($roster as [$gender, $name, $i]) {
+foreach ($roster as [$gender, $name, $i, $ordinal]) {
     $email = strtolower($name) . sprintf('%02d', $i) . '@library.demo';
     if ($engine->store()->where('users', ['email' => $email]) !== []) {
         $skipped++;
@@ -150,7 +150,7 @@ foreach ($roster as [$gender, $name, $i]) {
     // Real headshots win: drop files named female-01.jpg … male-25.jpg
     // into dating/assets/headshots/ and the library uses them.
     $headshot = null;
-    $headshotName = sprintf('%s-%02d', $gender, ($i % 25) + 1);
+    $headshotName = sprintf('%s-%02d', $gender, $ordinal);
     foreach (['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'] as $ext => $mime) {
         $file = dirname(__DIR__) . '/assets/headshots/' . $headshotName . '.' . $ext;
         if (is_file($file)) {
