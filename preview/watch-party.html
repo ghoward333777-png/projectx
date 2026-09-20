@@ -89,7 +89,7 @@ function play(i) {
   const [title, id] = FILMS[i];
   const queue = FILMS.filter((f, j) => j !== i).map(f => f[1]);
   document.getElementById('player').src =
-    'https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&playlist=' + queue.join(',');
+    'https://www.youtube.com/embed/' + id + '?rel=0&playsinline=1&playlist=' + queue.join(',');
   document.getElementById('now-playing').textContent =
     'Now in the player: ' + title + ' — with ' + queue.length + ' more romance films queued in the playlist.';
   document.getElementById('films').innerHTML = FILMS.map((f, j) =>
