@@ -41,6 +41,8 @@ final class SitePackageExporter
         'dating/api.php',
         'dating/index.php',
         'dating/browse.php',
+        'dating/avatar.php',
+        'dating/bin/seed-browse-library.php',
         'dating/partner-portal.php',
         'dating/admin.php',
         'dating/safety-center.php',

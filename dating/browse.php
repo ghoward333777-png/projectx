@@ -100,9 +100,14 @@ $matches = $engine->browseFor($userId);
         <div class="cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
             <?php foreach ($matches as $match): ?>
                 <div class="card">
-                    <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
-                    <span style="color:#a294ad;font-size:13px">match score <?= (int) $match['match_score'] ?> ·
-                        popularity <?= (int) $match['popularity_score'] ?> · ~<?= sd_e((string) $match['zip_distance_km']) ?> km</span>
+                    <div class="who">
+                        <img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="">
+                        <div>
+                            <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong><br>
+                            <span style="color:#a294ad;font-size:13px">match <?= (int) $match['match_score'] ?> ·
+                                popularity <?= (int) $match['popularity_score'] ?> · ~<?= sd_e((string) $match['zip_distance_km']) ?> km</span>
+                        </div>
+                    </div>
                     <div>
                         <?php foreach (array_slice((array) $match['shared_interests'], 0, 4) as $interest): ?>
                             <span class="pill">both: <?= sd_e((string) $interest) ?></span>

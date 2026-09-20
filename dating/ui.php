@@ -40,6 +40,8 @@ function sd_page_open(string $title, string $eyebrow): void
         .card { background: #262030; border-radius: 14px; padding: 14px; }
         .card strong { color: #fff; }
         .pill { display: inline-block; background: #3a2a3e; border-radius: 999px; padding: 3px 10px; font-size: 12px; color: #ffc4da; margin: 2px 4px 2px 0; }
+        .avatar { width: 52px; height: 52px; border-radius: 14px; flex: 0 0 auto; }
+        .who { display: flex; align-items: center; gap: 10px; }
         .metric strong { display: block; font-size: 30px; color: #fff; }
         .metric span { color: #bfb2c8; font-size: 13px; }
         .error { color: #ff9cba; background: #3c1f32; border: 1px solid #7a3755; padding: 12px; border-radius: 10px; margin-top: 14px; }

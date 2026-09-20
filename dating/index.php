@@ -202,7 +202,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         <?php endforeach; ?>
         <form method="post" style="margin-top:0">
             <input type="hidden" name="action" value="add_video">
-            <label>YouTube URL</label><input name="youtube_url" placeholder="https://www.youtube.com/watch?v=...">
+            <label>YouTube URL (clips of 10 seconds or less)</label><input name="youtube_url" placeholder="https://www.youtube.com/watch?v=...">
             <button type="submit">Embed video</button>
         </form>
     </section>
@@ -249,8 +249,11 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
             }
             ?>
             <div class="card" style="margin-bottom:10px">
-                <strong><?= sd_e((string) ($row['display_name'] ?: $row['user_id'])) ?></strong>
-                · popularity <?= (int) $row['popularity_score'] ?> (top <?= (int) $row['percentile'] ?>%)
+                <div class="who" style="margin-bottom:6px">
+                    <img class="avatar" src="avatar.php?u=<?= urlencode((string) $row['user_id']) ?>" alt="">
+                    <strong><?= sd_e((string) ($row['display_name'] ?: $row['user_id'])) ?></strong>
+                </div>
+                popularity <?= (int) $row['popularity_score'] ?> (top <?= (int) $row['percentile'] ?>%)
                 <?php if (isset($row['zip_distance_km'])): ?> · ~<?= sd_e((string) $row['zip_distance_km']) ?> km<?php endif; ?><br>
                 <?php foreach ((array) $row['interests'] as $interest): ?><span class="pill"><?= sd_e((string) $interest) ?></span><?php endforeach; ?>
                 <form method="post" style="background:none;border:0;padding:0;margin:0">
@@ -407,8 +410,11 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         <h2>Your matches</h2>
         <?php foreach ($engine->matchesFor($userId, ['limit' => 10]) as $match): ?>
             <div class="card" style="margin-bottom:10px">
-                <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
-                · match score <?= (int) $match['match_score'] ?> · popularity <?= (int) $match['popularity_score'] ?>
+                <div class="who" style="margin-bottom:6px">
+                    <img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="">
+                    <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
+                </div>
+                match score <?= (int) $match['match_score'] ?> · popularity <?= (int) $match['popularity_score'] ?>
                 · ~<?= sd_e((string) $match['zip_distance_km']) ?> km<br>
                 <?php foreach ((array) $match['shared_interests'] as $interest): ?><span class="pill">both: <?= sd_e((string) $interest) ?></span><?php endforeach; ?>
                 <form method="post" style="background:none;border:0;padding:0;margin:0">
