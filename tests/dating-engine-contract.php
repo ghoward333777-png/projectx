@@ -213,6 +213,24 @@ try {
 }
 contract_check($threw, 'unknown shared categories must be rejected');
 
+// "Must share with me": every criterion pins candidates to the member's own value.
+$engine->updateProfile($alice['user_id'], ['faith' => 'none', 'education' => 'masters']);
+$engine->updateProfile($bob['user_id'], ['faith' => 'none']);
+$engine->updateProfile($dave['user_id'], ['faith' => 'spiritual']);
+$engine->updatePreferences($alice['user_id'], ['must_share' => ['faith', 'music_nightlife']]);
+$sharedWithMe = $engine->browseFor($alice['user_id'], 12, $t0);
+contract_check(count($sharedWithMe) === 1 && $sharedWithMe[0]['user_id'] === $bob['user_id'], 'must-share faith + music must keep only Bob (shares both with Alice)');
+$engine->updatePreferences($alice['user_id'], ['must_share' => ['pets']]);
+contract_check(count($engine->browseFor($alice['user_id'], 12, $t0)) === 2, 'a must-share factor the member has not filled in is skipped, not enforced');
+$engine->updatePreferences($alice['user_id'], ['must_share' => []]);
+$threw = false;
+try {
+    $engine->updatePreferences($alice['user_id'], ['must_share' => ['shoe_size']]);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown must-share criteria must be rejected');
+
 // Lifestyle requirements: family plans, smoking, drinking, pets.
 $engine->updateProfile($bob['user_id'], ['family_plans' => 'wants_kids', 'smoking' => 'never', 'drinking' => 'socially', 'pets' => 'dog']);
 $engine->updatePreferences($alice['user_id'], ['family_plans' => 'wants_kids', 'smoking' => 'never']);

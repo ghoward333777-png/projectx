@@ -30,7 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     try {
         switch ((string) ($_POST['action'] ?? '')) {
             case 'preferences':
-                $engine->updatePreferences($userId, $_POST + ['shared_categories' => (array) ($_POST['shared_categories'] ?? [])]);
+                $engine->updatePreferences($userId, $_POST + [
+                    'shared_categories' => (array) ($_POST['shared_categories'] ?? []),
+                    'must_share' => (array) ($_POST['must_share'] ?? []),
+                ]);
                 $notice = 'Preferences saved — Browse now reflects them.';
                 break;
             case 'start_chat':
@@ -232,13 +235,26 @@ $views = ['grid' => 'Grid', 'swipe' => 'Swipe', 'top10' => 'Top 10', 'top20' => 
             </select>
         </div>
     </div>
-    <h3 style="margin:14px 0 4px">Must share (generic classifications — pick as many as matter)</h3>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-        <?php $chosenCategories = (array) ($preferences['shared_categories'] ?? []); ?>
+    <h3 style="margin:14px 0 4px">Must share with me — select as many as you want</h3>
+    <p style="margin:0 0 8px;font-size:12.5px;color:#a294ad">Each check requires the other person to share
+        <em>your</em> value for that factor. Factors you haven't filled in on your own profile are skipped.</p>
+    <?php $mustShare = (array) ($preferences['must_share'] ?? []); ?>
+    <strong style="font-size:13px;color:#eadff0">Profile factors</strong>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:6px 0 10px">
+        <?php foreach (SlowDatingEngine::SHAREABLE_FACTS as $slug => $label): ?>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:0">
+                <input type="checkbox" name="must_share[]" value="<?= sd_e($slug) ?>" style="width:auto"
+                    <?= in_array($slug, $mustShare, true) ? 'checked' : '' ?>>
+                <?= sd_e($label) ?>
+            </label>
+        <?php endforeach; ?>
+    </div>
+    <strong style="font-size:13px;color:#eadff0">Interest classifications</strong>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:6px 0 0">
         <?php foreach (SlowDatingEngine::INTEREST_CATEGORIES as $slug => $label): ?>
             <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:0">
-                <input type="checkbox" name="shared_categories[]" value="<?= sd_e($slug) ?>" style="width:auto"
-                    <?= in_array($slug, $chosenCategories, true) ? 'checked' : '' ?>>
+                <input type="checkbox" name="must_share[]" value="<?= sd_e($slug) ?>" style="width:auto"
+                    <?= in_array($slug, $mustShare, true) ? 'checked' : '' ?>>
                 <?= sd_e($label) ?>
             </label>
         <?php endforeach; ?>

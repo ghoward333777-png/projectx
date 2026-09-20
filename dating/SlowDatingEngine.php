@@ -67,6 +67,21 @@ final class SlowDatingEngine
     public const DRINKING = ['never', 'socially', 'regularly'];
     public const PETS = ['none', 'dog', 'cat', 'other'];
 
+    /** Everything a member can require the other person to SHARE with them. */
+    public const SHAREABLE_FACTS = [
+        'dating_type' => 'Relationship goal',
+        'faith' => 'Faith',
+        'politics' => 'Politics',
+        'income_range' => 'Income bracket',
+        'education' => 'Education level',
+        'occupation_category' => 'Occupation',
+        'automobile' => 'Automobile',
+        'family_plans' => 'Family plans',
+        'smoking' => 'Smoking habits',
+        'drinking' => 'Drinking habits',
+        'pets' => 'Pets',
+    ];
+
     /** Generic interest classifications — requirements speak in these, never in raw items. */
     public const INTEREST_CATEGORIES = [
         'adventures' => 'Adventures',
@@ -1419,6 +1434,22 @@ final class SlowDatingEngine
                 (array) $items,
             )));
         }
+        if (array_key_exists('must_share', $fields)) {
+            $value = $fields['must_share'];
+            $items = is_array($value) ? $value : preg_split('/\s*,\s*/', (string) $value, -1, PREG_SPLIT_NO_EMPTY);
+            $mustShare = [];
+            foreach ((array) $items as $criterion) {
+                $criterion = strtolower(trim((string) $criterion));
+                if ($criterion === '') {
+                    continue;
+                }
+                if (!isset(self::SHAREABLE_FACTS[$criterion]) && !isset(self::INTEREST_CATEGORIES[$criterion])) {
+                    throw new InvalidArgumentException('Unknown must-share criterion: ' . $criterion);
+                }
+                $mustShare[] = $criterion;
+            }
+            $preferences['must_share'] = array_values(array_unique($mustShare));
+        }
         if (array_key_exists('shared_categories', $fields)) {
             $value = $fields['shared_categories'];
             $items = is_array($value) ? $value : preg_split('/\s*,\s*/', (string) $value, -1, PREG_SPLIT_NO_EMPTY);
@@ -1497,6 +1528,24 @@ final class SlowDatingEngine
         if ((array) ($preferences['shared_categories'] ?? []) !== []) {
             $filters['shared_categories'] = $preferences['shared_categories'];
         }
+        // "Must share with me": each checked criterion pins the candidate to
+        // the member's OWN value (facts) or to a classification the member
+        // has themselves. Criteria the member hasn't filled in are skipped.
+        $myProfile = (array) $me['profile'];
+        $myCategories = $this->interestCategories($myProfile);
+        foreach ((array) ($preferences['must_share'] ?? []) as $criterion) {
+            if (isset(self::SHAREABLE_FACTS[$criterion])) {
+                $mine = (string) ($myProfile[$criterion] ?? '');
+                if ($mine !== '') {
+                    $filters[$criterion] = $mine;
+                }
+            } elseif (isset(self::INTEREST_CATEGORIES[$criterion]) && in_array($criterion, $myCategories, true)) {
+                $filters['shared_categories'] = array_values(array_unique(array_merge(
+                    (array) ($filters['shared_categories'] ?? []),
+                    [$criterion],
+                )));
+            }
+        }
         if ($filters['zip_code'] === '') {
             unset($filters['zip_code'], $filters['zip_radius_km']);
         }
@@ -1514,6 +1563,7 @@ final class SlowDatingEngine
             'dating_type' => '',
             'interests' => [],
             'shared_categories' => [],
+            'must_share' => [],
             'faith' => '',
             'politics' => '',
             'income_range' => '',
