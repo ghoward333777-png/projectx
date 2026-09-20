@@ -1,0 +1,1396 @@
+<title>SlowDating Demo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&display=swap">
+<style>
+  :root {
+    --ground: #131018; --surface: #1d1824; --raised: #262030; --deep: #14101b;
+    --border: #3d3346; --border-soft: #574a61;
+    --text: #f3eef6; --muted: #c4b8ce; --faint: #a294ad;
+    --accent: #ff9cc0; --accent-soft: #ffc4da; --accent-ink: #2a0f1d;
+    --mine: #4a2440; --theirs: #2b2436; --chip: #3a2a3e;
+    --ok: #8fe3b0; --ok-bg: #17351f; --ok-border: #2e6b40;
+    --warn: #ffb08a; --warn-bg: #3c2a1f; --warn-border: #7a5537;
+    --display: "Fraunces", Georgia, serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+  body {
+    margin: 0; background: radial-gradient(1200px 600px at 85% -5%, #3b1e3f, var(--ground) 60%) fixed, var(--ground);
+    background-color: var(--ground); color: var(--text); font-family: var(--sans);
+    font-size: 15px; line-height: 1.5; padding: 0 16px;
+  }
+  .shell { max-width: 1040px; margin: 0 auto; padding-block: 22px 72px; }
+  header.brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+  .wordmark { font-family: var(--display); font-weight: 900; font-size: 34px; letter-spacing: -.02em; margin: 0; }
+  .wordmark .dot { color: var(--accent); }
+  .tagline { color: var(--faint); font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+  .demo-note { margin-left: auto; font-size: 12.5px; color: var(--muted); background: var(--raised); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; }
+  nav.portals { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 20px; }
+  nav.portals button {
+    font: inherit; font-weight: 700; color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px; cursor: pointer;
+  }
+  nav.portals button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  nav.tabs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 14px; }
+  nav.tabs button { font: inherit; font-weight: 700; background: none; border: 0; color: var(--accent-soft); cursor: pointer; padding: 4px 2px; border-bottom: 2px solid transparent; }
+  nav.tabs button[aria-current="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  main { display: grid; gap: 14px; }
+  section.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 21px; margin: 0 0 10px; letter-spacing: -.01em; text-wrap: balance; }
+  h3 { font-size: 15px; margin: 14px 0 8px; }
+  p { color: var(--muted); margin: 6px 0; }
+  .statrow { display: flex; flex-wrap: wrap; gap: 10px; }
+  .stat { background: var(--raised); border-radius: 12px; padding: 10px 14px; min-width: 118px; flex: 0 1 auto; }
+  .stat strong { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--faint); font-size: 12px; }
+  .pill { display: inline-block; background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--accent-soft); margin: 2px 4px 2px 0; white-space: nowrap; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .card { background: var(--raised); border-radius: 12px; padding: 13px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .card .name { font-weight: 800; }
+  .card .meta { color: var(--faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .chatlog { background: var(--deep); border-radius: 12px; padding: 12px; max-height: 330px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 86%; padding: 8px 12px; border-radius: 13px; }
+  .msg.mine { background: var(--mine); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.theirs { background: var(--theirs); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg small { display: block; color: var(--faint); font-size: 11px; margin-top: 3px; }
+  .msg .redact { color: var(--accent-soft); font-style: italic; }
+  .composer { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .composer textarea { background: var(--deep); border: 1px solid var(--border-soft); border-radius: 10px; color: var(--text); font: inherit; padding: 10px 12px; min-height: 56px; resize: vertical; }
+  .composer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .counter { color: var(--faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  button.act { font: inherit; font-weight: 800; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; }
+  button.act.small { padding: 6px 14px; font-size: 13.5px; }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+  button.quiet { font: inherit; font-weight: 700; background: var(--raised); color: var(--accent-soft); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  .flash { border-radius: 10px; padding: 10px 13px; font-size: 13.5px; margin-top: 10px; }
+  .flash.ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok); }
+  .flash.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
+  form.grid, .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+  label.f input, label.f select { background: var(--deep); border: 1px solid var(--border-soft); border-radius: 9px; color: var(--text); font: inherit; padding: 8px 10px; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  th { color: var(--faint); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  .tablewrap { overflow-x: auto; }
+  ul.plain { margin: 6px 0; padding-left: 20px; color: var(--muted); }
+  ul.plain li { margin: 4px 0; }
+  .progress { height: 7px; background: var(--deep); border-radius: 99px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+  .lockline { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 8px 0 4px; font-size: 13px; color: var(--muted); }
+  .lockline .progress { flex: 1 1 120px; }
+  .takeaway { background: var(--raised); border-left: 4px solid var(--accent); border-radius: 0 12px 12px 0; padding: 12px 16px; margin: 10px 0 4px; }
+  .takeaway strong { color: var(--accent-soft); letter-spacing: .08em; font-size: 12px; text-transform: uppercase; display: block; margin-bottom: 4px; }
+  #sa-body h3 { font-size: 16px; color: var(--accent-soft); margin: 20px 0 6px; }
+  #sa-body p, #sa-body ul { max-width: 68ch; color: var(--muted); }
+  #sa-body ul { line-height: 1.7; padding-left: 20px; }
+  .art-nav { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; }
+  .art-nav button { text-align: left; }
+  .stage { position: relative; background: var(--deep); border-radius: 12px; overflow: hidden; }
+  .stage img { display: block; width: 100%; height: auto; }
+  .tslide { display: none; }
+  .tslide.on { display: block; }
+  .arrow { position: absolute; top: 50%; transform: translateY(-50%); border: 0; cursor: pointer;
+           background: rgba(19,16,24,.72); color: var(--accent-soft); font-size: 26px; line-height: 1;
+           width: 44px; height: 44px; border-radius: 999px; }
+  .arrow:hover { background: rgba(58,42,62,.9); }
+  .arrow.prev { left: 10px; } .arrow.next { right: 10px; }
+  .tcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 12px; }
+  .tcaption strong { font-size: 18px; font-family: var(--display); }
+  .tcaption .n { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .tcaption p { flex-basis: 100%; margin: 0; }
+  .dots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .dots button.dot { width: 11px; height: 11px; border-radius: 999px; border: 0; cursor: pointer; background: var(--chip); padding: 0; }
+  .dots button.dot.on { background: var(--accent); }
+  .dots .play { margin-left: auto; }
+  @media (max-width: 560px) { .wordmark { font-size: 28px; } .demo-note { margin-left: 0; } section.panel { padding: 14px; } }
+  /* Watch Party player+chat panel (template layout) */
+  .wchat { display: flex; flex-direction: column; gap: 12px; background: #020617; border-radius: 12px; padding: 12px; border: 1px solid #1f2937; margin-top: 16px; }
+  .wchat-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #1f2937; }
+  .wchat-header span { font-size: 12px; color: #9ca3af; }
+  .wchat-messages { height: max(320px, 44vh); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+  .wchat-msg { display: inline-flex; flex-direction: column; max-width: 70%; padding: 8px 10px; border-radius: 10px; background: #111827; border: 1px solid #1f2937; font-size: 13px; gap: 6px; align-self: flex-start; color: #e5e7eb; }
+  .wchat-msg.me { align-self: flex-end; background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .wchat-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: #cbd5e1; opacity: .85; }
+  .wchat-msg img { max-width: 120px; max-height: 120px; border-radius: 6px; border: 1px solid #1f2937; object-fit: cover; }
+  .wchat-input { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
+  .wchat-row { display: flex; gap: 8px; align-items: flex-end; }
+  .wchat-row textarea { flex: 1; resize: vertical; min-height: 90px; max-height: 220px; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #020617; color: #e5e7eb; font-size: 13px; font-family: inherit; }
+  .wchat-row textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+  .wchat-controls { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .wchat-file { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px dashed #4b5563; color: #9ca3af; font-size: 12px; cursor: pointer; background: #020617; }
+  .wchat-file input { display: none; }
+  .wchat-send { background: #1d4ed8; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .wchat-send:hover { background: #3b82f6; }
+  .wchat-hint { font-size: 11.5px; color: #9ca3af; }
+</style>
+
+<div class="shell">
+  <header class="brand">
+    <h1 class="wordmark">SlowDating<span class="dot">.</span></h1>
+    <span class="tagline">Take your time, meet for real</span>
+    <span class="demo-note">Interactive demo · sample data · nothing is saved</span>
+  </header>
+
+  <nav class="portals" id="portals"></nav>
+
+  <!-- ================= MEMBER ================= -->
+  <div id="portal-member">
+    <nav class="tabs" id="member-tabs"></nav>
+
+    <main id="tab-chats">
+      <section class="panel">
+        <div class="statrow">
+          <div class="stat"><strong id="stat-pop">77</strong><span>Alice's popularity (0–100) · top 33% · rising</span></div>
+          <div class="stat"><strong>2</strong><span>active chats · you are signed in as Alice</span></div>
+        </div>
+        <p>Chat starts slow and speeds up as trust builds. Phone numbers, emails, links, and handles are
+          <strong style="color:var(--text)">erased before storage</strong> until a chat has lived
+          <strong style="color:var(--text)">30 days with 10 real conversations</strong>. Try it: send Bob your "number".</p>
+      </section>
+      <div id="chat-panels"></div>
+    </main>
+
+    <main id="tab-matches" hidden>
+      <section class="panel">
+        <h2>Today's drop</h2>
+        <p>Three people picked for you today from your preferences — a fresh drop lands every day.</p>
+        <div class="cards" id="drop-cards"></div>
+      </section>
+      <section class="panel">
+        <h2>Your matches</h2>
+        <p>Ranked by the 11-factor compatibility score: distance, interests, hobbies, dating type, faith, politics, income, occupation, automobile, outdoor life, popularity balance.</p>
+        <div class="cards" id="match-cards"></div>
+      </section>
+    </main>
+
+    <main id="tab-search" hidden>
+      <section class="panel">
+        <h2>Search members</h2>
+        <div class="formgrid">
+          <label class="f">Gender
+            <select id="q-gender"><option value="">Any</option><option>female</option><option selected>male</option></select></label>
+          <label class="f">Interest
+            <select id="q-interest"><option value="">Any</option><option selected>jazz</option><option>wine</option><option>dancing</option><option>escape rooms</option><option>cruises</option><option>hiking</option></select></label>
+          <label class="f">Dating type
+            <select id="q-type"><option value="">Any</option><option>long_term</option><option>slow_dating</option><option>marriage</option></select></label>
+          <label class="f">Income
+            <select id="q-income"><option value="">Any</option><option>under_30k</option><option>30k_60k</option><option>60k_100k</option><option>100k_150k</option><option>150k_plus</option></select></label>
+          <label class="f">Max distance (km)
+            <select id="q-dist"><option>5</option><option selected>25</option><option>150</option><option value="999">Anywhere</option></select></label>
+        </div>
+        <div class="cards" id="search-cards" style="margin-top:12px"></div>
+      </section>
+    </main>
+
+    <main id="tab-wallet" hidden>
+      <section class="panel">
+        <h2>My coupons</h2>
+        <div class="cards" id="coupon-cards"></div>
+      </section>
+      <section class="panel">
+        <h2>My rewards</h2>
+        <p>Granted by the operations team to the most engaging members — try it yourself in the Admin portal.</p>
+        <div class="cards" id="reward-cards"></div>
+      </section>
+      <section class="panel">
+        <h2>Upcoming partner events</h2>
+        <div class="cards" id="event-cards"></div>
+      </section>
+    </main>
+
+    <main id="tab-store" hidden>
+      <section class="panel">
+        <h2>Date-night store</h2>
+        <p>Curated by partner venues. Orders draw down live inventory.</p>
+        <div class="cards" id="product-cards"></div>
+      </section>
+      <section class="panel">
+        <h2>Membership</h2>
+        <p><strong style="color:var(--text)">Pictures come second — on purpose.</strong> Everyone's profile shows
+          generated artwork first; real pictures reveal only after your chat with a member reaches the platform's
+          reveal day (set by our team — the first, second, or third day of your chat).
+          <strong style="color:var(--text)">Peek early</strong> is the premium perk: paid members see every member's
+          real pictures immediately, across Browse, Search, Matches, and chats.</p>
+        <div class="cards">
+          <div class="card"><span class="name">Member — $19/year</span><span class="meta">Full membership: matches, coupons, events, store — and Peek early: see every member's real pictures immediately.</span></div>
+          <div class="card"><span class="name">VIP — $79/year</span><span class="meta">Everything in Member (including Peek early) plus early chat unlock and profile boost.</span></div>
+          <div class="card"><span class="name">Elite — $199/year</span><span class="meta">Everything in VIP plus chaperone booking priority and elite events.</span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= BROWSE ================= -->
+  <div id="portal-browse" hidden>
+    <main>
+      <section class="panel">
+        <h2>Browse — who are you looking for?</h2>
+        <p>Your saved preferences filter the whole community; the survivors rank by compatibility, best match first. You are browsing as Alice.</p>
+        <div class="formgrid">
+          <label class="f">Gender
+            <select id="b-gender"><option value="">Anyone</option><option value="male" selected>Men</option><option value="female">Women</option></select></label>
+          <label class="f">Age from<input id="b-agemin" type="number" value="27" min="18"></label>
+          <label class="f">Age to<input id="b-agemax" type="number" value="38" min="18"></label>
+          <label class="f">Within (km)
+            <select id="b-dist"><option>5</option><option selected>50</option><option value="999">Anywhere</option></select></label>
+          <label class="f">Must share
+            <select id="b-interest">
+              <option value="">Anything</option>
+              <option value="adventures">Adventures</option>
+              <option value="arts_culture">Arts &amp; culture</option>
+              <option value="food_dining">Food &amp; dining</option>
+              <option value="music_nightlife">Music &amp; nightlife</option>
+              <option value="outdoors">Outdoors</option>
+              <option value="sports_fitness">Sports &amp; fitness</option>
+              <option value="travel">Travel</option>
+              <option value="games">Games &amp; trivia</option>
+              <option value="film_tv">Film &amp; TV</option>
+            </select></label>
+          <label class="f">Faith
+            <select id="b-faith"><option value="">Any</option><option>christian</option><option>catholic</option><option>spiritual</option><option>none</option></select></label>
+          <label class="f">Income
+            <select id="b-income"><option value="">Any</option><option>30k_60k</option><option>60k_100k</option><option>100k_150k</option><option>150k_plus</option></select></label>
+        </div>
+        <p style="margin:12px 0 4px;font-weight:700;font-size:13px;color:var(--muted)">Must share with me — select as many as you want
+          <span style="font-weight:400">(each check requires their value to equal yours)</span></p>
+        <div class="formgrid" id="b-mustshare">
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="faith" style="width:auto"> Faith</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="income" style="width:auto"> Income bracket</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="type" style="width:auto"> Relationship goal</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="job" style="width:auto"> Occupation</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="cat:music_nightlife" style="width:auto"> Music &amp; nightlife</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="cat:food_dining" style="width:auto"> Food &amp; dining</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="cat:travel" style="width:auto"> Travel</label>
+          <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" value="cat:adventures" style="width:auto"> Adventures</label>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 style="margin-bottom:4px">How do you want to look?</h2>
+        <p style="margin:0" class="counter" id="b-views">
+          <button class="quiet" data-view="grid">Grid</button>
+          <button class="quiet" data-view="swipe">Swipe</button>
+          <button class="quiet" data-view="top10">Top 10</button>
+        </p>
+      </section>
+      <section class="panel" id="b-swipe-panel" hidden>
+        <h2>Swipe — one at a time</h2>
+        <div id="b-swipe-card"></div>
+        <div id="b-swipe-flash"></div>
+      </section>
+      <section class="panel" id="b-grid-panel">
+        <h2 id="b-count">Your best matches</h2>
+        <div class="cards" id="b-cards"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= PERKS & INCOME ================= -->
+  <div id="portal-earn" hidden>
+    <main>
+      <section class="panel">
+        <h2>Perks &amp; Income — for popular members</h2>
+        <p>Popularity pays here. You are signed in as Alice — top of her cohort, so every program is unlocked.
+          Programs pay into a real earnings ledger on the live site; try the buttons below.</p>
+        <div class="statrow">
+          <div class="stat"><strong>100</strong><span>popularity score</span></div>
+          <div class="stat"><strong>top 4%</strong><span>of her cohort · programs unlocked</span></div>
+          <div class="stat"><strong id="e-total">$49.05</strong><span>earned to date</span></div>
+        </div>
+        <div class="flash ok" style="margin-top:10px">You qualify for the income programs (top 25% of your cohort, or a popularity score of 60+). Enroll below — every payout lands in your ledger.</div>
+      </section>
+      <section class="panel">
+        <h2>Income programs</h2>
+        <div class="cards" id="e-programs"></div>
+      </section>
+      <section class="panel">
+        <h2>Paid chat hours</h2>
+        <p>Stay logged in for 4 to 8 hours a day keeping chats alive. An active hour is any hour you send at least
+          one message — counted separately for chats you started and chats you are responding in. Four active hours
+          unlock $1.50 per hour; eight hours is the daily cap.</p>
+        <div class="composer"><div class="row">
+          <button class="act" id="e-claim">Claim today's chat hours</button>
+          <span class="counter">4 responder hours logged today with Marcus</span>
+        </div></div>
+        <div id="e-claim-flash"></div>
+      </section>
+      <section class="panel">
+        <h2>Premium Members Only gallery</h2>
+        <p>A private body of work, <strong style="color:var(--text)">separate from the three profile pictures</strong>.
+          Only premium (paid) members can open it — and every visit pays the owner
+          <strong style="color:var(--text)">$0.25 per viewer per day</strong>. 2/12 photos.</p>
+        <div class="cards">
+          <div class="card"><div style="height:120px;border-radius:10px;background:linear-gradient(160deg,#d9b98c,#28b7c9 55%,#61b954)"></div><span class="meta">Golden hour on the pier</span></div>
+          <div class="card"><div style="height:120px;border-radius:10px;background:linear-gradient(160deg,#c93fd4,#2b39c9 45%,#5c5568)"></div><span class="meta">Backstage at the jazz brunch</span></div>
+          <div class="card"><span class="name">+ Add a gallery photo</span><span class="meta">JPEG, PNG, or WebP up to 2 MB. Uploads are validated against the file's real bytes on the live site.</span></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Partner testimonial offers</h2>
+        <p>Advertising partners script these and set the payout. Record the script, submit the video, and the partner
+          <strong style="color:var(--text)">accepts (you are paid), rejects, edits the script for a re-record, or extends it</strong>.</p>
+        <div class="cards" id="e-offers"></div>
+        <h2 style="margin-top:14px">Your submissions</h2>
+        <div class="tablewrap"><table id="e-subs"></table></div>
+      </section>
+      <section class="panel">
+        <h2>Earnings ledger</h2>
+        <div class="tablewrap"><table id="e-ledger"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= WATCH PARTY ================= -->
+  <div id="portal-watch" hidden>
+    <main>
+      <section class="panel">
+        <h2>Watch Party — a movie date, right here</h2>
+        <p>Every day the platform schedules one film from its independent playlist of
+          <strong style="color:var(--text)">1,000 romance films</strong>. Open the party with your match, press play
+          together, and talk in the chat under the player — or swap in any film from the library.
+          You are watching with <strong style="color:var(--text)">Marcus</strong>.</p>
+        <div id="w-banner"></div>
+      </section>
+      <section class="panel">
+        <h2 style="margin-bottom:6px">Your player, your code</h2>
+        <p style="margin:0 0 8px">Paste YouTube embed code (the whole <code>&lt;iframe&gt;</code>), a video link, or a playlist
+          link — the player below uses <em>your</em> embed. Admins have this same box in the live site's Admin console.</p>
+        <div class="formgrid" style="align-items:end">
+          <label class="f" style="grid-column:1/-1">Embed code or YouTube link
+            <input id="w-embed" value="https://www.youtube.com/playlist?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij"></label>
+        </div>
+        <p style="margin:8px 0 0"><button class="act" id="w-embed-apply">Use my embed</button>
+          <button class="quiet" id="w-embed-clear">Clear</button>
+          <span class="counter" id="w-embed-note"></span></p>
+      </section>
+      <section class="panel">
+        <div id="w-title"></div>
+        <div id="w-player"></div>
+        <div class="wchat">
+          <div class="wchat-header">
+            <h2 style="margin:0;font-size:16px">Watching with Marcus</h2>
+            <span>Real-time chat · contact sharing open</span>
+          </div>
+          <div class="wchat-input">
+            <div class="wchat-row">
+              <textarea id="w-input" placeholder="Say something about the movie…"></textarea>
+              <div class="wchat-controls">
+                <label class="wchat-file"><input type="file" id="w-file" accept="image/*"><span id="w-filename">📎 Attach image</span></label>
+                <button id="w-send" class="wchat-send">Send</button>
+              </div>
+            </div>
+            <span class="wchat-hint">Your entry stays here at the top, next to the player — the newest message lands right below it.</span>
+          </div>
+          <div class="wchat-messages" id="w-log"></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>The romance library — pick any film instead</h2>
+        <p>Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
+          public-domain classics that play in-page; the live site carries the full thousand.</p>
+        <div class="formgrid"><label class="f">Search the playlist<input id="w-search" placeholder="Notebook, 1999, golden age…"></label></div>
+        <div class="cards" id="w-grid" style="margin-top:12px"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= FEATURES ================= -->
+  <div id="portal-features" hidden>
+    <main>
+      <section class="panel">
+        <h2>Everything the platform does</h2>
+        <p style="max-width:70ch">Every capability at a glance — what members get, how safety is built in, what
+          partner businesses can do, and what the technology guarantees. Try each one live in the other portals.</p>
+      </section>
+      <div id="feature-groups"></div>
+    </main>
+  </div>
+
+  <!-- ================= SMART DATING ================= -->
+  <div id="portal-smart" hidden>
+    <main>
+      <div id="smart-index">
+        <section class="panel">
+          <h2>Smart Dating — the science of choosing well</h2>
+          <p style="max-width:70ch">Chemistry is a spark; compatibility is the structure. Nine short articles on why the
+            strongest first attractions so often fail, what your brain is actually doing, and why relationships that
+            grow slowly hold — the research this whole platform is designed around.</p>
+        </section>
+        <div id="smart-cards"></div>
+      </div>
+      <div id="smart-article" hidden>
+        <section class="panel">
+          <p><button class="quiet" id="smart-back">← All Smart Dating articles</button></p>
+          <h2 id="sa-title"></h2>
+          <div class="takeaway"><strong>Concise takeaway</strong><span id="sa-takeaway"></span></div>
+          <div id="sa-body"></div>
+          <div class="art-nav" id="sa-nav"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= SITE TOUR ================= -->
+  <div id="portal-tour" hidden>
+    <main>
+      <section class="panel">
+        <h2>Site Tour</h2>
+        <p>One minute, every page: real captures of the site running with demo data. Use the arrows, the dots, or your keyboard's ← → keys.</p>
+        <div class="stage" id="t-stage">
+          <button type="button" class="arrow prev" id="t-prev" aria-label="Previous slide">&#8249;</button>
+          <button type="button" class="arrow next" id="t-next" aria-label="Next slide">&#8250;</button>
+        </div>
+        <div class="tcaption">
+          <strong id="t-title"></strong>
+          <span class="n"><span id="t-num">1</span> / <span id="t-total"></span></span>
+          <p id="t-text"></p>
+        </div>
+        <div class="dots" id="t-dots"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= PARTNER ================= -->
+  <div id="portal-partner" hidden>
+    <main>
+      <section class="panel">
+        <h2>Blue Note Lounge — partner dashboard</h2>
+        <p><span class="pill">lounge</span><span class="pill">jazz</span><span class="pill">quiet</span><span class="pill">romantic</span><span class="pill">no_kids</span> <span class="pill ok">Pro plan</span></p>
+        <div class="statrow" id="partner-stats"></div>
+      </section>
+      <section class="panel">
+        <h2>Send a targeted coupon</h2>
+        <p>Segment members by profile facts — "all women 21–35 within 30 km". Estimated reach updates from the live member base, and matching members get it in their wallet instantly (Alice included, if she matches).</p>
+        <div class="formgrid">
+          <label class="f">Discount %<input id="c-disc" type="number" value="20" min="1" max="90"></label>
+          <label class="f">Gender
+            <select id="c-gender"><option value="">Any</option><option selected>female</option><option>male</option></select></label>
+          <label class="f">Age min<input id="c-agemin" type="number" value="21"></label>
+          <label class="f">Age max<input id="c-agemax" type="number" value="35"></label>
+          <label class="f">Radius km
+            <select id="c-radius"><option>5</option><option selected>30</option><option value="999">Any</option></select></label>
+        </div>
+        <div class="composer"><div class="row">
+          <button class="act" id="c-send">Send coupon</button>
+          <span class="counter" id="c-reach"></span>
+        </div></div>
+        <div id="c-flash"></div>
+      </section>
+      <section class="panel">
+        <h2>Testimonial offers &amp; review</h2>
+        <p>Script a testimonial, set the payout, and popular members record it. You review every submission:
+          <strong style="color:var(--text)">accept</strong> (the member is paid),
+          <strong style="color:var(--text)">reject</strong>,
+          <strong style="color:var(--text)">edit</strong> the script for a re-record, or
+          <strong style="color:var(--text)">extend</strong> it with an addition.</p>
+        <div class="cards">
+          <div class="card">
+            <span class="name">30-second Jazz Night testimonial</span>
+            <span><span class="pill ok">$40.00 on acceptance</span><span class="pill">1 submission — Alice</span></span>
+            <span class="meta">“I met someone real at Blue Note's Singles Jazz Night. Low lights, live trio, actual conversation — this is how dates should start.”</span>
+            <span class="meta">
+              <button class="quiet" data-review="accept">Accept</button>
+              <button class="quiet" data-review="reject">Reject</button>
+              <button class="quiet" data-review="edit">Edit script</button>
+              <button class="quiet" data-review="extend">Extend script</button>
+            </span>
+            <div id="pt-flash"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Singles Jazz Night — Autumn Session</h2>
+        <p>Sep 28 · capacity 60 · $25 · every ticket enters the contest: <strong style="color:var(--text)">Dinner for two + reserved stage table</strong>.</p>
+        <div class="tablewrap"><table id="partner-contest"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= ADMIN ================= -->
+  <div id="portal-admin" hidden>
+    <main>
+      <section class="panel">
+        <h2>Grant free benefits to top members</h2>
+        <p>Reward the popularity leaderboard: free membership, gift certificates, products, event tickets, or all-expense-paid trips to company promotions.</p>
+        <div class="formgrid">
+          <label class="f">Cohort
+            <select id="r-cohort"><option value="10">Top 10</option><option value="50">Top 50</option><option value="100">Top 100</option></select></label>
+          <label class="f">Benefit
+            <select id="r-type">
+              <option value="free_membership">Free membership (1 year)</option>
+              <option value="gift_certificate">Gift certificate — $100</option>
+              <option value="event_tickets">Free Jazz Night tickets ×2</option>
+              <option value="promo_trip" selected>All-expense promo trip</option>
+            </select></label>
+        </div>
+        <div class="composer"><div class="row">
+          <button class="act" id="r-grant">Grant rewards</button>
+          <span class="counter">Each grant is recorded per member and shows in their wallet.</span>
+        </div></div>
+        <div id="r-flash"></div>
+      </section>
+      <section class="panel">
+        <h2>Photo reveal timeframe</h2>
+        <p>Relationships here start on common interests, not appearance. Real pictures stay behind the generated
+          artwork until a pair's chat is this many days old — day 0 reveals at the first chat, day 1 after one day,
+          and so on. <strong style="color:var(--text)">Premium members hold the "Peek early" perk</strong> and see
+          every member's pictures immediately.</p>
+        <div class="formgrid">
+          <label class="f">Days after the first chat (0–30)<input id="pr-days" type="number" value="2" min="0" max="30"></label>
+        </div>
+        <div class="composer"><div class="row">
+          <button class="act" id="pr-save">Save reveal timeframe</button>
+          <span class="counter">Applies across Browse, Matches, Search, and chats.</span>
+        </div></div>
+        <div id="pr-flash"></div>
+      </section>
+      <section class="panel">
+        <h2>Popularity leaderboard</h2>
+        <p>Ranked on raw engagement received (weighted: photos 5 · compliments 4 · chat requests 3 · messages 2 · likes 2 · views 1). Members only ever see their normalized 0–100 score.</p>
+        <div class="tablewrap"><table id="leader-table"></table></div>
+      </section>
+      <section class="panel">
+        <h2>Recent reward grants</h2>
+        <div class="tablewrap"><table id="grants-table"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= SAFETY ================= -->
+  <div id="portal-safety" hidden>
+    <main>
+      <section class="panel">
+        <h2>Women-first safety, built into the product</h2>
+        <ul class="plain">
+          <li><strong style="color:var(--text)">Contact data filtering</strong> — phones, emails, links, and handles are erased from messages until a chat unlocks (30 days + 10 real conversations).</li>
+          <li><strong style="color:var(--text)">Slow-chat pacing</strong> — limited message size and frequency early on defeats the rapid-pressure playbook scammers rely on.</li>
+          <li><strong style="color:var(--text)">Red-flag detection</strong> — money requests, urgency pressure, and off-platform pushes raise a safety alert automatically (try typing "wire me money" in the chat demo).</li>
+          <li><strong style="color:var(--text)">Vetted venues only</strong> — partner venues are tagged for quiet, adult, date-compatible atmospheres.</li>
+          <li><strong style="color:var(--text)">VIP chaperones</strong> — professional bodyguard partners offer discreet escorts, safe-arrival verification, and emergency response.</li>
+          <li><strong style="color:var(--text)">Privacy-first popularity</strong> — nobody ever sees raw counts of who messaged or viewed you.</li>
+        </ul>
+      </section>
+      <section class="panel">
+        <h2>Red flags to watch for</h2>
+        <ul class="plain">
+          <li>Pushes to move the conversation off the platform right away.</li>
+          <li>Asks for money, gift cards, or financial details — in any form, ever.</li>
+          <li>Creates urgency: "decide now", "last chance", "don't tell anyone".</li>
+          <li>Refuses video verification or gives inconsistent personal details.</li>
+          <li>Excessive flattery and instant intensity before you have met.</li>
+        </ul>
+      </section>
+      <section class="panel">
+        <h2>First-date checklist</h2>
+        <ul class="plain">
+          <li>Meet at a vetted public venue from the app — never a private address.</li>
+          <li>Tell a friend where you are going and share your check-in plan.</li>
+          <li>Arrange your own transport there and back.</li>
+          <li>Keep your drink in sight at all times.</li>
+          <li>Book a VIP chaperone through the app if you want a professional nearby.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- data
+const MEMBERS = {
+  alice:  { name: 'Alice',  age: 29, gender: 'female', zip: '90210', km: 0,   pop: 77, raw: 145, interests: ['jazz', 'italian food', 'travel'], type: 'long_term', income: '60k_100k', job: 'tech', faith: 'none', verified: true },
+  bob:    { name: 'Bob',    age: 33, gender: 'male',   zip: '90211', km: 5,   pop: 70, raw: 54,  interests: ['jazz', 'wine', 'travel'],         type: 'long_term', income: '100k_150k', job: 'finance', faith: 'none', verified: true },
+  marcus: { name: 'Marcus', age: 31, gender: 'male',   zip: '90210', km: 0,   pop: 53, raw: 41,  interests: ['italian food', 'escape rooms'],   type: 'long_term', income: '60k_100k', job: 'medical', faith: 'spiritual', verified: true },
+  emma:   { name: 'Emma',   age: 26, gender: 'female', zip: '90212', km: 15,  pop: 50, raw: 93,  interests: ['dancing', 'wine', 'art'],         type: 'slow_dating', income: '30k_60k', job: 'arts', faith: 'christian' },
+  sofia:  { name: 'Sofia',  age: 34, gender: 'female', zip: '90214', km: 15,  pop: 23, raw: 43,  interests: ['cruises', 'fine dining'],         type: 'marriage', income: '150k_plus', job: 'legal', faith: 'catholic' },
+  james:  { name: 'James',  age: 28, gender: 'male',   zip: '90213', km: 15,  pop: 26, raw: 20,  interests: ['jazz', 'hiking', 'coffee'],       type: 'slow_dating', income: '30k_60k', job: 'education', faith: 'none' },
+};
+const MATCHES = [
+  { id: 'bob', score: 84, shared: ['jazz', 'travel'] },
+  { id: 'marcus', score: 78, shared: ['italian food'] },
+  { id: 'james', score: 66, shared: ['jazz'] },
+];
+const VENUES = [
+  { name: 'Blue Note Lounge', cat: 'lounge', tags: ['jazz', 'quiet', 'romantic'], km: 0 },
+  { name: 'Trattoria Luna', cat: 'restaurant', tags: ['romantic', 'quiet'], km: 0 },
+  { name: 'Cipher Rooms', cat: 'experience', tags: ['game_night'], km: 5 },
+];
+const TOPICS = [
+  { kw: 'jazz', tags: ['jazz', 'quiet'], cats: ['lounge', 'restaurant'] },
+  { kw: 'italian', tags: ['romantic', 'quiet'], cats: ['restaurant'] },
+  { kw: 'pasta', tags: ['romantic', 'quiet'], cats: ['restaurant'] },
+  { kw: 'orecchiette', tags: ['romantic', 'quiet'], cats: ['restaurant'] },
+  { kw: 'wine', tags: ['romantic', 'quiet'], cats: ['restaurant', 'experience'] },
+  { kw: 'danc', tags: ['dance_friendly'], cats: ['lounge', 'experience'] },
+  { kw: 'puzzle', tags: ['game_night'], cats: ['experience'] },
+  { kw: 'escape', tags: ['game_night'], cats: ['experience'] },
+  { kw: 'noir', tags: ['game_night'], cats: ['experience'] },
+  { kw: 'coffee', tags: ['quiet'], cats: ['restaurant', 'lounge'] },
+  { kw: 'dinner', tags: ['romantic', 'quiet'], cats: ['restaurant'] },
+];
+const state = {
+  chats: [
+    { id: 'bob', day: 12, sessions: 9, unlocked: false, limit: 10, maxChars: 500, sentToday: 2,
+      msgs: [
+        m('bob', 'So: jazz AND italian food on your profile. Bold combination.', 'Sep 8'),
+        m('alice', 'The only combination. A quiet lounge with a live trio and a plate of handmade pasta is my perfect evening.', 'Sep 8'),
+        m('bob', 'Counting down. Meanwhile: best pasta shape, and defend your answer.', 'Sep 15'),
+        m('alice', "Orecchiette. It's a tiny bowl that carries the sauce. This is not a debate.", 'Sep 15'),
+        m('bob', 'I brought up orecchiette at dinner with friends and started an argument. Worth it.', 'Sep 18'),
+        m('alice', 'My work here is done. Same time tomorrow?', 'Sep 18'),
+        m('bob', "Screw the pace for one second — here's my number: [contact info removed], and I'm [contact info removed] on IG.", 'Sep 19', 2),
+        m('alice', 'The app caught that before I even saw it. Earn the number, Bob — 18 more days.', 'Sep 19'),
+      ] },
+    { id: 'marcus', day: 36, sessions: 11, unlocked: true, limit: null, maxChars: null, sentToday: 0,
+      msgs: [
+        m('marcus', 'This has been the best month on any app, for the record.', 'Sep 12'),
+        m('alice', 'Agreed. And now the app finally trusts us…', 'Sep 12'),
+        m('marcus', "Real-time at last. Here's my actual number: 424-555-0177 — call me about Saturday.", 'Sep 17'),
+        m('alice', 'Saved! Mine is 310-555-0126. See you at the noir room, detective.', 'Sep 17'),
+        m('marcus', 'Dinner first? That little Italian place near the theater — are you free Saturday?', 'Sep 19'),
+        m('alice', "Perfect. Pasta, then a late movie. It's a date.", 'Sep 19'),
+      ] },
+  ],
+  coupons: [
+    { venue: 'Blue Note Lounge', text: '20% off · valid until Oct 14', redeemed: false },
+    { venue: 'Trattoria Luna', text: '$15 off · valid until Oct 16', redeemed: false },
+  ],
+  rewards: [
+    { type: 'Gift certificate', detail: '$100.00 · granted Sep 13' },
+    { type: 'Promo trip', detail: 'All-expense weekend at the SlowDating Spring Launch Gala in Napa · granted Sep 18' },
+  ],
+  events: [
+    { name: 'Singles Jazz Night — Autumn Session', venue: 'Blue Note Lounge', when: 'Sep 28', price: 25, mine: 2 },
+    { name: 'Detective Night for Two', venue: 'Cipher Rooms', when: 'Sep 24', price: 38, mine: 0 },
+  ],
+  products: [
+    { name: 'Vinyl & Wine Date Kit', venue: 'Blue Note Lounge', price: 59.0, stock: 18, desc: 'A pressed jazz LP, two glasses, and a tasting card for a night in.' },
+    { name: 'At-Home Mystery Box', venue: 'Cipher Rooms', price: 44.5, stock: 29, desc: 'A two-player detective case in a box — 90 minutes of clues.' },
+  ],
+  partner: { coupons: 1, redemptions: 0, tickets: 3, revenue: 75, entries: 2 },
+  grants: [
+    { who: 'Top 10 · 6 members', what: 'promo trip', when: 'Sep 18' },
+    { who: 'Top 10 · 6 members', what: 'gift certificate $100', when: 'Sep 13' },
+  ],
+};
+function m(from, text, when, redactions = 0) { return { from, text, when, redactions }; }
+
+// ---------------------------------------------------------- engine rules (ported from SlowDatingEngine.php)
+const CONTACT_PATTERNS = [
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+  /\+?\d[\d\s().-]{6,}\d/g,
+  /\bhttps?:\/\/\S+/gi,
+  /\bwww\.\S+/gi,
+  /(^|\s)@[A-Za-z0-9_.]{3,}/g,
+  /\b(insta(gram)?|snap(chat)?|telegram|whats?app|signal)\s*[:\-]?\s*[A-Za-z0-9_.]{3,}/gi,
+];
+const RED_FLAGS = [
+  { name: 'money request', re: /\b(wire (me )?money|gift ?cards?|western union|send (me )?(money|cash|bitcoin|crypto)|bank details)\b/i },
+  { name: 'urgency pressure', re: /\b(hurry up|last chance|act now|don'?t tell anyone)\b/i },
+  { name: 'off-platform push', re: /\b(text me|call me|whats?app|telegram|snapchat)\b/i },
+];
+function filterContact(text) {
+  let redactions = 0;
+  for (const re of CONTACT_PATTERNS) {
+    text = text.replace(re, (hit, lead) => { redactions++; return (typeof lead === 'string' ? lead : '') + '[contact info removed]'; });
+  }
+  return { text, redactions };
+}
+function conciergeFor(chat) {
+  const blob = chat.msgs.map(x => x.text).join(' ').toLowerCase();
+  const hits = TOPICS.filter(t => blob.includes(t.kw));
+  const topics = hits.length ? hits : [TOPICS.find(t => t.kw === 'dinner')];
+  const out = [];
+  for (const v of VENUES) {
+    let best = null;
+    for (const t of topics) {
+      const s = (t.tags.some(tag => v.tags.includes(tag)) ? 2 : 0) + (t.cats.includes(v.cat) ? 1 : 0);
+      if (s > 0 && (!best || s > best.s)) best = { s, kw: t.kw };
+    }
+    if (best) out.push({ v, ...best });
+  }
+  out.sort((a, b) => b.s - a.s || a.v.km - b.v.km);
+  return out.slice(0, 3);
+}
+
+// ---------------------------------------------------------------- helpers
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function flash(el, cls, text) { el.innerHTML = '<div class="flash ' + cls + '">' + esc(text) + '</div>'; }
+
+// ---------------------------------------------------------------- portals & tabs
+const PORTALS = [['member', 'Member app'], ['browse', 'Browse'], ['earn', 'Perks & income'], ['watch', 'Watch Party'], ['features', 'Features'], ['smart', 'Smart Dating'], ['tour', 'Site Tour'], ['partner', 'Partner portal'], ['admin', 'Admin console'], ['safety', 'Safety center']];
+let portal = 'member';
+$('portals').innerHTML = PORTALS.map(([k, l]) => '<button data-p="' + k + '">' + l + '</button>').join('');
+$('portals').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  portal = b.dataset.p;
+  for (const [k] of PORTALS) $('portal-' + k).hidden = k !== portal;
+  for (const btn of $('portals').children) btn.setAttribute('aria-current', btn.dataset.p === portal);
+});
+for (const btn of $('portals').children) btn.setAttribute('aria-current', btn.dataset.p === portal);
+
+const TABS = [['chats', 'Chats'], ['matches', 'Matches'], ['search', 'Search'], ['wallet', 'Coupons & rewards'], ['store', 'Store']];
+let tab = 'chats';
+$('member-tabs').innerHTML = TABS.map(([k, l]) => '<button data-t="' + k + '">' + l + '</button>').join('');
+$('member-tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  tab = b.dataset.t;
+  for (const [k] of TABS) $('tab-' + k).hidden = k !== tab;
+  for (const btn of $('member-tabs').children) btn.setAttribute('aria-current', btn.dataset.t === tab);
+});
+for (const btn of $('member-tabs').children) btn.setAttribute('aria-current', btn.dataset.t === tab);
+
+// ---------------------------------------------------------------- meet-up ads (second ad + keys)
+const MEETUP_ADS = [
+  { keys: ['italian', 'pasta', 'pizza'], venue: "Ralph's Italian Spot", headline: "Make it Ralph's before the show", message: 'Handmade pasta, corner tables, out in time for the trailers.', offer: 'Mention SlowDating for free tiramisu', km: 0 },
+  { keys: ['movie', 'film', 'theater', 'cinema'], venue: 'Double Feature Theater', headline: 'Two seats at the Double Feature', message: 'Classic late showings, loveseat rows in the back.', offer: 'Couples get two-for-one Saturdays', km: 5 },
+  { keys: ['jazz', 'lounge', 'live music'], venue: 'Blue Note Lounge', headline: 'A quiet table by the trio', message: 'Low lights, conversation-friendly volume.', offer: '20% off first rounds', km: 5 },
+];
+const MEETUP_WORDS = ['meet', 'saturday', 'sunday', 'this weekend', 'are you free', 'date night', 'dinner first', "it's a date", 'grab'];
+function meetupAdsHtml(c) {
+  const text = c.msgs.map(x => x.text).join(' ').toLowerCase();
+  if (!MEETUP_WORDS.some(w => text.includes(w))) return '';
+  const hits = MEETUP_ADS.filter(a => a.keys.some(k => text.includes(k))).slice(0, 2);
+  if (!hits.length) return '';
+  return '<div class="cards" style="margin-top:10px">' + hits.map(a =>
+    '<div class="card" style="border:1px solid var(--border-soft)">' +
+    '<span class="meta" style="letter-spacing:.1em;text-transform:uppercase;font-size:11px">Sponsored · you\'re planning a date</span>' +
+    '<span class="name">' + a.headline + '</span>' +
+    '<span class="meta">' + a.message + '</span>' +
+    (a.offer ? '<span class="pill ok">' + a.offer + '</span>' : '') +
+    '<span class="meta">' + a.venue + ' · ~' + a.km + ' km from you</span></div>').join('') + '</div>';
+}
+
+// ---------------------------------------------------------------- chats
+function renderChats() {
+  $('chat-panels').innerHTML = state.chats.map((c, i) => {
+    const other = MEMBERS[c.id];
+    const status = c.unlocked
+      ? '<span class="pill ok">Real-time · contact sharing open</span>'
+      : '<span class="pill">Slow chat · day ' + c.day + '/30</span><span class="pill">Conversations ' + c.sessions + '/10</span>' +
+        '<span class="pill">' + (c.limit - c.sentToday) + ' of ' + c.limit + ' msgs left today · ' + c.maxChars + ' chars</span>' +
+        '<span class="pill">Contact info filtered</span>';
+    const lock = c.unlocked ? '' :
+      '<div class="lockline"><span>Unlock progress</span><div class="progress"><i style="width:' + Math.round((c.day / 30) * 100) + '%"></i></div>' +
+      '<span>' + c.day + '/30 days</span><div class="progress"><i style="width:' + Math.round((c.sessions / 10) * 100) + '%"></i></div><span>' + c.sessions + '/10 conversations</span></div>';
+    const msgs = c.msgs.map(x =>
+      '<div class="msg ' + (x.from === 'alice' ? 'mine' : 'theirs') + '">' +
+      (x.img ? '<img src="' + x.img + '" alt="Shared image" style="display:block;max-width:200px;border-radius:10px;margin-bottom:' + (x.text ? '6px' : '0') + '">' : '') +
+      esc(x.text).replace(/\[contact info removed\]/g, '<span class="redact">[contact info removed]</span>') +
+      '<small>' + x.when + (x.redactions ? ' · ' + x.redactions + ' contact detail' + (x.redactions > 1 ? 's' : '') + ' removed' : '') + '</small></div>').join('');
+    const sugg = conciergeFor(c).map(s =>
+      '<div class="card"><span class="name">' + s.v.name + '</span><span class="meta">' + s.v.cat + ' · ' + s.v.tags.join(', ') + '</span>' +
+      '<span class="meta">You both talked about ' + s.kw + ' — it fits that mood.</span></div>').join('');
+    return '<section class="panel"><h2>Chat with ' + other.name + '</h2><p>' + status + '</p>' + lock +
+      '<div class="chatlog" id="log-' + i + '">' + msgs + '</div>' +
+      '<div class="composer"><textarea id="in-' + i + '" ' + (c.maxChars ? 'maxlength="' + c.maxChars + '"' : '') +
+      ' placeholder="' + (c.unlocked ? 'Say anything — this chat is unlocked' : 'Try pasting a phone number or email…') + '"></textarea>' +
+      '<div class="row"><button class="act" data-send="' + i + '">Send</button>' +
+      '<button class="quiet" data-shareimg="' + i + '">Share image</button>' +
+      '<span class="counter">' + (c.unlocked ? 'No limits — this chat earned real time.' : 'Slow phase: ' + (c.limit - c.sentToday) + ' messages left today.') + '</span></div>' +
+      '<div id="fl-' + i + '"></div></div>' + meetupAdsHtml(c) +
+      '<h3>Date concierge suggestions</h3><div class="cards">' + sugg + '</div></section>';
+  }).join('');
+  for (const log of document.querySelectorAll('.chatlog')) log.scrollTop = log.scrollHeight;
+}
+function demoSharedPhoto(seed) {
+  const skies = [['#ff9f6e', '#3b1e3f'], ['#8fb8ff', '#101a3a'], ['#ffd97a', '#402a10']][seed % 3];
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">' +
+    '<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + skies[0] + '"/><stop offset="1" stop-color="' + skies[1] + '"/></linearGradient></defs>' +
+    '<rect width="640" height="420" fill="url(#s)"/><circle cx="320" cy="300" r="66" fill="#ffecb8"/>' +
+    '<rect y="330" width="640" height="90" fill="#241d38"/></svg>';
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+$('chat-panels').addEventListener('click', e => {
+  const s = e.target.closest('button[data-shareimg]');
+  if (s) {
+    const i = +s.dataset.shareimg, c = state.chats[i];
+    if (!c.unlocked && c.sentToday >= c.limit) { flash($('fl-' + i), 'warn', 'Slow-chat stage: an image counts as a message, and today\'s are used up.'); return; }
+    if (!c.unlocked) c.sentToday++;
+    c.msgs.push({ from: 'alice', text: '', when: 'now', redactions: 0, img: demoSharedPhoto(c.msgs.length) });
+    renderChats();
+    flash($('fl-' + i), 'ok', 'Image shared — visible only to the two of you.' + (c.unlocked ? '' : ' It counted toward today\'s messages.'));
+    return;
+  }
+  const b = e.target.closest('button[data-send]'); if (!b) return;
+  const i = +b.dataset.send, c = state.chats[i];
+  const input = $('in-' + i), fl = $('fl-' + i);
+  const raw = input.value.trim();
+  if (!raw) return;
+  if (!c.unlocked && c.sentToday >= c.limit) { flash(fl, 'warn', 'Slow-chat stage: you have used all ' + c.limit + ' messages for today. The pace opens up as the chat matures.'); return; }
+  if (!c.unlocked && raw.length > c.maxChars) { flash(fl, 'warn', 'Slow-chat stage: messages are limited to ' + c.maxChars + ' characters right now.'); return; }
+  const flags = RED_FLAGS.filter(f => f.re.test(raw)).map(f => f.name);
+  let text = raw, redactions = 0;
+  if (!c.unlocked) ({ text, redactions } = filterContact(raw));
+  c.msgs.push(m('alice', text, 'now', redactions));
+  if (!c.unlocked) c.sentToday++;
+  renderChats();
+  const newFl = $('fl-' + i);
+  if (flags.length) flash(newFl, 'warn', 'Safety engine: this message matched a red-flag pattern (' + flags.join(', ') + '). A safety event was raised for the other member.');
+  else if (redactions) flash(newFl, 'ok', 'Sent — ' + redactions + ' piece' + (redactions > 1 ? 's' : '') + ' of contact data was erased before storage. Contact sharing opens when this chat reaches 30 days and 10 conversations.');
+});
+
+// ---------------------------------------------------------------- matches & search
+$('match-cards').innerHTML = MATCHES.map(x => {
+  const p = MEMBERS[x.id];
+  return '<div class="card"><span class="name">' + p.name + ', ' + p.age +
+    (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
+    ' <span class="pill">' + p.type.replace('_', ' ') + '</span></span>' +
+    '<span class="meta">match score ' + x.score + ' · popularity ' + p.pop + ' · ~' + p.km + ' km</span>' +
+    '<div>' + x.shared.map(s => '<span class="pill">both: ' + s + '</span>').join('') + '</div></div>';
+}).join('');
+$('drop-cards').innerHTML = MATCHES.slice(0, 3).map(x => {
+  const p = MEMBERS[x.id];
+  return '<div class="card"><div style="display:flex;gap:10px;align-items:center">' +
+    '<img src="' + demoAvatar(x.id, p.name) + '" alt="" style="width:52px;height:52px;border-radius:14px">' +
+    '<div><span class="name">' + p.name + '</span>' + (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
+    '<br><span class="meta">match ' + x.score + ' · ~' + p.km + ' km</span></div></div></div>';
+}).join('');
+
+function renderSearch() {
+  const g = $('q-gender').value, int = $('q-interest').value, t = $('q-type').value, inc = $('q-income').value, d = +$('q-dist').value;
+  const rows = Object.entries(MEMBERS).filter(([id, p]) => id !== 'alice' &&
+    (!g || p.gender === g) && (!int || p.interests.includes(int)) && (!t || p.type === t) && (!inc || p.income === inc) && p.km <= d);
+  $('search-cards').innerHTML = rows.length ? rows.map(([, p]) =>
+    '<div class="card"><span class="name">' + p.name + ', ' + p.age + '</span>' +
+    '<span class="meta">popularity ' + p.pop + ' · ' + p.type.replace('_', ' ') + ' · ' + p.job + ' · ~' + p.km + ' km</span>' +
+    '<div>' + p.interests.map(s => '<span class="pill">' + s + '</span>').join('') + '</div></div>').join('')
+    : '<p>No members match those filters — widen the distance or clear a filter.</p>';
+}
+for (const id of ['q-gender', 'q-interest', 'q-type', 'q-income', 'q-dist']) $(id).addEventListener('change', renderSearch);
+
+// ---------------------------------------------------------------- wallet, events, store
+function renderWallet() {
+  $('coupon-cards').innerHTML = state.coupons.map((c, i) =>
+    '<div class="card"><span class="name">' + c.venue + '</span><span class="meta">' + c.text + '</span>' +
+    (c.redeemed ? '<span class="pill ok">Redeemed — show this at the venue</span>' : '<button class="act small" data-redeem="' + i + '">Redeem</button>') + '</div>').join('');
+  $('reward-cards').innerHTML = state.rewards.map(r =>
+    '<div class="card"><span class="name">' + esc(r.type) + '</span><span class="meta">' + esc(r.detail) + '</span></div>').join('');
+  $('event-cards').innerHTML = state.events.map((ev, i) =>
+    '<div class="card"><span class="name">' + ev.name + '</span><span class="meta">' + ev.venue + ' · ' + ev.when + ' · $' + ev.price.toFixed(2) + '</span>' +
+    (ev.mine ? '<span class="pill ok">You hold ' + ev.mine + ' ticket' + (ev.mine > 1 ? 's' : '') + ' · entered in the contest</span>' : '') +
+    '<button class="act small" data-ticket="' + i + '">Buy ticket</button></div>').join('');
+}
+$('tab-wallet').addEventListener('click', e => {
+  const r = e.target.closest('button[data-redeem]');
+  if (r) {
+    state.coupons[+r.dataset.redeem].redeemed = true;
+    if (state.coupons[+r.dataset.redeem].venue === 'Blue Note Lounge') state.partner.redemptions++;
+    renderWallet(); renderPartner();
+  }
+  const tk = e.target.closest('button[data-ticket]');
+  if (tk) {
+    const ev = state.events[+tk.dataset.ticket];
+    ev.mine++;
+    if (ev.venue === 'Blue Note Lounge') { state.partner.tickets++; state.partner.revenue += ev.price; if (ev.mine === 1) state.partner.entries++; }
+    renderWallet(); renderPartner();
+  }
+});
+function renderStore() {
+  $('product-cards').innerHTML = state.products.map((p, i) =>
+    '<div class="card"><span class="name">' + p.name + '</span><span class="meta">$' + p.price.toFixed(2) + ' · ' + p.stock + ' left · by ' + p.venue + '</span>' +
+    '<span class="meta">' + p.desc + '</span><button class="act small" data-buy="' + i + '" ' + (p.stock ? '' : 'disabled') + '>' + (p.stock ? 'Buy' : 'Sold out') + '</button></div>').join('');
+}
+$('product-cards').addEventListener('click', e => {
+  const b = e.target.closest('button[data-buy]'); if (!b) return;
+  const p = state.products[+b.dataset.buy];
+  if (p.stock > 0) { p.stock--; renderStore(); }
+});
+
+// ---------------------------------------------------------------- partner
+function estimateReach() {
+  const g = $('c-gender').value, lo = +$('c-agemin').value || 0, hi = +$('c-agemax').value || 200, rad = +$('c-radius').value;
+  return Object.entries(MEMBERS).filter(([, p]) => (!g || p.gender === g) && p.age >= lo && p.age <= hi && p.km <= rad);
+}
+function renderReach() { $('c-reach').textContent = 'Estimated reach: ' + estimateReach().length + ' members'; }
+for (const id of ['c-gender', 'c-agemin', 'c-agemax', 'c-radius']) $(id).addEventListener('input', renderReach);
+$('c-send').addEventListener('click', () => {
+  const hit = estimateReach();
+  state.partner.coupons++;
+  const pct = Math.min(90, Math.max(1, +$('c-disc').value || 20));
+  if (hit.some(([id]) => id === 'alice')) {
+    state.coupons.push({ venue: 'Blue Note Lounge', text: pct + '% off · targeted offer, just sent', redeemed: false });
+    flash($('c-flash'), 'ok', 'Coupon sent to ' + hit.length + ' members — Alice matched the segment, so it is in her wallet now (Member app → Coupons & rewards).');
+  } else {
+    flash($('c-flash'), 'ok', 'Coupon sent to ' + hit.length + ' members. Alice did not match this segment, so her wallet is unchanged.');
+  }
+  renderWallet(); renderPartner();
+});
+function renderPartner() {
+  const s = state.partner;
+  $('partner-stats').innerHTML =
+    '<div class="stat"><strong>' + s.coupons + '</strong><span>coupons sent</span></div>' +
+    '<div class="stat"><strong>' + s.redemptions + '</strong><span>redemptions</span></div>' +
+    '<div class="stat"><strong>' + s.tickets + '</strong><span>tickets sold</span></div>' +
+    '<div class="stat"><strong>$' + s.revenue.toFixed(2) + '</strong><span>ticket revenue</span></div>' +
+    '<div class="stat"><strong>' + s.entries + '</strong><span>contest entries</span></div>';
+  $('partner-contest').innerHTML = '<tr><th>Prize</th><th>Eligibility</th><th>Entries</th><th>Draw</th></tr>' +
+    '<tr><td>Dinner for two + reserved stage table</td><td>Ticket buyers</td><td>' + s.entries + '</td><td>Sep 28</td></tr>';
+}
+
+// ---------------------------------------------------------------- admin
+function renderAdmin() {
+  const rows = Object.values(MEMBERS).slice().sort((a, b) => b.raw - a.raw);
+  $('leader-table').innerHTML = '<tr><th>#</th><th>Member</th><th>Score</th><th>Raw engagement</th></tr>' +
+    rows.map((p, i) => '<tr><td>' + (i + 1) + '</td><td>' + p.name + '</td><td>' + p.pop + '</td><td>' + p.raw + '</td></tr>').join('');
+  $('grants-table').innerHTML = '<tr><th>Cohort</th><th>Reward</th><th>Granted</th></tr>' +
+    state.grants.map(g => '<tr><td>' + esc(g.who) + '</td><td>' + esc(g.what) + '</td><td>' + g.when + '</td></tr>').join('');
+}
+$('r-grant').addEventListener('click', () => {
+  const cohort = $('r-cohort').value, kind = $('r-type').value;
+  const label = { free_membership: 'free membership (1 year)', gift_certificate: 'gift certificate $100', event_tickets: 'Jazz Night tickets ×2', promo_trip: 'all-expense promo trip' }[kind];
+  state.grants.unshift({ who: 'Top ' + cohort + ' · 6 members', what: label, when: 'now' });
+  state.rewards.unshift({ type: label[0].toUpperCase() + label.slice(1), detail: 'Granted just now — you are on the leaderboard' });
+  flash($('r-flash'), 'ok', 'Granted a ' + label + ' to all 6 members of the top ' + cohort + ' cohort. Alice ranks #1, so it is in her wallet (Member app → Coupons & rewards).');
+  renderAdmin(); renderWallet();
+});
+
+$('portal-partner').addEventListener('click', e => {
+  const b = e.target.closest('button[data-review]'); if (!b) return;
+  const msg = {
+    accept: 'Accepted — Alice has been paid the $40.00 payout. It lands in her earnings ledger (Perks & income portal).',
+    reject: 'Rejected. Alice sees the decision and your note in her submissions.',
+    edit: 'Script replaced — Alice re-records to your edited script.',
+    extend: 'Script extended — Alice records the addition on top of her take.',
+  }[b.dataset.review];
+  flash($('pt-flash'), b.dataset.review === 'reject' ? 'warn' : 'ok', msg);
+});
+
+$('pr-save').addEventListener('click', () => {
+  const days = Math.max(0, Math.min(30, parseInt($('pr-days').value, 10) || 0));
+  $('pr-days').value = days;
+  flash($('pr-flash'), 'ok', days === 0
+    ? 'Real pictures now reveal as soon as a chat starts. Premium members always see them immediately.'
+    : 'Real pictures now reveal ' + days + ' day' + (days === 1 ? '' : 's') + ' after a pair\'s first chat. Premium members always see them immediately.');
+});
+
+// ---------------------------------------------------------------- perks & income
+const EARN_PROGRAMS = [
+  ['profile_ads', 'Profile ad revenue', 'live', true, 'Display ads run next to your profile and you keep a share of every impression.', '$0.05 per ad impression on your profile'],
+  ['premium_gallery', 'Premium Members Only gallery', 'live', true, 'Private photos in a paying gallery, separate from your profile pictures — premium members only.', '$0.25 per premium viewer per day'],
+  ['chat_responder', 'Chat responder hours', 'live', true, 'Stay logged in 4–8 hours responding to chats other members started with you.', '$1.50 per active hour (4-hour minimum, 8-hour cap)'],
+  ['chat_initiator', 'Chat initiator hours', 'live', true, 'Stay logged in 4–8 hours initiating chats and keeping them moving.', '$1.50 per active hour (4-hour minimum, 8-hour cap)'],
+  ['date_scheduler', 'Scheduled dates at partner events', 'live', true, 'Schedule dates on the web and buy tickets to advertised events from participating partners.', '10% of the ticket price back'],
+  ['testimonials', 'Partner testimonial videos', 'live', true, 'Scripted by advertising partners, who accept, reject, edit, or extend each recording.', 'the payout each partner sets on acceptance'],
+  ['video_dates', 'Videoed dates', 'after launch', false, 'Agree to have actual dates videoed. Details to be announced after site launch.', 'announced after launch'],
+  ['multiplayer_games', 'Multi-player game ad revenue', 'after launch', false, 'Stay online and play the multi-player games coming to the site; ad revenue is shared with players.', 'announced with the games'],
+  ['future_programs', 'Future programs', 'after launch', false, 'First in line for income programs still to be announced.', 'announced per program'],
+];
+const earnState = {
+  enrolled: { profile_ads: true, premium_gallery: true, chat_responder: true, chat_initiator: true, date_scheduler: true, testimonials: true },
+  total: 49.05,
+  claimed: false,
+  ledger: [
+    ['Today', 'Chat responder hours', '$6.00', '4 active hours responding to chats'],
+    ['Today', 'Profile ad revenue', '$0.30', '6 ad impressions on your profile'],
+    ['Yesterday', 'Scheduled dates at partner events', '$2.50', 'Date scheduled at Singles Jazz Night — Autumn Session'],
+    ['2 days ago', 'Premium Members Only gallery', '$0.25', 'Premium member gallery view'],
+    ['4 days ago', 'Partner testimonial videos', '$40.00', 'Accepted testimonial for Blue Note Lounge'],
+  ],
+  offers: [
+    ["Date night at Ralph's", "Ralph's Italian Spot", 55, "Our first real dinner was at Ralph's Italian Spot — handmade pasta, a corner table, and we still made the movie."],
+    ['30-second Jazz Night testimonial', 'Blue Note Lounge', 40, "I met someone real at Blue Note's Singles Jazz Night. Low lights, live trio, actual conversation — this is how dates should start."],
+  ],
+  subs: [['Blue Note Lounge', 'accepted — paid', '$40.00']],
+};
+function renderEarn() {
+  $('e-total').textContent = '$' + earnState.total.toFixed(2);
+  $('e-programs').innerHTML = EARN_PROGRAMS.map(([key, label, status, live, blurb, pays]) => {
+    const on = !!earnState.enrolled[key];
+    return '<div class="card"><span class="name">' + label + '</span>' +
+      '<span><span class="pill' + (status === 'live' ? ' ok' : '') + '">' + status + '</span>' + (on ? '<span class="pill ok">enrolled</span>' : '') + '</span>' +
+      '<span class="meta">' + blurb + '</span><span class="meta"><em>Pays:</em> ' + pays + '</span>' +
+      '<button class="act" data-earn="' + key + '">' + (on ? 'Withdraw' : (live ? 'Enroll' : 'Opt in')) + '</button></div>';
+  }).join('');
+  $('e-offers').innerHTML = earnState.offers.map(([title, venue, payout], i) =>
+    '<div class="card"><span class="name">' + title + '</span>' +
+    '<span><span class="pill">' + venue + '</span><span class="pill ok">$' + payout + '.00 on acceptance</span></span>' +
+    '<span class="meta">“' + earnState.offers[i][3] + '”</span>' +
+    '<button class="act" data-offer="' + i + '">Submit my recording</button><div data-offerflash="' + i + '"></div></div>').join('');
+  $('e-subs').innerHTML = '<tr><th>Venue</th><th>Status</th><th>Payout</th></tr>' +
+    earnState.subs.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>').join('');
+  $('e-ledger').innerHTML = '<tr><th>When</th><th>Program</th><th>Amount</th><th>Detail</th></tr>' +
+    earnState.ledger.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>').join('');
+}
+$('portal-earn').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.earn) {
+    earnState.enrolled[b.dataset.earn] = !earnState.enrolled[b.dataset.earn];
+    renderEarn();
+  } else if (b.dataset.offer !== undefined) {
+    const i = +b.dataset.offer;
+    if (!earnState.subs.some(r => r[0] === earnState.offers[i][1] && r[1] !== 'accepted — paid')) {
+      earnState.subs.unshift([earnState.offers[i][1], 'awaiting review', '$' + earnState.offers[i][2] + '.00']);
+    }
+    renderEarn();
+    flash(document.querySelector('[data-offerflash="' + i + '"]') || $('e-claim-flash'), 'ok', 'Submitted — the partner will accept, reject, edit, or extend it.');
+  } else if (b.id === 'e-claim') {
+    if (!earnState.claimed && earnState.enrolled.chat_responder) {
+      earnState.claimed = true;
+      earnState.total += 6;
+      earnState.ledger.unshift(['Just now', 'Chat responder hours', '$6.00', '4 active hours responding to chats — claimed']);
+      renderEarn();
+      flash($('e-claim-flash'), 'ok', 'Claimed $6.00 for today\'s 4 responder hours. Tomorrow\'s hours start counting at midnight UTC.');
+    } else {
+      flash($('e-claim-flash'), 'warn', earnState.enrolled.chat_responder ? 'Today was already claimed — a day of chat hours pays only once.' : 'Enroll in the chat responder program first.');
+    }
+  }
+});
+renderEarn();
+
+// ---------------------------------------------------------------- watch party
+// Top of the 1,000-film romance playlist plus the twelve verified
+// public-domain classics that play in-page (real YouTube uploads).
+const FILMS = [
+  [1,'Inevitable Hearts',0,'featured premiere','jpejUwKLmfg'],[2,'Titanic',1997,'all-time icon','s1mioUWClgg'],[3,'The Notebook',2004,'all-time icon','D_3kNw47Mts'],[4,'Casablanca',1942,'all-time icon','7SK6E49er2A'],
+  [5,'Gone with the Wind',1939,'all-time icon','YSOYTFw0JaA'],[6,'Pretty Woman',1990,'all-time icon','Yd65xlVqTMA'],[7,'Dirty Dancing',1987,'all-time icon','4WUnCEpkAkw'],[8,'Ghost',1990,'all-time icon','3orSzPUIVJw'],
+  [9,'When Harry Met Sally...',1989,'all-time icon','W1aGvEKbiT0'],[10,'Sleepless in Seattle',1993,'all-time icon','uqq12fF9C1k'],[11,'You\'ve Got Mail',1998,'all-time icon','8JwIwdd5sqE'],[12,'Notting Hill',1999,'all-time icon','OQvxKfRpSl4'],
+  [13,'Love Actually',2003,'all-time icon','LbDBV9TXot0'],[14,'The Princess Bride',1987,'all-time icon','MXn6sBtX0-0'],[15,'Romeo + Juliet',1996,'all-time icon','lqKZwvH2bAQ'],[16,'Shakespeare in Love',1998,'all-time icon','v5R5La5f3eo'],
+  [17,'La La Land',2016,'all-time icon','DuzuJXdn37U'],[18,'A Star Is Born',2018,'all-time icon','YuNjdUkIoew'],[19,'The Fault in Our Stars',2014,'all-time icon','tFoE1Jb1v8Y'],[20,'Me Before You',2016,'all-time icon','oglfOi5ysTU'],
+  [21,'Crazy Rich Asians',2018,'all-time icon','1FKSD0h2hzI'],[22,'To All the Boys I\'ve Loved Before',2018,'all-time icon','Mds0S4KCmyw'],[23,'The Vow',2012,'all-time icon','Nj99-ZQkfRA'],[24,'Dear John',2010,'all-time icon','Nj99-ZQkfRA'],
+  [25,'A Walk to Remember',2002,'all-time icon','JpkrMDJAXVM'],[26,'Pride & Prejudice',2005,'all-time icon','q43j8U8spI8'],[27,'Sense and Sensibility',1995,'all-time icon','MZwlegeg_pA'],[28,'Bridget Jones\'s Diary',2001,'all-time icon','mR0tFh_ORf4'],
+  [29,'10 Things I Hate About You',1999,'all-time icon','zPcgt4Z9pos'],[30,'Clueless',1995,'all-time icon','fzqXbdlnaEg'],[31,'Jerry Maguire',1996,'all-time icon','jgC6VqsC3QY'],[32,'My Best Friend\'s Wedding',1997,'all-time icon','tUkVtXdyrtc'],
+  [33,'Four Weddings and a Funeral',1994,'all-time icon','tvdlnbfaJ3E'],[34,'Breakfast at Tiffany\'s',1961,'all-time icon','Cg1_gVMJ5gU'],[35,'Roman Holiday',1953,'all-time icon','edOIkL1zhbU'],[36,'An Affair to Remember',1957,'all-time icon','n5g96vml05E'],
+  [37,'West Side Story',1961,'all-time icon','9K_4ZaMc1-4'],[38,'Grease',1978,'all-time icon','RYk0_U7kf3g'],[39,'The Bodyguard',1992,'all-time icon','h3gynU1x2Lk'],[40,'City of Angels',1998,'all-time icon','7RfcA_lssyI'],
+  [41,'Meet Joe Black',1998,'all-time icon','Ope1tNwRNO4'],[42,'Serendipity',2001,'all-time icon','NQZmkLcpbQg'],[43,'50 First Dates',2004,'all-time icon','puSTL1h6lbk'],[44,'Hitch',2005,'all-time icon','dMaq_pfxs-0'],
+  [45,'The Proposal',2009,'all-time icon','DC_LMWy2jOs'],[46,'Silver Linings Playbook',2012,'all-time icon','Hn1ByKzqZNk'],[47,'About Time',2013,'all-time icon','7OIFdWk83no'],[48,'Her',2013,'all-time icon','5zOiSNgC6bQ'],
+  [49,'Call Me by Your Name',2017,'all-time icon','Z9AYPxH5NTM'],[50,'Brokeback Mountain',2005,'all-time icon','ZtlL0FfpO4Y'],[51,'Eternal Sunshine of the Spotless Mind',2004,'all-time icon','hZdl2FFp0eA'],[52,'It Happened One Night',1934,'golden age','Kd509cLN-9U'],
+  [53,'Bringing Up Baby',1938,'golden age','5fowrDX2zA0'],[54,'The Philadelphia Story',1940,'golden age','-Ot948zIr0s'],[55,'His Girl Friday',1940,'golden age','UzQWJNNg8DU'],[56,'My Man Godfrey',1936,'golden age','YcvDxEMiMTc'],
+  [57,'Nothing Sacred',1937,'golden age','HeTzRrhQZLg'],[58,'A Star Is Born',1937,'golden age','WPuN-m46INU'],[59,'Love Affair',1939,'golden age','wnM11gs58ks'],[60,'Made for Each Other',1939,'golden age','5JSU-yGhR-g'],
+  [61,'Penny Serenade',1941,'golden age','pNGzeBt4Bek'],[62,'Algiers',1938,'golden age','weIe6fMHxBY'],[63,'Second Chorus',1940,'golden age','CoyQ-jeqaCU'],[64,'The Shop Around the Corner',1940,'golden age','xr3nsHRKZJA'],
+  [65,'Ninotchka',1939,'golden age','QEPDjWz2UbQ'],[66,'Camille',1936,'golden age','NJJyuHAKdYc'],[67,'Wuthering Heights',1939,'golden age','XIrgxh0vJgY'],[68,'Rebecca',1940,'golden age','_YV1L6_P1NI'],
+  [69,'Intermezzo',1939,'golden age','4cwbs3TKS7k'],[70,'Waterloo Bridge',1940,'golden age','VIzBZW9biyQ'],[71,'The Lady Eve',1941,'golden age','rJkgroLlrds'],[72,'Woman of the Year',1942,'golden age','e25EgGHdNnQ'],
+  [145,'Royal Wedding',1951,'classic','UuzLr5MCA7w'],[147,'Charade',1963,'classic','VTeVIpBLVfg'],[148,'Cyrano de Bergerac',1950,'classic','iUI_Gb6UDiY'],
+];
+// Same idea as the live site's md5 rotation: one scheduled film per UTC day.
+const today = new Date().toISOString().slice(0, 10);
+let dayHash = 0;
+for (const ch of 'watch-party.' + today) dayHash = (dayHash * 31 + ch.charCodeAt(0)) >>> 0;
+const scheduledFilm = FILMS[dayHash % FILMS.length];
+const watchState = {
+  film: FILMS[0],   // tonight's featured premiere — the demo couple already pressed play
+  msgs: [
+    m('marcus', 'Popcorn ready. A full romance movie on a first movie night — bold choice.', '8:01 PM'),
+    m('alice', 'Trust me on this one. Press play on three: one… two…', '8:01 PM'),
+    m('marcus', 'Playing. Some things really are inevitable.', '8:12 PM'),
+  ],
+};
+function renderWatch() {
+  const [rank, title, year, tag, yt] = watchState.film;
+  const isScheduled = watchState.film === scheduledFilm;
+  $('w-banner').innerHTML = '<div class="card" style="margin-top:8px"><span class="name">Tonight\'s scheduled movie: ' +
+    esc(scheduledFilm[1]) + ' (' + scheduledFilm[2] + ')</span><span class="meta">#' + scheduledFilm[0] +
+    ' in the playlist · a new film every day, the same one for every couple.' +
+    (isScheduled ? ' You are watching it now.' : ' Your party swapped it for its own pick.') + '</span>' +
+    (isScheduled ? '' : '<button class="quiet" data-wfilm="' + scheduledFilm[0] + '">Back to the scheduled movie</button>') + '</div>';
+  $('w-title').innerHTML = '<h2>' + esc(title) + (year > 0 ? ' (' + year + ')' : '') + ' <span class="pill">' +
+    (rank > 0 ? '#' + rank + ' in the romance playlist' : "tonight's featured premiere") +
+    '</span><span class="pill">' + esc(tag) + '</span>' +
+    (isScheduled ? '' : '<span class="pill ok">your pick</span>') + '</h2>';
+  // The real YouTube romance movie, embedded, with a playlist of more
+  // romance films queued behind it in the same player.
+  const upNext = FILMS.filter(f => f[4] && f[4] !== yt).map(f => f[4])
+    .filter((v, i, a) => a.indexOf(v) === i).slice(0, 12);
+  $('w-player').innerHTML =
+    '<div style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
+    '<iframe src="' + (watchState.embedOverride || ('https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&playlist=' + upNext.join(','))) + '"' +
+    ' title="' + esc(title) + '" referrerpolicy="strict-origin-when-cross-origin"' +
+    ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
+    ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>' +
+    '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">' + esc(title) + ' — the full YouTube movie, with ' + upNext.length +
+    ' more romance films queued in the player\'s playlist. ' +
+    '<button class="quiet" id="w-yt" style="font-size:12px">Frame blank in this preview? Play the backup reel</button></p>';
+  $('w-log').innerHTML = [...watchState.msgs].reverse().map(x =>
+    '<div class="wchat-msg' + (x.from === 'alice' ? ' me' : '') + '">' +
+    (x.img ? '<img src="' + x.img + '" alt="Shared image">' : '') +
+    (x.text ? '<span>' + esc(x.text) + '</span>' : '') +
+    '<div class="wchat-meta"><span>' + (x.from === 'alice' ? 'You' : 'Marcus') + '</span><span>' + x.when +
+    (x.redactions ? ' · contact info erased' : '') + '</span></div></div>').join('');
+  $('w-log').scrollTop = 0;
+  const q = ($('w-search').value || '').toLowerCase().trim();
+  const hits = FILMS.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
+  $('w-grid').innerHTML = hits.map(f =>
+    '<div class="card"><span class="name">' + (f[0] > 0 ? '#' + f[0] + ' · ' : '★ ') + esc(f[1]) + '</span>' +
+    '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
+    (f[4] ? '<span class="pill ok">plays in-page</span>' : '') + '</span>' +
+    '<button class="act" data-wfilm="' + f[0] + '">Watch this instead</button></div>').join('') ||
+    '<div class="card"><span class="meta">No matches in the demo slice — the live site searches all 1,000.</span></div>';
+}
+$('portal-watch').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wfilm) {
+    watchState.film = FILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
+    renderWatch();
+  } else if (b.id === 'w-yt') {
+    $('w-player').innerHTML =
+      '<div style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
+      '<video controls autoplay muted playsinline loop src="media/watch-party-reel.webm"' +
+      ' style="position:absolute;inset:0;width:100%;height:100%;background:#000"></video></div>' +
+      '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">The backup reel. On the live site the player always runs the film\'s full YouTube stream with the playlist queued. ' +
+      '<button class="quiet" id="w-reelback" style="font-size:12px">Back to the YouTube movie</button></p>';
+  } else if (b.id === 'w-reelback') {
+    renderWatch();
+  }
+});
+$('w-search').addEventListener('input', renderWatch);
+// The operator's own playlist is the player's source.
+watchState.embedOverride = 'https://www.youtube-nocookie.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij';
+function demoEmbedUrl(input) {
+  input = (input || '').trim();
+  if (!input) return null;
+  const m = input.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+  if (m) input = m[1].replace(/&amp;/g, '&');
+  let u;
+  try { u = new URL(input); } catch { return null; }
+  const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+  const okId = v => /^[A-Za-z0-9_-]{6,64}$/.test(v || '');
+  if (host === 'youtu.be') { const id = u.pathname.slice(1); return okId(id) ? 'https://www.youtube-nocookie.com/embed/' + id : null; }
+  if (host !== 'youtube.com' && host !== 'youtube-nocookie.com') return null;
+  if (u.pathname.startsWith('/embed/')) return 'https://www.youtube-nocookie.com' + u.pathname + u.search;
+  if (u.pathname === '/watch' && okId(u.searchParams.get('v'))) {
+    const list = u.searchParams.get('list');
+    return 'https://www.youtube-nocookie.com/embed/' + u.searchParams.get('v') + (okId(list) ? '?list=' + list : '');
+  }
+  if (u.pathname === '/playlist' && okId(u.searchParams.get('list'))) {
+    return 'https://www.youtube-nocookie.com/embed/videoseries?list=' + u.searchParams.get('list');
+  }
+  return null;
+}
+$('w-embed-apply').addEventListener('click', () => {
+  const url = demoEmbedUrl($('w-embed').value);
+  if (!url) {
+    $('w-embed-note').textContent = 'Not YouTube code — paste the full <iframe> embed, a video link, or a playlist link.';
+    return;
+  }
+  watchState.embedOverride = url;
+  $('w-embed-note').textContent = 'Player now uses your embed: ' + url;
+  renderWatch();
+});
+$('w-embed-clear').addEventListener('click', () => {
+  watchState.embedOverride = null;
+  $('w-embed').value = '';
+  $('w-embed-note').textContent = 'Cleared — back to the romance library.';
+  renderWatch();
+});
+function wchatSend(img) {
+  const raw = $('w-input').value.trim();
+  if (!raw && !img) return;
+  const { text, redactions } = filterContact(raw);
+  const msg = m('alice', text, 'now', redactions);
+  if (img) msg.img = img;
+  watchState.msgs.push(msg);
+  $('w-input').value = '';
+  $('w-file').value = '';
+  $('w-filename').textContent = '📎 Attach image';
+  renderWatch();
+}
+$('w-send').addEventListener('click', () => {
+  const file = $('w-file').files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = () => wchatSend(String(reader.result));
+    reader.readAsDataURL(file);
+  } else {
+    wchatSend(null);
+  }
+});
+$('w-file').addEventListener('change', () => {
+  $('w-filename').textContent = $('w-file').files.length ? '📎 ' + $('w-file').files[0].name : '📎 Attach image';
+});
+$('w-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('w-send').click(); } });
+renderWatch();
+
+// ---------------------------------------------------------------- site tour
+const TOUR = [
+  ['tour/01-home.jpg', 'Welcome to SlowDating', 'Free to join with a $19/year membership. Contact details stay filtered until a chat has lived 30 days with 10 real conversations — then it opens to real time.'],
+  ['tour/02-matches.jpg', 'Your matches', 'Ranked by an 11-factor compatibility score: distance, interests, hobbies, dating type, faith, politics, income, occupation, automobile, outdoor life, and popularity balance.'],
+  ['tour/03-slow-chat.jpg', 'Slow chat that earns real time', 'Message size and frequency start limited and widen weekly. Phone numbers, emails, links, and handles are erased before storage until the chat unlocks — watch the filter catch a shared number.'],
+  ['tour/04-search.jpg', 'Search on what matters to you', 'Filter members by zip proximity, age, interests, hobbies, dating type, faith, politics, income range, automobile, occupation, and popularity.'],
+  ['tour/05-profile.jpg', 'A profile with depth', 'Everything searchable lives on the profile — plus embedded YouTube videos and a popularity breakdown only you can see.'],
+  ['tour/06-wallet.jpg', 'Coupons, rewards, and events', 'Partner venues send you real offers, the operations team rewards the most engaging members, and every event ticket can enter you in a venue contest.'],
+  ['tour/07-store.jpg', 'The date-night store', 'Curated kits and gifts from partner venues, with live inventory.'],
+  ['tour/08-membership.jpg', 'Simple, honest membership', 'Member at $19/year, VIP with early chat unlock at $79, Elite with chaperone priority at $199. Ads and partners fund the rest.'],
+  ['tour/09-partner.jpg', 'A portal for partners', 'Restaurants, lounges, cruise lines, and experience providers run coupons, singles events, contests, and store products — with live analytics.'],
+  ['tour/10-safety.jpg', 'Safety first, women first', 'Contact filtering, red-flag detection, vetted venues, safety education, and VIP chaperone services — protection is the product, not an add-on.'],
+  ['tour/11-smart-dating.jpg', 'Smart Dating: the science of choosing well', 'Nine short articles on why intense attraction misleads, the neuroscience underneath it, and why slow-built relationships hold.'],
+];
+
+// ---------------------------------------------------------------- browse
+const HOBBY = { bob: ['hiking', 'cooking'], marcus: ['chess', 'running'], james: ['guitar', 'hiking'], emma: ['salsa', 'painting'], sofia: ['sailing'] };
+function demoAvatar(id, name) {
+  const seed = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const pals = [['#3b1e3f', '#ff9cc0'], ['#1e2a4a', '#8fb8ff'], ['#173a2e', '#7fe3a8'], ['#4a2410', '#ffb08a'], ['#3a103a', '#e08aff'], ['#103a3a', '#7fdede'], ['#40320f', '#ffd97a'], ['#2b1140', '#b49cff']];
+  const [a, b] = pals[seed % 8];
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs>' +
+    '<rect width="96" height="96" rx="14" fill="url(#g)"/>' +
+    '<circle cx="' + (20 + seed % 56) + '" cy="' + (18 + (seed >> 3) % 30) + '" r="' + (12 + seed % 14) + '" fill="#ffffff" opacity=".14"/>' +
+    '<text x="48" y="50" text-anchor="middle" dominant-baseline="central" font-family="Georgia,serif" font-size="44" font-weight="700" fill="#fff" opacity=".92">' + name[0] + '</text></svg>';
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+const CAT_PATTERNS = {
+  adventures: ['escape', 'kayak', 'climb', 'camping', 'detective'],
+  arts_culture: ['art', 'opera', 'paint', 'photograph', 'poetry'],
+  food_dining: ['food', 'wine', 'coffee', 'dining', 'cooking', 'italian', 'pasta'],
+  music_nightlife: ['jazz', 'danc', 'music', 'guitar', 'salsa'],
+  outdoors: ['hik', 'sail', 'beach', 'running', 'cycling'],
+  sports_fitness: ['fitness', 'yoga', 'tennis', 'volleyball', 'run'],
+  travel: ['travel', 'cruise', 'trip'],
+  games: ['escape', 'chess', 'puzzle', 'board game'],
+  film_tv: ['film', 'movie', 'cinema'],
+};
+function memberCats(p) {
+  const text = p.interests.concat(HOBBY[p.name.toLowerCase()] || []).join(' ').toLowerCase();
+  return Object.keys(CAT_PATTERNS).filter(c => CAT_PATTERNS[c].some(k => text.includes(k)));
+}
+function browseRows(all) {
+  const g = $('b-gender').value, lo = +$('b-agemin').value || 18, hi = +$('b-agemax').value || 99,
+        dist = +$('b-dist').value, need = $('b-interest').value,
+        faith = ($('b-faith') || {}).value || '', income = ($('b-income') || {}).value || '';
+  const me = MEMBERS.alice;
+  const mustShare = [...document.querySelectorAll('#b-mustshare input:checked')].map(x => x.value);
+  const shares = p2 => mustShare.every(c => c.startsWith('cat:')
+    ? memberCats(p2).includes(c.slice(4)) && memberCats(me).includes(c.slice(4))
+    : p2[c] === me[c]);
+  return Object.entries(MEMBERS)
+    .filter(([id, p]) => id !== 'alice' && (all || ((!g || p.gender === g) && p.age >= lo && p.age <= hi && p.km <= dist &&
+      (!need || memberCats(p).includes(need)) && (!income || p.income === income) && (!faith || p.faith === faith) && shares(p))))
+    .map(([id, p]) => {
+      const known = MATCHES.find(x => x.id === id);
+      const shared = p.interests.filter(x => me.interests.includes(x));
+      const score = known ? known.score : Math.min(95, 38 + shared.length * 12 + Math.max(0, 20 - p.km));
+      return { id, p, shared, score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+function memberCardHtml(r, rank) {
+  return '<div class="card"><div style="display:flex;gap:10px;align-items:center">' +
+    '<img src="' + demoAvatar(r.id, r.p.name) + '" alt="" style="width:52px;height:52px;border-radius:14px">' +
+    '<div><span class="name">' + (rank ? rank + '. ' : '') + r.p.name + ', ' + r.p.age + '</span>' +
+    (r.p.verified ? ' <span class="pill ok">✓ verified</span>' : '') + '<br>' +
+    '<span class="meta">match ' + r.score + ' · popularity ' + r.p.pop + ' · ~' + r.p.km + ' km</span></div></div>' +
+    '<div>' + r.shared.map(s => '<span class="pill">both: ' + s + '</span>').join('') + '</div>' +
+    '<span class="meta">' + r.p.type.replace('_', ' ') + ' · ' + r.p.job + '</span></div>';
+}
+let browseView = 'grid';
+const swiped = new Set();
+function renderBrowse() {
+  for (const btn of $('b-views').querySelectorAll('button')) {
+    btn.style.background = btn.dataset.view === browseView ? 'var(--accent)' : '';
+    btn.style.color = btn.dataset.view === browseView ? 'var(--accent-ink)' : '';
+  }
+  $('b-swipe-panel').hidden = browseView !== 'swipe';
+  $('b-grid-panel').hidden = browseView === 'swipe';
+  if (browseView === 'swipe') {
+    const next = browseRows(false).find(r => !swiped.has(r.id));
+    $('b-swipe-card').innerHTML = next
+      ? memberCardHtml(next) +
+        '<div style="display:flex;gap:10px;margin-top:10px">' +
+        '<button class="quiet" data-swipe="pass" data-who="' + next.id + '">Pass</button>' +
+        '<button class="act" data-swipe="like" data-who="' + next.id + '">Like</button></div>'
+      : '<p>You\'re through everyone who fits your preferences — widen them on the Grid view.</p>';
+    return;
+  }
+  const rows = browseView === 'top10' ? browseRows(true).slice(0, 10) : browseRows(false);
+  $('b-count').textContent = browseView === 'top10'
+    ? 'Your Top 10 matches across the whole community'
+    : (rows.length ? 'Your best matches — ' + rows.length + ' member' + (rows.length > 1 ? 's' : '') + ' fit' : 'No one fits these preferences yet');
+  $('b-cards').innerHTML = rows.map((r, i) => memberCardHtml(r, browseView === 'top10' ? i + 1 : 0)).join('') ||
+    '<p>Widen the distance or age range — results update instantly.</p>';
+}
+$('b-views').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if (btn) { browseView = btn.dataset.view; renderBrowse(); }
+});
+$('b-swipe-panel').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-swipe]');
+  if (!btn) return;
+  swiped.add(btn.dataset.who);
+  if (btn.dataset.swipe === 'like') {
+    flash($('b-swipe-flash'), 'ok', btn.dataset.who === 'bob'
+      ? 'It\'s mutual — Bob liked you too! A slow chat is waiting in the Member app.'
+      : 'Liked. If they like you back, a slow chat opens for you both.');
+  } else {
+    $('b-swipe-flash').innerHTML = '';
+  }
+  renderBrowse();
+});
+for (const id of ['b-gender', 'b-agemin', 'b-agemax', 'b-dist', 'b-interest', 'b-faith', 'b-income']) $(id).addEventListener('input', renderBrowse);
+$('b-mustshare').addEventListener('change', renderBrowse);
+renderBrowse();
+
+// ---------------------------------------------------------------- feature list
+const FEATURES = [["For members",[["Slow chat that earns real time","Messages start at 5 a day and 280 characters, widen every week, and unlock into unlimited real-time chat after 30 days and 10 genuine two-way conversations."],["Contact-info protection","Phone numbers, emails, links, and social handles are erased from messages until a chat unlocks — contact sharing is earned, never rushed."],["11-factor matching","Distance, interests, hobbies, outdoor life, dating goal, faith, politics, income, occupation, automobile, and popularity balance blend into one match score."],["Deep search","Filter the community by zip proximity, age, interests, hobbies, outdoor activities, dating type, faith, politics, income range, automobile, occupation, and popularity."],["Popularity rating","A fair 0–100 score from the attention you receive, normalized within your own group. Others see the score — never who viewed or messaged you."],["Video profiles","Embed up to five YouTube videos, validated and rendered safely."],["AI date concierge","Reads what a chat is really about and suggests up to three vetted nearby venues, each with a plain-language reason."],["Coupons, events & store","Partner discounts land in your wallet, event tickets enter you in venue contests automatically, and the store sells date-night kits with live stock."],["Member rewards","The most engaging members receive free memberships, gift certificates, tickets, and sponsored trips — visible in your wallet."],["Honest membership","Free to join. Member $19/year, VIP $79 (early chat unlock, boost), Elite $199 (chaperone priority, elite events)."],["Perks & income for popular members","Popular members earn: profile ad revenue, a paying Premium Members Only gallery, paid chat hours (4–8 h responding or initiating), cash back on partner-event dates, partner-scripted testimonial videos, and opt-ins for videoed dates, games, and future programs."],["Pictures come second","Real pictures reveal only after a pair's chat reaches the admin-set day — first impressions run on common interests, not appearance. Premium members hold the Peek early perk and see every picture immediately."],["Watch Party dates","A movie night on the web: a playlist of 1,000 romance films, one scheduled every day, a player with your chat right underneath — and the freedom to swap in any film from the library."]]],["Safety, women first",[["Filtering before trust","Contact data cannot leave a chat before the 30-day unlock — the scammer's rush tactic simply doesn't work here."],["Red-flag detection","Money requests, urgency pressure, off-platform pushes, and coercion raise an automatic safety alert for the recipient."],["Safety education","A public Safety Center with red flags, a first-date checklist, and exit strategies."],["Vetted venues only","Every recommended venue is atmosphere-tagged: quiet, romantic, adult, date-compatible."],["VIP chaperones","Professional bodyguard partners offer discreet escorts, safe-arrival verification, and emergency response for any date."],["Strong passwords, always","A twelve-character four-class minimum for every account, with a generated strong password offered at signup."]]],["For partner businesses",[["Self-service portal","Restaurants, lounges, cruise lines, tour and experience companies, bodyguard services, and vendors sign up and manage everything themselves."],["Three plans","Basic (free listing, random coupons, events), Pro (targeted coupons, contests, analytics), Elite (priority concierge placement, deep reporting)."],["Precision coupons","Random offers to nearby members, or targeted segments like \"women 21–35 within 30 km\" — with estimated reach before you send."],["Events & contests","Announce singles nights with capacity-controlled ticketing; attach prize draws that enter every ticket buyer automatically."],["A shelf in the store","List date-night products with live inventory; the platform handles orders."],["Live analytics","Coupons sent, redemptions, tickets sold, revenue, and contest entries — computed from the actual records."],["System integration","External ticketing, reservation, and booking systems report in over signed webhooks."],["Scripted testimonials","Write the script, set the payout, and popular members record it. Accept to pay, reject, edit for a re-record, or extend with an addition — the full review loop in the portal."]]],["The platform",[["Runs anywhere","Dependency-free PHP 8.1+ — no database server, no packages, no API keys. Deploys to any shared host by copying one folder."],["Full API","Every feature is available over a JSON API with a complete OpenAPI contract."],["Deterministic & tested","Same inputs always produce the same results, and an automated contract suite verifies every rule before anything ships."],["Desktop & mobile","One responsive interface across phones, tablets, and desktops."]]]];
+$('feature-groups').innerHTML = FEATURES.map(([heading, items]) =>
+  '<section class="panel"><h2>' + esc(heading) + '</h2><div class="cards">' +
+  items.map(([name, blurb]) =>
+    '<div class="card"><span class="name">' + esc(name) + '</span>' +
+    '<span class="meta" style="font-size:13.5px;line-height:1.55">' + esc(blurb) + '</span></div>').join('') +
+  '</div></section>').join('');
+
+// ---------------------------------------------------------------- smart dating library
+const ARTICLES = [{"slug":"why-strong-attraction-fails","title":"Why the Strongest Initial Attractions Often Destroy Long-Term Relationships","takeaway":"Slow-growing relationships last longer because they build attachment, trust, and shared identity — while the very forces that spark intense attraction (beauty, novelty, sexual chemistry, fantasy projection) can sabotage long-term stability.","sections":[{"h":"1. Physical attraction — the shallow foundation problem","p":["Physical attraction is powerful, but it is non-specific. It tells you nothing about values, emotional maturity, compatibility, communication style, trauma history, or long-term goals. It creates a false sense of connection because the brain releases dopamine and oxytocin from visual stimulation alone, tricking people into believing \"we have chemistry, therefore we have compatibility.\""],"ul":["Chemistry is a biological reaction, not a relationship skill.","Attraction fires in milliseconds; compatibility reveals itself over months."]},{"h":"2. Instant gratification — the bond without the foundation","p":["Physical intimacy accelerates emotional bonding through oxytocin, dopamine, and vasopressin. These chemicals create a shortcut to closeness, making people feel bonded before they actually know each other."],"ul":["Attachment without knowledge.","Commitment without compatibility.","Emotional dependency without trust.","Fantasy bonding instead of real bonding — the illusion of a relationship where none exists."]},{"h":"3. Psychologically unbalanced pairings","p":["Two people can be intensely drawn to each other because their wounds \"fit\": anxious + avoidant, narcissist + empath, caretaker + chaotic partner, trauma survivor + emotionally unavailable partner. These pairs feel magnetic because they activate childhood patterns — but what feels familiar is not always healthy. That is trauma chemistry, not love."]},{"h":"4. Physically attracted but completely mismatched","p":["The classic \"we look great together but can't function together.\" Different conflict styles, incompatible attachment styles, mismatched emotional needs, opposite life goals, and different communication patterns stay hidden while attraction is loud — until the relationship collapses under real-life pressure."]},{"h":"5. Economic incompatibility — different worlds, different stress","p":["Money is never just money. It is security, lifestyle, expectations, social environment, future planning, and stress tolerance. Different economic worlds often mean different values, priorities, definitions of success, and conflict triggers. Attraction cannot overcome structural incompatibility."]},{"h":"6. Educational mismatch — the communication breakdown","p":["Education shapes worldview, problem-solving, communication style, ambition, and intellectual curiosity. Two people can be wildly attracted yet unable to connect intellectually — leading to resentment, boredom, misunderstanding, separate social circles, and diverging long-term goals."]}]},{"slug":"why-we-ignore-red-flags","title":"Why Humans Ignore Red Flags and Pursue Bad Relationships Anyway","takeaway":"Humans pursue bad matches because our brains are wired for dopamine, validation, and emotional shortcuts — even when logic screams \"danger.\" We are biological, emotional, and pattern-driven, not rational, in love.","sections":[{"h":"1. Dopamine addiction","p":["Attraction and early romance create dopamine spikes comparable to gambling, drugs, alcohol, and adrenaline sports. People end up chasing the high, not the person."]},{"h":"2. Loneliness","p":["Loneliness lowers standards, hides incompatibility, makes people cling to attention, and blurs the line between validation and love. It is one of the strongest drivers of bad relationship decisions."]},{"h":"3. Fantasy projection","p":["Humans fall in love with potential, fantasy, an imagined future, and an idealized version of the partner — not the real person in front of them."]},{"h":"4. Attachment wounds","p":["People repeat childhood patterns: chasing unavailable partners, trying to \"fix\" someone, seeking validation from harmful people, confusing chaos with passion. We are drawn to what feels familiar — even when it is destructive."]},{"h":"5. Sexual chemistry overriding logic","p":["Physical chemistry creates a false sense of closeness that makes people overlook disrespect, incompatibility, emotional immaturity, and outright dealbreakers. The body says \"yes\" even when the mind says \"run.\""]},{"h":"6. Hope and optimism bias","p":["\"This time will be different\" — believed even when every piece of evidence says otherwise."]},{"h":"7. Fear of starting over","p":["Starting over feels exhausting; people fear being alone, failing, being judged, or losing what little they have. Fear keeps people stuck in relationships that logic already rejected."]},{"h":"The core truth","p":["Slow-growing relationships work because they build trust, shared identity, emotional safety, communication, compatibility, and real intimacy. They grow from knowing, not fantasy."]}]},{"slug":"neuroscience-of-attraction","title":"The Neuroscience of Attraction","takeaway":"Attraction is not magic — it is neurobiology. The brain uses chemicals, circuits, and ancient survival systems to decide who feels irresistible, who feels \"safe,\" and who feels like a bad idea we pursue anyway.","sections":[{"h":"1. The dopamine reward system — the \"I want more\" circuit","p":["Dopamine spikes on novelty, beauty, mystery, and unpredictability. It evolved to push humans toward exploration and mating — it creates anticipation, obsession, motivation, and risk-taking. Dopamine never says \"this person is good for you.\" It says \"this feels exciting — go.\" The brain confuses intensity with value, which is why people chase bad matches, unavailable people, and chaotic relationships."]},{"h":"2. Oxytocin and vasopressin — the bonding chemicals","p":["Released through touch, eye contact, intimacy, and emotional vulnerability, these chemicals create trust, loyalty, a sense of safety, and emotional merging. The trap: the brain bonds even when the partner is a terrible match. That is why people stay in relationships logic says should end."]},{"h":"3. The limbic system — emotional memory and pattern recognition","p":["The limbic system decides who feels \"right\" based on childhood experience, attachment style, trauma history, and early emotional conditioning. It produces pattern attraction: anxious people chase avoidant partners, empaths chase narcissists, caretakers chase chaos. The brain is drawn to what feels familiar — even when it is harmful."]},{"h":"4. The visual cortex — why looks hit harder than logic","p":["Attractiveness is processed in milliseconds — fertility signals, health indicators, symmetry — creating instant attraction before the prefrontal cortex (logic) even wakes up. This is why beautiful people override red flags and why the brain prioritizes reproduction over rationality."]},{"h":"5. The amygdala — fear, excitement, and danger attraction","p":["The amygdala responds to intensity, unpredictability, emotional highs and lows, and mystery — the \"rollercoaster relationship\" effect. Unstable partners trigger adrenaline, cortisol, and dopamine at once. That cocktail feels like passion; it is actually stress bonding."]},{"h":"6. The prefrontal cortex — the judgment that arrives late","p":["This is the part that should say \"this is a red flag; this will end badly.\" During early attraction it is suppressed by dopamine, oxytocin, arousal, and fantasy projection — which is why smart, successful people make terrible relationship choices."]},{"h":"Why attraction feels irrational","p":["Because it is. Attraction is driven by biology, survival instincts, emotional memory, subconscious pattern matching, and chemical reward — not logic. Humans do not fall for the \"best\" partner; they fall for the partner who activates the right neural circuits."]}]},{"slug":"attachment-styles","title":"Attachment Styles in Attraction — Why We Want Who We Want","takeaway":"Attachment styles shape who feels \"safe,\" who feels \"exciting,\" and who feels \"dangerous but irresistible.\" They operate below conscious awareness, pulling us toward certain partners even when logic disagrees.","sections":[{"h":"Secure attachment — drawn to stability, warmth, reciprocity","p":["Securely attached people choose emotional consistency, healthy communication, reliability, and balanced intimacy. Comfortable with both closeness and independence, they do not chase chaos because their nervous system does not confuse intensity with love. Secure attachment creates the healthiest long-term relationships."]},{"h":"Anxious attachment — drawn to avoidant partners","p":["Driven by fear of abandonment, anxious individuals crave closeness and reassurance — yet are often attracted to emotionally unavailable, inconsistent, mixed-signal partners. Inconsistency creates dopamine spikes; the nervous system reads unpredictability as passion. Hence: \"I know they're bad for me, but I can't stop thinking about them.\" The bond forms through fear plus desire, not stability."]},{"h":"Avoidant attachment — drawn to independence and intensity","p":["Avoidant individuals fear being controlled or engulfed. They gravitate toward mysterious, self-sufficient partners who do not demand emotional intimacy. The anxious-avoidant push-pull creates intensity, but avoidants struggle with vulnerability and often sabotage relationships that feel \"too close.\""]},{"h":"Disorganized attachment — drawn to chaos and trauma chemistry","p":["Born of inconsistent or frightening early experiences, disorganized attachment craves closeness and fears it simultaneously. It is drawn to volatile, unpredictable partners and extreme highs and lows. The nervous system equates fear with excitement, chaos with passion, instability with love — producing the strongest \"magnetic but destructive\" relationships."]},{"h":"Why attachment beats logic","ul":["Familiarity: people are drawn to what feels familiar, even when unhealthy.","Neural pathways: attachment patterns are wired in childhood and repeat in adulthood.","The dopamine-anxiety loop: unpredictable partners spike dopamine harder than stable ones.","Fantasy projection: idealized fantasies attach to partners who activate old wounds.","Fear of change: rewiring attachment requires emotional risk and discomfort."],"p":["Attraction is not random. It is a neurobiological echo of childhood attachment patterns — people fall for the partner who fits their nervous system's blueprint."]}]},{"slug":"trauma-chemistry-vs-compatibility","title":"Trauma Chemistry vs Real Compatibility","takeaway":"Trauma chemistry feels like destiny — fast, overwhelming, magnetic — but it is your nervous system reenacting old wounds. Real compatibility feels calmer and safer, which is why many people mistake it for \"boring.\"","sections":[{"h":"Trauma chemistry — attraction based on wounds","p":["It fires when someone activates unresolved emotional patterns: unpredictability, hot-and-cold behavior, emotional unavailability, mixed signals, power imbalance, high-conflict-high-passion cycles, feeling you must earn love. The amygdala and dopamine system fire together; danger reads as excitement; familiar dysfunction feels like home."],"ul":["What it produces: obsession, anxiety, rumination, jealousy, emotional dependency, breakup-and-reunion cycles.","\"I can't quit this person\" means your nervous system is hooked — not that the relationship is healthy."]},{"h":"Real compatibility — attraction based on safety and alignment","p":["Real compatibility activates the parasympathetic nervous system — calm, trust, connection. It is built from emotional consistency, clear communication, shared values, mutual respect, secure attachment, and emotional availability."],"ul":["It feels like: \"I can breathe around this person.\" \"I feel understood.\" \"I don't have to perform.\"","No adrenaline spikes, no guessing games, no rollercoaster. Secure bonding, not trauma bonding."]},{"h":"The core differences","ul":["Trauma chemistry: fast, intense, addictive, unpredictable, anxiety-driven — feels like \"I need them,\" creates chaos, repeats childhood patterns.","Real compatibility: slow, steady, trust-building, predictable, calm — feels like \"I choose them,\" creates safety, builds a future."]},{"h":"Why trauma chemistry feels stronger","ul":["The brain mistakes intensity for importance.","Childhood wounds seek reenactment — the brain tries to resolve old pain by recreating it.","Intermittent reward is the most addictive pattern known to neuroscience.","The nervous system prefers familiar pain over unfamiliar peace.","Real compatibility lacks drama — and people raised in chaos read calm as boredom."]},{"h":"How to tell which one you are in","ul":["Trauma chemistry: anxious more than happy, afraid of losing them, can't think clearly, addicted to their attention, tolerating disrespect, hoping they'll change.","Real compatibility: calm, valued, seen, respected, emotionally safe, communicating openly, growing together."],"p":["Trauma chemistry is a cycle. Compatibility is a choice."]}]},{"slug":"override-destructive-patterns","title":"How to Override Destructive Attraction Patterns","takeaway":"You override destructive attraction patterns by retraining your nervous system. Trauma chemistry is a body-level reaction, not a conscious choice — so the fix must target the body, the brain, and the patterns pulling you toward the wrong people.","sections":[{"h":"1. Name the pattern","p":["Anxious chases avoidant; avoidant chooses unavailable; the fixer chooses broken partners; the people-pleaser chooses takers. Your nervous system is repeating what it learned early. Naming the pattern is the first step to breaking it."]},{"h":"2. Slow down the timeline","p":["Trauma chemistry thrives on speed: fast bonding, fast intimacy, fast emotional merging. Slowing down exposes red flags, incompatibility, immaturity, and fantasy projection. Slow the pace and destructive partners lose their power — this is the principle SlowDating is built on."]},{"h":"3. Shift from chemistry to compatibility","p":["Chemistry is a feeling; compatibility is a function. Do your values, lifestyles, communication styles, goals, and emotional needs align? If not, chemistry is irrelevant."]},{"h":"4. Rewire the nervous system","p":["The body gets addicted to adrenaline, cortisol, dopamine spikes, and intermittent reward. Mindfulness, somatic work, breathwork, slowed emotional responses, and steady partners teach the nervous system that calm is safe — not boring."]},{"h":"5. Break the intermittent reinforcement cycle","p":["Unpredictable partners create the same addiction mechanics as slot machines. Stop chasing, stop waiting for the \"good moment,\" stop rewarding inconsistency, stop granting second chances for the same behavior. Consistency is the antidote."]},{"h":"6. Choose calm over intense","p":["Healthy attraction feels like clarity, comfort, safety, and steady connection. Destructive attraction feels like anxiety, obsession, confusion, and adrenaline. Your body has to learn to prefer the first."]},{"h":"7. Replace fantasy with reality","p":["\"They'll change.\" \"They're just scared.\" \"It's complicated.\" Reality is simpler: are they consistent, available, respectful, and aligned with your life? Fantasy is the enemy of healthy love."]},{"h":"8. Heal the original wound, then build a new template","p":["Patterns rooted in abandonment, neglect, or past betrayal repeat until addressed. Then practice attraction to kindness, stability, maturity, reliability, and mutual effort. At first it will feel \"too calm.\" Later it will feel like home."],"ul":["You don't override these patterns by thinking differently — you override them by feeling differently.","Trauma chemistry feels like destiny. Compatibility feels like peace. Choose peace."]}]},{"slug":"slow-burn-lasts-longer","title":"Why Slow-Burn Relationships Last Longer","takeaway":"Slow-burn relationships last because they build attachment, trust, and shared identity gradually — bonding the nervous system through safety instead of trauma chemistry.","sections":[{"h":"1. Gradual dopamine, not the addictive rollercoaster","p":["Fast relationships run on dopamine spikes — thrilling, and quickly burned out. Slow ones produce steady dopamine: long-term motivation, sustained interest, emotional stability, deeper bonding. For attachment, the brain prefers consistency over chaos."]},{"h":"2. Oxytocin-based bonding — trust grows instead of exploding","p":["Oxytocin accumulates through repeated conversations, shared experiences, vulnerability, and small acts of care — building trust, loyalty, and safety. Fast relationships skip this and substitute intensity for intimacy."]},{"h":"3. Calm is connection","p":["Slow relationships activate the parasympathetic nervous system — calm, comfort, clarity: the foundation of secure attachment. Fast ones activate the stress system — anxiety, obsession, adrenaline — which people mistake for passion."]},{"h":"4. Time reveals compatibility","p":["Conflict style, communication habits, emotional maturity, lifestyle, values, and goals are invisible in week one. Slow relationships let incompatibilities surface before commitment; fast ones commit first and discover later."]},{"h":"5. Fantasy fades, reality emerges","p":["Early attraction is projection: \"they're perfect,\" \"this is destiny.\" Slow pacing lets the fantasy fade and reality appear. If the connection survives reality, it is strong. If it collapses when fantasy fades, it was never real."]},{"h":"6. Intimacy and shared identity grow naturally","p":["Shared stories, vulnerability, consistency, and mutual investment create deep emotional connection — the strongest predictor of long-term success. Over time partners build shared routines, memories, goals, and meaning. Fast relationships skip this and collapse under stress."],"ul":["Fast relationships feel like fireworks. Slow relationships feel like sunrise.","Fireworks burn out. Sunrises build a day."]}]},{"slug":"identify-compatibility-early","title":"How to Identify Real Compatibility Early","takeaway":"You identify real compatibility early by watching patterns, not feelings. Chemistry misleads; consistency, communication, values, and emotional safety reveal whether a relationship can last.","sections":[{"h":"1. Emotional safety — the #1 predictor","p":["You don't feel judged; you can express needs without fear; they listen without defensiveness; disagreements don't escalate. If you feel relief instead of tension around someone, that is compatibility."]},{"h":"2. Consistency — the antidote to trauma chemistry","p":["Consistent communication, effort, emotional tone, respect, and follow-through. Inconsistent people create intensity; consistent people create longevity."]},{"h":"3. Aligned values — the backbone","p":["Values determine lifestyle, priorities, conflict style, parenting, money, and moral compass. Revealing early questions: how do they treat people who can't benefit them? How do they handle stress? What counts as \"success\" to them? Values matter more than personality."]},{"h":"4. Communication style — the hidden dealbreaker","p":["Clarity vs vagueness, openness vs avoidance, honesty vs defensiveness, curiosity vs judgment. If communication feels easy early, it will feel easy later."]},{"h":"5. Shared pace and lifestyle","p":["Real compatibility means moving at the same speed — no one rushing, no one dragging. And lifestyle is daily reality: sleep, work, social habits, ambition, money behavior, health. If lifestyles clash, chemistry won't save you."]},{"h":"6. Conflict compatibility — the most overlooked sign","p":["You don't need a fight to see conflict style — watch minor frustrations, misunderstandings, and boundaries. Healthy conflict looks like curiosity, calmness, repair, accountability. Unhealthy looks like blame, withdrawal, escalation, stonewalling. Conflict style predicts longevity better than attraction."]},{"h":"7. Attachment fit and mutual effort","p":["Mismatch feels like chasing, performing, guessing, waiting. Fit feels like calm, secure, seen, valued. And attraction is easy — effort is compatibility: equal initiation, planning, vulnerability, and investment. If effort is one-sided early, it will be one-sided forever."],"ul":["Chemistry is a spark. Compatibility is the structure.","One fades. The other lasts."]}]},{"slug":"slow-relationship-chemistry","title":"How Slow Relationships Build Deeper Chemistry","takeaway":"Slow-developing relationships create stronger, more sustainable chemistry because the nervous system bonds through trust, safety, anticipation, and emotional intimacy — not adrenaline, anxiety, or novelty.","sections":[{"h":"1. Safety first, desire second","p":["When a relationship grows slowly, the brain layers oxytocin (bonding), dopamine (pleasure), serotonin (stability), and endorphins (comfort) into a foundation of emotional safety — the strongest predictor of long-term physical satisfaction. Fast relationships run on adrenaline, novelty, anxiety, and fantasy, which fade."]},{"h":"2. Anticipation builds desire","p":["Anticipation is one of the most powerful accelerators of attraction. Slow relationships create curiosity, mystery, emotional buildup, and progressive closeness — activating the reward system more strongly than instant gratification. The longer the anticipation, the stronger the eventual chemistry."]},{"h":"3. Emotional intimacy fuels physical intimacy","p":["Shared stories, vulnerability, trust, and mutual understanding grow first. When physical intimacy arrives, it carries emotional meaning and psychological closeness — making the connection richer and more enduring."]},{"h":"4. Secure attachment improves everything","p":["A relaxed nervous system, open communication, and comfort with vulnerability dramatically improve connection, because both partners feel safe, valued, and understood. Fast relationships often activate anxious or avoidant patterns that erode chemistry over time."]},{"h":"5. Desire built on knowing beats desire built on fantasy","p":["Fast relationships idealize and project. Slow ones desire the real person — how they think, feel, communicate, and connect. Desire built on reality is far more stable."]},{"h":"6. Chemistry becomes multidimensional","p":["Emotional, intellectual, lifestyle, humor, and shared-experience connection layer together into a desire that is resilient to stress, aging, routine, and life changes. Intimacy becomes communication, not performance — connected, responsive, attuned, mutual."],"ul":["Fast relationships create intensity. Slow relationships create depth."]}]}];
+(function () {
+  const cards = $('smart-cards');
+  cards.innerHTML = ARTICLES.map((a, i) =>
+    '<section class="panel"><h2 style="margin:0 0 6px">' + (i + 1) + '. ' + esc(a.title) + '</h2>' +
+    '<p style="margin:0 0 10px">' + esc(a.takeaway) + '</p>' +
+    '<button class="act small" data-read="' + i + '">Read the article</button></section>').join('');
+  function open(i) {
+    const a = ARTICLES[i];
+    $('sa-title').textContent = a.title;
+    $('sa-takeaway').textContent = a.takeaway;
+    $('sa-body').innerHTML = a.sections.map(s =>
+      '<h3>' + esc(s.h) + '</h3>' +
+      (s.p || []).map(p => '<p>' + esc(p) + '</p>').join('') +
+      (s.ul ? '<ul>' + s.ul.map(li => '<li>' + esc(li) + '</li>').join('') + '</ul>' : '')).join('');
+    $('sa-nav').innerHTML =
+      (i > 0 ? '<button class="quiet" data-read="' + (i - 1) + '">← ' + esc(ARTICLES[i - 1].title) + '</button>' : '') +
+      (i < ARTICLES.length - 1 ? '<button class="quiet" data-read="' + (i + 1) + '">' + esc(ARTICLES[i + 1].title) + ' →</button>' : '');
+    $('smart-index').hidden = true;
+    $('smart-article').hidden = false;
+    $('smart-article').scrollIntoView({ block: 'start' });
+  }
+  $('portal-smart').addEventListener('click', e => {
+    const r = e.target.closest('button[data-read]');
+    if (r) { open(+r.dataset.read); return; }
+    if (e.target.closest('#smart-back')) { $('smart-article').hidden = true; $('smart-index').hidden = false; }
+  });
+})();
+(function () {
+  const stage = $('t-stage'), dots = $('t-dots');
+  stage.insertAdjacentHTML('afterbegin', TOUR.map(([src, title], i) =>
+    '<div class="tslide' + (i === 0 ? ' on' : '') + '"><img src="' + src + '" alt="' + esc(title) + '"' + (i === 0 ? '' : ' loading="lazy"') + '></div>').join(''));
+  dots.innerHTML = TOUR.map((_, i) => '<button type="button" class="dot" data-go="' + i + '" aria-label="Slide ' + (i + 1) + '"></button>').join('') +
+    '<button type="button" class="quiet play" id="t-play">Pause</button>';
+  $('t-total').textContent = TOUR.length;
+  let at = 0, playing = true, timer = null;
+  const slides = stage.querySelectorAll('.tslide'), dotEls = dots.querySelectorAll('.dot');
+  function show(i) {
+    at = (i + TOUR.length) % TOUR.length;
+    slides.forEach((s, k) => s.classList.toggle('on', k === at));
+    dotEls.forEach((d, k) => d.classList.toggle('on', k === at));
+    $('t-title').textContent = TOUR[at][1];
+    $('t-text').textContent = TOUR[at][2];
+    $('t-num').textContent = at + 1;
+  }
+  function arm() { clearInterval(timer); if (playing) timer = setInterval(() => show(at + 1), 6000); }
+  $('t-prev').addEventListener('click', () => { show(at - 1); arm(); });
+  $('t-next').addEventListener('click', () => { show(at + 1); arm(); });
+  dots.addEventListener('click', e => {
+    const b = e.target.closest('.dot'); if (b) { show(+b.dataset.go); arm(); }
+    if (e.target.closest('#t-play')) { playing = !playing; $('t-play').textContent = playing ? 'Pause' : 'Play'; arm(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (portal !== 'tour') return;
+    if (e.key === 'ArrowLeft') { show(at - 1); arm(); }
+    if (e.key === 'ArrowRight') { show(at + 1); arm(); }
+  });
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { playing = false; }
+  show(0); arm();
+  if (!playing) $('t-play').textContent = 'Play';
+})();
+
+// ---------------------------------------------------------------- boot
+renderChats(); renderSearch(); renderWallet(); renderStore(); renderPartner(); renderAdmin(); renderReach();
+</script>
