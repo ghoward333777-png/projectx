@@ -472,7 +472,11 @@ final class SlowDatingApi
             return [200, $engine->reviewVerification($adminId, $segments[3], (bool) ($body['approve'] ?? false), $now)];
         }
         if ($method === 'GET' && $path === '/admin/v1/settings') {
-            return [200, ['avatar_mode' => $engine->avatarMode(), 'photo_reveal_days' => $engine->photoRevealDays()]];
+            return [200, [
+                'avatar_mode' => $engine->avatarMode(),
+                'photo_reveal_days' => $engine->photoRevealDays(),
+                'watch_party_embed' => $engine->watchPartyEmbed(),
+            ]];
         }
         if ($method === 'PATCH' && $path === '/admin/v1/settings') {
             $updated = [];
@@ -481,6 +485,9 @@ final class SlowDatingApi
             }
             if (array_key_exists('photo_reveal_days', $body)) {
                 $updated += $engine->setPhotoRevealDays($adminId, (int) $body['photo_reveal_days']);
+            }
+            if (array_key_exists('watch_party_embed', $body)) {
+                $updated += $engine->setWatchPartyEmbed($adminId, (string) $body['watch_party_embed']);
             }
             if ($updated === []) {
                 return [422, ['error_code' => 'invalid_request', 'message' => 'Send avatar_mode and/or photo_reveal_days.']];

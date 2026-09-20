@@ -41,6 +41,17 @@
   <p class="note">This is the exact player+chat from your site, in one file. Open it in any normal browser and the
     YouTube movie plays right here in the embedded player, with a playlist of more romance films queued behind it.</p>
 
+  <div class="chat" style="gap:8px">
+    <strong style="font-size:14px">Your player, your code — paste YouTube embed code or a playlist link:</strong>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="embed-input" placeholder='&lt;iframe src="https://www.youtube.com/embed/videoseries?list=PL..."&gt;&lt;/iframe&gt; — or any YouTube / playlist link'
+             style="flex:1;min-width:260px;padding:10px;border-radius:8px;border:1px solid #374151;background:#020617;color:#e5e7eb;font-size:13px">
+      <button class="send" id="embed-apply">Use my embed</button>
+      <button class="send" id="embed-clear" style="background:#374151">Clear</button>
+    </div>
+    <span class="hint" id="embed-note">Whatever you paste plays in the player below and is remembered on this device.</span>
+  </div>
+
   <div class="video-wrapper"><iframe id="player" src="" title="Watch Party player"
       referrerpolicy="strict-origin-when-cross-origin"
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -84,14 +95,39 @@ const FILMS = [
   ['Cyrano de Bergerac (1950)', 'iUI_Gb6UDiY'],
 ];
 let current = 0;
+function embedUrlFrom(input) {
+  input = (input || '').trim();
+  if (!input) return null;
+  const m = input.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+  if (m) input = m[1].replace(/&amp;/g, '&');
+  let u;
+  try { u = new URL(input); } catch { return null; }
+  const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+  const okId = v => /^[A-Za-z0-9_-]{6,64}$/.test(v || '');
+  if (host === 'youtu.be') { const id = u.pathname.slice(1); return okId(id) ? 'https://www.youtube.com/embed/' + id : null; }
+  if (host !== 'youtube.com' && host !== 'youtube-nocookie.com') return null;
+  if (u.pathname.startsWith('/embed/')) return 'https://www.youtube.com' + u.pathname + u.search;
+  if (u.pathname === '/watch' && okId(u.searchParams.get('v'))) {
+    const list = u.searchParams.get('list');
+    return 'https://www.youtube.com/embed/' + u.searchParams.get('v') + (okId(list) ? '?list=' + list : '');
+  }
+  if (u.pathname === '/playlist' && okId(u.searchParams.get('list'))) {
+    return 'https://www.youtube.com/embed/videoseries?list=' + u.searchParams.get('list');
+  }
+  return null;
+}
+// The operator's playlist is the default player source.
+let override = 'https://www.youtube.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij';
+try { override = localStorage.getItem('wp_embed') || override; } catch {}
 function play(i) {
   current = i;
   const [title, id] = FILMS[i];
   const queue = FILMS.filter((f, j) => j !== i).map(f => f[1]);
-  document.getElementById('player').src =
-    'https://www.youtube.com/embed/' + id + '?rel=0&playsinline=1&playlist=' + queue.join(',');
-  document.getElementById('now-playing').textContent =
-    'Now in the player: ' + title + ' — with ' + queue.length + ' more romance films queued in the playlist.';
+  document.getElementById('player').src = override ||
+    ('https://www.youtube.com/embed/' + id + '?rel=0&playsinline=1&playlist=' + queue.join(','));
+  document.getElementById('now-playing').textContent = override
+    ? 'Now in the player: your pasted embed — ' + override
+    : 'Now in the player: ' + title + ' — with ' + queue.length + ' more romance films queued in the playlist.';
   document.getElementById('films').innerHTML = FILMS.map((f, j) =>
     '<div class="film"><strong>' + f[0] + '</strong>' +
     (j === i ? '<span class="pill">now playing</span>' : '<button data-i="' + j + '">Watch this instead</button>') +
@@ -99,7 +135,23 @@ function play(i) {
 }
 document.getElementById('films').addEventListener('click', e => {
   const b = e.target.closest('button[data-i]');
-  if (b) play(+b.dataset.i);
+  if (b) { override = null; try { localStorage.removeItem('wp_embed'); } catch {} play(+b.dataset.i); }
+});
+document.getElementById('embed-apply').addEventListener('click', () => {
+  const url = embedUrlFrom(document.getElementById('embed-input').value);
+  const note = document.getElementById('embed-note');
+  if (!url) { note.textContent = 'That is not YouTube embed code or a YouTube link — paste the full <iframe> code, a video link, or a playlist link.'; return; }
+  override = url;
+  try { localStorage.setItem('wp_embed', url); } catch {}
+  note.textContent = 'Playing your embed. It is remembered on this device until you clear it.';
+  play(current);
+});
+document.getElementById('embed-clear').addEventListener('click', () => {
+  override = null;
+  try { localStorage.removeItem('wp_embed'); } catch {}
+  document.getElementById('embed-input').value = '';
+  document.getElementById('embed-note').textContent = 'Cleared — back to the romance library.';
+  play(current);
 });
 const msgs = [
   { me: false, who: 'Marcus', text: 'Playing. Some things really are inevitable.', when: '8:12 PM' },

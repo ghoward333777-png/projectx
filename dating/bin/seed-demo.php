@@ -296,6 +296,9 @@ $engine->createTestimonialScript($ralphs['partner_id'], (string) $ralphsVenue['i
     'payout' => 55.0,
 ], $now - 2 * $day);
 
+// The operator's own YouTube playlist is the Watch Party player's source.
+$engine->setWatchPartyEmbed($admin['admin_id'], 'https://www.youtube.com/playlist?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij');
+
 // ---- Watch Party: Alice & Marcus put on the featured premiere ---------------------
 if (is_file(dirname(__DIR__) . '/data/romance-films.json')) {
     $engine->chooseWatchPartyFilm($c2, $ids['alice'], 'inevitable-hearts', $now - 3600);

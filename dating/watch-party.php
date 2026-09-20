@@ -207,8 +207,13 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
     <!-- Player: every film plays inside the page (YouTube's ads run in
          the embed), through the curated id or the resolved best upload. -->
     <div class="video-wrapper">
-        <?php $embedSrc = (string) $film['embed_url'] . '?rel=0' . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : ''); ?>
-        <?php if (!empty($film['embed_url'])): ?>
+        <?php
+        // The admin-pasted embed wins over the per-film source, so ops can
+        // point every watch party at their own video or playlist.
+        $override = $engine->watchPartyEmbed();
+        $embedSrc = $override ?? ((string) $film['embed_url'] . '?rel=0' . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : ''));
+        ?>
+        <?php if ($override !== null || !empty($film['embed_url'])): ?>
             <iframe src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen></iframe>

@@ -3379,6 +3379,84 @@ final class SlowDatingEngine
     }
 
     /**
+     * Normalize anything an admin pastes — full YouTube embed code, a
+     * watch link, a youtu.be link, a playlist link, or an embed URL —
+     * into a safe https://www.youtube.com/embed/... URL. Returns null
+     * when the paste is not YouTube.
+     */
+    public function youtubeEmbedUrl(string $input): ?string
+    {
+        $input = trim($input);
+        if ($input === '') {
+            return null;
+        }
+        if (preg_match('/<iframe[^>]+src=["\']([^"\']+)["\']/i', $input, $match) === 1) {
+            $input = html_entity_decode($match[1], ENT_QUOTES);
+        }
+        $parts = parse_url($input);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $host = preg_replace('/^www\./', '', $host);
+        if (!in_array($host, ['youtube.com', 'youtube-nocookie.com', 'youtu.be', 'm.youtube.com'], true)) {
+            return null;
+        }
+        $path = (string) ($parts['path'] ?? '/');
+        parse_str((string) ($parts['query'] ?? ''), $query);
+        $id = static fn (string $v): bool => preg_match('/^[A-Za-z0-9_-]{6,64}$/', $v) === 1;
+        if ($host === 'youtu.be') {
+            $videoId = trim($path, '/');
+            return $id($videoId) ? 'https://www.youtube.com/embed/' . $videoId : null;
+        }
+        if (str_starts_with($path, '/embed/')) {
+            $tail = substr($path, 7);
+            if ($tail !== 'videoseries' && !$id($tail)) {
+                return null;
+            }
+            $keep = array_intersect_key($query, array_flip(['list', 'playlist', 'start', 'rel']));
+            return 'https://www.youtube.com/embed/' . $tail . ($keep !== [] ? '?' . http_build_query($keep) : '');
+        }
+        if ($path === '/watch' && isset($query['v']) && $id((string) $query['v'])) {
+            $suffix = isset($query['list']) && $id((string) $query['list']) ? '?list=' . $query['list'] : '';
+            return 'https://www.youtube.com/embed/' . $query['v'] . $suffix;
+        }
+        if ($path === '/playlist' && isset($query['list']) && $id((string) $query['list'])) {
+            return 'https://www.youtube.com/embed/videoseries?list=' . $query['list'];
+        }
+        return null;
+    }
+
+    /**
+     * Admin-pasted player source for the Watch Party. When set, every
+     * watch party plays this embed (a video or a whole playlist) instead
+     * of the per-film source. Pasting an empty value clears it.
+     *
+     * @return array{watch_party_embed: ?string}
+     */
+    public function setWatchPartyEmbed(string $adminId, string $embedCode): array
+    {
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins can set the Watch Party player.');
+        }
+        if (trim($embedCode) === '') {
+            $this->store->delete('settings', 'watch_party_embed');
+            return ['watch_party_embed' => null];
+        }
+        $url = $this->youtubeEmbedUrl($embedCode);
+        if ($url === null) {
+            throw new InvalidArgumentException('Paste YouTube embed code, a video link, or a playlist link.');
+        }
+        $this->store->put('settings', 'watch_party_embed', ['value' => $url]);
+        return ['watch_party_embed' => $url];
+    }
+
+    /** The admin-pasted player source, when one is set. */
+    public function watchPartyEmbed(): ?string
+    {
+        $setting = $this->store->get('settings', 'watch_party_embed');
+        $value = (string) ($setting['value'] ?? '');
+        return $value !== '' ? $value : null;
+    }
+
+    /**
      * The "up next" playlist for the embedded player: more films from the
      * romance library that already have a playable video (curated or
      * resolved), so the movie is followed by a playlist of more — all

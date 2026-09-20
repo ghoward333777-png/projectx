@@ -45,6 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Profile images now come from ' . ($engine->avatarMode() === 'uploads' ? 'member uploads (generated artwork as fallback).' : 'generated artwork for everyone.');
                 }
                 break;
+            case 'watch_embed':
+                if ($adminId !== null) {
+                    $result = $engine->setWatchPartyEmbed($adminId, (string) ($_POST['embed'] ?? ''));
+                    $notice = $result['watch_party_embed'] !== null
+                        ? 'Watch Party player set. Every party now plays: ' . $result['watch_party_embed']
+                        : 'Watch Party player cleared — parties play the film library again.';
+                }
+                break;
             case 'photo_reveal':
                 if ($adminId !== null) {
                     $engine->setPhotoRevealDays($adminId, (int) ($_POST['days'] ?? 0));
@@ -134,6 +142,16 @@ if ($adminId === null) {
         Member-uploaded photos, with generated artwork as the fallback
     </label>
     <button type="submit">Save image mode</button>
+</form>
+
+<form method="post">
+    <h2>Watch Party player</h2>
+    <p>Paste YouTube embed code (the whole <code>&lt;iframe …&gt;</code>), a video link, or a playlist link.
+        Every couple's Watch Party player will play it. Save an empty box to go back to the film library's own sources.</p>
+    <input type="hidden" name="action" value="watch_embed">
+    <label>Embed code or YouTube link</label>
+    <textarea name="embed" placeholder='&lt;iframe src="https://www.youtube.com/embed/videoseries?list=PL..." ...&gt;&lt;/iframe&gt;'><?= sd_e((string) ($engine->watchPartyEmbed() ?? '')) ?></textarea>
+    <button type="submit">Save player source</button>
 </form>
 
 <form method="post">

@@ -685,6 +685,25 @@ $party = $engine->watchPartyFor($chatId, $alice['user_id'], $tDay);
 contract_check($party['film']['playable'] === true && $party['film']['embed_url'] === 'https://www.youtube.com/embed/abcDEF12345', 'resolved films must embed in-page like curated ones');
 $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'daily', $tDay);
 
+// ---- Admin-pasted Watch Party embed ---------------------------------------------------
+contract_check($engine->youtubeEmbedUrl('<iframe width="560" src="https://www.youtube.com/embed/videoseries?list=PLabc123DEF456" allowfullscreen></iframe>') === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'pasted iframe embed code must parse');
+contract_check($engine->youtubeEmbedUrl('https://www.youtube.com/playlist?list=PLabc123DEF456') === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'playlist links must convert to playlist embeds');
+contract_check($engine->youtubeEmbedUrl('https://youtu.be/jpejUwKLmfg?si=xyz') === 'https://www.youtube.com/embed/jpejUwKLmfg', 'youtu.be links must convert');
+contract_check($engine->youtubeEmbedUrl('https://www.youtube.com/watch?v=jpejUwKLmfg&list=PLabc123DEF456') === 'https://www.youtube.com/embed/jpejUwKLmfg?list=PLabc123DEF456', 'watch links keep their playlist');
+contract_check($engine->youtubeEmbedUrl('https://evil.example/embed/x') === null, 'non-YouTube pastes must be rejected');
+$threw = false;
+try {
+    $engine->setWatchPartyEmbed($alice['user_id'], 'https://youtu.be/jpejUwKLmfg');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins may set the Watch Party player');
+$set = $engine->setWatchPartyEmbed($admin['admin_id'], '<iframe src="https://www.youtube.com/embed/videoseries?list=PLabc123DEF456"></iframe>');
+contract_check($set['watch_party_embed'] === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'admins must set the player from pasted embed code');
+contract_check($engine->watchPartyEmbed() === 'https://www.youtube.com/embed/videoseries?list=PLabc123DEF456', 'the pasted player source must read back');
+$engine->setWatchPartyEmbed($admin['admin_id'], '');
+contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear the player override');
+
 // ---- Photo reveal timeframe & the Peek early perk ------------------------------------
 $threw = false;
 try {
