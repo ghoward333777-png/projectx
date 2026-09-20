@@ -40,6 +40,7 @@ final class SitePackageExporter
         'dating/SlowDatingApi.php',
         'dating/api.php',
         'dating/index.php',
+        'dating/browse.php',
         'dating/partner-portal.php',
         'dating/admin.php',
         'dating/safety-center.php',

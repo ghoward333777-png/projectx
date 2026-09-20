@@ -81,6 +81,9 @@ foreach ($members as $key => [$email, $password, $profile]) {
     $engine->updateProfile($result['user_id'], $profile);
 }
 $engine->addProfileVideo($ids['alice'], 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+$engine->updatePreferences($ids['alice'], ['seeking_gender' => 'male', 'age_min' => 27, 'age_max' => 38, 'max_distance_km' => 50]);
+$engine->updatePreferences($ids['bob'], ['seeking_gender' => 'female', 'age_min' => 25, 'age_max' => 36, 'max_distance_km' => 50]);
+$engine->updatePreferences($ids['emma'], ['seeking_gender' => 'male', 'age_min' => 25, 'age_max' => 35, 'dating_type' => 'slow_dating']);
 
 // ---- Chat 1: Alice <-> Bob, day 12 of slow chat ------------------------------
 $chat1 = $engine->startChat($ids['bob'], $ids['alice'], $now - 12 * $day);

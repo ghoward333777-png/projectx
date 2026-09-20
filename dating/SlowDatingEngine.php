@@ -655,6 +655,108 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Browse preferences
+    // ------------------------------------------------------------------
+
+    /** @return array<string, mixed> The member's saved browse preferences. */
+    public function preferences(string $userId): array
+    {
+        $user = $this->requireUser($userId);
+        return (array) ($user['preferences'] ?? []) + self::defaultPreferences();
+    }
+
+    /**
+     * Save who the member is looking for. These preferences drive Browse.
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    public function updatePreferences(string $userId, array $fields): array
+    {
+        $user = $this->requireUser($userId);
+        $preferences = (array) ($user['preferences'] ?? []) + self::defaultPreferences();
+        if (array_key_exists('seeking_gender', $fields)) {
+            $preferences['seeking_gender'] = trim((string) $fields['seeking_gender']);
+        }
+        if (array_key_exists('age_min', $fields)) {
+            $preferences['age_min'] = max(18, (int) $fields['age_min']);
+        }
+        if (array_key_exists('age_max', $fields)) {
+            $preferences['age_max'] = max(18, (int) $fields['age_max']);
+        }
+        if ($preferences['age_max'] < $preferences['age_min']) {
+            throw new InvalidArgumentException('The age range is upside down.');
+        }
+        if (array_key_exists('max_distance_km', $fields)) {
+            $preferences['max_distance_km'] = max(1.0, (float) $fields['max_distance_km']);
+        }
+        if (array_key_exists('dating_type', $fields)) {
+            $type = trim((string) $fields['dating_type']);
+            if ($type !== '' && !in_array($type, self::DATING_TYPES, true)) {
+                throw new InvalidArgumentException('Unknown dating type preference.');
+            }
+            $preferences['dating_type'] = $type;
+        }
+        if (array_key_exists('interests', $fields)) {
+            $value = $fields['interests'];
+            $items = is_array($value) ? $value : preg_split('/\s*,\s*/', (string) $value, -1, PREG_SPLIT_NO_EMPTY);
+            $preferences['interests'] = array_values(array_unique(array_map(
+                static fn ($item): string => strtolower(trim((string) $item)),
+                (array) $items,
+            )));
+        }
+        $user['preferences'] = $preferences;
+        $this->store->put('users', $userId, $user);
+        return $preferences;
+    }
+
+    /**
+     * Browse: the member's best matches with their saved preferences
+     * applied as hard filters, ranked by compatibility score.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function browseFor(string $userId, int $limit = 12, ?int $now = null): array
+    {
+        $now ??= time();
+        $preferences = $this->preferences($userId);
+        $me = $this->requireUser($userId);
+        $filters = [
+            'age_min' => $preferences['age_min'],
+            'age_max' => $preferences['age_max'],
+            'zip_code' => (string) ($me['profile']['zip_code'] ?? ''),
+            'zip_radius_km' => $preferences['max_distance_km'],
+            'limit' => $limit,
+        ];
+        if ($preferences['seeking_gender'] !== '') {
+            $filters['gender'] = $preferences['seeking_gender'];
+        }
+        if ($preferences['dating_type'] !== '') {
+            $filters['dating_type'] = $preferences['dating_type'];
+        }
+        if ($preferences['interests'] !== []) {
+            $filters['interests'] = $preferences['interests'];
+        }
+        if ($filters['zip_code'] === '') {
+            unset($filters['zip_code'], $filters['zip_radius_km']);
+        }
+        return $this->matchesFor($userId, $filters, $now);
+    }
+
+    /** @return array<string, mixed> */
+    private static function defaultPreferences(): array
+    {
+        return [
+            'seeking_gender' => '',
+            'age_min' => 18,
+            'age_max' => 99,
+            'max_distance_km' => 100.0,
+            'dating_type' => '',
+            'interests' => [],
+        ];
+    }
+
+    // ------------------------------------------------------------------
     // Search & matching
     // ------------------------------------------------------------------
 

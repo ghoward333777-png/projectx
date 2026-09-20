@@ -56,6 +56,10 @@ contract_check($status === 201 && $video['embed_url'] === 'https://www.youtube.c
 // ---- Search, matches, popularity ----------------------------------------------
 [$status, $results] = call($api, 'GET', '/users/search', ['gender' => 'female', 'income_range' => '60k_100k'], [], $bob['token'], $t0);
 contract_check($status === 200 && count($results) === 1, 'search with income filters must work over the API');
+[$status, $prefs] = call($api, 'PATCH', '/users/me/preferences', [], ['seeking_gender' => 'female', 'age_min' => 21, 'age_max' => 35, 'max_distance_km' => 50], $bob['token'], $t0);
+contract_check($status === 200 && $prefs['seeking_gender'] === 'female', 'preferences must save over the API');
+[$status, $browse] = call($api, 'GET', '/browse', [], [], $bob['token'], $t0);
+contract_check($status === 200 && count($browse) === 1 && $browse[0]['user_id'] === $alice['user_id'], 'browse must return preference-filtered best matches');
 [$status, $matches] = call($api, 'GET', '/matches', [], [], $bob['token'], $t0);
 contract_check($status === 200 && $matches[0]['user_id'] === $alice['user_id'], 'matches must rank Alice first for Bob');
 [$status, $pop] = call($api, 'GET', '/users/' . $alice['user_id'] . '/popularity', [], [], $bob['token'], $t0);

@@ -160,6 +160,25 @@ contract_check(count($results) === 1 && $results[0]['user_id'] === $carol['user_
 $results = $engine->searchUsers(['interests' => 'jazz', 'zip_code' => '90210', 'zip_radius_km' => 20], $t0);
 contract_check(count($results) === 2, 'interest + zip radius search must find both jazz fans near 90210');
 
+// ---- Browse preferences -----------------------------------------------------
+$prefs = $engine->updatePreferences($alice['user_id'], [
+    'seeking_gender' => 'male', 'age_min' => 28, 'age_max' => 35,
+    'max_distance_km' => 50, 'interests' => 'jazz',
+]);
+contract_check($prefs['seeking_gender'] === 'male' && $prefs['interests'] === ['jazz'], 'preferences must save and normalize');
+$browse = $engine->browseFor($alice['user_id'], 12, $t0);
+contract_check(count($browse) === 1 && $browse[0]['user_id'] === $bob['user_id'], 'browse must apply saved preferences as hard filters (only Bob fits)');
+$engine->updatePreferences($alice['user_id'], ['interests' => '']);
+$engine->updatePreferences($alice['user_id'], ['age_min' => 18, 'age_max' => 99]);
+contract_check(count($engine->browseFor($alice['user_id'], 12, $t0)) === 2, 'widening preferences must widen browse results');
+$threw = false;
+try {
+    $engine->updatePreferences($alice['user_id'], ['age_min' => 40, 'age_max' => 30]);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'an upside-down age range must be rejected');
+
 $matches = $engine->matchesFor($bob['user_id'], [], $t0);
 contract_check($matches !== [] && $matches[0]['user_id'] === $alice['user_id'], 'the most compatible nearby member must rank first');
 contract_check(in_array('jazz', $matches[0]['shared_interests'], true), 'shared interests must surface in matches');

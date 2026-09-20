@@ -180,6 +180,15 @@ final class SlowDatingApi
             $engine->recordPopularityEvent((string) ($body['user_id'] ?? ''), (string) ($body['event_type'] ?? ''), $now);
             return [201, ['status' => 'recorded']];
         }
+        if ($method === 'GET' && $path === '/browse') {
+            return [200, $engine->browseFor($userId, max(1, (int) ($query['limit'] ?? 12)), $now)];
+        }
+        if ($method === 'GET' && $path === '/users/me/preferences') {
+            return [200, $engine->preferences($userId)];
+        }
+        if ($method === 'PATCH' && $path === '/users/me/preferences') {
+            return [200, $engine->updatePreferences($userId, $body)];
+        }
         if ($method === 'GET' && $path === '/matches') {
             return [200, $engine->matchesFor($userId, $query, $now)];
         }
