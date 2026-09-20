@@ -3584,8 +3584,16 @@ final class SlowDatingEngine
         }
         $scheduled = $this->filmOfTheDay($now);
         $pick = is_array($chat['watch_party'] ?? null) ? $chat['watch_party'] : null;
-        $film = $pick !== null ? ($this->romanceFilm((string) $pick['film_id']) ?? $scheduled) : $scheduled;
-        $film = $this->resolveFilmVideo($film, $now);
+        $pickId = $pick !== null ? (string) $pick['film_id'] : '';
+        if (str_contains($pickId, ':')) {
+            // A channel pick (nature cam, ambient, Bible, church) resolves
+            // through its own channel — never the "full movie" search.
+            [$channel, $slug] = explode(':', $pickId, 2);
+            $film = $this->resolveChannelVideo($channel, $slug, $now) ?? $this->resolveFilmVideo($scheduled, $now);
+        } else {
+            $film = $pickId !== '' ? ($this->romanceFilm($pickId) ?? $scheduled) : $scheduled;
+            $film = $this->resolveFilmVideo($film, $now);
+        }
         return [
             'chat_id' => (string) $chat['id'],
             'scheduled' => $scheduled,
@@ -3675,6 +3683,234 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // Watch Party channels — more than romance movies. Each channel has
+    // its own showcase, exactly like the romance library: live nature
+    // cams (river, waterfall, forest, lake, mountain, desert, harbor,
+    // wildlife, and more), ambient music, Bible narration, and church
+    // videos. Entries without a curated video id resolve their current
+    // best upload (or live stream) through the same keyless YouTube
+    // search the films use; live-cam resolutions expire daily because
+    // live stream ids rotate when a stream restarts.
+    // ------------------------------------------------------------------
+
+    public const WATCH_CHANNELS = [
+        'romance' => ['label' => 'Romance movies', 'blurb' => 'The playlist of 1,000 romance films — one scheduled every day.'],
+        'nature' => ['label' => 'Live Nature cams', 'blurb' => 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, and wildlife — live, around the world.'],
+        'ambient' => ['label' => 'Ambient music', 'blurb' => 'Lofi, jazz, rain, fireplace — a soundtrack for slow evenings together.'],
+        'bible' => ['label' => 'Bible narration', 'blurb' => 'The Scriptures read aloud, book by book.'],
+        'church' => ['label' => 'Church videos', 'blurb' => 'Worship services, choirs, hymns, and carols.'],
+    ];
+
+    /** Each row: [slug, title, tag, curated youtube id ('' = resolve by search), live]. */
+    private const CHANNEL_ENTRIES = [
+        'nature' => [
+            ['featured-nature-cam', 'Featured live nature cam', 'wildlife', '1t7g690boao', true],
+            ['rocky-mountain-river', 'Rocky Mountain river live cam', 'river', '', true],
+            ['alaska-salmon-river', 'Alaska salmon river live cam', 'river', '', true],
+            ['smoky-mountain-stream', 'Smoky Mountains stream live cam', 'river', '', true],
+            ['river-rapids', 'River rapids relaxing live cam', 'river', '', true],
+            ['niagara-falls', 'Niagara Falls live cam', 'waterfall', '', true],
+            ['tropical-waterfall', 'Tropical waterfall live cam', 'waterfall', '', true],
+            ['iguazu-falls', 'Iguazu Falls live cam', 'waterfall', '', true],
+            ['forest-waterfall', 'Forest waterfall 4K live cam', 'waterfall', '', true],
+            ['redwood-forest', 'Redwood forest live cam', 'forest', '', true],
+            ['rainforest-canopy', 'Rainforest canopy live cam', 'forest', '', true],
+            ['forest-birdsong', 'Forest birdsong live cam', 'forest', '', true],
+            ['autumn-forest', 'Autumn forest live cam', 'forest', '', true],
+            ['lake-tahoe', 'Lake Tahoe live cam', 'lake', '', true],
+            ['alpine-lake', 'Alpine lake live cam', 'lake', '', true],
+            ['loch-ness', 'Loch Ness live cam', 'lake', '', true],
+            ['mountain-lake-sunrise', 'Mountain lake sunrise live cam', 'lake', '', true],
+            ['matterhorn', 'Matterhorn live cam', 'mountain', '', true],
+            ['rocky-mountain-peak', 'Rocky Mountains peak live cam', 'mountain', '', true],
+            ['mount-fuji', 'Mount Fuji live cam', 'mountain', '', true],
+            ['swiss-alps', 'Swiss Alps panorama live cam', 'mountain', '', true],
+            ['sonoran-desert', 'Sonoran Desert live cam', 'desert', '', true],
+            ['sahara-dunes', 'Sahara desert dunes live cam', 'desert', '', true],
+            ['desert-oasis', 'Desert oasis wildlife live cam', 'desert', '', true],
+            ['joshua-tree', 'Joshua Tree desert live cam', 'desert', '', true],
+            ['venice-canal', 'Venice Grand Canal live cam', 'harbor', '', true],
+            ['sydney-harbour', 'Sydney Harbour live cam', 'harbor', '', true],
+            ['alaska-harbor', 'Alaska harbor live cam', 'harbor', '', true],
+            ['mediterranean-harbor', 'Mediterranean harbor live cam', 'harbor', '', true],
+            ['african-watering-hole', 'African watering hole live cam', 'wildlife', '', true],
+            ['bald-eagle-nest', 'Bald eagle nest live cam', 'wildlife', '', true],
+            ['brooks-falls-bears', 'Brooks Falls brown bears live cam', 'wildlife', '', true],
+            ['hummingbird-feeder', 'Hummingbird feeder live cam', 'wildlife', '', true],
+            ['coral-reef', 'Coral reef aquarium live cam', 'wildlife', '', true],
+            ['panda-cam', 'Giant panda live cam', 'wildlife', '', true],
+            ['owl-nest', 'Owl nest live cam', 'wildlife', '', true],
+            ['northern-lights', 'Northern lights live cam', 'aurora', '', true],
+            ['ocean-waves-beach', 'Ocean waves beach live cam', 'ocean', '', true],
+            ['savanna-sunset', 'African savanna sunset live cam', 'savanna', '', true],
+            ['snowfall-cabin', 'Snowfall cabin live cam', 'snow', '', true],
+        ],
+        'ambient' => [
+            ['lofi-radio', 'Lofi hip hop radio', 'lofi', '', true],
+            ['relaxing-jazz', 'Relaxing jazz radio', 'jazz', '', true],
+            ['classical-piano', 'Classical piano for studying', 'classical', '', false],
+            ['rain-sounds', 'Rain sounds for sleeping', 'rain', '', false],
+            ['ocean-white-noise', 'Ocean waves white noise', 'ocean', '', false],
+            ['fireplace', 'Crackling fireplace ambience', 'fireplace', '', false],
+            ['space-ambient', 'Deep space ambient music', 'space', '', false],
+            ['meditation', 'Calm meditation music', 'meditation', '', false],
+            ['coffee-shop', 'Coffee shop ambience', 'cafe', '', false],
+            ['smooth-saxophone', 'Smooth jazz saxophone', 'jazz', '', false],
+            ['celtic-relaxing', 'Celtic relaxing music', 'celtic', '', false],
+            ['deep-focus', 'Deep focus concentration music', 'focus', '', false],
+        ],
+        'bible' => [
+            ['genesis', 'The Book of Genesis — audio Bible', 'old testament', '', false],
+            ['psalms', 'The Book of Psalms — audio Bible', 'psalms', '', false],
+            ['proverbs', 'The Book of Proverbs — audio Bible', 'old testament', '', false],
+            ['isaiah', 'The Book of Isaiah — audio Bible', 'old testament', '', false],
+            ['matthew', 'The Gospel of Matthew — audio Bible', 'new testament', '', false],
+            ['luke', 'The Gospel of Luke — audio Bible', 'new testament', '', false],
+            ['john', 'The Gospel of John — audio Bible', 'new testament', '', false],
+            ['romans', 'The Book of Romans — audio Bible', 'new testament', '', false],
+            ['revelation', 'The Book of Revelation — audio Bible', 'new testament', '', false],
+            ['psalm-23', 'Psalm 23 narration', 'psalms', '', false],
+            ['sermon-on-the-mount', 'The Sermon on the Mount narration', 'new testament', '', false],
+            ['christmas-story', 'The Christmas story — Luke 2 narration', 'new testament', '', false],
+        ],
+        'church' => [
+            ['sunday-worship', 'Sunday worship service', 'worship', '', true],
+            ['gospel-choir', 'Gospel choir performances', 'choir', '', false],
+            ['classic-hymns', 'Classic hymns collection', 'hymns', '', false],
+            ['praise-worship', 'Praise and worship music', 'worship', '', false],
+            ['kings-college-carols', 'Christmas carols from King\'s College', 'carols', '', false],
+            ['gregorian-chants', 'Gregorian chants', 'chants', '', false],
+            ['southern-gospel', 'Southern gospel classics', 'choir', '', false],
+            ['contemporary-worship', 'Contemporary Christian worship', 'worship', '', false],
+            ['easter-service', 'Easter service highlights', 'worship', '', false],
+            ['choir-anthems', 'Great choir anthems', 'choir', '', false],
+            ['cathedral-organ', 'Organ hymns from great cathedrals', 'hymns', '', false],
+            ['gospel-classics', 'Gospel music classics', 'choir', '', false],
+        ],
+    ];
+
+    /** @return array<string, array{label: string, blurb: string, entries: int}> */
+    public function watchChannels(): array
+    {
+        $channels = [];
+        foreach (self::WATCH_CHANNELS as $slug => $meta) {
+            $channels[$slug] = $meta + [
+                'entries' => $slug === 'romance' ? count($this->loadRomanceLibrary()) : count(self::CHANNEL_ENTRIES[$slug]),
+            ];
+        }
+        return $channels;
+    }
+
+    /**
+     * A channel's showcase, searchable and paged — same shape as
+     * romanceFilms() so every channel renders in the same grid.
+     *
+     * @return array{total: int, films: array<int, array<string, mixed>>}
+     */
+    public function channelLibrary(string $channel, string $query = '', int $limit = 24, int $offset = 0): array
+    {
+        if ($channel === 'romance') {
+            return $this->romanceFilms($query, $limit, $offset);
+        }
+        if (!isset(self::CHANNEL_ENTRIES[$channel])) {
+            throw new InvalidArgumentException('Channels are ' . implode(', ', array_keys(self::WATCH_CHANNELS)) . '.');
+        }
+        $rows = self::CHANNEL_ENTRIES[$channel];
+        $needle = mb_strtolower(trim($query));
+        if ($needle !== '') {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn (array $row): bool => str_contains(mb_strtolower($row[1]), $needle) || str_contains($row[2], $needle),
+            ));
+        }
+        return [
+            'total' => count($rows),
+            'films' => array_map(
+                fn (array $row): array => $this->presentChannelEntry($channel, $row),
+                array_slice($rows, max(0, $offset), max(1, min(100, $limit))),
+            ),
+        ];
+    }
+
+    /** @return array<string, mixed>|null One channel entry, presented. */
+    public function channelEntry(string $channel, string $slug): ?array
+    {
+        foreach (self::CHANNEL_ENTRIES[$channel] ?? [] as $row) {
+            if ($row[0] === $slug) {
+                return $this->presentChannelEntry($channel, $row);
+            }
+        }
+        return null;
+    }
+
+    /** @param array{0:string,1:string,2:string,3:string,4:bool} $row @return array<string, mixed> */
+    private function presentChannelEntry(string $channel, array $row): array
+    {
+        [$slug, $title, $tag, $curated, $live] = $row;
+        $id = $curated !== '' ? $curated : null;
+        if ($id === null) {
+            $cached = $this->store->get('film_videos', 'chan.' . $channel . '.' . $slug);
+            if (is_array($cached) && ($cached['video_id'] ?? '') !== '') {
+                $id = (string) $cached['video_id'];
+            }
+        }
+        return [
+            'id' => $channel . ':' . $slug,
+            'channel' => $channel,
+            'title' => $title,
+            'year' => 0,
+            'rank' => 0,
+            'tag' => $tag,
+            'live' => $live,
+            'youtube_id' => $id,
+            'playable' => $id !== null,
+            'embed_url' => $id !== null ? 'https://www.youtube.com/embed/' . $id : null,
+            'watch_url' => $id !== null
+                ? 'https://www.youtube.com/watch?v=' . $id
+                : 'https://www.youtube.com/results?search_query=' . rawurlencode($title),
+        ];
+    }
+
+    /**
+     * Resolve a channel entry's current video: curated ids stand as they
+     * are; everything else runs the keyless YouTube search once — and
+     * live cams re-resolve after a day, because live stream ids rotate.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function resolveChannelVideo(string $channel, string $slug, ?int $now = null): ?array
+    {
+        $now ??= time();
+        $raw = null;
+        foreach (self::CHANNEL_ENTRIES[$channel] ?? [] as $row) {
+            if ($row[0] === $slug) {
+                $raw = $row;
+                break;
+            }
+        }
+        if ($raw === null) {
+            return null;
+        }
+        if ($raw[3] === '') {
+            $key = 'chan.' . $channel . '.' . $slug;
+            $cached = $this->store->get('film_videos', $key);
+            $fresh = is_array($cached)
+                && (!$raw[4] || $now - (int) ($cached['resolved_at'] ?? 0) < 86400);
+            if (!$fresh && !getenv('SLOWDATING_NO_LOOKUP')) {
+                $context = stream_context_create(['http' => [
+                    'timeout' => 8,
+                    'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: CONSENT=YES+cb\r\nAccept-Language: en\r\n",
+                ]]);
+                $html = @file_get_contents('https://www.youtube.com/results?search_query=' . rawurlencode($raw[1]), false, $context);
+                if (is_string($html) && preg_match('/"videoId":"([A-Za-z0-9_-]{11})"/', $html, $match) === 1) {
+                    $this->store->put('film_videos', $key, ['video_id' => $match[1], 'resolved_at' => $now]);
+                }
+            }
+        }
+        return $this->presentChannelEntry($channel, $raw);
+    }
+
+    // ------------------------------------------------------------------
     // Premium together — Bring-Your-Own-YouTube-Account Sync (BYOYA).
     // Each partner watches on their OWN YouTube account (Premium plays
     // ad-free); the platform sells the sync service — chat, reactions,
@@ -3748,6 +3984,387 @@ final class SlowDatingEngine
         ]);
     }
 
+    // ------------------------------------------------------------------
+    // Advanced Watch Party — a separate product from the couple's Watch
+    // Party. Standalone paid rooms (BYOYA: each viewer signs into their
+    // own YouTube account, so YouTube Premium plays ad-free on their own
+    // subscription — the platform sells the ROOM, never the movie), with
+    // split payments that unlock the room only when every required
+    // participant has paid, a server-authoritative sync timeline with a
+    // passable remote, an emotion timeline of reactions, highlights, and
+    // a post-movie recap.
+    // ------------------------------------------------------------------
+
+    public const ADV_MODES = [
+        'couples' => ['label' => 'Couples', 'themes' => ['romance', 'cozy', 'calm']],
+        'friends' => ['label' => 'Friends', 'themes' => ['neon', 'retro', 'meme']],
+        'family' => ['label' => 'Family', 'themes' => ['cartoon', 'nature', 'space']],
+        'creator' => ['label' => 'Creator', 'themes' => ['studio', 'commentary', 'director']],
+    ];
+    public const ADV_REACTIONS = ['laugh', 'shock', 'cry', 'love', 'wow', 'bored'];
+    public const ADV_MAX_PRICE = 50.0;
+    public const ADV_MAX_PARTICIPANTS = 12;
+
+    /**
+     * Create an Advanced Watch Party room. Price is per participant and
+     * pays for the platform session (sync, presence, recap) — never for
+     * the movie; a paid room stays locked until every required
+     * participant has paid their share (the spec's PaymentSession).
+     *
+     * @return array<string, mixed>
+     */
+    public function createAdvancedRoom(
+        string $ownerId,
+        string $mode,
+        string $theme,
+        string $videoUrl,
+        float $pricePerUser = 0.0,
+        int $requiredParticipants = 2,
+        ?int $now = null,
+    ): array {
+        $now ??= time();
+        $this->requireUser($ownerId);
+        if (!isset(self::ADV_MODES[$mode])) {
+            throw new InvalidArgumentException('Room modes are couples, friends, family, or creator.');
+        }
+        if (!in_array($theme, self::ADV_MODES[$mode]['themes'], true)) {
+            throw new InvalidArgumentException('Unknown theme for this mode.');
+        }
+        $embed = $this->youtubeEmbedUrl($videoUrl);
+        if ($embed === null) {
+            throw new InvalidArgumentException('Advanced rooms play YouTube sources — paste a video, playlist, or embed link.');
+        }
+        if ($pricePerUser < 0 || $pricePerUser > self::ADV_MAX_PRICE) {
+            throw new InvalidArgumentException('The session price is between $0 and $' . self::ADV_MAX_PRICE . ' per person.');
+        }
+        if ($requiredParticipants < 2 || $requiredParticipants > self::ADV_MAX_PARTICIPANTS) {
+            throw new InvalidArgumentException('Rooms hold 2 to ' . self::ADV_MAX_PARTICIPANTS . ' participants.');
+        }
+        $roomId = 'advroom_' . substr(hash('sha256', $ownerId . '|' . $videoUrl . '|' . $now), 0, 12);
+        $room = [
+            'owner_user_id' => $ownerId,
+            'mode' => $mode,
+            'theme' => $theme,
+            'video_url' => trim($videoUrl),
+            'embed_url' => $embed,
+            'price_per_user' => round($pricePerUser, 2),
+            'required_participants' => $requiredParticipants,
+            'invite_code' => strtoupper(substr(hash('sha256', 'invite|' . $roomId), 0, 6)),
+            'status' => $pricePerUser > 0 ? 'locked' : 'unlocked',
+            'participants' => [$ownerId => ['role' => 'owner', 'joined_at' => $now]],
+            'payments' => $pricePerUser > 0 ? [$ownerId => ['status' => 'pending', 'paid_at' => null]] : [],
+            'sync' => ['position' => 0.0, 'playing' => false, 'controller_user_id' => $ownerId, 'set_by' => '', 'updated_at' => 0],
+            'reactions' => [],
+            'highlights' => [],
+            'messages' => [],
+            'created_at' => $now,
+            'ended_at' => null,
+        ];
+        $this->store->put('adv_rooms', $roomId, $room);
+        return $this->advancedRoomView($roomId, $ownerId);
+    }
+
+    /** @return array<string, mixed> The stored room, found by id or invite code. */
+    private function requireAdvancedRoom(string $roomIdOrCode): array
+    {
+        $room = $this->store->get('adv_rooms', $roomIdOrCode);
+        if ($room !== null) {
+            return $room + ['id' => $roomIdOrCode];
+        }
+        $code = strtoupper(trim($roomIdOrCode));
+        foreach ($this->store->all('adv_rooms') as $candidate) {
+            if (($candidate['invite_code'] ?? '') === $code) {
+                return $candidate;
+            }
+        }
+        throw new InvalidArgumentException('Unknown room. Check the invite code.');
+    }
+
+    /** Join a room by id or invite code. Blocking applies here too. */
+    public function joinAdvancedRoom(string $roomIdOrCode, string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if ($room['ended_at'] !== null) {
+            throw new InvalidArgumentException('This room has ended.');
+        }
+        if ($this->isBlockedEitherWay($userId, (string) $room['owner_user_id'])) {
+            throw new InvalidArgumentException('This room is not open to you.');
+        }
+        if (!isset($room['participants'][$userId])) {
+            if (count((array) $room['participants']) >= self::ADV_MAX_PARTICIPANTS) {
+                throw new InvalidArgumentException('This room is full.');
+            }
+            $room['participants'][$userId] = ['role' => 'guest', 'joined_at' => $now];
+            if ((float) $room['price_per_user'] > 0) {
+                $room['payments'][$userId] = ['status' => 'pending', 'paid_at' => null];
+            }
+            $this->store->put('adv_rooms', $roomId, $room);
+        }
+        return $this->advancedRoomView($roomId, $userId);
+    }
+
+    /**
+     * Pay this member's share of the room's session fee. The room unlocks
+     * the moment the required number of shares have cleared. (The demo
+     * processor records the payment directly; swap this write for a
+     * Stripe PaymentIntent webhook in production — the record shape
+     * already matches the spec's ParticipantPayments.)
+     */
+    public function payAdvancedShare(string $roomIdOrCode, string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Join the room before paying your share.');
+        }
+        if ((float) $room['price_per_user'] <= 0) {
+            throw new InvalidArgumentException('This room is free — nothing to pay.');
+        }
+        if (($room['payments'][$userId]['status'] ?? '') !== 'paid') {
+            $room['payments'][$userId] = ['status' => 'paid', 'paid_at' => $now, 'amount' => (float) $room['price_per_user']];
+        }
+        $paid = count(array_filter((array) $room['payments'], static fn (array $p): bool => $p['status'] === 'paid'));
+        if ($paid >= (int) $room['required_participants']) {
+            $room['status'] = 'unlocked';
+        }
+        $this->store->put('adv_rooms', $roomId, $room);
+        return $this->advancedRoomView($roomId, $userId);
+    }
+
+    /** @return array<string, mixed> The room as one participant sees it. */
+    public function advancedRoomView(string $roomIdOrCode, string $userId): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants see this room.');
+        }
+        $people = [];
+        foreach ((array) $room['participants'] as $participantId => $participant) {
+            $user = $this->store->get('users', (string) $participantId);
+            $people[] = [
+                'user_id' => (string) $participantId,
+                'display_name' => (string) ($user['profile']['display_name'] ?? ''),
+                'role' => (string) $participant['role'],
+                'payment' => (string) ($room['payments'][$participantId]['status'] ?? 'n/a'),
+            ];
+        }
+        $paid = count(array_filter((array) $room['payments'], static fn (array $p): bool => $p['status'] === 'paid'));
+        return [
+            'room_id' => (string) $room['id'],
+            'owner_user_id' => (string) $room['owner_user_id'],
+            'mode' => (string) $room['mode'],
+            'theme' => (string) $room['theme'],
+            'embed_url' => (string) $room['embed_url'],
+            'invite_code' => (string) $room['invite_code'],
+            'status' => (string) $room['status'],
+            'ended' => $room['ended_at'] !== null,
+            'price_per_user' => (float) $room['price_per_user'],
+            'required_participants' => (int) $room['required_participants'],
+            'paid_count' => $paid,
+            'unlocked' => $room['status'] === 'unlocked',
+            'participants' => $people,
+            'sync' => (array) $room['sync'],
+            'reaction_count' => count((array) $room['reactions']),
+            'highlight_count' => count((array) $room['highlights']),
+            'created_at' => (int) $room['created_at'],
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> The rooms this member is in, newest first. */
+    public function advancedRoomsFor(string $userId): array
+    {
+        $rows = [];
+        foreach ($this->store->all('adv_rooms') as $room) {
+            if (isset($room['participants'][$userId])) {
+                $rows[] = $this->advancedRoomView((string) $room['id'], $userId);
+            }
+        }
+        usort($rows, static fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
+        return array_slice($rows, 0, 20);
+    }
+
+    /**
+     * The room's server-authoritative timeline. Only the member holding
+     * the remote (or the owner) drives it, and only once the room is
+     * unlocked; both players follow it.
+     */
+    public function setAdvancedSync(string $roomIdOrCode, string $userId, array $state, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants control the room.');
+        }
+        if ($room['status'] !== 'unlocked') {
+            throw new InvalidArgumentException('The room unlocks when every required share is paid.');
+        }
+        $controller = (string) ($room['sync']['controller_user_id'] ?? $room['owner_user_id']);
+        if ($userId !== $controller && $userId !== (string) $room['owner_user_id']) {
+            throw new InvalidArgumentException('The remote is with someone else — ask them to pass it.');
+        }
+        $room['sync'] = [
+            'position' => max(0.0, (float) ($state['position'] ?? 0)),
+            'playing' => (bool) ($state['playing'] ?? false),
+            'controller_user_id' => $controller,
+            'set_by' => $userId,
+            'updated_at' => $now,
+        ];
+        $this->store->put('adv_rooms', $roomId, $room);
+        return (array) $room['sync'] + ['room_id' => $roomId];
+    }
+
+    /** Pass the remote to another participant (controller or owner only). */
+    public function passAdvancedRemote(string $roomIdOrCode, string $userId, string $toUserId): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        $controller = (string) ($room['sync']['controller_user_id'] ?? $room['owner_user_id']);
+        if ($userId !== $controller && $userId !== (string) $room['owner_user_id']) {
+            throw new InvalidArgumentException('Only the current remote holder (or the owner) passes the remote.');
+        }
+        if (!isset($room['participants'][$toUserId])) {
+            throw new InvalidArgumentException('The remote can only go to someone in the room.');
+        }
+        $room['sync']['controller_user_id'] = $toUserId;
+        $this->store->put('adv_rooms', $roomId, $room);
+        return ['room_id' => $roomId, 'controller_user_id' => $toUserId];
+    }
+
+    /** Record a reaction on the room's emotion timeline. */
+    public function addAdvancedReaction(string $roomIdOrCode, string $userId, string $type, float $videoTime, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants react in the room.');
+        }
+        if (!in_array($type, self::ADV_REACTIONS, true)) {
+            throw new InvalidArgumentException('Reactions are ' . implode(', ', self::ADV_REACTIONS) . '.');
+        }
+        $room['reactions'][] = ['user_id' => $userId, 'type' => $type, 't' => max(0.0, $videoTime), 'at' => $now];
+        $room['reactions'] = array_slice((array) $room['reactions'], -500);
+        $this->store->put('adv_rooms', $roomId, $room);
+        return ['room_id' => $roomId, 'reactions' => count((array) $room['reactions'])];
+    }
+
+    /** Mark a favorite moment on the shared timeline. */
+    public function markAdvancedHighlight(string $roomIdOrCode, string $userId, float $videoTime, string $note = '', ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants mark highlights.');
+        }
+        $room['highlights'][] = [
+            'user_id' => $userId,
+            't' => max(0.0, $videoTime),
+            'note' => mb_substr($this->filterContactData(trim($note))['text'], 0, 120),
+            'at' => $now,
+        ];
+        $room['highlights'] = array_slice((array) $room['highlights'], -100);
+        $this->store->put('adv_rooms', $roomId, $room);
+        return ['room_id' => $roomId, 'highlights' => count((array) $room['highlights'])];
+    }
+
+    /** Room chat: contact data stays filtered, like everywhere on the platform. */
+    public function sendAdvancedMessage(string $roomIdOrCode, string $userId, string $text, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants chat in the room.');
+        }
+        $text = trim($text);
+        if ($text === '' || mb_strlen($text) > 500) {
+            throw new InvalidArgumentException('Room messages are 1-500 characters.');
+        }
+        $filtered = $this->filterContactData($text);
+        $room['messages'][] = ['user_id' => $userId, 'text' => $filtered['text'], 'at' => $now];
+        $room['messages'] = array_slice((array) $room['messages'], -300);
+        $this->store->put('adv_rooms', $roomId, $room);
+        return ['room_id' => $roomId, 'text' => $filtered['text'], 'contact_data_removed' => $filtered['redactions']];
+    }
+
+    /** @return array<int, array<string, mixed>> Newest room messages first. */
+    public function advancedMessages(string $roomIdOrCode, string $userId): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants read the room chat.');
+        }
+        return array_reverse(array_values((array) $room['messages']));
+    }
+
+    /** The owner ends the room; the recap becomes the room's closing screen. */
+    public function endAdvancedRoom(string $roomIdOrCode, string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if ($userId !== (string) $room['owner_user_id']) {
+            throw new InvalidArgumentException('Only the room owner ends the session.');
+        }
+        $room['ended_at'] = $now;
+        $room['status'] = 'ended';
+        $room['sync']['playing'] = false;
+        $this->store->put('adv_rooms', $roomId, $room);
+        return $this->advancedRecap($roomId, $userId);
+    }
+
+    /**
+     * The post-movie recap: reaction totals, the most intense stretch of
+     * the film, "emotion sync moments" (two people reacting within one
+     * second of each other), and every marked highlight.
+     *
+     * @return array<string, mixed>
+     */
+    public function advancedRecap(string $roomIdOrCode, string $userId): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants see the recap.');
+        }
+        $reactions = (array) $room['reactions'];
+        $totals = array_fill_keys(self::ADV_REACTIONS, 0);
+        $buckets = [];
+        foreach ($reactions as $reaction) {
+            $totals[(string) $reaction['type']]++;
+            $buckets[(int) floor((float) $reaction['t'] / 10)][] = $reaction;
+        }
+        $peak = null;
+        foreach ($buckets as $slot => $bucket) {
+            if ($peak === null || count($bucket) > count($buckets[$peak])) {
+                $peak = $slot;
+            }
+        }
+        $syncMoments = [];
+        usort($reactions, static fn (array $a, array $b): int => $a['t'] <=> $b['t']);
+        for ($i = 1; $i < count($reactions); $i++) {
+            $a = $reactions[$i - 1];
+            $b = $reactions[$i];
+            if ($a['user_id'] !== $b['user_id'] && abs((float) $a['t'] - (float) $b['t']) <= 1.0) {
+                $syncMoments[] = ['t' => (float) $a['t'], 'types' => [(string) $a['type'], (string) $b['type']]];
+            }
+        }
+        return [
+            'room_id' => (string) $room['id'],
+            'mode' => (string) $room['mode'],
+            'ended' => $room['ended_at'] !== null,
+            'reaction_totals' => $totals,
+            'peak_moment' => $peak === null ? null : ['from_seconds' => $peak * 10, 'reactions' => count($buckets[$peak])],
+            'sync_moments' => array_slice($syncMoments, 0, 25),
+            'highlights' => array_values((array) $room['highlights']),
+        ];
+    }
+
     /**
      * The "up next" playlist for the embedded player: more films from the
      * romance library that already have a playable video (curated or
@@ -3791,6 +4408,13 @@ final class SlowDatingEngine
         }
         if ($filmId === 'daily') {
             unset($chat['watch_party']);
+        } elseif (str_contains($filmId, ':')) {
+            // A channel pick: nature cam, ambient music, Bible narration, church video.
+            [$channel, $slug] = explode(':', $filmId, 2);
+            if ($this->channelEntry($channel, $slug) === null) {
+                throw new InvalidArgumentException('That title is not in this channel\'s library.');
+            }
+            $chat['watch_party'] = ['film_id' => $filmId, 'chosen_by' => $userId, 'chosen_at' => $now];
         } else {
             if ($this->romanceFilm($filmId) === null) {
                 throw new InvalidArgumentException('That film is not in the romance library.');

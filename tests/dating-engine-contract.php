@@ -721,6 +721,32 @@ contract_check($engine->watchPartyEmbed() === 'https://www.youtube.com/embed/vid
 $engine->setWatchPartyEmbed($admin['admin_id'], '');
 contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear the player override');
 
+// ---- Watch Party channels: nature cams, ambient, Bible narration, church --------
+$channels = $engine->watchChannels();
+contract_check(count($channels) === 5 && isset($channels['nature'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries five channels');
+$nature = $engine->channelLibrary('nature', '', 100);
+contract_check($nature['total'] >= 36, 'the nature channel is a full library of live scenes');
+$natureTags = array_unique(array_map(static fn (array $f): string => (string) $f['tag'], $nature['films']));
+foreach (['river', 'waterfall', 'forest', 'lake', 'mountain', 'desert', 'harbor', 'wildlife'] as $needTag) {
+    contract_check(in_array($needTag, $natureTags, true), "nature cams cover {$needTag} scenes");
+}
+$featured = $engine->channelEntry('nature', 'featured-nature-cam');
+contract_check($featured !== null && $featured['playable'] && $featured['youtube_id'] === '1t7g690boao', 'the featured nature cam plays the curated live stream');
+contract_check($engine->channelLibrary('ambient')['total'] >= 10 && $engine->channelLibrary('bible')['total'] >= 10 && $engine->channelLibrary('church')['total'] >= 10, 'ambient, Bible, and church channels are stocked');
+contract_check($engine->channelLibrary('nature', 'waterfall')['total'] === 4, 'channel search narrows the showcase');
+$engine->store()->put('film_videos', 'chan.nature.niagara-falls', ['video_id' => 'abcDEF12345', 'resolved_at' => $tDay]);
+$party = $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'nature:niagara-falls', $tDay);
+contract_check($party['film']['id'] === 'nature:niagara-falls' && $party['custom_pick'], 'a nature cam pick takes over the watch party');
+contract_check($party['film']['embed_url'] === 'https://www.youtube.com/embed/abcDEF12345', 'resolved channel entries embed their cached stream');
+$threw = false;
+try {
+    $engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'nature:not-a-cam', $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown channel entries are rejected');
+$engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'daily', $tDay);
+
 // ---- Premium together: rom-com playlist + the shared timecode authority ---------
 $romcoms = $engine->premiumRomcoms();
 contract_check(count($romcoms) >= 12, 'the Premium rooms carry a curated rom-com playlist');

@@ -257,7 +257,12 @@ $filmLabel = $film['title'] . ((int) $film['year'] > 0 ? ' (' . $film['year'] . 
 $q = trim((string) ($_GET['q'] ?? ''));
 $page = max(0, (int) ($_GET['p'] ?? 0));
 $perPage = 24;
-$library = $engine->romanceFilms($q, $perPage, $page * $perPage);
+$channels = $engine->watchChannels();
+$ch = (string) ($_GET['ch'] ?? 'romance');
+if (!isset($channels[$ch])) {
+    $ch = 'romance';
+}
+$library = $engine->channelLibrary($ch, $q, $perPage, $page * $perPage);
 $mode = (string) ($_GET['mode'] ?? 'library');
 if (!in_array($mode, ['library', 'premium'], true)) {
     $mode = 'library';
@@ -279,7 +284,11 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             ?>
             <a href="?chat=<?= sd_e($optionId) ?>"<?= $optionId === $chatId ? ' style="font-weight:800;text-decoration:underline"' : '' ?>><?= sd_e($partnerName) ?></a>
         <?php endforeach; ?>
-        <span class="pill" style="margin-left:8px"><?= sd_e((string) $film['title']) ?> · #<?= (int) $film['rank'] ?> in the playlist<?= $party['custom_pick'] ? ' · your pick' : ' · tonight\'s schedule' ?></span>
+        <span class="pill" style="margin-left:8px"><?= sd_e((string) $film['title']) ?> ·
+            <?= (int) $film['rank'] > 0
+                ? '#' . (int) $film['rank'] . ' in the playlist'
+                : sd_e((string) ($channels[(string) ($film['channel'] ?? 'romance')]['label'] ?? 'channel pick')) . (!empty($film['live']) ? ' · ● LIVE' : '')
+            ?><?= $party['custom_pick'] ? ' · your pick' : ' · tonight\'s schedule' ?></span>
         <?php if ($party['custom_pick']): ?>
         <form method="post" style="display:inline;background:none;border:0;padding:0;margin:0">
             <input type="hidden" name="action" value="pick">
@@ -342,8 +351,10 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <?php endif; ?>
 
     <p class="links" style="margin:0">
-        <strong style="color:#eadff0;font-size:13px">Watch modes:</strong>
-        <a href="?chat=<?= sd_e($chatId) ?>"<?= $mode === 'library' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Romance library</a>
+        <strong style="color:#eadff0;font-size:13px">Channels:</strong>
+        <?php foreach ($channels as $slug => $meta): ?>
+            <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' style="font-weight:800;text-decoration:underline"' : '' ?>><?= sd_e((string) $meta['label']) ?></a>
+        <?php endforeach; ?>
         <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together · bring your own YouTube</a>
     </p>
 
@@ -603,22 +614,25 @@ if (!in_array($mode, ['library', 'premium'], true)) {
 
 <?php if ($mode === 'library'): ?>
 <section>
-    <h2>The romance library — pick any film instead</h2>
-    <p>The platform's independent playlist: 1,000 romance films ranked by popularity. Tonight's schedule picks
-        one for everyone; your watch party can swap to any of them.</p>
+    <h2><?= sd_e((string) $channels[$ch]['label']) ?> — the showcase</h2>
+    <p><?= sd_e((string) $channels[$ch]['blurb']) ?>
+        <?= $ch === 'romance' ? ' Tonight\'s schedule picks one for everyone; your watch party can swap to any of them.'
+            : ' Pick anything here and it plays in your watch party player, chat right below.' ?></p>
     <form method="get" style="background:none;border:0;padding:0;margin:0 0 12px">
         <input type="hidden" name="chat" value="<?= sd_e($chatId) ?>">
-        <label>Search the library (title, year, or era — e.g. "jazz", "1999", "golden age")</label>
-        <input name="q" value="<?= sd_e($q) ?>" placeholder="The Notebook">
+        <input type="hidden" name="ch" value="<?= sd_e($ch) ?>">
+        <label>Search this channel<?= $ch === 'romance' ? ' (title, year, or era — e.g. "jazz", "1999", "golden age")' : ' (title or scene — e.g. "waterfall", "harbor", "psalms")' ?></label>
+        <input name="q" value="<?= sd_e($q) ?>" placeholder="<?= $ch === 'romance' ? 'The Notebook' : ($ch === 'nature' ? 'waterfall' : 'search…') ?>">
         <button type="submit">Search</button>
     </form>
-    <p style="margin:0 0 8px;font-size:13px"><?= (int) $library['total'] ?> film<?= $library['total'] === 1 ? '' : 's' ?><?= $q !== '' ? ' matching "' . sd_e($q) . '"' : ' in the playlist' ?> · page <?= $page + 1 ?></p>
+    <p style="margin:0 0 8px;font-size:13px"><?= (int) $library['total'] ?> title<?= $library['total'] === 1 ? '' : 's' ?><?= $q !== '' ? ' matching "' . sd_e($q) . '"' : ' in this channel' ?> · page <?= $page + 1 ?></p>
     <div class="grid">
         <?php foreach ($library['films'] as $entry): ?>
             <div class="card">
-                <strong>#<?= (int) $entry['rank'] ?> · <?= sd_e((string) $entry['title']) ?></strong>
+                <strong><?= (int) $entry['rank'] > 0 ? '#' . (int) $entry['rank'] . ' · ' : '' ?><?= sd_e((string) $entry['title']) ?></strong>
                 <p style="margin:6px 0"><?php if ((int) $entry['year'] > 0): ?><span class="pill"><?= (int) $entry['year'] ?></span><?php endif; ?>
                     <span class="pill"><?= sd_e((string) $entry['tag']) ?></span>
+                    <?php if (!empty($entry['live'])): ?><span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span><?php endif; ?>
                     <?php if (!empty($entry['playable'])): ?><span class="pill" style="background:#17351f;color:#b8ffd3">plays in-page</span><?php endif; ?></p>
                 <form method="post" style="background:none;border:0;padding:0;margin:0">
                     <input type="hidden" name="action" value="pick">
@@ -630,8 +644,8 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         <?php endforeach; ?>
     </div>
     <p class="links" style="margin-top:12px">
-        <?php if ($page > 0): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page - 1 ?>">&#8249; Previous page</a><?php endif; ?>
-        <?php if (($page + 1) * $perPage < (int) $library['total']): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page + 1 ?>">Next page &#8250;</a><?php endif; ?>
+        <?php if ($page > 0): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($ch) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page - 1 ?>">&#8249; Previous page</a><?php endif; ?>
+        <?php if (($page + 1) * $perPage < (int) $library['total']): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($ch) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page + 1 ?>">Next page &#8250;</a><?php endif; ?>
     </p>
 </section>
 <?php endif; ?>

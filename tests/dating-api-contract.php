@@ -113,6 +113,12 @@ contract_check($status === 200 && $unblock['blocked'] === [], 'unblocking must w
 [$status] = call($api, 'POST', '/chats/' . $chatId . '/messages', [], ['text' => 'back again'], $bob['token'], $t0 + 3900);
 contract_check($status === 201, 'unblocking reopens messaging over the API');
 
+// ---- Watch Party channels over the API -----------------------------------------------
+[$status, $channels] = call($api, 'GET', '/films/channels', [], [], $alice['token'], $t0);
+contract_check($status === 200 && isset($channels['nature']['label']), 'the channel menu must be served over the API');
+[$status, $natureLib] = call($api, 'GET', '/films/channels/nature', ['limit' => 50], [], $alice['token'], $t0);
+contract_check($status === 200 && $natureLib['total'] >= 36 && $natureLib['films'][0]['id'] === 'nature:featured-nature-cam', 'the nature showcase must be served over the API');
+
 // ---- Premium together over the API --------------------------------------------------
 [$status, $romcoms] = call($api, 'GET', '/films/premium-romcoms', [], [], $alice['token'], $t0);
 contract_check($status === 200 && count($romcoms) >= 12 && isset($romcoms[0]['watch_url']), 'the Premium rom-com playlist must be served over the API');

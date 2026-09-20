@@ -372,6 +372,64 @@ final class SlowDatingApi
         if ($method === 'GET' && $path === '/films/premium-romcoms') {
             return [200, $engine->premiumRomcoms()];
         }
+        if ($method === 'GET' && $path === '/films/channels') {
+            return [200, $engine->watchChannels()];
+        }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'films' && $segments[1] === 'channels') {
+            return [200, $engine->channelLibrary(
+                $segments[2],
+                (string) ($query['query'] ?? ''),
+                (int) ($query['limit'] ?? 24),
+                (int) ($query['offset'] ?? 0),
+            )];
+        }
+        if ($method === 'POST' && $path === '/advanced-rooms') {
+            return [201, $engine->createAdvancedRoom(
+                $userId,
+                (string) ($body['mode'] ?? ''),
+                (string) ($body['theme'] ?? ''),
+                (string) ($body['video_url'] ?? ''),
+                (float) ($body['price_per_user'] ?? 0),
+                (int) ($body['required_participants'] ?? 2),
+                $now,
+            )];
+        }
+        if ($method === 'GET' && $path === '/advanced-rooms') {
+            return [200, $engine->advancedRoomsFor($userId)];
+        }
+        if ($method === 'POST' && $path === '/advanced-rooms/join') {
+            return [200, $engine->joinAdvancedRoom((string) ($body['invite_code'] ?? ''), $userId, $now)];
+        }
+        if (count($segments) >= 2 && $segments[0] === 'advanced-rooms') {
+            $roomId = $segments[1];
+            if ($method === 'GET' && count($segments) === 2) {
+                return [200, $engine->advancedRoomView($roomId, $userId)];
+            }
+            if ($method === 'GET' && count($segments) === 3 && $segments[2] === 'recap') {
+                return [200, $engine->advancedRecap($roomId, $userId)];
+            }
+            if ($method === 'GET' && count($segments) === 3 && $segments[2] === 'messages') {
+                return [200, $engine->advancedMessages($roomId, $userId)];
+            }
+            if ($method === 'POST' && count($segments) === 3) {
+                switch ($segments[2]) {
+                    case 'pay':
+                        return [200, $engine->payAdvancedShare($roomId, $userId, $now)];
+                    case 'sync':
+                        return [200, $engine->setAdvancedSync($roomId, $userId, $body, $now)];
+                    case 'remote':
+                        return [200, $engine->passAdvancedRemote($roomId, $userId, (string) ($body['user_id'] ?? ''))];
+                    case 'reactions':
+                        return [201, $engine->addAdvancedReaction($roomId, $userId, (string) ($body['type'] ?? ''), (float) ($body['t'] ?? 0), $now)];
+                    case 'highlights':
+                        return [201, $engine->markAdvancedHighlight($roomId, $userId, (float) ($body['t'] ?? 0), (string) ($body['note'] ?? ''), $now)];
+                    case 'messages':
+                        return [201, $engine->sendAdvancedMessage($roomId, $userId, (string) ($body['text'] ?? ''), $now)];
+                    case 'end':
+                        return [200, $engine->endAdvancedRoom($roomId, $userId, $now)];
+                }
+            }
+        }
         if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-sync') {
             if ($method === 'GET') {
                 return [200, $engine->watchSync($segments[1], $userId)];

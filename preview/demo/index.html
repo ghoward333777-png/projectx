@@ -410,10 +410,18 @@
         </div>
       </section>
       <section class="panel" id="w-library-panel">
-        <h2>The romance library — pick any film instead</h2>
-        <p>Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
+        <p style="margin:0 0 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <strong style="color:var(--text)">Channels:</strong>
+          <button class="act small" data-wch="romance">Romance movies</button>
+          <button class="quiet small" data-wch="nature">Live Nature cams</button>
+          <button class="quiet small" data-wch="ambient">Ambient music</button>
+          <button class="quiet small" data-wch="bible">Bible narration</button>
+          <button class="quiet small" data-wch="church">Church videos</button>
+        </p>
+        <h2 id="w-lib-title">The romance library — pick any film instead</h2>
+        <p id="w-lib-blurb">Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
           public-domain classics that play in-page; the live site carries the full thousand.</p>
-        <div class="formgrid"><label class="f">Search the playlist<input id="w-search" placeholder="Notebook, 1999, golden age…"></label></div>
+        <div class="formgrid"><label class="f">Search this channel<input id="w-search" placeholder="Notebook, waterfall, psalms…"></label></div>
         <div class="cards" id="w-grid" style="margin-top:12px"></div>
       </section>
     </main>
@@ -1171,9 +1179,12 @@ function renderWatch() {
     ' in the playlist · a new film every day, the same one for every couple.' +
     (isScheduled ? ' You are watching it now.' : ' Your party swapped it for its own pick.') + '</span>' +
     (isScheduled ? '' : '<button class="quiet" data-wfilm="' + scheduledFilm[0] + '">Back to the scheduled movie</button>') + '</div>';
+  const chLabel = rank >= 2300 ? 'Church videos' : rank >= 2200 ? 'Bible narration'
+    : rank >= 2100 ? 'Ambient music' : rank >= 2000 ? 'Live Nature cams' : null;
   $('w-title').innerHTML = '<h2>' + esc(title) + (year > 0 ? ' (' + year + ')' : '') + ' <span class="pill">' +
-    (rank > 0 ? '#' + rank + ' in the romance playlist' : "tonight's featured premiere") +
+    (chLabel ? chLabel : (rank > 0 ? '#' + rank + ' in the romance playlist' : "tonight's featured premiere")) +
     '</span><span class="pill">' + esc(tag) + '</span>' +
+    (watchState.film[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
     (isScheduled ? '' : '<span class="pill ok">your pick</span>') + '</h2>';
   renderWatchPlayer();
   renderWatchLog();
@@ -1198,6 +1209,9 @@ function renderWatchPlayer() {
   } else if (yt) {
     src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&playlist=' + upNext.join(',');
     note = esc(title) + ' — the full YouTube movie, with ' + upNext.length + ' more romance films queued in the player\'s playlist.';
+  } else if (rank >= 2000) {
+    src = PL_EMBED + '&index=' + (rank % 30) + '&autoplay=1';
+    note = esc(title) + ' — the live site resolves this title\'s current stream automatically; this preview falls back to the playlist.';
   } else {
     src = PL_EMBED + '&index=' + (rank % 30) + '&autoplay=1';
     note = esc(title) + ' — streamed from the playlist at slot ' + ((rank % 30) + 1) + ', so your pick always changes the video.';
@@ -1227,15 +1241,77 @@ function renderWatchLog() {
     (x.redactions ? ' · contact info erased' : '') + '</span></div></div>').join('');
   $('w-log').scrollTop = 0;
 }
+// The other channels: rows are [id, title, year, tag, verified-yt-id, live].
+// Un-curated entries resolve their current stream on the live site.
+const NATURE = [
+  [2001,'Featured live nature cam',0,'wildlife','1t7g690boao',true],
+  [2002,'Rocky Mountain river live cam',0,'river','',true],[2003,'Alaska salmon river live cam',0,'river','',true],
+  [2004,'Smoky Mountains stream live cam',0,'river','',true],[2005,'River rapids relaxing live cam',0,'river','',true],
+  [2006,'Niagara Falls live cam',0,'waterfall','',true],[2007,'Tropical waterfall live cam',0,'waterfall','',true],
+  [2008,'Iguazu Falls live cam',0,'waterfall','',true],[2009,'Forest waterfall 4K live cam',0,'waterfall','',true],
+  [2010,'Redwood forest live cam',0,'forest','',true],[2011,'Rainforest canopy live cam',0,'forest','',true],
+  [2012,'Forest birdsong live cam',0,'forest','',true],[2013,'Autumn forest live cam',0,'forest','',true],
+  [2014,'Lake Tahoe live cam',0,'lake','',true],[2015,'Alpine lake live cam',0,'lake','',true],
+  [2016,'Loch Ness live cam',0,'lake','',true],[2017,'Mountain lake sunrise live cam',0,'lake','',true],
+  [2018,'Matterhorn live cam',0,'mountain','',true],[2019,'Rocky Mountains peak live cam',0,'mountain','',true],
+  [2020,'Mount Fuji live cam',0,'mountain','',true],[2021,'Swiss Alps panorama live cam',0,'mountain','',true],
+  [2022,'Sonoran Desert live cam',0,'desert','',true],[2023,'Sahara desert dunes live cam',0,'desert','',true],
+  [2024,'Desert oasis wildlife live cam',0,'desert','',true],[2025,'Joshua Tree desert live cam',0,'desert','',true],
+  [2026,'Venice Grand Canal live cam',0,'harbor','',true],[2027,'Sydney Harbour live cam',0,'harbor','',true],
+  [2028,'Alaska harbor live cam',0,'harbor','',true],[2029,'Mediterranean harbor live cam',0,'harbor','',true],
+  [2030,'African watering hole live cam',0,'wildlife','',true],[2031,'Bald eagle nest live cam',0,'wildlife','',true],
+  [2032,'Brooks Falls brown bears live cam',0,'wildlife','',true],[2033,'Hummingbird feeder live cam',0,'wildlife','',true],
+  [2034,'Coral reef aquarium live cam',0,'wildlife','',true],[2035,'Giant panda live cam',0,'wildlife','',true],
+  [2036,'Owl nest live cam',0,'wildlife','',true],[2037,'Northern lights live cam',0,'aurora','',true],
+  [2038,'Ocean waves beach live cam',0,'ocean','',true],[2039,'African savanna sunset live cam',0,'savanna','',true],
+  [2040,'Snowfall cabin live cam',0,'snow','',true],
+];
+const AMBIENT = [
+  [2101,'Lofi hip hop radio',0,'lofi','',true],[2102,'Relaxing jazz radio',0,'jazz','',true],
+  [2103,'Classical piano for studying',0,'classical','',false],[2104,'Rain sounds for sleeping',0,'rain','',false],
+  [2105,'Ocean waves white noise',0,'ocean','',false],[2106,'Crackling fireplace ambience',0,'fireplace','',false],
+  [2107,'Deep space ambient music',0,'space','',false],[2108,'Calm meditation music',0,'meditation','',false],
+  [2109,'Coffee shop ambience',0,'cafe','',false],[2110,'Smooth jazz saxophone',0,'jazz','',false],
+  [2111,'Celtic relaxing music',0,'celtic','',false],[2112,'Deep focus concentration music',0,'focus','',false],
+];
+const BIBLE = [
+  [2201,'The Book of Genesis — audio Bible',0,'old testament','',false],[2202,'The Book of Psalms — audio Bible',0,'psalms','',false],
+  [2203,'The Book of Proverbs — audio Bible',0,'old testament','',false],[2204,'The Book of Isaiah — audio Bible',0,'old testament','',false],
+  [2205,'The Gospel of Matthew — audio Bible',0,'new testament','',false],[2206,'The Gospel of Luke — audio Bible',0,'new testament','',false],
+  [2207,'The Gospel of John — audio Bible',0,'new testament','',false],[2208,'The Book of Romans — audio Bible',0,'new testament','',false],
+  [2209,'The Book of Revelation — audio Bible',0,'new testament','',false],[2210,'Psalm 23 narration',0,'psalms','',false],
+  [2211,'The Sermon on the Mount narration',0,'new testament','',false],[2212,'The Christmas story — Luke 2 narration',0,'new testament','',false],
+];
+const CHURCH = [
+  [2301,'Sunday worship service',0,'worship','',true],[2302,'Gospel choir performances',0,'choir','',false],
+  [2303,'Classic hymns collection',0,'hymns','',false],[2304,'Praise and worship music',0,'worship','',false],
+  [2305,"Christmas carols from King's College",0,'carols','',false],[2306,'Gregorian chants',0,'chants','',false],
+  [2307,'Southern gospel classics',0,'choir','',false],[2308,'Contemporary Christian worship',0,'worship','',false],
+  [2309,'Easter service highlights',0,'worship','',false],[2310,'Great choir anthems',0,'choir','',false],
+  [2311,'Organ hymns from great cathedrals',0,'hymns','',false],[2312,'Gospel music classics',0,'choir','',false],
+];
+const WCHANNELS = {
+  romance: { rows: FILMS, title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
+  nature: { rows: NATURE, title: 'Live Nature cams — pick a scene', blurb: 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, wildlife, and more — live from around the world. The live site resolves each cam\'s current stream automatically.' },
+  ambient: { rows: AMBIENT, title: 'Ambient music — set the mood', blurb: 'Lofi, jazz, rain, fireplace — a soundtrack for slow evenings together.' },
+  bible: { rows: BIBLE, title: 'Bible narration — the Scriptures read aloud', blurb: 'Book by book, ready to play in the party player.' },
+  church: { rows: CHURCH, title: 'Church videos — worship together', blurb: 'Worship services, choirs, hymns, and carols.' },
+};
+let watchChannel = 'romance';
+const ALLFILMS = FILMS.concat(NATURE, AMBIENT, BIBLE, CHURCH);
 function renderWatchGrid() {
+  const c = WCHANNELS[watchChannel];
+  $('w-lib-title').textContent = c.title;
+  $('w-lib-blurb').textContent = c.blurb;
   const q = ($('w-search').value || '').toLowerCase().trim();
-  const hits = FILMS.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
+  const hits = c.rows.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
   $('w-grid').innerHTML = hits.map(f =>
-    '<div class="card"><span class="name">' + (f[0] > 0 ? '#' + f[0] + ' · ' : '★ ') + esc(f[1]) + '</span>' +
+    '<div class="card"><span class="name">' + (watchChannel === 'romance' && f[0] > 0 ? '#' + f[0] + ' · ' : (watchChannel === 'romance' ? '★ ' : '')) + esc(f[1]) + '</span>' +
     '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
+    (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
     (f[4] ? '<span class="pill ok">plays in-page</span>' : '') + '</span>' +
     '<button class="act" data-wfilm="' + f[0] + '">Watch this instead</button></div>').join('') ||
-    '<div class="card"><span class="meta">No matches in the demo slice — the live site searches all 1,000.</span></div>';
+    '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
 }
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1244,8 +1320,13 @@ $('portal-watch').addEventListener('click', e => {
     const base = watchState.rotate ?? (watchState.film[0] % 30);
     watchState.rotate = b.dataset.wrot === 'r' ? Math.floor(Math.random() * 30) : (base + (+b.dataset.wrot) + 30) % 30;
     renderWatchPlayer();
+  } else if (b.dataset.wch) {
+    watchChannel = b.dataset.wch;
+    document.querySelectorAll('#w-library-panel button[data-wch]').forEach(x =>
+      x.className = (x.dataset.wch === watchChannel ? 'act' : 'quiet') + ' small');
+    renderWatchGrid();
   } else if (b.dataset.wfilm) {
-    watchState.film = FILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
+    watchState.film = ALLFILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
     watchState.embedOverride = null;   // a picked film takes the player over from the pasted embed
     watchState.rotate = null;
     if ($('w-embed-note')) $('w-embed-note').textContent = 'Library film selected — paste and apply above to switch back to your own embed.';
