@@ -3960,8 +3960,98 @@ final class SlowDatingEngine
     }
 
     /**
+     * ERROR CHECK for every keyless lookup: does the resolved video's
+     * ACTUAL title plausibly match what was requested? Search results
+     * include unrelated promoted videos, and an embeddable-but-wrong
+     * video is worse than none. Distinctive words from the request
+     * (stopwords like "live", "cam", "relaxing" dropped) must appear in
+     * the real title.
+     */
+    public static function streamTitleMatches(string $wanted, string $actual): bool
+    {
+        $stop = ['live', 'cam', 'cams', 'music', 'sound', 'sounds', 'relaxing', 'relaxation', 'ambience',
+                 'ambient', 'nature', 'with', 'the', 'for', 'and', 'from', 'video', 'videos', 'stream',
+                 'streaming', 'radio', 'hours', 'audio', 'full', 'movie', 'narration', 'channel'];
+        $tokenize = static function (string $text): array {
+            preg_match_all('/[a-z0-9]{3,}/', mb_strtolower($text), $matches);
+            return array_values(array_unique($matches[0]));
+        };
+        $distinct = array_values(array_diff($tokenize($wanted), $stop));
+        if ($distinct === []) {
+            $distinct = $tokenize($wanted);
+        }
+        if ($distinct === []) {
+            return false;
+        }
+        $actualLower = mb_strtolower($actual);
+        $matched = 0;
+        foreach ($distinct as $token) {
+            if (str_contains($actualLower, $token) || str_contains($actualLower, rtrim($token, 's'))) {
+                $matched++;
+            }
+        }
+        return $matched >= min(2, count($distinct));
+    }
+
+    /** The resolved video's real title from YouTube's oEmbed endpoint (null = dead or not embeddable). */
+    private function fetchOembedTitle(string $videoId): ?string
+    {
+        $context = stream_context_create(['http' => [
+            'timeout' => 8,
+            'ignore_errors' => true,
+            'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nAccept-Language: en\r\n",
+        ]]);
+        $body = @file_get_contents(
+            'https://www.youtube.com/oembed?url=' . rawurlencode('https://youtu.be/' . $videoId) . '&format=json',
+            false,
+            $context,
+        );
+        if (!is_string($body)) {
+            return null;
+        }
+        $decoded = json_decode($body, true);
+        return is_array($decoded) && isset($decoded['title']) ? (string) $decoded['title'] : null;
+    }
+
+    /**
+     * The best-matching, embeddable video for a search query: candidates
+     * come from YouTube's own results, and each is verified against the
+     * oEmbed endpoint (alive + embeddable) AND the title-match error
+     * check before it is accepted. Returns null when nothing passes —
+     * no video is better than the wrong video.
+     *
+     * @return array{video_id: string, title: string}|null
+     */
+    private function resolveVerifiedVideo(string $query): ?array
+    {
+        $context = stream_context_create(['http' => [
+            'timeout' => 8,
+            'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: CONSENT=YES+cb\r\nAccept-Language: en\r\n",
+        ]]);
+        $html = @file_get_contents('https://www.youtube.com/results?search_query=' . rawurlencode($query), false, $context);
+        if (!is_string($html) || preg_match_all('/"videoId":"([A-Za-z0-9_-]{11})"/', $html, $matches) === 0) {
+            return null;
+        }
+        $seen = [];
+        foreach ($matches[1] as $candidate) {
+            if (isset($seen[$candidate])) {
+                continue;
+            }
+            $seen[$candidate] = true;
+            if (count($seen) > 8) {
+                break;
+            }
+            $title = $this->fetchOembedTitle($candidate);
+            if ($title !== null && self::streamTitleMatches($query, $title)) {
+                return ['video_id' => $candidate, 'title' => $title];
+            }
+        }
+        return null;
+    }
+
+    /**
      * Resolve a channel entry's current video: curated ids stand as they
-     * are; everything else runs the keyless YouTube search once — and
+     * are; everything else runs the verified keyless lookup once — and
      * live cams re-resolve after a day, because live stream ids rotate.
      *
      * @return array<string, mixed>|null
@@ -3985,13 +4075,10 @@ final class SlowDatingEngine
             $fresh = is_array($cached)
                 && (!$raw[4] || $now - (int) ($cached['resolved_at'] ?? 0) < 86400);
             if (!$fresh && !getenv('SLOWDATING_NO_LOOKUP')) {
-                $context = stream_context_create(['http' => [
-                    'timeout' => 8,
-                    'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: CONSENT=YES+cb\r\nAccept-Language: en\r\n",
-                ]]);
-                $html = @file_get_contents('https://www.youtube.com/results?search_query=' . rawurlencode($raw[1]), false, $context);
-                if (is_string($html) && preg_match('/"videoId":"([A-Za-z0-9_-]{11})"/', $html, $match) === 1) {
-                    $this->store->put('film_videos', $key, ['video_id' => $match[1], 'resolved_at' => $now]);
+                // Verified lookup: alive, embeddable, AND title-matched.
+                $verified = $this->resolveVerifiedVideo($raw[1]);
+                if ($verified !== null) {
+                    $this->store->put('film_videos', $key, $verified + ['resolved_at' => $now]);
                 }
             }
         }
@@ -4552,14 +4639,13 @@ final class SlowDatingEngine
         $filmId = (string) $film['id'];
         $cached = $this->store->get('film_videos', $filmId);
         if (!is_array($cached) && !getenv('SLOWDATING_NO_LOOKUP')) {
+            // Verified lookup: alive, embeddable, AND the found video's
+            // real title must match this film's title — never the first
+            // random embeddable result.
             $query = trim($film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie');
-            $context = stream_context_create(['http' => [
-                'timeout' => 8,
-                'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: CONSENT=YES+cb\r\nAccept-Language: en\r\n",
-            ]]);
-            $html = @file_get_contents('https://www.youtube.com/results?search_query=' . rawurlencode($query), false, $context);
-            if (is_string($html) && preg_match('/"videoId":"([A-Za-z0-9_-]{11})"/', $html, $match) === 1) {
-                $this->store->put('film_videos', $filmId, ['video_id' => $match[1], 'resolved_at' => $now ?? time()]);
+            $verified = $this->resolveVerifiedVideo($query);
+            if ($verified !== null && self::streamTitleMatches((string) $film['title'], $verified['title'])) {
+                $this->store->put('film_videos', $filmId, $verified + ['resolved_at' => $now ?? time()]);
             }
         }
         return $this->presentFilm($film);

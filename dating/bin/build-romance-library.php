@@ -25,13 +25,13 @@ declare(strict_types=1);
 // public-domain classics.
 $verified = [
     'Inevitable Hearts|0' => 'jpejUwKLmfg',
-    'Charade|1963' => 'VTeVIpBLVfg',
+    'Charade|1963' => '-uc86VH8hdA',
     'His Girl Friday|1940' => 'UzQWJNNg8DU',
     'My Man Godfrey|1936' => 'YcvDxEMiMTc',
     'Penny Serenade|1941' => 'pNGzeBt4Bek',
     'Made for Each Other|1939' => '5JSU-yGhR-g',
-    'Love Affair|1939' => 'wnM11gs58ks',
-    'Royal Wedding|1951' => 'UuzLr5MCA7w',
+    'Love Affair|1939' => 'KusRlVtB04I',
+    'Royal Wedding|1951' => 'u8nRmYj3GTQ',
     'A Star Is Born|1937' => 'WPuN-m46INU',
     'Nothing Sacred|1937' => 'HeTzRrhQZLg',
     'Algiers|1938' => 'weIe6fMHxBY',

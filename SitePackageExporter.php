@@ -46,6 +46,7 @@ final class SitePackageExporter
         'dating/watch-party.php',
         'dating/advanced-watch-party.php',
         'dating/bin/build-romance-library.php',
+        'dating/bin/check-demo-streams.php',
         'dating/bin/build-install-zip.php',
         'dating/data/romance-films.json',
         'dating/avatar.php',

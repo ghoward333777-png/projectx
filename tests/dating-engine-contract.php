@@ -743,6 +743,12 @@ foreach (['river', 'waterfall', 'forest', 'lake', 'mountain', 'desert', 'harbor'
 }
 $featured = $engine->channelEntry('nature', 'featured-nature-cam');
 contract_check($featured !== null && $featured['playable'] && $featured['youtube_id'] === '1t7g690boao', 'the featured nature cam plays the curated live stream');
+// The wrong-video error check: resolved titles must match what was asked for.
+contract_check(SlowDatingEngine::streamTitleMatches('Niagara Falls live cam', 'Niagara Falls Live Camera 24/7'), 'a matching stream title passes the error check');
+contract_check(!SlowDatingEngine::streamTitleMatches('Niagara Falls live cam', 'Lofi hip hop radio - beats to study to'), 'an unrelated title fails the error check');
+contract_check(SlowDatingEngine::streamTitleMatches('Lofi Girl radio beats to relax study to', 'lofi hip hop radio 📚 beats to relax/study to'), 'the lofi radio passes on its distinctive words');
+contract_check(!SlowDatingEngine::streamTitleMatches('Giant panda live cam', 'Cute cats compilation 2024'), 'an embeddable-but-wrong video is rejected');
+contract_check(SlowDatingEngine::streamTitleMatches('Gregorian chants', 'Gregorian Chant | Sacred Music'), 'singular/plural word forms still match');
 contract_check($engine->channelLibrary('ambient')['total'] >= 10 && $engine->channelLibrary('bible')['total'] >= 10 && $engine->channelLibrary('church')['total'] >= 10, 'ambient, Bible, and church channels are stocked');
 contract_check($engine->channelLibrary('nature', 'waterfall')['total'] === 4, 'channel search narrows the showcase');
 $engine->store()->put('film_videos', 'chan.nature.niagara-falls', ['video_id' => 'abcDEF12345', 'resolved_at' => $tDay]);
