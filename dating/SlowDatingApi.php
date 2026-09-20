@@ -162,6 +162,11 @@ final class SlowDatingApi
             $query['min_popularity'] = $query['min_score'] ?? ($query['min_popularity'] ?? 60);
             return [200, $engine->searchUsers($query, $now)];
         }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'users' && $segments[2] === 'profile') {
+            // Another member's profile page (own id works too). Viewing
+            // someone else counts as a profile view for their popularity.
+            return [200, $engine->profileView($userId, $segments[1] === 'me' ? $userId : $segments[1], $now)];
+        }
         if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'users' && $segments[2] === 'popularity') {
             $target = $segments[1] === 'me' ? $userId : $segments[1];
             if ($target !== $userId) {

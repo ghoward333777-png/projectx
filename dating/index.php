@@ -456,8 +456,8 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
             ?>
             <div class="card" style="margin-bottom:10px">
                 <div class="who" style="margin-bottom:6px">
-                    <img class="avatar" src="avatar.php?u=<?= urlencode((string) $row['user_id']) ?>" alt="">
-                    <strong><?= sd_e((string) ($row['display_name'] ?: $row['user_id'])) ?></strong>
+                    <a href="profile.php?u=<?= urlencode((string) $row['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $row['user_id']) ?>" alt="Open profile"></a>
+                    <a href="profile.php?u=<?= urlencode((string) $row['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($row['display_name'] ?: $row['user_id'])) ?></strong></a>
                     <?= !empty($row['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?>
                     <?= ($row['dating_type'] ?? '') !== '' ? '<span class="pill">' . sd_e(str_replace('_', ' ', (string) $row['dating_type'])) . '</span>' : '' ?>
                 </div>
@@ -492,8 +492,8 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
         ?>
         <section>
             <div class="who" style="margin-bottom:6px">
-                <img class="avatar" src="avatar.php?u=<?= urlencode($other) ?>&amp;chat=<?= urlencode($chatId) ?>" alt="">
-                <h2 style="margin:0">Chat with <?= sd_e((string) ($otherProfile['display_name'] ?: $other)) ?></h2>
+                <a href="profile.php?u=<?= urlencode($other) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode($other) ?>&amp;chat=<?= urlencode($chatId) ?>" alt="Open profile"></a>
+                <h2 style="margin:0">Chat with <a href="profile.php?u=<?= urlencode($other) ?>" style="color:inherit;text-decoration:none"><?= sd_e((string) ($otherProfile['display_name'] ?: $other)) ?></a></h2>
             </div>
             <?php if (!$chosen): ?>
                 <div class="notice" style="margin:0 0 10px">You're connected — which of your three profile pictures should
@@ -713,9 +713,9 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                     } ?>
                     <div class="card">
                         <div class="who">
-                            <img class="avatar" src="avatar.php?u=<?= urlencode((string) $member['user_id']) ?>" alt="">
+                            <a href="profile.php?u=<?= urlencode((string) $member['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $member['user_id']) ?>" alt="Open profile"></a>
                             <div>
-                                <strong><?= sd_e((string) ($member['display_name'] ?: $member['user_id'])) ?><?= $member['age'] ? ', ' . (int) $member['age'] : '' ?></strong>
+                                <a href="profile.php?u=<?= urlencode((string) $member['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($member['display_name'] ?: $member['user_id'])) ?><?= $member['age'] ? ', ' . (int) $member['age'] : '' ?></strong></a>
                                 <?= $member['verified'] ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
                                 <span style="color:#a294ad;font-size:12.5px">popularity <?= (int) $member['popularity_score'] ?><?= $member['dating_type'] !== '' ? ' · ' . sd_e(str_replace('_', ' ', (string) $member['dating_type'])) : '' ?></span>
                             </div>
@@ -739,9 +739,9 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
             <?php foreach ($engine->dailyDrop($userId) as $pick): ?>
                 <div class="card">
                     <div class="who">
-                        <img class="avatar" src="avatar.php?u=<?= urlencode((string) $pick['user_id']) ?>" alt="">
+                        <a href="profile.php?u=<?= urlencode((string) $pick['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $pick['user_id']) ?>" alt="Open profile"></a>
                         <div>
-                            <strong><?= sd_e((string) ($pick['display_name'] ?: $pick['user_id'])) ?></strong>
+                            <a href="profile.php?u=<?= urlencode((string) $pick['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($pick['display_name'] ?: $pick['user_id'])) ?></strong></a>
                             <?= !empty($pick['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
                             <span style="color:#a294ad;font-size:12.5px">match <?= (int) $pick['match_score'] ?> · ~<?= sd_e((string) $pick['zip_distance_km']) ?> km</span>
                         </div>
@@ -760,8 +760,8 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
         <?php foreach ($engine->matchesFor($userId, ['limit' => 10]) as $match): ?>
             <div class="card" style="margin-bottom:10px">
                 <div class="who" style="margin-bottom:6px">
-                    <img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="">
-                    <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
+                    <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="Open profile"></a>
+                    <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong></a>
                     <?= !empty($match['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?>
                     <?= ($match['dating_type'] ?? '') !== '' ? '<span class="pill">' . sd_e(str_replace('_', ' ', (string) $match['dating_type'])) . '</span>' : '' ?>
                 </div>

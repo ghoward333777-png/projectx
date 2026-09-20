@@ -41,6 +41,7 @@ final class SitePackageExporter
         'dating/api.php',
         'dating/index.php',
         'dating/browse.php',
+        'dating/profile.php',
         'dating/earn.php',
         'dating/watch-party.php',
         'dating/bin/build-romance-library.php',

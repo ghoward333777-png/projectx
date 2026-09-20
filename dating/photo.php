@@ -12,6 +12,10 @@ require_once __DIR__ . '/SlowDatingEngine.php';
  * Usage (signed-in member): photo.php?slot=public | private
  * Gallery photos: photo.php?gallery=<photoId> — served to the photo's
  * owner, or to premium members (the Premium Members Only gallery).
+ * Another member's private picture: photo.php?private=<userId> — sharp
+ * only for the owner, premium members, and chat partners the owner
+ * invited (their private picture chosen for that chat); everyone else
+ * receives a fuzzed rendition with no detail to recover.
  */
 
 session_start();
@@ -23,6 +27,23 @@ if (isset($_SESSION['sd_member_token'])) {
     if ($auth !== null && $auth[1] === 'member') {
         $viewer = $auth[0];
     }
+}
+
+$privateOwner = (string) ($_GET['private'] ?? '');
+if ($privateOwner !== '') {
+    $view = $viewer !== null ? $engine->privatePhotoView($viewer, $privateOwner) : null;
+    if ($view === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'No picture in this slot.';
+        exit;
+    }
+    header('Content-Type: ' . $view['mime']);
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Security-Policy: default-src \'none\'');
+    header('Cache-Control: private, no-store');
+    echo $view['bytes'];
+    exit;
 }
 
 $galleryId = (string) ($_GET['gallery'] ?? '');

@@ -96,6 +96,11 @@ contract_check($status === 201 && isset($sharedImage['image']['file']), 'images 
 [$status] = call($api, 'POST', '/chats/' . $chatId . '/images', [], ['image_base64' => '!!!', 'mime' => 'image/png'], $alice['token'], $t0 + 3600);
 contract_check($status === 422, 'invalid base64 must be rejected');
 
+// ---- Profile pages over the API ---------------------------------------------------
+[$status, $profilePage] = call($api, 'GET', '/users/' . $alice['user_id'] . '/profile', [], [], $bob['token'], $t0 + 3600);
+contract_check($status === 200 && $profilePage['user_id'] === $alice['user_id'] && isset($profilePage['match_score']), 'a member profile page must be served over the API');
+contract_check($profilePage['private_photo'] === 'clear', 'the profile page must honor the chat invitation (Alice chose her private picture for the chat with Bob)');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',

@@ -745,5 +745,45 @@ $engine->startChat($dana['user_id'], $alice['user_id'], $tDay);
 contract_check(!$engine->canSeeRealPhotos($dana['user_id'], $alice['user_id'], $tDay + 86400), 'pictures stay hidden before the reveal day');
 contract_check($engine->canSeeRealPhotos($dana['user_id'], $alice['user_id'], $tDay + 2 * 86400), 'pictures reveal once the chat reaches the admin-set day');
 
+// ---- Private pictures: fuzzed for outsiders, sharp for the invited & premium ---------
+$ownView = $engine->privatePhotoView($alice['user_id'], $alice['user_id']);
+contract_check($ownView !== null && $ownView['fuzzed'] === false, 'owners see their private picture sharp');
+$bobView = $engine->privatePhotoView($bob['user_id'], $alice['user_id']);
+contract_check($bobView !== null && $bobView['fuzzed'] === false, 'premium members see private pictures sharp');
+if (extension_loaded('gd')) {
+    $danaView = $engine->privatePhotoView($dana['user_id'], $alice['user_id']);
+    contract_check($danaView !== null && $danaView['fuzzed'] === true, 'an uninvited chat partner gets only the fuzzed rendition');
+    contract_check($danaView['bytes'] !== $ownView['bytes'] && $danaView['mime'] === 'image/jpeg', 'fuzzed bytes must differ from the original');
+} else {
+    contract_check($engine->privatePhotoView($dana['user_id'], $alice['user_id']) === null, 'without GD the private picture is withheld, never leaked sharp');
+}
+$stranger = $engine->signupMember('stranger@example.com', null, true, $tDay);
+contract_check(!$engine->canSeePrivatePhoto($stranger['user_id'], $alice['user_id']), 'free members with no chat are never cleared for the private picture');
+$pairKey = implode('|', [min($dana['user_id'], $alice['user_id']), max($dana['user_id'], $alice['user_id'])]);
+$danaChatId = '';
+foreach ($engine->store()->all('chats') as $chatRow) {
+    if (($chatRow['pair_key'] ?? '') === $pairKey) {
+        $danaChatId = (string) $chatRow['id'];
+    }
+}
+$engine->setChatImageChoice($danaChatId, $alice['user_id'], 'private');
+contract_check($engine->canSeePrivatePhoto($dana['user_id'], $alice['user_id']), 'the owner\'s invitation (their private picture chosen for the chat) clears the partner');
+contract_check(($engine->privatePhotoView($dana['user_id'], $alice['user_id'])['fuzzed'] ?? true) === false, 'invited chat partners receive the sharp bytes');
+
+// ---- Profile pages ---------------------------------------------------------------
+$countViews = static fn (): int => count(array_filter(
+    $engine->store()->where('popularity_events', ['user_id' => $bob['user_id']]),
+    static fn (array $event): bool => (string) $event['event_type'] === 'profile_view',
+));
+$viewsBefore = $countViews();
+$pv = $engine->profileView($alice['user_id'], $bob['user_id'], $tDay + 2 * 86400);
+contract_check($pv['user_id'] === $bob['user_id'] && isset($pv['match_score'], $pv['compatibility_factors'], $pv['popularity_score']), 'a profile page must carry the compatibility read');
+contract_check($countViews() === $viewsBefore + 1, 'opening another member\'s profile records a profile view');
+contract_check($pv['private_photo'] === 'none', 'the profile page reports when no private picture exists');
+$ownPage = $engine->profileView($alice['user_id'], $alice['user_id'], $tDay);
+contract_check(!isset($ownPage['match_score']) && $ownPage['private_photo'] === 'clear', 'your own profile page has no self match score and shows your private picture clear');
+$danaPage = $engine->profileView($dana['user_id'], $alice['user_id'], $tDay + 2 * 86400);
+contract_check($danaPage['private_photo'] === 'clear', 'the profile page honors the chat invitation for the private picture');
+
 exec('rm -rf ' . escapeshellarg($stateDir));
 fwrite(STDOUT, "Dating engine contract passed\n");

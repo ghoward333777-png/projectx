@@ -593,6 +593,14 @@
   </div>
 </div>
 
+<div id="profile-modal" hidden style="position:fixed;inset:0;background:rgba(10,8,14,.82);z-index:60;overflow-y:auto;padding:24px 12px 60px">
+  <div class="panel" style="max-width:780px;margin:0 auto;position:relative">
+    <button id="profile-close" class="quiet" style="position:absolute;top:12px;right:12px">✕ Close</button>
+    <div id="profile-body"></div>
+    <div id="profile-flash"></div>
+  </div>
+</div>
+
 <script>
 'use strict';
 // ---------------------------------------------------------------- data
@@ -887,7 +895,7 @@ $('chat-panels').addEventListener('click', e => {
 // ---------------------------------------------------------------- matches & search
 $('match-cards').innerHTML = MATCHES.map(x => {
   const p = MEMBERS[x.id];
-  return '<div class="card"><span class="name">' + p.name + ', ' + p.age +
+  return '<div class="card" data-profile="' + x.id + '" style="cursor:pointer"><span class="name">' + p.name + ', ' + p.age +
     (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
     ' <span class="pill">' + p.type.replace('_', ' ') + '</span></span>' +
     '<span class="meta">match score ' + x.score + ' · popularity ' + p.pop + ' · ~' + p.km + ' km</span>' +
@@ -895,7 +903,7 @@ $('match-cards').innerHTML = MATCHES.map(x => {
 }).join('');
 $('drop-cards').innerHTML = MATCHES.slice(0, 3).map(x => {
   const p = MEMBERS[x.id];
-  return '<div class="card"><div style="display:flex;gap:10px;align-items:center">' +
+  return '<div class="card" data-profile="' + x.id + '" style="cursor:pointer"><div style="display:flex;gap:10px;align-items:center">' +
     '<img src="' + demoAvatar(x.id, p.name) + '" alt="" style="width:52px;height:52px;border-radius:14px">' +
     '<div><span class="name">' + p.name + '</span>' + (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
     '<br><span class="meta">match ' + x.score + ' · ~' + p.km + ' km</span></div></div></div>';
@@ -905,8 +913,8 @@ function renderSearch() {
   const g = $('q-gender').value, int = $('q-interest').value, t = $('q-type').value, inc = $('q-income').value, d = +$('q-dist').value;
   const rows = Object.entries(MEMBERS).filter(([id, p]) => id !== 'alice' &&
     (!g || p.gender === g) && (!int || p.interests.includes(int)) && (!t || p.type === t) && (!inc || p.income === inc) && p.km <= d);
-  $('search-cards').innerHTML = rows.length ? rows.map(([, p]) =>
-    '<div class="card"><span class="name">' + p.name + ', ' + p.age + '</span>' +
+  $('search-cards').innerHTML = rows.length ? rows.map(([id, p]) =>
+    '<div class="card" data-profile="' + id + '" style="cursor:pointer"><span class="name">' + p.name + ', ' + p.age + '</span>' +
     '<span class="meta">popularity ' + p.pop + ' · ' + p.type.replace('_', ' ') + ' · ' + p.job + ' · ~' + p.km + ' km</span>' +
     '<div>' + p.interests.map(s => '<span class="pill">' + s + '</span>').join('') + '</div></div>').join('')
     : '<p>No members match those filters — widen the distance or clear a filter.</p>';
@@ -1275,8 +1283,8 @@ const TOUR = [
 const HOBBY = { bob: ['hiking', 'cooking'], marcus: ['chess', 'running'], james: ['guitar', 'hiking'], emma: ['salsa', 'painting'], sofia: ['sailing'] };
 // Real photo thumbnails: members with a headshot file show it; the SVG
 // artwork is only the fallback. Swap files in thumbs/ to change faces.
-function demoAvatar(id, name) {
-  if (MEMBERS[id] && MEMBERS[id].thumb) return 'thumbs/' + id + '.jpg';
+function demoAvatar(id, name, artOnly) {
+  if (!artOnly && MEMBERS[id] && MEMBERS[id].thumb) return 'thumbs/' + id + '.jpg';
   const seed = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const pals = [['#3b1e3f', '#ff9cc0'], ['#1e2a4a', '#8fb8ff'], ['#173a2e', '#7fe3a8'], ['#4a2410', '#ffb08a'], ['#3a103a', '#e08aff'], ['#103a3a', '#7fdede'], ['#40320f', '#ffd97a'], ['#2b1140', '#b49cff']];
   const [a, b] = pals[seed % 8];
@@ -1324,7 +1332,7 @@ function browseRows(all) {
     .sort((a, b) => b.score - a.score);
 }
 function memberCardHtml(r, rank) {
-  return '<div class="card"><div style="display:flex;gap:10px;align-items:center">' +
+  return '<div class="card" data-profile="' + r.id + '" style="cursor:pointer"><div style="display:flex;gap:10px;align-items:center">' +
     '<img src="' + demoAvatar(r.id, r.p.name) + '" alt="" style="width:52px;height:52px;border-radius:14px">' +
     '<div><span class="name">' + (rank ? rank + '. ' : '') + r.p.name + ', ' + r.p.age + '</span>' +
     (r.p.verified ? ' <span class="pill ok">✓ verified</span>' : '') + '<br>' +
@@ -1354,7 +1362,7 @@ function renderBrowse() {
   const rows = browseView === 'top10' ? browseRows(true).slice(0, 10) : browseRows(false);
   $('b-count').textContent = browseView === 'top10'
     ? 'Your Top 10 matches across the whole community'
-    : (rows.length ? 'Your best matches — ' + rows.length + ' member' + (rows.length > 1 ? 's' : '') + ' fit' : 'No one fits these preferences yet');
+    : (rows.length ? 'Your best matches — ' + rows.length + ' member' + (rows.length > 1 ? 's' : '') + ' fit · click any card for the full profile' : 'No one fits these preferences yet');
   $('b-cards').innerHTML = rows.map((r, i) => memberCardHtml(r, browseView === 'top10' ? i + 1 : 0)).join('') ||
     '<p>Widen the distance or age range — results update instantly.</p>';
 }
@@ -1378,6 +1386,90 @@ $('b-swipe-panel').addEventListener('click', e => {
 for (const id of ['b-gender', 'b-agemin', 'b-agemax', 'b-dist', 'b-interest', 'b-faith', 'b-income']) $(id).addEventListener('input', renderBrowse);
 $('b-mustshare').addEventListener('change', renderBrowse);
 renderBrowse();
+
+// ---------------------------------------------------------------- profile pages
+// Every member card anywhere in the demo (Browse, Top 10, Matches, Daily
+// Drop, Search) is clickable and opens the member's full profile page —
+// mirroring profile.php on the real site.
+const PROMPT_QA = [
+  ['A perfect first date is…', 'A quiet corner table and a story worth telling.'],
+  ['You can usually find me…', 'Wherever the live music is.'],
+  ['The way to my heart is…', 'Coffee first, adventure second.'],
+  ['My idea of a great weekend…', 'Slow mornings and long walks.'],
+  ['I light up talking about…', 'A well-planned surprise.'],
+  ['Ask me about…', 'Whatever makes us both laugh.'],
+];
+function openProfile(id) {
+  const p = MEMBERS[id];
+  if (!p) return;
+  const me = MEMBERS.alice;
+  const shared = p.interests.filter(x => me.interests.includes(x));
+  const known = MATCHES.find(x => x.id === id);
+  const score = known ? known.score : Math.min(95, 38 + shared.length * 12 + Math.max(0, 20 - p.km));
+  const seed = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 3);
+  const prompts = [PROMPT_QA[seed % 6], PROMPT_QA[(seed + 2) % 6]];
+  const img = demoAvatar(id, p.name);
+  const facts = [
+    ['Occupation', p.job], ['Income', p.income.replace(/_/g, '–')], ['Faith', p.faith],
+    ['Looking for', p.type.replace(/_/g, ' ')], ['Distance', '~' + p.km + ' km from you'], ['Popularity', p.pop + ' / 100'],
+  ];
+  $('profile-body').innerHTML =
+    '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">' +
+      '<img src="' + img + '" alt="" style="width:150px;height:150px;border-radius:18px;object-fit:cover">' +
+      '<div style="flex:1;min-width:220px">' +
+        '<h2 style="margin:0;font-size:26px">' + esc(p.name) + ', ' + p.age +
+        (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') + '</h2>' +
+        '<span class="meta">' + esc(p.gender) + ' · looking for ' + esc(p.type.replace(/_/g, ' ')) + ' · ~' + p.km + ' km from you</span>' +
+        '<div style="margin:8px 0"><span class="pill">match with you: ' + score + '</span>' +
+        '<span class="pill">popularity ' + p.pop + '</span></div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">' +
+          '<button class="act small" data-pact="like">♥ Like</button>' +
+          '<button class="act small" data-pact="chat">Start slow chat</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<h3 style="margin:16px 0 6px">Their pictures</h3>' +
+    '<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">' +
+      '<div class="card"><span class="name">Artwork</span>' +
+        '<img src="' + demoAvatar(id, p.name, true) + '" alt="" style="width:96px;height:96px;border-radius:14px">' +
+        '<span class="meta">Every member\'s generated artwork — always visible.</span></div>' +
+      '<div class="card"><span class="name">Real picture</span>' +
+        '<img src="' + img + '" alt="" style="width:96px;height:96px;border-radius:14px;object-fit:cover">' +
+        '<span class="meta">Revealed once your chat passes the admin-set day — or instantly with premium "Peek early".</span></div>' +
+      '<div class="card"><span class="name">Private picture</span>' +
+        '<div style="width:96px;height:96px;border-radius:14px;overflow:hidden;position:relative">' +
+          '<img src="' + img + '" alt="Private picture (fuzzed)" style="width:96px;height:96px;object-fit:cover;filter:blur(14px) saturate(.8);transform:scale(1.3)">' +
+          '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px">🔒</span></div>' +
+        '<span class="meta">Fuzzed out for everyone — it sharpens only when ' + esc(p.name) + ' invites you in a chat, or instantly for premium members. On the live site the fuzz is baked into the served file itself.</span></div>' +
+    '</div>' +
+    '<h3 style="margin:16px 0 6px">About ' + esc(p.name) + '</h3>' +
+    '<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+      facts.map(f => '<div class="card"><span class="name" style="font-size:13px">' + esc(f[0]) + '</span><span class="meta">' + esc(f[1]) + '</span></div>').join('') +
+    '</div>' +
+    '<div style="margin-top:10px">' +
+      p.interests.map(s => '<span class="pill"' + (shared.includes(s) ? ' style="background:var(--accent);color:var(--accent-ink)"' : '') + '>' + (shared.includes(s) ? 'both: ' : '') + esc(s) + '</span>').join('') +
+    '</div>' +
+    '<h3 style="margin:16px 0 6px">In their own words</h3>' +
+    prompts.map(q => '<div class="card" style="margin-bottom:8px"><span class="name" style="font-size:13.5px">' + esc(q[0]) + '</span><span class="meta">“' + esc(q[1]) + '”</span></div>').join('');
+  $('profile-flash').innerHTML = '';
+  $('profile-modal').hidden = false;
+  $('profile-modal').scrollTop = 0;
+}
+document.addEventListener('click', e => {
+  const pact = e.target.closest('button[data-pact]');
+  if (pact) {
+    flash($('profile-flash'), 'ok', pact.dataset.pact === 'like'
+      ? 'Liked. If they like you back, a slow chat opens for you both.'
+      : 'Chat started — slow-chat pacing applies for the first 30 days. Find it in the Member app\'s Chats tab.');
+    return;
+  }
+  if (e.target.closest('#profile-close') || e.target === $('profile-modal')) {
+    $('profile-modal').hidden = true;
+    return;
+  }
+  const opener = e.target.closest('[data-profile]');
+  if (opener && !e.target.closest('button')) openProfile(opener.dataset.profile);
+});
 
 // ---------------------------------------------------------------- feature list
 const FEATURES = [["For members",[["Slow chat that earns real time","Messages start at 5 a day and 280 characters, widen every week, and unlock into unlimited real-time chat after 30 days and 10 genuine two-way conversations."],["Contact-info protection","Phone numbers, emails, links, and social handles are erased from messages until a chat unlocks — contact sharing is earned, never rushed."],["11-factor matching","Distance, interests, hobbies, outdoor life, dating goal, faith, politics, income, occupation, automobile, and popularity balance blend into one match score."],["Deep search","Filter the community by zip proximity, age, interests, hobbies, outdoor activities, dating type, faith, politics, income range, automobile, occupation, and popularity."],["Popularity rating","A fair 0–100 score from the attention you receive, normalized within your own group. Others see the score — never who viewed or messaged you."],["Video profiles","Embed up to five YouTube videos, validated and rendered safely."],["AI date concierge","Reads what a chat is really about and suggests up to three vetted nearby venues, each with a plain-language reason."],["Coupons, events & store","Partner discounts land in your wallet, event tickets enter you in venue contests automatically, and the store sells date-night kits with live stock."],["Member rewards","The most engaging members receive free memberships, gift certificates, tickets, and sponsored trips — visible in your wallet."],["Honest membership","Free to join. Member $19/year, VIP $79 (early chat unlock, boost), Elite $199 (chaperone priority, elite events)."],["Perks & income for popular members","Popular members earn: profile ad revenue, a paying Premium Members Only gallery, paid chat hours (4–8 h responding or initiating), cash back on partner-event dates, partner-scripted testimonial videos, and opt-ins for videoed dates, games, and future programs."],["Pictures come second","Real pictures reveal only after a pair's chat reaches the admin-set day — first impressions run on common interests, not appearance. Premium members hold the Peek early perk and see every picture immediately."],["Watch Party dates","A movie night on the web: a playlist of 1,000 romance films, one scheduled every day, a player with your chat right underneath — and the freedom to swap in any film from the library."]]],["Safety, women first",[["Filtering before trust","Contact data cannot leave a chat before the 30-day unlock — the scammer's rush tactic simply doesn't work here."],["Red-flag detection","Money requests, urgency pressure, off-platform pushes, and coercion raise an automatic safety alert for the recipient."],["Safety education","A public Safety Center with red flags, a first-date checklist, and exit strategies."],["Vetted venues only","Every recommended venue is atmosphere-tagged: quiet, romantic, adult, date-compatible."],["VIP chaperones","Professional bodyguard partners offer discreet escorts, safe-arrival verification, and emergency response for any date."],["Strong passwords, always","A twelve-character four-class minimum for every account, with a generated strong password offered at signup."]]],["For partner businesses",[["Self-service portal","Restaurants, lounges, cruise lines, tour and experience companies, bodyguard services, and vendors sign up and manage everything themselves."],["Three plans","Basic (free listing, random coupons, events), Pro (targeted coupons, contests, analytics), Elite (priority concierge placement, deep reporting)."],["Precision coupons","Random offers to nearby members, or targeted segments like \"women 21–35 within 30 km\" — with estimated reach before you send."],["Events & contests","Announce singles nights with capacity-controlled ticketing; attach prize draws that enter every ticket buyer automatically."],["A shelf in the store","List date-night products with live inventory; the platform handles orders."],["Live analytics","Coupons sent, redemptions, tickets sold, revenue, and contest entries — computed from the actual records."],["System integration","External ticketing, reservation, and booking systems report in over signed webhooks."],["Scripted testimonials","Write the script, set the payout, and popular members record it. Accept to pay, reject, edit for a re-record, or extend with an addition — the full review loop in the portal."]]],["The platform",[["Runs anywhere","Dependency-free PHP 8.1+ — no database server, no packages, no API keys. Deploys to any shared host by copying one folder."],["Full API","Every feature is available over a JSON API with a complete OpenAPI contract."],["Deterministic & tested","Same inputs always produce the same results, and an automated contract suite verifies every rule before anything ships."],["Desktop & mobile","One responsive interface across phones, tablets, and desktops."]]]];

@@ -98,9 +98,9 @@ $views = ['grid' => 'Grid', 'swipe' => 'Swipe', 'top10' => 'Top 10', 'top20' => 
         <?php else: ?>
             <div class="card" style="max-width:420px">
                 <div class="who">
-                    <img class="avatar" style="width:96px;height:96px" src="avatar.php?u=<?= urlencode((string) $candidate['user_id']) ?>" alt="">
+                    <a href="profile.php?u=<?= urlencode((string) $candidate['user_id']) ?>"><img class="avatar" style="width:96px;height:96px" src="avatar.php?u=<?= urlencode((string) $candidate['user_id']) ?>" alt="Open profile"></a>
                     <div>
-                        <strong style="font-size:20px"><?= sd_e((string) ($candidate['display_name'] ?: $candidate['user_id'])) ?></strong>
+                        <a href="profile.php?u=<?= urlencode((string) $candidate['user_id']) ?>" style="color:inherit;text-decoration:none"><strong style="font-size:20px"><?= sd_e((string) ($candidate['display_name'] ?: $candidate['user_id'])) ?></strong></a>
                         <?= !empty($candidate['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
                         <span style="color:#a294ad">match <?= (int) $candidate['match_score'] ?> · popularity <?= (int) $candidate['popularity_score'] ?> · ~<?= sd_e((string) $candidate['zip_distance_km']) ?> km</span>
                     </div>
@@ -277,9 +277,9 @@ $views = ['grid' => 'Grid', 'swipe' => 'Swipe', 'top10' => 'Top 10', 'top20' => 
             <?php foreach ($matches as $match): ?>
                 <div class="card">
                     <div class="who">
-                        <img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="">
+                        <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="Open profile"></a>
                         <div>
-                            <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
+                            <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong></a>
                             <?= !empty($match['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
                             <span style="color:#a294ad;font-size:13px">match <?= (int) $match['match_score'] ?> ·
                                 popularity <?= (int) $match['popularity_score'] ?> · ~<?= sd_e((string) $match['zip_distance_km']) ?> km</span>

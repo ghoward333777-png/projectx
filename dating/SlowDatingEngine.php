@@ -312,6 +312,61 @@ final class SlowDatingEngine
     }
 
     /**
+     * One member's full profile page as a given viewer sees it: facts,
+     * prompts, communities, videos, popularity, verification, picture
+     * entitlements, and — when viewing someone else — the compatibility
+     * read between the two. Opening another member's profile counts as a
+     * profile view for their popularity (and profile-ad earnings).
+     *
+     * @return array<string, mixed>
+     */
+    public function profileView(string $viewerId, string $targetId, ?int $now = null): array
+    {
+        $now ??= time();
+        $me = $this->requireUser($viewerId);
+        $target = $this->requireUser($targetId);
+        if ($viewerId !== $targetId) {
+            $this->recordPopularityEvent($targetId, 'profile_view', $now);
+        }
+        $profile = (array) $target['profile'];
+        $popularity = $this->popularity($targetId, $now);
+        $view = [
+            'user_id' => $targetId,
+            'profile' => $profile,
+            'videos' => array_values((array) ($target['videos'] ?? [])),
+            'verified' => ($target['verification']['status'] ?? '') === 'verified',
+            'member_since' => (int) ($target['created_at'] ?? 0),
+            'popularity_score' => $popularity['popularity_score'],
+            'popularity_trend' => $popularity['trend'],
+            'prompts' => $this->prompts($targetId),
+            'communities' => $this->memberCommunities($targetId),
+            'pictures' => $this->pictureRoster($targetId),
+            'can_see_real_photos' => $this->canSeeRealPhotos($viewerId, $targetId, $now),
+            'private_photo' => $this->memberPhoto($targetId, 'private') === null ? 'none'
+                : ($this->canSeePrivatePhoto($viewerId, $targetId) ? 'clear' : 'fuzzed'),
+        ];
+        if ($viewerId !== $targetId) {
+            $myProfile = (array) $me['profile'];
+            $factors = $this->compatibilityFactors(
+                $myProfile,
+                $profile,
+                $this->popularity($viewerId, $now)['popularity_score'],
+                $popularity['popularity_score'],
+            );
+            $score = 0.0;
+            foreach (self::MATCH_WEIGHTS as $factor => $weight) {
+                $score += $factors[$factor] * $weight;
+            }
+            $view['match_score'] = (int) round($score * 100);
+            $view['zip_distance_km'] = $this->zipProximityKm((string) $myProfile['zip_code'], (string) $profile['zip_code']);
+            $view['shared_interests'] = array_values(array_intersect((array) $myProfile['interests'], (array) $profile['interests']));
+            $view['shared_hobbies'] = array_values(array_intersect((array) $myProfile['hobbies'], (array) $profile['hobbies']));
+            $view['compatibility_factors'] = $factors;
+        }
+        return $view;
+    }
+
+    /**
      * @param array<string, mixed> $fields
      * @return array<string, mixed>
      */
@@ -520,6 +575,85 @@ final class SlowDatingEngine
             }
         }
         return false;
+    }
+
+    /**
+     * Whether a viewer may see a member's PRIVATE picture sharp. The owner
+     * always can; premium members can; and a chat partner can once the
+     * owner granted permission by choosing their private picture for the
+     * chat the two of them share. Everyone else gets the fuzzed rendition.
+     */
+    public function canSeePrivatePhoto(string $viewerId, string $ownerId): bool
+    {
+        if ($viewerId === '' || $ownerId === '') {
+            return false;
+        }
+        if ($viewerId === $ownerId || $this->isPremium($viewerId)) {
+            return true;
+        }
+        $pairKey = implode('|', [min($viewerId, $ownerId), max($viewerId, $ownerId)]);
+        foreach ($this->store->all('chats') as $chat) {
+            if (($chat['pair_key'] ?? '') === $pairKey
+                && (string) ($chat['image_choices'][$ownerId] ?? '') === 'private') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A member's private picture as one viewer is entitled to see it:
+     * sharp for the owner, premium members, and chat partners the owner
+     * invited (their private picture chosen for that chat); fuzzed beyond
+     * recognition for everyone else — the served bytes carry no detail,
+     * so no client-side trick recovers the original. Returns null when no
+     * private picture exists, or when a viewer without clearance cannot
+     * be served the fuzzed rendition (no GD): the picture is withheld,
+     * never leaked sharp.
+     *
+     * @return array{bytes: string, mime: string, fuzzed: bool}|null
+     */
+    public function privatePhotoView(string $viewerId, string $ownerId): ?array
+    {
+        $photo = $this->memberPhoto($ownerId, 'private');
+        if ($photo === null) {
+            return null;
+        }
+        $bytes = (string) file_get_contents($photo['path']);
+        if ($this->canSeePrivatePhoto($viewerId, $ownerId)) {
+            return ['bytes' => $bytes, 'mime' => $photo['mime'], 'fuzzed' => false];
+        }
+        $fuzzed = $this->fuzzedPhoto($bytes);
+        return $fuzzed === null ? null : ['bytes' => $fuzzed, 'mime' => 'image/jpeg', 'fuzzed' => true];
+    }
+
+    /**
+     * Fuzz a picture beyond recognition: collapse it to a handful of
+     * pixels and scale back up. Deterministic — same input, same bytes.
+     */
+    private function fuzzedPhoto(string $bytes): ?string
+    {
+        if (!extension_loaded('gd')) {
+            return null;
+        }
+        $source = @imagecreatefromstring($bytes);
+        if ($source === false) {
+            return null;
+        }
+        $width = imagesx($source);
+        $height = imagesy($source);
+        $tinyWidth = 12;
+        $tinyHeight = max(1, (int) round($tinyWidth * $height / max(1, $width)));
+        $tiny = imagecreatetruecolor($tinyWidth, $tinyHeight);
+        imagecopyresampled($tiny, $source, 0, 0, 0, 0, $tinyWidth, $tinyHeight, $width, $height);
+        $out = imagecreatetruecolor($width, $height);
+        imagecopyresampled($out, $tiny, 0, 0, 0, 0, $width, $height, $tinyWidth, $tinyHeight);
+        imagedestroy($source);
+        imagedestroy($tiny);
+        ob_start();
+        imagejpeg($out, null, 72);
+        imagedestroy($out);
+        return (string) ob_get_clean();
     }
 
     /** The three profile pictures: generated artwork plus two upload slots. */
