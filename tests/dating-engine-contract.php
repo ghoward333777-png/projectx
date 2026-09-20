@@ -723,7 +723,18 @@ contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear t
 
 // ---- Watch Party channels: nature cams, ambient, Bible narration, church --------
 $channels = $engine->watchChannels();
-contract_check(count($channels) === 5 && isset($channels['nature'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries five channels');
+contract_check(count($channels) === 16 && isset($channels['nature'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');
+foreach (['nature-sounds', 'hybrid', 'lofi', 'piano', 'asmr', 'scenic', 'meditation', 'official', 'jazz-cafe', 'rain', 'world'] as $relaxChannel) {
+    contract_check(($channels[$relaxChannel]['entries'] ?? 0) >= 3, "the {$relaxChannel} relaxation channel is stocked");
+}
+$grouped = [];
+foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $group) {
+    foreach ($group as $slug) {
+        contract_check(isset($channels[$slug]), 'every menu group entry is a real channel');
+        $grouped[] = $slug;
+    }
+}
+contract_check(count($grouped) === count($channels), 'the pop-down menu covers every channel exactly once');
 $nature = $engine->channelLibrary('nature', '', 100);
 contract_check($nature['total'] >= 36, 'the nature channel is a full library of live scenes');
 $natureTags = array_unique(array_map(static fn (array $f): string => (string) $f['tag'], $nature['films']));

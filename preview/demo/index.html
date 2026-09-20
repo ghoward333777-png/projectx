@@ -410,13 +410,50 @@
         </div>
       </section>
       <section class="panel" id="w-library-panel">
+        <style>
+          .chmenu { position: relative; display: inline-block; }
+          .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
+            color: var(--accent); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+          .chmenu summary::-webkit-details-marker { display: none; }
+          .chmenu[open] summary { background: var(--accent); color: var(--accent-ink); }
+          .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
+            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
+            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
+          .chmenu-list button { text-align: left; background: none; border: 0; color: var(--accent);
+            padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+          .chmenu-list button:hover { background: #262030; }
+          .chmenu-list button.on { background: #4a2440; font-weight: 800; }
+        </style>
         <p style="margin:0 0 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <strong style="color:var(--text)">Channels:</strong>
-          <button class="act small" data-wch="romance">Romance movies</button>
-          <button class="quiet small" data-wch="nature">Live Nature cams</button>
-          <button class="quiet small" data-wch="ambient">Ambient music</button>
-          <button class="quiet small" data-wch="bible">Bible narration</button>
-          <button class="quiet small" data-wch="church">Church videos</button>
+          <details class="chmenu" open><summary>Movies ▾</summary>
+            <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button></div>
+          </details>
+          <details class="chmenu"><summary>Live Nature ▾</summary>
+            <div class="chmenu-list"><button data-wch="nature">Live Nature cams</button></div>
+          </details>
+          <details class="chmenu"><summary>Relaxation ▾</summary>
+            <div class="chmenu-list">
+              <button data-wch="ambient">Ambient music</button>
+              <button data-wch="nature-sounds">Nature sounds</button>
+              <button data-wch="hybrid">Music + nature</button>
+              <button data-wch="lofi">Lofi &amp; chill beats</button>
+              <button data-wch="piano">Piano &amp; instrumental</button>
+              <button data-wch="asmr">ASMR nature</button>
+              <button data-wch="scenic">Scenic 4K</button>
+              <button data-wch="meditation">Meditation &amp; healing</button>
+              <button data-wch="official">Official relaxation</button>
+              <button data-wch="jazz-cafe">Jazz &amp; café</button>
+              <button data-wch="rain">Rain &amp; weather</button>
+              <button data-wch="world">World ambient</button>
+            </div>
+          </details>
+          <details class="chmenu"><summary>Faith ▾</summary>
+            <div class="chmenu-list">
+              <button data-wch="bible">Bible narration</button>
+              <button data-wch="church">Church videos</button>
+            </div>
+          </details>
         </p>
         <h2 id="w-lib-title">The romance library — pick any film instead</h2>
         <p id="w-lib-blurb">Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
@@ -1209,8 +1246,12 @@ function renderWatch() {
     ' in the playlist · a new film every day, the same one for every couple.' +
     (isScheduled ? ' You are watching it now.' : ' Your party swapped it for its own pick.') + '</span>' +
     (isScheduled ? '' : '<button class="quiet" data-wfilm="' + scheduledFilm[0] + '">Back to the scheduled movie</button>') + '</div>';
-  const chLabel = rank >= 2300 ? 'Church videos' : rank >= 2200 ? 'Bible narration'
-    : rank >= 2100 ? 'Ambient music' : rank >= 2000 ? 'Live Nature cams' : null;
+  let chLabel = null;
+  if (rank >= 2000) {
+    for (const key in WCHANNELS) {
+      if (key !== 'romance' && WCHANNELS[key].rows.some(f => f[0] === rank)) { chLabel = WCHANNELS[key].label; break; }
+    }
+  }
   const plFallback = !watchState.film[4] && !watchState.embedOverride && watchState.rotate == null;
   $('w-title').innerHTML = '<h2>' + esc(title) + (year > 0 ? ' (' + year + ')' : '') + ' <span class="pill">' +
     (chLabel ? chLabel : (rank > 0 ? '#' + rank + ' in the romance playlist' : "tonight's featured premiere")) +
@@ -1334,12 +1375,59 @@ const NATURE = [
   [2040,'Snowfall cabin live cam',0,'snow','',true],
 ];
 const AMBIENT = [
-  [2101,'Lofi hip hop radio',0,'lofi','',true],[2102,'Relaxing jazz radio',0,'jazz','',true],
-  [2103,'Classical piano for studying',0,'classical','',false],[2104,'Rain sounds for sleeping',0,'rain','',false],
-  [2105,'Ocean waves white noise',0,'ocean','',false],[2106,'Crackling fireplace ambience',0,'fireplace','',false],
-  [2107,'Deep space ambient music',0,'space','',false],[2108,'Calm meditation music',0,'meditation','',false],
-  [2109,'Coffee shop ambience',0,'cafe','',false],[2110,'Smooth jazz saxophone',0,'jazz','',false],
-  [2111,'Celtic relaxing music',0,'celtic','',false],[2112,'Deep focus concentration music',0,'focus','',false],
+  [2101,'Spa Massage Music World relaxing music',0,'spa','',true],[2102,'Amaltea Relaxing Music inner calm',0,'focus','',false],
+  [2103,'Soothing Relaxation beautiful ambient music',0,'ambient','',false],[2104,'OCB Relax Music ambient',0,'ambient','',false],
+  [2105,'Classical piano for studying',0,'classical','',false],[2106,'Deep space ambient music',0,'space','',false],
+  [2107,'Crackling fireplace ambience',0,'fireplace','',false],[2108,'Celtic relaxing music',0,'celtic','',false],
+  [2109,'Deep focus concentration music',0,'focus','',false],[2110,'Calm meditation tones',0,'meditation','',false],
+];
+const NATSOUNDS = [
+  [2401,'Streaming Noise forest ambience birds and streams',0,'forest','',false],[2402,'Naturescapes woodland stream and birdsong',0,'stream','',false],
+  [2403,'Nature Forest Sounds gentle stream with birdsong',0,'stream','',false],[2404,'Healing Nature spring nature therapy sounds',0,'therapy','',false],
+  [2405,'Ocean waves rolling on the shore sounds',0,'ocean','',false],[2406,'Rain on forest leaves nature sounds',0,'rain','',false],
+];
+const HYBRID = [
+  [2421,'Calmed By Nature meadow and mountain ambience',0,'meadow','',false],[2422,'OCB Relax ambient music with birdsong',0,'birdsong','',false],
+  [2423,'321 Relaxing meditation piano with water sounds',0,'piano','',false],[2424,'Mountain vistas with relaxing music',0,'mountain','',false],
+];
+const LOFI = [
+  [2441,'Lofi Girl radio beats to relax study to',0,'lofi','',true],[2442,'Chillhop Music radio jazzy beats',0,'chillhop','',true],
+  [2443,'Sonorama Relaxing Music deep house chillout',0,'chillout','',false],[2444,'Night city lofi rain and neon',0,'city','',false],
+  [2445,'Cozy fireplace lofi beats',0,'cozy','',false],[2446,'Forest ambience lofi beats',0,'forest','',false],
+];
+const PIANO = [
+  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','',false],
+  [2463,'Soft acoustic guitar relaxation',0,'guitar','',false],[2464,'Relaxing flute instrumental music',0,'flute','',false],
+  [2465,'Peaceful piano for reading',0,'piano','',false],
+];
+const ASMRN = [
+  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','',false],
+  [2483,'ASMR wind through leaves',0,'wind','',false],[2484,'Relaxing white noise ASMR water',0,'water','',false],
+];
+const SCENIC = [
+  [2501,'Nature Relaxation Films 4K landscapes',0,'4k','',false],[2502,'National Geographic meditative ASMR nature',0,'documentary','',false],
+  [2503,'4K drone landscapes with ambient music',0,'aerial','',false],[2504,'Scenic train journeys 4K',0,'journey','',false],
+];
+const MEDIT = [
+  [2521,'Peaceful Yourself healing sound nature',0,'healing','',false],[2522,'Nature relax stress relief sleep music',0,'sleep','',false],
+  [2523,'Solfeggio healing frequencies meditation',0,'frequencies','',false],[2524,'Guided calm meditation for two',0,'guided','',false],
+];
+const OFFICIAL = [
+  [2541,'BBC Earth Our Green Planet relaxing nature sounds',0,'nature','',false],[2542,'Everyday Calm ambient sounds to relax',0,'ambient','',false],
+  [2543,'BBC Earth meditative nature ASMR',0,'asmr','',false],
+];
+const JAZZCAFE = [
+  [2561,'Relax Café Music smooth jazz',0,'jazz','',true],[2562,'Jazz and bossa nova café ambience',0,'bossa nova','',false],
+  [2563,'Sonorama smooth jazz café ambience',0,'jazz','',false],[2564,'Coffee shop jazz radio',0,'cafe','',true],
+];
+const RAINW = [
+  [2581,'Rainy Nights Piano live stream',0,'piano','',true],[2582,'Rainstorm and thunder for sleep',0,'thunder','',false],
+  [2583,'Waterfall white noise',0,'waterfall','',false],[2584,'Gentle rain on a window',0,'rain','',false],
+  [2585,'River flowing with birds chirping',0,'river','',false],
+];
+const WORLDA = [
+  [2601,'Sonorama world ambient flute music',0,'flute','',false],[2602,'Native American flute relaxation',0,'flute','',false],
+  [2603,'Arabic oud ambient music',0,'oud','',false],[2604,'Celtic harp ambience',0,'harp','',false],
 ];
 const BIBLE = [
   [2201,'The Book of Genesis — audio Bible',0,'old testament','',false],[2202,'The Book of Psalms — audio Bible',0,'psalms','',false],
@@ -1358,14 +1446,25 @@ const CHURCH = [
   [2311,'Organ hymns from great cathedrals',0,'hymns','',false],[2312,'Gospel music classics',0,'choir','',false],
 ];
 const WCHANNELS = {
-  romance: { rows: FILMS, title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
-  nature: { rows: NATURE, title: 'Live Nature cams — pick a scene', blurb: 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, wildlife, and more — live from around the world. The live site resolves each cam\'s current stream automatically.' },
-  ambient: { rows: AMBIENT, title: 'Ambient music — set the mood', blurb: 'Lofi, jazz, rain, fireplace — a soundtrack for slow evenings together.' },
-  bible: { rows: BIBLE, title: 'Bible narration — the Scriptures read aloud', blurb: 'Book by book, ready to play in the party player.' },
-  church: { rows: CHURCH, title: 'Church videos — worship together', blurb: 'Worship services, choirs, hymns, and carols.' },
+  romance: { rows: FILMS, label: 'Romance movies', title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
+  nature: { rows: NATURE, label: 'Live Nature cams', title: 'Live Nature cams — pick a scene', blurb: 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, wildlife, and more — live from around the world. The live site resolves each cam\'s current stream automatically.' },
+  ambient: { rows: AMBIENT, label: 'Ambient music', title: 'Ambient music — set the mood', blurb: 'Soft instrumentals, ambient pads, slow synths, and meditation tones.' },
+  'nature-sounds': { rows: NATSOUNDS, label: 'Nature sounds', title: 'Nature sounds — pure ambience', blurb: 'Forests, rivers, rain, birds, and ocean — nothing but nature.' },
+  hybrid: { rows: HYBRID, label: 'Music + nature', title: 'Music + nature — the hybrid channels', blurb: 'Relaxing music blended with nature visuals and soundscapes.' },
+  lofi: { rows: LOFI, label: 'Lofi & chill beats', title: 'Lofi & chill beats — cozy loops', blurb: 'Chillhop, lofi beats, and cozy animated scenes.' },
+  piano: { rows: PIANO, label: 'Piano & instrumental', title: 'Piano & instrumental — gentle keys', blurb: 'Live piano, soft guitar, flute, and classical ambient.' },
+  asmr: { rows: ASMRN, label: 'ASMR nature', title: 'ASMR nature — close and quiet', blurb: 'Close-mic\'d streams, water, wind, and leaves.' },
+  scenic: { rows: SCENIC, label: 'Scenic 4K', title: 'Scenic 4K — a window on the world', blurb: 'High-resolution landscapes with ambient music.' },
+  meditation: { rows: MEDIT, label: 'Meditation & healing', title: 'Meditation & healing — reset together', blurb: 'Healing frequencies, solfeggio tones, and guided calm.' },
+  official: { rows: OFFICIAL, label: 'Official relaxation', title: 'Official relaxation streams', blurb: 'Professional, branded relaxation ambience.' },
+  'jazz-cafe': { rows: JAZZCAFE, label: 'Jazz & café', title: 'Jazz & café — cozy background', blurb: 'Relaxing jazz with cozy café ambience.' },
+  rain: { rows: RAINW, label: 'Rain & weather', title: 'Rain & weather — storms and streams', blurb: 'Rainstorms, thunder, waterfalls, and rivers.' },
+  world: { rows: WORLDA, label: 'World ambient', title: 'World ambient — instruments of everywhere', blurb: 'Flute, oud, harp — cultural ambience.' },
+  bible: { rows: BIBLE, label: 'Bible narration', title: 'Bible narration — the Scriptures read aloud', blurb: 'Book by book, ready to play in the party player.' },
+  church: { rows: CHURCH, label: 'Church videos', title: 'Church videos — worship together', blurb: 'Worship services, choirs, hymns, and carols.' },
 };
 let watchChannel = 'romance';
-const ALLFILMS = FILMS.concat(NATURE, AMBIENT, BIBLE, CHURCH);
+const ALLFILMS = FILMS.concat(NATURE, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
 function renderWatchGrid() {
   const c = WCHANNELS[watchChannel];
   $('w-lib-title').textContent = c.title;
@@ -1389,8 +1488,9 @@ $('portal-watch').addEventListener('click', e => {
     renderWatchPlayer();
   } else if (b.dataset.wch) {
     watchChannel = b.dataset.wch;
-    document.querySelectorAll('#w-library-panel button[data-wch]').forEach(x =>
-      x.className = (x.dataset.wch === watchChannel ? 'act' : 'quiet') + ' small');
+    document.querySelectorAll('#w-library-panel .chmenu-list button[data-wch]').forEach(x =>
+      x.className = x.dataset.wch === watchChannel ? 'on' : '');
+    document.querySelectorAll('#w-library-panel details.chmenu').forEach(d => { d.open = !!d.querySelector('button.on'); });
     renderWatchGrid();
   } else if (b.dataset.wfilm) {
     watchState.film = ALLFILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;

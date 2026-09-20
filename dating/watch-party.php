@@ -362,14 +362,36 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     </p>
     <?php endif; ?>
 
-    <p class="links" style="margin:0">
+    <!-- Compact channel menu: pop-down submenus instead of a long row. -->
+    <style>
+        .chmenu { position: relative; display: inline-block; margin: 0 4px 0 0; }
+        .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
+            color: #ffc4da; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+        .chmenu summary::-webkit-details-marker { display: none; }
+        .chmenu[open] summary { background: #ff9cc0; color: #2a0f1d; }
+        .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
+            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
+            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
+        .chmenu-list a { display: block; padding: 7px 10px; border-radius: 8px; color: #ffb8d2;
+            text-decoration: none; font-size: 13px; margin: 0; }
+        .chmenu-list a:hover { background: #262030; text-decoration: none; }
+        .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
+    </style>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <strong style="color:#eadff0;font-size:13px">Channels:</strong>
-        <?php foreach ($channels as $slug => $meta): ?>
-            <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' style="font-weight:800;text-decoration:underline"' : '' ?>><?= sd_e((string) $meta['label']) ?></a>
+        <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
+            <details class="chmenu"<?= $mode === 'library' && in_array($ch, $groupChannels, true) ? ' open' : '' ?>>
+                <summary><?= sd_e($groupLabel) ?> ▾</summary>
+                <div class="chmenu-list">
+                    <?php foreach ($groupChannels as $slug): ?>
+                        <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </details>
         <?php endforeach; ?>
-        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together · bring your own YouTube</a>
-        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party · rooms &amp; split payments →</a>
-    </p>
+        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
+        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party →</a>
+    </div>
 
     <?php if ($mode === 'premium'): ?>
     <?php $sync = $engine->watchSync($chatId, $userId); ?>
