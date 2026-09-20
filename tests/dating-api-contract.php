@@ -14,6 +14,7 @@ function contract_check(bool $condition, string $message): void
 
 putenv(SlowDatingApi::WEBHOOK_SECRET_ENV . '=test-webhook-secret');
 
+putenv('SLOWDATING_NO_LOOKUP=1');   // keep the contract offline & deterministic
 $stateDir = sys_get_temp_dir() . '/slowdating-api-test-' . getmypid();
 exec('rm -rf ' . escapeshellarg($stateDir));
 $api = new SlowDatingApi(new SlowDatingEngine(new SlowDatingStore($stateDir)));

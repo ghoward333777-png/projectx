@@ -90,7 +90,7 @@ sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
     #watchparty .chat-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
     #watchparty .chat-header span { font-size: 12px; color: #9ca3af; }
     #watchparty .messages {
-        height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;
+        height: max(340px, 48vh); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;
     }
     #watchparty .message {
         display: inline-flex; flex-direction: column; max-width: 70%; padding: 8px 10px;
@@ -106,7 +106,7 @@ sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
     #watchparty .input-area { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #1f2937; padding-top: 8px; background: none; border-radius: 0; padding-left: 0; padding-right: 0; padding-bottom: 0; margin-top: 0; border-left: 0; border-right: 0; border-bottom: 0; }
     #watchparty .input-row { display: flex; gap: 8px; align-items: flex-end; }
     #watchparty .input-row textarea {
-        flex: 1; resize: none; min-height: 60px; max-height: 140px; padding: 8px; border-radius: 8px;
+        flex: 1; resize: vertical; min-height: 90px; max-height: 220px; padding: 10px; border-radius: 8px;
         border: 1px solid #374151; background: #020617; color: #e5e7eb; font-size: 13px; width: auto;
     }
     #watchparty .input-row textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
@@ -204,19 +204,17 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
 </section>
 
 <div id="watchparty">
-    <!-- Player -->
+    <!-- Player: every film plays inside the page (YouTube's ads run in
+         the embed), through the curated id or the resolved best upload. -->
     <div class="video-wrapper">
-        <?php if (!empty($film['playable'])): ?>
+        <?php if (!empty($film['embed_url'])): ?>
             <iframe src="<?= sd_e((string) $film['embed_url']) ?>" title="<?= sd_e((string) $film['title']) ?>"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen></iframe>
         <?php else: ?>
             <div class="video-fallback">
                 <strong style="color:#fff;font-size:18px"><?= sd_e($filmLabel) ?></strong>
-                <span style="color:#9ca3af;font-size:13px;max-width:48ch">This film streams on YouTube from its own distributors.
-                    Open it in a second tab, press play together, and keep chatting here.</span>
-                <a href="<?= sd_e((string) $film['watch_url']) ?>" target="_blank" rel="noopener"
-                   style="display:inline-block;background:#1d4ed8;color:#fff;border-radius:8px;padding:10px 18px;font-weight:700;text-decoration:none">Open on YouTube</a>
+                <span style="color:#9ca3af;font-size:13px;max-width:48ch">Finding this film's stream — refresh in a moment.</span>
             </div>
         <?php endif; ?>
     </div>

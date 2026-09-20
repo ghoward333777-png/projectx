@@ -12,6 +12,7 @@ function contract_check(bool $condition, string $message): void
     }
 }
 
+putenv('SLOWDATING_NO_LOOKUP=1');   // keep the contract offline & deterministic
 $stateDir = sys_get_temp_dir() . '/slowdating-engine-test-' . getmypid();
 exec('rm -rf ' . escapeshellarg($stateDir));
 $engine = new SlowDatingEngine(new SlowDatingStore($stateDir));
@@ -642,7 +643,7 @@ do {
 } while ($page < 10);
 contract_check(count($ids) === 1000, 'every film in the playlist must be unique');
 $playable = $engine->romanceFilms('charade', 10, 0);
-contract_check($playable['films'][0]['playable'] === true && str_contains((string) $playable['films'][0]['embed_url'], 'youtube-nocookie.com/embed/'), 'verified public-domain films must embed in-page');
+contract_check($playable['films'][0]['playable'] === true && str_contains((string) $playable['films'][0]['embed_url'], 'youtube.com/embed/'), 'verified public-domain films must embed in-page');
 $searchOnly = $engine->romanceFilm('titanic-1997');
 contract_check($searchOnly !== null && $searchOnly['playable'] === false && str_contains((string) $searchOnly['watch_url'], 'results?search_query='), 'unverified films must open through a YouTube search');
 
@@ -676,6 +677,13 @@ $asBob = $engine->watchPartyFor($chatId, $bob['user_id'], $tDay);
 contract_check($asBob['film']['id'] === 'charade-1963', 'both partners must see the same picked film');
 $party = $engine->chooseWatchPartyFilm($chatId, $bob['user_id'], 'daily', $tDay);
 contract_check($party['film']['id'] === $daily['id'] && $party['custom_pick'] === false, 'the party must return to the scheduled movie on demand');
+// Every film plays in-page: a resolved video (cached keyless lookup of
+// YouTube search) upgrades an uncurated film to an embedded stream.
+$engine->store()->put('film_videos', 'titanic-1997', ['video_id' => 'abcDEF12345', 'resolved_at' => $tDay]);
+$engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'titanic-1997', $tDay);
+$party = $engine->watchPartyFor($chatId, $alice['user_id'], $tDay);
+contract_check($party['film']['playable'] === true && $party['film']['embed_url'] === 'https://www.youtube.com/embed/abcDEF12345', 'resolved films must embed in-page like curated ones');
+$engine->chooseWatchPartyFilm($chatId, $alice['user_id'], 'daily', $tDay);
 
 // ---- Photo reveal timeframe & the Peek early perk ------------------------------------
 $threw = false;

@@ -3367,6 +3367,7 @@ final class SlowDatingEngine
         $scheduled = $this->filmOfTheDay($now);
         $pick = is_array($chat['watch_party'] ?? null) ? $chat['watch_party'] : null;
         $film = $pick !== null ? ($this->romanceFilm((string) $pick['film_id']) ?? $scheduled) : $scheduled;
+        $film = $this->resolveFilmVideo($film, $now);
         return [
             'chat_id' => (string) $chat['id'],
             'scheduled' => $scheduled,
@@ -3407,13 +3408,51 @@ final class SlowDatingEngine
     private function presentFilm(array $film): array
     {
         $id = $film['youtube_id'] ?? null;
+        if ($id === null) {
+            $cached = $this->store->get('film_videos', (string) $film['id']);
+            if (is_array($cached) && ($cached['video_id'] ?? '') !== '') {
+                $id = (string) $cached['video_id'];
+            }
+        }
         return $film + [
             'playable' => $id !== null,
-            'embed_url' => $id !== null ? 'https://www.youtube-nocookie.com/embed/' . $id : null,
+            'embed_url' => $id !== null ? 'https://www.youtube.com/embed/' . $id : null,
             'watch_url' => $id !== null
                 ? 'https://www.youtube.com/watch?v=' . $id
                 : 'https://www.youtube.com/results?search_query=' . rawurlencode(trim($film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie')),
         ];
+    }
+
+    /**
+     * Make sure the film plays inside the page: films without a curated
+     * video get their best YouTube upload resolved once (a keyless lookup
+     * of YouTube's own search results) and cached forever in the store,
+     * so the embed — and YouTube's ads with it — runs on our page instead
+     * of sending the couple away. Set SLOWDATING_NO_LOOKUP=1 to disable
+     * the network lookup (tests, offline hosts).
+     *
+     * @param array<string, mixed> $film @return array<string, mixed>
+     */
+    public function resolveFilmVideo(array $film, ?int $now = null): array
+    {
+        unset($film['playable'], $film['embed_url'], $film['watch_url']);
+        if (!empty($film['youtube_id'])) {
+            return $this->presentFilm($film);
+        }
+        $filmId = (string) $film['id'];
+        $cached = $this->store->get('film_videos', $filmId);
+        if (!is_array($cached) && !getenv('SLOWDATING_NO_LOOKUP')) {
+            $query = trim($film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie');
+            $context = stream_context_create(['http' => [
+                'timeout' => 8,
+                'header' => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: CONSENT=YES+cb\r\nAccept-Language: en\r\n",
+            ]]);
+            $html = @file_get_contents('https://www.youtube.com/results?search_query=' . rawurlencode($query), false, $context);
+            if (is_string($html) && preg_match('/"videoId":"([A-Za-z0-9_-]{11})"/', $html, $match) === 1) {
+                $this->store->put('film_videos', $filmId, ['video_id' => $match[1], 'resolved_at' => $now ?? time()]);
+            }
+        }
+        return $this->presentFilm($film);
     }
 
     // ------------------------------------------------------------------

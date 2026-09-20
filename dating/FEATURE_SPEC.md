@@ -584,7 +584,12 @@ uploads carry a real `youtube_id` and play in an in-page embed: the operator-fea
 premiere at #1 (Inevitable Hearts — a full romance movie streamed free by its distributor)
 plus twelve public-domain classics (Charade, His Girl Friday, My Man Godfrey, Penny
 Serenade, Made for Each Other, Love Affair, Royal Wedding, A Star Is Born '37,
-Nothing Sacred, Algiers, Cyrano de Bergerac '50, Second Chorus); every other film opens through a YouTube search link so the
+Nothing Sacred, Algiers, Cyrano de Bergerac '50, Second Chorus). **Every other
+film also plays inside the page**: on first view, `resolveFilmVideo` finds the
+film's best YouTube upload (a keyless read of YouTube's own search results) and
+caches it forever in `film_videos`, so the stream — and YouTube's ads with it —
+runs in the embedded player instead of sending the couple away
+(`SLOWDATING_NO_LOOKUP=1` disables the lookup for tests/offline hosts); every other film opens through a YouTube search link so the
 couple uses the best available upload from the film's own distributors. The builder
 is the harvesting point: ops can extend it with the YouTube Data API (key optional
 by design) to refresh popularity order.
