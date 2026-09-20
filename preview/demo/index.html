@@ -604,6 +604,58 @@ const MEMBERS = {
   sofia:  { name: 'Sofia',  age: 34, gender: 'female', zip: '90214', km: 15,  pop: 23, raw: 43,  interests: ['cruises', 'fine dining'],         type: 'marriage', income: '150k_plus', job: 'legal', faith: 'catholic' },
   james:  { name: 'James',  age: 28, gender: 'male',   zip: '90213', km: 15,  pop: 26, raw: 20,  interests: ['jazz', 'hiking', 'coffee'],       type: 'slow_dating', income: '30k_60k', job: 'education', faith: 'none' },
 };
+for (const k of ['alice', 'emma', 'sofia', 'bob', 'marcus', 'james']) MEMBERS[k].thumb = true;
+// The photographed Browse library — one demo profile per uploaded picture.
+const LIB = {
+  "female-01": { name: "Ava", age: 21, gender: "female", km: 0, pop: 35, interests: ["jazz","dancing","opera"], type: "long_term", income: "under_30k", job: "tech", faith: "none", verified: true, thumb: true },
+  "female-02": { name: "Mia", age: 28, gender: "female", km: 2, pop: 48, interests: ["wine","hiking","live music"], type: "short_term", income: "30k_60k", job: "finance", faith: "christian", thumb: true },
+  "female-03": { name: "Zoe", age: 35, gender: "female", km: 4, pop: 61, interests: ["travel","film","art"], type: "casual", income: "60k_100k", job: "medical", faith: "catholic", thumb: true },
+  "female-04": { name: "Lily", age: 42, gender: "female", km: 6, pop: 74, interests: ["italian food","sailing","cooking"], type: "marriage", income: "100k_150k", job: "legal", faith: "jewish", verified: true, thumb: true },
+  "female-05": { name: "Nora", age: 24, gender: "female", km: 8, pop: 87, interests: ["dancing","tennis","poetry"], type: "slow_dating", income: "150k_plus", job: "arts", faith: "spiritual", thumb: true },
+  "female-06": { name: "Ruby", age: 31, gender: "female", km: 5, pop: 40, interests: ["art","poetry","cruises"], type: "long_term", income: "under_30k", job: "education", faith: "none", thumb: true },
+  "female-07": { name: "Isla", age: 38, gender: "female", km: 9, pop: 53, interests: ["cruises","travel","sailing"], type: "short_term", income: "30k_60k", job: "service", faith: "christian", verified: true, thumb: true },
+  "female-08": { name: "Cora", age: 45, gender: "female", km: 18, pop: 66, interests: ["hiking","art","jazz"], type: "casual", income: "60k_100k", job: "government", faith: "none", thumb: true },
+  "female-09": { name: "Jade", age: 27, gender: "female", km: 14, pop: 79, interests: ["coffee","hiking"], type: "marriage", income: "100k_150k", job: "entrepreneur", faith: "christian", thumb: true },
+  "female-10": { name: "Elle", age: 34, gender: "female", km: 22, pop: 92, interests: ["escape rooms","opera","photography"], type: "slow_dating", income: "150k_plus", job: "marketing", faith: "catholic", verified: true, thumb: true },
+  "female-11": { name: "Maya", age: 41, gender: "female", km: 0, pop: 45, interests: ["film","photography","wine"], type: "long_term", income: "under_30k", job: "tech", faith: "jewish", thumb: true },
+  "female-12": { name: "Tess", age: 23, gender: "female", km: 2, pop: 58, interests: ["opera","board games","coffee"], type: "short_term", income: "30k_60k", job: "finance", faith: "spiritual", thumb: true },
+  "female-13": { name: "Rosa", age: 30, gender: "female", km: 4, pop: 71, interests: ["cooking","jazz","yoga"], type: "casual", income: "60k_100k", job: "medical", faith: "none", verified: true, thumb: true },
+  "female-14": { name: "Iris", age: 37, gender: "female", km: 6, pop: 84, interests: ["sailing","italian food","travel"], type: "marriage", income: "100k_150k", job: "legal", faith: "christian", thumb: true },
+  "female-15": { name: "Faye", age: 44, gender: "female", km: 8, pop: 37, interests: ["photography","cruises","escape rooms"], type: "slow_dating", income: "150k_plus", job: "arts", faith: "none", thumb: true },
+  "female-16": { name: "Nina", age: 26, gender: "female", km: 5, pop: 50, interests: ["yoga","escape rooms","tennis"], type: "long_term", income: "under_30k", job: "education", faith: "christian", verified: true, thumb: true },
+  "female-17": { name: "Skye", age: 33, gender: "female", km: 9, pop: 63, interests: ["tennis","cooking","italian food"], type: "short_term", income: "30k_60k", job: "service", faith: "catholic", thumb: true },
+  "female-18": { name: "Vera", age: 40, gender: "female", km: 18, pop: 76, interests: ["board games","yoga","film"], type: "casual", income: "60k_100k", job: "government", faith: "jewish", thumb: true },
+  "female-19": { name: "Luna", age: 22, gender: "female", km: 14, pop: 89, interests: ["live music","board games"], type: "marriage", income: "100k_150k", job: "entrepreneur", faith: "spiritual", verified: true, thumb: true },
+  "female-20": { name: "Dana", age: 29, gender: "female", km: 22, pop: 42, interests: ["poetry","wine","dancing"], type: "slow_dating", income: "150k_plus", job: "marketing", faith: "none", thumb: true },
+  "female-21": { name: "Gwen", age: 36, gender: "female", km: 0, pop: 55, interests: ["jazz","dancing","opera"], type: "long_term", income: "under_30k", job: "tech", faith: "christian", thumb: true },
+  "female-22": { name: "Hope", age: 43, gender: "female", km: 2, pop: 68, interests: ["wine","hiking","live music"], type: "short_term", income: "30k_60k", job: "finance", faith: "none", verified: true, thumb: true },
+  "female-23": { name: "June", age: 25, gender: "female", km: 4, pop: 81, interests: ["travel","film","art"], type: "casual", income: "60k_100k", job: "medical", faith: "christian", thumb: true },
+  "female-24": { name: "Kira", age: 32, gender: "female", km: 6, pop: 94, interests: ["italian food","sailing","cooking"], type: "marriage", income: "100k_150k", job: "legal", faith: "catholic", thumb: true },
+  "female-25": { name: "Wren", age: 39, gender: "female", km: 8, pop: 47, interests: ["dancing","tennis","poetry"], type: "slow_dating", income: "150k_plus", job: "arts", faith: "jewish", verified: true, thumb: true },
+  "female-26": { name: "Sage", age: 21, gender: "female", km: 5, pop: 60, interests: ["art","poetry","cruises"], type: "long_term", income: "under_30k", job: "education", faith: "spiritual", thumb: true },
+  "female-27": { name: "Demi", age: 28, gender: "female", km: 9, pop: 73, interests: ["cruises","travel","sailing"], type: "short_term", income: "30k_60k", job: "service", faith: "none", thumb: true },
+  "female-28": { name: "Lena", age: 35, gender: "female", km: 18, pop: 86, interests: ["hiking","art","jazz"], type: "casual", income: "60k_100k", job: "government", faith: "christian", verified: true, thumb: true },
+  "female-29": { name: "Mara", age: 42, gender: "female", km: 14, pop: 39, interests: ["coffee","hiking"], type: "marriage", income: "100k_150k", job: "entrepreneur", faith: "none", thumb: true },
+  "female-30": { name: "Bree", age: 24, gender: "female", km: 22, pop: 52, interests: ["escape rooms","opera","photography"], type: "slow_dating", income: "150k_plus", job: "marketing", faith: "christian", thumb: true },
+  "male-01": { name: "Liam", age: 31, gender: "male", km: 0, pop: 65, interests: ["film","photography","wine"], type: "long_term", income: "under_30k", job: "tech", faith: "catholic", verified: true, thumb: true },
+  "male-02": { name: "Noah", age: 38, gender: "male", km: 2, pop: 78, interests: ["opera","board games","coffee"], type: "short_term", income: "30k_60k", job: "finance", faith: "jewish", thumb: true },
+  "male-03": { name: "Owen", age: 45, gender: "male", km: 4, pop: 91, interests: ["cooking","jazz","yoga"], type: "casual", income: "60k_100k", job: "medical", faith: "spiritual", thumb: true },
+  "male-04": { name: "Eli", age: 27, gender: "male", km: 6, pop: 44, interests: ["sailing","italian food","travel"], type: "marriage", income: "100k_150k", job: "legal", faith: "none", verified: true, thumb: true },
+  "male-05": { name: "Jack", age: 34, gender: "male", km: 8, pop: 57, interests: ["photography","cruises","escape rooms"], type: "slow_dating", income: "150k_plus", job: "arts", faith: "christian", thumb: true },
+  "male-06": { name: "Cole", age: 41, gender: "male", km: 5, pop: 70, interests: ["yoga","escape rooms","tennis"], type: "long_term", income: "under_30k", job: "education", faith: "none", thumb: true },
+  "male-07": { name: "Ryan", age: 23, gender: "male", km: 9, pop: 83, interests: ["tennis","cooking","italian food"], type: "short_term", income: "30k_60k", job: "service", faith: "christian", verified: true, thumb: true },
+  "male-08": { name: "Seth", age: 30, gender: "male", km: 18, pop: 36, interests: ["board games","yoga","film"], type: "casual", income: "60k_100k", job: "government", faith: "catholic", thumb: true },
+  "male-09": { name: "Adam", age: 37, gender: "male", km: 14, pop: 49, interests: ["live music","board games"], type: "marriage", income: "100k_150k", job: "entrepreneur", faith: "jewish", thumb: true },
+  "male-10": { name: "Joel", age: 44, gender: "male", km: 22, pop: 62, interests: ["poetry","wine","dancing"], type: "slow_dating", income: "150k_plus", job: "marketing", faith: "spiritual", verified: true, thumb: true },
+  "male-11": { name: "Finn", age: 26, gender: "male", km: 0, pop: 75, interests: ["jazz","dancing","opera"], type: "long_term", income: "under_30k", job: "tech", faith: "none", thumb: true },
+  "male-12": { name: "Dean", age: 33, gender: "male", km: 2, pop: 88, interests: ["wine","hiking","live music"], type: "short_term", income: "30k_60k", job: "finance", faith: "christian", thumb: true },
+  "male-13": { name: "Hugo", age: 40, gender: "male", km: 4, pop: 41, interests: ["travel","film","art"], type: "casual", income: "60k_100k", job: "medical", faith: "none", verified: true, thumb: true },
+  "male-14": { name: "Marc", age: 22, gender: "male", km: 6, pop: 54, interests: ["italian food","sailing","cooking"], type: "marriage", income: "100k_150k", job: "legal", faith: "christian", thumb: true },
+  "male-15": { name: "Theo", age: 29, gender: "male", km: 8, pop: 67, interests: ["dancing","tennis","poetry"], type: "slow_dating", income: "150k_plus", job: "arts", faith: "catholic", thumb: true },
+  "male-16": { name: "Reid", age: 36, gender: "male", km: 5, pop: 80, interests: ["art","poetry","cruises"], type: "long_term", income: "under_30k", job: "education", faith: "jewish", verified: true, thumb: true },
+  "male-17": { name: "Kyle", age: 43, gender: "male", km: 9, pop: 93, interests: ["cruises","travel","sailing"], type: "short_term", income: "30k_60k", job: "service", faith: "spiritual", thumb: true },
+};
+for (const k in LIB) { MEMBERS[k] = LIB[k]; }
 const MATCHES = [
   { id: 'bob', score: 84, shared: ['jazz', 'travel'] },
   { id: 'marcus', score: 78, shared: ['italian food'] },
@@ -1222,7 +1274,7 @@ const HOBBY = { bob: ['hiking', 'cooking'], marcus: ['chess', 'running'], james:
 // Real photo thumbnails: members with a headshot file show it; the SVG
 // artwork is only the fallback. Swap files in thumbs/ to change faces.
 function demoAvatar(id, name) {
-  if (['alice', 'emma', 'sofia', 'bob', 'marcus', 'james'].includes(id)) return 'thumbs/' + id + '.jpg';
+  if (MEMBERS[id] && MEMBERS[id].thumb) return 'thumbs/' + id + '.jpg';
   const seed = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const pals = [['#3b1e3f', '#ff9cc0'], ['#1e2a4a', '#8fb8ff'], ['#173a2e', '#7fe3a8'], ['#4a2410', '#ffb08a'], ['#3a103a', '#e08aff'], ['#103a3a', '#7fdede'], ['#40320f', '#ffd97a'], ['#2b1140', '#b49cff']];
   const [a, b] = pals[seed % 8];

@@ -30,7 +30,7 @@ $day = 86400;
 
 $women = ['Ava', 'Mia', 'Zoe', 'Lily', 'Nora', 'Ruby', 'Isla', 'Cora', 'Jade', 'Elle',
           'Maya', 'Tess', 'Rosa', 'Iris', 'Faye', 'Nina', 'Skye', 'Vera', 'Luna', 'Dana',
-          'Gwen', 'Hope', 'June', 'Kira', 'Wren', 'Sage', 'Demi', 'Lena', 'Mara', 'Bree', 'Cleo', 'Dara'];
+          'Gwen', 'Hope', 'June', 'Kira', 'Wren', 'Sage', 'Demi', 'Lena', 'Mara', 'Bree'];
 $men = ['Liam', 'Noah', 'Owen', 'Eli', 'Jack', 'Cole', 'Ryan', 'Seth', 'Adam', 'Joel',
         'Finn', 'Dean', 'Hugo', 'Marc', 'Theo', 'Reid', 'Kyle', 'Evan', 'Luke', 'Sam',
         'Nate', 'Paul', 'Ross', 'Todd', 'Wade'];
