@@ -43,6 +43,7 @@ final class SitePackageExporter
         'dating/partner-portal.php',
         'dating/admin.php',
         'dating/safety-center.php',
+        'dating/features.php',
         'dating/site-tour.php',
         'dating/smart-dating.php',
         'dating/ui.php',
