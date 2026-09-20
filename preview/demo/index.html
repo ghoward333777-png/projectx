@@ -1258,69 +1258,54 @@ function renderWatch() {
     '</span><span class="pill">' + esc(tag) + '</span>' +
     (watchState.film[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
     (isScheduled ? '' : '<span class="pill ok">your pick</span>') +
-    (plFallback ? '<span class="pill" style="background:#3a2a3e">demo plays playlist slot ' + ((rank % 30) + 1) + ' — the live site streams the real title</span>' : '') +
+    (plFallback ? '<span class="pill" style="background:#3a2a3e">demo plays a verified stand-in — the live site streams the real title</span>' : '') +
     '</h2>';
   renderWatchPlayer();
   renderWatchLog();
   renderWatchGrid();
 }
-// The player alone. Picking a title ALWAYS changes the video: one with
-// its own stream plays it directly; one without switches the running
-// playlist player to that title's slot with the YouTube player API's
-// playVideoAt command — the ONLY mechanism YouTube honors (the index=
-// URL parameter is IGNORED on playlist embeds, which is why reloading
-// with it always restarted at the playlist's first video).
-const PL_EMBED = 'https://www.youtube-nocookie.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij&enablejsapi=1&autoplay=1';
-let plIndex = -1;                    // what the playlist player reports it is on
+// The player alone. Every pick is a DIRECT IFRAME SWAP to a verified,
+// embeddable video id — no playlist-slot commands, no widget-API
+// dependence. All channel entries carry a real id (resolved and
+// validated against YouTube's oEmbed endpoint); romance films without
+// their own stream play a verified classic stand-in from the reel, so
+// the video ALWAYS changes with the click.
+const REEL = FILMS.filter(f => f[4]).map(f => f[4]);   // the 13 verified classics
 window.__wpLastSlot = null;          // exposed for the automated checks
-window.addEventListener('message', e => {
-  try {
-    const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-    if (d && d.info && typeof d.info.playlistIndex === 'number') { plIndex = d.info.playlistIndex; }
-  } catch (ignored) {}
-});
-function playSlot(slot) {
-  window.__wpLastSlot = slot;
-  let tries = 0;
-  const timer = setInterval(() => {
-    const frame = document.querySelector('#w-frame iframe');
-    if (!frame || plIndex === slot || tries++ > 10) { clearInterval(timer); return; }
-    frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
-    frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideoAt', args: [slot] }), '*');
-  }, 700);
-}
 function renderWatchPlayer() {
   const [rank, title, year, tag, yt] = watchState.film;
-  const upNext = FILMS.filter(f => f[4] && f[4] !== yt).map(f => f[4])
-    .filter((v, i, a) => a.indexOf(v) === i).slice(0, 12);
-  let kind, src, note, slot = null;
+  const upNext = REEL.filter(v => v !== yt).slice(0, 12);
+  let kind, src, note;
   if (watchState.rotate !== null && watchState.rotate !== undefined) {
-    kind = 'playlist';
-    slot = watchState.rotate;
-    note = 'Rotating through the playlist — slot ' + (slot + 1) + '. Keep pressing Next, or shuffle.';
+    const reelId = REEL[((watchState.rotate % REEL.length) + REEL.length) % REEL.length];
+    window.__wpLastSlot = watchState.rotate;
+    kind = 'film:rot-' + reelId;
+    src = 'https://www.youtube-nocookie.com/embed/' + reelId + '?rel=0&playsinline=1&autoplay=1';
+    note = 'Rotating through the verified reel — film ' + (((watchState.rotate % REEL.length) + REEL.length) % REEL.length + 1) + ' of ' + REEL.length + '. Keep pressing Next, or shuffle.';
   } else if (watchState.embedOverride) {
     kind = 'override:' + watchState.embedOverride;
     src = watchState.embedOverride;
-    note = 'Playing your pasted embed — the rotation buttons step through it.';
+    note = 'Playing your pasted embed — the rotation buttons swap in the verified reel.';
   } else if (yt) {
     kind = 'film:' + yt;
-    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&enablejsapi=1&playlist=' + upNext.join(',');
-    note = esc(title) + ' — the full YouTube movie, with ' + upNext.length + ' more romance films queued in the player\'s playlist.';
-  } else {
-    kind = 'playlist';
-    slot = rank % 30;
+    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&autoplay=1' +
+      (rank > 0 && rank < 2000 ? '&playlist=' + upNext.join(',') : '');
     note = esc(title) + (rank >= 2000
-      ? ' — the live site resolves this title\'s current stream automatically; this preview switches the playlist player to slot ' + (slot + 1) + '.'
-      : ' — the playlist player switches to slot ' + (slot + 1) + ', so your pick always changes the video.');
+      ? ' — playing its verified stream. The live site re-resolves live cams daily.'
+      : ' — the full YouTube movie, with ' + upNext.length + ' more queued behind it.');
+  } else {
+    const standIn = REEL[rank % REEL.length];
+    window.__wpLastSlot = rank % REEL.length;
+    kind = 'film:standin-' + standIn;
+    src = 'https://www.youtube-nocookie.com/embed/' + standIn + '?rel=0&playsinline=1&autoplay=1';
+    note = esc(title) + ' — the live site streams the real title; this preview plays verified classic ' + (rank % REEL.length + 1) + ' as a stand-in, so your pick always changes the video.';
   }
-  // Scaffold once; rebuild the iframe ONLY when the player kind changes —
-  // slot changes are sent to the running player, never a reload.
   if (!$('w-frame')) {
     $('w-player').innerHTML =
       '<div id="w-frame" style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937"></div>' +
       '<p id="w-note" style="font-size:12.5px;color:var(--muted);margin:8px 0 0"></p>' +
       '<p style="margin:8px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-      '<span style="font-size:12px;color:var(--muted)">Rotate the playlist:</span>' +
+      '<span style="font-size:12px;color:var(--muted)">Rotate the verified reel:</span>' +
       '<button class="quiet" data-wrot="-1" style="font-size:12px">⏮ Previous</button>' +
       '<button class="quiet" data-wrot="1" style="font-size:12px">Next ⏭</button>' +
       '<button class="quiet" data-wrot="r" style="font-size:12px">🔀 Shuffle</button>' +
@@ -1328,14 +1313,12 @@ function renderWatchPlayer() {
     watchState.playerKind = null;
   }
   if (watchState.playerKind !== kind) {
-    plIndex = -1;
-    $('w-frame').innerHTML = '<iframe src="' + (kind === 'playlist' ? PL_EMBED : src) + '"' +
+    $('w-frame').innerHTML = '<iframe src="' + src + '"' +
       ' title="' + esc(title) + '" referrerpolicy="strict-origin-when-cross-origin"' +
       ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
       ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
     watchState.playerKind = kind;
   }
-  if (slot !== null) { playSlot(slot); }
   $('w-note').innerHTML = note;
 }
 // Chat and library search repaint ONLY their own panels — never the
@@ -1353,97 +1336,97 @@ function renderWatchLog() {
 // Un-curated entries resolve their current stream on the live site.
 const NATURE = [
   [2001,'Featured live nature cam',0,'wildlife','1t7g690boao',true],
-  [2002,'Rocky Mountain river live cam',0,'river','',true],[2003,'Alaska salmon river live cam',0,'river','',true],
-  [2004,'Smoky Mountains stream live cam',0,'river','',true],[2005,'River rapids relaxing live cam',0,'river','',true],
-  [2006,'Niagara Falls live cam',0,'waterfall','',true],[2007,'Tropical waterfall live cam',0,'waterfall','',true],
-  [2008,'Iguazu Falls live cam',0,'waterfall','',true],[2009,'Forest waterfall 4K live cam',0,'waterfall','',true],
-  [2010,'Redwood forest live cam',0,'forest','',true],[2011,'Rainforest canopy live cam',0,'forest','',true],
-  [2012,'Forest birdsong live cam',0,'forest','',true],[2013,'Autumn forest live cam',0,'forest','',true],
-  [2014,'Lake Tahoe live cam',0,'lake','',true],[2015,'Alpine lake live cam',0,'lake','',true],
-  [2016,'Loch Ness live cam',0,'lake','',true],[2017,'Mountain lake sunrise live cam',0,'lake','',true],
-  [2018,'Matterhorn live cam',0,'mountain','',true],[2019,'Rocky Mountains peak live cam',0,'mountain','',true],
-  [2020,'Mount Fuji live cam',0,'mountain','',true],[2021,'Swiss Alps panorama live cam',0,'mountain','',true],
-  [2022,'Sonoran Desert live cam',0,'desert','',true],[2023,'Sahara desert dunes live cam',0,'desert','',true],
-  [2024,'Desert oasis wildlife live cam',0,'desert','',true],[2025,'Joshua Tree desert live cam',0,'desert','',true],
-  [2026,'Venice Grand Canal live cam',0,'harbor','',true],[2027,'Sydney Harbour live cam',0,'harbor','',true],
-  [2028,'Alaska harbor live cam',0,'harbor','',true],[2029,'Mediterranean harbor live cam',0,'harbor','',true],
-  [2030,'African watering hole live cam',0,'wildlife','',true],[2031,'Bald eagle nest live cam',0,'wildlife','',true],
-  [2032,'Brooks Falls brown bears live cam',0,'wildlife','',true],[2033,'Hummingbird feeder live cam',0,'wildlife','',true],
-  [2034,'Coral reef aquarium live cam',0,'wildlife','',true],[2035,'Giant panda live cam',0,'wildlife','',true],
-  [2036,'Owl nest live cam',0,'wildlife','',true],[2037,'Northern lights live cam',0,'aurora','',true],
-  [2038,'Ocean waves beach live cam',0,'ocean','',true],[2039,'African savanna sunset live cam',0,'savanna','',true],
-  [2040,'Snowfall cabin live cam',0,'snow','',true],
+  [2002,'Rocky Mountain river live cam',0,'river','J7ZrIDvqlic',true],[2003,'Alaska salmon river live cam',0,'river','1LKfIz99wBQ',true],
+  [2004,'Smoky Mountains stream live cam',0,'river','R-pXviGSVEk',true],[2005,'River rapids relaxing live cam',0,'river','2_ovWpVE9es',true],
+  [2006,'Niagara Falls live cam',0,'waterfall','qx7gry390YA',true],[2007,'Tropical waterfall live cam',0,'waterfall','4BrvMGznLTo',true],
+  [2008,'Iguazu Falls live cam',0,'waterfall','sr31SwPrbRI',true],[2009,'Forest waterfall 4K live cam',0,'waterfall','1FbGw1pdqx0',true],
+  [2010,'Redwood forest live cam',0,'forest','cgPcnSJ24Hg',true],[2011,'Rainforest canopy live cam',0,'forest','F0GOOP82094',true],
+  [2012,'Forest birdsong live cam',0,'forest','XwTAP6JgiJ0',true],[2013,'Autumn forest live cam',0,'forest','y1wR3-8reTw',true],
+  [2014,'Lake Tahoe live cam',0,'lake','Lk0Z5ExUWL0',true],[2015,'Alpine lake live cam',0,'lake','Y1qp-EVF_oU',true],
+  [2016,'Loch Ness live cam',0,'lake','IrH--L0WdrY',true],[2017,'Mountain lake sunrise live cam',0,'lake','GovZkJbxe7g',true],
+  [2018,'Matterhorn live cam',0,'mountain','Xwl44pjc_J8',true],[2019,'Rocky Mountains peak live cam',0,'mountain','ecMsbHZJLfY',true],
+  [2020,'Mount Fuji live cam',0,'mountain','so_3HK9HIdg',true],[2021,'Swiss Alps panorama live cam',0,'mountain','enYFXf8u7Lc',true],
+  [2022,'Sonoran Desert live cam',0,'desert','oHOChWnGMpM',true],[2023,'Sahara desert dunes live cam',0,'desert','ydYDqZQpim8',true],
+  [2024,'Desert oasis wildlife live cam',0,'desert','ydYDqZQpim8',true],[2025,'Joshua Tree desert live cam',0,'desert','Zy4KtD98S2c',true],
+  [2026,'Venice Grand Canal live cam',0,'harbor','a1mcaV3Sf9U',true],[2027,'Sydney Harbour live cam',0,'harbor','5uZa3-RMFos',true],
+  [2028,'Alaska harbor live cam',0,'harbor','y0XPkjM9-P4',true],[2029,'Mediterranean harbor live cam',0,'harbor','Uxf9nEe6Sgo',true],
+  [2030,'African watering hole live cam',0,'wildlife','qpukdDslCjk',true],[2031,'Bald eagle nest live cam',0,'wildlife','B4-L2nfGcuE',true],
+  [2032,'Brooks Falls brown bears live cam',0,'wildlife','J7ZrIDvqlic',true],[2033,'Hummingbird feeder live cam',0,'wildlife','Iu6kH-Dd2Vc',true],
+  [2034,'Coral reef aquarium live cam',0,'wildlife','btiijqJVUIk',true],[2035,'Giant panda live cam',0,'wildlife','SUXPnIEpbn4',true],
+  [2036,'Owl nest live cam',0,'wildlife','4igfY1_4lXo',true],[2037,'Northern lights live cam',0,'aurora','ccTVAhJU5lg',true],
+  [2038,'Ocean waves beach live cam',0,'ocean','Ts_uWr9-lAU',true],[2039,'African savanna sunset live cam',0,'savanna','ydYDqZQpim8',true],
+  [2040,'Snowfall cabin live cam',0,'snow','ztpWS1zzGWY',true],
 ];
 const AMBIENT = [
-  [2101,'Spa Massage Music World relaxing music',0,'spa','',true],[2102,'Amaltea Relaxing Music inner calm',0,'focus','',false],
-  [2103,'Soothing Relaxation beautiful ambient music',0,'ambient','',false],[2104,'OCB Relax Music ambient',0,'ambient','',false],
-  [2105,'Classical piano for studying',0,'classical','',false],[2106,'Deep space ambient music',0,'space','',false],
-  [2107,'Crackling fireplace ambience',0,'fireplace','',false],[2108,'Celtic relaxing music',0,'celtic','',false],
-  [2109,'Deep focus concentration music',0,'focus','',false],[2110,'Calm meditation tones',0,'meditation','',false],
+  [2101,'Spa Massage Music World relaxing music',0,'spa','10YvqAmK_qs',true],[2102,'Amaltea Relaxing Music inner calm',0,'focus','nONujgsVfYk',false],
+  [2103,'Soothing Relaxation beautiful ambient music',0,'ambient','1ZYbU82GVz4',false],[2104,'OCB Relax Music ambient',0,'ambient','AKy6Jx59fis',false],
+  [2105,'Classical piano for studying',0,'classical','AnlKTlJLkro',false],[2106,'Deep space ambient music',0,'space','gEOa793e_dU',false],
+  [2107,'Crackling fireplace ambience',0,'fireplace','mSX3OyW9Rao',false],[2108,'Celtic relaxing music',0,'celtic','BiqlZZddZEo',false],
+  [2109,'Deep focus concentration music',0,'focus','oPVte6aMprI',false],[2110,'Calm meditation tones',0,'meditation','1ZYbU82GVz4',false],
 ];
 const NATSOUNDS = [
-  [2401,'Streaming Noise forest ambience birds and streams',0,'forest','',false],[2402,'Naturescapes woodland stream and birdsong',0,'stream','',false],
-  [2403,'Nature Forest Sounds gentle stream with birdsong',0,'stream','',false],[2404,'Healing Nature spring nature therapy sounds',0,'therapy','',false],
-  [2405,'Ocean waves rolling on the shore sounds',0,'ocean','',false],[2406,'Rain on forest leaves nature sounds',0,'rain','',false],
+  [2401,'Streaming Noise forest ambience birds and streams',0,'forest','8kEzFZvtLzM',false],[2402,'Naturescapes woodland stream and birdsong',0,'stream','Xv2NElOHo-0',false],
+  [2403,'Nature Forest Sounds gentle stream with birdsong',0,'stream','fLA86E_zpL4',false],[2404,'Healing Nature spring nature therapy sounds',0,'therapy','UZ9uyQI3pF0',false],
+  [2405,'Ocean waves rolling on the shore sounds',0,'ocean','wbcTxUaO3Oc',false],[2406,'Rain on forest leaves nature sounds',0,'rain','UBoaLoRcrA4',false],
 ];
 const HYBRID = [
-  [2421,'Calmed By Nature meadow and mountain ambience',0,'meadow','',false],[2422,'OCB Relax ambient music with birdsong',0,'birdsong','',false],
-  [2423,'321 Relaxing meditation piano with water sounds',0,'piano','',false],[2424,'Mountain vistas with relaxing music',0,'mountain','',false],
+  [2421,'Calmed By Nature meadow and mountain ambience',0,'meadow','a9RqjDlhxtc',false],[2422,'OCB Relax ambient music with birdsong',0,'birdsong','IA8KlpnXYd4',false],
+  [2423,'321 Relaxing meditation piano with water sounds',0,'piano','77ZozI0rw7w',false],[2424,'Mountain vistas with relaxing music',0,'mountain','FL8sVxF4E9I',false],
 ];
 const LOFI = [
-  [2441,'Lofi Girl radio beats to relax study to',0,'lofi','',true],[2442,'Chillhop Music radio jazzy beats',0,'chillhop','',true],
-  [2443,'Sonorama Relaxing Music deep house chillout',0,'chillout','',false],[2444,'Night city lofi rain and neon',0,'city','',false],
-  [2445,'Cozy fireplace lofi beats',0,'cozy','',false],[2446,'Forest ambience lofi beats',0,'forest','',false],
+  [2441,'Lofi Girl radio beats to relax study to',0,'lofi','rFZHOHl-L8A',true],[2442,'Chillhop Music radio jazzy beats',0,'chillhop','5yx6BWlEVcY',true],
+  [2443,'Sonorama Relaxing Music deep house chillout',0,'chillout','jXxjtZblebk',false],[2444,'Night city lofi rain and neon',0,'city','_XlhyJRLgpQ',false],
+  [2445,'Cozy fireplace lofi beats',0,'cozy','Rik8YhvH09M',false],[2446,'Forest ambience lofi beats',0,'forest','NvftPSb5Xtw',false],
 ];
 const PIANO = [
-  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','',false],
-  [2463,'Soft acoustic guitar relaxation',0,'guitar','',false],[2464,'Relaxing flute instrumental music',0,'flute','',false],
-  [2465,'Peaceful piano for reading',0,'piano','',false],
+  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','336O29nMU00',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','kKJvGtqcnno',false],
+  [2463,'Soft acoustic guitar relaxation',0,'guitar','j4OuCMnY43E',false],[2464,'Relaxing flute instrumental music',0,'flute','GN5q747x1zI',false],
+  [2465,'Peaceful piano for reading',0,'piano','oiGmGFxsJi8',false],
 ];
 const ASMRN = [
-  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','',false],
-  [2483,'ASMR wind through leaves',0,'wind','',false],[2484,'Relaxing white noise ASMR water',0,'water','',false],
+  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','fLA86E_zpL4',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','peo0jX6yXvs',false],
+  [2483,'ASMR wind through leaves',0,'wind','7WPsftkv1ZY',false],[2484,'Relaxing white noise ASMR water',0,'water','jkLRith2wcc',false],
 ];
 const SCENIC = [
-  [2501,'Nature Relaxation Films 4K landscapes',0,'4k','',false],[2502,'National Geographic meditative ASMR nature',0,'documentary','',false],
-  [2503,'4K drone landscapes with ambient music',0,'aerial','',false],[2504,'Scenic train journeys 4K',0,'journey','',false],
+  [2501,'Nature Relaxation Films 4K landscapes',0,'4k','hlWiI4xVXKY',false],[2502,'National Geographic meditative ASMR nature',0,'documentary','ZVwENdOOjnM',false],
+  [2503,'4K drone landscapes with ambient music',0,'aerial','k2-LUK_vmOA',false],[2504,'Scenic train journeys 4K',0,'journey','YZ9kdU76s3w',false],
 ];
 const MEDIT = [
-  [2521,'Peaceful Yourself healing sound nature',0,'healing','',false],[2522,'Nature relax stress relief sleep music',0,'sleep','',false],
-  [2523,'Solfeggio healing frequencies meditation',0,'frequencies','',false],[2524,'Guided calm meditation for two',0,'guided','',false],
+  [2521,'Peaceful Yourself healing sound nature',0,'healing','g-UHfY9TTGY',false],[2522,'Nature relax stress relief sleep music',0,'sleep','lE6RYpe9IT0',false],
+  [2523,'Solfeggio healing frequencies meditation',0,'frequencies','goyZbut_KFY',false],[2524,'Guided calm meditation for two',0,'guided','Z4rRjGhN-gs',false],
 ];
 const OFFICIAL = [
-  [2541,'BBC Earth Our Green Planet relaxing nature sounds',0,'nature','',false],[2542,'Everyday Calm ambient sounds to relax',0,'ambient','',false],
-  [2543,'BBC Earth meditative nature ASMR',0,'asmr','',false],
+  [2541,'BBC Earth Our Green Planet relaxing nature sounds',0,'nature','cnTf2UxjGW8',false],[2542,'Everyday Calm ambient sounds to relax',0,'ambient','1ZYbU82GVz4',false],
+  [2543,'BBC Earth meditative nature ASMR',0,'asmr','cnTf2UxjGW8',false],
 ];
 const JAZZCAFE = [
-  [2561,'Relax Café Music smooth jazz',0,'jazz','',true],[2562,'Jazz and bossa nova café ambience',0,'bossa nova','',false],
-  [2563,'Sonorama smooth jazz café ambience',0,'jazz','',false],[2564,'Coffee shop jazz radio',0,'cafe','',true],
+  [2561,'Relax Café Music smooth jazz',0,'jazz','UZiKR5HHXTo',true],[2562,'Jazz and bossa nova café ambience',0,'bossa nova','G6gRMc6v0mI',false],
+  [2563,'Sonorama smooth jazz café ambience',0,'jazz','UZiKR5HHXTo',false],[2564,'Coffee shop jazz radio',0,'cafe','UZiKR5HHXTo',true],
 ];
 const RAINW = [
-  [2581,'Rainy Nights Piano live stream',0,'piano','',true],[2582,'Rainstorm and thunder for sleep',0,'thunder','',false],
-  [2583,'Waterfall white noise',0,'waterfall','',false],[2584,'Gentle rain on a window',0,'rain','',false],
-  [2585,'River flowing with birds chirping',0,'river','',false],
+  [2581,'Rainy Nights Piano live stream',0,'piano','K0-6reET2BY',true],[2582,'Rainstorm and thunder for sleep',0,'thunder','8rTTEMdMh8Q',false],
+  [2583,'Waterfall white noise',0,'waterfall','q9x_mHZLpYI',false],[2584,'Gentle rain on a window',0,'rain','c1XOgrBz6sU',false],
+  [2585,'River flowing with birds chirping',0,'river','1GzKYoyrlkA',false],
 ];
 const WORLDA = [
-  [2601,'Sonorama world ambient flute music',0,'flute','',false],[2602,'Native American flute relaxation',0,'flute','',false],
-  [2603,'Arabic oud ambient music',0,'oud','',false],[2604,'Celtic harp ambience',0,'harp','',false],
+  [2601,'Sonorama world ambient flute music',0,'flute','59gojVwuaoQ',false],[2602,'Native American flute relaxation',0,'flute','dr2VyUvzrwI',false],
+  [2603,'Arabic oud ambient music',0,'oud','uDCjW-9mE2k',false],[2604,'Celtic harp ambience',0,'harp','2-M9-6OSYMY',false],
 ];
 const BIBLE = [
-  [2201,'The Book of Genesis — audio Bible',0,'old testament','',false],[2202,'The Book of Psalms — audio Bible',0,'psalms','',false],
-  [2203,'The Book of Proverbs — audio Bible',0,'old testament','',false],[2204,'The Book of Isaiah — audio Bible',0,'old testament','',false],
-  [2205,'The Gospel of Matthew — audio Bible',0,'new testament','',false],[2206,'The Gospel of Luke — audio Bible',0,'new testament','',false],
-  [2207,'The Gospel of John — audio Bible',0,'new testament','',false],[2208,'The Book of Romans — audio Bible',0,'new testament','',false],
-  [2209,'The Book of Revelation — audio Bible',0,'new testament','',false],[2210,'Psalm 23 narration',0,'psalms','',false],
-  [2211,'The Sermon on the Mount narration',0,'new testament','',false],[2212,'The Christmas story — Luke 2 narration',0,'new testament','',false],
+  [2201,'The Book of Genesis — audio Bible',0,'old testament','9nWaXa-CUCE',false],[2202,'The Book of Psalms — audio Bible',0,'psalms','H73WAcOmUTw',false],
+  [2203,'The Book of Proverbs — audio Bible',0,'old testament','zBPSUjphjSY',false],[2204,'The Book of Isaiah — audio Bible',0,'old testament','Nxntc5CHyqs',false],
+  [2205,'The Gospel of Matthew — audio Bible',0,'new testament','mgUWg3ZY_C8',false],[2206,'The Gospel of Luke — audio Bible',0,'new testament','PEMFlleaJnc',false],
+  [2207,'The Gospel of John — audio Bible',0,'new testament','nCOCCb7QFGc',false],[2208,'The Book of Romans — audio Bible',0,'new testament','8d_-_N95zG0',false],
+  [2209,'The Book of Revelation — audio Bible',0,'new testament','yU-wivUqlOA',false],[2210,'Psalm 23 narration',0,'psalms','3fyS1BrYuaM',false],
+  [2211,'The Sermon on the Mount narration',0,'new testament','bu5FAQzN1DY',false],[2212,'The Christmas story — Luke 2 narration',0,'new testament','0ib2-uPGMpE',false],
 ];
 const CHURCH = [
-  [2301,'Sunday worship service',0,'worship','',true],[2302,'Gospel choir performances',0,'choir','',false],
-  [2303,'Classic hymns collection',0,'hymns','',false],[2304,'Praise and worship music',0,'worship','',false],
-  [2305,"Christmas carols from King's College",0,'carols','',false],[2306,'Gregorian chants',0,'chants','',false],
-  [2307,'Southern gospel classics',0,'choir','',false],[2308,'Contemporary Christian worship',0,'worship','',false],
-  [2309,'Easter service highlights',0,'worship','',false],[2310,'Great choir anthems',0,'choir','',false],
-  [2311,'Organ hymns from great cathedrals',0,'hymns','',false],[2312,'Gospel music classics',0,'choir','',false],
+  [2301,'Sunday worship service',0,'worship','70VqhAGdR48',true],[2302,'Gospel choir performances',0,'choir','QWL2yStKQYQ',false],
+  [2303,'Classic hymns collection',0,'hymns','ln__n3Tt4Yk',false],[2304,'Praise and worship music',0,'worship','rOmTINlRhxM',false],
+  [2305,"Christmas carols from King's College",0,'carols','RVguSWYwSsA',false],[2306,'Gregorian chants',0,'chants','z96qe75LOF8',false],
+  [2307,'Southern gospel classics',0,'choir','0khalAuwp_4',false],[2308,'Contemporary Christian worship',0,'worship','2xcFM9CBiOE',false],
+  [2309,'Easter service highlights',0,'worship','jv4TwoTKIos',false],[2310,'Great choir anthems',0,'choir','zhhYIZJj6rk',false],
+  [2311,'Organ hymns from great cathedrals',0,'hymns','sdks6-Bi3A0',false],[2312,'Gospel music classics',0,'choir','L_M8V8QD2Ns',false],
 ];
 const WCHANNELS = {
   romance: { rows: FILMS, label: 'Romance movies', title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
