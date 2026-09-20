@@ -296,9 +296,9 @@ $engine->createTestimonialScript($ralphs['partner_id'], (string) $ralphsVenue['i
     'payout' => 55.0,
 ], $now - 2 * $day);
 
-// ---- Watch Party: Alice & Marcus swapped tonight's schedule for Charade ----------
+// ---- Watch Party: Alice & Marcus put on the featured premiere ---------------------
 if (is_file(dirname(__DIR__) . '/data/romance-films.json')) {
-    $engine->chooseWatchPartyFilm($c2, $ids['alice'], 'charade-1963', $now - 3600);
+    $engine->chooseWatchPartyFilm($c2, $ids['alice'], 'she-races-to-find-a-husband-full-rom-com-2023', $now - 3600);
 }
 
 echo "Demo data seeded into {$stateDir}\n";

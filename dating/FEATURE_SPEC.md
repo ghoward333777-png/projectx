@@ -579,11 +579,12 @@ together and talk about it in their own chat.
 
 **The library (independent playlist)** — `dating/data/romance-films.json`: 1,000 real
 romance films ranked by curated popularity (icons first, then by era and subgenre),
-built deterministically by `bin/build-romance-library.php`. Twelve verified
-public-domain classics (Charade, His Girl Friday, My Man Godfrey, Penny Serenade,
-Made for Each Other, Love Affair, Royal Wedding, A Star Is Born '37, Nothing Sacred,
-Algiers, Cyrano de Bergerac '50, Second Chorus) carry a real `youtube_id` and play
-in an in-page embed; every other film opens through a YouTube search link so the
+built deterministically by `bin/build-romance-library.php`. Thirteen verified free
+uploads carry a real `youtube_id` and play in an in-page embed: the operator-featured
+premiere at #1 (She Races to Find a Husband — Romance Movie Central's full rom-com)
+plus twelve public-domain classics (Charade, His Girl Friday, My Man Godfrey, Penny
+Serenade, Made for Each Other, Love Affair, Royal Wedding, A Star Is Born '37,
+Nothing Sacred, Algiers, Cyrano de Bergerac '50, Second Chorus); every other film opens through a YouTube search link so the
 couple uses the best available upload from the film's own distributors. The builder
 is the harvesting point: ops can extend it with the YouTube Data API (key optional
 by design) to refresh popularity order.

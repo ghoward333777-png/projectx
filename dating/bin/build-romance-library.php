@@ -20,8 +20,11 @@ declare(strict_types=1);
  * intentionally not required for the product to run).
  */
 
-// Verified public-domain full movies on YouTube (checked 2026-09).
+// Verified free full movies on YouTube (checked 2026-09): the featured
+// rom-com premiere (Romance Movie Central's own upload) plus the
+// public-domain classics.
 $verified = [
+    'She Races to Find a Husband (Full Rom Com)|2023' => '5GicvbAbMYU',
     'Charade|1963' => 'VTeVIpBLVfg',
     'His Girl Friday|1940' => 'UzQWJNNg8DU',
     'My Man Godfrey|1936' => 'YcvDxEMiMTc',
@@ -37,6 +40,12 @@ $verified = [
 ];
 
 $catalog = [
+
+// The operator-featured premiere leads the playlist: a full rom-com the
+// site's own advertising channel streams free on YouTube.
+'featured premiere' => [
+['She Races to Find a Husband (Full Rom Com)',2023],
+],
 
 'all-time icon' => [
 ['Titanic',1997],['The Notebook',2004],['Casablanca',1942],['Gone with the Wind',1939],['Pretty Woman',1990],['Dirty Dancing',1987],['Ghost',1990],['When Harry Met Sally...',1989],
