@@ -1270,13 +1270,12 @@ function renderWatch() {
 // validated against YouTube's oEmbed endpoint); romance films without
 // their own stream play a verified classic stand-in from the reel, so
 // the video ALWAYS changes with the click.
-const TRAILERS = {"2":"CHekzSiZjrY","3":"BjJcYdEOI0k","4":"BkL9l7qovsE","5":"0X94oZgJis4","6":"2EBAVoN8L_U","7":"eIcmQNy9FsM","8":"capS3yV9eY8","9":"-E10AcydCuk","10":"ahI9LaOGYcE","11":"bjP4s7UUnK8","12":"4RI0QvaGoiI","13":"H9Z3_ifFheQ","14":"O3CIXEAjcc8","15":"8VOAxzgq42A","16":"gk1rTKB6ZF8","17":"0pdqf4P9MB8","18":"nSbzyEJ8X9E","19":"9ItBvH5J6ss","20":"T0MmkG_nG1U","21":"ZQ-YX-5bAs0","22":"555oiY9RWM4","23":"PcL24s-S6ns","24":"r0fq5dd0C60","25":"k3B2XBcp7vA","26":"Ur_DIHs92NM","27":"2WGq2Rbs1Qg","28":"xjlKnDWZYzc","29":"Ax8qnxP2TWY","30":"Mgjwq1ZzdPQ","31":"KUd3gwaf0KQ","32":"7gRQFgdtAXs","33":"g-HeV8Z6iXc","34":"OPQkbvo99Ug","35":"ELb4S8P3q20","36":"1qFSl4DiKXA","37":"HpKbrpPiExA","38":"qDKo8DNpwOw","39":"4JFRdJTszRM","40":"wCrcDidiGJs","41":"_zIOjl93WrU","42":"ePU2Ux9JIMM","43":"17KJk3ErIx0","44":"dMaq_pfxs-0","45":"jHraHCjK094","46":"kVS-6k2tQAA","47":"7OIFdWk83no","48":"dJTU48_yghs","49":"Z9AYPxH5NTM","50":"ZQNifpPNmTk","51":"07-QBnEkgXU","52":"Kd509cLN-9U","53":"F25nzu6hh0Q","54":"oCfuPPR7wnQ","64":"xr3nsHRKZJA","65":"mP3GmdopSiM","66":"dpY7w3SxNyE","67":"XmuMd4FnnYo","68":"8YqFImp2xx8","69":"jvK23z6E7nQ","70":"Lsk6mAYVeWc","71":"ZeVAJre7PWU","72":"e25EgGHdNnQ"};
+const TRAILERS = {"2":"CHekzSiZjrY","3":"BjJcYdEOI0k","4":"BkL9l7qovsE","5":"0X94oZgJis4","6":"2EBAVoN8L_U","7":"eIcmQNy9FsM","8":"capS3yV9eY8","9":"-E10AcydCuk","10":"ahI9LaOGYcE","11":"bjP4s7UUnK8","12":"4RI0QvaGoiI","13":"H9Z3_ifFheQ","14":"O3CIXEAjcc8","15":"8VOAxzgq42A","16":"gk1rTKB6ZF8","17":"0pdqf4P9MB8","18":"nSbzyEJ8X9E","19":"9ItBvH5J6ss","20":"T0MmkG_nG1U","21":"ZQ-YX-5bAs0","22":"555oiY9RWM4","23":"PcL24s-S6ns","24":"r0fq5dd0C60","25":"k3B2XBcp7vA","26":"Ur_DIHs92NM","27":"2WGq2Rbs1Qg","28":"xjlKnDWZYzc","29":"Ax8qnxP2TWY","30":"Mgjwq1ZzdPQ","31":"KUd3gwaf0KQ","32":"7gRQFgdtAXs","33":"g-HeV8Z6iXc","34":"OPQkbvo99Ug","35":"ELb4S8P3q20","36":"1qFSl4DiKXA","37":"HpKbrpPiExA","38":"qDKo8DNpwOw","39":"4JFRdJTszRM","40":"wCrcDidiGJs","41":"_zIOjl93WrU","42":"ePU2Ux9JIMM","43":"17KJk3ErIx0","44":"dMaq_pfxs-0","45":"jHraHCjK094","46":"kVS-6k2tQAA","47":"7OIFdWk83no","48":"dJTU48_yghs","49":"Z9AYPxH5NTM","50":"ZQNifpPNmTk","51":"07-QBnEkgXU","52":"Kd509cLN-9U","53":"F25nzu6hh0Q","54":"oCfuPPR7wnQ","55":"-IS-KvD2_Zo","56":"O8xoAtKjnqs","57":"fl5ZK-UlqxA","58":"SDsV85-UqO4","59":"dHtQIxdRr5k","60":"LT5ocMiaqek","61":"9RDHLe3MD6E","62":"qnQogGhCsWg","63":"hwmtlCjtfzE","64":"xr3nsHRKZJA","65":"mP3GmdopSiM","66":"dpY7w3SxNyE","67":"XmuMd4FnnYo","68":"8YqFImp2xx8","69":"jvK23z6E7nQ","70":"Lsk6mAYVeWc","71":"ZeVAJre7PWU","72":"e25EgGHdNnQ","145":"Fk3B0EIavZ8","147":"C6T2Q4XO7uA","148":"IhdeHkMMl-o"};
 const REEL = FILMS.filter(f => f[4]).map(f => f[4]);   // the 13 verified classics
 window.__wpLastSlot = null;          // exposed for the automated checks
 const wpFailed = new Set();          // stream ids that errored — never retried
 function renderWatchPlayer() {
   const [rank, title, year, tag, yt] = watchState.film;
-  const upNext = REEL.filter(v => v !== yt).slice(0, 12);
   let kind, src, note;
   if (watchState.rotate !== null && watchState.rotate !== undefined) {
     const reelId = REEL[((watchState.rotate % REEL.length) + REEL.length) % REEL.length];
@@ -1290,14 +1289,16 @@ function renderWatchPlayer() {
     watchState.currentId = null;
     src = watchState.embedOverride;
     note = 'Playing your pasted embed — the rotation buttons swap in the verified reel.';
-  } else if (yt) {
+  } else if (yt && !wpFailed.has(yt)) {
+    // NO up-next queue on film embeds, ever: a queue lets YouTube
+    // silently play a DIFFERENT video when the main one fails. A
+    // failure now errors visibly and falls back to THIS film's trailer.
     kind = 'film:' + yt;
     watchState.currentId = yt;
-    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1' +
-      (rank > 0 && rank < 2000 ? '&playlist=' + upNext.join(',') : '');
+    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
     note = esc(title) + (rank >= 2000
       ? ' — playing its verified stream. If it drops, the player rotates to the next one automatically.'
-      : ' — the full YouTube movie, with ' + upNext.length + ' more queued behind it.');
+      : ' — the full YouTube movie.');
   } else if (TRAILERS[rank] && !wpFailed.has(TRAILERS[rank])) {
     // The SELECTED film, on screen: its verified official trailer (the
     // full film isn't freely embeddable anywhere on YouTube).
@@ -1309,12 +1310,17 @@ function renderWatchPlayer() {
       '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(title + (year > 0 ? ' ' + year : '') + ' full movie') + '"' +
       ' target="_blank" rel="noopener" style="color:var(--accent)">Watch the full film on YouTube ↗</a>';
   } else {
-    const standIn = REEL[rank % REEL.length];
+    let standIn = null;
+    for (let step = 0; step < REEL.length; step++) {
+      const candidate = REEL[(rank + step) % REEL.length];
+      if (!wpFailed.has(candidate)) { standIn = candidate; break; }
+    }
+    standIn = standIn || REEL[rank % REEL.length];
     window.__wpLastSlot = rank % REEL.length;
     kind = 'film:standin-' + standIn;
     watchState.currentId = standIn;
     src = 'https://www.youtube-nocookie.com/embed/' + standIn + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
-    note = esc(title) + ' — no verified stream or trailer; playing verified classic ' + (rank % REEL.length + 1) + ' as a stand-in.';
+    note = esc(title) + ' — no verified stream or trailer; playing a verified classic as a stand-in.';
   }
   if (!$('w-frame')) {
     $('w-player').innerHTML =
@@ -1405,6 +1411,18 @@ function wpAutoAdvance(code) {
   if (watchState.rotate !== null && watchState.rotate !== undefined) {
     watchState.rotate = watchState.rotate + 1;   // next film in the reel
     renderWatchPlayer();
+  } else if (rank > 0 && rank < 2000) {
+    // A film's full stream failed: stay on THE SELECTED FILM and fall
+    // back to its own trailer (then a labeled stand-in) — never a
+    // silently different movie.
+    const prev = watchState.currentId;
+    renderWatchPlayer();
+    if (!watchState.currentId || watchState.currentId === prev || wpFailed.has(watchState.currentId)) {
+      $('w-note').innerHTML = '⚠ No playable source left for this film — pick another title. ' + $('w-note').innerHTML;
+      return;
+    }
+    $('w-note').innerHTML = '⚠ The full stream failed (error ' + code + ') — switched to this film\'s own trailer/stand-in. ' + $('w-note').innerHTML;
+    return;
   } else {
     // Next playable, non-failed entry in the same channel (wrapping).
     let rows = FILMS;

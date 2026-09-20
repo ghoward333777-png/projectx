@@ -320,16 +320,12 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         $overrideSrc = $override !== null
             ? $override . (str_contains($override, '?') ? '&' : '?') . 'enablejsapi=1'
             : null;
-        // The up-next playlist rides along ONLY on curated, verified
-        // films. On a search-resolved id it must never be attached:
-        // when a main video refuses to embed, YouTube silently plays
-        // the FIRST playlist item instead — the "every pick shows the
-        // same movie" bug. A broken resolved id now shows YouTube's
-        // own error, honestly, and the couple picks something else.
-        $curated = !empty($film['youtube_id']) && !isset($film['channel']);
+        // NO up-next queue on film embeds, EVER: when a main video
+        // refuses to embed, YouTube silently plays the first queue item
+        // instead — the "every pick shows the same movie" bug. A broken
+        // embed now errors visibly and the fallback rotation handles it.
         $filmSrc = !empty($film['embed_url'])
             ? (string) $film['embed_url'] . '?rel=0&enablejsapi=1'
-                . ($curated && $party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : '')
             : null;
         // Auto-rotate on failure: if the playing stream errors (a live
         // cam that went offline, an unavailable upload), the script
