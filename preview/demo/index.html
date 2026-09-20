@@ -1272,6 +1272,7 @@ function renderWatch() {
 // the video ALWAYS changes with the click.
 const REEL = FILMS.filter(f => f[4]).map(f => f[4]);   // the 13 verified classics
 window.__wpLastSlot = null;          // exposed for the automated checks
+const wpFailed = new Set();          // stream ids that errored — never retried
 function renderWatchPlayer() {
   const [rank, title, year, tag, yt] = watchState.film;
   const upNext = REEL.filter(v => v !== yt).slice(0, 12);
@@ -1280,24 +1281,28 @@ function renderWatchPlayer() {
     const reelId = REEL[((watchState.rotate % REEL.length) + REEL.length) % REEL.length];
     window.__wpLastSlot = watchState.rotate;
     kind = 'film:rot-' + reelId;
-    src = 'https://www.youtube-nocookie.com/embed/' + reelId + '?rel=0&playsinline=1&autoplay=1';
+    watchState.currentId = reelId;
+    src = 'https://www.youtube-nocookie.com/embed/' + reelId + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
     note = 'Rotating through the verified reel — film ' + (((watchState.rotate % REEL.length) + REEL.length) % REEL.length + 1) + ' of ' + REEL.length + '. Keep pressing Next, or shuffle.';
   } else if (watchState.embedOverride) {
     kind = 'override:' + watchState.embedOverride;
+    watchState.currentId = null;
     src = watchState.embedOverride;
     note = 'Playing your pasted embed — the rotation buttons swap in the verified reel.';
   } else if (yt) {
     kind = 'film:' + yt;
-    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&autoplay=1' +
+    watchState.currentId = yt;
+    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1' +
       (rank > 0 && rank < 2000 ? '&playlist=' + upNext.join(',') : '');
     note = esc(title) + (rank >= 2000
-      ? ' — playing its verified stream. The live site re-resolves live cams daily.'
+      ? ' — playing its verified stream. If it drops, the player rotates to the next one automatically.'
       : ' — the full YouTube movie, with ' + upNext.length + ' more queued behind it.');
   } else {
     const standIn = REEL[rank % REEL.length];
     window.__wpLastSlot = rank % REEL.length;
     kind = 'film:standin-' + standIn;
-    src = 'https://www.youtube-nocookie.com/embed/' + standIn + '?rel=0&playsinline=1&autoplay=1';
+    watchState.currentId = standIn;
+    src = 'https://www.youtube-nocookie.com/embed/' + standIn + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
     note = esc(title) + ' — the live site streams the real title; this preview plays verified classic ' + (rank % REEL.length + 1) + ' as a stand-in, so your pick always changes the video.';
   }
   if (!$('w-frame')) {
@@ -1318,9 +1323,54 @@ function renderWatchPlayer() {
       ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
       ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
     watchState.playerKind = kind;
+    // Subscribe to the player's events so a dead stream reports onError.
+    [900, 1800, 3200].forEach(delay => setTimeout(() => {
+      const frame = document.querySelector('#w-frame iframe');
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
+      }
+    }, delay));
   }
   $('w-note').innerHTML = note;
 }
+
+// ---- Auto-rotate on failure: when a live cam (or any stream) errors,
+// mark it dead and advance to the next playable video in the same
+// channel — the player never sits on an error screen. ----
+let wpAdvanceCount = 0;
+let wpLastAdvance = 0;
+function wpAutoAdvance(code) {
+  const now = Date.now();
+  if (now - wpLastAdvance < 400 || wpAdvanceCount >= 6) { return; }
+  wpLastAdvance = now;
+  wpAdvanceCount++;
+  const dead = watchState.currentId;
+  if (dead) { wpFailed.add(dead); }
+  const [rank] = watchState.film;
+  if (watchState.rotate !== null && watchState.rotate !== undefined) {
+    watchState.rotate = watchState.rotate + 1;   // next film in the reel
+    renderWatchPlayer();
+  } else {
+    // Next playable, non-failed entry in the same channel (wrapping).
+    let rows = FILMS;
+    for (const key in WCHANNELS) {
+      if (key !== 'romance' && WCHANNELS[key].rows.some(f => f[0] === rank)) { rows = WCHANNELS[key].rows; break; }
+    }
+    const at = rows.findIndex(f => f[0] === rank);
+    for (let step = 1; step <= rows.length; step++) {
+      const next = rows[(at + step) % rows.length];
+      if (next[4] && !wpFailed.has(next[4])) { watchState.film = next; break; }
+    }
+    watchState.rotate = null;
+    renderWatch();
+  }
+  $('w-note').innerHTML = '⚠ That stream went offline (error ' + code + ') — rotated to the next video. ' + $('w-note').innerHTML;
+}
+window.addEventListener('message', e => {
+  let data = e.data;
+  if (typeof data === 'string') { try { data = JSON.parse(data); } catch (ignored) { return; } }
+  if (data && data.event === 'onError') { wpAutoAdvance(Number(data.info)); }
+});
 // Chat and library search repaint ONLY their own panels — never the
 // player. The movie must keep playing while the couple talks.
 function renderWatchLog() {
@@ -1479,6 +1529,7 @@ $('portal-watch').addEventListener('click', e => {
     watchState.film = ALLFILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
     watchState.embedOverride = null;   // a picked film takes the player over from the pasted embed
     watchState.rotate = null;
+    wpAdvanceCount = 0;                // a fresh pick resets the auto-rotate budget
     if ($('w-embed-note')) $('w-embed-note').textContent = 'Library film selected — paste and apply above to switch back to your own embed.';
     renderWatch();
   } else if (b.id === 'w-yt') {

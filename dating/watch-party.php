@@ -326,6 +326,20 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             ? (string) $film['embed_url'] . '?rel=0&enablejsapi=1'
                 . ($curated && $party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : '')
             : null;
+        // Auto-rotate on failure: if the playing stream errors (a live
+        // cam that went offline, an unavailable upload), the script
+        // below swaps in the next playable entry from the same channel.
+        $wpFallbacks = [];
+        if (isset($film['channel'])) {
+            foreach ($engine->channelLibrary((string) $film['channel'], '', 100)['films'] as $sibling) {
+                if (!empty($sibling['embed_url']) && $sibling['id'] !== $film['id']) {
+                    $wpFallbacks[] = [
+                        'title' => (string) $sibling['title'],
+                        'src' => (string) $sibling['embed_url'] . '?rel=0&enablejsapi=1&autoplay=1',
+                    ];
+                }
+            }
+        }
         // NOTE: YouTube IGNORES the index= URL parameter on playlist
         // embeds — the only way to land on a slot is the player API's
         // playVideoAt command, sent by the script below ($wpSlot).
@@ -561,10 +575,37 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         // with playVideoAt — never by reloading the iframe. ----
         var player = document.getElementById('wp-player');
         var plIndex = -1;
+        // Auto-rotate on failure: a dead live cam or unavailable upload
+        // reports onError through the player API; the page then swaps in
+        // the next playable entry from the same channel.
+        var wpFallbacks = <?= json_encode($wpFallbacks ?? []) ?>;
+        var wpFallbackAt = 0;
+        var wpLastAdvance = 0;
+        function wpSubscribe() {
+            [900, 1800, 3200].forEach(function (delay) {
+                setTimeout(function () {
+                    if (player && player.contentWindow) {
+                        player.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
+                    }
+                }, delay);
+            });
+        }
+        wpSubscribe();
+        function wpAdvance(code) {
+            var now = Date.now();
+            if (!player || wpFallbacks.length === 0 || wpFallbackAt >= wpFallbacks.length || now - wpLastAdvance < 400) { return; }
+            wpLastAdvance = now;
+            var next = wpFallbacks[wpFallbackAt++];
+            player.src = next.src;
+            wpSubscribe();
+            var pill = document.querySelector('#watchparty .chat-header span');
+            if (pill) { pill.textContent = '⚠ Stream failed (error ' + code + ') — rotated to: ' + next.title; }
+        }
         window.addEventListener('message', function (event) {
             try {
                 var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
                 if (data && data.info && typeof data.info.playlistIndex === 'number') { plIndex = data.info.playlistIndex; }
+                if (data && data.event === 'onError') { wpAdvance(Number(data.info)); }
             } catch (ignored) {}
         });
         function wpPlaySlot(slot) {
