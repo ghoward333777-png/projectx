@@ -1258,7 +1258,7 @@ function renderWatch() {
     '</span><span class="pill">' + esc(tag) + '</span>' +
     (watchState.film[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
     (isScheduled ? '' : '<span class="pill ok">your pick</span>') +
-    (plFallback ? '<span class="pill" style="background:#3a2a3e">demo plays a verified stand-in — the live site streams the real title</span>' : '') +
+    (plFallback ? '<span class="pill" style="background:#3a2a3e">' + (TRAILERS[rank] ? 'official trailer — full film via the link below' : 'verified stand-in') + '</span>' : '') +
     '</h2>';
   renderWatchPlayer();
   renderWatchLog();
@@ -1270,6 +1270,7 @@ function renderWatch() {
 // validated against YouTube's oEmbed endpoint); romance films without
 // their own stream play a verified classic stand-in from the reel, so
 // the video ALWAYS changes with the click.
+const TRAILERS = {"2":"CHekzSiZjrY","3":"BjJcYdEOI0k","4":"BkL9l7qovsE","5":"0X94oZgJis4","6":"2EBAVoN8L_U","7":"eIcmQNy9FsM","8":"capS3yV9eY8","9":"-E10AcydCuk","10":"ahI9LaOGYcE","11":"bjP4s7UUnK8","12":"4RI0QvaGoiI","13":"H9Z3_ifFheQ","14":"O3CIXEAjcc8","15":"8VOAxzgq42A","16":"gk1rTKB6ZF8","17":"0pdqf4P9MB8","18":"nSbzyEJ8X9E","19":"9ItBvH5J6ss","20":"T0MmkG_nG1U","21":"ZQ-YX-5bAs0","22":"555oiY9RWM4","23":"PcL24s-S6ns","24":"r0fq5dd0C60","25":"k3B2XBcp7vA","26":"Ur_DIHs92NM","27":"2WGq2Rbs1Qg","28":"xjlKnDWZYzc","29":"Ax8qnxP2TWY","30":"Mgjwq1ZzdPQ","31":"KUd3gwaf0KQ","32":"7gRQFgdtAXs","33":"g-HeV8Z6iXc","34":"OPQkbvo99Ug","35":"ELb4S8P3q20","36":"1qFSl4DiKXA","37":"HpKbrpPiExA","38":"qDKo8DNpwOw","39":"4JFRdJTszRM","40":"wCrcDidiGJs","41":"_zIOjl93WrU","42":"ePU2Ux9JIMM","43":"17KJk3ErIx0","44":"dMaq_pfxs-0","45":"jHraHCjK094","46":"kVS-6k2tQAA","47":"7OIFdWk83no","48":"dJTU48_yghs","49":"Z9AYPxH5NTM","50":"ZQNifpPNmTk","51":"07-QBnEkgXU","52":"Kd509cLN-9U","53":"F25nzu6hh0Q","54":"oCfuPPR7wnQ","64":"xr3nsHRKZJA","65":"mP3GmdopSiM","66":"dpY7w3SxNyE","67":"XmuMd4FnnYo","68":"8YqFImp2xx8","69":"jvK23z6E7nQ","70":"Lsk6mAYVeWc","71":"ZeVAJre7PWU","72":"e25EgGHdNnQ"};
 const REEL = FILMS.filter(f => f[4]).map(f => f[4]);   // the 13 verified classics
 window.__wpLastSlot = null;          // exposed for the automated checks
 const wpFailed = new Set();          // stream ids that errored — never retried
@@ -1297,13 +1298,23 @@ function renderWatchPlayer() {
     note = esc(title) + (rank >= 2000
       ? ' — playing its verified stream. If it drops, the player rotates to the next one automatically.'
       : ' — the full YouTube movie, with ' + upNext.length + ' more queued behind it.');
+  } else if (TRAILERS[rank] && !wpFailed.has(TRAILERS[rank])) {
+    // The SELECTED film, on screen: its verified official trailer (the
+    // full film isn't freely embeddable anywhere on YouTube).
+    const trailerId = TRAILERS[rank];
+    kind = 'film:trailer-' + trailerId;
+    watchState.currentId = trailerId;
+    src = 'https://www.youtube-nocookie.com/embed/' + trailerId + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
+    note = esc(title) + ' — playing its official trailer (the full film isn\'t free on YouTube). ' +
+      '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(title + (year > 0 ? ' ' + year : '') + ' full movie') + '"' +
+      ' target="_blank" rel="noopener" style="color:var(--accent)">Watch the full film on YouTube ↗</a>';
   } else {
     const standIn = REEL[rank % REEL.length];
     window.__wpLastSlot = rank % REEL.length;
     kind = 'film:standin-' + standIn;
     watchState.currentId = standIn;
     src = 'https://www.youtube-nocookie.com/embed/' + standIn + '?rel=0&playsinline=1&autoplay=1&enablejsapi=1';
-    note = esc(title) + ' — the live site streams the real title; this preview plays verified classic ' + (rank % REEL.length + 1) + ' as a stand-in, so your pick always changes the video.';
+    note = esc(title) + ' — no verified stream or trailer; playing verified classic ' + (rank % REEL.length + 1) + ' as a stand-in.';
   }
   if (!$('w-frame')) {
     $('w-player').innerHTML =
@@ -1552,7 +1563,7 @@ function renderWatchGrid() {
     '<div class="card"><span class="name">' + (watchChannel === 'romance' && f[0] > 0 ? '#' + f[0] + ' · ' : (watchChannel === 'romance' ? '★ ' : '')) + esc(f[1]) + '</span>' +
     '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
     (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') +
-    (f[4] ? '<span class="pill ok">plays in-page</span>' : '') + '</span>' +
+    (f[4] ? '<span class="pill ok">plays in-page</span>' : (TRAILERS[f[0]] ? '<span class="pill" style="background:#3a2a3e">trailer plays in-page</span>' : '')) + '</span>' +
     '<button class="act" data-wfilm="' + f[0] + '">Watch this instead</button></div>').join('') ||
     '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
 }

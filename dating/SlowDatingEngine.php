@@ -4605,13 +4605,16 @@ final class SlowDatingEngine
     private function presentFilm(array $film): array
     {
         $id = $film['youtube_id'] ?? null;
+        $kind = $id !== null ? 'full' : null;
         if ($id === null) {
             $cached = $this->store->get('film_videos', (string) $film['id']);
             if (is_array($cached) && ($cached['video_id'] ?? '') !== '') {
                 $id = (string) $cached['video_id'];
+                $kind = (string) ($cached['kind'] ?? 'full');
             }
         }
         return $film + [
+            'video_kind' => $id !== null ? $kind : null,
             'playable' => $id !== null,
             'embed_url' => $id !== null ? 'https://www.youtube.com/embed/' . $id : null,
             'watch_url' => $id !== null
@@ -4641,11 +4644,20 @@ final class SlowDatingEngine
         if (!is_array($cached) && !getenv('SLOWDATING_NO_LOOKUP')) {
             // Verified lookup: alive, embeddable, AND the found video's
             // real title must match this film's title — never the first
-            // random embeddable result.
-            $query = trim($film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie');
-            $verified = $this->resolveVerifiedVideo($query);
+            // random embeddable result. When no free full movie exists
+            // (most copyrighted titles), the film's OFFICIAL TRAILER is
+            // resolved instead, so the SELECTED film is always what the
+            // player shows — marked kind=trailer for the page.
+            $year = (int) $film['year'] > 0 ? $film['year'] . ' ' : '';
+            $verified = $this->resolveVerifiedVideo(trim($film['title'] . ' ' . $year . 'full movie'));
             if ($verified !== null && self::streamTitleMatches((string) $film['title'], $verified['title'])) {
-                $this->store->put('film_videos', $filmId, $verified + ['resolved_at' => $now ?? time()]);
+                $this->store->put('film_videos', $filmId, $verified + ['kind' => 'full', 'resolved_at' => $now ?? time()]);
+            } else {
+                $trailer = $this->resolveVerifiedVideo(trim($film['title'] . ' ' . $year . 'official trailer'));
+                if ($trailer !== null && stripos($trailer['title'], 'trailer') !== false
+                    && self::streamTitleMatches((string) $film['title'], $trailer['title'])) {
+                    $this->store->put('film_videos', $filmId, $trailer + ['kind' => 'trailer', 'resolved_at' => $now ?? time()]);
+                }
             }
         }
         return $this->presentFilm($film);

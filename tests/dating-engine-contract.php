@@ -749,6 +749,13 @@ contract_check(!SlowDatingEngine::streamTitleMatches('Niagara Falls live cam', '
 contract_check(SlowDatingEngine::streamTitleMatches('Lofi Girl radio beats to relax study to', 'lofi hip hop radio 📚 beats to relax/study to'), 'the lofi radio passes on its distinctive words');
 contract_check(!SlowDatingEngine::streamTitleMatches('Giant panda live cam', 'Cute cats compilation 2024'), 'an embeddable-but-wrong video is rejected');
 contract_check(SlowDatingEngine::streamTitleMatches('Gregorian chants', 'Gregorian Chant | Sacred Music'), 'singular/plural word forms still match');
+// Trailer fallback: when only the official trailer is resolvable, the
+// pick still shows the SELECTED film, marked as a trailer.
+$engine->store()->put('film_videos', 'titanic-1997', ['video_id' => 'abcTRAILER1', 'title' => 'Titanic (1997) Official Trailer', 'kind' => 'trailer', 'resolved_at' => $tDay]);
+$titanic = $engine->romanceFilm('titanic-1997');
+contract_check($titanic !== null && $titanic['video_kind'] === 'trailer' && $titanic['embed_url'] === 'https://www.youtube.com/embed/abcTRAILER1', 'a trailer-resolved film embeds its own trailer, marked kind=trailer');
+$charade = $engine->romanceFilm('charade-1963');
+contract_check($charade !== null && $charade['video_kind'] === 'full', 'curated classics stay marked as full films');
 contract_check($engine->channelLibrary('ambient')['total'] >= 10 && $engine->channelLibrary('bible')['total'] >= 10 && $engine->channelLibrary('church')['total'] >= 10, 'ambient, Bible, and church channels are stocked');
 contract_check($engine->channelLibrary('nature', 'waterfall')['total'] === 4, 'channel search narrows the showcase');
 $engine->store()->put('film_videos', 'chan.nature.niagara-falls', ['video_id' => 'abcDEF12345', 'resolved_at' => $tDay]);

@@ -289,6 +289,11 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 ? '#' . (int) $film['rank'] . ' in the playlist'
                 : sd_e((string) ($channels[(string) ($film['channel'] ?? 'romance')]['label'] ?? 'channel pick')) . (!empty($film['live']) ? ' · ● LIVE' : '')
             ?><?= $party['custom_pick'] ? ' · your pick' : ' · tonight\'s schedule' ?></span>
+        <?php if (($film['video_kind'] ?? '') === 'trailer'): ?>
+            <span class="pill" style="background:#3a2a3e">official trailer — the full film isn't free on YouTube</span>
+            <a href="https://www.youtube.com/results?search_query=<?= rawurlencode(trim((string) $film['title'] . ' ' . ((int) $film['year'] > 0 ? $film['year'] . ' ' : '') . 'full movie')) ?>"
+               target="_blank" rel="noopener" style="color:#ffb8d2">Watch the full film on YouTube ↗</a>
+        <?php endif; ?>
         <?php if ($party['custom_pick']): ?>
         <form method="post" style="display:inline;background:none;border:0;padding:0;margin:0">
             <input type="hidden" name="action" value="pick">

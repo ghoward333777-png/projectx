@@ -66,6 +66,26 @@ foreach ($rows as [$all, $rank, $quote, $wanted, $id]) {
     usleep(120000);
 }
 
+// Baked trailers: alive, embeddable, titled as a trailer FOR THAT film.
+if (preg_match('/const TRAILERS = (\{[^;]*\});/', $html, $trailerJson) === 1) {
+    $filmTitles = [];
+    preg_match_all("/\\[(\\d{1,3}),'((?:[^'\\\\]|\\\\.)*)',\\d{1,4},'(?:[^'\\\\]|\\\\.)*',''\\]/", $html, $bare, PREG_SET_ORDER);
+    foreach ($bare as [$all, $rank, $name]) {
+        $filmTitles[(int) $rank] = stripslashes($name);
+    }
+    foreach ((array) json_decode($trailerJson[1], true) as $rank => $id) {
+        $checked++;
+        $wanted = $filmTitles[(int) $rank] ?? '';
+        $actual = $title((string) $id);
+        if ($actual === null) {
+            $failures[] = "DEAD  trailer #{$rank} {$wanted} ({$id})";
+        } elseif ($wanted !== '' && (stripos($actual, 'trailer') === false || !SlowDatingEngine::streamTitleMatches($wanted, $actual))) {
+            $failures[] = "WRONG trailer #{$rank} wanted \"{$wanted}\" got \"{$actual}\" ({$id})";
+        }
+        usleep(120000);
+    }
+}
+
 // The verified romance classics must stay alive.
 preg_match_all("/\\[(\\d{1,3}),'((?:[^'\\\\]|\\\\.)*)',\\d{1,4},'(?:[^'\\\\]|\\\\.)*','([A-Za-z0-9_-]{11})'\\]/", $html, $classics, PREG_SET_ORDER);
 foreach ($classics as [$all, $rank, $name, $id]) {
