@@ -372,16 +372,25 @@ final class SlowDatingEngine
         return ['avatar_mode' => $mode];
     }
 
+    /** The three profile pictures: generated artwork plus two upload slots. */
+    public const PHOTO_SLOTS = ['public', 'private'];
+    public const IMAGE_CHOICES = ['generated', 'public', 'private'];
+
     /**
-     * Store a member's photo (JPEG, PNG, or WebP, max 2 MB). The bytes are
-     * validated against the declared type's magic signature and written
-     * under <state>/photos with a server-chosen name.
+     * Store one of a member's pictures (JPEG, PNG, or WebP, max 2 MB) in a
+     * slot: 'public' is their real picture, 'private' is the picture only
+     * revealed inside chats where they choose it. Bytes are validated
+     * against the declared type's magic signature and written under
+     * <state>/photos with a server-chosen name.
      *
      * @return array{file: string, mime: string}
      */
-    public function setMemberPhoto(string $userId, string $bytes, string $mime): array
+    public function setMemberPhoto(string $userId, string $bytes, string $mime, string $slot = 'public'): array
     {
         $user = $this->requireUser($userId);
+        if (!in_array($slot, self::PHOTO_SLOTS, true)) {
+            throw new InvalidArgumentException('Picture slots are "public" (real picture) or "private".');
+        }
         $type = self::PHOTO_TYPES[strtolower(trim($mime))] ?? null;
         if ($type === null) {
             throw new InvalidArgumentException('Photos must be JPEG, PNG, or WebP.');
@@ -396,28 +405,87 @@ final class SlowDatingEngine
         if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
             throw new RuntimeException('Could not create the photos directory.');
         }
-        $file = $userId . '.' . $type['ext'];
+        $file = $userId . '.' . $slot . '.' . $type['ext'];
         foreach (self::PHOTO_TYPES as $other) {
-            @unlink($dir . '/' . $userId . '.' . $other['ext']);
+            @unlink($dir . '/' . $userId . '.' . $slot . '.' . $other['ext']);
         }
         if (file_put_contents($dir . '/' . $file, $bytes) === false) {
             throw new RuntimeException('Could not store the photo.');
         }
-        $user['photo'] = ['file' => $file, 'mime' => strtolower(trim($mime))];
+        $photos = (array) ($user['photos'] ?? []);
+        $photos[$slot] = ['file' => $file, 'mime' => strtolower(trim($mime))];
+        $user['photos'] = $photos;
         $this->store->put('users', $userId, $user);
-        return $user['photo'];
+        return $photos[$slot];
     }
 
-    /** @return array{path: string, mime: string}|null The stored photo, when one exists. */
-    public function memberPhoto(string $userId): ?array
+    /** @return array{path: string, mime: string}|null The stored picture in a slot, when one exists. */
+    public function memberPhoto(string $userId, string $slot = 'public'): ?array
     {
         $user = $this->store->get('users', $userId);
-        $photo = $user['photo'] ?? null;
+        $photo = ($user['photos'][$slot] ?? null);
+        if (!is_array($photo) && $slot === 'public') {
+            $photo = $user['photo'] ?? null;   // legacy single-photo records
+        }
         if (!is_array($photo)) {
             return null;
         }
         $path = $this->store->directory() . '/photos/' . basename((string) $photo['file']);
         return is_file($path) ? ['path' => $path, 'mime' => (string) $photo['mime']] : null;
+    }
+
+    /**
+     * The profile's picture roster: every member has the generated artwork;
+     * the real and private pictures fill in as they upload. A complete
+     * profile has all three.
+     *
+     * @return array{generated: bool, public: bool, private: bool, complete: bool}
+     */
+    public function pictureRoster(string $userId): array
+    {
+        $this->requireUser($userId);
+        $roster = [
+            'generated' => true,
+            'public' => $this->memberPhoto($userId, 'public') !== null,
+            'private' => $this->memberPhoto($userId, 'private') !== null,
+        ];
+        $roster['complete'] = $roster['public'] && $roster['private'];
+        return $roster;
+    }
+
+    /**
+     * When two members connect, each chooses which of their three pictures
+     * the other person sees in that chat: generated artwork (the default
+     * until they choose), their real picture, or their private picture.
+     */
+    public function setChatImageChoice(string $chatId, string $userId, string $choice): array
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only chat participants can choose a picture for this chat.');
+        }
+        if (!in_array($choice, self::IMAGE_CHOICES, true)) {
+            throw new InvalidArgumentException('The choices are artwork, your real picture, or your private picture.');
+        }
+        if ($choice !== 'generated' && $this->memberPhoto($userId, $choice) === null) {
+            throw new InvalidArgumentException('Upload that picture to your profile first.');
+        }
+        $choices = (array) ($chat['image_choices'] ?? []);
+        $choices[$userId] = $choice;
+        $chat['image_choices'] = $choices;
+        $this->store->put('chats', (string) $chat['id'], $chat);
+        return ['chat_id' => (string) $chat['id'], 'user_id' => $userId, 'image_choice' => $choice];
+    }
+
+    /** The picture a viewer is entitled to see for a member inside one chat. */
+    public function chatImageChoice(string $chatId, string $memberId): string
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($memberId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('That member is not part of this chat.');
+        }
+        $choice = (string) (($chat['image_choices'][$memberId] ?? '') ?: 'generated');
+        return in_array($choice, self::IMAGE_CHOICES, true) ? $choice : 'generated';
     }
 
     // ------------------------------------------------------------------

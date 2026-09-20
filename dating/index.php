@@ -62,10 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                         throw new InvalidArgumentException('Choose a JPEG, PNG, or WebP photo up to 2 MB.');
                     }
-                    $engine->setMemberPhoto($userId, (string) file_get_contents((string) $upload['tmp_name']), (string) $upload['type']);
-                    $notice = $engine->avatarMode() === 'uploads'
-                        ? 'Photo saved — it now shows on your cards.'
-                        : 'Photo saved. The site is currently showing generated artwork; your photo appears when the admin switches to uploaded images.';
+                    $slot = (string) ($_POST['slot'] ?? 'public');
+                    $engine->setMemberPhoto($userId, (string) file_get_contents((string) $upload['tmp_name']), (string) $upload['type'], $slot);
+                    $notice = $slot === 'private'
+                        ? 'Private picture saved. It is shown only in chats where you choose it.'
+                        : 'Real picture saved.';
+                }
+                break;
+            case 'chat_image':
+                if ($userId !== null) {
+                    $result = $engine->setChatImageChoice((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['choice'] ?? ''));
+                    $notice = 'They now see your ' . ['generated' => 'artwork', 'public' => 'real picture', 'private' => 'private picture'][$result['image_choice']] . ' in this chat.';
                 }
                 break;
             case 'start_chat':
@@ -206,18 +213,40 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         <button type="submit">Save profile</button>
     </form>
     <section>
-        <h2>Profile photo</h2>
-        <div class="who" style="margin-bottom:10px">
-            <img class="avatar" style="width:96px;height:96px" src="avatar.php?u=<?= urlencode($userId) ?>" alt="Your profile image">
-            <p style="margin:0">This is how you appear on Browse, Matches, and Search.
-                The site shows <?= $engine->avatarMode() === 'uploads' ? 'uploaded photos (generated artwork when a member has none)' : 'generated artwork for everyone right now' ?>.</p>
+        <h2>Your three profile pictures</h2>
+        <?php $roster = $engine->pictureRoster($userId); ?>
+        <p>Every profile carries three pictures: your <strong style="color:#f3eef6">artwork</strong> (always there),
+            your <strong style="color:#f3eef6">real picture</strong>, and a <strong style="color:#f3eef6">private picture</strong>
+            shown only in chats where you choose it. When you connect with someone, you pick which one they see.
+            <?= $roster['complete'] ? '' : 'Your profile is missing ' . (!$roster['public'] && !$roster['private'] ? 'your real and private pictures.' : (!$roster['public'] ? 'your real picture.' : 'your private picture.')) ?></p>
+        <div class="grid">
+            <div class="card">
+                <strong>1 · Artwork</strong>
+                <img class="avatar" style="width:96px;height:96px" src="avatar.php?u=<?= urlencode($userId) ?>&art=1" alt="Generated artwork">
+                <span style="color:#a294ad;font-size:12.5px">Generated for you — always available.</span>
+            </div>
+            <div class="card">
+                <strong>2 · Real picture <?= $roster['public'] ? '' : '· missing' ?></strong>
+                <?php if ($roster['public']): ?><img class="avatar" style="width:96px;height:96px" src="photo.php?slot=public&t=<?= time() ?>" alt="Your real picture"><?php endif; ?>
+                <form method="post" enctype="multipart/form-data" style="background:none;border:0;padding:0;margin:0">
+                    <input type="hidden" name="action" value="upload_photo">
+                    <input type="hidden" name="slot" value="public">
+                    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+                    <button type="submit" class="act small" style="margin-top:8px">Save real picture</button>
+                </form>
+            </div>
+            <div class="card">
+                <strong>3 · Private picture <?= $roster['private'] ? '' : '· missing' ?></strong>
+                <?php if ($roster['private']): ?><img class="avatar" style="width:96px;height:96px" src="photo.php?slot=private&t=<?= time() ?>" alt="Your private picture"><?php endif; ?>
+                <form method="post" enctype="multipart/form-data" style="background:none;border:0;padding:0;margin:0">
+                    <input type="hidden" name="action" value="upload_photo">
+                    <input type="hidden" name="slot" value="private">
+                    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+                    <button type="submit" class="act small" style="margin-top:8px">Save private picture</button>
+                </form>
+                <span style="color:#a294ad;font-size:12.5px">Never shown on Browse or Search — only in chats where you reveal it.</span>
+            </div>
         </div>
-        <form method="post" enctype="multipart/form-data" style="margin-top:0">
-            <input type="hidden" name="action" value="upload_photo">
-            <label>Upload a photo (JPEG, PNG, or WebP · max 2 MB)</label>
-            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
-            <button type="submit">Save photo</button>
-        </form>
     </section>
     <section>
         <h2>Profile videos</h2>
@@ -303,8 +332,33 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         }
         $otherProfile = $engine->profile($other);
         ?>
+        <?php
+        $myChoice = $engine->chatImageChoice($chatId, $userId);
+        $myRoster = $engine->pictureRoster($userId);
+        $chosen = isset($chat['image_choices'][$userId]);
+        ?>
         <section>
-            <h2>Chat with <?= sd_e((string) ($otherProfile['display_name'] ?: $other)) ?></h2>
+            <div class="who" style="margin-bottom:6px">
+                <img class="avatar" src="avatar.php?u=<?= urlencode($other) ?>&amp;chat=<?= urlencode($chatId) ?>" alt="">
+                <h2 style="margin:0">Chat with <?= sd_e((string) ($otherProfile['display_name'] ?: $other)) ?></h2>
+            </div>
+            <?php if (!$chosen): ?>
+                <div class="notice" style="margin:0 0 10px">You're connected — which of your three profile pictures should
+                    <?= sd_e((string) ($otherProfile['display_name'] ?: 'they')) ?> see? Until you choose, they see your artwork.</div>
+            <?php endif; ?>
+            <form method="post" style="background:none;border:0;padding:0;margin:0 0 10px">
+                <input type="hidden" name="action" value="chat_image">
+                <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
+                <label style="margin-top:0">Picture they see from you</label>
+                <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));align-items:center">
+                    <select name="choice">
+                        <option value="generated"<?= $myChoice === 'generated' ? ' selected' : '' ?>>My artwork</option>
+                        <option value="public"<?= $myChoice === 'public' ? ' selected' : '' ?><?= $myRoster['public'] ? '' : ' disabled' ?>>My real picture<?= $myRoster['public'] ? '' : ' (upload it first)' ?></option>
+                        <option value="private"<?= $myChoice === 'private' ? ' selected' : '' ?><?= $myRoster['private'] ? '' : ' disabled' ?>>My private picture<?= $myRoster['private'] ? '' : ' (upload it first)' ?></option>
+                    </select>
+                    <button type="submit" class="act small" style="margin-top:0">Save</button>
+                </div>
+            </form>
             <p>
                 <?php if ($status['unlocked']): ?>
                     <span class="pill">Real-time · contact sharing open</span>

@@ -78,6 +78,16 @@ contract_check($status === 201 && !str_contains($message['text'], 'fastmail'), '
 [$status, $chatStatus] = call($api, 'GET', '/chats/' . $chatId . '/status', [], [], $bob['token'], $t0 + 60);
 contract_check($chatStatus['stage'] === 'slow_chat' && $chatStatus['daily_message_limit'] === 5, 'chat status must report slow-chat pacing');
 
+// ---- Three pictures & per-chat reveal ---------------------------------------------
+$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+$api->engine()->setMemberPhoto($alice['user_id'], $png, 'image/png', 'private');
+[$status, $roster] = call($api, 'GET', '/users/me/pictures', [], [], $alice['token'], $t0);
+contract_check($status === 200 && $roster['generated'] && $roster['private'] && !$roster['public'], 'the picture roster must be served over the API');
+[$status, $choice] = call($api, 'POST', '/chats/' . $chatId . '/image', [], ['choice' => 'private'], $alice['token'], $t0);
+contract_check($status === 200 && $choice['image_choice'] === 'private', 'a member must be able to choose their chat picture over the API');
+[$status] = call($api, 'POST', '/chats/' . $chatId . '/image', [], ['choice' => 'public'], $bob['token'], $t0);
+contract_check($status === 422, 'choosing a picture that is not uploaded must fail over the API');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',

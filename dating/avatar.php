@@ -16,19 +16,52 @@ require_once __DIR__ . '/SlowDatingEngine.php';
 
 $engine = new SlowDatingEngine();
 $userId = (string) ($_GET['u'] ?? '');
+$chatId = (string) ($_GET['chat'] ?? '');
+$artOnly = ($_GET['art'] ?? '') !== '';   // force the generated artwork
 
-// Admin-controlled image mode: when the platform runs on uploads and this
-// member has one, serve the stored photo (as a plain image, never HTML);
-// otherwise fall through to the generated artwork below.
-if ($engine->avatarMode() === 'uploads') {
-    $photo = $userId !== '' ? $engine->memberPhoto($userId) : null;
+$servePhoto = static function (array $photo): never {
+    header('Content-Type: ' . $photo['mime']);
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Security-Policy: default-src \'none\'');
+    header('Cache-Control: private, max-age=300');
+    readfile($photo['path']);
+    exit;
+};
+
+// Chat context: inside a chat, each member chose which of their three
+// pictures the other person sees. The private picture is served only
+// here, only to the other participant, and only when its owner chose it.
+if ($artOnly) {
+    // fall through to the generated art below
+} elseif ($chatId !== '' && $userId !== '') {
+    session_start();
+    $viewer = null;
+    if (isset($_SESSION['sd_member_token'])) {
+        $auth = $engine->authenticate((string) $_SESSION['sd_member_token']);
+        if ($auth !== null && $auth[1] === 'member') {
+            $viewer = $auth[0];
+        }
+    }
+    $chat = $engine->store()->get('chats', $chatId);
+    $participants = (array) ($chat['participants'] ?? []);
+    if ($chat !== null && $viewer !== null
+        && in_array($viewer, $participants, true) && in_array($userId, $participants, true)) {
+        $choice = $engine->chatImageChoice($chatId, $userId);
+        if ($choice !== 'generated') {
+            $photo = $engine->memberPhoto($userId, $choice) ?? $engine->memberPhoto($userId, 'public');
+            if ($photo !== null) {
+                $servePhoto($photo);
+            }
+        }
+    }
+    // No entitlement (or artwork chosen): fall through to the generated art.
+} elseif ($engine->avatarMode() === 'uploads') {
+    // Admin-controlled global mode: cards across Browse, Matches, and
+    // Search show the member's REAL picture when one exists. The private
+    // picture never appears in any global context.
+    $photo = $userId !== '' ? $engine->memberPhoto($userId, 'public') : null;
     if ($photo !== null) {
-        header('Content-Type: ' . $photo['mime']);
-        header('X-Content-Type-Options: nosniff');
-        header('Content-Security-Policy: default-src \'none\'');
-        header('Cache-Control: public, max-age=3600');
-        readfile($photo['path']);
-        exit;
+        $servePhoto($photo);
     }
 }
 

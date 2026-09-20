@@ -140,9 +140,12 @@ foreach ($roster as [$gender, $name, $i]) {
         'occupation_category' => $occupations[$i % 10],
     ]);
     $engine->addProfileVideo($id, 'https://www.youtube.com/watch?v=' . $videoIds[$i % 8]);
+    // Every profile carries its three pictures: generated artwork
+    // (automatic), a real-picture stand-in, and a distinct private one.
     $portrait = sample_portrait($i);
     if ($portrait !== null) {
-        $engine->setMemberPhoto($id, $portrait, 'image/png');
+        $engine->setMemberPhoto($id, $portrait, 'image/png', 'public');
+        $engine->setMemberPhoto($id, (string) sample_portrait($i + 61), 'image/png', 'private');
     }
 
     // Layered popularity so Browse ranks with texture.

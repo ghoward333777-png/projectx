@@ -282,8 +282,31 @@ contract_check($trip['granted'] === 4, 'promo trip campaigns must cover every me
 contract_check($engine->avatarMode() === 'generated', 'the platform defaults to generated artwork');
 $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
 $photo = $engine->setMemberPhoto($alice['user_id'], $png, 'image/png');
-contract_check($photo['file'] === $alice['user_id'] . '.png', 'photos are stored under a server-chosen name');
+contract_check($photo['file'] === $alice['user_id'] . '.public.png', 'photos are stored under a server-chosen slot name');
 contract_check($engine->memberPhoto($alice['user_id']) !== null, 'a stored photo must be retrievable');
+
+// Three-picture roster and the per-chat reveal choice.
+$roster = $engine->pictureRoster($alice['user_id']);
+contract_check($roster['generated'] && $roster['public'] && !$roster['private'] && !$roster['complete'], 'the roster must track artwork, real, and private pictures');
+$engine->setMemberPhoto($alice['user_id'], $png, 'image/png', 'private');
+contract_check($engine->pictureRoster($alice['user_id'])['complete'], 'uploading both pictures completes the three-picture profile');
+contract_check($engine->chatImageChoice($chatId, $alice['user_id']) === 'generated', 'chats default to showing artwork until the member chooses');
+$threw = false;
+try {
+    $engine->setChatImageChoice($chatId, $bob['user_id'], 'private');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'choosing a picture you have not uploaded must be rejected');
+$engine->setChatImageChoice($chatId, $alice['user_id'], 'private');
+contract_check($engine->chatImageChoice($chatId, $alice['user_id']) === 'private', 'a member can reveal their private picture in one chat');
+$threw = false;
+try {
+    $engine->setChatImageChoice($chatId, $carol['user_id'], 'generated');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'non-participants cannot set a chat image choice');
 $threw = false;
 try {
     $engine->setMemberPhoto($alice['user_id'], 'GIF89a not allowed', 'image/gif');

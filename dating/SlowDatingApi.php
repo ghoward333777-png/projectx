@@ -219,6 +219,12 @@ final class SlowDatingApi
         if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'status') {
             return [200, $engine->chatStatus($segments[1], $now)];
         }
+        if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'image') {
+            return [200, $engine->setChatImageChoice($segments[1], $userId, (string) ($body['choice'] ?? ''))];
+        }
+        if ($method === 'GET' && $path === '/users/me/pictures') {
+            return [200, $engine->pictureRoster($userId)];
+        }
         if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'unlock') {
             return [200, $engine->purchaseEarlyUnlock($segments[1], $userId, $now)];
         }
