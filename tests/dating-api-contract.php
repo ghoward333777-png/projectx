@@ -174,6 +174,28 @@ call($api, 'PATCH', '/admin/v1/settings', [], ['avatar_mode' => 'generated'], $a
 [$status] = call($api, 'GET', '/admin/v1/leaderboard', [], [], $alice['token'], $t0);
 contract_check($status === 404, 'admin routes must not resolve for member tokens');
 
+// ---- 2026 pack over the API ---------------------------------------------------------------
+[$status, $coach] = call($api, 'GET', '/users/me/coach', [], [], $alice['token'], $t0);
+contract_check($status === 200 && isset($coach['score'], $coach['suggestions']), 'the profile coach must serve over the API');
+[$status] = call($api, 'POST', '/users/me/prompts', [], ['answers' => [['id' => 'p1', 'text' => 'Handwritten notes.']]], $alice['token'], $t0);
+contract_check($status === 200, 'prompts must save over the API');
+[$status, $drop] = call($api, 'GET', '/users/me/daily-drop', [], [], $bob['token'], $t0);
+contract_check($status === 200 && count($drop) <= 3, 'the daily drop must serve over the API');
+[$status, $joined] = call($api, 'POST', '/users/me/communities/travelers', [], [], $alice['token'], $t0);
+contract_check($status === 200 && $joined === ['travelers'], 'joining a community must work over the API');
+[$status, $grid] = call($api, 'GET', '/communities/travelers', [], [], $bob['token'], $t0);
+contract_check($status === 200 && count($grid) === 1, 'community grids must serve over the API');
+[$status] = call($api, 'POST', '/users/me/verification', [], [], $alice['token'], $t0);
+contract_check($status === 200, 'verification requests must work over the API');
+[$status, $queue] = call($api, 'GET', '/admin/v1/verifications', [], [], $admin['token'], $t0);
+contract_check($status === 200 && count($queue) === 1, 'admins must see the verification queue');
+[$status, $review] = call($api, 'POST', '/admin/v1/verifications/' . $alice['user_id'], [], ['approve' => true], $admin['token'], $t0);
+contract_check($status === 200 && $review['status'] === 'verified', 'admins must approve verifications over the API');
+[$status, $breakers] = call($api, 'GET', '/chats/' . $chatId . '/icebreakers', [], [], $bob['token'], $t0);
+contract_check($status === 200 && $breakers !== [], 'ice breakers must serve over the API');
+[$status, $health] = call($api, 'GET', '/chats/' . $chatId . '/health', [], [], $alice['token'], $t0);
+contract_check($status === 200 && isset($health['score'], $health['label']), 'conversation health must serve over the API');
+
 // ---- Webhooks ---------------------------------------------------------------------------
 [$status] = call($api, 'POST', '/webhooks/tickets/purchased', [], ['event_id' => (string) $event['id']], null, $t0);
 contract_check($status === 401, 'webhooks without the shared secret must be rejected');

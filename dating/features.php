@@ -22,6 +22,10 @@ $groups = [
         ['Coupons, events & store', 'Partner discounts land in your wallet, event tickets enter you in venue contests automatically, and the store sells date-night kits with live stock.'],
         ['Member rewards', 'The most engaging members receive free memberships, gift certificates, tickets, and sponsored trips — visible in your wallet.'],
         ['Honest membership', 'Free to join. Member $19/year, VIP $79 (early chat unlock, boost), Elite $199 (chaperone priority, elite events).'],
+        ['Daily drop', 'Three people picked for you each day from your saved preferences — fewer, better matches instead of endless swiping.'],
+        ['Profile prompts', 'Answer up to three personality prompts; they become the ice breakers your matches see.'],
+        ['AI co-pilot', 'A profile coach with a strength score and concrete next steps, ice-breaker suggestions per chat, and a conversation-health read on every conversation.'],
+        ['Niche communities', 'Creatives, tech founders, spiritual, single parents, LGBTQ+, fitness, travelers, entrepreneurs — each with its own member grid.'],
     ]],
     ['Safety, women first', [
         ['Filtering before trust', 'Contact data cannot leave a chat before the 30-day unlock — the scammer\'s rush tactic simply doesn\'t work here.'],
@@ -30,6 +34,7 @@ $groups = [
         ['Vetted venues only', 'Every recommended venue is atmosphere-tagged: quiet, romantic, adult, date-compatible.'],
         ['VIP chaperones', 'Professional bodyguard partners offer discreet escorts, safe-arrival verification, and emergency response for any date.'],
         ['Strong passwords, always', 'A twelve-character four-class minimum for every account, with a generated strong password offered at signup.'],
+        ['Verification & trust badges', 'Members request verification, admins review, and verified profiles carry a ✓ badge on every card across the site.'],
     ]],
     ['For partner businesses', [
         ['Self-service portal', 'Restaurants, lounges, cruise lines, tour and experience companies, bodyguard services, and vendors sign up and manage everything themselves.'],

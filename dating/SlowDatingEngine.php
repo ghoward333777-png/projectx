@@ -61,6 +61,7 @@ final class SlowDatingEngine
     public const INCOME_RANGES = ['under_30k', '30k_60k', '60k_100k', '100k_150k', '150k_plus'];
     public const AUTOMOBILES = ['none', 'economy', 'sedan', 'luxury', 'sports', 'suv', 'truck', 'ev'];
     public const DATING_TYPES = ['long_term', 'short_term', 'casual', 'marriage', 'slow_dating'];
+    public const EDUCATION_LEVELS = ['high_school', 'trade_school', 'some_college', 'bachelors', 'masters', 'doctorate'];
     public const MEMBER_TIERS = ['free', 'member', 'vip', 'elite'];
     public const PARTNER_TIERS = ['basic', 'pro', 'elite'];
     public const VENUE_CATEGORIES = ['restaurant', 'lounge', 'cruise', 'tour', 'experience', 'bodyguard', 'vendor'];
@@ -242,7 +243,8 @@ final class SlowDatingEngine
         $profile = (array) $user['profile'];
         foreach (['age' => 'int', 'gender' => 'string', 'zip_code' => 'string', 'dating_type' => 'string',
                   'faith' => 'string', 'politics' => 'string', 'income_range' => 'string',
-                  'automobile' => 'string', 'occupation_category' => 'string', 'display_name' => 'string'] as $field => $type) {
+                  'automobile' => 'string', 'occupation_category' => 'string', 'education' => 'string',
+                  'display_name' => 'string'] as $field => $type) {
             if (array_key_exists($field, $fields)) {
                 $profile[$field] = $type === 'int' ? (int) $fields[$field] : trim((string) $fields[$field]);
             }
@@ -265,6 +267,9 @@ final class SlowDatingEngine
         }
         if ($profile['dating_type'] !== '' && !in_array($profile['dating_type'], self::DATING_TYPES, true)) {
             throw new InvalidArgumentException('Unknown dating type.');
+        }
+        if (($profile['education'] ?? '') !== '' && !in_array($profile['education'], self::EDUCATION_LEVELS, true)) {
+            throw new InvalidArgumentException('Unknown education level.');
         }
         if ($profile['age'] !== 0 && $profile['age'] < 18) {
             throw new InvalidArgumentException('Members must be 18 or older.');
@@ -903,6 +908,397 @@ final class SlowDatingEngine
     }
 
     // ------------------------------------------------------------------
+    // 2026 pack: verification, prompts, co-pilot, daily drop, communities
+    // ------------------------------------------------------------------
+
+    /** Prompt catalog (Hinge-style personality depth). */
+    public const PROMPTS = [
+        'p1' => 'The way to my heart is…',
+        'p2' => 'A perfect Saturday looks like…',
+        'p3' => 'I geek out about…',
+        'p4' => 'The last thing that made me laugh out loud…',
+        'p5' => 'I\'m looking for someone who…',
+        'p6' => 'My most controversial food opinion…',
+        'p7' => 'Three things I can\'t live without…',
+        'p8' => 'The trip I can\'t stop talking about…',
+    ];
+
+    /** Niche community hubs. */
+    public const COMMUNITIES = [
+        'creatives' => 'Creatives',
+        'tech-founders' => 'Tech founders',
+        'spiritual' => 'Spiritual & mindful',
+        'single-parents' => 'Single parents',
+        'lgbtq' => 'LGBTQ+',
+        'fitness' => 'Fitness lifestyle',
+        'travelers' => 'Travelers',
+        'entrepreneurs' => 'Entrepreneurs',
+    ];
+
+    public const DAILY_DROP_SIZE = 3;
+
+    /** Member asks to be verified; an admin reviews (trust badge). */
+    public function requestVerification(string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $user = $this->requireUser($userId);
+        $status = (string) ($user['verification']['status'] ?? 'none');
+        if ($status === 'verified') {
+            return ['status' => 'verified'];
+        }
+        $user['verification'] = ['status' => 'pending', 'requested_at' => $now];
+        $this->store->put('users', $userId, $user);
+        return ['status' => 'pending'];
+    }
+
+    public function verificationStatus(string $userId): string
+    {
+        $user = $this->requireUser($userId);
+        $status = (string) ($user['verification']['status'] ?? 'none');
+        return in_array($status, ['none', 'pending', 'verified'], true) ? $status : 'none';
+    }
+
+    /** @return array<int, array<string, mixed>> Members awaiting review. */
+    public function pendingVerifications(): array
+    {
+        $rows = [];
+        foreach ($this->store->all('users') as $user) {
+            if (($user['verification']['status'] ?? '') === 'pending') {
+                $rows[] = [
+                    'user_id' => (string) $user['id'],
+                    'display_name' => (string) ($user['profile']['display_name'] ?? ''),
+                    'requested_at' => (int) ($user['verification']['requested_at'] ?? 0),
+                ];
+            }
+        }
+        usort($rows, static fn (array $a, array $b): int => $a['requested_at'] <=> $b['requested_at']);
+        return $rows;
+    }
+
+    /** Admin approves or rejects a verification request. */
+    public function reviewVerification(string $adminId, string $userId, bool $approve, ?int $now = null): array
+    {
+        $now ??= time();
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins review verifications.');
+        }
+        $user = $this->requireUser($userId);
+        $user['verification'] = $approve
+            ? ['status' => 'verified', 'verified_at' => $now, 'by' => $adminId]
+            : ['status' => 'none'];
+        $this->store->put('users', $userId, $user);
+        return ['user_id' => $userId, 'status' => $approve ? 'verified' : 'none'];
+    }
+
+    /**
+     * Save up to three prompt answers (personality depth on the profile).
+     *
+     * @param array<int, array{id: string, text: string}> $answers
+     */
+    public function setPrompts(string $userId, array $answers): array
+    {
+        $user = $this->requireUser($userId);
+        $stored = [];
+        foreach (array_slice($answers, 0, 3) as $answer) {
+            $id = (string) ($answer['id'] ?? '');
+            $text = trim((string) ($answer['text'] ?? ''));
+            if (!isset(self::PROMPTS[$id])) {
+                throw new InvalidArgumentException('Unknown prompt.');
+            }
+            if ($text === '' || mb_strlen($text) > 200) {
+                throw new InvalidArgumentException('Prompt answers are 1–200 characters.');
+            }
+            $stored[] = ['id' => $id, 'question' => self::PROMPTS[$id], 'answer' => $text];
+        }
+        $user['prompts'] = $stored;
+        $this->store->put('users', $userId, $user);
+        return $stored;
+    }
+
+    /** @return array<int, array{id: string, question: string, answer: string}> */
+    public function prompts(string $userId): array
+    {
+        $user = $this->requireUser($userId);
+        return array_values((array) ($user['prompts'] ?? []));
+    }
+
+    /**
+     * Profile coach: a deterministic strength score (0–100) with the
+     * specific next steps that would raise it. The co-pilot that helps
+     * members succeed instead of judging them.
+     */
+    public function profileCoach(string $userId): array
+    {
+        $user = $this->requireUser($userId);
+        $profile = (array) $user['profile'];
+        $score = 0;
+        $suggestions = [];
+        $facts = ['age', 'gender', 'zip_code', 'dating_type', 'faith', 'politics', 'income_range', 'automobile', 'occupation_category'];
+        $filled = count(array_filter($facts, static fn (string $f): bool => ($profile[$f] ?? '') !== '' && ($profile[$f] ?? 0) !== 0));
+        $lists = count(array_filter(['interests', 'hobbies', 'outdoor_activities'], static fn (string $f): bool => (array) ($profile[$f] ?? []) !== []));
+        $score += (int) round(($filled / 9) * 25) + $lists * 5;
+        if ($filled < 9) {
+            $suggestions[] = 'Fill in the rest of your profile facts — every one is searchable.';
+        }
+        if ($lists < 3) {
+            $suggestions[] = 'Add interests, hobbies, and outdoor activities so matching has more to work with.';
+        }
+        $roster = $this->pictureRoster($userId);
+        $score += ($roster['public'] ? 10 : 0) + ($roster['private'] ? 10 : 0);
+        if (!$roster['public']) {
+            $suggestions[] = 'Upload your real picture — profiles with one start far more chats.';
+        }
+        if (!$roster['private']) {
+            $suggestions[] = 'Add a private picture to reveal in chats you trust.';
+        }
+        $promptCount = count($this->prompts($userId));
+        $score += $promptCount * 5;
+        if ($promptCount < 3) {
+            $suggestions[] = 'Answer ' . (3 - $promptCount) . ' more prompt' . ($promptCount === 2 ? '' : 's') . ' — they are the best conversation starters.';
+        }
+        if ((array) ($user['videos'] ?? []) !== []) {
+            $score += 10;
+        } else {
+            $suggestions[] = 'Embed a short profile video (10 seconds or less).';
+        }
+        if ((array) ($user['preferences'] ?? []) !== []) {
+            $score += 10;
+        } else {
+            $suggestions[] = 'Save your Browse preferences so daily drops know who to pick.';
+        }
+        if ($this->verificationStatus($userId) === 'verified') {
+            $score += 10;
+        } else {
+            $suggestions[] = 'Request verification — verified profiles carry a trust badge everywhere.';
+        }
+        return ['score' => min(100, $score), 'suggestions' => $suggestions];
+    }
+
+    /**
+     * Ice breakers: deterministic first-message suggestions built from the
+     * other member's prompt answers and your shared interests.
+     *
+     * @return array<int, string>
+     */
+    public function iceBreakers(string $chatId, string $viewerId): array
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($viewerId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only participants get ice breakers.');
+        }
+        $otherId = $this->otherParticipant($chat, $viewerId);
+        $other = $this->requireUser($otherId);
+        $me = $this->requireUser($viewerId);
+        $name = (string) ($other['profile']['display_name'] ?? 'they');
+        $ideas = [];
+        foreach (array_slice($this->prompts($otherId), 0, 2) as $prompt) {
+            $ideas[] = sprintf('%s answered "%s" with "%s" — ask for the story behind it.', $name, $prompt['question'], $prompt['answer']);
+        }
+        $shared = array_values(array_intersect(
+            (array) ($me['profile']['interests'] ?? []),
+            (array) ($other['profile']['interests'] ?? []),
+        ));
+        if ($shared !== []) {
+            $ideas[] = sprintf('You both love %s — ask about the best %s moment they\'ve had lately.', $shared[0], $shared[0]);
+        }
+        if ($ideas === []) {
+            $ideas[] = 'Ask what a perfect slow first date would look like for them — you have 30 days to plan it.';
+        }
+        return array_slice($ideas, 0, 3);
+    }
+
+    /**
+     * Conversation health: a deterministic read on how balanced and safe
+     * a chat is — reply balance, two-sided days, and red flags.
+     */
+    public function conversationHealth(string $chatId): array
+    {
+        $chat = $this->requireChat($chatId);
+        $messages = (array) $chat['messages'];
+        if ($messages === []) {
+            return ['score' => 50, 'label' => 'just starting', 'notes' => ['No messages yet — send the first one.']];
+        }
+        $bySender = [];
+        $days = [];
+        $flags = 0;
+        foreach ($messages as $message) {
+            $bySender[(string) $message['sender_id']] = ($bySender[(string) $message['sender_id']] ?? 0) + 1;
+            $days[gmdate('Y-m-d', (int) $message['sent_at'])][(string) $message['sender_id']] = true;
+            $flags += count((array) ($message['red_flags'] ?? []));
+        }
+        $counts = array_values($bySender) + [0, 0];
+        $balance = max($counts) > 0 ? min($counts) / max($counts) : 0.0;
+        $twoSided = count(array_filter($days, static fn (array $senders): bool => count($senders) >= 2));
+        $daysRatio = count($days) > 0 ? $twoSided / count($days) : 0.0;
+        $score = max(5, min(100, (int) round(50 * $balance + 50 * $daysRatio) - $flags * 15));
+        $notes = [];
+        if ($balance < 0.5) {
+            $notes[] = 'One side is carrying the conversation — ask a question and leave room.';
+        }
+        if ($flags > 0) {
+            $notes[] = 'Safety flags were raised in this chat — review them in your safety timeline.';
+        }
+        if ($notes === []) {
+            $notes[] = 'Balanced and steady — exactly how slow chats grow.';
+        }
+        return [
+            'score' => $score,
+            'label' => $score >= 75 ? 'thriving' : ($score >= 45 ? 'steady' : 'needs care'),
+            'notes' => $notes,
+        ];
+    }
+
+    /**
+     * The daily drop: a small curated set from the member's Browse pool,
+     * rotated deterministically by date — fewer, better matches instead
+     * of endless swiping. Same member, same day, same drop.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function dailyDrop(string $userId, ?int $now = null): array
+    {
+        $now ??= time();
+        $pool = $this->browseFor($userId, 9, $now);
+        if ($pool === []) {
+            return [];
+        }
+        $date = gmdate('Y-m-d', $now);
+        usort($pool, static fn (array $a, array $b): int =>
+            strcmp(md5($date . $userId . $a['user_id']), md5($date . $userId . $b['user_id'])));
+        $drop = array_slice($pool, 0, self::DAILY_DROP_SIZE);
+        foreach ($drop as &$row) {
+            $row['drop_date'] = $date;
+        }
+        return $drop;
+    }
+
+    /**
+     * Swipe mode: the next candidate from the member's Browse pool that
+     * they have not swiped on yet (one at a time, preference-filtered).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function nextSwipe(string $userId, ?int $now = null): ?array
+    {
+        $now ??= time();
+        foreach ($this->browseFor($userId, 50, $now) as $candidate) {
+            if ($this->store->get('swipes', $this->swipeId($userId, (string) $candidate['user_id'])) === null) {
+                return $candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Record a like or pass. A like credits the other member's popularity
+     * and reports back whether it completed a mutual like.
+     *
+     * @return array{target_id: string, action: string, mutual: bool}
+     */
+    public function recordSwipe(string $userId, string $targetId, string $action, ?int $now = null): array
+    {
+        $now ??= time();
+        $this->requireUser($userId);
+        $this->requireUser($targetId);
+        if ($userId === $targetId || !in_array($action, ['like', 'pass'], true)) {
+            throw new InvalidArgumentException('A swipe is a like or a pass on another member.');
+        }
+        $this->store->put('swipes', $this->swipeId($userId, $targetId), [
+            'from' => $userId,
+            'to' => $targetId,
+            'action' => $action,
+            'at' => $now,
+        ]);
+        $mutual = false;
+        if ($action === 'like') {
+            $this->recordPopularityEvent($targetId, 'like', $now);
+            $reverse = $this->store->get('swipes', $this->swipeId($targetId, $userId));
+            $mutual = $reverse !== null && $reverse['action'] === 'like';
+        }
+        return ['target_id' => $targetId, 'action' => $action, 'mutual' => $mutual];
+    }
+
+    /**
+     * Top-N matches: the member's best-scoring matches across the whole
+     * community (no preference filters — the widest ranked view).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function topMatches(string $userId, int $count = 10, ?int $now = null): array
+    {
+        return $this->matchesFor($userId, ['limit' => max(1, min(50, $count))], $now);
+    }
+
+    private function swipeId(string $from, string $to): string
+    {
+        return 'sw_' . substr(hash('sha256', $from . '>' . $to), 0, 16);
+    }
+
+    /** Join a niche community hub. */
+    public function joinCommunity(string $userId, string $slug): array
+    {
+        if (!isset(self::COMMUNITIES[$slug])) {
+            throw new InvalidArgumentException('Unknown community.');
+        }
+        $user = $this->requireUser($userId);
+        $communities = array_values(array_unique(array_merge((array) ($user['communities'] ?? []), [$slug])));
+        $user['communities'] = $communities;
+        $this->store->put('users', $userId, $user);
+        return $communities;
+    }
+
+    public function leaveCommunity(string $userId, string $slug): array
+    {
+        $user = $this->requireUser($userId);
+        $user['communities'] = array_values(array_filter(
+            (array) ($user['communities'] ?? []),
+            static fn (string $joined): bool => $joined !== $slug,
+        ));
+        $this->store->put('users', $userId, $user);
+        return $user['communities'];
+    }
+
+    /** @return array<int, string> */
+    public function memberCommunities(string $userId): array
+    {
+        $user = $this->requireUser($userId);
+        return array_values((array) ($user['communities'] ?? []));
+    }
+
+    /**
+     * A community's member grid, most popular first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function communityMembers(string $slug, ?int $now = null): array
+    {
+        $now ??= time();
+        if (!isset(self::COMMUNITIES[$slug])) {
+            throw new InvalidArgumentException('Unknown community.');
+        }
+        $rows = [];
+        foreach ($this->store->all('users') as $user) {
+            if (!in_array($slug, (array) ($user['communities'] ?? []), true)) {
+                continue;
+            }
+            $userId = (string) $user['id'];
+            $popularity = $this->popularity($userId, $now);
+            $rows[] = [
+                'user_id' => $userId,
+                'display_name' => (string) ($user['profile']['display_name'] ?? ''),
+                'age' => (int) ($user['profile']['age'] ?? 0),
+                'dating_type' => (string) ($user['profile']['dating_type'] ?? ''),
+                'interests' => (array) ($user['profile']['interests'] ?? []),
+                'popularity_score' => $popularity['popularity_score'],
+                'verified' => ($user['verification']['status'] ?? '') === 'verified',
+            ];
+        }
+        usort($rows, static fn (array $a, array $b): int =>
+            [$b['popularity_score'], $a['user_id']] <=> [$a['popularity_score'], $b['user_id']]);
+        return $rows;
+    }
+
+    // ------------------------------------------------------------------
     // Browse preferences
     // ------------------------------------------------------------------
 
@@ -953,6 +1349,22 @@ final class SlowDatingEngine
                 (array) $items,
             )));
         }
+        // "Must match" criteria — each empty string means "any".
+        $enumChecks = [
+            'income_range' => self::INCOME_RANGES,
+            'automobile' => self::AUTOMOBILES,
+            'education' => self::EDUCATION_LEVELS,
+        ];
+        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category'] as $criterion) {
+            if (!array_key_exists($criterion, $fields)) {
+                continue;
+            }
+            $value = strtolower(trim((string) $fields[$criterion]));
+            if ($value !== '' && isset($enumChecks[$criterion]) && !in_array($value, $enumChecks[$criterion], true)) {
+                throw new InvalidArgumentException('Unknown ' . str_replace('_', ' ', $criterion) . ' preference.');
+            }
+            $preferences[$criterion] = $value;
+        }
         $user['preferences'] = $preferences;
         $this->store->put('users', $userId, $user);
         return $preferences;
@@ -985,6 +1397,11 @@ final class SlowDatingEngine
         if ($preferences['interests'] !== []) {
             $filters['interests'] = $preferences['interests'];
         }
+        foreach (['faith', 'politics', 'income_range', 'automobile', 'education', 'occupation_category'] as $criterion) {
+            if (($preferences[$criterion] ?? '') !== '') {
+                $filters[$criterion] = $preferences[$criterion];
+            }
+        }
         if ($filters['zip_code'] === '') {
             unset($filters['zip_code'], $filters['zip_radius_km']);
         }
@@ -1001,6 +1418,12 @@ final class SlowDatingEngine
             'max_distance_km' => 100.0,
             'dating_type' => '',
             'interests' => [],
+            'faith' => '',
+            'politics' => '',
+            'income_range' => '',
+            'automobile' => '',
+            'education' => '',
+            'occupation_category' => '',
         ];
     }
 
@@ -1035,6 +1458,7 @@ final class SlowDatingEngine
                 'display_name' => (string) ($profile['display_name'] ?? ''),
                 'popularity_score' => $popularity['popularity_score'],
                 'percentile' => $popularity['percentile'],
+                'verified' => ($user['verification']['status'] ?? '') === 'verified',
             ] + array_intersect_key($profile, array_flip([
                 'age', 'gender', 'zip_code', 'interests', 'hobbies', 'outdoor_activities',
                 'dating_type', 'faith', 'politics', 'income_range', 'automobile', 'occupation_category',
@@ -1081,6 +1505,8 @@ final class SlowDatingEngine
                 'match_id' => 'm_' . substr(hash('sha256', $userId . '|' . $candidateId), 0, 10),
                 'user_id' => $candidateId,
                 'display_name' => (string) ($profile['display_name'] ?? ''),
+                'verified' => ($candidate['verification']['status'] ?? '') === 'verified',
+                'dating_type' => (string) ($profile['dating_type'] ?? ''),
                 'match_score' => (int) round($score * 100),
                 'popularity_score' => $candidatePopularity,
                 'zip_distance_km' => $this->zipProximityKm((string) $myProfile['zip_code'], (string) $profile['zip_code']),
@@ -2095,6 +2521,7 @@ final class SlowDatingEngine
             'income_range' => static fn ($value): bool => (string) $profile['income_range'] === (string) $value,
             'automobile' => static fn ($value): bool => (string) $profile['automobile'] === (string) $value,
             'occupation_category' => static fn ($value): bool => (string) $profile['occupation_category'] === (string) $value,
+            'education' => static fn ($value): bool => (string) ($profile['education'] ?? '') === (string) $value,
             'age_min' => static fn ($value): bool => (int) $profile['age'] >= (int) $value,
             'age_max' => static fn ($value): bool => (int) $profile['age'] <= (int) $value,
         ];
@@ -2142,6 +2569,7 @@ final class SlowDatingEngine
             'income_range' => '',
             'automobile' => '',
             'occupation_category' => '',
+            'education' => '',
         ];
     }
 

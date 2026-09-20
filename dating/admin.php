@@ -45,6 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Profile images now come from ' . ($engine->avatarMode() === 'uploads' ? 'member uploads (generated artwork as fallback).' : 'generated artwork for everyone.');
                 }
                 break;
+            case 'review_verification':
+                if ($adminId !== null) {
+                    $result = $engine->reviewVerification($adminId, (string) ($_POST['user_id'] ?? ''), ($_POST['decision'] ?? '') === 'approve');
+                    $notice = 'Verification ' . ($result['status'] === 'verified' ? 'approved — trust badge granted.' : 'rejected.');
+                }
+                break;
             case 'grant_rewards':
                 if ($adminId !== null) {
                     $benefit = ['type' => (string) ($_POST['reward_type'] ?? '')];
@@ -178,6 +184,40 @@ if ($adminId === null) {
     <input name="description" placeholder="All-expense weekend at the spring launch gala">
     <button type="submit">Grant rewards</button>
 </form>
+
+<section>
+    <h2>Verification queue</h2>
+    <?php $pending = $engine->pendingVerifications(); ?>
+    <?php if ($pending === []): ?>
+        <p>No verification requests waiting.</p>
+    <?php else: ?>
+        <table>
+            <tr><th>Member</th><th>Requested</th><th></th><th></th></tr>
+            <?php foreach ($pending as $request): ?>
+                <tr>
+                    <td><?= sd_e((string) ($request['display_name'] ?: $request['user_id'])) ?></td>
+                    <td><?= gmdate('M j, Y H:i', (int) $request['requested_at']) ?></td>
+                    <td>
+                        <form method="post" style="background:none;border:0;padding:0;margin:0">
+                            <input type="hidden" name="action" value="review_verification">
+                            <input type="hidden" name="user_id" value="<?= sd_e((string) $request['user_id']) ?>">
+                            <input type="hidden" name="decision" value="approve">
+                            <button type="submit" class="act small" style="margin:0">Approve</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="post" style="background:none;border:0;padding:0;margin:0">
+                            <input type="hidden" name="action" value="review_verification">
+                            <input type="hidden" name="user_id" value="<?= sd_e((string) $request['user_id']) ?>">
+                            <input type="hidden" name="decision" value="reject">
+                            <button type="submit" style="margin:0;background:#3c1f32;color:#ff9cba;border:1px solid #7a3755;border-radius:999px;padding:6px 14px;font:inherit;font-weight:700;cursor:pointer">Reject</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </table>
+    <?php endif; ?>
+</section>
 
 <section>
     <h2>Popularity leaderboard</h2>

@@ -179,6 +179,22 @@ try {
 }
 contract_check($threw, 'an upside-down age range must be rejected');
 
+// Must-match criteria: faith, income, education, occupation, automobile, politics.
+$engine->updateProfile($bob['user_id'], ['education' => 'masters']);
+$engine->updateProfile($dave['user_id'], ['education' => 'high_school']);
+$engine->updatePreferences($alice['user_id'], ['faith' => 'none', 'income_range' => '100k_150k', 'education' => 'masters']);
+$filtered = $engine->browseFor($alice['user_id'], 12, $t0);
+contract_check(count($filtered) === 1 && $filtered[0]['user_id'] === $bob['user_id'], 'faith + income + education preferences must filter browse to Bob');
+$engine->updatePreferences($alice['user_id'], ['faith' => '', 'income_range' => '', 'education' => '']);
+$threw = false;
+try {
+    $engine->updatePreferences($alice['user_id'], ['education' => 'street_smarts']);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown education preferences must be rejected');
+contract_check(count($engine->searchUsers(['education' => 'masters'], $t0)) === 1, 'education must be searchable');
+
 $matches = $engine->matchesFor($bob['user_id'], [], $t0);
 contract_check($matches !== [] && $matches[0]['user_id'] === $alice['user_id'], 'the most compatible nearby member must rank first');
 contract_check(in_array('jazz', $matches[0]['shared_interests'], true), 'shared interests must surface in matches');
@@ -331,6 +347,66 @@ contract_check($threw, 'only admins may change the image mode');
 $engine->setAvatarMode($admin['admin_id'], 'uploads');
 contract_check($engine->avatarMode() === 'uploads', 'admins can switch to uploaded images');
 $engine->setAvatarMode($admin['admin_id'], 'generated');
+
+// ---- 2026 pack: verification, prompts, coach, drops, communities ------------------
+contract_check($engine->verificationStatus($alice['user_id']) === 'none', 'members start unverified');
+$engine->requestVerification($alice['user_id'], $t0);
+contract_check($engine->verificationStatus($alice['user_id']) === 'pending', 'requesting verification queues it');
+contract_check(count($engine->pendingVerifications()) === 1, 'the admin queue lists pending requests');
+$threw = false;
+try {
+    $engine->reviewVerification($bob['user_id'], $alice['user_id'], true, $t0);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins review verifications');
+$engine->reviewVerification($admin['admin_id'], $alice['user_id'], true, $t0);
+contract_check($engine->verificationStatus($alice['user_id']) === 'verified', 'admins grant the trust badge');
+$verifiedRow = $engine->searchUsers(['gender' => 'female', 'interests' => 'jazz'], $t0)[0];
+contract_check($verifiedRow['verified'] === true, 'the trust badge surfaces in search rows');
+
+$prompts = $engine->setPrompts($alice['user_id'], [
+    ['id' => 'p3', 'text' => 'Analog photography and obscure jazz pressings.'],
+    ['id' => 'p2', 'text' => 'Farmers market, darkroom, live trio by night.'],
+]);
+contract_check(count($prompts) === 2 && $prompts[0]['question'] === SlowDatingEngine::PROMPTS['p3'], 'prompts store with their questions');
+$threw = false;
+try {
+    $engine->setPrompts($alice['user_id'], [['id' => 'nope', 'text' => 'x']]);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown prompts are rejected');
+
+$coach = $engine->profileCoach($alice['user_id']);
+contract_check($coach['score'] > 0 && $coach['score'] <= 100, 'the profile coach scores 0-100');
+$coachDave = $engine->profileCoach($dave['user_id']);
+contract_check($coach['score'] > $coachDave['score'], 'a fuller profile outscores a thin one');
+contract_check($coachDave['suggestions'] !== [], 'the coach gives thin profiles concrete suggestions');
+
+$breakers = $engine->iceBreakers($chatId, $bob['user_id']);
+contract_check($breakers !== [] && str_contains(implode(' ', $breakers), 'jazz') || str_contains(implode(' ', $breakers), 'Alice answered'), 'ice breakers build on prompts and shared interests');
+$health = $engine->conversationHealth($chatId);
+contract_check($health['score'] >= 5 && $health['score'] <= 100 && in_array($health['label'], ['thriving', 'steady', 'needs care'], true), 'conversation health returns a bounded score and label');
+
+$engine->updatePreferences($alice['user_id'], ['seeking_gender' => 'male', 'age_min' => 18, 'age_max' => 99, 'max_distance_km' => 200]);
+$drop1 = $engine->dailyDrop($alice['user_id'], $t0 + 40 * 86400);
+$drop2 = $engine->dailyDrop($alice['user_id'], $t0 + 40 * 86400 + 3600);
+contract_check($drop1 !== [] && count($drop1) <= SlowDatingEngine::DAILY_DROP_SIZE, 'the daily drop is a small curated set');
+contract_check(array_column($drop1, 'user_id') === array_column($drop2, 'user_id'), 'the same day serves the same drop');
+
+$engine->joinCommunity($alice['user_id'], 'creatives');
+$engine->joinCommunity($bob['user_id'], 'creatives');
+contract_check(count($engine->communityMembers('creatives', $t0)) === 2, 'community grids list joined members');
+$engine->leaveCommunity($bob['user_id'], 'creatives');
+contract_check(count($engine->communityMembers('creatives', $t0)) === 1, 'leaving a community removes you from its grid');
+$threw = false;
+try {
+    $engine->joinCommunity($alice['user_id'], 'flat-earthers');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'unknown communities are rejected');
 
 // ---- Chat image sharing -----------------------------------------------------------
 $before = $engine->popularityBreakdown($alice['user_id'], $t0 + 40 * 86400)['metrics']['photo_received'];

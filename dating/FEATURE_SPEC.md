@@ -435,7 +435,42 @@ partners (pro lounge / elite experience / basic restaurant) with targeted + rand
 coupons, a ticketed singles event, a contest with auto-entries, store products, an
 admin, and two executed top-10 reward campaigns. Prints the three demo logins.
 
-## 30. Engineering invariants & tests
+## 30. 2026 feature pack — trust, co-pilot, communities
+
+**Purpose** — The capabilities that separate 2026's winning apps from swipe-only ones:
+safety/trust signals, intent clarity, an AI co-pilot, anti-fatigue curation, personality
+depth, and niche community identity. All deterministic, like the rest of the engine.
+
+**Rules**
+- **Verification & trust badges**: a member requests verification
+  (`requestVerification`, states none → pending → verified); admins review a queue and
+  approve/reject (`reviewVerification`, admin-gated). Verified profiles carry a
+  `verified` flag in every card row (Browse, Search, Matches, Communities, daily drop).
+- **Profile prompts**: up to 3 answers (1–200 chars) from an 8-prompt catalog
+  (`PROMPTS`); stored with their question text; unknown prompts rejected.
+- **Profile coach**: `profileCoach()` scores 0–100 from profile facts (25), interest
+  lists (15), real+private pictures (20), prompts (15), video (10), saved preferences
+  (10), verification (10) — and returns the concrete suggestions that would raise it.
+- **Ice breakers**: `iceBreakers(chat, viewer)` builds up to 3 deterministic openers
+  from the other member's prompt answers and the pair's shared interests (participant-only).
+- **Conversation health**: `conversationHealth(chat)` scores reply balance (50%) and
+  two-sided-day ratio (50%), minus 15 per red flag, clamped 5–100, labeled
+  thriving / steady / needs care, with plain-language notes.
+- **Daily drop**: `dailyDrop(user)` curates `DAILY_DROP_SIZE` (3) members from the
+  member's Browse pool, ordered by `md5(date + user + candidate)` — same member, same
+  day, same drop; a new set every day. Anti-swipe-fatigue by construction.
+- **Niche communities**: fixed catalog (`COMMUNITIES`: creatives, tech founders,
+  spiritual & mindful, single parents, LGBTQ+, fitness, travelers, entrepreneurs);
+  join/leave; each community has a member grid ranked by popularity.
+- **Intent clarity**: the member's `dating_type` shows as a badge on match and search
+  cards alongside the trust badge.
+
+**API** — `POST /users/me/verification`; `GET|POST /admin/v1/verifications[/{userId}]`;
+`POST /users/me/prompts`; `GET /users/me/coach`; `GET /users/me/daily-drop`;
+`GET /communities`, `GET /communities/{slug}`, `POST|DELETE /users/me/communities/{slug}`;
+`GET /chats/{id}/icebreakers`, `GET /chats/{id}/health`.
+
+## 31. Engineering invariants & tests
 
 - **Determinism**: every time-dependent rule takes an explicit `$now`; identical inputs
   produce identical pacing, unlock, popularity, matching, targeting, and concierge

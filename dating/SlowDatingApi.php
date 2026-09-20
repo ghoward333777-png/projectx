@@ -232,6 +232,47 @@ final class SlowDatingApi
         if ($method === 'GET' && $path === '/users/me/pictures') {
             return [200, $engine->pictureRoster($userId)];
         }
+        if ($method === 'GET' && $path === '/users/me/coach') {
+            return [200, $engine->profileCoach($userId)];
+        }
+        if ($method === 'POST' && $path === '/users/me/prompts') {
+            return [200, $engine->setPrompts($userId, (array) ($body['answers'] ?? []))];
+        }
+        if ($method === 'POST' && $path === '/users/me/verification') {
+            return [200, $engine->requestVerification($userId, $now)];
+        }
+        if ($method === 'GET' && $path === '/users/me/daily-drop') {
+            return [200, $engine->dailyDrop($userId, $now)];
+        }
+        if ($method === 'GET' && $path === '/swipe/next') {
+            return [200, $engine->nextSwipe($userId, $now) ?? ['done' => true]];
+        }
+        if ($method === 'POST' && $path === '/swipe') {
+            return [201, $engine->recordSwipe($userId, (string) ($body['user_id'] ?? ''), (string) ($body['action'] ?? ''), $now)];
+        }
+        if ($method === 'GET' && $path === '/matches/top') {
+            return [200, $engine->topMatches($userId, (int) ($query['count'] ?? 10), $now)];
+        }
+        if ($method === 'GET' && $path === '/communities') {
+            return [200, SlowDatingEngine::COMMUNITIES];
+        }
+        if (count($segments) === 2 && $segments[0] === 'communities' && $method === 'GET') {
+            return [200, $engine->communityMembers($segments[1], $now)];
+        }
+        if (count($segments) === 4 && $segments[0] === 'users' && $segments[1] === 'me' && $segments[2] === 'communities') {
+            if ($method === 'POST') {
+                return [200, $engine->joinCommunity($userId, $segments[3])];
+            }
+            if ($method === 'DELETE') {
+                return [200, $engine->leaveCommunity($userId, $segments[3])];
+            }
+        }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'icebreakers') {
+            return [200, $engine->iceBreakers($segments[1], $userId)];
+        }
+        if ($method === 'GET' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'health') {
+            return [200, $engine->conversationHealth($segments[1])];
+        }
         if ($method === 'POST' && count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'unlock') {
             return [200, $engine->purchaseEarlyUnlock($segments[1], $userId, $now)];
         }
@@ -345,6 +386,12 @@ final class SlowDatingApi
         }
         if ($method === 'POST' && $path === '/admin/v1/rewards/top') {
             return [201, $engine->grantTopMemberRewards($adminId, (int) ($body['cohort'] ?? 0), (array) ($body['benefit'] ?? []), $now)];
+        }
+        if ($method === 'GET' && $path === '/admin/v1/verifications') {
+            return [200, $engine->pendingVerifications()];
+        }
+        if ($method === 'POST' && count($segments) === 4 && $segments[0] === 'admin' && $segments[2] === 'verifications') {
+            return [200, $engine->reviewVerification($adminId, $segments[3], (bool) ($body['approve'] ?? false), $now)];
         }
         if ($method === 'GET' && $path === '/admin/v1/settings') {
             return [200, ['avatar_mode' => $engine->avatarMode()]];

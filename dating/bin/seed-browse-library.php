@@ -138,6 +138,7 @@ foreach ($roster as [$gender, $name, $i]) {
         'income_range' => $incomes[$i % 5],
         'automobile' => $autos[$i % 8],
         'occupation_category' => $occupations[$i % 10],
+        'education' => SlowDatingEngine::EDUCATION_LEVELS[$i % 6],
     ]);
     $engine->addProfileVideo($id, 'https://www.youtube.com/watch?v=' . $videoIds[$i % 8]);
     // Every profile carries its three pictures: generated artwork
@@ -160,6 +161,30 @@ foreach ($roster as [$gender, $name, $i]) {
     }
     for ($j = 0; $j < $compliments; $j++) {
         $engine->recordPopularityEvent($id, 'compliment', $now - (($j * 6 + $i) % 11) * $day - 7200);
+    }
+
+    // Personality depth, community identity, and trust badges.
+    $promptIds = array_keys(SlowDatingEngine::PROMPTS);
+    $answers = ['A quiet corner table and a story worth telling.', 'Coffee first, adventure second.',
+                'Anything that ends with live music.', 'Slow mornings and long walks.',
+                'A well-planned surprise.', 'Whatever makes us both laugh.'];
+    $engine->setPrompts($id, [
+        ['id' => $promptIds[$i % 8], 'text' => $answers[$i % 6]],
+        ['id' => $promptIds[($i + 3) % 8], 'text' => $answers[($i + 2) % 6]],
+    ]);
+    $slugs = array_keys(SlowDatingEngine::COMMUNITIES);
+    $engine->joinCommunity($id, $slugs[$i % 8]);
+    if ($i % 4 === 1) {
+        $engine->joinCommunity($id, $slugs[($i + 3) % 8]);
+    }
+    if ($i % 3 === 0) {
+        // Demo trust badges: mark every third member verified directly
+        // (in production this goes through the admin review queue).
+        $record = $engine->store()->get('users', $id);
+        $record['verification'] = ['status' => 'verified', 'verified_at' => $joined + 86400];
+        $engine->store()->put('users', $id, $record);
+    } elseif ($i % 7 === 2) {
+        $engine->requestVerification($id, $now - 2 * $day);
     }
 
     // Everyone in the library has saved browse preferences.

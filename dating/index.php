@@ -123,6 +123,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notice = 'Order placed.';
                 }
                 break;
+            case 'request_verification':
+                if ($userId !== null) {
+                    $engine->requestVerification($userId);
+                    $notice = 'Verification requested — an admin will review it. Verified profiles carry a trust badge everywhere.';
+                }
+                break;
+            case 'save_prompts':
+                if ($userId !== null) {
+                    $answers = [];
+                    for ($i = 0; $i < 3; $i++) {
+                        $id = (string) ($_POST['prompt_id_' . $i] ?? '');
+                        $text = trim((string) ($_POST['prompt_text_' . $i] ?? ''));
+                        if ($id !== '' && $text !== '') {
+                            $answers[] = ['id' => $id, 'text' => $text];
+                        }
+                    }
+                    $engine->setPrompts($userId, $answers);
+                    $notice = 'Prompts saved — they feed your matches\' ice breakers.';
+                }
+                break;
+            case 'join_community':
+                if ($userId !== null) {
+                    $engine->joinCommunity($userId, (string) ($_POST['slug'] ?? ''));
+                    $notice = 'Welcome to the community.';
+                }
+                break;
+            case 'leave_community':
+                if ($userId !== null) {
+                    $engine->leaveCommunity($userId, (string) ($_POST['slug'] ?? ''));
+                    $notice = 'Left the community.';
+                }
+                break;
             case 'subscribe':
                 if ($userId !== null) {
                     $plan = $engine->subscribeMembership($userId, (string) ($_POST['tier'] ?? 'member'));
@@ -171,7 +203,7 @@ if ($userId === null) {
 $profile = $engine->profile($userId);
 $popularity = $engine->popularity($userId);
 $tab = (string) ($_GET['tab'] ?? 'matches');
-$tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'profile' => 'My profile', 'wallet' => 'Coupons & rewards', 'store' => 'Store', 'membership' => 'Membership'];
+$tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'communities' => 'Communities', 'profile' => 'My profile', 'wallet' => 'Coupons & rewards', 'store' => 'Store', 'membership' => 'Membership'];
 ?>
 <section>
     <div class="grid">
@@ -222,6 +254,14 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
                 </select>
             </div>
             <div><label>Occupation category</label><input name="occupation_category" value="<?= sd_e((string) $profile['occupation_category']) ?>"></div>
+            <div><label>Education</label>
+                <select name="education">
+                    <option value="">—</option>
+                    <?php foreach (SlowDatingEngine::EDUCATION_LEVELS as $level): ?>
+                        <option value="<?= sd_e($level) ?>"<?= ($profile['education'] ?? '') === $level ? ' selected' : '' ?>><?= sd_e(ucwords(str_replace('_', ' ', $level))) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
         <label>Interests (comma separated)</label><input name="interests" value="<?= sd_e(implode(', ', (array) $profile['interests'])) ?>">
         <label>Hobbies</label><input name="hobbies" value="<?= sd_e(implode(', ', (array) $profile['hobbies'])) ?>">
@@ -278,6 +318,58 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         </form>
     </section>
     <section>
+        <h2>Profile coach</h2>
+        <?php $coach = $engine->profileCoach($userId); ?>
+        <div class="grid">
+            <div class="metric card"><strong><?= (int) $coach['score'] ?></strong><span>profile strength (0–100)</span></div>
+            <div class="card" style="grid-column:span 2">
+                <?php if ($coach['suggestions'] === []): ?>
+                    <span>Your profile is at full strength — nothing to improve.</span>
+                <?php else: ?>
+                    <strong>Raise your score:</strong>
+                    <ul style="margin:6px 0 0;padding-left:18px;color:#c4b8ce">
+                        <?php foreach ($coach['suggestions'] as $suggestion): ?>
+                            <li><?= sd_e($suggestion) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+    <section>
+        <h2>Verification</h2>
+        <?php $verification = $engine->verificationStatus($userId); ?>
+        <?php if ($verification === 'verified'): ?>
+            <p><span class="pill ok">✓ verified</span> Your trust badge shows on every card.</p>
+        <?php elseif ($verification === 'pending'): ?>
+            <p><span class="pill">pending review</span> An admin is reviewing your request.</p>
+        <?php else: ?>
+            <p>Verified profiles carry a trust badge on Browse, Matches, Search, and Communities.</p>
+            <form method="post" style="background:none;border:0;padding:0;margin:0">
+                <input type="hidden" name="action" value="request_verification">
+                <button type="submit" class="act small">Request verification</button>
+            </form>
+        <?php endif; ?>
+    </section>
+    <form method="post">
+        <h2>Your prompts</h2>
+        <p style="margin-top:0">Answer up to three — they appear as ice breakers for people you connect with.</p>
+        <input type="hidden" name="action" value="save_prompts">
+        <?php $myPrompts = $engine->prompts($userId); ?>
+        <?php for ($i = 0; $i < 3; $i++): $current = $myPrompts[$i] ?? null; ?>
+            <div class="grid" style="grid-template-columns:1fr 1.4fr;margin-bottom:8px">
+                <select name="prompt_id_<?= $i ?>">
+                    <option value="">— pick a prompt —</option>
+                    <?php foreach (SlowDatingEngine::PROMPTS as $pid => $question): ?>
+                        <option value="<?= sd_e($pid) ?>"<?= ($current['id'] ?? '') === $pid ? ' selected' : '' ?>><?= sd_e($question) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input name="prompt_text_<?= $i ?>" maxlength="200" value="<?= sd_e((string) ($current['answer'] ?? '')) ?>" placeholder="Your answer (200 chars max)">
+            </div>
+        <?php endfor; ?>
+        <button type="submit">Save prompts</button>
+    </form>
+    <section>
         <h2>My popularity breakdown (only you can see this)</h2>
         <?php $breakdown = $engine->popularityBreakdown($userId); ?>
         <div class="grid">
@@ -305,6 +397,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
             <div><label>Income range</label><input name="income_range" value="<?= sd_e((string) ($_GET['income_range'] ?? '')) ?>"></div>
             <div><label>Automobile</label><input name="automobile" value="<?= sd_e((string) ($_GET['automobile'] ?? '')) ?>"></div>
             <div><label>Occupation</label><input name="occupation_category" value="<?= sd_e((string) ($_GET['occupation_category'] ?? '')) ?>"></div>
+            <div><label>Education</label><input name="education" value="<?= sd_e((string) ($_GET['education'] ?? '')) ?>" placeholder="bachelors, masters…"></div>
             <div><label>Min popularity</label><input name="min_popularity" type="number" value="<?= sd_e((string) ($_GET['min_popularity'] ?? '')) ?>"></div>
         </div>
         <button type="submit">Search</button>
@@ -323,6 +416,8 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
                 <div class="who" style="margin-bottom:6px">
                     <img class="avatar" src="avatar.php?u=<?= urlencode((string) $row['user_id']) ?>" alt="">
                     <strong><?= sd_e((string) ($row['display_name'] ?: $row['user_id'])) ?></strong>
+                    <?= !empty($row['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?>
+                    <?= ($row['dating_type'] ?? '') !== '' ? '<span class="pill">' . sd_e(str_replace('_', ' ', (string) $row['dating_type'])) . '</span>' : '' ?>
                 </div>
                 popularity <?= (int) $row['popularity_score'] ?> (top <?= (int) $row['percentile'] ?>%)
                 <?php if (isset($row['zip_distance_km'])): ?> · ~<?= sd_e((string) $row['zip_distance_km']) ?> km<?php endif; ?><br>
@@ -414,6 +509,20 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
                     <button type="submit" class="act small" style="margin-top:0">Share</button>
                 </div>
             </form>
+            <?php $health = $engine->conversationHealth($chatId); ?>
+            <p style="margin:10px 0 4px"><span class="pill<?= $health['score'] >= 45 ? ' ok' : '' ?>">conversation health: <?= (int) $health['score'] ?> · <?= sd_e((string) $health['label']) ?></span>
+                <span style="color:#a294ad;font-size:12.5px"><?= sd_e((string) $health['notes'][0]) ?></span></p>
+            <?php $breakers = $engine->iceBreakers($chatId, $userId); ?>
+            <?php if ((array) $chat['messages'] === [] || count((array) $chat['messages']) < 4): ?>
+                <div class="card" style="margin-top:8px">
+                    <strong>Ice breakers</strong>
+                    <ul style="margin:4px 0 0;padding-left:18px;color:#c4b8ce">
+                        <?php foreach ($breakers as $breaker): ?>
+                            <li><?= sd_e($breaker) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
             <?php $suggestions = $engine->conciergeSuggestions($chatId); ?>
             <?php if ($suggestions !== []): ?>
                 <h2 style="margin-top:16px">Date concierge suggestions</h2>
@@ -515,7 +624,81 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
         </div>
     </section>
 
+<?php elseif ($tab === 'communities'): ?>
+    <?php
+    $mine = $engine->memberCommunities($userId);
+    $viewing = (string) ($_GET['community'] ?? '');
+    ?>
+    <section>
+        <h2>Niche communities</h2>
+        <p>Join the circles that describe you — each has its own member grid, and specificity makes better matches.</p>
+        <div class="cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+            <?php foreach (SlowDatingEngine::COMMUNITIES as $slug => $label):
+                $joined = in_array($slug, $mine, true); ?>
+                <div class="card">
+                    <strong><a href="?tab=communities&amp;community=<?= sd_e($slug) ?>" style="color:#f3eef6;text-decoration:none"><?= sd_e($label) ?></a></strong>
+                    <span style="color:#a294ad;font-size:12.5px"><?= count($engine->communityMembers($slug)) ?> member<?= count($engine->communityMembers($slug)) === 1 ? '' : 's' ?><?= $joined ? ' · you are in' : '' ?></span>
+                    <form method="post" style="background:none;border:0;padding:0;margin:0">
+                        <input type="hidden" name="action" value="<?= $joined ? 'leave_community' : 'join_community' ?>">
+                        <input type="hidden" name="slug" value="<?= sd_e($slug) ?>">
+                        <button type="submit" class="<?= $joined ? 'quiet' : 'act small' ?>" style="margin-top:6px"><?= $joined ? 'Leave' : 'Join' ?></button>
+                    </form>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+    <?php if ($viewing !== '' && isset(SlowDatingEngine::COMMUNITIES[$viewing])): ?>
+        <section>
+            <h2><?= sd_e(SlowDatingEngine::COMMUNITIES[$viewing]) ?> — member grid</h2>
+            <div class="cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+                <?php foreach ($engine->communityMembers($viewing) as $member):
+                    if ($member['user_id'] === $userId) {
+                        continue;
+                    } ?>
+                    <div class="card">
+                        <div class="who">
+                            <img class="avatar" src="avatar.php?u=<?= urlencode((string) $member['user_id']) ?>" alt="">
+                            <div>
+                                <strong><?= sd_e((string) ($member['display_name'] ?: $member['user_id'])) ?><?= $member['age'] ? ', ' . (int) $member['age'] : '' ?></strong>
+                                <?= $member['verified'] ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
+                                <span style="color:#a294ad;font-size:12.5px">popularity <?= (int) $member['popularity_score'] ?><?= $member['dating_type'] !== '' ? ' · ' . sd_e(str_replace('_', ' ', (string) $member['dating_type'])) : '' ?></span>
+                            </div>
+                        </div>
+                        <form method="post" style="background:none;border:0;padding:0;margin:6px 0 0">
+                            <input type="hidden" name="action" value="start_chat">
+                            <input type="hidden" name="user_id" value="<?= sd_e((string) $member['user_id']) ?>">
+                            <button type="submit" class="act small">Start slow chat</button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php endif; ?>
+
 <?php else: ?>
+    <section>
+        <h2>Today's drop</h2>
+        <p>Three people picked for you today from your Browse preferences — fewer, better matches instead of endless swiping. A fresh drop lands every day.</p>
+        <div class="cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">
+            <?php foreach ($engine->dailyDrop($userId) as $pick): ?>
+                <div class="card">
+                    <div class="who">
+                        <img class="avatar" src="avatar.php?u=<?= urlencode((string) $pick['user_id']) ?>" alt="">
+                        <div>
+                            <strong><?= sd_e((string) ($pick['display_name'] ?: $pick['user_id'])) ?></strong>
+                            <?= !empty($pick['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?><br>
+                            <span style="color:#a294ad;font-size:12.5px">match <?= (int) $pick['match_score'] ?> · ~<?= sd_e((string) $pick['zip_distance_km']) ?> km</span>
+                        </div>
+                    </div>
+                    <form method="post" style="background:none;border:0;padding:0;margin:6px 0 0">
+                        <input type="hidden" name="action" value="start_chat">
+                        <input type="hidden" name="user_id" value="<?= sd_e((string) $pick['user_id']) ?>">
+                        <button type="submit" class="act small">Start slow chat</button>
+                    </form>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
     <section>
         <h2>Your matches</h2>
         <?php foreach ($engine->matchesFor($userId, ['limit' => 10]) as $match): ?>
@@ -523,6 +706,8 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'prof
                 <div class="who" style="margin-bottom:6px">
                     <img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="">
                     <strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong>
+                    <?= !empty($match['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?>
+                    <?= ($match['dating_type'] ?? '') !== '' ? '<span class="pill">' . sd_e(str_replace('_', ' ', (string) $match['dating_type'])) . '</span>' : '' ?>
                 </div>
                 match score <?= (int) $match['match_score'] ?> · popularity <?= (int) $match['popularity_score'] ?>
                 · ~<?= sd_e((string) $match['zip_distance_km']) ?> km<br>
