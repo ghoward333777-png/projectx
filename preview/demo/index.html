@@ -1162,6 +1162,12 @@ function renderWatch() {
     '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">' + esc(title) + ' — the full YouTube movie, with ' + upNext.length +
     ' more romance films queued in the player\'s playlist. ' +
     '<button class="quiet" id="w-yt" style="font-size:12px">Frame blank in this preview? Play the backup reel</button></p>';
+  renderWatchLog();
+  renderWatchGrid();
+}
+// Chat and library search repaint ONLY their own panels — never the
+// player. The movie must keep playing while the couple talks.
+function renderWatchLog() {
   $('w-log').innerHTML = [...watchState.msgs].reverse().map(x =>
     '<div class="wchat-msg' + (x.from === 'alice' ? ' me' : '') + '">' +
     (x.img ? '<img src="' + x.img + '" alt="Shared image">' : '') +
@@ -1169,6 +1175,8 @@ function renderWatch() {
     '<div class="wchat-meta"><span>' + (x.from === 'alice' ? 'You' : 'Marcus') + '</span><span>' + x.when +
     (x.redactions ? ' · contact info erased' : '') + '</span></div></div>').join('');
   $('w-log').scrollTop = 0;
+}
+function renderWatchGrid() {
   const q = ($('w-search').value || '').toLowerCase().trim();
   const hits = FILMS.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
   $('w-grid').innerHTML = hits.map(f =>
@@ -1196,7 +1204,7 @@ $('portal-watch').addEventListener('click', e => {
     renderWatch();
   }
 });
-$('w-search').addEventListener('input', renderWatch);
+$('w-search').addEventListener('input', renderWatchGrid);   // searching never touches the player
 // The operator's own playlist is the player's source.
 watchState.embedOverride = 'https://www.youtube-nocookie.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij';
 function demoEmbedUrl(input) {
@@ -1246,7 +1254,7 @@ function wchatSend(img) {
   $('w-input').value = '';
   $('w-file').value = '';
   $('w-filename').textContent = '📎 Attach image';
-  renderWatch();
+  renderWatchLog();   // only the chat log — the video never pauses for a message
 }
 $('w-send').addEventListener('click', () => {
   const file = $('w-file').files[0];

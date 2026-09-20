@@ -31,7 +31,52 @@ if (isset($_SESSION['sd_member_token'])) {
 
 $chatId = (string) ($_GET['chat'] ?? ($_POST['chat_id'] ?? ''));
 
+/**
+ * The chat log as an HTML fragment (newest first). Sending and polling
+ * both swap ONLY this fragment into the page over fetch(), so the video
+ * player is never reloaded — the movie keeps playing while the couple
+ * talks.
+ */
+function wp_messages_html(SlowDatingEngine $engine, string $chatId, string $userId): string
+{
+    $chat = $engine->store()->get('chats', $chatId);
+    if ($chat === null || !in_array($userId, (array) $chat['participants'], true)) {
+        return '';
+    }
+    $otherId = '';
+    foreach ((array) $chat['participants'] as $participant) {
+        if ($participant !== $userId) {
+            $otherId = (string) $participant;
+        }
+    }
+    $otherName = (string) ($engine->profile($otherId)['display_name'] ?: $otherId);
+    $html = '';
+    foreach (array_reverse((array) $chat['messages']) as $message) {
+        $html .= '<div class="message' . ($message['sender_id'] === $userId ? ' me' : '') . '">';
+        if (isset($message['image'])) {
+            $html .= '<div class="message-images"><img src="chatimage.php?chat=' . urlencode($chatId)
+                . '&amp;m=' . urlencode((string) $message['message_id']) . '" alt="Shared image"></div>';
+        }
+        if ((string) $message['text'] !== '') {
+            $html .= '<span>' . sd_e((string) $message['text']) . '</span>';
+        }
+        $html .= '<div class="message-meta"><span>' . ($message['sender_id'] === $userId ? 'You' : sd_e($otherName)) . '</span>'
+            . '<span>' . sd_e(gmdate('M j, H:i', (int) $message['sent_at']))
+            . (((int) ($message['contact_data_removed'] ?? 0)) > 0 ? ' · contact info erased' : '') . '</span></div></div>';
+    }
+    return $html;
+}
+
+// Polling endpoint: just the chat fragment, no page, no player reload.
+if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'messages') {
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    echo wp_messages_html($engine, $chatId, $userId);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
+    $ajax = isset($_POST['ajax']);
     try {
         switch ((string) ($_POST['action'] ?? '')) {
             case 'send':
@@ -48,6 +93,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                 } else {
                     $engine->sendMessage((string) ($_POST['chat_id'] ?? ''), $userId, $text);
                 }
+                if ($ajax) {
+                    // Sent over fetch(): return the fresh chat fragment only.
+                    // The page — and the movie — stay exactly where they are.
+                    header('Content-Type: text/html; charset=utf-8');
+                    header('Cache-Control: private, no-store');
+                    echo wp_messages_html($engine, (string) ($_POST['chat_id'] ?? ''), $userId);
+                    exit;
+                }
                 break;
             case 'pick':
                 $party = $engine->chooseWatchPartyFilm((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['film_id'] ?? 'daily'));
@@ -58,6 +111,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                 break;
         }
     } catch (Throwable $exception) {
+        if ($ajax) {
+            http_response_code(422);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo $exception->getMessage();
+            exit;
+        }
         $error = $exception->getMessage();
     }
 }
@@ -255,6 +314,7 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
             </div>
             <span class="hint">JPEG, PNG, or WebP up to 2 MB. An attached image sends with your text as its caption.
                 Contact details stay filtered until the chat unlocks. Newest messages appear right below.</span>
+            <span class="hint" id="wp-flash" style="color:#ff9cba"></span>
         </form>
         <div class="messages" id="wp-messages">
             <?php foreach (array_reverse((array) $chat['messages']) as $message): ?>
@@ -284,6 +344,60 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
             file.addEventListener('change', function () {
                 name.textContent = file.files.length ? '📎 ' + file.files[0].name : '📎 Attach image';
             });
+        }
+
+        // THE RULE: the movie never pauses because chat is happening.
+        // Sending goes over fetch() and swaps only the chat log; the
+        // player iframe is never touched. Without JS the form still
+        // posts the old way as a fallback.
+        var form = document.querySelector('#watchparty .input-area');
+        var log = document.getElementById('wp-messages');
+        var flash = document.getElementById('wp-flash');
+        var fragmentUrl = 'watch-party.php?fragment=messages&chat=<?= urlencode($chatId) ?>';
+        if (form && log) {
+            var textarea = form.querySelector('textarea[name=text]');
+            if (textarea) {
+                textarea.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        if (form.requestSubmit) { form.requestSubmit(); }
+                    }
+                });
+            }
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var data = new FormData(form);
+                data.append('ajax', '1');
+                var button = form.querySelector('.send-btn');
+                if (button) { button.disabled = true; }
+                fetch('watch-party.php', { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function (response) {
+                        return response.text().then(function (body) {
+                            if (!response.ok) { throw new Error(body || 'Could not send the message.'); }
+                            log.innerHTML = body;
+                            form.querySelector('textarea[name=text]').value = '';
+                            if (file) { file.value = ''; }
+                            if (name) { name.textContent = '📎 Attach image'; }
+                            if (flash) { flash.textContent = ''; }
+                        });
+                    })
+                    .catch(function (problem) {
+                        if (flash) { flash.textContent = problem.message; }
+                    })
+                    .then(function () {
+                        if (button) { button.disabled = false; }
+                    });
+            });
+
+            // Poll for the partner's messages while the movie plays.
+            setInterval(function () {
+                fetch(fragmentUrl, { credentials: 'same-origin' })
+                    .then(function (response) { return response.ok ? response.text() : null; })
+                    .then(function (body) {
+                        if (body !== null && body !== log.innerHTML) { log.innerHTML = body; }
+                    })
+                    .catch(function () { /* transient network hiccup — the next poll retries */ });
+            }, 7000);
         }
     })();
 </script>
