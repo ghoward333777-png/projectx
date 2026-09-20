@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch Party Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { background: #0f172a; color: #e5e7eb; min-height: 100vh; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 22px; padding-top: 6px; }
+  h1 span { color: #ff9cc0; }
+  .note { font-size: 13px; color: #9ca3af; }
+  .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,.5); border: 1px solid #1f2937; background: #000; }
+  .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+  .chat { display: flex; flex-direction: column; gap: 12px; background: #020617; border-radius: 12px; padding: 12px; border: 1px solid #1f2937; }
+  .chat-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #1f2937; }
+  .chat-header h2 { font-size: 16px; font-weight: 600; }
+  .chat-header span { font-size: 12px; color: #9ca3af; }
+  .input-area { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
+  .input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .input-row textarea { flex: 1; resize: vertical; min-height: 80px; max-height: 200px; padding: 10px; border-radius: 8px; border: 1px solid #374151; background: #020617; color: #e5e7eb; font-size: 13px; font-family: inherit; }
+  .input-row textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+  .send { background: #1d4ed8; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .send:hover { background: #3b82f6; }
+  .hint { font-size: 11.5px; color: #9ca3af; }
+  .messages { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; }
+  .message { display: inline-flex; flex-direction: column; max-width: 70%; padding: 8px 10px; border-radius: 10px; background: #111827; border: 1px solid #1f2937; font-size: 13px; gap: 6px; align-self: flex-start; }
+  .message.me { align-self: flex-end; background: #1d4ed8; border-color: #1d4ed8; }
+  .meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: #cbd5e1; opacity: .85; }
+  .films { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .film { background: #020617; border: 1px solid #1f2937; border-radius: 10px; padding: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+  .film button { background: #1d4ed8; color: #fff; border: 0; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .film button:hover { background: #3b82f6; }
+  .pill { display: inline-block; background: #111827; border: 1px solid #1f2937; border-radius: 999px; padding: 2px 10px; font-size: 11.5px; color: #9ca3af; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>SlowDating<span>.</span> Watch Party — standalone preview</h1>
+  <p class="note">This is the exact player+chat from your site, in one file. Open it in any normal browser and the
+    YouTube movie plays right here in the embedded player, with a playlist of more romance films queued behind it.</p>
+
+  <div class="video-wrapper"><iframe id="player" src="" title="Watch Party player"
+      referrerpolicy="strict-origin-when-cross-origin"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowfullscreen></iframe></div>
+  <p class="note" id="now-playing"></p>
+
+  <div class="chat">
+    <div class="chat-header">
+      <h2>Watching with Marcus</h2>
+      <span>Real-time chat · contact sharing open</span>
+    </div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="input" placeholder="Say something about the movie…"></textarea>
+        <button class="send" id="send">Send</button>
+      </div>
+      <span class="hint">Your entry stays at the top, next to the player — the newest message lands right below it.
+        On the live site this is the couple's real slow chat: pacing, contact filtering, and safety rules apply.</span>
+    </div>
+    <div class="messages" id="log"></div>
+  </div>
+
+  <h2 style="font-size:16px">Swap the movie — the playlist rebuilds around your pick</h2>
+  <div class="films" id="films"></div>
+</div>
+<script>
+'use strict';
+const FILMS = [
+  ['Inevitable Hearts — Full Romance Movie', 'jpejUwKLmfg'],
+  ['Titanic (1997)', 's1mioUWClgg'],
+  ['The Notebook (2004)', 'D_3kNw47Mts'],
+  ['Casablanca (1942)', '7SK6E49er2A'],
+  ['Pretty Woman (1990)', 'Yd65xlVqTMA'],
+  ['When Harry Met Sally... (1989)', 'W1aGvEKbiT0'],
+  ['Notting Hill (1999)', 'OQvxKfRpSl4'],
+  ['La La Land (2016)', 'DuzuJXdn37U'],
+  ['His Girl Friday (1940)', 'UzQWJNNg8DU'],
+  ['Charade (1963)', 'VTeVIpBLVfg'],
+  ['Penny Serenade (1941)', 'pNGzeBt4Bek'],
+  ['Royal Wedding (1951)', 'UuzLr5MCA7w'],
+  ['Cyrano de Bergerac (1950)', 'iUI_Gb6UDiY'],
+];
+let current = 0;
+function play(i) {
+  current = i;
+  const [title, id] = FILMS[i];
+  const queue = FILMS.filter((f, j) => j !== i).map(f => f[1]);
+  document.getElementById('player').src =
+    'https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&playlist=' + queue.join(',');
+  document.getElementById('now-playing').textContent =
+    'Now in the player: ' + title + ' — with ' + queue.length + ' more romance films queued in the playlist.';
+  document.getElementById('films').innerHTML = FILMS.map((f, j) =>
+    '<div class="film"><strong>' + f[0] + '</strong>' +
+    (j === i ? '<span class="pill">now playing</span>' : '<button data-i="' + j + '">Watch this instead</button>') +
+    '</div>').join('');
+}
+document.getElementById('films').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]');
+  if (b) play(+b.dataset.i);
+});
+const msgs = [
+  { me: false, who: 'Marcus', text: 'Playing. Some things really are inevitable.', when: '8:12 PM' },
+  { me: true, who: 'You', text: 'Trust me on this one. Press play on three: one… two…', when: '8:01 PM' },
+  { me: false, who: 'Marcus', text: 'Popcorn ready. A full romance movie on a first movie night — bold choice.', when: '8:01 PM' },
+];
+function render() {
+  document.getElementById('log').innerHTML = msgs.map(m =>
+    '<div class="message' + (m.me ? ' me' : '') + '"><span>' + m.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>' +
+    '<div class="meta"><span>' + m.who + '</span><span>' + m.when + '</span></div></div>').join('');
+}
+document.getElementById('send').addEventListener('click', () => {
+  const t = document.getElementById('input').value.trim();
+  if (!t) return;
+  msgs.unshift({ me: true, who: 'You', text: t, when: 'now' });
+  document.getElementById('input').value = '';
+  render();
+});
+document.getElementById('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send').click(); }
+});
+play(0);
+render();
+</script>
+</body>
+</html>
