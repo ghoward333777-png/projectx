@@ -363,8 +363,34 @@
           <span class="counter" id="w-embed-note"></span></p>
       </section>
       <section class="panel">
+        <p style="margin:0 0 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <strong style="color:var(--text)">Watch modes:</strong>
+          <button class="act small" id="w-mode-library">Romance library</button>
+          <button class="quiet small" id="w-mode-premium">Premium together · bring your own YouTube</button>
+        </p>
         <div id="w-title"></div>
         <div id="w-player"></div>
+        <div id="w-premium" hidden>
+          <div class="card" style="margin-top:10px">
+            <span class="name">Premium together — Bring-Your-Own-YouTube-Account Sync</span>
+            <span class="meta">The Teleparty model: 1 — you and Marcus join this room. 2 — each of you is signed
+              into your own YouTube in the player above, so YouTube Premium plays ad-free on your own subscription.
+              3 — SlowDating keeps both players in lock-step with a shared timecode authority (live sync channel).
+              4 — chat, reactions, and shared controls live right here. 5 — your membership pays for the sync
+              service, never for the movie.</span>
+          </div>
+          <div class="card" style="margin-top:10px">
+            <span class="name">Shared controls · timecode authority</span>
+            <p class="meta" id="w-sync-state" style="margin:6px 0">Room open — pick a rom-com below, or press Play together.</p>
+            <button class="act small" id="w-sync-play">▶ Play together</button>
+            <button class="quiet small" id="w-sync-pause">⏸ Pause both</button>
+            <button class="quiet small" id="w-sync-re">⟲ Re-sync Marcus</button>
+          </div>
+          <h3 style="margin:14px 0 6px">Romantic comedies on Premium</h3>
+          <p class="meta" style="margin:0 0 8px">A curated rom-com playlist for Premium rooms — each of you streams
+            it on your own account; availability varies by region.</p>
+          <div class="cards" id="w-romcoms"></div>
+        </div>
         <div class="wchat">
           <div class="wchat-header">
             <h2 style="margin:0;font-size:16px">Watching with Marcus</h2>
@@ -383,7 +409,7 @@
           <div class="wchat-messages" id="w-log"></div>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel" id="w-library-panel">
         <h2>The romance library — pick any film instead</h2>
         <p>Ranked by popularity, #1 to #1,000. The demo shows the top of the playlist plus the twelve verified
           public-domain classics that play in-page; the live site carries the full thousand.</p>
@@ -1149,21 +1175,46 @@ function renderWatch() {
     (rank > 0 ? '#' + rank + ' in the romance playlist' : "tonight's featured premiere") +
     '</span><span class="pill">' + esc(tag) + '</span>' +
     (isScheduled ? '' : '<span class="pill ok">your pick</span>') + '</h2>';
-  // The real YouTube romance movie, embedded, with a playlist of more
-  // romance films queued behind it in the same player.
+  renderWatchPlayer();
+  renderWatchLog();
+  renderWatchGrid();
+}
+// The player alone. Picking a film ALWAYS changes the video: a film with
+// its own stream plays it; one without plays the operator playlist at
+// that film's slot. Prev/Next/Shuffle rotate the playlist locally —
+// only this panel repaints, never the chat or the page.
+const PL_EMBED = 'https://www.youtube-nocookie.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij';
+function renderWatchPlayer() {
+  const [rank, title, year, tag, yt] = watchState.film;
   const upNext = FILMS.filter(f => f[4] && f[4] !== yt).map(f => f[4])
     .filter((v, i, a) => a.indexOf(v) === i).slice(0, 12);
+  let src, note;
+  if (watchState.rotate !== null && watchState.rotate !== undefined) {
+    src = PL_EMBED + '&index=' + watchState.rotate + '&autoplay=1';
+    note = 'Rotating through the playlist — slot ' + (watchState.rotate + 1) + '. Keep pressing Next, or shuffle.';
+  } else if (watchState.embedOverride) {
+    src = watchState.embedOverride;
+    note = 'Playing your pasted embed — the playlist rotation buttons step through it.';
+  } else if (yt) {
+    src = 'https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&playlist=' + upNext.join(',');
+    note = esc(title) + ' — the full YouTube movie, with ' + upNext.length + ' more romance films queued in the player\'s playlist.';
+  } else {
+    src = PL_EMBED + '&index=' + (rank % 30) + '&autoplay=1';
+    note = esc(title) + ' — streamed from the playlist at slot ' + ((rank % 30) + 1) + ', so your pick always changes the video.';
+  }
   $('w-player').innerHTML =
     '<div style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
-    '<iframe src="' + (watchState.embedOverride || ('https://www.youtube-nocookie.com/embed/' + yt + '?rel=0&playsinline=1&playlist=' + upNext.join(','))) + '"' +
+    '<iframe src="' + src + '"' +
     ' title="' + esc(title) + '" referrerpolicy="strict-origin-when-cross-origin"' +
     ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
     ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>' +
-    '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">' + esc(title) + ' — the full YouTube movie, with ' + upNext.length +
-    ' more romance films queued in the player\'s playlist. ' +
+    '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">' + note + '</p>' +
+    '<p style="margin:8px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+    '<span style="font-size:12px;color:var(--muted)">Rotate the playlist:</span>' +
+    '<button class="quiet" data-wrot="-1" style="font-size:12px">⏮ Previous</button>' +
+    '<button class="quiet" data-wrot="1" style="font-size:12px">Next ⏭</button>' +
+    '<button class="quiet" data-wrot="r" style="font-size:12px">🔀 Shuffle</button>' +
     '<button class="quiet" id="w-yt" style="font-size:12px">Frame blank in this preview? Play the backup reel</button></p>';
-  renderWatchLog();
-  renderWatchGrid();
 }
 // Chat and library search repaint ONLY their own panels — never the
 // player. The movie must keep playing while the couple talks.
@@ -1188,9 +1239,15 @@ function renderWatchGrid() {
 }
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.wfilm) {
+  if (b.dataset.wrot) {
+    // Local playlist rotation — repaints only the player panel.
+    const base = watchState.rotate ?? (watchState.film[0] % 30);
+    watchState.rotate = b.dataset.wrot === 'r' ? Math.floor(Math.random() * 30) : (base + (+b.dataset.wrot) + 30) % 30;
+    renderWatchPlayer();
+  } else if (b.dataset.wfilm) {
     watchState.film = FILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
     watchState.embedOverride = null;   // a picked film takes the player over from the pasted embed
+    watchState.rotate = null;
     if ($('w-embed-note')) $('w-embed-note').textContent = 'Library film selected — paste and apply above to switch back to your own embed.';
     renderWatch();
   } else if (b.id === 'w-yt') {
@@ -1201,8 +1258,52 @@ $('portal-watch').addEventListener('click', e => {
       '<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">The backup reel. On the live site the player always runs the film\'s full YouTube stream with the playlist queued. ' +
       '<button class="quiet" id="w-reelback" style="font-size:12px">Back to the YouTube movie</button></p>';
   } else if (b.id === 'w-reelback') {
-    renderWatch();
+    renderWatchPlayer();
   }
+});
+
+// ---- Premium together (BYOYA Sync) sub-menu ----
+const ROMCOMS = [['The Proposal',2009],['Crazy Rich Asians',2018],['10 Things I Hate About You',1999],
+  ['Notting Hill',1999],['How to Lose a Guy in 10 Days',2003],['50 First Dates',2004],
+  ['Hitch',2005],['The Holiday',2006],['27 Dresses',2008],["Bridget Jones's Diary",2001],
+  ['Sweet Home Alabama',2002],['My Big Fat Greek Wedding',2002],['Legally Blonde',2001],
+  ['13 Going on 30',2004],['Two Weeks Notice',2002],['Runaway Bride',1999],
+  ['Never Been Kissed',1999],['Just Go with It',2011]];
+const wSync = { video: '', playing: false, at: 0, timer: null };
+$('w-romcoms').innerHTML = ROMCOMS.map((r, i) =>
+  '<div class="card"><span class="name">' + esc(r[0]) + '</span><span class="pill">' + r[1] + '</span>' +
+  '<span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+  '<button class="act small" data-romcom="' + i + '">Watch together</button>' +
+  '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(r[0] + ' ' + r[1] + ' full movie') + '"' +
+  ' target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;align-self:center">Open on YouTube ↗</a></span></div>').join('');
+function wSyncLine() {
+  const t = Math.max(0, Math.floor(wSync.at));
+  const clock = String(Math.floor(t / 3600)).padStart(2, '0') + ':' + String(Math.floor(t / 60) % 60).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+  $('w-sync-state').textContent = (wSync.video ? 'Now syncing: ' + wSync.video + ' · ' : 'Shared controls active · ') +
+    (wSync.playing ? 'both players locked at ' + clock + ' · drift 0.2s' : 'paused at ' + clock + ' — press Play together');
+}
+function wSyncSet(playing) {
+  wSync.playing = playing;
+  clearInterval(wSync.timer);
+  if (playing) { wSync.timer = setInterval(() => { wSync.at++; wSyncLine(); }, 1000); }
+  wSyncLine();
+}
+$('portal-watch').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'w-mode-premium' || b.id === 'w-mode-library') {
+    const premium = b.id === 'w-mode-premium';
+    $('w-premium').hidden = !premium;
+    $('w-library-panel').hidden = premium;
+    $('w-mode-premium').className = premium ? 'act small' : 'quiet small';
+    $('w-mode-library').className = premium ? 'quiet small' : 'act small';
+  } else if (b.dataset.romcom) {
+    const r = ROMCOMS[+b.dataset.romcom];
+    wSync.video = r[0] + ' (' + r[1] + ')';
+    wSync.at = 0;
+    wSyncSet(false);
+  } else if (b.id === 'w-sync-play') { wSyncSet(true); }
+  else if (b.id === 'w-sync-pause') { wSyncSet(false); }
+  else if (b.id === 'w-sync-re') { wSyncSet(wSync.playing); $('w-sync-state').textContent += ' · Marcus re-synced'; }
 });
 $('w-search').addEventListener('input', renderWatchGrid);   // searching never touches the player
 // The operator's own playlist is the player's source.
@@ -1235,11 +1336,13 @@ $('w-embed-apply').addEventListener('click', () => {
     return;
   }
   watchState.embedOverride = url;
+  watchState.rotate = null;
   $('w-embed-note').textContent = 'Player now uses your embed: ' + url;
   renderWatch();
 });
 $('w-embed-clear').addEventListener('click', () => {
   watchState.embedOverride = null;
+  watchState.rotate = null;
   $('w-embed').value = '';
   $('w-embed-note').textContent = 'Cleared — back to the romance library.';
   renderWatch();

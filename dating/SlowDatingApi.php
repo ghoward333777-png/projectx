@@ -369,6 +369,17 @@ final class SlowDatingApi
         if ($method === 'GET' && $path === '/films/daily') {
             return [200, $engine->filmOfTheDay($now)];
         }
+        if ($method === 'GET' && $path === '/films/premium-romcoms') {
+            return [200, $engine->premiumRomcoms()];
+        }
+        if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-sync') {
+            if ($method === 'GET') {
+                return [200, $engine->watchSync($segments[1], $userId)];
+            }
+            if ($method === 'POST') {
+                return [200, $engine->setWatchSync($segments[1], $userId, $body, $now)];
+            }
+        }
         if (count($segments) === 3 && $segments[0] === 'chats' && $segments[2] === 'watch-party') {
             if ($method === 'GET') {
                 return [200, $engine->watchPartyFor($segments[1], $userId, $now)];

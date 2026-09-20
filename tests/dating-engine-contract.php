@@ -721,6 +721,23 @@ contract_check($engine->watchPartyEmbed() === 'https://www.youtube.com/embed/vid
 $engine->setWatchPartyEmbed($admin['admin_id'], '');
 contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear the player override');
 
+// ---- Premium together: rom-com playlist + the shared timecode authority ---------
+$romcoms = $engine->premiumRomcoms();
+contract_check(count($romcoms) >= 12, 'the Premium rooms carry a curated rom-com playlist');
+contract_check(isset($romcoms[0]['title'], $romcoms[0]['year'], $romcoms[0]['watch_url'])
+    && str_starts_with((string) $romcoms[0]['watch_url'], 'https://www.youtube.com/results?'), 'rom-coms carry a real YouTube link, never a fabricated video id');
+$syncSet = $engine->setWatchSync($chatId, $alice['user_id'], ['video' => 'The Proposal (2009)', 'position' => 125.5, 'playing' => true], $tDay);
+contract_check($syncSet['video'] === 'The Proposal (2009)' && $syncSet['playing'] === true && $syncSet['position'] === 125.5, 'either partner sets the shared timecode authority');
+$syncRead = $engine->watchSync($chatId, $bob['user_id']);
+contract_check($syncRead['video'] === 'The Proposal (2009)' && $syncRead['set_by'] === $alice['user_id'], 'the partner reads the same sync state');
+$threw = false;
+try {
+    $engine->setWatchSync($chatId, $carol['user_id'], ['playing' => true], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only the two people in a room control its sync');
+
 // ---- Photo reveal timeframe & the Peek early perk ------------------------------------
 $threw = false;
 try {

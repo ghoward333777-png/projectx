@@ -3674,6 +3674,80 @@ final class SlowDatingEngine
         return $value !== '' ? $value : null;
     }
 
+    // ------------------------------------------------------------------
+    // Premium together — Bring-Your-Own-YouTube-Account Sync (BYOYA).
+    // Each partner watches on their OWN YouTube account (Premium plays
+    // ad-free); the platform sells the sync service — chat, reactions,
+    // shared controls, and a shared timecode authority — never the movie.
+    // ------------------------------------------------------------------
+
+    /** Curated rom-com playlist for Premium rooms (availability varies by region). */
+    public const PREMIUM_ROMCOMS = [
+        ['The Proposal', 2009], ['Crazy Rich Asians', 2018], ['10 Things I Hate About You', 1999],
+        ['Notting Hill', 1999], ['How to Lose a Guy in 10 Days', 2003], ['50 First Dates', 2004],
+        ['Hitch', 2005], ['The Holiday', 2006], ['27 Dresses', 2008],
+        ['Bridget Jones\'s Diary', 2001], ['Sweet Home Alabama', 2002], ['My Big Fat Greek Wedding', 2002],
+        ['Legally Blonde', 2001], ['13 Going on 30', 2004], ['Two Weeks Notice', 2002],
+        ['Runaway Bride', 1999], ['Never Been Kissed', 1999], ['Just Go with It', 2011],
+    ];
+
+    /** @return array<int, array{id: string, title: string, year: int, watch_url: string}> */
+    public function premiumRomcoms(): array
+    {
+        $rows = [];
+        foreach (self::PREMIUM_ROMCOMS as [$title, $year]) {
+            $rows[] = [
+                'id' => strtolower((string) preg_replace('/[^a-z0-9]+/i', '-', $title . '-' . $year)),
+                'title' => $title,
+                'year' => $year,
+                // A search link, never a fabricated video id — each member
+                // opens the film on their own signed-in YouTube account.
+                'watch_url' => 'https://www.youtube.com/results?search_query='
+                    . rawurlencode($title . ' ' . $year . ' full movie'),
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * The room's shared timecode authority: what the couple is watching,
+     * where the playhead is, and whether it is running. Either partner
+     * updates it; both players follow it.
+     *
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
+    public function setWatchSync(string $chatId, string $userId, array $state, ?int $now = null): array
+    {
+        $now ??= time();
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the two people in this room control its sync.');
+        }
+        $sync = [
+            'video' => mb_substr(trim((string) ($state['video'] ?? '')), 0, 200),
+            'position' => max(0.0, (float) ($state['position'] ?? 0)),
+            'playing' => (bool) ($state['playing'] ?? false),
+            'set_by' => $userId,
+            'updated_at' => $now,
+        ];
+        $chat['watch_sync'] = $sync;
+        $this->store->put('chats', (string) $chat['id'], $chat);
+        return ['chat_id' => (string) $chat['id']] + $sync;
+    }
+
+    /** @return array<string, mixed> The current sync state (participants only). */
+    public function watchSync(string $chatId, string $userId): array
+    {
+        $chat = $this->requireChat($chatId);
+        if (!in_array($userId, (array) $chat['participants'], true)) {
+            throw new InvalidArgumentException('Only the two people in this room read its sync.');
+        }
+        return (array) ($chat['watch_sync'] ?? [
+            'video' => '', 'position' => 0.0, 'playing' => false, 'set_by' => '', 'updated_at' => 0,
+        ]);
+    }
+
     /**
      * The "up next" playlist for the embedded player: more films from the
      * romance library that already have a playable video (curated or

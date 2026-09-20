@@ -113,6 +113,14 @@ contract_check($status === 200 && $unblock['blocked'] === [], 'unblocking must w
 [$status] = call($api, 'POST', '/chats/' . $chatId . '/messages', [], ['text' => 'back again'], $bob['token'], $t0 + 3900);
 contract_check($status === 201, 'unblocking reopens messaging over the API');
 
+// ---- Premium together over the API --------------------------------------------------
+[$status, $romcoms] = call($api, 'GET', '/films/premium-romcoms', [], [], $alice['token'], $t0);
+contract_check($status === 200 && count($romcoms) >= 12 && isset($romcoms[0]['watch_url']), 'the Premium rom-com playlist must be served over the API');
+[$status, $syncSet] = call($api, 'POST', '/chats/' . $chatId . '/watch-sync', [], ['video' => 'Notting Hill (1999)', 'position' => 60, 'playing' => true], $alice['token'], $t0 + 4000);
+contract_check($status === 200 && $syncSet['playing'] === true, 'a partner must set the watch sync over the API');
+[$status, $syncGet] = call($api, 'GET', '/chats/' . $chatId . '/watch-sync', [], [], $bob['token'], $t0 + 4001);
+contract_check($status === 200 && $syncGet['video'] === 'Notting Hill (1999)', 'the other partner reads the same sync state over the API');
+
 // ---- Partner portal over the API ------------------------------------------------
 [$status, $partner] = call($api, 'POST', '/partners/v1/signup', [], [
     'business_name' => 'Blue Note Lounge', 'email' => 'owner@bluenote.example',

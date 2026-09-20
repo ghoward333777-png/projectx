@@ -75,6 +75,18 @@ if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'messages') {
     exit;
 }
 
+// Premium rooms: the shared timecode authority, polled by both players.
+if ($userId !== null && (string) ($_GET['fragment'] ?? '') === 'sync') {
+    header('Content-Type: application/json');
+    header('Cache-Control: private, no-store');
+    try {
+        echo json_encode($engine->watchSync($chatId, $userId));
+    } catch (Throwable) {
+        echo '{}';
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     $ajax = isset($_POST['ajax']);
     try {
@@ -101,6 +113,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                     echo wp_messages_html($engine, (string) ($_POST['chat_id'] ?? ''), $userId);
                     exit;
                 }
+                break;
+            case 'sync':
+                $sync = $engine->setWatchSync((string) ($_POST['chat_id'] ?? ''), $userId, [
+                    'video' => (string) ($_POST['video'] ?? ''),
+                    'position' => (float) ($_POST['position'] ?? 0),
+                    'playing' => ($_POST['playing'] ?? '') === '1',
+                ]);
+                if ($ajax) {
+                    header('Content-Type: application/json');
+                    echo json_encode($sync);
+                    exit;
+                }
+                $notice = 'Shared controls updated for both of you.';
                 break;
             case 'pick':
                 $party = $engine->chooseWatchPartyFilm((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['film_id'] ?? 'daily'));
@@ -233,6 +258,10 @@ $q = trim((string) ($_GET['q'] ?? ''));
 $page = max(0, (int) ($_GET['p'] ?? 0));
 $perPage = 24;
 $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
+$mode = (string) ($_GET['mode'] ?? 'library');
+if (!in_array($mode, ['library', 'premium'], true)) {
+    $mode = 'library';
+}
 ?>
 
 <section>
@@ -267,13 +296,30 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
          the embed), through the curated id or the resolved best upload. -->
     <div class="video-wrapper">
         <?php
-        // The admin-pasted embed wins over the per-film source, so ops can
-        // point every watch party at their own video or playlist.
+        // Picking from the library must ALWAYS change the video. A film
+        // the couple picked wins the player when it has its own stream;
+        // a pick without one plays the operator playlist at that film's
+        // slot; with no pick the admin-pasted embed (or the daily film)
+        // plays. enablejsapi lets the Premium room's shared controls
+        // drive the player without ever reloading it.
         $override = $engine->watchPartyEmbed();
-        $embedSrc = $override ?? ((string) $film['embed_url'] . '?rel=0' . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : ''));
+        $overrideSrc = $override !== null
+            ? $override . (str_contains($override, '?') ? '&' : '?') . 'enablejsapi=1'
+            : null;
+        $filmSrc = !empty($film['embed_url'])
+            ? (string) $film['embed_url'] . '?rel=0&enablejsapi=1'
+                . ($party['playlist'] !== [] ? '&playlist=' . implode(',', $party['playlist']) : '')
+            : null;
+        if ($party['custom_pick'] && $filmSrc !== null) {
+            $embedSrc = $filmSrc;
+        } elseif ($party['custom_pick'] && $overrideSrc !== null) {
+            $embedSrc = $overrideSrc . '&index=' . ((int) $film['rank'] % 60) . '&autoplay=1';
+        } else {
+            $embedSrc = $overrideSrc ?? $filmSrc;
+        }
         ?>
-        <?php if ($override !== null || !empty($film['embed_url'])): ?>
-            <iframe src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
+        <?php if ($embedSrc !== null): ?>
+            <iframe id="wp-player" src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen></iframe>
         <?php else: ?>
@@ -283,6 +329,70 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
             </div>
         <?php endif; ?>
     </div>
+
+    <?php if ($overrideSrc !== null): ?>
+    <!-- Local playlist rotation: swaps the player's source in place —
+         no page load, no round-trip. -->
+    <p style="margin:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="color:#9ca3af;font-size:12.5px">Rotate the playlist:</span>
+        <button type="button" class="quiet" data-wprot="-1" style="margin:0;padding:6px 12px;font-size:12px">⏮ Previous</button>
+        <button type="button" class="quiet" data-wprot="1" style="margin:0;padding:6px 12px;font-size:12px">Next ⏭</button>
+        <button type="button" class="quiet" data-wprot="r" style="margin:0;padding:6px 12px;font-size:12px">🔀 Shuffle</button>
+    </p>
+    <?php endif; ?>
+
+    <p class="links" style="margin:0">
+        <strong style="color:#eadff0;font-size:13px">Watch modes:</strong>
+        <a href="?chat=<?= sd_e($chatId) ?>"<?= $mode === 'library' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Romance library</a>
+        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together · bring your own YouTube</a>
+    </p>
+
+    <?php if ($mode === 'premium'): ?>
+    <?php $sync = $engine->watchSync($chatId, $userId); ?>
+    <section style="margin-top:0">
+        <h2>Premium together — Bring-Your-Own-YouTube-Account Sync</h2>
+        <p style="margin:0 0 10px">The same model Teleparty uses: <strong style="color:#f3eef6">1.</strong> You and
+            <?= sd_e($otherName) ?> are in this watch-party room. <strong style="color:#f3eef6">2.</strong> Each of
+            you is signed into your own YouTube account in the embedded player above — YouTube Premium plays
+            ad-free on your own subscription. <strong style="color:#f3eef6">3.</strong> SlowDating keeps the two
+            players in lock-step with a shared timecode authority (live sync channel).
+            <strong style="color:#f3eef6">4.</strong> Chat, reactions, and the shared controls below live on this
+            page. <strong style="color:#f3eef6">5.</strong> Your membership pays for the sync service —
+            <em>never for the movie</em>.</p>
+        <div class="card" style="margin-bottom:12px">
+            <strong>Shared controls · timecode authority</strong>
+            <p id="wp-sync-state" style="margin:6px 0;font-size:13px;color:#a294ad"><?php
+                if ((string) $sync['video'] !== '') {
+                    echo 'Now syncing: <strong style="color:#f3eef6">' . sd_e((string) $sync['video']) . '</strong> · '
+                        . ($sync['playing'] ? 'playing' : 'paused') . ' at ' . gmdate('H:i:s', (int) $sync['position']);
+                } else {
+                    echo 'Room open — pick a film below, or press Play together.';
+                }
+            ?></p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="send-btn" id="wp-sync-play" style="padding:8px 14px">▶ Play together</button>
+                <button type="button" class="quiet" id="wp-sync-pause" style="margin:0;padding:8px 14px;font-size:13px">⏸ Pause both</button>
+                <button type="button" class="quiet" id="wp-sync-re" style="margin:0;padding:8px 14px;font-size:13px">⟲ Re-sync <?= sd_e($otherName) ?></button>
+            </div>
+        </div>
+        <h3 style="margin:0 0 6px">Romantic comedies on Premium</h3>
+        <p style="margin:0 0 10px;font-size:12.5px;color:#a294ad">A curated rom-com playlist for Premium rooms.
+            Each of you streams on your own account — availability varies by region.</p>
+        <div class="grid">
+            <?php foreach ($engine->premiumRomcoms() as $romcom): ?>
+                <div class="card">
+                    <strong><?= sd_e((string) $romcom['title']) ?></strong> <span class="pill"><?= (int) $romcom['year'] ?></span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                        <button type="button" class="send-btn" style="padding:7px 12px;font-size:12px"
+                                data-wpsyncfilm="<?= sd_e((string) $romcom['title'] . ' (' . $romcom['year'] . ')') ?>">Watch together</button>
+                        <a href="<?= sd_e((string) $romcom['watch_url']) ?>" target="_blank" rel="noopener"
+                           style="color:#ffb8d2;font-size:12px;align-self:center">Open on YouTube ↗</a>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <!-- Chat -->
     <div class="chat">
@@ -399,9 +509,99 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
                     .catch(function () { /* transient network hiccup — the next poll retries */ });
             }, 7000);
         }
+
+        // ---- Local playlist rotation: swap the player's src in place. ----
+        var player = document.getElementById('wp-player');
+        var rotBase = <?= json_encode($overrideSrc) ?>;
+        var rotIndex = <?= $party['custom_pick'] ? ((int) $film['rank'] % 60) : 0 ?>;
+        document.querySelectorAll('button[data-wprot]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var step = btn.getAttribute('data-wprot');
+                rotIndex = step === 'r' ? Math.floor(Math.random() * 60) : (rotIndex + parseInt(step, 10) + 60) % 60;
+                if (player && rotBase) { player.src = rotBase + '&index=' + rotIndex + '&autoplay=1'; }
+            });
+        });
+
+        // ---- Premium room: the shared timecode authority. Commands go
+        // to the player over the YouTube iframe API — never a reload. ----
+        var premium = <?= json_encode($mode === 'premium') ?>;
+        if (premium && player) {
+            var chatIdJs = <?= json_encode($chatId) ?>;
+            var lastTime = 0;
+            var lastApplied = <?= $mode === 'premium' ? (int) ($sync['updated_at'] ?? 0) : 0 ?>;
+            var currentVideo = <?= json_encode($mode === 'premium' ? (string) $sync['video'] : '') ?>;
+            var stateLine = document.getElementById('wp-sync-state');
+            function ytCmd(func, args) {
+                if (player.contentWindow) {
+                    player.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*');
+                }
+            }
+            window.addEventListener('message', function (event) {
+                try {
+                    var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                    if (data && data.info && typeof data.info.currentTime === 'number') { lastTime = data.info.currentTime; }
+                } catch (ignored) {}
+            });
+            setTimeout(function () {
+                if (player.contentWindow) {
+                    player.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
+                }
+            }, 1500);
+            function clock(seconds) {
+                seconds = Math.max(0, Math.floor(seconds));
+                return String(Math.floor(seconds / 3600)).padStart(2, '0') + ':'
+                    + String(Math.floor(seconds / 60) % 60).padStart(2, '0') + ':'
+                    + String(seconds % 60).padStart(2, '0');
+            }
+            function applySync(state) {
+                if (!state || !state.updated_at || state.updated_at <= lastApplied) { return; }
+                lastApplied = state.updated_at;
+                if (state.video) { currentVideo = state.video; }
+                if (stateLine) {
+                    stateLine.textContent = currentVideo
+                        ? 'Now syncing: ' + currentVideo + ' · ' + (state.playing ? 'playing' : 'paused') + ' at ' + clock(state.position || 0)
+                        : 'Shared controls active · ' + (state.playing ? 'playing' : 'paused') + ' at ' + clock(state.position || 0);
+                }
+                ytCmd('seekTo', [state.position || 0, true]);
+                ytCmd(state.playing ? 'playVideo' : 'pauseVideo');
+            }
+            function pushSync(playing, video) {
+                var data = new FormData();
+                data.append('action', 'sync');
+                data.append('ajax', '1');
+                data.append('chat_id', chatIdJs);
+                data.append('playing', playing ? '1' : '0');
+                data.append('position', String(Math.floor(lastTime)));
+                data.append('video', video || currentVideo);
+                fetch('watch-party.php', { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function (response) { return response.ok ? response.json() : null; })
+                    .then(applySync)
+                    .catch(function () {});
+            }
+            var syncPlay = document.getElementById('wp-sync-play');
+            var syncPause = document.getElementById('wp-sync-pause');
+            var syncRe = document.getElementById('wp-sync-re');
+            if (syncPlay) { syncPlay.addEventListener('click', function () { ytCmd('playVideo'); pushSync(true); }); }
+            if (syncPause) { syncPause.addEventListener('click', function () { ytCmd('pauseVideo'); pushSync(false); }); }
+            if (syncRe) { syncRe.addEventListener('click', function () { pushSync(true); }); }
+            document.querySelectorAll('button[data-wpsyncfilm]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    pushSync(false, btn.getAttribute('data-wpsyncfilm'));
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            });
+            // Both players follow the timecode authority.
+            setInterval(function () {
+                fetch('watch-party.php?fragment=sync&chat=' + encodeURIComponent(chatIdJs), { credentials: 'same-origin' })
+                    .then(function (response) { return response.ok ? response.json() : null; })
+                    .then(applySync)
+                    .catch(function () {});
+            }, 4000);
+        }
     })();
 </script>
 
+<?php if ($mode === 'library'): ?>
 <section>
     <h2>The romance library — pick any film instead</h2>
     <p>The platform's independent playlist: 1,000 romance films ranked by popularity. Tonight's schedule picks
@@ -434,5 +634,6 @@ $library = $engine->romanceFilms($q, $perPage, $page * $perPage);
         <?php if (($page + 1) * $perPage < (int) $library['total']): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page + 1 ?>">Next page &#8250;</a><?php endif; ?>
     </p>
 </section>
+<?php endif; ?>
 
 <?php sd_page_close();
