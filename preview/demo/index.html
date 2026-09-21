@@ -729,7 +729,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v34 · thumbs + top menus</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v35 · tour under Features</div>
 
 <script>
 'use strict';
@@ -912,14 +912,21 @@ function flash(el, cls, text) { el.innerHTML = '<div class="flash ' + cls + '">'
 // ---------------------------------------------------------------- portals & tabs
 const PORTALS = [['member', 'Member app'], ['browse', 'Browse'], ['earn', 'Perks & income'], ['watch', 'Watch Party'], ['features', 'Features'], ['smart', 'Smart Dating'], ['tour', 'Site Tour'], ['partner', 'Partner portal'], ['admin', 'Admin console'], ['safety', 'Safety center']];
 let portal = 'member';
-$('portals').innerHTML = PORTALS.map(([k, l]) => '<button data-p="' + k + '">' + l + '</button>').join('');
+// Site Tour lives under the Features menu item.
+$('portals').innerHTML = PORTALS.filter(([k]) => k !== 'tour' && k !== 'features').map(([k, l]) =>
+    '<button data-p="' + k + '">' + l + '</button>').join('')
+  .replace('<button data-p="smart"', '<details class="chmenu" style="vertical-align:middle"><summary>Features ▾</summary>' +
+    '<div class="chmenu-list"><button data-p="features">All features</button>' +
+    '<button data-p="tour">Site Tour</button></div></details><button data-p="smart"');
 $('portals').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
+  const b = e.target.closest('button[data-p]'); if (!b) return;
   portal = b.dataset.p;
   for (const [k] of PORTALS) $('portal-' + k).hidden = k !== portal;
-  for (const btn of $('portals').children) btn.setAttribute('aria-current', btn.dataset.p === portal);
+  document.querySelectorAll('#portals button[data-p]').forEach(btn => btn.setAttribute('aria-current', btn.dataset.p === portal));
+  const dd = $('portals').querySelector('details.chmenu');
+  if (dd && !b.closest('details')) { dd.open = false; }
 });
-for (const btn of $('portals').children) btn.setAttribute('aria-current', btn.dataset.p === portal);
+document.querySelectorAll('#portals button[data-p]').forEach(btn => btn.setAttribute('aria-current', btn.dataset.p === portal));
 
 const TABS = [['chats', 'Chats'], ['matches', 'Matches'], ['search', 'Search'], ['wallet', 'Coupons & rewards'], ['store', 'Store']];
 let tab = 'chats';
@@ -1531,12 +1538,12 @@ const LOFI = [
   [2445,'Cozy fireplace lofi beats',0,'cozy','Rik8YhvH09M',false],[2446,'Forest ambience lofi beats',0,'forest','NvftPSb5Xtw',false],
 ];
 const PIANO = [
-  [2461,'Beauty of Nature with Theo live piano stream',0,'piano','K0-6reET2BY',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','kKJvGtqcnno',false],
+  [2461,'Soft piano with rain — deep sleep',0,'piano','K0-6reET2BY',true],[2462,'Tim Janis peaceful instrumental music',0,'orchestral','kKJvGtqcnno',false],
   [2463,'Soft acoustic guitar relaxation',0,'guitar','j4OuCMnY43E',false],[2464,'Relaxing flute instrumental music',0,'flute','YNdFu6bnhfU',false],
   [2465,'Peaceful piano for reading',0,'piano','oiGmGFxsJi8',false],
 ];
 const ASMRN = [
-  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','fLA86E_zpL4',false],[2482,'Past Tense relaxing nature for sleep',0,'sleep','AB7Saw7x7mo',false],
+  [2481,'Nature Sounds ASMR gentle stream close up',0,'water','fLA86E_zpL4',false],[2482,'Deep sleep healing meditation music',0,'sleep','AB7Saw7x7mo',false],
   [2483,'ASMR wind through leaves',0,'wind','7WPsftkv1ZY',false],[2484,'Relaxing white noise ASMR water',0,'water','jkLRith2wcc',false],
 ];
 const SCENIC = [

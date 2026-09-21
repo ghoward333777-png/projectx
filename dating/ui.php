@@ -73,9 +73,14 @@ function sd_page_open(string $title, string $eyebrow): void
             <a href="profile.php">My profile</a>
             <a href="earn.php">Perks &amp; income</a>
             <a href="watch-party.php">Watch Party</a>
-            <a href="features.php">Features</a>
+            <details style="display:inline-block;position:relative;margin-right:14px">
+                <summary style="cursor:pointer;color:#ffb8d2;list-style:none;display:inline">Features ▾</summary>
+                <span style="position:absolute;left:0;top:calc(100% + 6px);z-index:60;background:#1d1824;border:1px solid #574a61;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:150px">
+                    <a href="features.php">All features</a>
+                    <a href="site-tour.php">Site Tour</a>
+                </span>
+            </details>
             <a href="smart-dating.php">Smart Dating</a>
-            <a href="site-tour.php">Site Tour</a>
             <a href="partner-portal.php">Partner portal</a>
             <a href="admin.php">Admin console</a>
             <a href="safety-center.php">Safety center</a>
