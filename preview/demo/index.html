@@ -843,7 +843,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v38 · channels on top bar</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v39 · showcases always on</div>
 
 <script>
 'use strict';
@@ -1790,7 +1790,13 @@ $('portal-watch').addEventListener('click', e => {
       x.className = x.dataset.wch === watchChannel ? 'on' : '');
     // A pick is made — the menu closes instead of pinning open.
     document.querySelectorAll('#w-channels details.chmenu[open]').forEach(d => { d.open = false; });
+    // The channel's showcase IS the destination: restore it even if the
+    // Premium panel had replaced it, and scroll it into view.
+    $('w-library-panel').hidden = false;
+    if ($('w-premium')) { $('w-premium').hidden = true; }
+    if ($('w-mode-premium')) { $('w-mode-premium').className = 'quiet small'; }
     renderWatchGrid();
+    $('w-library-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } else if (b.dataset.wfilm) {
     watchState.film = ALLFILMS.find(f => f[0] === +b.dataset.wfilm) || watchState.film;
     watchState.embedOverride = null;   // a picked film takes the player over from the pasted embed

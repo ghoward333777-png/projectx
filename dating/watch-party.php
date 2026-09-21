@@ -385,7 +385,7 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             <summary><?= sd_e($groupLabel) ?> ▾</summary>
             <div class="chmenu-list">
                 <?php foreach ($groupChannels as $slug): ?>
-                    <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                    <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>#w-showcase"<?= $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
                 <?php endforeach; ?>
             </div>
         </details>
@@ -1098,8 +1098,9 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     })();
 </script>
 
-<?php if ($mode === 'library'): ?>
-<section>
+<!-- The channel showcase renders in EVERY mode (Premium included) so the
+     nature cams, rooftop cams, and the rest are always one click away. -->
+<section id="w-showcase">
     <h2><?= sd_e((string) $channels[$ch]['label']) ?> — the showcase</h2>
     <p><?= sd_e((string) $channels[$ch]['blurb']) ?>
         <?= $ch === 'romance' ? ' Tonight\'s schedule picks one for everyone; your watch party can swap to any of them.'
@@ -1148,6 +1149,5 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         <?php if (($page + 1) * $perPage < (int) $library['total']): ?><a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($ch) ?>&amp;q=<?= sd_e($q) ?>&amp;p=<?= $page + 1 ?>">Next page &#8250;</a><?php endif; ?>
     </p>
 </section>
-<?php endif; ?>
 
 <?php sd_page_close();
