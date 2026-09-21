@@ -404,6 +404,10 @@
             opacity: 0; pointer-events: none; transition: opacity .18s; }
           #w-frame:hover .wbar, .wbar:focus-within, .wbar:has(details[open]) { opacity: 1; pointer-events: auto; }
           .wbar .chmenu-list { max-height: min(52vh, 300px); overflow: auto; }
+          /* Fullscreen fullscreens the FRAME, not the bare iframe — the
+             video fills the screen and the chat rides along on top. */
+          #w-frame:fullscreen { max-width: none; aspect-ratio: auto; width: 100%; height: 100%; border-radius: 0; border: 0; }
+          #w-frame::backdrop { background: #000; }
           .wbar button.quiet { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 8px;
             cursor: pointer; font-size: 13px; padding: 5px 9px; }
         </style>
@@ -875,7 +879,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v43 · fullscreen clear</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v44 · fullscreen with chat</div>
 
 <script>
 'use strict';
@@ -1527,16 +1531,21 @@ function renderWatchPlayer() {
       '<button class="quiet" data-wrot="1" title="Next in the verified reel">⏭</button>' +
       '<button class="quiet" data-wrot="r" title="Shuffle the verified reel">🔀</button>' +
       '<button class="quiet" id="w-yt" title="Frame blank in this preview? Play the backup reel">🎞</button>' +
+      '<button class="quiet" id="w-chatbar" title="Chat over video: on/off — works in fullscreen too">💬</button>' +
+      '<button class="quiet" id="w-full" title="Fullscreen — the chat comes along">⛶</button>' +
       '</div></div>' +
       '<p style="font-size:12.5px;margin:8px 0 0"><span id="w-verify" style="color:#7fe3a8"></span> <span id="w-note" style="color:var(--muted)"></span></p>';
     watchState.playerKind = null;
     applyWatchChatOverlay();
   }
   if (watchState.playerKind !== kind) {
+    // No allowfullscreen on the iframe: YouTube's own fullscreen button
+    // would fullscreen ONLY the video and lose the chat. Our ⛶ button
+    // fullscreens the whole frame — video AND chat together.
     $('w-holder').innerHTML = '<iframe src="' + src + '"' +
       ' title="' + esc(title) + '" referrerpolicy="strict-origin-when-cross-origin"' +
       ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
-      ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
+      ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>';
     watchState.playerKind = kind;
     // Subscribe to the player's events so a dead stream reports onError.
     [900, 1800, 3200].forEach(delay => setTimeout(() => {
@@ -1916,8 +1925,13 @@ $('portal-watch').addEventListener('click', e => {
   } else if (b.id === 'w-reelback') {
     watchState.playerKind = null;
     renderWatchPlayer();
-  } else if (b.id === 'w-chatpos') {
+  } else if (b.id === 'w-chatpos' || b.id === 'w-chatbar') {
     setWChatOverlay(!wChatOverlay);
+  } else if (b.id === 'w-full') {
+    // Fullscreen the whole frame: the movie fills the screen and the
+    // chat (and this bar, and the toggle) keep working on top of it.
+    if (document.fullscreenElement) { document.exitFullscreen(); }
+    else if ($('w-frame') && $('w-frame').requestFullscreen) { $('w-frame').requestFullscreen(); }
   }
 });
 

@@ -395,6 +395,10 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             opacity: 0; pointer-events: none; transition: opacity .18s; }
         .video-wrapper:hover .wbar, .wbar:focus-within, .wbar:has(details[open]) { opacity: 1; pointer-events: auto; }
         .wbar .chmenu-list { max-height: min(52vh, 300px); overflow: auto; }
+        /* Fullscreen fullscreens the WRAPPER, not the bare iframe — the
+           video fills the screen and the chat rides along on top. */
+        #watchparty .video-wrapper:fullscreen { max-width: none; aspect-ratio: auto; width: 100%; height: 100%; border-radius: 0; border: 0; }
+        #watchparty .video-wrapper::backdrop { background: #000; }
         .wbar button.quiet { margin: 0; padding: 5px 9px; font-size: 13px; background: rgba(255,255,255,.14);
             color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
         .wbar a.wbar-link { color: #ffb8d2; font-size: 12.5px; text-decoration: none; }
@@ -465,24 +469,28 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         }
         ?>
         <?php if ($embedSrc !== null): ?>
+            <!-- No allowfullscreen on the iframe: YouTube's own fullscreen
+                 button would fullscreen ONLY the video and lose the chat.
+                 The bar's ⛶ fullscreens the wrapper — video AND chat. -->
             <iframe id="wp-player" src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowfullscreen></iframe>
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
         <?php else: ?>
             <div class="video-fallback">
                 <strong style="color:#fff;font-size:18px"><?= sd_e($filmLabel) ?></strong>
                 <span style="color:#9ca3af;font-size:13px;max-width:48ch">Finding this film's stream — refresh in a moment.</span>
             </div>
         <?php endif; ?>
-        <?php if ($overrideSrc !== null): ?>
         <div class="wbar">
             <span style="flex:1"></span>
-            <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
-            <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
-            <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
-            <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
+            <?php if ($overrideSrc !== null): ?>
+                <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
+                <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
+                <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
+                <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
+            <?php endif; ?>
+            <button type="button" class="quiet" id="wp-chatbar" title="Chat over video: on/off — works in fullscreen too">💬</button>
+            <button type="button" class="quiet" id="wp-full" title="Fullscreen — the chat comes along">⛶</button>
         </div>
-        <?php endif; ?>
     </div>
 
     <?php if ($mode === 'premium'): ?>
@@ -706,11 +714,22 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 }
                 chatWake();
             }
-            if (toggle) {
-                toggle.addEventListener('click', function () {
-                    overlaid = !overlaid;
-                    try { localStorage.setItem('sd_wp_chat_overlay', overlaid ? '1' : '0'); } catch (ignored) {}
-                    applyPlacement();
+            function flipPlacement() {
+                overlaid = !overlaid;
+                try { localStorage.setItem('sd_wp_chat_overlay', overlaid ? '1' : '0'); } catch (ignored) {}
+                applyPlacement();
+            }
+            if (toggle) { toggle.addEventListener('click', flipPlacement); }
+            // The on-video bar carries its own 💬 switch, so the chat can be
+            // turned on and off while the player is fullscreen.
+            var barToggle = document.getElementById('wp-chatbar');
+            if (barToggle) { barToggle.addEventListener('click', flipPlacement); }
+            var fsButton = document.getElementById('wp-full');
+            if (fsButton) {
+                fsButton.addEventListener('click', function () {
+                    // Fullscreen the wrapper: video AND chat fill the screen.
+                    if (document.fullscreenElement) { document.exitFullscreen(); }
+                    else if (wrapper.requestFullscreen) { wrapper.requestFullscreen(); }
                 });
             }
             document.addEventListener('keydown', function (event) {
