@@ -378,6 +378,20 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
         .wbar a.wbar-link { color: #ffb8d2; font-size: 12.5px; text-decoration: none; }
     </style>
+    <!-- The channel menus ride the same line as the ☰ menu and the
+         Premium link — always visible, pop-down lists. -->
+    <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
+        <details class="chmenu">
+            <summary><?= sd_e($groupLabel) ?> ▾</summary>
+            <div class="chmenu-list">
+                <?php foreach ($groupChannels as $slug): ?>
+                    <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                <?php endforeach; ?>
+            </div>
+        </details>
+    <?php endforeach; ?>
+    <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;font-size:13px;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
+    <a href="advanced-watch-party.php" style="color:#ffd97a;font-size:13px">Advanced · BETA</a>
 </section>
 
 <div id="watchparty">
@@ -439,27 +453,15 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 <span style="color:#9ca3af;font-size:13px;max-width:48ch">Finding this film's stream — refresh in a moment.</span>
             </div>
         <?php endif; ?>
+        <?php if ($overrideSrc !== null): ?>
         <div class="wbar">
-            <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
-                <details class="chmenu">
-                    <summary><?= sd_e($groupLabel) ?> ▾</summary>
-                    <div class="chmenu-list">
-                        <?php foreach ($groupChannels as $slug): ?>
-                            <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
-                        <?php endforeach; ?>
-                    </div>
-                </details>
-            <?php endforeach; ?>
-            <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="wbar-link"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together</a>
-            <a href="advanced-watch-party.php" class="wbar-link" style="color:#ffd97a">Advanced · BETA</a>
             <span style="flex:1"></span>
-            <?php if ($overrideSrc !== null): ?>
-                <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
-                <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
-                <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
-                <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
-            <?php endif; ?>
+            <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
+            <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
+            <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
+            <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
         </div>
+        <?php endif; ?>
     </div>
 
     <?php if ($mode === 'premium'): ?>

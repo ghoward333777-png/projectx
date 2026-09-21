@@ -843,7 +843,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v37 · AWP library + games</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v38 · channels on top bar</div>
 
 <script>
 'use strict';
@@ -1482,13 +1482,14 @@ function renderWatchPlayer() {
     note = esc(title) + ' — no verified stream or trailer; playing a verified classic as a stand-in.';
   }
   if (!$('w-frame')) {
-    // The controls live ON the video: a hover-reveal bar at its base
-    // carrying the channel menus (drop-up) and the rotation buttons, so
-    // nothing below the player pushes the chat down.
+    // The channel menus live on the TOP BAR (same line as the ☰ menu and
+    // the Premium button); the video keeps a hover-reveal bar at its base
+    // with just the rotation and backup-reel controls, so nothing below
+    // the player pushes the chat down.
     $('w-player').innerHTML =
       '<div id="w-frame" style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
       '<div id="w-holder" style="position:absolute;inset:0"></div>' +
-      '<div id="w-bar" class="wbar"><span id="w-barslot" style="display:contents"></span>' +
+      '<div id="w-bar" class="wbar">' +
       '<span style="flex:1"></span>' +
       '<button class="quiet" data-wrot="-1" title="Previous in the verified reel">⏮</button>' +
       '<button class="quiet" data-wrot="1" title="Next in the verified reel">⏭</button>' +
@@ -1496,7 +1497,6 @@ function renderWatchPlayer() {
       '<button class="quiet" id="w-yt" title="Frame blank in this preview? Play the backup reel">🎞</button>' +
       '</div></div>' +
       '<p style="font-size:12.5px;margin:8px 0 0"><span id="w-verify" style="color:#7fe3a8"></span> <span id="w-note" style="color:var(--muted)"></span></p>';
-    $('w-barslot').appendChild($('w-channels'));
     watchState.playerKind = null;
   }
   if (watchState.playerKind !== kind) {
