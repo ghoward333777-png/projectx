@@ -3682,6 +3682,23 @@ final class SlowDatingEngine
         return $value !== '' ? $value : null;
     }
 
+    /** Admin option: float the couple's chat over the bottom of the video. */
+    public function setWatchChatOverlay(string $adminId, bool $overlay): array
+    {
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins can set the Watch Party chat layout.');
+        }
+        $this->store->put('settings', 'watch_chat_overlay', ['value' => $overlay]);
+        return ['watch_chat_overlay' => $overlay];
+    }
+
+    /** Defaults to true: the chat floats over the video until an admin turns it off. */
+    public function watchChatOverlay(): bool
+    {
+        $setting = $this->store->get('settings', 'watch_chat_overlay');
+        return $setting === null ? true : (bool) ($setting['value'] ?? false);
+    }
+
     // ------------------------------------------------------------------
     // Watch Party channels — more than romance movies. Each channel has
     // its own showcase, exactly like the romance library: live nature

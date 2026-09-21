@@ -53,6 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : 'Watch Party player cleared — parties play the film library again.';
                 }
                 break;
+            case 'watch_chat_overlay':
+                if ($adminId !== null) {
+                    $result = $engine->setWatchChatOverlay($adminId, ($_POST['overlay'] ?? '') === '1');
+                    $notice = $result['watch_chat_overlay']
+                        ? 'The Watch Party chat now floats over the bottom of the video.'
+                        : 'The Watch Party chat now sits below the player again.';
+                }
+                break;
             case 'photo_reveal':
                 if ($adminId !== null) {
                     $engine->setPhotoRevealDays($adminId, (int) ($_POST['days'] ?? 0));
@@ -152,6 +160,19 @@ if ($adminId === null) {
     <label>Embed code or YouTube link</label>
     <textarea name="embed" placeholder='&lt;iframe src="https://www.youtube.com/embed/videoseries?list=PL..." ...&gt;&lt;/iframe&gt;'><?= sd_e((string) ($engine->watchPartyEmbed() ?? '')) ?></textarea>
     <button type="submit">Save player source</button>
+</form>
+
+<form method="post">
+    <h2>Watch Party chat overlay</h2>
+    <p>Float the couple's chat over the bottom portion of the video — translucent, so the movie stays visible
+        behind it and fills the screen. Turn it off to put the chat back in its own panel under the player.</p>
+    <input type="hidden" name="action" value="watch_chat_overlay">
+    <label>Chat placement</label>
+    <select name="overlay">
+        <option value="1"<?= $engine->watchChatOverlay() ? ' selected' : '' ?>>Floating over the video (overlay)</option>
+        <option value="0"<?= $engine->watchChatOverlay() ? '' : ' selected' ?>>Below the player (classic)</option>
+    </select>
+    <button type="submit">Save chat placement</button>
 </form>
 
 <form method="post">

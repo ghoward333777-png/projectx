@@ -721,6 +721,20 @@ contract_check($engine->watchPartyEmbed() === 'https://www.youtube.com/embed/vid
 $engine->setWatchPartyEmbed($admin['admin_id'], '');
 contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear the player override');
 
+// ---- Watch Party chat overlay: admin-controlled, floating by default ----
+contract_check($engine->watchChatOverlay() === true, 'the chat floats over the video by default');
+$threw = false;
+try {
+    $engine->setWatchChatOverlay('user_not_admin', false);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins set the chat placement');
+$engine->setWatchChatOverlay($admin['admin_id'], false);
+contract_check($engine->watchChatOverlay() === false, 'admins can put the chat back under the player');
+$engine->setWatchChatOverlay($admin['admin_id'], true);
+contract_check($engine->watchChatOverlay() === true, 'admins can float the chat over the video again');
+
 // ---- Watch Party channels: nature cams, ambient, Bible narration, church --------
 $channels = $engine->watchChannels();
 contract_check(count($channels) === 17 && isset($channels['nature'], $channels['rooftop'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');

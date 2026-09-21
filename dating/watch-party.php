@@ -196,6 +196,15 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
         background: #020617; border-radius: 12px; padding: 12px; border: 1px solid #1f2937;
         margin-top: 0;
     }
+    /* Admin option: the chat floats over the BOTTOM portion of the video,
+       translucent, so the movie fills the screen behind it. */
+    #watchparty .video-wrapper .chat {
+        position: absolute; left: 2%; right: 2%; bottom: 2%; z-index: 7; gap: 8px;
+        max-height: 55%; overflow-y: auto; padding: 10px;
+        background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 156, 192, .28);
+    }
+    #watchparty .video-wrapper .chat .messages { max-height: 130px; margin-top: 0; }
     #watchparty .chat-header {
         display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
         padding-bottom: 8px; border-bottom: 1px solid #1f2937;
@@ -640,6 +649,16 @@ if (!in_array($mode, ['library', 'premium'], true)) {
 
 <script>
     (function () {
+        <?php if ($engine->watchChatOverlay()): ?>
+        // Admin chat placement: the chat floats over the bottom portion of
+        // the video (translucent) instead of sitting under the player.
+        (function () {
+            var wrapper = document.querySelector('#watchparty .video-wrapper');
+            var chat = document.querySelector('#watchparty .chat');
+            if (wrapper && chat) { wrapper.appendChild(chat); }
+        })();
+        <?php endif; ?>
+
         // Newest messages render first, so the log stays put at the top —
         // the entry area never drifts away from the player.
         var file = document.getElementById('wp-file');

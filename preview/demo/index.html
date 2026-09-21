@@ -376,6 +376,13 @@
           /* The player never grows taller than the viewport leaves room for —
              the chat stays on screen next to the whole video. */
           #w-frame { max-width: min(100%, calc((100vh - 250px) * 1.7778)); margin: 0 auto; }
+          /* Admin option: the chat floats over the BOTTOM portion of the
+             video, translucent — the movie fills the screen behind it. */
+          #w-frame .wchat { position: absolute; left: 2%; right: 2%; bottom: 2%; z-index: 5; margin: 0;
+            gap: 8px; padding: 8px 10px; max-height: 58%; overflow-y: auto;
+            background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 156, 192, .28); border-radius: 12px; }
+          #w-frame .wchat .wchat-messages { max-height: 120px; }
           /* The on-video control bar: hidden until the player is hovered/focused. */
           .wbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 6px;
             align-items: center; flex-wrap: wrap; padding: 26px 10px 8px;
@@ -742,6 +749,15 @@
         <div id="r-flash"></div>
       </section>
       <section class="panel">
+        <h2>Watch Party chat overlay</h2>
+        <p>Float the couple's chat over the bottom portion of the video — translucent, so the movie stays
+          visible behind it and fills the screen. Turn it off to put the chat back under the player.</p>
+        <div class="composer"><div class="row">
+          <button class="act" id="adm-chat-overlay">Chat overlay: ON — floating over the video</button>
+          <span class="counter">Applies to every couple's Watch Party player.</span>
+        </div></div>
+      </section>
+      <section class="panel">
         <h2>Photo reveal timeframe</h2>
         <p>Relationships here start on common interests, not appearance. Real pictures stay behind the generated
           artwork until a pair's chat is this many days old — day 0 reveals at the first chat, day 1 after one day,
@@ -843,7 +859,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v39 · showcases always on</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v40 · chat floats on video</div>
 
 <script>
 'use strict';
@@ -1498,6 +1514,7 @@ function renderWatchPlayer() {
       '</div></div>' +
       '<p style="font-size:12.5px;margin:8px 0 0"><span id="w-verify" style="color:#7fe3a8"></span> <span id="w-note" style="color:var(--muted)"></span></p>';
     watchState.playerKind = null;
+    applyWatchChatOverlay();
   }
   if (watchState.playerKind !== kind) {
     $('w-holder').innerHTML = '<iframe src="' + src + '"' +
@@ -1777,6 +1794,27 @@ function renderWatchGrid() {
   }).join('') ||
     '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
 }
+// ---- Admin option: float the chat over the bottom of the video. ON by
+// default; the Admin console toggles it live. ----
+let wChatOverlay = true;
+let wChatHome = null;
+function applyWatchChatOverlay() {
+  const chat = document.querySelector('#portal-watch .wchat');
+  const frame = $('w-frame');
+  if (!chat) { return; }
+  if (!wChatHome) { wChatHome = { parent: chat.parentNode, next: chat.nextSibling }; }
+  if (wChatOverlay && frame && chat.parentNode !== frame) {
+    frame.appendChild(chat);
+  } else if (!wChatOverlay && chat.parentNode !== wChatHome.parent) {
+    wChatHome.parent.insertBefore(chat, wChatHome.next);
+  }
+}
+$('adm-chat-overlay').addEventListener('click', () => {
+  wChatOverlay = !wChatOverlay;
+  $('adm-chat-overlay').textContent = 'Chat overlay: ' + (wChatOverlay ? 'ON — floating over the video' : 'OFF — below the player');
+  applyWatchChatOverlay();
+});
+
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.wrot) {
