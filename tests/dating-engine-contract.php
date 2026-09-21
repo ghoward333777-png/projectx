@@ -721,6 +721,40 @@ contract_check($engine->watchPartyEmbed() === 'https://www.youtube.com/embed/vid
 $engine->setWatchPartyEmbed($admin['admin_id'], '');
 contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear the player override');
 
+// ---- Direct messages: admin switch, open-to-contact, presence light ----
+contract_check($engine->directMessagingEnabled() === true, 'direct messaging ships enabled');
+contract_check($engine->openToContact($bob['user_id']) === true, 'members are open to contact by default');
+$dm = $engine->startDirectChat($alice['user_id'], $bob['user_id'], $tDay);
+contract_check(in_array($bob['user_id'], (array) $dm['participants'], true), 'a member messages another straight from their profile');
+$engine->setOpenToContact($bob['user_id'], false);
+$threw = false;
+try {
+    $engine->startDirectChat($carol['user_id'], $bob['user_id'], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'closed-to-contact members cannot be messaged first');
+$engine->setOpenToContact($bob['user_id'], true);
+$engine->setDirectMessaging($admin['admin_id'], false);
+$threw = false;
+try {
+    $engine->startDirectChat($carol['user_id'], $bob['user_id'], $tDay);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'the admin switch stops all member-started chats');
+$engine->setDirectMessaging($admin['admin_id'], true);
+$threw = false;
+try {
+    $engine->setDirectMessaging($alice['user_id'], false);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'only admins hold the messaging switch');
+contract_check($engine->isOnline($carol['user_id']) === false, 'a member not seen recently shows no green light');
+$engine->authenticate((string) $carol['token']);
+contract_check($engine->isOnline($carol['user_id']) === true, 'an authenticated page load lights the green online dot');
+
 // ---- Watch Party chat overlay: admin-controlled, floating by default ----
 contract_check($engine->watchChatOverlay() === true, 'the chat floats over the video by default');
 $threw = false;

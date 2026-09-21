@@ -61,6 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : 'The Watch Party chat now sits below the player again.';
                 }
                 break;
+            case 'direct_messaging':
+                if ($adminId !== null) {
+                    $result = $engine->setDirectMessaging($adminId, ($_POST['enabled'] ?? '') === '1');
+                    $notice = $result['direct_messaging']
+                        ? 'Direct messaging is ON — members can message anyone who is open to contact.'
+                        : 'Direct messaging is OFF — no member can start a new chat.';
+                }
+                break;
             case 'photo_reveal':
                 if ($adminId !== null) {
                     $engine->setPhotoRevealDays($adminId, (int) ($_POST['days'] ?? 0));
@@ -173,6 +181,21 @@ if ($adminId === null) {
         <option value="0"<?= $engine->watchChatOverlay() ? '' : ' selected' ?>>Below the player (classic)</option>
     </select>
     <button type="submit">Save chat placement</button>
+</form>
+
+<form method="post">
+    <h2>Direct messaging</h2>
+    <p>When on, any member can open another member's profile (from any thumbnail or profile link) and leave them
+        a message — as long as that member has "open to contact" switched on in their own settings. Blocks always
+        win, and the conversation is the ordinary slow chat with all safety rules. Switch it off to stop members
+        from starting new chats site-wide.</p>
+    <input type="hidden" name="action" value="direct_messaging">
+    <label>Member-to-member messages</label>
+    <select name="enabled">
+        <option value="1"<?= $engine->directMessagingEnabled() ? ' selected' : '' ?>>Enabled — members may message each other</option>
+        <option value="0"<?= $engine->directMessagingEnabled() ? '' : ' selected' ?>>Disabled — no new member-started chats</option>
+    </select>
+    <button type="submit">Save messaging switch</button>
 </form>
 
 <form method="post">

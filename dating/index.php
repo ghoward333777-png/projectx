@@ -93,8 +93,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'start_chat':
                 if ($userId !== null) {
-                    $engine->startChat($userId, (string) ($_POST['user_id'] ?? ''));
-                    $notice = 'Chat started — slow-chat pacing applies for the first 30 days.';
+                    // Every member-initiated chat rides the direct-message
+                    // rules: admin switch on, recipient open to contact.
+                    $engine->startDirectChat($userId, (string) ($_POST['user_id'] ?? ''));
+                    $notice = 'Chat started — leave your message below. Slow-chat pacing applies for the first 30 days.';
+                }
+                break;
+            case 'contact_pref':
+                if ($userId !== null) {
+                    $result = $engine->setOpenToContact($userId, ($_POST['open'] ?? '') === '1');
+                    $notice = $result['open_to_contact']
+                        ? 'You are open to contact — members can message you first.'
+                        : 'Closed to new messages — only chats you start (or matches) can begin.';
                 }
                 break;
             case 'send_message':
@@ -229,6 +239,18 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
 </section>
 
 <?php if ($tab === 'profile'): ?>
+    <form method="post">
+        <h2>Direct messages</h2>
+        <p style="margin:0 0 6px">Members can open your profile from a thumbnail anywhere on the site and leave you
+            a message. Switch this off to stop new conversations from starting — existing chats keep going.</p>
+        <input type="hidden" name="action" value="contact_pref">
+        <label>Being contacted</label>
+        <select name="open" style="max-width:420px">
+            <option value="1"<?= $engine->openToContact($userId) ? ' selected' : '' ?>>Open — members may message me first</option>
+            <option value="0"<?= $engine->openToContact($userId) ? '' : ' selected' ?>>Closed — only chats I start</option>
+        </select>
+        <button type="submit">Save contact setting</button>
+    </form>
     <form method="post">
         <h2>My profile</h2>
         <input type="hidden" name="action" value="profile">
@@ -467,7 +489,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                 <form method="post" style="background:none;border:0;padding:0;margin:0">
                     <input type="hidden" name="action" value="start_chat">
                     <input type="hidden" name="user_id" value="<?= sd_e((string) $row['user_id']) ?>">
-                    <button type="submit">Start slow chat</button>
+                    <button type="submit">💬 Message</button>
                 </form>
             </div>
         <?php endforeach; ?>
@@ -762,6 +784,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                 <div class="who" style="margin-bottom:6px">
                     <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>"><img class="avatar" src="avatar.php?u=<?= urlencode((string) $match['user_id']) ?>" alt="Open profile"></a>
                     <a href="profile.php?u=<?= urlencode((string) $match['user_id']) ?>" style="color:inherit;text-decoration:none"><strong><?= sd_e((string) ($match['display_name'] ?: $match['user_id'])) ?></strong></a>
+                    <?= !empty($match['online']) ? '<span title="Online now" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.9)"></span>' : '' ?>
                     <?= !empty($match['verified']) ? '<span class="pill ok">✓ verified</span>' : '' ?>
                     <?= ($match['dating_type'] ?? '') !== '' ? '<span class="pill">' . sd_e(str_replace('_', ' ', (string) $match['dating_type'])) . '</span>' : '' ?>
                 </div>
@@ -771,7 +794,7 @@ $tabs = ['matches' => 'Matches', 'search' => 'Search', 'chats' => 'Chats', 'comm
                 <form method="post" style="background:none;border:0;padding:0;margin:0">
                     <input type="hidden" name="action" value="start_chat">
                     <input type="hidden" name="user_id" value="<?= sd_e((string) $match['user_id']) ?>">
-                    <button type="submit">Start slow chat</button>
+                    <button type="submit">💬 Message</button>
                 </form>
             </div>
         <?php endforeach; ?>

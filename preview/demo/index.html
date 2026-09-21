@@ -770,6 +770,16 @@
         <div id="r-flash"></div>
       </section>
       <section class="panel">
+        <h2>Direct messaging</h2>
+        <p>When on, any member can open another member's profile from a thumbnail or profile link and leave them a
+          message — as long as that member is open to contact in their own settings. Blocks always win, and the
+          conversation is the ordinary slow chat with all safety rules.</p>
+        <div class="composer"><div class="row">
+          <button class="act" id="adm-dm">Direct messaging: ON</button>
+          <span class="counter">Applies site-wide, instantly — profile Message buttons follow this switch.</span>
+        </div></div>
+      </section>
+      <section class="panel">
         <h2>Watch Party chat overlay</h2>
         <p>Float the couple's chat over the bottom portion of the video — translucent, so the movie stays
           visible behind it and fills the screen. Turn it off to put the chat back under the player.</p>
@@ -880,7 +890,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v45 · chat clear of controls</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v46 · direct messages</div>
 
 <script>
 'use strict';
@@ -952,6 +962,15 @@ const MATCHES = [
   { id: 'marcus', score: 78, shared: ['italian food'] },
   { id: 'james', score: 66, shared: ['jazz'] },
 ];
+// Direct messages: any member can message anyone open to contact — the
+// admin console switches the whole feature. Green dot = seen in the
+// last 5 minutes (the live site tracks this on every page load).
+let dmEnabled = true;
+const ONLINE_NOW = new Set(['bob', 'marcus']);
+const CLOSED_TO_CONTACT = new Set(['james']);
+const onlineDot = id => ONLINE_NOW.has(id)
+  ? ' <span title="Online now" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.9)"></span>'
+  : '';
 const VENUES = [
   { name: 'Blue Note Lounge', cat: 'lounge', tags: ['jazz', 'quiet', 'romantic'], km: 0 },
   { name: 'Trattoria Luna', cat: 'restaurant', tags: ['romantic', 'quiet'], km: 0 },
@@ -1193,6 +1212,7 @@ $('chat-panels').addEventListener('click', e => {
 $('match-cards').innerHTML = MATCHES.map(x => {
   const p = MEMBERS[x.id];
   return '<div class="card" data-profile="' + x.id + '" style="cursor:pointer"><span class="name">' + p.name + ', ' + p.age +
+    onlineDot(x.id) +
     (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
     ' <span class="pill">' + p.type.replace('_', ' ') + '</span></span>' +
     '<span class="meta">match score ' + x.score + ' · popularity ' + p.pop + ' · ~' + p.km + ' km</span>' +
@@ -1202,7 +1222,7 @@ $('drop-cards').innerHTML = MATCHES.slice(0, 3).map(x => {
   const p = MEMBERS[x.id];
   return '<div class="card" data-profile="' + x.id + '" style="cursor:pointer"><div style="display:flex;gap:10px;align-items:center">' +
     '<img src="' + demoAvatar(x.id, p.name) + '" alt="" style="width:52px;height:52px;border-radius:14px">' +
-    '<div><span class="name">' + p.name + '</span>' + (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
+    '<div><span class="name">' + p.name + '</span>' + onlineDot(x.id) + (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') +
     '<br><span class="meta">match ' + x.score + ' · ~' + p.km + ' km</span></div></div></div>';
 }).join('');
 
@@ -1885,6 +1905,10 @@ function setWChatOverlay(on) {
   wChatWake();
 }
 $('adm-chat-overlay').addEventListener('click', () => { setWChatOverlay(!wChatOverlay); });
+$('adm-dm').addEventListener('click', () => {
+  dmEnabled = !dmEnabled;
+  $('adm-dm').textContent = 'Direct messaging: ' + (dmEnabled ? 'ON' : 'OFF');
+});
 
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -2294,10 +2318,15 @@ function openProfile(id) {
         (p.verified ? ' <span class="pill ok">✓ verified</span>' : '') + '</h2>' +
         '<span class="meta">' + esc(p.gender) + ' · looking for ' + esc(p.type.replace(/_/g, ' ')) + ' · ~' + p.km + ' km from you</span>' +
         '<div style="margin:8px 0"><span class="pill">match with you: ' + score + '</span>' +
-        '<span class="pill">popularity ' + p.pop + '</span></div>' +
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">' +
+        '<span class="pill">popularity ' + p.pop + '</span>' +
+        (ONLINE_NOW.has(id) ? '<span class="pill" style="background:#17351f;color:#b8ffd3" title="Seen in the last 5 minutes">' +
+          '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.9);margin-right:5px"></span>online now</span>' : '') +
+        '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;align-items:center">' +
           '<button class="act small" data-pact="like">♥ Like</button>' +
-          '<button class="act small" data-pact="chat">Start slow chat</button>' +
+          (dmEnabled && !CLOSED_TO_CONTACT.has(id)
+            ? '<button class="act small" data-pact="chat">💬 Message ' + esc(p.name) + '</button>'
+            : '<span class="pill">' + (dmEnabled ? esc(p.name) + ' isn\'t accepting new messages' : 'direct messages are switched off right now') + '</span>') +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -2333,7 +2362,7 @@ document.addEventListener('click', e => {
   if (pact) {
     flash($('profile-flash'), 'ok', pact.dataset.pact === 'like'
       ? 'Liked. If they like you back, a slow chat opens for you both.'
-      : 'Chat started — slow-chat pacing applies for the first 30 days. Find it in the Member app\'s Chats tab.');
+      : 'Chat started — leave your message in the Member app\'s Chats tab. Slow-chat pacing applies for the first 30 days.');
     return;
   }
   if (e.target.closest('#profile-close') || e.target === $('profile-modal')) {

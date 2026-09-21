@@ -242,7 +242,29 @@ final class SlowDatingEngine
     public function authenticate(string $token): ?array
     {
         $record = $this->store->get('tokens', hash('sha256', $token));
-        return $record === null ? null : [(string) $record['subject_id'], (string) $record['kind']];
+        if ($record === null) {
+            return null;
+        }
+        if ((string) $record['kind'] === 'member') {
+            // Every authenticated page load marks the member as seen — the
+            // green "online now" light runs on this heartbeat.
+            $user = $this->store->get('users', (string) $record['subject_id']);
+            if ($user !== null) {
+                $user['last_seen_at'] = time();
+                $this->store->put('users', (string) $record['subject_id'], $user);
+            }
+        }
+        return [(string) $record['subject_id'], (string) $record['kind']];
+    }
+
+    /** Seen within this many seconds = online now. */
+    public const ONLINE_WINDOW_SECONDS = 300;
+
+    public function isOnline(string $userId, ?int $now = null): bool
+    {
+        $now ??= time();
+        $user = $this->store->get('users', $userId);
+        return $user !== null && (int) ($user['last_seen_at'] ?? 0) > $now - self::ONLINE_WINDOW_SECONDS;
     }
 
     /** Generate a strong password: 20 chars, all four character classes. */
@@ -341,6 +363,8 @@ final class SlowDatingEngine
             'prompts' => $this->prompts($targetId),
             'communities' => $this->memberCommunities($targetId),
             'pictures' => $this->pictureRoster($targetId),
+            'online' => $this->isOnline($targetId, $now),
+            'open_to_contact' => $this->openToContact($targetId),
             'can_see_real_photos' => $this->canSeeRealPhotos($viewerId, $targetId, $now),
             'private_photo' => $this->memberPhoto($targetId, 'private') === null ? 'none'
                 : ($this->canSeePrivatePhoto($viewerId, $targetId) ? 'clear' : 'fuzzed'),
@@ -863,6 +887,56 @@ final class SlowDatingEngine
     // ------------------------------------------------------------------
 
     /** @return array<string, mixed> */
+    // ------------------------------------------------------------------
+    // Direct messages: any member may open a chat with any member who has
+    // "open to contact" on — started from a thumbnail or a profile link.
+    // The whole feature sits behind an admin switch; blocks always win,
+    // and the conversation is the ordinary slow chat (pacing, contact
+    // filtering, and safety rules all apply).
+
+    public function setDirectMessaging(string $adminId, bool $enabled): array
+    {
+        if ($this->store->get('admins', $adminId) === null) {
+            throw new InvalidArgumentException('Only admins switch direct messaging.');
+        }
+        $this->store->put('settings', 'direct_messaging', ['value' => $enabled]);
+        return ['direct_messaging' => $enabled];
+    }
+
+    public function directMessagingEnabled(): bool
+    {
+        $setting = $this->store->get('settings', 'direct_messaging');
+        return $setting === null ? true : (bool) ($setting['value'] ?? false);
+    }
+
+    /** Each member chooses whether other members can message them first. */
+    public function setOpenToContact(string $userId, bool $open): array
+    {
+        $user = $this->requireUser($userId);
+        $user['open_to_contact'] = $open;
+        $this->store->put('users', $userId, $user);
+        return ['user_id' => $userId, 'open_to_contact' => $open];
+    }
+
+    public function openToContact(string $userId): bool
+    {
+        $user = $this->requireUser($userId);
+        return (bool) ($user['open_to_contact'] ?? true);
+    }
+
+    /** A member starts (or reopens) a direct chat from a thumb or profile. */
+    public function startDirectChat(string $fromId, string $toId, ?int $now = null): array
+    {
+        if (!$this->directMessagingEnabled()) {
+            throw new InvalidArgumentException('Direct messages are switched off right now.');
+        }
+        $this->requireUser($toId);
+        if (!$this->openToContact($toId)) {
+            throw new InvalidArgumentException('This member is not accepting new messages.');
+        }
+        return $this->startChat($fromId, $toId, $now);
+    }
+
     public function startChat(string $initiatorId, string $recipientId, ?int $now = null): array
     {
         $now ??= time();
@@ -1944,6 +2018,7 @@ final class SlowDatingEngine
                 'match_id' => 'm_' . substr(hash('sha256', $userId . '|' . $candidateId), 0, 10),
                 'user_id' => $candidateId,
                 'display_name' => (string) ($profile['display_name'] ?? ''),
+                'online' => (int) ($candidate['last_seen_at'] ?? 0) > $now - self::ONLINE_WINDOW_SECONDS,
                 'verified' => ($candidate['verification']['status'] ?? '') === 'verified',
                 'dating_type' => (string) ($profile['dating_type'] ?? ''),
                 'match_score' => (int) round($score * 100),

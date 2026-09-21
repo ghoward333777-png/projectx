@@ -41,8 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     try {
         switch ((string) ($_POST['action'] ?? '')) {
             case 'start_chat':
-                $engine->startChat($userId, (string) ($_POST['user_id'] ?? ''));
-                $notice = 'Chat started — slow-chat pacing applies for the first 30 days.';
+                // Direct message from a profile: gated by the admin switch
+                // and the member's "open to contact" setting; lands the
+                // sender straight in Chats to leave their message.
+                $engine->startDirectChat($userId, (string) ($_POST['user_id'] ?? ''));
+                header('Location: index.php?tab=chats');
+                exit;
                 break;
             case 'swipe':
                 $result = $engine->recordSwipe($userId, (string) ($_POST['user_id'] ?? ''), (string) ($_POST['swipe'] ?? ''));
@@ -139,6 +143,9 @@ sd_flash($error, $notice);
                 <?php if (isset($view['match_score'])): ?>
                     <span class="pill" style="background:#4a2440;color:#ffd4e5">match with you: <?= (int) $view['match_score'] ?></span>
                 <?php endif; ?>
+                <?php if (!empty($view['online'])): ?>
+                    <span class="pill" style="background:#17351f;color:#b8ffd3" title="Seen in the last 5 minutes"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.9);margin-right:5px;vertical-align:baseline"></span>online now</span>
+                <?php endif; ?>
             </div>
             <?php if (!$own): ?>
                 <?php $blockedByMe = $engine->hasBlocked($userId, $targetId); ?>
@@ -150,11 +157,17 @@ sd_flash($error, $notice);
                         <input type="hidden" name="swipe" value="like">
                         <button type="submit">♥ Like</button>
                     </form>
-                    <form method="post" style="background:none;border:0;padding:0;margin:0">
-                        <input type="hidden" name="action" value="start_chat">
-                        <input type="hidden" name="user_id" value="<?= sd_e((string) $view['user_id']) ?>">
-                        <button type="submit">Start slow chat</button>
-                    </form>
+                    <?php if ($engine->directMessagingEnabled() && !empty($view['open_to_contact'])): ?>
+                        <form method="post" style="background:none;border:0;padding:0;margin:0">
+                            <input type="hidden" name="action" value="start_chat">
+                            <input type="hidden" name="user_id" value="<?= sd_e((string) $view['user_id']) ?>">
+                            <button type="submit">💬 Message <?= sd_e($name) ?></button>
+                        </form>
+                    <?php elseif (!$engine->directMessagingEnabled()): ?>
+                        <span class="pill" style="align-self:center">direct messages are switched off right now</span>
+                    <?php else: ?>
+                        <span class="pill" style="align-self:center"><?= sd_e($name) ?> isn't accepting new messages</span>
+                    <?php endif; ?>
                     <?php endif; ?>
                     <form method="post" style="background:none;border:0;padding:0;margin:0">
                         <input type="hidden" name="action" value="<?= $blockedByMe ? 'unblock' : 'block' ?>">
