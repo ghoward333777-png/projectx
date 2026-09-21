@@ -197,10 +197,11 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
         margin-top: 0;
     }
     /* The chat floats over the BOTTOM portion of the video, translucent —
-       lifted 64px so YouTube's own control bar (play, volume, settings,
-       FULLSCREEN) stays completely uncovered and clickable. */
+       lifted 64px AND held clear of the right edge, so YouTube's own
+       controls (play, volume, settings, the FULLSCREEN icon in the
+       corner) are never covered from any angle. */
     #watchparty .video-wrapper .chat {
-        position: absolute; left: 2%; right: 2%; bottom: 64px; z-index: 7; gap: 8px;
+        position: absolute; left: 2%; right: max(15%, 180px); bottom: 64px; z-index: 7; gap: 8px;
         max-height: 50%; overflow-y: auto; padding: 10px;
         background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255, 156, 192, .28);

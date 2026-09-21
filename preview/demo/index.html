@@ -377,9 +377,10 @@
              the chat stays on screen next to the whole video. */
           #w-frame { max-width: min(100%, calc((100vh - 250px) * 1.7778)); margin: 0 auto; }
           /* The chat floats over the BOTTOM portion of the video, translucent —
-             lifted 64px so YouTube's own control bar (play, volume, settings,
-             FULLSCREEN) stays completely uncovered and clickable. */
-          #w-frame .wchat { position: absolute; left: 2%; right: 2%; bottom: 64px; z-index: 5; margin: 0;
+             lifted 64px AND held clear of the right edge, so YouTube's own
+             controls (play, volume, settings, the FULLSCREEN icon in the
+             corner) are never covered from any angle. */
+          #w-frame .wchat { position: absolute; left: 2%; right: max(15%, 180px); bottom: 64px; z-index: 5; margin: 0;
             gap: 8px; padding: 8px 10px; max-height: 52%; overflow-y: auto;
             background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 156, 192, .28); border-radius: 12px; }
@@ -879,7 +880,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v44 · fullscreen with chat</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v45 · chat clear of controls</div>
 
 <script>
 'use strict';
