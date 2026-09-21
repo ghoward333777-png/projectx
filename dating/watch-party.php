@@ -205,6 +205,17 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
         border: 1px solid rgba(255, 156, 192, .28);
     }
     #watchparty .video-wrapper .chat .messages { max-height: 130px; margin-top: 0; }
+    /* Quiet mode: 5 seconds of keyboard idle fades the overlay chat to
+       95% transparent — the interface disappears, only the chat text
+       stays ghosted over the film. Any key or a click revives it. */
+    #watchparty .video-wrapper .chat { transition: background .6s, border-color .6s; }
+    #watchparty .video-wrapper .chat.chat-quiet { background: rgba(10, 8, 16, .05); border-color: transparent;
+        backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #watchparty .video-wrapper .chat.chat-quiet .chat-header,
+    #watchparty .video-wrapper .chat.chat-quiet .input-area {
+        opacity: 0; height: 0; min-height: 0; margin: 0; padding: 0; border: 0; overflow: hidden; pointer-events: none; }
+    #watchparty .video-wrapper .chat.chat-quiet .message { background: none; border-color: transparent;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .7); }
     #watchparty .chat-header {
         display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
         padding-bottom: 8px; border-bottom: 1px solid #1f2937;
@@ -655,7 +666,27 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         (function () {
             var wrapper = document.querySelector('#watchparty .video-wrapper');
             var chat = document.querySelector('#watchparty .chat');
-            if (wrapper && chat) { wrapper.appendChild(chat); }
+            if (!wrapper || !chat) { return; }
+            wrapper.appendChild(chat);
+            // Quiet mode: 5s of keyboard idle fades the chat to 95%
+            // transparent and hides its interface — only the text stays.
+            var quietTimer = null;
+            function chatWake() {
+                chat.classList.remove('chat-quiet');
+                clearTimeout(quietTimer);
+                quietTimer = setTimeout(function () { chat.classList.add('chat-quiet'); }, 5000);
+            }
+            document.addEventListener('keydown', function (event) {
+                var wasQuiet = chat.classList.contains('chat-quiet');
+                chatWake();
+                // A keystroke that wakes the chat lands straight in the box.
+                var box = chat.querySelector('textarea[name=text]');
+                var target = event.target;
+                var typingElsewhere = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
+                if (wasQuiet && box && !typingElsewhere) { box.focus(); }
+            });
+            chat.addEventListener('click', chatWake);
+            chatWake();
         })();
         <?php endif; ?>
 
