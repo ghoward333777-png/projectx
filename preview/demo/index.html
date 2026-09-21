@@ -373,6 +373,9 @@
             padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
           .chmenu-list button:hover { background: #262030; }
           .chmenu-list button.on { background: #4a2440; font-weight: 800; }
+          /* The player never grows taller than the viewport leaves room for —
+             the chat stays on screen next to the whole video. */
+          #w-frame { max-width: min(100%, calc((100vh - 250px) * 1.7778)); margin: 0 auto; }
           /* The on-video control bar: hidden until the player is hovered/focused. */
           .wbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 6px;
             align-items: center; flex-wrap: wrap; padding: 26px 10px 8px;
@@ -387,8 +390,11 @@
           <details class="chmenu"><summary>Movies ▾</summary>
             <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button></div>
           </details>
-          <details class="chmenu"><summary>Live Nature ▾</summary>
-            <div class="chmenu-list"><button data-wch="nature">Live Nature cams</button></div>
+          <details class="chmenu"><summary>Live Cams ▾</summary>
+            <div class="chmenu-list">
+              <button data-wch="nature">Live Nature cams</button>
+              <button data-wch="rooftop">Rooftop cams</button>
+            </div>
           </details>
           <details class="chmenu"><summary>Relaxation ▾</summary>
             <div class="chmenu-list">
@@ -468,6 +474,54 @@
         <div class="formgrid"><label class="f">Search this channel<input id="w-search" placeholder="Notebook, waterfall, psalms…"></label></div>
         <div class="cards" id="w-grid" style="margin-top:12px"></div>
       </section>
+      <section class="panel" style="padding:10px 14px">
+        <details>
+          <summary style="cursor:pointer;color:#ffd97a;font-weight:700;font-size:14px">📖 Advanced Watch Party · BETA — the complete user guide ▾</summary>
+          <div style="margin-top:10px;font-size:13.5px;line-height:1.65;color:var(--muted)">
+            <h3 style="margin:10px 0 4px;color:var(--text)">1. What it is</h3>
+            <p style="margin:0 0 8px">A separate product from this couple's Watch Party: standalone paid rooms for
+              groups in four modes — <strong style="color:var(--text)">Couples, Friends, Family, and Creator</strong> —
+              each with its own themes. Rooms hold 2 to 12 people. It is in
+              <strong style="color:#ffd97a">BETA</strong>. Open it from the Watch Party ▾ menu at the top.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">2. Bring your own YouTube (BYOYA)</h3>
+            <p style="margin:0 0 8px">Everyone watches signed into <em>their own</em> YouTube account, so YouTube
+              Premium plays ad-free on each person's own subscription. The room fee pays for the sync service,
+              chat, games, and recap — <strong style="color:var(--text)">never for the movie</strong>.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">3. Creating a room</h3>
+            <p style="margin:0 0 8px">Pick a mode and theme, set the price per person ($0 = free room) and how many
+              participants are required, then choose the video — paste any YouTube link, or click any thumbnail in
+              the library (every channel, every video) and it fills the form.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">4. Invites and split payment</h3>
+            <p style="margin:0 0 8px">Every room gets a six-character <strong style="color:var(--text)">invite
+              code</strong>. In a priced room the fee <strong style="color:var(--text)">splits evenly</strong>, and
+              the room — player, controls, reactions, games — stays locked until every required share is paid.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">5. The player and shared controls</h3>
+            <p style="margin:0 0 8px">A server-authoritative shared timeline: ▶ Play together, ⏸ Pause both, and
+              ⟲ Re-sync keep every player locked to the same timecode. One person holds
+              <strong style="color:var(--text)">the remote</strong> and can pass it to anyone in the room.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">6. Changing the video</h3>
+            <p style="margin:0 0 8px">The full Watch Party library is on the room page — all channels with the
+              YouTube thumbnails as buttons, plus search. A pick
+              <strong style="color:var(--text)">swaps the room's video for everyone</strong> and restarts the
+              shared timeline.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">7. Reactions, highlights, and the emotion timeline</h3>
+            <p style="margin:0 0 8px">React with 😂 😱 😢 ❤️ 🤩 🥱 while the film plays. Two reactions within a second
+              of each other count as an <strong style="color:var(--text)">emotion sync moment</strong>; ⭐ marks a
+              timestamped highlight.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">8. Room chat and background games</h3>
+            <p style="margin:0 0 8px">The room chat never pauses the movie, and the 🎲 Games button opens the same
+              background games this page carries — tic-tac-toe, Connect Four, memory match, Would You Rather,
+              movie trivia, and watch-party bingo — floating over the film. The first two people hold the pieces;
+              the rest of the room watches the board.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">9. The recap</h3>
+            <p style="margin:0 0 8px">Ending the session shows everyone the recap: reaction totals, the most intense
+              stretch, every emotion sync moment, and all the marked highlights.</p>
+            <h3 style="margin:10px 0 4px;color:var(--text)">10. Good to know</h3>
+            <p style="margin:0">Rooms are free at $0. Only participants can see a room, change its video, or play
+              its games. This couple's Watch Party stays unchanged — same chat rules, same safety filters.</p>
+          </div>
+        </details>
+      </section>
     </main>
   </div>
 
@@ -503,6 +557,51 @@
           <button class="quiet small" id="awp-end">End the session → recap</button>
           <p class="meta" id="awp-recap" style="margin:6px 0" hidden></p>
         </div>
+      </section>
+      <section class="panel">
+        <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>The Watch Party library — every channel, every video</span>
+          <button class="quiet small" id="awpg-open" style="background:#3a2a3e;color:var(--accent)">🎲 Games</button>
+        </h2>
+        <p style="margin:0 0 10px">The same library the couple's Watch Party carries. Click any thumbnail and the
+          room's player follows — for everyone in it.</p>
+        <div id="awp-frame" style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937;max-width:min(100%,calc((100vh - 250px)*1.7778));margin:0 auto"></div>
+        <p style="font-size:12.5px;margin:8px 0 0" id="awp-note">Pick a video below — it plays right here.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 0">
+          <details class="chmenu"><summary>Movies ▾</summary>
+            <div class="chmenu-list"><button data-awpch="romance" class="on">Romance movies</button></div>
+          </details>
+          <details class="chmenu"><summary>Live Cams ▾</summary>
+            <div class="chmenu-list">
+              <button data-awpch="nature">Live Nature cams</button>
+              <button data-awpch="rooftop">Rooftop cams</button>
+            </div>
+          </details>
+          <details class="chmenu"><summary>Relaxation ▾</summary>
+            <div class="chmenu-list">
+              <button data-awpch="ambient">Ambient music</button>
+              <button data-awpch="nature-sounds">Nature sounds</button>
+              <button data-awpch="hybrid">Music + nature</button>
+              <button data-awpch="lofi">Lofi &amp; chill beats</button>
+              <button data-awpch="piano">Piano &amp; instrumental</button>
+              <button data-awpch="asmr">ASMR nature</button>
+              <button data-awpch="scenic">Scenic 4K</button>
+              <button data-awpch="meditation">Meditation &amp; healing</button>
+              <button data-awpch="official">Official relaxation</button>
+              <button data-awpch="jazz-cafe">Jazz &amp; café</button>
+              <button data-awpch="rain">Rain &amp; weather</button>
+              <button data-awpch="world">World ambient</button>
+            </div>
+          </details>
+          <details class="chmenu"><summary>Faith ▾</summary>
+            <div class="chmenu-list">
+              <button data-awpch="bible">Bible narration</button>
+              <button data-awpch="church">Church videos</button>
+            </div>
+          </details>
+        </div>
+        <div class="formgrid" style="margin-top:10px"><label class="f">Search this channel<input id="awp-search" placeholder="Notebook, waterfall, psalms…"></label></div>
+        <div class="cards" id="awp-grid" style="margin-top:12px"></div>
       </section>
     </main>
   </div>
@@ -744,7 +843,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v36 · video overlay menus</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v37 · AWP library + games</div>
 
 <script>
 'use strict';
@@ -1387,7 +1486,7 @@ function renderWatchPlayer() {
     // carrying the channel menus (drop-up) and the rotation buttons, so
     // nothing below the player pushes the chat down.
     $('w-player').innerHTML =
-      '<div id="w-frame" style="position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
+      '<div id="w-frame" style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;border:1px solid #1f2937">' +
       '<div id="w-holder" style="position:absolute;inset:0"></div>' +
       '<div id="w-bar" class="wbar"><span id="w-barslot" style="display:contents"></span>' +
       '<span style="flex:1"></span>' +
@@ -1545,6 +1644,20 @@ const NATURE = [
   [2038,'Ocean waves beach live cam',0,'ocean','Ts_uWr9-lAU',true],[2039,'SafariLIVE sunset — predators at dusk',0,'savanna','jnvfwi7NZbY',true],
   [2040,'Snowfall cabin live cam',0,'snow','v5TsJvtleAA',true],
 ];
+// Rooftop & high-rise city cams — verified live streams (EarthCam runs
+// its flagship cams on YouTube), rows named after the actual streams.
+const ROOFTOP = [
+  [2621,'EarthCam Times Square North',0,'new york','JQ_jwk_7OVE',true],
+  [2622,'EarthCam Statue of Liberty',0,'new york','o5Ie_LpZ9uk',true],
+  [2623,'Miami Beach Collins Ave street cam',0,'florida','atwnD7ccsm4',true],
+  [2624,'Santa Monica Beach & Pier',0,'california','v97JpT3ZA0w',true],
+  [2625,'EarthCam Chicago Skydeck',0,'chicago','O0UGT7AT3aw',true],
+  [2626,'San Francisco skyline & Golden Gate bay view',0,'california','BSWhGNXxT9A',true],
+  [2627,'San Diego Harbor Island cam',0,'california','iaBfYxbmwXA',true],
+  [2628,'EarthCam SUMMIT One Vanderbilt',0,'new york','2_PDaUJbfuI',true],
+  [2629,'EarthCam World Trade Center',0,'new york','5C9oM7C2Q9k',true],
+  [2630,'Burj Khalifa construction timelapse',0,'construction','j66xYj0qahg',false],
+];
 const AMBIENT = [
   [2101,'Spa Massage Music World relaxing music',0,'spa','u7nPyizNXc8',true],[2102,'Amaltea Relaxing Music inner calm',0,'focus','qTI-0JBOrpk',false],
   [2103,'Soothing Relaxation beautiful ambient music',0,'ambient','Kad5ZP0unoY',false],[2104,'OCB Relax Music ambient',0,'ambient','AKy6Jx59fis',false],
@@ -1619,6 +1732,7 @@ const CHURCH = [
 const WCHANNELS = {
   romance: { rows: FILMS, label: 'Romance movies', title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
   nature: { rows: NATURE, label: 'Live Nature cams', title: 'Live Nature cams — pick a scene', blurb: 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, wildlife, and more — live from around the world. The live site resolves each cam\'s current stream automatically.' },
+  rooftop: { rows: ROOFTOP, label: 'Rooftop cams', title: 'Rooftop cams — the city from above', blurb: 'Rooftop and high-rise cams: Times Square, the harbors, the skylines, and the observation decks — live around the clock.' },
   ambient: { rows: AMBIENT, label: 'Ambient music', title: 'Ambient music — set the mood', blurb: 'Soft instrumentals, ambient pads, slow synths, and meditation tones.' },
   'nature-sounds': { rows: NATSOUNDS, label: 'Nature sounds', title: 'Nature sounds — pure ambience', blurb: 'Forests, rivers, rain, birds, and ocean — nothing but nature.' },
   hybrid: { rows: HYBRID, label: 'Music + nature', title: 'Music + nature — the hybrid channels', blurb: 'Relaxing music blended with nature visuals and soundscapes.' },
@@ -1635,7 +1749,7 @@ const WCHANNELS = {
   church: { rows: CHURCH, label: 'Church videos', title: 'Church videos — worship together', blurb: 'Worship services, choirs, hymns, and carols.' },
 };
 let watchChannel = 'romance';
-const ALLFILMS = FILMS.concat(NATURE, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
+const ALLFILMS = FILMS.concat(NATURE, ROOFTOP, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
 // The YouTube thumbnail for a row: the full stream's art when one
 // exists, otherwise the film's own trailer art. Every card sells its
 // video the way YouTube does.
@@ -1770,8 +1884,67 @@ $('portal-awp').addEventListener('click', e => {
     $('awp-recap').hidden = false;
     $('awp-recap').textContent = 'Recap — ' + awp.reactions + ' reactions, ' + awp.syncs +
       ' emotion sync moments, most intense stretch around 01:12:40. On the live site the recap also lists every marked highlight.';
+  } else if (b.dataset.awpch) {
+    awpChannel = b.dataset.awpch;
+    document.querySelectorAll('#portal-awp .chmenu-list button[data-awpch]').forEach(x =>
+      x.className = x.dataset.awpch === awpChannel ? 'on' : '');
+    document.querySelectorAll('#portal-awp details.chmenu[open]').forEach(d => { d.open = false; });
+    renderAwpGrid();
+  } else if (b.dataset.awpfilm) {
+    awpPlay(ALLFILMS.find(f => f[0] === +b.dataset.awpfilm) || FILMS[0]);
+  } else if (b.id === 'awpg-open') {
+    // The same background games overlay the couple's Watch Party uses.
+    if (window.WPG_TEST) { window.WPG_TEST.open(); }
   }
 });
+
+// ---- Advanced Watch Party library: the same channels, the same videos
+// the couple's Watch Party carries — a pick changes the room's player. ----
+let awpChannel = 'romance';
+const awpFailed = new Set();
+function awpPlay(f) {
+  const [rank, title] = f;
+  const yt = f[4];
+  let id = yt && !awpFailed.has(yt) ? yt : null;
+  let label;
+  if (id) {
+    label = esc(title) + ' — its verified stream.';
+  } else if (TRAILERS[rank] && !awpFailed.has(TRAILERS[rank])) {
+    // Same rule as the couple's player: the SELECTED film's own trailer,
+    // never a silently different movie. No up-next queue, ever.
+    id = TRAILERS[rank];
+    label = esc(title) + ' — its official trailer (the full film isn\'t free on YouTube).';
+  } else {
+    for (let step = 0; step < REEL.length; step++) {
+      const candidate = REEL[(rank + step) % REEL.length];
+      if (!awpFailed.has(candidate)) { id = candidate; break; }
+    }
+    id = id || REEL[rank % REEL.length];
+    label = esc(title) + ' — no verified stream or trailer; a verified classic plays as a stand-in.';
+  }
+  $('awp-frame').innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&autoplay=1"' +
+    ' title="' + esc(title) + '" referrerpolicy="strict-origin-when-cross-origin"' +
+    ' style="position:absolute;inset:0;width:100%;height:100%;border:0"' +
+    ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
+  $('awp-note').innerHTML = '✓ Room video changed for everyone — ' + label;
+}
+function renderAwpGrid() {
+  const c = WCHANNELS[awpChannel];
+  const q = ($('awp-search').value || '').toLowerCase().trim();
+  const hits = c.rows.filter(f => !q || f[1].toLowerCase().includes(q) || String(f[2]) === q || f[3].includes(q));
+  $('awp-grid').innerHTML = hits.map(f => {
+    const thumb = wThumb(f);
+    return '<div class="card" style="padding:10px">' +
+      (thumb ? '<button class="wthumb" data-awpfilm="' + f[0] + '" title="Play ' + esc(f[1]) + ' for the room" style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">' +
+        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.parentNode.style.display=\'none\'"></button>' : '') +
+      '<span class="name">' + esc(f[1]) + '</span>' +
+      '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
+      (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') + '</span>' +
+      '<button class="act" data-awpfilm="' + f[0] + '">Play in this room</button></div>';
+  }).join('') || '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
+}
+$('awp-search').addEventListener('input', renderAwpGrid);
+renderAwpGrid();
 $('w-search').addEventListener('input', renderWatchGrid);   // searching never touches the player
 // The operator's own playlist is the player's source.
 watchState.embedOverride = 'https://www.youtube-nocookie.com/embed/videoseries?list=PL9oaxTKWGJ7ONeR1-1cMkCAGAl-gozWij';

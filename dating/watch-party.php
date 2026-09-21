@@ -178,9 +178,12 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
     /* Player + chat, one column — the Watch Party layout. */
     #watchparty { display: flex; flex-direction: column; gap: 16px; }
     #watchparty .video-wrapper {
-        position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;
+        position: relative; aspect-ratio: 16 / 9; overflow: hidden;
         border-radius: 12px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
         border: 1px solid #1f2937; background: #020617;
+        /* Sized so the whole video AND the chat fit on screen: the player
+           never grows taller than the viewport leaves room for. */
+        max-width: min(100%, calc((100vh - 280px) * 1.7778)); margin: 0 auto; width: 100%;
     }
     #watchparty .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     #watchparty .video-fallback {
@@ -557,6 +560,69 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         </div>
     </div>
 </div>
+<!-- The Advanced Watch Party user guide: comprehensive, one collapsed line
+     until opened, so it never pushes the page apart. -->
+<section style="padding:10px 14px">
+    <details>
+        <summary style="cursor:pointer;color:#ffd97a;font-weight:700;font-size:14px">📖 Advanced Watch Party · BETA — the complete user guide ▾</summary>
+        <div style="margin-top:10px;font-size:13.5px;line-height:1.65;color:#c9bfd2">
+            <h3 style="margin:10px 0 4px;color:#f3eef6">1. What it is</h3>
+            <p style="margin:0 0 8px">The Advanced Watch Party is a separate product from this couple's Watch Party:
+                standalone paid rooms for groups, in four modes — <strong style="color:#f3eef6">Couples, Friends,
+                Family, and Creator</strong> — each with its own themes and room accent. Rooms hold 2 to 12 people.
+                It is in <strong style="color:#ffd97a">BETA</strong>: everything below works today, and details may
+                still change. Open it any time from <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced
+                Watch Party</a> (also under the Watch Party ▾ menu at the top of every page).</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">2. Bring your own YouTube (BYOYA)</h3>
+            <p style="margin:0 0 8px">Everyone in the room watches signed into <em>their own</em> YouTube account, so
+                YouTube Premium members get ad-free playback on their own subscription. The room fee pays for the
+                sync service, chat, games, and recap — <strong style="color:#f3eef6">never for the movie</strong>.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">3. Creating a room</h3>
+            <p style="margin:0 0 8px">On the Advanced Watch Party page pick a mode and theme, set the price per
+                person ($0 makes a free room) and how many participants are required, then choose the video:
+                paste any YouTube video, playlist, or embed link — or click any thumbnail in the
+                <strong style="color:#f3eef6">library at the bottom of the page</strong> (every Watch Party channel
+                and every video is there) and it fills the form for you.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">4. Invites and split payment</h3>
+            <p style="margin:0 0 8px">Every room gets a six-character <strong style="color:#f3eef6">invite
+                code</strong>. Share it; friends enter it under "Join with an invite code". In a priced room the
+                session fee <strong style="color:#f3eef6">splits evenly</strong> and the room — player, shared
+                controls, reactions, games — stays locked until every required share is paid. Each person pays
+                their own share from the room page.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">5. The player and shared controls</h3>
+            <p style="margin:0 0 8px">Once unlocked, the room runs a <strong style="color:#f3eef6">server-authoritative
+                shared timeline</strong>: ▶ Play together, ⏸ Pause both, and ⟲ Re-sync everyone keep every player
+                locked to the same timecode. One person holds <strong style="color:#f3eef6">the remote</strong>
+                (the host at first) and can pass it to anyone in the room.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">6. Changing the video</h3>
+            <p style="margin:0 0 8px">The full Watch Party library is on the room page — all channels
+                (Movies, Live Nature cams, the twelve Relaxation channels, Faith) with the YouTube thumbnails as
+                buttons, plus search inside each channel. Clicking a thumbnail
+                <strong style="color:#f3eef6">swaps the room's video for everyone</strong> and restarts the shared
+                timeline.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">7. Reactions, highlights, and the emotion timeline</h3>
+            <p style="margin:0 0 8px">React with 😂 😱 😢 ❤️ 🤩 🥱 while the film plays — bursts float over the video
+                and land on the room's emotion timeline. When two people react within a second of each other, that
+                counts as an <strong style="color:#f3eef6">emotion sync moment</strong>. Press
+                ⭐ <em>Mark this moment</em> to save a timestamped highlight.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">8. Room chat and background games</h3>
+            <p style="margin:0 0 8px">The room chat sits under the player and never pauses the movie. The
+                🎲 <strong style="color:#f3eef6">Games</strong> button opens the same background games the couple's
+                Watch Party carries — tic-tac-toe, Connect Four, memory match, Would You Rather, movie trivia, and
+                watch-party bingo — in a floating panel over the film. The first two people in the room hold the
+                pieces; everyone else watches the board.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">9. The recap</h3>
+            <p style="margin:0 0 8px">When the host ends the session, everyone gets the recap: total reactions by
+                type, the most intense stretch of the film, every emotion sync moment, and all the marked
+                highlights — the story of the night, in numbers.</p>
+            <h3 style="margin:10px 0 4px;color:#f3eef6">10. Good to know</h3>
+            <p style="margin:0">Rooms are free to create at $0. Only participants can see a room, change its video,
+                or play its games. The couple's Watch Party (this page) stays unchanged — same chat rules, same
+                pacing, same safety filters.</p>
+        </div>
+    </details>
+</section>
+
 <!-- Background games pop-up: floats over player + chat, never pauses either. -->
 <div id="wpg" hidden>
     <div class="wpg-top">

@@ -723,7 +723,7 @@ contract_check($engine->watchPartyEmbed() === null, 'an empty paste must clear t
 
 // ---- Watch Party channels: nature cams, ambient, Bible narration, church --------
 $channels = $engine->watchChannels();
-contract_check(count($channels) === 16 && isset($channels['nature'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');
+contract_check(count($channels) === 17 && isset($channels['nature'], $channels['rooftop'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');
 foreach (['nature-sounds', 'hybrid', 'lofi', 'piano', 'asmr', 'scenic', 'meditation', 'official', 'jazz-cafe', 'rain', 'world'] as $relaxChannel) {
     contract_check(($channels[$relaxChannel]['entries'] ?? 0) >= 3, "the {$relaxChannel} relaxation channel is stocked");
 }
@@ -950,6 +950,43 @@ contract_check($threw, 'without the remote a guest cannot drive playback');
 $engine->passAdvancedRemote($roomId, $alice['user_id'], $bob['user_id']);
 $sync = $engine->setAdvancedSync($roomId, $bob['user_id'], ['position' => 120, 'playing' => false], $tDay + 62);
 contract_check($sync['set_by'] === $bob['user_id'], 'passing the remote hands over the controls');
+
+// The Watch Party library replicated in rooms: any participant swaps the video.
+$roomView = $engine->setAdvancedVideo($roomId, $bob['user_id'], 'https://youtu.be/JQ_jwk_7OVE');
+contract_check(str_contains((string) $roomView['embed_url'], 'JQ_jwk_7OVE'), 'any participant swaps the room video');
+contract_check(((array) $roomView['sync'])['playing'] === false && ((array) $roomView['sync'])['position'] === 0.0, 'a new video restarts the shared timeline');
+$threw = false;
+try {
+    $engine->setAdvancedVideo($roomId, $carol['user_id'], 'https://youtu.be/JQ_jwk_7OVE');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'outsiders cannot change a room video');
+$threw = false;
+try {
+    $engine->setAdvancedVideo($roomId, $alice['user_id'], 'https://example.com/not-youtube');
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'room videos stay YouTube sources');
+
+// Background games in rooms — the same whitelist the couple's chat games use.
+$game = $engine->setAdvancedGame($roomId, $alice['user_id'], 'tictactoe', ['n' => 1], $tDay + 80);
+contract_check($game['game'] === 'tictactoe' && $game['state']['n'] === 1, 'rooms carry a shared background game state');
+$game = $engine->advancedGame($roomId, $bob['user_id']);
+contract_check($game['game'] === 'tictactoe' && $game['set_by'] === $alice['user_id'], 'every participant polls the same room game');
+$threw = false;
+try {
+    $engine->setAdvancedGame($roomId, $alice['user_id'], 'chess', [], $tDay + 81);
+} catch (InvalidArgumentException) {
+    $threw = true;
+}
+contract_check($threw, 'room games stay on the whitelist');
+
+// The rooftop cams channel: curated, playable, on the Live Cams menu.
+$rooftop = $engine->channelLibrary('rooftop', '', 24);
+contract_check($rooftop['total'] === 10 && $rooftop['films'][0]['youtube_id'] === 'JQ_jwk_7OVE', 'the rooftop cams channel is curated and playable');
+contract_check(in_array('rooftop', SlowDatingEngine::WATCH_CHANNEL_GROUPS['Live Cams'], true), 'rooftop cams ride the Live Cams menu');
 $engine->addAdvancedReaction($roomId, $alice['user_id'], 'laugh', 100.0, $tDay + 70);
 $engine->addAdvancedReaction($roomId, $bob['user_id'], 'love', 100.5, $tDay + 71);
 $engine->addAdvancedReaction($roomId, $alice['user_id'], 'cry', 300.0, $tDay + 72);

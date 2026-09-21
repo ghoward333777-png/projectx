@@ -3696,6 +3696,7 @@ final class SlowDatingEngine
     public const WATCH_CHANNELS = [
         'romance' => ['label' => 'Romance movies', 'blurb' => 'The playlist of 1,000 romance films — one scheduled every day.'],
         'nature' => ['label' => 'Live Nature cams', 'blurb' => 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, and wildlife — live, around the world.'],
+        'rooftop' => ['label' => 'Rooftop cams', 'blurb' => 'Rooftop and high-rise city cams — Times Square, harbors, skylines, and observation decks, live around the clock.'],
         'ambient' => ['label' => 'Ambient music', 'blurb' => 'Soft instrumentals, ambient pads, slow synths, and meditation tones.'],
         'nature-sounds' => ['label' => 'Nature sounds', 'blurb' => 'Pure nature ambience — forests, rivers, rain, birds, and ocean.'],
         'hybrid' => ['label' => 'Music + nature', 'blurb' => 'Relaxing music blended with nature visuals and soundscapes.'],
@@ -3715,13 +3716,27 @@ final class SlowDatingEngine
     /** The compact pop-down menu on the Watch Party page. */
     public const WATCH_CHANNEL_GROUPS = [
         'Movies' => ['romance'],
-        'Live Nature' => ['nature'],
+        'Live Cams' => ['nature', 'rooftop'],
         'Relaxation' => ['ambient', 'nature-sounds', 'hybrid', 'lofi', 'piano', 'asmr', 'scenic', 'meditation', 'official', 'jazz-cafe', 'rain', 'world'],
         'Faith' => ['bible', 'church'],
     ];
 
     /** Each row: [slug, title, tag, curated youtube id ('' = resolve by search), live]. */
     private const CHANNEL_ENTRIES = [
+        'rooftop' => [
+            // Verified rooftop / high-rise live streams (EarthCam runs its
+            // flagship cams on YouTube). Named after the actual streams.
+            ['times-square-north', 'EarthCam Times Square North', 'new york', 'JQ_jwk_7OVE', true],
+            ['statue-of-liberty', 'EarthCam Statue of Liberty', 'new york', 'o5Ie_LpZ9uk', true],
+            ['miami-beach-collins', 'Miami Beach Collins Ave street cam', 'florida', 'atwnD7ccsm4', true],
+            ['santa-monica-pier', 'Santa Monica Beach & Pier', 'california', 'v97JpT3ZA0w', true],
+            ['chicago-skydeck', 'EarthCam Chicago Skydeck', 'chicago', 'O0UGT7AT3aw', true],
+            ['san-francisco-bay', 'San Francisco skyline & Golden Gate bay view', 'california', 'BSWhGNXxT9A', true],
+            ['san-diego-harbor', 'San Diego Harbor Island cam', 'california', 'iaBfYxbmwXA', true],
+            ['summit-vanderbilt', 'EarthCam SUMMIT One Vanderbilt', 'new york', '2_PDaUJbfuI', true],
+            ['world-trade-center', 'EarthCam World Trade Center', 'new york', '5C9oM7C2Q9k', true],
+            ['burj-khalifa-build', 'Burj Khalifa construction timelapse', 'construction', 'j66xYj0qahg', false],
+        ],
         'nature' => [
             ['featured-nature-cam', 'Featured live nature cam', 'wildlife', '1t7g690boao', true],
             ['rocky-mountain-river', 'Rocky Mountain river live cam', 'river', '', true],
@@ -4352,6 +4367,59 @@ final class SlowDatingEngine
         }
         $this->store->put('adv_rooms', $roomId, $room);
         return $this->advancedRoomView($roomId, $userId);
+    }
+
+    /** Any participant swaps the room's video; the shared timeline restarts. */
+    public function setAdvancedVideo(string $roomIdOrCode, string $userId, string $videoUrl): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        $roomId = (string) $room['id'];
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants change this room\'s video.');
+        }
+        $embed = $this->youtubeEmbedUrl($videoUrl);
+        if ($embed === null) {
+            throw new InvalidArgumentException('Advanced rooms play YouTube sources — paste a video, playlist, or embed link.');
+        }
+        $room['video_url'] = trim($videoUrl);
+        $room['embed_url'] = $embed;
+        $room['sync'] = [
+            'position' => 0.0,
+            'playing' => false,
+            'controller_user_id' => (string) ($room['sync']['controller_user_id'] ?? $room['owner_user_id']),
+            'set_by' => $userId,
+            'updated_at' => time(),
+        ];
+        $this->store->put('adv_rooms', $roomId, $room);
+        return $this->advancedRoomView($roomId, $userId);
+    }
+
+    /** Background games in Advanced rooms — the same games the couple's Watch Party carries. */
+    public function setAdvancedGame(string $roomIdOrCode, string $userId, string $game, array $state, ?int $now = null): array
+    {
+        $now ??= time();
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants play this room\'s games.');
+        }
+        if (!in_array($game, self::WATCH_GAMES, true)) {
+            throw new InvalidArgumentException('The games are ' . implode(', ', self::WATCH_GAMES) . '.');
+        }
+        if (strlen((string) json_encode($state)) > 8192) {
+            throw new InvalidArgumentException('Game state too large.');
+        }
+        $room['watch_game'] = ['game' => $game, 'state' => $state, 'set_by' => $userId, 'updated_at' => $now];
+        $this->store->put('adv_rooms', (string) $room['id'], $room);
+        return ['room_id' => (string) $room['id']] + $room['watch_game'];
+    }
+
+    public function advancedGame(string $roomIdOrCode, string $userId): array
+    {
+        $room = $this->requireAdvancedRoom($roomIdOrCode);
+        if (!isset($room['participants'][$userId])) {
+            throw new InvalidArgumentException('Only participants see this room\'s games.');
+        }
+        return (array) ($room['watch_game'] ?? ['game' => '', 'state' => [], 'set_by' => '', 'updated_at' => 0]);
     }
 
     /** @return array<string, mixed> The room as one participant sees it. */

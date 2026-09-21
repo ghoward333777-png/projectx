@@ -41,6 +41,10 @@ if ($userId !== null && (string) ($_GET['fragment'] ?? '') !== '') {
         if ($_GET['fragment'] === 'state') {
             header('Content-Type: application/json');
             echo json_encode($engine->advancedRoomView($roomId, $userId));
+        } elseif ($_GET['fragment'] === 'game') {
+            // Background games: the room's one shared game state, polled by everyone.
+            header('Content-Type: application/json');
+            echo json_encode($engine->advancedGame($roomId, $userId));
         } else {
             header('Content-Type: text/html; charset=utf-8');
             foreach ($engine->advancedMessages($roomId, $userId) as $message) {
@@ -51,7 +55,7 @@ if ($userId !== null && (string) ($_GET['fragment'] ?? '') !== '') {
             }
         }
     } catch (Throwable) {
-        echo $_GET['fragment'] === 'state' ? '{}' : '';
+        echo in_array((string) $_GET['fragment'], ['state', 'game'], true) ? '{}' : '';
     }
     exit;
 }
@@ -102,6 +106,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
             case 'room_chat':
                 $result = $engine->sendAdvancedMessage($roomId, $userId, (string) ($_POST['text'] ?? ''));
                 break;
+            case 'video':
+                $result = $engine->setAdvancedVideo($roomId, $userId, (string) ($_POST['video_url'] ?? ''));
+                $notice = 'The room\'s video changed — everyone\'s player follows.';
+                break;
+            case 'game':
+                $gameState = json_decode((string) ($_POST['state'] ?? '{}'), true);
+                $result = $engine->setAdvancedGame(
+                    $roomId,
+                    $userId,
+                    (string) ($_POST['game'] ?? ''),
+                    is_array($gameState) ? $gameState : [],
+                );
+                break;
             case 'end':
                 $engine->endAdvancedRoom($roomId, $userId);
                 $notice = 'Session ended — the recap is below.';
@@ -121,6 +138,133 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
         }
         $error = $exception->getMessage();
     }
+}
+
+/**
+ * The full Watch Party library, replicated here: every channel category
+ * and every video, with the YouTube thumbnails as the buttons. Inside a
+ * room a pick swaps the room's video for everyone; in the lobby it fills
+ * the create form's YouTube source.
+ */
+function awp_library(SlowDatingEngine $engine, string $roomId): void
+{
+    $channels = $engine->watchChannels();
+    $ch = (string) ($_GET['ch'] ?? 'romance');
+    if (!isset($channels[$ch])) {
+        $ch = 'romance';
+    }
+    $q = trim((string) ($_GET['q'] ?? ''));
+    $page = max(0, (int) ($_GET['p'] ?? 0));
+    $perPage = 24;
+    $library = $engine->channelLibrary($ch, $q, $perPage, $page * $perPage);
+    $base = $roomId !== '' ? '?room=' . sd_e(rawurlencode($roomId)) . '&amp;' : '?';
+    ?>
+    <style>
+        .chmenu { position: relative; display: inline-block; margin: 0 4px 0 0; }
+        .chmenu summary { list-style: none; cursor: pointer; display: inline-block; background: #3a2a3e;
+            color: #ffc4da; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; }
+        .chmenu summary::-webkit-details-marker { display: none; }
+        .chmenu[open] summary { background: #ff9cc0; color: #2a0f1d; }
+        .chmenu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 220px;
+            background: #1d1824; border: 1px solid #574a61; border-radius: 12px; padding: 8px;
+            display: flex; flex-direction: column; gap: 2px; box-shadow: 0 16px 32px rgba(0,0,0,.5); }
+        .chmenu-list a { display: block; padding: 7px 10px; border-radius: 8px; color: #ffb8d2;
+            text-decoration: none; font-size: 13px; margin: 0; }
+        .chmenu-list a:hover { background: #262030; text-decoration: none; }
+        .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
+    </style>
+    <section>
+        <h2>The Watch Party library — every channel, every video</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">
+            <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
+                <details class="chmenu">
+                    <summary><?= sd_e($groupLabel) ?> ▾</summary>
+                    <div class="chmenu-list">
+                        <?php foreach ($groupChannels as $slug): ?>
+                            <a href="<?= $base ?>ch=<?= sd_e($slug) ?>"<?= $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            <?php endforeach; ?>
+        </div>
+        <p style="margin:0 0 10px"><strong style="color:#f3eef6"><?= sd_e((string) $channels[$ch]['label']) ?></strong> ·
+            <?= sd_e((string) $channels[$ch]['blurb']) ?>
+            <?= $roomId !== '' ? ' A pick swaps the room\'s video for everyone in it.' : ' A pick fills the room form above — create the room and it plays there.' ?></p>
+        <form method="get" style="background:none;border:0;padding:0;margin:0 0 12px">
+            <?php if ($roomId !== ''): ?><input type="hidden" name="room" value="<?= sd_e($roomId) ?>"><?php endif; ?>
+            <input type="hidden" name="ch" value="<?= sd_e($ch) ?>">
+            <label>Search this channel</label>
+            <input name="q" value="<?= sd_e($q) ?>" placeholder="The Notebook, waterfall, psalms…">
+            <button type="submit">Search</button>
+        </form>
+        <p style="margin:0 0 8px;font-size:13px"><?= (int) $library['total'] ?> title<?= $library['total'] === 1 ? '' : 's' ?><?= $q !== '' ? ' matching "' . sd_e($q) . '"' : ' in this channel' ?> · page <?= $page + 1 ?></p>
+        <div class="grid">
+            <?php foreach ($library['films'] as $entry): ?>
+                <?php $watchUrl = !empty($entry['youtube_id']) ? 'https://www.youtube.com/watch?v=' . (string) $entry['youtube_id'] : ''; ?>
+                <div class="card" style="padding:12px">
+                    <?php if ($watchUrl !== ''): ?>
+                        <!-- The YouTube thumbnail IS the button: the art sells the video. -->
+                        <?php if ($roomId !== ''): ?>
+                            <form method="post" style="background:none;border:0;padding:0;margin:0 0 8px">
+                                <input type="hidden" name="action" value="video">
+                                <input type="hidden" name="room_id" value="<?= sd_e($roomId) ?>">
+                                <input type="hidden" name="video_url" value="<?= sd_e($watchUrl) ?>">
+                                <button type="submit" title="Play <?= sd_e((string) $entry['title']) ?> in this room"
+                                        style="display:block;width:100%;padding:0;margin:0;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">
+                                    <img src="https://i.ytimg.com/vi/<?= sd_e((string) $entry['youtube_id']) ?>/mqdefault.jpg" alt=""
+                                         loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover"
+                                         onerror="this.parentNode.parentNode.style.display='none'">
+                                </button>
+                            </form>
+                        <?php else: ?>
+                            <button type="button" class="awp-fill" data-vurl="<?= sd_e($watchUrl) ?>" title="Use <?= sd_e((string) $entry['title']) ?> for a new room"
+                                    style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">
+                                <img src="https://i.ytimg.com/vi/<?= sd_e((string) $entry['youtube_id']) ?>/mqdefault.jpg" alt=""
+                                     loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover"
+                                     onerror="this.parentNode.parentNode.style.display='none'">
+                            </button>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <strong><?= (int) $entry['rank'] > 0 && $ch === 'romance' ? '#' . (int) $entry['rank'] . ' · ' : '' ?><?= sd_e((string) $entry['title']) ?></strong>
+                    <p style="margin:6px 0"><?php if ((int) $entry['year'] > 0): ?><span class="pill"><?= (int) $entry['year'] ?></span><?php endif; ?>
+                        <span class="pill"><?= sd_e((string) $entry['tag']) ?></span>
+                        <?php if (!empty($entry['live'])): ?><span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span><?php endif; ?></p>
+                    <?php if ($watchUrl !== '' && $roomId !== ''): ?>
+                        <form method="post" style="background:none;border:0;padding:0;margin:0">
+                            <input type="hidden" name="action" value="video">
+                            <input type="hidden" name="room_id" value="<?= sd_e($roomId) ?>">
+                            <input type="hidden" name="video_url" value="<?= sd_e($watchUrl) ?>">
+                            <button type="submit" style="margin-top:6px">Play in this room</button>
+                        </form>
+                    <?php elseif ($watchUrl !== ''): ?>
+                        <button type="button" class="awp-fill" data-vurl="<?= sd_e($watchUrl) ?>" style="margin-top:6px">Use for a new room</button>
+                    <?php else: ?>
+                        <p style="margin:6px 0 0;font-size:12px;color:#a294ad">No verified in-page stream yet.</p>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="links" style="margin-top:12px">
+            <?php if ($page > 0): ?><a href="<?= $base ?>ch=<?= sd_e($ch) ?>&amp;q=<?= sd_e(rawurlencode($q)) ?>&amp;p=<?= $page - 1 ?>">&#8249; Previous page</a><?php endif; ?>
+            <?php if (($page + 1) * $perPage < (int) $library['total']): ?><a href="<?= $base ?>ch=<?= sd_e($ch) ?>&amp;q=<?= sd_e(rawurlencode($q)) ?>&amp;p=<?= $page + 1 ?>">Next page &#8250;</a><?php endif; ?>
+        </p>
+    </section>
+    <?php if ($roomId === ''): ?>
+    <script>
+        // Lobby: a thumbnail pick fills the create form's YouTube source.
+        document.addEventListener('click', function (e) {
+            var pick = e.target.closest('button.awp-fill');
+            if (!pick) { return; }
+            var input = document.querySelector('input[name=video_url]');
+            if (input) {
+                input.value = pick.getAttribute('data-vurl');
+                input.scrollIntoView({ block: 'center' });
+                input.focus();
+            }
+        });
+    </script>
+    <?php endif; ?>
+    <?php
 }
 
 sd_page_open('Advanced Watch Party · BETA', 'SlowMoDating.com · rooms, split payments, shared controls · beta preview');
@@ -229,6 +373,7 @@ if ($view === null) {
         </div>
     </section>
     <?php endif; ?>
+    <?php awp_library($engine, ''); ?>
     <?php
     sd_page_close();
     exit;
@@ -248,8 +393,28 @@ foreach ($view['participants'] as $person) {
 $recap = $view['ended'] ? $engine->advancedRecap($roomId, $userId) : null;
 ?>
 <style>
-    #awp .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; border: 1px solid <?= $accent ?>; background: #020617; }
+    /* Sized like the couple's Watch Party player: never taller than the
+       viewport leaves room for, so the room's panels stay on screen. */
+    #awp .video-wrapper { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 12px; border: 1px solid <?= $accent ?>; background: #020617;
+        max-width: min(100%, calc((100vh - 280px) * 1.7778)); margin: 0 auto; width: 100%; }
     #awp .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    /* Background games: the same semi-transparent pop-up the couple's
+       Watch Party carries — play while watching, nothing pauses. */
+    #wpg { position: fixed; top: 12%; right: 4%; width: 300px; z-index: 1000;
+        background: rgba(10, 8, 16, .68); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+        border: 1px solid rgba(255, 156, 192, .35); border-radius: 14px; padding: 12px; color: #fff; }
+    #wpg h3 { margin: 0; font-size: 14px; }
+    #wpg .wpg-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    #wpg .wpg-top button, #wpg .wpg-menu button, #wpg .wpg-body button { margin: 0; padding: 5px 10px; font-size: 12px;
+        border-radius: 8px; background: rgba(255, 255, 255, .14); color: #fff; }
+    #wpg .wpg-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    #wpg .wpg-menu button { text-align: left; padding: 8px 10px; }
+    #wpg .wpg-menu small { display: block; color: #c9bfd2; font-weight: 400; font-size: 10.5px; }
+    #wpg .wpg-status { font-size: 12px; color: #ffc4da; margin: 6px 0; min-height: 15px; }
+    #wpg .wpg-grid { display: grid; gap: 4px; }
+    #wpg .wpg-cell { display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .09);
+        border-radius: 7px; cursor: pointer; user-select: none; font-size: 22px; }
+    #wpg .wpg-cell:hover { background: rgba(255, 255, 255, .18); }
     #awp .burst { position: absolute; font-size: 42px; animation: awp-rise 1.6s ease-out forwards; pointer-events: none; z-index: 5; }
     @keyframes awp-rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-120px) scale(1.6); } }
     #awp .messages { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -333,7 +498,12 @@ $recap = $view['ended'] ? $engine->advancedRecap($roomId, $userId) : null;
 
 <?php if (!$view['ended']): ?>
 <section>
-    <h2>Room chat</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 style="margin:0 0 10px">Room chat</h2>
+        <?php if ($view['unlocked']): ?>
+            <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da">🎲 Games</button>
+        <?php endif; ?>
+    </div>
     <form id="awp-chat-form" style="background:none;border:0;padding:0;margin:0">
         <textarea id="awp-chat-text" placeholder="Say something…" style="min-height:60px"></textarea>
         <button type="submit" style="margin-top:8px">Send</button>
@@ -377,10 +547,37 @@ $recap = $view['ended'] ? $engine->advancedRecap($roomId, $userId) : null;
 </section>
 <?php endif; ?>
 
+<?php awp_library($engine, $roomId); ?>
+
 <p class="links" style="margin-top:16px"><a href="advanced-watch-party.php">← All rooms</a>
     <a href="watch-party.php">Couple's Watch Party</a></p>
 </div>
 
+<?php if ($view['unlocked'] && !$view['ended']): ?>
+<!-- Background games pop-up: floats over player + chat, never pauses either. -->
+<div id="wpg" hidden>
+    <div class="wpg-top">
+        <h3 id="wpg-title">🎲 Background games</h3>
+        <div>
+            <button type="button" id="wpg-menu-btn" title="All games">☰</button>
+            <button type="button" id="wpg-close" title="Close">✕</button>
+        </div>
+    </div>
+    <div class="wpg-status" id="wpg-status">Pick a game — you can keep chatting and watching.</div>
+    <div id="wpg-body"></div>
+</div>
+<?php endif; ?>
+
+<?php
+$playerIds = array_map(static fn (array $p): string => (string) $p['user_id'], $view['participants']);
+$gamePartnerName = 'another participant';
+foreach ($view['participants'] as $person) {
+    if ($person['user_id'] !== $userId) {
+        $gamePartnerName = (string) ($person['display_name'] ?: $person['user_id']);
+        break;
+    }
+}
+?>
 <?php if ($view['unlocked'] && !$view['ended']): ?>
 <script>
 (function () {
@@ -491,6 +688,257 @@ $recap = $view['ended'] ? $engine->advancedRecap($roomId, $userId) : null;
             .then(function (state) { if (state && state.sync) { applySync(state.sync); } })
             .catch(function () {});
     }, 4000);
+
+    // Games adapter (Advanced rooms): the room record's shared game
+    // state — every participant polls it; the first two seats hold the
+    // pieces, the rest of the room watches the board.
+    var WPG_ME = <?= json_encode($userId) ?>;
+    var WPG_PARTNER = <?= json_encode($gamePartnerName) ?>;
+    var WPG_PLAYERS = <?= json_encode($playerIds) ?>;
+    var WPG_CHAT = roomId;
+    function WPG_PUSH(game, state, ack) {
+        post('game', { game: game, state: JSON.stringify(state) })
+            .then(function (d) { if (d && d.updated_at) { ack(d.updated_at); } })
+            .catch(function () {});
+    }
+    function WPG_POLL(apply) {
+        setInterval(function () {
+            fetch('advanced-watch-party.php?room=' + encodeURIComponent(roomId) + '&fragment=game', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(apply)
+                .catch(function () {});
+        }, 3500);
+    }
+
+        // ---- Background games: shared state on the chat, both players
+        // poll it — the movie and the chat never pause for a move. ----
+        (function () {
+            var box = document.getElementById('wpg');
+            if (!box) { return; }
+            var me = WPG_ME;
+            var partnerName = WPG_PARTNER;
+            var players = WPG_PLAYERS;
+            var chatRef = WPG_CHAT;
+            var seat = Math.max(0, players.indexOf(me));
+            var bodyEl = document.getElementById('wpg-body');
+            var statusEl = document.getElementById('wpg-status');
+            var titleEl = document.getElementById('wpg-title');
+            var current = '';
+            var state = null;
+            var lastApplied = 0;
+            function rng(seed) { return function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+            function shuffled(list, seed) {
+                var copy = list.slice(); var r = rng(seed);
+                for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)); var t = copy[i]; copy[i] = copy[j]; copy[j] = t; }
+                return copy;
+            }
+            var WYR = [['Travel the world for a year', 'Buy a home right now'], ['Always know the movie ending', 'Never see a spoiler again'],
+                ['Dinner and dancing', 'Blanket fort and takeout'], ['Live by the ocean', 'Live in the mountains'],
+                ['Re-live your best day', 'Preview one day of the future'], ['Only sunrise dates', 'Only midnight dates'],
+                ['Sing everything you say', 'Dance everywhere you walk'], ['Cook together every night', 'Eat out every night'],
+                ['A road trip with no map', 'A planned trip, every detail'], ['Love letters only', 'Voice notes only']];
+            var TRIVIA = [['Which film says "You had me at hello"?', ['Jerry Maguire', 'Notting Hill', 'Ghost'], 0],
+                ['Casablanca is set in which country?', ['Morocco', 'France', 'Egypt'], 0],
+                ['In Titanic, Jack draws Rose wearing.', ['The Heart of the Ocean', 'A red scarf', 'A tiara'], 0],
+                ['The Notebook couple are Noah and.', ['Allie', 'Emma', 'Rose'], 0],
+                ['"To me, you are perfect" is from.', ['Love Actually', 'About Time', 'The Holiday'], 0],
+                ['Audrey Hepburn stars in.', ['Charade', 'Pillow Talk', 'Gilda'], 0],
+                ['Dirty Dancing: "Nobody puts ___ in a corner"', ['Baby', 'Frances', 'Penny'], 0],
+                ['When Harry Met Sally ends on.', ['New Year\'s Eve', 'Valentine\'s Day', 'Christmas'], 0]];
+            var BINGO_POOL = ['A kiss', 'Car chase', 'Plot twist', 'Sunset shot', 'Dance scene', 'Phone call', 'Rain scene', 'Flashback',
+                'Wedding', 'Airport run', 'Slow motion', 'Tears', 'Big laugh', 'Song moment', 'A letter', '"I love you"'];
+            var MEMO = ['❤️', '🌹', '🍷', '🎬', '🌙', '🎵', '☕', '💌'];
+            var GAMES = {
+                tictactoe: { name: 'Tic-Tac-Toe', tag: 'ultra-simple idle play',
+                    init: function () { return { b: ['', '', '', '', '', '', '', '', ''], n: 0, over: '' }; } },
+                connect4: { name: 'Connect Four', tag: 'drop tokens, four in a row',
+                    init: function () { var b = []; for (var i = 0; i < 42; i++) { b.push(0); } return { b: b, n: 0, over: 0 }; } },
+                memory: { name: 'Memory Match', tag: 'flip cards, find pairs',
+                    init: function () { return { seed: Date.now() % 1000000, up: [], done: [], n: 0, score: [0, 0] }; } },
+                wyr: { name: 'Would You Rather', tag: 'conversation cards',
+                    init: function () { return { i: Math.floor(Math.random() * WYR.length), picks: {} }; } },
+                trivia: { name: 'Trivia', tag: 'one easy question at a time',
+                    init: function () { return { i: Math.floor(Math.random() * TRIVIA.length), picks: {} }; } },
+                bingo: { name: 'Scene Bingo', tag: 'tap events as they happen',
+                    init: function () { return { seed: Date.now() % 1000000, marks: {} }; } },
+            };
+            function turnOf(s) { return s.n % 2; }
+            function myTurn(s) { return turnOf(s) === seat; }
+            function escapeHtml(text) { var d = document.createElement('span'); d.textContent = String(text); return d.innerHTML; }
+            function status(text) { statusEl.textContent = text; }
+            function menu() {
+                current = '';
+                titleEl.textContent = '🎲 Background games';
+                status('Pick a game - you can keep chatting and watching.');
+                var html = '';
+                for (var key in GAMES) {
+                    html += '<button data-wpg-pick="' + key + '"><strong>' + GAMES[key].name + '</strong><small>' + GAMES[key].tag + '</small></button>';
+                }
+                bodyEl.innerHTML = '<div class="wpg-menu">' + html + '</div>';
+            }
+            function render() {
+                if (!current || !state) { menu(); return; }
+                titleEl.textContent = '🎲 ' + GAMES[current].name;
+                var html = '';
+                var i;
+                if (current === 'tictactoe') {
+                    var sym = ['X', 'O'];
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(3,1fr)">';
+                    for (i = 0; i < 9; i++) { html += '<div class="wpg-cell" style="height:56px" data-wpg-m="' + i + '">' + (state.b[i] || '') + '</div>'; }
+                    html += '</div>';
+                    status(state.over ? (state.over === 'draw' ? 'Draw!' : state.over + ' wins!')
+                        : (myTurn(state) ? 'Your move - you are ' + sym[seat] : partnerName + "'s move (" + sym[1 - seat] + ')'));
+                } else if (current === 'connect4') {
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(7,1fr)">';
+                    for (i = 0; i < 42; i++) {
+                        var token = state.b[i] === 1 ? '🔴' : state.b[i] === 2 ? '🟡' : '';
+                        html += '<div class="wpg-cell" style="height:32px;font-size:16px" data-wpg-m="' + (i % 7) + '">' + token + '</div>';
+                    }
+                    html += '</div>';
+                    status(state.over ? (state.over === 3 ? 'Draw!' : (state.over === 1 ? 'Red' : 'Yellow') + ' wins!')
+                        : (myTurn(state) ? 'Your drop - you are ' + (seat === 0 ? 'red' : 'yellow') : partnerName + "'s drop"));
+                } else if (current === 'memory') {
+                    var deck = shuffled(MEMO.concat(MEMO), state.seed);
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(4,1fr)">';
+                    for (i = 0; i < 16; i++) {
+                        var shown = state.done.indexOf(i) >= 0 || state.up.indexOf(i) >= 0;
+                        html += '<div class="wpg-cell" style="height:44px" data-wpg-m="' + i + '">' + (shown ? deck[i] : '❔') + '</div>';
+                    }
+                    html += '</div>';
+                    status('You ' + state.score[seat] + ' · ' + partnerName + ' ' + state.score[1 - seat]
+                        + (state.done.length === 16 ? ' - finished!' : (myTurn(state) ? ' · your turn' : ' · their turn')));
+                } else if (current === 'wyr') {
+                    var pair = WYR[state.i % WYR.length];
+                    var mine = state.picks[me];
+                    html = '<p style="font-size:13px;margin:0 0 8px">Would you rather.</p>'
+                        + '<button style="display:block;width:100%;margin-bottom:6px' + (mine === 0 ? ';background:#4a2440' : '') + '" data-wpg-m="0">' + escapeHtml(pair[0]) + '</button>'
+                        + '<button style="display:block;width:100%' + (mine === 1 ? ';background:#4a2440' : '') + '" data-wpg-m="1">' + escapeHtml(pair[1]) + '</button>'
+                        + '<button style="margin-top:8px" data-wpg-m="next">Next card →</button>';
+                    var theirs = state.picks[players[1 - seat]];
+                    status(mine === undefined ? 'Tap your pick - talk it out!'
+                        : (theirs === undefined ? 'Waiting for ' + partnerName + '.'
+                            : (mine === theirs ? 'Same pick - you two agree!' : 'Opposite picks - discuss!')));
+                } else if (current === 'trivia') {
+                    var q = TRIVIA[state.i % TRIVIA.length];
+                    var picked = state.picks[me];
+                    html = '<p style="font-size:13px;margin:0 0 8px">' + escapeHtml(q[0]) + '</p>';
+                    for (i = 0; i < q[1].length; i++) {
+                        var mark = picked !== undefined ? (i === q[2] ? ' ✓' : (i === picked ? ' ✗' : '')) : '';
+                        html += '<button style="display:block;width:100%;margin-bottom:6px' + (picked !== undefined && i === q[2] ? ';background:#17351f' : '') + '" data-wpg-m="' + i + '">' + escapeHtml(q[1][i]) + mark + '</button>';
+                    }
+                    html += '<button style="margin-top:4px" data-wpg-m="next">Next question →</button>';
+                    status(picked === undefined ? 'No pressure - one question at a time.' : (picked === q[2] ? 'Right!' : 'The answer: ' + q[1][q[2]]));
+                } else if (current === 'bingo') {
+                    var card = shuffled(BINGO_POOL, state.seed + seat * 7919);
+                    var marks = state.marks[me] || [];
+                    html = '<div class="wpg-grid" style="grid-template-columns:repeat(4,1fr)">';
+                    for (i = 0; i < 16; i++) {
+                        html += '<div class="wpg-cell" style="height:44px;font-size:9.5px;text-align:center;padding:2px'
+                            + (marks.indexOf(i) >= 0 ? ';background:#4a2440' : '') + '" data-wpg-m="' + i + '">' + escapeHtml(card[i]) + '</div>';
+                    }
+                    html += '</div>';
+                    var lines = [[0,1,2,3],[4,5,6,7],[8,9,10,11],[12,13,14,15],[0,4,8,12],[1,5,9,13],[2,6,10,14],[3,7,11,15],[0,5,10,15],[3,6,9,12]];
+                    var bingo = lines.some(function (line) { return line.every(function (cell) { return marks.indexOf(cell) >= 0; }); });
+                    var theirMarks = (state.marks[players[1 - seat]] || []).length;
+                    status(bingo ? 'BINGO! Tell ' + partnerName + '!' : 'Tap events as they happen · ' + partnerName + ' has ' + theirMarks + ' marked');
+                }
+                bodyEl.innerHTML = html + '<p style="margin:8px 0 0"><button data-wpg-reset="1">↺ New round</button></p>';
+            }
+            function push() { WPG_PUSH(current, state, function (at) { lastApplied = at; }); }
+            function ticWin(b) {
+                var wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+                for (var w = 0; w < wins.length; w++) {
+                    var a = wins[w];
+                    if (b[a[0]] && b[a[0]] === b[a[1]] && b[a[0]] === b[a[2]]) { return b[a[0]]; }
+                }
+                return b.every(function (cell) { return cell; }) ? 'draw' : '';
+            }
+            function c4Win(b, who) {
+                for (var r = 0; r < 6; r++) {
+                    for (var c = 0; c < 7; c++) {
+                        var dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+                        for (var d = 0; d < 4; d++) {
+                            var hit = 0;
+                            for (var k = 0; k < 4; k++) {
+                                var rr = r + dirs[d][0] * k, cc = c + dirs[d][1] * k;
+                                if (rr >= 0 && rr < 6 && cc >= 0 && cc < 7 && b[rr * 7 + cc] === who) { hit++; }
+                            }
+                            if (hit === 4) { return true; }
+                        }
+                    }
+                }
+                return false;
+            }
+            function move(action) {
+                if (!current || !state) { return; }
+                var i;
+                if (current === 'tictactoe') {
+                    i = +action;
+                    if (state.over || state.b[i] || !myTurn(state)) { return; }
+                    state.b[i] = seat === 0 ? 'X' : 'O';
+                    state.n++;
+                    state.over = ticWin(state.b);
+                } else if (current === 'connect4') {
+                    if (state.over || !myTurn(state)) { return; }
+                    var col = +action, row = -1;
+                    for (i = 5; i >= 0; i--) { if (!state.b[i * 7 + col]) { row = i; break; } }
+                    if (row < 0) { return; }
+                    var who = seat + 1;
+                    state.b[row * 7 + col] = who;
+                    state.n++;
+                    if (c4Win(state.b, who)) { state.over = who; } else if (state.n === 42) { state.over = 3; }
+                } else if (current === 'memory') {
+                    i = +action;
+                    if (!myTurn(state) || state.done.indexOf(i) >= 0 || state.up.indexOf(i) >= 0 || state.up.length === 2) { return; }
+                    state.up.push(i);
+                    if (state.up.length === 2) {
+                        var deck = shuffled(MEMO.concat(MEMO), state.seed);
+                        var a = state.up[0], b = state.up[1];
+                        if (deck[a] === deck[b]) {
+                            state.done.push(a, b); state.score[seat]++; state.up = [];
+                        } else {
+                            render(); push();
+                            setTimeout(function () { state.up = []; state.n++; render(); push(); }, 1100);
+                            return;
+                        }
+                    }
+                } else if (current === 'wyr') {
+                    if (action === 'next') { state = { i: (state.i + 1) % WYR.length, picks: {} }; }
+                    else { state.picks[me] = +action; }
+                } else if (current === 'trivia') {
+                    if (action === 'next') { state = { i: (state.i + 1) % TRIVIA.length, picks: {} }; }
+                    else if (state.picks[me] === undefined) { state.picks[me] = +action; }
+                } else if (current === 'bingo') {
+                    i = +action;
+                    var marks = state.marks[me] || [];
+                    var at = marks.indexOf(i);
+                    if (at >= 0) { marks.splice(at, 1); } else { marks.push(i); }
+                    state.marks[me] = marks;
+                }
+                render();
+                push();
+            }
+            document.getElementById('wpg-open').addEventListener('click', function () { box.hidden = false; if (!current) { menu(); } });
+            document.getElementById('wpg-close').addEventListener('click', function () { box.hidden = true; });
+            document.getElementById('wpg-menu-btn').addEventListener('click', menu);
+            box.addEventListener('click', function (event) {
+                var pick = event.target.closest('[data-wpg-pick]');
+                if (pick) { current = pick.getAttribute('data-wpg-pick'); state = GAMES[current].init(); render(); push(); return; }
+                var reset = event.target.closest('[data-wpg-reset]');
+                if (reset) { state = GAMES[current].init(); render(); push(); return; }
+                var action = event.target.closest('[data-wpg-m]');
+                if (action) { move(action.getAttribute('data-wpg-m')); }
+            });
+            WPG_POLL(function (d) {
+                if (!d || !d.updated_at || d.updated_at <= lastApplied || d.set_by === me) { return; }
+                lastApplied = d.updated_at;
+                current = d.game;
+                state = d.state;
+                if (!box.hidden) { render(); }
+                else if (d.game) { box.hidden = false; render(); }
+            });
+            window.WPG_TEST = { open: function () { box.hidden = false; menu(); }, pick: function (k) { current = k; state = GAMES[k].init(); render(); }, move: move, get: function () { return { current: current, state: state, seat: seat }; } };
+        })();
 })();
 </script>
 <?php endif; ?>
