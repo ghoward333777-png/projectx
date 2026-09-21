@@ -535,6 +535,8 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <div class="chat">
         <div class="chat-header">
             <h2>Watching with <?= sd_e($otherName) ?></h2>
+            <button type="button" id="wp-chatpos" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da"
+                    title="Float the chat over the video, or park it below the player">🎞 Chat on video</button>
             <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da">🎲 Games</button>
             <span>
                 <?php if ($status['unlocked']): ?>
@@ -660,21 +662,46 @@ if (!in_array($mode, ['library', 'premium'], true)) {
 
 <script>
     (function () {
-        <?php if ($engine->watchChatOverlay()): ?>
-        // Admin chat placement: the chat floats over the bottom portion of
-        // the video (translucent) instead of sitting under the player.
+        // Chat placement: floating over the video is the DEFAULT (the admin
+        // console sets the site-wide default; the 🎞 button in the chat
+        // header lets each member flip it, remembered in their browser).
+        // While overlaid, 5s of keyboard idle fades the chat to 95%
+        // transparent and hides its interface — only the text stays.
         (function () {
             var wrapper = document.querySelector('#watchparty .video-wrapper');
             var chat = document.querySelector('#watchparty .chat');
+            var toggle = document.getElementById('wp-chatpos');
             if (!wrapper || !chat) { return; }
-            wrapper.appendChild(chat);
-            // Quiet mode: 5s of keyboard idle fades the chat to 95%
-            // transparent and hides its interface — only the text stays.
+            var home = { parent: chat.parentNode, next: chat.nextSibling };
+            var overlaid = <?= json_encode($engine->watchChatOverlay()) ?>;
+            try {
+                var saved = localStorage.getItem('sd_wp_chat_overlay');
+                if (saved === '1') { overlaid = true; }
+                if (saved === '0') { overlaid = false; }
+            } catch (ignored) { /* private windows — the admin default stands */ }
             var quietTimer = null;
             function chatWake() {
                 chat.classList.remove('chat-quiet');
                 clearTimeout(quietTimer);
-                quietTimer = setTimeout(function () { chat.classList.add('chat-quiet'); }, 5000);
+                if (overlaid) {
+                    quietTimer = setTimeout(function () {
+                        if (overlaid) { chat.classList.add('chat-quiet'); }
+                    }, 5000);
+                }
+            }
+            function applyPlacement() {
+                if (overlaid && chat.parentNode !== wrapper) { wrapper.appendChild(chat); }
+                if (!overlaid && chat.parentNode !== home.parent) { home.parent.insertBefore(chat, home.next); }
+                if (!overlaid) { chat.classList.remove('chat-quiet'); }
+                if (toggle) { toggle.textContent = '🎞 Chat on video · ' + (overlaid ? 'ON' : 'OFF'); }
+                chatWake();
+            }
+            if (toggle) {
+                toggle.addEventListener('click', function () {
+                    overlaid = !overlaid;
+                    try { localStorage.setItem('sd_wp_chat_overlay', overlaid ? '1' : '0'); } catch (ignored) {}
+                    applyPlacement();
+                });
             }
             document.addEventListener('keydown', function (event) {
                 var wasQuiet = chat.classList.contains('chat-quiet');
@@ -686,9 +713,8 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 if (wasQuiet && box && !typingElsewhere) { box.focus(); }
             });
             chat.addEventListener('click', chatWake);
-            chatWake();
+            applyPlacement();
         })();
-        <?php endif; ?>
 
         // Newest messages render first, so the log stays put at the top —
         // the entry area never drifts away from the player.

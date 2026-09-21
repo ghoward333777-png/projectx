@@ -468,6 +468,7 @@
         <div class="wchat">
           <div class="wchat-header">
             <h2 style="margin:0;font-size:16px">Watching with Marcus</h2>
+            <button id="w-chatpos" class="quiet small" style="background:#3a2a3e;color:var(--accent)" title="Float the chat over the video, or park it below the player">🎞 Chat on video · ON</button>
             <button id="wpg-open" class="quiet small" style="background:#3a2a3e;color:var(--accent)">🎲 Games</button>
             <span>Real-time chat · contact sharing open</span>
           </div>
@@ -870,7 +871,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v41 · quiet chat fade</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v42 · member chat toggle</div>
 
 <script>
 'use strict';
@@ -1848,11 +1849,20 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('click', e => { if (e.target.closest('.wchat')) { wChatWake(); } });
 wChatWake();
-$('adm-chat-overlay').addEventListener('click', () => {
-  wChatOverlay = !wChatOverlay;
-  $('adm-chat-overlay').textContent = 'Chat overlay: ' + (wChatOverlay ? 'ON — floating over the video' : 'OFF — below the player');
+// One setter drives BOTH switches: the member's toggle in the chat header
+// and the admin console control stay in sync.
+function setWChatOverlay(on) {
+  wChatOverlay = on;
+  if ($('adm-chat-overlay')) {
+    $('adm-chat-overlay').textContent = 'Chat overlay: ' + (on ? 'ON — floating over the video' : 'OFF — below the player');
+  }
+  if ($('w-chatpos')) {
+    $('w-chatpos').textContent = '🎞 Chat on video · ' + (on ? 'ON' : 'OFF');
+  }
   applyWatchChatOverlay();
-});
+  wChatWake();
+}
+$('adm-chat-overlay').addEventListener('click', () => { setWChatOverlay(!wChatOverlay); });
 
 $('portal-watch').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1894,6 +1904,8 @@ $('portal-watch').addEventListener('click', e => {
   } else if (b.id === 'w-reelback') {
     watchState.playerKind = null;
     renderWatchPlayer();
+  } else if (b.id === 'w-chatpos') {
+    setWChatOverlay(!wChatOverlay);
   }
 });
 
