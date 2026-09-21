@@ -376,10 +376,11 @@
           /* The player never grows taller than the viewport leaves room for —
              the chat stays on screen next to the whole video. */
           #w-frame { max-width: min(100%, calc((100vh - 250px) * 1.7778)); margin: 0 auto; }
-          /* Admin option: the chat floats over the BOTTOM portion of the
-             video, translucent — the movie fills the screen behind it. */
-          #w-frame .wchat { position: absolute; left: 2%; right: 2%; bottom: 2%; z-index: 5; margin: 0;
-            gap: 8px; padding: 8px 10px; max-height: 58%; overflow-y: auto;
+          /* The chat floats over the BOTTOM portion of the video, translucent —
+             lifted 64px so YouTube's own control bar (play, volume, settings,
+             FULLSCREEN) stays completely uncovered and clickable. */
+          #w-frame .wchat { position: absolute; left: 2%; right: 2%; bottom: 64px; z-index: 5; margin: 0;
+            gap: 8px; padding: 8px 10px; max-height: 52%; overflow-y: auto;
             background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 156, 192, .28); border-radius: 12px; }
           #w-frame .wchat .wchat-messages { max-height: 120px; }
@@ -394,13 +395,15 @@
           #w-frame .wchat.wchat-quiet .wchat-msg { background: none; border-color: transparent;
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .7); }
           #w-frame .wchat.wchat-quiet .wchat-msg.me { background: none; }
-          /* The on-video control bar: hidden until the player is hovered/focused. */
-          .wbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 6px;
-            align-items: center; flex-wrap: wrap; padding: 26px 10px 8px;
-            background: linear-gradient(transparent, rgba(10,8,16,.88));
+          /* The on-video control bar: hidden until the player is hovered/
+             focused. It rides the TOP of the video so it never sits over
+             YouTube's own bottom controls (fullscreen included). */
+          .wbar { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; gap: 6px;
+            align-items: center; flex-wrap: wrap; padding: 8px 10px 26px;
+            background: linear-gradient(rgba(10,8,16,.88), transparent);
             opacity: 0; pointer-events: none; transition: opacity .18s; }
           #w-frame:hover .wbar, .wbar:focus-within, .wbar:has(details[open]) { opacity: 1; pointer-events: auto; }
-          .wbar .chmenu-list { top: auto; bottom: calc(100% + 6px); max-height: min(52vh, 300px); overflow: auto; }
+          .wbar .chmenu-list { max-height: min(52vh, 300px); overflow: auto; }
           .wbar button.quiet { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 8px;
             cursor: pointer; font-size: 13px; padding: 5px 9px; }
         </style>
@@ -468,7 +471,8 @@
         <div class="wchat">
           <div class="wchat-header">
             <h2 style="margin:0;font-size:16px">Watching with Marcus</h2>
-            <button id="w-chatpos" class="quiet small" style="background:#3a2a3e;color:var(--accent)" title="Float the chat over the video, or park it below the player">🎞 Chat on video · ON</button>
+            <button id="w-chatpos" class="quiet small" style="background:#17351f;color:#b8ffd3;border:1px solid #2e6b40;font-weight:800"
+              title="The chat floats over the film — click to move it below the player">💬 Chat over video · ON</button>
             <button id="wpg-open" class="quiet small" style="background:#3a2a3e;color:var(--accent)">🎲 Games</button>
             <span>Real-time chat · contact sharing open</span>
           </div>
@@ -871,7 +875,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v42 · member chat toggle</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v43 · fullscreen clear</div>
 
 <script>
 'use strict';
@@ -1856,8 +1860,16 @@ function setWChatOverlay(on) {
   if ($('adm-chat-overlay')) {
     $('adm-chat-overlay').textContent = 'Chat overlay: ' + (on ? 'ON — floating over the video' : 'OFF — below the player');
   }
-  if ($('w-chatpos')) {
-    $('w-chatpos').textContent = '🎞 Chat on video · ' + (on ? 'ON' : 'OFF');
+  const userBtn = $('w-chatpos');
+  if (userBtn) {
+    // The switch reads its state at a glance: green = floating, gray = parked.
+    userBtn.textContent = '💬 Chat over video · ' + (on ? 'ON' : 'OFF');
+    userBtn.style.background = on ? '#17351f' : '#3a2a3e';
+    userBtn.style.color = on ? '#b8ffd3' : '#a294ad';
+    userBtn.style.border = on ? '1px solid #2e6b40' : '1px solid #574a61';
+    userBtn.title = on
+      ? 'The chat floats over the film — click to move it below the player'
+      : 'The chat sits below the player — click to float it over the film';
   }
   applyWatchChatOverlay();
   wChatWake();

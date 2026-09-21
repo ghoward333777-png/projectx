@@ -196,11 +196,12 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
         background: #020617; border-radius: 12px; padding: 12px; border: 1px solid #1f2937;
         margin-top: 0;
     }
-    /* Admin option: the chat floats over the BOTTOM portion of the video,
-       translucent, so the movie fills the screen behind it. */
+    /* The chat floats over the BOTTOM portion of the video, translucent —
+       lifted 64px so YouTube's own control bar (play, volume, settings,
+       FULLSCREEN) stays completely uncovered and clickable. */
     #watchparty .video-wrapper .chat {
-        position: absolute; left: 2%; right: 2%; bottom: 2%; z-index: 7; gap: 8px;
-        max-height: 55%; overflow-y: auto; padding: 10px;
+        position: absolute; left: 2%; right: 2%; bottom: 64px; z-index: 7; gap: 8px;
+        max-height: 50%; overflow-y: auto; padding: 10px;
         background: rgba(10, 8, 16, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255, 156, 192, .28);
     }
@@ -385,15 +386,15 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             text-decoration: none; font-size: 13px; margin: 0; }
         .chmenu-list a:hover { background: #262030; text-decoration: none; }
         .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
-        /* The on-video control bar: channel menus and rotation live ON the
-           player (drop-up lists), revealed on hover/focus — nothing below
-           the video pushes the chat down. */
-        .wbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 6px;
-            align-items: center; flex-wrap: wrap; padding: 26px 10px 8px;
-            background: linear-gradient(transparent, rgba(10,8,16,.88));
+        /* The on-video control bar, revealed on hover/focus. It rides the
+           TOP of the video so it never sits over YouTube's own bottom
+           controls (fullscreen included). */
+        .wbar { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; gap: 6px;
+            align-items: center; flex-wrap: wrap; padding: 8px 10px 26px;
+            background: linear-gradient(rgba(10,8,16,.88), transparent);
             opacity: 0; pointer-events: none; transition: opacity .18s; }
         .video-wrapper:hover .wbar, .wbar:focus-within, .wbar:has(details[open]) { opacity: 1; pointer-events: auto; }
-        .wbar .chmenu-list { top: auto; bottom: calc(100% + 6px); max-height: min(52vh, 300px); overflow: auto; }
+        .wbar .chmenu-list { max-height: min(52vh, 300px); overflow: auto; }
         .wbar button.quiet { margin: 0; padding: 5px 9px; font-size: 13px; background: rgba(255,255,255,.14);
             color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
         .wbar a.wbar-link { color: #ffb8d2; font-size: 12.5px; text-decoration: none; }
@@ -535,8 +536,8 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <div class="chat">
         <div class="chat-header">
             <h2>Watching with <?= sd_e($otherName) ?></h2>
-            <button type="button" id="wp-chatpos" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da"
-                    title="Float the chat over the video, or park it below the player">🎞 Chat on video</button>
+            <button type="button" id="wp-chatpos" style="margin:0;padding:6px 14px;font-size:12.5px;font-weight:800;background:#17351f;color:#b8ffd3;border:1px solid #2e6b40"
+                    title="The chat floats over the film — click to move it below the player">💬 Chat over video</button>
             <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da">🎲 Games</button>
             <span>
                 <?php if ($status['unlocked']): ?>
@@ -693,7 +694,16 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 if (overlaid && chat.parentNode !== wrapper) { wrapper.appendChild(chat); }
                 if (!overlaid && chat.parentNode !== home.parent) { home.parent.insertBefore(chat, home.next); }
                 if (!overlaid) { chat.classList.remove('chat-quiet'); }
-                if (toggle) { toggle.textContent = '🎞 Chat on video · ' + (overlaid ? 'ON' : 'OFF'); }
+                if (toggle) {
+                    // The switch reads at a glance: green = floating, gray = parked.
+                    toggle.textContent = '💬 Chat over video · ' + (overlaid ? 'ON' : 'OFF');
+                    toggle.style.background = overlaid ? '#17351f' : '#3a2a3e';
+                    toggle.style.color = overlaid ? '#b8ffd3' : '#a294ad';
+                    toggle.style.border = overlaid ? '1px solid #2e6b40' : '1px solid #574a61';
+                    toggle.title = overlaid
+                        ? 'The chat floats over the film — click to move it below the player'
+                        : 'The chat sits below the player — click to float it over the film';
+                }
                 chatWake();
             }
             if (toggle) {
