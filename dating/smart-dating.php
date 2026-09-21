@@ -125,7 +125,7 @@ function smart_dating_articles(): array
                 ['h' => '1. Name the pattern',
                  'p' => ['Anxious chases avoidant; avoidant chooses unavailable; the fixer chooses broken partners; the people-pleaser chooses takers. Your nervous system is repeating what it learned early. Naming the pattern is the first step to breaking it.']],
                 ['h' => '2. Slow down the timeline',
-                 'p' => ['Trauma chemistry thrives on speed: fast bonding, fast intimacy, fast emotional merging. Slowing down exposes red flags, incompatibility, immaturity, and fantasy projection. Slow the pace and destructive partners lose their power — this is the principle SlowDating is built on.']],
+                 'p' => ['Trauma chemistry thrives on speed: fast bonding, fast intimacy, fast emotional merging. Slowing down exposes red flags, incompatibility, immaturity, and fantasy projection. Slow the pace and destructive partners lose their power — this is the principle SlowMoDating is built on.']],
                 ['h' => '3. Shift from chemistry to compatibility',
                  'p' => ['Chemistry is a feeling; compatibility is a function. Do your values, lifestyles, communication styles, goals, and emotional needs align? If not, chemistry is irrelevant.']],
                 ['h' => '4. Rewire the nervous system',
@@ -225,7 +225,7 @@ foreach ($articles as $i => $article) {
     }
 }
 
-sd_page_open('Smart Dating', 'SlowDating · the science of choosing well');
+sd_page_open('Smart Dating', 'SlowMoDating.com · the science of choosing well');
 ?>
 <style>
     .takeaway { background: #262030; border-left: 4px solid #ff9cc0; border-radius: 0 12px 12px 0; padding: 12px 16px; color: #eadff0; margin: 10px 0 4px; }
@@ -239,7 +239,7 @@ sd_page_open('Smart Dating', 'SlowDating · the science of choosing well');
 
 <?php if ($current === null): ?>
     <p style="max-width:70ch">Chemistry is a spark; compatibility is the structure. These articles explain the science behind
-        SlowDating's design — why the strongest first attractions so often fail, what your brain is actually doing,
+        SlowMoDating's design — why the strongest first attractions so often fail, what your brain is actually doing,
         and why relationships that grow slowly hold. Nine short reads, each self-contained.</p>
     <?php foreach ($articles as $i => $article): ?>
         <section>

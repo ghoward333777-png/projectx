@@ -58,7 +58,7 @@ $groups = [
     ]],
 ];
 
-sd_page_open('Features', 'SlowDating · everything the platform does');
+sd_page_open('Features', 'SlowMoDating.com · everything the platform does');
 ?>
 <p style="max-width:70ch">Every capability of the platform at a glance — what members get, how safety is
     built in, what partner businesses can do, and what the technology guarantees. The full rules behind each

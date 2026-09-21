@@ -7,7 +7,7 @@ require_once __DIR__ . '/SlowDatingStore.php';
 /**
  * Slow Dating Engine
  *
- * The complete domain logic for the SlowDating SaaS application:
+ * The complete domain logic for the SlowMoDating SaaS application:
  * members, strong-password auth, slow-chat pacing with the 30-day +
  * 10-session unlock, contact-data filtering, popularity scoring, matching,
  * the partner ecosystem (venues, coupons, events, contests, products),

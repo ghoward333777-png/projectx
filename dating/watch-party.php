@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     }
 }
 
-sd_page_open('Watch Party', 'SlowDating · a movie date, right here');
+sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
 ?>
 <style>
     /* Player + chat, one column — the Watch Party layout. */
@@ -257,7 +257,7 @@ if ($userId === null) {
     ?>
     <section>
         <h2>Movie night, together</h2>
-        <p>Every day SlowDating schedules one film from its romance playlist of 1,000 movies. Open the Watch
+        <p>Every day SlowMoDating schedules one film from its romance playlist of 1,000 movies. Open the Watch
             Party with your match, press play together, and talk in the chat under the player — or pick any
             other film from the library. <a href="index.php">Sign in or create a free account</a> to start.</p>
     </section>
@@ -362,22 +362,19 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             text-decoration: none; font-size: 13px; margin: 0; }
         .chmenu-list a:hover { background: #262030; text-decoration: none; }
         .chmenu-list a.on { background: #4a2440; color: #ffd4e5; font-weight: 800; }
+        /* The on-video control bar: channel menus and rotation live ON the
+           player (drop-up lists), revealed on hover/focus — nothing below
+           the video pushes the chat down. */
+        .wbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 6px;
+            align-items: center; flex-wrap: wrap; padding: 26px 10px 8px;
+            background: linear-gradient(transparent, rgba(10,8,16,.88));
+            opacity: 0; pointer-events: none; transition: opacity .18s; }
+        .video-wrapper:hover .wbar, .wbar:focus-within, .wbar:has(details[open]) { opacity: 1; pointer-events: auto; }
+        .wbar .chmenu-list { top: auto; bottom: calc(100% + 6px); max-height: min(52vh, 300px); overflow: auto; }
+        .wbar button.quiet { margin: 0; padding: 5px 9px; font-size: 13px; background: rgba(255,255,255,.14);
+            color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
+        .wbar a.wbar-link { color: #ffb8d2; font-size: 12.5px; text-decoration: none; }
     </style>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <strong style="color:#eadff0;font-size:13px">Channels:</strong>
-        <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
-            <details class="chmenu"<?= $mode === 'library' && in_array($ch, $groupChannels, true) ? ' open' : '' ?>>
-                <summary><?= sd_e($groupLabel) ?> ▾</summary>
-                <div class="chmenu-list">
-                    <?php foreach ($groupChannels as $slug): ?>
-                        <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
-                    <?php endforeach; ?>
-                </div>
-            </details>
-        <?php endforeach; ?>
-        <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
-        <a href="advanced-watch-party.php" style="color:#ffd97a">Advanced Watch Party →</a>
-    </div>
 </section>
 
 <div id="watchparty">
@@ -439,20 +436,28 @@ if (!in_array($mode, ['library', 'premium'], true)) {
                 <span style="color:#9ca3af;font-size:13px;max-width:48ch">Finding this film's stream — refresh in a moment.</span>
             </div>
         <?php endif; ?>
+        <div class="wbar">
+            <?php foreach (SlowDatingEngine::WATCH_CHANNEL_GROUPS as $groupLabel => $groupChannels): ?>
+                <details class="chmenu">
+                    <summary><?= sd_e($groupLabel) ?> ▾</summary>
+                    <div class="chmenu-list">
+                        <?php foreach ($groupChannels as $slug): ?>
+                            <a href="?chat=<?= sd_e($chatId) ?>&amp;ch=<?= sd_e($slug) ?>"<?= $mode === 'library' && $ch === $slug ? ' class="on"' : '' ?>><?= sd_e((string) $channels[$slug]['label']) ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            <?php endforeach; ?>
+            <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="wbar-link"<?= $mode === 'premium' ? ' style="font-weight:800;text-decoration:underline"' : '' ?>>Premium together</a>
+            <a href="advanced-watch-party.php" class="wbar-link" style="color:#ffd97a">Advanced · BETA</a>
+            <span style="flex:1"></span>
+            <?php if ($overrideSrc !== null): ?>
+                <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
+                <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
+                <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
+                <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
+            <?php endif; ?>
+        </div>
     </div>
-
-    <?php if ($overrideSrc !== null): ?>
-    <!-- Local playlist rotation: swaps the player's source in place —
-         no page load, no round-trip. -->
-    <p style="margin:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span style="color:#9ca3af;font-size:12.5px">Rotate the playlist:</span>
-        <button type="button" class="quiet" data-wprot="-1" style="margin:0;padding:6px 12px;font-size:12px">⏮ Previous</button>
-        <button type="button" class="quiet" data-wprot="1" style="margin:0;padding:6px 12px;font-size:12px">Next ⏭</button>
-        <button type="button" class="quiet" data-wprot="r" style="margin:0;padding:6px 12px;font-size:12px">🔀 Shuffle</button>
-    </p>
-    <?php endif; ?>
-
-
 
     <?php if ($mode === 'premium'): ?>
     <?php $sync = $engine->watchSync($chatId, $userId); ?>
@@ -461,7 +466,7 @@ if (!in_array($mode, ['library', 'premium'], true)) {
         <p style="margin:0 0 10px">The same model Teleparty uses: <strong style="color:#f3eef6">1.</strong> You and
             <?= sd_e($otherName) ?> are in this watch-party room. <strong style="color:#f3eef6">2.</strong> Each of
             you is signed into your own YouTube account in the embedded player above — YouTube Premium plays
-            ad-free on your own subscription. <strong style="color:#f3eef6">3.</strong> SlowDating keeps the two
+            ad-free on your own subscription. <strong style="color:#f3eef6">3.</strong> SlowMoDating keeps the two
             players in lock-step with a shared timecode authority (live sync channel).
             <strong style="color:#f3eef6">4.</strong> Chat, reactions, and the shared controls below live on this
             page. <strong style="color:#f3eef6">5.</strong> Your membership pays for the sync service —

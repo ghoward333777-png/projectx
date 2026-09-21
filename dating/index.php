@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $userId = $result['user_id'];
                 $notice = $result['password_generated']
                     ? 'Welcome! Your generated password (store it now, it is shown once): ' . $result['auto_password']
-                    : 'Welcome to SlowDating!';
+                    : 'Welcome to SlowMoDating!';
                 break;
             case 'login':
                 $result = $engine->login((string) ($_POST['email'] ?? ''), (string) ($_POST['password'] ?? ''));
@@ -167,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-sd_page_open('SlowDating', 'SlowDating · take your time, meet for real');
+sd_page_open('SlowMoDating.com', 'SlowMoDating.com · take your time, meet for real');
 sd_flash($error, $notice);
 
 if ($userId === null) {
@@ -193,7 +193,7 @@ if ($userId === null) {
             <input id="su-email" name="email" type="email" required>
             <label for="su-pass">Password (leave blank for a generated strong password)</label>
             <input id="su-pass" name="password" type="password" minlength="12" placeholder="12+ chars, upper/lower/digit/symbol">
-            <button type="submit">Join SlowDating</button>
+            <button type="submit">Join SlowMoDating</button>
         </form>
         <form method="post">
             <h2>Sign in</h2>

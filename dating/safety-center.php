@@ -8,9 +8,9 @@ require_once __DIR__ . '/ui.php';
 $engine = new SlowDatingEngine();
 $resources = $engine->safetyResources();
 
-sd_page_open('Safety Center', 'SlowDating · women-first safety education');
+sd_page_open('Safety Center', 'SlowMoDating.com · women-first safety education');
 ?>
-<p>SlowDating is built safety-first: contact details stay filtered out of chat until a conversation has
+<p>SlowMoDating is built safety-first: contact details stay filtered out of chat until a conversation has
     proven itself over 30 days, red-flag behaviour raises alerts automatically, every partner venue is vetted
     for a quiet, adult, date-compatible atmosphere, and VIP chaperone services can be booked for any date.</p>
 

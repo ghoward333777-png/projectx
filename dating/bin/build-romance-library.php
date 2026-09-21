@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * SlowDating Romance Library builder.
+ * SlowMoDating Romance Library builder.
  *
  * Builds dating/data/romance-films.json — the platform's independent
  * playlist of 1,000 romance films for the Watch Party feature, ranked by

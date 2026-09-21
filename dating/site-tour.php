@@ -5,13 +5,13 @@ declare(strict_types=1);
 require_once __DIR__ . '/ui.php';
 
 /**
- * Site Tour — a public slideshow walking through every page of SlowDating.
+ * Site Tour — a public slideshow walking through every page of SlowMoDating.
  * Slides are real captures of the app running with demo data; regenerate
  * them by re-running the capture flow after UI changes (see README).
  */
 
 $slides = [
-    ['01-home.jpg', 'Welcome to SlowDating', 'Free to join with a $19/year membership. Contact details stay filtered until a chat has lived 30 days with 10 real conversations — then it opens to real time.'],
+    ['01-home.jpg', 'Welcome to SlowMoDating', 'Free to join with a $19/year membership. Contact details stay filtered until a chat has lived 30 days with 10 real conversations — then it opens to real time.'],
     ['02-matches.jpg', 'Your matches', 'Ranked by an 11-factor compatibility score: distance, interests, hobbies, dating type, faith, politics, income, occupation, automobile, outdoor life, and popularity balance.'],
     ['03-slow-chat.jpg', 'Slow chat that earns real time', 'Message size and frequency start limited and widen weekly. Phone numbers, emails, links, and handles are erased before storage until the chat unlocks — watch the filter catch a shared number.'],
     ['04-search.jpg', 'Search on what matters to you', 'Filter members by zip proximity, age, interests, hobbies, dating type, faith, politics, income range, automobile, occupation, and popularity.'],
@@ -24,7 +24,7 @@ $slides = [
     ['11-smart-dating.jpg', 'Smart Dating: the science of choosing well', 'Nine short articles on why intense attraction misleads, the neuroscience underneath it, and why slow-built relationships hold — the research the whole platform is designed around.'],
 ];
 
-sd_page_open('Site Tour', 'SlowDating · see every page in one minute');
+sd_page_open('Site Tour', 'SlowMoDating.com · see every page in one minute');
 ?>
 <style>
     .tour { background: #1d1824; border: 1px solid #3d3346; border-radius: 16px; padding: 18px; }

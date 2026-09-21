@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     }
 }
 
-sd_page_open('Advanced Watch Party', 'SlowDating · rooms, split payments, shared controls');
+sd_page_open('Advanced Watch Party · BETA', 'SlowMoDating.com · rooms, split payments, shared controls · beta preview');
 sd_flash($error, $notice);
 
 if ($userId === null) {

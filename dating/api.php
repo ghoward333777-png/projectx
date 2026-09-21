@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/SlowDatingApi.php';
 
 /**
- * SlowDating HTTP entry point.
+ * SlowMoDating HTTP entry point.
  *
  * Works under the PHP built-in server (`php -S 127.0.0.1:8082`) and any
  * shared host: the API path comes from PATH_INFO when available, or from

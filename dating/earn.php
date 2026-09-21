@@ -79,14 +79,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     }
 }
 
-sd_page_open('Perks & Income', 'SlowDating · income programs for popular members');
+sd_page_open('Perks & Income', 'SlowMoDating.com · income programs for popular members');
 sd_flash($error, $notice);
 
 if ($userId === null) {
     ?>
     <section>
         <h2>Popularity pays here</h2>
-        <p>Popular members earn real income on SlowDating: a share of the ads shown on their profile,
+        <p>Popular members earn real income on SlowMoDating: a share of the ads shown on their profile,
             a Premium Members Only photo gallery that pays per visit, paid hours responding to and
             initiating chats, cash back on dates scheduled at partner events, and partner-scripted
             testimonial videos with a payout on every accepted recording.

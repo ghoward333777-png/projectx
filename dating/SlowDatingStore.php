@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Slow Dating Store
  *
- * Plain-file persistence for the SlowDating app: one JSON file per
+ * Plain-file persistence for the SlowMoDating app: one JSON file per
  * collection under a state directory. No database, no Composer — the same
  * storage philosophy as the rest of this repository. Every record is an
  * associative array keyed by its id inside the collection file.

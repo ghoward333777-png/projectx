@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-sd_page_open('Admin Console', 'SlowDating · operations & rewards');
+sd_page_open('Admin Console', 'SlowMoDating.com · operations & rewards');
 sd_flash($error, $notice);
 
 if ($adminId === null) {

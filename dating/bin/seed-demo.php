@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * SlowDating demo seeder.
+ * SlowMoDating demo seeder.
  *
  * Resets the app state and fills it with a realistic demo: six members, a
  * chat on day 12 of the slow phase (with a filtered contact-sharing
@@ -255,7 +255,7 @@ $ralphsVenue = $engine->createVenue($ralphs['partner_id'], [
 $engine->createMeetupAd($ralphs['partner_id'], (string) $ralphsVenue['id'], [
     'headline' => "Make it Ralph's before the show",
     'message' => 'Handmade pasta, corner tables, and out in time for the trailers.',
-    'offer' => 'Mention SlowDating for free tiramisu',
+    'offer' => 'Mention SlowMoDating for free tiramisu',
     'keys' => ['italian_restaurant', 'fine_dining'],
 ], $now - 12 * $day);
 $theater = $engine->signupPartner('Double Feature Theater', 'box@doublefeature.example', 'Demo!Partner2026#', 'pro', $now - 12 * $day);
@@ -292,7 +292,7 @@ foreach ($engine->products() as $product) {
 // ---- Admin + rewards ---------------------------------------------------------------
 $admin = $engine->createAdmin('admin@slowdating.example', 'Demo!Admin2026#', null, $now - 30 * $day);
 $engine->grantTopMemberRewards($admin['admin_id'], 10, ['type' => 'gift_certificate', 'amount' => 100.0], $now - 6 * $day);
-$engine->grantTopMemberRewards($admin['admin_id'], 10, ['type' => 'promo_trip', 'description' => 'All-expense weekend at the SlowDating Spring Launch Gala in Napa'], $now - 1 * $day);
+$engine->grantTopMemberRewards($admin['admin_id'], 10, ['type' => 'promo_trip', 'description' => 'All-expense weekend at the SlowMoDating Spring Launch Gala in Napa'], $now - 1 * $day);
 
 // ---- Photo reveal timeframe ----------------------------------------------------
 // Pictures come second: real photos reveal on day 2 of a chat. Premium

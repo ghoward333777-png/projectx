@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
     }
 }
 
-sd_page_open('Browse', 'SlowDating · your best matches, your preferences');
+sd_page_open('Browse', 'SlowMoDating.com · your best matches, your preferences');
 sd_flash($error, $notice);
 
 if ($userId === null) {

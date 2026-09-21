@@ -171,7 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-sd_page_open('Partner Portal', 'SlowDating · partner control center');
+sd_page_open('Partner Portal', 'SlowMoDating.com · partner control center');
 sd_flash($error, $notice);
 
 if ($partnerId === null) {

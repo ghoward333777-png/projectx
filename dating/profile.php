@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
 }
 
 if ($userId === null) {
-    sd_page_open('Profile', 'SlowDating · member profile');
+    sd_page_open('Profile', 'SlowMoDating.com · member profile');
     ?>
     <section>
         <h2>Sign in to view profiles</h2>
@@ -99,7 +99,7 @@ try {
 }
 
 if ($view === null) {
-    sd_page_open('Profile', 'SlowDating · member profile');
+    sd_page_open('Profile', 'SlowMoDating.com · member profile');
     sd_flash($error, $notice);
     ?>
     <section>
@@ -118,7 +118,7 @@ $labels = static fn (string $value): string => ucwords(str_replace('_', ' ', $va
 $sharedInterests = (array) ($view['shared_interests'] ?? []);
 $sharedHobbies = (array) ($view['shared_hobbies'] ?? []);
 
-sd_page_open($name, $own ? 'SlowDating · your profile as members see it' : 'SlowDating · member profile');
+sd_page_open($name, $own ? 'SlowMoDating.com · your profile as members see it' : 'SlowMoDating.com · member profile');
 sd_flash($error, $notice);
 ?>
 <section>

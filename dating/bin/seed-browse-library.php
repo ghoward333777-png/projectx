@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * SlowDating browse library seeder.
+ * SlowMoDating browse library seeder.
  *
  * ADDS a library of 50 demo members — 25 women and 25 men — with varied,
  * realistic profiles, procedurally generated avatar portraits (served by

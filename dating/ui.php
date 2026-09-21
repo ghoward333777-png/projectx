@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Shared UI helpers for the SlowDating pages: one responsive stylesheet
+ * Shared UI helpers for the SlowMoDating pages: one responsive stylesheet
  * (desktop and mobile), escaping, and the page frame. No frameworks.
  */
 
@@ -71,19 +71,30 @@ function sd_page_open(string $title, string $eyebrow): void
             <a href="index.php">Member app</a>
             <a href="browse.php">Browse</a>
             <a href="profile.php">My profile</a>
-            <a href="earn.php">Perks &amp; income</a>
-            <a href="watch-party.php">Watch Party</a>
-            <details style="display:inline-block;position:relative;margin-right:14px">
+            <details class="navdd" style="display:inline-block;position:relative;margin-right:14px">
+                <summary style="cursor:pointer;color:#ffb8d2;list-style:none;display:inline">Watch Party ▾</summary>
+                <span style="position:absolute;left:0;top:calc(100% + 6px);z-index:60;background:#1d1824;border:1px solid #574a61;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:210px">
+                    <a href="watch-party.php">Watch Party</a>
+                    <a href="advanced-watch-party.php">Advanced Watch Party · BETA</a>
+                </span>
+            </details>
+            <details class="navdd" style="display:inline-block;position:relative;margin-right:14px">
                 <summary style="cursor:pointer;color:#ffb8d2;list-style:none;display:inline">Features ▾</summary>
-                <span style="position:absolute;left:0;top:calc(100% + 6px);z-index:60;background:#1d1824;border:1px solid #574a61;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:150px">
+                <span style="position:absolute;left:0;top:calc(100% + 6px);z-index:60;background:#1d1824;border:1px solid #574a61;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:160px">
                     <a href="features.php">All features</a>
+                    <a href="earn.php">Perks &amp; income</a>
                     <a href="site-tour.php">Site Tour</a>
                 </span>
             </details>
-            <a href="smart-dating.php">Smart Dating</a>
+            <details class="navdd" style="display:inline-block;position:relative;margin-right:14px">
+                <summary style="cursor:pointer;color:#ffb8d2;list-style:none;display:inline">Smart Dating ▾</summary>
+                <span style="position:absolute;left:0;top:calc(100% + 6px);z-index:60;background:#1d1824;border:1px solid #574a61;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:170px">
+                    <a href="smart-dating.php">Smart Dating</a>
+                    <a href="safety-center.php">Safety center</a>
+                </span>
+            </details>
             <a href="partner-portal.php">Partner portal</a>
             <a href="admin.php">Admin console</a>
-            <a href="safety-center.php">Safety center</a>
         </nav>
     </header>
     <?php
@@ -96,6 +107,12 @@ function sd_page_close(): void
 <script>
     // Chat logs open at the newest message, like any messenger.
     document.querySelectorAll('.chat-log').forEach(function (log) { log.scrollTop = log.scrollHeight; });
+    // Every pop-down menu (nav and channel menus alike) closes on an outside click.
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('details.navdd[open], details.chmenu[open]').forEach(function (d) {
+            if (!d.contains(e.target)) { d.open = false; }
+        });
+    });
 </script>
 </body>
 </html><?php
