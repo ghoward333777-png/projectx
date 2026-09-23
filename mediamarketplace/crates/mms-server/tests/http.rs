@@ -1050,3 +1050,539 @@ async fn video_upload_gets_thumbnail_and_duration_with_ffmpeg() {
     );
     std::fs::remove_dir_all(tmp).ok();
 }
+
+fn json_req(method: &str, uri: &str, body: &str, cookie: &str, csrf: &str) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::COOKIE, cookie)
+        .header("x-mms-csrf", csrf)
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn phase_two_widgets_templates_schemes_and_site_templates() {
+    let st = state().await;
+    let app = app::router(st.clone());
+    let (cookie, csrf) = admin_session(&app).await;
+
+    // A site so widget embeds have an origin to trust.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/bridges",
+            &format!("_csrf={csrf}&name=Site&host=joomla&origin=https%3A%2F%2Fwww.example.com"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let site = body
+        .split("<dt>Site ID</dt><dd><code>")
+        .nth(1)
+        .unwrap()
+        .split('<')
+        .next()
+        .unwrap()
+        .to_string();
+
+    // The template gallery lists all 35 built-in widget templates and the 12 site templates.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/templates", Some(&cookie)))
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = text(res).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body.matches("template-card").count(),
+        35,
+        "35 widget templates"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/admin/site-templates", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert_eq!(body.matches("/apply\"").count(), 12, "12 site templates");
+
+    // A template preview renders real HTML.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/templates/video-hero/preview", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(text(res).await.contains("Watch the masterclass"));
+
+    // Create a widget from a template; it opens in the builder.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/widgets",
+            &format!("_csrf={csrf}&name=Home+hero&template=video-hero"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let loc = res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .to_string();
+    let uuid = loc.rsplit('/').next().unwrap().to_string();
+    assert!(loc.starts_with("/admin/widgets/"));
+    let res = app.clone().oneshot(get(&loc, Some(&cookie))).await.unwrap();
+    let status = res.status();
+    let body = text(res).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("id=\"bb-data\"") && body.contains("mms-builder.js"));
+
+    // Unpublished widgets are not embeddable.
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/widget/{uuid}?site={site}"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // The builder saves through the JSON API with the CSRF header; without it the save is refused.
+    let definition = r#"{"schema_version":1,"root":{"id":"root","kind":"container","props":{},"children":[{"id":"h","kind":"text","props":{"text":"Hello from the builder","style":"heading"},"animation":{"kind":"fade","trigger":"in-view","delay":0}},{"id":"b","kind":"button","props":{"label":"Buy now","href":"https://www.example.com/store"}}]}}"#;
+    let save = format!(
+        r#"{{"name":"Home hero","definition":{definition},"custom_css":".mms-text{{color:red}} body{{background:url(http://evil.example/x.png)}}","theme":"auto","scheme":"night","status":"published"}}"#
+    );
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/widgets/{uuid}"),
+            &save,
+            &cookie,
+            "wrong",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/widgets/{uuid}"),
+            &save,
+            &cookie,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(body.contains("\"status\":\"published\""), "{body}");
+
+    // A broken definition is rejected with a 400, not a 500.
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/widgets/{uuid}"),
+            r#"{"name":"x","definition":{"root":{"kind":"spaceship"}}}"#,
+            &cookie,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Live preview renders unsaved definitions.
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/widgets/{uuid}/preview"),
+            &format!(r#"{{"definition":{definition},"scheme":"warm"}}"#),
+            &cookie,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(body.contains("Hello from the builder") && body.contains("Buy now"));
+
+    // Versions accumulate and can be restored.
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/api/v1/widgets/{uuid}/versions"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("\"version\":1") && body.contains("\"version\":2"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/widgets/{uuid}/restore"),
+            &format!("_csrf={csrf}&version=1"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    // Restoring re-publishes nothing: put it back to the built version and publish again.
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/api/v1/widgets/{uuid}"),
+            &save,
+            &cookie,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Published widgets embed for registered sites only, with a frame-ancestors policy,
+    // scoped custom CSS and the dangerous url() stripped.
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/widget/{uuid}?site=unknown"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/widget/{uuid}?site={site}"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()[header::CONTENT_SECURITY_POLICY],
+        "frame-ancestors 'self' https://www.example.com"
+    );
+    let body = text(res).await;
+    assert!(body.contains("Hello from the builder"));
+    assert!(body.contains("mms-widget.js"));
+    assert!(
+        !body.contains("evil.example"),
+        "non-https url() must be stripped"
+    );
+    assert!(
+        body.contains(&format!(".mms-w-{uuid} .mms-text{{color:red}}")),
+        "custom css is scoped: {body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/widget?site={site}&id={uuid}"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Exports: CMS snippets, a standalone HTML file and a template file.
+    for (target, needle) in [
+        (
+            "wordpress",
+            format!("[mms_embed kind=\"widget\" id=\"{uuid}\"]"),
+        ),
+        ("joomla", format!("{{mms_embed kind=widget id={uuid}}}")),
+        ("html", "<!doctype html>".to_string()),
+        ("json", "\"format\": \"mmstpl\"".to_string()),
+    ] {
+        let res = app
+            .clone()
+            .oneshot(get(
+                &format!("/admin/widgets/{uuid}/export/{target}"),
+                Some(&cookie),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{target}");
+        assert!(res.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment;"));
+        let body = text(res).await;
+        assert!(body.contains(&needle), "{target}: {body}");
+        if target == "html" {
+            assert!(body.contains("http://localhost:8090/static/mms.css"));
+        }
+    }
+
+    // Save as a user template, export it, re-import it, then build a widget from it.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/widgets/{uuid}/save-template"),
+            &format!("_csrf={csrf}&name=My+hero&category=custom"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/templates", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("My hero") && body.contains("/admin/templates/user-my-hero/export"));
+    let user_slug = "user-my-hero".to_string();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/templates/{user_slug}/export"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let exported = text(res).await;
+    assert!(exported.contains("\"format\": \"mmstpl\""));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/templates/import",
+            &format!(
+                "_csrf={csrf}&json={}",
+                routes::media::urlencoding(&exported.replace("My hero", "Imported hero"))
+            ),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .contains("Template+imported"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/templates/import",
+            &format!("_csrf={csrf}&json=%7B%22format%22%3A%22other%22%7D"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .contains("error="));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/widgets",
+            &format!("_csrf={csrf}&template={user_slug}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .starts_with("/admin/widgets/"));
+
+    // Widgets list shows both, filterable by status.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/widgets?status=published", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Home hero") && !body.contains("My hero</a>"));
+
+    // Duplicate and delete.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/widgets/{uuid}/duplicate"),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let copy = res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    assert_ne!(copy, uuid);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/widgets/{copy}/delete"),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/admin/widgets/{copy}"), Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // Colour schemes: built-ins plus a user scheme with validated hex values; brand kit saves.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/schemes", Some(&cookie)))
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = text(res).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for s in [
+        "<code>default</code>",
+        "<code>night</code>",
+        "<code>warm</code>",
+        "<code>forest</code>",
+        "<code>plum</code>",
+        "<code>mono</code>",
+    ] {
+        assert!(body.contains(s), "{s}");
+    }
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/schemes",
+            &format!("_csrf={csrf}&name=Ocean&accent=%231d6fa5&accent-2=%2300a3a3&bg=%23f4f9fc&surface=%23ffffff&text=%23102030&muted=%23607080"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .contains("Scheme+saved"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/schemes",
+            &format!("_csrf={csrf}&name=Bad&accent=red&accent-2=%2300a3a3&bg=%23f4f9fc&surface=%23ffffff&text=%23102030&muted=%23607080"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .contains("error="));
+    let res = app
+        .clone()
+        .oneshot(get("/admin/schemes", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Ocean"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/schemes/user-ocean/delete",
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+
+    // Site templates: applying creates published widgets, rollback deletes them again.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/site-templates/photographer/apply",
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .contains("5+widgets+created"));
+    let res = app
+        .clone()
+        .oneshot(get("/admin/widgets?status=published", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Home · ") && body.contains("Prints · "));
+    let res = app
+        .clone()
+        .oneshot(get("/admin/site-templates", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("/admin/site-applications/1/rollback"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/admin/site-templates/photographer/export",
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/site-applications/1/rollback",
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/widgets", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(!body.contains("Home · "), "rolled back widgets are gone");
+    assert!(
+        body.contains("Home hero"),
+        "hand-built widgets survive a rollback"
+    );
+
+    // Builder and widget assets are embedded in the binary.
+    for f in ["mms-builder.js", "mms-builder.css", "mms-widget.js"] {
+        let res = app
+            .clone()
+            .oneshot(get(&format!("/static/{f}"), None))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{f}");
+    }
+
+    // The site-wide scheme moved to the template's scheme.
+    assert_eq!(st.settings.get("general.scheme").await.unwrap(), "warm");
+}

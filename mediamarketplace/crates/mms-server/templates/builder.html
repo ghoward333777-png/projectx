@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ w.name }} · Widget builder</title>
+<link rel="stylesheet" href="{{ base }}/static/mms.css">
+<link rel="stylesheet" href="{{ base }}/static/mms-builder.css">
+</head>
+<body class="builder">
+<header class="bb-top">
+  <a class="bb-back" href="{{ base }}/admin/widgets">← Widgets</a>
+  <input id="bb-name" value="{{ w.name }}" aria-label="Widget name">
+  <span class="bb-status" id="bb-status">v{{ w.version }} · {{ w.status }}</span>
+  <div class="bb-tools">
+    <button id="bb-undo" title="Undo (Ctrl+Z)">↶</button><button id="bb-redo" title="Redo (Ctrl+Y)">↷</button>
+    <span class="bb-devices"><button data-w="100%" class="on" title="Desktop">🖥</button><button data-w="1024px" title="Tablet">▭</button><button data-w="640px" title="Phone">▯</button></span>
+    <select id="bb-theme" aria-label="Theme"><option value="auto" {% if w.theme == "auto" %}selected{% endif %}>Auto theme</option><option value="light" {% if w.theme == "light" %}selected{% endif %}>Light</option><option value="dark" {% if w.theme == "dark" %}selected{% endif %}>Dark</option></select>
+    <select id="bb-scheme" aria-label="Colour scheme">{% for s in schemes %}<option value="{{ s.slug }}" {% if s.slug == w.scheme %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+    <select id="bb-state" aria-label="Status"><option value="draft" {% if w.status == "draft" %}selected{% endif %}>Draft</option><option value="published" {% if w.status == "published" %}selected{% endif %}>Published</option><option value="archived" {% if w.status == "archived" %}selected{% endif %}>Archived</option></select>
+    <button id="bb-preview" title="Open preview in a new tab">Preview</button>
+    <button id="bb-export">Export</button>
+    <button id="bb-save" class="primary">Save</button>
+  </div>
+</header>
+<div class="bb-main">
+  <aside class="bb-palette">
+    <h2>Components</h2>
+    <p class="muted small">Drag onto the canvas, or select a component and press Enter to add inside it.</p>
+    <ul id="bb-palette">{% for c in components %}{% if c.kind != "container" or true %}<li draggable="true" data-kind="{{ c.kind }}" tabindex="0">{{ c.label }}</li>{% endif %}{% endfor %}</ul>
+    <h2>Layers</h2>
+    <ol id="bb-layers" class="bb-layers"></ol>
+  </aside>
+  <main class="bb-canvas-wrap"><div class="bb-canvas" id="bb-canvas"><iframe id="bb-frame" title="Widget preview"></iframe></div></main>
+  <aside class="bb-props">
+    <h2 id="bb-props-title">Properties</h2>
+    <div id="bb-props"><p class="muted">Select a component in the layer tree or on the canvas.</p></div>
+    <details><summary>Custom CSS</summary><textarea id="bb-css" rows="8" spellcheck="false" placeholder="h2 { letter-spacing: .02em }">{{ w.custom_css }}</textarea><p class="muted small">Scoped to this widget automatically. 64 KB limit; scripting and imports are refused.</p></details>
+    <details><summary>Versions</summary><ul id="bb-versions">{% for v in versions %}<li>v{{ v.version }} <span class="muted">{{ v.created_at }}</span> <form method="post" action="{{ base }}/admin/widgets/{{ w.uuid }}/restore" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="version" value="{{ v.version }}"><button class="link">restore</button></form></li>{% endfor %}</ul></details>
+    <details><summary>Save as template</summary><form method="post" action="{{ base }}/admin/widgets/{{ w.uuid }}/save-template"><input type="hidden" name="_csrf" value="{{ csrf }}"><label>Name <input name="name" required></label><label>Category <input name="category" placeholder="custom"></label><button>Save template</button></form></details>
+  </aside>
+</div>
+<dialog id="bb-export-dialog">
+  <h2>Place this widget</h2>
+  <p class="muted">Save first so the latest version is used. The widget must be published to appear on the site.</p>
+  <label>Widget ID (for the WordPress “MediaMarketplace Embed” block or the Joomla “MediaMarketplace » Widget” menu item) <input readonly value="{{ w.uuid }}"></label>
+  <label>WordPress shortcode <input readonly value='[mms_embed kind="widget" id="{{ w.uuid }}"]'></label>
+  <label>Joomla tag <input readonly value="{{ '{' }}mms_embed kind=widget id={{ w.uuid }}{{ '}' }}"></label>
+  <p><a class="button" href="{{ base }}/admin/widgets/{{ w.uuid }}/export/html">Download standalone HTML</a> <a class="button" href="{{ base }}/admin/widgets/{{ w.uuid }}/export/json">Download as template file</a></p>
+  <form method="dialog"><button class="primary">Close</button></form>
+</dialog>
+<script id="bb-data" type="application/json">{{ {"uuid": w.uuid, "definition": w.definition, "csrf": csrf, "base": base, "site": site, "components": components, "animations": animations, "media": media, "products": products} | tojson }}</script>
+<script src="{{ base }}/static/mms-builder.js" defer></script>
+</body>
+</html>

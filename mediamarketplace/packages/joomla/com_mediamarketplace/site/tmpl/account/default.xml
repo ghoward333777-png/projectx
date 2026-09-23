@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<metadata>
+    <layout title="COM_MEDIAMARKETPLACE_ACCOUNT_VIEW_DEFAULT_TITLE">
+        <message><![CDATA[COM_MEDIAMARKETPLACE_ACCOUNT_VIEW_DEFAULT_DESC]]></message>
+    </layout>
+    <fields name="params">
+        <fieldset name="basic" label="COM_MEDIAMARKETPLACE_FIELDSET_ACCOUNT">
+            <field name="return" type="list" label="COM_MEDIAMARKETPLACE_FIELD_RETURN" default="/account">
+                <option value="/account">COM_MEDIAMARKETPLACE_RETURN_ACCOUNT</option>
+                <option value="/account/library">COM_MEDIAMARKETPLACE_RETURN_LIBRARY</option>
+                <option value="/account/orders">COM_MEDIAMARKETPLACE_RETURN_ORDERS</option>
+            </field>
+        </fieldset>
+    </fields>
+</metadata>

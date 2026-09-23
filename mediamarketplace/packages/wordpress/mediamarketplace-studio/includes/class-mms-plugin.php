@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  *
  *  - https://site/mms/...  is proxied to the server (rewrite rule + template_redirect)
  *  - "MediaMarketplace" admin menu signs the WordPress administrator into the server admin
- *  - shortcodes place the store in pages; a watchdog keeps the server running
+ *  - shortcodes and Gutenberg blocks place the store in pages; a watchdog keeps the server running
  */
 final class MMS_Plugin
 {
@@ -31,6 +31,8 @@ final class MMS_Plugin
     private function __construct()
     {
         add_action('init', [$this, 'registerRewrite']);
+        add_action('init', [$this, 'registerBlocks']);
+        add_action('enqueue_block_editor_assets', [$this, 'blockEditorAssets']);
         add_filter('query_vars', static fn(array $vars): array => array_merge($vars, [self::QUERY_VAR]));
         add_action('parse_request', [$this, 'maybeProxy'], 1);
         add_action('admin_menu', [$this, 'adminMenu']);
@@ -248,6 +250,63 @@ final class MMS_Plugin
     {
         $a = shortcode_atts(['kind' => 'showcase', 'id' => '', 'view' => ''], is_array($atts) ? $atts : [], 'mms_embed');
         return $this->markup((string) $a['kind'], ['id' => $a['id'], 'view' => $a['view']]);
+    }
+
+    // ----- Gutenberg blocks (dynamic; they render through the same markup as the shortcodes) -----
+
+    public function registerBlocks(): void
+    {
+        if (!function_exists('register_block_type')) {
+            return;
+        }
+        wp_register_script('mms-blocks-editor', plugins_url('blocks/editor.js', MMS_FILE), ['wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor', 'wp-i18n', 'wp-server-side-render'], MMS_VERSION, true);
+        wp_register_style('mms-blocks-editor', plugins_url('blocks/editor.css', MMS_FILE), [], MMS_VERSION);
+        register_block_type(MMS_DIR . '/blocks/showcase', ['render_callback' => [$this, 'renderShowcaseBlock']]);
+        register_block_type(MMS_DIR . '/blocks/embed', ['render_callback' => [$this, 'renderEmbedBlock']]);
+        register_block_type(MMS_DIR . '/blocks/signin', ['render_callback' => [$this, 'renderSigninBlock']]);
+    }
+
+    public function blockEditorAssets(): void
+    {
+        wp_enqueue_style('mms-blocks-editor');
+    }
+
+    /** @param array<string,mixed> $attributes */
+    public function renderShowcaseBlock(array $attributes): string
+    {
+        $html = $this->showcaseShortcode(['view' => (string) ($attributes['view'] ?? 'grid'), 'category' => (string) ($attributes['category'] ?? '')]);
+        return $this->wrapBlock($html, $attributes);
+    }
+
+    /** @param array<string,mixed> $attributes */
+    public function renderEmbedBlock(array $attributes): string
+    {
+        $kind = (string) ($attributes['kind'] ?? 'widget');
+        $id = (string) ($attributes['id'] ?? '');
+        if ($id === '' && $kind !== 'showcase') {
+            return '';
+        }
+        $html = $this->embedShortcode(['kind' => $kind, 'id' => $id, 'view' => (string) ($attributes['view'] ?? '')]);
+        return $this->wrapBlock($html, $attributes);
+    }
+
+    /** @param array<string,mixed> $attributes */
+    public function renderSigninBlock(array $attributes): string
+    {
+        return $this->signinShortcode(['label' => (string) ($attributes['label'] ?? __('My media', 'mediamarketplace-studio')), 'return' => (string) ($attributes['return'] ?? '/account')]);
+    }
+
+    /** @param array<string,mixed> $attributes */
+    private function wrapBlock(string $html, array $attributes): string
+    {
+        if ($html === '') {
+            return '';
+        }
+        $class = 'wp-block-mms';
+        if (!empty($attributes['align']) && in_array($attributes['align'], ['wide', 'full'], true)) {
+            $class .= ' align' . $attributes['align'];
+        }
+        return '<div class="' . esc_attr($class) . '">' . $html . '</div>';
     }
 
     /** @param array<string,string> $params */

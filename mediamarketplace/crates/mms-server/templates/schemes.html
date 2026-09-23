@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Branding{% endblock %}
+{% block body %}
+<h1>Branding and colour schemes</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Brand kit</h2>
+  <form method="post" action="{{ base }}/admin/schemes/brand">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Logo (media ID) <input name="logo" value="{{ brand.logo }}" placeholder="paste a media ID from the library"></label>
+    <label>Font stack <input name="font" value="{{ brand.font }}"></label>
+    <label>Corner radius (px) <input name="radius" type="number" min="0" max="40" value="{{ brand.radius }}"></label>
+    <label>Shadow <select name="shadow">{% for o in ["none","soft","strong"] %}<option value="{{ o }}" {% if o == brand.shadow %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+    <label>Store colour scheme <select name="scheme">{% for s in schemes %}<option value="{{ s.slug }}" {% if s.slug == current %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select><small>Widgets set to the store default use this.</small></label>
+    <button class="primary">Save branding</button>
+  </form>
+</section>
+<section class="card">
+  <h2>New colour scheme</h2>
+  <form method="post" action="{{ base }}/admin/schemes">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Name <input name="name" required></label>
+    <div class="row"><label>Accent <input name="accent" type="color" value="#1f3a5f"></label><label>Accent 2 <input name="accent-2" type="color" value="#2f5a8c"></label></div>
+    <div class="row"><label>Background <input name="bg" type="color" value="#f6f7f9"></label><label>Surface <input name="surface" type="color" value="#ffffff"></label></div>
+    <div class="row"><label>Text <input name="text" type="color" value="#1b1f24"></label><label>Muted <input name="muted" type="color" value="#5b6470"></label></div>
+    <button class="primary">Save scheme</button>
+    <p class="muted small">A dark variant is derived automatically for dark-theme widgets.</p>
+  </form>
+</section>
+</div>
+<section class="card">
+  <h2>Schemes</h2>
+  <table><thead><tr><th>Name</th><th>Swatches</th><th>Text on background</th><th>White on accent</th><th></th></tr></thead><tbody>
+  {% for s in schemes %}<tr>
+    <td>{{ s.name }}{% if s.builtin %} <small class="muted">built-in</small>{% endif %}<br><code>{{ s.slug }}</code></td>
+    <td><span class="swatch" style="background:{{ s.accent }}"></span><span class="swatch" style="background:{{ s.accent2 }}"></span><span class="swatch" style="background:{{ s.bg }}"></span><span class="swatch" style="background:{{ s.surface }}"></span><span class="swatch" style="background:{{ s.text }}"></span></td>
+    <td><span class="badge {% if s.text_ok %}ok{% else %}warn{% endif %}">{{ s.text_contrast }}:1</span></td>
+    <td><span class="badge {% if s.accent_ok %}ok{% else %}warn{% endif %}">{{ s.accent_contrast }}:1</span></td>
+    <td>{% if not s.builtin %}<form method="post" action="{{ base }}/admin/schemes/{{ s.slug }}/delete" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Remove</button></form>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="muted small">Contrast ratios follow WCAG: 4.5:1 or better passes AA for normal text.</p>
+</section>
+{% endblock %}

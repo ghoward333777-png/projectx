@@ -94,7 +94,13 @@ pub fn environment(base: &str) -> Environment<'static> {
         "embed_player.html",
         "embed_checkout.html",
         "account.html",
-        "customer_login.html"
+        "customer_login.html",
+        "widgets.html",
+        "builder.html",
+        "embed_widget.html",
+        "templates.html",
+        "site_templates.html",
+        "schemes.html"
     );
     env
 }

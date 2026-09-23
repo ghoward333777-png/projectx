@@ -13,6 +13,7 @@ use mms_core::secrets::Secrets;
 use mms_core::settings::SettingsStore;
 use mms_core::signer::Signer;
 use mms_core::users::Users;
+use mms_core::widgets::Widgets;
 use std::sync::Arc;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -30,6 +31,7 @@ pub struct AppState {
     pub media: MediaStore,
     pub products: Products,
     pub jobs: Jobs,
+    pub widgets: Widgets,
     pub templates: Arc<minijinja::Environment<'static>>,
     /// Mount prefix such as "/store", or "" when served at the domain root.
     pub base: Arc<String>,
@@ -51,6 +53,7 @@ impl AppState {
             media: MediaStore::new(db.clone(), &config),
             products: Products::new(db.clone()),
             jobs: Jobs::new(db.clone()),
+            widgets: Widgets::new(db.clone()),
             config: Arc::new(config),
             db,
             secrets,
@@ -163,6 +166,82 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/logout", post(routes::account::logout))
         .route("/static/*path", get(routes::embed::static_file))
+        .route(
+            "/admin/widgets",
+            get(routes::widgets::list).post(routes::widgets::create),
+        )
+        .route("/admin/widgets/:uuid", get(routes::widgets::builder))
+        .route(
+            "/admin/widgets/:uuid/restore",
+            post(routes::widgets::restore),
+        )
+        .route(
+            "/admin/widgets/:uuid/duplicate",
+            post(routes::widgets::duplicate),
+        )
+        .route("/admin/widgets/:uuid/delete", post(routes::widgets::delete))
+        .route(
+            "/admin/widgets/:uuid/save-template",
+            post(routes::widgets::save_as_template),
+        )
+        .route(
+            "/admin/widgets/:uuid/export/:target",
+            get(routes::widgets::export),
+        )
+        .route("/api/v1/widgets/:uuid", post(routes::widgets::api_save))
+        .route(
+            "/api/v1/widgets/:uuid/preview",
+            post(routes::widgets::api_preview),
+        )
+        .route(
+            "/api/v1/widgets/:uuid/versions",
+            get(routes::widgets::api_versions),
+        )
+        .route("/embed/widget", get(routes::widgets::embed_by_query))
+        .route("/embed/widget/:uuid", get(routes::widgets::embed))
+        .route("/admin/templates", get(routes::templates::gallery))
+        .route(
+            "/admin/templates/import",
+            post(routes::templates::import_template),
+        )
+        .route(
+            "/admin/templates/:slug/preview",
+            get(routes::templates::preview),
+        )
+        .route(
+            "/admin/templates/:slug/export",
+            get(routes::templates::export_template),
+        )
+        .route(
+            "/admin/templates/:slug/delete",
+            post(routes::templates::delete_user_template),
+        )
+        .route("/admin/site-templates", get(routes::templates::sites))
+        .route(
+            "/admin/site-templates/import",
+            post(routes::templates::import_site),
+        )
+        .route(
+            "/admin/site-templates/:slug/apply",
+            post(routes::templates::apply_site),
+        )
+        .route(
+            "/admin/site-templates/:slug/export",
+            get(routes::templates::export_site),
+        )
+        .route(
+            "/admin/site-applications/:id/rollback",
+            post(routes::templates::rollback_site),
+        )
+        .route(
+            "/admin/schemes",
+            get(routes::templates::schemes).post(routes::templates::create_scheme),
+        )
+        .route("/admin/schemes/brand", post(routes::templates::save_brand))
+        .route(
+            "/admin/schemes/:slug/delete",
+            post(routes::templates::delete_scheme),
+        )
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),

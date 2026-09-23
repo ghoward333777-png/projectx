@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Templates{% endblock %}
+{% block body %}
+<h1>Widget templates</h1>
+<p class="muted">35 built-in designs plus your own. Preview any of them, then use one to start a widget. <a href="{{ base }}/admin/site-templates">Site templates</a> · <a href="{{ base }}/admin/schemes">Branding and colour schemes</a></p>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<nav class="cat-menu"><a href="{{ base }}/admin/templates" {% if not category %}class="on"{% endif %}>All</a>{% for c in categories %}<a href="{{ base }}/admin/templates?category={{ c[0] }}" {% if c[0] == category %}class="on"{% endif %}>{{ c[1] }}</a>{% endfor %}</nav>
+<div class="template-grid">
+  {% for t in builtin %}
+  <section class="card template-card">
+    <iframe src="{{ base }}/admin/templates/{{ t.slug }}/preview" title="{{ t.name }}" loading="lazy"></iframe>
+    <h3>{{ t.name }} <small class="muted">{{ t.category | label }}</small></h3>
+    <p class="muted">{{ t.description }}</p>
+    <form method="post" action="{{ base }}/admin/widgets" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="template" value="{{ t.slug }}"><input name="name" placeholder="Widget name (optional)"><button class="primary">Use</button><a class="button" href="{{ base }}/admin/templates/{{ t.slug }}/preview?theme=dark" target="_blank">Dark</a><a class="button" href="{{ base }}/admin/templates/{{ t.slug }}/export">Export</a></form>
+  </section>
+  {% endfor %}
+</div>
+<h2>Your templates</h2>
+{% if user_templates %}
+<div class="template-grid">
+  {% for t in user_templates %}
+  <section class="card template-card">
+    <iframe src="{{ base }}/admin/templates/{{ t.slug }}/preview" title="{{ t.name }}" loading="lazy"></iframe>
+    <h3>{{ t.name }} <small class="muted">{{ t.category }}</small></h3>
+    <form method="post" action="{{ base }}/admin/widgets" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="template" value="{{ t.slug }}"><input name="name" placeholder="Widget name"><button class="primary">Use</button><a class="button" href="{{ base }}/admin/templates/{{ t.slug }}/export">Export</a></form>
+    <form method="post" action="{{ base }}/admin/templates/{{ t.slug }}/delete" class="inline" onsubmit="return confirm('Remove this template?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Remove</button></form>
+  </section>
+  {% endfor %}
+</div>
+{% else %}<p class="muted">Save any widget as a template from the builder, or import one below.</p>{% endif %}
+<section class="card"><h2>Import a template file (.mmstpl.json)</h2>
+<form method="post" action="{{ base }}/admin/templates/import"><input type="hidden" name="_csrf" value="{{ csrf }}"><textarea name="json" rows="5" placeholder="Paste the file contents here"></textarea><button class="primary">Import</button></form></section>
+{% endblock %}

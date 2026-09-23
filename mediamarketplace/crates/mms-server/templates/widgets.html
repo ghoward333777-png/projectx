@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Widgets{% endblock %}
+{% block body %}
+<h1>Widgets</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+<section class="card">
+  <form method="post" action="{{ base }}/admin/widgets" class="filters">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input name="name" placeholder="New widget name">
+    <button class="primary">Create blank widget</button>
+    <a class="button" href="{{ base }}/admin/templates">Start from a template</a>
+  </form>
+</section>
+<section class="card">
+  <form method="get" action="{{ base }}/admin/widgets" class="filters"><input name="q" value="{{ q }}" placeholder="Search names"><select name="status"><option value="">Any status</option>{% for s in ["draft","published","archived"] %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><button>Filter</button></form>
+  {% if widgets %}
+  <table><thead><tr><th>Name</th><th>Status</th><th>Version</th><th>Template</th><th>Updated</th><th>Place it</th><th></th></tr></thead><tbody>
+  {% for w in widgets %}<tr>
+    <td><a href="{{ base }}/admin/widgets/{{ w.uuid }}">{{ w.name }}</a></td>
+    <td><span class="badge {% if w.status == 'published' %}ok{% endif %}">{{ w.status }}</span></td><td>{{ w.version }}</td><td>{{ w.template_slug | default("—") }}</td><td>{{ w.updated_at }}</td>
+    <td class="small"><b>WordPress</b> block “MediaMarketplace Embed” → Widget, ID <code>{{ w.uuid }}</code><br>or <code>[mms_embed kind="widget" id="{{ w.uuid }}"]</code><br><b>Joomla</b> menu item “MediaMarketplace » Widget”, ID <code>{{ w.uuid }}</code><br>or <code>{{ "{" }}mms_embed kind=widget id={{ w.uuid }}{{ "}" }}</code></td>
+    <td><form method="post" action="{{ base }}/admin/widgets/{{ w.uuid }}/duplicate" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Duplicate</button></form>
+        <form method="post" action="{{ base }}/admin/widgets/{{ w.uuid }}/delete" class="inline" onsubmit="return confirm('Delete this widget?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Delete</button></form></td>
+  </tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">No widgets yet. Create one above or start from a template.</p>{% endif %}
+</section>
+{% endblock %}

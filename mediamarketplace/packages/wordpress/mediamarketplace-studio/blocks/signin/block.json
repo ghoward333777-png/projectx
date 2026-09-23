@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "mms/signin",
+  "title": "MediaMarketplace My Media link",
+  "category": "media",
+  "icon": "admin-users",
+  "description": "A link that signs the current WordPress user into their MediaMarketplace account (My Media). Hidden for visitors who are not logged in.",
+  "keywords": ["account", "login", "my media"],
+  "textdomain": "mediamarketplace-studio",
+  "attributes": {
+    "label": { "type": "string", "default": "My media" },
+    "return": { "type": "string", "default": "/account" }
+  },
+  "supports": { "html": false },
+  "editorScript": "mms-blocks-editor"
+}

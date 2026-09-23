@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Site templates{% endblock %}
+{% block body %}
+<h1>Site templates</h1>
+<p class="muted">An industry starter: a colour scheme and a set of published widgets for each page. Applying creates the widgets; you place them on your pages with the snippets shown under Widgets. Roll back removes exactly what was created.</p>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="template-grid">
+  {% for s in sites %}
+  <section class="card">
+    <h3>{{ s.name }} <small class="muted">{{ s.industry }}</small></h3>
+    <p class="muted">{{ s.description }}</p>
+    <ul class="small">{% for p in s.pages %}<li><b>{{ p.name }}</b>{% if p.widgets %}: {{ p.widgets | join(", ") }}{% else %}: showcase{% endif %}</li>{% endfor %}</ul>
+    <p class="small">Scheme: {{ s.scheme }} · <a href="{{ base }}/admin/templates/{{ s.pages[0].widgets[0] }}/preview?scheme={{ s.scheme }}" target="_blank">preview</a></p>
+    <form method="post" action="{{ base }}/admin/site-templates/{{ s.slug }}/apply" class="inline" onsubmit="return confirm('Create these widgets and switch the store scheme to {{ s.scheme }}?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Apply</button></form>
+    <a class="button" href="{{ base }}/admin/site-templates/{{ s.slug }}/export">Export</a>
+  </section>
+  {% endfor %}
+</div>
+{% if applications %}
+<section class="card"><h2>Applied</h2><table><thead><tr><th>Template</th><th>When</th><th>State</th><th></th></tr></thead><tbody>
+{% for a in applications %}<tr><td>{{ a.template }}</td><td>{{ a.applied_at }}</td><td>{% if a.rolled_back %}rolled back{% else %}active{% endif %}</td><td>{% if not a.rolled_back %}<form method="post" action="{{ base }}/admin/site-applications/{{ a.id }}/rollback" class="inline" onsubmit="return confirm('Delete the widgets this template created?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Roll back</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endif %}
+<section class="card"><h2>Import a site template file (.mmssite.json)</h2>
+<form method="post" action="{{ base }}/admin/site-templates/import"><input type="hidden" name="_csrf" value="{{ csrf }}"><textarea name="json" rows="5" placeholder="Paste the file contents here"></textarea><button class="primary">Import</button></form></section>
+{% endblock %}

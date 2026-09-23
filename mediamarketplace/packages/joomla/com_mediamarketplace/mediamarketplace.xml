@@ -7,6 +7,14 @@
     <version>0.2.0</version>
     <description>COM_MEDIAMARKETPLACE_XML_DESCRIPTION</description>
     <namespace path="src">Joomla\Component\Mediamarketplace</namespace>
+    <files folder="site">
+        <folder>src</folder>
+        <folder>tmpl</folder>
+    </files>
+    <languages folder="site/language">
+        <language tag="en-GB">en-GB/com_mediamarketplace.ini</language>
+        <language tag="en-GB">en-GB/com_mediamarketplace.sys.ini</language>
+    </languages>
     <administration>
         <menu link="option=com_mediamarketplace" img="class:store">COM_MEDIAMARKETPLACE_MENU</menu>
         <submenu>

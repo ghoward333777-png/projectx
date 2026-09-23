@@ -8,4 +8,6 @@ pub mod media;
 pub mod products;
 pub mod setup;
 pub mod sso;
+pub mod templates;
+pub mod widgets;
 pub mod worker;

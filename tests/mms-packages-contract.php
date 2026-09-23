@@ -62,6 +62,24 @@ foreach (['plg_system_mediamarketplace/mediamarketplace.xml', 'com_mediamarketpl
 }
 contract_check(str_contains((string) file_get_contents("$pk/joomla/plg_system_mediamarketplace/mediamarketplace.xml"), '<folder>bin</folder>'), 'the Joomla plugin manifest must ship the bin folder');
 
+// --- Phase 2 placement: Gutenberg blocks and Joomla menu item types ------------------
+foreach (['showcase', 'embed', 'signin'] as $block) {
+    $json = json_decode((string) file_get_contents("$pk/wordpress/mediamarketplace-studio/blocks/$block/block.json"), true);
+    contract_check(is_array($json) && $json['name'] === "mms/$block" && $json['editorScript'] === 'mms-blocks-editor', "block.json for mms/$block must be valid");
+}
+$wpClass = (string) file_get_contents($pk . '/wordpress/mediamarketplace-studio/includes/class-mms-plugin.php');
+foreach (['register_block_type(MMS_DIR . \'/blocks/showcase\'', 'register_block_type(MMS_DIR . \'/blocks/embed\'', 'register_block_type(MMS_DIR . \'/blocks/signin\''] as $needle) {
+    contract_check(str_contains($wpClass, $needle), "the WordPress plugin must register the block: $needle");
+}
+contract_check(str_contains((string) file_get_contents($pk . '/wordpress/mediamarketplace-studio/blocks/editor.js'), "registerBlockType('mms/embed'"), 'the block editor script must register mms/embed');
+$comXml = (string) file_get_contents("$pk/joomla/com_mediamarketplace/mediamarketplace.xml");
+contract_check(str_contains($comXml, '<files folder="site">'), 'the Joomla component must ship a site part');
+foreach (['showcase', 'widget', 'account'] as $view) {
+    $meta = simplexml_load_file("$pk/joomla/com_mediamarketplace/site/tmpl/$view/default.xml");
+    contract_check($meta !== false && isset($meta->layout['title']), "Joomla menu item type for $view must declare a layout title");
+    contract_check(is_file("$pk/joomla/com_mediamarketplace/site/src/View/" . ucfirst($view) . "/HtmlView.php"), "Joomla site view $view must exist");
+}
+
 // --- Runtime against the real binary ---------------------------------------------------
 $bin = $root . '/target/release/mms-server';
 if (!is_file($bin)) {

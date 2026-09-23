@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "mms/showcase",
+  "title": "MediaMarketplace Showcase",
+  "category": "media",
+  "icon": "store",
+  "description": "The product showcase served by the bundled MediaMarketplace server, with grid or list view and an optional category filter.",
+  "keywords": ["store", "products", "media", "showcase"],
+  "textdomain": "mediamarketplace-studio",
+  "attributes": {
+    "view": { "type": "string", "default": "grid" },
+    "category": { "type": "string", "default": "" }
+  },
+  "supports": { "html": false, "align": ["wide", "full"] },
+  "editorScript": "mms-blocks-editor"
+}

@@ -285,6 +285,18 @@ pub async fn static_file(Path(path): Path<String>) -> Response {
             include_bytes!("../../static/mms-upload.js"),
             "application/javascript; charset=utf-8",
         ),
+        "mms-widget.js" => (
+            include_bytes!("../../static/mms-widget.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "mms-builder.js" => (
+            include_bytes!("../../static/mms-builder.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "mms-builder.css" => (
+            include_bytes!("../../static/mms-builder.css"),
+            "text/css; charset=utf-8",
+        ),
         "vendor/plyr.min.js" => (
             include_bytes!("../../static/vendor/plyr.min.js"),
             "application/javascript; charset=utf-8",

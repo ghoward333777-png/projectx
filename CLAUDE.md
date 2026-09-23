@@ -89,5 +89,15 @@ WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
   files, never by editing an applied migration.
 - Embeds are only served to registered bridge sites and carry a `frame-ancestors` policy
   for that site's origin. Never add a public embed route without the site check.
+- Widgets: `mms-core::render` is the one renderer (builder preview, embed, gallery,
+  export all go through it) and must stay deterministic; custom CSS always passes
+  `scope_css`. Widget templates (35) and site templates (12) are code in
+  `mms-core::templates`; keep the counts, the HTTP test asserts them. New templates
+  in `crates/mms-server/templates/` must be registered in `templates.rs`, new static
+  files in `routes/embed.rs::static_file`, new settings in `settings::DEFINITIONS`.
+- CMS placement has three equal forms and the contract test checks them: WordPress
+  blocks (`blocks/*/block.json`, no build step) and shortcodes; Joomla menu item
+  types (`com_mediamarketplace/site`), `{mms_*}` tags and `mod_mms_embed`. All render
+  the same `data-mms-embed` markup from `MmsRuntime::embed`.
 - Deliverable documents are Word (`docs/*.docx`), never Markdown. Notes inside
   `mediamarketplace/` are `.txt`.

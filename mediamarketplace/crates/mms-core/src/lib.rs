@@ -13,10 +13,13 @@ pub mod jobs;
 pub mod media;
 pub mod password;
 pub mod products;
+pub mod render;
 pub mod secrets;
 pub mod settings;
 pub mod signer;
+pub mod templates;
 pub mod users;
+pub mod widgets;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
