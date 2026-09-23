@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="module" client="site" method="upgrade">
+    <name>MOD_MMS_EMBED</name>
+    <author>MediaMarketplace Studio</author>
+    <creationDate>2026-09</creationDate>
+    <license>GPL-3.0-or-later</license>
+    <version>0.2.0</version>
+    <description>MOD_MMS_EMBED_XML_DESCRIPTION</description>
+    <namespace path="src">Joomla\Module\MmsEmbed</namespace>
+    <files>
+        <folder module="mod_mms_embed">services</folder>
+        <folder>src</folder>
+        <folder>tmpl</folder>
+    </files>
+    <languages folder="language">
+        <language tag="en-GB">en-GB/mod_mms_embed.ini</language>
+        <language tag="en-GB">en-GB/mod_mms_embed.sys.ini</language>
+    </languages>
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="kind" type="list" label="MOD_MMS_EMBED_KIND" default="showcase">
+                    <option value="showcase">MOD_MMS_EMBED_KIND_SHOWCASE</option>
+                    <option value="widget">MOD_MMS_EMBED_KIND_WIDGET</option>
+                    <option value="player">MOD_MMS_EMBED_KIND_PLAYER</option>
+                    <option value="cart">MOD_MMS_EMBED_KIND_CART</option>
+                    <option value="sitepass">MOD_MMS_EMBED_KIND_SITEPASS</option>
+                </field>
+                <field name="id" type="text" label="MOD_MMS_EMBED_ID" description="MOD_MMS_EMBED_ID_DESC" filter="string" />
+                <field name="view" type="list" label="MOD_MMS_EMBED_VIEW" default="grid">
+                    <option value="grid">MOD_MMS_EMBED_VIEW_GRID</option>
+                    <option value="list">MOD_MMS_EMBED_VIEW_LIST</option>
+                </field>
+                <field name="category" type="text" label="MOD_MMS_EMBED_CATEGORY" filter="string" />
+            </fieldset>
+            <fieldset name="advanced">
+                <field name="layout" type="modulelayout" label="JFIELD_ALT_LAYOUT_LABEL" />
+                <field name="moduleclass_sfx" type="textarea" label="COM_MODULES_FIELD_MODULECLASS_SFX_LABEL" rows="3" />
+                <field name="cache" type="list" label="COM_MODULES_FIELD_CACHING_LABEL" default="0"><option value="1">JGLOBAL_USE_GLOBAL</option><option value="0">COM_MODULES_FIELD_VALUE_NOCACHING</option></field>
+            </fieldset>
+        </fields>
+    </config>
+</extension>

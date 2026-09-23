@@ -70,15 +70,20 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
 
 ## MediaMarketplace Studio (`mediamarketplace/`)
 
-A separate product in this repo: a self-hosted media marketplace **server in Rust**
-(`crates/mms-core`, `crates/mms-server`; Axum + SQLite via sqlx) with **thin PHP bridge
-plugins** for WordPress and Joomla (`bridges/`). No WooCommerce or VirtueMart anywhere.
+A separate product in this repo: a media marketplace **server in Rust**
+(`crates/mms-core`, `crates/mms-server`; Axum + SQLite via sqlx) that ships **inside a
+WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
+(`packages/shared/MmsRuntime.php`) starts the binary on localhost and proxies
+`https://site/mms/...` to it. One install, one server. No WooCommerce or VirtueMart anywhere.
 
-- Run `cargo test` inside `mediamarketplace/` and `php tests/mms-bridge-contract.php`
-  from the repo root before shipping. Keep both green.
+- Run `cargo test` inside `mediamarketplace/` and `php tests/mms-packages-contract.php`
+  from the repo root before shipping (build the release binary first so the contract test
+  exercises the real start/proxy/sign-in path). `./build/package.sh` makes the zips.
 - The SSO token format (`base64url(json).base64url(hmac)` over the raw JSON, canonical
-  claim order `sub, email, name, host, exp`) is shared by `mms-core::signer` and both PHP
-  token helpers; the fixture in `signer.rs` and `tests/mms-bridge-contract.php` must stay identical.
+  claim order `sub, email, name, host, [role], exp`) is shared by `mms-core::signer` and
+  `MmsRuntime::signToken`; the fixture in `signer.rs` and the contract test must stay identical.
+- `public_url` decides the mount path (`https://site/mms` → `/mms`); every link, redirect
+  and cookie must go through `AppState::url` / the `base` template global.
 - Settings are declared once in `mms-core::settings::DEFINITIONS`; secrets are encrypted
   at rest via `mms-core::secrets`. Schema changes go in new `crates/mms-core/migrations/*.sql`
   files, never by editing an applied migration.
