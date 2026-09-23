@@ -18,7 +18,7 @@ impl Secrets {
             .chain_update(master)
             .finalize();
         Self {
-            cipher: XChaCha20Poly1305::new((&key).into()),
+            cipher: XChaCha20Poly1305::new(&key),
         }
     }
 
