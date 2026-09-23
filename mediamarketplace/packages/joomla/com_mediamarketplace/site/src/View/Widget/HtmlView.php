@@ -19,7 +19,7 @@ final class HtmlView extends BaseHtmlView
         $params = Factory::getApplication()->getParams();
         $id = trim((string) $params->get('widget_id', ''));
         $kind = (string) $params->get('kind', 'widget');
-        if ($id === '') {
+        if ($id === '' && !\in_array($kind, ['cart', 'sitepass'], true)) {
             $this->problem = 'COM_MEDIAMARKETPLACE_WIDGET_ID_MISSING';
         } else {
             $this->html = ShowcaseView::embed($kind, ['id' => $id, 'view' => (string) $params->get('view', '')], $this->problem);

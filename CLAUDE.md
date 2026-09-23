@@ -99,5 +99,17 @@ WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
   blocks (`blocks/*/block.json`, no build step) and shortcodes; Joomla menu item
   types (`com_mediamarketplace/site`), `{mms_*}` tags and `mod_mms_embed`. All render
   the same `data-mms-embed` markup from `MmsRuntime::embed`.
+- Commerce: `mms-core::commerce::totals` is the one money calculation (discount, then
+  tax on the discounted amount, half-up rounding); `Commerce::mark_paid` is idempotent
+  and is the only place that grants for an order; `routes::shop::complete_paid` wraps
+  it (subscription record, audit, webhooks) and is what the return URL and the
+  webhook both call. Gateways implement `mms-core::gateways::Gateway`; the test gateway
+  stays behind `payments.test_mode`; card data never touches the server.
+- Private pages: `Pages::gate` is the single access decision; every signup template
+  posts to the same endpoint and `Pages::sign` enforces the template's required
+  confirmations server-side. Keys are stored hashed. A changed agreement bumps the
+  version and supersedes signatures. Site passes never bypass invite keys.
+- Receipts and agreements use the native writer `mms-core::pdf`; keep its output
+  byte-stable for the same input.
 - Deliverable documents are Word (`docs/*.docx`), never Markdown. Notes inside
   `mediamarketplace/` are `.txt`.

@@ -1,4 +1,14 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Checkout · {{ site_name }}</title><link rel="stylesheet" href="{{ base }}/static/mms.css"></head>
-<body class="embed"><article class="product-page"><h1>Checkout</h1><p>Purchasing opens in the next release of MediaMarketplace Studio. Until then the store owner can grant access from the admin under Customers.</p><p><a href="javascript:history.back()">← Back</a></p></article>
+<body class="embed"><article class="product-page">
+<h1>Your cart</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if lines %}
+<table><tbody>{% for l in lines %}<tr><td>{{ l.quantity }} × {{ l.product.title }}</td><td class="r">{{ l.total_cents | money(currency) }}</td></tr>{% endfor %}
+<tr><td><b>Total</b>{% if totals.tax_cents %} <span class="muted small">incl. {{ totals.tax_name }}</span>{% endif %}</td><td class="r"><b>{{ totals.total_cents | money(currency) }}</b></td></tr></tbody></table>
+<p class="buy"><a class="button primary" href="{{ public_url }}/checkout" target="_top">Continue to secure checkout</a> <a class="button" href="{{ public_url }}/cart" target="_top">Edit cart</a></p>
+<p class="muted small">Checkout opens as a full page. Card details are entered on the payment provider's secure page.</p>
+{% else %}<p class="muted">Your cart is empty.</p>{% endif %}
+<p><a href="javascript:history.back()">← Back</a></p>
+</article>
 <script>parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*');</script></body></html>

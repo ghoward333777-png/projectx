@@ -23,6 +23,7 @@
                     <option value="showcase">MOD_MMS_EMBED_KIND_SHOWCASE</option>
                     <option value="widget">MOD_MMS_EMBED_KIND_WIDGET</option>
                     <option value="player">MOD_MMS_EMBED_KIND_PLAYER</option>
+                    <option value="page">MOD_MMS_EMBED_KIND_PAGE</option>
                     <option value="cart">MOD_MMS_EMBED_KIND_CART</option>
                     <option value="sitepass">MOD_MMS_EMBED_KIND_SITEPASS</option>
                 </field>

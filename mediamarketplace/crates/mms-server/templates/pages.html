@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Private pages{% endblock %}
+{% block body %}
+<h1>Private pages</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p><a class="button primary" href="{{ base }}/admin/pages/new">New page</a></p>
+<section class="card">
+{% if rows %}<table><thead><tr><th>Title</th><th>Protection</th><th>Signup template</th><th>Signers</th><th>Status</th><th>Place it</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><a href="{{ base }}/admin/pages/{{ r.p.uuid }}">{{ r.p.title }}</a></td><td>{{ r.p.protection | label }}</td><td>{{ r.p.signup_template | label }}</td><td>{{ r.signers }}</td><td><span class="badge {% if r.p.status == 'published' %}ok{% endif %}">{{ r.p.status }}</span></td>
+<td class="small"><code>[mms_embed kind="page" id="{{ r.p.uuid }}"]</code><br><code>{{ "{" }}mms_embed kind=page id={{ r.p.uuid }}{{ "}" }}</code><br><a href="{{ base }}/page/{{ r.p.uuid }}" target="_blank">Direct link</a></td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="muted">No private pages yet. A private page shows a signup form and an agreement, then its content; paid pages send the visitor through checkout first.</p>{% endif %}
+</section>
+{% endblock %}

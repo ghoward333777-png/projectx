@@ -91,6 +91,24 @@ impl Entitlements {
         Ok(n > 0)
     }
 
+    /// Like `check` but a site pass does not count: used for invite-only pages,
+    /// where the key itself is the invitation.
+    pub async fn check_exact(
+        &self,
+        user_id: i64,
+        scope: &str,
+        scope_ref: &str,
+        now: &str,
+    ) -> Result<bool> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM entitlements WHERE user_id = ? AND status = 'active' AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?) AND scope = ? AND scope_ref = ?",
+        )
+        .bind(user_id).bind(now).bind(now).bind(scope).bind(scope_ref)
+        .fetch_one(&self.db.pool)
+        .await?;
+        Ok(n > 0)
+    }
+
     pub async fn for_user(&self, user_id: i64) -> Result<Vec<Entitlement>> {
         Ok(sqlx::query_as::<_, Entitlement>("SELECT id, user_id, product_id, scope, scope_ref, source, source_ref, starts_at, ends_at, status FROM entitlements WHERE user_id = ? ORDER BY id DESC")
             .bind(user_id).fetch_all(&self.db.pool).await?)

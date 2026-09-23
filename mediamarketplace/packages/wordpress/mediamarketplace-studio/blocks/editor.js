@@ -80,13 +80,16 @@
                 { label: __('Widget (from the builder)', 'mediamarketplace-studio'), value: 'widget' },
                 { label: __('Product page', 'mediamarketplace-studio'), value: 'product' },
                 { label: __('Player', 'mediamarketplace-studio'), value: 'player' },
+                { label: __('Private page', 'mediamarketplace-studio'), value: 'page' },
+                { label: __('Cart', 'mediamarketplace-studio'), value: 'cart' },
+                { label: __('Site passes for sale', 'mediamarketplace-studio'), value: 'sitepass' },
                 { label: __('Showcase', 'mediamarketplace-studio'), value: 'showcase' }
               ],
               onChange: function (v) { props.setAttributes({ kind: v }); }
             }),
             el(TextControl, {
-              label: __('Widget ID or product slug', 'mediamarketplace-studio'),
-              help: __('Copy it from Widgets → Place (WordPress) in the store admin.', 'mediamarketplace-studio'),
+              label: __('Widget ID, page ID or product slug', 'mediamarketplace-studio'),
+              help: __('Copy it from Widgets or Pages in the store admin.', 'mediamarketplace-studio'),
               value: a.id,
               onChange: function (v) { props.setAttributes({ id: v }); }
             }),
@@ -97,7 +100,7 @@
             })
           )
         ),
-        el('div', { key: 'c' }, a.id || a.kind === 'showcase'
+        el('div', { key: 'c' }, a.id || a.kind === 'showcase' || a.kind === 'cart' || a.kind === 'sitepass'
           ? preview('mms/embed', a, __('MediaMarketplace ', 'mediamarketplace-studio') + a.kind, [a.id])
           : placeholder(__('MediaMarketplace embed', 'mediamarketplace-studio'), [__('Enter a widget ID or product slug in the block settings.', 'mediamarketplace-studio')]))
       ]);

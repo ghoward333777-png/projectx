@@ -62,7 +62,9 @@ pub async fn my_media(
         }
     }
     let site_name = state.settings.get("general.site_name").await?;
-    Ok(Html(state.render("account.html", context! { user, site_name, items, site_pass, public_url => state.config.server.public_url, csrf => "" })?).into_response())
+    let pass_notice = state.commerce.pass_notice_for(user.id).await?;
+    let renew_slug: Option<String> = sqlx::query_scalar("SELECT slug FROM products WHERE type = 'site_pass' AND status = 'published' ORDER BY id LIMIT 1").fetch_optional(&state.db.pool).await?;
+    Ok(Html(state.render("account.html", context! { user, site_name, items, site_pass, pass_notice, renew_slug, public_url => state.config.server.public_url, csrf => "", tab => "media" })?).into_response())
 }
 
 #[derive(Deserialize)]
@@ -148,4 +150,207 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> AppResult<
         Redirect::to(&state.url("/login")),
     )
         .into_response())
+}
+
+// ----- orders, receipts, agreements and subscriptions -----
+
+pub async fn orders(
+    State(state): State<AppState>,
+    MaybeUser(user, _): MaybeUser,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(Redirect::to(&state.url("/login?return=%2Faccount%2Forders")).into_response());
+    };
+    let orders = state.commerce.orders("", "", Some(user.id)).await?;
+    let mut rows = Vec::new();
+    for o in orders {
+        let items = state.commerce.items(o.id).await?;
+        let receipt = state.commerce.receipt(o.id).await?.map(|(n, _, _)| n);
+        rows.push(context! { total => mms_core::commerce::money(o.total_cents, &o.currency), items, receipt, o });
+    }
+    let site_name = state.settings.get("general.site_name").await?;
+    Ok(Html(state.render(
+        "account_orders.html",
+        context! { user, site_name, rows, tab => "orders" },
+    )?)
+    .into_response())
+}
+
+pub async fn receipt(
+    State(state): State<AppState>,
+    MaybeUser(user, _): MaybeUser,
+    axum::extract::Path((uuid, format)): axum::extract::Path<(String, String)>,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(Redirect::to(&state.url("/login?return=%2Faccount%2Forders")).into_response());
+    };
+    let Some(o) = state.commerce.order_by_uuid(&uuid).await? else {
+        return Ok(axum::http::StatusCode::NOT_FOUND.into_response());
+    };
+    if o.user_id != user.id {
+        return Ok(axum::http::StatusCode::FORBIDDEN.into_response());
+    }
+    let Some((number, html, pdf)) = state.commerce.receipt(o.id).await? else {
+        return Ok(axum::http::StatusCode::NOT_FOUND.into_response());
+    };
+    use axum::http::header;
+    if format == "pdf" {
+        Ok((
+            [
+                (header::CONTENT_TYPE, "application/pdf".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("inline; filename=\"{number}.pdf\""),
+                ),
+            ],
+            pdf,
+        )
+            .into_response())
+    } else {
+        Ok(Html(html).into_response())
+    }
+}
+
+pub async fn agreements(
+    State(state): State<AppState>,
+    MaybeUser(user, _): MaybeUser,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(
+            Redirect::to(&state.url("/login?return=%2Faccount%2Fagreements")).into_response(),
+        );
+    };
+    let ags = state.pages.agreements(None, Some(user.id)).await?;
+    let mut rows = Vec::new();
+    for a in ags {
+        let page = state.pages.by_id(a.page_id).await?;
+        rows.push(context! { a, title => page.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| "(deleted page)".into()), page_uuid => page.as_ref().map(|p| p.uuid.clone()) });
+    }
+    let site_name = state.settings.get("general.site_name").await?;
+    Ok(Html(state.render(
+        "account_agreements.html",
+        context! { user, site_name, rows, tab => "agreements" },
+    )?)
+    .into_response())
+}
+
+pub async fn agreement_pdf(
+    State(state): State<AppState>,
+    MaybeUser(user, _): MaybeUser,
+    axum::extract::Path(uuid): axum::extract::Path<String>,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(
+            Redirect::to(&state.url("/login?return=%2Faccount%2Fagreements")).into_response(),
+        );
+    };
+    use axum::http::header;
+    match state
+        .pages
+        .agreement_pdf_by_uuid(&uuid, Some(user.id))
+        .await?
+    {
+        Some(pdf) => Ok((
+            [
+                (header::CONTENT_TYPE, "application/pdf".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("inline; filename=\"agreement-{uuid}.pdf\""),
+                ),
+            ],
+            pdf,
+        )
+            .into_response()),
+        None => Ok(axum::http::StatusCode::NOT_FOUND.into_response()),
+    }
+}
+
+pub async fn subscriptions(
+    State(state): State<AppState>,
+    MaybeUser(user, token): MaybeUser,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(
+            Redirect::to(&state.url("/login?return=%2Faccount%2Fsubscriptions")).into_response(),
+        );
+    };
+    let subs = state.commerce.subscriptions_for(user.id).await?;
+    let mut rows = Vec::new();
+    for s in subs {
+        let title = state
+            .products
+            .by_id(s.product_id)
+            .await?
+            .map(|p| p.title)
+            .unwrap_or_default();
+        rows.push(context! { s, title });
+    }
+    let csrf = token
+        .as_deref()
+        .map(|t| auth::csrf_token(&state, t))
+        .unwrap_or_default();
+    let site_name = state.settings.get("general.site_name").await?;
+    Ok(Html(state.render("account_subscriptions.html", context! { user, site_name, rows, csrf, tab => "subscriptions", notice => q.get("notice").cloned().unwrap_or_default(), error => q.get("error").cloned().unwrap_or_default() })?).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct CancelForm {
+    _csrf: String,
+}
+
+pub async fn cancel_subscription(
+    State(state): State<AppState>,
+    MaybeUser(user, token): MaybeUser,
+    axum::extract::Path(uuid): axum::extract::Path<String>,
+    Form(f): Form<CancelForm>,
+) -> AppResult<Response> {
+    let Some(user) = user else {
+        return Ok(
+            Redirect::to(&state.url("/login?return=%2Faccount%2Fsubscriptions")).into_response(),
+        );
+    };
+    if f._csrf
+        != token
+            .as_deref()
+            .map(|t| auth::csrf_token(&state, t))
+            .unwrap_or_default()
+    {
+        return Ok((axum::http::StatusCode::FORBIDDEN, "Invalid form token").into_response());
+    }
+    let Some(sub) = state.commerce.subscription_by_uuid(&uuid).await? else {
+        return Ok(axum::http::StatusCode::NOT_FOUND.into_response());
+    };
+    if sub.user_id != user.id {
+        return Ok(axum::http::StatusCode::FORBIDDEN.into_response());
+    }
+    if let (Some(gw), Some(ext)) = (
+        crate::routes::shop::gateway_named(&state, &sub.gateway).await?,
+        sub.external_id.as_deref(),
+    ) {
+        if let Err(e) = gw.cancel_subscription(ext, true).await {
+            return Ok(Redirect::to(&state.url(&format!(
+                "/account/subscriptions?error={}",
+                crate::routes::media::urlencoding(&e.to_string())
+            )))
+            .into_response());
+        }
+    }
+    // Access stays until the paid period ends; the gateway stops renewing.
+    state
+        .commerce
+        .set_subscription_status(&sub, "active", true)
+        .await?;
+    state
+        .audit
+        .record(
+            Some(user.id),
+            "subscription.cancel_requested",
+            "subscription",
+            Some(&sub.uuid),
+            None,
+            None,
+        )
+        .await?;
+    Ok(Redirect::to(&state.url("/account/subscriptions?notice=Your+pass+will+not+renew.+It+stays+open+until+the+end+of+the+period+you+paid+for.")).into_response())
 }

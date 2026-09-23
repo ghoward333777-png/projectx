@@ -1586,3 +1586,1034 @@ async fn phase_two_widgets_templates_schemes_and_site_templates() {
     // The site-wide scheme moved to the template's scheme.
     assert_eq!(st.settings.get("general.scheme").await.unwrap(), "warm");
 }
+
+/// Merges every Set-Cookie of a response into an existing cookie header value.
+fn merge_cookies(existing: &str, res: &axum::response::Response) -> String {
+    let mut jar: Vec<(String, String)> = existing
+        .split(';')
+        .filter_map(|c| c.trim().split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    for v in res.headers().get_all(header::SET_COOKIE) {
+        let first = v.to_str().unwrap().split(';').next().unwrap();
+        if let Some((k, val)) = first.split_once('=') {
+            jar.retain(|(name, _)| name != k);
+            if !val.is_empty() {
+                jar.push((k.to_string(), val.to_string()));
+            }
+        }
+    }
+    jar.iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn location(res: &axum::response::Response) -> String {
+    res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn customer_csrf(app: &axum::Router, cookie: &str) -> String {
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    body.split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .map(|s| s.split('"').next().unwrap().to_string())
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn phase_three_cart_checkout_orders_receipts_subscriptions_pages_api() {
+    let st = state().await;
+    let app = app::router(st.clone());
+    let (admin_cookie, csrf) = admin_session(&app).await;
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/bridges",
+            &format!("_csrf={csrf}&name=Site&host=wordpress&origin=https%3A%2F%2Fwww.example.com"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let site = body
+        .split("<dt>Site ID</dt><dd><code>")
+        .nth(1)
+        .unwrap()
+        .split('<')
+        .next()
+        .unwrap()
+        .to_string();
+
+    // Catalogue: a film, a 30-day pass, a recurring pass, a private-page product.
+    let now = mms_core::now();
+    for (uuid, slug, t, title, price, settings) in [
+        ("p1", "film", "video", "Film", 4900, "{}"),
+        (
+            "p2",
+            "pass",
+            "site_pass",
+            "Month pass",
+            9900,
+            r#"{"validity":"days","days":"30","scope":"site"}"#,
+        ),
+        (
+            "p3",
+            "club",
+            "site_pass",
+            "Club",
+            1900,
+            r#"{"validity":"recurring","interval":"month","scope":"site"}"#,
+        ),
+        ("p4", "vault", "private_page", "Vault access", 1000, "{}"),
+        ("p5", "free-guide", "pdf", "Free guide", 0, "{}"),
+    ] {
+        sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, settings, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'USD', ?, 'published', ?, ?)")
+            .bind(uuid).bind(slug).bind(t).bind(title).bind(price).bind(settings).bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    }
+    // Coupon and tax from the admin pages.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/coupons",
+            &format!("_csrf={csrf}&code=save10&kind=percent&amount=10&max_uses=5"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Coupon+created"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/tax",
+            &format!("_csrf={csrf}&country=DE&name=VAT&rate=19"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Tax+rate+saved"));
+
+    // A guest adds the film through the embedded Buy button, then registers.
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/checkout?site={site}&product=film"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let mut cookie = merge_cookies("", &res);
+    assert!(cookie.contains("mms_cart="));
+    let body = text(res).await;
+    assert!(
+        body.contains("1 × Film")
+            && body.contains("Continue to secure checkout")
+            && body.contains("target=\"_top\"")
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/register",
+            "name=Ada&email=ada%40example.com&password=a-strong-passphrase&return=%2Fcheckout",
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    cookie = merge_cookies(&cookie, &res);
+    // The guest cart follows the new account; the pass joins it.
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=pass", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(location(&res), "/cart");
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/coupon", "code=SAVE10", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Coupon+applied"));
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/country", "country=de", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(location(&res), "/cart");
+    let res = app
+        .clone()
+        .oneshot(get("/cart", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Film") && body.contains("Month pass"),
+        "{body}"
+    );
+    assert!(
+        body.contains("USD 148.00")
+            && body.contains("-USD 14.80")
+            && body.contains("VAT")
+            && body.contains("USD 158.51"),
+        "{body}"
+    );
+
+    // Checkout offers the test gateway (test mode is on by default) and completes.
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(body.contains("Test payment") && body.contains("name=\"gateway\" value=\"test\""));
+    let ccsrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway=test"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let loc = location(&res);
+    assert!(
+        loc.starts_with("http://localhost:8090/checkout/test/"),
+        "{loc}"
+    );
+    let order_uuid = loc.rsplit('/').next().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/checkout/test/{order_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Pay USD 158.51"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/checkout/test/{order_uuid}"),
+            &format!("_csrf={ccsrf}&result=paid"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let ret = location(&res);
+    let res = app.clone().oneshot(get(&ret, Some(&cookie))).await.unwrap();
+    assert_eq!(location(&res), format!("/checkout/done/{order_uuid}"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/checkout/done/{order_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Thank you") && body.contains("Receipt MMS-"),
+        "{body}"
+    );
+    // Access granted: film and the whole library; cart emptied; coupon counted.
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/product/film?site={site}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains(">Open<"));
+    let res = app
+        .clone()
+        .oneshot(get("/account", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Your site pass is active"));
+    let res = app
+        .clone()
+        .oneshot(get("/cart", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Your cart is empty"));
+    // Receipt PDF and order history for the customer.
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/account/receipts/{order_uuid}/pdf"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "application/pdf");
+    assert!(bytes(res).await.starts_with(b"%PDF"));
+    let res = app
+        .clone()
+        .oneshot(get("/account/orders", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("ORD-") && body.contains("paid") && body.contains("MMS-"));
+    // A second customer cannot read that receipt.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/register",
+            "name=Bob&email=bob%40example.com&password=another-passphrase",
+            None,
+        ))
+        .await
+        .unwrap();
+    let bob = merge_cookies("", &res);
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/account/receipts/{order_uuid}/pdf"),
+            Some(&bob),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Admin sees the order, refunds it, access goes away.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/orders?status=paid", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("ada@example.com") && body.contains("USD 158.51"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/orders/{order_uuid}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Refund and revoke access") && body.contains("VAT (19"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/orders/{order_uuid}/refund"),
+            &format!("_csrf={csrf}&reason=test"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Refunded"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/product/film?site={site}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(!text(res).await.contains(">Open<"));
+
+    // Free items complete without a gateway.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/cart/add",
+            "product=free-guide",
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let ccsrf = customer_csrf(&app, &cookie).await;
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway="),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).starts_with("/checkout/done/"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/product/free-guide?site={site}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains(">Open<"));
+
+    // Recurring pass: a subscription record, cancel at period end, renewal and end via webhooks.
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=club", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("recurring") || body.contains("Test payment"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway=test"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let club_order = location(&res).rsplit('/').next().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/checkout/return/test?order={club_order}&result=paid"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/account/subscriptions", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Club") && body.contains("every month") && body.contains("Cancel renewal"),
+        "{body}"
+    );
+    let sub_uuid = body
+        .split("/account/subscriptions/")
+        .nth(1)
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/account/subscriptions/{sub_uuid}/cancel"),
+            &format!("_csrf={ccsrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("will+not+renew"));
+    let renew = serde_json::json!({ "id": "evt_renew_1", "kind": "renewed", "subscription_id": format!("sub_test_{club_order}"), "period_end": "2030-01-01T00:00:00Z" }).to_string();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/test")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(renew.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/test")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(renew))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        text(res).await,
+        "duplicate",
+        "webhooks are idempotent by event id"
+    );
+    let ents = st.entitlements.for_user(2).await.unwrap();
+    assert!(ents.iter().any(
+        |e| e.source == "subscription" && e.ends_at.as_deref() == Some("2030-01-01T00:00:00Z")
+    ));
+    let ended = serde_json::json!({ "id": "evt_end_1", "kind": "ended", "subscription_id": format!("sub_test_{club_order}") }).to_string();
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/test")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(ended))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let ents = st.entitlements.for_user(2).await.unwrap();
+    assert!(ents
+        .iter()
+        .filter(|e| e.source == "subscription")
+        .all(|e| e.status == "revoked"));
+    assert!(
+        !st.entitlements
+            .check(
+                2,
+                &mms_core::entitlements::Subject::Product(1),
+                &mms_core::now()
+            )
+            .await
+            .unwrap(),
+        "an ended subscription takes the pass with it"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/webhooks/stripe", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/stripe")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "Stripe is not configured"
+    );
+
+    // Passes admin: holders, extend.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/passes", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("ada@example.com") && body.contains("Extend days"));
+    let eid = body
+        .split("/admin/passes/")
+        .nth(1)
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/passes/{eid}/extend"),
+            &format!("_csrf={csrf}&days=10"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Pass+extended"));
+
+    // Private page: invite-only with a key, dual-action signup, then a paid page through checkout.
+    let res = app.clone().oneshot(form("POST", "/admin/pages", &format!("_csrf={csrf}&title=Members+vault&content=%23+Secret%0A%0AHello+**members**&agreement=Be+nice.%0A%0ADo+not+share.&signup_template=dual_action&protection=invite&status=published"), Some(&admin_cookie))).await.unwrap();
+    let page_uuid = location(&res)
+        .split("/admin/pages/")
+        .nth(1)
+        .unwrap()
+        .split('?')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/pages/{page_uuid}/keys"),
+            &format!("_csrf={csrf}&max_uses=1"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let key = location(&res).split("new_key=").nth(1).unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{page_uuid}?site={site}"), None))
+        .await
+        .unwrap();
+    let status = res.status();
+    if status != StatusCode::OK {
+        panic!("page gate {status}: {}", text(res).await);
+    }
+    assert_eq!(
+        res.headers()[header::CONTENT_SECURITY_POLICY],
+        "frame-ancestors 'self' https://www.example.com"
+    );
+    assert!(text(res).await.contains("Sign in or create"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{page_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let page = st.pages.by_uuid(&page_uuid).await.unwrap().unwrap();
+    let decision = st
+        .pages
+        .gate(&page, Some(2), "ip:x", false, &mms_core::now())
+        .await
+        .unwrap();
+    assert!(
+        body.contains("needs an access key"),
+        "gate={decision:?} protection={} ents={:?}",
+        page.protection,
+        st.entitlements
+            .for_user(2)
+            .await
+            .unwrap()
+            .iter()
+            .map(|e| (e.scope.clone(), e.scope_ref.clone(), e.status.clone()))
+            .collect::<Vec<_>>()
+    );
+    let pcsrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{page_uuid}/key"),
+            &format!("_csrf={pcsrf}&key=WRONG"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("not+valid"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{page_uuid}/key"),
+            &format!("_csrf={pcsrf}&key={key}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Key+accepted"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{page_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("I have read the agreement")
+            && body.contains("Be nice.")
+            && body.contains("id=\"sig\""),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{page_uuid}/sign"),
+            &format!("_csrf={pcsrf}&name=Ada+Lovelace&agree=1"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        location(&res).contains("I+have+read"),
+        "server enforces the template's confirmations"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{page_uuid}/sign"),
+            &format!("_csrf={pcsrf}&name=Ada+Lovelace&read=1&agree=1"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Thank+you"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{page_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("<h1>Secret</h1>")
+            && body.contains("Hello <b>members</b>")
+            && body.contains("Licensed to ada@example.com"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/account/agreements", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Members vault") && body.contains("/pdf"));
+    let ag = body
+        .split("/account/agreements/")
+        .nth(1)
+        .unwrap()
+        .split("/pdf")
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/account/agreements/{ag}/pdf"), Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "application/pdf");
+    assert!(bytes(res).await.starts_with(b"%PDF"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/account/agreements/{ag}/pdf"), Some(&bob)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/pages/{page_uuid}/signers.csv"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let csv = text(res).await;
+    assert!(csv.starts_with("signed_at,name,email") && csv.contains("Ada Lovelace"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/pages/{page_uuid}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let agreement_id = body
+        .split("/signers/")
+        .nth(1)
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/pages/{page_uuid}/signers/{agreement_id}/revoke"),
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Signer+revoked"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{page_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(
+        text(res).await.contains("needs an access key"),
+        "revoking withdraws the page"
+    );
+    // Paid page: Bob (no site pass) signs, is sent to checkout, pays, then the page opens.
+    // Ada, who holds a site pass, gets paid pages without paying again.
+    let res = app.clone().oneshot(form("POST", "/admin/pages", &format!("_csrf={csrf}&title=Paid+vault&content=Paid+secret&agreement=Pay+first.&signup_template=checkbox&protection=paid&product_id=4&status=published"), Some(&admin_cookie))).await.unwrap();
+    let paid_uuid = location(&res)
+        .split("/admin/pages/")
+        .nth(1)
+        .unwrap()
+        .split('?')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{paid_uuid}"), Some(&bob)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let bcsrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{paid_uuid}/sign"),
+            &format!("_csrf={bcsrf}&name=Bob+Builder&agree=1"),
+            Some(&bob),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(location(&res), "/checkout");
+    let bob = merge_cookies(&bob, &res);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{paid_uuid}"), Some(&bob)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Buy access"), "signed but unpaid");
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(&bob)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("Vault access"), "{body}");
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={bcsrf}&gateway=test"),
+            Some(&bob),
+        ))
+        .await
+        .unwrap();
+    let vault_order = location(&res).rsplit('/').next().unwrap().to_string();
+    app.clone()
+        .oneshot(get(
+            &format!("/checkout/return/test?order={vault_order}&result=paid"),
+            Some(&bob),
+        ))
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{paid_uuid}"), Some(&bob)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Paid secret"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/page/{paid_uuid}/sign"),
+            &format!("_csrf={pcsrf}&name=Ada+Lovelace&agree=1"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        location(&res).contains("Thank+you"),
+        "site pass holders are not charged for paid pages"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/page/{paid_uuid}"), Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Paid secret"));
+    // Declined payment cancels the order and keeps the cart.
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=film", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway=test"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let bad_order = location(&res).rsplit('/').next().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/checkout/return/test?order={bad_order}&result=fail"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Declined"));
+    assert_eq!(
+        st.commerce
+            .order_by_uuid(&bad_order)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "cancelled"
+    );
+
+    // API keys and outbound webhooks.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/integrations/keys",
+            &format!("_csrf={csrf}&name=Zapier&scopes=read"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let api_key = location(&res).split("new_key=").nth(1).unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(get("/api/v1/orders", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/orders?status=paid")
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(body.contains("\"number\":\"ORD-") && body.contains(&club_order));
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/grants")
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"customer":"bob@example.com","product":"film"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::FORBIDDEN,
+        "read keys cannot grant"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/integrations/keys",
+            &format!("_csrf={csrf}&name=CRM&scopes=write"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let write_key = location(&res).split("new_key=").nth(1).unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/grants")
+                .header(header::AUTHORIZATION, format!("Bearer {write_key}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"customer":"bob@example.com","product":"film"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/film?site={site}"), Some(&bob)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains(">Open<"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/integrations/webhooks",
+            &format!("_csrf={csrf}&url=http%3A%2F%2F127.0.0.1%3A9%2Fhook&ev_order.paid=1"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Webhook+added"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/integrations/webhooks/test",
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Test+event+queued"));
+    let job = st.jobs.claim().await.unwrap().expect("a delivery job");
+    assert_eq!(job.r#type, "webhook.deliver");
+    assert!(
+        routes::worker::run(&st, &job.r#type, job.args.as_deref().unwrap_or("{}"))
+            .await
+            .is_err(),
+        "nothing listens on port 9"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/admin/integrations", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(body.contains("order.paid") && body.contains("whsec_") && body.contains("Zapier"));
+    // Pass housekeeping job runs.
+    routes::worker::run(&st, "passes.housekeeping", "{}")
+        .await
+        .unwrap();
+}

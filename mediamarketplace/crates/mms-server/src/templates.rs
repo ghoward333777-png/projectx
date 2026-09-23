@@ -36,6 +36,9 @@ pub fn environment(base: &str) -> Environment<'static> {
     env.add_filter("money", |cents: i64, currency: String| {
         format!("{} {}.{:02}", currency, cents / 100, cents % 100)
     });
+    env.add_filter("urlencode", |s: String| {
+        crate::routes::media::urlencoding(&s)
+    });
     env.add_filter("truncate", |s: String, n: usize| {
         if s.chars().count() <= n {
             s
@@ -100,7 +103,24 @@ pub fn environment(base: &str) -> Environment<'static> {
         "embed_widget.html",
         "templates.html",
         "site_templates.html",
-        "schemes.html"
+        "schemes.html",
+        "cart.html",
+        "checkout.html",
+        "checkout_test.html",
+        "checkout_done.html",
+        "account_orders.html",
+        "account_agreements.html",
+        "account_subscriptions.html",
+        "orders.html",
+        "order_detail.html",
+        "coupons.html",
+        "passes.html",
+        "pages.html",
+        "page_form.html",
+        "page_gate.html",
+        "page_view.html",
+        "integrations.html",
+        "account_nav.html"
     );
     env
 }

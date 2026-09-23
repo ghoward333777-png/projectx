@@ -87,9 +87,12 @@ mod tests {
         let enc = s.encrypt("sk_live_abc123").unwrap();
         assert!(enc.starts_with("x1:"));
         assert_eq!(s.decrypt(&enc).unwrap(), "sk_live_abc123");
-        let mut broken = enc.clone();
-        broken.pop();
-        broken.push('A');
+        // Flip a character in the middle of the ciphertext (the last base64 character
+        // can encode padding bits, so changing it is not always a change).
+        let mut chars: Vec<char> = enc.chars().collect();
+        let i = chars.len() / 2;
+        chars[i] = if chars[i] == 'A' { 'B' } else { 'A' };
+        let broken: String = chars.into_iter().collect();
         assert!(s.decrypt(&broken).is_err());
         let other = Secrets::from_master_key(b"different-key");
         assert!(other.decrypt(&enc).is_err());

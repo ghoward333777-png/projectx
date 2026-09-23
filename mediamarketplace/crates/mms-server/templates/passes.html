@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Site passes{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/orders">← Orders</a></p>
+<h1>Site passes</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="tiles">
+  <div class="tile"><span class="num">{{ stats.active_passes }}</span><span>Active passes</span></div>
+  <div class="tile"><span class="num">{{ stats.active_subscriptions }}</span><span>Recurring</span></div>
+  <div class="tile"><span class="num">{{ mrr }}</span><span>Monthly recurring</span></div>
+  <div class="tile"><span class="num">{{ stats.expiring_7d }}</span><span>Ending within 7 days</span></div>
+  <div class="tile"><span class="num">{{ stats.churned_30d }}</span><span>Cancelled, 30 days</span></div>
+</div>
+<section class="card">
+  <h2>Holders</h2>
+  <p class="muted small">Holders get a renewal notice in My media 7, 3 and 1 days before a pass ends. Sell passes as products of type <i>Site pass</i>.</p>
+  {% if holders %}<table><thead><tr><th>Customer</th><th>Scope</th><th>Ends</th><th>Status</th><th>Source</th><th></th></tr></thead><tbody>
+  {% for h in holders %}<tr><td><a href="{{ base }}/admin/customers/{{ h.cuuid }}">{{ h.name }}</a> <span class="muted small">{{ h.email }}</span></td><td>{{ h.scope }}</td><td>{{ h.ends_at | default("never") }}{% if h.expiring %} <span class="badge warn">soon</span>{% endif %}</td><td>{{ h.status }}</td><td>{{ h.source }}</td>
+  <td><form method="post" action="{{ base }}/admin/passes/{{ h.eid }}/extend" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><input name="days" value="30" style="width:60px"> <button>Extend days</button></form> <form method="post" action="{{ base }}/admin/customers/{{ h.cuuid }}/revoke/{{ h.eid }}" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Revoke</button></form></td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted">Nobody holds a pass yet.</p>{% endif %}
+</section>
+{% if subs %}<section class="card"><h2>Recurring passes</h2><table><thead><tr><th>Customer</th><th>Pass</th><th>Status</th><th>Period ends</th></tr></thead><tbody>
+{% for s in subs %}<tr><td>{{ s.email }}</td><td>{{ s.title }}</td><td>{{ s.status }}{% if s.cancel_at_period_end %} (cancels at period end){% endif %}</td><td>{{ s.period_end | default("—") }}</td></tr>{% endfor %}
+</tbody></table></section>{% endif %}
+{% endblock %}

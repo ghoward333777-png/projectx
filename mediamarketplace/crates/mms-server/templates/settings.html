@@ -7,7 +7,7 @@
 <form method="post" action="{{ base }}/admin/settings">
   <input type="hidden" name="_csrf" value="{{ csrf }}">
   {% for s in sections %}
-  <section class="card">
+  <section class="card" id="{{ s.id }}">
     <h2>{{ s.label }}</h2>
     {% for f in s.fields %}
     <label>{{ f.label }}

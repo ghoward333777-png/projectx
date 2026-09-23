@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ base }}/static/mms.css">
 </head>
 <body class="admin">
-{% if user %}
+{% if user and active %}
 <header class="topbar">
   <a class="brand" href="{{ base }}/admin">{{ site_name }}</a>
   <nav>
@@ -16,9 +16,12 @@
     <a href="{{ base }}/admin/products" {% if active == "products" %}class="active"{% endif %}>Products</a>
     <a href="{{ base }}/admin/widgets" {% if active == "widgets" %}class="active"{% endif %}>Widgets</a>
     <a href="{{ base }}/admin/templates" {% if active == "templates" %}class="active"{% endif %}>Templates</a>
+    <a href="{{ base }}/admin/orders" {% if active == "orders" %}class="active"{% endif %}>Orders</a>
+    <a href="{{ base }}/admin/pages" {% if active == "pages" %}class="active"{% endif %}>Pages</a>
     <a href="{{ base }}/admin/customers" {% if active == "customers" %}class="active"{% endif %}>Customers</a>
     <a href="{{ base }}/admin/bridges" {% if active == "bridges" %}class="active"{% endif %}>Bridges</a>
     <a href="{{ base }}/admin/settings" {% if active == "settings" %}class="active"{% endif %}>Settings</a>
+    <a href="{{ base }}/admin/integrations" {% if active == "integrations" %}class="active"{% endif %}>Integrations</a>
     <a href="{{ base }}/admin/health" {% if active == "health" %}class="active"{% endif %}>Health</a>
   </nav>
   <form method="post" action="{{ base }}/admin/logout" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="link">Sign out ({{ user.email }})</button></form>

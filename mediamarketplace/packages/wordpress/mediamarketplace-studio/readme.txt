@@ -42,3 +42,6 @@ The store admin's Widgets page prints the exact block and shortcode for every wi
 * Media library, 10 product types, showcase, players, customer accounts (My Media).
 * Widget builder with 35 templates, 12 site templates, colour schemes and brand kit.
 * Gutenberg blocks: Showcase, Embed, My Media link.
+* Cart and checkout with Stripe, PayPal and a test gateway; orders, refunds, receipts; coupons and tax.
+* Site passes, recurring passes, private pages with ten signup templates and signed agreements.
+* API keys and outbound webhooks.

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Orders{% endblock %}
+{% block body %}
+{% include "account_nav.html" %}
+<h1>Orders</h1>
+{% if rows %}<section class="card"><table><thead><tr><th>Order</th><th>Date</th><th>Items</th><th class="r">Total</th><th>Status</th><th>Receipt</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.o.number }}</td><td>{{ r.o.created_at[:10] }}</td><td>{% for i in r.items %}{{ i.quantity }} × {{ i.title }}<br>{% endfor %}</td><td class="r">{{ r.total }}</td><td><span class="badge {% if r.o.status == 'paid' %}ok{% elif r.o.status == 'refunded' %}warn{% endif %}">{{ r.o.status }}</span></td><td>{% if r.receipt %}<a href="{{ base }}/account/receipts/{{ r.o.uuid }}/pdf">{{ r.receipt }} PDF</a> · <a href="{{ base }}/account/receipts/{{ r.o.uuid }}/html">view</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>{% else %}<p class="muted">No orders yet.</p>{% endif %}
+{% endblock %}

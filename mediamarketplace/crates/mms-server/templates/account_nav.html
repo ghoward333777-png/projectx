@@ -1,0 +1,11 @@
+<header class="topbar">
+  <span class="brand">{{ site_name }}</span>
+  <nav>
+    <a href="{{ base }}/account" {% if tab == "media" %}class="active"{% endif %}>My media</a>
+    <a href="{{ base }}/account/orders" {% if tab == "orders" %}class="active"{% endif %}>Orders</a>
+    <a href="{{ base }}/account/subscriptions" {% if tab == "subscriptions" %}class="active"{% endif %}>Passes</a>
+    <a href="{{ base }}/account/agreements" {% if tab == "agreements" %}class="active"{% endif %}>Agreements</a>
+    <a href="{{ base }}/cart" {% if tab == "cart" %}class="active"{% endif %}>Cart</a>
+  </nav>
+  <form method="post" action="{{ base }}/logout" class="inline"><button class="link">Sign out ({{ user.email }})</button></form>
+</header>

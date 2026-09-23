@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ page.title }} · {{ site_name }}</title><link rel="stylesheet" href="{{ base }}/static/mms.css"></head>
+<body class="embed"><article class="product-page gate tpl-{{ template.slug }}">
+<h1>{{ page.title }}</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+
+{% if gate == "Unavailable" %}
+  <p class="muted">This page is not available.</p>
+{% elif gate == "LockedOut" %}
+  <p class="error">Too many attempts. Try again after {{ locked_until }}.</p>
+{% elif gate == "SignIn" %}
+  {% if template.slug == "third_party" %}
+    <p>Sign in with your site account to continue. One click if you are already logged in to the website.</p>
+    <p class="buy"><a class="button primary" href="{{ login_url }}" target="_top">Sign in</a> <a class="button" href="{{ base }}/register?return={{ this_url | urlencode }}" target="_top">Create an account</a></p>
+  {% else %}
+    {% if page.incentive and template.slug == "incentive" %}<p class="incentive">🎁 {{ page.incentive }}</p>{% endif %}
+    <p>Sign in or create a free account to continue to this page.</p>
+    <p class="buy"><a class="button primary" href="{{ login_url }}" target="_top">Sign in</a> <a class="button" href="{{ base }}/register?return={{ this_url | urlencode }}" target="_top">Create an account</a></p>
+  {% endif %}
+{% elif gate == "NeedsKey" %}
+  <p>This page needs an access key.</p>
+  <form method="post" action="{{ base }}/page/{{ page.uuid }}/key" class="filters">
+    <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="site" value="{{ site }}">
+    <input name="key" placeholder="XXXXXXXX-XXXXXXXX-XXXXXXXX" required autocomplete="off" style="min-width:260px"><button class="primary">Unlock</button>
+  </form>
+{% elif gate == "NeedsPurchase" %}
+  <p>You have signed the agreement. This page is part of <b>{{ product.title }}</b> ({{ product.price_cents | money(product.currency) }}).</p>
+  <form method="post" action="{{ base }}/cart/add"><input type="hidden" name="product" value="{{ product.slug }}"><input type="hidden" name="site" value="{{ site }}"><button class="primary">Buy access</button></form>
+{% else %}
+  {# NeedsSignature: the ten signup templates #}
+  {% if page.incentive and template.slug == "incentive" %}<p class="incentive">🎁 Signing up unlocks: <b>{{ page.incentive }}</b></p>{% endif %}
+  {% if template.slug == "gamified" %}<ol class="steps"><li class="done">Account</li><li class="on">Agreement</li><li>{% if product %}Payment{% else %}Open{% endif %}</li></ol>{% endif %}
+  {% if template.slug == "consent_first" %}<p class="consent">By continuing you consent to {{ site_name }} recording your name, email address, IP address and the time of your signature as proof of agreement.</p>{% endif %}
+  {% if template.slug == "legal" and page.jurisdiction %}<p class="muted small">{{ page.jurisdiction }}</p>{% endif %}
+
+  <form method="post" action="{{ base }}/page/{{ page.uuid }}/sign" id="sign-form">
+    <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="site" value="{{ site }}">
+    {% if template.slug == "consent_first" %}<label class="choice"><input type="checkbox" name="consent" value="1" data-gate="consent-block"> I consent</label><div id="consent-block" class="hidden">{% endif %}
+
+    {% if template.slug == "terms_highlighted" %}
+      <ul class="terms">{% for s in sections %}<li>{{ s }}</li>{% endfor %}</ul>
+    {% elif template.slug == "progressive" %}
+      <div class="agreement progressive" id="progressive">{% for s in sections %}<section class="{% if loop.first %}shown{% else %}hidden{% endif %}" data-i="{{ loop.index }}"><p>{{ s }}</p>{% if not loop.last %}<button type="button" class="next">Continue reading</button>{% endif %}</section>{% endfor %}</div>
+      <input type="hidden" name="scrolled" id="scrolled" value="">
+    {% else %}
+      <div class="agreement">{% for s in sections %}<p>{{ s }}</p>{% endfor %}</div>
+    {% endif %}
+
+    {% if template.slug == "legal" %}
+      {% if page.min_age %}<label class="choice"><input type="checkbox" name="age" value="1"> I am at least {{ page.min_age }} years old</label>{% else %}<label class="choice"><input type="checkbox" name="age" value="1"> I am legally able to enter this agreement</label>{% endif %}
+      <label class="choice"><input type="checkbox" name="purposes" value="1"> I consent to the use of my details for access control, receipts and proof of agreement</label>
+    {% endif %}
+    {% if template.slug == "gamified" and page.quiz_question %}<label>{{ page.quiz_question }} <input name="quiz" required></label>{% endif %}
+
+    <label>Full name <input name="name" required autocomplete="name" placeholder="Type your full name"></label>
+    <details class="draw"><summary>Draw a signature instead</summary>
+      <canvas id="sig" width="480" height="140"></canvas>
+      <p><button type="button" id="sig-clear">Clear</button></p>
+      <input type="hidden" name="method" id="method" value="typed"><input type="hidden" name="signature" id="signature" value="">
+    </details>
+
+    {% if template.slug == "dual_action" %}
+      <label class="choice"><input type="checkbox" name="read" value="1" data-gate="agree-block"> I have read the agreement</label>
+      <div id="agree-block" class="hidden"><label class="choice"><input type="checkbox" name="agree" value="1" data-enables="submit"> I agree</label></div>
+    {% else %}
+      <label class="choice"><input type="checkbox" name="agree" value="1" data-enables="submit"> I agree to the terms above</label>
+    {% endif %}
+    {% if template.slug == "consent_first" %}</div>{% endif %}
+    <p><button class="primary" id="submit" disabled>{% if product %}Sign and continue to payment{% else %}Sign and open the page{% endif %}</button></p>
+  </form>
+{% endif %}
+<p class="muted small">Signed in as {{ user.email if user else "guest" }}.</p>
+</article>
+<script>
+(function () {
+  var submit = document.getElementById('submit'); if (!submit) return;
+  function refresh() {
+    var ok = true;
+    document.querySelectorAll('[data-enables="submit"]').forEach(function (c) { if (!c.checked) ok = false; });
+    var sc = document.getElementById('scrolled'); if (sc && sc.value !== '1') ok = false;
+    submit.disabled = !ok;
+  }
+  document.querySelectorAll('[data-gate]').forEach(function (c) { c.addEventListener('change', function () { var b = document.getElementById(c.getAttribute('data-gate')); if (b) b.classList.toggle('hidden', !c.checked); refresh(); }); });
+  document.querySelectorAll('[data-enables]').forEach(function (c) { c.addEventListener('change', refresh); });
+  document.querySelectorAll('#progressive .next').forEach(function (b) { b.addEventListener('click', function () { var s = b.closest('section'); var n = s.nextElementSibling; s.querySelector('.next').remove(); if (n) { n.classList.remove('hidden'); n.classList.add('shown'); } if (!n || !n.nextElementSibling) { document.getElementById('scrolled').value = '1'; } refresh(); }); });
+  if (document.querySelector('#progressive') && document.querySelectorAll('#progressive section').length <= 1) { document.getElementById('scrolled').value = '1'; }
+  // Drawn signature.
+  var canvas = document.getElementById('sig'); if (canvas) {
+    var ctx = canvas.getContext('2d'); ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#123'; var drawing = false, drawn = false;
+    function pos(e) { var r = canvas.getBoundingClientRect(); var t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * canvas.width / r.width, (t.clientY - r.top) * canvas.height / r.height]; }
+    function start(e) { drawing = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p[0], p[1]); e.preventDefault(); }
+    function move(e) { if (!drawing) return; var p = pos(e); ctx.lineTo(p[0], p[1]); ctx.stroke(); drawn = true; e.preventDefault(); }
+    function end() { if (drawing && drawn) { document.getElementById('method').value = 'drawn'; document.getElementById('signature').value = canvas.toDataURL('image/png'); } drawing = false; }
+    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start); canvas.addEventListener('touchmove', move); canvas.addEventListener('touchend', end);
+    document.getElementById('sig-clear').addEventListener('click', function () { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; document.getElementById('method').value = 'typed'; document.getElementById('signature').value = ''; });
+  }
+  refresh();
+  parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*');
+})();
+</script>
+</body></html>

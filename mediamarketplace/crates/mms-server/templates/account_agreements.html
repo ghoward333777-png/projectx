@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Agreements{% endblock %}
+{% block body %}
+{% include "account_nav.html" %}
+<h1>Signed agreements</h1>
+{% if rows %}<section class="card"><table><thead><tr><th>Page</th><th>Signed</th><th>Version</th><th>Status</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{% if r.page_uuid %}<a href="{{ base }}/page/{{ r.page_uuid }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td><td>{{ r.a.signed_at }}</td><td>{{ r.a.agreement_version }}</td><td>{{ r.a.status }}</td><td><a href="{{ base }}/account/agreements/{{ r.a.uuid }}/pdf">Signed copy (PDF)</a></td></tr>{% endfor %}
+</tbody></table></section>{% else %}<p class="muted">You have not signed any agreements.</p>{% endif %}
+{% endblock %}

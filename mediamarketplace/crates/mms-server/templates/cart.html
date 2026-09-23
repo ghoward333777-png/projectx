@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Cart{% endblock %}
+{% block body %}
+{% if user %}{% set tab = "cart" %}{% include "account_nav.html" %}{% else %}<header class="topbar"><span class="brand">{{ site_name }}</span><nav><a class="active">Cart</a></nav><a class="button" href="{{ base }}/login?return=%2Fcart">Sign in</a></header>{% endif %}
+<h1>Your cart</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if lines %}
+<section class="card">
+<table><thead><tr><th>Item</th><th>Quantity</th><th class="r">Price</th><th></th></tr></thead><tbody>
+{% for l in lines %}<tr>
+  <td><b>{{ l.product.title }}</b><br><span class="muted small">{{ l.product.type | label }}</span></td>
+  <td>{% if l.max_quantity > 1 %}<form method="post" action="{{ base }}/cart/update" class="inline"><input type="hidden" name="product_id" value="{{ l.product.id }}"><input type="number" name="quantity" value="{{ l.quantity }}" min="1" max="{{ l.max_quantity }}" style="width:70px"> <button>Update</button></form>{% else %}1{% endif %}</td>
+  <td class="r">{{ l.total_cents | money(currency) }}</td>
+  <td><form method="post" action="{{ base }}/cart/remove" class="inline"><input type="hidden" name="product_id" value="{{ l.product.id }}"><button class="link">Remove</button></form></td>
+</tr>{% endfor %}
+</tbody></table>
+<div class="totals">
+  <div><span>Subtotal</span><span>{{ totals.subtotal_cents | money(currency) }}</span></div>
+  {% if totals.discount_cents %}<div><span>Discount ({{ totals.coupon }})</span><span>-{{ totals.discount_cents | money(currency) }}</span></div>{% endif %}
+  {% if totals.tax_cents %}<div><span>{{ totals.tax_name }}</span><span>{{ totals.tax_cents | money(currency) }}</span></div>{% endif %}
+  <div class="grand"><span>Total</span><span>{{ totals.total_cents | money(currency) }}</span></div>
+</div>
+<div class="filters">
+  <form method="post" action="{{ base }}/cart/coupon" class="inline"><input name="code" placeholder="Coupon code" value="{{ cart.coupon | default('') }}"><button>Apply</button></form>
+  <form method="post" action="{{ base }}/cart/country" class="inline"><input name="country" placeholder="Country (e.g. DE)" value="{{ cart.country }}" maxlength="2" style="min-width:120px"><button>Set country for tax</button></form>
+</div>
+<p><a class="button primary" href="{{ base }}/checkout">Checkout</a></p>
+</section>
+{% else %}<p class="muted">Your cart is empty.</p>{% endif %}
+{% endblock %}

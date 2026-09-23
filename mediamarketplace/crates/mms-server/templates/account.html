@@ -1,12 +1,9 @@
 {% extends "base.html" %}
 {% block title %}My media{% endblock %}
 {% block body %}
-<header class="topbar">
-  <span class="brand">{{ site_name }}</span>
-  <nav><a class="active">My media</a></nav>
-  <form method="post" action="{{ base }}/logout" class="inline"><button class="link">Sign out ({{ user.email }})</button></form>
-</header>
+{% include "account_nav.html" %}
 <h1>My media</h1>
+{% if pass_notice %}<p class="warn-box">Your site pass ends in {{ pass_notice }} day{% if pass_notice != 1 %}s{% endif %}.{% if renew_slug %} <form method="post" action="{{ base }}/cart/add" class="inline"><input type="hidden" name="product" value="{{ renew_slug }}"><button class="link">Renew now</button></form>{% endif %}</p>{% endif %}
 {% if site_pass %}<p class="notice">Your site pass is active{% if site_pass.ends_at %} until {{ site_pass.ends_at }}{% endif %}. Everything in the library is open to you.</p>{% endif %}
 {% if items %}
 <div class="showcase grid">

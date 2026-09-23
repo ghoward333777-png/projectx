@@ -226,25 +226,6 @@ pub async fn player(
     Ok(framed(csp, html))
 }
 
-/// Cart and checkout arrive in Phase 3; until then the button explains that.
-pub async fn checkout(
-    State(state): State<AppState>,
-    Query(q): Query<SiteQuery>,
-) -> AppResult<Response> {
-    let csp = match q.site.as_deref() {
-        Some(_) => match site_policy(&state, q.site.as_deref()).await {
-            Ok(c) => c,
-            Err(r) => return Ok(r),
-        },
-        None => "frame-ancestors 'self'".to_string(),
-    };
-    let site_name = state.settings.get("general.site_name").await?;
-    Ok(framed(
-        csp,
-        state.render("embed_checkout.html", context! { site_name })?,
-    ))
-}
-
 pub async fn loader() -> Response {
     (
         [

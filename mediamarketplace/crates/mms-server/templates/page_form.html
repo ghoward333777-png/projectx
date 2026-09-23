@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{% if p %}{{ p.title }}{% else %}New page{% endif %}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/pages">← Private pages</a></p>
+<h1>{% if p %}{{ p.title }}{% else %}New private page{% endif %}</h1>
+{% if error %}<p class="{% if 'access key' in error %}notice{% else %}error{% endif %}">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+<form method="post" action="{{ base }}/admin/pages{% if p %}/{{ p.uuid }}{% endif %}">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <label>Title <input name="title" value="{{ p.title if p else '' }}" required></label>
+  <label>Content (Markdown: headings, lists, bold, links) <textarea name="content" rows="10">{{ p.content if p else '' }}</textarea></label>
+  <label>Agreement text (changing it asks every signer again) <textarea name="agreement" rows="8">{{ p.agreement if p else '' }}</textarea></label>
+  <label>Signup template <select name="signup_template">{% for t in templates %}<option value="{{ t.slug }}" {% if p and p.signup_template == t.slug %}selected{% endif %}>{{ t.name }} — {{ t.desc }}</option>{% endfor %}</select></label>
+  <label>Protection <select name="protection">{% for l in levels %}<option value="{{ l.slug }}" {% if p and p.protection == l.slug %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></label>
+  <label>Linked product (for paid pages) <select name="product_id"><option value="">—</option>{% for pr in products %}<option value="{{ pr.id }}" {% if p and p.product_id == pr.id %}selected{% endif %}>{{ pr.title }} ({{ pr.type | label }}, {{ pr.price_cents | money(pr.currency) }})</option>{% endfor %}</select><small>Create a product of type <i>Private page</i> first; its price is what the visitor pays after signing.</small></label>
+  <details><summary>Template extras</summary>
+    <label>Incentive shown by the Incentive template <input name="incentive" value="{{ p.incentive if p else '' }}"></label>
+    <label>Quiz question (Gamified) <input name="quiz_question" value="{{ p.quiz_question if p else '' }}"></label>
+    <label>Quiz answer <input name="quiz_answer" value="{{ p.quiz_answer if p else '' }}"></label>
+    <label>Jurisdiction text (Legal consent) <input name="jurisdiction" value="{{ p.jurisdiction if p else '' }}" placeholder="e.g. This agreement is governed by the laws of England and Wales."></label>
+    <label>Minimum age (Legal consent; 0 = no age gate) <input name="min_age" type="number" min="0" value="{{ p.min_age if p else 0 }}"></label>
+  </details>
+  <label>Status <select name="status">{% for s in ["draft","published","archived"] %}<option value="{{ s }}" {% if p and p.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <button class="primary">Save</button>
+</form>
+{% if p %}<form method="post" action="{{ base }}/admin/pages/{{ p.uuid }}/delete" class="inline" onsubmit="return confirm('Delete this page and its signatures?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Delete page</button></form>{% endif %}
+</section>
+{% if p %}
+<div>
+<section class="card">
+  <h2>Access keys</h2>
+  <p class="muted small">For <i>Paid plus key</i> and <i>Invite only</i> pages. Keys are shown once and stored hashed.</p>
+  <form method="post" action="{{ base }}/admin/pages/{{ p.uuid }}/keys" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input name="max_uses" value="1" style="min-width:90px" title="Max uses (0 = unlimited)"> <input name="expires_at" placeholder="Expires (YYYY-MM-DD)" style="min-width:150px"> <button class="primary">Generate key</button></form>
+  {% if keys %}<table><thead><tr><th>Key</th><th>Uses</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>{% for k in keys %}<tr><td><code>{{ k.hint }}</code></td><td>{{ k.uses }}{% if k.max_uses %} / {{ k.max_uses }}{% endif %}</td><td>{{ k.expires_at | default("—") }}</td><td>{{ k.status }}</td><td>{% if k.status == "active" %}<form method="post" action="{{ base }}/admin/pages/{{ p.uuid }}/keys/{{ k.id }}/revoke" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Revoke</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+<section class="card">
+  <h2>Signers <a class="button" href="{{ base }}/admin/pages/{{ p.uuid }}/signers.csv">CSV</a></h2>
+  {% if signers %}<table><thead><tr><th>Name</th><th>Signed</th><th>Version</th><th>Status</th><th></th></tr></thead><tbody>{% for s in signers %}<tr><td><a href="{{ base }}/admin/customers/{{ s.cuuid }}">{{ s.a.signer_name }}</a> <span class="muted small">{{ s.email }}</span></td><td>{{ s.a.signed_at }}</td><td>{{ s.a.agreement_version }}{% if s.a.agreement_version != p.agreement_version %} <span class="badge warn">old</span>{% endif %}</td><td>{{ s.a.status }}</td><td><a href="{{ base }}/admin/agreements/{{ s.a.uuid }}/pdf">PDF</a> {% if s.a.status == "signed" %}<form method="post" action="{{ base }}/admin/pages/{{ p.uuid }}/signers/{{ s.a.id }}/revoke" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Revoke</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">Nobody has signed yet.</p>{% endif %}
+</section>
+<section class="card"><h2>Place it</h2><p class="small">WordPress block “MediaMarketplace Embed” → Page, ID <code>{{ p.uuid }}</code><br>Joomla menu item “MediaMarketplace » Widget” → Page, ID <code>{{ p.uuid }}</code><br>or <code>[mms_embed kind="page" id="{{ p.uuid }}"]</code> / <code>{{ "{" }}mms_embed kind=page id={{ p.uuid }}{{ "}" }}</code><br><a href="{{ public_url }}/page/{{ p.uuid }}" target="_blank">Direct link</a></p></section>
+</div>
+{% endif %}
+</div>
+{% endblock %}

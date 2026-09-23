@@ -160,7 +160,7 @@ pub async fn grant(
 
 #[derive(Deserialize)]
 pub struct CsrfOnly {
-    _csrf: String,
+    pub _csrf: String,
 }
 
 pub async fn revoke(

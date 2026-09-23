@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Coupons and tax{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/orders">← Orders</a></p>
+<h1>Coupons and tax</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Coupons</h2>
+  <form method="post" action="{{ base }}/admin/coupons" class="filters">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input name="code" placeholder="CODE" required style="min-width:120px">
+    <select name="kind"><option value="percent">% off</option><option value="fixed">Amount off</option></select>
+    <input name="amount" placeholder="10" required style="min-width:80px">
+    <input name="max_uses" placeholder="Max uses (0 = unlimited)" style="min-width:120px">
+    <input name="expires_at" placeholder="Expires (YYYY-MM-DD)" style="min-width:150px">
+    <button class="primary">Add coupon</button>
+  </form>
+  {% if coupons %}<table><thead><tr><th>Code</th><th>Discount</th><th>Uses</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for c in coupons %}<tr><td><code>{{ c.code }}</code></td><td>{% if c.kind == "percent" %}{{ c.amount }}%{% else %}{{ c.amount | money("") }}{% endif %}</td><td>{{ c.uses }}{% if c.max_uses %} / {{ c.max_uses }}{% endif %}</td><td>{{ c.expires_at | default("—") }}</td><td>{{ c.status }}</td>
+  <td><form method="post" action="{{ base }}/admin/coupons/{{ c.id }}/{% if c.status == 'active' %}disabled{% else %}active{% endif %}" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>{% if c.status == 'active' %}Disable{% else %}Enable{% endif %}</button></form></td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted">No coupons yet.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Tax rates</h2>
+  <p class="muted small">Tax is added at checkout for the customer's country. Leave empty to charge no tax.</p>
+  <form method="post" action="{{ base }}/admin/tax" class="filters">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input name="country" placeholder="Country (DE)" maxlength="2" required style="min-width:110px">
+    <input name="name" placeholder="VAT" required style="min-width:110px">
+    <input name="rate" placeholder="19" required style="min-width:80px">
+    <button class="primary">Save rate</button>
+  </form>
+  {% if rates %}<table><thead><tr><th>Country</th><th>Name</th><th>Rate</th><th></th></tr></thead><tbody>
+  {% for r in rates %}<tr><td>{{ r.country }}</td><td>{{ r.name }}</td><td>{{ r.rate_bp / 100 }}%</td><td><form method="post" action="{{ base }}/admin/tax/{{ r.id }}/delete" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Remove</button></form></td></tr>{% endfor %}
+  </tbody></table>{% endif %}
+</section>
+</div>
+{% endblock %}

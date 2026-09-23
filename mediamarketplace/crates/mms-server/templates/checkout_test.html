@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Test payment{% endblock %}
+{% block body %}
+<section class="card narrow">
+  <h1>Test payment</h1>
+  <p class="warn-box">This is the built-in test gateway. No money moves. Turn off <i>Test payments</i> under Settings → Payments before selling for real.</p>
+  <p>Order <b>{{ order.number }}</b> · total <b>{{ total }}</b></p>
+  <form method="post" action="{{ base }}/checkout/test/{{ order.uuid }}">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="primary" name="result" value="paid">Pay {{ total }}</button>
+    <button name="result" value="fail">Decline</button>
+    <a class="button" href="{{ base }}/checkout/cancel/{{ order.uuid }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Passes{% endblock %}
+{% block body %}
+{% include "account_nav.html" %}
+<h1>Recurring passes</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if rows %}<section class="card"><table><thead><tr><th>Pass</th><th>Renews</th><th>Status</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.title }}</td><td>{% if r.s.cancel_at_period_end %}ends {{ r.s.period_end | default("at period end") }}{% else %}every {{ r.s.interval }}{% if r.s.period_end %}, next {{ r.s.period_end[:10] }}{% endif %}{% endif %}</td><td><span class="badge {% if r.s.status == 'active' %}ok{% endif %}">{{ r.s.status }}</span></td>
+<td>{% if r.s.status == "active" and not r.s.cancel_at_period_end %}<form method="post" action="{{ base }}/account/subscriptions/{{ r.s.uuid }}/cancel" class="inline" onsubmit="return confirm('Stop renewing this pass?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Cancel renewal</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>{% else %}<p class="muted">No recurring passes. One-off passes appear under My media.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ page.title }} · {{ site_name }}</title><link rel="stylesheet" href="{{ base }}/static/mms.css"></head>
+<body class="embed"><article class="product-page page-content">
+<h1>{{ page.title }}</h1>
+{{ content }}
+<p class="muted small">Licensed to {{ viewer }}. Your signed agreement is under <a href="{{ base }}/account/agreements" target="_top">My media → Agreements</a>.</p>
+</article>
+<script>parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*');</script>
+</body></html>

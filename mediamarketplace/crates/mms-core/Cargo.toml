@@ -26,3 +26,5 @@ argon2.workspace = true
 image.workspace = true
 infer.workspace = true
 mime_guess.workspace = true
+reqwest.workspace = true
+async-trait.workspace = true

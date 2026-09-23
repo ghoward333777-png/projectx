@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Checkout{% endblock %}
+{% block body %}
+{% set tab = "cart" %}{% include "account_nav.html" %}
+<h1>Checkout</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Order</h2>
+  <table><tbody>{% for l in lines %}<tr><td>{{ l.quantity }} × {{ l.product.title }}</td><td class="r">{{ l.total_cents | money(currency) }}</td></tr>{% endfor %}</tbody></table>
+  <div class="totals">
+    <div><span>Subtotal</span><span>{{ totals.subtotal_cents | money(currency) }}</span></div>
+    {% if totals.discount_cents %}<div><span>Discount ({{ totals.coupon }})</span><span>-{{ totals.discount_cents | money(currency) }}</span></div>{% endif %}
+    {% if totals.tax_cents %}<div><span>{{ totals.tax_name }}</span><span>{{ totals.tax_cents | money(currency) }}</span></div>{% endif %}
+    <div class="grand"><span>Total</span><span>{{ totals.total_cents | money(currency) }}</span></div>
+  </div>
+  <div class="filters">
+    <form method="post" action="{{ base }}/cart/coupon" class="inline"><input type="hidden" name="return" value="/checkout"><input name="code" placeholder="Coupon code" value="{{ cart.coupon | default('') }}"><button>Apply</button></form>
+    <form method="post" action="{{ base }}/cart/country" class="inline"><input type="hidden" name="return" value="/checkout"><input name="country" placeholder="Country (e.g. DE)" value="{{ cart.country }}" maxlength="2" style="min-width:120px"><button>Set country</button></form>
+  </div>
+  <p class="small muted">Billing to {{ user.name }} &lt;{{ user.email }}&gt;. <a href="{{ base }}/cart">Edit cart</a></p>
+</section>
+<section class="card">
+  <h2>Payment</h2>
+  <form method="post" action="{{ base }}/checkout/start">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {% if totals.total_cents == 0 %}
+      <p>Nothing to pay. Your items are added to My media when you continue.</p>
+      <button class="primary">Get it free</button>
+    {% elif gateways %}
+      {% for g in gateways %}<label class="choice"><input type="radio" name="gateway" value="{{ g.name }}" {% if loop.first %}checked{% endif %}{% if has_recurring and g.name == "paypal" %} disabled{% endif %}> {{ g.label }}{% if has_recurring and g.name == "paypal" %} <span class="muted small">(recurring passes use card payment)</span>{% endif %}</label>{% endfor %}
+      <p class="small muted">Card details are entered on the payment provider's own secure page. Nothing about your card is stored here.</p>
+      <button class="primary">Continue to payment</button>
+    {% else %}
+      <p class="error">No payment method is set up yet. The store owner needs to add Stripe or PayPal keys under Settings → Payments.</p>
+    {% endif %}
+  </form>
+</section>
+</div>
+{% endblock %}

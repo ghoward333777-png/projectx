@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Order {{ o.number }}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/orders">← Orders</a></p>
+<h1>Order {{ o.number }} <span class="badge {% if o.status == 'paid' %}ok{% elif o.status == 'refunded' %}warn{% endif %}">{{ o.status }}</span></h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Items</h2>
+  <table><thead><tr><th>Item</th><th>Qty</th><th class="r">Unit</th><th class="r">Total</th></tr></thead><tbody>{% for r in items %}<tr><td>{{ r.i.title }} <span class="muted small">{{ r.i.type | label }}</span></td><td>{{ r.i.quantity }}</td><td class="r">{{ r.unit }}</td><td class="r">{{ r.total }}</td></tr>{% endfor %}</tbody></table>
+  <div class="totals"><div><span>Subtotal</span><span>{{ subtotal }}</span></div>{% if o.discount_cents %}<div><span>Discount ({{ o.coupon }})</span><span>-{{ discount }}</span></div>{% endif %}{% if o.tax_cents %}<div><span>{{ o.tax_name }} ({{ o.tax_rate_bp / 100 }}%)</span><span>{{ tax }}</span></div>{% endif %}<div class="grand"><span>Total</span><span>{{ total }}</span></div></div>
+</section>
+<section class="card">
+  <h2>Customer and payment</h2>
+  <dl><dt>Customer</dt><dd><a href="{{ base }}/admin/customers/{{ cuuid }}">{{ name }}</a> &lt;{{ email }}&gt;{% if o.country %} · {{ o.country }}{% endif %}</dd>
+  <dt>Created</dt><dd>{{ o.created_at }}</dd>{% if o.paid_at %}<dt>Paid</dt><dd>{{ o.paid_at }} via {{ o.gateway }}{% if o.external_id %} <code>{{ o.external_id }}</code>{% endif %}</dd>{% endif %}
+  {% if receipt %}<dt>Receipt</dt><dd><a href="{{ base }}/admin/orders/{{ o.uuid }}/receipt.pdf">{{ receipt }} (PDF)</a></dd>{% endif %}</dl>
+  {% if payments %}<table><thead><tr><th>Payment</th><th>Amount</th><th>Status</th></tr></thead><tbody>{% for p in payments %}<tr><td>{{ p.gateway }} {{ p.external_id | default("") }}</td><td>{{ p.amount_cents | money(p.currency) }}</td><td>{{ p.status }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  {% if subs %}<h3>Subscriptions</h3><ul>{% for s in subs %}<li>{{ s.status }} · every {{ s.interval }}{% if s.period_end %} · until {{ s.period_end }}{% endif %}{% if s.cancel_at_period_end %} · cancels at period end{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if o.status == "paid" %}
+  <form method="post" action="{{ base }}/admin/orders/{{ o.uuid }}/refund" onsubmit="return confirm('Refund the full amount through the payment provider and revoke access?')">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Reason <input name="reason" placeholder="Optional"></label>
+    <button class="danger">Refund and revoke access</button>
+  </form>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

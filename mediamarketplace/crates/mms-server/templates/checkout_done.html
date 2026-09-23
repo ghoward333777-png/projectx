@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order.number }}{% endblock %}
+{% block body %}
+{% set tab = "orders" %}{% include "account_nav.html" %}
+<section class="card">
+  {% if pending %}<h1>Payment pending</h1><p>Your payment is being confirmed. Your items appear under My media as soon as the payment provider confirms it.</p>
+  {% elif order.status == "paid" %}<h1>Thank you</h1><p class="notice">Order {{ order.number }} is paid ({{ total }}). Everything in it is now under My media.</p>
+  {% else %}<h1>Order {{ order.number }}</h1><p class="error">This order is {{ order.status }}.</p>{% endif %}
+  <table><tbody>{% for i in items %}<tr><td>{{ i.quantity }} × {{ i.title }}</td></tr>{% endfor %}</tbody></table>
+  <p>{% if receipt %}<a class="button" href="{{ base }}/account/receipts/{{ order.uuid }}/pdf">Receipt {{ receipt }} (PDF)</a> {% endif %}<a class="button primary" href="{{ base }}/account">Open My media</a></p>
+</section>
+{% endblock %}

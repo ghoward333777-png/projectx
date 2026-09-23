@@ -283,7 +283,7 @@ final class MMS_Plugin
     {
         $kind = (string) ($attributes['kind'] ?? 'widget');
         $id = (string) ($attributes['id'] ?? '');
-        if ($id === '' && $kind !== 'showcase') {
+        if ($id === '' && !in_array($kind, ['showcase', 'cart', 'sitepass'], true)) {
             return '';
         }
         $html = $this->embedShortcode(['kind' => $kind, 'id' => $id, 'view' => (string) ($attributes['view'] ?? '')]);

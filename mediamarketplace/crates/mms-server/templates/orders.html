@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Orders{% endblock %}
+{% block body %}
+<h1>Orders</h1>
+<p class="muted"><a href="{{ base }}/admin/coupons">Coupons and tax</a> · <a href="{{ base }}/admin/passes">Site passes</a> · <a href="{{ base }}/admin/settings#payments">Payment settings</a></p>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="tiles">
+  <div class="tile"><span class="num">{{ stats.orders }}</span><span>Paid orders</span></div>
+  <div class="tile"><span class="num">{{ revenue }}</span><span>Revenue</span></div>
+  <div class="tile"><span class="num">{{ stats.active_passes }}</span><span>Active passes</span></div>
+  <div class="tile"><span class="num">{{ stats.active_subscriptions }}</span><span>Recurring</span></div>
+</div>
+<section class="card">
+<form method="get" class="filters"><input name="q" value="{{ q }}" placeholder="Order number, name or email"><select name="status"><option value="">Any status</option>{% for s in ["pending","paid","refunded","cancelled","failed"] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><button>Filter</button></form>
+{% if rows %}<table><thead><tr><th>Order</th><th>Customer</th><th>Date</th><th class="r">Total</th><th>Status</th><th>Method</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><a href="{{ base }}/admin/orders/{{ r.o.uuid }}">{{ r.o.number }}</a></td><td>{{ r.email }}</td><td>{{ r.o.created_at }}</td><td class="r">{{ r.total }}</td><td><span class="badge {% if r.o.status == 'paid' %}ok{% elif r.o.status == 'refunded' %}warn{% elif r.o.status == 'pending' %}{% else %}fail{% endif %}">{{ r.o.status }}</span></td><td>{{ r.o.gateway }}</td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="muted">No orders yet.</p>{% endif %}
+</section>
+{% endblock %}

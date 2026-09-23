@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Integrations{% endblock %}
+{% block body %}
+<h1>Integrations</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if new_key %}<p class="warn-box">New API key, shown once: <code>{{ new_key }}</code></p>{% endif %}
+<div class="stack integrations">
+<section class="card">
+  <h2>API keys</h2>
+  <p class="muted small">Send the key as <code>Authorization: Bearer mms_…</code>. Endpoints: <code>GET {{ public_url }}/api/v1/orders</code>, <code>/api/v1/orders/{uuid}</code>, <code>/api/v1/products</code>, <code>/api/v1/customers</code>, <code>/api/v1/customers/{uuid}/entitlements</code>; write keys may <code>POST /api/v1/grants</code>.</p>
+  <form method="post" action="{{ base }}/admin/integrations/keys" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input name="name" placeholder="Name (e.g. Zapier)" required><select name="scopes"><option value="read">Read</option><option value="write">Read and write</option></select><button class="primary">Create key</button></form>
+  {% if keys %}<table><thead><tr><th>Name</th><th>Key</th><th>Scope</th><th>Last used</th><th></th></tr></thead><tbody>{% for k in keys %}<tr><td>{{ k.name }}</td><td><code>{{ k.prefix }}…</code></td><td>{{ k.scopes }}</td><td>{{ k.last_used | default("never") }}</td><td>{% if k.status == "active" %}<form method="post" action="{{ base }}/admin/integrations/keys/{{ k.id }}/revoke" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Revoke</button></form>{% else %}revoked{% endif %}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+<section class="card">
+  <h2>Outbound webhooks</h2>
+  <p class="muted small">Each delivery is a JSON POST signed with <code>X-MMS-Signature: t=…,v1=HMAC-SHA256(secret, "t.body")</code>. Failed deliveries retry three times.</p>
+  <form method="post" action="{{ base }}/admin/integrations/webhooks"><input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>URL <input name="url" placeholder="https://example.com/hooks/mms" required></label>
+    <div class="filters">{% for e in events %}<label class="choice small"><input type="checkbox" name="ev_{{ e }}" value="1" checked> {{ e }}</label>{% endfor %}</div>
+    <button class="primary">Add webhook</button>
+  </form>
+  {% if endpoints %}<table><thead><tr><th>URL</th><th>Events</th><th>Secret</th><th></th></tr></thead><tbody>{% for e in endpoints %}<tr><td>{{ e.url }}</td><td class="small">{{ e.events }}</td><td><code class="small">{{ e.secret }}</code></td><td><form method="post" action="{{ base }}/admin/integrations/webhooks/{{ e.id }}/delete" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Remove</button></form></td></tr>{% endfor %}</tbody></table>
+  <form method="post" action="{{ base }}/admin/integrations/webhooks/test" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Send a test event</button></form>{% endif %}
+  {% if deliveries %}<h3>Recent deliveries</h3><table><thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Result</th><th>When</th></tr></thead><tbody>{% for d in deliveries %}<tr><td>{{ d.event }}</td><td><span class="badge {% if d.status == 'delivered' %}ok{% elif d.status == 'failed' %}fail{% endif %}">{{ d.status }}</span></td><td>{{ d.attempts }}</td><td class="small">{{ d.last_status | default("") }} {{ d.last_error | default("") | truncate(60) }}</td><td class="small">{{ d.created_at }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+</div>
+{% endblock %}

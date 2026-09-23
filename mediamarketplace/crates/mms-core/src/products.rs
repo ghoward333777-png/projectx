@@ -68,6 +68,7 @@ pub fn settings_fields(
             ("validity", "Validity", "select:days,date,lifetime,recurring", ""),
             ("days", "Days (when validity is days)", "int", ""),
             ("until", "End date (when validity is date)", "text", "YYYY-MM-DD"),
+            ("interval", "Renewal interval (when validity is recurring)", "select:month,year", "Recurring passes are billed through Stripe."),
             ("scope", "Scope", "select:site,categories", ""),
         ],
         "meeting" => &[
@@ -140,7 +141,7 @@ pub struct Category {
     pub sort_order: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ProductDraft {
     pub r#type: String,
     pub title: String,

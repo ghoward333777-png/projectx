@@ -43,7 +43,7 @@ pub fn session_cookie(state: &AppState, user_id: i64) -> Cookie<'static> {
     c
 }
 
-fn cookie_path(state: &AppState) -> String {
+pub fn cookie_path(state: &AppState) -> String {
     if state.base.is_empty() {
         "/".to_string()
     } else {

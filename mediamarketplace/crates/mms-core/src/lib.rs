@@ -5,13 +5,18 @@
 //! Joomla bridge plugins, password hashing, settings, users and health checks.
 
 pub mod audit;
+pub mod commerce;
 pub mod config;
 pub mod db;
 pub mod entitlements;
+pub mod gateways;
 pub mod health;
+pub mod integrations;
 pub mod jobs;
 pub mod media;
+pub mod pages;
 pub mod password;
+pub mod pdf;
 pub mod products;
 pub mod render;
 pub mod secrets;

@@ -3,11 +3,14 @@ use axum::http::{header, HeaderValue};
 use axum::routing::{get, post};
 use axum::Router;
 use mms_core::audit::Audit;
+use mms_core::commerce::Commerce;
 use mms_core::config::Config;
 use mms_core::db::Db;
 use mms_core::entitlements::Entitlements;
+use mms_core::integrations::Integrations;
 use mms_core::jobs::Jobs;
 use mms_core::media::MediaStore;
+use mms_core::pages::Pages;
 use mms_core::products::Products;
 use mms_core::secrets::Secrets;
 use mms_core::settings::SettingsStore;
@@ -32,6 +35,9 @@ pub struct AppState {
     pub products: Products,
     pub jobs: Jobs,
     pub widgets: Widgets,
+    pub commerce: Commerce,
+    pub pages: Pages,
+    pub integrations: Integrations,
     pub templates: Arc<minijinja::Environment<'static>>,
     /// Mount prefix such as "/store", or "" when served at the domain root.
     pub base: Arc<String>,
@@ -54,6 +60,9 @@ impl AppState {
             products: Products::new(db.clone()),
             jobs: Jobs::new(db.clone()),
             widgets: Widgets::new(db.clone()),
+            commerce: Commerce::new(db.clone()),
+            pages: Pages::new(db.clone()),
+            integrations: Integrations::new(db.clone()),
             config: Arc::new(config),
             db,
             secrets,
@@ -154,7 +163,133 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/embed/product/:slug", get(routes::embed::product))
         .route("/embed/player/:slug", get(routes::embed::player))
-        .route("/embed/checkout", get(routes::embed::checkout))
+        .route("/embed/checkout", get(routes::shop::embed_checkout))
+        .route("/cart", get(routes::shop::cart_page))
+        .route("/cart/add", post(routes::shop::cart_add))
+        .route("/cart/update", post(routes::shop::cart_update))
+        .route("/cart/remove", post(routes::shop::cart_remove))
+        .route("/cart/coupon", post(routes::shop::cart_coupon))
+        .route("/cart/country", post(routes::shop::cart_country))
+        .route("/checkout", get(routes::shop::checkout_page))
+        .route("/checkout/start", post(routes::shop::checkout_start))
+        .route(
+            "/checkout/return/:gateway",
+            get(routes::shop::checkout_return),
+        )
+        .route("/checkout/cancel/:uuid", get(routes::shop::checkout_cancel))
+        .route("/checkout/done/:uuid", get(routes::shop::checkout_done))
+        .route(
+            "/checkout/test/:uuid",
+            get(routes::shop::test_page).post(routes::shop::test_submit),
+        )
+        .route("/webhooks/:gateway", post(routes::webhooks::receive))
+        .route("/account/orders", get(routes::account::orders))
+        .route(
+            "/account/receipts/:uuid/:format",
+            get(routes::account::receipt),
+        )
+        .route("/account/agreements", get(routes::account::agreements))
+        .route(
+            "/account/agreements/:uuid/pdf",
+            get(routes::account::agreement_pdf),
+        )
+        .route(
+            "/account/subscriptions",
+            get(routes::account::subscriptions),
+        )
+        .route(
+            "/account/subscriptions/:uuid/cancel",
+            post(routes::account::cancel_subscription),
+        )
+        .route("/page/:uuid", get(routes::pages::view))
+        .route("/embed/page/:uuid", get(routes::pages::view))
+        .route("/embed/page", get(routes::pages::view_by_query))
+        .route("/embed/cart", get(routes::shop::embed_checkout))
+        .route("/embed/sitepass", get(routes::shop::embed_sitepass))
+        .route("/page/:uuid/key", post(routes::pages::submit_key))
+        .route("/page/:uuid/sign", post(routes::pages::sign))
+        .route("/admin/orders", get(routes::orders::list))
+        .route("/admin/orders/:uuid", get(routes::orders::detail))
+        .route("/admin/orders/:uuid/refund", post(routes::orders::refund))
+        .route(
+            "/admin/orders/:uuid/receipt.pdf",
+            get(routes::orders::receipt_pdf),
+        )
+        .route(
+            "/admin/coupons",
+            get(routes::orders::coupons).post(routes::orders::create_coupon),
+        )
+        .route(
+            "/admin/coupons/:id/:status",
+            post(routes::orders::coupon_status),
+        )
+        .route("/admin/tax", post(routes::orders::set_tax))
+        .route("/admin/tax/:id/delete", post(routes::orders::delete_tax))
+        .route("/admin/passes", get(routes::orders::passes))
+        .route(
+            "/admin/passes/:id/extend",
+            post(routes::orders::extend_pass),
+        )
+        .route(
+            "/admin/pages",
+            get(routes::pages::list).post(routes::pages::create),
+        )
+        .route("/admin/pages/new", get(routes::pages::new_form))
+        .route(
+            "/admin/pages/:uuid",
+            get(routes::pages::edit_form).post(routes::pages::update),
+        )
+        .route("/admin/pages/:uuid/delete", post(routes::pages::delete))
+        .route("/admin/pages/:uuid/keys", post(routes::pages::create_key))
+        .route(
+            "/admin/pages/:uuid/keys/:id/revoke",
+            post(routes::pages::revoke_key),
+        )
+        .route(
+            "/admin/pages/:uuid/signers/:id/revoke",
+            post(routes::pages::revoke_signer),
+        )
+        .route(
+            "/admin/pages/:uuid/signers.csv",
+            get(routes::pages::signers_csv),
+        )
+        .route(
+            "/admin/agreements/:uuid/pdf",
+            get(routes::pages::agreement_pdf_admin),
+        )
+        .route("/admin/integrations", get(routes::integrations::page))
+        .route(
+            "/admin/integrations/keys",
+            post(routes::integrations::create_key),
+        )
+        .route(
+            "/admin/integrations/keys/:id/revoke",
+            post(routes::integrations::revoke_key),
+        )
+        .route(
+            "/admin/integrations/webhooks",
+            post(routes::integrations::create_endpoint),
+        )
+        .route(
+            "/admin/integrations/webhooks/:id/delete",
+            post(routes::integrations::delete_endpoint),
+        )
+        .route(
+            "/admin/integrations/webhooks/test",
+            post(routes::integrations::test_endpoint),
+        )
+        .route("/api/v1/orders", get(routes::integrations::api_orders))
+        .route("/api/v1/orders/:uuid", get(routes::integrations::api_order))
+        .route("/api/v1/products", get(routes::integrations::api_products))
+        .route(
+            "/api/v1/customers",
+            get(routes::integrations::api_customers),
+        )
+        .route(
+            "/api/v1/customers/:uuid/entitlements",
+            get(routes::integrations::api_entitlements),
+        )
+        .route("/api/v1/grants", post(routes::integrations::api_grant))
         .route("/account", get(routes::account::my_media))
         .route(
             "/login",
