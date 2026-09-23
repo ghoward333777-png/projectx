@@ -96,10 +96,23 @@ pub struct LoginForm {
 pub async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
     Form(f): Form<LoginForm>,
 ) -> AppResult<Response> {
     let site_name = state.settings.get("general.site_name").await?;
-    match state.users.authenticate(&f.email, &f.password).await? {
+    let subject = format!("login:{}", crate::routes::shop::client_ip(&headers));
+    if let Some(until) = state.pages.locked_until(&subject).await? {
+        if until.as_str() > mms_core::now().as_str() {
+            return Ok(Html(state.render("customer_login.html", context! { site_name, error => format!("Too many attempts. Try again after {until}."), mode => "login", return_to => f.return_to })?).into_response());
+        }
+    }
+    let attempt = state.users.authenticate(&f.email, &f.password).await?;
+    let (limit, window, lockout) = crate::routes::pages::limits_pub(&state).await?;
+    state
+        .pages
+        .record_attempt(&subject, 0, attempt.is_some(), limit, window, lockout)
+        .await?;
+    match attempt {
         Some(u) => {
             state.audit.record(Some(u.id), "auth.login", "user", Some(&u.uuid), None, None).await?;
             Ok((jar.add(auth::session_cookie(&state, u.id)), Redirect::to(&state.url(&crate::routes::sso::safe_return(Some(&f.return_to))))).into_response())

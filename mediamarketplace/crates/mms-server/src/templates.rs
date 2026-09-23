@@ -39,6 +39,9 @@ pub fn environment(base: &str) -> Environment<'static> {
     env.add_filter("urlencode", |s: String| {
         crate::routes::media::urlencoding(&s)
     });
+    env.add_filter("convert", |cents: i64, factor: f64| {
+        ((cents as f64) * factor).round() as i64
+    });
     env.add_filter("truncate", |s: String, n: usize| {
         if s.chars().count() <= n {
             s
@@ -120,7 +123,14 @@ pub fn environment(base: &str) -> Environment<'static> {
         "page_gate.html",
         "page_view.html",
         "integrations.html",
-        "account_nav.html"
+        "account_nav.html",
+        "protection.html",
+        "protection_scans.html",
+        "violations.html",
+        "violation.html",
+        "google.html",
+        "backups.html",
+        "account_privacy.html"
     );
     env
 }

@@ -11,7 +11,9 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use minijinja::context;
 use mms_core::commerce::{is_recurring, money, recurring_interval, Cart, Order};
-use mms_core::gateways::{Gateway, OrderFacts, Outcome, PayPal, Stripe, TestGateway};
+use mms_core::gateways::{
+    AuthorizeNet, Gateway, OrderFacts, Outcome, PayPal, Square, Stripe, TestGateway,
+};
 use mms_core::users::User;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -98,6 +100,31 @@ pub async fn gateways(state: &AppState) -> anyhow::Result<Vec<Box<dyn Gateway>>>
             state.settings.get("payments.paypal_sandbox").await? == "1",
         )));
     }
+    let sq_token = state.settings.get("payments.square_access_token").await?;
+    let sq_loc = state.settings.get("payments.square_location_id").await?;
+    let sq_app = state.settings.get("payments.square_application_id").await?;
+    if !sq_token.trim().is_empty() && !sq_loc.trim().is_empty() && !sq_app.trim().is_empty() {
+        out.push(Box::new(Square::new(
+            sq_token.trim(),
+            sq_loc.trim(),
+            sq_app.trim(),
+            state.settings.get("payments.square_sandbox").await? == "1",
+        )));
+    }
+    let an_login = state.settings.get("payments.authnet_login_id").await?;
+    let an_key = state
+        .settings
+        .get("payments.authnet_transaction_key")
+        .await?;
+    let an_client = state.settings.get("payments.authnet_client_key").await?;
+    if !an_login.trim().is_empty() && !an_key.trim().is_empty() && !an_client.trim().is_empty() {
+        out.push(Box::new(AuthorizeNet::new(
+            an_login.trim(),
+            an_key.trim(),
+            an_client.trim(),
+            state.settings.get("payments.authnet_sandbox").await? == "1",
+        )));
+    }
     if state.settings.get("payments.test_mode").await? == "1" {
         out.push(Box::new(TestGateway {
             base_url: state
@@ -147,7 +174,76 @@ async fn facts(state: &AppState, order: &Order, user: &User) -> AppResult<OrderF
         recurring,
         success_url: format!("{public}/checkout/return/GATEWAY?order={}", order.uuid),
         cancel_url: format!("{public}/checkout/cancel/{}", order.uuid),
+        client_token: None,
     })
+}
+
+pub const CURRENCY_COOKIE: &str = "mms_cur";
+
+/// The shopper's display currency: a query parameter sets the cookie; only currencies
+/// listed under Settings → Store count. Returns (code, factor from base) when it differs.
+pub async fn display_currency(
+    state: &AppState,
+    jar: CookieJar,
+    requested: Option<&str>,
+) -> AppResult<(CookieJar, Option<(String, f64)>)> {
+    let base = state
+        .settings
+        .get("store.currency")
+        .await?
+        .to_ascii_uppercase();
+    let allowed: Vec<String> = state
+        .settings
+        .get("store.display_currencies")
+        .await?
+        .split(',')
+        .map(|c| c.trim().to_ascii_uppercase())
+        .filter(|c| c.len() == 3)
+        .collect();
+    let mut jar = jar;
+    let mut code = jar
+        .get(CURRENCY_COOKIE)
+        .map(|c| c.value().to_ascii_uppercase());
+    if let Some(r) = requested
+        .map(|r| r.to_ascii_uppercase())
+        .filter(|r| r.len() == 3)
+    {
+        let mut c = Cookie::new(CURRENCY_COOKIE, r.clone());
+        c.set_path(auth::cookie_path(state));
+        c.set_same_site(SameSite::Lax);
+        c.set_max_age(time::Duration::days(365));
+        jar = jar.add(c);
+        code = Some(r);
+    }
+    let Some(code) = code.filter(|c| *c != base && allowed.contains(c)) else {
+        return Ok((jar, None));
+    };
+    match state.currency.factor(&base, &code).await? {
+        Some(f) => Ok((jar, Some((code, f)))),
+        None => Ok((jar, None)),
+    }
+}
+
+/// Currencies a shopper may switch to, with the base first.
+pub async fn currency_choices(state: &AppState) -> AppResult<Vec<String>> {
+    let base = state
+        .settings
+        .get("store.currency")
+        .await?
+        .to_ascii_uppercase();
+    let mut out = vec![base.clone()];
+    for c in state
+        .settings
+        .get("store.display_currencies")
+        .await?
+        .split(',')
+    {
+        let c = c.trim().to_ascii_uppercase();
+        if c.len() == 3 && !out.contains(&c) && state.currency.rate(&c).await?.is_some() {
+            out.push(c);
+        }
+    }
+    Ok(if out.len() > 1 { out } else { vec![] })
 }
 
 /// Everything that happens once money has arrived. Idempotent.
@@ -195,6 +291,7 @@ pub async fn complete_paid(
         .audit
         .record(Some(order.user_id), "order.paid", "order", Some(&order.uuid), None, Some(serde_json::json!({ "number": order.number, "total_cents": order.total_cents, "gateway": gateway })))
         .await?;
+    crate::routes::ops::email_receipt(state, order).await?;
     emit(state, "order.paid", serde_json::json!({ "order": order.uuid, "number": order.number, "total_cents": order.total_cents, "currency": order.currency, "user_id": order.user_id, "gateway": gateway })).await?;
     for e in state.entitlements.for_user(order.user_id).await? {
         if e.source == "order" && e.source_ref == order.uuid {
@@ -386,12 +483,20 @@ pub async fn checkout_page(
     let gws: Vec<_> = gateways(&state)
         .await?
         .iter()
-        .map(|g| context! { name => g.name(), label => g.label() })
+        .map(|g| context! { name => g.name(), label => g.label(), sdk => g.client_sdk() })
         .collect();
     let has_recurring = lines.iter().any(|l| is_recurring(&l.product));
     let currency = state.settings.get("store.currency").await?;
+    let (jar, fx) = display_currency(&state, jar, None).await?;
+    let charge_fx = state
+        .settings
+        .get("store.charge_in_display_currency")
+        .await?
+        == "1";
+    let currencies = currency_choices(&state).await?;
     let site_name = state.settings.get("general.site_name").await?;
-    let html = state.render("checkout.html", context! { user, site_name, cart, lines, totals, currency, gateways => gws, has_recurring, notice => q.notice, error => q.error, csrf => customer_csrf(&state, &token) })?;
+    let html = state.render("checkout.html", context! { user, site_name, cart, lines, totals, currency, gateways => gws, has_recurring, notice => q.notice, error => q.error, csrf => customer_csrf(&state, &token),
+        fx_code => fx.as_ref().map(|f| f.0.clone()), fx_factor => fx.as_ref().map(|f| f.1).unwrap_or(1.0), charge_fx, currencies })?;
     Ok((jar, Html(html)).into_response())
 }
 
@@ -400,6 +505,8 @@ pub struct StartForm {
     _csrf: String,
     #[serde(default)]
     gateway: String,
+    #[serde(default)]
+    token: String,
 }
 
 pub async fn checkout_start(
@@ -416,7 +523,28 @@ pub async fn checkout_start(
     }
     let (cart, jar) = current_cart(&state, jar, Some(&user)).await?;
     let currency = state.settings.get("store.currency").await?;
-    let order = match state.commerce.create_order(&cart, user.id, &currency).await {
+    // Charge in the shopper's currency when allowed and the gateway can take it.
+    let gw_opt = gateway_named(&state, &f.gateway).await?;
+    let (jar, fx) = display_currency(&state, jar, None).await?;
+    let charge_fx = state
+        .settings
+        .get("store.charge_in_display_currency")
+        .await?
+        == "1";
+    let charge = match (&gw_opt, &fx) {
+        (Some(gw), Some((code, factor))) if charge_fx => {
+            let ok = gw.charge_currencies().is_empty()
+                || gw.charge_currencies().contains(&code.as_str());
+            (ok && gw.client_sdk().is_none() && gw.name() != "test")
+                .then_some((code.as_str(), *factor))
+        }
+        _ => None,
+    };
+    let order = match state
+        .commerce
+        .create_order_in(&cart, user.id, &currency, charge)
+        .await
+    {
         Ok(o) => o,
         Err(e) => {
             return Ok((
@@ -437,7 +565,7 @@ pub async fn checkout_start(
         )
             .into_response());
     }
-    let Some(gw) = gateway_named(&state, &f.gateway).await? else {
+    let Some(gw) = gw_opt else {
         state.commerce.cancel(order.id).await?;
         return Ok((
             jar,
@@ -447,6 +575,7 @@ pub async fn checkout_start(
     };
     let mut facts = facts(&state, &order, &user).await?;
     facts.success_url = facts.success_url.replace("GATEWAY", gw.name());
+    facts.client_token = (!f.token.is_empty()).then(|| f.token.clone());
     match gw.start(&facts).await {
         Ok(started) => {
             state
@@ -681,4 +810,35 @@ pub async fn embed_checkout(
         Html(html),
     )
         .into_response())
+}
+
+/// Apple Pay domain verification: the file Stripe or Square hands out, from settings.
+pub async fn apple_pay_domain(State(state): State<AppState>) -> AppResult<Response> {
+    let body = state.settings.get("payments.apple_pay_domain_file").await?;
+    if body.trim().is_empty() {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; charset=utf-8".to_string(),
+        )],
+        body,
+    )
+        .into_response())
+}
+
+/// /currency?code=EUR&return=/cart sets the display currency cookie.
+pub async fn set_currency(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Query(q): Query<HashMap<String, String>>,
+) -> AppResult<Response> {
+    let (jar, _) = display_currency(&state, jar, q.get("code").map(String::as_str)).await?;
+    let back = q
+        .get("return")
+        .cloned()
+        .filter(|r| r.starts_with('/') && !r.starts_with("//"))
+        .unwrap_or_else(|| "/cart".into());
+    Ok((jar, Redirect::to(&state.url(&back))).into_response())
 }

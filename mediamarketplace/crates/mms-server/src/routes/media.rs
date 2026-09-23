@@ -256,18 +256,38 @@ pub async fn signed_file(
     let Some(m) = state.media.by_uuid(&claims.m).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let mut res = serve_file(
-        &state.media.original_path(&m),
-        &headers,
-        "private, no-store",
-    )
-    .await?;
+    // Protected delivery: images at level 2 get a per-viewer stamped and marked PNG;
+    // videos at level 2+ get the per-viewer copy once ffmpeg has produced it.
+    let mut path = state.media.original_path(&m);
+    let mut mime = m.mime.clone();
+    if let Some(u) = user.as_ref().filter(|u| claims.u == u.id) {
+        let lv = crate::routes::protection::levels(&state).await?;
+        let (ip, ua) = crate::routes::protection::client(&headers);
+        if m.r#type == "image" && lv.image >= 2 && m.mime != "image/svg+xml" {
+            if let Ok(p) = crate::routes::protection::marked_image(&state, &m, u, &ip, &ua).await {
+                path = p;
+                mime = "image/png".to_string();
+            }
+        } else if m.r#type == "video" && lv.video >= 2 {
+            let p = crate::routes::protection::marked_video_path(&state, &m, u.id);
+            if tokio::fs::metadata(&p).await.is_ok() {
+                path = p;
+                mime = "video/mp4".to_string();
+            }
+        }
+    }
+    let mut res = serve_file(&path, &headers, "private, no-store").await?;
     res.headers_mut().insert(
         header::CONTENT_TYPE,
-        m.mime
-            .parse()
+        mime.parse()
             .unwrap_or(header::HeaderValue::from_static("application/octet-stream")),
     );
+    if lv_blocks_download(&state, &m).await? {
+        res.headers_mut().insert(
+            header::CONTENT_DISPOSITION,
+            header::HeaderValue::from_static("inline"),
+        );
+    }
     Ok(res)
 }
 
@@ -357,4 +377,18 @@ pub fn urlencoding(s: &str) -> String {
         }
     }
     out
+}
+
+/// Images at protection level 1 or above are served inline only.
+async fn lv_blocks_download(state: &AppState, m: &mms_core::media::Media) -> AppResult<bool> {
+    if m.r#type != "image" {
+        return Ok(false);
+    }
+    Ok(state
+        .settings
+        .get("protection.image_level")
+        .await?
+        .parse::<i64>()
+        .unwrap_or(0)
+        >= 1)
 }

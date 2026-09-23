@@ -111,5 +111,23 @@ WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
   version and supersedes signatures. Site passes never bypass invite keys.
 - Receipts and agreements use the native writer `mms-core::pdf`; keep its output
   byte-stable for the same input.
+- Protection: `mms-core::protection` owns the marks (5x7 stamp, LSB code, 8x5 frame
+  grid with checksum); `routes::media::signed_file` is the only place that swaps in a
+  per-viewer copy; `Protection::identify` is the one decoder (also `mms-server identify`).
+  Keep `embed_lsb`/`stamp_grid` deterministic; the tests assert decode through PNG,
+  scaling and JPEG.
+- Gateways with a browser SDK (Square, Authorize.net) never see card numbers on the
+  server: the token arrives in the `token` form field; `charge_currencies()` and
+  `client_sdk()` on the `Gateway` trait decide currency conversion and card forms.
+  `Commerce::create_order_in` is the only place a charge currency is applied
+  (base currency and rate stay on the order; stats divide by `fx_rate`).
+- Roles: `AdminUser` admits `admin` and `staff`; administrator-only handlers call
+  `admin.admin_only()` first (settings, bridges, integrations, roles, backups).
+- Email goes through `routes::ops::send_quietly`: never fail a purchase or a signature
+  because SMTP is missing. Privacy erase anonymises and keeps orders; backups are
+  `VACUUM INTO` plus media in one tar.gz (`mms-core::backup`).
+- CI: `.github/workflows/mediamarketplace.yml` runs the checks, cross-builds
+  x86_64 and aarch64 musl binaries and packages both (`MMS_BIN`, `MMS_BIN_ARM64`);
+  `MmsRuntime::binPath` picks `mms-server-aarch64` on ARM hosts.
 - Deliverable documents are Word (`docs/*.docx`), never Markdown. Notes inside
   `mediamarketplace/` are `.txt`.

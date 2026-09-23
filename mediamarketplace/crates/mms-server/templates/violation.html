@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Violation {{ v.host }}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/protection/violations">← Violations</a></p>
+<h1>{{ v.host }} <span class="badge {% if v.status == 'removed' %}ok{% elif v.status == 'open' %}fail{% elif v.status == 'notice_sent' %}warn{% endif %}">{{ v.status | label }}</span></h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Details</h2>
+  <dl><dt>URL</dt><dd><a href="{{ v.url }}" target="_blank" rel="noopener">{{ v.url }}</a></dd>
+  <dt>Media</dt><dd>{% if media %}{{ media.title | default(media.original_path) }}{% else %}—{% endif %}</dd>
+  <dt>Reported</dt><dd>{{ v.created_at }} ({{ v.source }})</dd>
+  {% if v.evidence_hash %}<dt>Evidence</dt><dd><a href="{{ base }}/admin/protection/violations/{{ v.uuid }}/evidence">open</a> · SHA-256 <code class="small">{{ v.evidence_hash }}</code></dd>{% endif %}
+  {% if session %}<dt>Forensic mark</dt><dd>Session <code>{{ session.uuid[:8] }}</code> issued to <b>{{ viewer | default("unknown") }}</b> on {{ session.created_at }} from {{ session.ip }}</dd>{% endif %}
+  {% if v.evidence_note %}<dt>Notes</dt><dd>{{ v.evidence_note }}</dd>{% endif %}</dl>
+  <h3>DMCA notice</h3>
+  {% if has_notice %}<p><a class="button" href="{{ base }}/admin/protection/violations/{{ v.uuid }}/notice.pdf">Download notice (PDF)</a> generated {{ v.notice_sent_at }}</p>{% endif %}
+  {% if owner_ready %}<form method="post" action="{{ base }}/admin/protection/violations/{{ v.uuid }}/notice" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">{% if has_notice %}Regenerate notice{% else %}Generate DMCA notice{% endif %}</button></form>{% else %}<p class="muted small">Enter the rights owner under <a href="{{ base }}/admin/settings#copyright">Settings → Copyright services</a> to generate notices.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Status</h2>
+  <form method="post" action="{{ base }}/admin/protection/violations/{{ v.uuid }}">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Status <select name="status">{% for s in ["open","notice_sent","removed","disputed","ignored"] %}<option value="{{ s }}" {% if v.status == s %}selected{% endif %}>{{ s | label }}</option>{% endfor %}</select></label>
+    <label>Note <input name="note" placeholder="What happened"></label>
+    <button class="primary">Update</button>
+  </form>
+  <h3>Timeline</h3>
+  <table><tbody>{% for e in events %}<tr><td class="small">{{ e.at }}</td><td>{{ e.kind | label }}</td><td class="small">{{ e.note }}</td></tr>{% endfor %}</tbody></table>
+</section>
+</div>
+{% endblock %}

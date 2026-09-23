@@ -10,10 +10,17 @@
 <article class="player-page">
   <h1>{{ p.title }}</h1>
   {% if p.type in ["video", "audio"] and src %}
+    {% if p.type == "video" and video_level >= 2 and not marked_ready %}<p class="muted small">Preparing your protected copy; it opens with a session code the next time you play.</p>{% endif %}
     <mms-player type="{{ p.type }}" src="{{ src }}" {% if poster %}poster="{{ poster }}"{% endif %} player="{{ player }}" base="{{ base }}" product="{{ p.slug }}" watermark="{{ user.email }}"></mms-player>
     {% if download %}<p><a class="button" href="{{ src }}" download>Download</a></p>{% endif %}
   {% elif p.type == "image" and src %}
-    <img class="full" src="{{ src }}" alt="{{ p.title }}"><p><a class="button" href="{{ src }}" download>Download</a></p>
+    {% if image_level >= 1 %}
+    <div class="protected-image" oncontextmenu="return false"><img class="full" src="{{ src }}" alt="{{ p.title }}" draggable="false"><div class="shield"></div><div class="wm">{{ user.email }}</div></div>
+    {% if image_level >= 2 %}<p class="muted small">This copy is issued to {{ user.email }} and carries a forensic mark.</p>{% endif %}
+    {% else %}
+    <img class="full" src="{{ src }}" alt="{{ p.title }}">
+    {% endif %}
+    {% if download or settings.download_allowed %}<p><a class="button" href="{{ src }}" download>Download</a></p>{% endif %}
   {% elif p.type == "pdf" and src %}
     <iframe class="pdf" src="{{ src }}" title="{{ p.title }}"></iframe>{% if settings.download_allowed %}<p><a class="button" href="{{ src }}" download>Download</a></p>{% endif %}
   {% elif p.type == "live" %}
@@ -28,10 +35,11 @@
   {% elif p.type == "site_pass" %}
     <p>Your pass is active. Everything in the library is open to you in <a href="{{ base }}/account">My media</a>.</p>
   {% elif p.type == "private_page" %}
-    <p>Private pages open in the next release.</p>
+    <p><a class="button primary" href="{{ base }}/page/{{ settings.page_uuid }}">Open the page</a></p>
   {% else %}<p>Nothing to play yet.</p>{% endif %}
   <p><a href="{{ base }}/account">← My media</a></p>
 </article>
+<script>window.MMS_PLAYERS = {{ players | tojson }};</script>
 <script src="{{ base }}/static/mms-player.js" defer></script>
 <script>
 (function () { function report() { parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*'); }

@@ -22,19 +22,26 @@
 </section>
 <section class="card">
   <h2>Payment</h2>
-  <form method="post" action="{{ base }}/checkout/start">
-    <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <form method="post" action="{{ base }}/checkout/start" id="checkout-form">
+    <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="token" value="">
     {% if totals.total_cents == 0 %}
       <p>Nothing to pay. Your items are added to My media when you continue.</p>
       <button class="primary">Get it free</button>
     {% elif gateways %}
-      {% for g in gateways %}<label class="choice"><input type="radio" name="gateway" value="{{ g.name }}" {% if loop.first %}checked{% endif %}{% if has_recurring and g.name == "paypal" %} disabled{% endif %}> {{ g.label }}{% if has_recurring and g.name == "paypal" %} <span class="muted small">(recurring passes use card payment)</span>{% endif %}</label>{% endfor %}
+      {% for g in gateways %}<label class="choice"><input type="radio" name="gateway" value="{{ g.name }}" {% if loop.first %}checked{% endif %}{% if has_recurring and g.name != "stripe" and g.name != "test" %} disabled{% endif %}> {{ g.label }}{% if has_recurring and g.name != "stripe" and g.name != "test" %} <span class="muted small">(recurring passes use Stripe)</span>{% endif %}</label>
+      {% if g.sdk and g.sdk.kind == "square" %}<div data-card-for="square" class="card-form hidden"><div id="square-card"></div></div>{% endif %}
+      {% if g.sdk and g.sdk.kind == "authnet" %}<div data-card-for="authnet" class="card-form hidden"><label>Card number <input name="an_number" autocomplete="cc-number" inputmode="numeric"></label><div class="filters"><label>Month <input name="an_month" placeholder="MM" style="min-width:70px" autocomplete="cc-exp-month"></label><label>Year <input name="an_year" placeholder="YYYY" style="min-width:90px" autocomplete="cc-exp-year"></label><label>CVV <input name="an_cvv" style="min-width:70px" autocomplete="cc-csc"></label></div></div>{% endif %}{% endfor %}
+      <p id="card-status" class="muted small"></p>
+      {% if fx_code %}<p class="small muted">Prices shown in {{ fx_code }} at today's rate{% if charge_fx %}; card and PayPal payments are charged in {{ fx_code }} ({{ totals.total_cents | convert(fx_factor) | money(fx_code) }}){% else %}; you are charged {{ totals.total_cents | money(currency) }}{% endif %}.</p>{% endif %}
       <p class="small muted">Card details are entered on the payment provider's own secure page. Nothing about your card is stored here.</p>
-      <button class="primary">Continue to payment</button>
+      <button class="primary" type="submit">Continue to payment</button>
     {% else %}
       <p class="error">No payment method is set up yet. The store owner needs to add Stripe or PayPal keys under Settings → Payments.</p>
     {% endif %}
   </form>
 </section>
 </div>
+{% if currencies %}<p class="small muted">Show prices in: {% for c in currencies %}<a href="{{ base }}/currency?code={{ c }}&return=%2Fcheckout" {% if (fx_code or currency) == c %}class="on"{% endif %}>{{ c }}</a> {% endfor %}</p>{% endif %}
+<script id="checkout-sdks" type="application/json">{{ {"square": (gateways | selectattr("name", "==", "square") | map(attribute="sdk") | first), "authnet": (gateways | selectattr("name", "==", "authnet") | map(attribute="sdk") | first)} | tojson }}</script>
+<script src="{{ base }}/static/mms-checkout.js" defer></script>
 {% endblock %}

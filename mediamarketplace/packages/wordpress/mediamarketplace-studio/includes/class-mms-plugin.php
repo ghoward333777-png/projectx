@@ -141,6 +141,10 @@ final class MMS_Plugin
         $path = (string) parse_url($uri, PHP_URL_PATH);
         $home = rtrim((string) parse_url(home_url('/'), PHP_URL_PATH), '/');
         $mount = $home . '/' . self::MOUNT;
+        if ($path === $home . '/.well-known/apple-developer-merchantid-domain-association') {
+            $this->runtime()->proxy('/' . self::MOUNT . '/.well-known/apple-developer-merchantid-domain-association');
+            exit;
+        }
         if (!(isset($wp->query_vars[self::QUERY_VAR]) || $path === $mount || str_starts_with($path, $mount . '/'))) {
             return;
         }

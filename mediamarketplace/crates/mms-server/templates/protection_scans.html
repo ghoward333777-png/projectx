@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Copyright scans{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/protection">← Protection</a></p>
+<h1>Copyright scans</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+<section class="card">
+  <form method="get" class="filters"><select name="media"><option value="">Choose a media file</option>{% for m in media %}<option value="{{ m.uuid }}" {% if m.uuid == selected %}selected{% endif %}>{{ m.title | default(m.original_path) }}</option>{% endfor %}</select><button>Show searches</button></form>
+  {% if chosen %}
+  <table><thead><tr><th>Service</th><th></th><th>Record result</th></tr></thead><tbody>{% for l in links %}<tr><td>{{ l.sv.name }} <span class="muted small">({{ l.sv.mode }})</span></td>
+  <td>{% if l.link %}<a class="button" href="{{ l.link }}" target="_blank" rel="noopener">Open search</a>{% elif l.sv.mode == "link" %}<span class="muted small">needs a public thumbnail</span>{% elif l.configured %}<span class="muted small">key stored; submit at the service's dashboard</span>{% else %}<span class="muted small">no key</span>{% endif %}</td>
+  <td><form method="post" action="{{ base }}/admin/protection/scans" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="media" value="{{ chosen.uuid }}"><input type="hidden" name="service" value="{{ l.sv.slug }}"><input name="matches" placeholder="matches" style="width:80px"> <input name="result" placeholder="note or URL" style="min-width:200px"> <button>Record</button></form></td></tr>{% endfor %}</tbody></table>
+  {% endif %}
+</section>
+{% if history %}<section class="card"><h2>History</h2><table><thead><tr><th>When</th><th>Media</th><th>Service</th><th>Matches</th><th>Result</th></tr></thead><tbody>{% for h in history %}<tr><td>{{ h.created_at }}</td><td>{{ h.media_id }}</td><td>{{ h.service | label }}</td><td>{{ h.matches }}</td><td class="small">{{ h.result | default("") }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% endblock %}

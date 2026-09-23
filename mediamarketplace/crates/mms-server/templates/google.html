@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Google Business Profile{% endblock %}
+{% block body %}
+<h1>Google Business Profile</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<section class="card">
+  <h2>Connection</h2>
+  {% if not configured %}<p class="warn-box">Enter the OAuth client ID and secret under <a href="{{ base }}/admin/settings#google">Settings → Google Business Profile</a>. In Google Cloud, enable the Business Profile APIs and add this redirect URI: <code>{{ redirect_uri }}</code></p>
+  {% elif account %}<p>Connected{% if account.account_name %} as <code>{{ account.account_name }}</code>{% endif %} since {{ account.created_at[:10] }}.</p>
+  <form method="post" action="{{ base }}/admin/google/sync" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Sync locations and reviews</button></form>
+  <form method="post" action="{{ base }}/admin/google/disconnect" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Disconnect</button></form>
+  {% else %}<form method="post" action="{{ base }}/admin/google/connect"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Connect Google account</button></form>{% endif %}
+</section>
+{% if locations %}<section class="card"><h2>Locations</h2><table><thead><tr><th>Location</th><th>Address</th><th>Map</th></tr></thead><tbody>{% for l in locations %}<tr><td>{{ l.title }}<br><code class="small">{{ l.name }}</code></td><td>{{ l.address }}</td><td>{% if l.maps_url %}<a href="{{ l.maps_url }}" target="_blank" rel="noopener">Open in Maps</a>{% endif %}{% if maps_key and l.place_id %}<br><iframe width="320" height="200" style="border:0;border-radius:6px" loading="lazy" src="https://www.google.com/maps/embed/v1/place?key={{ maps_key }}&q=place_id:{{ l.place_id }}"></iframe>{% endif %}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Posts</h2>
+  <form method="post" action="{{ base }}/admin/google/posts">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Location <select name="location">{% for l in locations %}<option value="{{ l.name }}">{{ l.title }}</option>{% endfor %}{% if not locations %}<option value="">Sync locations first</option>{% endif %}</select></label>
+    <label>Text (up to 1500 characters) <textarea name="summary" rows="4" required></textarea></label>
+    <div class="filters"><select name="cta_type"><option value="">No button</option>{% for c in ["LEARN_MORE","BOOK","ORDER","SHOP","SIGN_UP","CALL"] %}<option value="{{ c }}">{{ c | label }}</option>{% endfor %}</select><input name="cta_url" placeholder="Button link" style="min-width:220px"><input name="media_url" placeholder="Photo URL (optional)" style="min-width:220px"></div>
+    <div class="filters"><input name="scheduled_at" placeholder="Schedule (YYYY-MM-DD HH:MM UTC), empty = draft" style="min-width:300px"><label class="choice small"><input type="checkbox" name="publish_now" value="1"> Publish now</label></div>
+    <button class="primary">Save post</button>
+  </form>
+  {% if posts %}<table><thead><tr><th>Post</th><th>Status</th><th></th></tr></thead><tbody>{% for p in posts %}<tr><td>{{ p.summary | truncate(80) }}<br><span class="muted small">{{ p.scheduled_at | default(p.created_at) }}{% if p.error %} · {{ p.error }}{% endif %}</span></td><td><span class="badge {% if p.status == 'published' %}ok{% elif p.status == 'failed' %}fail{% elif p.status == 'scheduled' %}warn{% endif %}">{{ p.status }}</span></td><td>{% if p.status != "published" %}<form method="post" action="{{ base }}/admin/google/posts/{{ p.uuid }}/publish" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Publish now</button></form>{% endif %} <form method="post" action="{{ base }}/admin/google/posts/{{ p.uuid }}/delete" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Delete</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+<section class="card">
+  <h2>Reviews</h2>
+  {% if not ai_ready %}<p class="muted small">Add an Anthropic API key under <a href="{{ base }}/admin/settings#ai">Settings → AI</a> to draft replies automatically. You always approve before anything is posted.</p>{% endif %}
+  {% if reviews %}{% for r in reviews %}<div class="review-card">
+    <p><b>{{ "★" * r.rating }}</b> {{ r.reviewer | default("Anonymous") }} <span class="muted small">{{ r.reviewed_at[:10] }}</span></p>
+    <p>{{ r.comment }}</p>
+    {% if r.reply_status == "posted" %}<p class="notice small">Replied: {{ r.reply }}</p>
+    {% else %}
+    <form method="post" action="{{ base }}/admin/google/reviews/{{ r.id }}/reply">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <textarea name="reply" rows="3" placeholder="Your public reply">{{ r.draft_reply }}</textarea>
+      <div class="filters"><button name="action" value="post" class="primary">Approve and post</button><button name="action" value="save">Save draft</button></div>
+    </form>
+    <form method="post" action="{{ base }}/admin/google/reviews/{{ r.id }}/draft" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button {% if not ai_ready %}disabled{% endif %}>Draft with AI</button></form>
+    {% endif %}
+  </div>{% endfor %}{% else %}<p class="muted">No reviews synced yet.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

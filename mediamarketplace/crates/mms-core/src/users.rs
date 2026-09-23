@@ -19,6 +19,11 @@ impl User {
     pub fn is_admin(&self) -> bool {
         self.role == "admin" && self.status == "active"
     }
+    /// Staff may run the store (media, products, orders, pages); only administrators
+    /// change settings, sites, integrations, roles and backups.
+    pub fn is_staff(&self) -> bool {
+        matches!(self.role.as_str(), "admin" | "staff") && self.status == "active"
+    }
 }
 
 #[derive(Clone)]

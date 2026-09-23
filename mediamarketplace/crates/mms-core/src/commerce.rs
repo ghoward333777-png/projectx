@@ -108,6 +108,8 @@ pub struct Order {
     pub external_id: Option<String>,
     pub paid_at: Option<String>,
     pub created_at: String,
+    pub base_currency: String,
+    pub fx_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -151,7 +153,7 @@ pub struct Subscription {
     pub created_at: String,
 }
 
-const ORDER_SELECT: &str = "SELECT id, uuid, number, user_id, status, currency, subtotal_cents, discount_cents, tax_cents, total_cents, coupon, country, tax_name, tax_rate_bp, gateway, external_id, paid_at, created_at FROM orders";
+const ORDER_SELECT: &str = "SELECT id, uuid, number, user_id, status, currency, subtotal_cents, discount_cents, tax_cents, total_cents, coupon, country, tax_name, tax_rate_bp, gateway, external_id, paid_at, created_at, base_currency, fx_rate FROM orders";
 const SUB_SELECT: &str = "SELECT id, uuid, user_id, product_id, order_id, gateway, external_id, interval, status, period_end, cancel_at_period_end, created_at FROM subscriptions";
 
 /// Seats for meetings, one copy of everything else.
@@ -470,11 +472,35 @@ impl Commerce {
     /// Turns the cart into a pending order (items are copied so later price changes
     /// never alter history). The cart is emptied once the order is paid.
     pub async fn create_order(&self, cart: &Cart, user_id: i64, currency: &str) -> Result<Order> {
+        self.create_order_in(cart, user_id, currency, None).await
+    }
+
+    /// Like `create_order`, optionally charging in another currency at `factor`
+    /// (charge = base × factor); the base currency and rate are kept on the order.
+    pub async fn create_order_in(
+        &self,
+        cart: &Cart,
+        user_id: i64,
+        base_currency: &str,
+        charge: Option<(&str, f64)>,
+    ) -> Result<Order> {
         let lines = self.lines(cart).await?;
         if lines.is_empty() {
             bail!("Your cart is empty");
         }
-        let t = self.cart_totals(cart, &lines).await?;
+        let mut t = self.cart_totals(cart, &lines).await?;
+        let (currency, fx) = match charge {
+            Some((code, factor)) if factor > 0.0 && code != base_currency => {
+                let conv = |c: i64| ((c as f64) * factor).round() as i64;
+                t.subtotal_cents = conv(t.subtotal_cents);
+                t.discount_cents = conv(t.discount_cents);
+                t.tax_cents = conv(t.tax_cents);
+                t.total_cents = t.subtotal_cents - t.discount_cents + t.tax_cents;
+                (code.to_string(), factor)
+            }
+            _ => (base_currency.to_string(), 1.0),
+        };
+        let currency = currency.as_str();
         let now = crate::now();
         let year = now[..4].to_string();
         let seq: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE number LIKE ?")
@@ -483,13 +509,14 @@ impl Commerce {
             .await?;
         let number = format!("ORD-{year}-{:05}", seq + 1);
         let uuid = uuid::Uuid::new_v4().to_string();
-        let id = sqlx::query("INSERT INTO orders (uuid, number, user_id, status, currency, subtotal_cents, discount_cents, tax_cents, total_cents, coupon, country, tax_name, tax_rate_bp, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        let id = sqlx::query("INSERT INTO orders (uuid, number, user_id, status, currency, subtotal_cents, discount_cents, tax_cents, total_cents, coupon, country, tax_name, tax_rate_bp, base_currency, fx_rate, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(&uuid).bind(&number).bind(user_id).bind(currency).bind(t.subtotal_cents).bind(t.discount_cents).bind(t.tax_cents).bind(t.total_cents)
-            .bind(&t.coupon).bind(&cart.country).bind(&t.tax_name).bind(t.tax_rate_bp).bind(&now).bind(&now)
+            .bind(&t.coupon).bind(&cart.country).bind(&t.tax_name).bind(t.tax_rate_bp).bind(base_currency).bind(fx).bind(&now).bind(&now)
             .execute(&self.db.pool).await?.last_insert_rowid();
+        let conv = |c: i64| ((c as f64) * fx).round() as i64;
         for l in &lines {
             sqlx::query("INSERT INTO order_items (order_id, product_id, title, type, unit_cents, quantity, total_cents, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-                .bind(id).bind(l.product.id).bind(&l.product.title).bind(&l.product.r#type).bind(l.unit_cents).bind(l.quantity).bind(l.total_cents).bind(&l.product.settings)
+                .bind(id).bind(l.product.id).bind(&l.product.title).bind(&l.product.r#type).bind(conv(l.unit_cents)).bind(l.quantity).bind(conv(l.total_cents)).bind(&l.product.settings)
                 .execute(&self.db.pool).await?;
         }
         Ok(self.order_by_id(id).await?.expect("order just created"))
@@ -772,7 +799,7 @@ impl Commerce {
     /// Revenue and counts for the dashboard and the passes page.
     pub async fn stats(&self) -> Result<serde_json::Value> {
         let (orders, revenue): (i64, i64) = sqlx::query_as(
-            "SELECT COUNT(*), COALESCE(SUM(total_cents),0) FROM orders WHERE status = 'paid'",
+            "SELECT COUNT(*), COALESCE(CAST(SUM(total_cents / fx_rate) AS INTEGER),0) FROM orders WHERE status = 'paid'",
         )
         .fetch_one(&self.db.pool)
         .await?;

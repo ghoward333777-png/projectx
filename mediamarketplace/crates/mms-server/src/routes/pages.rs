@@ -356,6 +356,10 @@ fn subject(headers: &HeaderMap, user: Option<&mms_core::users::User>) -> String 
     }
 }
 
+pub async fn limits_pub(state: &AppState) -> AppResult<(i64, i64, i64)> {
+    limits(state).await
+}
+
 async fn limits(state: &AppState) -> AppResult<(i64, i64, i64)> {
     Ok((
         state
@@ -673,6 +677,23 @@ pub async fn sign(
                 )
                 .await?;
             crate::routes::shop::emit(&state, "agreement.signed", serde_json::json!({ "page": page.uuid, "user_id": user.id, "agreement": a.uuid, "version": a.agreement_version })).await?;
+            if let Some(pdf) = state
+                .pages
+                .agreement_pdf_by_uuid(&a.uuid, Some(user.id))
+                .await?
+            {
+                let text = format!("Hello {},\n\nattached is your signed copy of the agreement for \"{}\" at {site_name}.\n", user.name, page.title);
+                crate::routes::ops::send_quietly(
+                    &state,
+                    &user.email,
+                    &format!("Your signed agreement: {}", page.title),
+                    &text,
+                    None,
+                    Some(("agreement.pdf", &pdf, "application/pdf")),
+                    "agreement",
+                )
+                .await;
+            }
             // Paid pages: the linked product goes into the cart and checkout follows.
             if matches!(page.protection.as_str(), "paid" | "paid_key") {
                 if let Some(pid) = page.product_id {

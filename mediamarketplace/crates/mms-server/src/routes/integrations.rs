@@ -30,6 +30,9 @@ pub async fn page(
     admin: AdminUser,
     Query(q): Query<PageQuery>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     let keys = state.integrations.keys().await?;
     let endpoints = state.integrations.endpoints().await?;
     let deliveries = state.integrations.deliveries(50).await?;
@@ -42,6 +45,9 @@ pub async fn create_key(
     admin: AdminUser,
     Form(f): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(f.get("_csrf").map(String::as_str).unwrap_or("")) {
         return Ok(r);
     }
@@ -71,6 +77,9 @@ pub async fn revoke_key(
     Path(id): Path<i64>,
     Form(f): Form<CsrfOnly>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }
@@ -83,6 +92,9 @@ pub async fn create_endpoint(
     admin: AdminUser,
     Form(f): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(f.get("_csrf").map(String::as_str).unwrap_or("")) {
         return Ok(r);
     }
@@ -103,6 +115,9 @@ pub async fn delete_endpoint(
     Path(id): Path<i64>,
     Form(f): Form<CsrfOnly>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }
@@ -115,6 +130,9 @@ pub async fn test_endpoint(
     admin: AdminUser,
     Form(f): Form<CsrfOnly>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }

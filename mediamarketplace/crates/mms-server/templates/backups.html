@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/health">← Health</a></p>
+<h1>Backups</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<section class="card">
+  <p>A backup is one <code>.tar.gz</code> with a consistent copy of the database, the configuration, every media file and evidence files. Restore by unpacking it into an empty data folder. Backups are written to <code>{{ dir }}</code> (change under Settings → Privacy). Also on the command line: <code>mms-server backup</code>.</p>
+  <form method="post" action="{{ base }}/admin/backups"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Create backup now</button></form>
+  {% if list %}<table><thead><tr><th>File</th><th>Size</th><th></th></tr></thead><tbody>{% for b in list %}<tr><td>{{ b.name }}</td><td>{{ b.size | filesize }}</td><td><a class="button" href="{{ base }}/admin/backups/{{ b.name }}">Download</a></td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">No backups yet.</p>{% endif %}
+</section>
+{% endblock %}

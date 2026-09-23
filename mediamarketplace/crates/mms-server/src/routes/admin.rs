@@ -23,7 +23,7 @@ pub async fn login_form(
     if state.users.count_admins().await? == 0 {
         return Ok(Redirect::to(&state.url("/setup")).into_response());
     }
-    if user.map(|u| u.is_admin()).unwrap_or(false) {
+    if user.map(|u| u.is_staff()).unwrap_or(false) {
         return Ok(Redirect::to(&state.url("/admin")).into_response());
     }
     Ok(Html(state.render("login.html", context! { error => "" })?).into_response())
@@ -38,10 +38,34 @@ pub struct LoginForm {
 pub async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
     Form(f): Form<LoginForm>,
 ) -> AppResult<Response> {
-    match state.users.authenticate(&f.email, &f.password).await? {
-        Some(user) if user.is_admin() => {
+    let subject = format!("login:{}", crate::routes::shop::client_ip(&headers));
+    if let Some(until) = state.pages.locked_until(&subject).await? {
+        if until.as_str() > mms_core::now().as_str() {
+            return Ok(Html(state.render(
+                "login.html",
+                context! { error => format!("Too many attempts. Try again after {until}.") },
+            )?)
+            .into_response());
+        }
+    }
+    let attempt = state.users.authenticate(&f.email, &f.password).await?;
+    let (limit, window, lockout) = crate::routes::pages::limits_pub(&state).await?;
+    state
+        .pages
+        .record_attempt(
+            &subject,
+            0,
+            attempt.as_ref().map(|u| u.is_staff()).unwrap_or(false),
+            limit,
+            window,
+            lockout,
+        )
+        .await?;
+    match attempt {
+        Some(user) if user.is_staff() => {
             state
                 .audit
                 .record(
@@ -123,6 +147,9 @@ pub async fn dashboard(State(state): State<AppState>, admin: AdminUser) -> AppRe
 }
 
 pub async fn settings_form(State(state): State<AppState>, admin: AdminUser) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     render_settings(&state, &admin, "", "").await
 }
 
@@ -153,6 +180,9 @@ pub async fn settings_save(
     admin: AdminUser,
     Form(fields): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(fields.get("_csrf").map(String::as_str).unwrap_or("")) {
         return Ok(r);
     }

@@ -1,0 +1,72 @@
+name: MediaMarketplace Studio
+
+on:
+  push:
+    paths: ["mediamarketplace/**", "tests/mms-packages-contract.php", ".github/workflows/mediamarketplace.yml"]
+  pull_request:
+    paths: ["mediamarketplace/**", "tests/mms-packages-contract.php"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mediamarketplace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mediamarketplace
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+      - run: cargo build --release
+      - name: Packages contract (starts the real binary through the PHP runtime)
+        run: php tests/mms-packages-contract.php
+        working-directory: .
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    defaults:
+      run:
+        working-directory: mediamarketplace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cross --git https://github.com/cross-rs/cross
+      - run: cross build --release --target ${{ matrix.target }}
+      - name: Static binary check
+        run: file target/${{ matrix.target }}/release/mms-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mms-server-${{ matrix.target }}
+          path: mediamarketplace/target/${{ matrix.target }}/release/mms-server
+
+  package:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: mediamarketplace/dist/bin
+      - name: Build the WordPress and Joomla zips with both architectures
+        working-directory: mediamarketplace
+        run: |
+          chmod +x dist/bin/*/mms-server
+          SKIP_CARGO=1 MMS_BIN=dist/bin/mms-server-x86_64-unknown-linux-musl/mms-server MMS_BIN_ARM64=dist/bin/mms-server-aarch64-unknown-linux-musl/mms-server ./build/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediamarketplace-packages
+          path: mediamarketplace/dist/*.zip

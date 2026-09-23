@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Privacy{% endblock %}
+{% block body %}
+{% include "account_nav.html" %}
+<h1>Your data</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<section class="card">
+  <h2>Download a copy</h2>
+  <p>Everything the store holds about you (profile, orders, access, agreements, viewing sessions) as one JSON file.</p>
+  <p><a class="button primary" href="{{ base }}/account/export.json">Download my data</a></p>
+</section>
+<section class="card">
+  <h2>Delete my account</h2>
+  <p>Your personal details are removed and your access ends. Order records stay for accounting without your name or email. This cannot be undone.</p>
+  <form method="post" action="{{ base }}/account/erase" onsubmit="return confirm('Delete your account? This cannot be undone.')">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Type DELETE to confirm <input name="confirm" autocomplete="off"></label>
+    <button class="danger">Delete my account</button>
+  </form>
+</section>
+{% endblock %}

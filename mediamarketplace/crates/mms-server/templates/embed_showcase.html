@@ -14,6 +14,7 @@
   {% for c in categories %}<a href="{{ base }}/embed/showcase?{{ qs }}&category={{ c.slug }}" {% if c.slug == category %}class="on"{% endif %}>{{ c.name }}</a>{% endfor %}
 </nav>
 {% endif %}
+{% if currencies %}<p class="currency-switch small">{% for c in currencies %}<a href="{{ base }}/embed/showcase?site={{ site }}&view={{ view }}&currency={{ c }}" {% if fx_code == c or (not fx_code and loop.first) %}class="on"{% endif %}>{{ c }}</a>{% endfor %}</p>{% endif %}
 <form class="toolbar" method="get" action="{{ base }}/embed/showcase">
   <input type="hidden" name="site" value="{{ site }}"><input type="hidden" name="menu" value="{{ menu }}">
   <input type="search" name="q" value="{{ q }}" placeholder="Search" aria-label="Search products">
@@ -34,7 +35,7 @@
     <h3>{{ c.title }}</h3>
     {% if c.description %}<p>{{ c.description | truncate(110) }}</p>{% endif %}
     <div class="foot">
-      <span class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.price_cents | money(c.currency) }}</span>{% endif %}
+      <span class="price">{% if c.price_cents == 0 %}Free{% elif fx_code %}≈ {{ c.price_cents | convert(fx_factor) | money(fx_code) }}{% else %}{{ c.price_cents | money(c.currency) }}</span>{% endif %}
       {% if c.rating_count %}<span class="rating" title="{{ c.rating_count }} ratings">★ {{ c.rating_avg | round(1) }}</span>{% endif %}
       {% if show_sales and c.purchases %}<span class="sales">{{ c.purchases }} sold</span>{% endif %}
     </div>

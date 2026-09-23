@@ -3,6 +3,7 @@
 {% block body %}
 <p><a href="{{ base }}/admin/customers">← Customers</a></p>
 <h1>{{ c.name | default(c.email) }} <small class="muted">{{ c.role }}</small></h1>
+<p class="small"><a class="button" href="{{ base }}/admin/customers/{{ c.uuid }}/export.json">Export data (GDPR)</a> {% if c.role != "admin" and c.status != "disabled" %}<form method="post" action="{{ base }}/admin/customers/{{ c.uuid }}/erase" class="inline" onsubmit="return confirm('Erase this customer? Personal data is removed and access revoked; orders stay for accounting.')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Erase (GDPR)</button></form>{% endif %}</p>
 <div class="two-col">
 <section class="card">
   <h2>Access</h2>
@@ -21,7 +22,7 @@
 </section>
 <section class="card">
   <h2>Account</h2>
-  <table><tr><th>Email</th><td>{{ c.email }}</td></tr><tr><th>Role</th><td>{{ c.role }}</td></tr><tr><th>Status</th><td>{{ c.status }}</td></tr><tr><th>ID</th><td><code>{{ c.uuid }}</code></td></tr></table>
+  <table><tr><th>Email</th><td>{{ c.email }}</td></tr><tr><th>Role</th><td>{{ c.role }}{% if user.role == "admin" and c.id != user.id %} <form method="post" action="{{ base }}/admin/customers/{{ c.uuid }}/role" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><select name="role">{% for r in ["customer","staff","admin"] %}<option value="{{ r }}" {% if c.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select> <button>Change</button></form>{% endif %}</td></tr><tr><th>Status</th><td>{{ c.status }}</td></tr><tr><th>ID</th><td><code>{{ c.uuid }}</code></td></tr></table>
   {% if identities %}<h3>Signed in from</h3><ul>{% for i in identities %}<li>{{ i.host }} user {{ i.external_id }}</li>{% endfor %}</ul>{% endif %}
 </section>
 </div>

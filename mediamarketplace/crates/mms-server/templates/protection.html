@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Protection{% endblock %}
+{% block body %}
+<h1>Protection</h1>
+<p class="muted"><a href="{{ base }}/admin/protection/scans">Copyright scans</a> · <a href="{{ base }}/admin/protection/violations">Violations and takedowns</a> · <a href="{{ base }}/admin/settings#protection">Watermark settings</a> · <a href="{{ base }}/admin/settings#copyright">Copyright services</a></p>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="tiles">
+  <div class="tile"><span class="num">{{ image_level }}</span><span>Image protection level</span></div>
+  <div class="tile"><span class="num">{{ video_level }}</span><span>Video watermark level</span></div>
+  <div class="tile"><span class="num">{{ sessions_total }}</span><span>Watermark sessions</span></div>
+  <div class="tile {% if counts.open %}fail{% endif %}"><span class="num">{{ counts.open }}</span><span>Open violations</span></div>
+  <div class="tile"><span class="num">{{ counts.removed }}</span><span>Removed</span></div>
+</div>
+{% if video_level >= 2 and not ffmpeg_ok %}<p class="warn-box">Video level {{ video_level }} needs ffmpeg on the server; until it is installed videos play with the level 1 overlay.</p>{% endif %}
+<div class="two-col">
+<section class="card">
+  <h2>Identify a leaked copy</h2>
+  <p class="muted small">Upload the leaked image or a full-frame screenshot of the leaked video. Images issued at level 2 carry an invisible mark that survives lossless copies; video frames carry a low-contrast session code that survives scaling and JPEG. The store names the viewer it was issued to. Also available on the command line: <code>mms-server identify file.png</code>.</p>
+  <form method="post" action="{{ base }}/admin/protection/identify" enctype="multipart/form-data" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="file" name="file" accept="image/*" required><button class="primary">Identify</button></form>
+</section>
+<section class="card">
+  <h2>Copyright services</h2>
+  <table><thead><tr><th>Service</th><th>Mode</th><th>Status</th></tr></thead><tbody>{% for s in services %}<tr><td>{{ s.sv.name }}<br><span class="muted small">{{ s.sv.description }}</span></td><td>{{ s.sv.mode }}</td><td>{% if s.sv.mode == "link" %}<span class="badge ok">ready</span>{% elif s.configured %}<span class="badge ok">key stored</span>{% else %}<span class="badge">no key</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+  <p class="muted small">Link services open a prepared search for a media file under <a href="{{ base }}/admin/protection/scans">Copyright scans</a>. API keys are stored encrypted for the connectors.</p>
+</section>
+</div>
+<section class="card">
+  <h2>Recent watermark sessions</h2>
+  {% if rows %}<table><thead><tr><th>Session</th><th>Viewer</th><th>Media</th><th>Kind</th><th>Level</th><th>IP</th><th>When</th></tr></thead><tbody>{% for r in rows %}<tr><td><code>{{ r.s.uuid[:8] }}</code></td><td>{{ r.email | default("guest") }}</td><td>{{ r.media | default("—") }}</td><td>{{ r.s.kind }}</td><td>{{ r.s.level }}</td><td>{{ r.s.ip }}</td><td>{{ r.s.created_at }}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">No sessions yet. A session opens the first time a customer views a protected image or video.</p>{% endif %}
+</section>
+{% endblock %}

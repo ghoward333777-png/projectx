@@ -70,7 +70,7 @@ mod tests {
     async fn migrations_apply_to_memory_db() {
         let db = Db::memory().await.unwrap();
         let versions = db.applied_migrations().await.unwrap();
-        assert_eq!(versions, vec![1, 2, 3, 4, 5]);
+        assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8]);
         let tables: Vec<String> =
             sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
                 .fetch_all(&db.pool)

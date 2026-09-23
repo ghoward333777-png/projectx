@@ -130,3 +130,13 @@ hr.mms-divider-line{border:0;border-top:1px solid var(--mms-border);margin:8px 0
 .gate .steps{display:flex;gap:16px;list-style:none;padding:0;margin:0 0 12px;counter-reset:s}.gate .steps li{flex:1;text-align:center;padding:8px;border-radius:6px;border:1px solid var(--mms-border);color:var(--mms-muted)}.gate .steps li.done{border-color:var(--mms-ok);color:var(--mms-ok)}.gate .steps li.on{border-color:var(--mms-accent);color:var(--mms-accent);font-weight:600}
 .gate .draw canvas{border:1px dashed var(--mms-border);border-radius:6px;background:#fff;width:100%;max-width:480px;touch-action:none}
 .page-content h1,.page-content h2,.page-content h3{margin-top:18px}
+
+/* Phase 4: protected image viewer */
+.protected-image{position:relative;display:inline-block;max-width:100%;user-select:none;-webkit-user-select:none}.protected-image img{pointer-events:none;-webkit-user-drag:none;user-select:none;display:block;max-width:100%}
+.protected-image .shield{position:absolute;inset:0}.protected-image .wm{position:absolute;right:10px;bottom:10px;padding:3px 8px;background:rgba(0,0,0,.45);color:#fff;font-size:12px;border-radius:4px;pointer-events:none}
+.tiles .tile.fail .num{color:var(--mms-fail)}
+
+/* Phase 5 */
+.card-form{margin:8px 0 12px 26px;padding:12px;border:1px solid var(--mms-border);border-radius:6px;background:var(--mms-surface)}#square-card{min-height:44px}
+.currency-switch a{display:inline-block;padding:2px 8px;border:1px solid var(--mms-border);border-radius:999px;margin-right:4px;text-decoration:none;color:var(--mms-text)}.currency-switch a.on{background:var(--mms-accent);color:#fff;border-color:var(--mms-accent)}
+.review-card{border:1px solid var(--mms-border);border-radius:6px;padding:10px 12px;margin:0 0 10px}.review-card textarea{width:100%;min-height:70px}

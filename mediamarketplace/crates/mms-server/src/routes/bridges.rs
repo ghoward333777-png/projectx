@@ -75,6 +75,9 @@ pub async fn sync_from_config(state: &AppState) -> anyhow::Result<usize> {
 }
 
 pub async fn list(State(state): State<AppState>, admin: AdminUser) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     render(&state, &admin, None, "").await
 }
 
@@ -110,6 +113,9 @@ pub async fn create(
     admin: AdminUser,
     Form(f): Form<CreateForm>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }
@@ -162,6 +168,9 @@ pub async fn delete(
     Path(uuid): Path<String>,
     Form(f): Form<DeleteForm>,
 ) -> AppResult<Response> {
+    if let Some(r) = admin.admin_only() {
+        return Ok(r);
+    }
     if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }

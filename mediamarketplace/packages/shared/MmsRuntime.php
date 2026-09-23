@@ -40,7 +40,16 @@ final class MmsRuntime
     // ----- paths -------------------------------------------------------------------
 
     public function dataDir(): string { return rtrim((string) $this->o['data_dir'], '/'); }
-    public function binPath(): string { return (string) $this->o['bin']; }
+    public function binPath(): string
+    {
+        $bin = (string) $this->o['bin'];
+        // ARM servers (Graviton, Ampere, Raspberry Pi) get the aarch64 build when the package carries it.
+        $arch = strtolower((string) php_uname('m'));
+        if (($arch === 'aarch64' || $arch === 'arm64') && is_file($bin . '-aarch64')) {
+            return $bin . '-aarch64';
+        }
+        return $bin;
+    }
     public function configPath(): string { return $this->dataDir() . '/mms.toml'; }
     public function pidPath(): string { return $this->dataDir() . '/mms-server.pid'; }
     public function logPath(): string { return $this->dataDir() . '/mms-server.log'; }

@@ -34,6 +34,8 @@ uuid.workspace = true
 time = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
 mime_guess.workspace = true
+image.workspace = true
+infer.workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1"

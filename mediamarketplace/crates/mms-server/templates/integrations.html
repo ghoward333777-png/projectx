@@ -23,5 +23,10 @@
   <form method="post" action="{{ base }}/admin/integrations/webhooks/test" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Send a test event</button></form>{% endif %}
   {% if deliveries %}<h3>Recent deliveries</h3><table><thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Result</th><th>When</th></tr></thead><tbody>{% for d in deliveries %}<tr><td>{{ d.event }}</td><td><span class="badge {% if d.status == 'delivered' %}ok{% elif d.status == 'failed' %}fail{% endif %}">{{ d.status }}</span></td><td>{{ d.attempts }}</td><td class="small">{{ d.last_status | default("") }} {{ d.last_error | default("") | truncate(60) }}</td><td class="small">{{ d.created_at }}</td></tr>{% endfor %}</tbody></table>{% endif %}
 </section>
+<section class="card">
+  <h2>Email</h2>
+  <p class="muted small">Receipts, signed agreements and pass reminders are emailed when SMTP is set under <a href="{{ base }}/admin/settings#mail">Settings → Email</a>. Without it they stay available in the store.</p>
+  <form method="post" action="{{ base }}/admin/mail/test" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Send a test email to {{ user.email }}</button></form>
+</section>
 </div>
 {% endblock %}

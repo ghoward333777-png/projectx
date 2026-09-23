@@ -27,6 +27,16 @@ pub struct OrderFacts {
     pub recurring: Option<(String, String)>,
     pub success_url: String,
     pub cancel_url: String,
+    /// A card token produced in the browser by the gateway's own SDK (Square, Authorize.net).
+    pub client_token: Option<String>,
+}
+
+/// What the checkout page needs to render a gateway's own card form.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClientSdk {
+    pub kind: &'static str,
+    pub script: String,
+    pub config: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +88,14 @@ pub trait Gateway: Send + Sync {
     async fn webhook(&self, headers: &[(String, String)], body: &[u8]) -> Result<(String, Event)>;
     async fn refund(&self, external_id: &str, amount_cents: i64, currency: &str) -> Result<String>;
     async fn cancel_subscription(&self, subscription_id: &str, at_period_end: bool) -> Result<()>;
+    /// Present when the gateway tokenises the card in the browser first.
+    fn client_sdk(&self) -> Option<ClientSdk> {
+        None
+    }
+    /// Currencies this gateway can charge; empty means any.
+    fn charge_currencies(&self) -> &'static [&'static str] {
+        &[]
+    }
 }
 
 // ----- test gateway: completes on a local page; for development and demos -----
@@ -700,9 +718,390 @@ impl Gateway for PayPal {
     }
 }
 
+// ----- Square: Web Payments SDK token in the browser, Payments API on the server -----
+
+pub struct Square {
+    pub access_token: String,
+    pub location_id: String,
+    pub application_id: String,
+    pub sandbox: bool,
+    pub http: reqwest::Client,
+}
+
+impl Square {
+    pub fn new(access_token: &str, location_id: &str, application_id: &str, sandbox: bool) -> Self {
+        Self {
+            access_token: access_token.into(),
+            location_id: location_id.into(),
+            application_id: application_id.into(),
+            sandbox,
+            http: reqwest::Client::new(),
+        }
+    }
+    fn api(&self) -> &'static str {
+        if self.sandbox {
+            "https://connect.squareupsandbox.com"
+        } else {
+            "https://connect.squareup.com"
+        }
+    }
+    async fn call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let mut req = self
+            .http
+            .request(method, format!("{}{path}", self.api()))
+            .bearer_auth(&self.access_token)
+            .header("Square-Version", "2025-01-23")
+            .header("Content-Type", "application/json");
+        if let Some(b) = body {
+            req = req.json(&b);
+        }
+        let res = req.send().await.context("Square request failed")?;
+        let status = res.status();
+        let v: serde_json::Value = res.json().await.unwrap_or(serde_json::json!({}));
+        if !status.is_success() {
+            bail!(
+                "Square: {}",
+                v["errors"][0]["detail"]
+                    .as_str()
+                    .unwrap_or("request refused")
+            );
+        }
+        Ok(v)
+    }
+}
+
+#[async_trait]
+impl Gateway for Square {
+    fn name(&self) -> &'static str {
+        "square"
+    }
+    fn label(&self) -> &'static str {
+        "Card, Apple Pay, Google Pay (Square)"
+    }
+    fn client_sdk(&self) -> Option<ClientSdk> {
+        Some(ClientSdk {
+            kind: "square",
+            script: if self.sandbox {
+                "https://sandbox.web.squarecdn.com/v1/square.js".into()
+            } else {
+                "https://web.squarecdn.com/v1/square.js".into()
+            },
+            config: serde_json::json!({ "application_id": self.application_id, "location_id": self.location_id }),
+        })
+    }
+    async fn start(&self, order: &OrderFacts) -> Result<Started> {
+        if order.recurring.is_some() {
+            bail!("Recurring passes are sold through Stripe");
+        }
+        let Some(token) = order.client_token.as_deref().filter(|t| !t.is_empty()) else {
+            bail!("The card form did not produce a payment token; try again")
+        };
+        let body = serde_json::json!({
+            "source_id": token,
+            "idempotency_key": order.uuid,
+            "location_id": self.location_id,
+            "amount_money": { "amount": order.total_cents, "currency": order.currency },
+            "reference_id": order.number,
+            "note": format!("Order {}", order.number),
+            "buyer_email_address": order.customer_email,
+        });
+        let v = self
+            .call(reqwest::Method::POST, "/v2/payments", Some(body))
+            .await?;
+        let id = v["payment"]["id"]
+            .as_str()
+            .context("Square returned no payment id")?
+            .to_string();
+        Ok(Started {
+            redirect_url: order.success_url.clone(),
+            external_id: id,
+        })
+    }
+    async fn confirm(
+        &self,
+        _order: &OrderFacts,
+        external_id: &str,
+        _params: &[(String, String)],
+    ) -> Result<Outcome> {
+        let v = self
+            .call(
+                reqwest::Method::GET,
+                &format!("/v2/payments/{external_id}"),
+                None,
+            )
+            .await?;
+        Ok(match v["payment"]["status"].as_str() {
+            Some("COMPLETED") | Some("APPROVED") => Outcome::Paid {
+                external_id: external_id.to_string(),
+                subscription_id: None,
+                period_end: None,
+            },
+            Some("PENDING") => Outcome::Pending,
+            other => Outcome::Failed(format!(
+                "Square payment status {}",
+                other.unwrap_or("unknown")
+            )),
+        })
+    }
+    async fn webhook(
+        &self,
+        _headers: &[(String, String)],
+        _body: &[u8],
+    ) -> Result<(String, Event)> {
+        bail!("Square payments are confirmed on the return; webhooks are not used")
+    }
+    async fn refund(&self, external_id: &str, amount_cents: i64, currency: &str) -> Result<String> {
+        let body = serde_json::json!({ "idempotency_key": format!("refund-{external_id}"), "payment_id": external_id, "amount_money": { "amount": amount_cents, "currency": currency } });
+        let v = self
+            .call(reqwest::Method::POST, "/v2/refunds", Some(body))
+            .await?;
+        Ok(v["refund"]["id"].as_str().unwrap_or_default().to_string())
+    }
+    async fn cancel_subscription(
+        &self,
+        _subscription_id: &str,
+        _at_period_end: bool,
+    ) -> Result<()> {
+        bail!("Square subscriptions are not available in this release")
+    }
+}
+
+// ----- Authorize.net: Accept.js opaque data in the browser, Transaction API on the server -----
+
+pub struct AuthorizeNet {
+    pub login_id: String,
+    pub transaction_key: String,
+    pub client_key: String,
+    pub sandbox: bool,
+    pub http: reqwest::Client,
+}
+
+impl AuthorizeNet {
+    pub fn new(login_id: &str, transaction_key: &str, client_key: &str, sandbox: bool) -> Self {
+        Self {
+            login_id: login_id.into(),
+            transaction_key: transaction_key.into(),
+            client_key: client_key.into(),
+            sandbox,
+            http: reqwest::Client::new(),
+        }
+    }
+    fn api(&self) -> &'static str {
+        if self.sandbox {
+            "https://apitest.authorize.net/xml/v1/request.api"
+        } else {
+            "https://api.authorize.net/xml/v1/request.api"
+        }
+    }
+    fn auth(&self) -> serde_json::Value {
+        serde_json::json!({ "name": self.login_id, "transactionKey": self.transaction_key })
+    }
+    async fn call(&self, body: serde_json::Value) -> Result<serde_json::Value> {
+        let res = self
+            .http
+            .post(self.api())
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("Authorize.net request failed")?;
+        let text = res.text().await?;
+        // The API prefixes a UTF-8 BOM.
+        let v: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .context("Authorize.net reply was not JSON")?;
+        if v["messages"]["resultCode"] != "Ok" {
+            let msg = v["transactionResponse"]["errors"][0]["errorText"]
+                .as_str()
+                .or(v["messages"]["message"][0]["text"].as_str())
+                .unwrap_or("request refused");
+            bail!("Authorize.net: {msg}");
+        }
+        Ok(v)
+    }
+}
+
+#[async_trait]
+impl Gateway for AuthorizeNet {
+    fn name(&self) -> &'static str {
+        "authnet"
+    }
+    fn label(&self) -> &'static str {
+        "Card (Authorize.net)"
+    }
+    fn client_sdk(&self) -> Option<ClientSdk> {
+        Some(ClientSdk {
+            kind: "authnet",
+            script: if self.sandbox {
+                "https://jstest.authorize.net/v1/Accept.js".into()
+            } else {
+                "https://js.authorize.net/v1/Accept.js".into()
+            },
+            config: serde_json::json!({ "login_id": self.login_id, "client_key": self.client_key }),
+        })
+    }
+    fn charge_currencies(&self) -> &'static [&'static str] {
+        &["USD", "CAD", "GBP", "EUR", "AUD", "NZD"]
+    }
+    async fn start(&self, order: &OrderFacts) -> Result<Started> {
+        if order.recurring.is_some() {
+            bail!("Recurring passes are sold through Stripe");
+        }
+        let Some(token) = order.client_token.as_deref().filter(|t| t.contains('|')) else {
+            bail!("The card form did not produce a payment token; try again")
+        };
+        let (descriptor, value) = token
+            .split_once('|')
+            .unwrap_or(("COMMON.ACCEPT.INAPP.PAYMENT", token));
+        let body = serde_json::json!({ "createTransactionRequest": {
+            "merchantAuthentication": self.auth(),
+            "refId": order.number,
+            "transactionRequest": {
+                "transactionType": "authCaptureTransaction",
+                "amount": format!("{}.{:02}", order.total_cents / 100, order.total_cents % 100),
+                "payment": { "opaqueData": { "dataDescriptor": descriptor, "dataValue": value } },
+                "order": { "invoiceNumber": order.number.chars().take(20).collect::<String>(), "description": format!("Order {}", order.number) },
+                "customer": { "email": order.customer_email }
+            }
+        }});
+        let v = self.call(body).await?;
+        let tr = &v["transactionResponse"];
+        if tr["responseCode"] != "1" {
+            bail!(
+                "Authorize.net declined the card ({})",
+                tr["errors"][0]["errorText"]
+                    .as_str()
+                    .unwrap_or("no reason given")
+            );
+        }
+        let id = tr["transId"]
+            .as_str()
+            .context("no transaction id")?
+            .to_string();
+        Ok(Started {
+            redirect_url: order.success_url.clone(),
+            external_id: id,
+        })
+    }
+    async fn confirm(
+        &self,
+        _order: &OrderFacts,
+        external_id: &str,
+        _params: &[(String, String)],
+    ) -> Result<Outcome> {
+        let v = self.call(serde_json::json!({ "getTransactionDetailsRequest": { "merchantAuthentication": self.auth(), "transId": external_id } })).await?;
+        Ok(match v["transaction"]["transactionStatus"].as_str() {
+            Some("capturedPendingSettlement")
+            | Some("settledSuccessfully")
+            | Some("authorizedPendingCapture") => Outcome::Paid {
+                external_id: external_id.to_string(),
+                subscription_id: None,
+                period_end: None,
+            },
+            Some("FDSPendingReview") | Some("FDSAuthorizedPendingReview") => Outcome::Pending,
+            other => Outcome::Failed(format!(
+                "Authorize.net status {}",
+                other.unwrap_or("unknown")
+            )),
+        })
+    }
+    async fn webhook(
+        &self,
+        _headers: &[(String, String)],
+        _body: &[u8],
+    ) -> Result<(String, Event)> {
+        bail!("Authorize.net payments are confirmed on the return; webhooks are not used")
+    }
+    async fn refund(
+        &self,
+        external_id: &str,
+        amount_cents: i64,
+        _currency: &str,
+    ) -> Result<String> {
+        let details = self.call(serde_json::json!({ "getTransactionDetailsRequest": { "merchantAuthentication": self.auth(), "transId": external_id } })).await?;
+        let status = details["transaction"]["transactionStatus"]
+            .as_str()
+            .unwrap_or("");
+        if status == "capturedPendingSettlement" || status == "authorizedPendingCapture" {
+            let v = self.call(serde_json::json!({ "createTransactionRequest": { "merchantAuthentication": self.auth(), "transactionRequest": { "transactionType": "voidTransaction", "refTransId": external_id } } })).await?;
+            return Ok(v["transactionResponse"]["transId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string());
+        }
+        let last4 = details["transaction"]["payment"]["creditCard"]["cardNumber"]
+            .as_str()
+            .map(|c| {
+                c.chars()
+                    .rev()
+                    .take(4)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<String>()
+            })
+            .unwrap_or_else(|| "0000".into());
+        let v = self.call(serde_json::json!({ "createTransactionRequest": { "merchantAuthentication": self.auth(), "transactionRequest": {
+            "transactionType": "refundTransaction",
+            "amount": format!("{}.{:02}", amount_cents / 100, amount_cents % 100),
+            "payment": { "creditCard": { "cardNumber": last4, "expirationDate": "XXXX" } },
+            "refTransId": external_id
+        } } })).await?;
+        Ok(v["transactionResponse"]["transId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
+    }
+    async fn cancel_subscription(
+        &self,
+        _subscription_id: &str,
+        _at_period_end: bool,
+    ) -> Result<()> {
+        bail!("Authorize.net recurring billing is not available in this release")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn token_gateways_need_a_token_and_describe_their_sdk() {
+        let sq = Square::new("tok", "L1", "app", true);
+        let sdk = sq.client_sdk().unwrap();
+        assert_eq!(sdk.kind, "square");
+        assert!(sdk.script.contains("sandbox"));
+        let facts = OrderFacts {
+            uuid: "o".into(),
+            number: "ORD".into(),
+            currency: "USD".into(),
+            total_cents: 100,
+            customer_email: "a@b.c".into(),
+            lines: vec![],
+            recurring: None,
+            success_url: "s".into(),
+            cancel_url: "c".into(),
+            client_token: None,
+        };
+        assert!(sq
+            .start(&facts)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("token"));
+        let an = AuthorizeNet::new("l", "k", "c", true);
+        assert!(an
+            .start(&facts)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("token"));
+        assert_eq!(an.charge_currencies().len(), 6);
+    }
 
     #[test]
     fn stripe_signature_round_trip() {
@@ -741,6 +1140,7 @@ mod tests {
             recurring: Some(("month".into(), "Pass".into())),
             success_url: String::new(),
             cancel_url: String::new(),
+            client_token: None,
         };
         let s = g.start(&facts).await.unwrap();
         assert_eq!(s.redirect_url, "http://x/mms/checkout/test/o1");

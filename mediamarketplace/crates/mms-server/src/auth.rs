@@ -134,7 +134,7 @@ impl FromRequestParts<AppState> for AdminUser {
             .await
             .expect("infallible");
         match (user, token) {
-            (Some(user), Some(token)) if user.is_admin() => {
+            (Some(user), Some(token)) if user.is_staff() => {
                 let csrf = csrf_token(state, &token);
                 Ok(AdminUser { user, csrf })
             }
@@ -145,6 +145,15 @@ impl FromRequestParts<AppState> for AdminUser {
 }
 
 impl AdminUser {
+    /// A 403 for staff on administrator-only pages.
+    pub fn admin_only(&self) -> Option<Response> {
+        if self.user.is_admin() {
+            None
+        } else {
+            Some((StatusCode::FORBIDDEN, "Administrator access required").into_response())
+        }
+    }
+
     /// Returns a 403 response when the submitted CSRF token does not match the session.
     pub fn csrf_error(&self, submitted: &str) -> Option<Response> {
         if submitted == self.csrf {

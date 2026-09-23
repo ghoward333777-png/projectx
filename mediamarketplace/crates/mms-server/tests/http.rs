@@ -2617,3 +2617,913 @@ async fn phase_three_cart_checkout_orders_receipts_subscriptions_pages_api() {
         .await
         .unwrap();
 }
+
+fn multipart_fields(
+    boundary: &str,
+    fields: &[(&str, &str)],
+    file: Option<(&str, &str, &[u8])>,
+) -> Vec<u8> {
+    let mut body = Vec::new();
+    for (name, value) in fields {
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes());
+    }
+    if let Some((name, filename, data)) = file {
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    body
+}
+
+#[tokio::test]
+async fn phase_four_marked_images_identify_violations_and_notices() {
+    let st = state().await;
+    let app = app::router(st.clone());
+    let (admin_cookie, csrf) = admin_session(&app).await;
+
+    // A private image and a product for it.
+    let boundary = "----mmsp4";
+    let body = multipart(
+        boundary,
+        &csrf,
+        true,
+        &[("Portrait.png", &png_bytes(640, 480))],
+    );
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/media/upload")
+                .header(header::COOKIE, &admin_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let (items, _) = st
+        .media
+        .list(&mms_core::media::MediaQuery {
+            per_page: 10,
+            page: 1,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let media = items[0].clone();
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, media_id, settings, status, created_at, updated_at) VALUES ('pp1', 'portrait', 'image', 'Portrait', 0, 'USD', ?, '{}', 'published', ?, ?)")
+        .bind(media.id).bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+
+    // A customer gets the free item and opens the viewer.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/register",
+            "name=Ada&email=ada%40example.com&password=a-strong-passphrase",
+            None,
+        ))
+        .await
+        .unwrap();
+    let mut cookie = merge_cookies("", &res);
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=portrait", Some(&cookie)))
+        .await
+        .unwrap();
+    cookie = merge_cookies(&cookie, &res);
+    let ccsrf = customer_csrf(&app, &cookie).await;
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway="),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).starts_with("/checkout/done/"));
+    let res = app
+        .clone()
+        .oneshot(get("/embed/player/portrait", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(
+        body.contains("protected-image") && body.contains("carries a forensic mark"),
+        "{body}"
+    );
+    let src = body
+        .split("<img class=\"full\" src=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+
+    // The delivered file is a per-viewer PNG with the session code inside.
+    let res = app.clone().oneshot(get(&src, Some(&cookie))).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(res.headers()[header::CONTENT_DISPOSITION], "inline");
+    let delivered = bytes(res).await;
+    let img = image::load_from_memory(&delivered).unwrap();
+    let code = mms_core::protection::decode_lsb(&img).expect("invisible mark");
+    let session = st.protection.by_code(code).await.unwrap().expect("session");
+    assert_eq!(
+        (session.user_id, session.media_id, session.kind.as_str()),
+        (Some(2), Some(media.id), "image")
+    );
+    // Same viewer, same copy; the stamp text is burned in (pixels differ from the original).
+    let res = app.clone().oneshot(get(&src, Some(&cookie))).await.unwrap();
+    assert_eq!(bytes(res).await, delivered);
+    assert_ne!(
+        img.as_bytes(),
+        image::load_from_memory(&png_bytes(640, 480))
+            .unwrap()
+            .to_rgba8()
+            .as_raw()
+            .as_slice()
+    );
+    // Another viewer's link does not work with this session.
+    let res = app.clone().oneshot(get(&src, None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Protection dashboard lists the session; the identify tool names the viewer.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/protection", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("ada@example.com") && body.contains("Identify a leaked copy"),
+        "{body}"
+    );
+    let b2 = "----mmsid";
+    let body = multipart_fields(
+        b2,
+        &[("_csrf", &csrf)],
+        Some(("file", "leak.png", &delivered)),
+    );
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/protection/identify")
+                .header(header::COOKIE, &admin_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={b2}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let loc = location(&res);
+    assert!(
+        loc.contains("Identified+by+invisible+mark") && loc.contains("ada%40example.com"),
+        "{loc}"
+    );
+    let clean = png_bytes(64, 64);
+    let body = multipart_fields(b2, &[("_csrf", &csrf)], Some(("file", "clean.png", &clean)));
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/protection/identify")
+                .header(header::COOKIE, &admin_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={b2}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(location(&res).contains("No+mark+found"));
+
+    // Level 1 serves the original but still inline.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/settings",
+            &format!("_csrf={csrf}&protection.image_level=1"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Settings saved."));
+    // Rights owner for notices.
+    st.settings
+        .set("copyright.owner_name", "Ada Owner")
+        .await
+        .unwrap();
+    st.settings
+        .set("copyright.owner_email", "legal@example.com")
+        .await
+        .unwrap();
+
+    // Scans page prepares searches (from the public thumbnail); recording keeps a history.
+    routes::worker::run(&st, "thumbnail", &format!("{{\"media\":{}}}", media.id))
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/protection/scans?media={}", media.uuid),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("tineye.com/search") && body.contains("Videntifier"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/protection/scans",
+            &format!(
+                "_csrf={csrf}&media={}&service=tineye&matches=2&result=two+copies",
+                media.uuid
+            ),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Scan+recorded"));
+
+    // A violation with the leaked file as evidence links to the viewer automatically.
+    let b3 = "----mmsviol";
+    let body = multipart_fields(
+        b3,
+        &[
+            ("_csrf", &csrf),
+            ("url", "https://pirate.example/gallery/1"),
+            ("media", &media.uuid),
+            ("note", "found on a forum"),
+        ],
+        Some(("evidence", "leak.png", &delivered)),
+    );
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/protection/violations")
+                .header(header::COOKIE, &admin_cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={b3}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let loc = location(&res);
+    assert!(loc.contains("linked+to+the+viewer"), "{loc}");
+    let vuuid = loc
+        .split("/admin/protection/violations/")
+        .nth(1)
+        .unwrap()
+        .split('?')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/protection/violations/{vuuid}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("pirate.example")
+            && body.contains("issued to <b>ada@example.com</b>")
+            && body.contains("Generate DMCA notice"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/protection/violations/{vuuid}/notice"),
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Notice+generated"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/protection/violations/{vuuid}/notice.pdf"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "application/pdf");
+    assert!(bytes(res).await.starts_with(b"%PDF"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/protection/violations/{vuuid}"),
+            &format!("_csrf={csrf}&status=removed&note=host+complied"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Updated"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/admin/protection/violations?status=removed",
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("pirate.example"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/protection/violations/{vuuid}/evidence"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    // Retention job runs.
+    routes::worker::run(&st, "retention.prune", "{}")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn phase_five_to_seven_currency_gateways_players_google_privacy_backups_roles() {
+    let st = state().await;
+    let app = app::router(st.clone());
+    let (admin_cookie, csrf) = admin_session(&app).await;
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/bridges",
+            &format!("_csrf={csrf}&name=Site&host=wordpress&origin=https%3A%2F%2Fwww.example.com"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let site = text(res)
+        .await
+        .split("<dt>Site ID</dt><dd><code>")
+        .nth(1)
+        .unwrap()
+        .split('<')
+        .next()
+        .unwrap()
+        .to_string();
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, settings, status, created_at, updated_at) VALUES ('p1', 'film', 'external', 'Film', 10000, 'USD', '{\"external_url\":\"https://x.io\"}', 'published', ?, ?)").bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+
+    // Multi-currency: rates stored, shopper switches to EUR, checkout charges in EUR through Stripe-like gateways.
+    st.currency
+        .store_rates(&[
+            ("EUR".into(), 1.0),
+            ("USD".into(), 1.25),
+            ("GBP".into(), 0.8),
+        ])
+        .await
+        .unwrap();
+    st.settings
+        .set("store.display_currencies", "EUR,GBP")
+        .await
+        .unwrap();
+    st.settings
+        .set("store.charge_in_display_currency", "1")
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/showcase?site={site}&currency=EUR"),
+            None,
+        ))
+        .await
+        .unwrap();
+    let status = res.status();
+    let cur_cookie = merge_cookies("", &res);
+    if status != StatusCode::OK {
+        panic!("showcase {status}: {}", text(res).await);
+    }
+    assert!(cur_cookie.contains("mms_cur=EUR"));
+    let body = text(res).await;
+    assert!(
+        body.contains("≈ EUR 80.00") && body.contains("currency-switch"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/register",
+            "name=Ada&email=ada%40example.com&password=a-strong-passphrase",
+            Some(&cur_cookie),
+        ))
+        .await
+        .unwrap();
+    let mut cookie = merge_cookies(&cur_cookie, &res);
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=film", Some(&cookie)))
+        .await
+        .unwrap();
+    cookie = merge_cookies(&cookie, &res);
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Prices shown in EUR") && body.contains("id=\"checkout-form\""),
+        "{body}"
+    );
+    // The test gateway charges the base currency (only Stripe/PayPal convert); orders record the base and rate.
+    let ccsrf = customer_csrf(&app, &cookie).await;
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway=test"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let order_uuid = location(&res).rsplit('/').next().unwrap().to_string();
+    let o = st
+        .commerce
+        .order_by_uuid(&order_uuid)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((o.currency.as_str(), o.total_cents), ("USD", 10000));
+    // A converted order through the commerce API directly (what Stripe/PayPal would get).
+    let cart = st.commerce.cart("fx-cart", Some(2)).await.unwrap();
+    st.commerce
+        .add(
+            &cart,
+            &st.products.by_slug("film").await.unwrap().unwrap(),
+            1,
+        )
+        .await
+        .unwrap();
+    let eur = st
+        .commerce
+        .create_order_in(&cart, 2, "USD", Some(("EUR", 0.8)))
+        .await
+        .unwrap();
+    assert_eq!(
+        (eur.currency.as_str(), eur.total_cents, eur.fx_rate),
+        ("EUR", 8000, 0.8)
+    );
+
+    // Square and Authorize.net appear at checkout with their card forms once configured.
+    for (k, v) in [
+        ("payments.square_access_token", "sq0atp-x"),
+        ("payments.square_location_id", "L1"),
+        ("payments.square_application_id", "sandbox-sq0idb-x"),
+        ("payments.authnet_login_id", "login"),
+        ("payments.authnet_transaction_key", "key"),
+        ("payments.authnet_client_key", "client"),
+    ] {
+        st.settings.set(k, v).await.unwrap();
+    }
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=film", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/checkout", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("value=\"square\"")
+            && body.contains("id=\"square-card\"")
+            && body.contains("value=\"authnet\"")
+            && body.contains("name=\"an_number\"")
+            && body.contains("sandbox.web.squarecdn.com"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/static/mms-checkout.js", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    // A token-based gateway without a token fails cleanly (no network call).
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway=square"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("token"), "{}", location(&res));
+
+    // Apple Pay domain file.
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/.well-known/apple-developer-merchantid-domain-association",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    st.settings
+        .set("payments.apple_pay_domain_file", "7B227073...")
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/.well-known/apple-developer-merchantid-domain-association",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(text(res).await, "7B227073...");
+
+    // Players: the page carries the licence configuration and the vendored players are served.
+    st.settings.set("players.default", "clappr").await.unwrap();
+    st.settings
+        .set("players.kaltura_partner", "12345")
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, settings, status, created_at, updated_at) VALUES ('p2', 'clip', 'external', 'Clip', 0, 'USD', '{\"external_url\":\"https://x.io\"}', 'published', ?, ?)").bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/remove", "product_id=1", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(form("POST", "/cart/add", "product=clip", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/checkout/start",
+            &format!("_csrf={ccsrf}&gateway="),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).starts_with("/checkout/done/"));
+    let res = app
+        .clone()
+        .oneshot(get("/embed/player/clip", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("window.MMS_PLAYERS = {\"kaltura_partner\":\"12345\"}"),
+        "{body}"
+    );
+    for f in ["vendor/clappr.min.js", "vendor/vimeo-player.min.js"] {
+        let res = app
+            .clone()
+            .oneshot(get(&format!("/static/{f}"), None))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{f}");
+    }
+
+    // Google Business Profile: page, consent redirect, posts, review drafts without a key.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/google", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Enter the OAuth client ID"));
+    st.settings
+        .set("google.client_id", "abc.apps.googleusercontent.com")
+        .await
+        .unwrap();
+    st.settings
+        .set("google.client_secret", "shh")
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/google/connect",
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    let loc = location(&res);
+    assert!(
+        loc.starts_with(
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc.apps.googleusercontent.com"
+        ) && loc.contains(&format!("state={csrf}")),
+        "{loc}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/admin/google/callback?state=wrong&code=x",
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app.clone().oneshot(form("POST", "/admin/google/posts", &format!("_csrf={csrf}&location=locations%2F1&summary=October+masterclass+dates+are+out.&cta_type=LEARN_MORE&cta_url=https%3A%2F%2Fx.io&scheduled_at=2030-01-01+09%3A00"), Some(&admin_cookie))).await.unwrap();
+    assert!(location(&res).contains("Post+saved"));
+    sqlx::query("INSERT INTO google_reviews (remote_name, location, reviewer, rating, comment, reviewed_at, synced_at) VALUES ('r1','locations/1','Ada',5,'Loved it',?,?)").bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/google/reviews/1/draft",
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("API+key"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/google/reviews/1/reply",
+            &format!("_csrf={csrf}&action=save&reply=Thank+you+Ada"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Draft+saved"));
+    let res = app
+        .clone()
+        .oneshot(get("/admin/google", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("October masterclass")
+            && body.contains("Thank you Ada")
+            && body.contains("Connect Google account"),
+        "{body}"
+    );
+    routes::worker::run(&st, "google.posts", "{}")
+        .await
+        .unwrap();
+
+    // Email: not configured means nothing is sent and nothing fails.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/mail/test",
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("SMTP+host"));
+    routes::worker::run(&st, "mail.pass_reminders", "{}")
+        .await
+        .unwrap();
+
+    // Staff role: can run the store, cannot touch settings or integrations.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/register",
+            "name=Sam&email=sam%40example.com&password=staff-passphrase",
+            None,
+        ))
+        .await
+        .unwrap();
+    let staff = merge_cookies("", &res);
+    let sam_uuid: String =
+        sqlx::query_scalar("SELECT uuid FROM users WHERE email = 'sam@example.com'")
+            .fetch_one(&st.db.pool)
+            .await
+            .unwrap();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/customers/{sam_uuid}/role"),
+            &format!("_csrf={csrf}&role=staff"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/orders", Some(&staff)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "staff run the store");
+    let res = app
+        .clone()
+        .oneshot(get("/admin/settings", Some(&staff)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/integrations", Some(&staff)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/backups", Some(&staff)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Login lockout after repeated failures.
+    for _ in 0..5 {
+        app.clone()
+            .oneshot(form(
+                "POST",
+                "/login",
+                "email=ada%40example.com&password=wrong",
+                None,
+            ))
+            .await
+            .unwrap();
+    }
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/login",
+            "email=ada%40example.com&password=a-strong-passphrase",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Too many attempts"));
+
+    // Privacy: export, then erase; the account is gone but the order stays.
+    let res = app
+        .clone()
+        .oneshot(get("/account/export.json", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(
+        body.contains("\"email\": \"ada@example.com\"") && body.contains("ORD-2026-"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/account/privacy", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let pcsrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/account/erase",
+            &format!("_csrf={pcsrf}&confirm=nope"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("Type+DELETE"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/account/erase",
+            &format!("_csrf={pcsrf}&confirm=DELETE"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let (email, status): (String, String) =
+        sqlx::query_as("SELECT email, status FROM users WHERE id = 2")
+            .fetch_one(&st.db.pool)
+            .await
+            .unwrap();
+    assert!(email.starts_with("erased-") && status == "disabled");
+    assert_eq!(
+        st.commerce
+            .order_by_uuid(&order_uuid)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "pending"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/account", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "erased accounts are signed out"
+    );
+
+    // Backups: create, list, download.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/backups",
+            &format!("_csrf={csrf}"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        location(&res).contains("Backup+created"),
+        "{}",
+        location(&res)
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/admin/backups", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let name = body
+        .split("/admin/backups/")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(name.starts_with("mms-backup-"));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/admin/backups/{name}"), Some(&admin_cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "application/gzip");
+    assert!(bytes(res).await.len() > 20);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/backups/../mms.toml", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    assert_ne!(res.status(), StatusCode::OK);
+}

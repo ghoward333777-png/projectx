@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Violations{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/protection">← Protection</a></p>
+<h1>Violations and takedowns</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="tiles">
+  <div class="tile"><span class="num">{{ counts.open }}</span><span>Open</span></div>
+  <div class="tile"><span class="num">{{ counts.notice_sent }}</span><span>Notice sent</span></div>
+  <div class="tile"><span class="num">{{ counts.removed }}</span><span>Removed</span></div>
+  <div class="tile"><span class="num">{{ counts.disputed }}</span><span>Disputed</span></div>
+</div>
+<section class="card">
+  <h2>Report a violation</h2>
+  <form method="post" action="{{ base }}/admin/protection/violations" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Address of the infringing page <input name="url" placeholder="https://…" required></label>
+    <label>Your media file <select name="media"><option value="">—</option>{% for m in media %}<option value="{{ m.uuid }}">{{ m.title | default(m.original_path) }}</option>{% endfor %}</select></label>
+    <label>Evidence (screenshot or the leaked file; identified against watermark sessions automatically) <input type="file" name="evidence"></label>
+    <label>Notes <input name="note" placeholder="How it was found, who to contact"></label>
+    <button class="primary">Record violation</button>
+  </form>
+</section>
+<section class="card">
+  <form method="get" class="filters"><select name="status"><option value="">Any status</option>{% for s in ["open","notice_sent","removed","disputed","ignored"] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s | label }}</option>{% endfor %}</select><button>Filter</button></form>
+  {% if rows %}<table><thead><tr><th>Host</th><th>URL</th><th>Media</th><th>Status</th><th>Reported</th></tr></thead><tbody>{% for r in rows %}<tr><td><a href="{{ base }}/admin/protection/violations/{{ r.v.uuid }}">{{ r.v.host }}</a></td><td class="small">{{ r.v.url | truncate(60) }}</td><td>{{ r.media | default("—") }}</td><td><span class="badge {% if r.v.status == 'removed' %}ok{% elif r.v.status == 'open' %}fail{% elif r.v.status == 'notice_sent' %}warn{% endif %}">{{ r.v.status | label }}</span></td><td>{{ r.v.created_at[:10] }}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="muted">No violations recorded.</p>{% endif %}
+</section>
+{% endblock %}

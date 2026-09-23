@@ -28,3 +28,6 @@ infer.workspace = true
 mime_guess.workspace = true
 reqwest.workspace = true
 async-trait.workspace = true
+lettre.workspace = true
+tar.workspace = true
+flate2.workspace = true

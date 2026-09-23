@@ -64,6 +64,13 @@ enum Command {
     Health,
     /// Run the HTTP server.
     Serve,
+    /// Identify the viewer a leaked image or screenshot was issued to.
+    Identify { file: PathBuf },
+    /// Write a backup archive (database snapshot, config, media) into a folder.
+    Backup {
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -139,6 +146,41 @@ async fn main() -> Result<()> {
             if report.status == mms_core::health::Status::Fail {
                 std::process::exit(1);
             }
+        }
+        Command::Identify { file } => {
+            let (_cfg, db) = open(&cli.config).await?;
+            let bytes =
+                std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+            match mms_core::protection::Protection::new(db.clone())
+                .identify(&bytes)
+                .await?
+            {
+                Some((s, how)) => {
+                    let email: Option<String> = match s.user_id {
+                        Some(u) => {
+                            sqlx::query_scalar("SELECT email FROM users WHERE id = ?")
+                                .bind(u)
+                                .fetch_optional(&db.pool)
+                                .await?
+                        }
+                        None => None,
+                    };
+                    println!(
+                        "{}",
+                        serde_json::json!({ "found": true, "how": how, "session": s.uuid, "code": s.code, "user_id": s.user_id, "email": email, "media_id": s.media_id, "created_at": s.created_at })
+                    );
+                }
+                None => {
+                    println!("{}", serde_json::json!({ "found": false }));
+                    std::process::exit(2);
+                }
+            }
+        }
+        Command::Backup { out } => {
+            let (cfg, db) = open(&cli.config).await?;
+            let dir = out.unwrap_or_else(|| cfg.data_dir.join("backups"));
+            let path = mms_core::backup::create(&db.pool, &cfg.data_dir, &dir).await?;
+            println!("{}", path.display());
         }
         Command::Serve => {
             let (cfg, db) = open(&cli.config).await?;

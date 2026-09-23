@@ -45,3 +45,7 @@ The store admin's Widgets page prints the exact block and shortcode for every wi
 * Cart and checkout with Stripe, PayPal and a test gateway; orders, refunds, receipts; coupons and tax.
 * Site passes, recurring passes, private pages with ten signup templates and signed agreements.
 * API keys and outbound webhooks.
+* Image protection and forensic watermarks (levels 1 to 3), copyright scans, violations and DMCA notices.
+* Square and Authorize.net, multi-currency display and charging, eleven media players, Apple Pay domain file.
+* Google Business Profile: locations, posts, reviews with AI-drafted replies.
+* SMTP email for receipts, agreements and pass reminders; GDPR export and erase; backups; staff role; login lockouts; ARM build.

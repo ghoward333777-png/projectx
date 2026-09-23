@@ -5,13 +5,19 @@ use axum::Router;
 use mms_core::audit::Audit;
 use mms_core::commerce::Commerce;
 use mms_core::config::Config;
+use mms_core::copyright::Copyright;
+use mms_core::currency::Currency;
 use mms_core::db::Db;
 use mms_core::entitlements::Entitlements;
+use mms_core::google::Google;
 use mms_core::integrations::Integrations;
 use mms_core::jobs::Jobs;
+use mms_core::mail::Mailer;
 use mms_core::media::MediaStore;
 use mms_core::pages::Pages;
+use mms_core::privacy::Privacy;
 use mms_core::products::Products;
+use mms_core::protection::Protection;
 use mms_core::secrets::Secrets;
 use mms_core::settings::SettingsStore;
 use mms_core::signer::Signer;
@@ -38,6 +44,12 @@ pub struct AppState {
     pub commerce: Commerce,
     pub pages: Pages,
     pub integrations: Integrations,
+    pub protection: Protection,
+    pub copyright: Copyright,
+    pub currency: Currency,
+    pub google: Google,
+    pub mailer: Mailer,
+    pub privacy: Privacy,
     pub templates: Arc<minijinja::Environment<'static>>,
     /// Mount prefix such as "/store", or "" when served at the domain root.
     pub base: Arc<String>,
@@ -63,6 +75,12 @@ impl AppState {
             commerce: Commerce::new(db.clone()),
             pages: Pages::new(db.clone()),
             integrations: Integrations::new(db.clone()),
+            protection: Protection::new(db.clone()),
+            copyright: Copyright::new(db.clone()),
+            currency: Currency::new(db.clone()),
+            google: Google::new(db.clone()),
+            mailer: Mailer::new(db.clone()),
+            privacy: Privacy::new(db.clone()),
             config: Arc::new(config),
             db,
             secrets,
@@ -290,6 +308,80 @@ pub fn router(state: AppState) -> Router {
             get(routes::integrations::api_entitlements),
         )
         .route("/api/v1/grants", post(routes::integrations::api_grant))
+        .route(
+            "/.well-known/apple-developer-merchantid-domain-association",
+            get(routes::shop::apple_pay_domain),
+        )
+        .route("/currency", get(routes::shop::set_currency))
+        .route("/admin/google", get(routes::google::page))
+        .route("/admin/google/connect", post(routes::google::connect))
+        .route("/admin/google/callback", get(routes::google::callback))
+        .route("/admin/google/disconnect", post(routes::google::disconnect))
+        .route("/admin/google/sync", post(routes::google::sync))
+        .route("/admin/google/posts", post(routes::google::create_post))
+        .route(
+            "/admin/google/posts/:uuid/publish",
+            post(routes::google::publish_post),
+        )
+        .route(
+            "/admin/google/posts/:uuid/delete",
+            post(routes::google::delete_post),
+        )
+        .route(
+            "/admin/google/reviews/:id/draft",
+            post(routes::google::draft_reply),
+        )
+        .route(
+            "/admin/google/reviews/:id/reply",
+            post(routes::google::post_reply),
+        )
+        .route("/admin/mail/test", post(routes::ops::test_mail))
+        .route("/account/privacy", get(routes::ops::privacy_page))
+        .route("/account/export.json", get(routes::ops::my_export))
+        .route("/account/erase", post(routes::ops::my_erase))
+        .route(
+            "/admin/customers/:uuid/export.json",
+            get(routes::ops::admin_export),
+        )
+        .route(
+            "/admin/customers/:uuid/erase",
+            post(routes::ops::admin_erase),
+        )
+        .route("/admin/customers/:uuid/role", post(routes::ops::set_role))
+        .route(
+            "/admin/backups",
+            get(routes::ops::backups).post(routes::ops::create_backup),
+        )
+        .route("/admin/backups/:name", get(routes::ops::download_backup))
+        .route("/admin/protection", get(routes::protection::dashboard))
+        .route(
+            "/admin/protection/identify",
+            post(routes::protection::identify),
+        )
+        .route(
+            "/admin/protection/scans",
+            get(routes::protection::scans).post(routes::protection::record_scan),
+        )
+        .route(
+            "/admin/protection/violations",
+            get(routes::protection::violations).post(routes::protection::report_violation),
+        )
+        .route(
+            "/admin/protection/violations/:uuid",
+            get(routes::protection::violation).post(routes::protection::violation_status),
+        )
+        .route(
+            "/admin/protection/violations/:uuid/notice",
+            post(routes::protection::generate_notice),
+        )
+        .route(
+            "/admin/protection/violations/:uuid/notice.pdf",
+            get(routes::protection::notice_pdf),
+        )
+        .route(
+            "/admin/protection/violations/:uuid/evidence",
+            get(routes::protection::evidence),
+        )
         .route("/account", get(routes::account::my_media))
         .route(
             "/login",

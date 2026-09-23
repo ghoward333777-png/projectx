@@ -5,7 +5,7 @@ use crate::auth::MaybeUser;
 use crate::errors::AppResult;
 use crate::routes::bridges;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use minijinja::context;
 use mms_core::entitlements::Subject;
@@ -14,6 +14,8 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct EmbedQuery {
+    #[serde(default)]
+    currency: Option<String>,
     site: Option<String>,
     #[serde(default)]
     q: String,
@@ -67,12 +69,16 @@ fn framed(csp: String, html: String) -> Response {
 pub async fn showcase(
     State(state): State<AppState>,
     MaybeUser(user, _): MaybeUser,
+    jar: axum_extra::extract::CookieJar,
     Query(q): Query<EmbedQuery>,
 ) -> AppResult<Response> {
     let csp = match site_policy(&state, q.site.as_deref()).await {
         Ok(c) => c,
         Err(r) => return Ok(r),
     };
+    let (jar, fx) =
+        crate::routes::shop::display_currency(&state, jar, q.currency.as_deref()).await?;
+    let currencies = crate::routes::shop::currency_choices(&state).await?;
     let per = 24;
     let (cards, total) = state
         .products
@@ -94,8 +100,15 @@ pub async fn showcase(
         cards => cards.iter().map(|c| context!{ c, type_label => type_label(&c.r#type) }).collect::<Vec<_>>(),
         total, page => q.page, pages => (total + per - 1) / per, view, q => q.q, type_filter => q.r#type, category => q.category, sort => q.sort, featured => q.featured,
         site => q.site.clone().unwrap_or_default(), categories, types => TYPES, site_name, show_sales, user, menu => q.menu,
+        fx_code => fx.as_ref().map(|f| f.0.clone()), fx_factor => fx.as_ref().map(|f| f.1).unwrap_or(1.0), currencies,
     })?;
-    Ok(framed(csp, html))
+    let mut res = framed(csp, html);
+    for c in jar.iter() {
+        if let Ok(v) = c.to_string().parse() {
+            res.headers_mut().append(header::SET_COOKIE, v);
+        }
+    }
+    Ok(res)
 }
 
 #[derive(Deserialize)]
@@ -170,6 +183,7 @@ pub async fn player(
     MaybeUser(user, _): MaybeUser,
     Path(slug): Path<String>,
     Query(q): Query<SiteQuery>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
     let csp = match q.site.as_deref() {
         Some(_) => match site_policy(&state, q.site.as_deref()).await {
@@ -221,8 +235,37 @@ pub async fn player(
         }
     };
     let download = p.setting("download_allowed") == "true";
+    let lv = crate::routes::protection::levels(&state).await?;
+    let mut marked_ready = true;
+    if let Some(m) = media
+        .as_ref()
+        .filter(|m| m.r#type == "video" && lv.video >= 2)
+    {
+        let (ip, ua) = crate::routes::protection::client(&headers);
+        marked_ready =
+            crate::routes::protection::ensure_marked_video(&state, m, &u, Some(p.id), &ip, &ua)
+                .await
+                .unwrap_or(true);
+    }
     let site_name = state.settings.get("general.site_name").await?;
-    let html = state.render("embed_player.html", context! { p, type_label => type_label(&p.r#type), media, src, poster, player, download, user => u, site_name, settings => p.settings_json(), site => q.site.clone().unwrap_or_default() })?;
+    let mut players = serde_json::Map::new();
+    for key in [
+        "jwplayer_library",
+        "jwplayer_key",
+        "bitmovin_key",
+        "theoplayer_license",
+        "theoplayer_library",
+        "kaltura_partner",
+        "kaltura_uiconf",
+        "flowplayer_token",
+        "projekktor_library",
+    ] {
+        let v = state.settings.get(&format!("players.{key}")).await?;
+        if !v.trim().is_empty() {
+            players.insert(key.to_string(), serde_json::Value::String(v));
+        }
+    }
+    let html = state.render("embed_player.html", context! { p, type_label => type_label(&p.r#type), media, src, poster, player, download, user => u, site_name, settings => p.settings_json(), site => q.site.clone().unwrap_or_default(), image_level => lv.image, video_level => lv.video, marked_ready, players => serde_json::Value::Object(players) })?;
     Ok(framed(csp, html))
 }
 
@@ -277,6 +320,18 @@ pub async fn static_file(Path(path): Path<String>) -> Response {
         "mms-builder.css" => (
             include_bytes!("../../static/mms-builder.css"),
             "text/css; charset=utf-8",
+        ),
+        "mms-checkout.js" => (
+            include_bytes!("../../static/mms-checkout.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "vendor/clappr.min.js" => (
+            include_bytes!("../../static/vendor/clappr.min.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "vendor/vimeo-player.min.js" => (
+            include_bytes!("../../static/vendor/vimeo-player.min.js"),
+            "application/javascript; charset=utf-8",
         ),
         "vendor/plyr.min.js" => (
             include_bytes!("../../static/vendor/plyr.min.js"),

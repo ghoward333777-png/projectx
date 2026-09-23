@@ -75,6 +75,11 @@ final class Mediamarketplace extends CMSPlugin implements SubscriberInterface
         $path = (string) parse_url($uri, PHP_URL_PATH);
         $base = rtrim((string) Uri::root(true), '/');
         $mount = $base . '/' . self::MOUNT;
+        if ($path === $base . '/.well-known/apple-developer-merchantid-domain-association') {
+            $this->runtime()->proxy('/' . self::MOUNT . '/.well-known/apple-developer-merchantid-domain-association');
+            $app->close();
+            return;
+        }
         if ($path !== $mount && !str_starts_with($path, $mount . '/')) {
             return;
         }

@@ -2,6 +2,7 @@
 {% block title %}Health{% endblock %}
 {% block body %}
 <h1>Health <span class="badge {{ report.status }}">{{ report.status }}</span></h1>
+<p class="muted"><a href="{{ base }}/admin/backups">Backups</a></p>
 <section class="card">
 <table>
   <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
