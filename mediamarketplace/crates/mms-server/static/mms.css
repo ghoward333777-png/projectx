@@ -43,3 +43,4 @@ dl dt{font-weight:600;margin-top:8px}dl dd{margin:2px 0 0}
 .product-card .price{margin:0 12px;font-weight:700}
 .product-card.featured{border-color:var(--mms-accent-2)}
 .empty{color:var(--mms-muted)}
+@media (max-width:480px){.showcase.list .product-card{grid-template-columns:1fr;gap:8px}.showcase.list .product-card .thumb{aspect-ratio:16/9}.showcase.list .product-card .price{margin:0 12px 4px}}
