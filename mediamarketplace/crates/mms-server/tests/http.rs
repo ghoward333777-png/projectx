@@ -222,6 +222,19 @@ async fn first_run_setup_then_login_settings_bridges_sso_and_embed() {
         "frame-ancestors 'self' https://www.example.com"
     );
     assert!(text(res).await.contains("No products published yet"));
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, status, created_at, updated_at) VALUES ('p-1','pass','site_pass','Pass',14900,'USD','published',?,?)")
+        .bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/showcase?site={site_uuid}"), None))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("USD 149.00") && body.contains(">Site pass<"),
+        "money and label filters: {body}"
+    );
 
     // SSO: a token signed with the site secret logs the visitor in as a customer.
     let signer = mms_core::signer::Signer::from_shared_secret(&secret);

@@ -11,10 +11,10 @@
 {% if cards %}
   {% for c in cards %}
   <article class="product-card type-{{ c.type }}{% if c.featured %} featured{% endif %}">
-    <div class="thumb"><span class="type">{{ c.type }}</span></div>
+    <div class="thumb"><span class="type">{{ c.type | label }}</span></div>
     <h3>{{ c.title }}</h3>
     {% if c.description %}<p>{{ c.description }}</p>{% endif %}
-    <div class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.currency }} {{ (c.price_cents / 100) | round(2) }}{% endif %}</div>
+    <div class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.price_cents | money(c.currency) }}{% endif %}</div>
   </article>
   {% endfor %}
 {% else %}
