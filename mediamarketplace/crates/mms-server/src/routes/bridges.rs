@@ -80,7 +80,7 @@ pub async fn create(
     admin: AdminUser,
     Form(f): Form<CreateForm>,
 ) -> AppResult<Response> {
-    if let Err(r) = admin.check_csrf(&f._csrf) {
+    if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }
     let Some(origin) = normalise_origin(&f.origin) else {
@@ -132,7 +132,7 @@ pub async fn delete(
     Path(uuid): Path<String>,
     Form(f): Form<DeleteForm>,
 ) -> AppResult<Response> {
-    if let Err(r) = admin.check_csrf(&f._csrf) {
+    if let Some(r) = admin.csrf_error(&f._csrf) {
         return Ok(r);
     }
     sqlx::query("DELETE FROM bridge_sites WHERE uuid = ?")

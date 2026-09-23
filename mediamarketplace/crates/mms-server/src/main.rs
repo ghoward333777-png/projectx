@@ -17,7 +17,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use mms_core::config::Config;
 use mms_core::db::Db;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "mms-server", version, about = "MediaMarketplace Studio server")]
@@ -162,7 +162,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn open(path: &PathBuf) -> Result<(Config, Db)> {
+async fn open(path: &Path) -> Result<(Config, Db)> {
     let cfg = Config::load(path)?;
     let db = Db::connect(&cfg.database_url()).await?;
     Ok((cfg, db))

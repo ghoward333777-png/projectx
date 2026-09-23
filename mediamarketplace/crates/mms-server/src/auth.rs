@@ -135,15 +135,18 @@ impl FromRequestParts<AppState> for AdminUser {
 }
 
 impl AdminUser {
-    pub fn check_csrf(&self, submitted: &str) -> Result<(), Response> {
+    /// Returns a 403 response when the submitted CSRF token does not match the session.
+    pub fn csrf_error(&self, submitted: &str) -> Option<Response> {
         if submitted == self.csrf {
-            Ok(())
+            None
         } else {
-            Err((
-                StatusCode::FORBIDDEN,
-                "Invalid or expired form token. Go back and try again.",
+            Some(
+                (
+                    StatusCode::FORBIDDEN,
+                    "Invalid or expired form token. Go back and try again.",
+                )
+                    .into_response(),
             )
-                .into_response())
         }
     }
 }

@@ -149,7 +149,7 @@ pub async fn settings_save(
     admin: AdminUser,
     Form(fields): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
-    if let Err(r) = admin.check_csrf(fields.get("_csrf").map(String::as_str).unwrap_or("")) {
+    if let Some(r) = admin.csrf_error(fields.get("_csrf").map(String::as_str).unwrap_or("")) {
         return Ok(r);
     }
     for def in mms_core::settings::DEFINITIONS {
