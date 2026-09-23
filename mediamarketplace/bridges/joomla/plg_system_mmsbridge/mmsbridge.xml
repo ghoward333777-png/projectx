@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="system" method="upgrade">
+    <name>PLG_SYSTEM_MMSBRIDGE</name>
+    <author>MediaMarketplace Studio</author>
+    <creationDate>2026-09</creationDate>
+    <license>GPL-3.0-or-later</license>
+    <version>0.1.0</version>
+    <description>PLG_SYSTEM_MMSBRIDGE_XML_DESCRIPTION</description>
+    <namespace path="src">Joomla\Plugin\System\Mmsbridge</namespace>
+    <files>
+        <folder plugin="mmsbridge">services</folder>
+        <folder>src</folder>
+    </files>
+    <languages folder="language">
+        <language tag="en-GB">en-GB/plg_system_mmsbridge.ini</language>
+        <language tag="en-GB">en-GB/plg_system_mmsbridge.sys.ini</language>
+    </languages>
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="server_url" type="url" label="PLG_SYSTEM_MMSBRIDGE_SERVER_URL" description="PLG_SYSTEM_MMSBRIDGE_SERVER_URL_DESC" filter="url" validate="url" />
+                <field name="site_id" type="text" label="PLG_SYSTEM_MMSBRIDGE_SITE_ID" filter="string" />
+                <field name="secret" type="password" label="PLG_SYSTEM_MMSBRIDGE_SECRET" description="PLG_SYSTEM_MMSBRIDGE_SECRET_DESC" filter="raw" autocomplete="off" />
+            </fieldset>
+        </fields>
+    </config>
+</extension>

@@ -1,0 +1,52 @@
+MediaMarketplace Studio server: installation
+============================================
+
+The server is one static Linux binary. It needs a place to run a process
+(a VPS, a dedicated server, or any Docker host) and a reverse proxy for TLS.
+Shared hosting that only runs PHP cannot run it; the WordPress and Joomla
+bridge plugins can still live on such hosting and point at a server elsewhere.
+
+A. Binary on a Linux server (systemd)
+-------------------------------------
+1. Copy mms-server to /usr/local/bin/ and make it executable.
+2. Create a user and directories:
+       useradd --system --create-home --home-dir /var/lib/mms mms
+       mkdir -p /etc/mms && chown mms:mms /etc/mms
+3. Initialise (as the mms user):
+       sudo -u mms mms-server --config /etc/mms/mms.toml init \
+           --data-dir /var/lib/mms --bind 127.0.0.1:8090 \
+           --public-url https://media.example.com
+4. Create the first administrator (or use the web setup wizard on first visit):
+       sudo -u mms mms-server --config /etc/mms/mms.toml admin --email you@example.com
+5. Install the service:
+       cp mms-server.service /etc/systemd/system/
+       systemctl daemon-reload && systemctl enable --now mms-server
+6. Put nginx, Caddy or Apache in front of 127.0.0.1:8090 with TLS for
+   https://media.example.com. Forward the Host header unchanged.
+7. Open https://media.example.com/admin, sign in, check Health.
+
+B. Docker
+---------
+1. Edit deploy/docker-compose.yml: set MMS_PUBLIC_URL.
+2. docker compose -f deploy/docker-compose.yml up -d --build
+3. First run creates the config in the mms-data volume. Open the public URL and
+   complete the setup wizard.
+
+Connecting WordPress or Joomla
+------------------------------
+1. Server admin > Bridges > Add a site. Copy the Site ID and Secret (shown once).
+2. WordPress: install bridges/wordpress/mediamarketplace-bridge as a plugin,
+   Settings > MediaMarketplace, paste the values, then use [mms_showcase].
+   Joomla: install the package built from bridges/joomla, enable the
+   "System - MediaMarketplace Bridge" plugin, paste the values, then use
+   {mms_showcase} in an article or the MediaMarketplace Embed module.
+
+Commands
+--------
+   mms-server init      write config and create the data directory
+   mms-server migrate   apply database migrations
+   mms-server admin     create an administrator
+   mms-server health    print the health report (exit 1 when failing)
+   mms-server serve     run the HTTP server (default)
+
+Environment overrides: MMS_CONFIG, MMS_BIND, MMS_PUBLIC_URL, MMS_DATA_DIR, MMS_SECRET_KEY.

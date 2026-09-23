@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ site_name }} showcase</title>
+<link rel="stylesheet" href="/static/mms.css">
+</head>
+<body class="embed">
+<div class="showcase {{ view }}" data-category="{{ category }}">
+{% if cards %}
+  {% for c in cards %}
+  <article class="product-card type-{{ c.type }}{% if c.featured %} featured{% endif %}">
+    <div class="thumb"><span class="type">{{ c.type }}</span></div>
+    <h3>{{ c.title }}</h3>
+    {% if c.description %}<p>{{ c.description }}</p>{% endif %}
+    <div class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.currency }} {{ (c.price_cents / 100) | round(2) }}{% endif %}</div>
+  </article>
+  {% endfor %}
+{% else %}
+  <p class="empty">No products published yet.</p>
+{% endif %}
+</div>
+<script>
+(function () {
+  function report() { parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*'); }
+  window.addEventListener('load', report); window.addEventListener('resize', report);
+  new MutationObserver(report).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+</body>
+</html>

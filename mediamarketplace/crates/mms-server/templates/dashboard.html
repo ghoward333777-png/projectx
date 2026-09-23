@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<h1>Dashboard</h1>
+<div class="tiles">
+  <div class="tile"><span class="num">{{ products }}</span><span>Products</span></div>
+  <div class="tile"><span class="num">{{ media }}</span><span>Media items</span></div>
+  <div class="tile"><span class="num">{{ customers }}</span><span>Customers</span></div>
+  <div class="tile"><span class="num">{{ bridges }}</span><span>Bridged sites</span></div>
+</div>
+<section class="card">
+  <h2>Recent activity</h2>
+  {% if recent %}
+  <table>
+    <thead><tr><th>When (UTC)</th><th>Action</th><th>Subject</th></tr></thead>
+    <tbody>{% for r in recent %}<tr><td>{{ r.at }}</td><td>{{ r.action }}</td><td>{{ r.subject }} {{ r.id | default("") }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p>Nothing yet.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Next steps</h2>
+  <ol>
+    <li>Check <a href="/admin/health">Health</a> and fix anything red.</li>
+    <li>Add your WordPress or Joomla site under <a href="/admin/bridges">Bridges</a> and copy the secret into the bridge plugin.</li>
+    <li>Set your store name and currency in <a href="/admin/settings">Settings</a>.</li>
+  </ol>
+</section>
+{% endblock %}

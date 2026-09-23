@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/admin/settings">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% for s in sections %}
+  <section class="card">
+    <h2>{{ s.label }}</h2>
+    {% for f in s.fields %}
+    <label>{{ f.label }}
+      {% if f.kind == "bool" %}
+        <select name="{{ f.key }}"><option value="1" {% if f.value == "1" %}selected{% endif %}>Yes</option><option value="0" {% if f.value != "1" %}selected{% endif %}>No</option></select>
+      {% elif f.kind == "select" %}
+        <select name="{{ f.key }}">{% for o in f.options %}<option value="{{ o[0] }}" {% if o[0] == f.value %}selected{% endif %}>{{ o[1] }}</option>{% endfor %}</select>
+      {% elif f.kind == "secret" %}
+        <input name="{{ f.key }}" type="password" value="{{ f.value }}" autocomplete="off" placeholder="not set">
+      {% elif f.kind == "int" %}
+        <input name="{{ f.key }}" type="number" min="0" value="{{ f.value }}">
+      {% else %}
+        <input name="{{ f.key }}" value="{{ f.value }}">
+      {% endif %}
+      {% if f.help %}<small>{{ f.help }}</small>{% endif %}
+    </label>
+    {% endfor %}
+  </section>
+  {% endfor %}
+  <button class="primary">Save settings</button>
+</form>
+{% endblock %}

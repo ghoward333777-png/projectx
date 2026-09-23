@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Bridges{% endblock %}
+{% block body %}
+<h1>Bridged sites</h1>
+<p>Each WordPress or Joomla site that embeds your store needs an entry here. The bridge plugin on that site is configured with this server's URL, the site ID and the secret.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if new_secret %}
+<section class="card highlight">
+  <h2>Copy these into the bridge plugin now</h2>
+  <p>The secret is shown once. If you lose it, delete the site and create it again.</p>
+  <dl>
+    <dt>Server URL</dt><dd><code>{{ public_url }}</code></dd>
+    <dt>Site ID</dt><dd><code>{{ new_secret.uuid }}</code></dd>
+    <dt>Secret</dt><dd><code>{{ new_secret.secret }}</code></dd>
+  </dl>
+</section>
+{% endif %}
+<section class="card">
+  <h2>Sites</h2>
+  {% if sites %}
+  <table>
+    <thead><tr><th>Name</th><th>Host</th><th>Origin</th><th>Site ID</th><th></th></tr></thead>
+    <tbody>{% for s in sites %}<tr>
+      <td>{{ s.name }}</td><td>{{ s.host }}</td><td>{{ s.origin }}</td><td><code>{{ s.uuid }}</code></td>
+      <td><form method="post" action="/admin/bridges/{{ s.uuid }}/delete" class="inline" onsubmit="return confirm('Remove this site? Its embeds and sign-on will stop working.')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Remove</button></form></td>
+    </tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p>No sites yet.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Add a site</h2>
+  <form method="post" action="/admin/bridges">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Name <input name="name" required placeholder="Main website"></label>
+    <label>Host <select name="host"><option value="wordpress">WordPress</option><option value="joomla">Joomla</option><option value="other">Other</option></select></label>
+    <label>Origin <input name="origin" required placeholder="https://www.example.com"><small>Scheme and host only. Embeds are only allowed to be framed from this origin.</small></label>
+    <button class="primary">Create site and secret</button>
+  </form>
+</section>
+{% endblock %}

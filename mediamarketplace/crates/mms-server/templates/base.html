@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site_name }}{% endblock %} · MediaMarketplace Studio</title>
+<link rel="stylesheet" href="/static/mms.css">
+</head>
+<body class="admin">
+{% if user %}
+<header class="topbar">
+  <a class="brand" href="/admin">{{ site_name }}</a>
+  <nav>
+    <a href="/admin" {% if active == "dashboard" %}class="active"{% endif %}>Dashboard</a>
+    <a href="/admin/bridges" {% if active == "bridges" %}class="active"{% endif %}>Bridges</a>
+    <a href="/admin/settings" {% if active == "settings" %}class="active"{% endif %}>Settings</a>
+    <a href="/admin/health" {% if active == "health" %}class="active"{% endif %}>Health</a>
+  </nav>
+  <form method="post" action="/admin/logout" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="link">Sign out ({{ user.email }})</button></form>
+</header>
+{% endif %}
+<main class="container">
+{% block body %}{% endblock %}
+</main>
+<footer class="foot">MediaMarketplace Studio {{ version | default("") }}</footer>
+</body>
+</html>

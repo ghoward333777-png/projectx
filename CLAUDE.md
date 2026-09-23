@@ -67,3 +67,22 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+
+## MediaMarketplace Studio (`mediamarketplace/`)
+
+A separate product in this repo: a self-hosted media marketplace **server in Rust**
+(`crates/mms-core`, `crates/mms-server`; Axum + SQLite via sqlx) with **thin PHP bridge
+plugins** for WordPress and Joomla (`bridges/`). No WooCommerce or VirtueMart anywhere.
+
+- Run `cargo test` inside `mediamarketplace/` and `php tests/mms-bridge-contract.php`
+  from the repo root before shipping. Keep both green.
+- The SSO token format (`base64url(json).base64url(hmac)` over the raw JSON, canonical
+  claim order `sub, email, name, host, exp`) is shared by `mms-core::signer` and both PHP
+  token helpers; the fixture in `signer.rs` and `tests/mms-bridge-contract.php` must stay identical.
+- Settings are declared once in `mms-core::settings::DEFINITIONS`; secrets are encrypted
+  at rest via `mms-core::secrets`. Schema changes go in new `crates/mms-core/migrations/*.sql`
+  files, never by editing an applied migration.
+- Embeds are only served to registered bridge sites and carry a `frame-ancestors` policy
+  for that site's origin. Never add a public embed route without the site check.
+- Deliverable documents are Word (`docs/*.docx`), never Markdown. Notes inside
+  `mediamarketplace/` are `.txt`.

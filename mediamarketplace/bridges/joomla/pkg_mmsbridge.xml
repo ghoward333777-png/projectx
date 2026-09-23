@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="package" method="upgrade">
+    <name>MediaMarketplace Bridge</name>
+    <packagename>mmsbridge</packagename>
+    <version>0.1.0</version>
+    <creationDate>2026-09</creationDate>
+    <author>MediaMarketplace Studio</author>
+    <license>GPL-3.0-or-later</license>
+    <description>Embeds a MediaMarketplace Studio store in Joomla and signs visitors in with one click. VirtueMart is not required.</description>
+    <packager>MediaMarketplace Studio</packager>
+    <files folder="packages">
+        <file type="plugin" id="mmsbridge" group="system">plg_system_mmsbridge.zip</file>
+        <file type="module" id="mod_mms_embed" client="site">mod_mms_embed.zip</file>
+    </files>
+    <updateservers>
+        <server type="extension" priority="1" name="MediaMarketplace Bridge">https://example.com/updates/mmsbridge.xml</server>
+    </updateservers>
+</extension>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Health{% endblock %}
+{% block body %}
+<h1>Health <span class="badge {{ report.status }}">{{ report.status }}</span></h1>
+<section class="card">
+<table>
+  <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+  <tbody>{% for c in report.checks %}<tr><td>{{ c.name }}</td><td><span class="badge {{ c.status }}">{{ c.status }}</span></td><td>{{ c.detail }}</td></tr>{% endfor %}</tbody>
+</table>
+<p>Server version {{ report.version }}.</p>
+</section>
+{% endblock %}
