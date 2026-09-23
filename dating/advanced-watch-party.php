@@ -213,7 +213,7 @@ function awp_library(SlowDatingEngine $engine, string $roomId): void
                                         style="display:block;width:100%;padding:0;margin:0;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">
                                     <img src="https://i.ytimg.com/vi/<?= sd_e((string) $entry['youtube_id']) ?>/mqdefault.jpg" alt=""
                                          loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover"
-                                         onerror="this.parentNode.parentNode.style.display='none'">
+                                         onerror="this.onerror=null;this.src='data:image/svg+xml;charset=utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 160 90%27%3E%3Crect width=%27160%27 height=%2790%27 fill=%27%23262030%27/%3E%3Ctext x=%2780%27 y=%2754%27 font-size=%2728%27 text-anchor=%27middle%27 fill=%27%23ffb8d2%27%3E%E2%96%B6%3C/text%3E%3C/svg%3E'">
                                 </button>
                             </form>
                         <?php else: ?>
@@ -221,7 +221,7 @@ function awp_library(SlowDatingEngine $engine, string $roomId): void
                                     style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">
                                 <img src="https://i.ytimg.com/vi/<?= sd_e((string) $entry['youtube_id']) ?>/mqdefault.jpg" alt=""
                                      loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover"
-                                     onerror="this.parentNode.parentNode.style.display='none'">
+                                     onerror="this.onerror=null;this.src='data:image/svg+xml;charset=utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 160 90%27%3E%3Crect width=%27160%27 height=%2790%27 fill=%27%23262030%27/%3E%3Ctext x=%2780%27 y=%2754%27 font-size=%2728%27 text-anchor=%27middle%27 fill=%27%23ffb8d2%27%3E%E2%96%B6%3C/text%3E%3C/svg%3E'">
                             </button>
                         <?php endif; ?>
                     <?php endif; ?>
@@ -361,7 +361,7 @@ if ($view === null) {
                     <?php if (preg_match('#/embed/([A-Za-z0-9_-]{11})(?:[/?]|$)#', (string) $room['embed_url'], $thumbMatch) === 1): ?>
                         <img src="https://i.ytimg.com/vi/<?= sd_e($thumbMatch[1]) ?>/mqdefault.jpg" alt="" loading="lazy"
                              style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-bottom:8px"
-                             onerror="this.style.display='none'">
+                             onerror="this.onerror=null;this.src='data:image/svg+xml;charset=utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 160 90%27%3E%3Crect width=%27160%27 height=%2790%27 fill=%27%23262030%27/%3E%3Ctext x=%2780%27 y=%2754%27 font-size=%2728%27 text-anchor=%27middle%27 fill=%27%23ffb8d2%27%3E%E2%96%B6%3C/text%3E%3C/svg%3E'">
                     <?php endif; ?>
                     <strong><?= sd_e((string) SlowDatingEngine::ADV_MODES[$room['mode']]['label']) ?> · <?= sd_e(ucfirst((string) $room['theme'])) ?></strong>
                     <p style="margin:6px 0"><span class="pill"><?= sd_e((string) $room['status']) ?></span>

@@ -890,7 +890,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v46 · direct messages</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v47 · thumb fallback + jazz fix</div>
 
 <script>
 'use strict';
@@ -1764,7 +1764,7 @@ const OFFICIAL = [
   [2543,'BBC Earth meditative nature ASMR',0,'asmr','AgpWX18dby4',false],
 ];
 const JAZZCAFE = [
-  [2561,'Relax Café Music smooth jazz',0,'jazz','yIlWKDR9LxU',true],[2562,'Jazz and bossa nova café ambience',0,'bossa nova','G6gRMc6v0mI',false],
+  [2561,'Warm & Smooth Jazz coffee shop',0,'jazz','0Sr7MFe9P1Q',false],[2562,'Jazz and bossa nova café ambience',0,'bossa nova','G6gRMc6v0mI',false],
   [2563,'Sonorama smooth jazz café ambience',0,'jazz','UZiKR5HHXTo',false],[2564,'Coffee shop jazz radio',0,'cafe','TlUDYyjBdwQ',true],
 ];
 const RAINW = [
@@ -1813,6 +1813,9 @@ const WCHANNELS = {
 };
 let watchChannel = 'romance';
 const ALLFILMS = FILMS.concat(NATURE, ROOFTOP, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
+// If YouTube's image CDN is blocked (ad-blocker, network filter), a card
+// shows this ▶ placeholder instead of vanishing — it stays clickable.
+const WTHUMB_FALLBACK = 'data:image/svg+xml;charset=utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 160 90%27%3E%3Crect width=%27160%27 height=%2790%27 fill=%27%23262030%27/%3E%3Ctext x=%2780%27 y=%2754%27 font-size=%2728%27 text-anchor=%27middle%27 fill=%27%23ffb8d2%27%3E%E2%96%B6%3C/text%3E%3C/svg%3E';
 // The YouTube thumbnail for a row: the full stream's art when one
 // exists, otherwise the film's own trailer art. Every card sells its
 // video the way YouTube does.
@@ -1830,7 +1833,7 @@ function renderWatchGrid() {
     const thumb = wThumb(f);
     return '<div class="card" style="padding:10px">' +
       (thumb ? '<button class="wthumb" data-wfilm="' + f[0] + '" title="Watch ' + esc(f[1]) + '" style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">' +
-        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.parentNode.style.display=\'none\'">' +
+        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.onerror=null;this.src=WTHUMB_FALLBACK">' +
         '</button>' : '') +
       '<span class="name">' + (watchChannel === 'romance' && f[0] > 0 ? '#' + f[0] + ' · ' : (watchChannel === 'romance' ? '★ ' : '')) + esc(f[1]) + '</span>' +
       '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
@@ -2082,7 +2085,7 @@ function renderAwpGrid() {
     const thumb = wThumb(f);
     return '<div class="card" style="padding:10px">' +
       (thumb ? '<button class="wthumb" data-awpfilm="' + f[0] + '" title="Play ' + esc(f[1]) + ' for the room" style="display:block;width:100%;padding:0;margin:0 0 8px;border:0;background:none;cursor:pointer;border-radius:10px;overflow:hidden">' +
-        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.parentNode.style.display=\'none\'"></button>' : '') +
+        '<img src="' + thumb + '" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover" onerror="this.onerror=null;this.src=WTHUMB_FALLBACK"></button>' : '') +
       '<span class="name">' + esc(f[1]) + '</span>' +
       '<span>' + (f[2] > 0 ? '<span class="pill">' + f[2] + '</span>' : '') + '<span class="pill">' + esc(f[3]) + '</span>' +
       (f[5] ? '<span class="pill" style="background:#3c1f32;color:#ff9cba">● LIVE</span>' : '') + '</span>' +
