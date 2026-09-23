@@ -26,6 +26,10 @@
     <span class="price">{% if p.price_cents == 0 %}Free{% else %}{{ p.price_cents | money(p.currency) }}{% endif %}</span>
     {% if entitled %}
       <a class="button primary" href="{{ base }}/embed/player/{{ p.slug }}?site={{ site }}">Open</a>
+    {% elif buy_url %}
+      <a class="button primary" href="{{ buy_url }}" target="_top" rel="nofollow">{% if p.price_cents == 0 %}Get it free{% else %}Buy{% endif %}</a>
+    {% elif buy_hidden %}
+      <span class="muted small">Not available for purchase yet</span>
     {% elif p.price_cents == 0 and user %}
       <a class="button primary" href="{{ base }}/embed/checkout?site={{ site }}&product={{ p.slug }}">Get it free</a>
     {% else %}

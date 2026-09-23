@@ -339,6 +339,8 @@ pub struct ProductInfo {
     pub price: String,
     pub thumb: Option<String>,
     pub kind: String,
+    /// Where Buy sends the shopper when checkout runs in the CMS shop; `None` is the native cart.
+    pub buy_url: Option<String>,
 }
 
 pub struct Rendered {
@@ -716,8 +718,11 @@ fn render_component(
                 _ => "primary".into(),
             };
             let slug = c.prop("product");
+            let external = (ctx.product)(&slug).and_then(|p| p.buy_url);
             let href = if slug.is_empty() {
                 "#".to_string()
+            } else if let Some(u) = &external {
+                esc(u)
             } else {
                 format!(
                     "{}/embed/checkout?site={}&product={}",
@@ -726,7 +731,12 @@ fn render_component(
                     esc(&slug)
                 )
             };
-            let _ = write!(html, "<a class=\"{class_attr} mms-btn mms-btn-{style}\" href=\"{href}\" data-product=\"{}\">{}</a>", esc(&slug), esc(&c.prop("label")));
+            let target = if external.is_some() {
+                " target=\"_top\" rel=\"nofollow\""
+            } else {
+                ""
+            };
+            let _ = write!(html, "<a class=\"{class_attr} mms-btn mms-btn-{style}\" href=\"{href}\"{target} data-product=\"{}\">{}</a>", esc(&slug), esc(&c.prop("label")));
         }
         "countdown" => {
             let _ = write!(html, "<div class=\"{class_attr} mms-countdown\" data-until=\"{}\" data-expired=\"{}\"><span class=\"mms-countdown-label\">{}</span><span class=\"mms-countdown-value\">…</span></div>", esc(&c.prop("until")), esc(&c.prop("expired")), esc(&c.prop("label")));
@@ -929,6 +939,7 @@ mod tests {
                 price: "USD 9.00".into(),
                 thumb: None,
                 kind: "Video".into(),
+                buy_url: None,
             })
         };
         let vars = vec![

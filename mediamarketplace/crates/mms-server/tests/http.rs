@@ -3527,3 +3527,535 @@ async fn phase_five_to_seven_currency_gateways_players_google_privacy_backups_ro
         .unwrap();
     assert_ne!(res.status(), StatusCode::OK);
 }
+
+/// Signs a sell-through request the way the WooCommerce module and the VirtueMart
+/// plugin do (see `MmsRuntime::signRequest`).
+fn shop_req(
+    method: &str,
+    path: &str,
+    body: &str,
+    site: &str,
+    secret: &str,
+    ts: i64,
+) -> Request<Body> {
+    // The signature covers the path without the query string.
+    let sig = mms_core::commerce_bridge::request_signature(
+        secret,
+        ts,
+        method,
+        path.split('?').next().unwrap(),
+        body.as_bytes(),
+    );
+    Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-mms-site", site)
+        .header("x-mms-timestamp", ts.to_string())
+        .header("x-mms-signature", sig)
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn phase_eight_sell_through_woocommerce_and_virtuemart() {
+    let tmp = std::env::temp_dir().join(format!("mms-http-{}", uuid::Uuid::new_v4()));
+    let mut config = mms_core::config::Config::generate(tmp, "127.0.0.1:0", "http://shop.example");
+    let site = "22222222-2222-4333-8444-555555555555";
+    let secret = "shop-shared-secret";
+    config.bridges.push(mms_core::config::BridgeConfig {
+        uuid: site.into(),
+        name: "Shop site".into(),
+        host: "wordpress".into(),
+        origin: "https://shop.example".into(),
+        secret: secret.into(),
+        admin_sso: true,
+    });
+    config.validate().unwrap();
+    let db = mms_core::db::Db::memory().await.unwrap();
+    let st = app::AppState::new(config, db).unwrap();
+    routes::bridges::sync_from_config(&st).await.unwrap();
+    let app = app::router(st.clone());
+    let (admin_cookie, _csrf) = admin_session(&app).await;
+    let now = mms_core::now();
+    for (uuid, slug, t, title, price, settings) in [
+        ("p1", "film", "video", "Film", 4900, "{}"),
+        (
+            "p2",
+            "club",
+            "site_pass",
+            "Club",
+            1900,
+            r#"{"validity":"recurring","interval":"month","scope":"site"}"#,
+        ),
+        ("p3", "vault", "private_page", "Vault access", 1000, "{}"),
+    ] {
+        sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, settings, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'USD', ?, 'published', ?, ?)")
+            .bind(uuid).bind(slug).bind(t).bind(title).bind(price).bind(settings).bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    }
+    let ts = chrono::Utc::now().timestamp();
+
+    // Unsigned, badly signed and stale requests are refused.
+    let res = app
+        .clone()
+        .oneshot(get("/api/v1/commerce/status", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/status",
+            "",
+            site,
+            "wrong",
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/status",
+            "",
+            site,
+            secret,
+            ts - 3600,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Status and catalogue.
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/status",
+            "",
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = text(res).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let j: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(j["data"]["mode"], "native");
+    assert_eq!(j["data"]["products"], 3);
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/catalog?system=woocommerce",
+            "",
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    let cat = j["data"].as_array().unwrap();
+    assert_eq!(cat.len(), 3);
+    let film = cat.iter().find(|p| p["slug"] == "film").unwrap();
+    assert_eq!(film["price_cents"], 4900);
+    assert_eq!(film["page_url"], "http://shop.example/embed/product/film");
+    assert!(film["external_id"].is_null());
+    assert_eq!(
+        cat.iter().find(|p| p["slug"] == "club").unwrap()["recurring"],
+        true
+    );
+
+    // Native mode: the product page still uses the store's own checkout.
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/film?site={site}"), None))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("/embed/checkout?site="));
+
+    // Link products to WooCommerce products and switch checkout there.
+    let body = r#"{"system":"woocommerce","links":[{"slug":"film","external_id":"101","external_url":"https://shop.example/product/film"},{"slug":"club","external_id":"102"},{"slug":"nope","external_id":"103"}]}"#;
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/link",
+            body,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["linked"], 2);
+    assert_eq!(j["data"]["unknown"][0], "nope");
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/mode",
+            r#"{"mode":"woocommerce","unlinked":"hide"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        st.settings.get("commerce.mode").await.unwrap(),
+        "woocommerce"
+    );
+
+    // Buy buttons now point at the WooCommerce cart; an unlinked product hides its button.
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/film?site={site}"), None))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains(
+            r#"href="https://shop.example/?add-to-cart=101&amp;quantity=1" target="_top""#
+        ),
+        "{body}"
+    );
+    assert!(!body.contains("/embed/checkout?site="));
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/vault?site={site}"), None))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Not available for purchase yet") && !body.contains("/embed/checkout"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/admin/integrations", Some(&admin_cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Checkout runs in <b>WooCommerce</b>") && body.contains("#101"),
+        "{body}"
+    );
+
+    // The shop reports a paid order for a new customer: the store creates the account,
+    // the order, the receipt and the entitlement, exactly once.
+    let order = r#"{"system":"woocommerce","external_id":"5001","status":"paid","customer":{"id":"77","email":"buyer@example.com","name":"Buyer"},"currency":"USD","items":[{"external_id":"101","quantity":1,"unit_cents":4900},{"slug":"missing","quantity":1,"unit_cents":100}],"tax_cents":490}"#;
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/orders",
+            order,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["granted_now"], true, "{j}");
+    assert_eq!(j["data"]["entitlements"], 1);
+    assert_eq!(j["data"]["order"]["total_cents"], 5390);
+    assert_eq!(j["data"]["skipped"][0], "missing");
+    let order_uuid = j["data"]["order"]["uuid"].as_str().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/orders",
+            order,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(
+        j["data"]["granted_now"], false,
+        "second report is idempotent: {j}"
+    );
+    assert_eq!(j["data"]["order"]["uuid"], order_uuid);
+    let o = st
+        .commerce
+        .order_by_external("woocommerce", "5001")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(o.status, "paid");
+    assert_eq!(o.gateway, "woocommerce");
+    assert!(
+        st.commerce.receipt(o.id).await.unwrap().is_some(),
+        "receipt issued"
+    );
+    let buyer = st
+        .users
+        .by_email("buyer@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    let ents = st.entitlements.for_user(buyer.id).await.unwrap();
+    assert_eq!(ents.len(), 1);
+    assert_eq!(ents[0].product_id, Some(1));
+
+    // The shop's "My account" asks what this customer may open.
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/customers/77",
+            "",
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["known"], true);
+    assert_eq!(
+        j["data"]["entitlements"][0]["open_path"],
+        "/embed/player/film"
+    );
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/orders/woocommerce/5001",
+            "",
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["order"]["number"], o.number);
+
+    // Refund in the shop: access revoked, order refunded.
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/orders",
+            r#"{"system":"woocommerce","external_id":"5001","status":"refunded"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["outcome"], "refunded: access revoked");
+    assert!(st
+        .entitlements
+        .for_user(buyer.id)
+        .await
+        .unwrap()
+        .iter()
+        .all(|e| e.status != "active"));
+    assert_eq!(
+        st.commerce
+            .order_by_external("woocommerce", "5001")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "refunded"
+    );
+
+    // A subscription (WooCommerce Subscriptions) for the recurring pass: active, renewed, cancelled.
+    let sub = r#"{"system":"woocommerce","external_id":"9001","status":"active","customer":{"id":"77","email":"buyer@example.com","name":"Buyer"},"product_external_id":"102","period_end":"2099-01-01T00:00:00Z"}"#;
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/subscriptions",
+            sub,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let s = st
+        .commerce
+        .subscription_by_external("woocommerce", "9001")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(s.status, "active");
+    assert!(st
+        .entitlements
+        .for_user(buyer.id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|e| e.scope == "site" && e.status == "active"));
+    let res = app.clone().oneshot(shop_req("POST", "/api/v1/commerce/subscriptions", r#"{"system":"woocommerce","external_id":"9001","status":"renewed","period_end":"2099-02-01T00:00:00Z"}"#, site, secret, ts)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        st.commerce
+            .subscription_by_external("woocommerce", "9001")
+            .await
+            .unwrap()
+            .unwrap()
+            .period_end
+            .as_deref(),
+        Some("2099-02-01T00:00:00Z")
+    );
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/subscriptions",
+            r#"{"system":"woocommerce","external_id":"9001","status":"cancelled"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(
+        st.entitlements
+            .for_user(buyer.id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|e| e.status != "active"),
+        "cancelled subscription revokes the pass"
+    );
+
+    // A pending order that is later cancelled never grants anything.
+    let res = app.clone().oneshot(shop_req("POST", "/api/v1/commerce/orders", r#"{"system":"woocommerce","external_id":"5002","status":"pending","customer":{"id":"78","email":"other@example.com"},"items":[{"slug":"film","unit_cents":4900}]}"#, site, secret, ts)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/orders",
+            r#"{"system":"woocommerce","external_id":"5002","status":"cancelled"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["outcome"], "cancelled");
+    let other = st
+        .users
+        .by_email("other@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(st.entitlements.for_user(other.id).await.unwrap().is_empty());
+
+    // VirtueMart: the same API with its own cart address, and the mode is independent.
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/link",
+            r#"{"system":"virtuemart","links":[{"slug":"film","external_id":"7"}]}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/mode",
+            r#"{"mode":"virtuemart","unlinked":"native"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/film?site={site}"), None))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains(
+            "option=com_virtuemart&amp;view=cart&amp;task=add&amp;virtuemart_product_id[]=7"
+        ) || body.contains("option=com_virtuemart&view=cart&task=add&virtuemart_product_id[]=7"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/vault?site={site}"), None))
+        .await
+        .unwrap();
+    assert!(
+        text(res).await.contains("/embed/checkout?site="),
+        "unlinked products fall back to the native checkout"
+    );
+    let res = app.clone().oneshot(shop_req("POST", "/api/v1/commerce/orders", r#"{"system":"virtuemart","external_id":"VM-31","status":"paid","customer":{"id":"5","email":"vm@example.com","name":"VM Buyer"},"currency":"EUR","items":[{"external_id":"7","quantity":1,"unit_cents":4500}]}"#, site, secret, ts)).await.unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["granted_now"], true, "{j}");
+    assert_eq!(j["data"]["order"]["currency"], "EUR");
+
+    // Back to native: nothing external remains in the Buy button.
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "POST",
+            "/api/v1/commerce/mode",
+            r#"{"mode":"native"}"#,
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/product/film?site={site}"), None))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("/embed/checkout?site="));
+    let res = app
+        .clone()
+        .oneshot(shop_req(
+            "GET",
+            "/api/v1/commerce/status",
+            "",
+            site,
+            secret,
+            ts,
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["data"]["linked"]["woocommerce"], 2);
+    assert_eq!(j["data"]["linked"]["virtuemart"], 1);
+    assert!(j["data"]["events"].as_array().unwrap().len() >= 6);
+}

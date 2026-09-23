@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MediaMarketplace Studio
  * Plugin URI:  https://example.com/mediamarketplace
- * Description: A complete media marketplace (video, audio, images, PDFs, live sessions, passes) that runs inside this WordPress site. Bundles its own server; no WooCommerce, no external services.
+ * Description: A complete media marketplace (video, audio, images, PDFs, live sessions, passes) that runs inside this WordPress site. Bundles its own server and its own checkout; optionally sells through WooCommerce. No external services.
  * Version:     0.2.0
  * Requires at least: 6.4
  * Requires PHP: 8.1

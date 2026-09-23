@@ -7,7 +7,7 @@ Requires PHP: 8.1
 Stable tag: 0.2.0
 License: GPLv3 or later
 
-A complete media marketplace that runs inside your WordPress site. No WooCommerce, no external services.
+A complete media marketplace that runs inside your WordPress site. Optional WooCommerce integration, no external services.
 
 == Description ==
 
@@ -49,3 +49,7 @@ The store admin's Widgets page prints the exact block and shortcode for every wi
 * Square and Authorize.net, multi-currency display and charging, eleven media players, Apple Pay domain file.
 * Google Business Profile: locations, posts, reviews with AI-drafted replies.
 * SMTP email for receipts, agreements and pass reminders; GDPR export and erase; backups; staff role; login lockouts; ARM build.
+
+== Selling through WooCommerce (optional) ==
+
+The store's own cart and payment methods are the default. With WooCommerce active, MediaMarketplace → WooCommerce imports the store's products as virtual WooCommerce products (or link any WooCommerce product under Product data → MediaMarketplace) and can switch checkout to WooCommerce: Buy buttons then add to the WooCommerce cart, WooCommerce takes the payment, and the store grants access and issues the receipt when the order is paid. Refunds and cancellations in WooCommerce revoke access; WooCommerce Subscriptions renewals keep recurring passes alive. Customers find their purchases under My account → My media.

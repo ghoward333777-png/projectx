@@ -457,7 +457,7 @@ pub async fn view(
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            state.render("page_gate.html", context! { page, user, site_name, gate => format!("{other:?}").split([' ', '(']).next().unwrap_or("").to_string(), locked_until => match &other { Gate::LockedOut { until } => Some(until.clone()), _ => None }, template, sections, product, this_url, csrf, error => q.error, notice => q.notice, site => q.site.clone().unwrap_or_default(), login_url => state.url(&format!("/login?return={}", crate::routes::media::urlencoding(&this_url))), public_url => state.config.server.public_url.trim_end_matches('/') })?
+            state.render("page_gate.html", context! { page, user, site_name, gate => format!("{other:?}").split([' ', '(']).next().unwrap_or("").to_string(), locked_until => match &other { Gate::LockedOut { until } => Some(until.clone()), _ => None }, template, sections, buy_url => match &product { Some(p) => crate::routes::commerce_bridge::buy_context(&state, p).await?.0, None => String::new() }, product, this_url, csrf, error => q.error, notice => q.notice, site => q.site.clone().unwrap_or_default(), login_url => state.url(&format!("/login?return={}", crate::routes::media::urlencoding(&this_url))), public_url => state.config.server.public_url.trim_end_matches('/') })?
         }
     };
     Ok((

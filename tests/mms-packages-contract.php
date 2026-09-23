@@ -32,7 +32,7 @@ foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($pk)) as $
     exec('php -l ' . escapeshellarg($file->getPathname()) . ' 2>&1', $out, $code);
     contract_check($code === 0, 'syntax error in ' . $file->getPathname() . ': ' . implode("\n", $out));
 }
-contract_check($count >= 12, "expected at least 12 PHP files across the packages, found {$count}");
+contract_check($count >= 16, "expected at least 16 PHP files across the packages, found {$count}");
 
 // --- Token fixture shared with crates/mms-core/src/signer.rs --------------------------
 require_once $pk . '/shared/MmsRuntime.php';
@@ -41,25 +41,55 @@ $claims = ['sub' => '42', 'email' => 'a@b.c', 'name' => 'Ada', 'host' => 'wordpr
 contract_check(MmsRuntime::signToken($claims, 'test-secret') === $expected, 'runtime token must match the server fixture');
 contract_check(MmsRuntime::signToken($claims + ['role' => 'admin'], 'test-secret') !== $expected, 'the admin role must be part of the signed payload');
 
-// --- Manifests and independence from commerce engines ---------------------------------
+// --- Sell-through request signature shared with crates/mms-core/src/commerce_bridge.rs ---
+contract_check(MmsRuntime::signRequest('test-secret', 1900000000, 'post', '/mms/api/v1/commerce/orders', '{"a":1}') === '4f5d56454d11d6ed11ea7777e15c5cfe63cf67b855ff07616b5d86fb129e9e70', 'runtime request signature must match the server fixture');
+
+// --- Manifests; the core stays independent of commerce engines --------------------------
+// The store never depends on WooCommerce or VirtueMart. The optional "sell through"
+// modules live in their own files (loaded only when the engine is present); every other
+// file must stay free of engine calls.
 $wpMain = (string) file_get_contents($pk . '/wordpress/mediamarketplace-studio/mediamarketplace-studio.php');
 contract_check(str_contains($wpMain, 'Plugin Name: MediaMarketplace Studio'), 'WordPress plugin header must be present');
+$optional = 0;
 foreach (['wordpress', 'joomla'] as $host) {
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$pk/$host")) as $file) {
-        if ($file->getExtension() === 'php') {
-            $src = (string) file_get_contents($file->getPathname());
-            foreach (['woocommerce_', 'WC()', "class_exists('WooCommerce')", 'WC_Product', 'vmPSPlugin', 'VmConfig', 'VmModel', 'virtuemart_'] as $needle) {
-                contract_check(!str_contains($src, $needle), $file->getPathname() . " must not integrate with a commerce engine ({$needle})");
-            }
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+        if (preg_match('#woocommerce|virtuemart|vmcustom#i', $file->getPathname()) === 1) {
+            $optional++;
+            continue;
+        }
+        $src = (string) file_get_contents($file->getPathname());
+        foreach (['woocommerce_', 'WC()', "class_exists('WooCommerce')", 'WC_Product', 'vmPSPlugin', 'VmConfig', 'VmModel', 'virtuemart_'] as $needle) {
+            contract_check(!str_contains($src, $needle), $file->getPathname() . " must not integrate with a commerce engine ({$needle})");
         }
     }
 }
+contract_check($optional >= 4, "expected the optional WooCommerce and VirtueMart modules, found {$optional} files");
+$wpClassSrc = (string) file_get_contents($pk . '/wordpress/mediamarketplace-studio/includes/class-mms-plugin.php');
+contract_check(str_contains($wpClassSrc, "class_exists('WooCommerce', false)") && str_contains($wpClassSrc, 'class-mms-woocommerce.php'), 'the WordPress plugin must load the WooCommerce module only when WooCommerce is active');
+$wc = (string) file_get_contents($pk . '/wordpress/mediamarketplace-studio/includes/class-mms-woocommerce.php');
+foreach (['woocommerce_payment_complete', 'woocommerce_order_status_completed', 'woocommerce_order_status_refunded', 'woocommerce_order_status_cancelled', 'woocommerce_subscription_status_updated', 'woocommerce_product_data_tabs', 'woocommerce_account_menu_items', "'/api/v1/commerce'", "'/orders'", "'/subscriptions'", "'/link'", "'/mode'"] as $needle) {
+    contract_check(str_contains($wc, $needle), "the WooCommerce module must use {$needle}");
+}
+$vmBridge = (string) file_get_contents($pk . '/joomla/plg_system_mediamarketplace/src/Commerce/VirtueMartBridge.php');
+foreach (['#__virtuemart_orders', '#__virtuemart_order_items', 'function mapStatus', 'function reportOrder', 'function reconcile', 'function importProducts', "'/api/v1/commerce'"] as $needle) {
+    contract_check(str_contains($vmBridge, $needle), "the VirtueMart bridge must contain {$needle}");
+}
+$vmPlugin = (string) file_get_contents($pk . '/joomla/plg_vmcustom_mediamarketplace/mediamarketplace.php');
+contract_check(str_contains($vmPlugin, 'extends vmCustomPlugin') && str_contains($vmPlugin, 'plgVmOnUpdateOrderPayment') && str_contains($vmPlugin, "if (!class_exists('vmCustomPlugin'))"), 'the VirtueMart plugin must be a vmcustom plugin that degrades without VirtueMart');
+contract_check(str_contains((string) file_get_contents($pk . '/joomla/plg_system_mediamarketplace/src/Extension/Mediamarketplace.php'), 'public function virtuemart(): ?VirtueMartBridge'), 'the system plugin must expose the optional VirtueMart bridge');
 $pkg = simplexml_load_file($pk . '/joomla/pkg_mediamarketplace.xml');
-contract_check($pkg !== false && count($pkg->files->file) === 3, 'Joomla package must list plugin, component and module');
+contract_check($pkg !== false && count($pkg->files->file) === 4, 'Joomla package must list the system plugin, component, module and VirtueMart plugin');
 foreach (['plg_system_mediamarketplace/mediamarketplace.xml', 'com_mediamarketplace/mediamarketplace.xml', 'mod_mms_embed/mod_mms_embed.xml'] as $manifest) {
     $xml = simplexml_load_file("$pk/joomla/$manifest");
     contract_check($xml !== false && (string) $xml['method'] === 'upgrade' && isset($xml->namespace), "$manifest must be a namespaced upgrade manifest");
 }
+$vmXml = simplexml_load_file("$pk/joomla/plg_vmcustom_mediamarketplace/mediamarketplace.xml");
+contract_check($vmXml !== false && (string) $vmXml['group'] === 'vmcustom' && isset($vmXml->vmconfig), 'the VirtueMart plugin manifest must be a vmcustom plugin with vmconfig params');
+contract_check(str_contains((string) file_get_contents("$pk/joomla/com_mediamarketplace/mediamarketplace.xml"), 'view=virtuemart') && is_file("$pk/joomla/com_mediamarketplace/administrator/src/View/Virtuemart/HtmlView.php"), 'the Joomla component must offer the VirtueMart page');
+contract_check(str_contains((string) file_get_contents(dirname(__DIR__) . '/mediamarketplace/build/package.sh'), 'plg_vmcustom_mediamarketplace.zip'), 'the package script must ship the VirtueMart plugin');
 contract_check(str_contains((string) file_get_contents("$pk/joomla/plg_system_mediamarketplace/mediamarketplace.xml"), '<folder>bin</folder>'), 'the Joomla plugin manifest must ship the bin folder');
 
 // --- Phase 2 placement: Gutenberg blocks and Joomla menu item types ------------------
@@ -162,6 +192,18 @@ file_put_contents($pngFile, $png);
     CURLOPT_POSTFIELDS => ['_csrf' => $cm[1], 'private' => '0', 'files[]' => new CURLFile($pngFile, 'image/png', 'pixel.png')],
 ]);
 contract_check($code === 303 && preg_match('#location:\s*/mms/admin/media\?notice=1\+file#i', $hdr) === 1, "multipart upload must be proxied to the store (got {$code}: " . trim(preg_replace('/\s+/', ' ', $hdr)) . ')');
+
+// The sell-through API through the runtime's signed client, against the real binary.
+$st = $rt->apiCall('GET', '/api/v1/commerce/status');
+contract_check($st['ok'] && ($st['data']['mode'] ?? '') === 'native' && ($st['data']['site']['host'] ?? '') === 'joomla', 'signed status call must reach the store: ' . $st['error']);
+$bad = $rt->apiCall('POST', '/api/v1/commerce/orders', ['system' => 'virtuemart', 'external_id' => '1', 'status' => 'paid', 'customer' => ['email' => 'x@example.com'], 'items' => [['slug' => 'nothing', 'unit_cents' => 100]]]);
+contract_check($bad['ok'] && !empty($bad['data']['ignored']), 'an order without store products must be ignored, not fail: ' . $bad['error']);
+$mode = $rt->apiCall('POST', '/api/v1/commerce/mode', ['mode' => 'virtuemart']);
+$st = $rt->apiCall('GET', '/api/v1/commerce/status');
+contract_check($mode['ok'] && ($st['data']['mode'] ?? '') === 'virtuemart', 'mode switch must round-trip through the signed client');
+$rt->apiCall('POST', '/api/v1/commerce/mode', ['mode' => 'native']);
+[$code, , $body] = http("http://127.0.0.1:{$proxyPort}/mms/api/v1/commerce/status");
+contract_check($code === 401, "unsigned sell-through calls must be refused (got {$code})");
 
 // Cleanup
 proc_terminate($srv);

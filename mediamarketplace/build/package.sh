@@ -38,6 +38,8 @@ cp -r packages/joomla/com_mediamarketplace "$JS/com"
 ( cd "$JS/com" && zip -qr ../packages/com_mediamarketplace.zip . )
 cp -r packages/joomla/mod_mms_embed "$JS/mod"
 ( cd "$JS/mod" && zip -qr ../packages/mod_mms_embed.zip . )
+cp -r packages/joomla/plg_vmcustom_mediamarketplace "$JS/vmcustom"
+( cd "$JS/vmcustom" && zip -qr ../packages/plg_vmcustom_mediamarketplace.zip . )
 cp packages/joomla/pkg_mediamarketplace.xml "$JS/"
 ( cd "$JS" && zip -q "../../mediamarketplace-studio-joomla-$VERSION.zip" pkg_mediamarketplace.xml packages/*.zip )
 

@@ -1407,6 +1407,7 @@ mod tests {
                 price: "USD 1.00".into(),
                 thumb: None,
                 kind: "Video".into(),
+                buy_url: None,
             })
         };
         for t in &all {

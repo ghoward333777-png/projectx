@@ -548,6 +548,78 @@ final class MmsRuntime
 
     public function adminUrl(): string { return $this->publicUrl() . '/admin'; }
 
+    // ----- sell-through API (WooCommerce / VirtueMart modules) ------------------------
+
+    /**
+     * Signature for a sell-through request: HMAC-SHA256 over "{ts}\n{METHOD}\n{path}\n{body}"
+     * with the site secret, as lowercase hex. The path excludes the query string.
+     * Fixture shared with crates/mms-core/src/commerce_bridge.rs.
+     */
+    public static function signRequest(string $secret, int $ts, string $method, string $path, string $body): string
+    {
+        return hash_hmac('sha256', $ts . "\n" . strtoupper($method) . "\n" . $path . "\n" . $body, $secret);
+    }
+
+    /**
+     * Calls the store's sell-through API directly on localhost (no proxy round trip),
+     * signed with this site's secret. Returns ['ok' => bool, 'status' => int, 'data' => mixed, 'error' => string].
+     *
+     * @param array<string,mixed>|null $body
+     * @return array{ok:bool,status:int,data:mixed,error:string}
+     */
+    public function apiCall(string $method, string $path, ?array $body = null): array
+    {
+        if (!$this->ensureRunning()) {
+            return ['ok' => false, 'status' => 0, 'data' => null, 'error' => 'The store server is not running'];
+        }
+        $method = strtoupper($method);
+        $query = '';
+        if (($q = strpos($path, '?')) !== false) {
+            $query = substr($path, $q);
+            $path = substr($path, 0, $q);
+        }
+        $signedPath = $this->basePath() . $path;
+        $raw = $body === null ? '' : (string) json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $ts = time();
+        $ch = curl_init('http://127.0.0.1:' . $this->port() . $signedPath . $query);
+        $headers = [
+            'Accept: application/json',
+            'X-MMS-Site: ' . $this->siteId(),
+            'X-MMS-Timestamp: ' . $ts,
+            'X-MMS-Signature: ' . self::signRequest($this->secret(), $ts, $method, $signedPath, $raw),
+        ];
+        if ($body !== null) {
+            $headers[] = 'Content-Type: application/json';
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_POSTFIELDS => $body === null ? null : $raw,
+        ]);
+        $res = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($res === false) {
+            return ['ok' => false, 'status' => 0, 'data' => null, 'error' => $err !== '' ? $err : 'no response'];
+        }
+        $j = json_decode((string) $res, true);
+        if (!is_array($j)) {
+            return ['ok' => false, 'status' => $status, 'data' => null, 'error' => 'invalid response (' . $status . ')'];
+        }
+        if ($status >= 400 || isset($j['error'])) {
+            $msg = is_array($j['error'] ?? null) ? (string) ($j['error']['message'] ?? 'error') : (string) ($j['error'] ?? 'error');
+            return ['ok' => false, 'status' => $status, 'data' => $j['data'] ?? null, 'error' => $msg];
+        }
+        return ['ok' => true, 'status' => $status, 'data' => $j['data'] ?? $j, 'error' => ''];
+    }
+
+    /** Where a member lands after sign-on, as a full store address (for links in the shop). */
+    public function accountUrl(string $path = '/account'): string
+    {
+        return $this->publicUrl() . $path;
+    }
+
     private static function uuid(): string
     {
         $b = random_bytes(16);

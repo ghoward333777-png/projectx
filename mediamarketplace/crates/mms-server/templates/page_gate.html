@@ -25,7 +25,7 @@
   </form>
 {% elif gate == "NeedsPurchase" %}
   <p>You have signed the agreement. This page is part of <b>{{ product.title }}</b> ({{ product.price_cents | money(product.currency) }}).</p>
-  <form method="post" action="{{ base }}/cart/add"><input type="hidden" name="product" value="{{ product.slug }}"><input type="hidden" name="site" value="{{ site }}"><button class="primary">Buy access</button></form>
+  {% if buy_url %}<p><a class="button primary" href="{{ buy_url }}" target="_top" rel="nofollow">Buy access</a></p>{% else %}<form method="post" action="{{ base }}/cart/add"><input type="hidden" name="product" value="{{ product.slug }}"><input type="hidden" name="site" value="{{ site }}"><button class="primary">Buy access</button></form>{% endif %}
 {% else %}
   {# NeedsSignature: the ten signup templates #}
   {% if page.incentive and template.slug == "incentive" %}<p class="incentive">🎁 Signing up unlocks: <b>{{ page.incentive }}</b></p>{% endif %}

@@ -7,6 +7,7 @@
 pub mod audit;
 pub mod backup;
 pub mod commerce;
+pub mod commerce_bridge;
 pub mod config;
 pub mod copyright;
 pub mod currency;

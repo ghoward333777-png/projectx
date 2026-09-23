@@ -4,8 +4,11 @@ namespace Joomla\Plugin\System\Mediamarketplace\Extension;
 
 \defined('_JEXEC') or die;
 
+use Joomla\CMS\Factory;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Uri\Uri;
+use Joomla\Database\DatabaseInterface;
+use Joomla\Plugin\System\Mediamarketplace\Commerce\VirtueMartBridge;
 use Joomla\Event\Event;
 use Joomla\Event\SubscriberInterface;
 
@@ -23,11 +26,14 @@ final class Mediamarketplace extends CMSPlugin implements SubscriberInterface
     protected $autoloadLanguage = true;
     private ?\MmsRuntime $runtime = null;
     private bool $loaderRegistered = false;
+    private ?VirtueMartBridge $virtuemart = null;
+    private bool $virtuemartChecked = false;
 
     public static function getSubscribedEvents(): array
     {
         return [
             'onAfterInitialise'   => 'onAfterInitialise',
+            'onAfterRoute'        => 'onAfterRoute',
             'onContentPrepare'    => 'onContentPrepare',
             'onBeforeCompileHead' => 'onBeforeCompileHead',
         ];
@@ -86,6 +92,38 @@ final class Mediamarketplace extends CMSPlugin implements SubscriberInterface
         $forward = $base !== '' && str_starts_with($uri, $base) ? substr($uri, \strlen($base)) : $uri;
         $this->runtime()->proxy($forward);
         $app->close();
+    }
+
+    /**
+     * Optional sell-through VirtueMart. Null when VirtueMart is not installed; the store
+     * never depends on it and nothing changes until checkout is switched to VirtueMart.
+     */
+    public function virtuemart(): ?VirtueMartBridge
+    {
+        if (!$this->virtuemartChecked) {
+            $this->virtuemartChecked = true;
+            try {
+                if (VirtueMartBridge::available()) {
+                    $this->virtuemart = new VirtueMartBridge($this->runtime(), Factory::getContainer()->get(DatabaseInterface::class));
+                }
+            } catch (\Throwable $e) {
+                $this->virtuemart = null;
+            }
+        }
+        return $this->virtuemart;
+    }
+
+    /** Every few minutes, on an ordinary page load, re-report recent VirtueMart orders. */
+    public function onAfterRoute(): void
+    {
+        try {
+            $vm = $this->virtuemart();
+            if ($vm !== null) {
+                $vm->maybeReconcile();
+            }
+        } catch (\Throwable $e) {
+            // Never break a page over the optional integration.
+        }
     }
 
     /** @param array<string,string> $params */

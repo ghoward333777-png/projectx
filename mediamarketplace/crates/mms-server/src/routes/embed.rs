@@ -169,8 +169,9 @@ pub async fn product(
     let ratings = sqlx::query_as::<_, (i64, Option<String>, String)>("SELECT r.stars, r.review, u.name FROM ratings r JOIN users u ON u.id = r.user_id WHERE r.product_id = ? AND r.status = 'approved' ORDER BY r.id DESC LIMIT 20")
         .bind(p.id).fetch_all(&state.db.pool).await?;
     let site_name = state.settings.get("general.site_name").await?;
+    let (buy_url, buy_hidden) = crate::routes::commerce_bridge::buy_context(&state, &p).await?;
     let html = state.render("embed_product.html", context! {
-        p, type_label => type_label(&p.r#type), media, thumb, entitled, user, preview_src, preview_start => p.setting("preview_start"), preview_len,
+        p, type_label => type_label(&p.r#type), media, thumb, entitled, user, preview_src, preview_start => p.setting("preview_start"), preview_len, buy_url, buy_hidden,
         ratings => ratings.iter().map(|(s, r, n)| context!{ stars => s, review => r, name => n }).collect::<Vec<_>>(),
         site => q.site.clone().unwrap_or_default(), site_name, settings => p.settings_json(),
     })?;

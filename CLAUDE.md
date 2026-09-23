@@ -74,7 +74,9 @@ A separate product in this repo: a media marketplace **server in Rust**
 (`crates/mms-core`, `crates/mms-server`; Axum + SQLite via sqlx) that ships **inside a
 WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
 (`packages/shared/MmsRuntime.php`) starts the binary on localhost and proxies
-`https://site/mms/...` to it. One install, one server. No WooCommerce or VirtueMart anywhere.
+`https://site/mms/...` to it. One install, one server. The store never depends on
+WooCommerce or VirtueMart: its own checkout is the default, and "sell through" the CMS
+shop is an optional mode (below).
 
 - Run `cargo test` inside `mediamarketplace/` and `php tests/mms-packages-contract.php`
   from the repo root before shipping (build the release binary first so the contract test
@@ -121,6 +123,17 @@ WordPress plugin and a Joomla package** (`packages/`). The PHP runtime
   `client_sdk()` on the `Gateway` trait decide currency conversion and card forms.
   `Commerce::create_order_in` is the only place a charge currency is applied
   (base currency and rate stay on the order; stats divide by `fx_rate`).
+- Sell through (optional WooCommerce / VirtueMart): `commerce.mode` (native default) is
+  the only switch. `mms-core::commerce_bridge` holds product mappings, the request
+  signature (`request_signature`, fixture shared with `MmsRuntime::signRequest` and the
+  contract test) and the Buy-button address; `routes::commerce_bridge` is the signed
+  `/api/v1/commerce/*` API (site secret, `X-MMS-Site/Timestamp/Signature`, path without
+  query). Shop orders become real orders (`Commerce::create_external_order`) and still
+  complete through `complete_paid`, so `mark_paid` stays the one granting point.
+  `buy_for()` decides every Buy button (product page, page gate, widgets, Renew now).
+  The CMS modules (`class-mms-woocommerce.php`, `Commerce/VirtueMartBridge.php`,
+  `plg_vmcustom_mediamarketplace`) are the only files allowed to touch an engine; the
+  contract test enforces that and the core loads them only when the engine is present.
 - Roles: `AdminUser` admits `admin` and `staff`; administrator-only handlers call
   `admin.admin_only()` first (settings, bridges, integrations, roles, backups).
 - Email goes through `routes::ops::send_quietly`: never fail a purchase or a signature

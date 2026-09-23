@@ -64,7 +64,18 @@ pub async fn my_media(
     let site_name = state.settings.get("general.site_name").await?;
     let pass_notice = state.commerce.pass_notice_for(user.id).await?;
     let renew_slug: Option<String> = sqlx::query_scalar("SELECT slug FROM products WHERE type = 'site_pass' AND status = 'published' ORDER BY id LIMIT 1").fetch_optional(&state.db.pool).await?;
-    Ok(Html(state.render("account.html", context! { user, site_name, items, site_pass, pass_notice, renew_slug, public_url => state.config.server.public_url, csrf => "", tab => "media" })?).into_response())
+    let renew_url = match &renew_slug {
+        Some(slug) => match state.products.by_slug(slug).await? {
+            Some(p) => {
+                crate::routes::commerce_bridge::buy_context(&state, &p)
+                    .await?
+                    .0
+            }
+            None => String::new(),
+        },
+        None => String::new(),
+    };
+    Ok(Html(state.render("account.html", context! { user, site_name, items, site_pass, pass_notice, renew_slug, renew_url, public_url => state.config.server.public_url, csrf => "", tab => "media" })?).into_response())
 }
 
 #[derive(Deserialize)]

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="vmcustom" method="upgrade">
+    <name>PLG_VMCUSTOM_MEDIAMARKETPLACE</name>
+    <author>MediaMarketplace Studio</author>
+    <creationDate>2026-09</creationDate>
+    <license>GPL-3.0-or-later</license>
+    <version>0.2.0</version>
+    <description>PLG_VMCUSTOM_MEDIAMARKETPLACE_XML_DESCRIPTION</description>
+    <files>
+        <filename plugin="mediamarketplace">mediamarketplace.php</filename>
+    </files>
+    <languages folder="language">
+        <language tag="en-GB">en-GB/plg_vmcustom_mediamarketplace.ini</language>
+        <language tag="en-GB">en-GB/plg_vmcustom_mediamarketplace.sys.ini</language>
+    </languages>
+    <vmconfig>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="mms_slug" type="text" label="PLG_VMCUSTOM_MEDIAMARKETPLACE_SLUG" description="PLG_VMCUSTOM_MEDIAMARKETPLACE_SLUG_DESC" filter="string" />
+            </fieldset>
+        </fields>
+    </vmconfig>
+</extension>

@@ -4,6 +4,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use mms_core::audit::Audit;
 use mms_core::commerce::Commerce;
+use mms_core::commerce_bridge::CommerceBridge;
 use mms_core::config::Config;
 use mms_core::copyright::Copyright;
 use mms_core::currency::Currency;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub jobs: Jobs,
     pub widgets: Widgets,
     pub commerce: Commerce,
+    pub commerce_bridge: CommerceBridge,
     pub pages: Pages,
     pub integrations: Integrations,
     pub protection: Protection,
@@ -73,6 +75,7 @@ impl AppState {
             jobs: Jobs::new(db.clone()),
             widgets: Widgets::new(db.clone()),
             commerce: Commerce::new(db.clone()),
+            commerce_bridge: CommerceBridge::new(db.clone()),
             pages: Pages::new(db.clone()),
             integrations: Integrations::new(db.clone()),
             protection: Protection::new(db.clone()),
@@ -306,6 +309,35 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/customers/:uuid/entitlements",
             get(routes::integrations::api_entitlements),
+        )
+        .route(
+            "/api/v1/commerce/status",
+            get(routes::commerce_bridge::status),
+        )
+        .route(
+            "/api/v1/commerce/catalog",
+            get(routes::commerce_bridge::catalog),
+        )
+        .route("/api/v1/commerce/link", post(routes::commerce_bridge::link))
+        .route(
+            "/api/v1/commerce/mode",
+            post(routes::commerce_bridge::set_mode),
+        )
+        .route(
+            "/api/v1/commerce/orders",
+            post(routes::commerce_bridge::order),
+        )
+        .route(
+            "/api/v1/commerce/orders/:system/:external_id",
+            get(routes::commerce_bridge::order_status),
+        )
+        .route(
+            "/api/v1/commerce/subscriptions",
+            post(routes::commerce_bridge::subscription),
+        )
+        .route(
+            "/api/v1/commerce/customers/:external_id",
+            get(routes::commerce_bridge::customer),
         )
         .route("/api/v1/grants", post(routes::integrations::api_grant))
         .route(

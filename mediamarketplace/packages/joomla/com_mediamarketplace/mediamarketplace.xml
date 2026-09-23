@@ -20,6 +20,7 @@
         <submenu>
             <menu link="option=com_mediamarketplace" img="class:store">COM_MEDIAMARKETPLACE_MENU_OPEN</menu>
             <menu link="option=com_mediamarketplace&amp;view=status" img="class:info">COM_MEDIAMARKETPLACE_MENU_STATUS</menu>
+            <menu link="option=com_mediamarketplace&amp;view=virtuemart" img="class:cart">COM_MEDIAMARKETPLACE_MENU_VIRTUEMART</menu>
         </submenu>
         <files folder="administrator">
             <folder>services</folder>

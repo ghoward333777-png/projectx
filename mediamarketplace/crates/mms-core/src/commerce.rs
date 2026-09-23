@@ -522,6 +522,49 @@ impl Commerce {
         Ok(self.order_by_id(id).await?.expect("order just created"))
     }
 
+    /// An order reported by the CMS shop (WooCommerce, VirtueMart): the money was taken
+    /// there, so the order is created pending with the shop's own amounts and then
+    /// completed through `mark_paid` like every other order. `items` are
+    /// (product, quantity, unit price in cents). Amounts are whatever the shop charged,
+    /// including its own discounts and tax, so reports agree with the shop.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_external_order(
+        &self,
+        user_id: i64,
+        gateway: &str,
+        external_id: &str,
+        currency: &str,
+        items: &[(Product, i64, i64)],
+        discount_cents: i64,
+        tax_cents: i64,
+        country: &str,
+    ) -> Result<Order> {
+        if items.is_empty() {
+            bail!("The order has no store products");
+        }
+        let now = crate::now();
+        let year = now[..4].to_string();
+        let seq: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE number LIKE ?")
+            .bind(format!("ORD-{year}-%"))
+            .fetch_one(&self.db.pool)
+            .await?;
+        let number = format!("ORD-{year}-{:05}", seq + 1);
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let subtotal: i64 = items.iter().map(|(_, q, u)| q * u).sum();
+        let total = (subtotal - discount_cents + tax_cents).max(0);
+        let id = sqlx::query("INSERT INTO orders (uuid, number, user_id, status, currency, subtotal_cents, discount_cents, tax_cents, total_cents, coupon, country, tax_name, tax_rate_bp, gateway, external_id, base_currency, fx_rate, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, NULL, ?, '', 0, ?, ?, ?, 1.0, ?, ?)")
+            .bind(&uuid).bind(&number).bind(user_id).bind(currency).bind(subtotal).bind(discount_cents.max(0)).bind(tax_cents.max(0)).bind(total)
+            .bind(country).bind(gateway).bind(external_id).bind(currency).bind(&now).bind(&now)
+            .execute(&self.db.pool).await?.last_insert_rowid();
+        for (p, quantity, unit) in items {
+            let quantity = (*quantity).clamp(1, max_quantity(p));
+            sqlx::query("INSERT INTO order_items (order_id, product_id, title, type, unit_cents, quantity, total_cents, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                .bind(id).bind(p.id).bind(&p.title).bind(&p.r#type).bind(unit).bind(quantity).bind(unit * quantity).bind(&p.settings)
+                .execute(&self.db.pool).await?;
+        }
+        Ok(self.order_by_id(id).await?.expect("order just created"))
+    }
+
     pub async fn set_gateway(
         &self,
         order_id: i64,

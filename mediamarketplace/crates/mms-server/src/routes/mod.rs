@@ -2,6 +2,7 @@ pub mod account;
 pub mod admin;
 pub mod api;
 pub mod bridges;
+pub mod commerce_bridge;
 pub mod customers;
 pub mod embed;
 pub mod google;

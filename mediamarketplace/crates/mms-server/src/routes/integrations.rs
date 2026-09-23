@@ -37,7 +37,21 @@ pub async fn page(
     let endpoints = state.integrations.endpoints().await?;
     let deliveries = state.integrations.deliveries(50).await?;
     let site_name = state.settings.get("general.site_name").await?;
-    Ok(Html(state.render("integrations.html", context! { user => admin.user, csrf => admin.csrf, site_name, active => "integrations", keys, endpoints, deliveries, events => mms_core::integrations::EVENTS, notice => q.notice, error => q.error, new_key => q.new_key, public_url => state.config.server.public_url.trim_end_matches('/') })?).into_response())
+    let mode = state.settings.get("commerce.mode").await?;
+    let mut mappings = Vec::new();
+    if mms_core::commerce_bridge::is_system(&mode) {
+        for m in state.commerce_bridge.mappings(&mode).await? {
+            let title = state
+                .products
+                .by_id(m.product_id)
+                .await?
+                .map(|p| p.title)
+                .unwrap_or_default();
+            mappings.push(context! { title, external_id => m.external_id, external_url => m.external_url, synced_at => m.synced_at });
+        }
+    }
+    let bridge = context! { mode => mode.clone(), label => mms_core::commerce_bridge::system_label(&mode), active => mms_core::commerce_bridge::is_system(&mode), mappings, events => state.commerce_bridge.events(30).await?, cart_url => state.settings.get("commerce.cart_url").await?, unlinked => state.settings.get("commerce.unlinked").await? };
+    Ok(Html(state.render("integrations.html", context! { user => admin.user, csrf => admin.csrf, site_name, active => "integrations", keys, endpoints, deliveries, events => mms_core::integrations::EVENTS, notice => q.notice, error => q.error, new_key => q.new_key, public_url => state.config.server.public_url.trim_end_matches('/'), bridge })?).into_response())
 }
 
 pub async fn create_key(

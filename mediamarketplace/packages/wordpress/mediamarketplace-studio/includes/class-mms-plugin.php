@@ -44,6 +44,20 @@ final class MMS_Plugin
         add_shortcode('mms_signin', [$this, 'signinShortcode']);
         add_action('wp_footer', [$this, 'printLoader']);
         add_filter('plugin_action_links_' . plugin_basename(MMS_FILE), [$this, 'actionLinks']);
+        add_action('plugins_loaded', [$this, 'loadOptionalIntegrations'], 20);
+    }
+
+    /**
+     * Optional "sell through" modules. The store never depends on a commerce engine; the
+     * WooCommerce module is only loaded when WooCommerce is active and only changes
+     * anything once the administrator switches checkout to WooCommerce on its page.
+     */
+    public function loadOptionalIntegrations(): void
+    {
+        if (class_exists('WooCommerce', false) && is_file(__DIR__ . '/class-mms-woocommerce.php')) {
+            require_once __DIR__ . '/class-mms-woocommerce.php';
+            MMS_WooCommerce::boot($this);
+        }
     }
 
     // ----- runtime -------------------------------------------------------------------

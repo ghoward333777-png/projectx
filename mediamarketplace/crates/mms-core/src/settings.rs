@@ -28,6 +28,7 @@ pub struct Definition {
 pub const SECTIONS: &[(&str, &str)] = &[
     ("general", "General"),
     ("store", "Store"),
+    ("commerce", "Sell through (WooCommerce / VirtueMart)"),
     ("payments", "Payments"),
     ("media", "Media"),
     ("players", "Players"),
@@ -183,6 +184,9 @@ pub const DEFINITIONS: &[Definition] = &[
     Definition { key: "payments.authnet_client_key", section: "payments", label: "Authorize.net public client key", kind: Kind::Text, default: "", help: "Used by Accept.js in the browser.", options: &[] },
     Definition { key: "payments.authnet_sandbox", section: "payments", label: "Authorize.net sandbox", kind: Kind::Bool, default: "1", help: "", options: &[] },
     Definition { key: "payments.apple_pay_domain_file", section: "payments", label: "Apple Pay domain association file", kind: Kind::Text, default: "", help: "Paste the contents of the file Stripe or Square gives you; it is served at /.well-known/apple-developer-merchantid-domain-association.", options: &[] },
+    Definition { key: "commerce.mode", section: "commerce", label: "Checkout runs in", kind: Kind::Select, default: "native", help: "Native: the store's own cart and payment methods. WooCommerce or VirtueMart: Buy buttons send shoppers to the shop's cart; the shop takes the money and tells the store to grant access. Products must be linked first (Integrations → Sell through).", options: &[("native", "The store's own checkout (native)"), ("woocommerce", "WooCommerce (WordPress)"), ("virtuemart", "VirtueMart (Joomla)")] },
+    Definition { key: "commerce.cart_url", section: "commerce", label: "Add-to-cart address", kind: Kind::Text, default: "", help: "Optional. Where a Buy button sends the shopper; {external_id} is replaced by the shop's product id and {origin} by the site address. Empty uses the shop's standard address.", options: &[] },
+    Definition { key: "commerce.unlinked", section: "commerce", label: "Products without a shop product", kind: Kind::Select, default: "native", help: "What a Buy button does for a product that is not linked to a shop product while checkout runs in the shop.", options: &[("native", "Use the store's own checkout"), ("hide", "Hide the Buy button")] },
     Definition { key: "store.display_currencies", section: "store", label: "Display currencies", kind: Kind::Text, default: "", help: "Comma-separated codes shoppers may switch to (e.g. EUR,GBP,USD). Rates come from the European Central Bank daily.", options: &[] },
     Definition { key: "store.charge_in_display_currency", section: "store", label: "Charge in the shopper's currency", kind: Kind::Bool, default: "0", help: "When on, Stripe and PayPal charge the converted amount; other methods charge the base currency.", options: &[] },
     Definition {

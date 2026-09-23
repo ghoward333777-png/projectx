@@ -84,6 +84,13 @@ pub async fn render_widget(
                     p.price_cents % 100
                 )
             };
+            let buy = match crate::routes::commerce_bridge::buy_for(state, &p)
+                .await
+                .map_err(|e| e.0)?
+            {
+                crate::routes::commerce_bridge::Buy::External(u) => Some(u),
+                _ => None,
+            };
             product_map.insert(
                 slug.clone(),
                 ProductInfo {
@@ -93,6 +100,7 @@ pub async fn render_widget(
                     price,
                     thumb,
                     kind: mms_core::products::type_label(&p.r#type).to_string(),
+                    buy_url: buy.clone(),
                 },
             );
         }
