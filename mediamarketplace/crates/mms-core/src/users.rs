@@ -105,6 +105,20 @@ impl Users {
         }
     }
 
+    pub async fn set_role(&self, id: i64, role: &str) -> Result<()> {
+        anyhow::ensure!(
+            matches!(role, "admin" | "staff" | "customer"),
+            "invalid role"
+        );
+        sqlx::query("UPDATE users SET role = ?, updated_at = ? WHERE id = ?")
+            .bind(role)
+            .bind(crate::now())
+            .bind(id)
+            .execute(&self.db.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Finds or creates the local user for a bridged host identity (single sign-on).
     pub async fn link_identity(
         &self,

@@ -36,16 +36,24 @@ pub fn session_cookie(state: &AppState, user_id: i64) -> Cookie<'static> {
     };
     let token = state.signer.sign(&claims);
     let mut c = Cookie::new(SESSION_COOKIE, token);
-    c.set_path("/");
+    c.set_path(cookie_path(state));
     c.set_http_only(true);
     c.set_same_site(SameSite::Lax);
     c.set_secure(state.config.server.public_url.starts_with("https://"));
     c
 }
 
-pub fn clear_cookie() -> Cookie<'static> {
+fn cookie_path(state: &AppState) -> String {
+    if state.base.is_empty() {
+        "/".to_string()
+    } else {
+        state.base.to_string()
+    }
+}
+
+pub fn clear_cookie(state: &AppState) -> Cookie<'static> {
     let mut c = Cookie::new(SESSION_COOKIE, "");
-    c.set_path("/");
+    c.set_path(cookie_path(state));
     c.set_http_only(true);
     c.set_max_age(time::Duration::ZERO);
     c
@@ -97,14 +105,16 @@ pub struct AdminUser {
 }
 
 pub enum AdminRejection {
-    Login,
+    Login(String),
     Forbidden,
 }
 
 impl IntoResponse for AdminRejection {
     fn into_response(self) -> Response {
         match self {
-            AdminRejection::Login => Redirect::to("/admin/login").into_response(),
+            AdminRejection::Login(base) => {
+                Redirect::to(&format!("{base}/admin/login")).into_response()
+            }
             AdminRejection::Forbidden => {
                 (StatusCode::FORBIDDEN, "Administrator access required").into_response()
             }
@@ -129,7 +139,7 @@ impl FromRequestParts<AppState> for AdminUser {
                 Ok(AdminUser { user, csrf })
             }
             (Some(_), _) => Err(AdminRejection::Forbidden),
-            _ => Err(AdminRejection::Login),
+            _ => Err(AdminRejection::Login(state.base.to_string())),
         }
     }
 }

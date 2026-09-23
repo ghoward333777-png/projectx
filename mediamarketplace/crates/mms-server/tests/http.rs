@@ -22,8 +22,12 @@ mod routes;
 mod templates;
 
 async fn state() -> app::AppState {
+    state_at("http://localhost:8090").await
+}
+
+async fn state_at(public_url: &str) -> app::AppState {
     let tmp = std::env::temp_dir().join(format!("mms-http-{}", uuid::Uuid::new_v4()));
-    let config = mms_core::config::Config::generate(tmp, "127.0.0.1:0", "http://localhost:8090");
+    let config = mms_core::config::Config::generate(tmp, "127.0.0.1:0", public_url);
     let db = mms_core::db::Db::memory().await.unwrap();
     app::AppState::new(config, db).unwrap()
 }
@@ -317,4 +321,153 @@ async fn first_run_setup_then_login_settings_bridges_sso_and_embed() {
         .to_str()
         .unwrap()
         .contains("Max-Age=0"));
+}
+
+/// Single-server installs mount the store under the website's own domain, e.g. https://www.example.com/store.
+#[tokio::test]
+async fn serves_under_a_path_prefix_when_public_url_has_one() {
+    let st = state_at("https://www.example.com/store").await;
+    let app = app::router(st.clone());
+
+    let res = app.clone().oneshot(get("/setup", None)).await.unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "root paths are not served"
+    );
+
+    let res = app.clone().oneshot(get("/store/", None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()[header::LOCATION], "/store");
+    let res = app.clone().oneshot(get("/store", None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()[header::LOCATION], "/store/setup");
+
+    let res = app
+        .clone()
+        .oneshot(get("/store/setup", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    assert!(
+        body.contains("action=\"/store/setup\"") && body.contains("href=\"/store/static/mms.css\""),
+        "links carry the prefix: {body}"
+    );
+
+    let res = app.clone().oneshot(form("POST", "/store/setup", "email=admin%40example.com&name=Admin&password=correct-horse-battery&password_repeat=correct-horse-battery", None)).await.unwrap();
+    assert_eq!(res.headers()[header::LOCATION], "/store/admin");
+    let cookie = cookie_of(&res);
+
+    let res = app
+        .clone()
+        .oneshot(get("/store/admin", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(text(res).await.contains("href=\"/store/admin/bridges\""));
+
+    let res = app
+        .clone()
+        .oneshot(get("/store/admin", None))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::LOCATION], "/store/admin/login");
+
+    let res = app
+        .clone()
+        .oneshot(get("/store/embed.js", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// The bundled packages declare their site in mms.toml and sign admins in without the setup wizard.
+#[tokio::test]
+async fn config_declared_bridge_with_admin_sso() {
+    let tmp = std::env::temp_dir().join(format!("mms-http-{}", uuid::Uuid::new_v4()));
+    let mut config =
+        mms_core::config::Config::generate(tmp, "127.0.0.1:0", "https://www.example.com/mms");
+    config.bridges.push(mms_core::config::BridgeConfig {
+        uuid: "11111111-2222-4333-8444-555555555555".into(),
+        name: "Bundled site".into(),
+        host: "joomla".into(),
+        origin: "https://www.example.com".into(),
+        secret: "s3cret-from-the-plugin".into(),
+        admin_sso: true,
+    });
+    config.validate().unwrap();
+    let db = mms_core::db::Db::memory().await.unwrap();
+    let st = app::AppState::new(config, db).unwrap();
+    assert_eq!(routes::bridges::sync_from_config(&st).await.unwrap(), 1);
+    assert_eq!(
+        routes::bridges::sync_from_config(&st).await.unwrap(),
+        1,
+        "upsert is idempotent"
+    );
+    let app = app::router(st.clone());
+
+    let signer = mms_core::signer::Signer::from_shared_secret("s3cret-from-the-plugin");
+    let exp = chrono::Utc::now().timestamp() + 60;
+    let token = signer.sign_raw(format!(r#"{{"sub":"1","email":"owner@example.com","name":"Owner","host":"joomla","role":"admin","exp":{exp}}}"#).as_bytes());
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!(
+                "/mms/sso?site=11111111-2222-4333-8444-555555555555&token={token}&return=%2Fadmin"
+            ),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()[header::LOCATION], "/mms/admin");
+    let cookie = cookie_of(&res);
+    assert!(cookie.contains("mms_session="));
+    let res = app
+        .clone()
+        .oneshot(get("/mms/admin", Some(&cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "host administrator became a server administrator"
+    );
+
+    // Embeds work for the declared site with its origin policy.
+    let res = app
+        .clone()
+        .oneshot(get(
+            "/mms/embed/showcase?site=11111111-2222-4333-8444-555555555555",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()[header::CONTENT_SECURITY_POLICY],
+        "frame-ancestors 'self' https://www.example.com"
+    );
+
+    // A plain member token never gains admin rights.
+    let member = signer.sign_raw(
+        format!(r#"{{"sub":"2","email":"m@example.com","name":"M","host":"joomla","exp":{exp}}}"#)
+            .as_bytes(),
+    );
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/mms/sso?site=11111111-2222-4333-8444-555555555555&token={member}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    let c2 = cookie_of(&res);
+    let res = app
+        .clone()
+        .oneshot(get("/mms/admin", Some(&c2)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }

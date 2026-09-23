@@ -36,3 +36,8 @@ pub async fn my_entitlements(
     let rows = state.entitlements.for_user(u.id).await?;
     Ok(Json(serde_json::json!({ "data": rows })).into_response())
 }
+
+/// Unauthenticated liveness probe used by the bundled packages' supervisor.
+pub async fn ping() -> Response {
+    Json(serde_json::json!({ "ok": true, "version": mms_core::version() })).into_response()
+}

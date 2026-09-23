@@ -144,6 +144,10 @@ async fn main() -> Result<()> {
             let (cfg, db) = open(&cli.config).await?;
             db.migrate().await?;
             let state = app::AppState::new(cfg.clone(), db)?;
+            let synced = routes::bridges::sync_from_config(&state).await?;
+            if synced > 0 {
+                tracing::info!("registered {synced} bridge site(s) from the config file");
+            }
             let router = app::router(state);
             let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
                 .await

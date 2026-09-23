@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 pub async fn form(State(state): State<AppState>) -> AppResult<Response> {
     if state.users.count_admins().await? > 0 {
-        return Ok(Redirect::to("/admin/login").into_response());
+        return Ok(Redirect::to(&state.url("/admin/login")).into_response());
     }
     Ok(Html(state.render(
         "setup.html",
@@ -35,7 +35,7 @@ pub async fn submit(
     Form(f): Form<SetupForm>,
 ) -> AppResult<Response> {
     if state.users.count_admins().await? > 0 {
-        return Ok(Redirect::to("/admin/login").into_response());
+        return Ok(Redirect::to(&state.url("/admin/login")).into_response());
     }
     if f.password != f.password_repeat {
         return Ok(Html(state.render(
@@ -62,7 +62,7 @@ pub async fn submit(
                 )
                 .await?;
             let jar = jar.add(auth::session_cookie(&state, user.id));
-            Ok((jar, Redirect::to("/admin")).into_response())
+            Ok((jar, Redirect::to(&state.url("/admin"))).into_response())
         }
         Err(e) => Ok(Html(state.render(
             "setup.html",

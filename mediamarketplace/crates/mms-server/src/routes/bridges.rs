@@ -19,15 +19,16 @@ pub struct BridgeSite {
     pub secret_enc: String,
     pub status: String,
     pub created_at: String,
+    pub admin_sso: i64,
 }
 
 pub async fn all(state: &AppState) -> anyhow::Result<Vec<BridgeSite>> {
-    Ok(sqlx::query_as::<_, BridgeSite>("SELECT id, uuid, name, host, origin, secret_enc, status, created_at FROM bridge_sites ORDER BY id")
+    Ok(sqlx::query_as::<_, BridgeSite>("SELECT id, uuid, name, host, origin, secret_enc, status, created_at, admin_sso FROM bridge_sites ORDER BY id")
         .fetch_all(&state.db.pool).await?)
 }
 
 pub async fn by_uuid(state: &AppState, uuid: &str) -> anyhow::Result<Option<BridgeSite>> {
-    Ok(sqlx::query_as::<_, BridgeSite>("SELECT id, uuid, name, host, origin, secret_enc, status, created_at FROM bridge_sites WHERE uuid = ? AND status = 'active'")
+    Ok(sqlx::query_as::<_, BridgeSite>("SELECT id, uuid, name, host, origin, secret_enc, status, created_at, admin_sso FROM bridge_sites WHERE uuid = ? AND status = 'active'")
         .bind(uuid).fetch_optional(&state.db.pool).await?)
 }
 
@@ -42,6 +43,35 @@ pub fn normalise_origin(raw: &str) -> Option<String> {
         return None;
     }
     Some(raw.to_string())
+}
+
+/// Upserts the bridge sites declared in mms.toml. Called once on start.
+pub async fn sync_from_config(state: &AppState) -> anyhow::Result<usize> {
+    let mut n = 0;
+    for b in &state.config.bridges {
+        let Some(origin) = normalise_origin(&b.origin) else {
+            anyhow::bail!("bridge {} has an invalid origin {}", b.name, b.origin)
+        };
+        let now = mms_core::now();
+        sqlx::query(
+            "INSERT INTO bridge_sites (uuid, name, host, origin, secret_enc, status, created_at, updated_at, admin_sso)
+             VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+             ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, host = excluded.host, origin = excluded.origin,
+                 secret_enc = excluded.secret_enc, status = 'active', updated_at = excluded.updated_at, admin_sso = excluded.admin_sso",
+        )
+        .bind(&b.uuid)
+        .bind(&b.name)
+        .bind(&b.host)
+        .bind(&origin)
+        .bind(state.secrets.encrypt(&b.secret)?)
+        .bind(&now)
+        .bind(&now)
+        .bind(b.admin_sso as i64)
+        .execute(&state.db.pool)
+        .await?;
+        n += 1;
+    }
+    Ok(n)
 }
 
 pub async fn list(State(state): State<AppState>, admin: AdminUser) -> AppResult<Response> {
@@ -150,5 +180,5 @@ pub async fn delete(
             None,
         )
         .await?;
-    Ok(Redirect::to("/admin/bridges").into_response())
+    Ok(Redirect::to(&state.url("/admin/bridges")).into_response())
 }

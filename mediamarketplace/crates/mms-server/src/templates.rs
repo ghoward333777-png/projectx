@@ -6,8 +6,9 @@ macro_rules! embed {
     };
 }
 
-pub fn environment() -> Environment<'static> {
+pub fn environment(base: &str) -> Environment<'static> {
     let mut env = Environment::new();
+    env.add_global("base", minijinja::Value::from_safe_string(base.to_string()));
     env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
     // "USD 149.00" from integer cents and an ISO code.
     env.add_filter("money", |cents: i64, currency: String| {

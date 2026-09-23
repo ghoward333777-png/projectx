@@ -29,6 +29,9 @@ pub struct SsoClaims {
     #[serde(default)]
     name: String,
     host: String,
+    /// Optional: "admin" asks for administrator rights; honoured only for sites with admin_sso.
+    #[serde(default)]
+    role: String,
     #[allow(dead_code)]
     exp: i64,
 }
@@ -80,6 +83,23 @@ pub async fn login(
             &claims.name,
         )
         .await?;
+    let user = if claims.role == "admin" && site.admin_sso == 1 && user.role != "admin" {
+        state.users.set_role(user.id, "admin").await?;
+        state
+            .audit
+            .record(
+                Some(user.id),
+                "sso.promoted_admin",
+                "user",
+                Some(&user.uuid),
+                None,
+                Some(serde_json::json!({ "site": site.uuid })),
+            )
+            .await?;
+        state.users.by_id(user.id).await?.unwrap_or(user)
+    } else {
+        user
+    };
     state
         .audit
         .record(
@@ -92,5 +112,9 @@ pub async fn login(
         )
         .await?;
     let jar = jar.add(auth::session_cookie(&state, user.id));
-    Ok((jar, Redirect::to(&safe_return(q.return_to.as_deref()))).into_response())
+    Ok((
+        jar,
+        Redirect::to(&state.url(&safe_return(q.return_to.as_deref()))),
+    )
+        .into_response())
 }

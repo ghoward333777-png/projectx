@@ -11,9 +11,9 @@ use std::collections::HashMap;
 
 pub async fn index(State(state): State<AppState>) -> AppResult<Response> {
     if state.users.count_admins().await? == 0 {
-        return Ok(Redirect::to("/setup").into_response());
+        return Ok(Redirect::to(&state.url("/setup")).into_response());
     }
-    Ok(Redirect::to("/admin").into_response())
+    Ok(Redirect::to(&state.url("/admin")).into_response())
 }
 
 pub async fn login_form(
@@ -21,10 +21,10 @@ pub async fn login_form(
     MaybeUser(user, _): MaybeUser,
 ) -> AppResult<Response> {
     if state.users.count_admins().await? == 0 {
-        return Ok(Redirect::to("/setup").into_response());
+        return Ok(Redirect::to(&state.url("/setup")).into_response());
     }
     if user.map(|u| u.is_admin()).unwrap_or(false) {
-        return Ok(Redirect::to("/admin").into_response());
+        return Ok(Redirect::to(&state.url("/admin")).into_response());
     }
     Ok(Html(state.render("login.html", context! { error => "" })?).into_response())
 }
@@ -55,7 +55,7 @@ pub async fn login(
                 .await?;
             Ok((
                 jar.add(auth::session_cookie(&state, user.id)),
-                Redirect::to("/admin"),
+                Redirect::to(&state.url("/admin")),
             )
                 .into_response())
         }
@@ -96,7 +96,11 @@ pub async fn logout(
             None,
         )
         .await?;
-    Ok((jar.add(auth::clear_cookie()), Redirect::to("/admin/login")).into_response())
+    Ok((
+        jar.add(auth::clear_cookie(&state)),
+        Redirect::to(&state.url("/admin/login")),
+    )
+        .into_response())
 }
 
 pub async fn dashboard(State(state): State<AppState>, admin: AdminUser) -> AppResult<Response> {

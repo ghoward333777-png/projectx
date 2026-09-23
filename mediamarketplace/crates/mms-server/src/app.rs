@@ -25,23 +25,32 @@ pub struct AppState {
     pub entitlements: Entitlements,
     pub audit: Audit,
     pub templates: Arc<minijinja::Environment<'static>>,
+    /// Mount prefix such as "/store", or "" when served at the domain root.
+    pub base: Arc<String>,
 }
 
 impl AppState {
     pub fn new(config: Config, db: Db) -> anyhow::Result<Self> {
         let master = config.secret_key_bytes()?;
         let secrets = Secrets::from_master_key(&master);
+        let base = config.base_path();
         Ok(Self {
+            templates: Arc::new(crate::templates::environment(&base)),
+            base: Arc::new(base),
             signer: Signer::from_master_key(&master),
             settings: SettingsStore::new(db.clone(), secrets.clone()),
             users: Users::new(db.clone()),
             entitlements: Entitlements::new(db.clone()),
             audit: Audit::new(db.clone()),
-            templates: Arc::new(crate::templates::environment()),
             config: Arc::new(config),
             db,
             secrets,
         })
+    }
+
+    /// Absolute path within this server, honouring the mount prefix.
+    pub fn url(&self, path: &str) -> String {
+        format!("{}{}", self.base, path)
     }
 
     pub fn render(&self, name: &str, ctx: minijinja::Value) -> anyhow::Result<String> {
@@ -50,7 +59,8 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let base = state.base.clone();
+    let app = Router::new()
         .route("/", get(routes::admin::index))
         .route(
             "/setup",
@@ -76,6 +86,7 @@ pub fn router(state: AppState) -> Router {
         .route("/embed/showcase", get(routes::embed::showcase))
         .route("/embed.js", get(routes::embed::loader))
         .route("/static/mms.css", get(routes::embed::css))
+        .route("/api/v1/ping", get(routes::api::ping))
         .route("/api/v1/health", get(routes::api::health))
         .route("/api/v1/me", get(routes::api::me))
         .route("/api/v1/me/entitlements", get(routes::api::my_entitlements))
@@ -87,6 +98,16 @@ pub fn router(state: AppState) -> Router {
             header::REFERRER_POLICY,
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .layer(TraceLayer::new_for_http());
+    let app = if base.is_empty() {
+        app
+    } else {
+        // "/store/" is what people type; the nested router only knows "/store".
+        let target = base.to_string();
+        Router::new().nest(&base, app).route(
+            &format!("{base}/"),
+            get(move || async move { axum::response::Redirect::to(&target) }),
+        )
+    };
+    app.with_state(state)
 }

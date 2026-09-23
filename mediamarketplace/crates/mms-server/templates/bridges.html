@@ -29,7 +29,7 @@
 </section>
 <section class="card">
   <h2>Add a site</h2>
-  <form method="post" action="/admin/bridges">
+  <form method="post" action="{{ base }}/admin/bridges">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
     <label>Name <input name="name" required placeholder="Main website"></label>
     <label>Host <select name="host"><option value="wordpress">WordPress</option><option value="joomla">Joomla</option><option value="other">Other</option></select></label>

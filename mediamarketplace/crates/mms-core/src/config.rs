@@ -11,6 +11,26 @@ pub struct Config {
     pub security: SecurityConfig,
     #[serde(default)]
     pub media: MediaConfig,
+    /// Bridge sites declared in the config file. The bundled WordPress and Joomla
+    /// packages write these themselves; they are upserted into the database on start.
+    #[serde(default)]
+    pub bridges: Vec<BridgeConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeConfig {
+    /// Stable identifier for this site (UUID). The plugin generates it once.
+    pub uuid: String,
+    pub name: String,
+    /// "wordpress" | "joomla" | "other"
+    pub host: String,
+    /// Scheme and host of the website, e.g. "https://www.example.com".
+    pub origin: String,
+    /// Shared secret used to sign single sign-on tokens.
+    pub secret: String,
+    /// When true, SSO tokens carrying role "admin" create administrators on this server.
+    #[serde(default)]
+    pub admin_sso: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +95,7 @@ impl Config {
                 session_ttl_seconds: default_session_ttl(),
             },
             media: MediaConfig::default(),
+            bridges: Vec::new(),
         }
     }
 
@@ -127,6 +148,20 @@ impl Config {
                 .unwrap_or(false),
             "security.secret_key must be at least 32 bytes of base64"
         );
+        for b in &self.bridges {
+            anyhow::ensure!(
+                !b.uuid.is_empty() && !b.secret.is_empty(),
+                "bridges entries need uuid and secret"
+            );
+            anyhow::ensure!(
+                matches!(b.host.as_str(), "wordpress" | "joomla" | "other"),
+                "bridges.host must be wordpress, joomla or other"
+            );
+            anyhow::ensure!(
+                b.origin.starts_with("http://") || b.origin.starts_with("https://"),
+                "bridges.origin must start with http:// or https://"
+            );
+        }
         Ok(())
     }
 
@@ -135,6 +170,20 @@ impl Config {
         base64::engine::general_purpose::STANDARD
             .decode(self.security.secret_key.trim())
             .context("security.secret_key is not valid base64")
+    }
+
+    /// Path prefix the server is mounted at, derived from `public_url`.
+    /// "https://www.example.com/store" -> "/store"; "https://media.example.com" -> "".
+    pub fn base_path(&self) -> String {
+        let url = self.server.public_url.trim_end_matches('/');
+        let after_scheme = match url.find("://") {
+            Some(i) => &url[i + 3..],
+            None => return String::new(),
+        };
+        match after_scheme.find('/') {
+            Some(i) => after_scheme[i..].to_string(),
+            None => String::new(),
+        }
     }
 
     pub fn database_path(&self) -> PathBuf {
@@ -169,6 +218,20 @@ mod tests {
         assert_eq!(back.server.public_url, "http://localhost:8090");
         assert_eq!(back.security.secret_key, cfg.security.secret_key);
         assert_eq!(back.media.max_upload_mb, 512);
+    }
+
+    #[test]
+    fn base_path_follows_public_url() {
+        let mut cfg = Config::generate(
+            PathBuf::from("/tmp/mms"),
+            "127.0.0.1:8090",
+            "https://media.example.com/",
+        );
+        assert_eq!(cfg.base_path(), "");
+        cfg.server.public_url = "https://www.example.com/store".into();
+        assert_eq!(cfg.base_path(), "/store");
+        cfg.server.public_url = "https://www.example.com/shop/media/".into();
+        assert_eq!(cfg.base_path(), "/shop/media");
     }
 
     #[test]
