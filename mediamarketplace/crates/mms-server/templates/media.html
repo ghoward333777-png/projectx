@@ -7,7 +7,7 @@
   <h2>Upload</h2>
   <form method="post" action="{{ base }}/admin/media/upload" enctype="multipart/form-data" id="mms-upload-form" data-max-mb="{{ max_mb }}">
     <input type="hidden" name="_csrf" value="{{ csrf }}">
-    <div class="dropzone" id="mms-dropzone"><p>Drop files here or <label class="link-label">choose files<input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.avif,.svg,.mp4,.webm,.mov,.m4v,.mp3,.wav,.m4a,.ogg,.flac,.aac,.pdf" hidden></label></p><p class="muted">Images, video, audio and PDF up to {{ max_mb }} MB each. Thumbnails are generated in the background.</p></div>
+    <div class="dropzone" id="mms-dropzone"><p>Drop files here or <label class="link-label">choose files<input type="file" name="files[]" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.avif,.svg,.mp4,.webm,.mov,.m4v,.mp3,.wav,.m4a,.ogg,.flac,.aac,.pdf" hidden></label></p><p class="muted">Images, video, audio and PDF up to {{ max_mb }} MB each. Thumbnails are generated in the background.</p></div>
     <label class="inline-check"><input type="checkbox" name="private" value="1"> Private (served only through signed links; use for paid originals)</label>
     <div id="mms-upload-progress"></div>
     <button class="primary" type="submit">Upload</button>

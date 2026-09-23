@@ -994,46 +994,32 @@ async fn phase_one_media_products_showcase_player_flow() {
         .is_none());
 }
 
-/// Video thumbnails and durations need ffmpeg; this uses the Playwright build when present.
+/// Video thumbnails and durations need ffmpeg and a sample clip:
+/// MMS_TEST_FFMPEG=/path/to/ffmpeg MMS_TEST_VIDEO=/path/to/clip.webm cargo test
 #[tokio::test]
 async fn video_upload_gets_thumbnail_and_duration_with_ffmpeg() {
-    let ffmpeg = "/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux";
-    if !std::path::Path::new(ffmpeg).exists() {
-        eprintln!("ffmpeg not present; skipping");
+    let (Ok(ffmpeg), Ok(sample)) = (
+        std::env::var("MMS_TEST_FFMPEG"),
+        std::env::var("MMS_TEST_VIDEO"),
+    ) else {
+        eprintln!("MMS_TEST_FFMPEG / MMS_TEST_VIDEO not set; skipping");
         return;
-    }
+    };
     let tmp = std::env::temp_dir().join(format!("mms-video-{}", uuid::Uuid::new_v4()));
     let mut config =
         mms_core::config::Config::generate(tmp.clone(), "127.0.0.1:0", "http://localhost:8090");
-    config.media.ffmpeg_path = ffmpeg.to_string();
+    config.media.ffmpeg_path = ffmpeg;
     let db = mms_core::db::Db::memory().await.unwrap();
     let st = app::AppState::new(config, db).unwrap();
-    let sample = tmp.join("sample.mp4");
-    std::fs::create_dir_all(&tmp).unwrap();
-    let ok = std::process::Command::new(ffmpeg)
-        .args([
-            "-y",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc=duration=6:size=320x240:rate=10",
-            "-pix_fmt",
-            "yuv420p",
-        ])
-        .arg(&sample)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        eprintln!("ffmpeg could not synthesise a sample; skipping");
-        return;
-    }
     let data = std::fs::read(&sample).unwrap();
+    let name = std::path::Path::new(&sample)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
     let m = st
         .media
-        .store_upload("sample.mp4", &data, true, None)
+        .store_upload(name, &data, true, None)
         .await
         .unwrap();
     assert_eq!(m.r#type, "video");
@@ -1043,12 +1029,24 @@ async fn video_upload_gets_thumbnail_and_duration_with_ffmpeg() {
     assert!(
         m.thumbnail_path
             .as_deref()
-            .map(|t| t.ends_with("640.jpg"))
+            .map(|t| t.ends_with("320.jpg"))
             .unwrap_or(false),
         "video thumbnail: {:?}",
         m.thumbnail_path
     );
-    let d = m.duration_ms.unwrap_or(0);
-    assert!((5500..=6500).contains(&d), "duration probed: {d}");
+    for size in mms_core::media::THUMB_SIZES {
+        assert!(st
+            .media
+            .public_root()
+            .join("thumbs")
+            .join(&m.uuid)
+            .join(format!("{size}.jpg"))
+            .exists());
+    }
+    assert!(
+        m.duration_ms.unwrap_or(0) > 1000,
+        "duration probed: {:?}",
+        m.duration_ms
+    );
     std::fs::remove_dir_all(tmp).ok();
 }

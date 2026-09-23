@@ -220,17 +220,47 @@ impl MediaStore {
             }
             "video" => {
                 if let Some(ffmpeg) = crate::health::binary(&self.ffmpeg) {
+                    // One PNG frame from ffmpeg (every build can encode PNG), then the same JPEG sizes as images.
                     let src = self.original_path(&m);
-                    let out = thumb_dir.join("640.jpg");
+                    let frame = thumb_dir.join("frame.png");
                     let status = tokio::process::Command::new(&ffmpeg)
                         .args(["-y", "-loglevel", "error", "-ss", "00:00:03", "-i"])
                         .arg(&src)
-                        .args(["-frames:v", "1", "-vf", "scale=640:-2"])
-                        .arg(&out)
+                        .args(["-frames:v", "1", "-vf", "scale=1280:-2"])
+                        .arg(&frame)
                         .status()
                         .await;
-                    if matches!(status, Ok(s) if s.success()) && out.exists() {
-                        thumb = Some(format!("thumbs/{}/640.jpg", m.uuid));
+                    let mut ok = matches!(status, Ok(s) if s.success()) && frame.exists();
+                    if !ok {
+                        // Very short clips have no frame at 3 s; take the first one instead.
+                        let status = tokio::process::Command::new(&ffmpeg)
+                            .args(["-y", "-loglevel", "error", "-i"])
+                            .arg(&src)
+                            .args(["-frames:v", "1", "-vf", "scale=1280:-2"])
+                            .arg(&frame)
+                            .status()
+                            .await;
+                        ok = matches!(status, Ok(s) if s.success()) && frame.exists();
+                    }
+                    if ok {
+                        let data = tokio::fs::read(&frame).await?;
+                        let dir = thumb_dir.clone();
+                        let uuid = m.uuid.clone();
+                        thumb = tokio::task::spawn_blocking(move || -> Result<Option<String>> {
+                            let img =
+                                image::load_from_memory(&data).context("decoding video frame")?;
+                            let mut first = None;
+                            for size in THUMB_SIZES {
+                                let path = dir.join(format!("{size}.jpg"));
+                                img.thumbnail(size, size)
+                                    .to_rgb8()
+                                    .save_with_format(&path, image::ImageFormat::Jpeg)?;
+                                first.get_or_insert(format!("thumbs/{uuid}/{size}.jpg"));
+                            }
+                            Ok(first)
+                        })
+                        .await??;
+                        let _ = tokio::fs::remove_file(&frame).await;
                     }
                     if duration.is_none() {
                         duration = probe_duration_ms(&ffmpeg, &src).await;

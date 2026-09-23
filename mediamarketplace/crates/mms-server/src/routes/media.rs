@@ -69,7 +69,8 @@ pub async fn upload(
         match field.name().unwrap_or("") {
             "_csrf" => csrf_ok = admin.csrf_error(&field.text().await?).is_none(),
             "private" => private = field.text().await? == "1",
-            "files" => {
+            // "files", "files[]" or "files[0]" (the PHP proxy re-indexes repeated fields)
+            n if n.starts_with("files") => {
                 let name = field.file_name().unwrap_or("upload").to_string();
                 let data = field.bytes().await?;
                 if !data.is_empty() {

@@ -193,6 +193,7 @@ final class MMS_Plugin
                 <tr><th>Local port</th><td><code>127.0.0.1:<?php echo (int) $rt->port(); ?></code></td></tr>
                 <tr><th>Data directory</th><td><code><?php echo esc_html($rt->dataDir()); ?></code></td></tr>
                 <tr><th>Server binary</th><td><code><?php echo esc_html($rt->binPath()); ?></code></td></tr>
+                <tr><th>PHP upload limit</th><td><?php echo (int) MmsRuntime::phpUploadLimitMb(); ?> MB per file (upload_max_filesize / post_max_size in php.ini)</td></tr>
                 <?php if ($problem): ?><tr><th>Problem</th><td style="color:#b32d2e"><?php echo esc_html($problem); ?></td></tr><?php endif; ?>
                 <?php if ($err = get_option('mms_last_error')): ?><tr><th>Last error</th><td style="color:#b32d2e"><?php echo esc_html((string) $err); ?></td></tr><?php endif; ?>
             </table>

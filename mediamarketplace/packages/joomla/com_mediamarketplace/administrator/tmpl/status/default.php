@@ -20,6 +20,7 @@ $token = Session::getFormToken();
         <tr><th scope="row"><?php echo Text::_('COM_MEDIAMARKETPLACE_STORE_URL'); ?></th><td><code><?php echo htmlspecialchars($rt->publicUrl()); ?></code></td></tr>
         <tr><th scope="row"><?php echo Text::_('COM_MEDIAMARKETPLACE_PORT'); ?></th><td><code>127.0.0.1:<?php echo (int) $rt->port(); ?></code></td></tr>
         <tr><th scope="row"><?php echo Text::_('COM_MEDIAMARKETPLACE_DATA_DIR'); ?></th><td><code><?php echo htmlspecialchars($rt->dataDir()); ?></code></td></tr>
+        <tr><th scope="row"><?php echo Text::_('COM_MEDIAMARKETPLACE_UPLOAD_LIMIT'); ?></th><td><?php echo (int) \MmsRuntime::phpUploadLimitMb(); ?> MB</td></tr>
         <?php if ($this->problem) : ?><tr><th scope="row"><?php echo Text::_('COM_MEDIAMARKETPLACE_PROBLEM'); ?></th><td class="text-danger"><?php echo htmlspecialchars($this->problem); ?></td></tr><?php endif; ?>
     </table>
     <p>

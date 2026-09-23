@@ -29,7 +29,7 @@
       if (i >= queue.length) { window.location = window.location.pathname + '?notice=' + encodeURIComponent(queue.length + ' file(s) processed. Thumbnails are being generated.'); return; }
       var f = queue[i]; var row = progress.querySelector('[data-i="' + i + '"]'); var bar = row.querySelector('progress'); var state = row.querySelector('.state');
       if (f.size > maxMb * 1048576) { i++; return next(); }
-      var fd = new FormData(); fd.append('_csrf', csrf); fd.append('private', priv); fd.append('files', f, f.name);
+      var fd = new FormData(); fd.append('_csrf', csrf); fd.append('private', priv); fd.append('files[]', f, f.name);
       var xhr = new XMLHttpRequest(); xhr.open('POST', form.action);
       xhr.upload.onprogress = function (ev) { if (ev.lengthComputable) bar.value = Math.round(ev.loaded / ev.total * 100); };
       xhr.onload = function () { state.textContent = xhr.status < 400 ? 'done' : 'failed (' + xhr.status + ')'; bar.value = 100; i++; next(); };

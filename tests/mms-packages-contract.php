@@ -93,6 +93,13 @@ file_put_contents($router, '<?php require ' . var_export($pk . '/shared/MmsRunti
     'data_dir' => $tmp . '/data', 'bin' => $bin, 'public_url' => "http://127.0.0.1:{$proxyPort}/mms",
     'origin' => "http://127.0.0.1:{$proxyPort}", 'host' => 'joomla', 'site_name' => 'Contract site',
 ], true) . '); $rt->proxy($_SERVER["REQUEST_URI"]); exit;');
+// Whatever happens below, never leave the proxy or the store process behind.
+register_shutdown_function(static function () use (&$srv, $rt): void {
+    if (isset($srv) && is_resource($srv)) {
+        proc_terminate($srv);
+    }
+    $rt->stop();
+});
 $srv = proc_open(['php', '-S', "127.0.0.1:{$proxyPort}", $router], [0 => ['file', '/dev/null', 'r'], 1 => ['file', $tmp . '/php.log', 'a'], 2 => ['file', $tmp . '/php.log', 'a']], $pipes);
 contract_check(is_resource($srv), 'PHP built-in server must start');
 usleep(700000);
@@ -122,6 +129,21 @@ contract_check($code === 303 && preg_match('#^location:\s*/mms/admin\s*$#im', $h
 contract_check(preg_match('#^set-cookie:\s*mms_session=([^;]+)#im', $hdr, $m) === 1, 'SSO must set the session cookie through the proxy');
 [$code, , $body] = http("http://127.0.0.1:{$proxyPort}/mms/admin", [CURLOPT_COOKIE => 'mms_session=' . $m[1]]);
 contract_check($code === 200 && str_contains($body, 'Dashboard') && str_contains($body, 'href="/mms/admin/bridges"'), "site administrator must reach the store dashboard (got {$code})");
+
+// A multipart upload through the PHP proxy must reach the store (PHP parses multipart bodies itself).
+$csrfPage = http("http://127.0.0.1:{$proxyPort}/mms/admin/media", [CURLOPT_COOKIE => 'mms_session=' . $m[1]]);
+contract_check($csrfPage[0] === 200 && preg_match('/name="_csrf" value="([^"]+)"/', $csrfPage[2], $cm) === 1, 'media page must render for the administrator');
+$png = "\x89PNG\r\n\x1a\n" . pack('N', 13) . 'IHDR' . pack('NN', 1, 1) . "\x08\x02\x00\x00\x00" . pack('N', crc32('IHDR' . pack('NN', 1, 1) . "\x08\x02\x00\x00\x00"));
+$idat = gzcompress("\x00\xff\x00\x00", 6);
+$png .= pack('N', strlen($idat)) . 'IDAT' . $idat . pack('N', crc32('IDAT' . $idat)) . pack('N', 0) . 'IEND' . pack('N', crc32('IEND'));
+$pngFile = $tmp . '/pixel.png';
+file_put_contents($pngFile, $png);
+[$code, $hdr] = http("http://127.0.0.1:{$proxyPort}/mms/admin/media/upload", [
+    CURLOPT_COOKIE => 'mms_session=' . $m[1],
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => ['_csrf' => $cm[1], 'private' => '0', 'files[]' => new CURLFile($pngFile, 'image/png', 'pixel.png')],
+]);
+contract_check($code === 303 && preg_match('#location:\s*/mms/admin/media\?notice=1\+file#i', $hdr) === 1, "multipart upload must be proxied to the store (got {$code}: " . trim(preg_replace('/\s+/', ' ', $hdr)) . ')');
 
 // Cleanup
 proc_terminate($srv);

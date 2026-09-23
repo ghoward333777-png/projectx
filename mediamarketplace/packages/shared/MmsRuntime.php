@@ -353,7 +353,15 @@ final class MmsRuntime
             CURLOPT_ENCODING       => '',
         ]);
         if (!in_array($method, ['GET', 'HEAD'], true)) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, (string) file_get_contents('php://input'));
+            $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
+            if (stripos($contentType, 'multipart/form-data') === 0) {
+                // PHP has already parsed the multipart body into $_POST and $_FILES; rebuild it for curl.
+                $headers = array_values(array_filter($headers, static fn (string $h): bool => stripos($h, 'Content-Type:') !== 0));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, self::multipartFields());
+            } else {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, (string) file_get_contents('php://input'));
+            }
         }
         if ($method === 'HEAD') {
             curl_setopt($ch, CURLOPT_NOBODY, true);
@@ -388,6 +396,60 @@ final class MmsRuntime
             echo "MediaMarketplace server did not respond: " . curl_error($ch) . "\n";
         }
         curl_close($ch);
+    }
+
+    /**
+     * Rebuilds a parsed multipart request as curl fields. Repeated fields (files[]) become
+     * name[0], name[1], ... which the server reads as the same field name.
+     *
+     * @return array<string,mixed>
+     */
+    private static function multipartFields(): array
+    {
+        $fields = [];
+        foreach ($_POST as $name => $value) {
+            if (is_array($value)) {
+                foreach (array_values($value) as $i => $v) {
+                    $fields[$name . '[' . $i . ']'] = (string) $v;
+                }
+            } else {
+                $fields[(string) $name] = (string) $value;
+            }
+        }
+        foreach ($_FILES as $name => $file) {
+            $names = (array) $file['name'];
+            $tmps = (array) $file['tmp_name'];
+            $types = (array) ($file['type'] ?? []);
+            $errors = (array) ($file['error'] ?? []);
+            $multi = is_array($file['name']);
+            foreach ($tmps as $i => $tmp) {
+                if (($errors[$i] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || $tmp === '' || !is_uploaded_file($tmp)) {
+                    continue;
+                }
+                $key = $multi ? $name . '[' . $i . ']' : (string) $name;
+                $fields[$key] = new CURLFile($tmp, (string) ($types[$i] ?? 'application/octet-stream'), (string) ($names[$i] ?? 'upload'));
+            }
+        }
+        return $fields;
+    }
+
+    /** Effective PHP upload limits, the smaller of upload_max_filesize and post_max_size, in MB. */
+    public static function phpUploadLimitMb(): int
+    {
+        $toMb = static function (string $v): int {
+            $v = trim($v);
+            if ($v === '' || $v === '0' || $v === '-1') {
+                return PHP_INT_MAX;
+            }
+            $n = (float) $v;
+            switch (strtolower(substr($v, -1))) {
+                case 'g': return (int) ($n * 1024);
+                case 'm': return (int) $n;
+                case 'k': return (int) max(1, $n / 1024);
+                default: return (int) max(1, $n / 1048576);
+            }
+        };
+        return min($toMb((string) ini_get('upload_max_filesize')), $toMb((string) ini_get('post_max_size')));
     }
 
     /** @return array<string,string> */
