@@ -1,6 +1,11 @@
+pub mod account;
 pub mod admin;
 pub mod api;
 pub mod bridges;
+pub mod customers;
 pub mod embed;
+pub mod media;
+pub mod products;
 pub mod setup;
 pub mod sso;
+pub mod worker;

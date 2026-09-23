@@ -6,6 +6,9 @@ use mms_core::audit::Audit;
 use mms_core::config::Config;
 use mms_core::db::Db;
 use mms_core::entitlements::Entitlements;
+use mms_core::jobs::Jobs;
+use mms_core::media::MediaStore;
+use mms_core::products::Products;
 use mms_core::secrets::Secrets;
 use mms_core::settings::SettingsStore;
 use mms_core::signer::Signer;
@@ -24,6 +27,9 @@ pub struct AppState {
     pub users: Users,
     pub entitlements: Entitlements,
     pub audit: Audit,
+    pub media: MediaStore,
+    pub products: Products,
+    pub jobs: Jobs,
     pub templates: Arc<minijinja::Environment<'static>>,
     /// Mount prefix such as "/store", or "" when served at the domain root.
     pub base: Arc<String>,
@@ -42,6 +48,9 @@ impl AppState {
             users: Users::new(db.clone()),
             entitlements: Entitlements::new(db.clone()),
             audit: Audit::new(db.clone()),
+            media: MediaStore::new(db.clone(), &config),
+            products: Products::new(db.clone()),
+            jobs: Jobs::new(db.clone()),
             config: Arc::new(config),
             db,
             secrets,
@@ -90,6 +99,70 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/health", get(routes::api::health))
         .route("/api/v1/me", get(routes::api::me))
         .route("/api/v1/me/entitlements", get(routes::api::my_entitlements))
+        .route(
+            "/api/v1/playback/session",
+            post(routes::api::playback_session),
+        )
+        .route(
+            "/api/v1/playback/heartbeat",
+            post(routes::api::playback_heartbeat),
+        )
+        .route("/api/v1/ratings", post(routes::api::rate))
+        .route("/admin/media", get(routes::media::list))
+        .route("/admin/media/upload", post(routes::media::upload))
+        .route(
+            "/admin/media/:uuid",
+            get(routes::media::detail).post(routes::media::update),
+        )
+        .route("/admin/media/:uuid/delete", post(routes::media::delete))
+        .route(
+            "/admin/media/:uuid/thumbnails",
+            post(routes::media::rethumb),
+        )
+        .route("/media/*path", get(routes::media::public_file))
+        .route("/m/:token", get(routes::media::signed_file))
+        .route(
+            "/admin/products",
+            get(routes::products::list).post(routes::products::create),
+        )
+        .route("/admin/products/new", get(routes::products::new_form))
+        .route(
+            "/admin/products/:uuid",
+            get(routes::products::edit_form).post(routes::products::update),
+        )
+        .route(
+            "/admin/products/:uuid/delete",
+            post(routes::products::delete),
+        )
+        .route("/admin/categories", post(routes::products::create_category))
+        .route(
+            "/admin/categories/:id/delete",
+            post(routes::products::delete_category),
+        )
+        .route("/admin/customers", get(routes::customers::list))
+        .route("/admin/customers/:uuid", get(routes::customers::detail))
+        .route(
+            "/admin/customers/:uuid/grant",
+            post(routes::customers::grant),
+        )
+        .route(
+            "/admin/customers/:uuid/revoke/:id",
+            post(routes::customers::revoke),
+        )
+        .route("/embed/product/:slug", get(routes::embed::product))
+        .route("/embed/player/:slug", get(routes::embed::player))
+        .route("/embed/checkout", get(routes::embed::checkout))
+        .route("/account", get(routes::account::my_media))
+        .route(
+            "/login",
+            get(routes::account::login_form).post(routes::account::login),
+        )
+        .route(
+            "/register",
+            get(routes::account::register_form).post(routes::account::register),
+        )
+        .route("/logout", post(routes::account::logout))
+        .route("/static/*path", get(routes::embed::static_file))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),

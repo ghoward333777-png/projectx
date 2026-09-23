@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ p.title }} · {{ site_name }}</title>
+<link rel="stylesheet" href="{{ base }}/static/mms.css">
+</head>
+<body class="embed">
+<article class="player-page">
+  <h1>{{ p.title }}</h1>
+  {% if p.type in ["video", "audio"] and src %}
+    <mms-player type="{{ p.type }}" src="{{ src }}" {% if poster %}poster="{{ poster }}"{% endif %} player="{{ player }}" base="{{ base }}" product="{{ p.slug }}" watermark="{{ user.email }}"></mms-player>
+    {% if download %}<p><a class="button" href="{{ src }}" download>Download</a></p>{% endif %}
+  {% elif p.type == "image" and src %}
+    <img class="full" src="{{ src }}" alt="{{ p.title }}"><p><a class="button" href="{{ src }}" download>Download</a></p>
+  {% elif p.type == "pdf" and src %}
+    <iframe class="pdf" src="{{ src }}" title="{{ p.title }}"></iframe>{% if settings.download_allowed %}<p><a class="button" href="{{ src }}" download>Download</a></p>{% endif %}
+  {% elif p.type == "live" %}
+    {% if settings.stream_url %}<iframe class="live" src="{{ settings.stream_url }}" allow="autoplay; fullscreen" title="Live stream"></iframe>{% else %}<p>The stream link has not been set yet.</p>{% endif %}
+    {% if settings.chat_embed %}<iframe class="chat" src="{{ settings.chat_embed }}" title="Chat"></iframe>{% endif %}
+  {% elif p.type in ["meeting", "consultation"] %}
+    <p><b>Join link:</b> {% if settings.join_url %}<a href="{{ settings.join_url }}" target="_blank" rel="noopener">{{ settings.join_url }}</a>{% else %}will be sent before the session{% endif %}</p>
+    {% if settings.duration_minutes %}<p>Duration: {{ settings.duration_minutes }} minutes.</p>{% endif %}
+  {% elif p.type == "external" %}
+    {% if settings.disclosure %}<p class="muted">{{ settings.disclosure }}</p>{% endif %}
+    <p><a class="button primary" href="{{ settings.external_url }}" {% if settings.open_in != "same_tab" %}target="_blank" rel="noopener"{% endif %}>Open the page</a></p>
+  {% elif p.type == "site_pass" %}
+    <p>Your pass is active. Everything in the library is open to you in <a href="{{ base }}/account">My media</a>.</p>
+  {% elif p.type == "private_page" %}
+    <p>Private pages open in the next release.</p>
+  {% else %}<p>Nothing to play yet.</p>{% endif %}
+  <p><a href="{{ base }}/account">← My media</a></p>
+</article>
+<script src="{{ base }}/static/mms-player.js" defer></script>
+<script>
+(function () { function report() { parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*'); }
+  window.addEventListener('load', report); window.addEventListener('resize', report); new MutationObserver(report).observe(document.body, { childList: true, subtree: true }); })();
+</script>
+</body>
+</html>

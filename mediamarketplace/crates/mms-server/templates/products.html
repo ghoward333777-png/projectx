@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block body %}
+<h1>Products</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<section class="card">
+  <h2>New product</h2>
+  <p class="type-buttons">{% for t in types %}<a class="button" href="{{ base }}/admin/products/new?type={{ t[0] }}">{{ t[1] }}</a> {% endfor %}</p>
+</section>
+<section class="card">
+  <form method="get" action="{{ base }}/admin/products" class="filters">
+    <input name="q" value="{{ q }}" placeholder="Search titles">
+    <select name="type"><option value="">All types</option>{% for t in types %}<option value="{{ t[0] }}" {% if t[0] == type_filter %}selected{% endif %}>{{ t[1] }}</option>{% endfor %}</select>
+    <select name="status"><option value="">Any status</option>{% for s in ["draft","published","archived"] %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    <button>Filter</button>
+  </form>
+  {% if items %}
+  <table>
+    <thead><tr><th>Title</th><th>Type</th><th>Price</th><th>Status</th><th>Featured</th><th>Rating</th><th>Views</th><th>Sales</th><th></th></tr></thead>
+    <tbody>{% for row in items %}<tr>
+      <td><a href="{{ base }}/admin/products/{{ row.p.uuid }}">{{ row.p.title }}</a><br><small class="muted">/{{ row.p.slug }}</small></td>
+      <td>{{ row.type_label }}</td><td>{% if row.p.price_cents == 0 %}Free{% else %}{{ row.p.price_cents | money(row.p.currency) }}{% endif %}</td>
+      <td><span class="badge {% if row.p.status == 'published' %}ok{% endif %}">{{ row.p.status }}</span></td><td>{% if row.p.featured %}★{% endif %}</td>
+      <td>{% if row.p.rating_count %}{{ row.p.rating_avg | round(1) }} ({{ row.p.rating_count }}){% else %}–{% endif %}</td><td>{{ row.p.views }}</td><td>{{ row.p.purchases }}</td>
+      <td><form method="post" action="{{ base }}/admin/products/{{ row.p.uuid }}/delete" class="inline" onsubmit="return confirm('Delete this product?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Delete</button></form></td>
+    </tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted">No products yet.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Categories</h2>
+  {% if categories %}<ul class="chips">{% for c in categories %}<li>{{ c.name }} <small class="muted">/{{ c.slug }}</small> <form method="post" action="{{ base }}/admin/categories/{{ c.id }}/delete" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="link">remove</button></form></li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="{{ base }}/admin/categories" class="filters"><input type="hidden" name="_csrf" value="{{ csrf }}"><input name="name" placeholder="New category name" required><button>Add category</button></form>
+</section>
+{% endblock %}

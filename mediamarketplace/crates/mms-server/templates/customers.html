@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block body %}
+<h1>Customers and staff</h1>
+<section class="card">
+  <form method="get" action="{{ base }}/admin/customers" class="filters"><input name="q" value="{{ q }}" placeholder="Search email or name"><button>Search</button></form>
+  {% if users %}<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>
+  {% for u in users %}<tr><td><a href="{{ base }}/admin/customers/{{ u.uuid }}">{{ u.name | default(u.email) }}</a></td><td>{{ u.email }}</td><td>{{ u.role }}</td><td>{{ u.status }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted">Nobody yet.</p>{% endif %}
+</section>
+{% endblock %}

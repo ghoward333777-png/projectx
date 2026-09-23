@@ -47,6 +47,10 @@ fn get(uri: &str, cookie: Option<&str>) -> Request<Body> {
     form("GET", uri, "", cookie)
 }
 
+async fn bytes(res: axum::response::Response) -> Vec<u8> {
+    res.into_body().collect().await.unwrap().to_bytes().to_vec()
+}
+
 async fn text(res: axum::response::Response) -> String {
     String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
 }
@@ -470,4 +474,581 @@ async fn config_declared_bridge_with_admin_sso() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+fn multipart(boundary: &str, csrf: &str, private: bool, files: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut body = Vec::new();
+    let mut part = |name: &str, filename: Option<&str>, ctype: Option<&str>, data: &[u8]| {
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"").as_bytes(),
+        );
+        if let Some(f) = filename {
+            body.extend_from_slice(format!("; filename=\"{f}\"").as_bytes());
+        }
+        body.extend_from_slice(b"\r\n");
+        if let Some(c) = ctype {
+            body.extend_from_slice(format!("Content-Type: {c}\r\n").as_bytes());
+        }
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+    };
+    part("_csrf", None, None, csrf.as_bytes());
+    part("private", None, None, if private { b"1" } else { b"0" });
+    for (name, data) in files {
+        part("files", Some(name), Some("application/octet-stream"), data);
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    body
+}
+
+fn png_bytes(w: u32, h: u32) -> Vec<u8> {
+    let img = image::RgbImage::from_fn(w, h, |x, y| {
+        image::Rgb([(x % 255) as u8, (y % 255) as u8, 90])
+    });
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .unwrap();
+    buf.into_inner()
+}
+
+async fn admin_session(app: &axum::Router) -> (String, String) {
+    let res = app.clone().oneshot(form("POST", "/setup", "email=admin%40example.com&name=Admin&password=correct-horse-battery&password_repeat=correct-horse-battery", None)).await.unwrap();
+    let cookie = cookie_of(&res);
+    let res = app
+        .clone()
+        .oneshot(get("/admin", Some(&cookie)))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let csrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    (cookie, csrf)
+}
+
+#[tokio::test]
+async fn phase_one_media_products_showcase_player_flow() {
+    let st = state().await;
+    let app = app::router(st.clone());
+    let (cookie, csrf) = admin_session(&app).await;
+
+    // A site for embeds.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/bridges",
+            &format!("_csrf={csrf}&name=Site&host=wordpress&origin=https%3A%2F%2Fwww.example.com"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    let site = body
+        .split("<dt>Site ID</dt><dd><code>")
+        .nth(1)
+        .unwrap()
+        .split('<')
+        .next()
+        .unwrap()
+        .to_string();
+
+    // Upload two images (one fake) in one batch through the admin form.
+    let boundary = "----mmsboundary";
+    let body = multipart(
+        boundary,
+        &csrf,
+        false,
+        &[
+            ("Studio_Lighting.png", &png_bytes(800, 450)),
+            ("bogus.jpg", b"not an image"),
+        ],
+    );
+    let req = Request::builder()
+        .method("POST")
+        .uri("/admin/media/upload")
+        .header(header::COOKIE, &cookie)
+        .header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(body))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let loc = res.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        loc.contains("1+uploaded") && loc.contains("bogus.jpg"),
+        "one stored, one refused: {loc}"
+    );
+
+    // The thumbnail job runs (the worker would do this in the background).
+    let (items, total) = st
+        .media
+        .list(&mms_core::media::MediaQuery {
+            per_page: 10,
+            page: 1,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(total, 1);
+    let m = &items[0];
+    assert_eq!(m.status, "processing");
+    let job = st.jobs.claim().await.unwrap().unwrap();
+    routes::worker::run(&st, &job.r#type, job.args.as_deref().unwrap())
+        .await
+        .unwrap();
+    st.jobs.complete(job.id).await.unwrap();
+    let m = st.media.by_id(m.id).await.unwrap().unwrap();
+    assert_eq!(m.status, "ready");
+    let thumb = m.thumbnail_path.clone().unwrap();
+
+    // Library list and detail render; the thumbnail is served publicly with caching.
+    let res = app
+        .clone()
+        .oneshot(get("/admin/media?q=lighting", Some(&cookie)))
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = text(res).await;
+    assert!(
+        body.contains("Studio Lighting") && body.contains(&format!("/media/{thumb}")),
+        "status {status}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/media/{thumb}"), None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/jpeg");
+    let res = app
+        .clone()
+        .oneshot(get("/media/../mms.toml", None))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND, "no path traversal");
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/admin/media/{}", m.uuid), Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("SHA-256"));
+
+    // Metadata edit is searchable afterwards.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/media/{}", m.uuid),
+            &format!("_csrf={csrf}&title=Lighting+lesson&alt=A+lamp&caption=&tags=studio"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/media?q=lamp", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Lighting lesson"));
+
+    // Create a category and an image product through the admin form.
+    app.clone()
+        .oneshot(form(
+            "POST",
+            "/admin/categories",
+            &format!("_csrf={csrf}&name=Textures"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let cat_id: i64 = sqlx::query_scalar("SELECT id FROM categories WHERE slug = 'textures'")
+        .fetch_one(&st.db.pool)
+        .await
+        .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get("/admin/products/new?type=image", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Resolutions for sale"));
+    let res = app.clone().oneshot(form("POST", "/admin/products", &format!("_csrf={csrf}&type=image&title=Coastal+Textures&description=Forty+textures&price=29&currency=USD&media_id={}&status=published&featured=1&cat_{cat_id}=1&s_resolutions=1920,original&s_licence=Commercial", m.id), Some(&cookie))).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "product created");
+    let p = st
+        .products
+        .by_slug("coastal-textures")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(p.price_cents, 2900);
+    assert_eq!(p.setting("resolutions"), "1920,original");
+    // Video products need a media file; the form reports it instead of crashing.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/products",
+            &format!("_csrf={csrf}&type=video&title=No+file&price=1&status=draft"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("need a media file"));
+    let res = app
+        .clone()
+        .oneshot(get("/admin/products", Some(&cookie)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Coastal Textures"));
+
+    // Showcase: card with thumbnail, price, category filter, search, sorting, list view; product page.
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/showcase?site={site}"), None))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Coastal Textures")
+            && body.contains(&thumb)
+            && body.contains("USD 29.00")
+            && body.contains("Textures"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/showcase?site={site}&category=textures&sort=price_asc&view=list"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Coastal Textures"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/showcase?site={site}&q=nothing-like-this"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Nothing matches"));
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/product/coastal-textures?site={site}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("Coastal Textures")
+            && body.contains("Buy")
+            && body.contains("Sign in")
+            && body.contains("Licence")
+    );
+    assert_eq!(
+        st.products.by_id(p.id).await.unwrap().unwrap().views,
+        1,
+        "views counted"
+    );
+
+    // A customer registers, sees an empty My media, cannot open the player.
+    let res = app.clone().oneshot(form("POST", "/register", "name=Shopper&email=shopper%40example.com&password=a-strong-passphrase&return=%2Faccount", None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()[header::LOCATION], "/account");
+    let shopper = cookie_of(&res);
+    let res = app
+        .clone()
+        .oneshot(get("/account", Some(&shopper)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Nothing here yet"));
+    let res = app
+        .clone()
+        .oneshot(get("/embed/player/coastal-textures", Some(&shopper)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let res = app
+        .clone()
+        .oneshot(get("/admin/media", Some(&shopper)))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::FORBIDDEN,
+        "customers never reach the admin"
+    );
+
+    // The admin grants access manually; the player page now serves a signed link.
+    let shopper_uuid: String =
+        sqlx::query_scalar("SELECT uuid FROM users WHERE email = 'shopper@example.com'")
+            .fetch_one(&st.db.pool)
+            .await
+            .unwrap();
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/admin/customers/{shopper_uuid}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Grant access manually"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/customers/{shopper_uuid}/grant"),
+            &format!("_csrf={csrf}&scope=product&product_id={}&days=30", p.id),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(get("/account", Some(&shopper)))
+        .await
+        .unwrap();
+    assert!(text(res).await.contains("Coastal Textures"));
+    let res = app
+        .clone()
+        .oneshot(get("/embed/player/coastal-textures", Some(&shopper)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = text(res).await;
+    let signed = body
+        .split("src=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(signed.starts_with("/m/"), "signed media link: {signed}");
+
+    // Signed delivery honours ranges and refuses other users and expired links.
+    let res = app
+        .clone()
+        .oneshot(get(&signed, Some(&shopper)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "private, no-store");
+    let req = Request::builder()
+        .uri(&signed)
+        .header(header::COOKIE, &shopper)
+        .header(header::RANGE, "bytes=0-3")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(res.headers()[header::CONTENT_LENGTH], "4");
+    assert!(res.headers()[header::CONTENT_RANGE]
+        .to_str()
+        .unwrap()
+        .starts_with("bytes 0-3/"));
+    assert_eq!(&bytes(res).await[..4], b"\x89PNG");
+    let res = app.clone().oneshot(get(&signed, None)).await.unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::FORBIDDEN,
+        "token bound to the customer"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/m/not-a-token", Some(&shopper)))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Playback sessions and ratings through the API.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/playback/session")
+        .header(header::COOKIE, &shopper)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"product":"coastal-textures","player":"plyr"}"#,
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let session = text(res)
+        .await
+        .split("\"session\":\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/playback/heartbeat")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(format!(
+            r#"{{"session":"{session}","position_ms":42000,"duration_ms":90000,"ended":true}}"#
+        )))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(req).await.unwrap().status(),
+        StatusCode::OK
+    );
+    let pos: i64 = sqlx::query_scalar("SELECT position_ms FROM playback_sessions WHERE uuid = ?")
+        .bind(&session)
+        .fetch_one(&st.db.pool)
+        .await
+        .unwrap();
+    assert_eq!(pos, 42000);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/ratings")
+        .header(header::COOKIE, &shopper)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"product":"coastal-textures","stars":5,"review":"Superb"}"#,
+        ))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(req).await.unwrap().status(),
+        StatusCode::OK
+    );
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/ratings")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"product":"coastal-textures","stars":1}"#))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(req).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED,
+        "anonymous cannot rate"
+    );
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/embed/product/coastal-textures?site={site}"),
+            Some(&shopper),
+        ))
+        .await
+        .unwrap();
+    let body = text(res).await;
+    assert!(
+        body.contains("★ 5.0") && body.contains("Superb") && body.contains(">Open<"),
+        "entitled view with rating: {body}"
+    );
+
+    // Player scripts and vendored players are embedded.
+    for path in [
+        "/static/mms-player.js",
+        "/static/vendor/plyr.min.js",
+        "/static/vendor/video.min.js",
+        "/static/vendor/plyr.svg",
+    ] {
+        assert_eq!(
+            app.clone().oneshot(get(path, None)).await.unwrap().status(),
+            StatusCode::OK,
+            "{path}"
+        );
+    }
+
+    // Deleting media removes files and the product loses its file reference.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/media/{}/delete", m.uuid),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(st.media.by_id(m.id).await.unwrap().is_none());
+    assert!(st
+        .products
+        .by_id(p.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .media_id
+        .is_none());
+}
+
+/// Video thumbnails and durations need ffmpeg; this uses the Playwright build when present.
+#[tokio::test]
+async fn video_upload_gets_thumbnail_and_duration_with_ffmpeg() {
+    let ffmpeg = "/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux";
+    if !std::path::Path::new(ffmpeg).exists() {
+        eprintln!("ffmpeg not present; skipping");
+        return;
+    }
+    let tmp = std::env::temp_dir().join(format!("mms-video-{}", uuid::Uuid::new_v4()));
+    let mut config =
+        mms_core::config::Config::generate(tmp.clone(), "127.0.0.1:0", "http://localhost:8090");
+    config.media.ffmpeg_path = ffmpeg.to_string();
+    let db = mms_core::db::Db::memory().await.unwrap();
+    let st = app::AppState::new(config, db).unwrap();
+    let sample = tmp.join("sample.mp4");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let ok = std::process::Command::new(ffmpeg)
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=6:size=320x240:rate=10",
+            "-pix_fmt",
+            "yuv420p",
+        ])
+        .arg(&sample)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        eprintln!("ffmpeg could not synthesise a sample; skipping");
+        return;
+    }
+    let data = std::fs::read(&sample).unwrap();
+    let m = st
+        .media
+        .store_upload("sample.mp4", &data, true, None)
+        .await
+        .unwrap();
+    assert_eq!(m.r#type, "video");
+    st.media.generate_thumbnails(m.id).await.unwrap();
+    let m = st.media.by_id(m.id).await.unwrap().unwrap();
+    assert_eq!(m.status, "ready");
+    assert!(
+        m.thumbnail_path
+            .as_deref()
+            .map(|t| t.ends_with("640.jpg"))
+            .unwrap_or(false),
+        "video thumbnail: {:?}",
+        m.thumbnail_path
+    );
+    let d = m.duration_ms.unwrap_or(0);
+    assert!((5500..=6500).contains(&d), "duration probed: {d}");
+    std::fs::remove_dir_all(tmp).ok();
 }

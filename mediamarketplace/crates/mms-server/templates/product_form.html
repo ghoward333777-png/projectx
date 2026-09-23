@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{% if product %}Edit product{% else %}New {{ type_label }}{% endif %}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/products">← Products</a></p>
+<h1>{% if product %}{{ product.title }}{% else %}New {{ type_label | lower }} product{% endif %}</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="{% if product %}{{ base }}/admin/products/{{ product.uuid }}{% else %}{{ base }}/admin/products{% endif %}">
+  <input type="hidden" name="_csrf" value="{{ csrf }}">
+  <input type="hidden" name="type" value="{{ ptype }}">
+  <div class="two-col">
+    <section class="card">
+      <h2>{{ type_label }}</h2>
+      <label>Title <input name="title" required value="{{ product.title if product else '' }}"></label>
+      <label>Slug <input name="slug" value="{{ product.slug if product else '' }}" placeholder="auto from title"></label>
+      <label>Description <textarea name="description" rows="5">{{ product.description if product else '' }}</textarea></label>
+      <div class="row">
+        <label>Price <input name="price" type="number" step="0.01" min="0" value="{% if product %}{{ (product.price_cents / 100) | round(2) }}{% else %}0{% endif %}"><small>0 makes it free.</small></label>
+        <label>Currency <input name="currency" maxlength="3" value="{{ product.currency if product else currency }}"></label>
+      </div>
+      {% if needs_media %}
+      <label>Media file
+        <select name="media_id" required>
+          <option value="">Choose from the library</option>
+          {% for m in media %}<option value="{{ m.id }}" {% if product and product.media_id == m.id %}selected{% endif %}>{{ m.title | default(m.uuid) }} ({{ m.bytes | filesize }}{% if m.private %}, private{% endif %})</option>{% endfor %}
+        </select><small>Only {{ type_label | lower }} files are listed. Upload more under Media.</small></label>
+      {% endif %}
+      <label>Preview image (optional)
+        <select name="preview_media_id"><option value="">Use the media file's own thumbnail</option>{% for m in images %}<option value="{{ m.id }}" {% if product and product.preview_media_id == m.id %}selected{% endif %}>{{ m.title | default(m.uuid) }}</option>{% endfor %}</select></label>
+      <label>Status <select name="status">{% for s in ["draft","published","archived"] %}<option value="{{ s }}" {% if product and product.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+      <label class="inline-check"><input type="checkbox" name="featured" value="1" {% if product and product.featured %}checked{% endif %}> Featured</label>
+      {% if categories %}<fieldset><legend>Categories</legend>{% for c in categories %}<label class="inline-check"><input type="checkbox" name="cat_{{ c.id }}" value="1" {% if c.id in selected %}checked{% endif %}> {{ c.name }}</label>{% endfor %}</fieldset>{% endif %}
+    </section>
+    <section class="card">
+      <h2>{{ type_label }} settings</h2>
+      {% for f in fields %}
+      <label>{{ f.label }}
+        {% if f.kind == "bool" %}<select name="s_{{ f.key }}"><option value="0" {% if f.value != "true" %}selected{% endif %}>No</option><option value="1" {% if f.value == "true" %}selected{% endif %}>Yes</option></select>
+        {% elif f.kind == "int" %}<input type="number" min="0" name="s_{{ f.key }}" value="{{ f.value }}">
+        {% elif f.kind == "select" %}<select name="s_{{ f.key }}">{% for o in f.options %}<option value="{{ o }}" {% if o == f.value %}selected{% endif %}>{{ o | label }}</option>{% endfor %}</select>
+        {% elif f.kind == "player" %}<select name="s_{{ f.key }}"><option value="">Store default</option>{% for o in ["plyr","videojs","native"] %}<option value="{{ o }}" {% if o == f.value %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+        {% elif f.kind == "textarea" %}<textarea name="s_{{ f.key }}" rows="4">{{ f.value }}</textarea>
+        {% else %}<input name="s_{{ f.key }}" value="{{ f.value }}">{% endif %}
+        {% if f.help %}<small>{{ f.help }}</small>{% endif %}
+      </label>
+      {% endfor %}
+      {% if not fields %}<p class="muted">This type has no extra settings.</p>{% endif %}
+      <button class="primary">{% if product %}Save{% else %}Create{% endif %}</button>
+      {% if product and product.status == "published" %}<p class="muted">Public page: <code>{{ base }}/embed/product/{{ product.slug }}</code></p>{% endif %}
+    </section>
+  </div>
+</form>
+{% endblock %}

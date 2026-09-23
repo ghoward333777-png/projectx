@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Media{% endblock %}
+{% block body %}
+<h1>Media library <small class="muted">{{ total }} items</small></h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+<section class="card">
+  <h2>Upload</h2>
+  <form method="post" action="{{ base }}/admin/media/upload" enctype="multipart/form-data" id="mms-upload-form" data-max-mb="{{ max_mb }}">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <div class="dropzone" id="mms-dropzone"><p>Drop files here or <label class="link-label">choose files<input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.avif,.svg,.mp4,.webm,.mov,.m4v,.mp3,.wav,.m4a,.ogg,.flac,.aac,.pdf" hidden></label></p><p class="muted">Images, video, audio and PDF up to {{ max_mb }} MB each. Thumbnails are generated in the background.</p></div>
+    <label class="inline-check"><input type="checkbox" name="private" value="1"> Private (served only through signed links; use for paid originals)</label>
+    <div id="mms-upload-progress"></div>
+    <button class="primary" type="submit">Upload</button>
+  </form>
+</section>
+<section class="card">
+  <form method="get" action="{{ base }}/admin/media" class="filters">
+    <input name="q" value="{{ q }}" placeholder="Search title, alt, caption, tags">
+    <select name="type"><option value="">All types</option>{% for c in counts %}<option value="{{ c.t }}" {% if c.t == type_filter %}selected{% endif %}>{{ c.t | label }} ({{ c.n }})</option>{% endfor %}</select>
+    <button>Filter</button>
+  </form>
+  {% if items %}
+  <div class="media-grid">
+    {% for m in items %}
+    <a class="media-tile" href="{{ base }}/admin/media/{{ m.uuid }}">
+      {% if m.thumbnail_path %}<img src="{{ base }}/media/{{ m.thumbnail_path }}" alt="{{ m.alt | default(m.title) }}" loading="lazy">{% else %}<div class="placeholder type-{{ m.type }}">{{ m.type | label }}</div>{% endif %}
+      <span class="title">{{ m.title | default("Untitled") }}</span>
+      <span class="meta">{{ m.type | label }} · {{ m.bytes | filesize }}{% if m.duration_ms %} · {{ m.duration_ms | duration }}{% endif %}{% if m.status != "ready" %} · {{ m.status }}{% endif %}{% if m.private %} · private{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% if pages > 1 %}<p class="pager">{% for n in range(1, pages + 1) %}{% if n == page %}<b>{{ n }}</b>{% else %}<a href="{{ base }}/admin/media?page={{ n }}&q={{ q }}&type={{ type_filter }}">{{ n }}</a>{% endif %} {% endfor %}</p>{% endif %}
+  {% else %}<p class="muted">No media yet. Upload some files above.</p>{% endif %}
+</section>
+<script src="{{ base }}/static/mms-upload.js" defer></script>
+{% endblock %}

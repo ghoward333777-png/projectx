@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ m.title | default("Media") }}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/media">← Media library</a></p>
+<h1>{{ m.title | default("Untitled") }}</h1>
+<div class="two-col">
+  <section class="card">
+    {% if m.type == "image" %}<img class="preview" src="{{ signed_url }}" alt="{{ m.alt | default('') }}">
+    {% elif m.type == "video" %}<mms-player type="video" src="{{ signed_url }}" {% if m.thumbnail_path %}poster="{{ base }}/media/{{ m.thumbnail_path }}"{% endif %} player="native" base="{{ base }}"></mms-player>
+    {% elif m.type == "audio" %}<mms-player type="audio" src="{{ signed_url }}" player="native" base="{{ base }}"></mms-player>
+    {% else %}<p><a class="button" href="{{ signed_url }}" target="_blank" rel="noopener">Open PDF</a></p>{% endif %}
+    <table>
+      <tr><th>Type</th><td>{{ m.type | label }} · {{ m.mime }}</td></tr>
+      <tr><th>Size</th><td>{{ m.bytes | filesize }}{% if m.width %} · {{ m.width }}×{{ m.height }}{% endif %}{% if m.duration_ms %} · {{ m.duration_ms | duration }}{% endif %}</td></tr>
+      <tr><th>Status</th><td>{{ m.status }}{% if m.private %} · private{% endif %}</td></tr>
+      <tr><th>SHA-256</th><td><code>{{ m.hash_sha256 }}</code></td></tr>
+      <tr><th>Uploaded</th><td>{{ m.created_at }}</td></tr>
+      <tr><th>ID</th><td><code>{{ m.uuid }}</code></td></tr>
+    </table>
+    <form method="post" action="{{ base }}/admin/media/{{ m.uuid }}/thumbnails" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Regenerate thumbnails</button></form>
+    <form method="post" action="{{ base }}/admin/media/{{ m.uuid }}/delete" class="inline" onsubmit="return confirm('Delete this file and its thumbnails?')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Delete</button></form>
+  </section>
+  <section class="card">
+    <h2>Details</h2>
+    <form method="post" action="{{ base }}/admin/media/{{ m.uuid }}">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <label>Title <input name="title" value="{{ m.title | default('') }}"></label>
+      <label>Alt text <input name="alt" value="{{ m.alt | default('') }}"></label>
+      <label>Caption <input name="caption" value="{{ m.caption | default('') }}"></label>
+      <label>Tags <input name="tags" value="{{ m.tags | default('') }}"><small>Comma separated.</small></label>
+      <button class="primary">Save</button>
+    </form>
+  </section>
+</div>
+<script src="{{ base }}/static/mms-player.js" defer></script>
+{% endblock %}

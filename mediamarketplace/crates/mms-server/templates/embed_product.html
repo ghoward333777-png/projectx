@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ p.title }} · {{ site_name }}</title>
+<link rel="stylesheet" href="{{ base }}/static/mms.css">
+</head>
+<body class="embed">
+<article class="product-page">
+  <p><a href="{{ base }}/embed/showcase?site={{ site }}">← Back to the store</a></p>
+  <div class="hero">
+    {% if preview_src %}
+      <mms-player type="{{ p.type }}" src="{{ preview_src }}" {% if thumb %}poster="{{ base }}/media/{{ thumb }}"{% endif %} player="native" base="{{ base }}" product="{{ p.slug }}" start="{{ preview_start }}" clip="{{ preview_len }}"></mms-player>
+      <p class="muted">Free preview: {{ preview_len }} seconds.</p>
+    {% elif thumb %}<img src="{{ base }}/media/{{ thumb }}" alt="{{ p.title }}">
+    {% else %}<div class="placeholder type-{{ p.type }}">{{ type_label }}</div>{% endif %}
+  </div>
+  <h1>{{ p.title }}</h1>
+  <p class="meta"><span class="type">{{ type_label }}</span>{% if p.rating_count %} · ★ {{ p.rating_avg | round(1) }} ({{ p.rating_count }}){% endif %}{% if p.purchases %} · {{ p.purchases }} sold{% endif %}{% if media and media.duration_ms %} · {{ media.duration_ms | duration }}{% endif %}</p>
+  {% if p.description %}<p class="desc">{{ p.description }}</p>{% endif %}
+  {% if p.type == "live" and settings.starts_at %}<p><b>Live:</b> {{ settings.starts_at }} to {{ settings.ends_at }} (UTC)</p>{% endif %}
+  {% if p.type == "site_pass" %}<p><b>Includes everything in the library</b>{% if settings.validity == "days" %} for {{ settings.days }} days{% elif settings.validity == "lifetime" %}, forever{% endif %}.</p>{% endif %}
+  {% if p.type == "image" and settings.licence %}<details><summary>Licence</summary><p>{{ settings.licence }}</p></details>{% endif %}
+  <div class="buy">
+    <span class="price">{% if p.price_cents == 0 %}Free{% else %}{{ p.price_cents | money(p.currency) }}{% endif %}</span>
+    {% if entitled %}
+      <a class="button primary" href="{{ base }}/embed/player/{{ p.slug }}?site={{ site }}">Open</a>
+    {% elif p.price_cents == 0 and user %}
+      <a class="button primary" href="{{ base }}/embed/checkout?site={{ site }}&product={{ p.slug }}">Get it free</a>
+    {% else %}
+      <a class="button primary" href="{{ base }}/embed/checkout?site={{ site }}&product={{ p.slug }}">{% if p.price_cents == 0 %}Get it free{% else %}Buy{% endif %}</a>
+    {% endif %}
+    {% if not user %}<a class="button" href="{{ base }}/login?return=%2Fembed%2Fproduct%2F{{ p.slug }}%3Fsite%3D{{ site }}">Sign in</a>{% endif %}
+  </div>
+  {% if ratings %}<section class="reviews"><h2>Reviews</h2>{% for r in ratings %}<div class="review"><b>{{ "★" * r.stars }}</b> {{ r.name }}{% if r.review %} — {{ r.review }}{% endif %}</div>{% endfor %}</section>{% endif %}
+  {% if entitled %}
+  <section class="rate"><h2>Rate this</h2>
+    <form id="rate-form"><select name="stars">{% for n in [5,4,3,2,1] %}<option value="{{ n }}">{{ "★" * n }}</option>{% endfor %}</select> <input name="review" placeholder="Optional review"> <button class="primary">Send</button> <span id="rate-msg"></span></form>
+  </section>
+  {% endif %}
+</article>
+<script src="{{ base }}/static/mms-player.js" defer></script>
+<script>
+(function () {
+  function report() { parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*'); }
+  window.addEventListener('load', report); window.addEventListener('resize', report);
+  new MutationObserver(report).observe(document.body, { childList: true, subtree: true });
+  var f = document.getElementById('rate-form');
+  if (f) f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    fetch('{{ base }}/api/v1/ratings', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: '{{ p.slug }}', stars: parseInt(f.stars.value, 10), review: f.review.value }) })
+      .then(function (r) { return r.json(); }).then(function (j) { document.getElementById('rate-msg').textContent = j.error ? j.error.message : 'Thank you.'; });
+  });
+})();
+</script>
+</body>
+</html>

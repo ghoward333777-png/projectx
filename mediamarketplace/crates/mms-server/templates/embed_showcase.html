@@ -7,20 +7,44 @@
 <link rel="stylesheet" href="{{ base }}/static/mms.css">
 </head>
 <body class="embed">
-<div class="showcase {{ view }}" data-category="{{ category }}">
+{% set qs = "site=" ~ site ~ "&view=" ~ view %}
+{% if menu %}
+<nav class="cat-menu {{ menu }}">
+  <a href="{{ base }}/embed/showcase?{{ qs }}" {% if not category %}class="on"{% endif %}>All</a>
+  {% for c in categories %}<a href="{{ base }}/embed/showcase?{{ qs }}&category={{ c.slug }}" {% if c.slug == category %}class="on"{% endif %}>{{ c.name }}</a>{% endfor %}
+</nav>
+{% endif %}
+<form class="toolbar" method="get" action="{{ base }}/embed/showcase">
+  <input type="hidden" name="site" value="{{ site }}"><input type="hidden" name="menu" value="{{ menu }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search" aria-label="Search products">
+  <select name="type" aria-label="Type"><option value="">All types</option>{% for t in types %}<option value="{{ t[0] }}" {% if t[0] == type_filter %}selected{% endif %}>{{ t[1] }}</option>{% endfor %}</select>
+  {% if categories %}<select name="category" aria-label="Category"><option value="">All categories</option>{% for c in categories %}<option value="{{ c.slug }}" {% if c.slug == category %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>{% endif %}
+  <select name="sort" aria-label="Sort"><option value="">Featured first</option><option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest</option><option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>Price: low to high</option><option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>Price: high to low</option><option value="rating" {% if sort == "rating" %}selected{% endif %}>Top rated</option><option value="bestselling" {% if sort == "bestselling" %}selected{% endif %}>Best selling</option><option value="az" {% if sort == "az" %}selected{% endif %}>A to Z</option></select>
+  <label class="inline-check"><input type="checkbox" name="featured" value="1" {% if featured == "1" %}checked{% endif %}> Featured</label>
+  <button>Apply</button>
+  <span class="view-toggle"><a href="{{ base }}/embed/showcase?site={{ site }}&view=grid&q={{ q }}&type={{ type_filter }}&category={{ category }}&sort={{ sort }}&menu={{ menu }}" {% if view == "grid" %}class="on"{% endif %} aria-label="Grid">▦</a><a href="{{ base }}/embed/showcase?site={{ site }}&view=list&q={{ q }}&type={{ type_filter }}&category={{ category }}&sort={{ sort }}&menu={{ menu }}" {% if view == "list" %}class="on"{% endif %} aria-label="List">☰</a></span>
+</form>
+<div class="showcase {{ view }}">
 {% if cards %}
-  {% for c in cards %}
-  <article class="product-card type-{{ c.type }}{% if c.featured %} featured{% endif %}">
-    <div class="thumb"><span class="type">{{ c.type | label }}</span></div>
+  {% for row in cards %}{% set c = row.c %}
+  <a class="product-card type-{{ c.type }}{% if c.featured %} featured{% endif %}" href="{{ base }}/embed/product/{{ c.slug }}?site={{ site }}">
+    <div class="thumb" {% if c.thumbnail_path %}style="background-image:url('{{ base }}/media/{{ c.thumbnail_path }}')"{% endif %}>
+      <span class="type">{{ row.type_label }}</span>{% if c.duration_ms %}<span class="dur">{{ c.duration_ms | duration }}</span>{% endif %}{% if c.featured %}<span class="star" title="Featured">★</span>{% endif %}
+    </div>
     <h3>{{ c.title }}</h3>
-    {% if c.description %}<p>{{ c.description }}</p>{% endif %}
-    <div class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.price_cents | money(c.currency) }}{% endif %}</div>
-  </article>
+    {% if c.description %}<p>{{ c.description | truncate(110) }}</p>{% endif %}
+    <div class="foot">
+      <span class="price">{% if c.price_cents == 0 %}Free{% else %}{{ c.price_cents | money(c.currency) }}</span>{% endif %}
+      {% if c.rating_count %}<span class="rating" title="{{ c.rating_count }} ratings">★ {{ c.rating_avg | round(1) }}</span>{% endif %}
+      {% if show_sales and c.purchases %}<span class="sales">{{ c.purchases }} sold</span>{% endif %}
+    </div>
+  </a>
   {% endfor %}
 {% else %}
-  <p class="empty">No products published yet.</p>
+  <p class="empty">{% if q or type_filter or category %}Nothing matches those filters.{% else %}No products published yet.{% endif %}</p>
 {% endif %}
 </div>
+{% if pages > 1 %}<nav class="pager">{% for n in range(1, pages + 1) %}{% if n == page %}<b>{{ n }}</b>{% else %}<a href="{{ base }}/embed/showcase?site={{ site }}&view={{ view }}&q={{ q }}&type={{ type_filter }}&category={{ category }}&sort={{ sort }}&featured={{ featured }}&menu={{ menu }}&page={{ n }}">{{ n }}</a>{% endif %}{% endfor %}</nav>{% endif %}
 <script>
 (function () {
   function report() { parent.postMessage({ mms: 'resize', height: document.documentElement.scrollHeight }, '*'); }

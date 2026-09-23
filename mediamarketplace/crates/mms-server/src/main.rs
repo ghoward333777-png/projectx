@@ -148,6 +148,7 @@ async fn main() -> Result<()> {
             if synced > 0 {
                 tracing::info!("registered {synced} bridge site(s) from the config file");
             }
+            routes::worker::spawn(state.clone());
             let router = app::router(state);
             let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
                 .await

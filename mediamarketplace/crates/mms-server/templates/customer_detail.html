@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ c.email }}{% endblock %}
+{% block body %}
+<p><a href="{{ base }}/admin/customers">← Customers</a></p>
+<h1>{{ c.name | default(c.email) }} <small class="muted">{{ c.role }}</small></h1>
+<div class="two-col">
+<section class="card">
+  <h2>Access</h2>
+  {% if grants %}<table><thead><tr><th>Item</th><th>Scope</th><th>Source</th><th>Until</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for row in grants %}<tr><td>{{ row.title }}</td><td>{{ row.g.scope }}</td><td>{{ row.g.source }}</td><td>{{ row.g.ends_at | default("no end") }}</td><td>{{ row.g.status }}</td>
+    <td>{% if row.g.status == "active" %}<form method="post" action="{{ base }}/admin/customers/{{ c.uuid }}/revoke/{{ row.g.id }}" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Revoke</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted">No access granted yet.</p>{% endif %}
+  <h3>Grant access manually</h3>
+  <form method="post" action="{{ base }}/admin/customers/{{ c.uuid }}/grant">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <label>Scope <select name="scope" id="grant-scope"><option value="product">One product</option><option value="site">Whole library (site pass)</option></select></label>
+    <label>Product <select name="product_id">{% for p in products %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select></label>
+    <label>Days (empty = no end) <input name="days" type="number" min="1" placeholder="30"></label>
+    <button class="primary">Grant</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Account</h2>
+  <table><tr><th>Email</th><td>{{ c.email }}</td></tr><tr><th>Role</th><td>{{ c.role }}</td></tr><tr><th>Status</th><td>{{ c.status }}</td></tr><tr><th>ID</th><td><code>{{ c.uuid }}</code></td></tr></table>
+  {% if identities %}<h3>Signed in from</h3><ul>{% for i in identities %}<li>{{ i.host }} user {{ i.external_id }}</li>{% endfor %}</ul>{% endif %}
+</section>
+</div>
+{% endblock %}
