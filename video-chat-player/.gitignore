@@ -1,0 +1,3 @@
+# Runtime data and local media never ship with the code.
+rooms/
+media/
