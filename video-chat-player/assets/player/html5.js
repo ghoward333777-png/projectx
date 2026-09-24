@@ -65,6 +65,8 @@ export class Html5Adapter extends PlayerAdapter {
   setRate(r) { this.el.playbackRate = r; }
   pictureSize() { return this._size; }
   isPlaying() { return !this.el.paused && !this.el.ended; }
+  /** A plain file is never live; only stream manifests (HLS/DASH) with no fixed duration are. */
+  isLive() { return this.el.duration === Infinity && /\.(m3u8|mpd)(\?|$)/i.test(this.el.currentSrc || this.el.src || ''); }
   isMuted() { return this.el.muted; }
   volume() { return this.el.volume; }
 

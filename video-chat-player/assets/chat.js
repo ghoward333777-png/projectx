@@ -192,7 +192,7 @@ export class ChatClient {
     const message = {
       id: `c_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`,
       kind: 'chat', memberId: this.memberId, name: me?.name || 'me', colour: me?.colour || '#fff',
-      text, mediaTime: Math.round(this.mediaTime() * 100) / 100, itemId: this.currentItemId(), sentAt: this.serverNow(), pending: true, attempts: 0,
+      text, mediaTime: (() => { const t = this.mediaTime(); return Number.isFinite(t) ? Math.round(t * 100) / 100 : null; })(), itemId: this.currentItemId(), sentAt: this.serverNow(), pending: true, attempts: 0,
     };
     this.outbox.push(message);
     bus.emit('chat:pending', message);

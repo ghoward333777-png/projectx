@@ -19,6 +19,8 @@ export class PlayerAdapter {
   /** Natural picture size { width, height }, or null until known. */
   pictureSize() { return null; }
   isPlaying() { return false; }
+  /** True for a live stream (no fixed duration); the app then syncs play/pause only. */
+  isLive() { return false; }
   isMuted() { return false; }
   volume() { return 1; }
   mount(_container) {}

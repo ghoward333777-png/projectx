@@ -29,6 +29,7 @@ export class Controls {
     };
     this.scrubbing = false;
     this.lastWhole = -1;
+    this.live = false;
     this.wire();
     this.restoreAudio();
   }
@@ -77,8 +78,27 @@ export class Controls {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
+  /** Live streams have no fixed length: hide the seek bar and speed, show LIVE. */
+  setLive(on) {
+    if (this.live === on) return;
+    this.live = on;
+    this.el.seek.hidden = on;
+    this.el.rate.disabled = on;
+    this.el.time.classList.toggle('control__time--live', on);
+    this.lastWhole = -1;
+    this.renderTime(this.player.currentTime());
+  }
+
   renderTime(t) {
     const d = this.player.duration();
+    if (this.live || this.player.isLive?.()) {
+      if (!this.live) this.setLive(true);
+      const whole = Math.floor(t);
+      if (whole === this.lastWhole) return;
+      this.lastWhole = whole;
+      this.el.time.textContent = `● LIVE · ${formatTime(t)}`;
+      return;
+    }
     if (!this.scrubbing && d > 0) this.el.seek.value = String(Math.round((t / d) * 1000));
     const whole = Math.floor(t);
     if (whole === this.lastWhole && d > 0) return;
@@ -141,7 +161,7 @@ export function installKeyboard({ player, stage, idle, controls, composer, toggl
       if (event.key === 'Escape' && target === composer) { composer.blur(); stage.root.focus(); }
       return;
     }
-    const seekBy = (delta) => player.seek(player.currentTime() + delta);
+    const seekBy = (delta) => { if (!player.isLive?.()) player.seek(player.currentTime() + delta); };
     let handled = true;
     switch (event.key) {
       case ' ': case 'k': case 'K': togglePlay(); break;

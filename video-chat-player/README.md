@@ -62,6 +62,11 @@ A video whose uploader disabled embedding (YouTube error 150, common for full-mo
 uploads such as https://youtu.be/qqwhjSzFJqY) cannot play in any embedded player. The app
 says so within a second, offers "Open on YouTube", marks the item and moves on.
 
+Live streams (`youtube.com/live/ID` or any live watch link) play through the same engines. The
+app detects a live item, hides the seek bar, shows a LIVE badge, shares only play and pause
+between viewers (everyone sits at the live edge), and messages carry no media time. Latency
+is YouTube's own, typically 10–30 s, and the stream owner must allow embedding.
+
 YouTube's API terms restrict overlaying content on the embedded player. The room setting
 "Chat under the picture for YouTube (docked)" moves the chat into a band beneath the
 picture, still inside full screen, for rooms where that matters.
@@ -126,6 +131,7 @@ node video-chat-player/bin/check-playlist.mjs http://127.0.0.1:8082/video-chat-p
 node video-chat-player/bin/check-sync.mjs     http://127.0.0.1:8082/video-chat-player/
 node video-chat-player/bin/check-api.mjs      http://127.0.0.1:8082/video-chat-player/
 node video-chat-player/bin/check-modes.mjs    http://127.0.0.1:8082/video-chat-player/
+node video-chat-player/bin/check-live.mjs     http://127.0.0.1:8082/video-chat-player/
 ```
 
 The browser checks drive real Chromium through Playwright. Stage: playback, content rect

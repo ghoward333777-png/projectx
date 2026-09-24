@@ -51,14 +51,15 @@ export class SyncController {
     const target = this.expectedPosition(state);
     const now = this.player.currentTime();
     const drift = target - now;
-    if (Number.isFinite(state.rate) && state.rate !== this.player.rate) { this.player.setRate(state.rate); this.player.rate = state.rate; }
-    if (Math.abs(drift) > this.threshold) {
+    const live = this.player.isLive?.();
+    if (!live && Number.isFinite(state.rate) && state.rate !== this.player.rate) { this.player.setRate(state.rate); this.player.rate = state.rate; }
+    if (!live && Math.abs(drift) > this.threshold) {
       if (state.playing && Math.abs(drift) <= 1.5 && this.player.kind !== 'youtube') this.nudge(drift);
       else this.silently('seek', () => this.player.seek(Math.max(0, target)));
     }
     if (state.playing && !this.player.isPlaying()) this.silently('play', () => this.requestPlay());
     if (!state.playing && this.player.isPlaying()) this.silently('pause', () => this.player.pause());
-    this.health?.report('sync', 'ok', `drift ${Math.round(drift * 1000)} ms`);
+    this.health?.report('sync', 'ok', live ? 'live stream: play/pause shared, everyone at the live edge' : `drift ${Math.round(drift * 1000)} ms`);
   }
 
   /** Runs a player call whose resulting event must not be published back as a user action. */

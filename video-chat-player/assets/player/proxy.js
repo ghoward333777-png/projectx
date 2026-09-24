@@ -45,6 +45,7 @@ export class PlayerProxy extends PlayerAdapter {
   setRate(r) { this.current?.setRate(r); }
   pictureSize() { return this.current ? this.current.pictureSize() : null; }
   isPlaying() { return !!this.current && this.current.isPlaying(); }
+  isLive() { return !!this.current && this.current.isLive(); }
   isMuted() { return !!this.current && this.current.isMuted(); }
   volume() { return this.current ? this.current.volume() : 1; }
   get caps() { return this.current ? this.current.caps : {}; }

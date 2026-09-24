@@ -84,7 +84,7 @@ const controls = new Controls({ root, player, stage, idle, togglePlay });
 installKeyboard({ player, stage, idle, controls, composer, togglePlay });
 
 const health = new Health({ listEl: $('health-list'), bannerEl: $('banner'), player, onStall: recoverStall });
-const chat = new ChatClient({ mediaTime: () => player.currentTime(), currentItemId: () => playlist.currentId });
+const chat = new ChatClient({ mediaTime: () => (player.isLive() ? null : player.currentTime()), currentItemId: () => playlist.currentId });
 const playlist = new PlaylistController({ chat, listEl: $('pl-list'), form: $('pl-form'), input: $('pl-url'), note: $('pl-note'), health, modesEl: $('pl-modes'), savedEl: $('pl-saved'), player });
 const overlay = new Overlay({ stage, idle, list: $('overlay-list'), composer: $('overlay-composer'), input: composer, seek: (t) => player.seek(t), myId: () => chat.memberId, controls });
 const sync = new SyncController({ chat, player, playlist, health, requestPlay });
@@ -102,6 +102,7 @@ async function loadItem(item, { autoplay = true } = {}) {
     return;
   }
   $('rail-label').textContent = item.title;
+  controls.setLive(false);
   setState('loading');
   const isYouTube = item.kind === 'youtube' || item.kind === 'youtube-playlist';
   const engine = isYouTube ? pickEngine(item) : 'html5';
@@ -326,7 +327,7 @@ bus.on('idle:state', (s) => { $('dbg-idle').textContent = s + (idle.pins.size ? 
 installBridge({ root, player, chat, playlist, stage, controls, idle, requestPlay });
 
 let resumeTick = 0;
-player.on('time', (t) => { if (state.solo && state.item && Math.floor(t) !== resumeTick) { resumeTick = Math.floor(t); try { localStorage.setItem('watchroom.resume.' + state.item.src, String(t)); } catch (_err) { /* blocked */ } } });
+player.on('time', (t) => { if (player.isLive()) { controls.setLive(true); if (health.items.get('player').detail !== 'live stream') health.report('player', 'ok', 'live stream'); } if (state.solo && state.item && !player.isLive() && Math.floor(t) !== resumeTick) { resumeTick = Math.floor(t); try { localStorage.setItem('watchroom.resume.' + state.item.src, String(t)); } catch (_err) { /* blocked */ } } });
 
 window.__watchRoom = { stage, player, idle, controls, chat, playlist, sync, overlay, health, machine, get state() { return state.name; }, get error() { return state.error; }, get item() { return state.item; } };
 

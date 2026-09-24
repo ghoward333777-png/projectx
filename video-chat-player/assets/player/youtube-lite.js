@@ -134,6 +134,7 @@ export class YouTubeLiteAdapter extends PlayerAdapter {
   setRate(r) { this.command('setPlaybackRate', [r]); }
   pictureSize() { return { width: 16, height: 9 }; }
   isPlaying() { return this.playing; }
+  isLive() { const vd = this.info.videoData; if (vd && typeof vd.isLive === 'boolean') return vd.isLive; return this.ready && (this.playing || this.info.playerState === 3) && !(this.info.duration > 0) && this.info.currentTime > 1; }
   isMuted() { return this._muted; }
   volume() { return this._volume; }
 

@@ -236,3 +236,5 @@ kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; background: #
 .pl__saved .pl__jump { grid-template-columns: 1fr; }
 .pl__export { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 6px; font-size: 12px; margin-top: 6px; }
 .yt-lite-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+.control__time--live { color: #ff9aa9; font-weight: 600; }
