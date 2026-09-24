@@ -22,12 +22,14 @@ export function installBridge({ root, player, chat, playlist, stage, controls, i
     send: ({ text }) => chat.send(String(text || '')),
     add: ({ url }) => playlist.add(String(url || '')),
     jump: ({ itemId }) => playlist.jump(String(itemId || '')),
+    repeat: ({ mode }) => playlist.setRepeat(mode),
+    shuffle: ({ on }) => playlist.setShuffle(on !== false),
     next: () => bus.emit('playlist:next'),
     previous: () => bus.emit('playlist:previous'),
     reveal: () => idle.activity(),
     snapshot: () => ({
       room: chat.room?.id || null, memberId: chat.memberId, isHost: chat.isHost, members: chat.members,
-      state: { playing: player.isPlaying(), time: player.currentTime(), duration: player.duration(), item: playlist.current, fullscreen: stage.isFullscreen() },
+      state: { playing: player.isPlaying(), time: player.currentTime(), duration: player.duration(), item: playlist.current, fullscreen: stage.isFullscreen(), engine: player.kind, machine: window.__watchRoom?.machine?.state },
       playlist: playlist.playlist,
     }),
   };

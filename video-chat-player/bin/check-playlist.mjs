@@ -37,7 +37,7 @@ ok(broken && /missing-video/.test(broken.title), `unplayable file is marked in t
 ok(await wr(host.page, () => !!document.querySelector('[data-card="error"], [data-card="end"], [data-card="upnext"]')), 'a card explains what happened instead of a black frame');
 
 // YouTube: add a video; whether YouTube plays here or is blocked, the app must end in a defined state.
-await add(host.page, 'https://www.youtube.com/watch?v=aqz-KE-bpKQ');
+await add(host.page, 'https://youtu.be/qqwhjSzFJqY?si=q1wNGoJplwMWRINb');
 const yt = await wr(host.page, () => window.__watchRoom.playlist.playlist.items.find((i) => i.kind === 'youtube'));
 ok(!!yt, `YouTube link becomes a playlist item (${yt?.title})`);
 await wr(host.page, (id) => window.__watchRoom.playlist.jump(id), yt.id);

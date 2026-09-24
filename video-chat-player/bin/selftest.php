@@ -34,7 +34,7 @@ try {
     $row('chat.send', $s === 200 && ($b3['seq'] ?? 0) > 0, "status {$s}");
     [$s, $b4] = $api->handle('sync.poll', 'GET', ['roomId' => $roomId, 'memberId' => $b2['memberId'], 'since' => 0, 'prev' => 0, 'srev' => 0]);
     $row('sync.poll', $s === 200 && count($b4['messages']) >= 3 && isset($b4['playlist'], $b4['state']), 'messages ' . count($b4['messages'] ?? []));
-    [$s, $b5] = $api->handle('playlist.add', 'POST', ['roomId' => $roomId, 'memberId' => $me, 'url' => 'https://youtu.be/aqz-KE-bpKQ']);
+    [$s, $b5] = $api->handle('playlist.add', 'POST', ['roomId' => $roomId, 'memberId' => $me, 'url' => 'https://youtu.be/qqwhjSzFJqY']);
     $row('playlist.add', $s === 200 && ($b5['item']['kind'] ?? '') === 'youtube', "status {$s}");
     [$s, $b6] = $api->handle('state.set', 'POST', ['roomId' => $roomId, 'memberId' => $me, 'hostToken' => $b['hostToken'], 'state' => ['playing' => true, 'mediaTime' => 3, 'baseRev' => $b4['state']['rev']]]);
     $row('state.set', $s === 200 && ($b6['state']['playing'] ?? false) === true, "status {$s}");

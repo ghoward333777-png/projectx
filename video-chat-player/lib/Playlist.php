@@ -12,7 +12,8 @@ require_once __DIR__ . '/Text.php';
 final class Playlist
 {
     public const MAX_ITEMS = 200;
-    public const ADD_LIMIT_COUNT = 10;
+    public const ADD_LIMIT_COUNT = 30;
+    public const REPEAT_MODES = ['off', 'one', 'all'];
     public const ADD_LIMIT_WINDOW_MS = 60000;
     /** Where oEmbed lookups are cached; the API sets it from the rooms folder. */
     public static ?string $cacheDir = null;
@@ -72,6 +73,15 @@ final class Playlist
     {
         $id = 'p_' . bin2hex(random_bytes(6));
         $now = (int) floor(microtime(true) * 1000);
+        if ($parsed['kind'] === 'youtube-playlist') {
+            $meta = $lookup ? self::youtubeMeta('list:' . $parsed['list']) : null;
+            return [
+                'id' => $id, 'kind' => 'youtube-playlist', 'src' => $parsed['list'], 'firstVideo' => $parsed['id'] ?? null,
+                'title' => $meta['title'] ?? ('YouTube playlist ' . $parsed['list']),
+                'thumb' => $meta['thumb'] ?? ($parsed['id'] ? 'https://i.ytimg.com/vi/' . $parsed['id'] . '/mqdefault.jpg' : null),
+                'durationSec' => null, 'addedBy' => $addedBy, 'addedAt' => $now, 'status' => 'ok', 'error' => null,
+            ];
+        }
         if ($parsed['kind'] === 'youtube') {
             $meta = $lookup ? self::youtubeMeta($parsed['id']) : null;
             return [
@@ -90,18 +100,21 @@ final class Playlist
     /** oEmbed title and thumbnail without an API key; cached per video; null when unreachable. */
     public static function youtubeMeta(string $videoId, ?string $cacheDir = null): ?array
     {
-        if (!preg_match('/^[A-Za-z0-9_-]{11}$/', $videoId)) {
+        $isList = str_starts_with($videoId, 'list:');
+        $listId = $isList ? substr($videoId, 5) : '';
+        if ($isList ? !preg_match('/^[A-Za-z0-9_-]{10,64}$/', $listId) : !preg_match('/^[A-Za-z0-9_-]{11}$/', $videoId)) {
             return null;
         }
         $cacheDir ??= self::$cacheDir ?? dirname(__DIR__) . '/rooms/_cache';
-        $cacheFile = $cacheDir . '/yt-' . $videoId . '.json';
+        $cacheFile = $cacheDir . '/yt-' . ($isList ? 'list-' . $listId : $videoId) . '.json';
         if (is_file($cacheFile) && time() - (int) filemtime($cacheFile) < 86400 * 7) {
             $cached = json_decode((string) file_get_contents($cacheFile), true);
             if (is_array($cached)) {
                 return $cached;
             }
         }
-        $url = 'https://www.youtube.com/oembed?format=json&url=' . rawurlencode('https://www.youtube.com/watch?v=' . $videoId);
+        $target = $isList ? 'https://www.youtube.com/playlist?list=' . $listId : 'https://www.youtube.com/watch?v=' . $videoId;
+        $url = 'https://www.youtube.com/oembed?format=json&url=' . rawurlencode($target);
         [$status, $body] = Http::get($url, 16384);
         if ($status !== 200) {
             return null;
@@ -127,7 +140,76 @@ final class Playlist
 
     public static function empty(): array
     {
-        return ['rev' => 1, 'items' => [], 'current' => null];
+        return ['rev' => 1, 'items' => [], 'current' => null, 'repeat' => 'off', 'shuffle' => false, 'order' => []];
+    }
+
+    /** Fills in mode fields for playlists saved before they existed. */
+    public static function normalize(array $playlist): array
+    {
+        $playlist['repeat'] = in_array($playlist['repeat'] ?? 'off', self::REPEAT_MODES, true) ? $playlist['repeat'] : 'off';
+        $playlist['shuffle'] = (bool) ($playlist['shuffle'] ?? false);
+        $ids = array_column($playlist['items'], 'id');
+        $order = array_values(array_filter((array) ($playlist['order'] ?? []), static fn ($id) => in_array($id, $ids, true)));
+        foreach ($ids as $id) {
+            if (!in_array($id, $order, true)) {
+                $order[] = $id;
+            }
+        }
+        $playlist['order'] = $playlist['shuffle'] ? $order : $ids;
+        return $playlist;
+    }
+
+    /** Turns shuffle on (a fresh random order, current item first) or off. */
+    public static function setShuffle(array $playlist, bool $on): array
+    {
+        $playlist['shuffle'] = $on;
+        if ($on) {
+            $ids = array_column($playlist['items'], 'id');
+            shuffle($ids);
+            if ($playlist['current'] !== null && in_array($playlist['current'], $ids, true)) {
+                $ids = array_merge([$playlist['current']], array_values(array_diff($ids, [$playlist['current']])));
+            }
+            $playlist['order'] = $ids;
+        }
+        return self::normalize($playlist);
+    }
+
+    /**
+     * The item id to play after (direction 1) or before (-1) $itemId, honouring repeat and
+     * shuffle. Null means "stop": the end was reached with repeat off, or nothing is playable.
+     */
+    public static function nextId(array $playlist, ?string $itemId, int $direction = 1, bool $skipErrors = true): ?string
+    {
+        $playlist = self::normalize($playlist);
+        $order = $playlist['order'];
+        if ($order === []) {
+            return null;
+        }
+        $playable = static function (string $id) use ($playlist, $skipErrors): bool {
+            $item = self::find($playlist, $id);
+            return $item !== null && (!$skipErrors || $item['status'] !== 'error');
+        };
+        if ($playlist['repeat'] === 'one' && $itemId !== null && $direction === 1 && $playable($itemId)) {
+            return $itemId;
+        }
+        $index = $itemId === null ? -1 : array_search($itemId, $order, true);
+        if ($index === false) {
+            $index = -1;
+        }
+        $count = count($order);
+        for ($step = 1; $step <= $count; $step++) {
+            $i = $index + $step * $direction;
+            if ($i < 0 || $i >= $count) {
+                if ($playlist['repeat'] !== 'all' && !($direction === -1 && $itemId === null)) {
+                    return null;
+                }
+                $i = (($i % $count) + $count) % $count;
+            }
+            if ($playable($order[$i])) {
+                return $order[$i];
+            }
+        }
+        return null;
     }
 
     public static function load(string $roomPath): array
@@ -137,11 +219,12 @@ final class Playlist
             return self::empty();
         }
         $data = json_decode((string) file_get_contents($file), true);
-        return is_array($data) && isset($data['rev'], $data['items']) ? $data : self::empty();
+        return is_array($data) && isset($data['rev'], $data['items']) ? self::normalize($data) : self::empty();
     }
 
     public static function save(string $roomPath, array $playlist): array
     {
+        $playlist = self::normalize($playlist);
         $playlist['rev'] = (int) $playlist['rev'] + 1;
         $file = $roomPath . '/playlist.json';
         $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';

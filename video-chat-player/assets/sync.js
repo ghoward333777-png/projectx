@@ -25,7 +25,7 @@ export class SyncController {
     player.on('ended', () => { this.stopHeartbeat(); });
   }
 
-  get threshold() { return this.player.kind === 'youtube' ? 0.5 : 0.25; }
+  get threshold() { return this.player.kind?.startsWith('youtube') ? 0.5 : 0.25; }
 
   canControl() { return this.chat.isActingHost || this.chat.isHost || !!this.chat.room?.guestsControl; }
 

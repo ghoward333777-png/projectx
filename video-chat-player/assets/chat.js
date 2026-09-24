@@ -87,9 +87,14 @@ export class ChatClient {
       this.since = data.since || 0;
       bus.emit('chat:history', data.messages || []);
     }
-    if (data.playlist) { this.playlistRev = data.playlist.rev; bus.emit('playlist:update', data.playlist); }
-    if (data.state) { this.stateRev = data.state.rev; bus.emit('state:update', data.state); }
+    this.absorbRevisions(data, true);
     bus.emit('room:update', { room: this.room, members: this.members, actingHostId: this.actingHostId, me: this.memberId });
+  }
+
+  /** Applies playlist/state from any response, ignoring anything older than what we already have (late polls). */
+  absorbRevisions(data, force = false) {
+    if (data.playlist && (force || data.playlist.rev > this.playlistRev)) { this.playlistRev = data.playlist.rev; bus.emit('playlist:update', data.playlist); }
+    if (data.state && (force || data.state.rev > this.stateRev)) { this.stateRev = data.state.rev; bus.emit('state:update', data.state); }
   }
 
   get me() { return this.members.find((m) => m.id === this.memberId) || null; }
@@ -155,8 +160,7 @@ export class ChatClient {
         this.since = data.since;
         bus.emit('chat:messages', data.messages);
       }
-      if (data.playlist) { this.playlistRev = data.playlist.rev; bus.emit('playlist:update', data.playlist); }
-      if (data.state) { this.stateRev = data.state.rev; bus.emit('state:update', data.state); }
+      this.absorbRevisions(data);
       this.flushOutbox();
     } catch (err) {
       this.failures = Math.min(this.failures + 1, 6);
@@ -245,8 +249,7 @@ export class ChatClient {
     if (!this.room) throw new ApiError('Not in a room yet.', 'no_room', 0, null);
     const data = await api(action, { roomId: this.room.id, memberId: this.memberId, hostToken: this.hostToken || undefined, ...params }, options);
     this.noteServerTime(data.serverTime);
-    if (data.playlist) { this.playlistRev = data.playlist.rev; bus.emit('playlist:update', data.playlist); }
-    if (data.state) { this.stateRev = data.state.rev; bus.emit('state:update', data.state); }
+    this.absorbRevisions(data);
     if (data.room) { this.room = data.room; this.members = data.room.members; this.roomRev = data.room.updatedAt || this.roomRev; bus.emit('room:update', { room: this.room, members: this.members, actingHostId: this.actingHostId, me: this.memberId }); }
     return data;
   }

@@ -86,7 +86,7 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
             <ol class="pl" id="pl-list"></ol>
             <form class="pl__add" id="pl-form">
                 <label class="visually-hidden" for="pl-url">Add a video link</label>
-                <input id="pl-url" placeholder="YouTube link, playlist, or .mp4 URL" autocomplete="off" spellcheck="false" list="pl-library">
+                <input id="pl-url" placeholder="YouTube link, playlist, or .mp4 URL (one per line)" autocomplete="off" spellcheck="false" list="pl-library">
                 <?php if ($library !== []): ?>
                 <datalist id="pl-library">
                     <?php foreach ($library as $name): ?><option value="media/<?= $e($name) ?>"></option><?php endforeach; ?>
@@ -95,11 +95,32 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
                 <button type="submit" class="button button--small">Add</button>
             </form>
             <p class="rail__note" id="pl-note"></p>
+            <div class="pl__modes" id="pl-modes">
+                <button type="button" class="button button--small button--quiet" data-mode="repeat" aria-pressed="false">Repeat: off</button>
+                <button type="button" class="button button--small button--quiet" data-mode="shuffle" aria-pressed="false">Shuffle: off</button>
+            </div>
+            <details class="rail__details" id="pl-saved">
+                <summary>My playlists (this browser)</summary>
+                <div class="pl__saverow">
+                    <input id="pl-save-name" placeholder="Name this playlist" maxlength="40">
+                    <button type="button" class="button button--small" data-save>Save</button>
+                    <button type="button" class="button button--small button--quiet" data-copy>Copy links</button>
+                </div>
+                <ul class="pl" id="pl-saved-list"></ul>
+                <textarea id="pl-export" class="pl__export" hidden rows="4" readonly aria-label="Playlist links"></textarea>
+            </details>
 
             <form class="settings" id="room-settings" hidden>
                 <h2 class="rail__title">Host settings</h2>
                 <label class="settings__row"><input type="checkbox" id="set-guests"> Guests can pause and seek for everyone</label>
                 <label class="settings__row"><input type="checkbox" id="set-docked"> Chat under the picture for YouTube (docked)</label>
+                <label class="settings__row">YouTube engine
+                    <select id="set-engine" class="select select--small">
+                        <option value="auto">Auto (API-free embed, falls back)</option>
+                        <option value="lite">API-free embed only</option>
+                        <option value="api">YouTube IFrame API only</option>
+                    </select>
+                </label>
             </form>
 
             <h2 class="rail__title">System</h2>

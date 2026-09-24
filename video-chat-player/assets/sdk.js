@@ -77,6 +77,9 @@ export class WatchRoomClient {
   jump(itemId) { return this.request('PATCH', `/v1/rooms/${this.roomId}/playlist`, { current: itemId }); }
   reorder(order) { return this.request('PATCH', `/v1/rooms/${this.roomId}/playlist`, { order }, { host: true }); }
   remove(itemId) { return this.request('DELETE', `/v1/rooms/${this.roomId}/playlist/${itemId}`, null, { host: true }); }
+  repeat(mode) { return this.request('PATCH', `/v1/rooms/${this.roomId}/playlist`, { repeat: mode }); }
+  shuffle(on) { return this.request('PATCH', `/v1/rooms/${this.roomId}/playlist`, { shuffle: !!on }); }
+  addExpanded(url) { return this.request('POST', `/v1/rooms/${this.roomId}/playlist`, { url, expand: true }); }
   reportItem(itemId, status, error = '') { return this.request('PATCH', `/v1/rooms/${this.roomId}/playlist`, { status: { itemId, status, error } }); }
   resolve(url) { return this.request('GET', `/v1/resolve?url=${encodeURIComponent(url)}`, null, { auth: false }); }
 

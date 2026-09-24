@@ -84,7 +84,7 @@ final class WatchRoomApi
         $first = null;
         $parsed = Playlist::parseUrl((string) ($in['src'] ?? ''), $this->mediaDir)
             ?? Playlist::parseUrl('media/' . Source::SAMPLE, $this->mediaDir);
-        if ($parsed !== null && $parsed['kind'] !== 'youtube-playlist') {
+        if ($parsed !== null) {
             $first = Playlist::makeItem($parsed, $member['id'], $this->lookupTitles);
             $playlist['items'][] = $first;
             $playlist['current'] = $first['id'];
@@ -158,10 +158,11 @@ final class WatchRoomApi
         if ($parsed === null) {
             throw new InvalidArgumentException('Not a supported video link.');
         }
-        if ($parsed['kind'] === 'youtube-playlist') {
-            return [200, ['kind' => 'youtube-playlist', 'list' => $parsed['list'], 'firstVideo' => $parsed['id'], 'note' => 'Playlist contents are read in the browser through the YouTube player; POST the video ids to playlist.import.']];
-        }
         $item = Playlist::makeItem($parsed, 'preview', $this->lookupTitles);
+        if ($item['kind'] === 'youtube-playlist') {
+            $item['list'] = $item['src'];
+            $item['note'] = 'Plays as one item with the embed\'s own next/previous; POST with expand=1 to receive the ids for playlist.import instead.';
+        }
         unset($item['id'], $item['addedBy'], $item['addedAt']);
         return [200, $item];
     }
@@ -221,6 +222,9 @@ final class WatchRoomApi
         }
         if (isset($in['guestsControl'])) {
             $room['guestsControl'] = (bool) $in['guestsControl'];
+        }
+        if (isset($in['youtubeEngine'])) {
+            $room['youtubeEngine'] = in_array($in['youtubeEngine'], ['auto', 'lite', 'api'], true) ? $in['youtubeEngine'] : ($room['youtubeEngine'] ?? 'auto');
         }
         if (isset($in['hostMemberId']) && isset($room['members'][$in['hostMemberId']])) {
             $room['hostMemberId'] = (string) $in['hostMemberId'];
@@ -294,7 +298,7 @@ final class WatchRoomApi
         if ($parsed === null) {
             throw new InvalidArgumentException('Use a YouTube link, a YouTube playlist link, an https link to an .mp4/.webm file, or a file from the media folder.');
         }
-        if ($parsed['kind'] === 'youtube-playlist') {
+        if ($parsed['kind'] === 'youtube-playlist' && !empty($in['expand'])) {
             return [200, ['needsImport' => true, 'list' => $parsed['list'], 'firstVideo' => $parsed['id'], 'serverTime' => RoomStore::now()]];
         }
         $this->enforceAddLimit($room, $member['id']);
@@ -370,6 +374,23 @@ final class WatchRoomApi
             if ($playlist['current'] === $in['remove']) {
                 $playlist['current'] = $playlist['items'][0]['id'] ?? null;
             }
+            $changed = true;
+        }
+        if (isset($in['repeat'])) {
+            if (!$isHost && !$room['guestsControl']) {
+                throw new UnexpectedValueException('Only the host can change the repeat mode.');
+            }
+            if (!in_array($in['repeat'], Playlist::REPEAT_MODES, true)) {
+                throw new InvalidArgumentException('repeat must be off, one or all.');
+            }
+            $playlist['repeat'] = $in['repeat'];
+            $changed = true;
+        }
+        if (isset($in['shuffle'])) {
+            if (!$isHost && !$room['guestsControl']) {
+                throw new UnexpectedValueException('Only the host can change shuffle.');
+            }
+            $playlist = Playlist::setShuffle($playlist, (bool) $in['shuffle']);
             $changed = true;
         }
         if (isset($in['status']) && is_array($in['status']) && isset($in['status']['itemId'])) {
@@ -519,6 +540,7 @@ final class WatchRoomApi
             'updatedAt' => $room['updatedAt'],
             'chatMode' => $room['chatMode'],
             'guestsControl' => $room['guestsControl'],
+            'youtubeEngine' => $room['youtubeEngine'] ?? 'auto',
             'hostMemberId' => $room['hostMemberId'],
             'members' => RoomStore::publicMembers($room),
         ];

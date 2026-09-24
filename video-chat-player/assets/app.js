@@ -4,6 +4,8 @@ import { IdleController } from './idle.js';
 import { Controls, installKeyboard } from './controls.js';
 import { Html5Adapter } from './player/html5.js';
 import { YouTubeAdapter, loadYouTubeApi } from './player/youtube.js';
+import { YouTubeLiteAdapter } from './player/youtube-lite.js';
+import { PlayerStateMachine } from './state-machine.js';
 import { PlayerProxy } from './player/proxy.js';
 import { ChatClient } from './chat.js';
 import { Overlay } from './overlay.js';
@@ -20,13 +22,14 @@ const player = new PlayerProxy(stage.picture);
 player.rate = 1;
 const cards = stage.cards;
 const composer = $('overlay-input');
-const state = { name: 'loading', error: null, item: null, upNextTimer: 0, solo: false };
-
-function setState(name, error = null) {
+const state = { name: 'idle', error: null, item: null, upNextTimer: 0, solo: false, engine: 'auto' };
+const machine = new PlayerStateMachine((name, prev, error) => {
   state.name = name;
   state.error = error;
   $('dbg-state').textContent = error ? `${name}: ${error}` : name;
-}
+});
+function setState(name, error = null) { machine.go(name, error); }
+bus.on('player:illegal', ({ from, to }) => health?.report('app', 'warn', `state ${from} → ${to} was not expected`));
 
 // ---- cards ----
 function showCard({ title, text, action, secondary, id = 'card' }) {
@@ -82,7 +85,7 @@ installKeyboard({ player, stage, idle, controls, composer, togglePlay });
 
 const health = new Health({ listEl: $('health-list'), bannerEl: $('banner'), player, onStall: recoverStall });
 const chat = new ChatClient({ mediaTime: () => player.currentTime(), currentItemId: () => playlist.currentId });
-const playlist = new PlaylistController({ chat, listEl: $('pl-list'), form: $('pl-form'), input: $('pl-url'), note: $('pl-note'), health });
+const playlist = new PlaylistController({ chat, listEl: $('pl-list'), form: $('pl-form'), input: $('pl-url'), note: $('pl-note'), health, modesEl: $('pl-modes'), savedEl: $('pl-saved'), player });
 const overlay = new Overlay({ stage, idle, list: $('overlay-list'), composer: $('overlay-composer'), input: composer, seek: (t) => player.seek(t), myId: () => chat.memberId, controls });
 const sync = new SyncController({ chat, player, playlist, health, requestPlay });
 
@@ -100,16 +103,18 @@ async function loadItem(item, { autoplay = true } = {}) {
   }
   $('rail-label').textContent = item.title;
   setState('loading');
-  const kind = item.kind === 'youtube' ? 'youtube' : 'html5';
-  root.classList.toggle('is-youtube', kind === 'youtube');
+  const isYouTube = item.kind === 'youtube' || item.kind === 'youtube-playlist';
+  const engine = isYouTube ? pickEngine(item) : 'html5';
+  const kind = isYouTube ? `youtube-${engine}` : 'html5';
+  root.classList.toggle('is-youtube', isYouTube);
   try {
     if (player.kind !== kind) {
-      player.use(kind === 'youtube' ? new YouTubeAdapter() : new Html5Adapter(), kind);
+      player.use(engine === 'lite' ? new YouTubeLiteAdapter() : engine === 'api' ? new YouTubeAdapter() : new Html5Adapter(), kind);
       controls.setVolume(controls.currentVolume());
       controls.setMuted(controls.currentMuted());
     }
-    if (kind === 'youtube') health.report('youtube', 'ok', 'loading player');
-    const size = await player.load({ src: item.src });
+    if (isYouTube) health.report('youtube', 'ok', `loading (${engine === 'lite' ? 'API-free embed' : 'IFrame API'})`);
+    const size = await player.load(item);
     if (token !== loadToken) return;
     stage.setPictureSize(size);
     $('dbg-picture').textContent = size ? `${size.width} × ${size.height}` : '–';
@@ -118,10 +123,49 @@ async function loadItem(item, { autoplay = true } = {}) {
     health.report('player', 'ok', `loaded ${item.kind}`);
     if (autoplay) await requestPlay();
     sync.settle();
+    if (isYouTube) armStartTimeout(item, token);
   } catch (err) {
     if (token !== loadToken) return;
-    await itemFailed(item, err?.message || String(err), kind);
+    // Engine fallback: an unanswered API-free embed retries once through the IFrame API (and the reverse).
+    if (isYouTube && /did not answer|could not load|not ready/i.test(err?.message || '') && !engineRetried.has(item.id) && roomEngine() === 'auto') {
+      engineRetried.add(item.id);
+      state.engine = engine === 'lite' ? 'api' : 'lite';
+      health.report('youtube', 'warn', `${engine === 'lite' ? 'API-free embed' : 'IFrame API'} did not answer; trying the ${state.engine === 'lite' ? 'API-free embed' : 'IFrame API'}`);
+      return loadItem(item, { autoplay });
+    }
+    await itemFailed(item, err?.message || String(err), isYouTube ? 'youtube' : 'html5');
   }
+}
+
+// YouTube can refuse to start without ever reporting an error (blocked networks, bot
+// filters). If nothing plays within the window, treat it like a failed load.
+const START_TIMEOUT_MS = 12000;
+let startTimer = 0;
+function armStartTimeout(item, token) {
+  clearTimeout(startTimer);
+  health.report('youtube', 'ok', 'waiting for YouTube to start');
+  startTimer = setTimeout(() => {
+    if (token !== loadToken || state.item !== item) return;
+    if (player.isPlaying() || machine.is('playing', 'paused', 'ended', 'buffering') && player.currentTime() > 0) return;
+    const engine = player.kind === 'youtube-lite' ? 'lite' : 'api';
+    if (!engineRetried.has(item.id) && roomEngine() === 'auto') {
+      engineRetried.add(item.id);
+      state.engine = engine === 'lite' ? 'api' : 'lite';
+      health.report('youtube', 'warn', `${engine === 'lite' ? 'API-free embed' : 'IFrame API'} never started; trying the ${state.engine === 'lite' ? 'API-free embed' : 'IFrame API'}`);
+      loadItem(item, { autoplay: true });
+      return;
+    }
+    itemFailed(item, 'YouTube did not start playing here. This window or network may block YouTube playback.', 'youtube');
+  }, START_TIMEOUT_MS);
+}
+player.on('play', () => { clearTimeout(startTimer); });
+
+const engineRetried = new Set();
+function roomEngine() { return chat.room?.youtubeEngine || 'auto'; }
+function pickEngine(_item) {
+  const wanted = roomEngine();
+  if (wanted === 'lite' || wanted === 'api') return wanted;
+  return state.engine === 'api' ? 'api' : 'lite';
 }
 
 // One failure → retry once (cache-bust for files). Second failure → mark and skip.
@@ -138,24 +182,27 @@ async function itemFailed(item, reason, kind) {
   setState('error', reason);
   const next = await playlist.reportFailure(item, reason);
   const isYouTubeBlocked = kind === 'youtube' && /block|did not answer|could not load/i.test(reason);
+  engineRetried.delete(item.id);
   const text = isYouTubeBlocked
     ? 'This window blocks YouTube. Open the room in a normal browser tab to watch YouTube items.'
     : reason;
+  const watchUrl = item.kind === 'youtube' ? `https://www.youtube.com/watch?v=${item.src}` : item.kind === 'youtube-playlist' ? `https://www.youtube.com/playlist?list=${item.src}` : null;
+  const openOnYouTube = watchUrl ? { label: 'Open on YouTube', run: () => window.open(watchUrl, '_blank', 'noopener') } : null;
   if (next && playlist.canControl()) {
-    showUpNext(next, `Cannot play “${item.title}”`, text);
+    showUpNext(next, `Cannot play “${item.title}”`, text, openOnYouTube);
   } else if (next) {
-    showCard({ id: 'error', title: `Cannot play “${item.title}”`, text: `${text} Waiting for the host to move on.` });
+    showCard({ id: 'error', title: `Cannot play “${item.title}”`, text: `${text} Waiting for the host to move on.`, action: openOnYouTube });
   } else {
-    showCard({ id: 'error', title: `Cannot play “${item.title}”`, text: `${text} Add another video to continue.`, action: isYouTubeBlocked ? { label: 'Open in a browser tab', run: () => window.open(location.href, '_blank', 'noopener') } : null });
+    showCard({ id: 'error', title: `Cannot play “${item.title}”`, text: `${text} Add another video to continue.`, action: isYouTubeBlocked ? { label: 'Open in a browser tab', run: () => window.open(location.href, '_blank', 'noopener') } : openOnYouTube });
   }
 }
 
-function showUpNext(next, title = 'Up next', text = '') {
+function showUpNext(next, title = 'Up next', text = '', extra = null) {
   let seconds = 5;
   const card = showCard({
     id: 'upnext', title, text: `${text ? text + ' ' : ''}Up next: ${next.title} in ${seconds} s`,
     action: { label: 'Play now', run: () => { clearCards(); playlist.jump(next.id); } },
-    secondary: { label: 'Cancel', run: () => clearCards() },
+    secondary: extra || { label: 'Cancel', run: () => clearCards() },
   });
   const textEl = card.querySelector('.card__text');
   state.upNextTimer = setInterval(() => {
@@ -177,17 +224,22 @@ function recoverStall(strike) {
 }
 
 player.on('ended', () => {
+  if (machine.is('loading')) return;
   setState('ended');
   idle.pin('paused');
   const next = playlist.nextPlayable();
   if (next && playlist.canControl()) showUpNext(next);
   else if (!next) showCard({ id: 'end', title: 'That was the last video', text: 'Add another link in the playlist to keep going.', action: { label: 'Replay', run: () => { player.seek(0); requestPlay(); } } });
 });
-player.on('play', () => { setState('playing'); idle.unpin('paused'); if (cards.querySelector('[data-card="end"]')) clearCards(); });
-player.on('pause', () => { if (state.name !== 'error') setState('paused'); idle.pin('paused'); });
-player.on('error', (message) => { if (state.item && state.name !== 'loading') itemFailed(state.item, message, player.kind === 'youtube' ? 'youtube' : 'html5'); });
+// Events that arrive while a new item is loading belong to the media being replaced.
+player.on('play', () => { if (machine.is('loading')) return; setState('playing'); idle.unpin('paused'); if (cards.querySelector('[data-card="end"]')) clearCards(); });
+player.on('pause', () => { if (machine.is('loading', 'error')) return; setState('paused'); idle.pin('paused'); });
+player.on('error', (message) => { if (state.item && state.name !== 'loading') itemFailed(state.item, message, player.kind?.startsWith('youtube') ? 'youtube' : 'html5'); });
+player.on('buffering', (on) => { if (on && state.name === 'playing') setState('buffering'); else if (!on && state.name === 'buffering') setState('playing'); });
 
 bus.on('playlist:current', (item) => loadItem(item));
+// A jump to the item already playing restarts it; any pending "Up next" countdown must die with it.
+bus.on('playlist:jumped', () => { if (cards.querySelector('[data-card="upnext"], [data-card="end"], [data-card="error"]')) clearCards(); });
 bus.on('room:update', ({ room, members, actingHostId, me }) => {
   $('room-id').textContent = room.id;
   const online = members.filter((m) => m.online);
@@ -205,6 +257,7 @@ bus.on('room:update', ({ room, members, actingHostId, me }) => {
     settings.hidden = !chat.isHost;
     $('set-guests').checked = !!room.guestsControl;
     $('set-docked').checked = room.chatMode === 'docked';
+    $('set-engine').value = room.youtubeEngine || 'auto';
   }
   playlist.render();
 });
@@ -257,7 +310,7 @@ $('room-name-form').addEventListener('submit', async (event) => {
 const settingsForm = $('room-settings');
 if (settingsForm) {
   settingsForm.addEventListener('change', async () => {
-    try { await chat.call('room.settings', { guestsControl: $('set-guests').checked, chatMode: $('set-docked').checked ? 'docked' : 'overlay' }); }
+    try { await chat.call('room.settings', { guestsControl: $('set-guests').checked, chatMode: $('set-docked').checked ? 'docked' : 'overlay', youtubeEngine: $('set-engine').value }); }
     catch (err) { health.banner(err.message, 'warn'); }
   });
 }
@@ -272,7 +325,10 @@ bus.on('idle:state', (s) => { $('dbg-idle').textContent = s + (idle.pins.size ? 
 
 installBridge({ root, player, chat, playlist, stage, controls, idle, requestPlay });
 
-window.__watchRoom = { stage, player, idle, controls, chat, playlist, sync, overlay, health, get state() { return state.name; }, get error() { return state.error; }, get item() { return state.item; } };
+let resumeTick = 0;
+player.on('time', (t) => { if (state.solo && state.item && Math.floor(t) !== resumeTick) { resumeTick = Math.floor(t); try { localStorage.setItem('watchroom.resume.' + state.item.src, String(t)); } catch (_err) { /* blocked */ } } });
+
+window.__watchRoom = { stage, player, idle, controls, chat, playlist, sync, overlay, health, machine, get state() { return state.name; }, get error() { return state.error; }, get item() { return state.item; } };
 
 // ---- boot: join the room in the URL, else create one; if the server is unreachable, play solo and keep trying ----
 async function boot() {
@@ -308,7 +364,10 @@ async function boot() {
     health.report('chat', 'warn', `solo: ${err.message}`, true);
     bus.emit('chat:status', { status: 'solo', detail: err.message });
     const src = root.dataset.src;
-    loadItem({ id: 'local', kind: 'mp4', src, title: root.dataset.label || 'Video', status: 'ok' });
+    loadItem({ id: 'local', kind: 'mp4', src, title: root.dataset.label || 'Video', status: 'ok' }).then(() => {
+      // Resume where this browser left off (solo mode only; rooms carry their own clock).
+      try { const t = Number(localStorage.getItem('watchroom.resume.' + src)); if (t > 5 && t < player.duration() - 5) player.seek(t); } catch (_err) { /* storage blocked */ }
+    });
     setTimeout(boot, 5000);
   }
 }

@@ -1,6 +1,6 @@
 import { PlayerAdapter } from './adapter.js';
 
-const EVENTS = ['ready', 'play', 'pause', 'time', 'seeked', 'ended', 'error', 'buffering', 'duration'];
+const EVENTS = ['ready', 'play', 'pause', 'time', 'seeked', 'ended', 'error', 'buffering', 'duration', 'inner-playlist'];
 
 // One stable player object for the rest of the app. Swapping the concrete adapter
 // (HTML5 ↔ YouTube) never disturbs the controls, sync or chat subscriptions.

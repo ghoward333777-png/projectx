@@ -654,3 +654,25 @@ Design consequences already reflected above, now stated as rules:
 4. **Verify in a real browser on a residential connection.** Headless cloud checks can
    prove layout, overlay timing and the MP4 path; they cannot prove YouTube playback,
    and the test plan in section 12 is amended to say so.
+
+---
+
+## 16. API-free YouTube engine and the playlist engine (added)
+
+The room's YouTube engine can now be **lite**: a plain `<iframe src="…/embed/ID?enablejsapi=1">`
+that the app drives with the same `postMessage` protocol YouTube's own player script uses
+(`listening` → `onReady`/`initialDelivery`, `infoDelivery` with `playerState`, `currentTime`,
+`duration`, `playlist`, `playlistIndex`; commands `playVideo`, `pauseVideo`, `seekTo`,
+`setVolume`, `nextVideo`, `previousVideo`). Nothing from YouTube executes on our page and no
+key or quota is involved. A YouTube playlist link is one item (`youtube-playlist`), embedded as
+`videoseries?list=…`; N/P step inside it and the room advances when the list ends. `auto`
+(default) tries lite and falls back once to the IFrame API adapter when an embed never answers
+or never starts within 12 s; hosts can pin either engine.
+
+The playlist engine is shared by server and client (`Playlist::nextId` / `PlaylistController.nextId`):
+repeat off/one/all, shuffle with a stored order that starts at the current item so every viewer
+advances identically, error items skipped. Playback is an explicit state machine
+(`assets/state-machine.js`) whose illegal transitions surface in the health panel. Thumbnails
+come from `i.ytimg.com` with a placeholder fallback; playlists can be saved and reloaded in the
+browser and exported as one link per line; several links can be pasted at once; solo playback
+resumes from the last position. First-test demo video: https://youtu.be/qqwhjSzFJqY

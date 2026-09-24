@@ -224,3 +224,15 @@ kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; background: #
 .app--embed .rail { display: none; }
 .app--embed .stage { border-radius: 0; }
 .app--embed #banner { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 7; margin: 0; }
+
+/* ---------- Playlist modes, thumbnails, saved playlists, lite engine ---------- */
+.pl__jump { grid-template-columns: 22px 44px 1fr auto; }
+.pl__thumb { width: 44px; height: 25px; border-radius: 4px; background: #000; display: grid; place-items: center; overflow: hidden; color: var(--ink-dim); font-size: 11px; }
+.pl__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pl__modes { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.pl__modes [aria-pressed="true"] { background: rgba(255, 92, 138, 0.25); color: var(--ink); }
+.pl__saverow { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+.pl__saverow input { flex: 1; min-width: 120px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.pl__saved .pl__jump { grid-template-columns: 1fr; }
+.pl__export { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 6px; font-size: 12px; margin-top: 6px; }
+.yt-lite-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }

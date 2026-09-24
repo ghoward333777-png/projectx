@@ -39,8 +39,8 @@ await host.settings({ guestsControl: true });
 const st = await guest.play(1);
 ok(st.playing && st.rev > 1, 'SDK recovers from a stale baseRev on its own');
 
-const resolved = await host.resolve('https://youtu.be/aqz-KE-bpKQ');
-ok(resolved.kind === 'youtube' && /Big Buck Bunny/.test(resolved.title), `resolve() reads the title without an API key (${resolved.title})`);
+const resolved = await host.resolve('https://youtu.be/qqwhjSzFJqY');
+ok(resolved.kind === 'youtube' && /Georgie and Mandy/.test(resolved.title), `resolve() reads the title without an API key (${resolved.title})`);
 const added = await host.add('media/test-4x3.webm');
 ok(added.item.kind === 'mp4' && added.playlist.items.length === 2, 'add() appends a local file');
 await host.jump(added.item.id);

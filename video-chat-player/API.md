@@ -16,7 +16,8 @@ implementation, so nothing can drift.
 - **Room**: a link. `POST /v1/rooms` makes one; it lives under `rooms/<id>/` and expires after 24 h without activity.
 - **Member**: a display name plus an unguessable id (`m_…`). The id is the **Bearer token**. Keep it as you would a session cookie.
 - **Host**: the creator, who also receives a **host token** once. Host-only calls send `X-Host-Token`. The host can hand the role over (`PATCH /v1/rooms/{id}` with `hostMemberId`). When the host is offline, the earliest online member acts as host automatically.
-- **Playlist**: revisioned (`rev`). Items are `mp4` (any https .mp4/.webm, or `media/<file>`) or `youtube`.
+- **Playlist**: revisioned (`rev`). Items are `mp4` (any https .mp4/.webm, or `media/<file>`), `youtube` (one video) or `youtube-playlist` (a whole YouTube list played as one item through the embed's own next/previous). `repeat` is `off`, `one` or `all`; `shuffle` stores a shared `order` so every viewer advances the same way.
+- **YouTube engines**: `lite` (default under `auto`) is API-free: a plain embed iframe driven over postMessage, no YouTube script on the page, no keys, no quotas. `api` uses YouTube's IFrame Player API. `auto` tries `lite` and falls back to `api` when the embed does not answer or never starts.
 - **State**: the shared clock `{ itemId, playing, mediaTime, at, rate, rev }`. The position now is `mediaTime + (serverNow − at)/1000 × rate` while playing. Writes carry `baseRev`; a stale one is refused with 409 and the current state, so two controllers never fight.
 - **Cursors**: `since` (message seq), `prev` (playlist rev), `srev` (state rev). `GET /sync` and the event stream return only what moved past them.
 - **Time**: Unix milliseconds. Every response carries `serverTime`; compute `offset = serverTime − Date.now()` and keep the median of a few samples.
@@ -29,7 +30,7 @@ B=https://example.com/video-chat-player/api.php
 
 # 1. create a room (host)
 curl -s -X POST "$B/v1/rooms" -H 'Content-Type: application/json' \
-     -d '{"name":"Bot","src":"https://www.youtube.com/watch?v=aqz-KE-bpKQ"}'
+     -d '{"name":"Bot","src":"https://youtu.be/qqwhjSzFJqY"}'
 # → {"room":{"id":"quiet-otter-41",…},"memberId":"m_…","hostToken":"…","playlist":{…},"state":{…},"since":1}
 
 # 2. someone else joins
@@ -56,7 +57,7 @@ curl -N "$B/v1/rooms/quiet-otter-41/events?since=0" -H "Authorization: Bearer m_
 | GET | `/v1/resolve?url=` | – | What a link would become (kind, title, thumbnail) |
 | POST | `/v1/rooms` | API key if configured | Create a room; returns `hostToken` once |
 | GET | `/v1/rooms/{id}` | member | Room, members, playlist, state |
-| PATCH | `/v1/rooms/{id}` | host | `guestsControl`, `chatMode` (`overlay`/`docked`), `hostMemberId` |
+| PATCH | `/v1/rooms/{id}` | host | `guestsControl`, `chatMode` (`overlay`/`docked`), `youtubeEngine` (`auto`/`lite`/`api`), `hostMemberId` |
 | POST | `/v1/rooms/{id}/members` | – | Join (or rejoin with `memberId`) |
 | PATCH | `/v1/rooms/{id}/members/me` | member | Rename |
 | GET | `/v1/rooms/{id}/messages?since=&limit=` | member | Messages after a cursor, or the latest |
@@ -64,9 +65,9 @@ curl -N "$B/v1/rooms/quiet-otter-41/events?since=0" -H "Authorization: Bearer m_
 | GET | `/v1/rooms/{id}/sync?since=&prev=&srev=` | member | One poll: everything that changed |
 | GET | `/v1/rooms/{id}/events` | member (header or `?memberId=`) | Server-sent events |
 | GET | `/v1/rooms/{id}/playlist` | member | The playlist |
-| POST | `/v1/rooms/{id}/playlist` | member | Add by link; a YouTube playlist link answers `needsImport` |
+| POST | `/v1/rooms/{id}/playlist` | member | Add by link. A YouTube playlist link becomes one playable item; with `expand: true` it answers `needsImport` for `playlist/import` instead |
 | POST | `/v1/rooms/{id}/playlist/import` | member | Add many YouTube ids |
-| PATCH | `/v1/rooms/{id}/playlist` | member / host | `current` (jump), `order` (host), `remove` (host), `status` (report a failed item) |
+| PATCH | `/v1/rooms/{id}/playlist` | member / host | `current` (jump), `repeat` (`off`/`one`/`all`), `shuffle` (bool), `order` (host), `remove` (host), `status` (report a failed item) |
 | DELETE | `/v1/rooms/{id}/playlist/{itemId}` | host | Remove |
 | GET | `/v1/rooms/{id}/state` | member | Shared clock plus `expectedPosition` |
 | PUT | `/v1/rooms/{id}/state` | member (host when guest control is off) | Play, pause, seek, rate, item |
@@ -120,7 +121,7 @@ messages · 32-character names · 200 playlist items · 5 webhooks per room.
 ```js
 import { WatchRoomClient } from './assets/sdk.js';   // browser or Node 18+
 
-const room = await WatchRoomClient.create({ base: 'https://example.com/video-chat-player/api.php', name: 'Bot', src: 'https://youtu.be/aqz-KE-bpKQ' });
+const room = await WatchRoomClient.create({ base: 'https://example.com/video-chat-player/api.php', name: 'Bot', src: 'https://youtu.be/qqwhjSzFJqY' });
 console.log(room.inviteUrl);                      // share this
 
 room.on('message', (m) => console.log(`${m.name} @ ${m.mediaTime}s: ${m.text}`));
@@ -132,6 +133,9 @@ await room.send('hello');                         // stamps the current shared p
 await room.add('https://example.com/trailer.mp4');
 await room.play(0);   await room.pause();   await room.seek(90);   await room.rate(1.25);
 await room.jump(room.playlistCache.items[1].id);
+await room.repeat('all');   await room.shuffle(true);   // playlist modes
+await room.add('https://www.youtube.com/playlist?list=PL…');   // one item that plays the whole list
+await room.addExpanded('https://www.youtube.com/playlist?list=PL…');   // ids for playlist/import instead
 await room.settings({ guestsControl: false });    // host only
 await room.addWebhook('https://hooks.example.com/room', ['message', 'state']);
 
@@ -167,7 +171,7 @@ node video-chat-player/bin/bot-example.mjs https://example.com/video-chat-player
 
 Commands: `play`, `pause`, `toggle`, `seek {seconds}`, `volume {value}`, `mute {muted}`,
 `fullscreen {on}`, `chat {on}`, `send {text}`, `add {url}`, `jump {itemId}`, `next`,
-`previous`, `reveal`, `snapshot`. Events: `ready`, `play`, `pause`, `ended`, `seeked`,
+`previous`, `repeat {mode}`, `shuffle {on}`, `reveal`, `snapshot`. Events: `ready`, `play`, `pause`, `ended`, `seeked`,
 `time` (once a second), `error`, `message`, `playlist`, `item`, `members`, `fullscreen`,
 `overlay`. Add `embed: false`-style options: `autoplay`, `compact` (hides the room bar and
 rail), `src` (first item for a new room), `width`, `aspect`.
