@@ -19,7 +19,8 @@ final class WatchRoomApi
 
     public function __construct(private readonly RoomStore $rooms, private readonly string $mediaDir, private readonly bool $lookupTitles = true, array $config = [])
     {
-        $this->config = $config + ['webhook_timeout' => 2, 'webhooks_per_room' => 5];
+        $this->config = $config + ['webhook_timeout' => 2, 'webhooks_per_room' => 5, 'room_max_age' => RoomStore::IDLE_MAX_AGE];
+        Playlist::$cacheDir = $rooms->dir() . '/_cache';
     }
 
     public function rooms(): RoomStore { return $this->rooms; }
@@ -531,7 +532,7 @@ final class WatchRoomApi
     private function maybeGc(): void
     {
         if (random_int(1, 50) === 1) {
-            $this->rooms->gc();
+            $this->rooms->gc((int) $this->config['room_max_age']);
         }
     }
 }

@@ -5,8 +5,9 @@ declare(strict_types=1);
 // built-in dev server (which ignores Range headers when serving static files).
 require_once __DIR__ . '/lib/Source.php';
 
+$config = require __DIR__ . '/config.php';
 $name = (string) ($_GET['f'] ?? '');
-$dir = __DIR__ . '/media';
+$dir = $config['media_dir'];
 if (!Source::isMediaName($name) || !is_file($dir . '/' . $name)) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');

@@ -11,12 +11,23 @@ declare(strict_types=1);
  *                         player from another site (e.g. "https://example.com,https://app.example.com").
  *  WATCHROOM_SSE_SECONDS  how long one event-stream connection stays open before the client
  *                         reconnects (default 25; keep it short on shared hosting).
+ *  WATCHROOM_ROOMS_DIR    where room folders live (default: rooms/ next to this file).
+ *  WATCHROOM_MEDIA_DIR    where local video files live (default: media/ next to this file).
+ *  WATCHROOM_ROOM_MAX_AGE seconds a room may sit idle before it is removed (default 86400).
+ *
+ * A local-config.php next to this file (returning an array) overrides everything; the
+ * WordPress plugin and the Joomla module write one at install time.
  */
-return [
+$defaults = [
     'api_key' => (string) (getenv('WATCHROOM_API_KEY') ?: ''),
     'cors_origins' => array_values(array_filter(array_map('trim', explode(',', (string) (getenv('WATCHROOM_CORS_ORIGINS') ?: ''))))),
     'sse_seconds' => max(5, min(120, (int) (getenv('WATCHROOM_SSE_SECONDS') ?: 25))),
     'sse_interval_ms' => 500,
     'webhook_timeout' => 2,
     'webhooks_per_room' => 5,
+    'rooms_dir' => (string) (getenv('WATCHROOM_ROOMS_DIR') ?: __DIR__ . '/rooms'),
+    'media_dir' => (string) (getenv('WATCHROOM_MEDIA_DIR') ?: __DIR__ . '/media'),
+    'room_max_age' => max(3600, (int) (getenv('WATCHROOM_ROOM_MAX_AGE') ?: 86400)),
 ];
+$local = is_file(__DIR__ . '/local-config.php') ? require __DIR__ . '/local-config.php' : [];
+return (is_array($local) ? $local : []) + $defaults;

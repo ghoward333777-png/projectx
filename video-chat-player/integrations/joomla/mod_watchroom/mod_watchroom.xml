@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="module" client="site" method="upgrade">
+    <name>MOD_WATCHROOM</name>
+    <author>Watch Room</author>
+    <creationDate>2026-09</creationDate>
+    <license>MIT</license>
+    <version>1.0.0</version>
+    <description>MOD_WATCHROOM_XML_DESCRIPTION</description>
+    <namespace path="src">WatchRoom\Module\WatchRoom</namespace>
+    <files>
+        <folder module="mod_watchroom">services</folder>
+        <folder>src</folder>
+        <folder>tmpl</folder>
+        <folder>app</folder>
+        <folder>language</folder>
+    </files>
+    <languages>
+        <language tag="en-GB">language/en-GB/mod_watchroom.ini</language>
+        <language tag="en-GB">language/en-GB/mod_watchroom.sys.ini</language>
+    </languages>
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="room_key" type="text" label="MOD_WATCHROOM_FIELD_KEY" description="MOD_WATCHROOM_FIELD_KEY_DESC" default="lobby" />
+                <field name="room_id" type="text" label="MOD_WATCHROOM_FIELD_ROOM" description="MOD_WATCHROOM_FIELD_ROOM_DESC" />
+                <field name="src" type="url" label="MOD_WATCHROOM_FIELD_SRC" description="MOD_WATCHROOM_FIELD_SRC_DESC" filter="url" />
+                <field name="compact" type="radio" class="btn-group" label="MOD_WATCHROOM_FIELD_COMPACT" default="1"><option value="1">JYES</option><option value="0">JNO</option></field>
+                <field name="height" type="text" label="MOD_WATCHROOM_FIELD_HEIGHT" description="MOD_WATCHROOM_FIELD_HEIGHT_DESC" />
+                <field name="room_days" type="number" label="MOD_WATCHROOM_FIELD_DAYS" default="30" min="1" max="365" />
+                <field name="base_url" type="url" label="MOD_WATCHROOM_FIELD_BASE" description="MOD_WATCHROOM_FIELD_BASE_DESC" filter="url" />
+            </fieldset>
+        </fields>
+    </config>
+</extension>

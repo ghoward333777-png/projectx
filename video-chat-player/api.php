@@ -18,7 +18,7 @@ if (isset($_SERVER['CONTENT_TYPE'])) {
     $headers['content-type'] = (string) $_SERVER['CONTENT_TYPE'];
 }
 $route = (string) ($_SERVER['PATH_INFO'] ?? ($_GET['route'] ?? ''));
-$api = new WatchRoomApi(new RoomStore(__DIR__ . '/rooms'), __DIR__ . '/media', true, $config);
+$api = new WatchRoomApi(new RoomStore($config['rooms_dir']), $config['media_dir'], true, $config);
 $rest = new RestApi($api, $config);
 
 $emit = static function (int $status, array $payload, array $extra = []) use ($rest, $headers): void {

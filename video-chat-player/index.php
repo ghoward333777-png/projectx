@@ -10,7 +10,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' https://w
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 
-$mediaDir = __DIR__ . '/media';
+$mediaDir = $config['media_dir'];
 $library = Source::library($mediaDir);
 $requested = isset($_GET['src']) ? (string) $_GET['src'] : '';
 $source = Source::resolve($requested, $mediaDir);

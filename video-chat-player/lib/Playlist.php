@@ -14,6 +14,8 @@ final class Playlist
     public const MAX_ITEMS = 200;
     public const ADD_LIMIT_COUNT = 10;
     public const ADD_LIMIT_WINDOW_MS = 60000;
+    /** Where oEmbed lookups are cached; the API sets it from the rooms folder. */
+    public static ?string $cacheDir = null;
 
     /** @return array{kind: string, id?: string, list?: string, src?: string, name?: string}|null */
     public static function parseUrl(string $input, string $mediaDir): ?array
@@ -91,7 +93,7 @@ final class Playlist
         if (!preg_match('/^[A-Za-z0-9_-]{11}$/', $videoId)) {
             return null;
         }
-        $cacheDir ??= dirname(__DIR__) . '/rooms/_cache';
+        $cacheDir ??= self::$cacheDir ?? dirname(__DIR__) . '/rooms/_cache';
         $cacheFile = $cacheDir . '/yt-' . $videoId . '.json';
         if (is_file($cacheFile) && time() - (int) filemtime($cacheFile) < 86400 * 7) {
             $cached = json_decode((string) file_get_contents($cacheFile), true);

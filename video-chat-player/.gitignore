@@ -2,3 +2,5 @@
 rooms/
 media/*
 !media/sample.mp4
+local-config.php
+dist/
