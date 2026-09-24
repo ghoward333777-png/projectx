@@ -81,7 +81,7 @@ for (const c of cases) {
 
 // A refused source falls back to the default and says so.
 await page.goto(`${base}index.php?src=${encodeURIComponent('javascript:alert(1)')}`, { waitUntil: 'load' });
-ok(await page.locator('.notice--warn').count() === 1, 'rejected source shows the warning notice');
+ok(await page.locator('.notice--warn:not([hidden])', { hasText: 'not accepted' }).count() === 1, 'rejected source shows the warning notice');
 const fallback = await page.locator('#stage').getAttribute('data-src');
 ok(fallback && !fallback.includes('javascript'), `rejected source falls back to the default (${fallback})`);
 

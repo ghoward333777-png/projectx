@@ -65,6 +65,8 @@ export class Html5Adapter extends PlayerAdapter {
   setRate(r) { this.el.playbackRate = r; }
   pictureSize() { return this._size; }
   isPlaying() { return !this.el.paused && !this.el.ended; }
+  isMuted() { return this.el.muted; }
+  volume() { return this.el.volume; }
 
   get caps() {
     return {

@@ -19,6 +19,9 @@ final class Source
         if ($requested === '') {
             return null;
         }
+        if (str_starts_with($requested, 'media.php?f=')) {
+            $requested = 'media/' . rawurldecode(explode('&', substr($requested, 12), 2)[0]);
+        }
         if (str_starts_with($requested, 'media/')) {
             $name = substr($requested, 6);
             if (!self::isMediaName($name) || !is_file($mediaDir . '/' . $name)) {

@@ -1,7 +1,8 @@
 // Records two short synthetic test videos (16:9 and 4:3) into video-chat-player/media/
 // using Chromium's own MediaRecorder on an animated canvas, so the browser check can
 // prove content-rect geometry with no network and no ffmpeg.
-// Run: node video-chat-player/bin/make-test-media.mjs
+// Run: node video-chat-player/bin/make-test-media.mjs        (two 4 s clips)
+//      node video-chat-player/bin/make-test-media.mjs --long (one 40 s clip for the sync check)
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -14,10 +15,13 @@ const { chromium } = playwright;
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'media');
 mkdirSync(outDir, { recursive: true });
-const clips = [
-  { file: 'test-16x9.webm', width: 640, height: 360 },
-  { file: 'test-4x3.webm', width: 640, height: 480 },
-];
+const long = process.argv.includes('--long');
+const clips = long
+  ? [{ file: 'test-long.webm', width: 640, height: 360, seconds: 40 }]
+  : [
+    { file: 'test-16x9.webm', width: 640, height: 360, seconds: 4 },
+    { file: 'test-4x3.webm', width: 640, height: 480, seconds: 4 },
+  ];
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -60,7 +64,7 @@ for (const clip of clips) {
     };
     rec.start(100);
     requestAnimationFrame(draw);
-  }), { width: clip.width, height: clip.height, seconds: 4 });
+  }), { width: clip.width, height: clip.height, seconds: clip.seconds });
   const bytes = Buffer.from(base64, 'base64');
   writeFileSync(join(outDir, clip.file), bytes);
   console.log(`${clip.file}  ${clip.width}×${clip.height}  ${bytes.length} bytes`);

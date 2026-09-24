@@ -12,6 +12,7 @@ export class Stage {
     this.cards = root.querySelector('.stage__cards');
     this.pictureSizeValue = null;
     this.rect = null;
+    this.dock = 0;
 
     this._onFullscreenChange = () => this._syncFullscreen();
     document.addEventListener('fullscreenchange', this._onFullscreenChange);
@@ -31,10 +32,13 @@ export class Stage {
     this.layout();
   }
 
+  /** Docked chat mode reserves a band under the picture (px). */
+  setDock(px) { this.dock = px; this.root.style.setProperty('--dock-h', `${px}px`); this.layout(); }
+
   /** Recompute the content rect and publish it as CSS custom properties. */
   layout() {
     const stageWidth = this.root.clientWidth;
-    const stageHeight = this.root.clientHeight;
+    const stageHeight = this.root.clientHeight - this.dock;
     if (stageWidth === 0 || stageHeight === 0) return;
     const pic = this.pictureSizeValue ?? { width: 16, height: 9 };
     const scale = Math.min(stageWidth / pic.width, stageHeight / pic.height);

@@ -38,9 +38,9 @@ export class Controls {
     el.play.addEventListener('click', () => this.togglePlay());
     el.fullscreen.addEventListener('click', () => this.stage.toggleFullscreen());
     el.chat.addEventListener('click', () => this.toggleChat());
-    el.mute.addEventListener('click', () => this.setMuted(!player.el.muted));
-    el.volume.addEventListener('input', () => { this.setVolume(Number(el.volume.value)); if (player.el.muted && Number(el.volume.value) > 0) this.setMuted(false); });
-    el.rate.addEventListener('change', () => player.setRate(Number(el.rate.value)));
+    el.mute.addEventListener('click', () => this.setMuted(!this.currentMuted()));
+    el.volume.addEventListener('input', () => { this.setVolume(Number(el.volume.value)); if (this.currentMuted() && Number(el.volume.value) > 0) this.setMuted(false); });
+    el.rate.addEventListener('change', () => { player.rate = Number(el.rate.value); player.setRate(player.rate); player.emit('seeked', player.currentTime()); });
 
     // While dragging, the bar shows the target time instead of the playing time; the
     // seek itself happens on release and on every change (keyboard, programmatic).
@@ -101,9 +101,12 @@ export class Controls {
     this.persistAudio();
   }
 
+  currentVolume() { return Number(this.el.volume.value); }
+  currentMuted() { return this.el.mute.getAttribute('aria-pressed') === 'true'; }
+
   nudgeVolume(delta) {
     this.setVolume(Number(this.el.volume.value) + delta);
-    if (this.player.el.muted && delta > 0) this.setMuted(false);
+    if (this.currentMuted() && delta > 0) this.setMuted(false);
   }
 
   toggleChat(force) {
@@ -117,7 +120,7 @@ export class Controls {
 
   persistAudio() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ volume: Number(this.el.volume.value), muted: this.player.el.muted }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ volume: Number(this.el.volume.value), muted: this.currentMuted() }));
     } catch (_err) { /* private mode or blocked storage */ }
   }
 
@@ -148,7 +151,7 @@ export function installKeyboard({ player, stage, idle, controls, composer, toggl
       case 'l': case 'L': seekBy(10); break;
       case 'ArrowUp': controls.nudgeVolume(0.05); break;
       case 'ArrowDown': controls.nudgeVolume(-0.05); break;
-      case 'm': case 'M': controls.setMuted(!player.el.muted); break;
+      case 'm': case 'M': controls.setMuted(!controls.currentMuted()); break;
       case 'f': case 'F': stage.toggleFullscreen(); break;
       case 'c': case 'C': controls.toggleChat(); break;
       case 'n': case 'N': bus.emit('playlist:next'); break;

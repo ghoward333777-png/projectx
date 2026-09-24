@@ -1,6 +1,6 @@
 # Watch Room — video player with an overlay chat
 
-*Design document, pass 1. Working name "Watch Room"; rename freely.*
+*Design document, pass 1. Working name "Watch Room"; rename freely. Build status: all seven steps of section 13 are implemented; see README.md for the reliability table and the check commands.*
 
 This is the design for the first building block of the new app: a video player that
 plays MP4 files, YouTube videos and playlists, with a chat interface that floats over

@@ -77,10 +77,12 @@ $assert(str_contains($html, 'id="ctl-seek"') && str_contains($html, 'id="ctl-vol
 $assert(str_contains($html, 'data-idle-timeout="3000"'), 'idle timeout defaults to 3000 ms');
 $assert(str_contains($render(['idle' => '99']), 'data-idle-timeout="1500"') && str_contains($render(['idle' => '50000']), 'data-idle-timeout="10000"'), 'idle timeout is clamped to 1500–10000');
 $assert(str_contains($html, 'id="stage-overlay"') && str_contains($html, 'id="stage-controls"'), 'overlay and control layers are present');
-$assert(!str_contains($html, 'notice--warn'), 'no warning without a request');
+$assert(!str_contains($html, 'That source was not accepted'), 'no warning without a request');
+$assert(Source::resolve('media.php?f=reel.webm', $mediaDir)['src'] === 'media.php?f=reel.webm', 'streamer links resolve back to the same file');
+$assert(Source::resolve('media.php?f=..%2Fx.mp4', $mediaDir) === null, 'streamer links cannot traverse');
 $html = $render(['src' => '"><script>alert(1)</script>']);
 $assert(!str_contains($html, '<script>alert'), 'hostile source is never echoed raw');
-$assert(str_contains($html, 'notice--warn'), 'hostile source shows the warning');
+$assert(str_contains($html, 'That source was not accepted'), 'hostile source shows the warning');
 $assert(str_contains($html, 'data-src="' . $realDefault . '"'), 'hostile source falls back to the default');
 $assert(!str_contains($html, '<w:hyperlink'), 'sanity: no Word markup leaks into the player page');
 

@@ -19,6 +19,9 @@ export class PlayerAdapter {
   /** Natural picture size { width, height }, or null until known. */
   pictureSize() { return null; }
   isPlaying() { return false; }
+  isMuted() { return false; }
+  volume() { return 1; }
+  mount(_container) {}
   get caps() { return {}; }
   destroy() { this._handlers.clear(); }
 
