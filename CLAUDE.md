@@ -146,6 +146,10 @@ shop is an optional mode (below).
   script. The Concierge's `plan_team` runs specialists sequentially as child sessions
   through the `wizard.run` job; `ask_admin` parks a session as `waiting` and the answer
   is delivered as the pending `tool_result`.
+  Fourteen wizards: the Concierge, twelve specialists and the Form assistant. Media
+  intake proposes `media_meta` (applied through `MediaStore::update_meta`, fields left
+  out keep their value); Analytics reads `Commerce::analytics` through `read_analytics`
+  (read-only, deterministic for the same data) and proposes only coupons and passes.
 - Support chat (`mms-core::support`, `routes::support`): agents are users with the
   `agent` flag (invited by hashed one-time link, `agent_invites`), never staff; the
   `AgentUser` extractor admits agents, staff and admins and agents get only `/agent/*`.

@@ -38,7 +38,7 @@ pub const WIZARDS: &[WizardDef] = &[
         key: "concierge",
         title: "Concierge",
         blurb: "Interviews you once, then briefs the specialists and runs them in order.",
-        persona: "You are the Concierge, the orchestrator of the MediaMarketplace setup team. First read the store overview. Then ask the administrator the questions you still need (business type, what they sell, country and currency, whether they use WooCommerce or VirtueMart, whether visitors must sign agreements, brand colours, whether they want site passes). Ask everything in one ask_admin call. Then write a plan with plan_team: one step per specialist that is needed, each with a two- or three-sentence brief containing the facts that specialist needs. Do not configure anything yourself. Finish with a summary of the plan.",
+        persona: "You are the Concierge, the orchestrator of the MediaMarketplace setup team. First read the store overview. Then ask the administrator the questions you still need (business type, what they sell, country and currency, whether they use WooCommerce or VirtueMart, whether visitors must sign agreements, brand colours, whether they want site passes, whether uploaded files still need titles, tags and rights recorded). Ask everything in one ask_admin call. Then write a plan with plan_team: one step per specialist that is needed, each with a two- or three-sentence brief containing the facts that specialist needs. Put media_intake before catalogue when files need metadata; the analytics specialist is for a running store, not a new one. Do not configure anything yourself. Finish with a summary of the plan.",
         tools: &["read_settings", "read_store_overview", "read_guide", "ask_admin", "plan_team", "finish"],
         goal: "Set this store up for me. Ask what you need to know, then brief and run the specialists.",
         checklist: &["Interview done", "Specialists briefed", "Plan running"],
@@ -125,6 +125,24 @@ pub const WIZARDS: &[WizardDef] = &[
         checklist: &["Checkout mode", "Product links"],
     },
     WizardDef {
+        key: "media_intake",
+        title: "Media intake",
+        blurb: "Titles, captions, tags, rights and age gating for uploaded files.",
+        persona: "You are the Media intake specialist. List the media library. For every file whose title is the file name, or whose caption or tags are empty, propose complete metadata with propose_media_meta: a clear title, alt text for images, a one- or two-sentence caption that describes the content for a buyer, and five to ten comma-separated tags (topics, subject, style, format, audience). Then ask the administrator, in one ask_admin call, the intake questions the brief does not answer: who owns the rights to the files, whether any file is licensed from someone else and under which terms, whether distribution is limited to certain countries, and whether any content is for adults or needs a maturity rating. From the answers, propose categories that group the files by subject and by audience (for example 'Adults only' or 'All ages'), and for restricted content propose a private page with the legal signup template, the minimum age from the answers and an agreement that states the rating, the rights owner and the licence. Never invent rights or licence facts: ask. Do not propose products; the Catalogue specialist does that.",
+        tools: &["read_settings", "read_store_overview", "list_media", "list_products", "read_guide", "propose_media_meta", "propose_category", "propose_page", "ask_admin", "finish"],
+        goal: "Complete the metadata, rights and classification for every uploaded file.",
+        checklist: &["Titles, captions and tags", "Rights and licensing recorded", "Classification and age gating"],
+    },
+    WizardDef {
+        key: "analytics",
+        title: "Analytics",
+        blurb: "Reads sales, passes, playback and churn and explains what to do next.",
+        persona: "You are the Analytics specialist. Read the analytics report and the products. Write a plain-language review for the store owner: revenue and orders by month and how they are trending, the products that earn and the products that never sold, how passes and subscriptions are doing (new, expiring, churned), which coupons are used, what customers actually watch and how far they get, and files that have no product yet. Every number you quote must come from the report; never estimate. Then recommend at most five concrete actions, and where an action is a coupon, a site pass or a bundle, propose it with the matching tool. Do not propose settings unless the report shows a problem a setting fixes. Finish with the review as the summary and the actions as the checklist.",
+        tools: &["read_settings", "read_store_overview", "read_analytics", "list_products", "read_guide", "propose_coupon", "propose_product", "ask_admin", "finish"],
+        goal: "Review how the store is performing and tell me what to do next.",
+        checklist: &["Sales and revenue reviewed", "Passes and churn reviewed", "Recommended actions"],
+    },
+    WizardDef {
         key: "auditor",
         title: "Launch auditor",
         blurb: "Reviews the whole configuration and produces a go-live checklist.",
@@ -138,7 +156,7 @@ pub const WIZARDS: &[WizardDef] = &[
         title: "Form assistant",
         blurb: "Answers a question on any admin page and pre-fills the form.",
         persona: "You are the Form assistant. The administrator is on one admin page and asks a question about it. Read the settings of that section (or the overview) if you need them, answer briefly in plain language, and when the question asks for a value or a change, propose it with the right propose tool so the administrator can apply it in one click. Never claim to have changed anything.",
-        tools: &["read_settings", "read_store_overview", "list_media", "list_products", "list_site_templates", "read_guide", "propose_settings", "propose_product", "propose_category", "propose_page", "propose_coupon", "propose_tax_rate", "propose_site_template", "finish"],
+        tools: &["read_settings", "read_store_overview", "read_analytics", "list_media", "list_products", "list_site_templates", "read_guide", "propose_settings", "propose_product", "propose_category", "propose_page", "propose_coupon", "propose_tax_rate", "propose_site_template", "propose_media_meta", "finish"],
         goal: "",
         checklist: &[],
     },
@@ -156,6 +174,7 @@ pub fn team() -> Vec<&'static WizardDef> {
 pub const TOOL_NAMES: &[&str] = &[
     "read_settings",
     "read_store_overview",
+    "read_analytics",
     "list_media",
     "list_products",
     "list_site_templates",
@@ -167,6 +186,7 @@ pub const TOOL_NAMES: &[&str] = &[
     "propose_coupon",
     "propose_tax_rate",
     "propose_site_template",
+    "propose_media_meta",
     "ask_admin",
     "plan_team",
     "finish",
@@ -183,6 +203,8 @@ pub const KNOWLEDGE: &[(&str, &str)] = &[
     ("sell_through", "Sell through (Settings → Sell through). commerce.mode: native (store's own checkout, default), woocommerce or virtuemart. commerce.unlinked: native or hide, for products without a shop product. In WordPress: MediaMarketplace → WooCommerce, Import store products into WooCommerce, then Sell through WooCommerce; or link a product under Product data → MediaMarketplace. In Joomla: Components → MediaMarketplace → VirtueMart, Import, then Sell through VirtueMart; or give the VirtueMart product the SKU MMS-<slug>. Refunds in the shop revoke access. WooCommerce Subscriptions keep recurring passes alive; VirtueMart has no subscriptions."),
     ("email", "Email (Settings → Email): mail.smtp_host, mail.smtp_port (587 for STARTTLS, 465 for TLS), mail.smtp_user, mail.smtp_password (secret), mail.from, mail.tls. Receipts, agreements and pass reminders are emailed once set; Send a test email is on the Integrations page. Google Business Profile (Settings → Google Business Profile): google.client_id, google.client_secret (secret), google.maps_api_key optional; the OAuth redirect is https://SITE/mms/admin/google/callback; then Connect Google account and Sync on the Google page."),
     ("privacy", "Privacy and roles. Retention (privacy.retention_months) prunes watermark sessions, playback sessions and audit entries. Backups (Health → Backups) archive the database, configuration, media and evidence; backup.dir moves the folder. Staff role runs the store without settings; administrators come from the CMS. Sign-in and access-key lockouts: access.attempt_limit, access.attempt_window (seconds), access.lockout_seconds. Customers export or erase their data under My media → Privacy."),
+    ("intake", "Media intake. Every file in the library has a title (the file name until changed), alt text (images; read by screen readers and search engines), a caption (shown under the file in the showcase and on the product page when the product has no description) and tags (comma-separated; searched by the showcase and used for related items). Tags are lowercase words or short phrases: subject, place, style, format, audience. Rights: the store owner is the rights owner named under Settings → Copyright (copyright.owner_name); files licensed from a third party keep the licence terms in the caption or in the product's licence text (image products) and are never watermarked with a different owner. Country limits are enforced at checkout by the tax country and stated in the product description; the store has no geographic block. Age gating: put restricted files behind a private page with the legal signup template, jurisdiction and min_age; the visitor confirms age and signs before the page opens, and the product linked to the page sells the file. Categories such as 'All ages' and 'Adults only' let the showcase filter by audience."),
+    ("analytics", "Analytics (read_analytics). Money is in the store currency, in cents; orders paid in another currency are divided by their fx_rate. revenue_by_month: paid orders per month for the last twelve months. top_products: units and revenue per product, best first; unsold_products: published products with no paid order. gateways: paid orders by payment method (test gateway orders are test payments). coupons: uses and discount given. passes: active site passes, expiring within seven days, subscriptions active, cancelled in the last thirty days, monthly recurring revenue. playback: sessions per product, average position reached as a percentage of duration (completion), watched in the last thirty days. customers: new accounts per month, buyers, repeat buyers. media_without_product: files that cannot earn yet. A store with fewer than ten paid orders has too little data for trends; say so rather than reading patterns into it."),
     ("launch", "Go-live checklist: HTTPS (health public url), a real payment method with webhook and test payments off, SMTP configured and tested, products published with prices and previews, the showcase and My media link placed on the site, protection levels chosen, rights owner details entered, private pages and agreements in place, a backup taken and downloaded, retention set, staff accounts created, receipt footer with legal details."),
 ];
 
@@ -544,10 +566,11 @@ pub fn tool_definitions(names: &[&str]) -> Vec<serde_json::Value> {
     let all = vec![
         ("read_settings", "Read the store's settings: every setting of a section with its current value (secrets masked), help text and allowed options. Sections: general, store, commerce, payments, media, players, access, protection, copyright, privacy, ai, google, mail. Omit section for all.", s(serde_json::json!({ "section": { "type": "string" } }), &[])),
         ("read_store_overview", "Read an overview of the store: name, CMS, checkout mode, counts of media, products, customers and orders, categories, existing site template applications, health report and connected site.", s(serde_json::json!({}), &[])),
+        ("read_analytics", "Read the analytics report: revenue and orders by month, top and unsold products, payment methods, coupon use, passes and subscriptions, playback and completion, customers, files without a product. Money in cents in the store currency.", s(serde_json::json!({ "months": { "type": "integer", "description": "months of history, 1 to 24; default 12" } }), &[])),
         ("list_media", "List media files in the library with uuid, type, title, duration, size, privacy and whether a product already uses them.", s(serde_json::json!({ "type": { "type": "string", "description": "video, audio, image or pdf; omit for all" }, "limit": { "type": "integer" } }), &[])),
         ("list_products", "List products with slug, type, title, price, status, categories and media uuid.", s(serde_json::json!({ "status": { "type": "string" } }), &[])),
         ("list_site_templates", "List the twelve site templates with slug, industry, description, scheme and pages, and the colour schemes.", s(serde_json::json!({}), &[])),
-        ("read_guide", "Read the built-in guide for a topic: payments, protection, pages, passes, catalogue, storefront, sell_through, email, privacy, launch.", s(serde_json::json!({ "topic": { "type": "string" } }), &["topic"])),
+        ("read_guide", "Read the built-in guide for a topic: payments, protection, pages, passes, catalogue, storefront, sell_through, email, privacy, intake, analytics, launch.", s(serde_json::json!({ "topic": { "type": "string" } }), &["topic"])),
         ("propose_settings", "Propose setting changes for the administrator to apply. For secret settings give an empty value; the administrator types the secret. Each change needs a one-line reason.", s(serde_json::json!({ "changes": { "type": "array", "items": { "type": "object", "properties": { "key": { "type": "string" }, "value": { "type": "string" }, "reason": { "type": "string" } }, "required": ["key", "value", "reason"] } } }), &["changes"])),
         ("propose_product", "Propose a new product. media_uuid must come from list_media; categories are names (proposed categories are created first on apply).", s(serde_json::json!({ "type": { "type": "string" }, "title": { "type": "string" }, "slug": { "type": "string" }, "description": { "type": "string" }, "price_cents": { "type": "integer" }, "currency": { "type": "string" }, "media_uuid": { "type": "string" }, "preview_media_uuid": { "type": "string" }, "settings": { "type": "object" }, "categories": { "type": "array", "items": { "type": "string" } }, "featured": { "type": "boolean" }, "status": { "type": "string", "description": "draft or published" }, "reason": { "type": "string" } }), &["type", "title", "price_cents", "reason"])),
         ("propose_category", "Propose a product category.", s(serde_json::json!({ "name": { "type": "string" }, "reason": { "type": "string" } }), &["name"])),
@@ -555,8 +578,9 @@ pub fn tool_definitions(names: &[&str]) -> Vec<serde_json::Value> {
         ("propose_coupon", "Propose a coupon code.", s(serde_json::json!({ "code": { "type": "string" }, "kind": { "type": "string", "description": "percent or fixed" }, "amount": { "type": "integer", "description": "percent, or cents for fixed" }, "max_uses": { "type": "integer" }, "expires_at": { "type": "string", "description": "YYYY-MM-DD or empty" }, "reason": { "type": "string" } }), &["code", "kind", "amount", "reason"])),
         ("propose_tax_rate", "Propose a tax rate for a country.", s(serde_json::json!({ "country": { "type": "string", "description": "two-letter code" }, "name": { "type": "string" }, "rate_bp": { "type": "integer", "description": "basis points, 2000 = 20 %" }, "reason": { "type": "string" } }), &["country", "name", "rate_bp", "reason"])),
         ("propose_site_template", "Propose applying a site template (creates its widgets and switches the scheme when applied).", s(serde_json::json!({ "slug": { "type": "string" }, "reason": { "type": "string" } }), &["slug", "reason"])),
+        ("propose_media_meta", "Propose the metadata of one media file: title, alt text (images), caption and comma-separated tags. Fields left out keep their current value. uuid must come from list_media.", s(serde_json::json!({ "uuid": { "type": "string" }, "title": { "type": "string" }, "alt": { "type": "string" }, "caption": { "type": "string" }, "tags": { "type": "string" }, "reason": { "type": "string" } }), &["uuid", "reason"])),
         ("ask_admin", "Ask the administrator questions and wait for the answers. Ask everything you need in one call. Options are optional choices.", s(serde_json::json!({ "questions": { "type": "array", "items": { "type": "object", "properties": { "key": { "type": "string" }, "question": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } } }, "required": ["key", "question"] } } }), &["questions"])),
-        ("plan_team", "Concierge only: the specialists to run, in order, each with a brief. Wizards: store_setup, catalogue, storefront, payments, private_pages, passes, protection, email_google, sell_through, auditor.", s(serde_json::json!({ "steps": { "type": "array", "items": { "type": "object", "properties": { "wizard": { "type": "string" }, "brief": { "type": "string" } }, "required": ["wizard", "brief"] } } }), &["steps"])),
+        ("plan_team", "Concierge only: the specialists to run, in order, each with a brief. Wizards: store_setup, media_intake, catalogue, storefront, payments, private_pages, passes, protection, email_google, sell_through, analytics, auditor.", s(serde_json::json!({ "steps": { "type": "array", "items": { "type": "object", "properties": { "wizard": { "type": "string" }, "brief": { "type": "string" } }, "required": ["wizard", "brief"] } } }), &["steps"])),
         ("finish", "End the session with a plain-language summary for the administrator and a checklist of what is done, still to do, or needs the administrator.", s(serde_json::json!({ "summary": { "type": "string" }, "checklist": { "type": "array", "items": { "type": "object", "properties": { "item": { "type": "string" }, "status": { "type": "string", "description": "done, todo or needs_admin" }, "note": { "type": "string" } }, "required": ["item", "status"] } } }), &["summary"])),
     ];
     all.into_iter()
@@ -574,8 +598,8 @@ mod tests {
 
     #[test]
     fn team_is_complete_and_tools_are_known() {
-        assert_eq!(WIZARDS.len(), 12);
-        assert_eq!(team().len(), 11);
+        assert_eq!(WIZARDS.len(), 14);
+        assert_eq!(team().len(), 13);
         for w in WIZARDS {
             assert!(
                 w.tools.contains(&"finish"),
@@ -588,6 +612,20 @@ mod tests {
             assert_eq!(tool_definitions(w.tools).len(), w.tools.len(), "{}", w.key);
         }
         assert!(guide("payments").unwrap().contains("webhooks/stripe"));
+        assert!(guide("intake").unwrap().contains("min_age"));
+        assert!(guide("analytics").unwrap().contains("revenue_by_month"));
+        assert!(wizard("media_intake")
+            .unwrap()
+            .tools
+            .contains(&"propose_media_meta"));
+        assert!(wizard("analytics")
+            .unwrap()
+            .tools
+            .contains(&"read_analytics"));
+        assert!(!wizard("analytics")
+            .unwrap()
+            .tools
+            .contains(&"propose_settings"));
         assert!(guide("nothing").is_none());
     }
 

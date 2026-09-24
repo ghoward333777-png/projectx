@@ -856,6 +856,83 @@ impl Commerce {
         )
     }
 
+    /// The analytics report the Analytics wizard and the admin dashboard read: money in
+    /// base-currency cents (orders paid in another currency divide by their `fx_rate`),
+    /// months as `YYYY-MM`, newest last. Deterministic for the same data and `now`.
+    pub async fn analytics(&self, months: i64) -> Result<serde_json::Value> {
+        let months = months.clamp(1, 24);
+        let now = crate::now();
+        let since = add_days(&now, -30 * months);
+        let month_start = format!("{}-01T00:00:00Z", &since[..7]);
+        let stats = self.stats().await?;
+
+        let by_month: Vec<(String, i64, i64)> = sqlx::query_as(
+            "SELECT substr(paid_at, 1, 7), COUNT(*), COALESCE(CAST(SUM(total_cents / fx_rate) AS INTEGER),0) FROM orders WHERE status = 'paid' AND paid_at >= ? GROUP BY 1 ORDER BY 1",
+        )
+        .bind(&month_start)
+        .fetch_all(&self.db.pool)
+        .await?;
+        let top: Vec<(String, String, String, i64, i64)> = sqlx::query_as(
+            "SELECT p.slug, p.title, p.type, COALESCE(SUM(i.quantity),0), COALESCE(CAST(SUM(i.total_cents / o.fx_rate) AS INTEGER),0) FROM order_items i JOIN orders o ON o.id = i.order_id JOIN products p ON p.id = i.product_id WHERE o.status = 'paid' GROUP BY p.id ORDER BY 5 DESC, 4 DESC, p.slug LIMIT 20",
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        let unsold: Vec<(String, String, String, i64)> = sqlx::query_as(
+            "SELECT p.slug, p.title, p.type, p.price_cents FROM products p WHERE p.status = 'published' AND NOT EXISTS (SELECT 1 FROM order_items i JOIN orders o ON o.id = i.order_id WHERE i.product_id = p.id AND o.status = 'paid') ORDER BY p.slug LIMIT 50",
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        let gateways: Vec<(String, i64, i64)> = sqlx::query_as(
+            "SELECT gateway, COUNT(*), COALESCE(CAST(SUM(total_cents / fx_rate) AS INTEGER),0) FROM orders WHERE status = 'paid' GROUP BY gateway ORDER BY 2 DESC, 1",
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        let coupons: Vec<(String, String, i64, i64, i64)> = sqlx::query_as(
+            "SELECT c.code, c.kind, c.amount, c.uses, COALESCE((SELECT CAST(SUM(o.discount_cents / o.fx_rate) AS INTEGER) FROM orders o WHERE o.coupon = c.code AND o.status = 'paid'),0) FROM coupons c ORDER BY c.uses DESC, c.code",
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+        let playback: Vec<(String, String, i64, f64, i64)> = sqlx::query_as(
+            "SELECT p.slug, p.title, COUNT(*), COALESCE(AVG(CASE WHEN s.duration_ms > 0 THEN 100.0 * MIN(s.position_ms, s.duration_ms) / s.duration_ms END),0), SUM(CASE WHEN s.last_seen >= ? THEN 1 ELSE 0 END) FROM playback_sessions s JOIN products p ON p.id = s.product_id GROUP BY p.id ORDER BY 3 DESC, p.slug LIMIT 20",
+        )
+        .bind(add_days(&now, -30))
+        .fetch_all(&self.db.pool)
+        .await?;
+        let new_customers: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT substr(created_at, 1, 7), COUNT(*) FROM users WHERE role = 'customer' AND created_at >= ? GROUP BY 1 ORDER BY 1",
+        )
+        .bind(&month_start)
+        .fetch_all(&self.db.pool)
+        .await?;
+        let (buyers, repeat_buyers): (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(*), COALESCE(SUM(CASE WHEN n > 1 THEN 1 ELSE 0 END),0) FROM (SELECT user_id, COUNT(*) AS n FROM orders WHERE status = 'paid' GROUP BY user_id)",
+        )
+        .fetch_one(&self.db.pool)
+        .await?;
+        let media_without_product: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT m.uuid, m.type, COALESCE(m.title, '') FROM media m WHERE m.status = 'ready' AND NOT EXISTS (SELECT 1 FROM products p WHERE p.media_id = m.id) ORDER BY m.id LIMIT 50",
+        )
+        .fetch_all(&self.db.pool)
+        .await?;
+
+        Ok(serde_json::json!({
+            "months": months,
+            "generated_at": now,
+            "totals": stats,
+            "revenue_by_month": by_month.iter().map(|(m, n, c)| serde_json::json!({ "month": m, "orders": n, "revenue_cents": c })).collect::<Vec<_>>(),
+            "top_products": top.iter().map(|(slug, title, t, units, c)| serde_json::json!({ "slug": slug, "title": title, "type": t, "units": units, "revenue_cents": c })).collect::<Vec<_>>(),
+            "unsold_products": unsold.iter().map(|(slug, title, t, price)| serde_json::json!({ "slug": slug, "title": title, "type": t, "price_cents": price })).collect::<Vec<_>>(),
+            "gateways": gateways.iter().map(|(g, n, c)| serde_json::json!({ "gateway": g, "orders": n, "revenue_cents": c })).collect::<Vec<_>>(),
+            "coupons": coupons.iter().map(|(code, kind, amount, uses, given)| serde_json::json!({ "code": code, "kind": kind, "amount": amount, "uses": uses, "discount_given_cents": given })).collect::<Vec<_>>(),
+            "playback": playback.iter().map(|(slug, title, n, pct, recent)| serde_json::json!({ "slug": slug, "title": title, "sessions": n, "completion_percent": (pct * 10.0).round() / 10.0, "sessions_30d": recent })).collect::<Vec<_>>(),
+            "customers": {
+                "new_by_month": new_customers.iter().map(|(m, n)| serde_json::json!({ "month": m, "accounts": n })).collect::<Vec<_>>(),
+                "buyers": buyers, "repeat_buyers": repeat_buyers,
+            },
+            "media_without_product": media_without_product.iter().map(|(u, t, title)| serde_json::json!({ "uuid": u, "type": t, "title": title })).collect::<Vec<_>>(),
+        }))
+    }
+
     // ----- receipts -----
 
     pub async fn issue_receipt(
@@ -1333,6 +1410,25 @@ mod tests {
             number.starts_with("R-") && html.contains("Total paid") && pdf.starts_with(b"%PDF")
         );
         assert!(html.contains("VAT (19.00%)"));
+        // The analytics report reads the paid order, its coupon and the unsold products.
+        sqlx::query("INSERT INTO playback_sessions (uuid, user_id, product_id, media_id, player, position_ms, duration_ms, started_at, last_seen) VALUES ('ps1', ?, ?, NULL, 'video', 45000, 60000, ?, ?)")
+            .bind(uid).bind(film.id).bind(&now).bind(&now).execute(&db.pool).await.unwrap();
+        let a = c.analytics(12).await.unwrap();
+        assert_eq!(a["totals"]["orders"], 1);
+        assert_eq!(a["revenue_by_month"][0]["orders"], 1);
+        assert_eq!(a["revenue_by_month"][0]["month"], now[..7]);
+        assert_eq!(a["top_products"][0]["slug"], "pass", "dearest first");
+        assert_eq!(a["top_products"][1]["units"], 1);
+        assert!(a["unsold_products"].as_array().unwrap().is_empty());
+        assert_eq!(a["gateways"][0]["gateway"], "test");
+        assert_eq!(a["coupons"][0]["code"], "SAVE10");
+        assert_eq!(a["coupons"][0]["uses"], 1);
+        assert_eq!(a["coupons"][0]["discount_given_cents"], 1480);
+        assert_eq!(a["playback"][0]["completion_percent"], 75.0);
+        assert_eq!(a["playback"][0]["sessions_30d"], 1);
+        assert_eq!(a["customers"]["buyers"], 1);
+        assert_eq!(a["customers"]["repeat_buyers"], 0);
+        assert_eq!(a["customers"]["new_by_month"][0]["accounts"], 1);
         // Refund revokes.
         c.mark_refunded(&order, Some("re_1"), "customer request")
             .await
@@ -1347,6 +1443,13 @@ mod tests {
         );
         let stats = c.stats().await.unwrap();
         assert_eq!(stats["orders"], 0);
+        let a = c.analytics(3).await.unwrap();
+        assert_eq!(
+            a["unsold_products"].as_array().unwrap().len(),
+            2,
+            "refunded orders do not count as sales"
+        );
+        assert!(a["revenue_by_month"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]

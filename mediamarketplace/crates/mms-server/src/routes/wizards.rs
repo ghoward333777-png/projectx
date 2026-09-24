@@ -346,6 +346,13 @@ async fn execute_tool(
             )
         }
         "read_store_overview" => (overview(state).await?, Control::Continue),
+        "read_analytics" => (
+            state
+                .commerce
+                .analytics(input["months"].as_i64().unwrap_or(12))
+                .await?,
+            Control::Continue,
+        ),
         "list_media" => {
             let t = s(input, "type");
             let limit = input["limit"].as_i64().unwrap_or(60).clamp(1, 200);
@@ -511,6 +518,25 @@ async fn execute_tool(
                     false,
                 )
                 .await?;
+            (json!({ "proposal": p.uuid }), Control::Continue)
+        }
+        "propose_media_meta" => {
+            let uuid = s(input, "uuid");
+            let Some(m) = state.media.by_uuid(&uuid).await? else {
+                return Ok((json!({ "error": "unknown media uuid" }), Control::Continue));
+            };
+            let field = |k: &str, current: &Option<String>| -> String {
+                if input[k].is_string() {
+                    s(input, k)
+                } else {
+                    current.clone().unwrap_or_default()
+                }
+            };
+            let title = field("title", &m.title);
+            let p = state.wizards.add_proposal(session, "media_meta", &format!("Media details: {}", if title.is_empty() { uuid.clone() } else { title.clone() }), &s(input, "reason"), &json!({
+                "uuid": uuid, "type": m.r#type, "title": title, "alt": field("alt", &m.alt), "caption": field("caption", &m.caption), "tags": field("tags", &m.tags),
+                "was": { "title": m.title, "alt": m.alt, "caption": m.caption, "tags": m.tags },
+            }), false).await?;
             (json!({ "proposal": p.uuid }), Control::Continue)
         }
         "ask_admin" => {
@@ -731,6 +757,16 @@ pub async fn apply_proposal(
             let n =
                 crate::routes::templates::apply_site_template(state, &s("slug"), admin_id).await?;
             format!("{n} widgets created and published")
+        }
+        "media_meta" => {
+            let Some(m) = state.media.by_uuid(&s("uuid")).await? else {
+                anyhow::bail!("the media file no longer exists");
+            };
+            state
+                .media
+                .update_meta(m.id, &s("title"), &s("alt"), &s("caption"), &s("tags"))
+                .await?;
+            format!("media details saved for {}", s("title"))
         }
         other => anyhow::bail!("unknown proposal kind {other}"),
     };

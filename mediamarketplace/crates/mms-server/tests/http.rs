@@ -4514,6 +4514,224 @@ async fn phase_nine_setup_wizards_team_with_scripted_model() {
 }
 
 #[tokio::test]
+async fn phase_eleven_media_intake_and_analytics_wizards() {
+    let script = vec![
+        // Media intake: lists the library, proposes details for the real file and for a
+        // file that does not exist, asks about rights, then classifies and gates.
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use("i1", "list_media", serde_json::json!({}))]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([
+                tool_use(
+                    "i2",
+                    "propose_media_meta",
+                    serde_json::json!({ "uuid": "m-1", "title": "Sunrise over the harbour", "caption": "A four-minute film of the harbour at first light.", "tags": "harbour, sunrise, film, coastal, calm", "reason": "The title was the file name and the file had no caption or tags." })
+                ),
+                tool_use(
+                    "i3",
+                    "propose_media_meta",
+                    serde_json::json!({ "uuid": "nope", "title": "Ghost", "reason": "x" })
+                ),
+            ]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "i4",
+                "ask_admin",
+                serde_json::json!({ "questions": [{ "key": "rights", "question": "Who owns the rights to these files?" }, { "key": "adult", "question": "Is any of the content for adults only?", "options": ["No", "Yes"] }] })
+            )]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([
+                tool_use(
+                    "i5",
+                    "propose_category",
+                    serde_json::json!({ "name": "Adults only", "reason": "The owner said the film is for adults." })
+                ),
+                tool_use(
+                    "i6",
+                    "propose_page",
+                    serde_json::json!({ "title": "Adults only", "content": "## Restricted films\n\nConfirm your age to continue.", "agreement": "I confirm that I am 18 or older. Rights owner: Harbour Films.", "signup_template": "legal", "protection": "members", "jurisdiction": "England and Wales", "min_age": 18, "reason": "Age gate for the restricted film." })
+                ),
+            ]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "i7",
+                "finish",
+                serde_json::json!({ "summary": "Every file now has a title, caption and tags; the restricted film sits behind an age gate.", "checklist": [{ "item": "Titles, captions and tags", "status": "done" }, { "item": "Rights and licensing recorded", "status": "done", "note": "Harbour Films owns everything" }, { "item": "Classification and age gating", "status": "done" }] })
+            )]),
+        ),
+        // Analytics: reads the report, proposes one coupon, finishes with the review.
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "a1",
+                "read_analytics",
+                serde_json::json!({ "months": 6 })
+            )]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "a2",
+                "propose_coupon",
+                serde_json::json!({ "code": "comeback20", "kind": "percent", "amount": 20, "max_uses": 50, "reason": "Nothing has sold yet; a launch discount gets the first buyers in." })
+            )]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "a3",
+                "finish",
+                serde_json::json!({ "summary": "No paid orders yet, so there is no trend to read. One published product has never sold and one file has no product.", "checklist": [{ "item": "Sales and revenue reviewed", "status": "done" }, { "item": "Recommended actions", "status": "todo", "note": "Apply the launch coupon and give the unsold file a product" }] })
+            )]),
+        ),
+    ];
+    let mut st = state().await;
+    st.wizard_transport = mms_core::wizards::Transport::scripted(script);
+    let app = app::router(st.clone());
+    let (cookie, csrf) = admin_session(&app).await;
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO media (uuid, type, original_path, private, mime, bytes, hash_sha256, title, alt, status, created_at, updated_at) VALUES ('m-1', 'video', 'harbour.mp4', 1, 'video/mp4', 10, 'h', 'harbour.mp4', 'Boats at dawn', 'ready', ?, ?)")
+        .bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+
+    let body = text(
+        app.clone()
+            .oneshot(get("/admin/wizards", Some(&cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Media intake") && body.contains("Analytics"),
+        "{body}"
+    );
+
+    // ----- Media intake -----
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/wizards/start",
+            &format!("_csrf={csrf}&wizard=media_intake"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let url = location(&res);
+    let uuid = url.rsplit('/').next().unwrap().to_string();
+    drain_jobs(&st).await;
+    let s = st.wizards.session_by_uuid(&uuid).await.unwrap().unwrap();
+    assert_eq!(s.status, "waiting", "{}", s.error);
+    let props = st.wizards.proposals(s.id).await.unwrap();
+    assert_eq!(props.len(), 1, "the unknown uuid never became a proposal");
+    assert_eq!(props[0].kind, "media_meta");
+    let payload: serde_json::Value = serde_json::from_str(&props[0].payload).unwrap();
+    assert_eq!(
+        payload["alt"], "Boats at dawn",
+        "a field left out keeps its value"
+    );
+    assert_eq!(payload["was"]["title"], "harbour.mp4");
+    let msgs = st.wizards.messages(s.id).await.unwrap();
+    let results = msgs
+        .iter()
+        .filter(|m| m["role"] == "user")
+        .map(|m| m["content"].to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(results.contains("unknown media uuid"), "{results}");
+
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{url}/answer"),
+            &format!("_csrf={csrf}&q_rights=Harbour+Films&q_adult=Yes"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    drain_jobs(&st).await;
+    let s = st.wizards.session_by_uuid(&uuid).await.unwrap().unwrap();
+    assert_eq!(s.status, "done", "{}", s.error);
+    assert_eq!(st.wizards.proposals(s.id).await.unwrap().len(), 3);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{url}/apply-all"),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("3+applied"), "{}", location(&res));
+    let m = st.media.by_uuid("m-1").await.unwrap().unwrap();
+    assert_eq!(m.title.as_deref(), Some("Sunrise over the harbour"));
+    assert_eq!(m.alt.as_deref(), Some("Boats at dawn"));
+    assert_eq!(
+        m.tags.as_deref(),
+        Some("harbour, sunrise, film, coastal, calm")
+    );
+    assert!(st
+        .products
+        .categories()
+        .await
+        .unwrap()
+        .iter()
+        .any(|c| c.name == "Adults only"));
+    let pages = st.pages.list().await.unwrap();
+    let page = pages
+        .iter()
+        .find(|p| p.title == "Adults only")
+        .expect("gate page");
+    assert_eq!((page.signup_template.as_str(), page.min_age), ("legal", 18));
+
+    // ----- Analytics -----
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/wizards/start",
+            &format!("_csrf={csrf}&wizard=analytics"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let url = location(&res);
+    let uuid = url.rsplit('/').next().unwrap().to_string();
+    drain_jobs(&st).await;
+    let s = st.wizards.session_by_uuid(&uuid).await.unwrap().unwrap();
+    assert_eq!(s.status, "done", "{}", s.error);
+    let msgs = st.wizards.messages(s.id).await.unwrap();
+    let report = msgs
+        .iter()
+        .filter(|m| m["role"] == "user")
+        .map(|m| m["content"].to_string())
+        .find(|c| c.contains("revenue_by_month"))
+        .expect("the report reached the model");
+    assert!(
+        report.contains(r#"\"months\":6"#) && report.contains("media_without_product"),
+        "{report}"
+    );
+    let props = st.wizards.proposals(s.id).await.unwrap();
+    assert_eq!((props.len(), props[0].kind.as_str()), (1, "coupon"));
+    let body = text(app.clone().oneshot(get(&url, Some(&cookie))).await.unwrap()).await;
+    assert!(
+        body.contains("no trend to read") && body.contains("COMEBACK20"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
 async fn phase_ten_support_chat_agents_assistant_and_handover() {
     let tmp = std::env::temp_dir().join(format!("mms-http-{}", uuid::Uuid::new_v4()));
     let mut config = mms_core::config::Config::generate(tmp, "127.0.0.1:0", "http://shop.example");
