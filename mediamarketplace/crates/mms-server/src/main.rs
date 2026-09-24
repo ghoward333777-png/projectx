@@ -185,7 +185,12 @@ async fn main() -> Result<()> {
         Command::Serve => {
             let (cfg, db) = open(&cli.config).await?;
             db.migrate().await?;
-            let state = app::AppState::new(cfg.clone(), db)?;
+            let mut state = app::AppState::new(cfg.clone(), db)?;
+            if let Ok(path) = std::env::var("MMS_WIZARD_SCRIPT") {
+                // Demo and test aid: canned model responses instead of the Anthropic API.
+                state.wizard_transport = mms_core::wizards::Transport::from_script_file(&path)?;
+                tracing::warn!("setup wizards use the scripted model responses in {path}");
+            }
             let synced = routes::bridges::sync_from_config(&state).await?;
             if synced > 0 {
                 tracing::info!("registered {synced} bridge site(s) from the config file");

@@ -24,6 +24,7 @@ use mms_core::settings::SettingsStore;
 use mms_core::signer::Signer;
 use mms_core::users::Users;
 use mms_core::widgets::Widgets;
+use mms_core::wizards::{Transport, Wizards};
 use std::sync::Arc;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -52,6 +53,9 @@ pub struct AppState {
     pub google: Google,
     pub mailer: Mailer,
     pub privacy: Privacy,
+    pub wizards: Wizards,
+    /// How the setup wizards reach the model; tests and demos swap in a scripted transport.
+    pub wizard_transport: Transport,
     pub templates: Arc<minijinja::Environment<'static>>,
     /// Mount prefix such as "/store", or "" when served at the domain root.
     pub base: Arc<String>,
@@ -84,6 +88,8 @@ impl AppState {
             google: Google::new(db.clone()),
             mailer: Mailer::new(db.clone()),
             privacy: Privacy::new(db.clone()),
+            wizards: Wizards::new(db.clone()),
+            wizard_transport: Transport::http(),
             config: Arc::new(config),
             db,
             secrets,
@@ -309,6 +315,23 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/customers/:uuid/entitlements",
             get(routes::integrations::api_entitlements),
+        )
+        .route("/admin/wizards", get(routes::wizards::page))
+        .route("/admin/wizards/start", post(routes::wizards::start))
+        .route("/admin/wizards/ask", post(routes::wizards::ask))
+        .route("/admin/wizards/:uuid", get(routes::wizards::session))
+        .route("/admin/wizards/:uuid/answer", post(routes::wizards::answer))
+        .route(
+            "/admin/wizards/:uuid/apply-all",
+            post(routes::wizards::apply_all),
+        )
+        .route(
+            "/admin/wizards/:uuid/proposals/:pid/apply",
+            post(routes::wizards::apply),
+        )
+        .route(
+            "/admin/wizards/:uuid/proposals/:pid/skip",
+            post(routes::wizards::skip),
         )
         .route(
             "/api/v1/commerce/status",

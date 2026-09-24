@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Wizards{% endblock %}
+{% block body %}
+<h1>Setup wizards</h1>
+<p class="muted">A team of specialists that configure the store for you. They read your store, ask what they need, and make proposals; nothing changes until you apply a proposal. Model: <code>{{ model }}</code>, effort {{ effort }} (Settings → AI).</p>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if disabled %}<p class="warn-box">{{ disabled }}</p>{% endif %}
+{% if open %}<p class="notice">{{ open }} proposal{% if open != 1 %}s{% endif %} waiting for your review in the sessions below.</p>{% endif %}
+<div class="wizard-grid">
+{% for w in team %}
+<section class="card wizard-card{% if w.key == 'concierge' %} concierge{% endif %}">
+  <h2>{{ w.title }}</h2>
+  <p class="small">{{ w.blurb }}</p>
+  <ul class="small muted checklist-preview">{% for c in w.checklist %}<li>{{ c }}</li>{% endfor %}</ul>
+  <form method="post" action="{{ base }}/admin/wizards/start"><input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="wizard" value="{{ w.key }}">
+    <textarea name="brief" rows="{% if w.key == 'concierge' %}3{% else %}2{% endif %}" placeholder="{% if w.key == 'concierge' %}Optional: tell the team about your business in a sentence or two. It will ask the rest.{% else %}Optional brief: what you want, in a sentence.{% endif %}"></textarea>
+    <button class="primary" {% if disabled %}disabled{% endif %}>{% if w.key == 'concierge' %}Set up my store{% else %}Run{% endif %}</button>
+  </form>
+</section>
+{% endfor %}
+</div>
+<section class="card">
+  <h2>Sessions</h2>
+  {% if sessions %}<table><thead><tr><th>Wizard</th><th>Status</th><th>Brief</th><th>Turns</th><th>Tokens</th><th>Started</th></tr></thead><tbody>
+  {% for s in sessions %}<tr><td><a href="{{ base }}/admin/wizards/{{ s.uuid }}">{{ s.title }}</a>{% if s.parent_id %} <span class="small muted">(team step)</span>{% endif %}</td><td><span class="badge {% if s.status == 'done' %}ok{% elif s.status == 'failed' %}fail{% elif s.status == 'waiting' %}warn{% endif %}">{{ s.status }}</span></td><td class="small">{{ s.brief | truncate(70) }}</td><td>{{ s.turns }}</td><td class="small">{{ s.tokens }}</td><td class="small">{{ s.created_at }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="muted">No sessions yet. Start with the Concierge, or run one specialist.</p>{% endif %}
+</section>
+{% endblock %}

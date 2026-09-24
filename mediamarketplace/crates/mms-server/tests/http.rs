@@ -4059,3 +4059,456 @@ async fn phase_eight_sell_through_woocommerce_and_virtuemart() {
     assert_eq!(j["data"]["linked"]["virtuemart"], 1);
     assert!(j["data"]["events"].as_array().unwrap().len() >= 6);
 }
+
+/// A canned Messages API response with the given content blocks.
+fn model_turn(stop: &str, content: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "id": "msg_test", "type": "message", "role": "assistant", "model": "claude-opus-5", "stop_reason": stop, "content": content, "usage": { "input_tokens": 1200, "output_tokens": 300, "cache_read_input_tokens": 900 } })
+}
+
+fn tool_use(id: &str, name: &str, input: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "type": "tool_use", "id": id, "name": name, "input": input })
+}
+
+/// Runs every queued job the way the worker would.
+async fn drain_jobs(st: &app::AppState) {
+    for _ in 0..20 {
+        let Some(job) = st.jobs.claim().await.unwrap() else {
+            break;
+        };
+        match routes::worker::run(st, &job.r#type, job.args.as_deref().unwrap_or("{}")).await {
+            Ok(()) => st.jobs.complete(job.id).await.unwrap(),
+            Err(e) => st.jobs.fail(&job, &e.to_string()).await.unwrap(),
+        }
+    }
+}
+
+#[tokio::test]
+async fn phase_nine_setup_wizards_team_with_scripted_model() {
+    // Without a key and without a script the wizards are off.
+    let plain = state().await;
+    let app_plain = app::router(plain.clone());
+    let (cookie, _) = admin_session(&app_plain).await;
+    let body = text(
+        app_plain
+            .clone()
+            .oneshot(get("/admin/wizards", Some(&cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Add an Anthropic API key") && body.contains("Concierge"),
+        "{body}"
+    );
+
+    // The scripted model: what Claude would answer, turn by turn.
+    let script = vec![
+        // Concierge: reads the overview, asks two questions.
+        model_turn(
+            "tool_use",
+            serde_json::json!([{ "type": "text", "text": "Let me look at the store." }, tool_use("t1", "read_store_overview", serde_json::json!({}))]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "t2",
+                "ask_admin",
+                serde_json::json!({ "questions": [{ "key": "country", "question": "Which country is the business in?", "options": ["United Kingdom", "United States"] }, { "key": "sells", "question": "What do you sell?" }] })
+            )]),
+        ),
+        // After the answers: a two-step plan and a summary.
+        model_turn(
+            "tool_use",
+            serde_json::json!([
+                tool_use(
+                    "t3",
+                    "plan_team",
+                    serde_json::json!({ "steps": [{ "wizard": "store_setup", "brief": "UK film studio, GBP." }, { "wizard": "catalogue", "brief": "One film to sell at £49." }, { "wizard": "concierge", "brief": "must be ignored" }] })
+                ),
+                tool_use(
+                    "t4",
+                    "finish",
+                    serde_json::json!({ "summary": "Two specialists will run: store setup, then the catalogue.", "checklist": [{ "item": "Interview done", "status": "done" }] })
+                )
+            ]),
+        ),
+        // Store setup specialist.
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "t5",
+                "read_settings",
+                serde_json::json!({ "section": "store" })
+            )]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([
+                tool_use(
+                    "t6",
+                    "propose_settings",
+                    serde_json::json!({ "changes": [
+            { "key": "general.site_name", "value": "Ada Films", "reason": "The brief names the studio" },
+            { "key": "store.currency", "value": "GBP", "reason": "UK business" },
+            { "key": "payments.stripe_secret_key", "value": "", "reason": "Type your Stripe key" },
+            { "key": "media.max_upload_mb", "value": "lots", "reason": "invalid, must be rejected" },
+            { "key": "nonsense.key", "value": "x", "reason": "unknown, must be rejected" }
+        ] })
+                ),
+                tool_use(
+                    "t7",
+                    "finish",
+                    serde_json::json!({ "summary": "Store name and currency proposed; type the Stripe key.", "checklist": [{ "item": "Store name and currency", "status": "done" }, { "item": "Stripe key", "status": "needs_admin", "note": "secret" }] })
+                )
+            ]),
+        ),
+        // Catalogue specialist.
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "t8",
+                "list_media",
+                serde_json::json!({ "type": "video" })
+            )]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([
+                tool_use(
+                    "t9",
+                    "propose_category",
+                    serde_json::json!({ "name": "Films", "reason": "One category" })
+                ),
+                tool_use(
+                    "t10",
+                    "propose_product",
+                    serde_json::json!({ "type": "video", "title": "The Film", "slug": "the-film", "description": "A film.", "price_cents": 4900, "currency": "gbp", "media_uuid": "m-1", "categories": ["Films"], "status": "published", "settings": { "preview_length": "30" }, "reason": "The uploaded video has no product" })
+                ),
+                tool_use(
+                    "t11",
+                    "finish",
+                    serde_json::json!({ "summary": "One product proposed.", "checklist": [] })
+                )
+            ]),
+        ),
+        // The form assistant in the drawer.
+        model_turn(
+            "tool_use",
+            serde_json::json!([{ "type": "text", "text": "A short prefix keeps receipts readable." }, tool_use("t12", "propose_settings", serde_json::json!({ "changes": [{ "key": "store.receipt_prefix", "value": "ADA", "reason": "Matches the studio name" }] })), tool_use("t13", "finish", serde_json::json!({ "summary": "Use ADA as the receipt prefix." }))]),
+        ),
+    ];
+    let mut st = state().await;
+    st.wizard_transport = mms_core::wizards::Transport::scripted(script);
+    let app = app::router(st.clone());
+    let (cookie, csrf) = admin_session(&app).await;
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO media (uuid, type, original_path, private, mime, bytes, hash_sha256, title, status, created_at, updated_at) VALUES ('m-1', 'video', 'x.mp4', 1, 'video/mp4', 10, 'h', 'Raw film', 'ready', ?, ?)")
+        .bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+
+    let body = text(
+        app.clone()
+            .oneshot(get("/admin/wizards", Some(&cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        !body.contains("Add an Anthropic API key") && body.contains("Set up my store"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/wizards/start",
+            &format!("_csrf={csrf}&wizard=concierge&brief=We+make+films"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let loc = location(&res);
+    let uuid = loc.rsplit('/').next().unwrap().to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/wizards/start",
+            &format!("_csrf={csrf}&wizard=assist"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::BAD_REQUEST,
+        "the drawer wizard cannot be started as a session"
+    );
+
+    // Turn 1 and 2: overview, then questions.
+    drain_jobs(&st).await;
+    let s = st.wizards.session_by_uuid(&uuid).await.unwrap().unwrap();
+    assert_eq!(s.status, "waiting", "{}", s.error);
+    assert_eq!(s.turns, 2);
+    let body = text(app.clone().oneshot(get(&loc, Some(&cookie))).await.unwrap()).await;
+    assert!(
+        body.contains("Which country is the business in?")
+            && body.contains("United Kingdom")
+            && body.contains("Send answers"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{loc}/answer"),
+            &format!("_csrf={csrf}&q_country=United+Kingdom&q_sells=Films"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let msgs = st.wizards.messages(s.id).await.unwrap();
+    let last = msgs.last().unwrap();
+    assert_eq!(last["content"][0]["tool_use_id"], "t2");
+    assert!(last["content"][0]["content"]
+        .as_str()
+        .unwrap()
+        .contains("United Kingdom"));
+    assert_eq!(
+        msgs[2]["content"][0]["tool_use_id"], "t1",
+        "the overview result was delivered in its own turn"
+    );
+
+    // Turn 3: the plan, then the two specialists run one after another.
+    drain_jobs(&st).await;
+    let s = st.wizards.session_by_uuid(&uuid).await.unwrap().unwrap();
+    assert_eq!(s.status, "done", "{}", s.error);
+    assert!(s.context.contains("Administrator's answers") && s.context.contains("Films"));
+    let plan: Vec<serde_json::Value> = serde_json::from_str(&s.plan).unwrap();
+    assert_eq!(plan.len(), 2, "the concierge step is dropped: {plan:?}");
+    drain_jobs(&st).await;
+    drain_jobs(&st).await;
+    let children = st.wizards.children(s.id).await.unwrap();
+    assert_eq!(children.len(), 2);
+    assert!(
+        children.iter().all(|c| c.status == "done"),
+        "{:?}",
+        children
+            .iter()
+            .map(|c| (&c.wizard, &c.status, &c.error))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        children[0].context.contains("Concierge summary")
+            && children[0].context.contains("United Kingdom")
+    );
+    let body = text(app.clone().oneshot(get(&loc, Some(&cookie))).await.unwrap()).await;
+    assert!(
+        body.contains("The team&#x27;s plan") || body.contains("The team's plan"),
+        "{body}"
+    );
+    assert!(
+        body.contains("Store setup")
+            && body.contains("Catalogue")
+            && body.contains("Two specialists will run")
+    );
+
+    // Store setup proposals: valid ones kept, the invalid and unknown ones rejected.
+    let setup = &children[0];
+    let props = st.wizards.proposals(setup.id).await.unwrap();
+    assert_eq!(props.len(), 3, "{props:?}");
+    assert!(props[2].needs_input == 1 && props[2].payload.contains("stripe_secret_key"));
+    let setup_url = format!("/admin/wizards/{}", setup.uuid);
+    let body = text(
+        app.clone()
+            .oneshot(get(&setup_url, Some(&cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Ada Films")
+            && body.contains("type=\"password\"")
+            && body.contains("needs admin"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{setup_url}/proposals/{}/apply", props[0].uuid),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        st.settings.get("general.site_name").await.unwrap(),
+        "Ada Films"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{setup_url}/apply-all"),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        location(&res).contains("1+applied") && location(&res).contains("1+left"),
+        "{}",
+        location(&res)
+    );
+    assert_eq!(st.settings.get("store.currency").await.unwrap(), "GBP");
+    assert_eq!(
+        st.settings.get("payments.stripe_secret_key").await.unwrap(),
+        "",
+        "secrets are never applied without input"
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{setup_url}/proposals/{}/apply", props[2].uuid),
+            &format!("_csrf={csrf}&value=sk_test_123"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        st.settings.get("payments.stripe_secret_key").await.unwrap(),
+        "sk_test_123"
+    );
+    assert!(st
+        .wizards
+        .proposals(setup.id)
+        .await
+        .unwrap()
+        .iter()
+        .all(|p| p.status == "applied"));
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("{setup_url}/proposals/{}/apply", props[0].uuid),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        location(&res).contains("error=already"),
+        "applying twice is refused"
+    );
+
+    // Catalogue proposals create the category and the product through the normal code path.
+    let cat = &children[1];
+    let props = st.wizards.proposals(cat.id).await.unwrap();
+    assert_eq!(props.len(), 2);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/wizards/{}/apply-all", cat.uuid),
+            &format!("_csrf={csrf}"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert!(location(&res).contains("2+applied"), "{}", location(&res));
+    let p = st
+        .products
+        .by_slug("the-film")
+        .await
+        .unwrap()
+        .expect("product created");
+    assert_eq!(
+        (
+            p.price_cents,
+            p.currency.as_str(),
+            p.status.as_str(),
+            p.media_id
+        ),
+        (4900, "GBP", "published", Some(1))
+    );
+    assert_eq!(st.products.categories().await.unwrap().len(), 1);
+    assert_eq!(st.products.category_ids(p.id).await.unwrap().len(), 1);
+
+    // The drawer: one question, one answer, one proposal applied from JSON.
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/admin/wizards/ask",
+            r#"{"page":"settings#store","question":"What receipt prefix should I use?"}"#,
+            &cookie,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "done", "{j}");
+    assert_eq!(j["answer"], "Use ADA as the receipt prefix.");
+    assert_eq!(j["proposals"][0]["payload"]["key"], "store.receipt_prefix");
+    let sess = j["session"].as_str().unwrap();
+    let pid = j["proposals"][0]["uuid"].as_str().unwrap();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/wizards/{sess}/proposals/{pid}/apply"),
+            &format!("_csrf={csrf}&_format=json"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "applied", "{j}");
+    assert_eq!(
+        st.settings.get("store.receipt_prefix").await.unwrap(),
+        "ADA"
+    );
+
+    // The script is spent: the next session fails cleanly and says so.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/wizards/start",
+            &format!("_csrf={csrf}&wizard=auditor"),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    let audit_url = location(&res);
+    drain_jobs(&st).await;
+    let s = st
+        .wizards
+        .session_by_uuid(audit_url.rsplit('/').next().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(s.status, "failed");
+    assert!(s.error.contains("no more responses"));
+    let body = text(
+        app.clone()
+            .oneshot(get(&audit_url, Some(&cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(body.contains("The wizard stopped"), "{body}");
+    // Everything a wizard applied is in the audit log.
+    let applied: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM audit_log WHERE action = 'wizard.applied'")
+            .fetch_one(&st.db.pool)
+            .await
+            .unwrap();
+    assert_eq!(applied, 6);
+}

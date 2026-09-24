@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ s.title }}{% endblock %}
+{% block body %}
+{% if refresh %}<meta http-equiv="refresh" content="3">{% endif %}
+<p><a href="{{ base }}/admin/wizards">← Wizards</a>{% if parent %} · <a href="{{ base }}/admin/wizards/{{ parent.uuid }}">Part of the {{ parent.title }} run</a>{% endif %}</p>
+<h1>{{ s.title }} <span class="badge {% if s.status == 'done' %}ok{% elif s.status == 'failed' %}fail{% elif s.status == 'waiting' %}warn{% endif %}">{{ s.status }}</span></h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p class="muted small">{{ def.blurb }} · {{ s.turns }} turns · {{ s.tokens }} tokens ({{ s.cache_read }} from cache) · started {{ s.created_at }}</p>
+{% if s.brief %}<p><b>Brief:</b> {{ s.brief }}</p>{% endif %}
+{% if s.status == 'queued' or s.status == 'running' %}<p class="notice">The wizard is working. This page refreshes on its own.</p>{% endif %}
+{% if s.status == 'failed' %}<p class="error">The wizard stopped: {{ s.error }}</p>{% endif %}
+
+{% if s.status == 'waiting' and questions %}
+<section class="card">
+  <h2>The wizard needs a few answers</h2>
+  <form method="post" action="{{ base }}/admin/wizards/{{ s.uuid }}/answer"><input type="hidden" name="_csrf" value="{{ csrf }}">
+  {% for q in questions %}
+    <label>{{ q.question }}
+      {% if q.options %}<select name="q_{{ q.key }}">{% for o in q.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}<option value="">Other / not sure</option></select>
+      {% else %}<input name="q_{{ q.key }}" placeholder="Your answer">{% endif %}
+    </label>
+  {% endfor %}
+  <button class="primary">Send answers</button>
+  </form>
+</section>
+{% endif %}
+
+{% if s.summary %}
+<section class="card"><h2>What the wizard says</h2><div class="wizard-summary">{% for para in summary_paras %}<p>{{ para }}</p>{% endfor %}</div></section>
+{% endif %}
+
+{% if checklist %}
+<section class="card"><h2>Checklist</h2><ul class="checklist">{% for c in checklist %}<li><span class="badge {% if c.status == 'done' %}ok{% elif c.status == 'needs_admin' %}warn{% endif %}">{{ c.status | replace("_", " ") }}</span> {{ c.item }}{% if c.note %} <span class="muted small">— {{ c.note }}</span>{% endif %}</li>{% endfor %}</ul></section>
+{% endif %}
+
+{% if proposals %}
+<section class="card">
+  <h2>Proposals <span class="muted small">({{ proposals | length }})</span></h2>
+  <form method="post" action="{{ base }}/admin/wizards/{{ s.uuid }}/apply-all" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Apply everything that needs no input</button></form>
+  {% for p in proposals %}
+  <div class="proposal {{ p.status }}">
+    <div class="proposal-head"><b>{{ p.title }}</b> <span class="badge {% if p.status == 'applied' %}ok{% elif p.status == 'failed' %}fail{% elif p.status == 'skipped' %}{% else %}warn{% endif %}">{{ p.status }}</span> <span class="muted small">{{ p.kind | replace("_", " ") }}</span></div>
+    {% if p.reason %}<p class="small">{{ p.reason }}</p>{% endif %}
+    {% if p.kind == "setting" %}<p class="small"><code>{{ p.payload.key }}</code>{% if not p.needs_input %} → <code>{{ p.payload.value }}</code>{% endif %}</p>
+    {% else %}<details><summary class="small">Details</summary><pre class="small">{{ p.payload_text }}</pre></details>{% endif %}
+    {% if p.status == 'proposed' %}
+      <form method="post" action="{{ base }}/admin/wizards/{{ s.uuid }}/proposals/{{ p.uuid }}/apply" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}">
+        {% if p.needs_input %}<input type="password" name="value" placeholder="Type the {{ p.payload.label }}" required> {% endif %}<button class="primary">Apply</button></form>
+      <form method="post" action="{{ base }}/admin/wizards/{{ s.uuid }}/proposals/{{ p.uuid }}/skip" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Skip</button></form>
+    {% elif p.result %}<p class="small muted">{{ p.result }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if plan %}
+<section class="card"><h2>The team's plan</h2><ol>{% for st in plan %}<li><b>{{ st.wizard | replace("_", " ") }}</b>: {{ st.brief }}</li>{% endfor %}</ol>
+{% if children %}<table><thead><tr><th>Specialist</th><th>Status</th><th>Summary</th></tr></thead><tbody>{% for c in children %}<tr><td><a href="{{ base }}/admin/wizards/{{ c.uuid }}">{{ c.title }}</a></td><td><span class="badge {% if c.status == 'done' %}ok{% elif c.status == 'failed' %}fail{% elif c.status == 'waiting' %}warn{% endif %}">{{ c.status }}</span></td><td class="small">{{ c.summary | truncate(120) }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</section>
+{% endif %}
+
+{% if transcript %}
+<details class="card"><summary>Transcript</summary>
+{% for m in transcript %}<div class="turn {{ m.role }}"><span class="small muted">{{ m.role }}</span><div>{% for para in m.paras %}<p>{{ para }}</p>{% endfor %}</div></div>{% endfor %}
+</details>
+{% endif %}
+{% endblock %}

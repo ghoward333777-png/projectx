@@ -134,6 +134,18 @@ shop is an optional mode (below).
   The CMS modules (`class-mms-woocommerce.php`, `Commerce/VirtueMartBridge.php`,
   `plg_vmcustom_mediamarketplace`) are the only files allowed to touch an engine; the
   contract test enforces that and the core loads them only when the engine is present.
+- Setup Wizards (`mms-core::wizards`, `routes::wizards`): a team of Claude agents
+  (Messages API with tool use, adaptive thinking, `ai.model` default `claude-opus-5`,
+  `ai.effort`) that only *propose*. `apply_proposal` is the one place a proposal becomes
+  a change and it goes through the ordinary store code paths (`settings.set`,
+  `products.create`, `pages.create`, coupons, tax, `apply_site_template`) and the audit
+  log. Secrets are masked in tool results and proposed with empty values the admin types
+  in. Wizard definitions, tool schemas and built-in knowledge are code in
+  `wizards.rs`; the `Transport` enum (`Http` | `Scripted`) is how tests, the HTTP test
+  and `MMS_WIZARD_SCRIPT` replace the model; keep the runner deterministic given a
+  script. The Concierge's `plan_team` runs specialists sequentially as child sessions
+  through the `wizard.run` job; `ask_admin` parks a session as `waiting` and the answer
+  is delivered as the pending `tool_result`.
 - Roles: `AdminUser` admits `admin` and `staff`; administrator-only handlers call
   `admin.admin_only()` first (settings, bridges, integrations, roles, backups).
 - Email goes through `routes::ops::send_quietly`: never fail a purchase or a signature

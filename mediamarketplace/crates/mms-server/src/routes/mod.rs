@@ -19,4 +19,5 @@ pub mod sso;
 pub mod templates;
 pub mod webhooks;
 pub mod widgets;
+pub mod wizards;
 pub mod worker;

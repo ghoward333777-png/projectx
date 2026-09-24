@@ -461,7 +461,7 @@ pub const DEFINITIONS: &[Definition] = &[
         label: "Anthropic API key",
         kind: Kind::Secret,
         default: "",
-        help: "Enables review replies, keyword generation and listing audits.",
+        help: "Enables the setup wizards, the form assistant and Google review replies.",
         options: &[],
     },
     Definition {
@@ -472,7 +472,8 @@ pub const DEFINITIONS: &[Definition] = &[
         default: "claude-opus-5",
         help: "",
         options: &[],
-    },
+    },    Definition { key: "ai.effort", section: "ai", label: "Wizard effort", kind: Kind::Select, default: "medium", help: "How hard the setup wizards think per step. Medium fits most stores; high costs more and takes longer.", options: &[("low", "Low"), ("medium", "Medium"), ("high", "High")] },
+
 ];
 
 pub fn definition(key: &str) -> Option<&'static Definition> {

@@ -130,6 +130,8 @@ pub fn environment(base: &str) -> Environment<'static> {
         "violation.html",
         "google.html",
         "backups.html",
+        "wizards.html",
+        "wizard_session.html",
         "account_privacy.html"
     );
     env

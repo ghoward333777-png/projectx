@@ -33,6 +33,7 @@ pub mod signer;
 pub mod templates;
 pub mod users;
 pub mod widgets;
+pub mod wizards;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

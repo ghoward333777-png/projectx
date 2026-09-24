@@ -25,6 +25,7 @@
     <a href="{{ base }}/admin/google" {% if active == "google" %}class="active"{% endif %}>Google</a>
     <a href="{{ base }}/admin/integrations" {% if active == "integrations" %}class="active"{% endif %}>Integrations</a>
     <a href="{{ base }}/admin/health" {% if active == "health" %}class="active"{% endif %}>Health</a>
+    <a href="{{ base }}/admin/wizards" {% if active == "wizards" %}class="active"{% endif %}>Wizards</a>
   </nav>
   <form method="post" action="{{ base }}/admin/logout" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="link">Sign out ({{ user.email }})</button></form>
 </header>
@@ -32,6 +33,17 @@
 <main class="container">
 {% block body %}{% endblock %}
 </main>
+{% if user and active %}
+<div id="mms-wizard" data-base="{{ base }}" data-csrf="{{ csrf }}" data-page="{{ active }}">
+  <button class="wz-toggle" type="button" title="Ask the setup wizard about this page">✦ Ask the wizard</button>
+  <div class="wz-panel">
+    <div class="wz-head"><b>Ask the wizard</b> <span class="small muted">about the {{ active }} page</span><button class="wz-close link" type="button">×</button></div>
+    <form><textarea rows="3" placeholder="For example: what should the lockout settings be for a small shop? Or: create a 30-day pass for £9."></textarea><button class="primary" type="submit">Ask</button></form>
+    <div class="wz-out"></div>
+  </div>
+</div>
+<script src="{{ base }}/static/mms-wizard.js" defer></script>
+{% endif %}
 <footer class="foot">MediaMarketplace Studio {{ version | default("") }}</footer>
 </body>
 </html>

@@ -322,6 +322,10 @@ pub async fn static_file(Path(path): Path<String>) -> Response {
             include_bytes!("../../static/mms-builder.css"),
             "text/css; charset=utf-8",
         ),
+        "mms-wizard.js" => (
+            include_bytes!("../../static/mms-wizard.js"),
+            "application/javascript; charset=utf-8",
+        ),
         "mms-checkout.js" => (
             include_bytes!("../../static/mms-checkout.js"),
             "application/javascript; charset=utf-8",

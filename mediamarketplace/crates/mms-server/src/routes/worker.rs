@@ -73,6 +73,10 @@ pub async fn run(state: &AppState, kind: &str, args: &str) -> anyhow::Result<()>
             crate::routes::protection::mark_video_job(state, session).await
         }
         "google.posts" => crate::routes::google::publish_due(state).await,
+        "wizard.run" => {
+            let uuid = args["session"].as_str().unwrap_or("").to_string();
+            crate::routes::wizards::run_job(state, &uuid).await
+        }
         "mail.pass_reminders" => {
             // Holders with a fresh notice get one email per notice.
             let rows: Vec<(i64, String, String, i64)> = sqlx::query_as("SELECT n.id, u.email, u.name, n.days_left FROM pass_notices n JOIN users u ON u.id = n.user_id WHERE n.created_at > ? AND u.status = 'active'")

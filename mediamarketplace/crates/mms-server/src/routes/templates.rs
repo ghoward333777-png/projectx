@@ -196,18 +196,15 @@ pub async fn sites(
     })?).into_response())
 }
 
-/// Applies a site template: creates published widgets per page, sets the scheme, records the application.
-pub async fn apply_site(
-    State(state): State<AppState>,
-    admin: AdminUser,
-    Path(slug): Path<String>,
-    Form(f): Form<CsrfOnly>,
-) -> AppResult<Response> {
-    if let Some(r) = admin.csrf_error(&f._csrf) {
-        return Ok(r);
-    }
-    let Some(site) = templates::site_template(&slug) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+/// Applies a site template: creates published widgets per page, sets the scheme,
+/// records the application. Returns how many widgets were created.
+pub async fn apply_site_template(
+    state: &AppState,
+    slug: &str,
+    admin_id: i64,
+) -> anyhow::Result<usize> {
+    let Some(site) = templates::site_template(slug) else {
+        anyhow::bail!("unknown site template {slug}");
     };
     let mut created = Vec::new();
     for (page, widgets) in &site.pages {
@@ -222,7 +219,7 @@ pub async fn apply_site(
                     &name,
                     &serde_json::to_string(&t.definition)?,
                     Some(&t.slug),
-                    Some(admin.user.id),
+                    Some(admin_id),
                 )
                 .await?;
             state
@@ -246,20 +243,36 @@ pub async fn apply_site(
         .await
         .ok();
     sqlx::query("INSERT INTO site_applications (template, widget_ids, scheme_slug, applied_at) VALUES (?, ?, ?, ?)")
-        .bind(&slug).bind(serde_json::to_string(&created)?).bind(&site.scheme).bind(mms_core::now())
+        .bind(slug).bind(serde_json::to_string(&created)?).bind(&site.scheme).bind(mms_core::now())
         .execute(&state.db.pool).await?;
     state
         .audit
         .record(
-            Some(admin.user.id),
+            Some(admin_id),
             "site_template.applied",
             "site_template",
-            Some(&slug),
+            Some(slug),
             None,
             Some(serde_json::json!({ "widgets": created.len() })),
         )
         .await?;
-    Ok(Redirect::to(&state.url(&format!("/admin/site-templates?notice={}", crate::routes::media::urlencoding(&format!("{} applied: {} widgets created and published. Place them with the snippets under Widgets.", site.name, created.len()))))).into_response())
+    Ok(created.len())
+}
+
+pub async fn apply_site(
+    State(state): State<AppState>,
+    admin: AdminUser,
+    Path(slug): Path<String>,
+    Form(f): Form<CsrfOnly>,
+) -> AppResult<Response> {
+    if let Some(r) = admin.csrf_error(&f._csrf) {
+        return Ok(r);
+    }
+    let Some(site) = templates::site_template(&slug) else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let n = apply_site_template(&state, &slug, admin.user.id).await?;
+    Ok(Redirect::to(&state.url(&format!("/admin/site-templates?notice={}", crate::routes::media::urlencoding(&format!("{} applied: {} widgets created and published. Place them with the snippets under Widgets.", site.name, n))))).into_response())
 }
 
 pub async fn rollback_site(
