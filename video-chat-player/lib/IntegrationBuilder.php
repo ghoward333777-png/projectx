@@ -9,7 +9,7 @@ declare(strict_types=1);
 final class IntegrationBuilder
 {
     /** Player files that ship inside an integration (relative to the app folder). */
-    public const APP_INCLUDE = ['index.php', 'api.php', 'media.php', 'api-docs.php', 'embed-demo.php', 'config.php', 'API.md', 'README.md', 'INTEGRATIONS.md', 'lib', 'assets', 'media/sample.mp4'];
+    public const APP_INCLUDE = ['index.php', 'embed.php', 'api.php', 'media.php', 'api-docs.php', 'embed-demo.php', 'config.php', 'API.md', 'README.md', 'INTEGRATIONS.md', 'EMBED.md', 'lib', 'assets', 'media/sample.mp4'];
     public const APP_EXCLUDE = ['local-config.php'];
 
     public static function appFiles(string $appDir): array
@@ -80,12 +80,23 @@ final class IntegrationBuilder
         return count($files);
     }
 
+    /** The bare app for any PHP host or another project: everything under video-chat-player/. @return array<string, string> */
+    public static function dropInFiles(string $appDir): array
+    {
+        $files = [];
+        foreach (self::appFiles($appDir) as $rel => $src) {
+            $files['video-chat-player/' . $rel] = $src;
+        }
+        return $files;
+    }
+
     /** @return array<string, int> zip path => file count */
     public static function buildAll(string $appDir, string $distDir): array
     {
         return [
             $distDir . '/watch-room-wordpress.zip' => self::zip(self::wordpressFiles($appDir), $distDir . '/watch-room-wordpress.zip'),
             $distDir . '/mod_watchroom-joomla.zip' => self::zip(self::joomlaFiles($appDir), $distDir . '/mod_watchroom-joomla.zip'),
+            $distDir . '/watch-room-embed.zip' => self::zip(self::dropInFiles($appDir), $distDir . '/watch-room-embed.zip'),
         ];
     }
 }

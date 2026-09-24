@@ -237,7 +237,7 @@ player.on('pause', () => { if (machine.is('loading', 'error')) return; setState(
 player.on('error', (message) => { if (state.item && state.name !== 'loading') itemFailed(state.item, message, player.kind?.startsWith('youtube') ? 'youtube' : 'html5'); });
 player.on('buffering', (on) => { if (on && state.name === 'playing') setState('buffering'); else if (!on && state.name === 'buffering') setState('playing'); });
 
-bus.on('playlist:current', (item) => loadItem(item));
+bus.on('playlist:current', (item) => loadItem(item, { autoplay: autoplayWanted || !!state.item }));
 // A jump to the item already playing restarts it; any pending "Up next" countdown must die with it.
 bus.on('playlist:jumped', () => { if (cards.querySelector('[data-card="upnext"], [data-card="end"], [data-card="error"]')) clearCards(); });
 bus.on('room:update', ({ room, members, actingHostId, me }) => {
@@ -329,6 +329,10 @@ let resumeTick = 0;
 player.on('time', (t) => { if (state.solo && state.item && Math.floor(t) !== resumeTick) { resumeTick = Math.floor(t); try { localStorage.setItem('watchroom.resume.' + state.item.src, String(t)); } catch (_err) { /* blocked */ } } });
 
 window.__watchRoom = { stage, player, idle, controls, chat, playlist, sync, overlay, health, machine, get state() { return state.name; }, get error() { return state.error; }, get item() { return state.item; } };
+
+// Embed options from embed.php.
+if (root.dataset.nochat === '1') controls.toggleChat(false);
+const autoplayWanted = root.dataset.noautoplay !== '1';
 
 // ---- boot: join the room in the URL, else create one; if the server is unreachable, play solo and keep trying ----
 async function boot() {

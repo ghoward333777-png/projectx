@@ -11,11 +11,12 @@
 // The deployment must list your page's origin in WATCHROOM_CORS_ORIGINS, or the player ignores commands.
 (function (global) {
   function embed(container, { base, room = null, name = null, src = null, autoplay = true, compact = true, width = '100%', aspect = '16 / 9' } = {}) {
-    const url = new URL('index.php', new URL(base.endsWith('/') ? base : base + '/', document.baseURI));
+    const url = new URL('embed.php', new URL(base.endsWith('/') ? base : base + '/', document.baseURI));
     if (room) url.searchParams.set('room', room);
     if (name) url.searchParams.set('name', name);
     if (src) url.searchParams.set('src', src);
-    if (compact) url.searchParams.set('embed', '1');
+    if (!compact) url.searchParams.set('compact', '0');
+    if (!autoplay) url.searchParams.set('autoplay', '0');
     const iframe = document.createElement('iframe');
     iframe.src = url.toString();
     iframe.allow = 'autoplay; fullscreen; clipboard-write';
@@ -47,7 +48,6 @@
       send: (text) => handle.command('send', { text }), add: (url) => handle.command('add', { url }), snapshot: () => handle.command('snapshot'),
       fullscreen: (on = true) => handle.command('fullscreen', { on }), destroy: () => iframe.remove(),
     };
-    if (!autoplay) handle.on('ready', () => handle.command('pause').catch(() => {}));
     return handle;
   }
   global.WatchRoom = Object.assign(global.WatchRoom || {}, { embed });

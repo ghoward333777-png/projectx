@@ -91,6 +91,12 @@ Server-side, `api.php?action=health` and `php video-chat-player/bin/selftest.php
 same checks (PHP version, extensions, rooms folder writable, disk space, outbound https)
 plus a full room round trip in a temporary folder.
 
+## Embedding anywhere
+
+One endpoint, `embed.php?room=…`, puts the player in an iframe on any site or project;
+`assets/embed.js` drives it, `api.php/v1/oembed` makes it auto-embeddable, and
+`embed.php?format=json` describes it all. See [EMBED.md](EMBED.md).
+
 ## API
 
 A REST API (`api.php/v1/…`, OpenAPI at `api.php/v1/openapi.json`, reference at

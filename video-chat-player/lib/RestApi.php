@@ -21,6 +21,7 @@ final class RestApi
         ['GET', '#^/v1/health$#', 'health', 'none'],
         ['GET', '#^/v1/openapi\.json$#', 'openapi', 'none'],
         ['GET', '#^/v1/resolve$#', 'resolve', 'none'],
+        ['GET', '#^/v1/oembed$#', 'oembed', 'none'],
         ['POST', '#^/v1/rooms$#', 'room.create', 'key'],
         ['GET', '#^/v1/rooms/(?<roomId>[a-z-]+\d\d)$#', 'room.get', 'member'],
         ['PATCH', '#^/v1/rooms/(?<roomId>[a-z-]+\d\d)$#', 'room.settings', 'host'],
@@ -94,6 +95,9 @@ final class RestApi
             if ($action === 'events') {
                 return [200, ['__sse' => $input], $extra];
             }
+            if ($action === 'oembed') {
+                return $this->oembed($input, $baseUrl);
+            }
             // A REST verb always maps to the action's expected method.
             [$status, $payload] = $this->api->handle($action, $action === 'health' || str_ends_with($action, '.get') || $action === 'messages.list' || $action === 'sync.poll' || $action === 'resolve' || $action === 'webhook.list' ? 'GET' : 'POST', $input);
             if ($status === 200 && $method === 'POST' && in_array($action, ['room.create', 'chat.send', 'playlist.add', 'playlist.import'], true)) {
@@ -126,8 +130,49 @@ final class RestApi
     }
 
     /** CORS headers for an origin, or [] when the origin is not allowed. @return array<string, string> */
+    /**
+     * oEmbed (https://oembed.com): turn a room, embed or player URL into an embeddable
+     * snippet, so platforms that understand oEmbed embed Watch Room automatically.
+     * @return array{0: int, 1: array, 2: array<string, string>}
+     */
+    public function oembed(array $input, string $baseUrl): array
+    {
+        $url = (string) ($input['url'] ?? '');
+        $parts = parse_url($url);
+        $room = '';
+        if (is_array($parts)) {
+            parse_str((string) ($parts['query'] ?? ''), $q);
+            $room = isset($q['room']) && RoomStore::isRoomId((string) $q['room']) ? (string) $q['room'] : '';
+        }
+        if ($url === '' || !is_array($parts) || !preg_match('#/(index|embed)\.php$#', (string) ($parts['path'] ?? ''))) {
+            return [404, ['error' => 'Give the URL of a Watch Room page (index.php or embed.php, optionally with ?room=).', 'code' => 'not_found'], ['Cache-Control' => 'no-store']];
+        }
+        $appBase = preg_replace('#api\.php$#', '', $baseUrl) ?? $baseUrl;
+        $embed = $appBase . 'embed.php' . ($room !== '' ? '?room=' . rawurlencode($room) : '');
+        $width = max(200, min(4096, (int) ($input['maxwidth'] ?? 800)));
+        $height = max(113, min(2304, (int) ($input['maxheight'] ?? (int) round($width * 9 / 16))));
+        return [200, [
+            'version' => '1.0',
+            'type' => 'rich',
+            'provider_name' => 'Watch Room',
+            'provider_url' => $appBase,
+            'title' => $room !== '' ? "Watch Room {$room}" : 'Watch Room',
+            'html' => '<iframe src="' . htmlspecialchars($embed, ENT_QUOTES, 'UTF-8') . '" width="' . $width . '" height="' . $height . '" allow="autoplay; fullscreen; clipboard-write" allowfullscreen style="border:0"></iframe>',
+            'width' => $width,
+            'height' => $height,
+        ], ['Cache-Control' => 'public, max-age=300']];
+    }
+
     public function cors(string $origin): array
     {
+        if ($this->config['cors_origins'] === ['*']) {
+            return [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Authorization, Content-Type, X-Host-Token, X-Api-Key',
+                'Access-Control-Max-Age' => '600',
+            ];
+        }
         if ($origin === '' || !in_array($origin, $this->config['cors_origins'], true)) {
             return [];
         }

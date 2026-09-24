@@ -5,7 +5,7 @@ require_once __DIR__ . '/lib/Source.php';
 require_once __DIR__ . '/lib/RoomStore.php';
 
 $config = require __DIR__ . '/config.php';
-$frameAncestors = $config['cors_origins'] === [] ? "'self'" : "'self' " . implode(' ', $config['cors_origins']);
+$frameAncestors = $config['cors_origins'] === [] ? "'self'" : ($config['cors_origins'] === ['*'] ? '*' : "'self' " . implode(' ', $config['cors_origins']));
 header("Content-Security-Policy: default-src 'self'; script-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https: blob:; img-src 'self' https: data:; style-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors {$frameAncestors}");
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
@@ -66,7 +66,7 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
     <section class="workspace">
         <div class="stage" id="stage" tabindex="0" aria-label="Video stage"
-             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-solo-src="<?= $e($soloSource['src']) ?>" data-solo-label="<?= $e($soloSource['label']) ?>" data-idle-timeout="<?= (int) $idleTimeout ?>" data-embed-origins="<?= $e(implode(',', $config['cors_origins'])) ?>">
+             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-solo-src="<?= $e($soloSource['src']) ?>" data-solo-label="<?= $e($soloSource['label']) ?>" data-nochat="<?= isset($_GET['nochat']) ? '1' : '0' ?>" data-noautoplay="<?= isset($_GET['noautoplay']) ? '1' : '0' ?>" data-idle-timeout="<?= (int) $idleTimeout ?>" data-embed-origins="<?= $e(implode(',', $config['cors_origins'])) ?>">
             <div class="stage__picture" id="stage-picture"></div>
             <div class="stage__cards" id="stage-cards"></div>
             <div class="stage__controls" id="stage-controls">

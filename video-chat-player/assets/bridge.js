@@ -6,7 +6,7 @@ import { bus } from './bus.js';
 export function installBridge({ root, player, chat, playlist, stage, controls, idle, requestPlay }) {
   if (window.parent === window) return;
   const allowed = (root.dataset.embedOrigins || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const isAllowed = (origin) => origin === location.origin || allowed.includes(origin);
+  const isAllowed = (origin) => origin === location.origin || allowed.includes('*') || allowed.includes(origin);
   let parentOrigin = null;
   const post = (event, payload) => { if (parentOrigin) window.parent.postMessage({ type: 'watchroom:event', event, payload }, parentOrigin); };
 

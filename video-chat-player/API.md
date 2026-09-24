@@ -55,6 +55,7 @@ curl -N "$B/v1/rooms/quiet-otter-41/events?since=0" -H "Authorization: Bearer m_
 | GET | `/v1/health` | – | Server self-checks |
 | GET | `/v1/openapi.json` | – | OpenAPI 3.1 document |
 | GET | `/v1/resolve?url=` | – | What a link would become (kind, title, thumbnail) |
+| GET | `/v1/oembed?url=&maxwidth=&maxheight=` | – | oEmbed `rich` response for a room or player URL (see EMBED.md) |
 | POST | `/v1/rooms` | API key if configured | Create a room; returns `hostToken` once |
 | GET | `/v1/rooms/{id}` | member | Room, members, playlist, state |
 | PATCH | `/v1/rooms/{id}` | host | `guestsControl`, `chatMode` (`overlay`/`docked`), `youtubeEngine` (`auto`/`lite`/`api`), `hostMemberId` |
@@ -113,7 +114,7 @@ messages · 32-character names · 200 playlist items · 5 webhooks per room.
 | Variable | Effect |
 |---|---|
 | `WATCHROOM_API_KEY` | When set, `POST /v1/rooms` requires `X-Api-Key`. The web page is unaffected. |
-| `WATCHROOM_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-site **and** to embed the player in an iframe (`frame-ancestors`). |
+| `WATCHROOM_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-site **and** to embed the player in an iframe (`frame-ancestors`). `*` allows any page. |
 | `WATCHROOM_SSE_SECONDS` | Length of one event-stream window (5–120, default 25). |
 | `WATCHROOM_DEFAULT_SRC` | First item of every new room (default: the demo YouTube playlist). |
 

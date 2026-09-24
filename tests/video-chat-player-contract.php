@@ -87,6 +87,25 @@ $assert(str_contains($html, 'data-src="https://www.youtube.com/playlist?list=PLQ
 $assert(str_contains($render(['src' => 'https://youtu.be/qqwhjSzFJqY']), 'data-kind="youtube"'), 'a YouTube link in ?src= reaches the stage');
 $assert(!str_contains($html, '<w:hyperlink'), 'sanity: no Word markup leaks into the player page');
 
+// --- embed endpoint ---
+$renderEmbed = static function (array $get): string {
+    $_GET = $get;
+    $_SERVER['HTTP_HOST'] = 'host.example';
+    $_SERVER['SCRIPT_NAME'] = '/video-chat-player/embed.php';
+    ob_start();
+    include __DIR__ . '/../video-chat-player/embed.php';
+    return (string) ob_get_clean();
+};
+$html = $renderEmbed(['room' => 'quiet-otter-41', 'chat' => '0', 'autoplay' => '0']);
+$assert(str_contains($html, 'app app--embed') && str_contains($html, 'data-nochat="1"') && str_contains($html, 'data-noautoplay="1"') && str_contains($html, '<code class="roombar__id" id="room-id">quiet-otter-41</code>'), 'embed.php renders the compact player with chat and autoplay options');
+$html = $renderEmbed(['room' => '../etc', 'src' => 'https://youtu.be/qqwhjSzFJqY']);
+$assert(!str_contains($html, '../etc') && str_contains($html, 'data-kind="youtube"'), 'embed.php drops a bad room id and accepts a YouTube src');
+$html = $renderEmbed(['compact' => '0']);
+$assert(!str_contains($html, 'app--embed'), 'compact=0 shows the full page');
+require_once __DIR__ . '/../video-chat-player/lib/Embed.php';
+$json = Embed::describe('http://host.example/video-chat-player/', 'quiet-otter-41', ['cors_origins' => ['*']]);
+$assert($json['embedUrl'] === 'http://host.example/video-chat-player/embed.php?room=quiet-otter-41' && str_contains($json['iframe'], 'allowfullscreen') && str_ends_with($json['api'], '/api.php/v1') && str_contains($json['oembed'], '/v1/oembed?url=') && $json['allowedEmbedders'] === ['*'], 'embed.php?format=json describes the embed');
+
 array_map('unlink', glob($mediaDir . '/*') ?: []);
 rmdir($mediaDir);
 

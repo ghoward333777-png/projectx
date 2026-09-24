@@ -35,6 +35,16 @@ $assert($s === 200 && $b['kind'] === 'youtube-playlist' && $b['list'] === 'PL9oa
 [$s, $b] = $call('GET', '/v1/resolve', ['url' => 'ftp://x']);
 $assert($s === 400 && $b['code'] === 'bad_request', 'GET /v1/resolve rejects junk with a code');
 
+// --- oEmbed and wildcard origins ---
+[$s, $b, $h] = $call('GET', '/v1/oembed', ['url' => 'https://host.example/index.php?room=quiet-otter-41', 'maxwidth' => 640]);
+$assert($s === 200 && $b['type'] === 'rich' && $b['width'] === 640 && $b['height'] === 360 && str_contains($b['html'], 'embed.php?room=quiet-otter-41') && str_contains($b['html'], 'allowfullscreen'), 'GET /v1/oembed returns a rich iframe snippet for a room URL');
+[$s, $b] = $call('GET', '/v1/oembed', ['url' => 'https://host.example/embed.php']);
+$assert($s === 200 && str_contains($b['html'], 'src="https://host.example/embed.php"'), 'oEmbed for the bare player URL');
+[$s, $b] = $call('GET', '/v1/oembed', ['url' => 'https://elsewhere.example/page']);
+$assert($s === 404 && $b['code'] === 'not_found', 'oEmbed refuses non-Watch-Room URLs');
+$open = new RestApi($api, ['cors_origins' => ['*']] + $config);
+$assert($open->cors('https://anything.example')['Access-Control-Allow-Origin'] === '*' && $open->cors('')['Access-Control-Allow-Origin'] === '*', 'wildcard origins answer every page');
+
 // --- rooms and auth ---
 [$s, $b] = $call('POST', '/v1/rooms', [], ['name' => 'Ana', 'src' => 'media/sample.mp4']);
 $assert($s === 201 && isset($b['hostToken'], $b['memberId']) && $b['playlist']['items'][0]['kind'] === 'mp4' && count($b['playlist']['items']) === 1, 'POST /v1/rooms → 201 with host token and the requested first item (no duplicate sample)');

@@ -42,7 +42,7 @@ ok(st.playing && st.rev > 1, 'SDK recovers from a stale baseRev on its own');
 const resolved = await host.resolve('https://youtu.be/qqwhjSzFJqY');
 ok(resolved.kind === 'youtube' && /Georgie and Mandy/.test(resolved.title), `resolve() reads the title without an API key (${resolved.title})`);
 const added = await host.add('media/test-4x3.webm');
-ok(added.item.kind === 'mp4' && added.playlist.items.length === 2, 'add() appends a local file');
+ok(added.item.kind === 'mp4' && added.playlist.items.at(-1).id === added.item.id, `add() appends a local file (${added.playlist.items.length} items: requested clip, bundled sample, added file)`);
 await host.jump(added.item.id);
 await sleep(800);
 ok(guest.playlistCache?.current === added.item.id, 'jump() moved everyone to the new item');
@@ -92,7 +92,7 @@ const bridge = await page.evaluate(async ({ base, room }) => {
   await new Promise((r) => setTimeout(r, 1500));
   let unknown = null;
   try { await h.command('explode'); } catch (err) { unknown = err.message; }
-  return { compact: h.iframe.src.includes('embed=1'), room: snap.room, members: snap.members.map((m) => m.name), playingBefore: snap.state.playing, playingAfter: snap2.state.playing, events: [...new Set(events)], log: document.getElementById('log').textContent, unknown };
+  return { compact: h.iframe.src.includes('embed.php') && !h.iframe.src.includes('compact=0'), room: snap.room, members: snap.members.map((m) => m.name), playingBefore: snap.state.playing, playingAfter: snap2.state.playing, events: [...new Set(events)], log: document.getElementById('log').textContent, unknown };
 }, { base, room: host.roomId });
 ok(bridge.compact && bridge.room === host.roomId, `embed loads the compact player into the room (${bridge.room})`);
 ok(bridge.members.includes('Host page'), 'embedded viewer joined as its own member');

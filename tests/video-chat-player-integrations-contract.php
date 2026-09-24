@@ -28,7 +28,7 @@ $assert(isset($jm['mod_watchroom.xml'], $jm['services/provider.php'], $jm['src/H
 $assert(!array_filter(array_keys($wp), static fn ($k) => str_contains($k, 'local-config') || str_contains($k, '/rooms/') || str_contains($k, '/bin/') || str_contains($k, 'test-')), 'no local config, rooms, bin scripts or test media in the packages');
 if (class_exists(ZipArchive::class)) {
     $built = IntegrationBuilder::buildAll($appDir, $tmp . '/dist');
-    $assert(count($built) === 2 && min($built) > 20, 'both zips build');
+    $assert(count($built) === 3 && min($built) > 20, 'all three zips build (WordPress, Joomla, drop-in embed)');
     $zip = new ZipArchive();
     $zip->open($tmp . '/dist/mod_watchroom-joomla.zip');
     $xml = (string) $zip->getFromName('mod_watchroom.xml');

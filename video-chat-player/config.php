@@ -9,6 +9,8 @@ declare(strict_types=1);
  *                         this key in the X-Api-Key header; the web page is unaffected.
  *  WATCHROOM_CORS_ORIGINS comma-separated origins allowed to call the API and to embed the
  *                         player from another site (e.g. "https://example.com,https://app.example.com").
+ *                         "*" allows any page to frame the player and drive it (fine for a public
+ *                         player; member ids stay the only credential).
  *  WATCHROOM_SSE_SECONDS  how long one event-stream connection stays open before the client
  *                         reconnects (default 25; keep it short on shared hosting).
  *  WATCHROOM_ROOMS_DIR    where room folders live (default: rooms/ next to this file).
