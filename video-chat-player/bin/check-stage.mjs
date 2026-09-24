@@ -82,7 +82,8 @@ for (const c of cases) {
 // A refused source falls back to the default and says so.
 await page.goto(`${base}index.php?src=${encodeURIComponent('javascript:alert(1)')}`, { waitUntil: 'load' });
 ok(await page.locator('.notice--warn').count() === 1, 'rejected source shows the warning notice');
-ok((await page.locator('#stage').getAttribute('data-src')).startsWith('https://'), 'rejected source falls back to the default https URL');
+const fallback = await page.locator('#stage').getAttribute('data-src');
+ok(fallback && !fallback.includes('javascript'), `rejected source falls back to the default (${fallback})`);
 
 await browser.close();
 console.log(failures.length ? `\n${failures.length} check(s) failed` : '\nAll stage checks passed');

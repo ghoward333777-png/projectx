@@ -1,20 +1,19 @@
 import { bus } from './bus.js';
 import { Stage } from './stage.js';
+import { IdleController } from './idle.js';
+import { Controls, installKeyboard } from './controls.js';
 import { Html5Adapter } from './player/html5.js';
 
 const root = document.getElementById('stage');
 const stage = new Stage(root);
 const player = new Html5Adapter();
 player.mount(stage.picture);
+const idle = new IdleController(stage, { timeout: Number(root.dataset.idleTimeout) || 3000 });
 
 const $ = (id) => document.getElementById(id);
-const playButton = $('ctl-play');
-const timeLabel = $('ctl-time');
 const cards = stage.cards;
+const composer = $('overlay-input');
 const state = { name: 'loading', error: null };
-
-// ---- state exposed for the browser check and for debugging ----
-window.__watchRoom = { stage, player, get state() { return state.name; }, get error() { return state.error; } };
 
 function setState(name, error = null) {
   state.name = name;
@@ -46,8 +45,9 @@ function showCard({ title, text, action }) {
     card.appendChild(b);
   }
   cards.appendChild(card);
+  idle.pin('modal');
 }
-function clearCards() { cards.replaceChildren(); }
+function clearCards() { cards.replaceChildren(); idle.unpin('modal'); }
 
 // ---- playback ----
 async function togglePlay() {
@@ -66,28 +66,12 @@ async function togglePlay() {
   }
 }
 
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
-  const s = Math.floor(seconds);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
-}
+const controls = new Controls({ root, player, stage, idle, togglePlay });
+installKeyboard({ player, stage, idle, controls, composer, togglePlay });
 
-let lastRendered = -1;
-function renderTime(t) {
-  const whole = Math.floor(t);
-  if (whole === lastRendered) return;
-  lastRendered = whole;
-  timeLabel.textContent = `${formatTime(t)} / ${formatTime(player.duration())}`;
-}
-
-player.on('play', () => { playButton.textContent = '⏸'; playButton.setAttribute('aria-label', 'Pause'); playButton.setAttribute('aria-pressed', 'true'); setState('playing'); });
-player.on('pause', () => { playButton.textContent = '▶'; playButton.setAttribute('aria-label', 'Play'); playButton.setAttribute('aria-pressed', 'false'); if (state.name !== 'error') setState('paused'); });
-player.on('ended', () => setState('ended'));
-player.on('time', renderTime);
-player.on('duration', () => { lastRendered = -1; renderTime(player.currentTime()); });
+player.on('play', () => { setState('playing'); idle.unpin('paused'); });
+player.on('pause', () => { if (state.name !== 'error') setState('paused'); idle.pin('paused'); });
+player.on('ended', () => { setState('ended'); idle.pin('paused'); });
 player.on('ready', (size) => {
   stage.setPictureSize(size);
   $('dbg-picture').textContent = size ? `${size.width} × ${size.height}` : '–';
@@ -97,15 +81,11 @@ player.on('error', (message) => {
   showCard({ title: 'Cannot play this video', text: message });
 });
 
-// ---- controls ----
-playButton.addEventListener('click', togglePlay);
-$('ctl-fullscreen').addEventListener('click', () => stage.toggleFullscreen());
-
-// Click on the picture toggles play; double-click toggles full screen. A short
-// timer keeps the single click from firing on the way to a double click.
+// ---- picture clicks: desktop toggles play / double-click full screen; touch toggles the overlay ----
 let clickTimer = 0;
 stage.picture.addEventListener('click', () => {
   clearTimeout(clickTimer);
+  if (idle.touch) { idle.toggle(); return; }
   clickTimer = setTimeout(togglePlay, 250);
 });
 stage.picture.addEventListener('dblclick', () => {
@@ -113,36 +93,24 @@ stage.picture.addEventListener('dblclick', () => {
   stage.toggleFullscreen();
 });
 
-document.addEventListener('keydown', (event) => {
-  const target = event.target;
-  const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
-  if (typing) return;
-  switch (event.key) {
-    case ' ':
-    case 'k':
-    case 'K':
-      event.preventDefault();
-      togglePlay();
-      break;
-    case 'f':
-    case 'F':
-      event.preventDefault();
-      stage.toggleFullscreen();
-      break;
-    case 'ArrowLeft':
-      event.preventDefault();
-      player.seek(player.currentTime() - (event.shiftKey ? 15 : 5));
-      break;
-    case 'ArrowRight':
-      event.preventDefault();
-      player.seek(player.currentTime() + (event.shiftKey ? 15 : 5));
-      break;
-    case 'Escape':
-      if (root.classList.contains('is-fake-fullscreen')) stage.exitFullscreen();
-      break;
-    default:
-      break;
-  }
+// ---- composer pins (the chat itself arrives in step 3) ----
+composer.addEventListener('focus', () => idle.pin('composer'));
+composer.addEventListener('blur', () => idle.unpin('composer'));
+composer.addEventListener('input', () => {
+  if (composer.value.trim() !== '') idle.pin('draft');
+  else idle.unpin('draft');
+});
+$('overlay-composer').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const text = composer.value.trim();
+  if (text === '') return;
+  const line = document.createElement('p');
+  line.className = 'overlay__system';
+  line.textContent = `Sending arrives in step 3. You typed: "${text}"`;
+  $('overlay-list').appendChild(line);
+  $('overlay-list').scrollTop = $('overlay-list').scrollHeight;
+  composer.value = '';
+  idle.unpin('draft');
 });
 
 // ---- loader ----
@@ -153,19 +121,21 @@ if (library) {
   });
 }
 
-// ---- geometry readout ----
+// ---- geometry / state readout ----
 bus.on('stage:layout', (rect) => {
   $('dbg-stage').textContent = `${Math.round(rect.stageWidth)} × ${Math.round(rect.stageHeight)}`;
   $('dbg-rect').textContent = `${Math.round(rect.x)}, ${Math.round(rect.y)} · ${Math.round(rect.width)} × ${Math.round(rect.height)} (${rect.source})`;
 });
 bus.on('stage:fullscreen', (on) => { $('dbg-fs').textContent = on ? 'yes' : 'no'; });
+bus.on('idle:state', (s) => { $('dbg-idle').textContent = s + (idle.pins.size ? ` (${[...idle.pins].join(', ')})` : ''); });
+
+window.__watchRoom = { stage, player, idle, controls, get state() { return state.name; }, get error() { return state.error; } };
 
 // ---- boot ----
 (async () => {
-  const src = root.dataset.src;
   setState('loading');
   try {
-    await player.load({ src });
+    await player.load({ src: root.dataset.src });
     setState('ready');
     await togglePlay();
   } catch (err) {

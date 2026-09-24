@@ -119,3 +119,25 @@ kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; background: #
 .debug dd { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- Step 2: control bar widgets ---------- */
+.seek { flex: 1 1 120px; min-width: 60px; accent-color: var(--accent); height: 20px; margin: 0; cursor: pointer; }
+.volume { width: 80px; accent-color: var(--accent); height: 20px; margin: 0; cursor: pointer; }
+.select--small { width: auto; padding: 4px 6px; font-size: 12px; background: rgba(255,255,255,0.12); border-color: transparent; }
+@media (max-width: 640px) { .volume, .select--small { display: none; } }
+.stage__chatdot { position: absolute; top: 10px; right: 12px; z-index: 6; font-size: 11px; color: var(--ink-dim); background: var(--glass); padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1); }
+.stage__chatdot::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+.stage.is-chat-off .overlay { display: none; }
+
+/* ---------- Step 2: idle hide (classes set only by IdleController) ---------- */
+.overlay, .stage__controls { transition: none; }
+.stage.is-fading .overlay, .stage.is-fading .stage__controls {
+  transition: opacity 220ms ease, transform 220ms ease;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+.stage.is-idle .overlay, .stage.is-idle .stage__controls { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.stage.is-idle { cursor: none; }
+.stage.is-idle .stage__chatdot { opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) { .stage.is-fading .overlay, .stage.is-fading .stage__controls { transform: none; } }

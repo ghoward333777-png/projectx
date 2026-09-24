@@ -25,7 +25,8 @@ file_put_contents($mediaDir . '/notes.txt', 'x');
 
 // --- media/ files ---
 $r = Source::resolve('media/reel.webm', $mediaDir);
-$assert($r !== null && $r['kind'] === 'file' && $r['src'] === 'media/reel.webm' && $r['label'] === 'reel.webm', 'media file resolves');
+$assert($r !== null && $r['kind'] === 'file' && $r['src'] === 'media.php?f=reel.webm' && $r['label'] === 'reel.webm' && $r['name'] === 'reel.webm', 'media file resolves through the range-aware streamer');
+$assert(Source::resolve('media/clip one.mp4', $mediaDir)['src'] === 'media.php?f=clip%20one.mp4', 'file names are URL-encoded in the streamer link');
 $assert(Source::resolve('media/clip one.mp4', $mediaDir)['kind'] === 'file', 'media file with a space resolves');
 $assert(Source::resolve('media/missing.mp4', $mediaDir) === null, 'missing media file is refused');
 $assert(Source::resolve('media/notes.txt', $mediaDir) === null, 'non-video media file is refused');
@@ -44,7 +45,22 @@ $assert(Source::resolve('javascript:alert(1)', $mediaDir) === null, 'javascript:
 $assert(Source::resolve('file:///etc/passwd', $mediaDir) === null, 'file: is refused');
 $assert(Source::resolve('   ', $mediaDir) === null, 'blank is refused');
 $assert(Source::resolve('https:///film.mp4', $mediaDir) === null, 'https without a host is refused');
-$assert(Source::defaultSource()['kind'] === 'url' && str_starts_with(Source::defaultSource()['src'], 'https://'), 'default source is an https URL');
+$assert(Source::defaultSource($mediaDir)['kind'] === 'url' && str_starts_with(Source::defaultSource($mediaDir)['src'], 'https://'), 'without a bundled sample the default is the public https URL');
+file_put_contents($mediaDir . '/' . Source::SAMPLE, 'x');
+$assert(Source::defaultSource($mediaDir)['src'] === 'media.php?f=sample.mp4', 'the bundled sample.mp4 is the default when present');
+unlink($mediaDir . '/' . Source::SAMPLE);
+
+// --- byte ranges (media.php) ---
+$assert(Source::parseRange('', 1000) === null, 'no Range header serves the whole file');
+$assert(Source::parseRange('bytes=0-99', 1000) === [0, 99], 'closed range');
+$assert(Source::parseRange('bytes=500-', 1000) === [500, 999], 'open-ended range');
+$assert(Source::parseRange('bytes=-100', 1000) === [900, 999], 'suffix range');
+$assert(Source::parseRange('bytes=0-5000', 1000) === [0, 999], 'end past the file is clamped');
+$assert(Source::parseRange('bytes=1000-', 1000) === false, 'start at the file size is unsatisfiable');
+$assert(Source::parseRange('bytes=9-3', 1000) === false, 'inverted range is unsatisfiable');
+$assert(Source::parseRange('bytes=0-1,5-9', 1000) === null, 'multipart ranges fall back to the whole file');
+$assert(Source::parseRange('items=0-1', 1000) === null, 'non-byte units are ignored');
+$assert(Source::mimeType('a.webm') === 'video/webm' && Source::mimeType('a.MP4') === 'video/mp4' && Source::mimeType('a.m4v') === 'video/x-m4v', 'mime types');
 
 // --- page shell ---
 $render = static function (array $get): string {
@@ -53,15 +69,19 @@ $render = static function (array $get): string {
     include __DIR__ . '/../video-chat-player/index.php';
     return (string) ob_get_clean();
 };
+$realDefault = htmlspecialchars(Source::defaultSource(__DIR__ . '/../video-chat-player/media')['src'], ENT_QUOTES, 'UTF-8');
 $html = $render([]);
 $assert(str_contains($html, 'id="stage"'), 'page renders the stage');
-$assert(str_contains($html, 'data-src="' . htmlspecialchars(Source::DEFAULT_URL, ENT_QUOTES, 'UTF-8') . '"'), 'default source is wired into the stage');
+$assert(str_contains($html, 'data-src="' . $realDefault . '"'), 'default source is wired into the stage');
+$assert(str_contains($html, 'id="ctl-seek"') && str_contains($html, 'id="ctl-volume"') && str_contains($html, 'id="ctl-chat"'), 'control bar widgets are present');
+$assert(str_contains($html, 'data-idle-timeout="3000"'), 'idle timeout defaults to 3000 ms');
+$assert(str_contains($render(['idle' => '99']), 'data-idle-timeout="1500"') && str_contains($render(['idle' => '50000']), 'data-idle-timeout="10000"'), 'idle timeout is clamped to 1500–10000');
 $assert(str_contains($html, 'id="stage-overlay"') && str_contains($html, 'id="stage-controls"'), 'overlay and control layers are present');
 $assert(!str_contains($html, 'notice--warn'), 'no warning without a request');
 $html = $render(['src' => '"><script>alert(1)</script>']);
 $assert(!str_contains($html, '<script>alert'), 'hostile source is never echoed raw');
 $assert(str_contains($html, 'notice--warn'), 'hostile source shows the warning');
-$assert(str_contains($html, 'data-src="https://'), 'hostile source falls back to the default');
+$assert(str_contains($html, 'data-src="' . $realDefault . '"'), 'hostile source falls back to the default');
 $assert(!str_contains($html, '<w:hyperlink'), 'sanity: no Word markup leaks into the player page');
 
 array_map('unlink', glob($mediaDir . '/*') ?: []);

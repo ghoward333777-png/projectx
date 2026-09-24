@@ -9,6 +9,7 @@ declare(strict_types=1);
 final class Source
 {
     public const DEFAULT_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    public const SAMPLE = 'sample.mp4';
     private const EXTENSIONS = ['mp4', 'webm', 'm4v'];
 
     /** @return array{kind: string, src: string, label: string}|null */
@@ -23,7 +24,7 @@ final class Source
             if (!self::isMediaName($name) || !is_file($mediaDir . '/' . $name)) {
                 return null;
             }
-            return ['kind' => 'file', 'src' => 'media/' . $name, 'label' => $name];
+            return ['kind' => 'file', 'src' => 'media.php?f=' . rawurlencode($name), 'label' => $name, 'name' => $name];
         }
         $parts = parse_url($requested);
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
@@ -37,10 +38,50 @@ final class Source
         return ['kind' => 'url', 'src' => $requested, 'label' => $label];
     }
 
-    /** @return array{kind: string, src: string, label: string} */
-    public static function defaultSource(): array
+    /** The bundled sample when present, else a public sample MP4. @return array{kind: string, src: string, label: string} */
+    public static function defaultSource(string $mediaDir): array
     {
-        return ['kind' => 'url', 'src' => self::DEFAULT_URL, 'label' => 'Big Buck Bunny (sample MP4)'];
+        return self::resolve('media/' . self::SAMPLE, $mediaDir)
+            ?? ['kind' => 'url', 'src' => self::DEFAULT_URL, 'label' => 'Big Buck Bunny (sample MP4)'];
+    }
+
+    public static function mimeType(string $name): string
+    {
+        return match (strtolower(pathinfo($name, PATHINFO_EXTENSION))) {
+            'webm' => 'video/webm',
+            'm4v' => 'video/x-m4v',
+            default => 'video/mp4',
+        };
+    }
+
+    /**
+     * Parses an HTTP Range header for a file of $size bytes.
+     * Returns [start, end] for a satisfiable range, null when there is no usable range
+     * (serve the whole file), or false when the range is unsatisfiable (416).
+     * @return array{0: int, 1: int}|null|false
+     */
+    public static function parseRange(string $header, int $size): array|null|false
+    {
+        if ($header === '' || $size <= 0 || preg_match('/^bytes=(\d*)-(\d*)$/', trim($header), $m) !== 1) {
+            return null;
+        }
+        [, $from, $to] = $m;
+        if ($from === '' && $to === '') {
+            return null;
+        }
+        if ($from === '') {
+            $length = (int) $to;
+            if ($length === 0) {
+                return false;
+            }
+            return [max(0, $size - $length), $size - 1];
+        }
+        $start = (int) $from;
+        $end = $to === '' ? $size - 1 : min($size - 1, (int) $to);
+        if ($start >= $size || $start > $end) {
+            return false;
+        }
+        return [$start, $end];
     }
 
     /** Files in media/ the loader can offer, sorted by name. @return list<string> */

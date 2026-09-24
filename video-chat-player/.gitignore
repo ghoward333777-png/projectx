@@ -1,3 +1,4 @@
-# Runtime data and local media never ship with the code.
+# Runtime data and local media never ship with the code, except the bundled sample.
 rooms/
-media/
+media/*
+!media/sample.mp4
