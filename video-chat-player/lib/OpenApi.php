@@ -1,0 +1,105 @@
+<?php
+declare(strict_types=1);
+
+/** The OpenAPI 3.1 description of /v1, built in PHP so it always matches the router. */
+final class OpenApi
+{
+    public static function spec(string $baseUrl = ''): array
+    {
+        $roomId = ['name' => 'roomId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string', 'pattern' => '^[a-z]+-[a-z]+-\d\d$'], 'example' => 'quiet-otter-41'];
+        $ok = static fn (string $ref, string $desc = 'OK') => ['description' => $desc, 'content' => ['application/json' => ['schema' => ['$ref' => "#/components/schemas/{$ref}"]]]];
+        $err = static fn (string $desc) => ['description' => $desc, 'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Error']]]];
+        $json = static fn (string $ref) => ['required' => true, 'content' => ['application/json' => ['schema' => ['$ref' => "#/components/schemas/{$ref}"]]]];
+        $member = [['bearer' => []]];
+        $host = [['bearer' => [], 'hostToken' => []]];
+
+        return [
+            'openapi' => '3.1.0',
+            'info' => [
+                'title' => 'Watch Room API',
+                'version' => '1.0.0',
+                'summary' => 'Rooms, chat, playlists and a shared playback clock for the Watch Room player.',
+                'description' => "Every room is a link. A member is a display name plus an unguessable member id, which is also the Bearer token. The room creator receives a host token once; host-only calls send it as X-Host-Token. All timestamps are Unix milliseconds; serverTime in responses lets clients compute their clock offset.\n\nRate limits: 5 messages per 5 s per member, 10 playlist additions per minute per member, 500-character messages, 200 playlist items, 5 webhooks per room. Errors always carry `error` (for people) and `code` (for programs): bad_request, unauthorized, forbidden, not_found, rate_limited, stale, method, server_error.",
+            ],
+            'servers' => [['url' => $baseUrl !== '' ? $baseUrl : '/video-chat-player/api.php']],
+            'tags' => [
+                ['name' => 'rooms'], ['name' => 'messages'], ['name' => 'playlist'], ['name' => 'playback'], ['name' => 'events'], ['name' => 'webhooks'], ['name' => 'system'],
+            ],
+            'paths' => [
+                '/v1/health' => ['get' => ['tags' => ['system'], 'summary' => 'Server self-checks', 'operationId' => 'health', 'responses' => ['200' => $ok('Health')]]],
+                '/v1/openapi.json' => ['get' => ['tags' => ['system'], 'summary' => 'This document', 'operationId' => 'openapi', 'responses' => ['200' => ['description' => 'OpenAPI 3.1 document']]]],
+                '/v1/resolve' => ['get' => ['tags' => ['playlist'], 'summary' => 'Inspect a video link without adding it', 'operationId' => 'resolve', 'parameters' => [['name' => 'url', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string']]], 'responses' => ['200' => $ok('ResolvedItem'), '400' => $err('Not a supported link')]]],
+                '/v1/rooms' => ['post' => ['tags' => ['rooms'], 'summary' => 'Create a room and become its host', 'operationId' => 'createRoom', 'security' => [[], ['apiKey' => []]], 'requestBody' => $json('CreateRoom'), 'responses' => ['201' => $ok('JoinResult', 'Room created; includes hostToken (shown once)'), '400' => $err('Missing name'), '401' => $err('API key required')]]],
+                '/v1/rooms/{roomId}' => [
+                    'get' => ['tags' => ['rooms'], 'summary' => 'Room, members, playlist and state', 'operationId' => 'getRoom', 'security' => $member, 'parameters' => [$roomId], 'responses' => ['200' => $ok('RoomSnapshot'), '401' => $err('No Bearer token'), '404' => $err('Unknown or expired room')]],
+                    'patch' => ['tags' => ['rooms'], 'summary' => 'Change room settings (host)', 'operationId' => 'updateRoom', 'security' => $host, 'parameters' => [$roomId], 'requestBody' => $json('RoomSettings'), 'responses' => ['200' => $ok('RoomOnly'), '403' => $err('Host token required')]],
+                ],
+                '/v1/rooms/{roomId}/members' => ['post' => ['tags' => ['rooms'], 'summary' => 'Join a room (returns the member id to use as Bearer token)', 'operationId' => 'joinRoom', 'parameters' => [$roomId], 'requestBody' => $json('Join'), 'responses' => ['200' => $ok('JoinResult'), '404' => $err('Unknown or expired room')]]],
+                '/v1/rooms/{roomId}/members/me' => ['patch' => ['tags' => ['rooms'], 'summary' => 'Rename yourself', 'operationId' => 'renameSelf', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('Join'), 'responses' => ['200' => $ok('JoinResult')]]],
+                '/v1/rooms/{roomId}/messages' => [
+                    'get' => ['tags' => ['messages'], 'summary' => 'Messages after a cursor (or the latest)', 'operationId' => 'listMessages', 'security' => $member, 'parameters' => [$roomId, ['name' => 'since', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'Return messages with seq greater than this; omit for the latest ones'], ['name' => 'limit', 'in' => 'query', 'schema' => ['type' => 'integer', 'default' => 100, 'maximum' => 500]]], 'responses' => ['200' => $ok('MessageList')]],
+                    'post' => ['tags' => ['messages'], 'summary' => 'Send a message', 'operationId' => 'sendMessage', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('SendMessage'), 'responses' => ['201' => $ok('SendResult'), '429' => $err('Rate limited')]],
+                ],
+                '/v1/rooms/{roomId}/sync' => ['get' => ['tags' => ['events'], 'summary' => 'One poll: everything that changed since the given cursors', 'operationId' => 'sync', 'security' => $member, 'parameters' => [$roomId, ['name' => 'since', 'in' => 'query', 'schema' => ['type' => 'integer']], ['name' => 'prev', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'Playlist revision you have'], ['name' => 'srev', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'State revision you have']], 'responses' => ['200' => $ok('SyncResult')]]],
+                '/v1/rooms/{roomId}/events' => ['get' => ['tags' => ['events'], 'summary' => 'Server-sent event stream (message, state, playlist, members, ping, end)', 'operationId' => 'events', 'security' => $member, 'parameters' => [$roomId, ['name' => 'since', 'in' => 'query', 'schema' => ['type' => 'integer']], ['name' => 'prev', 'in' => 'query', 'schema' => ['type' => 'integer']], ['name' => 'srev', 'in' => 'query', 'schema' => ['type' => 'integer']]], 'responses' => ['200' => ['description' => 'text/event-stream. The stream ends after the configured window with an `end` event; reconnect with the last ids.', 'content' => ['text/event-stream' => ['schema' => ['type' => 'string']]]]]]],
+                '/v1/rooms/{roomId}/playlist' => [
+                    'get' => ['tags' => ['playlist'], 'summary' => 'The playlist', 'operationId' => 'getPlaylist', 'security' => $member, 'parameters' => [$roomId], 'responses' => ['200' => $ok('PlaylistOnly')]],
+                    'post' => ['tags' => ['playlist'], 'summary' => 'Add a video by link', 'operationId' => 'addItem', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('AddItem'), 'responses' => ['201' => $ok('AddResult'), '400' => $err('Unsupported link'), '429' => $err('Rate limited or playlist full')]],
+                    'patch' => ['tags' => ['playlist'], 'summary' => 'Reorder, jump, or report an item status', 'operationId' => 'updatePlaylist', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('PlaylistUpdate'), 'responses' => ['200' => $ok('PlaylistAndState'), '403' => $err('Host only')]],
+                ],
+                '/v1/rooms/{roomId}/playlist/import' => ['post' => ['tags' => ['playlist'], 'summary' => 'Add many YouTube ids at once', 'operationId' => 'importItems', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('ImportItems'), 'responses' => ['201' => $ok('PlaylistOnly')]]],
+                '/v1/rooms/{roomId}/playlist/{itemId}' => ['delete' => ['tags' => ['playlist'], 'summary' => 'Remove an item (host)', 'operationId' => 'removeItem', 'security' => $member, 'parameters' => [$roomId, ['name' => 'itemId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']]], 'responses' => ['200' => $ok('PlaylistAndState'), '403' => $err('Host only')]]],
+                '/v1/rooms/{roomId}/state' => [
+                    'get' => ['tags' => ['playback'], 'summary' => 'Shared playback clock and the expected position now', 'operationId' => 'getState', 'security' => $member, 'parameters' => [$roomId], 'responses' => ['200' => $ok('StateResult')]],
+                    'put' => ['tags' => ['playback'], 'summary' => 'Play, pause, seek or change item for everyone', 'operationId' => 'setState', 'security' => $member, 'parameters' => [$roomId], 'requestBody' => $json('StateUpdate'), 'responses' => ['200' => $ok('StateOnly'), '403' => $err('Host controls playback'), '409' => $err('Stale baseRev; the body carries the current state')]],
+                ],
+                '/v1/rooms/{roomId}/webhooks' => [
+                    'get' => ['tags' => ['webhooks'], 'summary' => 'List webhooks (host)', 'operationId' => 'listWebhooks', 'security' => $host, 'parameters' => [$roomId], 'responses' => ['200' => $ok('WebhookList')]],
+                    'post' => ['tags' => ['webhooks'], 'summary' => 'Register a webhook (host)', 'operationId' => 'addWebhook', 'security' => $host, 'parameters' => [$roomId], 'requestBody' => $json('AddWebhook'), 'responses' => ['201' => $ok('WebhookCreated', 'Created; the secret is shown once')]],
+                ],
+                '/v1/rooms/{roomId}/webhooks/{webhookId}' => ['delete' => ['tags' => ['webhooks'], 'summary' => 'Remove a webhook (host)', 'operationId' => 'removeWebhook', 'security' => $host, 'parameters' => [$roomId, ['name' => 'webhookId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']]], 'responses' => ['200' => $ok('WebhookList')]]],
+            ],
+            'components' => [
+                'securitySchemes' => [
+                    'bearer' => ['type' => 'http', 'scheme' => 'bearer', 'description' => 'The member id returned when creating or joining a room.'],
+                    'hostToken' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-Host-Token'],
+                    'apiKey' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-Api-Key', 'description' => 'Only when the deployment sets WATCHROOM_API_KEY.'],
+                ],
+                'schemas' => [
+                    'Error' => ['type' => 'object', 'properties' => ['error' => ['type' => 'string'], 'code' => ['type' => 'string', 'enum' => ['bad_request', 'unauthorized', 'forbidden', 'not_found', 'rate_limited', 'stale', 'method', 'server_error']], 'state' => ['$ref' => '#/components/schemas/State']], 'required' => ['error', 'code']],
+                    'CreateRoom' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'maxLength' => 32], 'src' => ['type' => 'string', 'description' => 'Optional first item: a YouTube link, an https .mp4/.webm link, or media/<file>']], 'required' => ['name']],
+                    'Join' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'maxLength' => 32], 'memberId' => ['type' => 'string', 'description' => 'Rejoin as an existing member']], 'required' => ['name']],
+                    'RoomSettings' => ['type' => 'object', 'properties' => ['guestsControl' => ['type' => 'boolean'], 'chatMode' => ['type' => 'string', 'enum' => ['overlay', 'docked']], 'hostMemberId' => ['type' => 'string', 'description' => 'Hand the host role to another member']]],
+                    'Member' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'name' => ['type' => 'string'], 'colour' => ['type' => 'string'], 'online' => ['type' => 'boolean'], 'host' => ['type' => 'boolean'], 'joinedAt' => ['type' => 'integer']]],
+                    'Room' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'createdAt' => ['type' => 'integer'], 'updatedAt' => ['type' => 'integer'], 'chatMode' => ['type' => 'string'], 'guestsControl' => ['type' => 'boolean'], 'hostMemberId' => ['type' => 'string'], 'members' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Member']]]],
+                    'Message' => ['type' => 'object', 'properties' => ['seq' => ['type' => 'integer'], 'id' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['chat', 'system']], 'memberId' => ['type' => 'string'], 'name' => ['type' => 'string'], 'colour' => ['type' => 'string'], 'text' => ['type' => 'string'], 'mediaTime' => ['type' => ['number', 'null']], 'itemId' => ['type' => ['string', 'null']], 'sentAt' => ['type' => 'integer']]],
+                    'SendMessage' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string', 'description' => 'Client id (6–64 chars) used to de-duplicate retries'], 'text' => ['type' => 'string', 'maxLength' => 500], 'mediaTime' => ['type' => 'number'], 'itemId' => ['type' => 'string']], 'required' => ['id', 'text']],
+                    'SendResult' => ['type' => 'object', 'properties' => ['seq' => ['type' => 'integer'], 'message' => ['$ref' => '#/components/schemas/Message'], 'serverTime' => ['type' => 'integer']]],
+                    'MessageList' => ['type' => 'object', 'properties' => ['messages' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Message']], 'since' => ['type' => 'integer'], 'serverTime' => ['type' => 'integer']]],
+                    'PlaylistItem' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['mp4', 'youtube']], 'src' => ['type' => 'string'], 'title' => ['type' => 'string'], 'thumb' => ['type' => ['string', 'null']], 'addedBy' => ['type' => 'string'], 'addedAt' => ['type' => 'integer'], 'status' => ['type' => 'string', 'enum' => ['ok', 'error']], 'error' => ['type' => ['string', 'null']]]],
+                    'Playlist' => ['type' => 'object', 'properties' => ['rev' => ['type' => 'integer'], 'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/PlaylistItem']], 'current' => ['type' => ['string', 'null']]]],
+                    'ResolvedItem' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'src' => ['type' => 'string'], 'title' => ['type' => 'string'], 'thumb' => ['type' => ['string', 'null']], 'list' => ['type' => 'string'], 'firstVideo' => ['type' => ['string', 'null']], 'note' => ['type' => 'string']]],
+                    'AddItem' => ['type' => 'object', 'properties' => ['url' => ['type' => 'string']], 'required' => ['url']],
+                    'AddResult' => ['type' => 'object', 'properties' => ['playlist' => ['$ref' => '#/components/schemas/Playlist'], 'item' => ['$ref' => '#/components/schemas/PlaylistItem'], 'needsImport' => ['type' => 'boolean'], 'list' => ['type' => 'string'], 'firstVideo' => ['type' => ['string', 'null']]]],
+                    'ImportItems' => ['type' => 'object', 'properties' => ['videoIds' => ['type' => 'array', 'items' => ['type' => 'string']], 'listId' => ['type' => 'string']], 'required' => ['videoIds']],
+                    'PlaylistUpdate' => ['type' => 'object', 'properties' => ['current' => ['type' => 'string', 'description' => 'Jump to this item and start it for everyone'], 'order' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Item ids in the new order (host)'], 'remove' => ['type' => 'string', 'description' => 'Item id to remove (host)'], 'status' => ['type' => 'object', 'properties' => ['itemId' => ['type' => 'string'], 'status' => ['type' => 'string', 'enum' => ['ok', 'error']], 'error' => ['type' => 'string']]]]],
+                    'PlaylistOnly' => ['type' => 'object', 'properties' => ['playlist' => ['$ref' => '#/components/schemas/Playlist'], 'added' => ['type' => 'integer'], 'serverTime' => ['type' => 'integer']]],
+                    'PlaylistAndState' => ['type' => 'object', 'properties' => ['playlist' => ['$ref' => '#/components/schemas/Playlist'], 'state' => ['$ref' => '#/components/schemas/State'], 'serverTime' => ['type' => 'integer']]],
+                    'State' => ['type' => 'object', 'properties' => ['rev' => ['type' => 'integer'], 'itemId' => ['type' => ['string', 'null']], 'playing' => ['type' => 'boolean'], 'mediaTime' => ['type' => 'number', 'description' => 'Position in seconds at time `at`'], 'at' => ['type' => 'integer', 'description' => 'Server ms when mediaTime was true'], 'rate' => ['type' => 'number'], 'by' => ['type' => ['string', 'null']]]],
+                    'StateUpdate' => ['type' => 'object', 'properties' => ['state' => ['type' => 'object', 'properties' => ['itemId' => ['type' => 'string'], 'playing' => ['type' => 'boolean'], 'mediaTime' => ['type' => 'number'], 'rate' => ['type' => 'number', 'enum' => [0.5, 0.75, 1, 1.25, 1.5, 2]], 'baseRev' => ['type' => 'integer', 'description' => 'The rev you last saw; a stale rev is refused with 409']]]], 'required' => ['state']],
+                    'StateOnly' => ['type' => 'object', 'properties' => ['state' => ['$ref' => '#/components/schemas/State'], 'serverTime' => ['type' => 'integer']]],
+                    'StateResult' => ['type' => 'object', 'properties' => ['state' => ['$ref' => '#/components/schemas/State'], 'expectedPosition' => ['type' => 'number'], 'serverTime' => ['type' => 'integer']]],
+                    'JoinResult' => ['type' => 'object', 'properties' => ['room' => ['$ref' => '#/components/schemas/Room'], 'memberId' => ['type' => 'string'], 'hostToken' => ['type' => 'string', 'description' => 'Only when creating'], 'playlist' => ['$ref' => '#/components/schemas/Playlist'], 'state' => ['$ref' => '#/components/schemas/State'], 'messages' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Message']], 'since' => ['type' => 'integer'], 'actingHostId' => ['type' => ['string', 'null']], 'serverTime' => ['type' => 'integer']]],
+                    'RoomSnapshot' => ['type' => 'object', 'properties' => ['room' => ['$ref' => '#/components/schemas/Room'], 'playlist' => ['$ref' => '#/components/schemas/Playlist'], 'state' => ['$ref' => '#/components/schemas/State'], 'actingHostId' => ['type' => ['string', 'null']], 'serverTime' => ['type' => 'integer']]],
+                    'RoomOnly' => ['type' => 'object', 'properties' => ['room' => ['$ref' => '#/components/schemas/Room'], 'serverTime' => ['type' => 'integer']]],
+                    'SyncResult' => ['type' => 'object', 'properties' => ['messages' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Message']], 'since' => ['type' => 'integer'], 'members' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Member']], 'actingHostId' => ['type' => ['string', 'null']], 'playlist' => ['$ref' => '#/components/schemas/Playlist'], 'state' => ['$ref' => '#/components/schemas/State'], 'room' => ['$ref' => '#/components/schemas/Room'], 'serverTime' => ['type' => 'integer']]],
+                    'AddWebhook' => ['type' => 'object', 'properties' => ['url' => ['type' => 'string', 'format' => 'uri'], 'events' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['message', 'state', 'playlist', 'member']]]], 'required' => ['url']],
+                    'Webhook' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'url' => ['type' => 'string'], 'events' => ['type' => 'array', 'items' => ['type' => 'string']], 'createdAt' => ['type' => 'integer'], 'failures' => ['type' => 'integer']]],
+                    'WebhookCreated' => ['type' => 'object', 'properties' => ['webhook' => ['allOf' => [['$ref' => '#/components/schemas/Webhook'], ['type' => 'object', 'properties' => ['secret' => ['type' => 'string', 'description' => 'HMAC-SHA256 key for X-WatchRoom-Signature (sha256=hex over the raw body)']]]]]]],
+                    'WebhookList' => ['type' => 'object', 'properties' => ['webhooks' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Webhook']]]],
+                    'Health' => ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean'], 'checks' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string'], 'ok' => ['type' => 'boolean'], 'detail' => ['type' => 'string']]]], 'serverTime' => ['type' => 'integer']]],
+                ],
+            ],
+        ];
+    }
+}

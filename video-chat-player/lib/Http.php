@@ -72,6 +72,51 @@ final class Http
         return [$body === false ? 0 : $status, (string) $body];
     }
 
+    /**
+     * POST a JSON body to a public https URL with extra headers. Returns the status, 0 when
+     * unreachable. Used for webhooks; never follows redirects.
+     */
+    public static function postJson(string $url, string $json, array $headers = [], int $timeout = 2): int
+    {
+        if (!self::isPublicHttpsUrl($url)) {
+            return 0;
+        }
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+            $ip = gethostbyname($host);
+            if ($ip !== $host && !self::isPublicIp($ip)) {
+                return 0;
+            }
+        }
+        $headers[] = 'Content-Type: application/json';
+        $headers[] = 'User-Agent: WatchRoom/1.0';
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $json,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_CONNECTTIMEOUT => $timeout,
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            ]);
+            curl_exec($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            return $status;
+        }
+        $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => implode("\r\n", $headers), 'content' => $json, 'timeout' => $timeout, 'follow_location' => 0, 'ignore_errors' => true]]);
+        @file_get_contents($url, false, $ctx);
+        foreach ($http_response_header ?? [] as $h) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) {
+                return (int) $m[1];
+            }
+        }
+        return 0;
+    }
+
     /** HEAD-style reachability probe (uses GET with a tiny body cap). */
     public static function reachable(string $url): bool
     {

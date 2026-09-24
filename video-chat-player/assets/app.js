@@ -10,6 +10,7 @@ import { Overlay } from './overlay.js';
 import { PlaylistController } from './playlist.js';
 import { SyncController } from './sync.js';
 import { Health } from './health.js';
+import { installBridge } from './bridge.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('stage');
@@ -268,6 +269,8 @@ bus.on('stage:layout', (rect) => {
 });
 bus.on('stage:fullscreen', (on) => { $('dbg-fs').textContent = on ? 'yes' : 'no'; });
 bus.on('idle:state', (s) => { $('dbg-idle').textContent = s + (idle.pins.size ? ` (${[...idle.pins].join(', ')})` : ''); });
+
+installBridge({ root, player, chat, playlist, stage, controls, idle, requestPlay });
 
 window.__watchRoom = { stage, player, idle, controls, chat, playlist, sync, overlay, health, get state() { return state.name; }, get error() { return state.error; }, get item() { return state.item; } };
 

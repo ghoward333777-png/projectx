@@ -6,6 +6,7 @@ require_once __DIR__ . '/MessageLog.php';
 require_once __DIR__ . '/Playlist.php';
 require_once __DIR__ . '/PlaybackState.php';
 require_once __DIR__ . '/Source.php';
+require_once __DIR__ . '/Webhooks.php';
 
 /**
  * The JSON API behind api.php, as plain methods so the contract test can call it
@@ -14,9 +15,15 @@ require_once __DIR__ . '/Source.php';
  */
 final class WatchRoomApi
 {
-    public function __construct(private readonly RoomStore $rooms, private readonly string $mediaDir, private readonly bool $lookupTitles = true)
+    private array $config;
+
+    public function __construct(private readonly RoomStore $rooms, private readonly string $mediaDir, private readonly bool $lookupTitles = true, array $config = [])
     {
+        $this->config = $config + ['webhook_timeout' => 2, 'webhooks_per_room' => 5];
     }
+
+    public function rooms(): RoomStore { return $this->rooms; }
+    public function mediaDir(): string { return $this->mediaDir; }
 
     /** @return array{0: int, 1: array} */
     public function handle(string $action, string $method, array $input): array
@@ -25,13 +32,21 @@ final class WatchRoomApi
             return match ($action) {
                 'room.create' => $this->post($method, fn () => $this->roomCreate($input)),
                 'room.join' => $this->post($method, fn () => $this->roomJoin($input)),
+                'room.get' => $this->roomGet($input),
                 'room.settings' => $this->post($method, fn () => $this->roomSettings($input)),
                 'chat.send' => $this->post($method, fn () => $this->chatSend($input)),
+                'messages.list' => $this->messagesList($input),
                 'sync.poll' => $this->syncPoll($input),
+                'playlist.get' => $this->playlistGet($input),
                 'playlist.add' => $this->post($method, fn () => $this->playlistAdd($input)),
                 'playlist.import' => $this->post($method, fn () => $this->playlistImport($input)),
                 'playlist.set' => $this->post($method, fn () => $this->playlistSet($input)),
+                'state.get' => $this->stateGet($input),
                 'state.set' => $this->post($method, fn () => $this->stateSet($input)),
+                'resolve' => $this->resolve($input),
+                'webhook.list' => $this->webhookList($input),
+                'webhook.add' => $this->post($method, fn () => $this->webhookAdd($input)),
+                'webhook.remove' => $this->post($method, fn () => $this->webhookRemove($input)),
                 'health' => [200, $this->health()],
                 default => [404, ['error' => 'Unknown action.', 'code' => 'unknown_action']],
             };
@@ -92,6 +107,7 @@ final class WatchRoomApi
         $isNew = $before === null || !isset($before['members'][$member['id']]);
         if ($isNew) {
             $log->append($this->system($member, $member['name'] . ' joined'));
+            $this->notify($room, 'member', ['id' => $member['id'], 'name' => $member['name'], 'colour' => $member['colour'], 'event' => 'joined']);
         } elseif (($before['members'][$member['id']]['name'] ?? '') !== $member['name']) {
             $log->append($this->system($member, ($before['members'][$member['id']]['name'] ?? '?') . ' is now ' . $member['name']));
         }
@@ -99,6 +115,98 @@ final class WatchRoomApi
         $playlist = Playlist::load($path);
         $state = PlaybackState::load($path, $playlist['current']);
         return [200, $this->joinPayload($room, $member, $playlist, $state, $log)];
+    }
+
+    private function roomGet(array $in): array
+    {
+        [$room] = $this->requireMember($in);
+        $path = $this->rooms->path($room['id']);
+        $playlist = Playlist::load($path);
+        return [200, ['room' => $this->publicRoom($room), 'playlist' => $playlist, 'state' => PlaybackState::load($path, $playlist['current']), 'actingHostId' => RoomStore::actingHostId($room), 'serverTime' => RoomStore::now()]];
+    }
+
+    private function messagesList(array $in): array
+    {
+        [$room] = $this->requireMember($in);
+        $log = $this->log($room['id']);
+        $limit = max(1, min(500, (int) ($in['limit'] ?? 100)));
+        $since = isset($in['since']) ? max(0, (int) $in['since']) : null;
+        $messages = $since === null ? $log->latest($limit) : $log->since($since, $limit);
+        return [200, ['messages' => $messages, 'since' => $messages === [] ? ($since ?? 0) : (int) end($messages)['seq'], 'serverTime' => RoomStore::now()]];
+    }
+
+    private function playlistGet(array $in): array
+    {
+        [$room] = $this->requireMember($in);
+        return [200, ['playlist' => Playlist::load($this->rooms->path($room['id'])), 'serverTime' => RoomStore::now()]];
+    }
+
+    private function stateGet(array $in): array
+    {
+        [$room] = $this->requireMember($in);
+        $path = $this->rooms->path($room['id']);
+        $playlist = Playlist::load($path);
+        $state = PlaybackState::load($path, $playlist['current']);
+        return [200, ['state' => $state, 'expectedPosition' => round(PlaybackState::expectedPosition($state, RoomStore::now()), 3), 'serverTime' => RoomStore::now()]];
+    }
+
+    /** What a URL would become as a playlist item, without adding it. */
+    private function resolve(array $in): array
+    {
+        $parsed = Playlist::parseUrl((string) ($in['url'] ?? ''), $this->mediaDir);
+        if ($parsed === null) {
+            throw new InvalidArgumentException('Not a supported video link.');
+        }
+        if ($parsed['kind'] === 'youtube-playlist') {
+            return [200, ['kind' => 'youtube-playlist', 'list' => $parsed['list'], 'firstVideo' => $parsed['id'], 'note' => 'Playlist contents are read in the browser through the YouTube player; POST the video ids to playlist.import.']];
+        }
+        $item = Playlist::makeItem($parsed, 'preview', $this->lookupTitles);
+        unset($item['id'], $item['addedBy'], $item['addedAt']);
+        return [200, $item];
+    }
+
+    private function webhookList(array $in): array
+    {
+        [$room] = $this->requireHost($in);
+        return [200, ['webhooks' => Webhooks::listing($room)]];
+    }
+
+    private function webhookAdd(array $in): array
+    {
+        [$room] = $this->requireHost($in);
+        [$room, $hook] = Webhooks::add($room, (string) ($in['url'] ?? ''), is_array($in['events'] ?? null) ? $in['events'] : [], (int) $this->config['webhooks_per_room']);
+        $this->rooms->save($room);
+        return [201, ['webhook' => $hook + ['note' => 'Store the secret now; it is not shown again.']]];
+    }
+
+    private function webhookRemove(array $in): array
+    {
+        [$room] = $this->requireHost($in);
+        $room = Webhooks::remove($room, (string) ($in['webhookId'] ?? ''));
+        $this->rooms->save($room);
+        return [200, ['webhooks' => Webhooks::listing($room)]];
+    }
+
+    /** @return array{0: array, 1: array} */
+    private function requireHost(array $in): array
+    {
+        [$room, $member] = $this->requireMember($in);
+        if (!$this->rooms->isHost($room, (string) ($in['hostToken'] ?? ''))) {
+            throw new UnexpectedValueException('This needs the host token.');
+        }
+        return [$room, $member];
+    }
+
+    private function notify(array $room, string $event, array $payload): void
+    {
+        if (empty($room['webhooks'])) {
+            return;
+        }
+        $fresh = $this->rooms->load($room['id']) ?? $room;
+        $after = Webhooks::dispatch($fresh, $event, $payload, (int) $this->config['webhook_timeout']);
+        if ($after['webhooks'] !== $fresh['webhooks']) {
+            $this->rooms->save($after);
+        }
     }
 
     private function roomSettings(array $in): array
@@ -143,6 +251,7 @@ final class WatchRoomApi
         ];
         $stored = $this->log($room['id'])->append($message);
         $this->rooms->touch($room, $member['id']);
+        $this->notify($room, 'message', $stored);
         return [200, ['seq' => (int) $stored['seq'], 'message' => $stored, 'serverTime' => RoomStore::now()]];
     }
 
@@ -198,6 +307,7 @@ final class WatchRoomApi
         $playlist['current'] ??= $item['id'];
         $playlist = Playlist::save($path, $playlist);
         $this->log($room['id'])->append($this->system($member, $member['name'] . ' added ' . $item['title']));
+        $this->notify($room, 'playlist', $playlist);
         return [200, ['playlist' => $playlist, 'item' => $item, 'serverTime' => RoomStore::now()]];
     }
 
@@ -286,6 +396,7 @@ final class WatchRoomApi
         }
         if ($changed) {
             $playlist = Playlist::save($path, $playlist);
+            $this->notify($room, 'playlist', $playlist);
         }
         $state = PlaybackState::load($path, $playlist['current']);
         return [200, ['playlist' => $playlist, 'state' => $state, 'serverTime' => RoomStore::now()]];
@@ -315,6 +426,7 @@ final class WatchRoomApi
             $playlist['current'] = (string) $update['itemId'];
             Playlist::save($path, $playlist);
         }
+        $this->notify($room, 'state', $state);
         return [200, ['state' => $state, 'serverTime' => RoomStore::now()]];
     }
 

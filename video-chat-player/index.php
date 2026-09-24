@@ -4,7 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/Source.php';
 require_once __DIR__ . '/lib/RoomStore.php';
 
-header("Content-Security-Policy: default-src 'self'; script-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https: blob:; img-src 'self' https: data:; style-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'");
+$config = require __DIR__ . '/config.php';
+$frameAncestors = $config['cors_origins'] === [] ? "'self'" : "'self' " . implode(' ', $config['cors_origins']);
+header("Content-Security-Policy: default-src 'self'; script-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https: blob:; img-src 'self' https: data:; style-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors {$frameAncestors}");
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 
@@ -16,6 +18,7 @@ $rejected = $requested !== '' && $source === null;
 $source ??= Source::defaultSource($mediaDir);
 $roomId = isset($_GET['room']) && RoomStore::isRoomId((string) $_GET['room']) ? (string) $_GET['room'] : '';
 $idleTimeout = max(1500, min(10000, (int) ($_GET['idle'] ?? 3000)));
+$embed = isset($_GET['embed']) && $_GET['embed'] !== '0';
 $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 ?>
 <!DOCTYPE html>
@@ -27,7 +30,7 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-<main class="app">
+<main class="app<?= $embed ? ' app--embed' : '' ?>">
     <header class="topbar">
         <h1 class="topbar__title">Watch Room</h1>
         <div class="roombar">
@@ -50,7 +53,7 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
     <section class="workspace">
         <div class="stage" id="stage" tabindex="0" aria-label="Video stage"
-             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-idle-timeout="<?= (int) $idleTimeout ?>">
+             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-idle-timeout="<?= (int) $idleTimeout ?>" data-embed-origins="<?= $e(implode(',', $config['cors_origins'])) ?>">
             <div class="stage__picture" id="stage-picture"></div>
             <div class="stage__cards" id="stage-cards"></div>
             <div class="stage__controls" id="stage-controls">

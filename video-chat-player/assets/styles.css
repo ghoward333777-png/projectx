@@ -216,3 +216,11 @@ kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; background: #
 .stage.is-docked .overlay { top: calc(var(--content-y) + var(--content-h) + 8px); bottom: 8px; max-height: none; }
 .stage.is-docked .stage__controls { bottom: calc(var(--dock-h) + var(--content-y)); }
 @media (max-width: 640px) { .namebar { margin-left: 0; } }
+
+/* ---------- Embedded (compact) layout: stage only, room bar minimal ---------- */
+.app--embed { padding: 0; max-width: none; }
+.app--embed .topbar { display: none; }
+.app--embed .workspace { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.app--embed .rail { display: none; }
+.app--embed .stage { border-radius: 0; }
+.app--embed #banner { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 7; margin: 0; }

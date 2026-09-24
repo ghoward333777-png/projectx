@@ -42,6 +42,12 @@ try {
     $row('stale write refused', $s === 409, "status {$s}");
     [$s] = $api->handle('room.join', 'POST', ['roomId' => 'quiet-otter-00', 'name' => 'x']);
     $row('missing room is 404', $s === 404, "status {$s}");
+    require_once dirname(__DIR__) . '/lib/RestApi.php';
+    $rest = new RestApi($api, ['api_key' => '', 'cors_origins' => [], 'sse_seconds' => 1, 'sse_interval_ms' => 50, 'webhook_timeout' => 1, 'webhooks_per_room' => 5]);
+    [$s, $rb] = $rest->dispatch('GET', "/v1/rooms/{$roomId}/state", [], [], ['authorization' => "Bearer {$me}"]);
+    $row('REST /v1 routing', $s === 200 && isset($rb['expectedPosition']), "status {$s}");
+    [$s] = $rest->dispatch('GET', "/v1/rooms/{$roomId}/state", [], [], []);
+    $row('REST auth required', $s === 401, "status {$s}");
     $store = new RoomStore($tmp);
     touch($tmp . '/' . $roomId . '/room.json', time() - 90000);
     $row('gc removes idle rooms', $store->gc() === 1 && !is_dir($tmp . '/' . $roomId), 'after 25 h idle');
