@@ -4512,3 +4512,537 @@ async fn phase_nine_setup_wizards_team_with_scripted_model() {
             .unwrap();
     assert_eq!(applied, 6);
 }
+
+#[tokio::test]
+async fn phase_ten_support_chat_agents_assistant_and_handover() {
+    let tmp = std::env::temp_dir().join(format!("mms-http-{}", uuid::Uuid::new_v4()));
+    let mut config = mms_core::config::Config::generate(tmp, "127.0.0.1:0", "http://shop.example");
+    let site = "33333333-2222-4333-8444-555555555555";
+    config.bridges.push(mms_core::config::BridgeConfig {
+        uuid: site.into(),
+        name: "Site".into(),
+        host: "wordpress".into(),
+        origin: "https://shop.example".into(),
+        secret: "s".into(),
+        admin_sso: true,
+    });
+    config.validate().unwrap();
+    let db = mms_core::db::Db::memory().await.unwrap();
+    let mut st = app::AppState::new(config, db).unwrap();
+    routes::bridges::sync_from_config(&st).await.unwrap();
+    st.wizard_transport = mms_core::wizards::Transport::scripted(vec![
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use(
+                "h1",
+                "read_help",
+                serde_json::json!({ "topic": "open" })
+            )]),
+        ),
+        model_turn(
+            "end_turn",
+            serde_json::json!([{ "type": "text", "text": "Everything you bought is under My media; open the film from there." }]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([{ "type": "text", "text": "I'll hand you to a member of the team for the refund." }, tool_use("h2", "escalate", serde_json::json!({ "reason": "refund request", "summary": "Guest Ada wants a refund for a film" }))]),
+        ),
+        model_turn(
+            "end_turn",
+            serde_json::json!([{ "type": "text", "text": "Hi Ada, I can refund the film today; you will get the money back within five days." }]),
+        ),
+        model_turn(
+            "tool_use",
+            serde_json::json!([tool_use("h3", "lookup_customer", serde_json::json!({}))]),
+        ),
+        model_turn(
+            "end_turn",
+            serde_json::json!([{ "type": "text", "text": "Your order is paid and the film is open in My media." }]),
+        ),
+    ]);
+    let app = app::router(st.clone());
+    let (admin_cookie, csrf) = admin_session(&app).await;
+
+    // Invite a contractor, who joins by link, sets a password and lands in the console; admin pages stay closed.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/admin/chat/invite",
+            &format!("_csrf={csrf}&email=sam%40example.com&name=Sam"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let loc = location(&res);
+    let token = loc
+        .split("token%3D")
+        .nth(1)
+        .unwrap_or("")
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .next()
+        .unwrap()
+        .to_string();
+    assert_eq!(token.len(), 64, "{loc}");
+    let body = text(
+        app.clone()
+            .oneshot(get(&format!("/agent/join?token={token}"), None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Join the support team") && body.contains("sam@example.com"),
+        "{body}"
+    );
+    let res = app.clone().oneshot(form("POST", "/agent/join", &format!("token={token}&name=Sam+Agent&password=contractor-pass&password_repeat=contractor-pass"), None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", text(res).await);
+    let agent_cookie = cookie_of(&res);
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/agent/join",
+            &format!("token={token}&password=contractor-pass&password_repeat=contractor-pass"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert!(
+        text(res).await.contains("no longer valid"),
+        "an invite works once"
+    );
+    let sam = st.users.by_email("sam@example.com").await.unwrap().unwrap();
+    assert!(sam.is_agent() && !sam.is_staff() && sam.role == "customer");
+    let body = text(
+        app.clone()
+            .oneshot(get("/agent", Some(&agent_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Support console") && body.contains("Nothing here right now"),
+        "{body}"
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(get("/admin", Some(&agent_cookie)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(get("/admin/chat", Some(&agent_cookie)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let body = text(
+        app.clone()
+            .oneshot(get("/admin/chat", Some(&admin_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Sam Agent") && body.contains("accepted"),
+        "{body}"
+    );
+    // Signing in at the store's own login sends an agent to the console.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            "/login",
+            "email=sam%40example.com&password=contractor-pass",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(location(&res), "/agent");
+
+    // A guest on the site: the assistant answers first.
+    assert_eq!(
+        app.clone()
+            .oneshot(get("/embed/chat?site=nope", None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let res = app
+        .clone()
+        .oneshot(get(&format!("/embed/chat?site={site}"), None))
+        .await
+        .unwrap();
+    assert_eq!(
+        res.headers()[header::CONTENT_SECURITY_POLICY],
+        "frame-ancestors 'self' https://shop.example"
+    );
+    assert!(text(res).await.contains("Start chat"));
+    let res = app.clone().oneshot(json_req("POST", "/chat/start", &format!(r#"{{"site":"{site}","name":"Ada","email":"ada@example.com","subject":"My film","message":"How do I open my film?"}}"#), "", "")).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let visitor_cookie = cookie_of(&res);
+    assert!(visitor_cookie.contains("mms_chat="));
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    let conv = j["conversation"].as_str().unwrap().to_string();
+    assert_eq!(j["status"], "open");
+    assert_eq!(
+        j["messages"].as_array().unwrap().len(),
+        1,
+        "only the replies come back: {j}"
+    );
+    assert_eq!(j["messages"][0]["sender"], "assistant");
+    assert!(j["messages"][0]["body"]
+        .as_str()
+        .unwrap()
+        .contains("My media"));
+    // Nobody else can read it.
+    assert_eq!(
+        app.clone()
+            .oneshot(get(&format!("/chat/{conv}/messages?after=0"), None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    // Money question: the assistant hands over.
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/chat/{conv}/send"),
+            r#"{"body":"I want a refund. Get me a human."}"#,
+            &visitor_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "waiting", "{j}");
+    let bodies: Vec<&str> = j["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["body"].as_str().unwrap())
+        .collect();
+    assert!(
+        bodies.iter().any(|b| b.contains("hand you"))
+            && bodies
+                .iter()
+                .any(|b| b.contains("connected to a support agent")),
+        "Sam's console polls count as online: {bodies:?}"
+    );
+    let c = st.support.by_uuid(&conv).await.unwrap().unwrap();
+    assert_eq!(c.ai_turns, 2);
+    let notes = st.support.messages(c.id, 0, true).await.unwrap();
+    assert!(
+        notes
+            .iter()
+            .any(|m| m.internal == 1 && m.body.contains("refund request")),
+        "the hand-over note is internal"
+    );
+
+    // The agent sees it in the queue, takes it, replies; the visitor sees the reply.
+    let body = text(
+        app.clone()
+            .oneshot(get("/agent?tab=waiting", Some(&agent_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Ada") && body.contains("My film") && body.contains("guest"),
+        "{body}"
+    );
+    let body = text(
+        app.clone()
+            .oneshot(get(&format!("/agent/c/{conv}"), Some(&agent_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Internal note")
+            && body.contains("refund request")
+            && body.contains("Take this conversation"),
+        "{body}"
+    );
+    let agent_csrf = body
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_string();
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/agent/c/{conv}/reply"),
+            &format!(
+                "_csrf={agent_csrf}&_format=json&body=Hi+Ada%2C+I+will+refund+the+film+today."
+            ),
+            Some(&agent_cookie),
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["message"]["sender"], "agent", "{j}");
+    let res = app
+        .clone()
+        .oneshot(get(
+            &format!("/chat/{conv}/messages?after=0"),
+            Some(&visitor_cookie),
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "assigned");
+    assert_eq!(j["agent"], "Sam Agent");
+    assert!(
+        j["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["sender"] == "agent"
+                && m["body"].as_str().unwrap().contains("refund the film")),
+        "{j}"
+    );
+    assert!(
+        !j["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["internal"] == true),
+        "visitors never see internal notes"
+    );
+    assert_eq!(
+        j["online"], true,
+        "the agent's console polls count as online"
+    );
+    // AI draft for the agent, close, rating, reopening.
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/agent/c/{conv}/suggest"),
+            &format!("_csrf={agent_csrf}"),
+            Some(&agent_cookie),
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert!(j["draft"].as_str().unwrap().contains("five days"), "{j}");
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/agent/c/{conv}/close"),
+            &format!("_csrf={agent_csrf}"),
+            Some(&agent_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/chat/{conv}/rate"),
+            r#"{"rating":5,"note":"quick"}"#,
+            &visitor_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(st.support.counts().await.unwrap()["rated"], 1);
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            &format!("/chat/{conv}/send"),
+            r#"{"body":"One more thing"}"#,
+            &visitor_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(
+        j["status"], "assigned",
+        "writing again reopens with the same agent: {j}"
+    );
+
+    // A signed-in customer: the assistant may look up their own records.
+    let now = mms_core::now();
+    sqlx::query("INSERT INTO products (uuid, slug, type, title, price_cents, currency, status, created_at, updated_at) VALUES ('p1','film','video','Film',4900,'USD','published',?,?)").bind(&now).bind(&now).execute(&st.db.pool).await.unwrap();
+    let res = app.clone().oneshot(form("POST", "/register", "email=bob%40example.com&name=Bob&password=bobs-long-password&password_repeat=bobs-long-password", None)).await.unwrap();
+    let bob_cookie = cookie_of(&res);
+    let bob = st.users.by_email("bob@example.com").await.unwrap().unwrap();
+    let film = st.products.by_slug("film").await.unwrap().unwrap();
+    let order = st
+        .commerce
+        .create_external_order(
+            bob.id,
+            "woocommerce",
+            "77",
+            "USD",
+            &[(film, 1, 4900)],
+            0,
+            0,
+            "GB",
+        )
+        .await
+        .unwrap();
+    routes::shop::complete_paid(&st, &order, "woocommerce", Some("77"), None, None)
+        .await
+        .map_err(|e| e.0)
+        .unwrap();
+    let body = text(
+        app.clone()
+            .oneshot(get("/account/help", Some(&bob_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains("Help") && body.contains("/embed/chat"),
+        "{body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/chat/start",
+            r#"{"subject":"Order","message":"Is my order paid?"}"#,
+            &bob_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "open", "{j}");
+    assert!(j["messages"][0]["body"].as_str().unwrap().contains("paid"));
+    let bob_conv = j["conversation"].as_str().unwrap().to_string();
+    let body = text(
+        app.clone()
+            .oneshot(get(&format!("/agent/c/{bob_conv}"), Some(&agent_cookie)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        body.contains(&order.number) && body.contains("<h3>Access</h3>"),
+        "agents see the customer's records: {body}"
+    );
+    let res = app
+        .clone()
+        .oneshot(get("/embed/chat", Some(&bob_cookie)))
+        .await
+        .unwrap();
+    assert!(
+        text(res)
+            .await
+            .contains(&format!("data-existing=\"{bob_conv}\"")),
+        "the open conversation resumes"
+    );
+
+    // Modes: agents only skips the assistant; off refuses; guests can be blocked.
+    st.settings.set("chat.mode", "agents_only").await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/chat/start",
+            &format!(
+                r#"{{"site":"{site}","name":"Cy","email":"cy@example.com","message":"Hello"}}"#
+            ),
+            "",
+            "",
+        ))
+        .await
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&bytes(res).await).unwrap();
+    assert_eq!(j["status"], "waiting", "{j}");
+    st.settings.set("chat.guest", "0").await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/chat/start",
+            &format!(
+                r#"{{"site":"{site}","name":"Di","email":"di@example.com","message":"Hello"}}"#
+            ),
+            "",
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    st.settings.set("chat.mode", "off").await.unwrap();
+    let res = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/chat/start",
+            r#"{"message":"Hello"}"#,
+            &bob_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // Agent status is granted and removed by administrators only.
+    assert_eq!(
+        app.clone()
+            .oneshot(form(
+                "POST",
+                &format!("/admin/customers/{}/agent", sam.uuid),
+                &format!("_csrf={agent_csrf}&agent=0"),
+                Some(&agent_cookie)
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let res = app
+        .clone()
+        .oneshot(form(
+            "POST",
+            &format!("/admin/customers/{}/agent", sam.uuid),
+            &format!("_csrf={csrf}&agent=0"),
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        app.clone()
+            .oneshot(get("/agent", Some(&agent_cookie)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let body = text(
+        app.clone()
+            .oneshot(get(
+                &format!("/admin/customers/{}", sam.uuid),
+                Some(&admin_cookie),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(body.contains("Make support agent"), "{body}");
+}

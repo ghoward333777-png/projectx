@@ -24,7 +24,7 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> AppResult<Response> {
     let like = format!("%{}%", q.q.trim());
-    let users = sqlx::query_as::<_, User>("SELECT id, uuid, email, name, role, status, password_hash FROM users WHERE (? = '' OR email LIKE ? OR name LIKE ?) ORDER BY id DESC LIMIT 500")
+    let users = sqlx::query_as::<_, User>("SELECT id, uuid, email, name, role, status, password_hash, agent FROM users WHERE (? = '' OR email LIKE ? OR name LIKE ?) ORDER BY id DESC LIMIT 500")
         .bind(q.q.trim()).bind(&like).bind(&like).fetch_all(&state.db.pool).await?;
     let site_name = state.settings.get("general.site_name").await?;
     Ok(Html(state.render("customers.html", context! { user => admin.user, csrf => admin.csrf, site_name, active => "customers", users, q => q.q })?).into_response())
@@ -36,7 +36,7 @@ pub async fn detail(
     Path(uuid): Path<String>,
 ) -> AppResult<Response> {
     let Some(c) = sqlx::query_as::<_, User>(
-        "SELECT id, uuid, email, name, role, status, password_hash FROM users WHERE uuid = ?",
+        "SELECT id, uuid, email, name, role, status, password_hash, agent FROM users WHERE uuid = ?",
     )
     .bind(&uuid)
     .fetch_optional(&state.db.pool)
@@ -93,7 +93,7 @@ pub async fn grant(
         return Ok(r);
     }
     let Some(c) = sqlx::query_as::<_, User>(
-        "SELECT id, uuid, email, name, role, status, password_hash FROM users WHERE uuid = ?",
+        "SELECT id, uuid, email, name, role, status, password_hash, agent FROM users WHERE uuid = ?",
     )
     .bind(&uuid)
     .fetch_optional(&state.db.pool)

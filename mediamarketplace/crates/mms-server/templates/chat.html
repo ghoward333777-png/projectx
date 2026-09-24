@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Support · {{ site_name }}</title><link rel="stylesheet" href="{{ base }}/static/mms.css"></head>
+<body class="chat"><div class="chat-wrap" id="chat" data-base="{{ base }}" data-site="{{ site }}" data-existing="{{ existing }}" data-subject="{{ subject }}">
+{% if mode == "off" %}
+<p class="muted">The support chat is not available at the moment.</p>
+{% elif not user and not guests %}
+<p>Please <a href="{{ login_url }}" target="_top">sign in</a> to chat with us.</p>
+{% else %}
+<div id="start"{% if existing %} hidden{% endif %}>
+  <p class="greeting">{{ greeting }}</p>
+  <p class="chat-status">{% if online %}<span class="dot"></span>Support agents are online.{% else %}{{ offline }}{% endif %}</p>
+  <form id="start-form">
+    {% if not user %}<label>Your name <input name="name" required></label><label>Your email <input name="email" type="email" required></label>{% endif %}
+    <label>What is it about? <input name="subject" value="{{ subject }}" placeholder="Optional"></label>
+    <label>Your message <textarea name="message" required placeholder="Type your question…"></textarea></label>
+    <button class="primary">Start chat</button>
+  </form>
+</div>
+<div id="room"{% if not existing %} hidden{% endif %}>
+  <p class="chat-status" id="status"></p>
+  <div class="chat-log" id="log" data-last="0"></div>
+  <form id="send-form" class="chat-form"><textarea name="body" required placeholder="Write a message…"></textarea><button class="primary">Send</button></form>
+  <p class="small"><button type="button" class="link" id="end">End conversation</button></p>
+  <div id="rate" class="chat-rate" hidden><p class="small">How was this? <span>{% for n in [1,2,3,4,5] %}<button type="button" data-n="{{ n }}">★</button>{% endfor %}</span></p></div>
+</div>
+{% endif %}
+</div>
+<script>
+(function(){
+  var root=document.getElementById('chat'); if(!root) return; var base=root.dataset.base, site=root.dataset.site, uuid=root.dataset.existing;
+  var start=document.getElementById('start'), room=document.getElementById('room'), log=document.getElementById('log'), status=document.getElementById('status'), sendForm=document.getElementById('send-form'), rate=document.getElementById('rate'); if(!room) return;
+  var ta=sendForm.querySelector('textarea'), timer=null;
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function resize(){try{parent.postMessage({mms:'resize',height:document.body.scrollHeight+24},'*');}catch(e){}}
+  function add(m){var d=document.createElement('div');d.className='bubble '+m.sender;var who=m.sender==='visitor'?'You':(m.sender==='assistant'?'Assistant':(m.sender==='agent'?m.name:''));d.innerHTML=(who?'<span class="who">'+esc(who)+'</span>':'')+esc(m.body);log.appendChild(d);if(m.id>+log.dataset.last)log.dataset.last=m.id;log.scrollTop=log.scrollHeight;}
+  function setStatus(j){var s=j.status; status.innerHTML= s==='closed'?'This conversation is closed. You can write again to reopen it.':(s==='assigned'?'<span class="dot"></span>'+esc(j.agent||'An agent')+' is with you.':(s==='waiting'?(j.online?'<span class="dot"></span>Waiting for the next available agent…':'No agent is online right now; we will reply by email as well.'):'The assistant is answering. Ask for a person any time.')); rate.hidden = s!=='closed' || !!j.rating; resize();}
+  function poll(){if(!uuid)return;fetch(base+'/chat/'+encodeURIComponent(uuid)+'/messages?after='+log.dataset.last,{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(j){if(j.error)return;(j.messages||[]).forEach(add);setStatus(j);}).catch(function(){});}
+  function open(u){uuid=u;start.hidden=true;room.hidden=false;log.innerHTML='';log.dataset.last='0';poll();if(timer)clearInterval(timer);timer=setInterval(poll,3000);}
+  var sf=document.getElementById('start-form'); if(sf){sf.addEventListener('submit',function(ev){ev.preventDefault();var f=new FormData(sf);var body={site:site,name:f.get('name')||'',email:f.get('email')||'',subject:f.get('subject')||'',message:f.get('message')||'',page:(document.referrer||'')};
+    fetch(base+'/chat/start',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){if(j.error){alert(j.error);return;}open(j.conversation);}).catch(function(){alert('Could not start the chat.');});});}
+  sendForm.addEventListener('submit',function(ev){ev.preventDefault();var text=ta.value.trim();if(!text)return;ta.value='';fetch(base+'/chat/'+encodeURIComponent(uuid)+'/send',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:text})}).then(function(r){return r.json()}).then(function(j){if(j.error){alert(j.error);return;}poll();});});
+  document.getElementById('end').addEventListener('click',function(){if(!uuid)return;fetch(base+'/chat/'+encodeURIComponent(uuid)+'/close',{method:'POST',credentials:'same-origin'}).then(function(){poll();});});
+  rate.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){var n=+b.dataset.n;fetch(base+'/chat/'+encodeURIComponent(uuid)+'/rate',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({rating:n})}).then(function(){rate.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',+x.dataset.n<=n);});setTimeout(function(){rate.hidden=true;resize();},800);});});});
+  if(uuid){open(uuid);} resize();
+})();
+</script>
+</body></html>

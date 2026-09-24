@@ -131,6 +131,13 @@ pub fn environment(base: &str) -> Environment<'static> {
         "google.html",
         "backups.html",
         "wizards.html",
+        "chat.html",
+        "account_help.html",
+        "agent_nav.html",
+        "agent_console.html",
+        "agent_conversation.html",
+        "agent_join.html",
+        "admin_chat.html",
         "wizard_session.html",
         "account_privacy.html"
     );

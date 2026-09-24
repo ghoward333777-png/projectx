@@ -39,6 +39,7 @@ pub const SECTIONS: &[(&str, &str)] = &[
     ("ai", "AI"),
     ("google", "Google Business Profile"),
     ("mail", "Email (SMTP)"),
+    ("chat", "Support chat"),
 ];
 
 /// Every setting, declared once. The admin settings screen renders from this list.
@@ -472,7 +473,14 @@ pub const DEFINITIONS: &[Definition] = &[
         default: "claude-opus-5",
         help: "",
         options: &[],
-    },    Definition { key: "ai.effort", section: "ai", label: "Wizard effort", kind: Kind::Select, default: "medium", help: "How hard the setup wizards think per step. Medium fits most stores; high costs more and takes longer.", options: &[("low", "Low"), ("medium", "Medium"), ("high", "High")] },
+    },    Definition { key: "chat.mode", section: "chat", label: "Support chat", kind: Kind::Select, default: "assistant_first", help: "Assistant first: the AI assistant answers at once and hands over to a human agent when asked or unsure. Agents only: every conversation waits for an agent. Off: the chat is hidden.", options: &[("assistant_first", "Assistant first, then agents"), ("agents_only", "Agents only"), ("off", "Off")] },
+    Definition { key: "chat.greeting", section: "chat", label: "Greeting", kind: Kind::Text, default: "Hi! Ask us anything about your purchases, passes or downloads.", help: "The first line visitors see.", options: &[] },
+    Definition { key: "chat.offline_message", section: "chat", label: "Message when no agent is online", kind: Kind::Text, default: "Our support team is not online right now. Leave your message and we will reply by email.", help: "", options: &[] },
+    Definition { key: "chat.policy", section: "chat", label: "Support policy and facts for the assistant", kind: Kind::Text, default: "", help: "Plain text the assistant may use: refund policy, delivery times, opening hours, what agents can and cannot do. It never invents facts beyond this and the customer's own records.", options: &[] },
+    Definition { key: "chat.notify_agents", section: "chat", label: "Email agents when a visitor is waiting", kind: Kind::Bool, default: "1", help: "Needs SMTP under Email.", options: &[] },
+    Definition { key: "chat.canned", section: "chat", label: "Canned replies", kind: Kind::Text, default: "Thanks for your patience. | I have opened your library again; please refresh My media. | Your receipt is under My media → Orders.", help: "Replies agents can insert with one click, separated by |.", options: &[] },
+    Definition { key: "chat.guest", section: "chat", label: "Allow guests to chat", kind: Kind::Bool, default: "1", help: "Off: visitors must sign in to the store first.", options: &[] },
+    Definition { key: "ai.effort", section: "ai", label: "Wizard effort", kind: Kind::Select, default: "medium", help: "How hard the setup wizards think per step. Medium fits most stores; high costs more and takes longer.", options: &[("low", "Low"), ("medium", "Medium"), ("high", "High")] },
 
 ];
 

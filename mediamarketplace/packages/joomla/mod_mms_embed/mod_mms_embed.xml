@@ -26,6 +26,7 @@
                     <option value="page">MOD_MMS_EMBED_KIND_PAGE</option>
                     <option value="cart">MOD_MMS_EMBED_KIND_CART</option>
                     <option value="sitepass">MOD_MMS_EMBED_KIND_SITEPASS</option>
+                    <option value="chat">MOD_MMS_EMBED_KIND_CHAT</option>
                 </field>
                 <field name="id" type="text" label="MOD_MMS_EMBED_ID" description="MOD_MMS_EMBED_ID_DESC" filter="string" />
                 <field name="view" type="list" label="MOD_MMS_EMBED_VIEW" default="grid">

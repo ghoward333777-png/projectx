@@ -169,3 +169,66 @@ impl AdminUser {
         }
     }
 }
+
+/// A support agent (flagged agent, staff or administrator) with a CSRF token.
+/// Agents are not staff: they never reach admin pages.
+pub struct AgentUser {
+    pub user: User,
+    pub csrf: String,
+}
+
+pub enum AgentRejection {
+    Login(String),
+    Forbidden,
+}
+
+impl IntoResponse for AgentRejection {
+    fn into_response(self) -> Response {
+        match self {
+            AgentRejection::Login(base) => {
+                Redirect::to(&format!("{base}/login?return=%2Fagent")).into_response()
+            }
+            AgentRejection::Forbidden => {
+                (StatusCode::FORBIDDEN, "Support agent access required").into_response()
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl FromRequestParts<AppState> for AgentUser {
+    type Rejection = AgentRejection;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let MaybeUser(user, token) = MaybeUser::from_request_parts(parts, state)
+            .await
+            .expect("infallible");
+        match (user, token) {
+            (Some(user), Some(token)) if user.is_agent() => {
+                let csrf = csrf_token(state, &token);
+                Ok(AgentUser { user, csrf })
+            }
+            (Some(_), _) => Err(AgentRejection::Forbidden),
+            _ => Err(AgentRejection::Login(state.base.to_string())),
+        }
+    }
+}
+
+impl AgentUser {
+    pub fn csrf_error(&self, submitted: &str) -> Option<Response> {
+        if submitted == self.csrf {
+            None
+        } else {
+            Some(
+                (
+                    StatusCode::FORBIDDEN,
+                    "Form token mismatch; reload and try again",
+                )
+                    .into_response(),
+            )
+        }
+    }
+}

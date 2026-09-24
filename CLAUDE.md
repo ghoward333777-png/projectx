@@ -146,6 +146,16 @@ shop is an optional mode (below).
   script. The Concierge's `plan_team` runs specialists sequentially as child sessions
   through the `wizard.run` job; `ask_admin` parks a session as `waiting` and the answer
   is delivered as the pending `tool_result`.
+- Support chat (`mms-core::support`, `routes::support`): agents are users with the
+  `agent` flag (invited by hashed one-time link, `agent_invites`), never staff; the
+  `AgentUser` extractor admits agents, staff and admins and agents get only `/agent/*`.
+  Visitors are the signed-in user or a guest with the hashed `mms_chat` cookie token
+  (`Support::visitor_may_open` is the one access check). The AI assistant answers first
+  (`chat.mode`), uses only `read_help`, `lookup_customer` (signed-in visitors' own
+  records), `escalate` and `resolve`, and can never change anything; `escalate` parks the
+  conversation as `waiting`, notifies agents through `send_quietly`, and leaves an
+  internal note visitors never see. Transport is plain HTTP polling (works through the
+  CMS proxy); the same `wizard_transport` (scripted in tests) serves the assistant.
 - Roles: `AdminUser` admits `admin` and `staff`; administrator-only handlers call
   `admin.admin_only()` first (settings, bridges, integrations, roles, backups).
 - Email goes through `routes::ops::send_quietly`: never fail a purchase or a signature

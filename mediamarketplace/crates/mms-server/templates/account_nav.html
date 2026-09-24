@@ -7,6 +7,7 @@
     <a href="{{ base }}/account/agreements" {% if tab == "agreements" %}class="active"{% endif %}>Agreements</a>
     <a href="{{ base }}/cart" {% if tab == "cart" %}class="active"{% endif %}>Cart</a>
     <a href="{{ base }}/account/privacy" {% if tab == "privacy" %}class="active"{% endif %}>Privacy</a>
+    <a href="{{ base }}/account/help" {% if tab == "help" %}class="active"{% endif %}>Help</a>
   </nav>
   <form method="post" action="{{ base }}/logout" class="inline"><button class="link">Sign out ({{ user.email }})</button></form>
 </header>

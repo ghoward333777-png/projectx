@@ -13,6 +13,8 @@ pub struct User {
     pub status: String,
     #[serde(skip)]
     pub password_hash: Option<String>,
+    /// Support agent: may work the support chat without being staff or a customer.
+    pub agent: i64,
 }
 
 impl User {
@@ -23,6 +25,10 @@ impl User {
     /// change settings, sites, integrations, roles and backups.
     pub fn is_staff(&self) -> bool {
         matches!(self.role.as_str(), "admin" | "staff") && self.status == "active"
+    }
+    /// Staff and administrators are agents too; contractors are agents only.
+    pub fn is_agent(&self) -> bool {
+        self.status == "active" && (self.agent == 1 || self.is_staff())
     }
 }
 
@@ -79,7 +85,7 @@ impl Users {
 
     pub async fn by_id(&self, id: i64) -> Result<Option<User>> {
         Ok(sqlx::query_as::<_, User>(
-            "SELECT id, uuid, email, name, role, status, password_hash FROM users WHERE id = ?",
+            "SELECT id, uuid, email, name, role, status, password_hash, agent FROM users WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.db.pool)
@@ -88,7 +94,7 @@ impl Users {
 
     pub async fn by_email(&self, email: &str) -> Result<Option<User>> {
         Ok(sqlx::query_as::<_, User>(
-            "SELECT id, uuid, email, name, role, status, password_hash FROM users WHERE email = ?",
+            "SELECT id, uuid, email, name, role, status, password_hash, agent FROM users WHERE email = ?",
         )
         .bind(email.trim().to_lowercase())
         .fetch_optional(&self.db.pool)
@@ -108,6 +114,36 @@ impl Users {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn set_password(&self, id: i64, plain: &str) -> Result<()> {
+        let hash = password::hash(plain)?;
+        sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+            .bind(hash)
+            .bind(crate::now())
+            .bind(id)
+            .execute(&self.db.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_agent(&self, id: i64, agent: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET agent = ?, updated_at = ? WHERE id = ?")
+            .bind(agent as i64)
+            .bind(crate::now())
+            .bind(id)
+            .execute(&self.db.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn touch_seen(&self, id: i64) -> Result<()> {
+        sqlx::query("UPDATE users SET last_seen_at = ? WHERE id = ?")
+            .bind(crate::now())
+            .bind(id)
+            .execute(&self.db.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn set_role(&self, id: i64, role: &str) -> Result<()> {

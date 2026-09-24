@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Help{% endblock %}
+{% block body %}
+{% include "account_nav.html" %}
+<h1>Help</h1>
+<p class="muted small">Ask about your purchases, passes and downloads. The assistant answers at once and a support agent takes over when needed.</p>
+<iframe src="{{ base }}/embed/chat" style="width:100%;min-height:520px;border:1px solid var(--mms-border);border-radius:8px;background:#fff" title="Support chat"></iframe>
+{% if history %}<h2>Earlier conversations</h2><ul class="small">{% for h in history %}<li>{{ h.created_at }} · {{ h.subject | default("Support") }} · {{ h.status }}{% if h.rating %} · rated {{ h.rating }}/5{% endif %}</li>{% endfor %}</ul>{% endif %}
+{% endblock %}

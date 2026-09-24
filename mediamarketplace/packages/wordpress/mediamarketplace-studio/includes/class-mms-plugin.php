@@ -227,7 +227,7 @@ final class MMS_Plugin
             <h2>Shortcodes</h2>
             <ul>
                 <li><code>[mms_showcase view="grid" category=""]</code> — product showcase</li>
-                <li><code>[mms_embed kind="widget" id="…"]</code> — widget, player, cart, sitepass or page</li>
+                <li><code>[mms_embed kind="widget" id="…"]</code> — widget, player, cart, sitepass, chat or page</li>
                 <li><code>[mms_signin label="My media"]</code> — one-click sign-in for logged-in members</li>
             </ul>
         </div>
@@ -301,7 +301,7 @@ final class MMS_Plugin
     {
         $kind = (string) ($attributes['kind'] ?? 'widget');
         $id = (string) ($attributes['id'] ?? '');
-        if ($id === '' && !in_array($kind, ['showcase', 'cart', 'sitepass'], true)) {
+        if ($id === '' && !in_array($kind, ['showcase', 'cart', 'sitepass', 'chat'], true)) {
             return '';
         }
         $html = $this->embedShortcode(['kind' => $kind, 'id' => $id, 'view' => (string) ($attributes['view'] ?? '')]);

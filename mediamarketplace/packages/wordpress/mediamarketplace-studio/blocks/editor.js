@@ -83,7 +83,8 @@
                 { label: __('Private page', 'mediamarketplace-studio'), value: 'page' },
                 { label: __('Cart', 'mediamarketplace-studio'), value: 'cart' },
                 { label: __('Site passes for sale', 'mediamarketplace-studio'), value: 'sitepass' },
-                { label: __('Showcase', 'mediamarketplace-studio'), value: 'showcase' }
+                { label: __('Showcase', 'mediamarketplace-studio'), value: 'showcase' },
+                { label: __('Support chat', 'mediamarketplace-studio'), value: 'chat' }
               ],
               onChange: function (v) { props.setAttributes({ kind: v }); }
             }),
@@ -100,7 +101,7 @@
             })
           )
         ),
-        el('div', { key: 'c' }, a.id || a.kind === 'showcase' || a.kind === 'cart' || a.kind === 'sitepass'
+        el('div', { key: 'c' }, a.id || a.kind === 'showcase' || a.kind === 'cart' || a.kind === 'sitepass' || a.kind === 'chat'
           ? preview('mms/embed', a, __('MediaMarketplace ', 'mediamarketplace-studio') + a.kind, [a.id])
           : placeholder(__('MediaMarketplace embed', 'mediamarketplace-studio'), [__('Enter a widget ID or product slug in the block settings.', 'mediamarketplace-studio')]))
       ]);

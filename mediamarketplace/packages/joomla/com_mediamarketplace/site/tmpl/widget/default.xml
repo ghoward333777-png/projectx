@@ -12,6 +12,7 @@
                 <option value="page">COM_MEDIAMARKETPLACE_KIND_PAGE</option>
                 <option value="cart">COM_MEDIAMARKETPLACE_KIND_CART</option>
                 <option value="sitepass">COM_MEDIAMARKETPLACE_KIND_SITEPASS</option>
+                <option value="chat">COM_MEDIAMARKETPLACE_KIND_CHAT</option>
             </field>
             <field name="widget_id" type="text" label="COM_MEDIAMARKETPLACE_FIELD_WIDGET_ID" description="COM_MEDIAMARKETPLACE_FIELD_WIDGET_ID_DESC" filter="string" />
             <field name="view" type="text" label="COM_MEDIAMARKETPLACE_FIELD_VIEW_OPTIONAL" filter="string" />

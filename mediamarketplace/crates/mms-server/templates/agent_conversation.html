@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ c.name | default("Visitor") }}{% endblock %}
+{% block body %}
+{% include "agent_nav.html" %}
+<p><a href="{{ base }}/agent">← Console</a></p>
+<h1>{{ c.name | default("Visitor") }} <span class="badge {% if c.status == 'waiting' %}warn{% elif c.status == 'assigned' %}ok{% endif %}">{{ c.status }}</span></h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<div class="agent-layout">
+<div>
+<section class="card">
+  <div id="log" class="chat-log" data-last="{% if messages %}{{ messages[-1].id }}{% else %}0{% endif %}">
+  {% for m in messages %}<div class="bubble {{ m.sender }}{% if m.internal %} internal{% endif %}"><span class="who">{% if m.internal %}Internal note · {% endif %}{{ m.name | default(m.sender) }} · {{ m.at }}</span>{{ m.body }}</div>{% endfor %}
+  </div>
+  <form id="reply" method="post" action="{{ base }}/agent/c/{{ c.uuid }}/reply" class="chat-form"><input type="hidden" name="_csrf" value="{{ csrf }}"><textarea name="body" placeholder="Reply to {{ c.name | default('the visitor') }}…" required></textarea><button class="primary">Send</button></form>
+  <p class="small"><label><input type="checkbox" id="internal"> Internal note (not shown to the visitor)</label>{% if ai %} <button type="button" id="suggest" class="link">✦ Suggest a reply</button>{% endif %}</p>
+  {% if canned %}<p class="canned small">{% for t in canned %}<button type="button" class="canned-btn small" data-text="{{ t }}">{{ t | truncate(40) }}</button>{% endfor %}</p>{% endif %}
+</section>
+</div>
+<aside>
+<section class="card">
+  <h2>Visitor</h2>
+  <p><b>{{ c.name | default("Guest") }}</b><br><span class="small">{{ c.email }}</span></p>
+  {% if c.page %}<p class="small muted">From {{ c.page }}</p>{% endif %}
+  {% if c.subject %}<p class="small"><b>Subject:</b> {{ c.subject }}</p>{% endif %}
+  {% if customer %}
+    <h3>Orders</h3>{% if customer.orders %}<ul class="small">{% for o in customer.orders %}<li>{{ o.number }} · {{ o.total }} · {{ o.status }}{% if o.gateway %} · {{ o.gateway }}{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small muted">No orders.</p>{% endif %}
+    <h3>Access</h3>{% if customer.access %}<ul class="small">{% for a in customer.access %}<li>{{ a.product | default(a.scope) }}{% if a.ends_at %} until {{ a.ends_at }}{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small muted">Nothing open.</p>{% endif %}
+    {% if customer.passes %}<h3>Passes</h3><ul class="small">{% for p in customer.passes %}<li>{{ p.interval }}ly · {{ p.status }}{% if p.period_end %} until {{ p.period_end }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% else %}<p class="small muted">Guest: no store account. Ask them to sign in through My media if the question is about their purchases.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Actions</h2>
+  {% if c.status != "closed" %}
+    {% if not mine %}<form method="post" action="{{ base }}/agent/c/{{ c.uuid }}/assign" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="primary">Take this conversation</button></form>{% endif %}
+    {% if agents %}<form method="post" action="{{ base }}/agent/c/{{ c.uuid }}/assign" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><select name="agent_id">{% for a in agents %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select> <button>Transfer</button></form>{% endif %}
+    {% if c.assigned_to %}<form method="post" action="{{ base }}/agent/c/{{ c.uuid }}/release" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button>Back to queue</button></form>{% endif %}
+    <form method="post" action="{{ base }}/agent/c/{{ c.uuid }}/close" class="inline"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="danger">Close</button></form>
+  {% else %}<p class="small muted">Closed.{% if c.rating %} Rated {{ c.rating }}/5.{% endif %}</p>{% endif %}
+  <p class="small muted">Assistant replies: {{ c.ai_turns }}</p>
+</section>
+</aside>
+</div>
+<script>
+(function(){
+  var base='{{ base }}', uuid='{{ c.uuid }}', csrf='{{ csrf }}';
+  var log=document.getElementById('log'), form=document.getElementById('reply'), ta=form.querySelector('textarea'), internal=document.getElementById('internal');
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function add(m){var d=document.createElement('div');d.className='bubble '+m.sender+(m.internal?' internal':'');d.innerHTML='<span class="who">'+(m.internal?'Internal note · ':'')+esc(m.name||m.sender)+' · '+esc(m.at)+'</span>'+esc(m.body);log.appendChild(d);log.dataset.last=m.id;log.scrollTop=log.scrollHeight;}
+  log.scrollTop=log.scrollHeight;
+  function poll(){fetch(base+'/agent/c/'+uuid+'/messages?after='+log.dataset.last,{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(j){(j.messages||[]).forEach(add);}).catch(function(){});}
+  setInterval(poll,3000);
+  form.addEventListener('submit',function(ev){ev.preventDefault();var body=new URLSearchParams({_csrf:csrf,_format:'json',body:ta.value,internal:internal.checked?'1':'0'});
+    fetch(base+'/agent/c/'+uuid+'/reply',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()}).then(function(r){return r.json()}).then(function(j){if(j.message){add(j.message);ta.value='';internal.checked=false;}else if(j.error){alert(j.error);}});});
+  document.querySelectorAll('.canned-btn').forEach(function(b){b.addEventListener('click',function(){ta.value=(ta.value?ta.value+' ':'')+b.dataset.text;ta.focus();});});
+  var sg=document.getElementById('suggest'); if(sg){sg.addEventListener('click',function(){sg.disabled=true;sg.textContent='Thinking…';fetch(base+'/agent/c/'+uuid+'/suggest',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'_csrf='+encodeURIComponent(csrf)}).then(function(r){return r.json()}).then(function(j){if(j.draft){ta.value=j.draft;}else if(j.error){alert(j.error);}}).catch(function(){}).then(function(){sg.disabled=false;sg.textContent='✦ Suggest a reply';});});}
+})();
+</script>
+{% endblock %}

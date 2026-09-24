@@ -1,0 +1,12 @@
+<header class="topbar">
+  <a class="brand" href="{{ base }}/agent">{{ site_name }} · Support</a>
+  <nav>
+    <a href="{{ base }}/agent?tab=waiting" {% if tab == "waiting" %}class="active"{% endif %}>Waiting</a>
+    <a href="{{ base }}/agent?tab=mine" {% if tab == "mine" %}class="active"{% endif %}>Mine</a>
+    <a href="{{ base }}/agent?tab=open" {% if tab == "open" %}class="active"{% endif %}>With the assistant</a>
+    <a href="{{ base }}/agent?tab=closed" {% if tab == "closed" %}class="active"{% endif %}>Closed</a>
+    {% if is_staff %}<a href="{{ base }}/admin/chat">Admin</a>{% endif %}
+  </nav>
+  <form method="post" action="{{ base }}/logout" class="inline"><button class="link">Sign out ({{ user.email }})</button></form>
+</header>
+<script>setInterval(function(){fetch('{{ base }}/agent/heartbeat',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(j){var b=document.getElementById('waiting-count');if(b)b.textContent=j.waiting;}).catch(function(){});},45000);</script>

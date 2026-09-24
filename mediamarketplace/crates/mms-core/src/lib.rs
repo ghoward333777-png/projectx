@@ -30,6 +30,7 @@ pub mod render;
 pub mod secrets;
 pub mod settings;
 pub mod signer;
+pub mod support;
 pub mod templates;
 pub mod users;
 pub mod widgets;

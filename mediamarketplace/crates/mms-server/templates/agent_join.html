@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Join the support team · {{ site_name }}</title><link rel="stylesheet" href="{{ base }}/static/mms.css"></head>
+<body class="login"><main class="login-box">
+<h1>{{ site_name }} support</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if invite %}
+<p>You have been invited to support {{ site_name }}'s customers as <b>{{ invite.email }}</b>. Choose a password to open the support console. You will not be a customer and nothing is charged.</p>
+<form method="post" action="{{ base }}/agent/join"><input type="hidden" name="token" value="{{ token }}">
+<label>Your name <input name="name" value="{{ invite.name }}" required></label>
+<label>Password <input type="password" name="password" minlength="10" required></label>
+<label>Password again <input type="password" name="password_repeat" minlength="10" required></label>
+<button class="primary">Join the support team</button></form>
+{% else %}<p>This invitation link is not valid any more. Ask the store administrator for a new one.</p>{% endif %}
+</main></body></html>

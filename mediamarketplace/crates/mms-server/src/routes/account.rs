@@ -126,7 +126,8 @@ pub async fn login(
     match attempt {
         Some(u) => {
             state.audit.record(Some(u.id), "auth.login", "user", Some(&u.uuid), None, None).await?;
-            Ok((jar.add(auth::session_cookie(&state, u.id)), Redirect::to(&state.url(&crate::routes::sso::safe_return(Some(&f.return_to))))).into_response())
+            let dest = if u.is_agent() && !u.is_staff() && f.return_to.trim().is_empty() { "/agent".to_string() } else { crate::routes::sso::safe_return(Some(&f.return_to)) };
+            Ok((jar.add(auth::session_cookie(&state, u.id)), Redirect::to(&state.url(&dest))).into_response())
         }
         None => Ok(Html(state.render("customer_login.html", context! { site_name, error => "Email or password is incorrect.", mode => "login", return_to => f.return_to })?).into_response()),
     }

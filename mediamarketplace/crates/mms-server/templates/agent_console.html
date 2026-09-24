@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Support console{% endblock %}
+{% block body %}
+{% include "agent_nav.html" %}
+<h1>Support console</h1>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p class="muted small"><span id="waiting-count">{{ counts.waiting }}</span> waiting · {{ counts.assigned }} with agents · {{ counts.open }} with the assistant · {{ counts.closed }} closed{% if counts.rated %} · rated {{ counts.rating_avg | round(1) }}/5 by {{ counts.rated }}{% endif %}</p>
+<p class="small">Online now: {% if online %}{% for a in online %}<span class="dot"></span>{{ a.name }} <span class="muted">({{ a.role }})</span>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}nobody else{% endif %}</p>
+<section class="card">
+<p class="queue-tabs"><a href="{{ base }}/agent?tab=waiting" {% if tab == "waiting" %}class="on"{% endif %}>Waiting</a><a href="{{ base }}/agent?tab=mine" {% if tab == "mine" %}class="on"{% endif %}>Mine</a><a href="{{ base }}/agent?tab=open" {% if tab == "open" %}class="on"{% endif %}>With the assistant</a><a href="{{ base }}/agent?tab=closed" {% if tab == "closed" %}class="on"{% endif %}>Closed</a></p>
+{% if rows %}<table><thead><tr><th>Visitor</th><th>Subject</th><th>Status</th><th>Agent</th><th>New</th><th>Last message</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><a href="{{ base }}/agent/c/{{ r.uuid }}">{{ r.name | default("Visitor") }}</a>{% if r.customer %} <span class="badge ok">customer</span>{% else %} <span class="badge">guest</span>{% endif %}<br><span class="small muted">{{ r.email }}</span></td><td class="small">{{ r.subject | default("—") }}</td><td><span class="badge {% if r.status == 'waiting' %}warn{% elif r.status == 'assigned' %}ok{% endif %}">{{ r.status }}</span></td><td class="small">{{ r.agent | default("—") }}</td><td>{% if r.unread %}<b>{{ r.unread }}</b>{% endif %}</td><td class="small">{{ r.last }}</td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="muted">Nothing here right now.</p>{% endif %}
+</section>
+{% if tab == "waiting" %}<meta http-equiv="refresh" content="20">{% endif %}
+{% endblock %}

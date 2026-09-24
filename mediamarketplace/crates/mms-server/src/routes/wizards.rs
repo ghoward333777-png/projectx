@@ -587,7 +587,7 @@ async fn overview(state: &AppState) -> AppResult<Value> {
         "site_templates_applied": applications.iter().map(|(t, at)| json!({ "template": t, "applied_at": at })).collect::<Vec<_>>(),
         "health": health.checks.iter().map(|c| json!({ "name": c.name, "status": format!("{:?}", c.status).to_lowercase(), "detail": c.detail })).collect::<Vec<_>>(),
         "test_payments": state.settings.get("payments.test_mode").await? == "1",
-        "smtp_set": !state.settings.get("mail.host").await?.trim().is_empty(),
+        "smtp_set": !state.settings.get("mail.smtp_host").await?.trim().is_empty(),
     }))
 }
 

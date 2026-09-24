@@ -22,6 +22,7 @@ use mms_core::protection::Protection;
 use mms_core::secrets::Secrets;
 use mms_core::settings::SettingsStore;
 use mms_core::signer::Signer;
+use mms_core::support::Support;
 use mms_core::users::Users;
 use mms_core::widgets::Widgets;
 use mms_core::wizards::{Transport, Wizards};
@@ -54,6 +55,7 @@ pub struct AppState {
     pub mailer: Mailer,
     pub privacy: Privacy,
     pub wizards: Wizards,
+    pub support: Support,
     /// How the setup wizards reach the model; tests and demos swap in a scripted transport.
     pub wizard_transport: Transport,
     pub templates: Arc<minijinja::Environment<'static>>,
@@ -89,6 +91,7 @@ impl AppState {
             mailer: Mailer::new(db.clone()),
             privacy: Privacy::new(db.clone()),
             wizards: Wizards::new(db.clone()),
+            support: Support::new(db.clone()),
             wizard_transport: Transport::http(),
             config: Arc::new(config),
             db,
@@ -332,6 +335,36 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/admin/wizards/:uuid/proposals/:pid/skip",
             post(routes::wizards::skip),
+        )
+        .route("/embed/chat", get(routes::support::embed_chat))
+        .route("/account/help", get(routes::support::account_help))
+        .route("/chat/start", post(routes::support::start))
+        .route("/chat/:uuid/send", post(routes::support::send))
+        .route("/chat/:uuid/messages", get(routes::support::poll))
+        .route("/chat/:uuid/rate", post(routes::support::rate))
+        .route("/chat/:uuid/close", post(routes::support::visitor_close))
+        .route("/agent", get(routes::support::console))
+        .route("/agent/heartbeat", post(routes::support::heartbeat))
+        .route(
+            "/agent/join",
+            get(routes::support::join_form).post(routes::support::join),
+        )
+        .route("/agent/c/:uuid", get(routes::support::conversation))
+        .route("/agent/c/:uuid/messages", get(routes::support::agent_poll))
+        .route("/agent/c/:uuid/reply", post(routes::support::reply))
+        .route("/agent/c/:uuid/assign", post(routes::support::assign))
+        .route("/agent/c/:uuid/release", post(routes::support::release))
+        .route("/agent/c/:uuid/close", post(routes::support::close))
+        .route("/agent/c/:uuid/suggest", post(routes::support::suggest))
+        .route("/admin/chat", get(routes::support::admin_page))
+        .route("/admin/chat/invite", post(routes::support::invite))
+        .route(
+            "/admin/chat/invites/:id/revoke",
+            post(routes::support::revoke_invite),
+        )
+        .route(
+            "/admin/customers/:uuid/agent",
+            post(routes::support::toggle_agent),
         )
         .route(
             "/api/v1/commerce/status",

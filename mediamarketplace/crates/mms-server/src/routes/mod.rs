@@ -16,6 +16,7 @@ pub mod protection;
 pub mod setup;
 pub mod shop;
 pub mod sso;
+pub mod support;
 pub mod templates;
 pub mod webhooks;
 pub mod widgets;
