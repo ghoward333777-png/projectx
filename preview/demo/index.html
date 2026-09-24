@@ -890,7 +890,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v47 · thumb fallback + jazz fix</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v48 · blocked-YouTube notice</div>
 
 <script>
 'use strict';
@@ -1843,6 +1843,34 @@ function renderWatchGrid() {
   }).join('') ||
     '<div class="card"><span class="meta">No matches in this channel — clear the search or switch channels.</span></div>';
 }
+// ---- YouTube-blocked environment detector: the claude.ai preview panel
+// (and some corporate networks / ad-blockers) refuses YouTube's players
+// and thumbnails outright. Probe once; if blocked, say so plainly with a
+// one-click way to the full demo instead of sitting on a gray frame. ----
+(function () {
+  let settled = false;
+  const blocked = () => {
+    if (settled) { return; }
+    settled = true;
+    const banner = document.createElement('div');
+    banner.id = 'w-blocked';
+    banner.className = 'flash warn';
+    banner.style.margin = '10px 0 0';
+    banner.innerHTML = '⚠ <strong>This preview window blocks YouTube</strong> — videos and video thumbnails cannot load in here (member photos and everything else still work). ' +
+      '<a id="w-open-full" href="#" target="_blank" rel="noopener" style="color:#ffd97a;font-weight:800">Open the full demo in a browser tab ↗</a>';
+    banner.querySelector('#w-open-full').addEventListener('click', e => {
+      e.target.href = 'https://raw.githack.com/ghoward333777-png/projectx/claude/tender-dirac-gl1ktp/preview/demo/index.html?fresh=' + Date.now();
+    });
+    const home = $('w-banner');
+    if (home) { home.insertAdjacentElement('afterend', banner); }
+  };
+  const probe = new Image();
+  probe.onload = () => { settled = true; };
+  probe.onerror = blocked;
+  setTimeout(() => { if (!probe.complete || probe.naturalWidth === 0) { blocked(); } }, 4000);
+  probe.src = 'https://i.ytimg.com/vi/jpejUwKLmfg/default.jpg?probe=' + Date.now();
+})();
+
 // ---- Admin option: float the chat over the bottom of the video. ON by
 // default; the Admin console toggles it live. ----
 let wChatOverlay = true;
