@@ -91,6 +91,7 @@ async function loadItem(item, { autoplay = true } = {}) {
   clearCards();
   const token = ++loadToken;
   state.item = item;
+  sync.unsettle();
   if (!item) {
     setState('idle');
     showCard({ id: 'empty', title: 'Nothing to play yet', text: 'Add a video link in the playlist on the right.' });

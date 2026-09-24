@@ -14,6 +14,7 @@ export class SyncController {
     this.state = null;
     this.expected = { play: [], pause: [], seek: [] };
     this.enabled = false;
+    this.settled = false;
     this.nudgeTimer = 0;
     this.heartbeat = 0;
     this.lastPublish = 0;
@@ -90,6 +91,7 @@ export class SyncController {
   async local(kind) {
     if (!this.enabled) return;
     if (this.consumeExpected(kind)) return;
+    if (!this.settled) return; // first play/pause of a freshly loaded item is not a user decision
     if (!this.canControl()) {
       // Guests without control snap back to the shared clock instead of drifting off.
       if (this.state) setTimeout(() => this.apply(), 50);
@@ -124,9 +126,13 @@ export class SyncController {
   /** After an item loads or a room is joined: the acting host's player is the truth, everyone else follows. */
   settle() {
     if (!this.enabled) return;
+    this.settled = true;
     if (this.chat.isActingHost) this.publish('settle');
     else this.apply();
   }
+
+  /** A new item is loading: nothing local is shared until settle() runs for it. */
+  unsettle() { this.settled = false; }
 
   enable() { this.enabled = true; }
   disable() { this.enabled = false; this.stopHeartbeat(); }
