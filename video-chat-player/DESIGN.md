@@ -616,3 +616,41 @@ Steps 1–3 are the minimum that proves the concept end to end.
    persist longer or be pinned.
 5. **Local media folder**: keep `media/` support (handy for testing and for your own
    files) or go URL-only.
+
+---
+
+## 15. What actually broke in the Slo-Mo Dating player (verified 2026-09-24)
+
+The previous player is not lost. It lives on branch `claude/tender-dirac-gl1ktp`
+(`dating/watch-party.php`, `dating/advanced-watch-party.php`, `preview/demo/index.html`),
+was never merged to `main`, and never had a pull request. Running that branch locally and
+driving it with a real Chromium showed:
+
+| Check | Result |
+|---|---|
+| Sign in, open Watch Party, chat overlay drawn over the picture | works |
+| YouTube iframe and player script load | works |
+| The default playlist (`PL9oax…`, "Romantic Comedy Movies") | YouTube answers **"Video unavailable — not made available in your country"** |
+| A single film from the library (`jpejUwKLmfg`) | YouTube answers **"Video player configuration error"** |
+| Big Buck Bunny, a video with no restrictions at all | same **"Video player configuration error"** |
+| The app's own `watch-party-reel.webm` through `<video>` | plays immediately, 1280×720 |
+
+So the app code was sound; the *video source* was the failure. YouTube refuses to play in
+two environments the previous sessions were viewed from: the claude.ai preview panel (which
+blocks YouTube outright; the last commit on that branch added a notice for it) and any
+cloud/datacenter address (which YouTube treats as a bot). On top of that, the "full movie"
+uploads the library depends on are region-locked or removed at the uploader's whim.
+
+Design consequences already reflected above, now stated as rules:
+
+1. **MP4/WebM is the first-class path.** Anything the app must guarantee (demo reel,
+   onboarding, tests) is served as a file, never as a YouTube embed.
+2. **A YouTube error is a playlist event, not a dead end.** Error codes 100/101/150 and
+   the player's "unavailable" state trigger the "Up next" card within 2 s and advance,
+   with the reason shown in the overlay as a system line.
+3. **Say why, in the viewer's words.** When the embed script fails to load or the first
+   probe image is blocked, the stage shows "This window blocks YouTube; open in a browser
+   tab" with a link, instead of a grey frame.
+4. **Verify in a real browser on a residential connection.** Headless cloud checks can
+   prove layout, overlay timing and the MP4 path; they cannot prove YouTube playback,
+   and the test plan in section 12 is amended to say so.
