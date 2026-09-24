@@ -115,6 +115,7 @@ messages · 32-character names · 200 playlist items · 5 webhooks per room.
 | `WATCHROOM_API_KEY` | When set, `POST /v1/rooms` requires `X-Api-Key`. The web page is unaffected. |
 | `WATCHROOM_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-site **and** to embed the player in an iframe (`frame-ancestors`). |
 | `WATCHROOM_SSE_SECONDS` | Length of one event-stream window (5–120, default 25). |
+| `WATCHROOM_DEFAULT_SRC` | First item of every new room (default: the demo YouTube playlist). |
 
 ## JavaScript SDK
 

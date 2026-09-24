@@ -72,7 +72,7 @@ $render = static function (array $get): string {
 $realDefault = htmlspecialchars(Source::defaultSource(__DIR__ . '/../video-chat-player/media')['src'], ENT_QUOTES, 'UTF-8');
 $html = $render([]);
 $assert(str_contains($html, 'id="stage"'), 'page renders the stage');
-$assert(str_contains($html, 'data-src="' . $realDefault . '"'), 'default source is wired into the stage');
+$assert(str_contains($html, 'data-src="https://www.youtube.com/playlist?list=PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy"') && str_contains($html, 'data-kind="youtube-playlist"') && str_contains($html, 'data-solo-src="' . $realDefault . '"'), 'the default playlist is wired into the stage, with the sample as the solo fallback');
 $assert(str_contains($html, 'id="ctl-seek"') && str_contains($html, 'id="ctl-volume"') && str_contains($html, 'id="ctl-chat"'), 'control bar widgets are present');
 $assert(str_contains($html, 'data-idle-timeout="3000"'), 'idle timeout defaults to 3000 ms');
 $assert(str_contains($render(['idle' => '99']), 'data-idle-timeout="1500"') && str_contains($render(['idle' => '50000']), 'data-idle-timeout="10000"'), 'idle timeout is clamped to 1500–10000');
@@ -83,7 +83,8 @@ $assert(Source::resolve('media.php?f=..%2Fx.mp4', $mediaDir) === null, 'streamer
 $html = $render(['src' => '"><script>alert(1)</script>']);
 $assert(!str_contains($html, '<script>alert'), 'hostile source is never echoed raw');
 $assert(str_contains($html, 'That source was not accepted'), 'hostile source shows the warning');
-$assert(str_contains($html, 'data-src="' . $realDefault . '"'), 'hostile source falls back to the default');
+$assert(str_contains($html, 'data-src="https://www.youtube.com/playlist?list=PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy"'), 'hostile source falls back to the default playlist');
+$assert(str_contains($render(['src' => 'https://youtu.be/qqwhjSzFJqY']), 'data-kind="youtube"'), 'a YouTube link in ?src= reaches the stage');
 $assert(!str_contains($html, '<w:hyperlink'), 'sanity: no Word markup leaks into the player page');
 
 array_map('unlink', glob($mediaDir . '/*') ?: []);

@@ -13,9 +13,22 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 $mediaDir = $config['media_dir'];
 $library = Source::library($mediaDir);
 $requested = isset($_GET['src']) ? (string) $_GET['src'] : '';
-$source = Source::resolve($requested, $mediaDir);
+require_once __DIR__ . '/lib/Playlist.php';
+$source = null;
+if ($requested !== '') {
+    $parsedRequest = Playlist::parseUrl($requested, $mediaDir);
+    if ($parsedRequest !== null) {
+        $file = Source::resolve($requested, $mediaDir);
+        $source = $file ?? ['kind' => $parsedRequest['kind'], 'src' => $requested, 'label' => $parsedRequest['kind'] === 'youtube-playlist' ? 'YouTube playlist' : 'YouTube video'];
+    }
+}
 $rejected = $requested !== '' && $source === null;
-$source ??= Source::defaultSource($mediaDir);
+if ($source === null) {
+    $defaultParsed = Playlist::parseUrl((string) $config['default_src'], $mediaDir);
+    $source = $defaultParsed === null ? Source::defaultSource($mediaDir)
+        : (Source::resolve((string) $config['default_src'], $mediaDir) ?? ['kind' => $defaultParsed['kind'], 'src' => (string) $config['default_src'], 'label' => $defaultParsed['kind'] === 'youtube-playlist' ? 'Default playlist' : 'Default video']);
+}
+$soloSource = Source::defaultSource($mediaDir);
 $roomId = isset($_GET['room']) && RoomStore::isRoomId((string) $_GET['room']) ? (string) $_GET['room'] : '';
 $idleTimeout = max(1500, min(10000, (int) ($_GET['idle'] ?? 3000)));
 $embed = isset($_GET['embed']) && $_GET['embed'] !== '0';
@@ -48,12 +61,12 @@ $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
     <p class="notice notice--warn" id="banner" hidden role="status"></p>
     <?php if ($rejected): ?>
-    <p class="notice notice--warn" role="alert">That source was not accepted. Use an https link ending in .mp4, .webm or .m4v, a YouTube link, or a file from the media/ folder.</p>
+    <p class="notice notice--warn" role="alert">That source was not accepted. Use an https link ending in .mp4, .webm or .m4v, a YouTube video or playlist link, or a file from the media/ folder.</p>
     <?php endif; ?>
 
     <section class="workspace">
         <div class="stage" id="stage" tabindex="0" aria-label="Video stage"
-             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-idle-timeout="<?= (int) $idleTimeout ?>" data-embed-origins="<?= $e(implode(',', $config['cors_origins'])) ?>">
+             data-src="<?= $e($source['src']) ?>" data-kind="<?= $e($source['kind']) ?>" data-label="<?= $e($source['label']) ?>" data-solo-src="<?= $e($soloSource['src']) ?>" data-solo-label="<?= $e($soloSource['label']) ?>" data-idle-timeout="<?= (int) $idleTimeout ?>" data-embed-origins="<?= $e(implode(',', $config['cors_origins'])) ?>">
             <div class="stage__picture" id="stage-picture"></div>
             <div class="stage__cards" id="stage-cards"></div>
             <div class="stage__controls" id="stage-controls">

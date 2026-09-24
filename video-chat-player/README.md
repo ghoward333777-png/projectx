@@ -19,8 +19,10 @@ php -S 127.0.0.1:8082
 ```
 
 Opening the page creates a room and puts its id in the address bar; share that link.
-The page plays the bundled `media/sample.mp4` first (a public sample MP4 if that file is
-missing). Add any https link ending in `.mp4`, `.webm` or `.m4v`, any YouTube video or
+Every new room starts with the default playlist
+(https://www.youtube.com/playlist?list=PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy, set with
+`WATCHROOM_DEFAULT_SRC`) followed by the bundled `media/sample.mp4`, so something plays even
+where YouTube does not. Add any https link ending in `.mp4`, `.webm` or `.m4v`, any YouTube video or
 playlist link, or files dropped into `video-chat-player/media/`. Files in `media/` stream
 through `media.php`, which honours byte ranges so seeking works even on PHP's built-in
 server. `media/` (except the sample) and `rooms/` are ignored by git.

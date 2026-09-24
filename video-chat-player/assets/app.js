@@ -363,8 +363,9 @@ async function boot() {
     state.solo = true;
     health.report('chat', 'warn', `solo: ${err.message}`, true);
     bus.emit('chat:status', { status: 'solo', detail: err.message });
-    const src = root.dataset.src;
-    loadItem({ id: 'local', kind: 'mp4', src, title: root.dataset.label || 'Video', status: 'ok' }).then(() => {
+    // Solo mode plays a file (YouTube needs no room either, but a file is the surest thing).
+    const src = root.dataset.kind === 'file' || root.dataset.kind === 'url' ? root.dataset.src : root.dataset.soloSrc;
+    loadItem({ id: 'local', kind: 'mp4', src, title: (src === root.dataset.src ? root.dataset.label : root.dataset.soloLabel) || 'Video', status: 'ok' }).then(() => {
       // Resume where this browser left off (solo mode only; rooms carry their own clock).
       try { const t = Number(localStorage.getItem('watchroom.resume.' + src)); if (t > 5 && t < player.duration() - 5) player.seek(t); } catch (_err) { /* storage blocked */ }
     });

@@ -14,6 +14,8 @@ declare(strict_types=1);
  *  WATCHROOM_ROOMS_DIR    where room folders live (default: rooms/ next to this file).
  *  WATCHROOM_MEDIA_DIR    where local video files live (default: media/ next to this file).
  *  WATCHROOM_ROOM_MAX_AGE seconds a room may sit idle before it is removed (default 86400).
+ *  WATCHROOM_DEFAULT_SRC  first item of every new room: a YouTube video or playlist link, an https
+ *                         .mp4/.webm link, or media/<file> (default: the demo playlist below).
  *
  * A local-config.php next to this file (returning an array) overrides everything; the
  * WordPress plugin and the Joomla module write one at install time.
@@ -28,6 +30,7 @@ $defaults = [
     'rooms_dir' => (string) (getenv('WATCHROOM_ROOMS_DIR') ?: __DIR__ . '/rooms'),
     'media_dir' => (string) (getenv('WATCHROOM_MEDIA_DIR') ?: __DIR__ . '/media'),
     'room_max_age' => max(3600, (int) (getenv('WATCHROOM_ROOM_MAX_AGE') ?: 86400)),
+    'default_src' => (string) (getenv('WATCHROOM_DEFAULT_SRC') ?: 'https://www.youtube.com/playlist?list=PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy'),
 ];
 $local = is_file(__DIR__ . '/local-config.php') ? require __DIR__ . '/local-config.php' : [];
 return (is_array($local) ? $local : []) + $defaults;

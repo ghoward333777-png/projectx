@@ -17,7 +17,7 @@ $assert = static function (bool $condition, string $label) use (&$failures, &$ch
 };
 
 $tmp = sys_get_temp_dir() . '/watchroom-api-' . getmypid();
-$config = ['api_key' => '', 'cors_origins' => ['https://site.example'], 'sse_seconds' => 1, 'sse_interval_ms' => 50, 'webhook_timeout' => 1, 'webhooks_per_room' => 2];
+$config = ['api_key' => '', 'cors_origins' => ['https://site.example'], 'sse_seconds' => 1, 'sse_interval_ms' => 50, 'webhook_timeout' => 1, 'webhooks_per_room' => 2, 'default_src' => 'https://www.youtube.com/playlist?list=PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy'];
 $api = new WatchRoomApi(new RoomStore($tmp), __DIR__ . '/../video-chat-player/media', false, $config);
 $rest = new RestApi($api, $config);
 $call = static fn (string $m, string $p, array $q = [], array $b = [], array $h = []) => $rest->dispatch($m, $p, $q, $b, $h, 'https://host.example/api.php');
@@ -37,7 +37,9 @@ $assert($s === 400 && $b['code'] === 'bad_request', 'GET /v1/resolve rejects jun
 
 // --- rooms and auth ---
 [$s, $b] = $call('POST', '/v1/rooms', [], ['name' => 'Ana', 'src' => 'media/sample.mp4']);
-$assert($s === 201 && isset($b['hostToken'], $b['memberId']) && $b['playlist']['items'][0]['kind'] === 'mp4', 'POST /v1/rooms → 201 with host token and first item');
+$assert($s === 201 && isset($b['hostToken'], $b['memberId']) && $b['playlist']['items'][0]['kind'] === 'mp4' && count($b['playlist']['items']) === 1, 'POST /v1/rooms → 201 with host token and the requested first item (no duplicate sample)');
+[$s, $b2] = $call('POST', '/v1/rooms', [], ['name' => 'Dee']);
+$assert($s === 201 && $b2['playlist']['items'][0]['kind'] === 'youtube-playlist' && $b2['playlist']['items'][0]['src'] === 'PLQ4K0DlePpSMMZXjwWGilHyefFENRUgOy' && ($b2['playlist']['items'][1]['kind'] ?? '') === 'mp4', 'a room without src starts with the default playlist, then the sample');
 $room = $b['room']['id'];
 $ana = $b['memberId'];
 $host = $b['hostToken'];

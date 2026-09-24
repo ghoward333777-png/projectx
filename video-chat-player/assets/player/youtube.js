@@ -85,18 +85,21 @@ export class YouTubeAdapter extends PlayerAdapter {
         settle(reject, new Error(message));
         this.emit('error', message);
       };
+      const isList = item.kind === 'youtube-playlist';
       if (this.player) {
-        try { this.player.loadVideoById(item.src); } catch (_err) { /* fallthrough to rebuild */ }
+        try { isList ? this.player.loadPlaylist({ list: item.src, listType: 'playlist' }) : this.player.loadVideoById(item.src); } catch (_err) { /* fallthrough to rebuild */ }
         if (this.ready) { clearTimeout(timer); this._pending = null; this.emit('duration', 0); resolve(this.pictureSize()); }
         return;
       }
       try {
+        const playerVars = { controls: 0, rel: 0, modestbranding: 1, fs: 0, playsinline: 1, enablejsapi: 1, iv_load_policy: 3, disablekb: 1, autoplay: 0, origin: location.origin };
+        if (isList) { playerVars.listType = 'playlist'; playerVars.list = item.src; }
         this.player = new YT.Player(this.target, {
-          videoId: item.src,
+          ...(isList ? {} : { videoId: item.src }),
           width: '100%',
           height: '100%',
           host: 'https://www.youtube-nocookie.com',
-          playerVars: { controls: 0, rel: 0, modestbranding: 1, fs: 0, playsinline: 1, enablejsapi: 1, iv_load_policy: 3, disablekb: 1, autoplay: 0, origin: location.origin },
+          playerVars,
           events: {
             onReady,
             onError,
@@ -154,13 +157,18 @@ export class YouTubeAdapter extends PlayerAdapter {
   isMuted() { return this._muted; }
   volume() { return this._volume; }
 
+  /** Inner playlist support (a youtube-playlist item) through the API's own playlist calls. */
+  innerPlaylist() { const list = this.safe(() => this.player.getPlaylist(), null); return list && list.length ? { index: this.safe(() => this.player.getPlaylistIndex(), 0) || 0, count: list.length } : null; }
+  innerNext() { const p = this.innerPlaylist(); if (!p || p.index >= p.count - 1) return false; this.safe(() => this.player.nextVideo()); return true; }
+  innerPrevious() { const p = this.innerPlaylist(); if (!p || p.index <= 0) return false; this.safe(() => this.player.previousVideo()); return true; }
+
   get caps() {
-    return { preciseTime: false, rate: true, captions: true, seekWhilePaused: true, nativeShield: true, autoplayNeedsGesture: true };
+    return { preciseTime: false, rate: true, captions: true, seekWhilePaused: true, nativeShield: true, autoplayNeedsGesture: true, innerPlaylist: true, engine: 'api' };
   }
 
   startClock() {
     this.stopClock();
-    this.clock = setInterval(() => this.emit('time', this.currentTime()), 100);
+    this.clock = setInterval(() => { this.emit('time', this.currentTime()); const p = this.innerPlaylist(); if (p && (p.index !== this._innerIndex)) { this._innerIndex = p.index; this.emit('inner-playlist', p); } }, 100);
   }
 
   stopClock() { clearInterval(this.clock); this.clock = 0; }

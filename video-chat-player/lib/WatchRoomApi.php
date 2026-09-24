@@ -19,7 +19,7 @@ final class WatchRoomApi
 
     public function __construct(private readonly RoomStore $rooms, private readonly string $mediaDir, private readonly bool $lookupTitles = true, array $config = [])
     {
-        $this->config = $config + ['webhook_timeout' => 2, 'webhooks_per_room' => 5, 'room_max_age' => RoomStore::IDLE_MAX_AGE];
+        $this->config = $config + ['webhook_timeout' => 2, 'webhooks_per_room' => 5, 'room_max_age' => RoomStore::IDLE_MAX_AGE, 'default_src' => ''];
         Playlist::$cacheDir = $rooms->dir() . '/_cache';
     }
 
@@ -82,13 +82,26 @@ final class WatchRoomApi
         $path = $this->rooms->path($room['id']);
         $playlist = Playlist::empty();
         $first = null;
-        $parsed = Playlist::parseUrl((string) ($in['src'] ?? ''), $this->mediaDir)
-            ?? Playlist::parseUrl('media/' . Source::SAMPLE, $this->mediaDir);
-        if ($parsed !== null) {
-            $first = Playlist::makeItem($parsed, $member['id'], $this->lookupTitles);
-            $playlist['items'][] = $first;
-            $playlist['current'] = $first['id'];
+        // First item: the requested link, else the deployment's default (a playlist by default),
+        // and the bundled sample after it so a room always holds something that plays anywhere.
+        $requested = Playlist::parseUrl((string) ($in['src'] ?? ''), $this->mediaDir);
+        $default = Playlist::parseUrl((string) $this->config['default_src'], $this->mediaDir);
+        $sample = Playlist::parseUrl('media/' . Source::SAMPLE, $this->mediaDir);
+        $seen = [];
+        foreach ([$requested, $requested === null ? $default : null, $sample] as $parsed) {
+            if ($parsed === null) {
+                continue;
+            }
+            $key = $parsed['kind'] . ':' . ($parsed['src'] ?? $parsed['list'] ?? $parsed['id'] ?? '');
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $item = Playlist::makeItem($parsed, $member['id'], $this->lookupTitles);
+            $playlist['items'][] = $item;
+            $first ??= $item;
         }
+        $playlist['current'] = $first['id'] ?? null;
         $playlist = Playlist::save($path, $playlist);
         $state = PlaybackState::apply($path, PlaybackState::initial($first['id'] ?? null), ['itemId' => $first['id'] ?? null, 'playing' => false, 'mediaTime' => 0], $member['id']);
         $log = $this->log($room['id']);
