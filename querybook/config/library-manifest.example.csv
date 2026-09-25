@@ -1,0 +1,6 @@
+path,rights,rights_note,genre,id
+# One row per book. Paths are relative to this file. rights: public-domain | author-owned | licensed | publisher-licensed
+# id is optional (default: title slug + source hash); set it to keep stable ids across re-ingests.
+austen-pride-and-prejudice.epub,public-domain,Project Gutenberg #1342,fiction,pride-and-prejudice
+carroll-alice.epub,public-domain,Project Gutenberg #11,fiction,alice
+"my-novel, second edition.docx",author-owned,Author contract 2026-014,fiction,my-novel

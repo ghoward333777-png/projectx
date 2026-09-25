@@ -1,0 +1,23 @@
+[Unit]
+Description=QueryBook reader and query server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=querybook
+Group=querybook
+EnvironmentFile=-/etc/querybook/env
+ExecStart=/usr/local/bin/qb -c /etc/querybook/querybook.toml serve
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+# hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/querybook
+
+[Install]
+WantedBy=multi-user.target

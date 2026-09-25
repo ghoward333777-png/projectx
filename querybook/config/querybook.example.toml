@@ -1,0 +1,64 @@
+# QueryBook configuration. Copy to /etc/querybook/querybook.toml on the server.
+
+[server]
+bind = "127.0.0.1:8090"          # put nginx/caddy with TLS in front for public access
+data_dir = "/var/lib/querybook"  # store, index, keys (back this up)
+index_heap_mb = 512              # raise to 2048+ for the bulk UFCS import
+
+[operator]
+name = "operator"                # identity recorded in the ledger with every election
+
+# ---- Registered extraction engines (ingestion path only) -------------------
+# Each engine is its own source class: agreement between two engines raises a
+# record's diversity; repeated output of one engine does not (QBF-C023).
+
+[[engines]]
+id = "rules"                     # built in, runs entirely on this server, no network
+kind = "rules"
+reliability = 0.6
+
+[[engines]]
+id = "claude"                    # Anthropic API
+kind = "claude"
+model = "claude-opus-5"
+api_key_env = "ANTHROPIC_API_KEY"
+reliability = 0.75
+chunk_words = 2200
+concurrency = 4
+input_price = 5.0                # USD per million tokens (for `qb estimate`)
+output_price = 25.0
+# effort = "high"                # optional: low | medium | high | xhigh | max
+
+[[engines]]
+id = "local"                     # your own model server (vLLM, Ollama, llama.cpp, TGI...)
+kind = "openai"                  # speaks the OpenAI-compatible /v1/chat/completions API
+base_url = "http://127.0.0.1:8000/v1"
+model = "your-model-name"
+api_key_env = ""                 # set if your server requires a bearer token
+reliability = 0.65
+chunk_words = 1500
+concurrency = 2
+json_mode = true
+
+# ---- Excluded-set parameters (operator elections, recorded in the ledger) --
+[convergence]
+regime = "unique-equilibrium"    # or "capacity-bound"
+spectral_bound = 0.9
+load_ceiling = 0.12
+
+[traversal]
+budget = 6.0
+semantic = 1.0
+editorial = 3.0
+temporal = 5.0
+
+[retrieval]
+admission_threshold = 0.2
+candidates = 160
+max_units = 96
+answer_facts = 6
+question_match = 0.8
+
+[library]
+open_public_domain = true        # every reader may open public-domain works
+spoiler_default = true

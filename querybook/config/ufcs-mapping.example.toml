@@ -1,0 +1,55 @@
+# UFCS feed mapping. Every field is a JSON pointer into ONE record (Fact
+# Envelope) of your feed. Adjust the pointers to your wire format; nothing
+# else needs to change. Test with:
+#   qb import-ufcs --mapping ufcs-mapping.toml --file sample.ndjson --dry-run
+feed = "querybook-core"          # corpus name; readers enable it as "World knowledge"
+authority = 0.85                 # registered reliability of this feed as a source class
+acl = "public"                   # "public", or "tenant:<name>" to restrict
+verify_id = "none"               # "fingerprint" = envelope id must equal our content fingerprint
+batch = 50000                    # records per ledger node / transaction
+
+[source]
+url = "https://ufcs.example.com/v1/facts"   # GET endpoint for pages of envelopes
+auth_header = "Authorization"
+auth_env = "UFCS_TOKEN"          # export UFCS_TOKEN=... before running
+auth_prefix = "Bearer "
+format = "json"                  # "json" (page object) or "ndjson" (one envelope per line)
+records_path = "/data"           # pointer to the array of envelopes in a page
+cursor_param = "cursor"          # request parameter carrying the cursor
+next_cursor_path = "/next_cursor" # pointer to the next cursor in a page ("" or null ends)
+# offset_param = "offset"        # use instead of cursors for offset pagination
+page_size_param = "limit"
+page_size = 5000
+
+[fields]
+id = "/id"
+subject = "/atom/subject"
+subject_label = "/atom/subject_label"
+predicate = "/atom/predicate"
+object = "/atom/object"
+object_label = "/atom/object_label"
+object_kind = "/atom/object_type"      # "entity" | "concept" | "node" => concept reference
+polarity = "/atom/polarity"
+group = "/atom/group"
+args = "/atom/args"                    # object of role -> value (n-ary assertions)
+alpha = "/envelope/confidence/alpha"   # evidence pair, if the feed carries one
+beta = "/envelope/confidence/beta"
+confidence = "/envelope/confidence/value"  # otherwise a scalar...
+weight = "/envelope/confidence/weight"     # ...with an evidential weight
+authority = "/envelope/certification/authority"
+status = "/envelope/certification/status"
+certified_at = "/envelope/certification/certified_at"
+signature = "/envelope/certification/signature"
+source = "/envelope/provenance/source"
+attested = "/envelope/provenance/attested_at"
+occurred = "/atom/time"
+links = "/links"
+link_target = "/target"
+link_type = "/type"
+text = "/text"                         # natural-language rendering, shown as the cited span
+
+[predicates]
+auto_register = true             # unseen predicates are registered (recorded in the ledger)
+[predicates.map]                 # optional: feed predicate -> catalogue predicate
+"instance_of" = "is_a"
+"located_in" = "located_in"

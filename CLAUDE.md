@@ -67,3 +67,14 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+
+## QueryBook prototype (`querybook/`)
+
+Separate Rust app (not part of the PHP site or `SitePackageExporter::FILES`).
+Build and test with `cd querybook && cargo test --release` (unit + end-to-end
+invariants); run with `qb serve`. The QueryBook Feature Registry v65 is the
+source of truth — cite features by registry ID (`QBF-Cnnn`), not Bible numbers.
+Invariants to keep: scope (D8) resolves before any retrieval and the spoiler
+bound is a scope bound, never a mask; D7 renders only from records it is handed
+and cannot write (no `CommitPermit` outside `d0`); unverified-citation records
+never ground an answer; same query + same context-lock key ⇒ same output hash.
