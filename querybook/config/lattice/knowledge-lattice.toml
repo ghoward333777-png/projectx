@@ -116,7 +116,7 @@ sub = [
 [source]
 endpoint = "https://query.wikidata.org/sparql"
 api = "https://www.wikidata.org/w/api.php"
-contact = "QueryBook harvester (set contact in the lattice source)"
+contact = "QueryBook harvester; ghoward333777@gmail.com"
 page_size = 5000
 batch = 250
 pause_ms = 1200

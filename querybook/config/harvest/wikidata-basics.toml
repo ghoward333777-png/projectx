@@ -13,7 +13,7 @@
 endpoint = "https://query.wikidata.org/sparql"
 # Wikimedia asks every client to identify itself with a way to reach the
 # operator. Put your project URL or contact address here.
-contact = "QueryBook harvester (set contact in the harvest pack)"
+contact = "QueryBook harvester; ghoward333777@gmail.com"
 page_size = 5000
 pause_ms = 1500
 confidence = 0.9      # prior confidence for a Wikidata statement
