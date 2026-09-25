@@ -127,8 +127,11 @@ const COVER = ["#3d5a6c", "#6b4e3d", "#4a5d3a", "#5b3f5e", "#7a5230", "#34495e",
 function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 
 async function renderLibrary() {
-  app().innerHTML = topbar("QueryBook") + `<main class="library"><div class="lib-head"><h2>Your library</h2><span class="muted small" id="lc"></span></div><div class="shelf" id="shelf"><div class="muted">Loading…</div></div></main>`;
+  const desk = (S.me.corpora || []).length ? `<section class="world-desk"><div class="lib-head"><h2>World knowledge</h2><span class="muted small">${esc(S.me.corpora.join(", "))}</span></div>
+    <form id="wf" class="row"><input id="wq" placeholder="Ask the fact store — e.g. What is the capital of France?" autocomplete="off"><button class="btn">Ask</button></form><div id="wa"></div></section>` : "";
+  app().innerHTML = topbar("QueryBook") + `<main class="library">${desk}<div class="lib-head"><h2>Your library</h2><span class="muted small" id="lc"></span></div><div class="shelf" id="shelf"><div class="muted">Loading…</div></div></main>`;
   wireTopbar();
+  if (desk) wireWorldDesk();
   const { works } = await api("/api/library");
   $("#lc").textContent = `${works.length} book${works.length === 1 ? "" : "s"}`;
   if (!works.length) {
@@ -144,6 +147,24 @@ async function renderLibrary() {
     </button>`;
   }).join("");
   $$(".book").forEach((b) => (b.onclick = () => { location.hash = "#/read/" + encodeURIComponent(b.dataset.id); }));
+}
+
+function wireWorldDesk() {
+  $("#wf").onsubmit = async (e) => {
+    e.preventDefault();
+    const q = $("#wq").value.trim();
+    if (!q) return;
+    const out = $("#wa");
+    out.innerHTML = `<div class="muted small">Asking…</div>`;
+    try {
+      const a = await api("/api/query", { method: "POST", body: { work: "world", mode: "ask", query: q } });
+      const byN = Object.fromEntries(a.citations.map((c) => [c.n, c]));
+      const lines = a.lines.map((l) => `<p class="a-line">${esc(l.text)} ${l.cites.map((n) => `<button class="cite" data-inspect="${esc(byN[n]?.fuid || "")}" title="Inspect record">${n}</button>`).join("")}</p>`).join("");
+      out.innerHTML = `<div class="a-card"><div class="muted small">${esc(q)}</div>${lines || `<p class="muted">No grounded answer in the fact store.</p>`}
+        <div class="muted small">${a.citations.length} record${a.citations.length === 1 ? "" : "s"} cited · ${a.ms} ms · output hash <span class="mono">${esc(a.output_hash.slice(0, 16))}</span></div></div>`;
+      out.onclick = (ev) => { if (ev.target.dataset.inspect) inspect(ev.target.dataset.inspect); };
+    } catch (err) { out.innerHTML = `<div class="muted">${esc(err.message)}</div>`; }
+  };
 }
 
 // ---------------------------------------------------------------- reader
@@ -740,6 +761,7 @@ async function inspect(fuid) {
       <dl class="kv"><dt>FUID</dt><dd class="mono">${esc(r.fuid)}</dd><dt>Fingerprint</dt><dd class="mono">${esc(r.fingerprint)}</dd>
       <dt>Assertion</dt><dd>${esc(r.atom.subject)} · <b>${esc(r.atom.predicate)}</b> · ${esc(JSON.stringify(r.atom.object.v))}${r.atom.polarity ? "" : " (negated)"}</dd>
       <dt>Type</dt><dd>${esc(r.type_ref)} · ${esc(r.modality)} · safety ${esc(r.safety)}</dd>
+      ${r.narrative && r.narrative.cfi ? `<dt>Anchor</dt><dd class="mono">${esc(r.narrative.cfi)}${r.narrative.sentence != null ? ` · sentence ${r.narrative.sentence + 1}` : ""}</dd>` : ""}
       <dt>Evidence</dt><dd>α ${r.evidence.alpha.toFixed(2)} · β ${r.evidence.beta.toFixed(2)} → confidence ${(d.confidence * 100).toFixed(1)}% (lower ${(d.lower * 100).toFixed(1)}%), diversity ${d.diversity.toFixed(2)}, trust ${d.trust.toFixed(3)}</dd>
       <dt>Derivation</dt><dd>${esc(r.derivation.kind)}${r.derivation.engine ? " · engine " + esc(r.derivation.engine) : ""}${r.derivation.citation_verified === false ? " · <b>citation unverified</b>" : ""}</dd>
       <dt>Access</dt><dd>${esc(r.acl.join(", "))}</dd>

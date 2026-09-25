@@ -59,11 +59,11 @@ pub struct Stages {
 pub struct SentenceAnalysis {
     pub text: String,
     pub tokens: Vec<(String, String, String)>, // text, POS, lemma
-    pub clauses: Vec<(String, String)>,         // kind, text
+    pub clauses: Vec<(String, String)>,        // kind, text
     pub trees: Vec<String>,
-    pub dependencies: Vec<(String, String, String)>, // dependent, relation, head
-    pub mentions: Vec<(String, String, String)>,     // text, kind, concept
-    pub predicate: Vec<(String, String)>,            // lemma, class
+    pub dependencies: Vec<(String, String, String)>,  // dependent, relation, head
+    pub mentions: Vec<(String, String, String)>,      // text, kind, concept
+    pub predicate: Vec<(String, String)>,             // lemma, class
     pub facts: Vec<(String, String, String, String)>, // semantic type, subject, predicate, object
 }
 
@@ -141,15 +141,35 @@ pub fn analyze_sentence(
         tokens: tokens.iter().map(|t| (t.text.clone(), t.pos.tag().to_string(), t.lemma.clone())).collect(),
         clauses: clauses
             .iter()
-            .map(|c| (format!("{:?}", c.kind).to_lowercase(), c.tokens.iter().map(|&k| tokens[k].text.as_str()).collect::<Vec<_>>().join(" ")))
+            .map(|c| {
+                (
+                    format!("{:?}", c.kind).to_lowercase(),
+                    c.tokens.iter().map(|&k| tokens[k].text.as_str()).collect::<Vec<_>>().join(" "),
+                )
+            })
             .collect(),
         trees: parses.iter().map(|p| parse::tree(&tokens, p)).collect(),
         dependencies: parses
             .iter()
             .flat_map(|p| p.arcs.iter())
-            .map(|a| (tokens[a.dep].text.clone(), a.rel.to_string(), a.head.map(|h| tokens[h].text.clone()).unwrap_or_else(|| "ROOT".into())))
+            .map(|a| {
+                (
+                    tokens[a.dep].text.clone(),
+                    a.rel.to_string(),
+                    a.head.map(|h| tokens[h].text.clone()).unwrap_or_else(|| "ROOT".into()),
+                )
+            })
             .collect(),
-        mentions: mentions.iter().map(|m| (m.tokens.iter().map(|&k| tokens[k].text.as_str()).collect::<Vec<_>>().join(" "), format!("{:?}", m.kind), if m.concept.is_empty() { m.normalized.clone() } else { m.concept.clone() })).collect(),
+        mentions: mentions
+            .iter()
+            .map(|m| {
+                (
+                    m.tokens.iter().map(|&k| tokens[k].text.as_str()).collect::<Vec<_>>().join(" "),
+                    format!("{:?}", m.kind),
+                    if m.concept.is_empty() { m.normalized.clone() } else { m.concept.clone() },
+                )
+            })
+            .collect(),
         predicate: parses.iter().filter_map(|p| ner::classify(&tokens, p)).map(|(l, c)| (l, format!("{c:?}"))).collect(),
         facts: built
             .iter()
@@ -204,7 +224,18 @@ impl Extractor for LanguageEngine {
                 if s.split_whitespace().count() < 2 {
                     continue;
                 }
-                let (built, _) = analyze_sentence(s, ents, &book.id, &self.id, p.pos, p.chapter, si as u32, &salient.0, &mut dis, Some(&mut stats));
+                let (built, _) = analyze_sentence(
+                    s,
+                    ents,
+                    &book.id,
+                    &self.id,
+                    p.pos,
+                    p.chapter,
+                    si as u32,
+                    &salient.0,
+                    &mut dis,
+                    Some(&mut stats),
+                );
                 let fired = !built.is_empty();
                 out.extend(built.into_iter().map(|b| b.candidate));
                 // coverage fall-back: a sentence naming someone still yields its claim
@@ -240,7 +271,13 @@ impl Extractor for LanguageEngine {
         }
         let refused = out.iter().filter(|c| catalog.get(&c.atom.predicate).is_none()).count();
         out.retain(|c| catalog.get(&c.atom.predicate).is_some());
-        let report = EngineReport { engine: self.id.clone(), candidates: out.len(), refused, stages: Some(serde_json::to_value(&stats)?), ..Default::default() };
+        let report = EngineReport {
+            engine: self.id.clone(),
+            candidates: out.len(),
+            refused,
+            stages: Some(serde_json::to_value(&stats)?),
+            ..Default::default()
+        };
         Ok((out, report))
     }
 }

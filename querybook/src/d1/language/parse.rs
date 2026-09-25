@@ -109,7 +109,8 @@ pub fn clauses(tokens: &[Token]) -> Vec<Clause> {
         }
     }
     // 2. split the narration into clauses at markers
-    let has_verb_after = |from: usize, to: usize| (from..to).any(|k| matches!(tokens[k].pos, Pos::Verb | Pos::Aux) && !in_quote[k]);
+    let has_verb_after =
+        |from: usize, to: usize| (from..to).any(|k| matches!(tokens[k].pos, Pos::Verb | Pos::Aux) && !in_quote[k]);
     let mut out: Vec<Clause> = Vec::new();
     let mut cur: Vec<usize> = Vec::new();
     let mut cur_kind = ClauseKind::Main;
@@ -153,7 +154,13 @@ pub fn clauses(tokens: &[Token]) -> Vec<Clause> {
             }
             if matches!(tokens[a].pos, Pos::Noun | Pos::Propn) && has_verb_after(i + 1, n) {
                 relative = Some((
-                    Clause { kind: ClauseKind::Relative, tokens: vec![i], marker: Some(t.lower.clone()), antecedent: Some(a), parent: None },
+                    Clause {
+                        kind: ClauseKind::Relative,
+                        tokens: vec![i],
+                        marker: Some(t.lower.clone()),
+                        antecedent: Some(a),
+                        parent: None,
+                    },
                     out.len(),
                 ));
                 i += 1;
@@ -167,7 +174,10 @@ pub fn clauses(tokens: &[Token]) -> Vec<Clause> {
             continue;
         }
         // ", and she …" / "but he …": coordinate clause with its own subject and verb
-        if t.pos == Pos::Cconj && i + 1 < n && matches!(tokens[i + 1].pos, Pos::Pron | Pos::Propn | Pos::Det) && has_verb_after(i + 2, n)
+        if t.pos == Pos::Cconj
+            && i + 1 < n
+            && matches!(tokens[i + 1].pos, Pos::Pron | Pos::Propn | Pos::Det)
+            && has_verb_after(i + 2, n)
             && cur.iter().any(|&k| matches!(tokens[k].pos, Pos::Verb | Pos::Aux))
         {
             flush(&mut cur, cur_kind, &mut cur_marker, &mut out);
@@ -190,7 +200,11 @@ pub fn clauses(tokens: &[Token]) -> Vec<Clause> {
             continue;
         }
         // a sentence-initial subordinate clause ends at its comma
-        if t.text == "," && cur_kind == ClauseKind::Subordinate && has_verb_after(i + 1, n) && cur.iter().any(|&k| matches!(tokens[k].pos, Pos::Verb | Pos::Aux)) {
+        if t.text == ","
+            && cur_kind == ClauseKind::Subordinate
+            && has_verb_after(i + 1, n)
+            && cur.iter().any(|&k| matches!(tokens[k].pos, Pos::Verb | Pos::Aux))
+        {
             flush(&mut cur, cur_kind, &mut cur_marker, &mut out);
             cur_kind = ClauseKind::Main;
             i += 1;
@@ -239,7 +253,10 @@ pub fn chunk(tokens: &[Token], idx: &[usize]) -> Vec<Chunk> {
                 let mut j = i + 1;
                 if t.pos == Pos::Det {
                     // determiner then optional adverb+adjectives then nouns
-                    while j < idx.len() && (np_word(tokens[idx[j]].pos) || (tokens[idx[j]].pos == Pos::Adv && j + 1 < idx.len() && tokens[idx[j + 1]].pos == Pos::Adj)) {
+                    while j < idx.len()
+                        && (np_word(tokens[idx[j]].pos)
+                            || (tokens[idx[j]].pos == Pos::Adv && j + 1 < idx.len() && tokens[idx[j + 1]].pos == Pos::Adj))
+                    {
                         j += 1;
                     }
                 } else {
@@ -264,7 +281,11 @@ pub fn chunk(tokens: &[Token], idx: &[usize]) -> Vec<Chunk> {
                     }
                     None => {
                         let h = *span.iter().rev().find(|&&k| tokens[k].pos == Pos::Adj).unwrap_or(&span[span.len() - 1]);
-                        out.push(Chunk { kind: if tokens[h].pos == Pos::Adj { Phrase::ADJP } else { Phrase::O }, tokens: span, head: h });
+                        out.push(Chunk {
+                            kind: if tokens[h].pos == Pos::Adj { Phrase::ADJP } else { Phrase::O },
+                            tokens: span,
+                            head: h,
+                        });
                     }
                 }
                 i = j.max(i + 1);
@@ -294,7 +315,11 @@ pub fn chunk(tokens: &[Token], idx: &[usize]) -> Vec<Chunk> {
             Pos::Adp => {
                 // PP = preposition + following NP (chunked recursively)
                 let mut j = i + 1;
-                while j < idx.len() && (np_word(tokens[idx[j]].pos) || matches!(tokens[idx[j]].pos, Pos::Det | Pos::Pron) || tokens[idx[j]].lower == "'s") {
+                while j < idx.len()
+                    && (np_word(tokens[idx[j]].pos)
+                        || matches!(tokens[idx[j]].pos, Pos::Det | Pos::Pron)
+                        || tokens[idx[j]].lower == "'s")
+                {
                     j += 1;
                     if tokens[idx[j - 1]].pos == Pos::Pron {
                         break;
@@ -333,9 +358,9 @@ pub fn parse_clause(tokens: &[Token], clause: &Clause, ci: usize) -> ClauseParse
         let head = vchunk.head;
         let is_cop = tokens[head].pos == Pos::Aux && super::lexicon::COPULA.contains(&tokens[head].lemma.as_str());
         negated = vchunk.tokens.iter().any(|&k| matches!(tokens[k].lower.as_str(), "not" | "n't" | "never"));
-        passive = tokens[head].pos == Pos::Verb
-            && tokens[head].form == Form::Part
-            || (tokens[head].form == Form::Past && vchunk.tokens.iter().any(|&k| tokens[k].pos == Pos::Aux && tokens[k].lemma == "be"));
+        passive = tokens[head].pos == Pos::Verb && tokens[head].form == Form::Part
+            || (tokens[head].form == Form::Past
+                && vchunk.tokens.iter().any(|&k| tokens[k].pos == Pos::Aux && tokens[k].lemma == "be"));
         // subject: nearest NP before the VP
         subject = chunks[..v].iter().rev().find(|c| c.kind == Phrase::NP).map(|c| c.head);
         if is_cop {
@@ -527,10 +552,13 @@ mod tests {
     use super::*;
 
     fn analyse(s: &str, ents: &[(&str, usize)]) -> (Vec<Token>, Vec<Clause>) {
-        let spans: Vec<(usize, usize, usize)> = ents.iter().map(|(n, e)| {
-            let a = s.find(n).unwrap();
-            (a, a + n.len(), *e)
-        }).collect();
+        let spans: Vec<(usize, usize, usize)> = ents
+            .iter()
+            .map(|(n, e)| {
+                let a = s.find(n).unwrap();
+                (a, a + n.len(), *e)
+            })
+            .collect();
         let mut t = tokenize(s);
         tag(&mut t, &spans);
         let c = clauses(&t);
@@ -554,7 +582,10 @@ mod tests {
 
     #[test]
     fn clause_decomposition() {
-        let (t, c) = analyse("Mr. Darcy, who was proud, refused to dance, and Elizabeth laughed because she was amused.", &[("Mr. Darcy", 0), ("Elizabeth", 1)]);
+        let (t, c) = analyse(
+            "Mr. Darcy, who was proud, refused to dance, and Elizabeth laughed because she was amused.",
+            &[("Mr. Darcy", 0), ("Elizabeth", 1)],
+        );
         let kinds: Vec<ClauseKind> = c.iter().map(|c| c.kind).collect();
         assert!(kinds.contains(&ClauseKind::Relative), "{kinds:?}");
         assert!(kinds.contains(&ClauseKind::Coordinate), "{kinds:?}");

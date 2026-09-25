@@ -108,14 +108,7 @@ struct Meta {
 
 /// Cut Project Gutenberg boilerplate, number passages, and derive chapters
 /// from headings.
-fn assemble(
-    id: String,
-    title: String,
-    author: String,
-    language: String,
-    source_hash: String,
-    blocks: Vec<Block>,
-) -> Book {
+fn assemble(id: String, title: String, author: String, language: String, source_hash: String, blocks: Vec<Block>) -> Book {
     let mut blocks = blocks;
     if let Some(i) = blocks.iter().position(|(_, t, _)| t.contains("*** START OF")) {
         blocks.drain(..=i);
@@ -388,7 +381,8 @@ pub fn html_blocks(html: &str) -> Vec<(bool, String)> {
     html_blocks_anchored(html).into_iter().map(|(h, t, _)| (h, t)).collect()
 }
 
-const VOID: &[&str] = &["br", "img", "hr", "meta", "link", "input", "col", "area", "base", "source", "wbr", "embed", "param", "track"];
+const VOID: &[&str] =
+    &["br", "img", "hr", "meta", "link", "input", "col", "area", "base", "source", "wbr", "embed", "param", "track"];
 
 /// As `html_blocks`, plus each block's element path as EPUB CFI steps
 /// relative to the document root ("/4/2/10": body, second child, fifth child).
@@ -429,7 +423,12 @@ pub fn html_blocks_anchored(html: &str) -> Vec<(bool, String, String)> {
             }
             let closing = inner.starts_with('/');
             let self_closing = inner.ends_with('/');
-            let name = inner.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or("").to_ascii_lowercase();
+            let name = inner
+                .trim_start_matches('/')
+                .split(|c: char| c.is_whitespace() || c == '/')
+                .next()
+                .unwrap_or("")
+                .to_ascii_lowercase();
             let name = name.rsplit(':').next().unwrap_or("").to_string();
             let void = VOID.contains(&name.as_str()) || self_closing;
             // structural bookkeeping for the CFI path
@@ -443,7 +442,11 @@ pub fn html_blocks_anchored(html: &str) -> Vec<(bool, String, String)> {
                     counts.truncate(pos + 1);
                 }
             } else {
-                let k = { let c = counts.last_mut().unwrap(); *c += 1; *c };
+                let k = {
+                    let c = counts.last_mut().unwrap();
+                    *c += 1;
+                    *c
+                };
                 if !void {
                     if skip_until.is_none() && BLOCK_TAGS.contains(&name.as_str()) {
                         flush(&mut cur, &mut out, heading_depth > 0, path_of(&stack));

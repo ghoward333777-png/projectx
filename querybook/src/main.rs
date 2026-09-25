@@ -30,8 +30,8 @@ enum Cmd {
         rights: String,
         #[arg(long, default_value = "")]
         rights_note: String,
-        /// Comma-separated registered engine ids, e.g. rules,claude,local
-        #[arg(long, default_value = "rules")]
+        /// Comma-separated registered engine ids, e.g. language,claude,local
+        #[arg(long, default_value = "language")]
         engines: String,
         /// Override the work id (single file only)
         #[arg(long)]
@@ -337,11 +337,7 @@ fn main() -> anyhow::Result<()> {
             let mut trace = Trace::default();
             // "world" asks the imported knowledge (UFCS feeds, harvests) with no book
             let scope = if work == "world" {
-                let feeds: Vec<String> = qb.store.read(|c| {
-                    let mut st = c.prepare("SELECT feed FROM import_cursors ORDER BY feed")?;
-                    let r = st.query_map([], |r| r.get::<_, String>(0))?;
-                    Ok(r.collect::<Result<_, _>>()?)
-                })?;
+                let feeds = d8::world_feeds(&qb)?;
                 anyhow::ensure!(!feeds.is_empty(), "no imported knowledge yet (qb harvest-wikidata / qb import-ufcs)");
                 d8::world_scope(&feeds)
             } else {
@@ -400,8 +396,14 @@ fn main() -> anyhow::Result<()> {
                 for t in &a.trees {
                     println!("  tree    {t}");
                 }
-                println!("  deps    {}", a.dependencies.iter().map(|(d, r, h)| format!("{r}({h}, {d})")).collect::<Vec<_>>().join(" "));
-                println!("  ents    {}", a.mentions.iter().map(|(t, k, c)| format!("{t}:{k}={c}")).collect::<Vec<_>>().join("  "));
+                println!(
+                    "  deps    {}",
+                    a.dependencies.iter().map(|(d, r, h)| format!("{r}({h}, {d})")).collect::<Vec<_>>().join(" ")
+                );
+                println!(
+                    "  ents    {}",
+                    a.mentions.iter().map(|(t, k, c)| format!("{t}:{k}={c}")).collect::<Vec<_>>().join("  ")
+                );
                 println!("  preds   {}", a.predicate.iter().map(|(l, c)| format!("{l}:{c}")).collect::<Vec<_>>().join("  "));
                 for (ty, s, p, o) in &a.facts {
                     println!("  FU      <{ty}> {s} · {p} · {o}");

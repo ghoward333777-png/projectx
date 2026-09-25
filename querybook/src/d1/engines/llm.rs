@@ -436,7 +436,9 @@ impl LlmEngine {
                 quote: if verified { f.quote.trim().to_string() } else { f.quote.trim().chars().take(240).collect() },
                 engine: self.p.id.clone(),
                 prompt_hash: Some(prompt_hash.to_string()),
-                citation_verified: verified, sentence: None, weight: 1.0,
+                citation_verified: verified,
+                sentence: None,
+                weight: 1.0,
             });
         }
         out

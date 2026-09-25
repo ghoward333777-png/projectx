@@ -13,6 +13,11 @@ name = "operator"                # identity recorded in the ledger with every el
 # record's diversity; repeated output of one engine does not (QBF-C023).
 
 [[engines]]
+id = "language"                  # built in: the 7-stage language pipeline (parse, NER, FU construction)
+kind = "language"
+reliability = 0.65
+
+[[engines]]
 id = "rules"                     # built in, runs entirely on this server, no network
 kind = "rules"
 reliability = 0.6

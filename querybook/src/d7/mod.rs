@@ -190,7 +190,13 @@ fn proposition(f: &FactUnit, catalog: &Catalog, refs: &mut Refs) -> String {
     }
     out = out.replace("{o}", &obj);
     if !f.atom.polarity {
-        out = format!("It is not the case that {}", out.trim_end_matches('.'));
+        // a copular template negates in place ("Jane is not happy"); others by the frame
+        out = match out.find(" is ") {
+            Some(k) if matches!(f.atom.predicate.as_str(), "is_a" | "has_trait") => {
+                format!("{} is not {}", &out[..k], &out[k + 4..])
+            }
+            _ => format!("It is not the case that {}", out.trim_end_matches('.')),
+        };
     }
     terminate(&capitalize(out.trim()))
 }

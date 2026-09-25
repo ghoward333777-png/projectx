@@ -79,17 +79,243 @@ pub struct Token {
     pub initial: bool,
 }
 
-const TITLE_ABBR: &[&str] = &["mr.", "mrs.", "ms.", "dr.", "st.", "col.", "capt.", "gen.", "lt.", "rev.", "prof.", "mt.", "jr.", "sr."];
+const TITLE_ABBR: &[&str] =
+    &["mr.", "mrs.", "ms.", "dr.", "st.", "col.", "capt.", "gen.", "lt.", "rev.", "prof.", "mt.", "jr.", "sr."];
 const ING_NOUNS: &[&str] = &[
-    "thing", "nothing", "something", "anything", "everything", "morning", "evening", "king", "ring", "wedding", "building",
-    "feeling", "spring", "string", "ceiling", "meaning", "beginning", "being", "painting", "writing", "reading", "wing", "sing",
-    "sibling", "darling", "lodging", "clothing", "meeting", "gathering", "blessing",
+    "thing",
+    "nothing",
+    "something",
+    "anything",
+    "everything",
+    "morning",
+    "evening",
+    "king",
+    "ring",
+    "wedding",
+    "building",
+    "feeling",
+    "spring",
+    "string",
+    "ceiling",
+    "meaning",
+    "beginning",
+    "being",
+    "painting",
+    "writing",
+    "reading",
+    "wing",
+    "sing",
+    "sibling",
+    "darling",
+    "lodging",
+    "clothing",
+    "meeting",
+    "gathering",
+    "blessing",
 ];
 const LY_NOT_ADV: &[&str] = &[
-    "family", "early", "lovely", "likely", "friendly", "lonely", "ugly", "holy", "silly", "daily", "reply", "supply", "fly",
-    "ally", "rely", "apply", "only", "lily", "italy", "july", "belly", "jolly", "melancholy", "comely", "manly", "elderly",
+    "family",
+    "early",
+    "lovely",
+    "likely",
+    "friendly",
+    "lonely",
+    "ugly",
+    "holy",
+    "silly",
+    "daily",
+    "reply",
+    "supply",
+    "fly",
+    "ally",
+    "rely",
+    "apply",
+    "only",
+    "lily",
+    "italy",
+    "july",
+    "belly",
+    "jolly",
+    "melancholy",
+    "comely",
+    "manly",
+    "elderly",
 ];
-const NOUN_SUFFIX: &[&str] = &["tion", "sion", "ment", "ness", "ity", "ism", "ance", "ence", "ship", "hood", "dom", "ist", "er", "or", "age", "ure"];
+const NOUN_SUFFIX: &[&str] =
+    &["tion", "sion", "ment", "ness", "ity", "ism", "ance", "ence", "ship", "hood", "dom", "ist", "er", "or", "age", "ure"];
+/// Frequent adjectives the suffix rules cannot see.
+const COMMON_ADJ: &[&str] = &[
+    "good",
+    "bad",
+    "great",
+    "small",
+    "large",
+    "big",
+    "little",
+    "young",
+    "old",
+    "new",
+    "long",
+    "short",
+    "high",
+    "low",
+    "single",
+    "rich",
+    "poor",
+    "happy",
+    "sad",
+    "glad",
+    "proud",
+    "kind",
+    "fine",
+    "true",
+    "false",
+    "right",
+    "wrong",
+    "sure",
+    "free",
+    "fair",
+    "dear",
+    "handsome",
+    "clever",
+    "wise",
+    "ill",
+    "well",
+    "able",
+    "ready",
+    "civil",
+    "polite",
+    "rude",
+    "quiet",
+    "warm",
+    "cold",
+    "strong",
+    "weak",
+    "whole",
+    "certain",
+    "common",
+    "real",
+    "equal",
+    "full",
+    "empty",
+    "open",
+    "close",
+    "near",
+    "far",
+    "late",
+    "early",
+    "easy",
+    "hard",
+    "safe",
+    "calm",
+    "grave",
+    "severe",
+    "sincere",
+    "silent",
+    "worthy",
+    "amiable",
+    "agreeable",
+    "tall",
+    "wide",
+    "deep",
+    "dark",
+    "bright",
+    "white",
+    "black",
+    "red",
+    "green",
+    "blue",
+    "grey",
+    "gray",
+    "brown",
+    "yellow",
+    "best",
+    "better",
+    "worse",
+    "worst",
+    "own",
+    "other",
+    "same",
+    "such",
+    "fond",
+    "afraid",
+    "alone",
+    "aware",
+    "alive",
+];
+/// Nouns ending in -y that the adjective suffix rule would misread.
+const Y_NOUNS: &[&str] = &[
+    "lady",
+    "body",
+    "party",
+    "family",
+    "city",
+    "country",
+    "story",
+    "army",
+    "money",
+    "duty",
+    "society",
+    "company",
+    "enemy",
+    "library",
+    "glory",
+    "beauty",
+    "memory",
+    "history",
+    "journey",
+    "day",
+    "way",
+    "boy",
+    "baby",
+    "victory",
+    "theory",
+    "energy",
+    "century",
+    "industry",
+    "economy",
+    "army",
+    "navy",
+    "ally",
+    "copy",
+    "study",
+    "reply",
+    "entry",
+    "valley",
+    "key",
+    "sky",
+    "mystery",
+    "authority",
+    "majority",
+    "liberty",
+    "property",
+    "quality",
+    "variety",
+    "ability",
+    "opportunity",
+    "curiosity",
+    "anxiety",
+    "civility",
+    "vanity",
+    "felicity",
+    "sympathy",
+    "philosophy",
+    "geography",
+    "biology",
+    "chemistry",
+    "galaxy",
+    "gravity",
+    "democracy",
+    "monarchy",
+    "treaty",
+    "dynasty",
+    "colony",
+    "territory",
+    "county",
+    "mercy",
+    "pity",
+    "folly",
+];
 const ADJ_SUFFIX: &[&str] = &["ous", "ful", "ive", "able", "ible", "al", "ic", "less", "ish", "ent", "ant", "ary", "y"];
 
 fn is_word_char(c: char) -> bool {
@@ -159,7 +385,8 @@ pub fn tokenize(s: &str) -> Vec<Token> {
                 out.push(mk(&s[bi..cut], bi, cut));
                 out.push(mk(&s[cut..end], cut, end));
             } else if lw.ends_with("n't") && lw.len() > 3 {
-                let cut = end - 3;
+                // byte offset of the 'n' three characters from the end (the apostrophe may be multi-byte)
+                let cut = bi + word.char_indices().rev().nth(2).map(|(k, _)| k).unwrap_or(0);
                 out.push(mk(&s[bi..cut], bi, cut));
                 out.push(mk(&s[cut..end], cut, end));
             } else {
@@ -228,11 +455,14 @@ fn lexical(t: &mut Token) {
         t.pos = Pos::Cconj;
         return;
     }
-    if matches!(w, "because" | "although" | "though" | "whereas" | "unless" | "whether" | "if" | "when" | "whenever" | "while" | "lest") {
+    if matches!(
+        w,
+        "because" | "although" | "though" | "whereas" | "unless" | "whether" | "if" | "when" | "whenever" | "while" | "lest"
+    ) {
         t.pos = Pos::Sconj;
         return;
     }
-    if is_in(PREPOSITIONS, w) {
+    if is_in(PREPOSITIONS, w) || matches!(w, "as" | "than" | "since" | "until" | "till" | "before" | "after") {
         t.pos = Pos::Adp;
         return;
     }
@@ -287,6 +517,14 @@ fn lexical(t: &mut Token) {
         t.lemma = verb_lemma(w);
         return;
     }
+    if COMMON_ADJ.contains(&w) {
+        t.pos = Pos::Adj;
+        return;
+    }
+    if Y_NOUNS.contains(&w) || (w.ends_with("ies") && Y_NOUNS.contains(&format!("{}y", &w[..w.len() - 3]).as_str())) {
+        t.pos = Pos::Noun;
+        return;
+    }
     if NOUN_SUFFIX.iter().any(|s| w.ends_with(s) && w.len() > s.len() + 2) {
         t.pos = Pos::Noun;
         return;
@@ -336,19 +574,27 @@ pub fn tag(tokens: &mut [Token], entity_spans: &[(usize, usize, usize)]) {
                 t.form = Form::None;
             }
             // "the married couple": participle between determiner and noun is an adjective
-            Pos::Verb if matches!(prev, Some(Pos::Det | Pos::Adj)) && matches!(t.form, Form::Past | Form::Part | Form::Ger)
-                && matches!(next, Some(Pos::Noun | Pos::Propn)) =>
+            Pos::Verb
+                if matches!(prev, Some(Pos::Det | Pos::Adj))
+                    && matches!(t.form, Form::Past | Form::Part | Form::Ger)
+                    && matches!(next, Some(Pos::Noun | Pos::Propn)) =>
             {
                 t.pos = Pos::Adj;
             }
             // "to" + verb base = infinitive marker
-            Pos::Noun | Pos::Verb if prev_lower == "to" && (COMMON_VERBS.contains(&t.lower.as_str()) || IRREGULAR.iter().any(|(b, _, _)| *b == t.lower)) => {
+            Pos::Noun | Pos::Verb
+                if prev_lower == "to"
+                    && (COMMON_VERBS.contains(&t.lower.as_str()) || IRREGULAR.iter().any(|(b, _, _)| *b == t.lower)) =>
+            {
                 t.pos = Pos::Verb;
                 t.form = Form::Base;
                 t.lemma = t.lower.clone();
             }
             // after a modal/auxiliary a known verb base is a verb
-            Pos::Noun if matches!(prev, Some(Pos::Aux | Pos::Part)) && (COMMON_VERBS.contains(&t.lower.as_str()) || IRREGULAR.iter().any(|(b, _, _)| *b == t.lower)) => {
+            Pos::Noun
+                if matches!(prev, Some(Pos::Aux | Pos::Part))
+                    && (COMMON_VERBS.contains(&t.lower.as_str()) || IRREGULAR.iter().any(|(b, _, _)| *b == t.lower)) =>
+            {
                 t.pos = Pos::Verb;
                 t.form = Form::Base;
                 t.lemma = t.lower.clone();
@@ -377,11 +623,15 @@ pub fn tag(tokens: &mut [Token], entity_spans: &[(usize, usize, usize)]) {
             };
         }
         // "have/had/has" with a nominal complement is a main verb
-        if t.pos == Pos::Aux && t.lemma == "have" && matches!(next_pos, Some(Pos::Det | Pos::Noun | Pos::Propn | Pos::Num | Pos::Adj)) {
+        if t.pos == Pos::Aux
+            && t.lemma == "have"
+            && matches!(next_pos, Some(Pos::Det | Pos::Noun | Pos::Propn | Pos::Num | Pos::Adj))
+        {
             t.pos = Pos::Verb;
         }
         // temporal/causal words that open a clause are subordinators
-        if t.pos == Pos::Adp && matches!(t.lower.as_str(), "before" | "after" | "since" | "until" | "till" | "as" | "once")
+        if t.pos == Pos::Adp
+            && matches!(t.lower.as_str(), "before" | "after" | "since" | "until" | "till" | "as" | "once")
             && matches!(next_pos, Some(Pos::Pron | Pos::Propn | Pos::Det))
             && (prev_pos.is_none() || matches!(prev_pos, Some(Pos::Punct | Pos::Cconj)))
         {
@@ -405,7 +655,9 @@ pub fn tag(tokens: &mut [Token], entity_spans: &[(usize, usize, usize)]) {
             t.lemma = match t.pos {
                 Pos::Verb | Pos::Aux => verb_lemma(&t.lower),
                 Pos::Noun if t.lower.ends_with("ies") => format!("{}y", t.lower.trim_end_matches("ies")),
-                Pos::Noun if t.lower.ends_with('s') && !t.lower.ends_with("ss") && t.lower.len() > 3 => t.lower.trim_end_matches('s').to_string(),
+                Pos::Noun if t.lower.ends_with('s') && !t.lower.ends_with("ss") && t.lower.len() > 3 => {
+                    t.lower.trim_end_matches('s').to_string()
+                }
                 _ => t.lower.clone(),
             };
         }
@@ -420,6 +672,12 @@ mod tests {
         let mut t = tokenize(s);
         tag(&mut t, &[]);
         t.into_iter().map(|t| (t.text.clone(), t.pos.tag())).collect()
+    }
+
+    #[test]
+    fn curly_contractions() {
+        let t: Vec<String> = tokenize("Don\u{2019}t keep coughing so, Kitty!").into_iter().map(|t| t.text).collect();
+        assert_eq!(t[..2], ["Do".to_string(), "n\u{2019}t".to_string()]);
     }
 
     #[test]

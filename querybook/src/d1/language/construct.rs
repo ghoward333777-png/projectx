@@ -9,10 +9,10 @@
 //! subject in the preceding sentence and no other person is named in this
 //! one — and such candidates carry reduced evidential weight.
 
-use super::lexicon::{VerbClass, KIN};
+use super::lexicon::{KIN, VerbClass};
 use super::ner::{self, EntKind, Mention};
 use super::parse::{Clause, ClauseKind, ClauseParse};
-use super::tag::{Pos, Token};
+use super::tag::{Form, Pos, Token};
 use crate::d1::engines::Candidate;
 use crate::d2::{Atom, Value};
 use crate::d3::entities::EntityTable;
@@ -100,6 +100,27 @@ fn tail_text(text: &str, tokens: &[Token], clause: &[usize], from: usize, max: u
     span_text(text, tokens, &idx)
 }
 
+/// Cut a predicate phrase at its first clause joint (comma, coordination,
+/// comparison, relative), so a description stays one description.
+fn cut_at_boundary(text: String) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for (i, w) in text.split_whitespace().enumerate() {
+        let lw = w.to_lowercase();
+        if i > 0 && matches!(lw.as_str(), "and" | "but" | "or" | "than" | "who" | "which" | "whom" | "whose" | "while" | "though")
+        {
+            break;
+        }
+        // a comma inside a short opening ("a stout, well-grown girl") joins adjectives
+        let comma = w.ends_with(',') || w.ends_with(';');
+        if comma && (i >= 2 || w.ends_with(';')) {
+            out.push(w.trim_end_matches([',', ';']));
+            break;
+        }
+        out.push(w);
+    }
+    out.join(" ")
+}
+
 pub fn build(
     cx: &Ctx,
     tokens: &[Token],
@@ -147,6 +168,22 @@ pub fn build(
             None => None,
         };
         let Some((sc, sl, skind)) = subj else { continue };
+        // "Lydia's letters were frequent": the possessor is not the subject
+        if let Some(s) = p.subject {
+            let last = ner::mention_at(mentions, s).map(|m| *m.tokens.last().unwrap()).unwrap_or(s);
+            if tokens.get(last + 1).map(|t| t.lower == "'s" || t.lower == "'").unwrap_or(false) {
+                continue;
+            }
+            // "between him and Darcy there was ...": a name inside a prepositional phrase is not the subject
+            let first = ner::mention_at(mentions, s).map(|m| m.tokens[0]).unwrap_or(s);
+            let governed = (first.saturating_sub(4)..first)
+                .rev()
+                .take_while(|&k| tokens[k].pos != Pos::Punct)
+                .any(|k| tokens[k].pos == Pos::Adp && !(k + 1..first).any(|j| matches!(tokens[j].pos, Pos::Verb | Pos::Aux)));
+            if governed && clause.kind != ClauseKind::Relative {
+                continue;
+            }
+        }
         subject_of_clause[ci] = Some((sc.clone(), sl.clone(), weight));
         labels.insert(sc.clone(), sl.clone());
         let Some(root) = p.root else { continue };
@@ -166,7 +203,8 @@ pub fn build(
                 _ => {}
             }
         }
-        let obj_mention = p.object.and_then(|o| ner::mention_at(mentions, o)).filter(|m| !m.concept.is_empty() && m.concept != sc);
+        let obj_mention =
+            p.object.and_then(|o| ner::mention_at(mentions, o)).filter(|m| !m.concept.is_empty() && m.concept != sc);
         let obl_mention = |preps: &[&str]| -> Option<&Mention> {
             mentions.iter().find(|m| {
                 !m.concept.is_empty()
@@ -189,21 +227,53 @@ pub fn build(
                 let pred_chunk = p.chunks.iter().find(|c| c.head == root);
                 let Some(pc) = pred_chunk else { continue };
                 if tokens[root].pos == Pos::Adj {
-                    let text = span_text(cx.text, tokens, &pc.tokens);
+                    let first = tokens[pc.tokens[0]].lower.as_str();
+                    let after = tokens.get(*pc.tokens.last().unwrap() + 1).map(|t| t.lower.as_str()).unwrap_or("");
+                    // comparisons and degree constructions ("as far from", "so ... that", "more ... than") are not traits
+                    if matches!(first, "as" | "so" | "too" | "more" | "less" | "most" | "least")
+                        || matches!(after, "as" | "than" | "that" | "enough")
+                    {
+                        continue;
+                    }
+                    let text = if matches!(after, "of" | "to" | "with" | "in" | "at" | "about") {
+                        cut_at_boundary(tail_text(cx.text, tokens, &clause.tokens, pc.tokens[0], 7))
+                    } else {
+                        span_text(cx.text, tokens, &pc.tokens)
+                    };
                     ("has_trait", "assertion.property", Value::Text(text), SemanticType::Attribute)
                 } else if tokens[root].pos.nominal() && tokens[root].pos != Pos::Pron {
                     // "the sister of Y" -> relative_of; otherwise a description
                     let head_lemma = tokens[root].lemma.clone();
-                    let of_person = mentions.iter().find(|m| m.kind == EntKind::Person && m.concept != sc && m.tokens[0] > root
-                        && m.tokens[0].checked_sub(1).map(|k| tokens[k].lower == "of").unwrap_or(false));
+                    let of_person = mentions.iter().find(|m| {
+                        m.kind == EntKind::Person
+                            && m.concept != sc
+                            && m.tokens[0] > root
+                            && m.tokens[0].checked_sub(1).map(|k| tokens[k].lower == "of").unwrap_or(false)
+                    });
+                    if matches!(
+                        head_lemma.as_str(),
+                        "week"
+                            | "day"
+                            | "month"
+                            | "year"
+                            | "hour"
+                            | "minute"
+                            | "fortnight"
+                            | "night"
+                            | "morning"
+                            | "evening"
+                            | "time"
+                    ) {
+                        continue; // "Jane was a week in town": a duration, not a description
+                    }
                     if KIN.contains(&head_lemma.as_str()) && of_person.is_some() {
                         let op = of_person.unwrap();
                         args.insert("relation".into(), Value::Text(head_lemma));
                         ("relative_of", "assertion.relation", concept(op, &mut labels), SemanticType::Relation)
-                    } else if ner::mention_at(mentions, root).is_some() {
+                    } else if ner::mention_at(mentions, root).is_some() || tokens[root].pos == Pos::Propn {
                         continue; // "X was Mr. Y": identity between names, not a description
                     } else {
-                        let text = tail_text(cx.text, tokens, &clause.tokens, pc.tokens[0], 14);
+                        let text = cut_at_boundary(tail_text(cx.text, tokens, &clause.tokens, pc.tokens[0], 14));
                         if text.split_whitespace().count() < 2 {
                             continue;
                         }
@@ -219,18 +289,29 @@ pub fn build(
                     ("marry", _) if obj_mention.map(|m| m.kind == EntKind::Person).unwrap_or(false) => {
                         ("married_to", "assertion.relation", concept(obj_mention.unwrap(), &mut labels), SemanticType::Relation)
                     }
-                    ("meet", _) if obj_mention.is_some() => ("meets", "event.action", concept(obj_mention.unwrap(), &mut labels), SemanticType::Event),
+                    ("meet", _) if obj_mention.is_some() => {
+                        ("meets", "event.action", concept(obj_mention.unwrap(), &mut labels), SemanticType::Event)
+                    }
                     ("love" | "adore", _) if obj_mention.is_some() => {
                         ("loves", "assertion.relation", concept(obj_mention.unwrap(), &mut labels), SemanticType::Relation)
                     }
                     ("hate" | "dislike" | "despise", _) if obj_mention.is_some() => {
                         ("dislikes", "assertion.relation", concept(obj_mention.unwrap(), &mut labels), SemanticType::Relation)
                     }
-                    ("live" | "reside" | "dwell", _) if obl_mention(&["at", "in", "near"]).is_some() => {
-                        ("lives_in", "assertion.relation", concept(obl_mention(&["at", "in", "near"]).unwrap(), &mut labels), SemanticType::Relation)
-                    }
-                    (_, VerbClass::Motion) if obj_mention.map(|m| m.kind == EntKind::Place).unwrap_or(false) || obl_mention(&["to", "at", "into"]).is_some() => {
-                        let m = obj_mention.filter(|m| m.kind == EntKind::Place).or_else(|| obl_mention(&["to", "at", "into"])).unwrap();
+                    ("live" | "reside" | "dwell", _) if obl_mention(&["at", "in", "near"]).is_some() => (
+                        "lives_in",
+                        "assertion.relation",
+                        concept(obl_mention(&["at", "in", "near"]).unwrap(), &mut labels),
+                        SemanticType::Relation,
+                    ),
+                    (_, VerbClass::Motion)
+                        if obj_mention.map(|m| m.kind == EntKind::Place).unwrap_or(false)
+                            || obl_mention(&["to", "at", "into"]).is_some() =>
+                    {
+                        let m = obj_mention
+                            .filter(|m| m.kind == EntKind::Place)
+                            .or_else(|| obl_mention(&["to", "at", "into"]))
+                            .unwrap();
                         ("visits", "event.action", concept(m, &mut labels), SemanticType::Event)
                     }
                     ("own" | "possess", _) if p.object.is_some() => {
@@ -239,10 +320,14 @@ pub fn build(
                     }
                     ("believe" | "think" | "suppose" | "suspect", _) => {
                         // the complement clause is the belief
-                        let sub = clauses.iter().enumerate().find(|(k, c)| *k != ci && c.kind == ClauseKind::Subordinate && c.tokens.first().map(|&t| t > root).unwrap_or(false));
+                        let sub = clauses.iter().enumerate().find(|(k, c)| {
+                            *k != ci && c.kind == ClauseKind::Subordinate && c.tokens.first().map(|&t| t > root).unwrap_or(false)
+                        });
                         let text = match sub {
                             Some((_, c)) => span_text(cx.text, tokens, &c.tokens),
-                            None => tail_text(cx.text, tokens, &clause.tokens, root + 1, 16).trim_start_matches("that ").to_string(),
+                            None => {
+                                tail_text(cx.text, tokens, &clause.tokens, root + 1, 16).trim_start_matches("that ").to_string()
+                            }
                         };
                         if text.split_whitespace().count() < 3 {
                             continue;
@@ -250,7 +335,7 @@ pub fn build(
                         ("believes", "assertion.claim", Value::Text(text), SemanticType::State)
                     }
                     ("feel", _) => {
-                        let text = tail_text(cx.text, tokens, &clause.tokens, root + 1, 8);
+                        let text = cut_at_boundary(tail_text(cx.text, tokens, &clause.tokens, root + 1, 8));
                         if text.is_empty() {
                             continue;
                         }
@@ -258,7 +343,11 @@ pub fn build(
                     }
                     (_, VerbClass::Communication) if clauses.iter().any(|c| c.kind == ClauseKind::Speech) => continue, // speech handled below
                     _ => {
-                        if tokens[root].pos != Pos::Verb {
+                        if tokens[root].pos != Pos::Verb || matches!(skind, EntKind::Place | EntKind::Date | EntKind::Quantity) {
+                            continue;
+                        }
+                        let has_aux = p.arcs.iter().any(|a| a.head == Some(root) && a.rel.starts_with("aux"));
+                        if tokens[root].form == Form::Ger && !has_aux {
                             continue;
                         }
                         let vp_start = p.chunks.iter().find(|c| c.tokens.contains(&root)).map(|c| c.tokens[0]).unwrap_or(root);
@@ -279,7 +368,17 @@ pub fn build(
             }
             None => continue,
         };
-        let polarity = !(p.negated && pred != "performs" && pred != "has_trait" && pred != "is_a");
+        // a negated trait is the trait with negative polarity, so CCR can see the conflict
+        let mut object = object;
+        let mut neg_trait = false;
+        if let Value::Text(t) = &object {
+            if let Some(n) = ["not ", "never ", "no longer "].into_iter().find(|n| pred == "has_trait" && t.starts_with(n)) {
+                let rest = t[n.len()..].to_string();
+                object = Value::Text(rest);
+                neg_trait = true;
+            }
+        }
+        let polarity = !((p.negated && pred != "performs") || neg_trait);
         let _ = skind;
         out.push(Built {
             candidate: Candidate {
@@ -306,12 +405,8 @@ pub fn build(
             continue;
         }
         // speaker: a person named outside the quotes next to a communication verb
-        let speaker = clauses
-            .iter()
-            .zip(parses)
-            .enumerate()
-            .filter(|(_, (c, _))| c.kind != ClauseKind::Speech)
-            .find_map(|(k, (_, p))| {
+        let speaker =
+            clauses.iter().zip(parses).enumerate().filter(|(_, (c, _))| c.kind != ClauseKind::Speech).find_map(|(k, (_, p))| {
                 let cls = ner::classify(tokens, p)?;
                 if cls.1 != VerbClass::Communication {
                     return None;
@@ -319,7 +414,19 @@ pub fn build(
                 subject_of_clause[k].clone().or_else(|| {
                     // "said Elizabeth": subject after the verb
                     let r = p.root?;
-                    mentions.iter().find(|m| m.kind == EntKind::Person && m.tokens[0] > r && m.tokens[0] <= r + 3).map(|m| (m.concept.clone(), m.label.clone(), 1.0))
+                    mentions
+                        .iter()
+                        .find(|m| m.kind == EntKind::Person && m.tokens[0] > r && m.tokens[0] <= r + 3)
+                        .map(|m| (m.concept.clone(), m.label.clone(), 1.0))
+                        .or_else(|| {
+                            // "returned she": an inverted pronoun speaker, resolved only when
+                            // exactly one person was in play in the previous sentence
+                            let next = tokens.get(r + 1)?;
+                            if !matches!(next.lower.as_str(), "he" | "she") || dis.persons_last_sentence != 1 {
+                                return None;
+                            }
+                            dis.last_person.clone().map(|(c, l)| (c, l, 0.6))
+                        })
                 })
             });
         if let Some((sc, sl, w)) = speaker {
@@ -328,7 +435,13 @@ pub fn build(
             out.push(Built {
                 candidate: Candidate {
                     type_ref: "event.speech".into(),
-                    atom: Atom { subject: sc, predicate: "says".into(), object: Value::Text(words), args: BTreeMap::new(), polarity: true },
+                    atom: Atom {
+                        subject: sc,
+                        predicate: "says".into(),
+                        object: Value::Text(words),
+                        args: BTreeMap::new(),
+                        polarity: true,
+                    },
                     labels: l,
                     pos: cx.pos,
                     chapter: cx.chapter,
@@ -358,7 +471,11 @@ pub fn build(
             }
             // include a following of-PP: "the heir of the Longbourn estate"
             let mut idx = ch.tokens.clone();
-            if let Some(pp) = p.chunks.iter().find(|c| c.tokens.first().map(|&t| t == idx.last().unwrap() + 1 && tokens[t].lower == "of").unwrap_or(false)) {
+            if let Some(pp) = p
+                .chunks
+                .iter()
+                .find(|c| c.tokens.first().map(|&t| t == idx.last().unwrap() + 1 && tokens[t].lower == "of").unwrap_or(false))
+            {
                 idx.extend(pp.tokens.iter().copied());
             }
             let text = span_text(cx.text, tokens, &idx);
@@ -367,7 +484,13 @@ pub fn build(
             out.push(Built {
                 candidate: Candidate {
                     type_ref: "assertion.property".into(),
-                    atom: Atom { subject: m.concept.clone(), predicate: "is_a".into(), object: Value::Text(text), args: BTreeMap::new(), polarity: true },
+                    atom: Atom {
+                        subject: m.concept.clone(),
+                        predicate: "is_a".into(),
+                        object: Value::Text(text),
+                        args: BTreeMap::new(),
+                        polarity: true,
+                    },
                     labels: l,
                     pos: cx.pos,
                     chapter: cx.chapter,
@@ -387,7 +510,12 @@ pub fn build(
     let subj_persons: Vec<(String, String)> = clauses
         .iter()
         .zip(parses)
-        .filter_map(|(_, p)| p.subject.and_then(|s| ner::mention_at(mentions, s)).filter(|m| m.kind == EntKind::Person).map(|m| (m.concept.clone(), m.label.clone())))
+        .filter_map(|(_, p)| {
+            p.subject
+                .and_then(|s| ner::mention_at(mentions, s))
+                .filter(|m| m.kind == EntKind::Person)
+                .map(|m| (m.concept.clone(), m.label.clone()))
+        })
         .collect();
     let mut distinct = subj_persons.clone();
     distinct.dedup();

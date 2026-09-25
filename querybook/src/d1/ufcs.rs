@@ -359,18 +359,34 @@ impl<'a> Admitter<'a> {
     }
 
     fn ensure_predicates(&mut self, facts: &[FactUnit]) -> anyhow::Result<()> {
-        let missing: Vec<String> = {
+        // argument slots each predicate is used with in this page
+        let mut used: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
+        for f in facts {
+            used.entry(f.atom.predicate.clone()).or_default().extend(f.atom.args.keys().cloned());
+        }
+        let (missing, widen): (Vec<String>, Vec<(String, Vec<String>)>) = {
             let cat = self.qb.catalog.read().unwrap();
-            let mut v: Vec<String> = facts.iter().map(|f| f.atom.predicate.clone()).filter(|p| cat.get(p).is_none()).collect();
-            v.sort();
-            v.dedup();
-            v
+            let missing = used.keys().filter(|p| cat.get(p).is_none()).cloned().collect();
+            // only predicates this importer registers are widened; governed ones stay as defined
+            let widen = used
+                .iter()
+                .filter_map(|(p, keys)| {
+                    let spec = cat.get(p)?;
+                    let new: Vec<String> = keys.iter().filter(|k| !spec.args.contains_key(*k)).cloned().collect();
+                    (spec.type_ref == "ufcs.fact" && !new.is_empty()).then(|| (p.clone(), new))
+                })
+                .collect();
+            (missing, widen)
         };
-        if missing.is_empty() || !self.m.predicates.auto_register || self.dry_run {
+        if (missing.is_empty() && widen.is_empty()) || !self.m.predicates.auto_register || self.dry_run {
             return Ok(());
         }
         let mut cat = self.qb.catalog.write().unwrap();
+        for (p, keys) in widen {
+            cat.extend_args(&self.qb.store, &p, &keys, &self.qb.cfg.operator.name)?;
+        }
         for p in missing {
+            let args: BTreeMap<String, String> = used[&p].iter().map(|k| (k.clone(), "any".to_string())).collect();
             let label = p.trim_start_matches("ufcs:").replace('_', " ");
             cat.register(
                 &self.qb.store,
@@ -382,7 +398,7 @@ impl<'a> Admitter<'a> {
                     functional: false,
                     symmetric: false,
                     edge: "semantic".into(),
-                    args: BTreeMap::new(),
+                    args,
                     template: format!("{{s}} {label} {{o}}."),
                     question: String::new(),
                     describe: format!("Imported from UFCS feed {}", self.m.feed),

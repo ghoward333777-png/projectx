@@ -37,9 +37,40 @@ pub struct Mention {
 }
 
 const UNITS: &[&str] = &[
-    "pounds", "pound", "guineas", "shillings", "pence", "dollars", "miles", "mile", "feet", "foot", "yards", "acres", "years",
-    "year", "days", "weeks", "months", "hours", "minutes", "km", "kilometres", "kilometers", "metres", "meters", "kg", "tons",
-    "percent", "per", "cent", "people", "men", "women", "soldiers", "ships",
+    "pounds",
+    "pound",
+    "guineas",
+    "shillings",
+    "pence",
+    "dollars",
+    "miles",
+    "mile",
+    "feet",
+    "foot",
+    "yards",
+    "acres",
+    "years",
+    "year",
+    "days",
+    "weeks",
+    "months",
+    "hours",
+    "minutes",
+    "km",
+    "kilometres",
+    "kilometers",
+    "metres",
+    "meters",
+    "kg",
+    "tons",
+    "percent",
+    "per",
+    "cent",
+    "people",
+    "men",
+    "women",
+    "soldiers",
+    "ships",
 ];
 const SEASONS: &[&str] = &["spring", "summer", "autumn", "fall", "winter"];
 
@@ -91,10 +122,20 @@ pub fn recognize(tokens: &[Token], ents: &EntityTable) -> Vec<Mention> {
         }
         // acronym normalization: an all-caps token matching exactly one entity's initials
         if t.text.len() >= 2 && t.text.len() <= 6 && t.text.chars().all(|c| c.is_ascii_uppercase()) {
-            let hits: Vec<usize> = (0..ents.entities.len()).filter(|&k| ents.entities[k].label.split_whitespace().count() >= 2 && initials(&ents.entities[k].label) == t.lower).collect();
+            let hits: Vec<usize> = (0..ents.entities.len())
+                .filter(|&k| {
+                    ents.entities[k].label.split_whitespace().count() >= 2 && initials(&ents.entities[k].label) == t.lower
+                })
+                .collect();
             if hits.len() == 1 {
                 let ent = &ents.entities[hits[0]];
-                out.push(Mention { tokens: vec![i], kind: kind_of(ents, hits[0]), concept: ent.concept.clone(), label: ent.label.clone(), normalized: crate::util::alias_key(&ent.label) });
+                out.push(Mention {
+                    tokens: vec![i],
+                    kind: kind_of(ents, hits[0]),
+                    concept: ent.concept.clone(),
+                    label: ent.label.clone(),
+                    normalized: crate::util::alias_key(&ent.label),
+                });
                 i += 1;
                 continue;
             }
@@ -108,7 +149,11 @@ pub fn recognize(tokens: &[Token], ents: &EntityTable) -> Vec<Mention> {
                 let mut s = i;
                 if i >= 1 && lexicon::MONTHS.contains(&tokens[i - 1].lower.as_str()) {
                     s = i - 1;
-                } else if i >= 3 && tokens[i - 1].text == "," && tokens[i - 2].pos == Pos::Num && lexicon::MONTHS.contains(&tokens[i - 3].lower.as_str()) {
+                } else if i >= 3
+                    && tokens[i - 1].text == ","
+                    && tokens[i - 2].pos == Pos::Num
+                    && lexicon::MONTHS.contains(&tokens[i - 3].lower.as_str())
+                {
                     s = i - 3;
                 } else if i >= 2 && tokens[i - 1].lower == "of" && SEASONS.contains(&tokens[i - 2].lower.as_str()) {
                     s = i - 2;

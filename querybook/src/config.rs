@@ -129,24 +129,39 @@ impl Default for Config {
         Config {
             server: Server::default(),
             operator: Operator::default(),
-            engines: vec![EngineProfile {
-                id: "rules".into(),
-                kind: "rules".into(),
-                model: String::new(),
-                base_url: String::new(),
-                api_key_env: String::new(),
-                reliability: 0.6,
-                effort: String::new(),
-                chunk_words: 2200,
-                concurrency: 4,
-                input_price: 0.0,
-                output_price: 0.0,
-                json_mode: true,
-            }],
+            engines: vec![
+                EngineProfile {
+                    id: "language".into(),
+                    kind: "language".into(),
+                    reliability: 0.65,
+                    ..EngineProfile::local("language")
+                },
+                EngineProfile::local("rules"),
+            ],
             retrieval: Retrieval::default(),
             convergence: Convergence::default(),
             traversal: Traversal::default(),
             library: Library::default(),
+        }
+    }
+}
+
+impl EngineProfile {
+    /// An on-server engine profile (no model, no network).
+    pub fn local(kind: &str) -> EngineProfile {
+        EngineProfile {
+            id: kind.into(),
+            kind: kind.into(),
+            model: String::new(),
+            base_url: String::new(),
+            api_key_env: String::new(),
+            reliability: 0.6,
+            effort: String::new(),
+            chunk_words: 2200,
+            concurrency: 4,
+            input_price: 0.0,
+            output_price: 0.0,
+            json_mode: true,
         }
     }
 }
@@ -190,8 +205,11 @@ impl Config {
             }
             None => Config::default(),
         };
-        if cfg.engines.is_empty() {
-            cfg.engines = Config::default().engines;
+        // the on-server engines are always registered; a config may re-tune them
+        for builtin in Config::default().engines {
+            if cfg.engine(&builtin.id).is_none() {
+                cfg.engines.push(builtin);
+            }
         }
         cfg.validate()?;
         Ok(cfg)

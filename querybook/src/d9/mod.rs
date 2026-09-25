@@ -171,11 +171,7 @@ async fn logout(State(qb): State<AppState>, headers: HeaderMap) -> R<Response> {
 
 async fn me(State(qb): State<AppState>, headers: HeaderMap) -> R<Json<J>> {
     let (u, device, _) = auth(&qb, &headers)?;
-    let corpora: Vec<String> = qb.store.read(|c| {
-        let mut st = c.prepare("SELECT feed FROM import_cursors ORDER BY feed")?;
-        let r = st.query_map([], |r| r.get::<_, String>(0))?;
-        Ok(r.collect::<Result<_, _>>()?)
-    })?;
+    let corpora = d8::world_feeds(&qb)?;
     Ok(Json(json!({
         "user": u, "device": device, "regime": qb.regime_label(), "corpora": corpora,
         "engines": qb.cfg.engines.iter().map(|e| json!({"id": e.id, "kind": e.kind, "model": e.model})).collect::<Vec<_>>(),
@@ -284,7 +280,14 @@ async fn query(State(qb): State<AppState>, headers: HeaderMap, Json(r): Json<Que
     let (u, device, session) = auth(&qb, &headers)?;
     blocking(move || {
         let mut trace = Trace::default();
-        let scope = d8::scope_for(&qb, &u, &ScopeRequest { work: &r.work, include_world: r.world, at_pos: r.at }, &mut trace)?;
+        // "world": the imported knowledge alone, no book (D8 resolves it before retrieval)
+        let scope = if r.work == "world" {
+            let feeds = d8::world_feeds(&qb)?;
+            anyhow::ensure!(!feeds.is_empty(), "no imported knowledge on this server yet");
+            d8::world_scope(&feeds)
+        } else {
+            d8::scope_for(&qb, &u, &ScopeRequest { work: &r.work, include_world: r.world, at_pos: r.at }, &mut trace)?
+        };
         let req = Request { mode: r.mode.clone(), query: r.query.clone(), chapter: r.chapter, focus: r.focus.clone(), device };
         let a = d4::answer(&qb, &scope, &req, trace)?;
         let text: String = a.lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" ");
@@ -395,7 +398,14 @@ async fn annotate(
             applicability: if r.color.is_empty() { None } else { Some(format!("color:{}", r.color)) },
             temporal: Temporal { occurred: None, ingested: now_secs(), attested: None },
             spatial: None,
-            narrative: Some(Narrative { work: id.clone(), pos: r.pos, chapter: chapter as u32, also: vec![], cfi: None, sentence: None }),
+            narrative: Some(Narrative {
+                work: id.clone(),
+                pos: r.pos,
+                chapter: chapter as u32,
+                also: vec![],
+                cfi: None,
+                sentence: None,
+            }),
             evidence: ev,
             source: SourceRef { class: "reader".into(), id: format!("user:{}", u.id), authority: 0.99 },
             modality: "text".into(),
@@ -586,7 +596,7 @@ async fn admin_stats(State(qb): State<AppState>, headers: HeaderMap) -> R<Json<J
             "records": qb.store.fact_count()?, "indexed": qb.store.index.num_docs(), "store_version": qb.store.version(),
             "works": d8::all_works(&qb)?, "users": users, "feeds": feeds, "regime": qb.regime_label(),
             "engines": qb.cfg.engines.iter().map(|e| json!({"id": e.id, "kind": e.kind, "model": e.model, "reliability": e.reliability,
-                "ready": e.kind == "rules" || e.api_key_env.is_empty() || std::env::var(&e.api_key_env).map(|v| !v.is_empty()).unwrap_or(false)})).collect::<Vec<_>>(),
+                "ready": e.kind == "rules" || e.kind == "language" || e.api_key_env.is_empty() || std::env::var(&e.api_key_env).map(|v| !v.is_empty()).unwrap_or(false)})).collect::<Vec<_>>(),
             "rights": crate::d1::pipeline::RIGHTS,
         })))
     })
@@ -621,7 +631,7 @@ async fn upload(State(qb): State<AppState>, headers: HeaderMap, mut mp: Multipar
     let engines: Vec<String> = fields
         .get("engines")
         .map(|e| e.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-        .unwrap_or_else(|| vec!["rules".into()]);
+        .unwrap_or_else(|| vec!["language".into()]);
     let opts = IngestOptions {
         id: fields.get("id").filter(|s| !s.is_empty()).cloned(),
         rights,

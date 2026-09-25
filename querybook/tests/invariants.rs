@@ -46,6 +46,10 @@ impl Drop for Env {
 }
 
 fn env(name: &str) -> Env {
+    env_with(name, "rules")
+}
+
+fn env_with(name: &str, engines: &str) -> Env {
     let dir = std::env::temp_dir().join(format!("qb-test-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -58,7 +62,7 @@ fn env(name: &str) -> Env {
         id: Some("clockmaker".into()),
         rights: "author-owned".into(),
         rights_note: "test".into(),
-        engines: vec!["rules".into()],
+        engines: engines.split(',').map(String::from).collect(),
         replace: false,
         genre: "fiction".into(),
         actor: "test".into(),
@@ -145,7 +149,14 @@ fn notes_are_visible_only_to_their_author() {
         applicability: None,
         temporal: querybook::d2::Temporal { occurred: None, ingested: 1, attested: None },
         spatial: None,
-        narrative: Some(querybook::d2::Narrative { work: e.work.clone(), pos: 3, chapter: 0, also: vec![], cfi: None, sentence: None }),
+        narrative: Some(querybook::d2::Narrative {
+            work: e.work.clone(),
+            pos: 3,
+            chapter: 0,
+            also: vec![],
+            cfi: None,
+            sentence: None,
+        }),
         evidence: querybook::d2::Evidence::prior(0.99),
         source: querybook::d2::SourceRef { class: "reader".into(), id: format!("user:{}", a.id), authority: 0.99 },
         modality: "text".into(),
@@ -266,4 +277,39 @@ text = "/text"
 fn store_and_index_agree() {
     let e = env("agree");
     assert_eq!(e.qb.store.fact_count().unwrap(), e.qb.store.index.num_docs());
+}
+
+/// Language pipeline (D1 stages 1-6): relations come from parsed clauses,
+/// every record is anchored to its sentence and embedded, and the same
+/// book yields the same assertions and vectors.
+#[test]
+fn language_pipeline_constructs_anchors_and_embeds() {
+    let dump = |e: &Env| -> Vec<(String, String, u32)> {
+        let rows: Vec<Vec<u8>> =
+            e.qb.store
+                .read(|c| {
+                    let mut st = c.prepare("SELECT frame FROM facts ORDER BY id")?;
+                    let r = st.query_map([], |r| r.get::<_, Vec<u8>>(0))?.collect::<Result<Vec<_>, _>>()?;
+                    Ok(r)
+                })
+                .unwrap();
+        let mut out: Vec<(String, String, u32)> = rows
+            .iter()
+            .map(|b| querybook::d2::fact::decode(b).unwrap())
+            .map(|f| {
+                let n = f.narrative.as_ref().expect("narrative anchor");
+                (f.fingerprint.clone(), f.embedding.clone().expect("embedding"), n.sentence.expect("sentence anchor"))
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    let a = env_with("lang-a", "language");
+    let b = env_with("lang-b", "language");
+    assert_eq!(dump(&a), dump(&b), "same book, same assertions and vectors");
+    let u = reader(&a, "lia");
+    let ans = ask(&a, &u, "Who did Anna Grey marry?", Some(1000));
+    assert_eq!(ans.status, "answered");
+    let text = ans.lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" ");
+    assert!(text.contains("married") && text.contains("Tomas Reed"), "{text}");
 }

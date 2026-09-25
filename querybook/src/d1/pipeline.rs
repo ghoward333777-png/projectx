@@ -132,6 +132,11 @@ pub fn ingest_book(
             }
         }
     });
+    // Stage 6 — semantic embedding: FU + context window + graph alignment.
+    let text_at: BTreeMap<u64, &str> = book.passages.iter().map(|p| (p.pos, p.text.as_str())).collect();
+    let concept_vectors = crate::d1::language::embed::embed_work(&mut facts, &|pos| text_at.get(&pos).map(|t| t.to_string()));
+    progress(&format!("embedded {} records, {} concept vectors", facts.len(), concept_vectors.len()));
+
     let permit = d0::commit_permit(Domain::D1, "safety-evaluation+type-validation+confidence-calibration")?;
     let (node, admitted) =
         qb.store.commit(&permit, &mut facts, &opts.actor, &format!("ingest:{}", book.id), &eval.digest(), true)?;
@@ -151,6 +156,13 @@ pub fn ingest_book(
             }
         }
         save_work(&tx, &book, opts, &reports, &ents, &facts, ingested)?;
+        tx.execute("DELETE FROM concept_vectors WHERE work=?1", params![book.id])?;
+        for (c, v) in &concept_vectors {
+            tx.execute(
+                "INSERT OR REPLACE INTO concept_vectors(work,concept,vec) VALUES(?1,?2,?3)",
+                params![book.id, c, crate::d1::language::embed::quantize(v)],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     })?;
@@ -190,6 +202,18 @@ pub fn merge(
     ingested: i64,
     authority: f64,
 ) -> (Vec<FactUnit>, Vec<(String, String)>) {
+    // one canonical form for negated copular assertions, whichever engine
+    // produced them: ("not happy", +) and ("happy", −) are the same claim
+    for c in cands.iter_mut() {
+        if matches!(c.atom.predicate.as_str(), "has_trait" | "is_a") {
+            if let crate::d2::Value::Text(t) = &c.atom.object {
+                if let Some(rest) = t.strip_prefix("not ") {
+                    c.atom.object = crate::d2::Value::Text(rest.to_string());
+                    c.atom.polarity = !c.atom.polarity;
+                }
+            }
+        }
+    }
     cands.sort_by(|a, b| {
         a.pos
             .cmp(&b.pos)
@@ -207,7 +231,8 @@ pub fn merge(
         }
         g.push(c);
     }
-    let anchors: BTreeMap<u64, String> = book.passages.iter().filter_map(|p| p.anchor.as_ref().map(|a| (p.pos, a.cfi()))).collect();
+    let anchors: BTreeMap<u64, String> =
+        book.passages.iter().filter_map(|p| p.anchor.as_ref().map(|a| (p.pos, a.cfi()))).collect();
     let mut facts = Vec::with_capacity(order.len());
     for fp in &order {
         let g = &groups[fp];
@@ -351,7 +376,9 @@ fn save_work(
         ],
     )?;
     {
-        let mut st = tx.prepare_cached("INSERT OR REPLACE INTO passages(work,pos,chapter,kind,text,cfi,href) VALUES(?1,?2,?3,?4,?5,?6,?7)")?;
+        let mut st = tx.prepare_cached(
+            "INSERT OR REPLACE INTO passages(work,pos,chapter,kind,text,cfi,href) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+        )?;
         for p in &book.passages {
             let (cfi, href) = match &p.anchor {
                 Some(a) => (Some(a.cfi()), Some(a.href.clone())),

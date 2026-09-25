@@ -41,6 +41,9 @@ pub struct Citation {
     pub rendered: String,
     pub quote: String,
     pub pos: u64,
+    /// EPUB CFI of the source paragraph (language pipeline stage 5), when known
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cfi: Option<String>,
     pub chapter: u32,
     pub chapter_title: String,
     pub confidence: f64,
@@ -254,6 +257,40 @@ fn prefer_for(qt: &str, q: &str) -> Vec<&'static str> {
     if has(&["feel", "feels", "felt", "think", "thinks", "thought", "opinion"]) {
         p.extend(["feels", "believes"]);
     }
+    // measurement and reference cues (the world-knowledge predicates)
+    if has(&["long", "length"]) {
+        p.push("length");
+    }
+    if has(&["tall", "high", "height", "elevation"]) {
+        p.extend(["height", "elevation"]);
+    }
+    if has(&["big", "large", "area", "size"]) {
+        p.push("area");
+    }
+    if has(&["population", "people", "inhabitants", "populous"]) {
+        p.push("population");
+    }
+    if has(&["born", "birth"]) {
+        p.push("born_in_year");
+    }
+    if has(&["die", "died", "death"]) {
+        p.push("died_in_year");
+    }
+    if has(&["discovered", "discover", "invented", "invent", "inventor", "discoverer"]) {
+        p.extend(["discoverer", "discovered_in", "invented_in"]);
+    }
+    if has(&["capital"]) {
+        p.push("capital");
+    }
+    if has(&["currency", "money"]) {
+        p.push("currency");
+    }
+    if has(&["language", "speak", "spoken"]) {
+        p.push("official_language");
+    }
+    if has(&["moons", "moon", "satellites"]) {
+        p.push("natural_satellite");
+    }
     p.sort();
     p.dedup();
     p
@@ -407,6 +444,7 @@ pub fn stabilize(
     mut cands: Vec<(f64, FactUnit)>,
     focus: &[Focus],
     prefer: &[&str],
+    query_text: &str,
 ) -> anyhow::Result<Stable> {
     let cfg = &qb.cfg;
     // (C067/C068) follow typed edges from the strongest seeds while budget remains
@@ -440,11 +478,23 @@ pub fn stabilize(
     let focus_set: BTreeSet<&str> = focus.iter().map(|f| f.concept.as_str()).collect();
     let functional: BTreeSet<String> =
         qb.catalog.read().unwrap().predicates.values().filter(|p| p.functional).map(|p| p.id.clone()).collect();
+    // Stage 7 (language pipeline): the query is embedded into the same
+    // random-indexing space as the records (its content lemmas and focus
+    // concepts); semantic closeness raises a candidate's bias
+    let qvec = {
+        use crate::d1::language::embed;
+        let mut feats = embed::text_features(query_text, 1.0);
+        feats.extend(focus.iter().map(|f| (format!("c:{}", f.concept), 2.0f32)));
+        embed::from_features(&feats)
+    };
     let bias: Vec<f64> = cands
         .iter()
         .map(|(s, f)| {
             let mut r = (s / max) * (0.5 + 0.5 * f.trust());
-            if prefer.contains(&f.atom.predicate.as_str()) {
+            if let Some(v) = f.embedding.as_deref().and_then(crate::d1::language::embed::dequantize) {
+                r *= 1.0 + 0.5 * crate::d1::language::embed::cosine(&qvec, &v).max(0.0) as f64;
+            }
+            if prefer.contains(&f.atom.predicate.trim_start_matches("ufcs:")) {
                 r *= 1.4;
             }
             if focus_set.contains(f.atom.subject.as_str()) {
@@ -556,6 +606,7 @@ impl<'a> Builder<'a> {
             rendered,
             quote: f.quote.clone().unwrap_or_default(),
             pos,
+            cfi: f.narrative.as_ref().and_then(|n| n.cfi.clone()),
             chapter,
             chapter_title,
             confidence: round(f.evidence.confidence()),
@@ -773,7 +824,7 @@ fn ask(b: &mut Builder, scope: &Scope, req: &Request, trace: &mut Trace) -> anyh
         return no_answer(b, scope, &q);
     }
     let _ = trace.cross(Domain::D4, Domain::D5, "stabilize");
-    let st = stabilize(qb, scope, r.facts, &a.focus, &a.prefer)?;
+    let st = stabilize(qb, scope, r.facts, &a.focus, &a.prefer, &req.query)?;
     b.ans.convergence = Some(st.convergence.clone());
     if let Some((i, j)) = st.conflict {
         b.ans.status = "clarify".into();

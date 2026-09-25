@@ -124,7 +124,7 @@ predicate = "country"
 object_kind = "entity"
 text = "{s} is a city in {o}."
 sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
-  ?s wdt:P31 wd:Q1637706 ; wdt:P17 ?o .
+  ?s wdt:P31 wd:Q1549591 ; wdt:P1082 ?pop ; wdt:P17 ?o . FILTER(?pop >= 500000)
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
 
 [[query]]
@@ -135,7 +135,7 @@ object_kind = "number"
 decimals = 0
 text = "{s} has a population of {o}."
 sparql = """SELECT ?s ?sLabel ?o WHERE {
-  ?s wdt:P31 wd:Q1637706 ; wdt:P1082 ?o .
+  ?s wdt:P31 wd:Q1549591 ; wdt:P1082 ?o . FILTER(?o >= 500000)
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
 
 [[query]]
@@ -287,7 +287,7 @@ object_kind = "entity"
 text = "{o} is a moon of {s}."
 sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
   VALUES ?s { wd:Q2 wd:Q111 wd:Q319 wd:Q193 wd:Q324 wd:Q332 }
-  ?o wdt:P397 ?s ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  ?o wdt:P397 ?s ; wdt:P31/wdt:P279* wd:Q2537 ; wikibase:sitelinks ?n . FILTER(?n >= 10)
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
 
 [[query]]

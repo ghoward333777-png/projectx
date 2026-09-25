@@ -116,6 +116,8 @@ pub fn compile(ix: &FactIndex, scope: &Scope, q: &Fql) -> Box<dyn Query> {
     }
     for p in &q.prefer_predicates {
         clauses.push((Occur::Should, Box::new(BoostQuery::new(term(ix, f.predicate, p), 1.5))));
+        // the same relation as imported under a feed's governed namespace
+        clauses.push((Occur::Should, Box::new(BoostQuery::new(term(ix, f.predicate, &format!("ufcs:{p}")), 1.5))));
     }
     if !q.only_predicates.is_empty() {
         let only: Vec<(Occur, Box<dyn Query>)> =

@@ -344,6 +344,15 @@ pub fn precompute_scope(work: &str) -> Scope {
 }
 
 /// Scope over imported corpora only (operator tooling and benchmarks).
+/// Every imported knowledge feed (UFCS imports, Wikidata harvests).
+pub fn world_feeds(qb: &QueryBook) -> anyhow::Result<Vec<String>> {
+    qb.store.read(|c| {
+        let mut st = c.prepare("SELECT feed FROM import_cursors ORDER BY feed")?;
+        let r = st.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(r.collect::<Result<_, _>>()?)
+    })
+}
+
 pub fn world_scope(corpora: &[String]) -> Scope {
     Scope {
         user_id: 0,

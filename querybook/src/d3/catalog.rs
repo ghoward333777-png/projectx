@@ -112,6 +112,26 @@ impl Catalog {
         Ok(())
     }
 
+    /// Widen a registered predicate's argument slots (a ledgered catalogue
+    /// revision). Existing records stay valid: slots are only ever added.
+    pub fn extend_args(&mut self, store: &Store, id: &str, keys: &[String], operator: &str) -> anyhow::Result<bool> {
+        let Some(p) = self.predicates.get_mut(id) else { return Ok(false) };
+        let before = p.args.len();
+        for k in keys {
+            p.args.entry(k.clone()).or_insert_with(|| "any".into());
+        }
+        if p.args.len() == before {
+            return Ok(false);
+        }
+        let spec = serde_json::to_string(&*p)?;
+        store.write(|db| {
+            db.execute("UPDATE predicates SET spec=?2 WHERE id=?1", params![id, spec])?;
+            Ok(())
+        })?;
+        store.ledger_append(operator, "catalogue.extend-arguments", "D3->D3 ALLOW", &spec, "catalogue")?;
+        Ok(true)
+    }
+
     /// Construction-time validation against the machine definition.
     pub fn validate(&self, f: &FactUnit) -> Result<(), String> {
         let p = self.get(&f.atom.predicate).ok_or_else(|| format!("predicate '{}' not in catalogue", f.atom.predicate))?;
