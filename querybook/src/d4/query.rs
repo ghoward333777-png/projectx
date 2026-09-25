@@ -271,10 +271,10 @@ fn prefer_for(qt: &str, q: &str) -> Vec<&'static str> {
         p.push("population");
     }
     if has(&["born", "birth"]) {
-        p.push("born_in_year");
+        p.push(if qt == "where" { "born_in" } else { "born_in_year" });
     }
     if has(&["die", "died", "death"]) {
-        p.push("died_in_year");
+        p.push(if qt == "where" { "died_in" } else { "died_in_year" });
     }
     if has(&["discovered", "discover", "invented", "invent", "inventor", "discoverer"]) {
         p.extend(["discoverer", "discovered_in", "invented_in"]);

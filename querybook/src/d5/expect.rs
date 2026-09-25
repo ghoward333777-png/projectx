@@ -299,7 +299,14 @@ pub fn expect(qb: &QueryBook, l: &Lattice, digest: &str) -> anyhow::Result<Expec
                 let slot = l.slot(rule.slot.as_deref().unwrap()).unwrap();
                 let from = l.slot(rule.from_slot.as_deref().unwrap()).unwrap();
                 let targets: BTreeSet<&str> = classes.iter().map(|c| c.id.as_str()).collect();
+                let sources: Option<BTreeSet<&str>> =
+                    rule.from_class.as_deref().map(|fc| l.classes_matching(fc).iter().map(|c| c.id.as_str()).collect());
                 for (x, ys) in obs.with_predicate(from.predicate()) {
+                    if let Some(src) = &sources {
+                        if !member_of.get(x).map(|cs| cs.iter().any(|c| src.contains(c.as_str()))).unwrap_or(false) {
+                            continue;
+                        }
+                    }
                     for y in ys {
                         for c in member_of.get(&y.key).into_iter().flatten().filter(|c| targets.contains(c.as_str())) {
                             rows.push(Row {

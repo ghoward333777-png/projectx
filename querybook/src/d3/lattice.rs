@@ -133,6 +133,9 @@ pub struct Rule {
     pub slot: Option<String>,
     #[serde(default)]
     pub from_slot: Option<String>,
+    /// inverse: only premises whose subject is a member of this class (id or prefix.*)
+    #[serde(default)]
+    pub from_class: Option<String>,
     #[serde(default)]
     pub path: Vec<String>,
     #[serde(default)]
@@ -312,6 +315,11 @@ impl Lattice {
             }
         }
         for r in &self.rule {
+            if let Some(fc) = &r.from_class {
+                if self.classes_matching(fc).is_empty() {
+                    errs.push(format!("rule {} from_class addresses no class ({fc})", r.id));
+                }
+            }
             if self.classes_matching(&r.class).is_empty() {
                 errs.push(format!("rule {} addresses no class ({})", r.id, r.class));
             }

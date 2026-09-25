@@ -1479,6 +1479,7 @@ slots = ["country_of_origin", "made_from", "manufacturer"]
 id = "capital-lies-in-its-country"
 kind = "inverse"
 class = "geo.capital"
+from_class = "geo.country"
 slot = "country"
 from_slot = "capital"
 confidence = 0.95
@@ -1487,6 +1488,7 @@ confidence = 0.95
 id = "capital-of-inverse"
 kind = "inverse"
 class = "geo.capital"
+from_class = "geo.country"
 slot = "capital_of"
 from_slot = "capital"
 confidence = 0.9
@@ -1546,6 +1548,7 @@ kind = "inverse"
 class = "geo.river"
 slot = "tributary"
 from_slot = "flows_into"
+from_class = "geo.river"
 confidence = 0.85
 
 [[rule]]
