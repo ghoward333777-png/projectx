@@ -111,6 +111,8 @@ player on other sites. All of it is in [API.md](API.md).
 
 ## WordPress and Joomla
 
+Ready-made installers are in [`installers/`](installers/): `watch-room-wordpress.zip`,
+`mod_watchroom-joomla.zip`, and `watch-room-embed.zip` for any PHP host.
 `php video-chat-player/bin/build-integrations.php` produces a WordPress plugin zip with a
 `[watch_room]` shortcode and a Joomla 4/5 module zip, each bundling the whole player. See
 [INTEGRATIONS.md](INTEGRATIONS.md).
