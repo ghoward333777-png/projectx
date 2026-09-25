@@ -658,13 +658,21 @@ pub fn import(
         ))
     };
     if let Some(root) = file {
-        // a directory imports every .ndjson/.json file in it, in name order
+        // a directory imports every .ndjson/.json file under it, in path order
         let files: Vec<std::path::PathBuf> = if root.is_dir() {
-            let mut v: Vec<_> = std::fs::read_dir(root)?
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("ndjson" | "json" | "jsonl")))
-                .collect();
+            fn collect(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+                for e in std::fs::read_dir(dir)?.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        collect(&p, out)?;
+                    } else if matches!(p.extension().and_then(|e| e.to_str()), Some("ndjson" | "json" | "jsonl")) {
+                        out.push(p);
+                    }
+                }
+                Ok(())
+            }
+            let mut v = Vec::new();
+            collect(root, &mut v)?;
             v.sort();
             v
         } else {

@@ -353,7 +353,7 @@ texts = { started_in = "{s} was launched in {o}." }
 id = "astro.astronaut"
 sub = "astro.space"
 label = "astronaut"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11631 ."
+pattern = "?occ wdt:P279* wd:Q11631 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "citizen_of", "birthplace", "military_branch", "award_received"]
 
@@ -881,7 +881,7 @@ slots = ["country", "located_in", "founded_in", "architect"]
 id = "people.physicist"
 sub = "people.science"
 label = "physicist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q169470 ."
+pattern = "?occ wdt:P279* wd:Q169470 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor", "notable_work"]
 
@@ -889,7 +889,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.chemist"
 sub = "people.science"
 label = "chemist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q593644 ."
+pattern = "?occ wdt:P279* wd:Q593644 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor"]
 
@@ -897,7 +897,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.mathematician"
 sub = "people.science"
 label = "mathematician"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q170790 ."
+pattern = "?occ wdt:P279* wd:Q170790 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor", "notable_work"]
 
@@ -905,7 +905,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.biologist"
 sub = "people.science"
 label = "biologist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q864503 ."
+pattern = "?occ wdt:P279* wd:Q864503 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 25
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at"]
 
@@ -913,7 +913,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.astronomer"
 sub = "people.science"
 label = "astronomer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11063 ."
+pattern = "?occ wdt:P279* wd:Q11063 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 25
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "notable_work"]
 
@@ -921,7 +921,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.physician"
 sub = "people.science"
 label = "physician"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q39631 ."
+pattern = "?occ wdt:P279* wd:Q39631 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received"]
 
@@ -929,7 +929,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.engineer"
 sub = "people.science"
 label = "engineer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q81096 ."
+pattern = "?occ wdt:P279* wd:Q81096 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "notable_work", "employer"]
 
@@ -937,7 +937,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.inventor"
 sub = "people.science"
 label = "inventor"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q205375 ."
+pattern = "?occ wdt:P279* wd:Q205375 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
 
@@ -945,7 +945,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.philosopher"
 sub = "people.thought"
 label = "philosopher"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q4964182 ."
+pattern = "?occ wdt:P279* wd:Q4964182 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "influenced_by", "notable_work", "field_of_work"]
 
@@ -953,7 +953,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement",
 id = "people.economist"
 sub = "people.thought"
 label = "economist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q188094 ."
+pattern = "?occ wdt:P279* wd:Q188094 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_received", "educated_at", "notable_work"]
 
@@ -961,7 +961,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_rece
 id = "people.historian"
 sub = "people.thought"
 label = "historian"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q201788 ."
+pattern = "?occ wdt:P279* wd:Q201788 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
 
@@ -969,7 +969,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.psychologist"
 sub = "people.thought"
 label = "psychologist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q212980 ."
+pattern = "?occ wdt:P279* wd:Q212980 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 25
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "notable_work"]
 
@@ -977,7 +977,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_w
 id = "people.writer"
 sub = "people.arts"
 label = "novelist"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q6625963 ."
+pattern = "?occ wdt:P279* wd:Q6625963 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 50
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "movement", "award_received", "native_language"]
 
@@ -985,7 +985,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.poet"
 sub = "people.arts"
 label = "poet"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q49757 ."
+pattern = "?occ wdt:P279* wd:Q49757 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 50
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "movement", "native_language"]
 
@@ -993,7 +993,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.playwright"
 sub = "people.arts"
 label = "playwright"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q214917 ."
+pattern = "?occ wdt:P279* wd:Q214917 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
 
@@ -1001,7 +1001,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.painter"
 sub = "people.arts"
 label = "painter"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q1028181 ."
+pattern = "?occ wdt:P279* wd:Q1028181 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "movement", "notable_work"]
 
@@ -1009,7 +1009,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of
 id = "people.sculptor"
 sub = "people.arts"
 label = "sculptor"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q1281618 ."
+pattern = "?occ wdt:P279* wd:Q1281618 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "notable_work"]
 
@@ -1017,7 +1017,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement",
 id = "people.architect"
 sub = "people.arts"
 label = "architect"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q42973 ."
+pattern = "?occ wdt:P279* wd:Q42973 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "notable_work", "award_received"]
 
@@ -1025,7 +1025,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement",
 id = "people.composer"
 sub = "people.arts"
 label = "composer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q36834 ."
+pattern = "?occ wdt:P279* wd:Q36834 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "movement", "notable_work", "instrument"]
 
@@ -1033,7 +1033,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of
 id = "people.musician"
 sub = "people.arts"
 label = "singer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q177220 ."
+pattern = "?occ wdt:P279* wd:Q177220 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 60
 slots = ["born_in_year", "birthplace", "citizen_of", "genre", "record_label", "instrument", "award_received"]
 
@@ -1041,7 +1041,7 @@ slots = ["born_in_year", "birthplace", "citizen_of", "genre", "record_label", "i
 id = "people.actor"
 sub = "people.arts"
 label = "film actor"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10800557 ."
+pattern = "?occ wdt:P279* wd:Q10800557 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 70
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_received", "spouse"]
 
@@ -1049,7 +1049,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_rece
 id = "people.director"
 sub = "people.arts"
 label = "film director"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q2526255 ."
+pattern = "?occ wdt:P279* wd:Q2526255 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 50
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "award_received"]
 
@@ -1057,7 +1057,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_wo
 id = "people.monarch"
 sub = "people.power"
 label = "monarch"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q116 ."
+pattern = "?occ wdt:P279* wd:Q116 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "father", "mother", "spouse", "family", "noble_title", "position_held", "religion"]
 
@@ -1073,7 +1073,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "position_h
 id = "people.military"
 sub = "people.power"
 label = "military officer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q189290 ."
+pattern = "?occ wdt:P279* wd:Q189290 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "military_branch", "conflict", "award_received"]
 
@@ -1081,7 +1081,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "military_b
 id = "people.explorer"
 sub = "people.power"
 label = "explorer"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11900058 ."
+pattern = "?occ wdt:P279* wd:Q11900058 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "notable_work"]
 
@@ -1097,7 +1097,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "follows", "followed_by"]
 id = "people.footballer"
 sub = "people.sport"
 label = "association football player"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q937857 ."
+pattern = "?occ wdt:P279* wd:Q937857 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 80
 slots = ["born_in_year", "birthplace", "citizen_of", "member_of_team", "award_received"]
 
@@ -1105,7 +1105,7 @@ slots = ["born_in_year", "birthplace", "citizen_of", "member_of_team", "award_re
 id = "people.tennis"
 sub = "people.sport"
 label = "tennis player"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10833314 ."
+pattern = "?occ wdt:P279* wd:Q10833314 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 40
 slots = ["born_in_year", "birthplace", "citizen_of", "award_received"]
 
@@ -1113,7 +1113,7 @@ slots = ["born_in_year", "birthplace", "citizen_of", "award_received"]
 id = "people.chess"
 sub = "people.sport"
 label = "chess player"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10873124 ."
+pattern = "?occ wdt:P279* wd:Q10873124 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 30
 slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of"]
 
@@ -1121,7 +1121,7 @@ slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of"]
 id = "people.athlete"
 sub = "people.sport"
 label = "Olympic athlete"
-pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11513337 ."
+pattern = "?occ wdt:P279* wd:Q11513337 . ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ."
 min_sitelinks = 50
 slots = ["born_in_year", "birthplace", "citizen_of", "award_received", "sport"]
 
