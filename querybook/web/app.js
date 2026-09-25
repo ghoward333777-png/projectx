@@ -66,7 +66,9 @@ function route() {
   const h = location.hash.replace(/^#\/?/, "");
   const [view, arg] = h.split("/");
   teardownReader();
+  if (typeof stopDashboard === "function") stopDashboard();
   if (view === "read" && arg) return openBook(decodeURIComponent(arg));
+  if (view === "dashboard") return renderDashboard();
   if (view === "account") return renderAccount();
   if (view === "admin") return renderAdmin();
   return renderLibrary();
@@ -114,6 +116,7 @@ function topbar(title) {
   return `<div class="topbar">
     <h1>${esc(title)}</h1><span class="spacer"></span>
     <a class="btn ghost small" href="#/library">Library</a>
+    ${admin ? '<a class="btn ghost small" href="#/dashboard">Dashboard</a>' : ""}
     <a class="btn ghost small" href="#/account">Account &amp; privacy</a>
     ${admin ? '<a class="btn ghost small" href="#/admin">Admin</a>' : ""}
     <button class="btn small" id="so">Sign out ${esc(u.username)}</button>
@@ -810,7 +813,7 @@ async function renderAdmin() {
   wireTopbar();
   let s;
   try { s = await api("/api/admin/stats"); } catch (e) { $("#adm").textContent = e.message; return; }
-  const engineOpts = s.engines.map((e) => `<label class="switch" style="justify-content:flex-start;gap:8px"><input type="checkbox" name="eng" value="${esc(e.id)}" ${e.id === "rules" ? "checked" : ""} ${e.ready ? "" : "disabled"}> ${esc(e.id)} <span class="muted small">${esc(e.kind)}${e.model ? " · " + esc(e.model) : ""}${e.ready ? "" : " · key not set"}</span></label>`).join("");
+  const engineOpts = s.engines.map((e) => `<label class="switch" style="justify-content:flex-start;gap:8px"><input type="checkbox" name="eng" value="${esc(e.id)}" ${e.id === "language" ? "checked" : ""} ${e.ready ? "" : "disabled"}> ${esc(e.id)} <span class="muted small">${esc(e.kind)}${e.model ? " · " + esc(e.model) : ""}${e.ready ? "" : " · key not set"}</span></label>`).join("");
   $("#adm").innerHTML = `
     <section class="panel"><div class="stats">
       <div class="stat"><b>${s.records.toLocaleString()}</b><span>Fact Units stored</span></div>

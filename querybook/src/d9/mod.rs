@@ -26,6 +26,7 @@ type AppState = Arc<QueryBook>;
 
 const INDEX_HTML: &str = include_str!("../../web/index.html");
 const APP_JS: &str = include_str!("../../web/app.js");
+const DASHBOARD_JS: &str = include_str!("../../web/dashboard.js");
 const APP_CSS: &str = include_str!("../../web/app.css");
 
 pub struct ApiError(StatusCode, String);
@@ -88,6 +89,15 @@ pub async fn serve(qb: AppState) -> anyhow::Result<()> {
             }),
         )
         .route(
+            "/dashboard.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "application/javascript; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")],
+                    DASHBOARD_JS,
+                )
+            }),
+        )
+        .route(
             "/app.css",
             get(|| async { ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")], APP_CSS) }),
         )
@@ -111,6 +121,7 @@ pub async fn serve(qb: AppState) -> anyhow::Result<()> {
         .route("/api/ledger", get(ledger))
         .route("/api/ledger/verify", get(verify))
         .route("/api/admin/stats", get(admin_stats))
+        .route("/api/admin/dashboard", get(dashboard))
         .route("/api/admin/upload", post(upload))
         .route("/api/admin/jobs", get(jobs))
         .route("/api/admin/users", post(add_user))
@@ -595,12 +606,138 @@ async fn admin_stats(State(qb): State<AppState>, headers: HeaderMap) -> R<Json<J
         Ok(Json(json!({
             "records": qb.store.fact_count()?, "indexed": qb.store.index.num_docs(), "store_version": qb.store.version(),
             "works": d8::all_works(&qb)?, "users": users, "feeds": feeds, "regime": qb.regime_label(),
-            "engines": qb.cfg.engines.iter().map(|e| json!({"id": e.id, "kind": e.kind, "model": e.model, "reliability": e.reliability,
+            "engines": qb.cfg.engines.iter().filter(|e| e.kind != "claude").map(|e| json!({"id": e.id, "kind": e.kind, "model": e.model, "reliability": e.reliability,
                 "ready": e.kind == "rules" || e.kind == "language" || e.api_key_env.is_empty() || std::env::var(&e.api_key_env).map(|v| !v.is_empty()).unwrap_or(false)})).collect::<Vec<_>>(),
             "rights": crate::d1::pipeline::RIGHTS,
         })))
     })
     .await
+}
+
+/// Operator overview: store, library, world knowledge, lattice, backups,
+/// ledger and reader activity. Read-only; every figure comes from the store.
+async fn dashboard(State(qb): State<AppState>, headers: HeaderMap) -> R<Json<J>> {
+    let (u, _, _) = auth(&qb, &headers)?;
+    require(&u, &["operator", "author"])?;
+    blocking(move || {
+        let now = crate::util::now_secs();
+        // a table that has not been created yet (no lattice, no imports) reads as empty
+        let q1 = |sql: &str| -> i64 { qb.store.read(|c| Ok(c.query_row(sql, [], |r| r.get::<_, i64>(0))?)).unwrap_or(0) };
+        let rows = |sql: &str, cols: &[&str]| -> Vec<J> {
+            qb.store
+                .read(|c| {
+                    let mut st = c.prepare(sql)?;
+                    let n = st.column_count();
+                    let r = st
+                        .query_map([], |r| {
+                            let mut o = serde_json::Map::new();
+                            for i in 0..n {
+                                let v: rusqlite::types::Value = r.get(i)?;
+                                let j = match v {
+                                    rusqlite::types::Value::Integer(x) => json!(x),
+                                    rusqlite::types::Value::Real(x) => json!(x),
+                                    rusqlite::types::Value::Text(t) => json!(t),
+                                    _ => J::Null,
+                                };
+                                o.insert(cols.get(i).copied().unwrap_or("?").to_string(), j);
+                            }
+                            Ok(J::Object(o))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(r)
+                })
+                .unwrap_or_default()
+        };
+        let works = d8::all_works(&qb)?;
+        let book_facts: i64 = works.iter().map(|w| w.facts as i64).sum();
+        let mut top: Vec<J> = {
+            let mut w: Vec<_> = works.iter().collect();
+            w.sort_by(|a, b| b.facts.cmp(&a.facts).then(a.title.cmp(&b.title)));
+            w.into_iter().take(12).map(|x| json!({"id": x.id, "title": x.title, "facts": x.facts})).collect()
+        };
+        top.shrink_to_fit();
+        let day = 86_400i64;
+        let since = (now / day - 29) * day;
+        // trends: per UTC day over the last 30 days
+        let per_day = |sql: &str| -> Vec<J> {
+            qb.store
+                .read(|c| {
+                    let mut st = c.prepare(sql)?;
+                    let r = st
+                        .query_map([since], |r| Ok(json!({"day": r.get::<_, i64>(0)? * 86_400, "n": r.get::<_, i64>(1)?})))?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(r)
+                })
+                .unwrap_or_default()
+        };
+        let facts_before: i64 = qb
+            .store
+            .read(|c| Ok(c.query_row("SELECT COALESCE(SUM(leaves),0) FROM ledger WHERE substrate=1 AND ts<?1", [since], |r| r.get::<_, i64>(0))?))
+            .unwrap_or(0);
+        let facts = qb.store.fact_count()? as i64;
+        let disk: u64 = walk_bytes(&qb.store.dir);
+        let last = |op: &str| -> Option<i64> {
+            qb.store.read(|c| Ok(c.query_row("SELECT MAX(ts) FROM ledger WHERE op=?1", [op], |r| r.get::<_, Option<i64>>(0))?)).ok().flatten()
+        };
+        let drive_authorised = qb.store.dir.join("keys").join("drive-token.json").exists();
+        Ok(Json(json!({
+            "generated": now,
+            "store": {
+                "facts": facts, "indexed": qb.store.index.num_docs(), "book_facts": book_facts,
+                "world_facts": (facts - book_facts).max(0), "disk_bytes": disk, "version": qb.store.version(),
+                "regime": qb.regime_label(),
+            },
+            "library": { "works": works.len(), "top": top },
+            "trends": {
+                "since": since,
+                "facts_before": facts_before,
+                "facts_added": per_day("SELECT ts/86400, SUM(leaves) FROM ledger WHERE substrate=1 AND ts>=?1 GROUP BY ts/86400 ORDER BY 1"),
+                "questions": per_day("SELECT ts/86400, COUNT(*) FROM history WHERE mode='ask' AND ts>=?1 GROUP BY ts/86400 ORDER BY 1"),
+            },
+            "feeds": rows("SELECT feed, imported, refused, updated FROM import_cursors ORDER BY imported DESC", &["feed", "imported", "refused", "updated"]),
+            "lattice": {
+                "classes_censused": q1("SELECT COUNT(*) FROM lattice_census WHERE status='ok'"),
+                "classes_total": q1("SELECT COALESCE(json_extract(summary, '$.classes'), 0) FROM lattice_structure ORDER BY ts DESC LIMIT 1"),
+                "members": q1("SELECT COUNT(*) FROM lattice_members"),
+                "cells_filled": q1("SELECT COUNT(*) FROM expectations WHERE value='' AND status='filled'"),
+                "cells_absent": q1("SELECT COUNT(*) FROM expectations WHERE value='' AND status='absent'"),
+                "cells_open": q1("SELECT COUNT(*) FROM expectations WHERE value='' AND status='open'"),
+                "predictions": q1("SELECT COUNT(*) FROM expectations WHERE value!=''"),
+                "confirmed": q1("SELECT COUNT(*) FROM expectations WHERE value!='' AND status='confirmed'"),
+                "refuted": q1("SELECT COUNT(*) FROM expectations WHERE value!='' AND status='refuted'"),
+                "rules": rows("SELECT rule, confirmed, refuted, ROUND(alpha/(alpha+beta), 3) FROM lattice_rules ORDER BY confirmed+refuted DESC LIMIT 12", &["rule", "confirmed", "refuted", "reliability"]),
+                "findings": q1("SELECT COUNT(*) FROM lattice_findings"),
+            },
+            "backups": {
+                "last_backup": last("store.backup"), "last_upload": last("store.backup.upload"), "drive_authorised": drive_authorised,
+            },
+            "ledger": {
+                "nodes": q1("SELECT COUNT(*) FROM ledger"), "head": qb.store.read(|c| Ok(crate::d2::ledger::head(c)?.1)).unwrap_or_default(),
+            },
+            "activity": {
+                "users": q1("SELECT COUNT(*) FROM users"),
+                "questions_7d": qb.store.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM history WHERE mode='ask' AND ts>=?1", [now - 7 * 86400], |r| r.get::<_, i64>(0))?)).unwrap_or(0),
+                "questions_total": q1("SELECT COUNT(*) FROM history WHERE mode='ask'"),
+                "unanswered_total": q1("SELECT COUNT(*) FROM history WHERE mode='ask' AND answer=''"),
+                "recent": rows("SELECT work, query, CASE WHEN answer='' THEN 0 ELSE 1 END, ts FROM history WHERE mode='ask' ORDER BY ts DESC LIMIT 10", &["work", "question", "answered", "ts"]),
+            },
+            "jobs": rows("SELECT label, status, detail, started, finished FROM jobs ORDER BY id DESC LIMIT 6", &["label", "status", "detail", "started", "finished"]),
+        })))
+    })
+    .await
+}
+
+fn walk_bytes(p: &std::path::Path) -> u64 {
+    std::fs::read_dir(p)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| match e.file_type() {
+                    Ok(t) if t.is_dir() => walk_bytes(&e.path()),
+                    _ => e.metadata().map(|m| m.len()).unwrap_or(0),
+                })
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 async fn upload(State(qb): State<AppState>, headers: HeaderMap, mut mp: Multipart) -> R<Json<J>> {

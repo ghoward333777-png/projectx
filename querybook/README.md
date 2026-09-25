@@ -63,6 +63,11 @@ server. The source of truth for features is the QueryBook Feature Registry v65
   classes, 158 slots) that predicts what each fact cell holds before it is
   harvested, then harvests only the open cells and confirms or refutes each
   prediction (below).
+* **Dashboard** (operators and authors, top menu): live statistics refreshed
+  every 5 seconds — facts in the store with a 30-day trend, reader questions
+  per day, facts per book, knowledge-lattice progress and prediction precision
+  gauges, rule reliability, ingestion job progress bars, and health (backups,
+  ledger, index, answered share) with a one-click ledger verification.
 * **Admin.** Upload books with a rights declaration, watch ingestion jobs,
   see what readers ask per book (author feedback, with the unanswered ones
   flagged), manage users, see UFCS feeds, verify the ledger.
