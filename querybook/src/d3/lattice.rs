@@ -330,7 +330,9 @@ impl Lattice {
                 }
             }
             match r.kind.as_str() {
-                "inverse" if r.from_slot.is_none() => errs.push(format!("rule {} (inverse) needs from_slot", r.id)),
+                "inverse" if r.from_slot.is_none() || r.from_class.is_none() => {
+                    errs.push(format!("rule {} (inverse) needs from_slot and from_class", r.id))
+                }
                 "chain" if r.path.len() != 2 => errs.push(format!("rule {} (chain) needs a two-step path", r.id)),
                 "constant" if r.value.is_none() => errs.push(format!("rule {} (constant) needs a value", r.id)),
                 "mode" if r.min_share <= 0.5 || r.min_support == 0 => {

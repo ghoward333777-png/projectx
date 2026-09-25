@@ -1587,6 +1587,7 @@ confidence = 0.75
 id = "succession-is-mutual"
 kind = "inverse"
 class = "people.religious"
+from_class = "people.religious"
 slot = "follows"
 from_slot = "followed_by"
 confidence = 0.95

@@ -74,6 +74,7 @@ pub struct Observations {
     map: HashMap<(String, String), Vec<Obs>>,
     pub labels: HashMap<String, String>,
     pub records: usize,
+    loaded: BTreeSet<String>,
 }
 
 fn obs_key(v: &Value) -> Option<String> {
@@ -90,53 +91,86 @@ fn canonical_number(v: f64) -> String {
 }
 
 impl Observations {
-    pub fn load(qb: &QueryBook, predicates: &BTreeSet<String>) -> anyhow::Result<Observations> {
+    /// Admitted facts whose subject is one of `subjects` (Q-ids) and whose
+    /// predicate is one of `predicates`, looked up in bounded batches through
+    /// the index — memory grows with the lattice's members, never with the
+    /// size of the whole fact store.
+    pub fn for_subjects<'a>(
+        qb: &QueryBook,
+        subjects: impl IntoIterator<Item = &'a str>,
+        predicates: &BTreeSet<String>,
+    ) -> anyhow::Result<Observations> {
+        let mut out = Observations::default();
+        out.extend(qb, subjects, predicates)?;
+        Ok(out)
+    }
+
+    /// Add the facts of further subjects (e.g. the second hop of a chain rule).
+    pub fn extend<'a>(
+        &mut self,
+        qb: &QueryBook,
+        subjects: impl IntoIterator<Item = &'a str>,
+        predicates: &BTreeSet<String>,
+    ) -> anyhow::Result<()> {
         use tantivy::query::{BooleanQuery, Occur, Query, TermQuery};
         use tantivy::schema::IndexRecordOption;
         let ix = &qb.store.index;
-        let mut out = Observations::default();
-        for p in predicates {
-            let term = |field, v: &str| -> Box<dyn Query> {
-                Box::new(TermQuery::new(tantivy::Term::from_field_text(field, v), IndexRecordOption::Basic))
-            };
-            let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![(
-                Occur::Must,
-                Box::new(BooleanQuery::new(vec![
-                    (Occur::Should, term(ix.f.predicate, &format!("ufcs:{p}"))),
-                    (Occur::Should, term(ix.f.predicate, p)),
-                ])),
-            )];
+        let term = |field, v: &str| -> Box<dyn Query> {
+            Box::new(TermQuery::new(tantivy::Term::from_field_text(field, v), IndexRecordOption::Basic))
+        };
+        let mut todo: Vec<String> =
+            subjects.into_iter().filter(|s| self.loaded.insert(s.to_string())).map(String::from).collect();
+        todo.sort();
+        for chunk in todo.chunks(256) {
+            let wanted: BTreeSet<String> = chunk.iter().map(|q| format!("wd:{q}")).collect();
+            let subj = BooleanQuery::new(wanted.iter().map(|c| (Occur::Should, term(ix.f.concepts, c))).collect());
+            let preds = BooleanQuery::new(
+                predicates
+                    .iter()
+                    .flat_map(|p| {
+                        [(Occur::Should, term(ix.f.predicate, &format!("ufcs:{p}"))), (Occur::Should, term(ix.f.predicate, p))]
+                    })
+                    .collect(),
+            );
+            let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Must, Box::new(subj)), (Occur::Must, Box::new(preds))];
             for s in ["superseded", "revoked", "unverified"] {
                 clauses.push((Occur::MustNot, term(ix.f.status, s)));
             }
-            let hits = ix.search(&BooleanQuery::new(clauses), 50_000_000)?;
-            let mut fuids: Vec<String> = hits.into_iter().map(|h| h.1).collect();
+            let mut fuids: Vec<String> = ix.search(&BooleanQuery::new(clauses), 50_000_000)?.into_iter().map(|h| h.1).collect();
             fuids.sort();
-            for chunk in fuids.chunks(5000) {
-                for f in qb.store.get_many(chunk)? {
-                    let Some(subj) = f.atom.subject.strip_prefix("wd:") else { continue };
+            for fchunk in fuids.chunks(5000) {
+                for f in qb.store.get_many(fchunk)? {
+                    // the concepts field also matches records where the member is the object
+                    if !wanted.contains(&f.atom.subject) {
+                        continue;
+                    }
+                    let subj = &f.atom.subject[3..];
+                    let pred = f.atom.predicate.trim_start_matches("ufcs:").to_string();
+                    if !predicates.contains(&pred) {
+                        continue;
+                    }
                     let Some(key) = obs_key(&f.atom.object) else { continue };
-                    out.records += 1;
-                    out.labels.entry(subj.to_string()).or_insert_with(|| f.label(&f.atom.subject));
+                    self.records += 1;
+                    self.labels.entry(subj.to_string()).or_insert_with(|| f.label(&f.atom.subject));
                     let label = match &f.atom.object {
                         Value::Concept(c) => {
                             let l = f.label(c);
-                            out.labels.entry(key.clone()).or_insert_with(|| l.clone());
+                            self.labels.entry(key.clone()).or_insert_with(|| l.clone());
                             l
                         }
                         other => other.canonical(),
                     };
-                    let e = out.map.entry((subj.to_string(), p.clone())).or_default();
+                    let e = self.map.entry((subj.to_string(), pred)).or_default();
                     if !e.iter().any(|o| o.key == key) {
                         e.push(Obs { key, label, contested: f.status() == "contested" });
                     }
                 }
             }
         }
-        for v in out.map.values_mut() {
+        for v in self.map.values_mut() {
             v.sort_by(|a, b| a.key.cmp(&b.key));
         }
-        Ok(out)
+        Ok(())
     }
 
     pub fn get(&self, subject: &str, predicate: &str) -> &[Obs] {
@@ -236,8 +270,20 @@ struct Row {
 /// are kept: they cost money and are only ever added). Deterministic in the
 /// lattice, the members, the census and the admitted facts.
 pub fn expect(qb: &QueryBook, l: &Lattice, digest: &str) -> anyhow::Result<ExpectReport> {
-    let obs = Observations::load(qb, &lattice_predicates(l))?;
     let member_of = member_index(qb)?;
+    let preds = lattice_predicates(l);
+    let mut obs = Observations::for_subjects(qb, member_of.keys().map(|s| s.as_str()), &preds)?;
+    // chain rules read one step further: the values their first slot points at
+    let mut hop: BTreeSet<String> = BTreeSet::new();
+    for rule in l.rule.iter().filter(|r| r.kind == "chain") {
+        let a = l.slot(&rule.path[0]).map(|s| s.predicate().to_string()).unwrap_or_default();
+        for class in l.classes_matching(&rule.class) {
+            for (x, _) in members(qb, &class.id)? {
+                hop.extend(obs.get(&x, &a).iter().map(|o| o.key.clone()));
+            }
+        }
+    }
+    obs.extend(qb, hop.iter().map(|s| s.as_str()), &preds)?;
     let fill: HashMap<(String, String), i64> = qb.store.read(|c| {
         let mut st = c.prepare("SELECT class, slot, filled FROM lattice_fill")?;
         let r = st.query_map([], |r| Ok(((r.get(0)?, r.get(1)?), r.get(2)?)))?.collect::<Result<HashMap<_, _>, _>>()?;
@@ -558,7 +604,12 @@ fn matches(slot: &Slot, predicted: &str, obs: &Obs) -> bool {
 /// Evaluate every expectation against the admitted facts, attribute each
 /// refutation, re-derive rule reliabilities and the calibration bands.
 pub fn confirm(qb: &QueryBook, l: &Lattice) -> anyhow::Result<ConfirmReport> {
-    let obs = Observations::load(qb, &lattice_predicates(l))?;
+    let subjects: BTreeSet<String> = qb.store.read(|c| {
+        let mut st = c.prepare("SELECT DISTINCT subject FROM expectations")?;
+        let r = st.query_map([], |r| r.get(0))?.collect::<Result<BTreeSet<String>, _>>()?;
+        Ok(r)
+    })?;
+    let obs = Observations::for_subjects(qb, subjects.iter().map(|s| s.as_str()), &lattice_predicates(l))?;
     let chk = checked(qb)?;
     let rows: Vec<(i64, String, String, String, String, String, String, f64, String)> = qb.store.read(|c| {
         let mut st =

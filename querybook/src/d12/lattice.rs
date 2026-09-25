@@ -434,7 +434,15 @@ pub fn fill(
     let t0 = Instant::now();
     let http = client(l)?;
     let pk = pack(l);
-    let obs = crate::d5::expect::Observations::load(qb, &crate::d5::expect::lattice_predicates(l))?;
+    let mut subjects: BTreeSet<String> = BTreeSet::new();
+    for c in l.selected(only) {
+        subjects.extend(crate::d5::expect::members(qb, &c.id)?.into_iter().map(|m| m.0));
+    }
+    let obs = crate::d5::expect::Observations::for_subjects(
+        qb,
+        subjects.iter().map(|s| s.as_str()),
+        &crate::d5::expect::lattice_predicates(l),
+    )?;
     let chk = crate::d5::expect::checked(qb)?;
     // open forecasts per column, weighted by how uncertain their basis still is
     let forecasts: BTreeMap<(String, String), (usize, f64, BTreeSet<String>)> = qb.store.read(|c| {
@@ -645,7 +653,15 @@ pub fn predict(
     let profile = qb.cfg.engine(engine_id).ok_or_else(|| anyhow::anyhow!("engine '{engine_id}' is not registered"))?.clone();
     anyhow::ensure!(matches!(profile.kind.as_str(), "claude" | "openai"), "engine '{engine_id}' is not a model engine");
     let engine = crate::d1::engines::llm::LlmEngine::new(profile)?;
-    let obs = crate::d5::expect::Observations::load(qb, &crate::d5::expect::lattice_predicates(l))?;
+    let mut subjects: BTreeSet<String> = BTreeSet::new();
+    for c in l.selected(only) {
+        subjects.extend(crate::d5::expect::members(qb, &c.id)?.into_iter().map(|m| m.0));
+    }
+    let obs = crate::d5::expect::Observations::for_subjects(
+        qb,
+        subjects.iter().map(|s| s.as_str()),
+        &crate::d5::expect::lattice_predicates(l),
+    )?;
     let chk = crate::d5::expect::checked(qb)?;
     let basis = format!("engine:{engine_id}");
     let asked: BTreeSet<(String, String, String)> = qb.store.read(|c| {

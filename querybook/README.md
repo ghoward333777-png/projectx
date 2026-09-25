@@ -363,9 +363,9 @@ ever written as fact).
   like a careful parser, not a reader: some descriptions come out awkward.
   Claude or your own model produces properly atomic records ("Mr. Collins is
   the heir of the Longbourn estate"); run them together for diversity.
-* The lattice's observation scan reads the matching records into memory; that
-  is fine at millions of records, and needs a (subject, predicate) table before
-  it runs over the full 149M feed.
+* The lattice reads only the facts about its own members (in batches through
+  the index), so its memory grows with the lattice (~300k members), not with
+  the size of the fact store.
 * Concept identity across books and between books and UFCS is by label only;
   there is no cross-corpus ontology alignment yet.
 * The attractor network, traversal budget and competitive candidate resolution
