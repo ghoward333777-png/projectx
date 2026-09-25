@@ -24,7 +24,8 @@ this prototype. Paths are relative to `querybook/`.
 | QBF-C022 | Derivation Marking and Disclosure | Built — engine + prompt hash in the record, disclosed in every citation | `src/d2/fact.rs`, `web/app.js` |
 | QBF-C023 | Self-Corroboration Bar | Built — one engine = one source class; diversity = exp(entropy) (tested 1.0 vs 3.0) | `src/d2/fact.rs` |
 | QBF-C024 | Citation Verification of a Reply | Built — every quoted span checked against its passage; unverified records admitted, marked, never ground an answer | `src/d1/engines/llm.rs`, `src/d4/fql.rs` |
-| QBF-C025 | Specialized Feed Registration | Partial — UFCS feeds registered by mapping file with authority, ACL, cursor | `src/d1/ufcs.rs` |
+| QBF-C025 | Specialized Feed Registration | Partial — UFCS feeds registered by mapping file with authority, ACL, cursor; auto-registered predicates take the argument slots they are used with | `src/d1/ufcs.rs` |
+| — | Language pipeline, stages 1–7 (segmentation, parsing, entities/relations, FU construction, CFI anchoring, embedding, query integration) | Built — deterministic `language` engine (default); see README | `src/d1/language/`, `src/d1/pipeline.rs`, `src/d4/query.rs` |
 
 ## D2 · Knowledge Substrate
 | ID | Feature | Status | Where |
@@ -50,7 +51,8 @@ this prototype. Paths are relative to `querybook/`.
 | ID | Feature | Status | Where |
 |---|---|---|---|
 | QBF-C035 | Ontology Mesh | Partial — governed predicates, canonical concept ids per work, typed edges only where records connect | `src/d3/`, `src/d1/pipeline.rs` |
-| QBF-C042 | Event Type Catalogue | Partial — registered type list with construction-time validation | `catalog/predicates.json` |
+| QBF-C042 | Event Type Catalogue | Partial — registered type list with construction-time validation; lattice classes carry poly-hierarchical placement (domain → subdomain → class) | `catalog/predicates.json`, `src/d3/lattice.rs` |
+| QBF-C113 | World-View Model (ontological part) | Partial — the knowledge lattice: 20 domains, 158 classes, 158 slots, 15 rules, live-validated ids, ledgered registration by content digest | `src/d3/lattice.rs`, `config/lattice/` |
 
 ## D4 · Retrieval & Response
 | ID | Feature | Status | Where |
@@ -76,6 +78,11 @@ this prototype. Paths are relative to `querybook/`.
 | QBF-C084 | Question Index Reuse and Invalidation | Built — served only if unrevised and inside the reader's scope (tested) | `src/d4/pqg.rs` |
 | QBF-C089 | Bayesian Posterior Update | Built — Beta evidence pair, reliability-class priors | `src/d2/fact.rs` |
 | QBF-C097 | Observation Diversity Measure | Built | `src/d2/fact.rs` |
+| QBF-C094 | Discriminating Instance Selection | Partial — lattice fill orders columns by the uncertainty of the rules whose forecasts they test (Beta variance), then by expected yield | `src/d12/lattice.rs` (`fill`) |
+| QBF-C101 | Confidence Band Calibration Gap | Built — per-band realized vs stated confidence over decided predictions; gaps ≥ 0.10 over ≥ 20 outcomes become proposals to the named operator; tolerance held fixed in code | `src/d5/expect.rs` |
+| QBF-C102 | Predictive Level Registration | Partial — conceptual level (slot presence at census fill rate; class-mode values) and invariant level (inverse, symmetric, chain, constant rules); engine recall as a lowest-trust level; lexical and sequential levels not built | `src/d5/expect.rs` |
+| QBF-C103 / C104 | Lowest-Level Error Attribution / Escalation Gate | Partial — a refutation with a multi-valued premise is attributed conceptually and does not revise the rule; otherwise to the prediction's own level | `src/d5/expect.rs` (`confirm`) |
+| QBF-C105 | Unattributed Error Retention | Built — refutations by contested records revise nothing; repeated ones surface as a pattern finding | `src/d5/expect.rs` |
 
 ## D7 · Grounded Expression
 | ID | Feature | Status | Where |
@@ -130,7 +137,8 @@ this prototype. Paths are relative to `querybook/`.
 ## Not in this prototype
 
 D6 (world model, perception, robotics and equipment control), D12 (external
-agents, forensic analysis, live feeds beyond UFCS import), D13 (commerce, NFTs),
+agents, forensic analysis, live feeds beyond UFCS import and the Wikidata
+connector — QBF-C249 is partially built in `src/d12/`), D13 (commerce, NFTs),
 media transformation (colorization, VR/3D, AR), multilingual regeneration,
 audio narration, forecasting and hypothesis generation, the neuromorphic analog
 realization (QBF-C070..C073), social annotations, message boards, class boards,

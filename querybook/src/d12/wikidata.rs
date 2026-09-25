@@ -60,6 +60,12 @@ pub struct QueryDef {
     pub decimals: usize,
     #[serde(default)]
     pub unit: String,
+    /// added after scaling (e.g. kelvin -> degrees Celsius)
+    #[serde(default)]
+    pub offset: f64,
+    /// render in scientific notation (physical constants, particle masses)
+    #[serde(default)]
+    pub sci: bool,
 }
 fn one() -> f64 {
     1.0
@@ -96,12 +102,12 @@ pub fn load_pack(path: &Path) -> anyhow::Result<Pack> {
     Ok(p)
 }
 
-fn qid(uri: &str) -> Option<&str> {
+pub(crate) fn qid(uri: &str) -> Option<&str> {
     uri.rsplit('/').next().filter(|s| s.starts_with('Q') && s[1..].chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Label service falls back to the Q-id when no English label exists.
-fn usable_label(l: &str) -> bool {
+pub(crate) fn usable_label(l: &str) -> bool {
     !l.is_empty() && qid(l).is_none() && !(l.starts_with('Q') && l[1..].chars().all(|c| c.is_ascii_digit()))
 }
 
@@ -129,6 +135,18 @@ pub fn format_number(v: f64, decimals: usize) -> String {
         let lead = if v < 0.0 && int == 0 { "-" } else { "" };
         if frac.is_empty() { format!("{lead}{}", thousands(int)) } else { format!("{lead}{}.{frac}", thousands(int)) }
     }
+}
+
+/// 6.6743e-11 -> "6.6743 × 10^-11"; ordinary magnitudes print plainly.
+pub fn format_sci(v: f64) -> String {
+    if v == 0.0 || (1e-3..1e7).contains(&v.abs()) {
+        return format_number(v, 6);
+    }
+    let e = v.abs().log10().floor() as i32;
+    let m = v / 10f64.powi(e);
+    let m = format!("{m:.6}");
+    let m = m.trim_end_matches('0').trim_end_matches('.');
+    format!("{m} × 10^{e}")
 }
 
 /// "1889-03-31T00:00:00Z" -> "1889"; "-0043-..." -> "44 BC" (astronomical year).
@@ -165,8 +183,8 @@ pub fn envelope(pack: &Pack, q: &QueryDef, row: &J, attested: &str) -> Option<J>
         }
         "number" => {
             let v: f64 = o_raw.parse().ok()?;
-            let v = v * q.scale;
-            let shown = format_number(v, q.decimals);
+            let v = v * q.scale + q.offset;
+            let shown = if q.sci { format_sci(v) } else { format_number(v, q.decimals) };
             let shown = if q.unit.is_empty() { shown } else { format!("{shown} {}", q.unit) };
             // exact value kept numerically; the rendering carries the unit
             (json!(v), J::Null, "literal", shown, None)
@@ -207,7 +225,12 @@ pub fn envelope(pack: &Pack, q: &QueryDef, row: &J, attested: &str) -> Option<J>
     }))
 }
 
-fn fetch(http: &reqwest::blocking::Client, pack: &Pack, sparql: &str, progress: &dyn Fn(&str)) -> anyhow::Result<Vec<J>> {
+pub(crate) fn fetch(
+    http: &reqwest::blocking::Client,
+    pack: &Pack,
+    sparql: &str,
+    progress: &dyn Fn(&str),
+) -> anyhow::Result<Vec<J>> {
     let mut attempt = 0u32;
     loop {
         let r = http.post(&pack.endpoint).header("Accept", "application/sparql-results+json").form(&[("query", sparql)]).send();
@@ -336,6 +359,9 @@ mod tests {
         assert_eq!(format_number(551_695.0, 0), "551,695");
         assert_eq!(format_year("1889-03-31T00:00:00Z").unwrap(), "1889");
         assert_eq!(format_year("-0043-03-15T00:00:00Z").unwrap(), "44 BC");
+        assert_eq!(format_sci(6.6743e-11), "6.6743 × 10^-11");
+        assert_eq!(format_sci(299792458.0), "2.997925 × 10^8");
+        assert_eq!(format_sci(3.14159265), "3.141593");
     }
 
     #[test]
@@ -351,6 +377,8 @@ mod tests {
             scale: 0.000001,
             decimals: 0,
             unit: "km²".into(),
+            offset: 0.0,
+            sci: false,
         };
         let row = json!({"s": {"value": "http://www.wikidata.org/entity/Q142"}, "sLabel": {"value": "France"}, "o": {"value": "551695000000"}});
         let e = envelope(&pack, &q, &row, "1").unwrap();

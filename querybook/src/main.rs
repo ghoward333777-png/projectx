@@ -106,6 +106,13 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Knowledge lattice: structure first, predict every cell, harvest only what is open, confirm.
+    Lattice {
+        #[arg(long, default_value = "config/lattice/knowledge-lattice.toml")]
+        lattice: PathBuf,
+        #[command(subcommand)]
+        cmd: LatticeCmd,
+    },
     /// Harvest facts from Wikidata with a SPARQL query pack (resumable), optionally importing them.
     HarvestWikidata {
         #[arg(long, default_value = "config/harvest/wikidata-basics.toml")]
@@ -153,6 +160,231 @@ enum Cmd {
         #[arg(long)]
         bind: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum LatticeCmd {
+    /// Structural checks; with --live every Q-id and P-id is checked against Wikidata.
+    Validate {
+        #[arg(long)]
+        live: bool,
+    },
+    /// Members of each class and the fill rate of each slot (conceptual expectations).
+    Census {
+        /// domains, subdomains or class ids (comma-separated); prefix* allowed
+        #[arg(long, default_value = "")]
+        only: String,
+        #[arg(long, default_value_t = 2000)]
+        max_members: usize,
+        #[arg(long)]
+        force: bool,
+        /// also write "X is a <class>" envelopes here
+        #[arg(long, default_value = "data/harvest/lattice")]
+        out: PathBuf,
+    },
+    /// Predict cell values from the invariant rules and class modes.
+    Expect,
+    /// Harvest only the open cells, highest-priority columns first.
+    Fill {
+        #[arg(long, default_value = "")]
+        only: String,
+        /// maximum SPARQL queries this run
+        #[arg(long, default_value_t = 200)]
+        budget: usize,
+        #[arg(long, default_value = "data/harvest/lattice")]
+        out: PathBuf,
+        /// import the envelopes afterwards with this mapping, then confirm
+        #[arg(long)]
+        import: Option<PathBuf>,
+    },
+    /// Confirm or refute every expectation against admitted facts; attribute errors; calibrate.
+    Confirm,
+    /// Coverage, rule precision, calibration findings and remaining work.
+    Report {
+        #[arg(long)]
+        json: bool,
+        /// rows of the per-class table to print
+        #[arg(long, default_value_t = 40)]
+        top: usize,
+    },
+    /// Ask a model engine to recall values for open cells (stored as predictions, never facts).
+    Predict {
+        #[arg(long)]
+        engine: String,
+        #[arg(long, default_value = "")]
+        only: String,
+        /// maximum cells to ask about
+        #[arg(long, default_value_t = 200)]
+        limit: usize,
+    },
+    /// Ask a model engine to propose new classes and slots for a domain (written for review).
+    Propose {
+        #[arg(long)]
+        engine: String,
+        #[arg(long)]
+        domain: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+}
+
+fn csv_list(s: &str) -> Vec<String> {
+    s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+}
+
+fn lattice_cmd(cfg: Config, path: &Path, cmd: LatticeCmd) -> anyhow::Result<()> {
+    use querybook::d3::lattice::{Lattice, register};
+    use querybook::d5::expect;
+    use querybook::d12::lattice as wl;
+    let l = Lattice::load(path)?;
+    let errs = l.check();
+    let say = |m: &str| eprintln!("{m}");
+    if let LatticeCmd::Validate { live } = cmd {
+        println!(
+            "{}: {} domains, {} subdomains, {} classes, {} slots, {} rules; {} cells per member row",
+            l.title,
+            l.domain.len(),
+            l.sub.len(),
+            l.class.len(),
+            l.slot.len(),
+            l.rule.len(),
+            l.cells_per_member()
+        );
+        for e in &errs {
+            println!("  error: {e}");
+        }
+        if live {
+            let r = wl::validate_live(&l, &say)?;
+            println!("live: {} items, {} properties checked", r.items, r.properties);
+            for e in &r.errors {
+                println!("  error: {e}");
+            }
+            for d in &r.label_differs {
+                println!("  review: {d}");
+            }
+            anyhow::ensure!(r.errors.is_empty(), "{} live validation error(s)", r.errors.len());
+        }
+        anyhow::ensure!(errs.is_empty(), "{} structural error(s)", errs.len());
+        println!("ok");
+        return Ok(());
+    }
+    anyhow::ensure!(errs.is_empty(), "the lattice has {} structural error(s); run `qb lattice validate`", errs.len());
+    let qb = QueryBook::open(cfg)?;
+    expect::ensure_tables(&qb)?;
+    let digest = register(&qb.store, &l, &qb.cfg.operator.name)?;
+    match cmd {
+        LatticeCmd::Validate { .. } => unreachable!(),
+        LatticeCmd::Census { only, max_members, force, out } => {
+            let rows = wl::census(&qb, &l, &csv_list(&only), max_members, force, Some(&out), &say)?;
+            let ok = rows.iter().filter(|r| r.status == "ok").count();
+            let members: usize = rows.iter().map(|r| r.enumerated).sum();
+            println!(
+                "census: {ok}/{} classes, {members} members enumerated (membership envelopes in {})",
+                rows.len(),
+                out.display()
+            );
+        }
+        LatticeCmd::Expect => {
+            let r = expect::expect(&qb, &l, &digest)?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
+            let c = expect::confirm(&qb, &l)?;
+            println!("measured at once: {:?}", c.status);
+        }
+        LatticeCmd::Fill { only, budget, out, import } => {
+            let r = wl::fill(&qb, &l, &csv_list(&only), budget, &out, &say)?;
+            println!(
+                "fill: {} queries, {} cells checked, {} filled, {} envelopes, {} forecasts tested, {:.1}s -> {}",
+                r.queries, r.cells_checked, r.cells_filled, r.envelopes, r.predictions_tested, r.seconds, r.out
+            );
+            if let Some(mapping) = import {
+                let ir = querybook::d1::ufcs::import(&qb, &mapping, Some(&out), 0, false, &|m: &str| eprintln!("  {m}"))?;
+                println!("import: {} admitted, {} unchanged, {} refused", ir.admitted, ir.unchanged, ir.refused);
+                let c = expect::confirm(&qb, &l)?;
+                println!("confirm: {:?}", c.status);
+            }
+        }
+        LatticeCmd::Confirm => {
+            let r = expect::confirm(&qb, &l)?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
+        }
+        LatticeCmd::Report { json, top } => {
+            let r = expect::report(&qb, &l, &digest)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&r)?);
+                return Ok(());
+            }
+            println!("{} — lattice {}", l.title, &digest[..16]);
+            println!(
+                "structure: {} domains · {} classes · {} slots · {} rules;  censused {} classes, {} members, {} cells",
+                r.domains, r.classes, r.slots, r.rules, r.classes_censused, r.members, r.cells
+            );
+            let pct = |a: i64, b: i64| if b > 0 { 100.0 * a as f64 / b as f64 } else { 0.0 };
+            println!(
+                "cells: {} filled ({:.1}%), {} absent in Wikidata, {} open  ->  ~{} targeted queries to finish",
+                r.filled,
+                pct(r.filled, r.cells),
+                r.absent,
+                r.open,
+                r.remaining_fill_queries
+            );
+            println!(
+                "value predictions: {}  confirmed {}  refuted {}  precision {}",
+                r.value_predictions,
+                r.confirmed,
+                r.refuted,
+                r.precision.map(|p| format!("{:.1}%", p * 100.0)).unwrap_or_else(|| "—".into())
+            );
+            println!(
+                "
+{:<24} {:>7} {:>6} {:>8} {:>7} {:>7} {:>8} {:>8}",
+                "class", "members", "slots", "filled%", "open", "fcast", "confirm", "refute"
+            );
+            let mut cov: Vec<_> = r.coverage.iter().collect();
+            cov.sort_by(|a, b| b.cells.cmp(&a.cells).then(a.class.cmp(&b.class)));
+            for c in cov.iter().take(top) {
+                println!(
+                    "{:<24} {:>7} {:>6} {:>7.1}% {:>7} {:>7} {:>8} {:>8}",
+                    c.class,
+                    c.enumerated,
+                    c.slots,
+                    pct(c.filled, c.cells),
+                    c.open,
+                    c.predicted_open,
+                    c.confirmed,
+                    c.refuted
+                );
+            }
+            if !r.rule_stats.is_empty() {
+                println!(
+                    "
+{:<40} {:>9} {:>8} {:>10} {:>11}",
+                    "rule / basis", "confirmed", "refuted", "precision", "reliability"
+                );
+                for s in &r.rule_stats {
+                    println!(
+                        "{:<40} {:>9} {:>8} {:>10} {:>11.3}",
+                        s.basis,
+                        s.confirmed,
+                        s.refuted,
+                        s.precision.map(|p| format!("{:.1}%", p * 100.0)).unwrap_or_else(|| "—".into()),
+                        s.reliability
+                    );
+                }
+            }
+            for f in &r.findings {
+                println!("finding {f}");
+            }
+        }
+        LatticeCmd::Predict { engine, only, limit } => {
+            let r = wl::predict(&qb, &l, &engine, &csv_list(&only), limit, &digest, &say)?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
+        }
+        LatticeCmd::Propose { engine, domain, out } => {
+            let n = wl::propose(&qb, &l, &engine, &domain, &out, &say)?;
+            println!("{n} proposed classes written to {} for review", out.display());
+        }
+    }
+    Ok(())
 }
 
 fn book_files(paths: &[PathBuf]) -> Vec<PathBuf> {
@@ -410,6 +642,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Cmd::Lattice { lattice, cmd } => lattice_cmd(cfg, &lattice, cmd)?,
         Cmd::HarvestWikidata { pack, out, only, force, import } => {
             let only: Vec<String> = only.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             let r = querybook::d12::wikidata::harvest(&pack, &out, &only, force, &|m: &str| eprintln!("{m}"))?;

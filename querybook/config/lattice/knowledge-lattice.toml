@@ -1,0 +1,1597 @@
+# QueryBook knowledge lattice — the upper structure of general knowledge.
+#
+# Structure first, facts later: domains -> subdomains -> classes, each class
+# a set of real-world members (a Wikidata class plus a notability floor) and
+# the slots every member is expected to carry. The lattice turns "harvest the
+# world" into a finite grid of cells, predicts what most cells hold, and then
+# spends queries only on confirming or filling those cells.
+#
+#   qb lattice validate --live     structure checks + every QID/PID checked against Wikidata
+#   qb lattice census              members and slot fill rates per class (conceptual expectations)
+#   qb lattice expect              value predictions from the invariant rules below
+#   qb lattice fill                targeted harvest of the predicted/open cells (UFCS envelopes)
+#   qb lattice confirm             confirm / refute every expectation against admitted facts
+#   qb lattice report              coverage, rule precision, calibration findings, gaps
+#
+# The structure was drafted with AI assistance (and can be extended with
+# `qb lattice propose --engine claude`); nothing here is a fact. Expectations
+# are D5 predictions and never enter the fact store (induction may not write);
+# only harvested, re-validated records do.
+#
+# Class fields: id, sub, label, qid (members are `?s wdt:P31 wd:<qid>`),
+# pattern (replaces that membership triple), where (extra SPARQL), deep
+# (follow subclass-of), min_sitelinks (notability floor), slots, texts
+# (per-class rendering overrides by slot id).
+
+version = 1
+title = "QueryBook upper knowledge lattice"
+slots_file = "slots.toml"
+
+# ============================================================== domains
+
+domain = [
+  { id = "geo", label = "Geography" },
+  { id = "astro", label = "Astronomy and space" },
+  { id = "phys", label = "Physics" },
+  { id = "chem", label = "Chemistry and materials" },
+  { id = "earth", label = "Earth sciences" },
+  { id = "bio", label = "Life sciences" },
+  { id = "med", label = "Medicine and health" },
+  { id = "math", label = "Mathematics" },
+  { id = "comp", label = "Computing" },
+  { id = "eng", label = "Engineering and technology" },
+  { id = "hist", label = "History" },
+  { id = "people", label = "People" },
+  { id = "arts", label = "Arts and culture" },
+  { id = "lang", label = "Language and writing" },
+  { id = "belief", label = "Religion and philosophy" },
+  { id = "soc", label = "Society, law and government" },
+  { id = "econ", label = "Economy and business" },
+  { id = "edu", label = "Education and research" },
+  { id = "sport", label = "Sport" },
+  { id = "food", label = "Food and drink" },
+]
+
+sub = [
+  { id = "geo.political", domain = "geo", label = "Countries and territories" },
+  { id = "geo.settlement", domain = "geo", label = "Cities and settlements" },
+  { id = "geo.land", domain = "geo", label = "Landforms" },
+  { id = "geo.water", domain = "geo", label = "Water bodies" },
+  { id = "geo.protected", domain = "geo", label = "Protected areas" },
+  { id = "astro.solar", domain = "astro", label = "Solar System" },
+  { id = "astro.stellar", domain = "astro", label = "Stars and galaxies" },
+  { id = "astro.space", domain = "astro", label = "Spaceflight" },
+  { id = "phys.quantities", domain = "phys", label = "Quantities, units and constants" },
+  { id = "phys.particles", domain = "phys", label = "Particles" },
+  { id = "chem.elements", domain = "chem", label = "Elements" },
+  { id = "chem.compounds", domain = "chem", label = "Compounds and materials" },
+  { id = "chem.minerals", domain = "chem", label = "Minerals and rocks" },
+  { id = "earth.geology", domain = "earth", label = "Geology and geologic time" },
+  { id = "earth.hazards", domain = "earth", label = "Natural hazards" },
+  { id = "bio.animals", domain = "bio", label = "Animals" },
+  { id = "bio.plants", domain = "bio", label = "Plants and fungi" },
+  { id = "bio.microbes", domain = "bio", label = "Microorganisms and viruses" },
+  { id = "bio.molecular", domain = "bio", label = "Genes and proteins" },
+  { id = "med.conditions", domain = "med", label = "Diseases and conditions" },
+  { id = "med.treatment", domain = "med", label = "Drugs and vaccines" },
+  { id = "med.anatomy", domain = "med", label = "Anatomy" },
+  { id = "med.care", domain = "med", label = "Health care" },
+  { id = "math.results", domain = "math", label = "Theorems and conjectures" },
+  { id = "math.objects", domain = "math", label = "Mathematical objects" },
+  { id = "math.fields", domain = "math", label = "Branches of mathematics" },
+  { id = "comp.languages", domain = "comp", label = "Programming languages" },
+  { id = "comp.software", domain = "comp", label = "Software and games" },
+  { id = "eng.structures", domain = "eng", label = "Structures" },
+  { id = "eng.energy", domain = "eng", label = "Energy" },
+  { id = "eng.transport", domain = "eng", label = "Transport and vehicles" },
+  { id = "eng.inventions", domain = "eng", label = "Inventions" },
+  { id = "hist.conflict", domain = "hist", label = "Wars, battles and revolutions" },
+  { id = "hist.states", domain = "hist", label = "Historical states and empires" },
+  { id = "hist.diplomacy", domain = "hist", label = "Treaties" },
+  { id = "hist.events", domain = "hist", label = "Disasters and epidemics" },
+  { id = "hist.heritage", domain = "hist", label = "Archaeology and heritage" },
+  { id = "people.science", domain = "people", label = "Scientists" },
+  { id = "people.thought", domain = "people", label = "Thinkers and scholars" },
+  { id = "people.arts", domain = "people", label = "Writers and artists" },
+  { id = "people.power", domain = "people", label = "Rulers, politicians and explorers" },
+  { id = "people.sport", domain = "people", label = "Athletes" },
+  { id = "arts.visual", domain = "arts", label = "Visual art" },
+  { id = "arts.literature", domain = "arts", label = "Literature" },
+  { id = "arts.music", domain = "arts", label = "Music" },
+  { id = "arts.screen", domain = "arts", label = "Film and television" },
+  { id = "lang.languages", domain = "lang", label = "Languages and scripts" },
+  { id = "belief.religion", domain = "belief", label = "Religions and deities" },
+  { id = "belief.philosophy", domain = "belief", label = "Philosophical movements" },
+  { id = "soc.politics", domain = "soc", label = "Parties and institutions" },
+  { id = "soc.intl", domain = "soc", label = "International organisations" },
+  { id = "econ.firms", domain = "econ", label = "Companies" },
+  { id = "econ.money", domain = "econ", label = "Currencies and markets" },
+  { id = "edu.institutions", domain = "edu", label = "Universities" },
+  { id = "edu.research", domain = "edu", label = "Journals, awards and disciplines" },
+  { id = "sport.sports", domain = "sport", label = "Sports and competitions" },
+  { id = "sport.clubs", domain = "sport", label = "Clubs and venues" },
+  { id = "food.dishes", domain = "food", label = "Dishes and drinks" },
+]
+
+[source]
+endpoint = "https://query.wikidata.org/sparql"
+api = "https://www.wikidata.org/w/api.php"
+contact = "QueryBook harvester (set contact in the lattice source)"
+page_size = 5000
+batch = 250
+pause_ms = 1200
+confidence = 0.9
+weight = 3.0
+
+
+# ============================================================== classes
+
+# ---- geography
+[[class]]
+id = "geo.country"
+sub = "geo.political"
+label = "sovereign state"
+qid = "Q3624078"
+where = "FILTER NOT EXISTS { ?s wdt:P576 ?end }"
+slots = ["capital", "continent", "population", "area", "official_language", "currency", "head_of_state", "head_of_government", "shares_border_with", "government_form", "hdi", "life_expectancy", "highest_point", "founded_in"]
+
+[[class]]
+id = "geo.dependency"
+sub = "geo.political"
+label = "dependent territory"
+qid = "Q161243"
+slots = ["country", "capital", "population", "area", "official_language", "currency"]
+
+[[class]]
+id = "geo.state"
+sub = "geo.political"
+label = "state of the United States"
+qid = "Q35657"
+slots = ["capital", "population", "area", "highest_point", "shares_border_with", "founded_in"]
+
+[[class]]
+id = "geo.city"
+sub = "geo.settlement"
+label = "big city"
+qid = "Q1549591"
+min_sitelinks = 40
+slots = ["country", "continent", "located_in", "population", "area", "elevation", "on_water", "twinned_with", "founded_in", "capital_of"]
+texts = { country = "{s} is a city in {o}." }
+
+[[class]]
+id = "geo.capital"
+sub = "geo.settlement"
+label = "capital city"
+qid = "Q5119"
+min_sitelinks = 30
+slots = ["country", "capital_of", "population", "area", "elevation", "on_water"]
+texts = { country = "{s} is a city in {o}." }
+
+[[class]]
+id = "geo.mountain"
+sub = "geo.land"
+label = "mountain"
+qid = "Q8502"
+min_sitelinks = 15
+slots = ["elevation", "country", "continent", "mountain_range", "located_in"]
+texts = { country = "{s} is a mountain in {o}." }
+
+[[class]]
+id = "geo.range"
+sub = "geo.land"
+label = "mountain range"
+qid = "Q46831"
+min_sitelinks = 20
+slots = ["country", "continent", "highest_point", "length_km", "area"]
+
+[[class]]
+id = "geo.volcano"
+sub = "geo.land"
+label = "volcano"
+qid = "Q8072"
+min_sitelinks = 10
+slots = ["elevation", "country", "mountain_range"]
+texts = { country = "{s} is a volcano in {o}." }
+
+[[class]]
+id = "geo.island"
+sub = "geo.land"
+label = "island"
+qid = "Q23442"
+min_sitelinks = 30
+slots = ["country", "area", "population", "on_water", "highest_point"]
+
+[[class]]
+id = "geo.desert"
+sub = "geo.land"
+label = "desert"
+qid = "Q8514"
+min_sitelinks = 15
+slots = ["country", "continent", "area"]
+
+[[class]]
+id = "geo.peninsula"
+sub = "geo.land"
+label = "peninsula"
+qid = "Q34763"
+min_sitelinks = 20
+slots = ["country", "continent", "area", "on_water"]
+
+[[class]]
+id = "geo.river"
+sub = "geo.water"
+label = "river"
+qid = "Q4022"
+min_sitelinks = 25
+slots = ["length_km", "flows_into", "country", "tributary", "continent"]
+texts = { country = "{s} flows through {o}." }
+
+[[class]]
+id = "geo.lake"
+sub = "geo.water"
+label = "lake"
+qid = "Q23397"
+min_sitelinks = 25
+slots = ["country", "area", "depth_m", "elevation", "lake_outflow", "continent"]
+
+[[class]]
+id = "geo.sea"
+sub = "geo.water"
+label = "sea"
+qid = "Q165"
+min_sitelinks = 20
+slots = ["area", "depth_m", "part_of", "country"]
+texts = { country = "{s} borders {o}." }
+
+[[class]]
+id = "geo.ocean"
+sub = "geo.water"
+label = "ocean"
+qid = "Q9430"
+slots = ["area", "depth_m"]
+
+[[class]]
+id = "geo.waterfall"
+sub = "geo.water"
+label = "waterfall"
+qid = "Q34038"
+min_sitelinks = 10
+slots = ["country", "height_m", "on_water"]
+
+[[class]]
+id = "geo.strait"
+sub = "geo.water"
+label = "strait"
+qid = "Q37901"
+min_sitelinks = 15
+slots = ["country", "length_km", "part_of"]
+
+[[class]]
+id = "geo.park"
+sub = "geo.protected"
+label = "national park"
+qid = "Q46169"
+min_sitelinks = 15
+slots = ["country", "area", "founded_in", "located_in"]
+
+# ---- astronomy
+[[class]]
+id = "astro.planet"
+sub = "astro.solar"
+label = "planet of the Solar System"
+pattern = "VALUES ?s { wd:Q308 wd:Q313 wd:Q2 wd:Q111 wd:Q319 wd:Q193 wd:Q324 wd:Q332 }"
+slots = ["parent_body", "orbital_period", "radius_km", "mass_kg", "discoverer", "discovered_in", "named_after"]
+
+[[class]]
+id = "astro.dwarf"
+sub = "astro.solar"
+label = "dwarf planet"
+qid = "Q2199"
+slots = ["parent_body", "orbital_period", "radius_km", "discoverer", "discovered_in", "named_after"]
+
+[[class]]
+id = "astro.moon"
+sub = "astro.solar"
+label = "natural satellite"
+qid = "Q2537"
+deep = true
+min_sitelinks = 10
+slots = ["parent_body", "orbital_period", "radius_km", "discoverer", "discovered_in", "named_after"]
+
+[[class]]
+id = "astro.comet"
+sub = "astro.solar"
+label = "periodic comet"
+qid = "Q3559"
+deep = true
+min_sitelinks = 15
+slots = ["orbital_period", "discoverer", "discovered_in"]
+
+[[class]]
+id = "astro.star"
+sub = "astro.stellar"
+label = "star"
+qid = "Q523"
+deep = true
+min_sitelinks = 25
+slots = ["constellation", "apparent_magnitude", "distance_ly", "spectral_class"]
+
+[[class]]
+id = "astro.galaxy"
+sub = "astro.stellar"
+label = "galaxy"
+qid = "Q318"
+deep = true
+min_sitelinks = 15
+slots = ["constellation", "distance_ly", "apparent_magnitude", "discoverer", "discovered_in"]
+
+[[class]]
+id = "astro.constellation"
+sub = "astro.stellar"
+label = "constellation"
+qid = "Q8928"
+slots = ["area", "named_after"]
+
+[[class]]
+id = "astro.exoplanet"
+sub = "astro.stellar"
+label = "exoplanet"
+qid = "Q44559"
+min_sitelinks = 12
+slots = ["parent_body", "orbital_period", "discovered_in", "constellation"]
+
+[[class]]
+id = "astro.probe"
+sub = "astro.space"
+label = "space probe"
+qid = "Q26529"
+min_sitelinks = 20
+slots = ["operator", "manufacturer", "started_in", "part_of"]
+texts = { started_in = "{s} was launched in {o}." }
+
+[[class]]
+id = "astro.astronaut"
+sub = "astro.space"
+label = "astronaut"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11631 ."
+min_sitelinks = 30
+slots = ["born_in_year", "citizen_of", "birthplace", "military_branch", "award_received"]
+
+# ---- physics
+[[class]]
+id = "phys.constant"
+sub = "phys.quantities"
+label = "physical constant"
+qid = "Q173227"
+deep = true
+slots = ["numeric_value", "named_after", "discoverer"]
+
+[[class]]
+id = "phys.si_base"
+sub = "phys.quantities"
+label = "SI base unit"
+qid = "Q223662"
+slots = ["measured_quantity", "named_after"]
+
+[[class]]
+id = "phys.si_derived"
+sub = "phys.quantities"
+label = "SI derived unit"
+qid = "Q208469"
+slots = ["measured_quantity", "named_after"]
+
+[[class]]
+id = "phys.quantity"
+sub = "phys.quantities"
+label = "physical quantity"
+qid = "Q107715"
+min_sitelinks = 30
+slots = ["subclass_of", "named_after"]
+
+[[class]]
+id = "phys.particle"
+sub = "phys.particles"
+label = "elementary particle"
+qid = "Q43116"
+deep = true
+min_sitelinks = 15
+slots = ["mass_kg", "discoverer", "discovered_in", "subclass_of"]
+
+# ---- chemistry
+[[class]]
+id = "chem.element"
+sub = "chem.elements"
+label = "chemical element"
+qid = "Q11344"
+slots = ["atomic_number", "chemical_symbol", "discoverer", "discovered_in", "named_after", "melting_point", "boiling_point", "density"]
+
+[[class]]
+id = "chem.compound"
+sub = "chem.compounds"
+label = "chemical compound"
+qid = "Q11173"
+min_sitelinks = 40
+slots = ["chemical_formula", "molecular_mass", "melting_point", "boiling_point", "density", "discoverer", "has_use"]
+
+[[class]]
+id = "chem.alloy"
+sub = "chem.compounds"
+label = "alloy"
+qid = "Q37756"
+deep = true
+min_sitelinks = 15
+slots = ["made_from", "density", "has_use"]
+
+[[class]]
+id = "chem.mineral"
+sub = "chem.minerals"
+label = "mineral species"
+qid = "Q12089225"
+min_sitelinks = 20
+slots = ["chemical_formula", "crystal_system", "mohs_hardness", "named_after", "discovered_in"]
+
+[[class]]
+id = "chem.rock"
+sub = "chem.minerals"
+label = "rock type"
+qid = "Q8063"
+deep = true
+min_sitelinks = 20
+slots = ["subclass_of", "made_from"]
+
+# ---- earth sciences
+[[class]]
+id = "earth.period"
+sub = "earth.geology"
+label = "geologic period"
+qid = "Q392928"
+slots = ["part_of", "follows", "followed_by"]
+
+[[class]]
+id = "earth.era"
+sub = "earth.geology"
+label = "geologic era"
+qid = "Q630830"
+slots = ["part_of", "follows", "followed_by"]
+
+[[class]]
+id = "earth.earthquake"
+sub = "earth.hazards"
+label = "earthquake"
+qid = "Q7944"
+min_sitelinks = 15
+slots = ["took_place_in", "country", "moment_magnitude", "deaths"]
+
+[[class]]
+id = "earth.cyclone"
+sub = "earth.hazards"
+label = "tropical cyclone"
+qid = "Q8092"
+deep = true
+min_sitelinks = 12
+slots = ["started_in", "deaths", "country"]
+texts = { country = "{s} struck {o}." }
+
+# ---- life sciences (taxa are members by rank under a parent clade)
+[[class]]
+id = "bio.mammal"
+sub = "bio.animals"
+label = "mammal species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q7377 ."
+min_sitelinks = 40
+slots = ["taxon_name", "parent_taxon", "conservation_status", "mass_kg"]
+
+[[class]]
+id = "bio.bird"
+sub = "bio.animals"
+label = "bird species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q5113 ."
+min_sitelinks = 50
+slots = ["taxon_name", "parent_taxon", "conservation_status"]
+
+[[class]]
+id = "bio.reptile"
+sub = "bio.animals"
+label = "reptile species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q10811 ."
+min_sitelinks = 30
+slots = ["taxon_name", "parent_taxon", "conservation_status"]
+
+[[class]]
+id = "bio.fish"
+sub = "bio.animals"
+label = "ray-finned fish species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q127282 ."
+min_sitelinks = 30
+slots = ["taxon_name", "parent_taxon", "conservation_status"]
+
+[[class]]
+id = "bio.insect"
+sub = "bio.animals"
+label = "insect species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q1390 ."
+min_sitelinks = 30
+slots = ["taxon_name", "parent_taxon", "conservation_status"]
+
+[[class]]
+id = "bio.plant"
+sub = "bio.plants"
+label = "flowering plant species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q25314 ."
+min_sitelinks = 40
+slots = ["taxon_name", "parent_taxon", "conservation_status"]
+
+[[class]]
+id = "bio.virus"
+sub = "bio.microbes"
+label = "virus species"
+pattern = "?s wdt:P105 wd:Q7432 ; wdt:P171+ wd:Q808 ."
+min_sitelinks = 15
+slots = ["taxon_name", "parent_taxon", "host"]
+
+[[class]]
+id = "bio.gene"
+sub = "bio.molecular"
+label = "human gene"
+pattern = "?s wdt:P31 wd:Q7187 ; wdt:P703 wd:Q15978631 ."
+min_sitelinks = 15
+slots = ["chromosome", "encodes", "genetic_association"]
+
+[[class]]
+id = "bio.protein"
+sub = "bio.molecular"
+label = "human protein"
+pattern = "?s wdt:P31 wd:Q8054 ; wdt:P703 wd:Q15978631 ."
+min_sitelinks = 15
+slots = ["encoded_by", "molecular_function"]
+
+# ---- medicine
+[[class]]
+id = "med.disease"
+sub = "med.conditions"
+label = "disease"
+qid = "Q12136"
+deep = true
+min_sitelinks = 50
+slots = ["symptom", "treatment", "cause", "anatomical_location", "health_specialty", "genetic_association", "named_after"]
+
+[[class]]
+id = "med.infection"
+sub = "med.conditions"
+label = "infectious disease"
+qid = "Q18123741"
+min_sitelinks = 25
+slots = ["symptom", "treatment", "cause", "health_specialty"]
+
+[[class]]
+id = "med.drug"
+sub = "med.treatment"
+label = "medication"
+qid = "Q12140"
+min_sitelinks = 40
+slots = ["treats", "chemical_formula", "discoverer", "discovered_in"]
+
+[[class]]
+id = "med.vaccine"
+sub = "med.treatment"
+label = "vaccine"
+qid = "Q134808"
+deep = true
+min_sitelinks = 10
+slots = ["vaccine_for", "discoverer", "discovered_in", "manufacturer"]
+
+[[class]]
+id = "med.organ"
+sub = "med.anatomy"
+label = "organ"
+qid = "Q712378"
+deep = true
+min_sitelinks = 40
+slots = ["part_of", "subclass_of"]
+
+[[class]]
+id = "med.hospital"
+sub = "med.care"
+label = "hospital"
+qid = "Q16917"
+min_sitelinks = 15
+slots = ["country", "located_in", "founded_in"]
+
+# ---- mathematics
+[[class]]
+id = "math.theorem"
+sub = "math.results"
+label = "theorem"
+qid = "Q65943"
+min_sitelinks = 10
+slots = ["named_after", "proved_by", "discoverer", "discovered_in"]
+
+[[class]]
+id = "math.conjecture"
+sub = "math.results"
+label = "conjecture"
+qid = "Q319141"
+min_sitelinks = 8
+slots = ["named_after", "proved_by", "discoverer", "discovered_in"]
+
+[[class]]
+id = "math.constant"
+sub = "math.objects"
+label = "mathematical constant"
+qid = "Q186509"
+slots = ["numeric_value", "named_after", "discoverer"]
+
+[[class]]
+id = "math.polyhedron"
+sub = "math.objects"
+label = "polyhedron"
+qid = "Q172937"
+deep = true
+min_sitelinks = 15
+slots = ["named_after", "subclass_of"]
+
+[[class]]
+id = "math.algorithm"
+sub = "math.objects"
+label = "algorithm"
+qid = "Q8366"
+deep = true
+min_sitelinks = 15
+slots = ["discoverer", "discovered_in", "named_after"]
+
+[[class]]
+id = "math.branch"
+sub = "math.fields"
+label = "branch of mathematics"
+qid = "Q1936384"
+slots = ["part_of", "studies", "subclass_of"]
+
+# ---- computing
+[[class]]
+id = "comp.language"
+sub = "comp.languages"
+label = "programming language"
+qid = "Q9143"
+deep = true
+min_sitelinks = 20
+slots = ["developer", "founded_in", "programming_paradigm", "influenced_by", "license"]
+texts = { founded_in = "{s} first appeared in {o}." }
+
+[[class]]
+id = "comp.os"
+sub = "comp.software"
+label = "operating system"
+qid = "Q9135"
+deep = true
+min_sitelinks = 20
+slots = ["developer", "founded_in", "programmed_in", "license"]
+texts = { founded_in = "{s} was first released in {o}." }
+
+[[class]]
+id = "comp.game"
+sub = "comp.software"
+label = "video game"
+qid = "Q7889"
+min_sitelinks = 40
+slots = ["developer", "published_in", "genre", "platform"]
+texts = { published_in = "{s} was released in {o}." }
+
+# ---- engineering and technology
+[[class]]
+id = "eng.bridge"
+sub = "eng.structures"
+label = "bridge"
+qid = "Q12280"
+deep = true
+min_sitelinks = 15
+slots = ["crosses", "country", "length_m", "architect", "opened_in", "located_in"]
+
+[[class]]
+id = "eng.skyscraper"
+sub = "eng.structures"
+label = "skyscraper"
+qid = "Q11303"
+min_sitelinks = 15
+slots = ["height_m", "floors", "country", "located_in", "architect", "opened_in"]
+
+[[class]]
+id = "eng.dam"
+sub = "eng.structures"
+label = "dam"
+qid = "Q12323"
+deep = true
+min_sitelinks = 15
+slots = ["country", "crosses", "height_m", "opened_in"]
+texts = { crosses = "{s} dams the {o}." }
+
+[[class]]
+id = "eng.tunnel"
+sub = "eng.structures"
+label = "tunnel"
+qid = "Q44377"
+deep = true
+min_sitelinks = 12
+slots = ["country", "length_km", "opened_in", "crosses"]
+texts = { crosses = "{s} passes under {o}." }
+
+[[class]]
+id = "eng.canal"
+sub = "eng.structures"
+label = "canal"
+qid = "Q12284"
+min_sitelinks = 15
+slots = ["country", "length_km", "opened_in"]
+
+[[class]]
+id = "eng.lighthouse"
+sub = "eng.structures"
+label = "lighthouse"
+qid = "Q39715"
+min_sitelinks = 10
+slots = ["country", "height_m", "opened_in"]
+
+[[class]]
+id = "eng.power"
+sub = "eng.energy"
+label = "nuclear power plant"
+qid = "Q134447"
+min_sitelinks = 10
+slots = ["country", "operator", "opened_in"]
+
+[[class]]
+id = "eng.airport"
+sub = "eng.transport"
+label = "international airport"
+qid = "Q644371"
+min_sitelinks = 20
+slots = ["country", "located_in", "opened_in", "operator", "elevation"]
+
+[[class]]
+id = "eng.aircraft"
+sub = "eng.transport"
+label = "aircraft model"
+qid = "Q15056993"
+min_sitelinks = 25
+slots = ["manufacturer", "founded_in", "country_of_origin"]
+texts = { founded_in = "{s} first flew in {o}." }
+
+[[class]]
+id = "eng.car"
+sub = "eng.transport"
+label = "automobile model"
+qid = "Q3231690"
+min_sitelinks = 30
+slots = ["manufacturer", "founded_in", "country_of_origin"]
+texts = { founded_in = "{s} was introduced in {o}." }
+
+[[class]]
+id = "eng.launcher"
+sub = "eng.transport"
+label = "launch vehicle"
+qid = "Q697175"
+deep = true
+min_sitelinks = 15
+slots = ["manufacturer", "country_of_origin", "founded_in"]
+texts = { founded_in = "{s} first flew in {o}." }
+
+[[class]]
+id = "eng.ship"
+sub = "eng.transport"
+label = "ocean liner"
+qid = "Q697196"
+min_sitelinks = 12
+slots = ["operator", "manufacturer", "founded_in", "length_m"]
+texts = { founded_in = "{s} was launched in {o}." }
+
+[[class]]
+id = "eng.invention"
+sub = "eng.inventions"
+label = "invention"
+pattern = "?s wdt:P61 ?inventor . ?inventor wdt:P31 wd:Q5 . ?s wdt:P575 ?when ."
+min_sitelinks = 40
+slots = ["discoverer", "discovered_in", "country_of_origin"]
+texts = { discoverer = "{s} was invented by {o}.", discovered_in = "{s} dates from {o}." }
+
+# ---- history
+[[class]]
+id = "hist.war"
+sub = "hist.conflict"
+label = "war"
+qid = "Q198"
+min_sitelinks = 25
+slots = ["started_in", "ended_in", "participant", "location", "deaths", "part_of"]
+
+[[class]]
+id = "hist.battle"
+sub = "hist.conflict"
+label = "battle"
+qid = "Q178561"
+min_sitelinks = 25
+slots = ["took_place_in", "location", "part_of", "participant", "country"]
+
+[[class]]
+id = "hist.revolution"
+sub = "hist.conflict"
+label = "revolution"
+qid = "Q10931"
+min_sitelinks = 15
+slots = ["started_in", "ended_in", "country", "location"]
+
+[[class]]
+id = "hist.state"
+sub = "hist.states"
+label = "historical country"
+qid = "Q3024240"
+min_sitelinks = 40
+slots = ["founded_in", "dissolved_in", "capital", "official_language", "government_form", "replaces", "replaced_by", "currency"]
+texts = { capital = "{o} was a capital of {s}." }
+
+[[class]]
+id = "hist.empire"
+sub = "hist.states"
+label = "empire"
+qid = "Q48349"
+min_sitelinks = 25
+slots = ["founded_in", "dissolved_in", "capital", "official_language", "religion"]
+texts = { capital = "{o} was a capital of {s}." }
+
+[[class]]
+id = "hist.dynasty"
+sub = "hist.states"
+label = "dynasty"
+qid = "Q164950"
+min_sitelinks = 20
+slots = ["founded_in", "dissolved_in", "country", "founded_by"]
+
+[[class]]
+id = "hist.treaty"
+sub = "hist.diplomacy"
+label = "treaty"
+qid = "Q131569"
+deep = true
+min_sitelinks = 20
+slots = ["took_place_in", "location", "signatory", "participant"]
+texts = { took_place_in = "{s} was signed in {o}." }
+
+[[class]]
+id = "hist.epidemic"
+sub = "hist.events"
+label = "pandemic"
+qid = "Q12184"
+slots = ["started_in", "ended_in", "cause", "deaths", "location"]
+
+[[class]]
+id = "hist.site"
+sub = "hist.heritage"
+label = "archaeological site"
+qid = "Q839954"
+min_sitelinks = 25
+slots = ["country", "located_in", "founded_in", "part_of"]
+
+[[class]]
+id = "hist.whs"
+sub = "hist.heritage"
+label = "World Heritage Site"
+pattern = "?s wdt:P1435 wd:Q9259 ."
+min_sitelinks = 40
+slots = ["country", "located_in", "founded_in", "architect"]
+
+# ---- people
+[[class]]
+id = "people.physicist"
+sub = "people.science"
+label = "physicist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q169470 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor", "notable_work"]
+
+[[class]]
+id = "people.chemist"
+sub = "people.science"
+label = "chemist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q593644 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor"]
+
+[[class]]
+id = "people.mathematician"
+sub = "people.science"
+label = "mathematician"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q170790 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at", "doctoral_advisor", "notable_work"]
+
+[[class]]
+id = "people.biologist"
+sub = "people.science"
+label = "biologist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q864503 ."
+min_sitelinks = 25
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "educated_at"]
+
+[[class]]
+id = "people.astronomer"
+sub = "people.science"
+label = "astronomer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11063 ."
+min_sitelinks = 25
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received", "notable_work"]
+
+[[class]]
+id = "people.physician"
+sub = "people.science"
+label = "physician"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q39631 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "award_received"]
+
+[[class]]
+id = "people.engineer"
+sub = "people.science"
+label = "engineer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q81096 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "notable_work", "employer"]
+
+[[class]]
+id = "people.inventor"
+sub = "people.science"
+label = "inventor"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q205375 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
+
+[[class]]
+id = "people.philosopher"
+sub = "people.thought"
+label = "philosopher"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q4964182 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "influenced_by", "notable_work", "field_of_work"]
+
+[[class]]
+id = "people.economist"
+sub = "people.thought"
+label = "economist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q188094 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_received", "educated_at", "notable_work"]
+
+[[class]]
+id = "people.historian"
+sub = "people.thought"
+label = "historian"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q201788 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
+
+[[class]]
+id = "people.psychologist"
+sub = "people.thought"
+label = "psychologist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q212980 ."
+min_sitelinks = 25
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "field_of_work", "notable_work"]
+
+[[class]]
+id = "people.writer"
+sub = "people.arts"
+label = "novelist"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q6625963 ."
+min_sitelinks = 50
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "movement", "award_received", "native_language"]
+
+[[class]]
+id = "people.poet"
+sub = "people.arts"
+label = "poet"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q49757 ."
+min_sitelinks = 50
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "movement", "native_language"]
+
+[[class]]
+id = "people.playwright"
+sub = "people.arts"
+label = "playwright"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q214917 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work"]
+
+[[class]]
+id = "people.painter"
+sub = "people.arts"
+label = "painter"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q1028181 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "movement", "notable_work"]
+
+[[class]]
+id = "people.sculptor"
+sub = "people.arts"
+label = "sculptor"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q1281618 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "notable_work"]
+
+[[class]]
+id = "people.architect"
+sub = "people.arts"
+label = "architect"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q42973 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "movement", "notable_work", "award_received"]
+
+[[class]]
+id = "people.composer"
+sub = "people.arts"
+label = "composer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q36834 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "movement", "notable_work", "instrument"]
+
+[[class]]
+id = "people.musician"
+sub = "people.arts"
+label = "singer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q177220 ."
+min_sitelinks = 60
+slots = ["born_in_year", "birthplace", "citizen_of", "genre", "record_label", "instrument", "award_received"]
+
+[[class]]
+id = "people.actor"
+sub = "people.arts"
+label = "film actor"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10800557 ."
+min_sitelinks = 70
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "award_received", "spouse"]
+
+[[class]]
+id = "people.director"
+sub = "people.arts"
+label = "film director"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q2526255 ."
+min_sitelinks = 50
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "notable_work", "award_received"]
+
+[[class]]
+id = "people.monarch"
+sub = "people.power"
+label = "monarch"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q116 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "father", "mother", "spouse", "family", "noble_title", "position_held", "religion"]
+
+[[class]]
+id = "people.politician"
+sub = "people.power"
+label = "head of state or government"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P39 ?office . ?office wdt:P279* wd:Q48352 ."
+min_sitelinks = 60
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "position_held", "party", "educated_at", "spouse"]
+
+[[class]]
+id = "people.military"
+sub = "people.power"
+label = "military officer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q189290 ."
+min_sitelinks = 40
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of", "military_branch", "conflict", "award_received"]
+
+[[class]]
+id = "people.explorer"
+sub = "people.power"
+label = "explorer"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11900058 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "deathplace", "citizen_of", "notable_work"]
+
+[[class]]
+id = "people.religious"
+sub = "people.power"
+label = "pope"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P39 wd:Q19546 ."
+min_sitelinks = 20
+slots = ["born_in_year", "died_in_year", "birthplace", "follows", "followed_by"]
+
+[[class]]
+id = "people.footballer"
+sub = "people.sport"
+label = "association football player"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q937857 ."
+min_sitelinks = 80
+slots = ["born_in_year", "birthplace", "citizen_of", "member_of_team", "award_received"]
+
+[[class]]
+id = "people.tennis"
+sub = "people.sport"
+label = "tennis player"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10833314 ."
+min_sitelinks = 40
+slots = ["born_in_year", "birthplace", "citizen_of", "award_received"]
+
+[[class]]
+id = "people.chess"
+sub = "people.sport"
+label = "chess player"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q10873124 ."
+min_sitelinks = 30
+slots = ["born_in_year", "died_in_year", "birthplace", "citizen_of"]
+
+[[class]]
+id = "people.athlete"
+sub = "people.sport"
+label = "Olympic athlete"
+pattern = "?s wdt:P31 wd:Q5 ; wdt:P106 wd:Q11513337 ."
+min_sitelinks = 50
+slots = ["born_in_year", "birthplace", "citizen_of", "award_received", "sport"]
+
+# ---- arts and culture
+[[class]]
+id = "arts.painting"
+sub = "arts.visual"
+label = "painting"
+qid = "Q3305213"
+min_sitelinks = 25
+slots = ["creator", "founded_in", "collection", "movement", "depicts", "made_from"]
+texts = { founded_in = "{s} was painted in {o}.", made_from = "{s} is painted in {o}." }
+
+[[class]]
+id = "arts.sculpture"
+sub = "arts.visual"
+label = "sculpture"
+qid = "Q860861"
+min_sitelinks = 20
+slots = ["creator", "founded_in", "collection", "location", "made_from", "depicts"]
+texts = { founded_in = "{s} was made in {o}." }
+
+[[class]]
+id = "arts.museum"
+sub = "arts.visual"
+label = "art museum"
+qid = "Q207694"
+min_sitelinks = 25
+slots = ["country", "located_in", "founded_in", "architect"]
+
+[[class]]
+id = "arts.movement"
+sub = "arts.visual"
+label = "art movement"
+qid = "Q968159"
+min_sitelinks = 20
+slots = ["started_in", "ended_in", "country", "influenced_by"]
+
+[[class]]
+id = "arts.novel"
+sub = "arts.literature"
+label = "novel"
+pattern = "?s wdt:P31 wd:Q7725634 ; wdt:P7937 wd:Q8261 ."
+min_sitelinks = 30
+slots = ["author", "published_in", "language_of_work", "genre", "country_of_origin"]
+
+[[class]]
+id = "arts.poem"
+sub = "arts.literature"
+label = "poem"
+qid = "Q5185279"
+min_sitelinks = 15
+slots = ["author", "published_in", "language_of_work"]
+
+[[class]]
+id = "arts.play"
+sub = "arts.literature"
+label = "play"
+pattern = "?s wdt:P31 wd:Q7725634 ; wdt:P7937 wd:Q25379 ."
+min_sitelinks = 20
+slots = ["author", "published_in", "language_of_work", "genre"]
+
+[[class]]
+id = "arts.opera"
+sub = "arts.music"
+label = "opera"
+pattern = "?s wdt:P31 wd:Q7725634 ; wdt:P7937 wd:Q1344 ."
+min_sitelinks = 15
+slots = ["composer", "published_in", "language_of_work"]
+texts = { published_in = "{s} premiered in {o}." }
+
+[[class]]
+id = "arts.album"
+sub = "arts.music"
+label = "studio album"
+qid = "Q208569"
+min_sitelinks = 30
+slots = ["performer", "published_in", "genre", "record_label"]
+texts = { published_in = "{s} was released in {o}." }
+
+[[class]]
+id = "arts.band"
+sub = "arts.music"
+label = "musical group"
+qid = "Q215380"
+deep = true
+min_sitelinks = 50
+slots = ["founded_in", "country_of_origin", "genre", "record_label"]
+texts = { founded_in = "{s} formed in {o}." }
+
+[[class]]
+id = "arts.instrument"
+sub = "arts.music"
+label = "musical instrument"
+qid = "Q34379"
+deep = true
+min_sitelinks = 40
+slots = ["subclass_of", "country_of_origin", "made_from"]
+
+[[class]]
+id = "arts.film"
+sub = "arts.screen"
+label = "film"
+qid = "Q11424"
+min_sitelinks = 60
+slots = ["director", "published_in", "cast_member", "genre", "country_of_origin", "composer", "award_received"]
+texts = { published_in = "{s} was released in {o}." }
+
+[[class]]
+id = "arts.series"
+sub = "arts.screen"
+label = "television series"
+qid = "Q5398426"
+min_sitelinks = 40
+slots = ["creator", "founded_in", "genre", "country_of_origin", "cast_member"]
+texts = { founded_in = "{s} first aired in {o}." }
+
+# ---- language
+[[class]]
+id = "lang.language"
+sub = "lang.languages"
+label = "language"
+qid = "Q34770"
+min_sitelinks = 60
+slots = ["speakers", "writing_system", "country", "iso_639_1", "subclass_of"]
+texts = { country = "{s} is spoken in {o}.", subclass_of = "{s} belongs to the {o}." }
+
+[[class]]
+id = "lang.family"
+sub = "lang.languages"
+label = "language family"
+qid = "Q25295"
+min_sitelinks = 30
+slots = ["continent", "subclass_of"]
+texts = { continent = "{s} languages are spoken in {o}." }
+
+[[class]]
+id = "lang.script"
+sub = "lang.languages"
+label = "writing system"
+qid = "Q8192"
+deep = true
+min_sitelinks = 30
+slots = ["founded_in", "country", "subclass_of"]
+texts = { founded_in = "{s} dates from {o}." }
+
+# ---- religion and philosophy
+[[class]]
+id = "belief.religion"
+sub = "belief.religion"
+label = "religion"
+qid = "Q9174"
+deep = true
+min_sitelinks = 40
+slots = ["founded_by", "founded_in", "subclass_of"]
+
+[[class]]
+id = "belief.deity"
+sub = "belief.religion"
+label = "deity"
+qid = "Q178885"
+deep = true
+min_sitelinks = 40
+slots = ["religion", "father", "mother", "spouse", "child"]
+
+[[class]]
+id = "belief.movement"
+sub = "belief.philosophy"
+label = "philosophical movement"
+qid = "Q2915955"
+min_sitelinks = 20
+slots = ["founded_by", "founded_in", "influenced_by"]
+
+# ---- society
+[[class]]
+id = "soc.party"
+sub = "soc.politics"
+label = "political party"
+qid = "Q7278"
+min_sitelinks = 30
+slots = ["country", "founded_in", "headquarters", "founded_by"]
+
+[[class]]
+id = "soc.legislature"
+sub = "soc.politics"
+label = "legislature"
+qid = "Q11204"
+deep = true
+min_sitelinks = 25
+slots = ["country", "founded_in", "location"]
+
+[[class]]
+id = "soc.intl"
+sub = "soc.intl"
+label = "international organization"
+qid = "Q484652"
+min_sitelinks = 40
+slots = ["founded_in", "headquarters", "founded_by", "official_language"]
+
+# ---- economy
+[[class]]
+id = "econ.company"
+sub = "econ.firms"
+label = "public company"
+qid = "Q891723"
+min_sitelinks = 40
+slots = ["country", "founded_in", "founded_by", "headquarters", "industry", "ceo", "employees"]
+
+[[class]]
+id = "econ.carmaker"
+sub = "econ.firms"
+label = "automobile manufacturer"
+qid = "Q786820"
+min_sitelinks = 25
+slots = ["country", "founded_in", "founded_by", "headquarters", "owned_by"]
+
+[[class]]
+id = "econ.bank"
+sub = "econ.firms"
+label = "central bank"
+qid = "Q66344"
+min_sitelinks = 15
+slots = ["country", "founded_in", "headquarters"]
+
+[[class]]
+id = "econ.currency"
+sub = "econ.money"
+label = "currency"
+qid = "Q8142"
+min_sitelinks = 25
+slots = ["country", "currency_code", "founded_in", "replaces"]
+texts = { country = "{s} is used in {o}.", founded_in = "{s} was introduced in {o}." }
+
+[[class]]
+id = "econ.exchange"
+sub = "econ.money"
+label = "stock exchange"
+qid = "Q11691"
+min_sitelinks = 15
+slots = ["country", "located_in", "founded_in", "owned_by"]
+
+# ---- education and research
+[[class]]
+id = "edu.university"
+sub = "edu.institutions"
+label = "university"
+qid = "Q3918"
+min_sitelinks = 40
+slots = ["country", "located_in", "founded_in", "students", "founded_by"]
+
+[[class]]
+id = "edu.journal"
+sub = "edu.research"
+label = "scientific journal"
+qid = "Q5633421"
+min_sitelinks = 12
+slots = ["founded_in", "publisher", "language_of_work", "country_of_origin"]
+
+[[class]]
+id = "edu.award"
+sub = "edu.research"
+label = "science award"
+qid = "Q11448906"
+min_sitelinks = 12
+slots = ["founded_in", "country", "named_after", "organizer"]
+texts = { founded_in = "{s} was first awarded in {o}.", organizer = "{s} is presented by {o}." }
+
+[[class]]
+id = "edu.discipline"
+sub = "edu.research"
+label = "academic discipline"
+qid = "Q11862829"
+min_sitelinks = 60
+slots = ["subclass_of", "studies", "part_of"]
+
+# ---- sport
+[[class]]
+id = "sport.sport"
+sub = "sport.sports"
+label = "sport"
+qid = "Q349"
+deep = true
+min_sitelinks = 40
+slots = ["country_of_origin", "subclass_of"]
+
+[[class]]
+id = "sport.olympics"
+sub = "sport.sports"
+label = "Olympic Games"
+pattern = "?s wdt:P31/wdt:P279* wd:Q5389 ."
+slots = ["took_place_in", "location", "country"]
+texts = { location = "{s} were held in {o}.", took_place_in = "{s} took place in {o}." }
+
+[[class]]
+id = "sport.worldcup"
+sub = "sport.sports"
+label = "FIFA World Cup tournament"
+pattern = "?s wdt:P3450 wd:Q19317 ."
+slots = ["took_place_in", "country", "winner"]
+texts = { country = "{s} was hosted by {o}." }
+
+[[class]]
+id = "sport.club"
+sub = "sport.clubs"
+label = "association football club"
+qid = "Q476028"
+min_sitelinks = 40
+slots = ["country", "league", "home_venue", "founded_in", "located_in"]
+
+[[class]]
+id = "sport.stadium"
+sub = "sport.clubs"
+label = "stadium"
+qid = "Q483110"
+min_sitelinks = 25
+slots = ["country", "located_in", "capacity", "opened_in", "architect"]
+
+# ---- food and drink
+[[class]]
+id = "food.dish"
+sub = "food.dishes"
+label = "dish"
+qid = "Q746549"
+deep = true
+min_sitelinks = 40
+slots = ["country_of_origin", "made_from", "part_of"]
+texts = { part_of = "{s} is part of {o}." }
+
+[[class]]
+id = "food.beverage"
+sub = "food.dishes"
+label = "drink"
+qid = "Q40050"
+deep = true
+min_sitelinks = 40
+slots = ["country_of_origin", "made_from", "manufacturer"]
+
+# ============================================================== rules
+#
+# Invariant-level expectations (QBF-C102): regularities of the world that
+# predict a cell's value from cells already known. Each rule has a prior
+# confidence; confirmations and refutations update its reliability
+# (a Beta posterior), and a refuted prediction is attributed to the lowest
+# level that explains it (QBF-C103) — never silently to the rule.
+#
+#   inverse    X.from_slot = Y            =>  Y.slot = X        (Y a member of `class`)
+#   symmetric  X.slot = Y                 =>  Y.slot = X
+#   chain      X.path[0] = Y, Y.path[1] = Z  =>  X.slot = Z
+#   constant   every member of `class`    =>  slot = value
+#   mode       a slot whose observed values in `class` concentrate on one value
+#              (share >= min_share over >= min_support members) predicts it
+#              for the members not yet observed (conceptual level)
+
+[[rule]]
+id = "capital-lies-in-its-country"
+kind = "inverse"
+class = "geo.capital"
+slot = "country"
+from_slot = "capital"
+confidence = 0.95
+
+[[rule]]
+id = "capital-of-inverse"
+kind = "inverse"
+class = "geo.capital"
+slot = "capital_of"
+from_slot = "capital"
+confidence = 0.9
+
+[[rule]]
+id = "borders-are-mutual"
+kind = "symmetric"
+class = "geo.country"
+slot = "shares_border_with"
+confidence = 0.97
+
+[[rule]]
+id = "city-continent-from-country"
+kind = "chain"
+class = "geo.city"
+slot = "continent"
+path = ["country", "continent"]
+confidence = 0.9
+
+[[rule]]
+id = "mountain-continent-from-country"
+kind = "chain"
+class = "geo.mountain"
+slot = "continent"
+path = ["country", "continent"]
+confidence = 0.85
+
+[[rule]]
+id = "lake-continent-from-country"
+kind = "chain"
+class = "geo.lake"
+slot = "continent"
+path = ["country", "continent"]
+confidence = 0.85
+
+[[rule]]
+id = "planets-orbit-the-sun"
+kind = "constant"
+class = "astro.planet"
+slot = "parent_body"
+value = "Q525"
+value_label = "Sun"
+confidence = 0.99
+
+[[rule]]
+id = "dwarf-planets-orbit-the-sun"
+kind = "constant"
+class = "astro.dwarf"
+slot = "parent_body"
+value = "Q525"
+value_label = "Sun"
+confidence = 0.95
+
+[[rule]]
+id = "tributary-inverse"
+kind = "inverse"
+class = "geo.river"
+slot = "tributary"
+from_slot = "flows_into"
+confidence = 0.85
+
+[[rule]]
+id = "citizenship-from-birthplace-country"
+kind = "chain"
+class = "people.*"
+slot = "citizen_of"
+path = ["birthplace", "country"]
+confidence = 0.7
+
+[[rule]]
+id = "university-country-from-location"
+kind = "chain"
+class = "edu.university"
+slot = "country"
+path = ["located_in", "country"]
+confidence = 0.95
+
+[[rule]]
+id = "stadium-country-from-location"
+kind = "chain"
+class = "sport.stadium"
+slot = "country"
+path = ["located_in", "country"]
+confidence = 0.95
+
+[[rule]]
+id = "battle-country-from-location"
+kind = "chain"
+class = "hist.battle"
+slot = "country"
+path = ["location", "country"]
+confidence = 0.75
+
+[[rule]]
+id = "succession-is-mutual"
+kind = "inverse"
+class = "people.religious"
+slot = "follows"
+from_slot = "followed_by"
+confidence = 0.95
+
+[[rule]]
+id = "class-mode"
+kind = "mode"
+class = "*"
+min_share = 0.8
+min_support = 12
+confidence = 0.0   # the observed share is the confidence

@@ -172,9 +172,19 @@ impl LlmEngine {
     /// One request with retries on rate limits and server errors.
     /// Returns (reply text, input tokens, output tokens).
     fn call(&self, system: &str, user: &str) -> anyhow::Result<(String, u64, u64)> {
+        self.call_json(system, user, &reply_schema())
+    }
+
+    /// One structured request against any JSON schema (also used by the
+    /// knowledge lattice). Returns (reply text, input tokens, output tokens).
+    pub fn call_json(&self, system: &str, user: &str, schema: &serde_json::Value) -> anyhow::Result<(String, u64, u64)> {
         let mut delay = 2u64;
         for attempt in 0..6 {
-            let res = if self.p.kind == "claude" { self.call_claude(system, user) } else { self.call_openai(system, user) };
+            let res = if self.p.kind == "claude" {
+                self.call_claude(system, user, schema)
+            } else {
+                self.call_openai(system, user, schema)
+            };
             match res {
                 Ok(r) => return Ok(r),
                 Err(CallError::Retry(msg, after)) if attempt < 5 => {
@@ -189,7 +199,7 @@ impl LlmEngine {
         anyhow::bail!("{}: retries exhausted", self.p.id)
     }
 
-    fn call_claude(&self, system: &str, user: &str) -> Result<(String, u64, u64), CallError> {
+    fn call_claude(&self, system: &str, user: &str, schema: &serde_json::Value) -> Result<(String, u64, u64), CallError> {
         let key =
             self.api_key().ok_or_else(|| CallError::Fatal(format!("set {} to your Anthropic API key", self.p.api_key_env)))?;
         let base = if !self.p.base_url.is_empty() {
@@ -198,7 +208,7 @@ impl LlmEngine {
             std::env::var("ANTHROPIC_BASE_URL").unwrap_or_else(|_| "https://api.anthropic.com".into())
         };
         let model = if self.p.model.is_empty() { "claude-opus-5" } else { &self.p.model };
-        let mut output_config = json!({"format": {"type": "json_schema", "schema": reply_schema()}});
+        let mut output_config = json!({"format": {"type": "json_schema", "schema": schema}});
         if !self.p.effort.is_empty() {
             output_config["effort"] = json!(self.p.effort);
         }
@@ -247,7 +257,7 @@ impl LlmEngine {
         Ok((out, it, v["usage"]["output_tokens"].as_u64().unwrap_or(0)))
     }
 
-    fn call_openai(&self, system: &str, user: &str) -> Result<(String, u64, u64), CallError> {
+    fn call_openai(&self, system: &str, user: &str, schema: &serde_json::Value) -> Result<(String, u64, u64), CallError> {
         anyhow_to_fatal(|| {
             anyhow::ensure!(!self.p.base_url.is_empty(), "engine {} needs base_url (e.g. http://127.0.0.1:8000/v1)", self.p.id);
             Ok(())
@@ -256,7 +266,7 @@ impl LlmEngine {
             "model": self.p.model,
             "temperature": 0,
             "messages": [
-                {"role": "system", "content": format!("{system}\nReply with a single JSON object only. Schema: {}", reply_schema())},
+                {"role": "system", "content": format!("{system}\nReply with a single JSON object only. Schema: {}", schema)},
                 {"role": "user", "content": user}
             ]
         });

@@ -1,0 +1,202 @@
+# QueryBook knowledge lattice — slot library.
+#
+# A slot is one attribute a class member is expected to carry, bound to one
+# Wikidata property. Every class in the lattice names the slots it expects;
+# every (member x slot) pair is a cell. Cells are predicted first, harvested
+# later, and each prediction is confirmed or refuted by what is harvested.
+#
+#   id         lattice name (unique)
+#   predicate  governed predicate the harvested facts carry (default: id)
+#   pid        Wikidata property
+#   kind       entity | number | year | text
+#   text       rendering; {s} member label, {o} value
+#   one        true when a member has at most one value (a functional slot)
+#   normalize  number: read the SI-normalized amount (psn:) instead of the stated one
+#   scale / offset / decimals / unit / sci   number formatting (value * scale + offset)
+#
+# Drafted with AI assistance and validated live against Wikidata
+# (`qb lattice validate --live`); a wrong id is a validation failure, not a guess.
+
+slot = [
+  # ---- places and polities
+  { id = "country", pid = "P17", kind = "entity", text = "{s} is in {o}." },
+  { id = "continent", pid = "P30", kind = "entity", text = "{s} is in {o}." },
+  { id = "located_in", pid = "P131", kind = "entity", text = "{s} is located in {o}." },
+  { id = "location", pid = "P276", kind = "entity", text = "{s} is located at {o}." },
+  { id = "capital", pid = "P36", kind = "entity", text = "{o} is the capital of {s}." },
+  { id = "capital_of", pid = "P1376", kind = "entity", text = "{s} is the capital of {o}." },
+  { id = "population", pid = "P1082", kind = "number", decimals = 0, text = "{s} has a population of {o}." },
+  { id = "area", pid = "P2046", kind = "number", normalize = true, scale = 0.000001, decimals = 1, unit = "km²", one = true, text = "{s} has an area of {o}." },
+  { id = "official_language", pid = "P37", kind = "entity", text = "{o} is an official language of {s}." },
+  { id = "currency", pid = "P38", kind = "entity", text = "The currency of {s} is the {o}." },
+  { id = "head_of_state", pid = "P35", kind = "entity", text = "{o} is head of state of {s}." },
+  { id = "head_of_government", pid = "P6", kind = "entity", text = "{o} is head of government of {s}." },
+  { id = "shares_border_with", pid = "P47", kind = "entity", text = "{s} shares a border with {o}." },
+  { id = "government_form", pid = "P122", kind = "entity", text = "{s} is governed as a {o}." },
+  { id = "hdi", pid = "P1081", kind = "number", decimals = 3, text = "{s} has a Human Development Index of {o}." },
+  { id = "life_expectancy", pid = "P2250", kind = "number", decimals = 1, unit = "years", text = "Life expectancy in {s} is {o}." },
+  { id = "time_zone", pid = "P421", kind = "entity", text = "{s} uses {o}." },
+  { id = "highest_point", pid = "P610", kind = "entity", one = true, text = "The highest point of {s} is {o}." },
+  { id = "twinned_with", pid = "P190", kind = "entity", text = "{s} is twinned with {o}." },
+
+  # ---- physical geography
+  { id = "elevation", pid = "P2044", kind = "number", normalize = true, decimals = 0, unit = "m", text = "{s} rises to {o} above sea level." },
+  { id = "length_km", predicate = "length", pid = "P2043", kind = "number", normalize = true, scale = 0.001, decimals = 1, unit = "km", text = "{s} is {o} long." },
+  { id = "length_m", predicate = "length", pid = "P2043", kind = "number", normalize = true, decimals = 0, unit = "m", text = "{s} is {o} long." },
+  { id = "height_m", predicate = "height", pid = "P2048", kind = "number", normalize = true, decimals = 0, unit = "m", text = "{s} is {o} tall." },
+  { id = "depth_m", predicate = "depth", pid = "P4511", kind = "number", normalize = true, decimals = 0, unit = "m", text = "{s} is {o} deep." },
+  { id = "mountain_range", pid = "P4552", kind = "entity", text = "{s} is part of the {o}." },
+  { id = "flows_into", pid = "P403", kind = "entity", one = true, text = "{s} flows into {o}." },
+  { id = "tributary", pid = "P974", kind = "entity", text = "{o} is a tributary of {s}." },
+  { id = "lake_outflow", pid = "P201", kind = "entity", text = "{o} flows out of {s}." },
+  { id = "on_water", pid = "P206", kind = "entity", text = "{s} lies on {o}." },
+
+  # ---- astronomy
+  { id = "parent_body", pid = "P397", kind = "entity", one = true, text = "{s} orbits {o}." },
+  { id = "orbital_period", pid = "P2146", kind = "number", normalize = true, scale = 0.0000115740740740741, decimals = 1, unit = "days", text = "{s} completes an orbit every {o}." },
+  { id = "radius_km", predicate = "radius", pid = "P2120", kind = "number", normalize = true, scale = 0.001, decimals = 0, unit = "km", text = "{s} has a radius of {o}." },
+  { id = "constellation", pid = "P59", kind = "entity", one = true, text = "{s} is in the constellation {o}." },
+  { id = "apparent_magnitude", pid = "P1215", kind = "number", decimals = 2, text = "{s} has an apparent magnitude of {o}." },
+  { id = "distance_ly", predicate = "distance_from_earth", pid = "P2583", kind = "number", normalize = true, scale = 0.000000000000000105700083402462, decimals = 1, unit = "light-years", text = "{s} is {o} from Earth." },
+  { id = "spectral_class", pid = "P215", kind = "text", text = "{s} has spectral class {o}." },
+
+  # ---- discovery and naming
+  { id = "discoverer", pid = "P61", kind = "entity", text = "{s} was discovered or invented by {o}." },
+  { id = "discovered_in", pid = "P575", kind = "year", text = "{s} was discovered in {o}." },
+  { id = "named_after", pid = "P138", kind = "entity", text = "{s} is named after {o}." },
+  { id = "proved_by", pid = "P1318", kind = "entity", text = "{s} was proved by {o}." },
+
+  # ---- chemistry, materials, physics
+  { id = "chemical_symbol", pid = "P246", kind = "text", one = true, text = "The chemical symbol of {s} is {o}." },
+  { id = "atomic_number", pid = "P1086", kind = "number", decimals = 0, one = true, text = "{s} has atomic number {o}." },
+  { id = "melting_point", pid = "P2101", kind = "number", normalize = true, offset = -273.15, decimals = 1, unit = "°C", text = "{s} melts at {o}." },
+  { id = "boiling_point", pid = "P2102", kind = "number", normalize = true, offset = -273.15, decimals = 1, unit = "°C", text = "{s} boils at {o}." },
+  { id = "density", pid = "P2054", kind = "number", normalize = true, scale = 0.001, decimals = 3, unit = "g/cm³", text = "{s} has a density of {o}." },
+  { id = "chemical_formula", pid = "P274", kind = "text", one = true, text = "The chemical formula of {s} is {o}." },
+  { id = "molecular_mass", pid = "P2067", kind = "number", decimals = 2, unit = "u", text = "{s} has a molecular mass of {o}." },
+  { id = "mass_kg", predicate = "mass", pid = "P2067", kind = "number", normalize = true, sci = true, unit = "kg", text = "{s} has a mass of {o}." },
+  { id = "crystal_system", pid = "P556", kind = "entity", text = "{s} crystallises in the {o}." },
+  { id = "mohs_hardness", pid = "P1088", kind = "number", decimals = 1, text = "{s} has a Mohs hardness of {o}." },
+  { id = "numeric_value", pid = "P1181", kind = "number", sci = true, text = "The value of {s} is {o}." },
+  { id = "measured_quantity", pid = "P111", kind = "entity", text = "{s} is a unit of {o}." },
+  { id = "has_use", pid = "P366", kind = "entity", text = "{s} is used for {o}." },
+  { id = "made_from", pid = "P186", kind = "entity", text = "{s} is made from {o}." },
+
+  # ---- life sciences and medicine
+  { id = "parent_taxon", pid = "P171", kind = "entity", one = true, text = "{s} belongs to the taxon {o}." },
+  { id = "taxon_name", pid = "P225", kind = "text", one = true, text = "The scientific name of {s} is {o}." },
+  { id = "conservation_status", pid = "P141", kind = "entity", one = true, text = "The conservation status of {s} is {o}." },
+  { id = "found_in_taxon", pid = "P703", kind = "entity", text = "{s} is found in {o}." },
+  { id = "symptom", pid = "P780", kind = "entity", text = "{o} is a symptom of {s}." },
+  { id = "treatment", pid = "P2176", kind = "entity", text = "{s} may be treated with {o}." },
+  { id = "cause", pid = "P828", kind = "entity", text = "{s} is caused by {o}." },
+  { id = "anatomical_location", pid = "P927", kind = "entity", text = "{s} is located in the {o}." },
+  { id = "health_specialty", pid = "P1995", kind = "entity", text = "{s} is studied and treated in {o}." },
+  { id = "treats", pid = "P2175", kind = "entity", text = "{s} is used to treat {o}." },
+  { id = "genetic_association", pid = "P2293", kind = "entity", text = "{s} is genetically associated with {o}." },
+  { id = "chromosome", pid = "P1057", kind = "entity", one = true, text = "{s} is located on {o}." },
+  { id = "encodes", pid = "P688", kind = "entity", text = "{s} encodes {o}." },
+  { id = "encoded_by", pid = "P702", kind = "entity", text = "{s} is encoded by {o}." },
+  { id = "molecular_function", pid = "P680", kind = "entity", text = "{s} has the molecular function {o}." },
+  { id = "vaccine_for", pid = "P1924", kind = "entity", text = "{s} protects against {o}." },
+  { id = "host", pid = "P2975", kind = "entity", text = "{s} infects {o}." },
+
+  # ---- people
+  { id = "occupation", pid = "P106", kind = "entity", text = "{s} was a {o}." },
+  { id = "field_of_work", pid = "P101", kind = "entity", text = "{s} worked in the field of {o}." },
+  { id = "born_in_year", pid = "P569", kind = "year", one = true, text = "{s} was born in {o}." },
+  { id = "died_in_year", pid = "P570", kind = "year", one = true, text = "{s} died in {o}." },
+  { id = "birthplace", predicate = "born_in", pid = "P19", kind = "entity", one = true, text = "{s} was born in {o}." },
+  { id = "deathplace", predicate = "died_in", pid = "P20", kind = "entity", one = true, text = "{s} died in {o}." },
+  { id = "citizen_of", pid = "P27", kind = "entity", text = "{s} was a citizen of {o}." },
+  { id = "award_received", pid = "P166", kind = "entity", text = "{s} received the {o}." },
+  { id = "educated_at", pid = "P69", kind = "entity", text = "{s} was educated at {o}." },
+  { id = "doctoral_advisor", pid = "P184", kind = "entity", text = "{o} was the doctoral advisor of {s}." },
+  { id = "notable_work", pid = "P800", kind = "entity", text = "{s} is known for {o}." },
+  { id = "employer", pid = "P108", kind = "entity", text = "{s} worked for {o}." },
+  { id = "position_held", pid = "P39", kind = "entity", text = "{s} served as {o}." },
+  { id = "party", pid = "P102", kind = "entity", text = "{s} was a member of the {o}." },
+  { id = "movement", pid = "P135", kind = "entity", text = "{s} was associated with {o}." },
+  { id = "influenced_by", pid = "P737", kind = "entity", text = "{s} was influenced by {o}." },
+  { id = "instrument", pid = "P1303", kind = "entity", text = "{s} played the {o}." },
+  { id = "sport", pid = "P641", kind = "entity", text = "{s} is associated with {o}." },
+  { id = "member_of_team", pid = "P54", kind = "entity", text = "{s} played for {o}." },
+  { id = "father", pid = "P22", kind = "entity", one = true, text = "{o} was the father of {s}." },
+  { id = "mother", pid = "P25", kind = "entity", one = true, text = "{o} was the mother of {s}." },
+  { id = "spouse", pid = "P26", kind = "entity", text = "{s} was married to {o}." },
+  { id = "child", pid = "P40", kind = "entity", text = "{o} was a child of {s}." },
+  { id = "noble_title", pid = "P97", kind = "entity", text = "{s} held the title {o}." },
+  { id = "family", pid = "P53", kind = "entity", text = "{s} belonged to the {o}." },
+  { id = "military_branch", pid = "P241", kind = "entity", text = "{s} served in the {o}." },
+  { id = "conflict", pid = "P607", kind = "entity", text = "{s} took part in the {o}." },
+  { id = "religion", pid = "P140", kind = "entity", text = "{s} is associated with {o}." },
+  { id = "native_language", pid = "P103", kind = "entity", text = "{s} was a native speaker of {o}." },
+
+  # ---- works
+  { id = "author", pid = "P50", kind = "entity", text = "{s} was written by {o}." },
+  { id = "published_in", pid = "P577", kind = "year", text = "{s} was published in {o}." },
+  { id = "language_of_work", pid = "P407", kind = "entity", text = "{s} is in {o}." },
+  { id = "genre", pid = "P136", kind = "entity", text = "{s} belongs to the genre {o}." },
+  { id = "creator", pid = "P170", kind = "entity", text = "{s} was created by {o}." },
+  { id = "director", pid = "P57", kind = "entity", text = "{s} was directed by {o}." },
+  { id = "cast_member", pid = "P161", kind = "entity", text = "{o} appears in {s}." },
+  { id = "composer", pid = "P86", kind = "entity", text = "{s} was composed by {o}." },
+  { id = "performer", pid = "P175", kind = "entity", text = "{s} was performed by {o}." },
+  { id = "country_of_origin", pid = "P495", kind = "entity", text = "{s} comes from {o}." },
+  { id = "collection", pid = "P195", kind = "entity", text = "{s} is held in the collection of {o}." },
+  { id = "depicts", pid = "P180", kind = "entity", text = "{s} depicts {o}." },
+  { id = "publisher", pid = "P123", kind = "entity", text = "{s} is published by {o}." },
+  { id = "record_label", pid = "P264", kind = "entity", text = "{s} was released by {o}." },
+
+  # ---- built environment and technology
+  { id = "architect", pid = "P84", kind = "entity", text = "{s} was designed by {o}." },
+  { id = "architectural_style", pid = "P149", kind = "entity", text = "{s} is built in the {o} style." },
+  { id = "crosses", pid = "P177", kind = "entity", text = "{s} crosses the {o}." },
+  { id = "opened_in", pid = "P1619", kind = "year", text = "{s} opened in {o}." },
+  { id = "operator", pid = "P137", kind = "entity", text = "{s} is operated by {o}." },
+  { id = "owned_by", pid = "P127", kind = "entity", text = "{s} is owned by {o}." },
+  { id = "manufacturer", pid = "P176", kind = "entity", text = "{s} is made by {o}." },
+  { id = "developer", pid = "P178", kind = "entity", text = "{s} was developed by {o}." },
+  { id = "floors", pid = "P1101", kind = "number", decimals = 0, one = true, text = "{s} has {o} floors above ground." },
+  { id = "capacity", pid = "P1083", kind = "number", decimals = 0, text = "{s} holds {o} people." },
+  { id = "programming_paradigm", pid = "P3966", kind = "entity", text = "{s} supports {o}." },
+  { id = "programmed_in", pid = "P277", kind = "entity", text = "{s} is written in {o}." },
+  { id = "license", pid = "P275", kind = "entity", text = "{s} is released under the {o}." },
+  { id = "platform", pid = "P400", kind = "entity", text = "{s} runs on {o}." },
+
+  # ---- organisations and economy
+  { id = "founded_in", pid = "P571", kind = "year", one = true, text = "{s} was founded in {o}." },
+  { id = "dissolved_in", pid = "P576", kind = "year", one = true, text = "{s} ceased to exist in {o}." },
+  { id = "founded_by", pid = "P112", kind = "entity", text = "{s} was founded by {o}." },
+  { id = "headquarters", pid = "P159", kind = "entity", text = "{s} is headquartered in {o}." },
+  { id = "industry", pid = "P452", kind = "entity", text = "{s} operates in {o}." },
+  { id = "employees", pid = "P1128", kind = "number", decimals = 0, text = "{s} has {o} employees." },
+  { id = "ceo", pid = "P169", kind = "entity", text = "{o} is the chief executive of {s}." },
+  { id = "students", pid = "P2196", kind = "number", decimals = 0, text = "{s} has {o} students." },
+  { id = "currency_code", pid = "P498", kind = "text", one = true, text = "The ISO code of {s} is {o}." },
+  { id = "league", pid = "P118", kind = "entity", text = "{s} plays in {o}." },
+  { id = "home_venue", pid = "P115", kind = "entity", text = "{s} plays at {o}." },
+  { id = "organizer", pid = "P664", kind = "entity", text = "{s} is organised by {o}." },
+  { id = "winner", pid = "P1346", kind = "entity", text = "{o} won {s}." },
+
+  # ---- events and history
+  { id = "started_in", pid = "P580", kind = "year", one = true, text = "{s} began in {o}." },
+  { id = "ended_in", pid = "P582", kind = "year", one = true, text = "{s} ended in {o}." },
+  { id = "took_place_in", pid = "P585", kind = "year", one = true, text = "{s} took place in {o}." },
+  { id = "participant", pid = "P710", kind = "entity", text = "{o} took part in {s}." },
+  { id = "deaths", pid = "P1120", kind = "number", decimals = 0, text = "{s} caused {o} deaths." },
+  { id = "part_of", pid = "P361", kind = "entity", text = "{s} is part of {o}." },
+  { id = "follows", pid = "P155", kind = "entity", text = "{s} came after {o}." },
+  { id = "followed_by", pid = "P156", kind = "entity", text = "{s} was followed by {o}." },
+  { id = "replaces", pid = "P1365", kind = "entity", text = "{s} replaced {o}." },
+  { id = "replaced_by", pid = "P1366", kind = "entity", text = "{s} was replaced by {o}." },
+  { id = "signatory", pid = "P1891", kind = "entity", text = "{o} signed {s}." },
+  { id = "moment_magnitude", pid = "P2527", kind = "number", decimals = 1, text = "{s} had a moment magnitude of {o}." },
+
+  # ---- ideas, language, belief
+  { id = "subclass_of", pid = "P279", kind = "entity", text = "{s} is a kind of {o}." },
+  { id = "studies", pid = "P2578", kind = "entity", text = "{s} is the study of {o}." },
+  { id = "speakers", pid = "P1098", kind = "number", decimals = 0, text = "{s} has about {o} speakers." },
+  { id = "writing_system", pid = "P282", kind = "entity", text = "{s} is written in the {o}." },
+  { id = "iso_639_1", pid = "P218", kind = "text", one = true, text = "The ISO 639-1 code of {s} is {o}." },
+]

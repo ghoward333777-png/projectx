@@ -50,6 +50,17 @@ server. The source of truth for features is the QueryBook Feature Registry v65
 * **Privacy.** History is retained by default and erasable per session or
   account; notes are owner-only records; full data export; erasures are
   ledgered without their content.
+* **Language pipeline.** Ingestion runs QueryBook's own seven-stage language
+  pipeline (below) by default: no model, no network, the same book always
+  gives the same records, each anchored to its EPUB CFI and sentence.
+* **World knowledge.** Facts imported from UFCS feeds or harvested from
+  Wikidata answer questions on their own (the "World knowledge" desk on the
+  library page, `qb ask world "…"`) or alongside a book, labelled "outside this
+  book".
+* **Knowledge lattice.** A structure of general knowledge (20 domains, 158
+  classes, 158 slots) that predicts what each fact cell holds before it is
+  harvested, then harvests only the open cells and confirms or refutes each
+  prediction (below).
 * **Admin.** Upload books with a rights declaration, watch ingestion jobs,
   see what readers ask per book (author feedback, with the unanswered ones
   flagged), manage users, see UFCS feeds, verify the ledger.
@@ -92,8 +103,8 @@ data directory; the index writer lock is taken only while writing).
 
    ```bash
    qb -c qb.toml estimate --manifest library.csv --engine claude     # requests, tokens, $ — spends nothing
-   qb -c qb.toml ingest --manifest library.csv --engines rules        # free, runs entirely on your server
-   qb -c qb.toml ingest --manifest library.csv --engines rules,claude --replace   # higher-quality records
+   qb -c qb.toml ingest --manifest library.csv                        # language engine: free, on your server
+   qb -c qb.toml ingest --manifest library.csv --engines language,rules,claude --replace   # higher-quality records
    ```
 
    One failing book does not stop the run; each book prints a JSON report
@@ -107,7 +118,8 @@ repeating itself does not (QBF-C023). Configure them in the TOML:
 
 | id | kind | where it runs | notes |
 |---|---|---|---|
-| `rules` | built in | your server, no network | Deterministic baseline. Good at names, speech, appositives, "X was a …", events; weaker at pronoun-only sentences. |
+| `language` | built in (default) | your server, no network | The seven-stage language pipeline below. Relations ("Elizabeth is the wife of Mr. Darcy"), traits with negation, speech attribution, conservative pronoun resolution. |
+| `rules` | built in | your server, no network | Deterministic pattern baseline. Agreeing with `language` raises a record's diversity (two methods, two source classes). |
 | `claude` | Anthropic API | Anthropic | Model `claude-opus-5`, JSON-schema output, server-side refusal fallback (`fallbacks: "default"`). Needs `ANTHROPIC_API_KEY`. |
 | `local` | OpenAI-compatible | **your own server** (vLLM, Ollama, llama.cpp, TGI…) | Set `base_url` and `model`. Same prompt and conversion as Claude. |
 
@@ -118,6 +130,79 @@ unverified* and excluded from answers; every record carries the engine and the
 prompt hash (QBF-C022). Both model engines were tested against a mock of each
 API; they have not yet been run against the live services from this
 environment.
+
+## The language pipeline (ingestion)
+
+QueryBook learns a text through deterministic stages before anything is
+queried (`src/d1/language/`):
+
+| stage | what happens | where |
+|---|---|---|
+| 1 Segmentation | paragraphs, sentences, clauses (main, coordinate, subordinate, relative with antecedent, reported speech) | `d1/parse.rs`, `d1/segment.rs`, `language/parse.rs` |
+| 2 Parsing | tokens, rule-based UPOS tagging with contextual repair, chunks (NP/VP/PP/ADJP/ADVP), UD-style dependencies | `language/tag.rs`, `language/parse.rs` |
+| 3 Entities & relations | named entities (people, places, organisations), dates, quantities, acronyms; verb-class predicate classification | `language/ner.rs` |
+| 4 Fact Unit construction | subject–predicate–object with semantic type (event, description, attribute, relation, state, speech, claim) onto governed predicates | `language/construct.rs` |
+| 5 Anchoring | each record carries its EPUB CFI (`epubcfi(/6/4[idref]!/4/64)`), paragraph position, spine item and sentence number | `d1/parse.rs` |
+| 6 Embedding | random-indexing vectors (128-d, no training): record + context window + graph alignment; concept vectors stored per work | `language/embed.rs` |
+| 7 QBE integration | the question is embedded in the same space; semantic closeness raises a candidate's attractor bias, after scope resolution | `d4/query.rs` |
+
+`qb analyze book.epub --from 120 --limit 5` prints every stage for a few
+sentences (tokens/POS, clauses, trees, dependencies, entities, facts).
+
+## World knowledge from Wikidata
+
+`qb harvest-wikidata --pack config/harvest/wikidata-basics.toml --import config/harvest/wikidata-mapping.toml`
+runs a pack of SPARQL queries (geography, science, mathematics, engineering,
+history — 55 queries, ~21,000 facts) politely against the Wikidata Query
+Service, writes each query's results as UFCS envelopes (resumable per query),
+and imports them through the ordinary D1 path. Wikidata is CC0. Set `contact`
+in the pack to a way Wikimedia can reach you (it goes in the User-Agent).
+
+## The knowledge lattice (structure first, facts later)
+
+Instead of harvesting the world query by query, QueryBook first lays down a
+**lattice**: [config/lattice/knowledge-lattice.toml](config/lattice/knowledge-lattice.toml)
+names 20 domains → 58 subdomains → 158 classes (each a Wikidata class plus a
+notability floor), and [slots.toml](config/lattice/slots.toml) names the 158
+attributes a member can carry. Every (member × slot) pair is a **cell**. The
+structure was drafted with AI and every id was checked live against Wikidata.
+
+```bash
+qb lattice validate --live      # structure + every Q-/P-id exists with the right datatype
+qb lattice census               # members per class + how often Wikidata fills each slot
+qb lattice expect               # predict cell values from the lattice's rules
+qb lattice fill --budget 300 --import config/harvest/wikidata-mapping.toml
+                                # harvest only open cells, then confirm every prediction
+qb lattice report               # coverage, rule precision, calibration, work remaining
+qb lattice predict --engine claude --only people.physicist   # optional: a model recalls open cells
+qb lattice propose --engine claude --domain astro --out astro-proposal.toml   # optional: extend the structure
+```
+
+How the prediction speeds the harvest up:
+
+* **Presence is known in advance.** The census says, per class, how often each
+  slot is filled (every sovereign state has a capital, 64 % of elements have a
+  discoverer). Cells are expected before any value is fetched, and a column
+  that is 0 % filled is never queried.
+* **Values are predicted by regularities** (`[[rule]]`): inverse relations (a
+  country's capital lies in that country), symmetry (borders), chains (a city's
+  continent is its country's continent), constants (planets orbit the Sun) and
+  class modes (a value shared by ≥ 80 % of observed members). Predictions made
+  for cells already observed are measured at once, so every rule's precision is
+  known before its forecasts are trusted.
+* **Fetching is targeted.** `fill` asks only for open cells, `batch` members
+  per query (`VALUES`), instead of scanning whole classes (which times out on
+  large classes). Columns carrying forecasts from still-uncertain rules go
+  first — each outcome there changes what the lattice believes most — then
+  columns by expected facts per query.
+
+Predictions are D5 expectations (QBF-C102): they live beside the fact store,
+never in it (induction may not write). A refuted prediction is attributed to the
+lowest level that explains it — a multi-valued premise is a conceptual error,
+not a broken rule (QBF-C103/C104); a refutation by a contested record revises
+nothing and is kept as a finding (QBF-C105). Per-band calibration gaps become
+proposals to the operator, never automatic changes (QBF-C101). A model's
+predictions are the least trusted level and are compared by normalized name.
 
 ## Importing the UFCS fact feed (149 million facts)
 
@@ -165,7 +250,11 @@ Change the demo passwords with `qb user reader --password …`.
 | `qb ingest <files/dirs> --rights R [--engines rules,claude] [--manifest m.csv] [--replace]` | add books |
 | `qb estimate <files> --engine claude` | requests, tokens, cost before spending |
 | `qb ask <work> "<question>" [--mode who\|recap\|summary\|timeline\|explore\|flashcards\|quiz] [--at POS] [--world] [--json]` | query from the terminal |
-| `qb import-ufcs --mapping m.toml [--file f.ndjson] [--dry-run] [--limit N]` | import a UFCS feed |
+| `qb import-ufcs --mapping m.toml [--file f.ndjson\|dir] [--dry-run] [--limit N]` | import a UFCS feed (file or directory) |
+| `qb harvest-wikidata [--pack p.toml] [--only geography,...] [--import mapping.toml]` | harvest a Wikidata query pack |
+| `qb lattice validate\|census\|expect\|fill\|confirm\|report\|predict\|propose` | the knowledge lattice |
+| `qb analyze book.epub [--from POS] [--limit N] [--json]` | show the language pipeline's stages |
+| `qb ask world "<question>"` | ask the imported world knowledge alone |
 | `qb bench-synthetic --facts N` | measure import and query at scale on this machine |
 | `qb export-qbf <work> out.qbf` | a work's records as a QBF frame stream (offline/compact) |
 | `qb verify` | verify the whole ledger (links, keyed checksums, signatures) |
@@ -174,19 +263,26 @@ Change the demo passwords with `qb user reader --password …`.
 ## Tests
 
 ```bash
-cargo test --release     # 19 unit + 8 end-to-end invariant tests
+cargo test --release     # 31 unit + 10 end-to-end invariant tests
 ```
 
 The invariants cover determinism under the context lock, the structural
 spoiler bound, owner-only annotations, ledger verification and denied
 transfers, pre-computed answer invalidation on revision, citation resolution
-against the source text, and UFCS re-validation/corroboration.
+against the source text, UFCS re-validation/corroboration, the language
+pipeline (same book ⇒ same records, CFI anchors and vectors) and the lattice
+cycle (predict → harvest → confirm/refute with attribution, nothing predicted
+ever written as fact).
 
 ## Known limits of this prototype
 
-* The `rules` engine is a baseline; answer quality with it reads like
-  well-chosen quotations. Claude or your own model produces properly atomic
-  records ("Mr. Collins is the heir of the Longbourn estate").
+* The `language` and `rules` engines are deterministic and free, but they read
+  like a careful parser, not a reader: some descriptions come out awkward.
+  Claude or your own model produces properly atomic records ("Mr. Collins is
+  the heir of the Longbourn estate"); run them together for diversity.
+* The lattice's observation scan reads the matching records into memory; that
+  is fine at millions of records, and needs a (subject, predicate) table before
+  it runs over the full 149M feed.
 * Concept identity across books and between books and UFCS is by label only;
   there is no cross-corpus ontology alignment yet.
 * The attractor network, traversal budget and competitive candidate resolution

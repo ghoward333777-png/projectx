@@ -313,3 +313,189 @@ fn language_pipeline_constructs_anchors_and_embeds() {
     let text = ans.lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" ");
     assert!(text.contains("married") && text.contains("Tomas Reed"), "{text}");
 }
+
+/// Knowledge lattice (QBF-C102/C103): structure first, cells predicted
+/// before they are harvested, predictions confirmed or refuted only by
+/// admitted records, refutations attributed to the level that explains them,
+/// and nothing predicted ever enters the fact store (induction may not write).
+#[test]
+fn lattice_predicts_then_confirms_without_writing_facts() {
+    use querybook::d3::lattice::{Lattice, register};
+    use querybook::d5::expect;
+    use querybook::d12::wikidata::{Pack, QueryDef, envelope};
+    use serde_json::json;
+    let dir = std::env::temp_dir().join(format!("qb-test-lattice-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("l.toml"),
+        r#"version = 1
+title = "test lattice"
+domain = [{ id = "geo", label = "Geography" }]
+sub = [{ id = "geo.p", domain = "geo", label = "Places" }]
+slot = [
+  { id = "capital", pid = "P36", kind = "entity", text = "{o} is the capital of {s}." },
+  { id = "continent", pid = "P30", kind = "entity", text = "{s} is in {o}." },
+  { id = "country", pid = "P17", kind = "entity", text = "{s} is in {o}." },
+  { id = "shares_border_with", pid = "P47", kind = "entity", text = "{s} borders {o}." },
+]
+[source]
+contact = "test"
+[[class]]
+id = "geo.country"
+sub = "geo.p"
+label = "country"
+qid = "Q6256"
+slots = ["capital", "continent", "shares_border_with"]
+[[class]]
+id = "geo.city"
+sub = "geo.p"
+label = "city"
+qid = "Q515"
+slots = ["country", "continent"]
+[[rule]]
+id = "capital-in-country"
+kind = "inverse"
+class = "geo.city"
+slot = "country"
+from_slot = "capital"
+confidence = 0.95
+[[rule]]
+id = "city-continent"
+kind = "chain"
+class = "geo.city"
+slot = "continent"
+path = ["country", "continent"]
+confidence = 0.9
+[[rule]]
+id = "borders"
+kind = "symmetric"
+class = "geo.country"
+slot = "shares_border_with"
+confidence = 0.97
+"#,
+    )
+    .unwrap();
+    let l = Lattice::load(&dir.join("l.toml")).unwrap();
+    assert!(l.check().is_empty(), "{:?}", l.check());
+    let mut cfg = Config::default();
+    cfg.server.data_dir = dir.join("data");
+    let qb = QueryBook::open(cfg).unwrap();
+    expect::ensure_tables(&qb).unwrap();
+    let digest = register(&qb.store, &l, "test").unwrap();
+
+    // the census (normally from Wikidata): members and fill counts
+    qb.store
+        .write(|c| {
+            for (cl, q, lab) in [("geo.country", "Q142", "France"), ("geo.country", "Q183", "Germany"), ("geo.city", "Q90", "Paris"), ("geo.city", "Q456", "Lyon")] {
+                c.execute("INSERT INTO lattice_members(class,qid,label,sitelinks) VALUES(?1,?2,?3,100)", rusqlite::params![cl, q, lab])?;
+            }
+            c.execute_batch(
+                "INSERT INTO lattice_census VALUES('geo.country',2,2,'ok',0),('geo.city',2,2,'ok',0);
+                 INSERT INTO lattice_fill VALUES('geo.country','capital',2,0),('geo.country','continent',2,0),('geo.country','shares_border_with',2,0),
+                                                ('geo.city','country',2,0),('geo.city','continent',2,0);",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    // harvested records, as a connector would write them
+    let pack: Pack = toml::from_str("query = []").unwrap();
+    let write = |name: &str, rows: &[(&str, &str, &str, &str, &str)]| {
+        let mut out = String::new();
+        for (pred, s, sl, o, ol) in rows {
+            let q = QueryDef {
+                id: format!("t/{pred}"),
+                domain: "geo".into(),
+                predicate: pred.to_string(),
+                object_kind: "entity".into(),
+                text: "{s} · {o}".into(),
+                sparql: String::new(),
+                scale: 1.0,
+                decimals: 0,
+                unit: String::new(),
+                offset: 0.0,
+                sci: false,
+            };
+            let r = json!({"s": {"value": format!("http://www.wikidata.org/entity/{s}")}, "sLabel": {"value": sl},
+                           "o": {"value": format!("http://www.wikidata.org/entity/{o}")}, "oLabel": {"value": ol}});
+            out.push_str(&envelope(&pack, &q, &r, "1").unwrap().to_string());
+            out.push('\n');
+        }
+        let p = dir.join(name);
+        std::fs::write(&p, out).unwrap();
+        p
+    };
+    let mapping = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/harvest/wikidata-mapping.toml");
+    let first = write(
+        "a.ndjson",
+        &[
+            ("capital", "Q142", "France", "Q90", "Paris"),
+            ("continent", "Q142", "France", "Q46", "Europe"),
+            ("continent", "Q183", "Germany", "Q46", "Europe"),
+            ("shares_border_with", "Q142", "France", "Q183", "Germany"),
+            ("country", "Q90", "Paris", "Q142", "France"),
+            ("country", "Q456", "Lyon", "Q142", "France"),
+            ("continent", "Q456", "Lyon", "Q48", "Asia"),
+        ],
+    );
+    querybook::d1::ufcs::import(&qb, &mapping, Some(&first), 0, false, &|_: &str| {}).unwrap();
+    let facts_before = qb.store.fact_count().unwrap();
+
+    let r1 = expect::expect(&qb, &l, &digest).unwrap();
+    assert_eq!(r1.presence_cells, 2 * 3 + 2 * 2, "every member x slot is a cell");
+    // Paris.country (inverse), Paris/Lyon.continent (chain), Germany borders France (symmetric)
+    assert_eq!(r1.value_predictions, 4, "{r1:?}");
+    assert_eq!(qb.store.fact_count().unwrap(), facts_before, "predictions never enter the fact store");
+
+    let c1 = expect::confirm(&qb, &l).unwrap();
+    let status = |basis: &str, subject: &str| -> (String, String) {
+        qb.store
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT status, attributed FROM expectations WHERE basis=?1 AND subject=?2",
+                    rusqlite::params![basis, subject],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
+            })
+            .unwrap()
+    };
+    assert_eq!(status("capital-in-country", "Q90").0, "confirmed");
+    assert_eq!(status("city-continent", "Q456"), ("refuted".into(), "invariant".into()), "Lyon is recorded in Asia");
+    assert_eq!(status("city-continent", "Q90").0, "open", "a forecast: nothing observed yet");
+    assert_eq!(status("borders", "Q183").0, "open");
+    assert!(c1.rules.iter().any(|s| s.basis == "city-continent" && s.refuted == 1));
+
+    // the harvest arrives; the forecasts resolve
+    let second = write(
+        "b.ndjson",
+        &[("continent", "Q90", "Paris", "Q46", "Europe"), ("shares_border_with", "Q183", "Germany", "Q142", "France")],
+    );
+    querybook::d1::ufcs::import(&qb, &mapping, Some(&second), 0, false, &|_: &str| {}).unwrap();
+    expect::confirm(&qb, &l).unwrap();
+    assert_eq!(status("city-continent", "Q90").0, "confirmed");
+    assert_eq!(status("borders", "Q183").0, "confirmed");
+
+    // deterministic: the same inputs regenerate the same expectations
+    let dump = || -> Vec<(String, String, String, f64)> {
+        qb.store
+            .read(|c| {
+                let mut st = c.prepare(
+                    "SELECT basis, subject, value, confidence FROM expectations ORDER BY basis, class, slot, subject, value",
+                )?;
+                let r = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
+                Ok(r)
+            })
+            .unwrap()
+    };
+    expect::expect(&qb, &l, &digest).unwrap();
+    let before = dump();
+    expect::expect(&qb, &l, &digest).unwrap();
+    assert_eq!(before, dump());
+    // with Germany's border now observed, the symmetric rule also predicts France's
+    assert_eq!(before.iter().filter(|r| r.0 == "borders").count(), 2);
+    let rep = expect::report(&qb, &l, &digest).unwrap();
+    assert_eq!(rep.classes_censused, 2);
+    drop(qb);
+    let _ = std::fs::remove_dir_all(&dir);
+}

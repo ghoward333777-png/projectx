@@ -403,7 +403,7 @@ object_kind = "number"
 decimals = 6
 text = "The value of {s} is approximately {o}."
 sparql = """SELECT ?s ?sLabel ?o WHERE {
-  ?s wdt:P31 wd:Q1052466 ; wikibase:sitelinks ?n . FILTER(?n >= 10)
+  ?s wdt:P31 wd:Q186509 ; wikibase:sitelinks ?n . FILTER(?n >= 10)
   ?s wdt:P1181 ?o .
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
 

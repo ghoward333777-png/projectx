@@ -78,3 +78,9 @@ Invariants to keep: scope (D8) resolves before any retrieval and the spoiler
 bound is a scope bound, never a mask; D7 renders only from records it is handed
 and cannot write (no `CommitPermit` outside `d0`); unverified-citation records
 never ground an answer; same query + same context-lock key ⇒ same output hash.
+Knowledge lattice (`config/lattice/`, `d3::lattice`, `d5::expect`, `d12::lattice`):
+expectations never enter the fact store (no `CommitPermit` in D5); a
+refutation with a multi-valued premise must not revise its rule; keep every
+lattice Q-/P-id passing `qb lattice validate --live`. The `language` engine
+is the default and must stay deterministic (same book ⇒ same records,
+anchors and vectors).
