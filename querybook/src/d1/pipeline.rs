@@ -207,6 +207,7 @@ pub fn merge(
         }
         g.push(c);
     }
+    let anchors: BTreeMap<u64, String> = book.passages.iter().filter_map(|p| p.anchor.as_ref().map(|a| (p.pos, a.cfi()))).collect();
     let mut facts = Vec::with_capacity(order.len());
     for fp in &order {
         let g = &groups[fp];
@@ -217,7 +218,7 @@ pub fn merge(
         let mut seen = BTreeSet::new();
         for c in g {
             if seen.insert((c.engine.clone(), c.pos)) {
-                ev.support(&format!("engine:{}", c.engine), reliability.get(&c.engine).copied().unwrap_or(0.6));
+                ev.support(&format!("engine:{}", c.engine), reliability.get(&c.engine).copied().unwrap_or(0.6) * c.weight);
             }
         }
         let verified = g.iter().any(|c| c.citation_verified);
@@ -243,7 +244,14 @@ pub fn merge(
             applicability: None,
             temporal: Temporal { occurred: None, ingested, attested: None },
             spatial: None,
-            narrative: Some(Narrative { work: book.id.clone(), pos: first.pos, chapter: first.chapter, also }),
+            narrative: Some(Narrative {
+                work: book.id.clone(),
+                pos: first.pos,
+                chapter: first.chapter,
+                also,
+                cfi: anchors.get(&first.pos).cloned(),
+                sentence: first.sentence,
+            }),
             evidence: ev,
             source: SourceRef { class: "work-text".into(), id: book.id.clone(), authority },
             modality: "text".into(),
@@ -262,6 +270,7 @@ pub fn merge(
             quote: Some(quote_src.quote.clone()),
             labels,
             external_id: None,
+            embedding: None,
         };
         f.seal();
         facts.push(f);
@@ -342,9 +351,13 @@ fn save_work(
         ],
     )?;
     {
-        let mut st = tx.prepare_cached("INSERT OR REPLACE INTO passages(work,pos,chapter,kind,text) VALUES(?1,?2,?3,?4,?5)")?;
+        let mut st = tx.prepare_cached("INSERT OR REPLACE INTO passages(work,pos,chapter,kind,text,cfi,href) VALUES(?1,?2,?3,?4,?5,?6,?7)")?;
         for p in &book.passages {
-            st.execute(params![book.id, p.pos as i64, p.chapter as i64, p.kind, p.text])?;
+            let (cfi, href) = match &p.anchor {
+                Some(a) => (Some(a.cfi()), Some(a.href.clone())),
+                None => (None, None),
+            };
+            st.execute(params![book.id, p.pos as i64, p.chapter as i64, p.kind, p.text, cfi, href])?;
         }
     }
     let mut st = tx.prepare_cached(

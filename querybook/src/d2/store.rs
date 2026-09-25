@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS contradictions(a TEXT NOT NULL, b TEXT NOT NULL, kind
 CREATE TABLE IF NOT EXISTS works(id TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL, language TEXT NOT NULL,
   rights TEXT NOT NULL, rights_note TEXT NOT NULL, source_hash TEXT NOT NULL, chapters TEXT NOT NULL, positions INTEGER NOT NULL,
   spoiler_default INTEGER NOT NULL, ingested_at INTEGER NOT NULL, engines TEXT NOT NULL, facts INTEGER NOT NULL, genre TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS passages(work TEXT NOT NULL, pos INTEGER NOT NULL, chapter INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY(work,pos)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS passages(work TEXT NOT NULL, pos INTEGER NOT NULL, chapter INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, cfi TEXT, href TEXT, PRIMARY KEY(work,pos)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS aliases(work TEXT NOT NULL, alias TEXT NOT NULL, concept TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL, freq INTEGER NOT NULL, first_pos INTEGER NOT NULL, PRIMARY KEY(work, alias, concept));
 CREATE INDEX IF NOT EXISTS aliases_concept ON aliases(concept);
 CREATE TABLE IF NOT EXISTS predicates(id TEXT PRIMARY KEY, spec TEXT NOT NULL, registered_by TEXT NOT NULL, ts INTEGER NOT NULL);
@@ -67,6 +67,10 @@ impl Store {
         // bulk imports touch large random-key B-trees (FUID, fingerprint)
         write.execute_batch("PRAGMA cache_size=-524288;")?;
         write.execute_batch(APP_SCHEMA)?;
+        // migrations for stores created by earlier builds (ignore "duplicate column")
+        for m in ["ALTER TABLE passages ADD COLUMN cfi TEXT", "ALTER TABLE passages ADD COLUMN href TEXT"] {
+            let _ = write.execute(m, []);
+        }
         write.execute_batch(ledger::SCHEMA)?;
         let reads = (0..4).map(|_| open_conn(&db).map(Mutex::new)).collect::<Result<Vec<_>, _>>()?;
         let keys = Keys::load_or_create(&dir.join("keys"))?;

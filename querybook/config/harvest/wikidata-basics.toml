@@ -1,0 +1,643 @@
+# QueryBook harvest pack: basic math, science, engineering, geography and
+# history facts from Wikidata (CC0). One query per property so rows do not
+# multiply. Each query returns ?s (subject item) and ?o (object item or
+# literal), with ?sLabel / ?oLabel from the label service. The harvester adds
+# ORDER BY / LIMIT / OFFSET itself; do not put them in the queries.
+#
+#   qb harvest-wikidata --pack config/harvest/wikidata-basics.toml --out data/harvest/wikidata
+#   qb import-ufcs --mapping config/harvest/wikidata-mapping.toml --file data/harvest/wikidata
+#
+# Size knobs: the wikibase:sitelinks thresholds (how many Wikipedias cover an
+# item) keep each query to well-known items. Lower them to harvest more.
+
+endpoint = "https://query.wikidata.org/sparql"
+# Wikimedia asks every client to identify itself with a way to reach the
+# operator. Put your project URL or contact address here.
+contact = "QueryBook harvester (set contact in the harvest pack)"
+page_size = 5000
+pause_ms = 1500
+confidence = 0.9      # prior confidence for a Wikidata statement
+weight = 3.0          # evidential weight of one statement
+
+# ------------------------------------------------------------ geography ----
+
+[[query]]
+id = "geo.country.capital"
+domain = "geography"
+predicate = "capital"
+object_kind = "entity"
+text = "{o} is the capital of {s}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P36 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.continent"
+domain = "geography"
+predicate = "continent"
+object_kind = "entity"
+text = "{s} is in {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P30 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.population"
+domain = "geography"
+predicate = "population"
+object_kind = "number"
+decimals = 0
+text = "{s} has a population of {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P1082 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.area"
+domain = "geography"
+predicate = "area"
+object_kind = "number"
+scale = 0.000001
+decimals = 0
+unit = "km²"
+text = "{s} has an area of {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s p:P2046 ?st . ?st wikibase:rank wikibase:PreferredRank . ?st psn:P2046/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.area_normal"
+domain = "geography"
+predicate = "area"
+object_kind = "number"
+scale = 0.000001
+decimals = 0
+unit = "km²"
+text = "{s} has an area of {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  FILTER NOT EXISTS { ?s p:P2046/wikibase:rank wikibase:PreferredRank }
+  ?s p:P2046 ?st . ?st wikibase:rank wikibase:NormalRank . ?st psn:P2046/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.language"
+domain = "geography"
+predicate = "official_language"
+object_kind = "entity"
+text = "{o} is an official language of {s}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P37 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.currency"
+domain = "geography"
+predicate = "currency"
+object_kind = "entity"
+text = "The currency of {s} is the {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P38 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.country.border"
+domain = "geography"
+predicate = "shares_border_with"
+object_kind = "entity"
+text = "{s} shares a border with {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3624078 . FILTER NOT EXISTS { ?s wdt:P576 ?end }
+  ?s wdt:P47 ?o . ?o wdt:P31 wd:Q3624078 .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.city.country"
+domain = "geography"
+predicate = "country"
+object_kind = "entity"
+text = "{s} is a city in {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q1637706 ; wdt:P17 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.city.population"
+domain = "geography"
+predicate = "population"
+object_kind = "number"
+decimals = 0
+text = "{s} has a population of {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q1637706 ; wdt:P1082 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.river.length"
+domain = "geography"
+predicate = "length"
+object_kind = "number"
+scale = 0.001
+decimals = 0
+unit = "km"
+text = "{s} is {o} long."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q4022 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s p:P2043/psn:P2043/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.river.mouth"
+domain = "geography"
+predicate = "flows_into"
+object_kind = "entity"
+text = "{s} flows into {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q4022 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s wdt:P403 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.river.country"
+domain = "geography"
+predicate = "country"
+object_kind = "entity"
+text = "{s} flows through {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q4022 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s wdt:P17 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.mountain.elevation"
+domain = "geography"
+predicate = "elevation"
+object_kind = "number"
+decimals = 0
+unit = "m"
+text = "{s} rises to {o} above sea level."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q8502 ; wikibase:sitelinks ?n . FILTER(?n >= 30)
+  ?s p:P2044/psn:P2044/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.mountain.country"
+domain = "geography"
+predicate = "country"
+object_kind = "entity"
+text = "{s} is a mountain in {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q8502 ; wikibase:sitelinks ?n . FILTER(?n >= 30)
+  ?s wdt:P17 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "geo.mountain.range"
+domain = "geography"
+predicate = "mountain_range"
+object_kind = "entity"
+text = "{s} is part of the {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q8502 ; wikibase:sitelinks ?n . FILTER(?n >= 30)
+  ?s wdt:P4552 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+# -------------------------------------------------------------- science ----
+
+[[query]]
+id = "sci.element.symbol"
+domain = "science"
+predicate = "chemical_symbol"
+object_kind = "literal"
+text = "The chemical symbol of {s} is {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q11344 ; wdt:P246 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.element.number"
+domain = "science"
+predicate = "atomic_number"
+object_kind = "number"
+decimals = 0
+text = "{s} has atomic number {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q11344 ; wdt:P1086 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.element.discoverer"
+domain = "science"
+predicate = "discoverer"
+object_kind = "entity"
+text = "{s} was discovered by {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q11344 ; wdt:P61 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.element.discovered"
+domain = "science"
+predicate = "discovered_in"
+object_kind = "year"
+text = "{s} was discovered in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q11344 ; wdt:P575 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.planet.orbit"
+domain = "science"
+predicate = "orbital_period"
+object_kind = "number"
+scale = 0.0000115740740740741
+decimals = 1
+unit = "days"
+text = "{s} orbits the Sun once every {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  VALUES ?s { wd:Q308 wd:Q313 wd:Q2 wd:Q111 wd:Q319 wd:Q193 wd:Q324 wd:Q332 }
+  ?s p:P2146/psn:P2146/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.planet.order"
+domain = "science"
+predicate = "is_a"
+object_kind = "literal"
+text = "{s} is {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  VALUES (?s ?o) { (wd:Q308 "the first planet from the Sun") (wd:Q313 "the second planet from the Sun")
+    (wd:Q2 "the third planet from the Sun") (wd:Q111 "the fourth planet from the Sun")
+    (wd:Q319 "the fifth planet from the Sun") (wd:Q193 "the sixth planet from the Sun")
+    (wd:Q324 "the seventh planet from the Sun") (wd:Q332 "the eighth planet from the Sun") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.planet.satellites"
+domain = "science"
+predicate = "natural_satellite"
+object_kind = "entity"
+text = "{o} is a moon of {s}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?s { wd:Q2 wd:Q111 wd:Q319 wd:Q193 wd:Q324 wd:Q332 }
+  ?o wdt:P397 ?s ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.field"
+domain = "science"
+predicate = "field_of_work"
+object_kind = "entity"
+text = "{s} worked in the field of {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?occ { wd:Q169470 wd:Q593644 wd:Q864503 wd:Q170790 wd:Q11063 wd:Q82594 wd:Q81096 wd:Q205375 wd:Q520549 wd:Q2374149 }
+  ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 70)
+  ?s wdt:P101 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.occupation"
+domain = "science"
+predicate = "occupation"
+object_kind = "entity"
+text = "{s} was a {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?o { wd:Q169470 wd:Q593644 wd:Q864503 wd:Q170790 wd:Q11063 wd:Q82594 wd:Q81096 wd:Q205375 wd:Q520549 wd:Q2374149 }
+  ?s wdt:P106 ?o ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 70)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.born"
+domain = "science"
+predicate = "born_in_year"
+object_kind = "year"
+text = "{s} was born in {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o WHERE {
+  VALUES ?occ { wd:Q169470 wd:Q593644 wd:Q864503 wd:Q170790 wd:Q11063 wd:Q82594 wd:Q81096 wd:Q205375 wd:Q520549 wd:Q2374149 }
+  ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 70)
+  ?s wdt:P569 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.died"
+domain = "science"
+predicate = "died_in_year"
+object_kind = "year"
+text = "{s} died in {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o WHERE {
+  VALUES ?occ { wd:Q169470 wd:Q593644 wd:Q864503 wd:Q170790 wd:Q11063 wd:Q82594 wd:Q81096 wd:Q205375 wd:Q520549 wd:Q2374149 }
+  ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 70)
+  ?s wdt:P570 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.nobel"
+domain = "science"
+predicate = "award_received"
+object_kind = "entity"
+text = "{s} received the {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?o { wd:Q38104 wd:Q44585 wd:Q80061 wd:Q47170 }
+  ?s wdt:P166 ?o ; wdt:P31 wd:Q5 .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "sci.people.citizenship"
+domain = "science"
+predicate = "citizen_of"
+object_kind = "entity"
+text = "{s} was a citizen of {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?occ { wd:Q169470 wd:Q593644 wd:Q864503 wd:Q170790 wd:Q11063 wd:Q82594 wd:Q81096 wd:Q205375 wd:Q520549 wd:Q2374149 }
+  ?s wdt:P106 ?occ ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 70)
+  ?s wdt:P27 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+# ----------------------------------------------------------------- math ----
+
+[[query]]
+id = "math.theorem.named_after"
+domain = "math"
+predicate = "named_after"
+object_kind = "entity"
+text = "{s} is named after {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q65943 ; wikibase:sitelinks ?n . FILTER(?n >= 12)
+  ?s wdt:P138 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "math.theorem.is_a"
+domain = "math"
+predicate = "is_a"
+object_kind = "literal"
+text = "{s} is {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q65943 ; wikibase:sitelinks ?n . FILTER(?n >= 12)
+  BIND("a mathematical theorem" AS ?o)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "math.theorem.discoverer"
+domain = "math"
+predicate = "discoverer"
+object_kind = "entity"
+text = "{s} was proved or discovered by {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q65943 ; wikibase:sitelinks ?n . FILTER(?n >= 8)
+  ?s wdt:P61 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "math.constant.value"
+domain = "math"
+predicate = "numeric_value"
+object_kind = "number"
+decimals = 6
+text = "The value of {s} is approximately {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q1052466 ; wikibase:sitelinks ?n . FILTER(?n >= 10)
+  ?s wdt:P1181 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "math.area.is_a"
+domain = "math"
+predicate = "is_a"
+object_kind = "literal"
+text = "{s} is {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q1936384 ; wikibase:sitelinks ?n . FILTER(?n >= 25)
+  BIND("an area of mathematics" AS ?o)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+# ---------------------------------------------------------- engineering ----
+
+[[query]]
+id = "eng.unit.measures"
+domain = "engineering"
+predicate = "measured_quantity"
+object_kind = "entity"
+text = "The {s} is the SI unit of {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?cls { wd:Q223662 wd:Q208469 }
+  ?s wdt:P31 ?cls ; wdt:P111 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.bridge.crosses"
+domain = "engineering"
+predicate = "crosses"
+object_kind = "entity"
+text = "{s} crosses the {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?cls { wd:Q12280 wd:Q12570 wd:Q158218 wd:Q158438 }
+  ?s wdt:P31 ?cls ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  ?s wdt:P177 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.bridge.opened"
+domain = "engineering"
+predicate = "completed_in"
+object_kind = "year"
+text = "{s} was completed in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  VALUES ?cls { wd:Q12280 wd:Q12570 wd:Q158218 wd:Q158438 }
+  ?s wdt:P31 ?cls ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  ?s wdt:P571 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.bridge.length"
+domain = "engineering"
+predicate = "length"
+object_kind = "number"
+decimals = 0
+unit = "m"
+text = "{s} is {o} long."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  VALUES ?cls { wd:Q12280 wd:Q12570 wd:Q158218 wd:Q158438 }
+  ?s wdt:P31 ?cls ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  ?s p:P2043/psn:P2043/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.structure.height"
+domain = "engineering"
+predicate = "height"
+object_kind = "number"
+decimals = 0
+unit = "m"
+text = "{s} is {o} tall."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  VALUES ?cls { wd:Q11303 wd:Q1440476 wd:Q11166728 }
+  ?s wdt:P31 ?cls ; wikibase:sitelinks ?n . FILTER(?n >= 25)
+  ?s p:P2048/psn:P2048/wikibase:quantityAmount ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.structure.architect"
+domain = "engineering"
+predicate = "architect"
+object_kind = "entity"
+text = "{s} was designed by {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  VALUES ?cls { wd:Q11303 wd:Q1440476 wd:Q11166728 wd:Q12280 wd:Q12570 wd:Q158218 }
+  ?s wdt:P31 ?cls ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  ?s wdt:P84 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.invention.inventor"
+domain = "engineering"
+predicate = "discoverer"
+object_kind = "entity"
+text = "{s} was invented by {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P61 ?o ; wdt:P575 ?t ; wikibase:sitelinks ?n . FILTER(?n >= 60)
+  ?o wdt:P31 wd:Q5 .
+  FILTER NOT EXISTS { ?s wdt:P31 wd:Q11344 }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "eng.invention.year"
+domain = "engineering"
+predicate = "invented_in"
+object_kind = "year"
+text = "{s} dates from {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P61 ?who ; wdt:P575 ?o ; wikibase:sitelinks ?n . FILTER(?n >= 60)
+  ?who wdt:P31 wd:Q5 .
+  FILTER NOT EXISTS { ?s wdt:P31 wd:Q11344 }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+# -------------------------------------------------------------- history ----
+
+[[query]]
+id = "hist.war.start"
+domain = "history"
+predicate = "started_in"
+object_kind = "year"
+text = "{s} began in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q198 ; wikibase:sitelinks ?n . FILTER(?n >= 30)
+  ?s wdt:P580 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.war.end"
+domain = "history"
+predicate = "ended_in"
+object_kind = "year"
+text = "{s} ended in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q198 ; wikibase:sitelinks ?n . FILTER(?n >= 30)
+  ?s wdt:P582 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.battle.date"
+domain = "history"
+predicate = "took_place_in"
+object_kind = "year"
+text = "{s} took place in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q178561 ; wikibase:sitelinks ?n . FILTER(?n >= 25)
+  ?s wdt:P585 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.battle.part_of"
+domain = "history"
+predicate = "part_of"
+object_kind = "entity"
+text = "{s} was part of {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q178561 ; wikibase:sitelinks ?n . FILTER(?n >= 25)
+  ?s wdt:P361 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.battle.location"
+domain = "history"
+predicate = "location"
+object_kind = "entity"
+text = "{s} was fought at {o}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q178561 ; wikibase:sitelinks ?n . FILTER(?n >= 25)
+  ?s wdt:P276 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.state.founded"
+domain = "history"
+predicate = "founded_in"
+object_kind = "year"
+text = "{s} was founded in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q3024240 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s wdt:P571 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.state.dissolved"
+domain = "history"
+predicate = "dissolved_in"
+object_kind = "year"
+text = "{s} ceased to exist in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q3024240 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s wdt:P576 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.state.capital"
+domain = "history"
+predicate = "capital"
+object_kind = "entity"
+text = "{o} was a capital of {s}."
+sparql = """SELECT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q3024240 ; wikibase:sitelinks ?n . FILTER(?n >= 40)
+  ?s wdt:P36 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.treaty.signed"
+domain = "history"
+predicate = "signed_in"
+object_kind = "year"
+text = "{s} was signed in {o}."
+sparql = """SELECT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q131569 ; wikibase:sitelinks ?n . FILTER(?n >= 20)
+  { ?s wdt:P585 ?o } UNION { ?s wdt:P577 ?o }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.leader.position"
+domain = "history"
+predicate = "position_held"
+object_kind = "entity"
+text = "{s} served as {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o ?oLabel WHERE {
+  ?s wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 150)
+  ?s wdt:P39 ?o . ?o wikibase:sitelinks ?m . FILTER(?m >= 20)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""
+
+[[query]]
+id = "hist.leader.born"
+domain = "history"
+predicate = "born_in_year"
+object_kind = "year"
+text = "{s} was born in {o}."
+sparql = """SELECT DISTINCT ?s ?sLabel ?o WHERE {
+  ?s wdt:P31 wd:Q5 ; wikibase:sitelinks ?n . FILTER(?n >= 150)
+  ?s wdt:P39 ?pos ; wdt:P569 ?o .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }"""

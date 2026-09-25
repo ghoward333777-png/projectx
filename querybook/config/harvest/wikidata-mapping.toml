@@ -1,0 +1,31 @@
+# Import mapping for envelopes written by `qb harvest-wikidata`.
+#   qb import-ufcs --mapping config/harvest/wikidata-mapping.toml --file data/harvest/wikidata
+feed = "wikidata"
+authority = 0.85
+acl = "public"
+batch = 50000
+
+[fields]
+id = "/id"
+subject = "/atom/subject"
+subject_label = "/atom/subject_label"
+predicate = "/atom/predicate"
+object = "/atom/object"
+object_label = "/atom/object_label"
+object_kind = "/atom/object_type"
+polarity = "/atom/polarity"
+group = "/atom/group"
+args = "/atom/args"
+confidence = "/envelope/confidence/value"
+weight = "/envelope/confidence/weight"
+authority = "/envelope/certification/authority"
+status = "/envelope/certification/status"
+source = "/envelope/provenance/source"
+attested = "/envelope/provenance/attested_at"
+occurred = "/atom/time"
+text = "/text"
+
+[predicates]
+auto_register = true
+[predicates.map]
+"is_a" = "is_a"

@@ -296,7 +296,7 @@ impl<'a> Ctx<'a> {
             quote: quote.to_string(),
             engine: self.engine.into(),
             prompt_hash: None,
-            citation_verified: true,
+            citation_verified: true, sentence: None, weight: 1.0,
         }
     }
 }

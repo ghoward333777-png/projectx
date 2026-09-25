@@ -145,7 +145,7 @@ fn notes_are_visible_only_to_their_author() {
         applicability: None,
         temporal: querybook::d2::Temporal { occurred: None, ingested: 1, attested: None },
         spatial: None,
-        narrative: Some(querybook::d2::Narrative { work: e.work.clone(), pos: 3, chapter: 0, also: vec![] }),
+        narrative: Some(querybook::d2::Narrative { work: e.work.clone(), pos: 3, chapter: 0, also: vec![], cfi: None, sentence: None }),
         evidence: querybook::d2::Evidence::prior(0.99),
         source: querybook::d2::SourceRef { class: "reader".into(), id: format!("user:{}", a.id), authority: 0.99 },
         modality: "text".into(),
@@ -159,6 +159,7 @@ fn notes_are_visible_only_to_their_author() {
         quote: None,
         labels: Default::default(),
         external_id: None,
+        embedding: None,
     };
     f.seal();
     let permit = d0::commit_permit(Domain::D8, "reader-authored-acl-owner-only").unwrap();

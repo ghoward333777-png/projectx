@@ -395,7 +395,7 @@ async fn annotate(
             applicability: if r.color.is_empty() { None } else { Some(format!("color:{}", r.color)) },
             temporal: Temporal { occurred: None, ingested: now_secs(), attested: None },
             spatial: None,
-            narrative: Some(Narrative { work: id.clone(), pos: r.pos, chapter: chapter as u32, also: vec![] }),
+            narrative: Some(Narrative { work: id.clone(), pos: r.pos, chapter: chapter as u32, also: vec![], cfi: None, sentence: None }),
             evidence: ev,
             source: SourceRef { class: "reader".into(), id: format!("user:{}", u.id), authority: 0.99 },
             modality: "text".into(),
@@ -409,6 +409,7 @@ async fn annotate(
             quote: if r.text.is_empty() { None } else { Some(r.text.clone()) },
             labels,
             external_id: None,
+            embedding: None,
         };
         f.seal();
         qb.catalog.read().unwrap().validate(&f).map_err(|e| anyhow::anyhow!(e))?;

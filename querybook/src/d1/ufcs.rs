@@ -14,7 +14,7 @@ use crate::d2::{Atom, Certification, Derivation, Edge, EdgeClass, Evidence, Fact
 use crate::d3::Predicate;
 use crate::util::{now_secs, sha256, slug};
 use rayon::prelude::*;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as J;
 use std::collections::BTreeMap;
@@ -167,6 +167,10 @@ pub struct ImportReport {
     pub read: u64,
     pub admitted: u64,
     pub corroborations: u64,
+    /// already imported with identical content (skipped)
+    pub unchanged: u64,
+    /// same envelope id, changed content: prior record superseded
+    pub revised: u64,
     pub refused: u64,
     pub refusals: BTreeMap<String, u64>,
     pub sample_errors: Vec<String>,
@@ -314,6 +318,7 @@ impl<'a> Converter<'a> {
             quote: text,
             labels,
             external_id: s(rec, &fl.id),
+            embedding: None,
         };
         fact.seal();
         if self.m.verify_id == "fingerprint" {
@@ -428,6 +433,48 @@ impl<'a> Admitter<'a> {
             return Ok(());
         }
         let mut batch = std::mem::take(&mut self.pending);
+        // an envelope already imported unchanged is skipped; one whose content
+        // changed under the same id supersedes its prior record (correction)
+        let mut revised: Vec<(String, String)> = Vec::new(); // (new fuid, prior fuid)
+        if !self.dry_run {
+            let feed = self.m.feed.clone();
+            let (keep, rev, unchanged) = self.qb.store.write(|c| {
+                let tx = c.unchecked_transaction()?;
+                let mut keep = Vec::with_capacity(batch.len());
+                let mut rev = Vec::new();
+                let mut unchanged = 0u64;
+                {
+                    let mut get = tx.prepare_cached("SELECT fp, fuid FROM ext_index WHERE k=?1")?;
+                    let mut put = tx.prepare_cached("INSERT OR REPLACE INTO ext_index(k, fp, fuid) VALUES(?1, ?2, ?3)")?;
+                    for f in std::mem::take(&mut batch) {
+                        let Some(ext) = f.external_id.as_deref() else {
+                            keep.push(f);
+                            continue;
+                        };
+                        let k = sha256(format!("{feed}|{ext}").as_bytes())[..16].to_vec();
+                        let fp = sha256(f.fingerprint.as_bytes())[..16].to_vec();
+                        let prior: Option<(Vec<u8>, String)> = get.query_row([&k], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+                        match prior {
+                            Some((pfp, _)) if pfp == fp => unchanged += 1,
+                            Some((_, pfuid)) => {
+                                put.execute(params![k, fp, f.fuid])?;
+                                rev.push((f.fuid.clone(), pfuid));
+                                keep.push(f);
+                            }
+                            None => {
+                                put.execute(params![k, fp, f.fuid])?;
+                                keep.push(f);
+                            }
+                        }
+                    }
+                }
+                tx.commit()?;
+                Ok((keep, rev, unchanged))
+            })?;
+            batch = keep;
+            revised = rev;
+            self.report.unchanged += unchanged;
+        }
         // merge canonically identical assertions: within the batch, then against the store
         batch.sort_by(|a, b| a.fingerprint.cmp(&b.fingerprint).then_with(|| a.fuid.cmp(&b.fuid)));
         let mut uniq: Vec<FactUnit> = Vec::with_capacity(batch.len());
@@ -494,6 +541,14 @@ impl<'a> Admitter<'a> {
         }
         self.report.ledger_nodes += 1;
         self.report.admitted += inserted as u64;
+        if !revised.is_empty() {
+            for (new_fuid, prior) in &revised {
+                if let Some(old) = qb.store.get(prior)? {
+                    qb.store.supersede(&permit, &old, new_fuid, "correction")?;
+                    self.report.revised += 1;
+                }
+            }
+        }
         // corroboration is recorded in the immutable adjustment history
         if !corroborate.is_empty() {
             let fps: BTreeMap<String, String> = qb.store.read(|c| {
@@ -535,7 +590,10 @@ impl<'a> Admitter<'a> {
 
 pub fn ensure_tables(qb: &QueryBook) -> anyhow::Result<()> {
     qb.store.write(|c| {
-        c.execute_batch("CREATE TABLE IF NOT EXISTS fp_index(fp BLOB PRIMARY KEY, fuid TEXT NOT NULL) WITHOUT ROWID;")?;
+        c.execute_batch(
+            "CREATE TABLE IF NOT EXISTS fp_index(fp BLOB PRIMARY KEY, fuid TEXT NOT NULL) WITHOUT ROWID;
+             CREATE TABLE IF NOT EXISTS ext_index(k BLOB PRIMARY KEY, fp BLOB NOT NULL, fuid TEXT NOT NULL) WITHOUT ROWID;",
+        )?;
         Ok(())
     })
 }
@@ -583,45 +641,66 @@ pub fn import(
             ad.report.read as f64 / secs
         ))
     };
-    if let Some(path) = file {
-        let rdr = BufReader::with_capacity(1 << 20, std::fs::File::open(path)?);
-        let is_array = path.extension().and_then(|e| e.to_str()) == Some("json");
-        if is_array {
-            let v: J = serde_json::from_reader(rdr)?;
-            let arr = if m.source.records_path.is_empty() {
-                v.as_array().cloned()
-            } else {
-                v.pointer(&m.source.records_path).and_then(|x| x.as_array()).cloned()
-            };
-            let arr = arr.ok_or_else(|| anyhow::anyhow!("no record array found (set source.records_path)"))?;
-            for chunk in arr.chunks(10_000) {
-                ad.push_page(&conv, chunk)?;
-                tick(&ad);
-                if limit > 0 && ad.report.read >= limit {
-                    break;
-                }
-            }
+    if let Some(root) = file {
+        // a directory imports every .ndjson/.json file in it, in name order
+        let files: Vec<std::path::PathBuf> = if root.is_dir() {
+            let mut v: Vec<_> = std::fs::read_dir(root)?
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("ndjson" | "json" | "jsonl")))
+                .collect();
+            v.sort();
+            v
         } else {
-            let mut page = Vec::with_capacity(10_000);
-            for line in rdr.lines() {
-                let line = line?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<J>(&line) {
-                    Ok(v) => page.push(v),
-                    Err(e) => ad.refuse(format!("malformed: {e}")),
-                }
-                if page.len() >= 10_000 {
-                    ad.push_page(&conv, &page)?;
-                    page.clear();
-                    tick(&ad);
-                }
-                if limit > 0 && ad.report.read + page.len() as u64 >= limit {
-                    break;
-                }
+            vec![root.to_path_buf()]
+        };
+        for path in &files {
+            let path = path.as_path();
+            if files.len() > 1 {
+                progress(&format!("{}", path.display()));
             }
-            ad.push_page(&conv, &page)?;
+            let rdr = BufReader::with_capacity(1 << 20, std::fs::File::open(path)?);
+            let is_array = path.extension().and_then(|e| e.to_str()) == Some("json");
+            if is_array {
+                let v: J = serde_json::from_reader(rdr)?;
+                let arr = if m.source.records_path.is_empty() {
+                    v.as_array().cloned()
+                } else {
+                    v.pointer(&m.source.records_path).and_then(|x| x.as_array()).cloned()
+                };
+                let arr = arr.ok_or_else(|| anyhow::anyhow!("no record array found (set source.records_path)"))?;
+                for chunk in arr.chunks(10_000) {
+                    ad.push_page(&conv, chunk)?;
+                    tick(&ad);
+                    if limit > 0 && ad.report.read >= limit {
+                        break;
+                    }
+                }
+            } else {
+                let mut page = Vec::with_capacity(10_000);
+                for line in rdr.lines() {
+                    let line = line?;
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    match serde_json::from_str::<J>(&line) {
+                        Ok(v) => page.push(v),
+                        Err(e) => ad.refuse(format!("malformed: {e}")),
+                    }
+                    if page.len() >= 10_000 {
+                        ad.push_page(&conv, &page)?;
+                        page.clear();
+                        tick(&ad);
+                    }
+                    if limit > 0 && ad.report.read + page.len() as u64 >= limit {
+                        break;
+                    }
+                }
+                ad.push_page(&conv, &page)?;
+            }
+            if limit > 0 && ad.report.read >= limit {
+                break;
+            }
         }
         ad.commit()?;
     } else {

@@ -6,6 +6,7 @@ pub mod app;
 pub mod config;
 pub mod d0;
 pub mod d1;
+pub mod d12;
 pub mod d14;
 pub mod d2;
 pub mod d3;

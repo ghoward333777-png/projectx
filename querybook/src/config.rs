@@ -213,7 +213,7 @@ impl Config {
         }
         for e in &self.engines {
             anyhow::ensure!(
-                matches!(e.kind.as_str(), "rules" | "claude" | "openai"),
+                matches!(e.kind.as_str(), "rules" | "language" | "claude" | "openai"),
                 "engine {} has unknown kind {}",
                 e.id,
                 e.kind

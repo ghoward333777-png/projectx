@@ -106,6 +106,12 @@ pub struct Narrative {
     /// Further positions that restate it (provenance branches).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<u64>,
+    /// EPUB CFI of the disclosing block (Stage 5 anchoring)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cfi: Option<String>,
+    /// sentence index within the passage
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentence: Option<u32>,
 }
 
 /// Diversity-weighted Bayesian evidence pair (QBF-C089, C023, C281, C285).
@@ -275,6 +281,9 @@ pub struct FactUnit {
     pub labels: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
+    /// Stage 6: quantized semantic vector (base64 of i8 components)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<String>,
 }
 
 impl FactUnit {
@@ -446,7 +455,7 @@ pub mod tests {
             applicability: None,
             temporal: Temporal { occurred: None, ingested: 1_700_000_000, attested: None },
             spatial: None,
-            narrative: Some(Narrative { work: "w1".into(), pos: 10, chapter: 1, also: vec![] }),
+            narrative: Some(Narrative { work: "w1".into(), pos: 10, chapter: 1, also: vec![], cfi: None, sentence: None }),
             evidence: Evidence::prior(0.6),
             source: SourceRef { class: "engine:rules".into(), id: "w1".into(), authority: 0.6 },
             modality: "text".into(),
@@ -465,6 +474,7 @@ pub mod tests {
             quote: Some("Darcy was a proud man.".into()),
             labels: BTreeMap::new(),
             external_id: None,
+            embedding: None,
         };
         f.evidence.support("engine:rules", 0.6);
         f.seal();

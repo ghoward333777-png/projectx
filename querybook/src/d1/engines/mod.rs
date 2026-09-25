@@ -23,6 +23,10 @@ pub struct Candidate {
     pub engine: String,
     pub prompt_hash: Option<String>,
     pub citation_verified: bool,
+    /// sentence index within the passage, when the engine knows it
+    pub sentence: Option<u32>,
+    /// evidential weight of this candidate (1.0; lower for inferred references)
+    pub weight: f64,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize)]
@@ -35,6 +39,9 @@ pub struct EngineReport {
     pub unverified_citations: usize,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    /// per-stage statistics (language engine)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stages: Option<serde_json::Value>,
 }
 
 pub trait Extractor: Send + Sync {
@@ -52,6 +59,7 @@ pub trait Extractor: Send + Sync {
 pub fn build(profile: &EngineProfile) -> anyhow::Result<Box<dyn Extractor>> {
     Ok(match profile.kind.as_str() {
         "rules" => Box::new(rules::RuleEngine { id: profile.id.clone(), reliability: profile.reliability }),
+        "language" => Box::new(crate::d1::language::LanguageEngine { id: profile.id.clone(), reliability: profile.reliability }),
         "claude" | "openai" => Box::new(llm::LlmEngine::new(profile.clone())?),
         k => anyhow::bail!("unknown engine kind {k}"),
     })

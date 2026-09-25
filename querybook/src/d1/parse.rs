@@ -13,7 +13,30 @@ pub struct Passage {
     /// "h" heading, "p" paragraph
     pub kind: &'static str,
     pub text: String,
+    /// Stage 5 anchoring: where the passage sits in the source file
+    pub anchor: Option<Anchor>,
 }
+
+/// Structural location of a block in an EPUB: spine item and element path.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Anchor {
+    /// 0-based position of the itemref in the spine
+    pub spine: u32,
+    pub idref: String,
+    pub href: String,
+    /// element path inside the content document, as CFI steps ("/4/2/10")
+    pub path: String,
+}
+
+impl Anchor {
+    /// EPUB Canonical Fragment Identifier of the block element.
+    pub fn cfi(&self) -> String {
+        format!("epubcfi(/6/{}[{}]!{})", (self.spine + 1) * 2, self.idref, self.path)
+    }
+}
+
+/// (is_heading, text, anchor)
+pub type Block = (bool, String, Option<Anchor>);
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Chapter {
@@ -52,7 +75,7 @@ pub fn parse_file(path: &Path, id_override: Option<&str>) -> anyhow::Result<Book
     let (meta, blocks) = match ext.as_str() {
         "epub" => parse_epub(&bytes)?,
         "docx" => parse_docx(&bytes)?,
-        "html" | "htm" | "xhtml" => (Meta::default(), html_blocks(&String::from_utf8_lossy(&bytes))),
+        "html" | "htm" | "xhtml" => (Meta::default(), plain(html_blocks(&String::from_utf8_lossy(&bytes)))),
         "md" | "markdown" => text_with_title(&String::from_utf8_lossy(&bytes), true),
         "txt" | "text" => text_with_title(&String::from_utf8_lossy(&bytes), false),
         "pdf" => anyhow::bail!(
@@ -91,13 +114,13 @@ fn assemble(
     author: String,
     language: String,
     source_hash: String,
-    blocks: Vec<(bool, String)>,
+    blocks: Vec<Block>,
 ) -> Book {
     let mut blocks = blocks;
-    if let Some(i) = blocks.iter().position(|(_, t)| t.contains("*** START OF")) {
+    if let Some(i) = blocks.iter().position(|(_, t, _)| t.contains("*** START OF")) {
         blocks.drain(..=i);
     }
-    if let Some(i) = blocks.iter().position(|(_, t)| t.contains("*** END OF")) {
+    if let Some(i) = blocks.iter().position(|(_, t, _)| t.contains("*** END OF")) {
         blocks.truncate(i);
     }
     let mut passages = Vec::new();
@@ -105,7 +128,7 @@ fn assemble(
     let mut pos = 0u64;
     // a new chapter starts at a heading only once the current one has body text
     let mut has_body = false;
-    for (heading, text) in blocks {
+    for (heading, text, anchor) in blocks {
         let text = text.trim().to_string();
         if text.is_empty() {
             continue;
@@ -133,7 +156,7 @@ fn assemble(
             has_body = true;
         }
         let chapter = chapters.last().map(|c| c.index).unwrap_or(0);
-        passages.push(Passage { pos, chapter, kind: if is_heading { "h" } else { "p" }, text });
+        passages.push(Passage { pos, chapter, kind: if is_heading { "h" } else { "p" }, text, anchor });
         pos += 1;
     }
     let n = chapters.len();
@@ -193,7 +216,11 @@ fn zip_text(zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, name: &str) -> an
     Ok(s)
 }
 
-fn parse_epub(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
+fn plain(v: Vec<(bool, String)>) -> Vec<Block> {
+    v.into_iter().map(|(h, t)| (h, t, None)).collect()
+}
+
+fn parse_epub(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<Block>)> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
     let container = zip_text(&mut zip, "META-INF/container.xml")?;
     let opf_path = tags(&container, "rootfile")
@@ -218,7 +245,7 @@ fn parse_epub(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
         }
     }
     let mut blocks = Vec::new();
-    for a in tags(&opf, "itemref") {
+    for (spine, a) in tags(&opf, "itemref").into_iter().enumerate() {
         let Some(idref) = attr(&a, "idref") else { continue };
         let Some((href, props)) = manifest.get(&idref) else { continue };
         if props.contains("nav") || attr(&a, "linear").as_deref() == Some("no") {
@@ -226,7 +253,10 @@ fn parse_epub(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
         }
         let path = resolve(&base, &percent_decode(href.split('#').next().unwrap_or(href)));
         if let Ok(doc) = zip_text(&mut zip, &path) {
-            blocks.extend(html_blocks(&doc));
+            for (h, t, el) in html_blocks_anchored(&doc) {
+                let anchor = Anchor { spine: spine as u32, idref: idref.clone(), href: href.clone(), path: el };
+                blocks.push((h, t, Some(anchor)));
+            }
         }
     }
     Ok((meta, blocks))
@@ -355,16 +385,33 @@ const BLOCK_TAGS: &[&str] = &[
 
 /// Tolerant XHTML/HTML block extractor: (is_heading, text) in document order.
 pub fn html_blocks(html: &str) -> Vec<(bool, String)> {
+    html_blocks_anchored(html).into_iter().map(|(h, t, _)| (h, t)).collect()
+}
+
+const VOID: &[&str] = &["br", "img", "hr", "meta", "link", "input", "col", "area", "base", "source", "wbr", "embed", "param", "track"];
+
+/// As `html_blocks`, plus each block's element path as EPUB CFI steps
+/// relative to the document root ("/4/2/10": body, second child, fifth child).
+/// Element children are counted even inside skipped sections (head, nav), so
+/// the steps match the document's real structure.
+pub fn html_blocks_anchored(html: &str) -> Vec<(bool, String, String)> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut heading_depth = 0usize;
-    let mut skip_until: Option<&'static str> = None;
+    let mut skip_until: Option<String> = None;
+    // open elements (name, 1-based element-child index) and child counters
+    let mut stack: Vec<(String, usize)> = Vec::new();
+    let mut counts: Vec<usize> = vec![0];
     let bytes = html.as_bytes();
     let mut i = 0;
-    let flush = |cur: &mut String, out: &mut Vec<(bool, String)>, heading: bool| {
+    let path_of = |stack: &Vec<(String, usize)>| -> String {
+        // steps below the root <html> element
+        stack.iter().skip(1).map(|(_, k)| format!("/{}", k * 2)).collect::<String>()
+    };
+    let flush = |cur: &mut String, out: &mut Vec<(bool, String, String)>, heading: bool, path: String| {
         let t = collapse(&decode_entities(cur));
         if !t.is_empty() {
-            out.push((heading, t));
+            out.push((heading, t, path));
         }
         cur.clear();
     };
@@ -377,48 +424,53 @@ pub fn html_blocks(html: &str) -> Vec<(bool, String)> {
             let Some(end) = html[i..].find('>') else { break };
             let inner = &html[i + 1..i + end];
             i += end + 1;
+            if inner.starts_with('?') || inner.starts_with('!') {
+                continue; // XML declaration, DOCTYPE, CDATA
+            }
             let closing = inner.starts_with('/');
-            let name = inner
-                .trim_start_matches('/')
-                .split(|c: char| c.is_whitespace() || c == '/')
-                .next()
-                .unwrap_or("")
-                .to_ascii_lowercase();
+            let self_closing = inner.ends_with('/');
+            let name = inner.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or("").to_ascii_lowercase();
             let name = name.rsplit(':').next().unwrap_or("").to_string();
-            if let Some(stop) = skip_until {
-                if closing && name == stop {
+            let void = VOID.contains(&name.as_str()) || self_closing;
+            // structural bookkeeping for the CFI path
+            let before_close_path = path_of(&stack);
+            if closing {
+                if let Some(pos) = stack.iter().rposition(|(n, _)| *n == name) {
+                    if skip_until.is_none() && BLOCK_TAGS.contains(&name.as_str()) {
+                        flush(&mut cur, &mut out, heading_depth > 0, before_close_path.clone());
+                    }
+                    stack.truncate(pos);
+                    counts.truncate(pos + 1);
+                }
+            } else {
+                let k = { let c = counts.last_mut().unwrap(); *c += 1; *c };
+                if !void {
+                    if skip_until.is_none() && BLOCK_TAGS.contains(&name.as_str()) {
+                        flush(&mut cur, &mut out, heading_depth > 0, path_of(&stack));
+                    }
+                    stack.push((name.clone(), k));
+                    counts.push(0);
+                }
+            }
+            if let Some(stop) = &skip_until {
+                if closing && name == *stop {
                     skip_until = None;
                 }
                 continue;
             }
             match name.as_str() {
-                "script" | "style" | "head" | "nav" if !closing && !inner.ends_with('/') => {
-                    skip_until = Some(match name.as_str() {
-                        "script" => "script",
-                        "style" => "style",
-                        "head" => "head",
-                        _ => "nav",
-                    });
+                "script" | "style" | "head" | "nav" if !closing && !void => {
+                    skip_until = Some(name.clone());
                     continue;
                 }
                 "br" => cur.push(' '),
                 n if BLOCK_TAGS.contains(&n) => {
                     let is_h = n.len() == 2 && n.starts_with('h') && n.as_bytes()[1].is_ascii_digit();
-                    flush(&mut cur, &mut out, heading_depth > 0);
                     if is_h {
                         if closing {
                             heading_depth = heading_depth.saturating_sub(1);
-                        } else {
+                        } else if !void {
                             heading_depth += 1;
-                        }
-                    }
-                }
-                "img" => {
-                    if let Some(alt) = attr(inner, "alt") {
-                        let alt = alt.trim();
-                        if alt.len() > 3 && !alt.eq_ignore_ascii_case("cover") {
-                            // alternative text survives as its own passage
-                            flush(&mut cur, &mut out, heading_depth > 0);
                         }
                     }
                 }
@@ -432,7 +484,8 @@ pub fn html_blocks(html: &str) -> Vec<(bool, String)> {
             i = next;
         }
     }
-    flush(&mut cur, &mut out, heading_depth > 0);
+    let p = path_of(&stack);
+    flush(&mut cur, &mut out, heading_depth > 0, p);
     out
 }
 
@@ -489,7 +542,7 @@ pub fn decode_entities(s: &str) -> String {
 
 // ---------------------------------------------------------------- DOCX ----
 
-fn parse_docx(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
+fn parse_docx(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<Block>)> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
     let doc = zip_text(&mut zip, "word/document.xml")?;
     let core = zip_text(&mut zip, "docProps/core.xml").unwrap_or_default();
@@ -523,7 +576,7 @@ fn parse_docx(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
         }
         let t = collapse(&decode_entities(&text));
         if !t.is_empty() {
-            blocks.push((heading, t));
+            blocks.push((heading, t, None));
         }
     }
     Ok((meta, blocks))
@@ -533,7 +586,7 @@ fn parse_docx(bytes: &[u8]) -> anyhow::Result<(Meta, Vec<(bool, String)>)> {
 
 /// Plain text / Markdown: a short opening line (or "# Title" / Gutenberg
 /// "Title:" header) is the title.
-fn text_with_title(text: &str, markdown: bool) -> (Meta, Vec<(bool, String)>) {
+fn text_with_title(text: &str, markdown: bool) -> (Meta, Vec<Block>) {
     let mut meta = Meta::default();
     for line in text.lines().take(40) {
         let l = line.trim();
@@ -551,7 +604,7 @@ fn text_with_title(text: &str, markdown: bool) -> (Meta, Vec<(bool, String)>) {
             }
         }
     }
-    (meta, text_blocks(text, markdown))
+    (meta, plain(text_blocks(text, markdown)))
 }
 
 fn text_blocks(text: &str, markdown: bool) -> Vec<(bool, String)> {
@@ -608,6 +661,18 @@ mod tests {
     }
 
     #[test]
+    fn cfi_paths() {
+        let doc = r#"<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>x</title></head>
+<body><section><h2>Chapter I</h2><p>First <i>para</i>.</p><img src="a.png"/><p>Second.</p></section></body></html>"#;
+        let b = html_blocks_anchored(doc);
+        let got: Vec<(&str, &str)> = b.iter().map(|(_, t, p)| (t.as_str(), p.as_str())).collect();
+        // body=/4, section=/2, h2=/2, p=/4, img=/6, p=/8
+        assert_eq!(got, vec![("Chapter I", "/4/2/2"), ("First para.", "/4/2/4"), ("Second.", "/4/2/8")]);
+        let a = Anchor { spine: 2, idref: "ch1".into(), href: "ch1.xhtml".into(), path: "/4/2/4".into() };
+        assert_eq!(a.cfi(), "epubcfi(/6/6[ch1]!/4/2/4)");
+    }
+
+    #[test]
     fn chapters_from_headings() {
         let blocks = vec![
             (false, "*** START OF THE PROJECT GUTENBERG EBOOK X ***".to_string()),
@@ -620,7 +685,7 @@ mod tests {
             (false, "*** END OF THE PROJECT GUTENBERG EBOOK X ***".into()),
             (false, "licence".into()),
         ];
-        let b = assemble("t".into(), "T".into(), String::new(), String::new(), "h".into(), blocks);
+        let b = assemble("t".into(), "T".into(), String::new(), String::new(), "h".into(), plain(blocks));
         assert_eq!(b.chapters.len(), 2);
         assert_eq!(b.chapters[0].title, "CHAPTER I. The Arrival");
         assert_eq!(b.passages.len(), 6);

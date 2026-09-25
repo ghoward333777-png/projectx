@@ -91,6 +91,37 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Show the language pipeline (stages 1-5) on a book: tokens, POS, clauses, trees, dependencies, entities, facts.
+    Analyze {
+        file: PathBuf,
+        /// Analyse this sentence instead of the book's passages (the book still supplies its named entities)
+        #[arg(long)]
+        sentence: Option<String>,
+        /// First passage position to analyse
+        #[arg(long, default_value_t = 0)]
+        from: u64,
+        /// Number of sentences to show
+        #[arg(long, default_value_t = 3)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Harvest facts from Wikidata with a SPARQL query pack (resumable), optionally importing them.
+    HarvestWikidata {
+        #[arg(long, default_value = "config/harvest/wikidata-basics.toml")]
+        pack: PathBuf,
+        #[arg(long, default_value = "data/harvest/wikidata")]
+        out: PathBuf,
+        /// Only these domains or query ids (comma-separated), e.g. geography,science
+        #[arg(long, default_value = "")]
+        only: String,
+        /// Re-run queries that already finished
+        #[arg(long)]
+        force: bool,
+        /// Import the harvested files afterwards with this mapping
+        #[arg(long)]
+        import: Option<PathBuf>,
+    },
     /// Generate synthetic UFCS-shaped records to measure ingest and query at scale.
     BenchSynthetic {
         #[arg(long, default_value_t = 1_000_000)]
@@ -304,12 +335,23 @@ fn main() -> anyhow::Result<()> {
             let qb = QueryBook::open(cfg)?;
             let user = cli_user();
             let mut trace = Trace::default();
-            let scope = d8::scope_for(
-                &qb,
-                &user,
-                &ScopeRequest { work: &work, include_world: world, at_pos: Some(at.unwrap_or(u64::MAX)) },
-                &mut trace,
-            )?;
+            // "world" asks the imported knowledge (UFCS feeds, harvests) with no book
+            let scope = if work == "world" {
+                let feeds: Vec<String> = qb.store.read(|c| {
+                    let mut st = c.prepare("SELECT feed FROM import_cursors ORDER BY feed")?;
+                    let r = st.query_map([], |r| r.get::<_, String>(0))?;
+                    Ok(r.collect::<Result<_, _>>()?)
+                })?;
+                anyhow::ensure!(!feeds.is_empty(), "no imported knowledge yet (qb harvest-wikidata / qb import-ufcs)");
+                d8::world_scope(&feeds)
+            } else {
+                d8::scope_for(
+                    &qb,
+                    &user,
+                    &ScopeRequest { work: &work, include_world: world, at_pos: Some(at.unwrap_or(u64::MAX)) },
+                    &mut trace,
+                )?
+            };
             let req = Request { mode, query, chapter, focus, device: "cli".into() };
             let a = answer(&qb, &scope, &req, trace)?;
             if json {
@@ -322,6 +364,60 @@ fn main() -> anyhow::Result<()> {
             let qb = QueryBook::open(cfg)?;
             let r = querybook::d1::ufcs::import(&qb, &mapping, file.as_deref(), limit, dry_run, &|m: &str| eprintln!("  {m}"))?;
             println!("{}", serde_json::to_string_pretty(&r)?);
+        }
+        Cmd::Analyze { file, sentence, from, limit, json } => {
+            use querybook::d1::language::{analyze_sentence, construct::Discourse};
+            let book = querybook::d1::parse::parse_file(&file, None)?;
+            let ents = querybook::d3::entities::detect(&book);
+            let empty = std::collections::BTreeMap::new();
+            let mut todo: Vec<(u64, u32, String, Option<String>)> = Vec::new();
+            match sentence {
+                Some(s) => todo.push((0, 0, s, None)),
+                None => {
+                    for p in book.passages.iter().filter(|p| p.pos >= from && p.kind == "p") {
+                        for s in querybook::d1::segment::sentences(&p.text) {
+                            todo.push((p.pos, p.chapter, s, p.anchor.as_ref().map(|a| a.cfi())));
+                        }
+                        if todo.len() >= limit {
+                            break;
+                        }
+                    }
+                    todo.truncate(limit);
+                }
+            }
+            let mut dis = Discourse::default();
+            for (pos, ch, s, cfi) in todo {
+                let (_, a) = analyze_sentence(&s, &ents, &book.id, "language", pos, ch, 0, &empty, &mut dis, None);
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&a)?);
+                    continue;
+                }
+                println!("\n━━ p{pos}{}  {}", cfi.map(|c| format!("  {c}")).unwrap_or_default(), a.text);
+                println!("  tokens  {}", a.tokens.iter().map(|(t, p, _)| format!("{t}/{p}")).collect::<Vec<_>>().join(" "));
+                for (k, t) in &a.clauses {
+                    println!("  clause  [{k}] {t}");
+                }
+                for t in &a.trees {
+                    println!("  tree    {t}");
+                }
+                println!("  deps    {}", a.dependencies.iter().map(|(d, r, h)| format!("{r}({h}, {d})")).collect::<Vec<_>>().join(" "));
+                println!("  ents    {}", a.mentions.iter().map(|(t, k, c)| format!("{t}:{k}={c}")).collect::<Vec<_>>().join("  "));
+                println!("  preds   {}", a.predicate.iter().map(|(l, c)| format!("{l}:{c}")).collect::<Vec<_>>().join("  "));
+                for (ty, s, p, o) in &a.facts {
+                    println!("  FU      <{ty}> {s} · {p} · {o}");
+                }
+            }
+        }
+        Cmd::HarvestWikidata { pack, out, only, force, import } => {
+            let only: Vec<String> = only.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            let r = querybook::d12::wikidata::harvest(&pack, &out, &only, force, &|m: &str| eprintln!("{m}"))?;
+            let failed = r.queries.iter().filter(|q| q.status.starts_with("failed")).count();
+            eprintln!("harvested {} facts from {} queries into {} ({failed} failed)", r.envelopes, r.queries.len(), r.out);
+            if let Some(mapping) = import {
+                let qb = QueryBook::open(cfg)?;
+                let ir = querybook::d1::ufcs::import(&qb, &mapping, Some(&out), 0, false, &|m: &str| eprintln!("  {m}"))?;
+                println!("{}", serde_json::to_string_pretty(&ir)?);
+            }
         }
         Cmd::BenchSynthetic { facts, batch } => {
             let qb = QueryBook::open(cfg)?;
