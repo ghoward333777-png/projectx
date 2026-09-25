@@ -271,6 +271,49 @@ impl Store {
         self.read(|c| ledger::verify(c, &self.keys))
     }
 
+    /// Fold the immutable adjustment history (corroborations, QBF-C285) into
+    /// records' evidence. The stored records never change; this is the view
+    /// retrieval, ranking and answers use.
+    pub fn fold_adjustments(&self, facts: &mut [FactUnit]) -> anyhow::Result<()> {
+        if facts.is_empty() {
+            return Ok(());
+        }
+        self.read(|c| {
+            let mut st = c.prepare_cached("SELECT d_alpha, d_beta, class FROM adjustments WHERE fuid=?1 ORDER BY seq")?;
+            for f in facts.iter_mut() {
+                let rows = st
+                    .query_map([&f.fuid], |r| Ok((r.get::<_, f64>(0)?, r.get::<_, f64>(1)?, r.get::<_, String>(2)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (da, db, class) in rows {
+                    if da > 0.0 {
+                        f.evidence.support(&class, da);
+                    }
+                    f.evidence.beta += db.max(0.0);
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Re-derive the index view of records whose adjustment history grew, so
+    /// corroboration raises trust in retrieval (superseded records keep theirs).
+    pub fn reindex_adjusted(&self, fuids: &[String]) -> anyhow::Result<usize> {
+        let mut n = 0;
+        for chunk in fuids.chunks(5000) {
+            let mut facts = self.get_many(chunk)?;
+            facts.retain(|f| !self.is_superseded(&f.fuid).unwrap_or(true));
+            self.fold_adjustments(&mut facts)?;
+            let docs: Vec<_> = facts.iter().map(|f| self.index.document(f, &searchable_text(f))).collect();
+            for f in &facts {
+                self.index.delete_fuid(&f.fuid)?;
+            }
+            n += docs.len();
+            self.index.add_many(docs)?;
+        }
+        self.index.commit()?;
+        Ok(n)
+    }
+
     pub fn fact_count(&self) -> anyhow::Result<u64> {
         self.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM facts", [], |r| r.get::<_, i64>(0))? as u64))
     }

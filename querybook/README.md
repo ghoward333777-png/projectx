@@ -215,6 +215,30 @@ predictions are the least trusted level and are compared by normalized name.
 3. Run it: `UFCS_TOKEN=… qb import-ufcs --mapping feed.toml`. It is resumable:
    the cursor is saved after each committed page; re-running continues.
 
+**The QueryBook UFCS format** (the Prototype Test Kit's record layout) has a
+ready mapping: [config/ufcs-mapping.querybook.toml](config/ufcs-mapping.querybook.toml).
+
+```bash
+qb import-ufcs --mapping config/ufcs-mapping.querybook.toml --file ufcs_sample.jsonl --dry-run
+qb import-ufcs --mapping config/ufcs-mapping.querybook.toml --file ufcs_sample.jsonl
+qb ask world "What is the capital of France?"
+```
+
+On the kit's 242 records: 162 assertions admitted, 80 restatements merged as
+corroboration, 0 refused; re-importing changes nothing. Each record's
+`semantic_fingerprint` is recomputed on arrival and a record altered in transit
+is refused. Polarity `-` is a refutation ("It is not the case that Pluto is a
+planet"). Each source class in `sources[]` is its own class, so agreement across
+classes raises diversity and trust. Members of an `UNRESOLVED` contradiction
+cluster are marked contested, and all 8 seeded clusters answer with the
+higher-trust member. Only `PUBLIC` records are readable by readers. Asked one
+question per assertion, 140 of 144 first answers are right. The kit is kept as
+a regression test (`tests/data/ufcs_sample.jsonl`).
+
+For the 149M feed, fill in `[source]` in that mapping with the bulk endpoint
+(URL, auth, cursor or offset paging). The contract documents `POST /v1/query`
+but no paged export yet.
+
 Envelopes are re-validated on arrival (schema, governed predicate — unseen
 predicates are registered and ledgered — safety, optional identity check). A
 canonically identical assertion is merged as corroboration into the immutable
@@ -263,7 +287,7 @@ Change the demo passwords with `qb user reader --password …`.
 ## Tests
 
 ```bash
-cargo test --release     # 31 unit + 10 end-to-end invariant tests
+cargo test --release     # 33 unit + 11 end-to-end invariant tests
 ```
 
 The invariants cover determinism under the context lock, the structural

@@ -120,11 +120,25 @@ fn terminate(s: &str) -> String {
     if t.ends_with(['.', '!', '?', '”', '"', '’', ')']) { t.to_string() } else { format!("{t}.") }
 }
 
+/// Plain digits for ordinary magnitudes; scientific form for very small or
+/// very large values (6.674 × 10^-11 rather than 0.00000000006674).
+pub fn number_text(v: f64) -> String {
+    let a = v.abs();
+    if a != 0.0 && !(1e-4..1e16).contains(&a) {
+        let e = a.log10().floor() as i32;
+        let m = format!("{:.6}", v / 10f64.powi(e));
+        let m = m.trim_end_matches('0').trim_end_matches('.');
+        format!("{m} × 10^{e}")
+    } else {
+        format!("{v}")
+    }
+}
+
 fn value_text(f: &FactUnit, v: &Value) -> String {
     match v {
         Value::Concept(c) => f.label(c),
         Value::Text(t) => t.trim().trim_end_matches([',', ';', ':']).to_string(),
-        Value::Number { value, unit } => format!("{value} {unit}").trim().to_string(),
+        Value::Number { value, unit } => format!("{} {unit}", number_text(*value)).trim().to_string(),
         Value::Date(d) => d.clone(),
         Value::Bool(b) => {
             if *b {
@@ -203,7 +217,7 @@ fn proposition(f: &FactUnit, catalog: &Catalog, refs: &mut Refs) -> String {
 
 /// Vocabulary derivable from the records (labels, values, spans) plus the
 /// catalogue's closed-class template words.
-fn vocabulary(facts: &[&FactUnit]) -> BTreeSet<String> {
+fn vocabulary(facts: &[&FactUnit], catalog: &Catalog) -> BTreeSet<String> {
     let mut v: BTreeSet<String> = CLOSED_CLASS.iter().map(|s| s.to_string()).collect();
     v.insert("it".into());
     v.insert("not".into());
@@ -220,7 +234,7 @@ fn vocabulary(facts: &[&FactUnit]) -> BTreeSet<String> {
                 v.extend(words(t));
             }
             if let Value::Number { value, unit } = x {
-                v.extend(words(&format!("{value} {unit}")));
+                v.extend(words(&format!("{} {unit}", number_text(*value))));
             }
         };
         add(&f.atom.object);
@@ -229,6 +243,12 @@ fn vocabulary(facts: &[&FactUnit]) -> BTreeSet<String> {
         }
         if let Some(q) = &f.quote {
             v.extend(words(q));
+        }
+        // the governed template of the record's own predicate is catalogue
+        // wording, not invention (placeholders excluded)
+        if let Some(p) = catalog.get(&f.atom.predicate) {
+            v.extend(words(&p.template.replace("{s}", " ").replace("{o}", " ").replace("{p}", " ")));
+            v.extend(words(&p.label));
         }
     }
     v
@@ -252,7 +272,7 @@ pub fn realize(facts: &[&FactUnit], catalog: &Catalog, opts: Opts) -> Realized {
             idx.sort_by_key(|&i| subjects.iter().position(|s| *s == facts[i].atom.subject).unwrap_or(0));
         }
     }
-    let vocab = vocabulary(facts);
+    let vocab = vocabulary(facts, catalog);
     let mut refs = Refs { last_full: Default::default(), mentions: vec![] };
     let mut out: Vec<Sentence> = Vec::new();
     let mut rejected = 0;

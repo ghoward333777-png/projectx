@@ -499,3 +499,41 @@ confidence = 0.97
     drop(qb);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The QueryBook UFCS Prototype Test Kit (242 records): every record
+/// re-validates, restatements corroborate instead of duplicating, and each
+/// seeded contradiction resolves to the higher-trust member.
+#[test]
+fn ufcs_test_kit_imports_and_resolves_contradictions() {
+    let dir = std::env::temp_dir().join(format!("qb-test-kit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut cfg = Config::default();
+    cfg.server.data_dir = dir.join("data");
+    let qb = QueryBook::open(cfg).unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mapping = root.join("config/ufcs-mapping.querybook.toml");
+    let sample = root.join("tests/data/ufcs_sample.jsonl");
+    let r = querybook::d1::ufcs::import(&qb, &mapping, Some(&sample), 0, false, &|_: &str| {}).unwrap();
+    assert_eq!((r.read, r.admitted, r.corroborations, r.refused), (242, 162, 80, 0), "{r:?}");
+    let again = querybook::d1::ufcs::import(&qb, &mapping, Some(&sample), 0, false, &|_: &str| {}).unwrap();
+    assert_eq!((again.admitted, again.unchanged), (0, 242));
+    let feeds = d8::world_feeds(&qb).unwrap();
+    let ask = |q: &str| -> String {
+        let a = answer(
+            &qb,
+            &d8::world_scope(&feeds),
+            &Request { mode: "ask".into(), query: q.into(), ..Default::default() },
+            Trace::default(),
+        )
+        .unwrap();
+        a.lines.first().map(|l| l.text.clone()).unwrap_or_default()
+    };
+    // seeded contradiction clusters: the higher-trust member answers
+    assert_eq!(ask("What is the capital of France?"), "The capital of France is Paris.");
+    assert!(ask("What is the atomic number of carbon?").contains("atomic number 6"));
+    assert!(ask("How many employees does Globex have?").contains("2400"));
+    // a refutation is rendered as one
+    assert!(ask("Is Pluto a planet?").contains("not"));
+    drop(qb);
+    let _ = std::fs::remove_dir_all(&dir);
+}

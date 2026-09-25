@@ -37,9 +37,25 @@ pub struct Mapping {
     /// ACL placed on imported records ("public" = any reader who enables the corpus).
     #[serde(default = "default_acl")]
     pub acl: String,
-    /// "none" | "fingerprint" (the envelope's id must equal our fingerprint)
+    /// "none" | "fingerprint" (the envelope's id must equal our fingerprint) |
+    /// "ufcs-sha256" (the envelope's `fields.fingerprint` must equal
+    /// SHA-256(norm(s)|norm(p)|norm(o)|polarity) recomputed on arrival)
     #[serde(default = "default_verify")]
     pub verify_id: String,
+    /// Feed status value -> certification status (e.g. UNRESOLVED -> contested).
+    #[serde(default)]
+    pub status_map: BTreeMap<String, String>,
+    /// Safety classifications readable under `acl`; any other classification
+    /// is admitted under `restricted_acl` (never readable by readers).
+    #[serde(default = "default_public_classes")]
+    pub public_classifications: Vec<String>,
+    #[serde(default = "default_restricted_acl")]
+    pub restricted_acl: String,
+    /// Pseudo-observations per unit of the feed's alpha/beta (a feed whose
+    /// evidence is reputation-weighted source counts, one source ~ 1.0,
+    /// declares how many observations one such unit is worth).
+    #[serde(default = "default_evidence_scale")]
+    pub evidence_scale: f64,
     #[serde(default = "default_batch")]
     pub batch: usize,
 }
@@ -48,6 +64,15 @@ fn default_authority() -> f64 {
 }
 fn default_acl() -> String {
     "public".into()
+}
+fn default_public_classes() -> Vec<String> {
+    vec!["PUBLIC".into(), "public".into()]
+}
+fn default_restricted_acl() -> String {
+    "restricted".into()
+}
+fn default_evidence_scale() -> f64 {
+    1.0
 }
 fn default_verify() -> String {
     "none".into()
@@ -142,6 +167,17 @@ pub struct Fields {
     pub link_type: String,
     #[serde(default)]
     pub text: String,
+    /// the feed's own content fingerprint (checked when verify_id = "ufcs-sha256")
+    #[serde(default)]
+    pub fingerprint: String,
+    /// array of sources; each distinct `source_class` inside it is its own source class
+    #[serde(default)]
+    pub sources: String,
+    #[serde(default)]
+    pub source_class: String,
+    /// safety classification (see `public_classifications`)
+    #[serde(default)]
+    pub classification: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -150,11 +186,17 @@ pub struct PredicateCfg {
     pub auto_register: bool,
     #[serde(default)]
     pub map: BTreeMap<String, String>,
+    /// feed predicates with at most one true value per subject (conflicts are contradictions)
+    #[serde(default)]
+    pub functional: Vec<String>,
+    /// renderings for auto-registered predicates, e.g. has_capital = "The capital of {s} is {o}."
+    #[serde(default)]
+    pub templates: BTreeMap<String, String>,
 }
 
 impl Default for PredicateCfg {
     fn default() -> Self {
-        PredicateCfg { auto_register: true, map: BTreeMap::new() }
+        PredicateCfg { auto_register: true, map: BTreeMap::new(), functional: vec![], templates: BTreeMap::new() }
     }
 }
 fn yes() -> bool {
@@ -197,6 +239,42 @@ fn s(v: &J, p: &str) -> Option<String> {
 
 fn f(v: &J, p: &str) -> Option<f64> {
     ptr(v, p).and_then(|x| x.as_f64().or_else(|| x.as_str().and_then(|s| s.parse().ok())))
+}
+
+/// Python's `" ".join(str(x).strip().lower().split())`.
+fn norm_py(x: &str) -> String {
+    x.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Python's `str()` of a JSON value as the feed's generator produced it
+/// (1 -> "1", 1.0 -> "1.0", 6.022e23 -> "6.022e+23", true -> "True").
+fn py_str(v: &J) -> String {
+    match v {
+        J::String(t) => t.clone(),
+        J::Bool(b) => {
+            if *b {
+                "True".into()
+            } else {
+                "False".into()
+            }
+        }
+        J::Number(n) if n.is_f64() => {
+            let f = n.as_f64().unwrap_or(0.0);
+            let r = format!("{f:?}");
+            let a = f.abs();
+            if a != 0.0 && (a < 1e-4 || a >= 1e16) {
+                // Python switches to exponent form outside [1e-4, 1e16)
+                let e = format!("{f:e}");
+                let (m, x) = e.split_once('e').unwrap_or((&e, "0"));
+                let xv: i32 = x.parse().unwrap_or(0);
+                format!("{m}e{}{:02}", if xv < 0 { "-" } else { "+" }, xv.abs())
+            } else {
+                r
+            }
+        }
+        J::Number(n) => n.to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn concept_id(feed: &str, raw: &str) -> String {
@@ -250,22 +328,55 @@ impl<'a> Converter<'a> {
             }
         }
         let polarity = ptr(rec, &fl.polarity)
-            .map(|p| p.as_bool().unwrap_or(p.as_str() != Some("negative") && p.as_str() != Some("false")))
+            .map(|p| {
+                p.as_bool().unwrap_or_else(|| {
+                    !matches!(
+                        p.as_str().map(|x| x.trim().to_lowercase()).as_deref(),
+                        Some("-" | "negative" | "false" | "refutes" | "no")
+                    )
+                })
+            })
             .unwrap_or(true);
+        if self.m.verify_id == "ufcs-sha256" {
+            let claimed = s(rec, &fl.fingerprint).ok_or("missing content fingerprint")?;
+            let pol = s(rec, &fl.polarity).unwrap_or_else(|| "+".into());
+            let canonical = format!("{}|{}|{}|{}", norm_py(&subj_raw), norm_py(&pred_raw), norm_py(&py_str(obj)), pol);
+            if crate::util::sha256_hex(canonical.as_bytes()) != claimed.to_lowercase() {
+                return Err(format!("content fingerprint does not re-validate for \"{canonical}\" (altered in transit?)"));
+            }
+        }
         let class = format!("ufcs:{feed}");
         let (alpha, beta) = match (f(rec, &fl.alpha), f(rec, &fl.beta)) {
-            (Some(a), Some(b)) if a >= 0.0 && b >= 0.0 && a + b > 0.0 => (a, b),
+            (Some(a), Some(b)) if a >= 0.0 && b >= 0.0 && a + b > 0.0 => (a * self.m.evidence_scale, b * self.m.evidence_scale),
             _ => {
                 let c = f(rec, &fl.confidence).unwrap_or(self.m.authority).clamp(0.0, 1.0);
                 let w = f(rec, &fl.weight).unwrap_or(2.0).max(0.1);
                 (c * w, (1.0 - c) * w)
             }
         };
+        // each distinct source class named by the envelope is its own class, so
+        // corroboration across classes raises diversity and one class repeating does not
         let mut by_class = BTreeMap::new();
-        by_class.insert(class.clone(), alpha);
+        let classes: Vec<String> = match ptr(rec, &fl.sources) {
+            Some(J::Array(a)) if !fl.source_class.is_empty() => {
+                let mut v: Vec<String> =
+                    a.iter().filter_map(|x| s(x, &fl.source_class)).map(|c| format!("{class}/{}", slug(&c))).collect();
+                v.sort();
+                v.dedup();
+                v
+            }
+            _ => vec![],
+        };
+        if classes.is_empty() {
+            by_class.insert(class.clone(), alpha);
+        } else {
+            for c in &classes {
+                by_class.insert(c.clone(), alpha / classes.len() as f64);
+            }
+        }
         let certification = s(rec, &fl.status).map(|st| Certification {
             authority: s(rec, &fl.authority).unwrap_or_else(|| feed.clone()),
-            status: st.to_lowercase(),
+            status: self.m.status_map.get(&st).cloned().unwrap_or(st).to_lowercase(),
             certified_at: s(rec, &fl.certified_at),
             signature: s(rec, &fl.signature),
         });
@@ -309,7 +420,10 @@ impl<'a> Converter<'a> {
             source: SourceRef { class, id: s(rec, &fl.source).unwrap_or_else(|| feed.clone()), authority: self.m.authority },
             modality: "structured".into(),
             safety: safety::classify(&format!("{} {}", text.as_deref().unwrap_or(""), obj_text)),
-            acl: vec![self.m.acl.clone()],
+            acl: vec![match s(rec, &fl.classification) {
+                Some(c) if !self.m.public_classifications.iter().any(|p| p == &c) => self.m.restricted_acl.clone(),
+                _ => self.m.acl.clone(),
+            }],
             edges,
             supersedes: None,
             derivation: Derivation { kind: "imported".into(), engine: None, prompt_hash: None, citation_verified: None },
@@ -395,11 +509,23 @@ impl<'a> Admitter<'a> {
                     label: label.clone(),
                     type_ref: "ufcs.fact".into(),
                     object: "any".into(),
-                    functional: false,
+                    functional: self
+                        .m
+                        .predicates
+                        .functional
+                        .iter()
+                        .any(|x| format!("ufcs:{}", slug(x).replace('-', "_")) == p || self.m.predicates.map.get(x) == Some(&p)),
                     symmetric: false,
                     edge: "semantic".into(),
                     args,
-                    template: format!("{{s}} {label} {{o}}."),
+                    template: self
+                        .m
+                        .predicates
+                        .templates
+                        .iter()
+                        .find(|(k, _)| format!("ufcs:{}", slug(k).replace('-', "_")) == p)
+                        .map(|(_, t)| t.clone())
+                        .unwrap_or_else(|| format!("{{s}} {label} {{o}}.")),
                     question: String::new(),
                     describe: format!("Imported from UFCS feed {}", self.m.feed),
                     inverse: None,
@@ -426,7 +552,33 @@ impl<'a> Admitter<'a> {
             eprintln!("  page: convert {} ms for {}", t_conv.elapsed().as_millis(), records.len());
         }
         self.ensure_predicates(&ok)?;
-        let cat = self.qb.catalog.read().unwrap().clone();
+        let mut cat = self.qb.catalog.read().unwrap().clone();
+        if self.dry_run && self.m.predicates.auto_register {
+            // a dry run registers nothing, but judges records as a real run would:
+            // unseen predicates count as registered, with the slots they use
+            cat.types.insert("ufcs.fact".into());
+            for f in &ok {
+                let p = cat.predicates.entry(f.atom.predicate.clone()).or_insert_with(|| Predicate {
+                    id: f.atom.predicate.clone(),
+                    label: f.atom.predicate.clone(),
+                    type_ref: "ufcs.fact".into(),
+                    object: "any".into(),
+                    functional: false,
+                    symmetric: false,
+                    edge: "semantic".into(),
+                    args: BTreeMap::new(),
+                    template: String::new(),
+                    question: String::new(),
+                    describe: String::new(),
+                    inverse: None,
+                });
+                if p.type_ref == "ufcs.fact" {
+                    for k in f.atom.args.keys() {
+                        p.args.entry(k.clone()).or_insert_with(|| "any".into());
+                    }
+                }
+            }
+        }
         for f in ok {
             if f.safety == crate::d0::SafetyClass::Prohibited {
                 self.refuse("safety: prohibited".into());
@@ -495,10 +647,12 @@ impl<'a> Admitter<'a> {
         batch.sort_by(|a, b| a.fingerprint.cmp(&b.fingerprint).then_with(|| a.fuid.cmp(&b.fuid)));
         let mut uniq: Vec<FactUnit> = Vec::with_capacity(batch.len());
         let mut corroborate: Vec<(String, f64, String)> = Vec::new(); // (fingerprint, weight, class)
+        let mut corroborating = 0u64; // records merged into an existing assertion
         for f in batch {
             if let Some(last) = uniq.last() {
                 if last.fingerprint == f.fingerprint {
-                    corroborate.push((f.fingerprint.clone(), f.evidence.alpha, f.source.class.clone()));
+                    corroborate.extend(f.evidence.by_class.iter().map(|(c, w)| (f.fingerprint.clone(), *w, c.clone())));
+                    corroborating += 1;
                     continue;
                 }
             }
@@ -506,7 +660,7 @@ impl<'a> Admitter<'a> {
         }
         if self.dry_run {
             self.report.admitted += uniq.len() as u64;
-            self.report.corroborations += corroborate.len() as u64;
+            self.report.corroborations += corroborating;
             return Ok(());
         }
         let qb = self.qb;
@@ -532,7 +686,8 @@ impl<'a> Admitter<'a> {
         let mut fresh = Vec::with_capacity(uniq.len());
         for f in uniq {
             if existing.contains_key(&f.fingerprint) {
-                corroborate.push((f.fingerprint.clone(), f.evidence.alpha, f.source.class.clone()));
+                corroborate.extend(f.evidence.by_class.iter().map(|(c, w)| (f.fingerprint.clone(), *w, c.clone())));
+                corroborating += 1;
             } else {
                 fresh.push(f);
             }
@@ -593,7 +748,11 @@ impl<'a> Admitter<'a> {
                 tx.commit()?;
                 Ok(())
             })?;
-            self.report.corroborations += corroborate.len() as u64;
+            let mut adjusted: Vec<String> = fps.values().cloned().collect();
+            adjusted.sort();
+            adjusted.dedup();
+            self.report.corroborations += corroborating;
+            qb.store.reindex_adjusted(&adjusted)?;
         }
         self.since_flush += inserted;
         if self.since_flush >= 1_000_000 {
@@ -880,9 +1039,13 @@ pub fn bench_synthetic(qb: &QueryBook, n: u64, batch: usize) -> anyhow::Result<(
             text: "/t".into(),
             ..Default::default()
         },
-        predicates: PredicateCfg { auto_register: true, map: BTreeMap::new() },
+        predicates: PredicateCfg::default(),
         acl: "public".into(),
         verify_id: "none".into(),
+        status_map: BTreeMap::new(),
+        public_classifications: default_public_classes(),
+        restricted_acl: default_restricted_acl(),
+        evidence_scale: 1.0,
         batch,
     };
     let conv = Converter { m: &m, ingested: now_secs() };
@@ -989,4 +1152,60 @@ pub fn export_qbf(qb: &QueryBook, work: &str, out: &Path) -> anyhow::Result<usiz
         }
     }
     Ok(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn kit_mapping() -> Mapping {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/ufcs-mapping.querybook.toml");
+        load_mapping(&p).unwrap()
+    }
+
+    fn record(obj: J, pol: &str) -> J {
+        let fp = crate::util::sha256_hex(format!("gravitational constant|value|{}|{pol}", norm_py(&py_str(&obj))).as_bytes());
+        json!({"fuid": "x", "group": "science.constant", "nucleus": {"subject": "Gravitational Constant", "predicate": "value", "object": obj},
+               "polarity": pol, "semantic_fingerprint": fp, "confidence": {"alpha": 0.62, "beta": 0.1},
+               "sources": [{"id": "A", "class": "web"}, {"id": "B", "class": "official"}], "safety": {"classification": "PUBLIC"}})
+    }
+
+    #[test]
+    fn python_rendering_of_values() {
+        assert_eq!(py_str(&serde_json::from_str::<J>("6.674e-11").unwrap()), "6.674e-11");
+        assert_eq!(py_str(&serde_json::from_str::<J>("6.022e+23").unwrap()), "6.022e+23");
+        assert_eq!(py_str(&serde_json::from_str::<J>("6.626e-34").unwrap()), "6.626e-34");
+        assert_eq!(py_str(&serde_json::from_str::<J>("1.0").unwrap()), "1.0");
+        assert_eq!(py_str(&serde_json::from_str::<J>("0.39").unwrap()), "0.39");
+        assert_eq!(py_str(&json!(299792458)), "299792458");
+        assert_eq!(norm_py("  Mount   Everest "), "mount everest");
+    }
+
+    #[test]
+    fn kit_records_revalidate_and_carry_their_semantics() {
+        let m = kit_mapping();
+        let c = Converter { m: &m, ingested: 1 };
+        let f = c.convert(&serde_json::from_str::<J>(&record(json!(6.674e-11), "+").to_string()).unwrap()).unwrap();
+        assert!(f.atom.polarity);
+        // two source classes, evidence scaled into pseudo-observations
+        assert_eq!(f.evidence.by_class.len(), 2);
+        assert!((f.evidence.alpha - 0.62 * 3.0).abs() < 1e-9);
+        assert_eq!(f.acl, vec!["public".to_string()]);
+        // refutation polarity
+        let neg = c.convert(&record(json!("planet"), "-")).unwrap();
+        assert!(!neg.atom.polarity);
+        // a record altered in transit is refused
+        let mut t = record(json!(6.674e-11), "+");
+        t["nucleus"]["object"] = json!(6.7e-11);
+        assert!(c.convert(&t).unwrap_err().contains("does not re-validate"));
+        // a non-public classification is never readable by readers
+        let mut r = record(json!(1), "+");
+        r["safety"]["classification"] = json!("SEALED");
+        assert_eq!(c.convert(&r).unwrap().acl, vec!["restricted".to_string()]);
+        // an unresolved contradiction cluster member is contested
+        let mut k = record(json!(2), "+");
+        k["contradiction"] = json!({"status": "UNRESOLVED"});
+        assert_eq!(c.convert(&k).unwrap().status(), "contested");
+    }
 }

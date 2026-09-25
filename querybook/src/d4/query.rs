@@ -406,7 +406,9 @@ pub fn retrieve(qb: &QueryBook, scope: &Scope, q: &Fql) -> anyhow::Result<Retrie
     let fuids: Vec<String> = hits.iter().map(|h| h.1.clone()).collect();
     let scores: BTreeMap<&str, f32> = hits.iter().map(|(s, f)| (f.as_str(), *s)).collect();
     let mut facts = Vec::with_capacity(fuids.len());
-    for f in qb.store.get_many(&fuids)? {
+    let mut loaded = qb.store.get_many(&fuids)?;
+    qb.store.fold_adjustments(&mut loaded)?;
+    for f in loaded {
         // defence in depth: the record's own ACL and position must admit it
         let pos = f.narrative.as_ref().map(|n| n.pos).unwrap_or(0);
         if !scope.admits(f.work(), pos) || !f.acl.iter().any(|a| scope.acl().contains(a)) {
@@ -487,10 +489,33 @@ pub fn stabilize(
         feats.extend(focus.iter().map(|f| (format!("c:{}", f.concept), 2.0f32)));
         embed::from_features(&feats)
     };
+    // the question naming a record's predicate ("atomic number", "employees")
+    // is evidence for that record over its neighbours ("atomic weight")
+    let stem = |w: &str| w.trim_end_matches('s').to_string();
+    let qwords: BTreeSet<String> = crate::util::content_words(query_text).iter().map(|w| stem(w)).collect();
+    let pred_overlap = |pred: &str| -> f64 {
+        let pw: Vec<String> = pred
+            .trim_start_matches("ufcs:")
+            .split('_')
+            .filter(|w| w.len() > 2 && !crate::util::is_stopword(w) && !matches!(*w, "has" | "value"))
+            .map(stem)
+            .collect();
+        if pw.is_empty() {
+            return 0.0;
+        }
+        pw.iter().filter(|w| qwords.contains(*w)).count() as f64 / pw.len() as f64
+    };
     let bias: Vec<f64> = cands
         .iter()
         .map(|(s, f)| {
             let mut r = (s / max) * (0.5 + 0.5 * f.trust());
+            r *= 1.0 + 0.6 * pred_overlap(&f.atom.predicate);
+            // the question naming the record's subject outright ("Argentina",
+            // "Frankenstein") decides between otherwise similar records
+            let sw: Vec<String> = crate::util::content_words(&f.label(&f.atom.subject)).iter().map(|w| stem(w)).collect();
+            if !sw.is_empty() && sw.iter().all(|w| qwords.contains(w)) {
+                r *= 1.8;
+            }
             if let Some(v) = f.embedding.as_deref().and_then(crate::d1::language::embed::dequantize) {
                 r *= 1.0 + 0.5 * crate::d1::language::embed::cosine(&qvec, &v).max(0.0) as f64;
             }

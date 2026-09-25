@@ -751,7 +751,7 @@ fn print_answer(a: &querybook::d4::Answer) {
             c.diversity,
             c.engine,
             if c.verified { "verified" } else { "UNVERIFIED" },
-            querybook::util::clip(&c.quote, 110)
+            querybook::util::clip(if c.quote.is_empty() { &c.rendered } else { &c.quote }, 110)
         );
     }
     if let Some(cv) = &a.convergence {

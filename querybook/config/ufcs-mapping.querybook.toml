@@ -1,0 +1,112 @@
+# Mapping for the QueryBook UFCS feed (record layout of the Prototype Test Kit,
+# "QueryBook UFCS — Record Field Layout & API", 2026-09-25).
+#
+#   qb import-ufcs --mapping config/ufcs-mapping.querybook.toml --file ufcs_sample.jsonl --dry-run
+#   qb import-ufcs --mapping config/ufcs-mapping.querybook.toml --file ufcs_sample.jsonl
+#
+# Every record is re-validated on arrival: its semantic_fingerprint is
+# recomputed from the nucleus and polarity and must match (a record altered in
+# transit is refused), its predicate is registered in the governed catalogue,
+# and it passes the safety gate. Restated propositions merge as corroboration.
+
+feed = "querybook-ufcs"
+authority = 0.85
+acl = "public"                    # readable by readers who enable World knowledge
+verify_id = "ufcs-sha256"         # recompute SHA-256(norm(s)|norm(p)|norm(o)|polarity)
+# The feed's alpha/beta are reputation-weighted source counts (one web source
+# adds ~0.62 to alpha). Read literally that is barely one observation, and a
+# single-source fact falls under the admission floor. Each unit is counted as
+# 3 observations: a calibration choice, reviewable, applied equally to support
+# and contradiction so the confidence score itself is unchanged.
+evidence_scale = 3.0
+batch = 50000
+
+# only PUBLIC records are readable; INTERNAL / RESTRICTED / SEALED are admitted
+# under an ACL no reader holds
+public_classifications = ["PUBLIC"]
+restricted_acl = "restricted"
+
+# a record in an unresolved contradiction cluster is marked contested: it ranks
+# below the higher-trust member and never displaces it
+[status_map]
+UNRESOLVED = "contested"
+
+# Bulk endpoint for the 149M feed (to be confirmed with the feed operator: the
+# prototype contract documents POST /v1/query but no paged export yet).
+[source]
+url = ""                          # e.g. https://ufcs.example.com/v1/facts/export
+auth_header = "Authorization"
+auth_env = "UFCS_TOKEN"
+auth_prefix = "Bearer "
+format = "ndjson"
+cursor_param = "cursor"
+next_cursor_path = "/next_cursor"
+page_size_param = "limit"
+page_size = 5000
+
+[fields]
+id = "/fuid"
+fingerprint = "/semantic_fingerprint"
+subject = "/nucleus/subject"
+predicate = "/nucleus/predicate"
+object = "/nucleus/object"
+polarity = "/polarity"            # "+" asserts, "-" refutes
+group = "/group"
+alpha = "/confidence/alpha"
+beta = "/confidence/beta"
+authority = "/certification/authority_class"
+status = "/contradiction/status"  # present only inside a contradiction cluster
+signature = "/provenance/signature"
+source = "/sources/0/id"
+sources = "/sources"              # each distinct source class is its own class
+source_class = "/class"
+attested = "/temporal/attestation"
+classification = "/safety/classification"
+links = "/links"
+link_target = "/target_fuid"
+link_type = "/rel"
+
+[predicates]
+auto_register = true
+# at most one true value per subject: a second value is a contradiction
+functional = [
+  "has_capital", "has_atomic_number", "has_atomic_weight", "chemical_formula", "orbital_radius_au",
+  "published_year", "published_in_year", "founded_in_year", "height_meters", "length_km", "max_depth_meters",
+  "occurred_in_year", "began_in_year", "signed_in_year", "declared_in_year", "invented_in_year",
+  "invented_circa_year", "patented_in_year", "discovered_in_year", "described_in_year", "developed_in_year",
+  "proposed_in_year", "value", "value_m_per_s", "approx_value",
+]
+
+[predicates.templates]
+has_capital = "The capital of {s} is {o}."
+has_atomic_number = "{s} has atomic number {o}."
+has_atomic_weight = "{s} has an atomic weight of {o}."
+is_a = "{s} is a {o}."
+author = "{s} was written by {o}."
+industry = "{s} works in {o}."
+orbital_radius_au = "{s} orbits the Sun at {o} AU."
+chemical_formula = "The chemical formula of {s} is {o}."
+published_year = "{s} was published in {o}."
+published_in_year = "{s} was published in {o}."
+founded_in_year = "{s} was founded in {o}."
+occurred_in_year = "{s} took place in {o}."
+function = "The function of the {s} is {o}."
+headquartered_in = "{s} is headquartered in {o}."
+value = "The value of {s} is {o}."
+approx_value = "{s} is approximately {o}."
+employee_count = "{s} has {o} employees."
+length_km = "{s} is {o} km long."
+began_in_year = "{s} began in {o}."
+invented_circa_year = "{s} was invented around {o}."
+invented_in_year = "{s} was invented in {o}."
+attributed_to = "{s} is attributed to {o}."
+height_meters = "{s} is {o} m high."
+max_depth_meters = "{s} is {o} m deep at its deepest."
+value_m_per_s = "{s} is {o} m/s."
+patented_in_year = "{s} was patented in {o}."
+developed_in_year = "{s} was developed in {o}."
+proposed_in_year = "{s} was proposed in {o}."
+discovered_in_year = "{s} was discovered in {o}."
+described_in_year = "{s} was described in {o}."
+signed_in_year = "{s} was signed in {o}."
+declared_in_year = "{s} was declared in {o}."
