@@ -350,7 +350,9 @@
             <div class="chmenu-list" style="min-width:min(420px,92vw);padding:12px">
               <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px">One scheduled film a day from the
                 1,000-film romance playlist — or anything from any channel below. You are watching with
-                <strong style="color:var(--text)">Marcus</strong>.</p>
+                <strong style="color:var(--text)">Marcus</strong>. On the live site the player is now the
+                <strong style="color:var(--text)">Watch Room module</strong> — synced playback and video chat in
+                one frame; this preview simulates it.</p>
               <div id="w-banner"></div>
               <label class="f" style="display:block;margin:8px 0 0;font-size:12px">Your player, your code — paste
                 YouTube embed code, a video link, or a playlist link
@@ -414,7 +416,7 @@
         </style>
           <span id="w-channels" style="display:contents">
           <details class="chmenu"><summary>Movies ▾</summary>
-            <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button></div>
+            <div class="chmenu-list"><button data-wch="romance" class="on">Romance movies</button><button data-wch="watch-room">Watch Room playlist</button></div>
           </details>
           <details class="chmenu"><summary>Live Cams ▾</summary>
             <div class="chmenu-list">
@@ -597,7 +599,7 @@
         <p style="font-size:12.5px;margin:8px 0 0" id="awp-note">Pick a video below — it plays right here.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 0">
           <details class="chmenu"><summary>Movies ▾</summary>
-            <div class="chmenu-list"><button data-awpch="romance" class="on">Romance movies</button></div>
+            <div class="chmenu-list"><button data-awpch="romance" class="on">Romance movies</button><button data-awpch="watch-room">Watch Room playlist</button></div>
           </details>
           <details class="chmenu"><summary>Live Cams ▾</summary>
             <div class="chmenu-list">
@@ -890,7 +892,7 @@
   <div id="wpg-body"></div>
 </div>
 
-<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v48 · blocked-YouTube notice</div>
+<div id="build-badge" style="position:fixed;right:10px;bottom:10px;z-index:99;background:#1d1824;border:1px solid #574a61;border-radius:8px;padding:3px 9px;font-size:11px;color:#a294ad">build v49 · Watch Room import</div>
 
 <script>
 'use strict';
@@ -1721,6 +1723,40 @@ const ROOFTOP = [
   [2629,'EarthCam World Trade Center',0,'new york','5C9oM7C2Q9k',true],
   [2630,'Burj Khalifa construction timelapse',0,'construction','j66xYj0qahg',false],
 ];
+// The Watch Room source playlist, imported and oEmbed-verified by
+// dating/bin/import-watchroom-playlist.php — classical originals.
+const WRPICKS = [
+  [2701,'Highway Dreams - Classical by  Garry S. Howard',0,'classical','nsiCcC7GXsA',false],
+  [2702,'Piano Excellence - Classical by Garry S. Howard',0,'classical','Gvfs8eUP4MQ',false],
+  [2703,'Blue Grass - Classical by Garry S. Howard',0,'classical','z64amIwEFe4',false],
+  [2704,'Pendulum Chords  - Classical - By Garry S. Howard',0,'classical','a5ZNehu8bFk',false],
+  [2705,'Symphony of Seven Movements - Classical by Garry S. Howard',0,'classical','LshJD9wUGQM',false],
+  [2706,'Sacrificial Dissonance - Classical by Garry S. Howard',0,'classical','88iMSzLGKfE',false],
+  [2707,'One Thousand Steps -- Music Video - Modern Classcial - by Garry S. Howard',0,'classical','D-Drj-VQzik',false],
+  [2708,'Clear Picture - Classical by Garry S. Howard',0,'classical','nybuId7OpiE',false],
+  [2709,'Action Novel - Classical by Garry S. Howard',0,'classical','2AT7An9RKq4',false],
+  [2710,'Four  Violins - Classical by Garry S. Howard',0,'classical','7_EjyudXw70',false],
+  [2711,'Friction - Classical by Garry S. Howard',0,'classical','dtAK8zQnwoo',false],
+  [2712,'Quadralateral Friction - Classical by Garry S. Howard',0,'classical','G8VF-t-2dvo',false],
+  [2713,'Hidden Secrets - Classical by Garry S. Howard',0,'classical','moYCUeK8KO0',false],
+  [2714,'State of Truth - Classical by Garry S. Howard',0,'classical','caF-GdBvR04',false],
+  [2715,'Taking a Walk in the Fog - Classical by Garry S. Howard',0,'classical','lsK0h9IXk7Y',false],
+  [2716,'Dancing on a Barn Roof - Classical by Garry S. Howard',0,'classical','A1kEKVdOm6A',false],
+  [2717,'Thousandfold Journey  - Classical by Garry S. Howard',0,'classical','l7gSr6gklJU',false],
+  [2718,'Dowland’s Pulse - Classical Lute by Garry S. Howard',0,'classical','Q7WNyr5KHWw',false],
+  [2719,'Kinetic Weaver - Classical by Garry S. Howard',0,'classical','z-SOv3zn5kI',false],
+  [2720,'The Courante of Focus - Classical Lute by Garry S. Howard',0,'classical','3Hj05rnN5uY',false],
+  [2721,'Queen with a Torn Dress - Classical Lute by Garry S. Howard',0,'classical','sYtvf12ij7Q',false],
+  [2722,'Resonance of Light - Modern Classical by Garry S. Howard',0,'classical','7U0KjhSjKUE',false],
+  [2723,'Oak Trees in Spring - Modern Classical by Garry S. Howard',0,'classical','XoNDkb5mFdM',false],
+  [2724,'Harmonic Progressions IV - Classical by Garry S. Howard',0,'classical','Ij2jaOELOo8',false],
+  [2725,'Shopping for Cake - Classical by Garry S. Howard',0,'classical','n7wz71nW8pY',false],
+  [2726,'Terminal Velocity - Classical by Garry S. Howard',0,'classical','7nCWqJwLh9k',false],
+  [2727,'Orbiting the Vortex - Modern Classical by Garry S. Howard',0,'classical','ET0BqlANHhc',false],
+  [2728,'The Constant Sentinel   - Classical Original by Garry S. Howard',0,'classical','PUOY1uie5F0',false],
+  [2729,'The Unfaltering Road  - Classical Original by Garry S. Howard',0,'classical','PP802xFacjg',false],
+  [2730,'Advanced Education- Classical Orchestral - by Garry S. Howard',0,'classical','Lmv-ZGVx2R8',false],
+];
 const AMBIENT = [
   [2101,'Spa Massage Music World relaxing music',0,'spa','u7nPyizNXc8',true],[2102,'Amaltea Relaxing Music inner calm',0,'focus','qTI-0JBOrpk',false],
   [2103,'Soothing Relaxation beautiful ambient music',0,'ambient','Kad5ZP0unoY',false],[2104,'OCB Relax Music ambient',0,'ambient','AKy6Jx59fis',false],
@@ -1768,7 +1804,7 @@ const JAZZCAFE = [
   [2563,'Sonorama smooth jazz café ambience',0,'jazz','UZiKR5HHXTo',false],[2564,'Coffee shop jazz radio',0,'cafe','TlUDYyjBdwQ',true],
 ];
 const RAINW = [
-  [2581,'Rainy Nights Piano live stream',0,'piano','rIZDhPnPV34',true],[2582,'Rainstorm and thunder for sleep',0,'thunder','8rTTEMdMh8Q',false],
+  [2581,'Rainy Nights Piano live stream',0,'piano','rIZDhPnPV34',true],[2582,'Intense thunderstorm sounds for sleeping',0,'thunder','a0Eg9DvIHCQ',false],
   [2583,'Waterfall white noise',0,'waterfall','q9x_mHZLpYI',false],[2584,'Gentle rain on a window',0,'rain','c1XOgrBz6sU',false],
   [2585,'River flowing with birds chirping',0,'river','1GzKYoyrlkA',false],
 ];
@@ -1795,6 +1831,7 @@ const CHURCH = [
 const WCHANNELS = {
   romance: { rows: FILMS, label: 'Romance movies', title: 'The romance library — pick any film instead', blurb: 'Ranked by popularity, #1 to #1,000. The live site carries the full thousand.' },
   nature: { rows: NATURE, label: 'Live Nature cams', title: 'Live Nature cams — pick a scene', blurb: 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, wildlife, and more — live from around the world. The live site resolves each cam\'s current stream automatically.' },
+  'watch-room': { rows: WRPICKS, label: 'Watch Room playlist', title: 'Watch Room playlist — from the source site', blurb: 'Imported from the Watch Room source playlist — classical originals by Garry S. Howard, every video verified and embeddable.' },
   rooftop: { rows: ROOFTOP, label: 'Rooftop cams', title: 'Rooftop cams — the city from above', blurb: 'Rooftop and high-rise cams: Times Square, the harbors, the skylines, and the observation decks — live around the clock.' },
   ambient: { rows: AMBIENT, label: 'Ambient music', title: 'Ambient music — set the mood', blurb: 'Soft instrumentals, ambient pads, slow synths, and meditation tones.' },
   'nature-sounds': { rows: NATSOUNDS, label: 'Nature sounds', title: 'Nature sounds — pure ambience', blurb: 'Forests, rivers, rain, birds, and ocean — nothing but nature.' },
@@ -1812,7 +1849,7 @@ const WCHANNELS = {
   church: { rows: CHURCH, label: 'Church videos', title: 'Church videos — worship together', blurb: 'Worship services, choirs, hymns, and carols.' },
 };
 let watchChannel = 'romance';
-const ALLFILMS = FILMS.concat(NATURE, ROOFTOP, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
+const ALLFILMS = FILMS.concat(NATURE, ROOFTOP, WRPICKS, AMBIENT, NATSOUNDS, HYBRID, LOFI, PIANO, ASMRN, SCENIC, MEDIT, OFFICIAL, JAZZCAFE, RAINW, WORLDA, BIBLE, CHURCH);
 // If YouTube's image CDN is blocked (ad-blocker, network filter), a card
 // shows this ▶ placeholder instead of vanishing — it stays clickable.
 const WTHUMB_FALLBACK = 'data:image/svg+xml;charset=utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 160 90%27%3E%3Crect width=%27160%27 height=%2790%27 fill=%27%23262030%27/%3E%3Ctext x=%2780%27 y=%2754%27 font-size=%2728%27 text-anchor=%27middle%27 fill=%27%23ffb8d2%27%3E%E2%96%B6%3C/text%3E%3C/svg%3E';

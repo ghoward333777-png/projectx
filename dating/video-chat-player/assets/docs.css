@@ -1,0 +1,22 @@
+.docs { max-width: 960px; }
+.docs__nav { display: flex; gap: 14px; margin-left: auto; }
+.docs__nav a { color: var(--accent); }
+.docs__lead { color: var(--ink-dim); }
+.docs__lead code, .ep code { background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 13px; }
+.docs__h2 { font-size: 16px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-dim); margin: 28px 0 10px; }
+.docs__pre { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.ep { border-top: 1px solid var(--line); padding: 14px 0; }
+.ep__title { margin: 0 0 4px; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+.ep__verb { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 5px; background: #2b5f3c; color: #d9ffe5; }
+.ep__verb--post { background: #2b4c7a; color: #dcecff; }
+.ep__verb--put, .ep__verb--patch { background: #6b5720; color: #ffe9b0; }
+.ep__verb--delete { background: #7a2b3a; color: #ffdbe2; }
+.ep__summary { margin: 0 0 6px; }
+.ep__auth { font-size: 11px; color: var(--ink-dim); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+.ep__params { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 6px 0; font-size: 13px; }
+.ep__params dd { margin: 0; color: var(--ink-dim); }
+.ep__in { color: var(--ink-dim); font-size: 12px; }
+.ep__responses { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.ep__schema { margin: 6px 0; font-size: 13px; }
+.ep__schema--inline { display: inline; }
+.ep__schema summary { cursor: pointer; display: inline; color: var(--ink-dim); }

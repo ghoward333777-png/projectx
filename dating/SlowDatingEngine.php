@@ -3787,6 +3787,7 @@ final class SlowDatingEngine
 
     public const WATCH_CHANNELS = [
         'romance' => ['label' => 'Romance movies', 'blurb' => 'The playlist of 1,000 romance films — one scheduled every day.'],
+        'watch-room' => ['label' => 'Watch Room playlist', 'blurb' => 'Imported from the Watch Room source playlist — classical originals by Garry S. Howard, every video verified and playing in the shared room.'],
         'nature' => ['label' => 'Live Nature cams', 'blurb' => 'Rivers, waterfalls, forests, lakes, mountains, deserts, harbors, and wildlife — live, around the world.'],
         'rooftop' => ['label' => 'Rooftop cams', 'blurb' => 'Rooftop and high-rise city cams — Times Square, harbors, skylines, and observation decks, live around the clock.'],
         'ambient' => ['label' => 'Ambient music', 'blurb' => 'Soft instrumentals, ambient pads, slow synths, and meditation tones.'],
@@ -3807,7 +3808,7 @@ final class SlowDatingEngine
 
     /** The compact pop-down menu on the Watch Party page. */
     public const WATCH_CHANNEL_GROUPS = [
-        'Movies' => ['romance'],
+        'Movies' => ['romance', 'watch-room'],
         'Live Cams' => ['nature', 'rooftop'],
         'Relaxation' => ['ambient', 'nature-sounds', 'hybrid', 'lofi', 'piano', 'asmr', 'scenic', 'meditation', 'official', 'jazz-cafe', 'rain', 'world'],
         'Faith' => ['bible', 'church'],
@@ -3990,10 +3991,41 @@ final class SlowDatingEngine
         $channels = [];
         foreach (self::WATCH_CHANNELS as $slug => $meta) {
             $channels[$slug] = $meta + [
-                'entries' => $slug === 'romance' ? count($this->loadRomanceLibrary()) : count(self::CHANNEL_ENTRIES[$slug]),
+                'entries' => $slug === 'romance' ? count($this->loadRomanceLibrary()) : count($this->channelRows($slug)),
             ];
         }
         return $channels;
+    }
+
+    /**
+     * The Watch Room source playlist, imported and verified by
+     * dating/bin/import-watchroom-playlist.php — served as an ordinary
+     * showcase channel with the usual row shape.
+     *
+     * @return array<int, array{0: string, 1: string, 2: string, 3: string, 4: bool}>
+     */
+    private function watchRoomRows(): array
+    {
+        static $rows = null;
+        if ($rows === null) {
+            $rows = [];
+            $file = __DIR__ . '/data/watch-room-playlist.json';
+            $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+            foreach (is_array($data) ? $data : [] as $entry) {
+                $id = (string) ($entry['id'] ?? '');
+                if ($id === '') {
+                    continue;
+                }
+                $rows[] = ['wr-' . $id, (string) ($entry['title'] ?? ('Video ' . $id)), 'classical', $id, false];
+            }
+        }
+        return $rows;
+    }
+
+    /** @return array<int, array{0: string, 1: string, 2: string, 3: string, 4: bool}> */
+    private function channelRows(string $channel): array
+    {
+        return $channel === 'watch-room' ? $this->watchRoomRows() : (array) (self::CHANNEL_ENTRIES[$channel] ?? []);
     }
 
     /**
@@ -4007,10 +4039,10 @@ final class SlowDatingEngine
         if ($channel === 'romance') {
             return $this->romanceFilms($query, $limit, $offset);
         }
-        if (!isset(self::CHANNEL_ENTRIES[$channel])) {
+        if ($channel !== 'watch-room' && !isset(self::CHANNEL_ENTRIES[$channel])) {
             throw new InvalidArgumentException('Channels are ' . implode(', ', array_keys(self::WATCH_CHANNELS)) . '.');
         }
-        $rows = self::CHANNEL_ENTRIES[$channel];
+        $rows = $this->channelRows($channel);
         $needle = mb_strtolower(trim($query));
         if ($needle !== '') {
             $rows = array_values(array_filter(
@@ -4030,7 +4062,7 @@ final class SlowDatingEngine
     /** @return array<string, mixed>|null One channel entry, presented. */
     public function channelEntry(string $channel, string $slug): ?array
     {
-        foreach (self::CHANNEL_ENTRIES[$channel] ?? [] as $row) {
+        foreach ($this->channelRows($channel) as $row) {
             if ($row[0] === $slug) {
                 return $this->presentChannelEntry($channel, $row);
             }

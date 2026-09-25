@@ -31,6 +31,118 @@ if (isset($_SESSION['sd_member_token'])) {
 
 $chatId = (string) ($_GET['chat'] ?? ($_POST['chat_id'] ?? ''));
 
+// ---- Watch Room (video-chat-player): the module that IS the player now.
+// One persistent room per couple: synced playback plus video chat in a
+// single frame, driven natively through the module's PHP library. The
+// showcase and the playlist logic feed the room.
+require_once __DIR__ . '/video-chat-player/lib/WatchRoomApi.php';
+
+/** The module's API bound to its own rooms/media folders. */
+function wp_room_api(): WatchRoomApi
+{
+    static $api = null;
+    if ($api === null) {
+        $config = require __DIR__ . '/video-chat-player/config.php';
+        $api = new WatchRoomApi(new RoomStore((string) $config['rooms_dir']), (string) $config['media_dir'], true, $config);
+    }
+    return $api;
+}
+
+/** A film's playable URL for the room (verified stream or trailer id). */
+function wp_film_url(array $film): ?string
+{
+    $id = (string) ($film['youtube_id'] ?? '');
+    return $id !== '' ? 'https://www.youtube.com/watch?v=' . $id : null;
+}
+
+/**
+ * The couple's Watch Room: created on first visit (first item = the
+ * current film, else the admin playlist), rejoined on later loads, and
+ * remembered on the chat record. Returns id, member id, host token.
+ */
+function wp_watch_room(SlowDatingEngine $engine, string $chatId, string $userId, string $myName, ?array $film, ?string $override): ?array
+{
+    $api = wp_room_api();
+    $chat = $engine->store()->get('chats', $chatId);
+    if ($chat === null || !in_array($userId, (array) $chat['participants'], true)) {
+        return null;
+    }
+    $info = (array) ($chat['watch_room'] ?? []);
+    $roomId = (string) ($info['id'] ?? '');
+    $room = $roomId !== '' ? $api->rooms()->load($roomId) : null;
+    if ($room === null) {
+        // First visit (or the old room expired): open a fresh room seeded
+        // with the couple's current film, else the operator's playlist.
+        $src = ($film !== null ? wp_film_url($film) : null) ?? ($override ?? '');
+        [$status, $payload] = $api->handle('room.create', 'POST', ['name' => 'Watch Party', 'src' => $src]);
+        if ($status !== 200) {
+            return null;
+        }
+        $info = [
+            'id' => (string) $payload['room']['id'],
+            'host_token' => (string) $payload['hostToken'],
+            'members' => [$userId => (string) $payload['memberId']],
+        ];
+        $chat['watch_room'] = $info;
+        $engine->store()->put('chats', $chatId, $chat);
+        return ['id' => $info['id'], 'member' => (string) $payload['memberId'], 'host_token' => $info['host_token']];
+    }
+    $memberId = (string) (((array) ($info['members'] ?? []))[$userId] ?? '');
+    if ($memberId === '' || !isset($room['members'][$memberId])) {
+        [$status, $payload] = $api->handle('room.join', 'POST', ['roomId' => $roomId, 'name' => $myName]);
+        if ($status !== 200) {
+            return null;
+        }
+        $memberId = (string) $payload['memberId'];
+        $info['members'][$userId] = $memberId;
+        $chat['watch_room'] = $info;
+        $engine->store()->put('chats', $chatId, $chat);
+    }
+    return ['id' => $roomId, 'member' => $memberId, 'host_token' => (string) ($info['host_token'] ?? '')];
+}
+
+/**
+ * A pick from the showcase lands in the room for BOTH viewers: reuse the
+ * film's existing playlist item when it is already there, else add it,
+ * then jump the shared playback to it.
+ */
+function wp_room_play(SlowDatingEngine $engine, string $chatId, string $userId, string $myName, array $film): void
+{
+    $url = wp_film_url($film);
+    if ($url === null) {
+        return;   // no verified stream — the room keeps its current item
+    }
+    $roomInfo = wp_watch_room($engine, $chatId, $userId, $myName, $film, null);
+    if ($roomInfo === null) {
+        return;
+    }
+    $api = wp_room_api();
+    $itemId = null;
+    [$status, $payload] = $api->handle('playlist.get', 'GET', ['roomId' => $roomInfo['id'], 'memberId' => $roomInfo['member']]);
+    if ($status === 200) {
+        foreach ((array) ($payload['playlist']['items'] ?? []) as $item) {
+            // A YouTube item's src IS the 11-character video id.
+            if (($item['kind'] ?? '') === 'youtube' && (string) ($item['src'] ?? '') === (string) $film['youtube_id']) {
+                $itemId = (string) $item['id'];
+                break;
+            }
+        }
+    }
+    if ($itemId === null) {
+        [$status, $payload] = $api->handle('playlist.add', 'POST', ['roomId' => $roomInfo['id'], 'memberId' => $roomInfo['member'], 'url' => $url]);
+        if ($status !== 200 || !isset($payload['item']['id'])) {
+            return;
+        }
+        $itemId = (string) $payload['item']['id'];
+    }
+    $api->handle('state.set', 'POST', [
+        'roomId' => $roomInfo['id'],
+        'memberId' => $roomInfo['member'],
+        'hostToken' => $roomInfo['host_token'],
+        'state' => ['itemId' => $itemId, 'playing' => true, 'mediaTime' => 0],
+    ]);
+}
+
 /**
  * The chat log as an HTML fragment (newest first). Sending and polling
  * both swap ONLY this fragment into the page over fetch(), so the video
@@ -155,6 +267,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $userId !== null) {
                 break;
             case 'pick':
                 $party = $engine->chooseWatchPartyFilm((string) ($_POST['chat_id'] ?? ''), $userId, (string) ($_POST['film_id'] ?? 'daily'));
+                // The pick lands in the couple's Watch Room playlist and the
+                // shared playback jumps to it — for both viewers at once.
+                wp_room_play(
+                    $engine,
+                    (string) ($_POST['chat_id'] ?? ''),
+                    $userId,
+                    (string) ($engine->profile($userId)['display_name'] ?: 'Member'),
+                    (array) $party['film'],
+                );
                 $notice = ($_POST['film_id'] ?? '') === 'daily'
                     ? 'Back to tonight\'s scheduled movie.'
                     : 'Movie changed — you are both watching ' . $party['film']['title']
@@ -177,6 +298,11 @@ sd_page_open('Watch Party', 'SlowMoDating.com · a movie date, right here');
 <style>
     /* Player + chat, one column — the Watch Party layout. */
     #watchparty { display: flex; flex-direction: column; gap: 16px; }
+    /* The Watch Room frame: the module's synced player + video chat.
+       Sized so the whole frame AND the showcase entry stay on screen. */
+    #watchparty .wp-room { display: block; border: 1px solid #1f2937; border-radius: 12px; width: 100%;
+        aspect-ratio: 16 / 9; background: #020617; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        max-width: min(100%, calc((100vh - 240px) * 1.7778)); margin: 0 auto; }
     #watchparty .video-wrapper {
         position: relative; aspect-ratio: 16 / 9; overflow: hidden;
         border-radius: 12px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
@@ -418,81 +544,34 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     <?php endforeach; ?>
     <a href="?chat=<?= sd_e($chatId) ?>&amp;mode=premium" class="links" style="color:#ffb8d2;font-size:13px;<?= $mode === 'premium' ? 'font-weight:800;text-decoration:underline' : '' ?>">Premium together</a>
     <a href="advanced-watch-party.php" style="color:#ffd97a;font-size:13px">Advanced · BETA</a>
+    <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da;vertical-align:middle">🎲 Games</button>
 </section>
 
 <div id="watchparty">
-    <!-- Player: every film plays inside the page (YouTube's ads run in
-         the embed), through the curated id or the resolved best upload. -->
-    <div class="video-wrapper">
-        <?php
-        // Picking from the library must ALWAYS change the video. A film
-        // the couple picked wins the player when it has its own stream;
-        // a pick without one plays the operator playlist at that film's
-        // slot; with no pick the admin-pasted embed (or the daily film)
-        // plays. enablejsapi lets the Premium room's shared controls
-        // drive the player without ever reloading it.
-        $override = $engine->watchPartyEmbed();
-        $overrideSrc = $override !== null
-            ? $override . (str_contains($override, '?') ? '&' : '?') . 'enablejsapi=1'
-            : null;
-        // NO up-next queue on film embeds, EVER: when a main video
-        // refuses to embed, YouTube silently plays the first queue item
-        // instead — the "every pick shows the same movie" bug. A broken
-        // embed now errors visibly and the fallback rotation handles it.
-        $filmSrc = !empty($film['embed_url'])
-            ? (string) $film['embed_url'] . '?rel=0&enablejsapi=1'
-            : null;
-        // Auto-rotate on failure: if the playing stream errors (a live
-        // cam that went offline, an unavailable upload), the script
-        // below swaps in the next playable entry from the same channel.
-        $wpFallbacks = [];
-        if (isset($film['channel'])) {
-            foreach ($engine->channelLibrary((string) $film['channel'], '', 100)['films'] as $sibling) {
-                if (!empty($sibling['embed_url']) && $sibling['id'] !== $film['id']) {
-                    $wpFallbacks[] = [
-                        'title' => (string) $sibling['title'],
-                        'src' => (string) $sibling['embed_url'] . '?rel=0&enablejsapi=1&autoplay=1',
-                    ];
-                }
-            }
-        }
-        // NOTE: YouTube IGNORES the index= URL parameter on playlist
-        // embeds — the only way to land on a slot is the player API's
-        // playVideoAt command, sent by the script below ($wpSlot).
-        $wpSlot = null;
-        if ($party['custom_pick'] && $filmSrc !== null) {
-            $embedSrc = $filmSrc;
-        } elseif ($party['custom_pick'] && $overrideSrc !== null) {
-            $embedSrc = $overrideSrc . '&autoplay=1';
-            $wpSlot = (int) $film['rank'] % 60;
-        } else {
-            $embedSrc = $overrideSrc ?? $filmSrc;
-        }
-        ?>
-        <?php if ($embedSrc !== null): ?>
-            <!-- No allowfullscreen on the iframe: YouTube's own fullscreen
-                 button would fullscreen ONLY the video and lose the chat.
-                 The bar's ⛶ fullscreens the wrapper — video AND chat. -->
-            <iframe id="wp-player" src="<?= sd_e($embedSrc) ?>" title="<?= sd_e((string) $film['title']) ?>"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
-        <?php else: ?>
-            <div class="video-fallback">
-                <strong style="color:#fff;font-size:18px"><?= sd_e($filmLabel) ?></strong>
-                <span style="color:#9ca3af;font-size:13px;max-width:48ch">Finding this film's stream — refresh in a moment.</span>
-            </div>
-        <?php endif; ?>
-        <div class="wbar">
-            <span style="flex:1"></span>
-            <?php if ($overrideSrc !== null): ?>
-                <!-- Local playlist rotation: swaps the player's source in place — no page load. -->
-                <button type="button" class="quiet" data-wprot="-1" title="Previous in the playlist">⏮</button>
-                <button type="button" class="quiet" data-wprot="1" title="Next in the playlist">⏭</button>
-                <button type="button" class="quiet" data-wprot="r" title="Shuffle the playlist">🔀</button>
-            <?php endif; ?>
-            <button type="button" class="quiet" id="wp-chatbar" title="Chat over video: on/off — works in fullscreen too">💬</button>
-            <button type="button" class="quiet" id="wp-full" title="Fullscreen — the chat comes along">⛶</button>
+    <!-- The Watch Room module IS the player now: synced playback for the
+         couple plus video chat overlaid on the picture (idle-hide, full
+         screen with the chat, its own failure handling and engines), all
+         in one frame. The showcase below still drives it — every pick
+         lands in the room's shared playlist. -->
+    <?php
+    $override = $engine->watchPartyEmbed();
+    $myDisplayName = (string) ($engine->profile($userId)['display_name'] ?: 'Member');
+    $wpRoom = wp_watch_room($engine, $chatId, $userId, $myDisplayName, $film, $override);
+    ?>
+    <?php if ($wpRoom !== null): ?>
+        <iframe id="wp-room" class="wp-room"
+                src="video-chat-player/embed.php?room=<?= sd_e(rawurlencode((string) $wpRoom['id'])) ?>&amp;name=<?= sd_e(rawurlencode($myDisplayName)) ?>"
+                title="Watch Room — synced player and video chat"
+                allow="autoplay; fullscreen; clipboard-write" allowfullscreen></iframe>
+        <p style="margin:0;font-size:12.5px;color:#9ca3af">Watch Room: the player and the video chat share one frame —
+            the chat floats over the picture, tucks itself away when idle, and rides into full screen.
+            <?= sd_e($filmLabel) ?> is queued for both of you; picks from the showcase below play for you both.</p>
+    <?php else: ?>
+        <div class="video-fallback" style="position:relative;padding:40px 20px;display:flex;flex-direction:column;gap:6px;align-items:center">
+            <strong style="color:#fff;font-size:18px"><?= sd_e($filmLabel) ?></strong>
+            <span style="color:#9ca3af;font-size:13px;max-width:48ch">The Watch Room could not start — refresh in a moment.</span>
         </div>
-    </div>
+    <?php endif; ?>
 
     <?php if ($mode === 'premium'): ?>
     <?php $sync = $engine->watchSync($chatId, $userId); ?>
@@ -541,58 +620,16 @@ if (!in_array($mode, ['library', 'premium'], true)) {
     </section>
     <?php endif; ?>
 
-    <!-- Chat -->
-    <div class="chat">
-        <div class="chat-header">
-            <h2>Watching with <?= sd_e($otherName) ?></h2>
-            <button type="button" id="wp-chatpos" style="margin:0;padding:6px 14px;font-size:12.5px;font-weight:800;background:#17351f;color:#b8ffd3;border:1px solid #2e6b40"
-                    title="The chat floats over the film — click to move it below the player">💬 Chat over video</button>
-            <button type="button" id="wpg-open" style="margin:0;padding:6px 14px;font-size:12.5px;background:#3a2a3e;color:#ffc4da">🎲 Games</button>
-            <span>
-                <?php if ($status['unlocked']): ?>
-                    Real-time chat · contact sharing open
-                <?php else: ?>
-                    Slow chat · <?= (int) $status['daily_message_limit'] ?> messages today · <?= (int) $status['message_size_limit'] ?> characters each · contact details filtered
-                <?php endif; ?>
-            </span>
-        </div>
-        <!-- The entry area sits at the TOP of the chat, right under the
-             player, and stays there as the chat grows; the newest message
-             appears directly beneath it. -->
-        <form class="input-area" method="post" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="send">
-            <input type="hidden" name="chat_id" value="<?= sd_e($chatId) ?>">
-            <div class="input-row">
-                <textarea name="text" placeholder="Say something about the movie…"<?= $status['unlocked'] ? '' : ' maxlength="' . (int) $status['message_size_limit'] . '"' ?>></textarea>
-                <div class="input-controls">
-                    <label class="file-label" id="wp-filelabel">
-                        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" id="wp-file">
-                        <span id="wp-filename">📎 Attach image</span>
-                    </label>
-                    <button type="submit" class="send-btn">Send</button>
-                </div>
-            </div>
-            <span class="hint">JPEG, PNG, or WebP up to 2 MB. An attached image sends with your text as its caption.
-                Contact details stay filtered until the chat unlocks. Newest messages appear right below.</span>
-            <span class="hint" id="wp-flash" style="color:#ff9cba"></span>
-        </form>
-        <div class="messages" id="wp-messages">
-            <?php foreach (array_reverse((array) $chat['messages']) as $message): ?>
-                <div class="message<?= $message['sender_id'] === $userId ? ' me' : '' ?>">
-                    <?php if (isset($message['image'])): ?>
-                        <div class="message-images">
-                            <img src="chatimage.php?chat=<?= urlencode($chatId) ?>&amp;m=<?= urlencode((string) $message['message_id']) ?>" alt="Shared image">
-                        </div>
-                    <?php endif; ?>
-                    <?php if ((string) $message['text'] !== ''): ?><span><?= sd_e((string) $message['text']) ?></span><?php endif; ?>
-                    <div class="message-meta">
-                        <span><?= $message['sender_id'] === $userId ? 'You' : sd_e($otherName) ?></span>
-                        <span><?= sd_e(gmdate('M j, H:i', (int) $message['sent_at'])) ?><?= ((int) ($message['contact_data_removed'] ?? 0)) > 0 ? ' · contact info erased' : '' ?></span>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
+    <!-- The video chat lives INSIDE the Watch Room frame above. The
+         couple's persistent slow chat (pacing, contact filtering, image
+         sharing) continues in the Member app as always. -->
+    <p class="links" style="margin:0;font-size:13px">Watching with <strong style="color:#f3eef6"><?= sd_e($otherName) ?></strong> ·
+        chat over the movie in the player above ·
+        <a href="index.php?tab=chats">your slow chat with <?= sd_e($otherName) ?> continues in the Member app</a>
+        <?php if (!$status['unlocked']): ?>
+            <span style="color:#9ca3af">(slow-chat rules apply there: <?= (int) $status['daily_message_limit'] ?> messages today, contact details filtered)</span>
+        <?php endif; ?>
+    </p>
 </div>
 <!-- The Advanced Watch Party user guide: comprehensive, one collapsed line
      until opened, so it never pushes the page apart. -->
@@ -672,143 +709,9 @@ if (!in_array($mode, ['library', 'premium'], true)) {
 
 <script>
     (function () {
-        // Chat placement: floating over the video is the DEFAULT (the admin
-        // console sets the site-wide default; the 🎞 button in the chat
-        // header lets each member flip it, remembered in their browser).
-        // While overlaid, 5s of keyboard idle fades the chat to 95%
-        // transparent and hides its interface — only the text stays.
-        (function () {
-            var wrapper = document.querySelector('#watchparty .video-wrapper');
-            var chat = document.querySelector('#watchparty .chat');
-            var toggle = document.getElementById('wp-chatpos');
-            if (!wrapper || !chat) { return; }
-            var home = { parent: chat.parentNode, next: chat.nextSibling };
-            var overlaid = <?= json_encode($engine->watchChatOverlay()) ?>;
-            try {
-                var saved = localStorage.getItem('sd_wp_chat_overlay');
-                if (saved === '1') { overlaid = true; }
-                if (saved === '0') { overlaid = false; }
-            } catch (ignored) { /* private windows — the admin default stands */ }
-            var quietTimer = null;
-            function chatWake() {
-                chat.classList.remove('chat-quiet');
-                clearTimeout(quietTimer);
-                if (overlaid) {
-                    quietTimer = setTimeout(function () {
-                        if (overlaid) { chat.classList.add('chat-quiet'); }
-                    }, 5000);
-                }
-            }
-            function applyPlacement() {
-                if (overlaid && chat.parentNode !== wrapper) { wrapper.appendChild(chat); }
-                if (!overlaid && chat.parentNode !== home.parent) { home.parent.insertBefore(chat, home.next); }
-                if (!overlaid) { chat.classList.remove('chat-quiet'); }
-                if (toggle) {
-                    // The switch reads at a glance: green = floating, gray = parked.
-                    toggle.textContent = '💬 Chat over video · ' + (overlaid ? 'ON' : 'OFF');
-                    toggle.style.background = overlaid ? '#17351f' : '#3a2a3e';
-                    toggle.style.color = overlaid ? '#b8ffd3' : '#a294ad';
-                    toggle.style.border = overlaid ? '1px solid #2e6b40' : '1px solid #574a61';
-                    toggle.title = overlaid
-                        ? 'The chat floats over the film — click to move it below the player'
-                        : 'The chat sits below the player — click to float it over the film';
-                }
-                chatWake();
-            }
-            function flipPlacement() {
-                overlaid = !overlaid;
-                try { localStorage.setItem('sd_wp_chat_overlay', overlaid ? '1' : '0'); } catch (ignored) {}
-                applyPlacement();
-            }
-            if (toggle) { toggle.addEventListener('click', flipPlacement); }
-            // The on-video bar carries its own 💬 switch, so the chat can be
-            // turned on and off while the player is fullscreen.
-            var barToggle = document.getElementById('wp-chatbar');
-            if (barToggle) { barToggle.addEventListener('click', flipPlacement); }
-            var fsButton = document.getElementById('wp-full');
-            if (fsButton) {
-                fsButton.addEventListener('click', function () {
-                    // Fullscreen the wrapper: video AND chat fill the screen.
-                    if (document.fullscreenElement) { document.exitFullscreen(); }
-                    else if (wrapper.requestFullscreen) { wrapper.requestFullscreen(); }
-                });
-            }
-            document.addEventListener('keydown', function (event) {
-                var wasQuiet = chat.classList.contains('chat-quiet');
-                chatWake();
-                // A keystroke that wakes the chat lands straight in the box.
-                var box = chat.querySelector('textarea[name=text]');
-                var target = event.target;
-                var typingElsewhere = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
-                if (wasQuiet && box && !typingElsewhere) { box.focus(); }
-            });
-            chat.addEventListener('click', chatWake);
-            applyPlacement();
-        })();
-
-        // Newest messages render first, so the log stays put at the top —
-        // the entry area never drifts away from the player.
-        var file = document.getElementById('wp-file');
-        var name = document.getElementById('wp-filename');
-        if (file && name) {
-            file.addEventListener('change', function () {
-                name.textContent = file.files.length ? '📎 ' + file.files[0].name : '📎 Attach image';
-            });
-        }
-
-        // THE RULE: the movie never pauses because chat is happening.
-        // Sending goes over fetch() and swaps only the chat log; the
-        // player iframe is never touched. Without JS the form still
-        // posts the old way as a fallback.
-        var form = document.querySelector('#watchparty .input-area');
-        var log = document.getElementById('wp-messages');
-        var flash = document.getElementById('wp-flash');
-        var fragmentUrl = 'watch-party.php?fragment=messages&chat=<?= urlencode($chatId) ?>';
-        if (form && log) {
-            var textarea = form.querySelector('textarea[name=text]');
-            if (textarea) {
-                textarea.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        if (form.requestSubmit) { form.requestSubmit(); }
-                    }
-                });
-            }
-            form.addEventListener('submit', function (event) {
-                event.preventDefault();
-                var data = new FormData(form);
-                data.append('ajax', '1');
-                var button = form.querySelector('.send-btn');
-                if (button) { button.disabled = true; }
-                fetch('watch-party.php', { method: 'POST', body: data, credentials: 'same-origin' })
-                    .then(function (response) {
-                        return response.text().then(function (body) {
-                            if (!response.ok) { throw new Error(body || 'Could not send the message.'); }
-                            log.innerHTML = body;
-                            form.querySelector('textarea[name=text]').value = '';
-                            if (file) { file.value = ''; }
-                            if (name) { name.textContent = '📎 Attach image'; }
-                            if (flash) { flash.textContent = ''; }
-                        });
-                    })
-                    .catch(function (problem) {
-                        if (flash) { flash.textContent = problem.message; }
-                    })
-                    .then(function () {
-                        if (button) { button.disabled = false; }
-                    });
-            });
-
-            // Poll for the partner's messages while the movie plays.
-            setInterval(function () {
-                fetch(fragmentUrl, { credentials: 'same-origin' })
-                    .then(function (response) { return response.ok ? response.text() : null; })
-                    .then(function (body) {
-                        if (body !== null && body !== log.innerHTML) { log.innerHTML = body; }
-                    })
-                    .catch(function () { /* transient network hiccup — the next poll retries */ });
-            }, 7000);
-        }
+        // The Watch Room module owns the player, the video chat overlay,
+        // fullscreen, idle-hide, and failure recovery — the page-side
+        // player/chat scripting that used to live here is retired.
 
         // Games adapter (live site): the couple's shared state on the chat.
         var WPG_ME = <?= json_encode($userId) ?>;
@@ -1066,64 +969,10 @@ if (!in_array($mode, ['library', 'premium'], true)) {
             window.WPG_TEST = { open: function () { box.hidden = false; menu(); }, pick: function (k) { current = k; state = GAMES[k].init(); render(); }, move: move, get: function () { return { current: current, state: state, seat: seat }; } };
         })();
 
-        // ---- Playlist slot control. YouTube ignores index= on playlist
-        // embeds, so slots are reached by commanding the RUNNING player
-        // with playVideoAt — never by reloading the iframe. ----
+        // The Watch Room module owns rotation, failure recovery, and slot
+        // control now; the legacy player handle stays null-guarded for the
+        // premium panel below.
         var player = document.getElementById('wp-player');
-        var plIndex = -1;
-        // Auto-rotate on failure: a dead live cam or unavailable upload
-        // reports onError through the player API; the page then swaps in
-        // the next playable entry from the same channel.
-        var wpFallbacks = <?= json_encode($wpFallbacks ?? []) ?>;
-        var wpFallbackAt = 0;
-        var wpLastAdvance = 0;
-        function wpSubscribe() {
-            [900, 1800, 3200].forEach(function (delay) {
-                setTimeout(function () {
-                    if (player && player.contentWindow) {
-                        player.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
-                    }
-                }, delay);
-            });
-        }
-        wpSubscribe();
-        function wpAdvance(code) {
-            var now = Date.now();
-            if (!player || wpFallbacks.length === 0 || wpFallbackAt >= wpFallbacks.length || now - wpLastAdvance < 400) { return; }
-            wpLastAdvance = now;
-            var next = wpFallbacks[wpFallbackAt++];
-            player.src = next.src;
-            wpSubscribe();
-            var pill = document.querySelector('#watchparty .chat-header span');
-            if (pill) { pill.textContent = '⚠ Stream failed (error ' + code + ') — rotated to: ' + next.title; }
-        }
-        window.addEventListener('message', function (event) {
-            try {
-                var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-                if (data && data.info && typeof data.info.playlistIndex === 'number') { plIndex = data.info.playlistIndex; }
-                if (data && data.event === 'onError') { wpAdvance(Number(data.info)); }
-            } catch (ignored) {}
-        });
-        function wpPlaySlot(slot) {
-            var tries = 0;
-            var timer = setInterval(function () {
-                if (!player || plIndex === slot || tries++ > 10) { clearInterval(timer); return; }
-                if (player.contentWindow) {
-                    player.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'wp' }), '*');
-                    player.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideoAt', args: [slot] }), '*');
-                }
-            }, 700);
-        }
-        var wpSlot = <?= json_encode($wpSlot) ?>;
-        if (wpSlot !== null) { wpPlaySlot(wpSlot); }
-        var rotIndex = <?= $wpSlot !== null ? $wpSlot : 0 ?>;
-        document.querySelectorAll('button[data-wprot]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var step = btn.getAttribute('data-wprot');
-                rotIndex = step === 'r' ? Math.floor(Math.random() * 60) : (rotIndex + parseInt(step, 10) + 60) % 60;
-                wpPlaySlot(rotIndex);
-            });
-        });
 
         // ---- Premium room: the shared timecode authority. Commands go
         // to the player over the YouTube iframe API — never a reload. ----

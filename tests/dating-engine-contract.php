@@ -771,7 +771,13 @@ contract_check($engine->watchChatOverlay() === true, 'admins can float the chat 
 
 // ---- Watch Party channels: nature cams, ambient, Bible narration, church --------
 $channels = $engine->watchChannels();
-contract_check(count($channels) === 17 && isset($channels['nature'], $channels['rooftop'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');
+contract_check(count($channels) === 18 && isset($channels['nature'], $channels['rooftop'], $channels['watch-room'], $channels['ambient'], $channels['bible'], $channels['church']), 'the Watch Party carries the full channel lineup');
+
+// ---- The Watch Room source playlist, imported as a showcase channel ----
+$watchRoomRows = $engine->channelLibrary('watch-room', '', 50);
+contract_check($watchRoomRows['total'] >= 10, 'the imported Watch Room playlist carries its videos');
+contract_check(!empty($watchRoomRows['films'][0]['youtube_id']) && !empty($watchRoomRows['films'][0]['playable']), 'every imported video is verified and playable');
+contract_check(in_array('watch-room', SlowDatingEngine::WATCH_CHANNEL_GROUPS['Movies'], true), 'the Watch Room playlist rides the Movies menu');
 foreach (['nature-sounds', 'hybrid', 'lofi', 'piano', 'asmr', 'scenic', 'meditation', 'official', 'jazz-cafe', 'rain', 'world'] as $relaxChannel) {
     contract_check(($channels[$relaxChannel]['entries'] ?? 0) >= 3, "the {$relaxChannel} relaxation channel is stocked");
 }
