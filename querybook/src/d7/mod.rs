@@ -291,6 +291,8 @@ pub fn realize(facts: &[&FactUnit], catalog: &Catalog, opts: Opts) -> Realized {
                     && g.atom.polarity
                     && f.atom.polarity
                     && (g.evidence.confidence() - f.evidence.confidence()).abs() <= 0.15
+                    // one sentence only for descriptions from the same part of the work
+                    && g.narrative.as_ref().map(|n| n.chapter) == f.narrative.as_ref().map(|n| n.chapter)
                 {
                     group.push(j);
                 } else {

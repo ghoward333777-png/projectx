@@ -646,7 +646,7 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Estimate { paths, engine, manifest } => {
             let qb = QueryBook::open(cfg)?;
-            let profile = qb.cfg.engine(&engine).ok_or_else(|| anyhow::anyhow!("engine {engine} not in config"))?.clone();
+            let profile = qb.cfg.engine(&engine).ok_or_else(|| anyhow::anyhow!("engine {engine} is not registered in your config (-c file); copy its [[engines]] block from config/querybook.example.toml"))?.clone();
             let files: Vec<PathBuf> = match manifest {
                 Some(m) => read_manifest(&m)?.into_iter().map(|r| r.path).collect(),
                 None => book_files(&paths),

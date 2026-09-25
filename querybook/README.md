@@ -110,6 +110,28 @@ data directory; the index writer lock is taken only while writing).
    One failing book does not stop the run; each book prints a JSON report
    (records admitted, refused, unverified quotes, tokens used, ledger node).
 
+### A starter library: 20 public-domain classics
+
+`bash deploy/fetch-classics.sh /var/lib/querybook-books` downloads 20 classics
+as EPUBs from Project Gutenberg ([list](config/library/classics.tsv): Moby-Dick,
+A Christmas Carol, Pride and Prejudice, Alice in Wonderland, Frankenstein,
+Sherlock Holmes, Dracula, The Great Gatsby, A Tale of Two Cities, Great
+Expectations, Jane Eyre, Wuthering Heights, Tom Sawyer, Huckleberry Finn,
+Dorian Gray, Treasure Island, Little Women, Jekyll and Hyde, Emma, The Time
+Machine). Each download is checked to be a complete EPUB, and the script
+writes `manifest.csv` with the rights declared (`public-domain`, Gutenberg
+number). Then:
+
+```bash
+sudo -u querybook qb -c /etc/querybook/querybook.toml ingest --manifest /var/lib/querybook-books/manifest.csv
+```
+
+The 20 books (2.1M words) ingest in about 20 seconds with the built-in engine
+(~33,000 facts). Running them through Claude once costs about $70 (±30%,
+`qb estimate`) and produces much better character descriptions. archive.org's
+copies of these titles are scans of modern editions in its lending library
+(some still in copyright), so Gutenberg is used instead.
+
 ## Extraction engines
 
 Engines run only at ingestion, never on the query path. Each is a registered

@@ -230,7 +230,8 @@ pub fn build(
                     let first = tokens[pc.tokens[0]].lower.as_str();
                     let after = tokens.get(*pc.tokens.last().unwrap() + 1).map(|t| t.lower.as_str()).unwrap_or("");
                     // comparisons and degree constructions ("as far from", "so ... that", "more ... than") are not traits
-                    if matches!(first, "as" | "so" | "too" | "more" | "less" | "most" | "least")
+                    if matches!(first, "as" | "so" | "too" | "more" | "less" | "most" | "least" | "all")
+                        || matches!(tokens[root].lower.as_str(), "worse" | "better" | "ready" | "sure" | "able")
                         || matches!(after, "as" | "than" | "that" | "enough")
                     {
                         continue;
@@ -253,6 +254,15 @@ pub fn build(
                     if matches!(
                         head_lemma.as_str(),
                         "week"
+                            | "instant"
+                            | "moment"
+                            | "wont"
+                            | "worse"
+                            | "better"
+                            | "best"
+                            | "same"
+                            | "case"
+                            | "matter"
                             | "day"
                             | "month"
                             | "year"
