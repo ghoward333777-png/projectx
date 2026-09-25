@@ -78,6 +78,12 @@ Invariants to keep: scope (D8) resolves before any retrieval and the spoiler
 bound is a scope bound, never a mask; D7 renders only from records it is handed
 and cannot write (no `CommitPermit` outside `d0`); unverified-citation records
 never ground an answer; same query + same context-lock key ⇒ same output hash.
+**Cost rule (owner's standing instruction): never propose, estimate or run
+paid per-use processing of books or facts** — no Anthropic/Claude API or any
+other pay-per-use service for ingestion, extraction, prediction or anything
+else. Book processing is always free: the built-in `language`/`rules` engines
+or a self-hosted model. The `claude` engine stays disabled (refused in
+`LlmEngine::new` unless `QB_ALLOW_PAID_ENGINES=yes`) and must not be suggested.
 Knowledge lattice (`config/lattice/`, `d3::lattice`, `d5::expect`, `d12::lattice`):
 expectations never enter the fact store (no `CommitPermit` in D5); a
 refutation with a multi-valued premise must not revise its rule; keep every

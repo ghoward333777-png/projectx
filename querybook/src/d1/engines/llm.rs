@@ -155,6 +155,14 @@ fn user_prompt(book: &Book, ents: &EntityTable, chunk: &Chunk) -> String {
 
 impl LlmEngine {
     pub fn new(p: EngineProfile) -> anyhow::Result<LlmEngine> {
+        // project rule: no pay-per-use processing unless the owner explicitly allows it
+        if p.kind == "claude" && std::env::var("QB_ALLOW_PAID_ENGINES").map(|v| v != "yes").unwrap_or(true) {
+            anyhow::bail!(
+                "engine '{}' is a paid API and paid engines are disabled for this project; \
+                 use the free built-in engines (language, rules) or a self-hosted model (kind \"openai\")",
+                p.id
+            );
+        }
         let http = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(900))
             .connect_timeout(Duration::from_secs(30))

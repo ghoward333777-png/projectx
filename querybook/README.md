@@ -11,7 +11,7 @@ server. The source of truth for features is the QueryBook Feature Registry v65
 ```
  EPUB/DOCX/TXT ─┐                                   ┌─ Kindle-style reader (web, phone, tablet)
  UFCS feed ─────┤ D1 extract → D0 safety → D3 validate → D2 store ─┐   │  ask · who's who · recap · timeline
- (149M facts)   │  rules │ Claude │ your own LLM server               │   │  flashcards · quiz · notes · highlights
+ (149M facts)   │  language │ rules │ your own LLM server               │   │  flashcards · quiz · notes · highlights
                 └────────────────────────────────────────────────────┘   │
                         signed hash-linked ledger (Merkle per batch)      │
  reader ── D9 ── D8 scope (entitlement + reading position) ── D4 FQL ── attractor ── D7 grounded text ── citations
@@ -47,6 +47,8 @@ server. The source of truth for features is the QueryBook Feature Registry v65
   to the substrate need a permit that only a satisfied D1/D5/D8/D10/D12→D2
   conversion can mint. Every admission, election and erasure is a signed,
   hash-linked ledger node with a keyed checksum over the safety evaluation.
+* **No per-use costs.** Every book is read by QueryBook's own engines on your
+  server. Paid AI APIs are disabled by project decision and refused by the code.
 * **Privacy.** History is retained by default and erasable per session or
   account; notes are owner-only records; full data export; erasures are
   ledgered without their content.
@@ -102,9 +104,8 @@ data directory; the index writer lock is taken only while writing).
 4. **Estimate, then ingest.**
 
    ```bash
-   qb -c qb.toml estimate --manifest library.csv --engine claude     # requests, tokens, $ — spends nothing
    qb -c qb.toml ingest --manifest library.csv                        # language engine: free, on your server
-   qb -c qb.toml ingest --manifest library.csv --engines language,rules,claude --replace   # higher-quality records
+   qb -c qb.toml ingest --manifest library.csv --engines language,rules --replace   # two free engines agreeing raise confidence
    ```
 
    One failing book does not stop the run; each book prints a JSON report
@@ -127,8 +128,7 @@ sudo -u querybook qb -c /etc/querybook/querybook.toml ingest --manifest /var/lib
 ```
 
 The 20 books (2.1M words) ingest in about 20 seconds with the built-in engine
-(~33,000 facts). Running them through Claude once costs about $70 (±30%,
-`qb estimate`) and produces much better character descriptions. archive.org's
+(~33,000 facts), at no cost: nothing is sent to a paid service. archive.org's
 copies of these titles are scans of modern editions in its lending library
 (some still in copyright), so Gutenberg is used instead.
 
@@ -142,8 +142,8 @@ repeating itself does not (QBF-C023). Configure them in the TOML:
 |---|---|---|---|
 | `language` | built in (default) | your server, no network | The seven-stage language pipeline below. Relations ("Elizabeth is the wife of Mr. Darcy"), traits with negation, speech attribution, conservative pronoun resolution. |
 | `rules` | built in | your server, no network | Deterministic pattern baseline. Agreeing with `language` raises a record's diversity (two methods, two source classes). |
-| `claude` | Anthropic API | Anthropic | Model `claude-opus-5`, JSON-schema output, server-side refusal fallback (`fallbacks: "default"`). Needs `ANTHROPIC_API_KEY`. |
-| `local` | OpenAI-compatible | **your own server** (vLLM, Ollama, llama.cpp, TGI…) | Set `base_url` and `model`. Same prompt and conversion as Claude. |
+| `claude` | Anthropic API | Anthropic | **Disabled by project decision (pay-per-use).** The code refuses it unless the owner sets `QB_ALLOW_PAID_ENGINES=yes`. |
+| `local` | OpenAI-compatible | **your own server** (vLLM, Ollama, llama.cpp, TGI…) | Set `base_url` and `model`. Free: runs on your hardware. |
 
 Model output is converted record by record (QBF-C021): ungoverned predicates
 are refused; every quoted span is checked against the passage it cites
@@ -196,8 +196,8 @@ qb lattice expect               # predict cell values from the lattice's rules
 qb lattice fill --budget 300 --import config/harvest/wikidata-mapping.toml
                                 # harvest only open cells, then confirm every prediction
 qb lattice report               # coverage, rule precision, calibration, work remaining
-qb lattice predict --engine claude --only people.physicist   # optional: a model recalls open cells
-qb lattice propose --engine claude --domain astro --out astro-proposal.toml   # optional: extend the structure
+qb lattice predict --engine local --only people.physicist   # optional: your own model recalls open cells
+qb lattice propose --engine local --domain astro --out astro-proposal.toml   # optional: extend the structure
 ```
 
 How the prediction speeds the harvest up:
@@ -351,8 +351,7 @@ It is the only way to open a backup, and it is not stored in Drive.
 
 | command | purpose |
 |---|---|
-| `qb ingest <files/dirs> --rights R [--engines rules,claude] [--manifest m.csv] [--replace]` | add books |
-| `qb estimate <files> --engine claude` | requests, tokens, cost before spending |
+| `qb ingest <files/dirs> --rights R [--engines language,rules] [--manifest m.csv] [--replace]` | add books |
 | `qb ask <work> "<question>" [--mode who\|recap\|summary\|timeline\|explore\|flashcards\|quiz] [--at POS] [--world] [--json]` | query from the terminal |
 | `qb import-ufcs --mapping m.toml [--file f.ndjson\|dir] [--dry-run] [--limit N]` | import a UFCS feed (file or directory) |
 | `qb harvest-wikidata [--pack p.toml] [--only geography,...] [--import mapping.toml]` | harvest a Wikidata query pack |
@@ -383,8 +382,8 @@ ever written as fact).
 
 * The `language` and `rules` engines are deterministic and free, but they read
   like a careful parser, not a reader: some descriptions come out awkward.
-  Claude or your own model produces properly atomic records ("Mr. Collins is
-  the heir of the Longbourn estate"); run them together for diversity.
+  A self-hosted model on your own server can add a second reader at no
+  per-book cost.
 * The lattice reads only the facts about its own members (in batches through
   the index), so its memory grows with the lattice (~300k members), not with
   the size of the fact store.

@@ -22,17 +22,20 @@ id = "rules"                     # built in, runs entirely on this server, no ne
 kind = "rules"
 reliability = 0.6
 
-[[engines]]
-id = "claude"                    # Anthropic API
-kind = "claude"
-model = "claude-opus-5"
-api_key_env = "ANTHROPIC_API_KEY"
-reliability = 0.75
-chunk_words = 2200
-concurrency = 4
-input_price = 5.0                # USD per million tokens (for `qb estimate`)
-output_price = 25.0
-# effort = "high"                # optional: low | medium | high | xhigh | max
+# Paid engines are disabled by project decision: nothing is sent to the
+# Anthropic API (or any pay-per-use service). The code refuses kind "claude"
+# unless QB_ALLOW_PAID_ENGINES=yes is set by the owner.
+# [[engines]]
+# id = "claude"                    # Anthropic API
+# kind = "claude"
+# model = "claude-opus-5"
+# api_key_env = "ANTHROPIC_API_KEY"
+# reliability = 0.75
+# chunk_words = 2200
+# concurrency = 4
+# input_price = 5.0                # USD per million tokens (for `qb estimate`)
+# output_price = 25.0
+# # effort = "high"                # optional: low | medium | high | xhigh | max
 
 [[engines]]
 id = "local"                     # your own model server (vLLM, Ollama, llama.cpp, TGI...)

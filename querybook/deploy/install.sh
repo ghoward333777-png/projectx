@@ -20,7 +20,6 @@ if [ ! -f /etc/querybook/env ]; then
   cat > /etc/querybook/env <<'ENV'
 # Secrets for the QueryBook service (read by systemd). Keep this file 0600.
 QB_ADMIN_PASSWORD=change-me
-# ANTHROPIC_API_KEY=
 # UFCS_TOKEN=
 # Backups (README: "Backups to Google Drive"). Keep a copy of the passphrase
 # somewhere safe outside this server: without it no backup can be restored.
@@ -37,7 +36,7 @@ install -m 0644 deploy/querybook-backup.timer /etc/systemd/system/querybook-back
 systemctl daemon-reload
 echo
 echo "Installed. Next:"
-echo "  sudoedit /etc/querybook/env            # set QB_ADMIN_PASSWORD (and API keys)"
+echo "  sudoedit /etc/querybook/env            # set QB_ADMIN_PASSWORD"
 echo "  sudo systemctl enable --now querybook"
 echo "  sudo -u querybook qb -c /etc/querybook/querybook.toml ingest --manifest /path/library.csv"
 echo "Backups to Google Drive (see README), once the env file has the backup settings:"
