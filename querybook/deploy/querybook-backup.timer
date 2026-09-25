@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly QueryBook backup to Google Drive
+
+[Timer]
+OnCalendar=*-*-* 03:17
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=QueryBook encrypted backup to Google Drive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=querybook
+Group=querybook
+EnvironmentFile=-/etc/querybook/env
+# snapshot -> encrypt -> upload -> keep the newest 7 in Drive; the local copy is removed after upload
+ExecStart=/usr/local/bin/qb -c /etc/querybook/querybook.toml backup --drive --keep 7 --out /var/backups/querybook
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/querybook /var/backups/querybook

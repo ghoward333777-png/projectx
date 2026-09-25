@@ -1,4 +1,5 @@
 //! D2 · Knowledge Substrate: custody of records and lineage.
+pub mod backup;
 pub mod fact;
 pub mod index;
 pub mod ledger;

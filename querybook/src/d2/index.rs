@@ -115,6 +115,11 @@ impl FactIndex {
         f(guard.as_mut().unwrap())
     }
 
+    /// Hold the writer lock (no commit from this or any other process) while `f` runs.
+    pub fn hold_writer<T>(&self, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<T> {
+        self.with_writer(|_| f())
+    }
+
     /// Everything the index knows about a record, derived from the record.
     pub fn document(&self, fact: &FactUnit, searchable_text: &str) -> TantivyDocument {
         let f = &self.f;

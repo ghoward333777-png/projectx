@@ -267,6 +267,64 @@ Put nginx (or Caddy) with TLS in front — see [deploy/nginx.conf](deploy/nginx.
 Back up `/var/lib/querybook` (it holds the store, the index and the ledger keys).
 Change the demo passwords with `qb user reader --password …`.
 
+## Backups to Google Drive
+
+The facts, index and ledger stay on the server's disk, where answers are fast.
+Each night a backup is written, encrypted with your passphrase, uploaded to a
+"QueryBook backups" folder in your Google Drive, and the newest 7 are kept.
+Only you can read the backups: Google stores ciphertext, and QueryBook's access
+to your Drive is limited to the files it created itself (`drive.file` scope).
+
+**One-time setup (about 10 minutes, in a browser):**
+
+1. Go to <https://console.cloud.google.com/>, create a project (e.g. "QueryBook"),
+   and under *APIs & Services → Library* enable the **Google Drive API**.
+2. *APIs & Services → OAuth consent screen*: choose **External**, fill in the app
+   name and your email, add the scope `.../auth/drive.file`, then **Publish app**
+   (status "In production"). `drive.file` needs no Google review. Apps left in
+   "Testing" have their authorisation expire after 7 days.
+3. *APIs & Services → Credentials → Create credentials → OAuth client ID*,
+   application type **TVs and Limited Input devices**. Copy the client ID and secret.
+4. On the server, add to `/etc/querybook/env`:
+
+   ```
+   QB_BACKUP_PASSPHRASE=a long passphrase you also keep somewhere safe
+   QB_DRIVE_CLIENT_ID=….apps.googleusercontent.com
+   QB_DRIVE_CLIENT_SECRET=…
+   ```
+5. Authorise once. It prints a short code; enter it at google.com/device on
+   your phone, signed in to the Google account whose Drive should hold the backups:
+
+   ```bash
+   sudo systemd-run --pty --uid=querybook -p EnvironmentFile=/etc/querybook/env \
+     /usr/local/bin/qb -c /etc/querybook/querybook.toml drive-auth
+   sudo systemctl enable --now querybook-backup.timer      # nightly at ~03:17
+   sudo systemctl start querybook-backup                   # one now, to check
+   ```
+
+**Restore** (into a new, empty directory; the ledger is verified before you use it):
+
+```bash
+qb backup --list                                            # backups in Drive
+qb restore --from-drive latest --into /var/lib/querybook-restored
+qb restore --file querybook-20260925-031700.qbk --into /var/lib/querybook-restored
+```
+
+**What a backup is.** The snapshot is consistent: no import can commit while it
+is taken. It contains the database, the search index and the ledger keys,
+compressed with zstd, then encrypted with XChaCha20-Poly1305 using a key derived
+from the passphrase (Argon2id). Any altered, reordered or truncated byte is
+detected, and a wrong passphrase is refused. Every backup and upload is recorded
+in the ledger.
+
+**Size.** For 149M facts expect a ~60–80 GB backup and a Google One 2 TB plan.
+Uploads resume after interruptions. The local copy is deleted once the upload's
+size matches; use `--keep-local` to keep it. Without Drive, `qb backup --out DIR`
+writes encrypted backups locally.
+
+**Keep the passphrase outside the server** (password manager, printed copy).
+It is the only way to open a backup, and it is not stored in Drive.
+
 ## Command reference
 
 | command | purpose |
@@ -282,12 +340,13 @@ Change the demo passwords with `qb user reader --password …`.
 | `qb bench-synthetic --facts N` | measure import and query at scale on this machine |
 | `qb export-qbf <work> out.qbf` | a work's records as a QBF frame stream (offline/compact) |
 | `qb verify` | verify the whole ledger (links, keyed checksums, signatures) |
+| `qb backup [--drive] [--keep 7] [--list]` · `qb restore --from-drive latest\|--file F --into DIR` · `qb drive-auth` | encrypted backups (Google Drive) |
 | `qb stats` · `qb user` · `qb grant` · `qb serve` | operations |
 
 ## Tests
 
 ```bash
-cargo test --release     # 33 unit + 11 end-to-end invariant tests
+cargo test --release     # 34 unit + 12 end-to-end invariant tests
 ```
 
 The invariants cover determinism under the context lock, the structural

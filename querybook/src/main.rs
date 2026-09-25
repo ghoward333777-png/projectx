@@ -106,6 +106,38 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Authorise this server to keep backups in your Google Drive (one time).
+    DriveAuth,
+    /// Encrypted snapshot of the whole store (facts, index, ledger keys), optionally uploaded to Google Drive.
+    Backup {
+        /// Local folder for backup files
+        #[arg(long, default_value = "backups")]
+        out: PathBuf,
+        /// Upload to Google Drive (folder "QueryBook backups"); the local copy is removed after a verified upload
+        #[arg(long)]
+        drive: bool,
+        /// Keep this many backups (in Drive with --drive, locally otherwise)
+        #[arg(long, default_value_t = 7)]
+        keep: usize,
+        /// Keep the local file even after uploading
+        #[arg(long)]
+        keep_local: bool,
+        /// List the backups in Drive and exit
+        #[arg(long)]
+        list: bool,
+    },
+    /// Restore a backup into a new, empty data directory.
+    Restore {
+        /// A local .qbk file
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// A backup in Google Drive: its file name, or "latest"
+        #[arg(long)]
+        from_drive: Option<String>,
+        /// Target data directory (must not exist or be empty)
+        #[arg(long)]
+        into: PathBuf,
+    },
     /// Knowledge lattice: structure first, predict every cell, harvest only what is open, confirm.
     Lattice {
         #[arg(long, default_value = "config/lattice/knowledge-lattice.toml")]
@@ -226,6 +258,92 @@ enum LatticeCmd {
         #[arg(long)]
         out: PathBuf,
     },
+}
+
+const DRIVE_FOLDER: &str = "QueryBook backups";
+
+fn backup_passphrase() -> anyhow::Result<String> {
+    std::env::var("QB_BACKUP_PASSPHRASE").ok().filter(|p| !p.is_empty()).ok_or_else(|| {
+        anyhow::anyhow!(
+            "set QB_BACKUP_PASSPHRASE (12+ characters); keep a copy somewhere safe — without it no backup can be restored"
+        )
+    })
+}
+
+/// UTC "YYYYMMDD-HHMMSS" (sortable) from Unix seconds.
+fn stamp(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // civil-from-days (Howard Hinnant)
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + (m <= 2) as i64;
+    format!("{y:04}{m:02}{d:02}-{:02}{:02}{:02}", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+fn backup_cmd(cfg: Config, out: &Path, to_drive: bool, keep: usize, keep_local: bool, list: bool) -> anyhow::Result<()> {
+    let keys = cfg.server.data_dir.join("keys");
+    if list {
+        let d = querybook::d12::drive::Drive::new(&keys)?;
+        let folder = d.folder(DRIVE_FOLDER)?;
+        for f in d.list(&folder)? {
+            println!("{}  {:>8.2} GB  {}", f.name, f.size as f64 / 1e9, f.created);
+        }
+        return Ok(());
+    }
+    let pass = backup_passphrase()?;
+    // fail before snapshotting if Drive is not usable
+    let drive = if to_drive { Some(querybook::d12::drive::Drive::new(&keys)?) } else { None };
+    let folder = match &drive {
+        Some(d) => Some(d.folder(DRIVE_FOLDER)?),
+        None => None,
+    };
+    let qb = QueryBook::open(cfg)?;
+    let file = out.join(format!("querybook-{}.qbk", stamp(querybook::util::now_secs())));
+    eprintln!("snapshotting to {}", file.display());
+    let r = querybook::d2::backup::create(&qb.store, &file, &pass, &qb.cfg.operator.name)?;
+    eprintln!("  {} files, {} facts, {:.2} GB encrypted, {:.1}s", r.files, r.facts, r.bytes as f64 / 1e9, r.seconds);
+    if let (Some(d), Some(folder)) = (&drive, &folder) {
+        let up = d.upload(&file, folder, &|m: &str| eprintln!("{m}"))?;
+        anyhow::ensure!(up.size == r.bytes, "uploaded size differs from the local file");
+        // retention in Drive: newest `keep` backups
+        let all = d.list(folder)?;
+        for old in all.iter().skip(keep.max(1)) {
+            d.delete(&old.id)?;
+            eprintln!("  removed old backup {}", old.name);
+        }
+        qb.store.ledger_append(
+            &qb.cfg.operator.name,
+            "store.backup.upload",
+            "D2->D12 ALLOW",
+            &serde_json::json!({"file": up.name, "drive_id": up.id, "sha256": r.sha256}).to_string(),
+            "operations",
+        )?;
+        if !keep_local {
+            std::fs::remove_file(&file)?;
+        }
+        println!("backup {} uploaded to Google Drive / {DRIVE_FOLDER} (sha256 {})", up.name, &r.sha256[..16]);
+    } else {
+        // local retention
+        let mut local: Vec<PathBuf> = std::fs::read_dir(out)?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|e| e == "qbk").unwrap_or(false))
+            .collect();
+        local.sort();
+        local.reverse();
+        for old in local.iter().skip(keep.max(1)) {
+            std::fs::remove_file(old)?;
+        }
+        println!("backup written to {} (sha256 {})", r.file, &r.sha256[..16]);
+    }
+    Ok(())
 }
 
 fn csv_list(s: &str) -> Vec<String> {
@@ -643,6 +761,44 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::Lattice { lattice, cmd } => lattice_cmd(cfg, &lattice, cmd)?,
+        Cmd::DriveAuth => {
+            let drive = querybook::d12::drive::Drive::new(&cfg.server.data_dir.join("keys"))?;
+            drive.authorize(&|m: &str| eprintln!("{m}"))?;
+        }
+        Cmd::Backup { out, drive, keep, keep_local, list } => backup_cmd(cfg, &out, drive, keep, keep_local, list)?,
+        Cmd::Restore { file, from_drive, into } => {
+            let pass = backup_passphrase()?;
+            let r = match (file, from_drive) {
+                (Some(f), None) => {
+                    querybook::d2::backup::restore(std::io::BufReader::new(std::fs::File::open(&f)?), &into, &pass)?
+                }
+                (None, Some(name)) => {
+                    let d = querybook::d12::drive::Drive::new(&cfg.server.data_dir.join("keys"))?;
+                    let folder = d.folder(DRIVE_FOLDER)?;
+                    let files = d.list(&folder)?;
+                    let f = if name == "latest" { files.first() } else { files.iter().find(|f| f.name == name) }
+                        .ok_or_else(|| anyhow::anyhow!("no backup '{name}' in Drive"))?;
+                    eprintln!("restoring {} ({:.2} GB) from Drive", f.name, f.size as f64 / 1e9);
+                    querybook::d2::backup::restore(std::io::BufReader::with_capacity(1 << 20, d.download(&f.id)?), &into, &pass)?
+                }
+                _ => anyhow::bail!("give exactly one of --file or --from-drive"),
+            };
+            // prove the restored store is whole: open it and verify the ledger
+            let mut c2 = cfg.clone();
+            c2.server.data_dir = into.clone();
+            let qb = QueryBook::open(c2)?;
+            let v = qb.store.verify_ledger()?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
+            let ok = v.first_failure.is_none() && v.verified == v.nodes;
+            println!(
+                "ledger: {} of {} nodes verified{}",
+                v.verified,
+                v.nodes,
+                v.first_failure.as_deref().map(|f| format!(", first failure: {f}")).unwrap_or_default()
+            );
+            anyhow::ensure!(ok, "the restored ledger does not verify");
+            println!("point data_dir at {} to use it", into.display());
+        }
         Cmd::HarvestWikidata { pack, out, only, force, import } => {
             let only: Vec<String> = only.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             let r = querybook::d12::wikidata::harvest(&pack, &out, &only, force, &|m: &str| eprintln!("{m}"))?;

@@ -537,3 +537,30 @@ fn ufcs_test_kit_imports_and_resolves_contradictions() {
     drop(qb);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Backups: a snapshot restores to a store whose ledger verifies and which
+/// answers exactly as the original did; a wrong passphrase restores nothing.
+#[test]
+fn encrypted_backup_restores_a_verifiable_store() {
+    use querybook::d2::backup;
+    let e = env("backup");
+    let u = reader(&e, "bea");
+    let before = ask(&e, &u, "Who is Tomas Reed?", Some(1000));
+    let file = e.dir.join("out").join("b.qbk");
+    let r = backup::create(&e.qb.store, &file, "a long enough passphrase", "test").unwrap();
+    assert!(r.facts > 10);
+    let bytes = std::fs::read(&file).unwrap();
+    assert!(!bytes.windows(10).any(|w| w == b"Tomas Reed"), "the backup must not contain plaintext");
+    let bad = backup::restore(&bytes[..], &e.dir.join("wrong"), "not the passphrase at all");
+    assert!(bad.is_err() && !e.dir.join("wrong").exists());
+    let into = e.dir.join("restored");
+    backup::restore(&bytes[..], &into, "a long enough passphrase").unwrap();
+    let mut cfg = Config::default();
+    cfg.server.data_dir = into;
+    let qb2 = QueryBook::open(cfg).unwrap();
+    let v = qb2.store.verify_ledger().unwrap();
+    assert!(v.first_failure.is_none() && v.verified == v.nodes && v.nodes > 0);
+    let e2 = Env { qb: qb2, dir: e.dir.join("restored-env"), work: e.work.clone() };
+    let after = ask(&e2, &u, "Who is Tomas Reed?", Some(1000));
+    assert_eq!(serde_json::to_string(&before.lines).unwrap(), serde_json::to_string(&after.lines).unwrap());
+}
