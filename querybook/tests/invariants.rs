@@ -359,6 +359,7 @@ kind = "inverse"
 class = "geo.city"
 slot = "country"
 from_slot = "capital"
+from_class = "geo.country"
 confidence = 0.95
 [[rule]]
 id = "city-continent"
