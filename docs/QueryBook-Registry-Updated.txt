@@ -3550,3 +3550,40 @@ Patent: reflected in the single consolidated Provisional Patent Application
 (Summary "No large language model is used"; Section VII [0021]-[0022]; FIG. 8).
 Counsel review required only to flip LLM_LOCKOUT, which reverses a deliberate
 anti-hallucination covenant.
+
+
+================================================================
+ADDITIVE REVISION - REASONING-FAMILY AGENTS (2026-09-29)
+================================================================
+Records the reasoning-family agent roles reduced to practice in the prototype,
+under the scoped LLM covenant (LLMs may propose/phrase, never assert). Additive.
+
+[186] 17.5 - Hypothesis agent (kind=hypothesis)                        [BUILT]
+      An LLM PROPOSES candidate facts from verified context; each candidate is
+      verified against the deterministic store (corroborated / contradicted /
+      open) and stored ISOLATED in a 'hypothesis' domain at low trust (< the 0.5
+      assertion threshold), predicate namespaced 'hypothesis:*'. Non-asserting:
+      nothing the LLM proposes is returned as a VERIFIED fact. Needs a provider.
+
+[187] 17.6 - Simulation agent (kind=simulation)                        [BUILT]
+      As [186], but the LLM PROJECTS scenario consequences (seeded by a target);
+      each projection verified against the store and stored isolated in a
+      'simulation' domain ('sim:*'), non-asserting.
+
+[188] 17.7 - Gated reasoning agent (kind=reasoning)                     [BUILT]
+      DEDUCTION ASSERTS: deterministic transitive closure over VERIFIED premises
+      (allowlist of transitive predicates) writes derived facts into a 'derived'
+      domain, each carrying its two premises as provenance, trust decaying 0.98x
+      per hop so chains terminate below the premise floor. Sound because the
+      conclusion is entailed by facts already verified; needs NO LLM. INDUCTION /
+      ABDUCTION PROPOSE: optional LLM candidates stored non-asserting in a
+      'reasoning' domain, verified against the store like a hypothesis.
+
+Gate refinement: qb_chat.gate() treats multi-valued predicates (is_a, part_of,
+located_in, ...) as corroborating facets rather than contradictions; functional
+predicates (has_capital, ...) still flag genuine contradictions.
+
+REVISED FEATURE COUNT: 192 (189 + 3 reasoning-family agents, [186]-[188]).
+Patent: recorded in the consolidated Provisional Patent Application, Section VII.
+Covenant: deduction asserts only entailed facts; induction/abduction/hypothesis/
+simulation are non-asserting proposals verified against the deterministic store.

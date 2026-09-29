@@ -330,17 +330,28 @@ def retrieve(st, plans, limit=8, question=None):
     return facts, rph
 
 
+# Predicates that are legitimately MULTI-VALUED: one subject may hold several objects
+# without contradiction (a sparrow is_a bird AND an animal AND a living_thing). For these,
+# multiple objects are corroborating facets, not competing answers. Functional predicates
+# (has_capital, born_in, atomic_number, …) are NOT here, so two objects there still
+# register as a genuine contradiction.
+MULTI_VALUED = {"is_a", "subclass_of", "subtype_of", "instance_of", "member_of", "part_of",
+                "has_part", "contained_in", "located_in", "ancestor_of", "descendant_of",
+                "related_to", "synonym_of", "example_of", "type_of", "category_of", "has_property"}
+
+
 # ---------- 3. GATE (Prime Directive / Domain 0) ----------
 def gate(facts, min_trust=0.5):
     """Classify the retrieval into a verdict and the facts allowed to reach composition."""
     usable = [f for f in facts if f["trust"] >= min_trust]
     if not usable:
         return "UNKNOWN", []
-    # contradiction = same subject+predicate, different objects, both above threshold
+    # contradiction = same subject+predicate with different objects, but ONLY for functional
+    # predicates. Multi-valued relations (is_a, part_of, …) may hold many objects at once.
     by_sp = {}
     for f in usable:
         by_sp.setdefault((f["subject"], f["predicate"]), set()).add(f["object"].lower())
-    if any(len(objs) > 1 for objs in by_sp.values()):
+    if any(len(objs) > 1 and pred not in MULTI_VALUED for (subj, pred), objs in by_sp.items()):
         return "CONTRADICTED", usable
     return "VERIFIED", usable
 
