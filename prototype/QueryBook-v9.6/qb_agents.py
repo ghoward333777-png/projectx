@@ -48,6 +48,8 @@ ROLES = {
                       "desc": "Deduction asserts; induction/abduction propose. Requires the gated reasoning engine (spec-only)."},
     "hypothesis":    {"title": "Hypothesis / creative agent (LLM-proposed, store-verified)", "status": "built",
                       "desc": "An LLM PROPOSES candidate facts; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'hypothesis' domain at low trust. Non-asserting: nothing the LLM proposes becomes a fact. Needs an LLM provider."},
+    "simulation":    {"title": "Simulation agent (LLM-projected, store-verified)", "status": "built",
+                      "desc": "An LLM projects plausible CONSEQUENCES of a scenario; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'simulation' domain at low trust. Non-asserting. Needs an LLM provider."},
     "planner":       {"title": "NLPL planner (task/goal-oriented)", "status": "roadmap",
                       "desc": "Decomposes an instruction into operational intents; halts on ambiguity. Requires the NLPL engine (spec-only)."},
     # ---- Language Lab phase agents ----
@@ -493,6 +495,93 @@ class AgentManager:
                     total = corrob + contra + openh
                     a["facts"] = a.get("facts", 0) + total
                     a["phase"] = ("Hypothesis — %d proposed (%d corroborated, %d contradicted, %d open); "
+                                  "none asserted" % (total, corrob, contra, openh))
+                    a["last_hypotheses"] = samples
+                    a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "simulation":
+                    # LLM-backed SIMULATION agent — PERMITTED, strictly non-asserting. The LLM
+                    # projects plausible CONSEQUENCES of a scenario; each projected consequence is
+                    # verified against the deterministic store and stored isolated in a 'simulation'
+                    # domain at low trust. Nothing projected is asserted as a fact.
+                    import qb_chat, json as _json, re as _re
+                    prov = self._best_provider(a.get("provider"))
+                    if not (qb_chat.provider_usable(prov) or qb_chat._sdk_available()):
+                        a["status"] = "blocked"
+                        a["error"] = ("Simulation agent needs an LLM provider (permitted, non-asserting "
+                                      "role). Open LLM Providers, paste your API key, press Test, then start. "
+                                      "Projected consequences are verified against the store, never asserted.")
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    try:
+                        seed = (a.get("target") or "").strip()
+                        rows = []
+                        if not st.no_fql:
+                            if seed:
+                                rows, _ = st.search(seed, 0.5, 12)
+                            if not rows:
+                                rows = st.db.execute("SELECT subject,predicate,object FROM nuc "
+                                                     "WHERE trust>=0.7 ORDER BY RANDOM() LIMIT 12").fetchall()
+                        context = "\n".join("%s | %s | %s" % (r[0], r[1], r[2]) for r in rows)
+                    finally:
+                        st.close()
+                    scenario = seed or "the current state described by the verified facts"
+                    prompt = ("You are a SIMULATION engine for a fact engine. Given the VERIFIED facts below "
+                              "and the scenario \"%s\", project up to 6 plausible CONSEQUENCES as a JSON array "
+                              "of {subject,predicate,object} using snake_case predicates. These are PROJECTIONS "
+                              "ONLY, to be verified independently; do not assert them as true. Return ONLY the "
+                              "JSON array.\n\nVERIFIED FACTS:\n%s" % (scenario, context or "(none yet)"))
+                    try:
+                        raw = qb_chat.llm_complete(prov, prompt,
+                                                   system="Project testable consequences. JSON array only.",
+                                                   max_tokens=700)
+                    except Exception as e:
+                        diag = qb_chat.provider_test(prov)
+                        a["status"] = "blocked"
+                        a["error"] = "LLM call failed (%s). %s" % (e, diag.get("detail", ""))
+                        _ev("error", "agent:" + a["name"], a["error"]); self._save(); break
+                    m = _re.search(r"\[.*\]", raw or "", _re.S)
+                    props = []
+                    if m:
+                        try: props = _json.loads(m.group(0))
+                        except Exception: props = []
+                    SIM_SRC = ("SRC-LLM-SIM", "LLM simulation (unverified projection via %s)"
+                               % (prov.get("name") if prov else "LLM"), "llm-projected", 0.15)
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    corrob = contra = openh = 0; samples = []
+                    try:
+                        for pr in (props or []):
+                            if not isinstance(pr, dict):
+                                continue
+                            s = str(pr.get("subject", "")).strip()
+                            p = str(pr.get("predicate", "")).strip()
+                            o = str(pr.get("object", "")).strip()
+                            if not (s and p and o):
+                                continue
+                            status, trust = "open", 0.15
+                            try:
+                                if st.get(ufcs_store.fingerprint(s, p, o)):
+                                    status, trust = "corroborated", 0.20
+                                elif not st.no_fql:
+                                    hit, _ = st.fql(s, p, 0.5, 5)
+                                    if hit and all(str(r[2]).lower() != o.lower() for r in hit):
+                                        status, trust = "contradicted", 0.05
+                            except Exception:
+                                pass
+                            st.add(ufcs_store.make_packet(s, "sim:" + p, o, "+", "simulation", SIM_SRC, trust))
+                            st.add(ufcs_store.make_packet('simulation "%s %s %s"' % (s, p, o),
+                                                          "verification_status", status, "+", "simulation", SIM_SRC, trust))
+                            if status == "corroborated": corrob += 1
+                            elif status == "contradicted": contra += 1
+                            else: openh += 1
+                            if len(samples) < 6:
+                                samples.append({"triple": "%s %s %s" % (s, p, o), "status": status})
+                        st.flush()
+                    finally:
+                        st.close()
+                    total = corrob + contra + openh
+                    a["facts"] = a.get("facts", 0) + total
+                    a["phase"] = ("Simulation — %d projected (%d corroborated, %d contradicted, %d open); "
                                   "none asserted" % (total, corrob, contra, openh))
                     a["last_hypotheses"] = samples
                     a["error"] = None

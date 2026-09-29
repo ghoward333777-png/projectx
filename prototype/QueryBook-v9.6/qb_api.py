@@ -379,17 +379,21 @@ class H(BaseHTTPRequestHandler):
                     # Phase 2 deterministic grounding coverage (dictionary + store; no LLM).
                     self._send(200, qb_language.grounding_status(DATA_DIR))
                 elif u.path == "/api/hypotheses":
-                    # LLM-proposed, store-verified hypotheses (non-asserting; isolated domain).
+                    # LLM-proposed/projected, store-verified candidates (non-asserting; isolated domains).
                     items = []
                     if not st.no_fql:
                         rows = st.db.execute(
                             "SELECT subject, object, trust FROM nuc WHERE predicate='verification_status' "
-                            "ORDER BY rowid DESC LIMIT 60").fetchall()
+                            "ORDER BY rowid DESC LIMIT 80").fetchall()
                         for subj, status, tr in rows:
-                            triple = subj[len('hypothesis "'):-1] if subj.startswith('hypothesis "') else subj
-                            items.append({"hypothesis": triple, "status": status, "trust": tr})
+                            kind = "hypothesis"
+                            triple = subj
+                            for pfx, k in (('hypothesis "', "hypothesis"), ('simulation "', "simulation")):
+                                if subj.startswith(pfx):
+                                    kind = k; triple = subj[len(pfx):-1]; break
+                            items.append({"type": kind, "candidate": triple, "status": status, "trust": tr})
                     self._send(200, {"hypotheses": items, "count": len(items),
-                                     "note": "LLM proposals verified against the store; never asserted as fact."})
+                                     "note": "LLM proposals/projections verified against the store; never asserted as fact."})
                 elif u.path == "/api/domains":
                     # real breakdown of what's actually stored, grouped by relation (predicate)
                     rows = []
@@ -439,10 +443,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.8", "date": "2026-09-29",
+                    self._send(200, {"build": "v9.9", "date": "2026-09-29",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -495,9 +499,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.8 · 2026-09-29  (Hypothesis agent — LLM-proposed, store-verified)", flush=True)
+    print("  QueryBook  BUILD v9.9 · 2026-09-29  (Hypothesis + simulation agents — store-verified)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.8 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.9 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)

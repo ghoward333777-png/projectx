@@ -124,7 +124,7 @@
 <header>
   <div class="bar">
     <span class="brand"><span class="q">Query</span>Book — Harvesting Console</span>
-    <span style="font:800 11px/1 ui-monospace,Consolas,monospace;background:#0c5c4c;color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.7 · 2026-09-29</span>
+    <span style="font:800 11px/1 ui-monospace,Consolas,monospace;background:#0c5c4c;color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.9 · 2026-09-29</span>
     <nav class="menu">
       <a class="mi active" href="/dashboard">Console</a>
       <a class="mi" href="#agents">Agents</a>
@@ -359,6 +359,15 @@
       <button class="btn" id="p-add">Add provider</button>
     </div>
     <div id="plist" class="qb-note"></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-b">
+    <h2>Hypotheses &amp; Simulations <span class="tag live">live</span></h2>
+    <p class="sub">LLM-<b>proposed</b> candidates (hypothesis agent) and LLM-<b>projected</b> consequences (simulation agent), each <b>verified against your store</b>. These are never asserted as facts — they are surfaced here for you to investigate. Create a <code>hypothesis</code> or <code>simulation</code> agent (LLM Providers must test green first).</p>
+    <div id="hyp-summary" class="qb-note" style="margin-bottom:8px"></div>
+    <div id="hyp-list"></div>
   </div>
 </section>
 
@@ -906,6 +915,31 @@ async function refreshLog(){
 }
 $('log-clear').onclick=async()=>{ try{ await fetch('api/log?clear=1'); }catch(e){} refreshLog(); };
 refreshLog();
+
+// ---- Hypotheses & Simulations (LLM-proposed, store-verified, never asserted) ----
+const HYP_STATUS={corroborated:['var(--good)','✓ corroborated'],contradicted:['var(--badc)','✕ contradicted'],open:['#1f6feb','ⓘ open']};
+async function refreshHyp(){
+  try{
+    const d=await (await fetch('api/hypotheses')).json();
+    const items=d.hypotheses||[];
+    const by={corroborated:0,contradicted:0,open:0};
+    items.forEach(i=>{if(by[i.status]!=null)by[i.status]++;});
+    $('hyp-summary').innerHTML = items.length
+      ? `${items.length} candidate(s): `+['corroborated','open','contradicted'].map(k=>
+          `<span class="chip" style="border-left:3px solid ${HYP_STATUS[k][0]}">${k} ${by[k]}</span>`).join(' ')
+        +` <span class="qb-note">— none asserted as fact</span>`
+      : 'No hypotheses or simulations yet — start a <code>hypothesis</code> or <code>simulation</code> agent.';
+    $('hyp-list').innerHTML = items.map(i=>{
+      const st=HYP_STATUS[i.status]||['var(--muted)',esc(i.status)];
+      return `<div style="padding:4px 0;border-top:1px solid var(--line);font-size:13px">`+
+        `<span class="chip" style="font-size:10px;text-transform:uppercase">${esc(i.type||'hypothesis')}</span> `+
+        `<span style="font-family:ui-monospace">${esc(i.candidate)}</span> `+
+        `<span style="color:${st[0]};font-weight:700">${st[1]}</span></div>`;
+    }).join('');
+  }catch(e){}
+  setTimeout(refreshHyp, 3500);
+}
+refreshHyp();
 
 // ---- "Build English first" priority banner ----
 async function refreshLangFirst(){
