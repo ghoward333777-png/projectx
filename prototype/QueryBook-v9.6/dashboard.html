@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Harvesting Console</title>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --panel2:#f5f7fa; --ink:#15202b; --muted:#5b6a7a;
+    --line:#dde3ea; --accent:#1f6feb; --accent2:#2a3f9c;
+    --good:#1a9e63; --warnc:#c77d1a; --badc:#c2564e;
+    --tierA:#1a9e63; --tierB:#1f6feb; --tierC:#c77d1a; --tierD:#c2564e;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0d1117; --panel:#161c25; --panel2:#1b2330; --ink:#e6edf3; --muted:#93a2b3;
+    --line:#263140; --accent:#4d9bff; --accent2:#7d95f5; --good:#41c98a; --warnc:#e0913f; --badc:#e07a7a;
+    color-scheme:dark;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  /* top bar */
+  header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px}
+  .brand{font-weight:700;font-size:16px;letter-spacing:.2px}
+  .brand .q{color:var(--accent)}
+  .menu{display:flex;gap:4px;flex-wrap:wrap}
+  .mi{font-size:13px;color:var(--muted);padding:5px 10px;border-radius:8px}
+  .mi.active{background:var(--accent);color:#fff} .mi:hover{color:var(--ink)}
+  .live{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--badc);margin-right:6px}
+  .dot.on{background:var(--good)}
+  /* run row */
+  .run{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel2)}
+  .run input{width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px;font-variant-numeric:tabular-nums}
+  .btn{padding:8px 16px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:14px}
+  .btn.ghost{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .prog{flex:1;min-width:180px;height:12px;border-radius:8px;background:var(--line);overflow:hidden}
+  .prog > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+  .runmeta{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  /* tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:12px 16px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .tile .v{font-size:26px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+  .tile .s{font-size:12px;color:var(--muted)}
+  /* layout */
+  main{display:grid;grid-template-columns:230px 1fr 250px;gap:12px;padding:0 16px 16px;align-items:start}
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+  .col{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:13px;margin:0 0 2px;text-transform:uppercase;letter-spacing:.05em}
+  .card p.sub{font-size:12px;color:var(--muted);margin:0 0 10px}
+  .tag{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:5px;vertical-align:middle}
+  .tag.live{background:rgba(26,158,99,.15);color:var(--good)}
+  .tag.plan{background:rgba(199,125,26,.15);color:var(--warnc)}
+  /* domain rows */
+  .drow{margin:8px 0}
+  .drow .top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px}
+  .drow .top .n{color:var(--muted);font-variant-numeric:tabular-nums}
+  .drow.livd .name::before{content:"● ";color:var(--good)}
+  .drow.pland .name::before{content:"○ ";color:var(--muted)}
+  .mini{height:6px;border-radius:6px;background:var(--line);overflow:hidden}
+  .mini > i{display:block;height:100%;background:var(--accent)}
+  .drow.pland .mini > i{background:var(--muted);opacity:.5}
+  /* sources */
+  .src{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+  .src:first-of-type{border-top:0}
+  .src .tier{font-size:10px;font-weight:700;color:#fff;border-radius:4px;padding:1px 5px}
+  .tA{background:var(--tierA)} .tB{background:var(--tierB)} .tC{background:var(--tierC)} .tD{background:var(--tierD)}
+  .src .nm{flex:1}
+  .sw{width:34px;height:20px;border-radius:20px;background:var(--line);position:relative;cursor:pointer;flex:none}
+  .sw.on{background:var(--accent)}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+  .sw.on::after{left:16px}
+  /* fact table + log */
+  .fact{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+  .fact:first-of-type{border-top:0}
+  .fact b{font-weight:600} .fact .p{color:var(--muted)}
+  .fact .fp{margin-left:auto;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted)}
+  .search{display:flex;gap:8px;flex-wrap:wrap}
+  .search input{flex:1;min-width:160px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--ink);font-size:14px}
+  .verdict{font-weight:700;margin:8px 0 4px} .v-yes{color:var(--good)} .v-no{color:var(--badc)}
+  .rowflex{display:flex;gap:12px;flex-wrap:wrap} .rowflex > *{flex:1;min-width:220px}
+  canvas{width:100%;height:150px;display:block}
+  .banner{font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:0 16px 12px}
+  .banner b{color:var(--ink)}
+  .qb-note{font-size:11.5px;color:var(--muted);margin-top:8px}
+  .wide{padding:0 16px 16px}
+  .atable{width:100%;border-collapse:collapse;font-size:13px}
+  .atable th,.atable td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+  .atable th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  .pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .chip{display:inline-block;font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px 8px;margin:2px 3px 2px 0;font-variant-numeric:tabular-nums}
+  .p-running{background:rgba(26,158,99,.16);color:var(--good)}
+  .p-paused{background:rgba(199,125,26,.16);color:var(--warnc)}
+  .p-stopped{background:var(--panel2);color:var(--muted)}
+  .p-error{background:rgba(194,86,78,.16);color:var(--badc)}
+  .abtn{font-size:12px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;margin:0 3px 3px 0}
+  .abtn:hover{border-color:var(--accent)}
+  .field{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+  .field input,.field select{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--ink);font-size:13px}
+  .formrow{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px}
+  .drow .meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .drow .val{color:var(--good);font-weight:600}
+  .clk{cursor:pointer} .clk:hover{background:var(--panel2)}
+  /* packet drawer */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(460px,92vw);background:var(--panel);
+          border-left:1px solid var(--line);z-index:21;overflow-y:auto;box-shadow:-8px 0 30px rgba(0,0,0,.2)}
+  .drawer .dh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+  .drawer .dh b{font-size:14px} .drawer .body{padding:16px}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px;font-size:13px;margin-bottom:14px}
+  .kv .k{color:var(--muted)} .kv .v{word-break:break-word;font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+  .sect{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 6px;border-top:1px solid var(--line);padding-top:10px}
+  .xbtn{border:0;background:var(--panel2);color:var(--ink);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand"><span class="q">Query</span>Book — Harvesting Console</span>
+    <span style="font:800 11px/1 ui-monospace,Consolas,monospace;background:#0c5c4c;color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.6 · 2026-09-29</span>
+    <nav class="menu">
+      <a class="mi active" href="/dashboard">Console</a>
+      <a class="mi" href="#agents">Agents</a>
+      <a class="mi" href="/">Chat</a>
+      <a class="mi" href="/language">Language Lab</a>
+      <a class="mi" href="/console">Pipeline demo</a>
+      <a class="mi" href="/guide">Guide</a>
+    </nav>
+    <span class="live"><span class="dot" id="dot"></span><span id="livetext">connecting…</span></span>
+  </div>
+  <div class="run">
+    <label style="font-size:12.5px;color:var(--muted)">Harvest</label>
+    <select id="h-domain" title="Which domain to harvest" style="padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--ink);font-size:13px"></select>
+    <input id="count" type="text" value="1,000,000" inputmode="numeric">
+    <button class="btn" id="startbtn">Start harvest</button>
+    <button class="btn ghost" id="run247">Run 24×7</button>
+    <button class="btn ghost" id="stopbtn" hidden>Stop</button>
+    <div class="prog"><i id="progbar"></i></div>
+    <span class="runmeta" id="runmeta">idle</span>
+  </div>
+  <div class="run" style="border-top:1px dashed var(--line);margin-top:8px;padding-top:8px">
+    <label style="font-size:12.5px;color:var(--muted)">Stay awake</label>
+    <button class="btn ghost" id="awake247" title="Keep this PC awake in ALL modes (harvesting, paused, or idle) until turned off">💤 24×7 Awake: OFF</button>
+    <span class="runmeta" id="awakemeta">the PC may sleep when idle</span>
+  </div>
+</header>
+
+<div class="tiles">
+  <div class="tile"><div class="k">Facts saved</div><div class="v" id="t-facts">—</div><div class="s" id="t-verify">verified records on disk</div></div>
+  <div class="tile"><div class="k">Data files</div><div class="v" id="t-blocks">—</div><div class="s">compressed blocks</div></div>
+  <div class="tile"><div class="k">Disk used</div><div class="v" id="t-disk">—</div><div class="s" id="t-loc">on this PC</div></div>
+  <div class="tile"><div class="k">Duplicates skipped</div><div class="v" id="t-dupe">—</div><div class="s">deduped by fingerprint</div></div>
+</div>
+
+<div id="langfirst" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px 0;
+     padding:14px 18px;border-radius:12px;background:var(--accent);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)">
+  <div style="flex:1;min-width:240px">
+    <div style="font-weight:800;font-size:15px;letter-spacing:.01em">🗣️ Build English first</div>
+    <div id="langfirst-msg" style="font-size:13px;opacity:.95;margin-top:2px">Finish Phase&nbsp;1 language learning before other harvesting.</div>
+    <div style="height:8px;background:rgba(255,255,255,.28);border-radius:99px;overflow:hidden;margin-top:8px;max-width:420px">
+      <i id="langfirst-bar" style="display:block;height:100%;width:0%;background:#fff;border-radius:99px;transition:width .5s"></i>
+    </div>
+  </div>
+  <a href="/language" style="background:#fff;color:var(--accent);text-decoration:none;font-weight:800;
+     font-size:14px;padding:10px 18px;border-radius:9px;white-space:nowrap">▶ Open Language Lab</a>
+</div>
+<div class="banner">
+  <b>What's live vs planned:</b> tiles, charts, recent facts and verification read your <b>real</b> store on this
+  computer and update as you harvest. Source, geo, demographic and AI-strategy controls marked
+  <span class="tag plan">planned</span> are the product roadmap — they don't harvest yet.
+</div>
+
+<main>
+  <!-- LEFT: Domain Navigator -->
+  <div class="col">
+    <div class="card">
+      <h2>Domain Navigator</h2>
+      <p class="sub">% complete, ETA, and illustrative value per domain. <span style="color:var(--good)">●</span> live &nbsp; <span style="color:var(--muted)">○</span> planned</p>
+      <div id="domains"></div>
+      <p class="qb-note">% is against an estimated domain size; ETA uses your current live harvest rate; $ values are <b>illustrative</b> market estimates, not a valuation.</p>
+    </div>
+
+    <div class="card">
+      <h2>Create Fact Unit <span class="tag live">live</span></h2>
+      <p class="sub">Add your own Fact Unit to the store. It's fingerprinted, timestamped, and provenance-tagged like any harvested fact.</p>
+      <div class="field" style="margin-bottom:6px">Subject<input id="f-subj" placeholder="Tesla Model S"></div>
+      <div class="field" style="margin-bottom:6px">Predicate<input id="f-pred" placeholder="has_range_miles"></div>
+      <div class="field" style="margin-bottom:6px">Object<input id="f-obj" placeholder="405"></div>
+      <div class="field" style="margin-bottom:6px">Source<input id="f-src" placeholder="EPA 2024"></div>
+      <button class="btn" id="f-add" style="width:100%">Create &amp; store</button>
+      <div id="f-result" class="qb-note"></div>
+    </div>
+  </div>
+
+  <!-- CENTER: Workspace + Verify + Charts -->
+  <div class="col">
+    <div class="card">
+      <h2>Harvest Workspace <span class="tag live">live</span></h2>
+      <p class="sub">The newest Fact Units written to your store, straight from disk.</p>
+      <div id="samples"><span class="qb-note">No facts yet — click “Start harvest”.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Verify / Query <span class="tag live">live</span></h2>
+      <p class="sub">Type a subject (e.g. <i>144</i>, <i>France</i>, <i>Hydrogen</i>) to see exactly what is stored, with trust scores.</p>
+      <div class="search">
+        <input id="q" type="text" placeholder="Type a subject and press Enter…">
+        <button class="btn" id="go">Search</button>
+      </div>
+      <div id="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Parallel Domain Harvesting <span class="tag live">live</span></h2>
+      <p class="sub">Each domain has its own harvest logic and AI strategy. "Start all" runs them
+      concurrently so every domain grows at once. Honest note: on one machine the total rate is
+      capped by the single disk/index writer — real multiplication (toward 100×) comes from
+      running QueryBook on multiple machines (your fleet), each with its own store.</p>
+      <div id="domlogic"></div>
+      <button class="btn" id="start-all" style="margin-top:10px">▶ Start all domains in parallel</button>
+    </div>
+
+    <div class="card">
+      <h2>Insight Visualizer <span class="tag live">live</span></h2>
+      <p class="sub">Drawn from your real store, updating as it grows.</p>
+      <div class="rowflex">
+        <div><div class="qb-note">Facts saved over time</div><canvas id="c-time"></canvas></div>
+        <div><div class="qb-note">Top relations (predicates) in your store</div><canvas id="c-rel"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Sources + AI + Geo/Targeted -->
+  <div class="col">
+    <div class="card">
+      <h2>Sources <span class="tag plan">planned</span></h2>
+      <p class="sub">Trust-tiered feeds for web harvesting.</p>
+      <div id="sources"></div>
+    </div>
+    <div class="card">
+      <h2>AI Strategies <span class="tag plan">planned</span></h2>
+      <div id="strategies"></div>
+    </div>
+    <div class="card">
+      <h2>Geo &amp; Targeted <span class="tag plan">planned</span></h2>
+      <p class="sub">Country → region → city → ZIP, plus demographic/economic filters.</p>
+      <input class="search" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--ink)" placeholder='e.g. "top 100 companies in Virginia"'>
+      <div class="qb-note">Query builder preview. Feeds the web harvester in a future release.</div>
+    </div>
+
+    <div class="card">
+      <h2>Quality Control <span class="tag live">live</span></h2>
+      <p class="sub">Core functions are triple-checked: at server startup, on demand here, and via the API.</p>
+      <button class="btn" id="qc-run" style="width:100%">Run system checks</button>
+      <div id="qc-out" class="qb-note"></div>
+    </div>
+  </div>
+</main>
+
+<section class="wide" id="health">
+  <div class="card">
+    <h2>Store Health <span class="tag live">live</span>
+      <button class="btn ghost" id="h-refresh" style="float:right;font-size:12px;padding:4px 10px">Re-check now</button></h2>
+    <p class="sub">Self-test, counters, per-domain breakdown, and any agents needing attention. Auto-refreshes.</p>
+    <div id="health-body" class="qb-note">checking…</div>
+  </div>
+</section>
+
+<section class="wide" id="perf">
+  <div class="card">
+    <h2>Harvest Meter <span class="tag live">live</span></h2>
+    <p class="sub">Everything metered: elapsed, facts/sec (average, live, peak), and per-Fact-Unit creation time — at any point in the collection.</p>
+    <div class="tiles" style="margin:0">
+      <div class="tile"><div class="k">Facts / sec (live)</div><div class="v" id="m-now">—</div><div class="s">instantaneous</div></div>
+      <div class="tile"><div class="k">Facts / sec (avg)</div><div class="v" id="m-avg">—</div><div class="s" id="m-day">this run</div></div>
+      <div class="tile"><div class="k">Peak facts / sec</div><div class="v" id="m-peak">—</div><div class="s">best so far</div></div>
+      <div class="tile"><div class="k">Per Fact Unit</div><div class="v" id="m-perfact">—</div><div class="s" id="m-perfact-live">CPU build time</div></div>
+    </div>
+    <p class="qb-note" id="m-elapsed">idle</p>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>Drive Offload — internal → external <span class="tag live">live</span></h2>
+    <p class="sub">Harvest to the fast internal drive; this copies the store to an external/USB drive <b>in parallel</b>, so the slow drive never bottlenecks harvesting. The external copy is a complete, usable store.</p>
+    <div class="formrow">
+      <label class="field" style="flex:1;min-width:220px">External drive path
+        <input id="mir-dest" placeholder="Windows: E:\QueryBook\store   ·   Mac: /Volumes/USB/QueryBook/store"></label>
+      <button class="btn" id="mir-start">Start offload</button>
+      <button class="btn ghost" id="mir-stop">Stop</button>
+    </div>
+    <div id="mir-status" class="qb-note">Offload is off. Enter your external drive path and click Start.</div>
+  </div>
+</section>
+
+<section class="wide" id="diag">
+  <div class="card">
+    <h2>Diagnostics — Event Log <span class="tag live">live</span>
+      <button class="btn ghost" id="log-clear" style="float:right;font-size:12px;padding:4px 10px">Clear</button></h2>
+    <p class="sub">Every action, warning, fallback and error — visible, newest first. Contingency by design: agents that need a missing resource show <b>blocked</b> with the remedy; transient errors self-heal; nothing fails silently.</p>
+    <div id="log-counts" class="qb-note" style="margin-bottom:6px"></div>
+    <div id="log-body" style="max-height:320px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5">loading…</div>
+  </div>
+</section>
+
+<section class="wide" id="agents">
+  <div class="card">
+    <h2>AI Harvesting Agents <span class="tag live">live</span>
+      <button class="btn ghost" id="a-prune" style="float:right;font-size:12px;padding:4px 10px" title="Remove all stopped, errored, and roadmap agents that aren't running">Clear stopped / errored</button></h2>
+    <p class="sub">Agents harvest on their own schedule (24×7). Deterministic agents grow the store each cycle; web agents crawl their seed domains and can use any LLM you configure. Duplicate jobs with the same name+role+target are reused, not re-created.</p>
+    <div class="formrow">
+      <label class="field">Name<input id="a-name" placeholder="Math 24x7"></label>
+      <label class="field">Role<select id="a-kind"><option value="deterministic">Deterministic</option><option value="web">Web domains</option></select></label>
+      <label class="field" style="flex:1;min-width:200px" id="a-target-wrap">Target (web: seed URLs)<input id="a-target" placeholder="https://example.org/"></label>
+      <label class="field">Every&nbsp;(sec)<input id="a-interval" value="10" style="width:80px"></label>
+      <label class="field">Batch<input id="a-chunk" value="50000" style="width:100px"></label>
+      <label class="field">LLM<select id="a-provider"><option value="">none / structured</option></select></label>
+      <button class="btn" id="a-create">Create agent</button>
+    </div>
+    <div id="a-role-hint" class="qb-note" style="margin-top:6px"></div>
+    <div style="overflow-x:auto"><table class="atable"><thead><tr>
+      <th>Agent</th><th>Type</th><th>Status</th><th>Facts</th><th>Cycles</th><th>Last run</th><th>Controls</th>
+    </tr></thead><tbody id="abody"></tbody></table></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>LLM Providers <span class="tag live">live</span></h2>
+    <p class="sub">Any subscription or local server. OpenAI-compatible (OpenAI, Groq, Together, Ollama/llama.cpp with <code>/v1</code>) or Anthropic. <b>Paste your key</b> to store it locally in your store folder, <i>or</i> leave it blank and set the named environment variable (more secure). The key is never shown back in the page and is only sent to the provider's API. After adding, press <b>Test</b> to make one live call and see the exact result.</p>
+    <div style="background:var(--goodbg,#eaf7f0);border:1px solid var(--good,#1a7f4b);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;line-height:1.5">
+      <b>Language Phase 2 no longer needs an LLM.</b> Semantic grounding is now fully deterministic — a bundled public-domain dictionary plus self-grounding against your store — so you can learn English end to end with <b>no API key at all</b>.
+      An LLM here is <i>optional</i>, only for the smarter chat/extraction layer. If you do add one: it uses the Anthropic <u>API</u>, which needs an API key from <span style="font-family:ui-monospace">console.anthropic.com</span> (starts with <code>sk-ant-</code>, credits under <i>Plans &amp; Billing</i>) — a <i>claude.ai</i> chat subscription is <b>not</b> an API key. Press <b>Test</b> to see exactly whether a key works.
+    </div>
+    <div class="formrow" style="align-items:flex-end;background:var(--rowA,#faf8f3);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-weight:600;font-size:13px;align-self:center">⚡ Quick add — Claude (Anthropic)</div>
+      <label class="field">Model<select id="claude-model">
+        <option value="claude-haiku-4-5" selected>Haiku 4.5 — fast &amp; cheap (default)</option>
+        <option value="claude-sonnet-5">Sonnet 5 — balanced</option>
+        <option value="claude-opus-4-8">Opus 4.8 — high quality</option>
+        <option value="claude-opus-5">Opus 5 — high quality</option>
+        <option value="claude-opus-5-5">Opus 5.5 — newest Opus</option>
+        <option value="claude-fable-5-1">Fable 5.1 — most capable</option>
+      </select></label>
+      <label class="field" style="flex:1;min-width:220px">API key (paste)<input id="claude-key" type="password" placeholder="sk-ant-…  (stored locally; blank = use ANTHROPIC_API_KEY)"></label>
+      <button class="btn" id="claude-add">Add Claude</button>
+    </div>
+    <div class="formrow">
+      <label class="field">Name<input id="p-name" placeholder="my-openai"></label>
+      <label class="field">Kind<select id="p-kind"><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic</option></select></label>
+      <label class="field" style="flex:1;min-width:200px">Base URL<input id="p-base" placeholder="https://api.openai.com/v1  ·  http://localhost:11434/v1"></label>
+      <label class="field">Model<input id="p-model" placeholder="gpt-4o-mini"></label>
+      <label class="field">API key (paste)<input id="p-keyval" type="password" placeholder="paste key (stored locally)"></label>
+      <label class="field">…or key env var<input id="p-key" placeholder="OPENAI_API_KEY"></label>
+      <button class="btn" id="p-add">Add provider</button>
+    </div>
+    <div id="plist" class="qb-note"></div>
+  </div>
+</section>
+
+<div id="scrim" class="scrim" hidden></div>
+<aside id="drawer" class="drawer" hidden>
+  <div class="dh"><b>UFCS Packet</b><button class="xbtn" id="dclose">✕</button></div>
+  <div class="body" id="dbody"></div>
+</aside>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const nf=n=>Number(n).toLocaleString();
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---- Domain taxonomy + illustrative value model ----
+// target = estimated domain size (for % complete); perFact = illustrative $/fact to buyers.
+const DOMAIN_META={
+ // high-value verticals (illustrative $/fact; nt = compliance note)
+ "Credit & Lending":{t:1e9,pf:0.030,nt:"Regulated — FCRA/GLBA/GDPR. Only from lawful, consented sources."},
+ "Crime & Public Safety":{t:8e8,pf:0.010,nt:"Accuracy & privacy critical; prefer official records."},
+ "Supply Chain & Shipping":{t:1e9,pf:0.015,nt:"Chips, oil, prefab housing, freight status."},
+ "Commodities & Crop Futures":{t:8e8,pf:0.012},
+ "Crypto Markets":{t:2e9,pf:0.020},
+ "Real Estate Sales":{t:1.5e9,pf:0.012},
+ "Water Resources":{t:5e8,pf:0.006,nt:"River/lake levels, flow, quality."},
+ "EdTech & Training":{t:6e8,pf:0.007,nt:"New programs training for in-demand skills."},
+ "Regulatory & New Industries":{t:5e8,pf:0.016,nt:"New laws that open markets/industries."},
+ "Freight Deals & Cargo Rates":{t:8e8,pf:0.013,nt:"Shipping discounts & capacity for cargo."},
+ "Business & Finance":{t:2e9,pf:0.020},
+ "Medicine & Health":{t:2e9,pf:0.010,nt:"PHI is regulated — HIPAA/GDPR."},
+ "Energy":{t:6e8,pf:0.007}, "Engineering":{t:1e9,pf:0.006},
+ "Science & Technology":{t:3e9,pf:0.004}, "Law & Government":{t:1e9,pf:0.008},
+ "Environment & Climate":{t:8e8,pf:0.005}, "Transportation":{t:6e8,pf:0.004},
+ "Geography & Places":{t:1e9,pf:0.002}, "Social Sciences":{t:1e9,pf:0.006},
+ "History & Culture":{t:1e9,pf:0.003}, "Arts & Entertainment":{t:8e8,pf:0.002},
+ "Sports":{t:5e8,pf:0.0015}, "Mathematics":{t:5e9,pf:0.0002},
+ // live deterministic generators + the structural language model (all harvestable today)
+ "Geometry":{t:2e9,pf:0.0003}, "Arithmetic":{t:3e9,pf:0.0002},
+ "Language (English, structural)":{t:1e6,pf:0,nt:"Sub-Language Priming Layer — learn English structure in the Language Lab. Semantics/neural LEL are roadmap."}
+};
+// domains with a REAL engine behind them (filled from /api/domain_logic at load)
+const LIVE_SET=new Set(["mathematics","language (english, structural)"]);
+// map a Navigator display name -> the engine domain key used in per-domain counts
+const DOMAIN_KEY={"Mathematics":"mathematics","Geometry":"geometry","Arithmetic":"arithmetic",
+  "Language (English, structural)":"language"};
+let BYDOMAIN={};   // {domainKey: factCount} from /api/domains
+function money(n){ if(n>=1e9)return '$'+(n/1e9).toFixed(1)+'B'; if(n>=1e6)return '$'+(n/1e6).toFixed(1)+'M'; if(n>=1e3)return '$'+(n/1e3).toFixed(0)+'K'; return '$'+n.toFixed(0); }
+function fmtETA(sec){ if(!isFinite(sec)||sec<=0)return '—'; const d=sec/86400; if(d>=1)return '~'+d.toFixed(d<10?1:0)+' d'; const h=sec/3600; if(h>=1)return '~'+h.toFixed(1)+' h'; return '~'+Math.max(1,Math.round(sec/60))+' min'; }
+function currentRate(){ if(timeSeries.length<2)return 0; const a=timeSeries[0],b=timeSeries[timeSeries.length-1]; const dt=(b.t-a.t)/1000; return dt>0?Math.max(0,(b.facts-a.facts)/dt):0; }
+function renderDomains(total, rate){
+  let h="";
+  for(const d in DOMAIN_META){
+    const m=DOMAIN_META[d];
+    const live=LIVE_SET.has(d.toLowerCase());
+    // real per-domain count when the engine reports one; else 0 for planned domains
+    const key=DOMAIN_KEY[d];
+    const stored=(key && BYDOMAIN[key]!=null)?BYDOMAIN[key]:0;
+    const pct=m.t? Math.min(100, 100*stored/m.t):0;
+    const eta = live && rate>0 && stored>0 && stored<m.t ? fmtETA((m.t-stored)/rate) : (stored>=m.t&&m.t?'complete':(live?'live':'—'));
+    const per100M=money(m.pf*1e8);
+    h+=`<div class="drow ${live?'livd':'pland'}"><div class="top"><span class="name">${esc(d)}</span>`+
+       `<span class="n">${pct.toFixed(pct<1?3:1)}%</span></div>`+
+       `<div class="mini"><i style="width:${Math.max(pct,live&&stored?1:0)}%"></i></div>`+
+       `<div class="meta"><span>ETA ${eta}</span><span class="val">${per100M} / 100M</span></div>`+
+       (m.nt?`<div class="meta" style="color:var(--warnc)">⚠ ${esc(m.nt)}</div>`:'')+`</div>`;
+  }
+  $('domains').innerHTML=h;
+}
+
+// ---- Sources (trust tiers) ----
+const SOURCES=[["Wikipedia","B"],["Wikidata","A"],["PubMed","A"],["arXiv","B"],["US Census","A"],
+ ["SEC EDGAR","A"],["World Bank","A"],["IMF","A"],["CIA World Factbook","B"],["OpenStreetMap","B"],
+ ["NOAA","A"],["UN Data","A"],["Company sites","C"],["Academic journals","A"]];
+$('sources').innerHTML=SOURCES.map(([n,t],i)=>
+  `<div class="src"><span class="tier t${t}">${t}</span><span class="nm">${esc(n)}</span>`+
+  `<span class="sw ${i<2?'on':''}" data-s="${i}"></span></div>`).join('');
+const STRAT=["Semantic pre-filtering","Entity-first harvesting","Adaptive crawl depth",
+ "Predictive gap-filling","Confidence-weighted extraction","Duplicate detection","Ontology alignment"];
+$('strategies').innerHTML=STRAT.map((s,i)=>
+  `<div class="src"><span class="nm">${esc(s)}</span><span class="sw ${i%2?'':'on'}" data-x="${i}"></span></div>`).join('');
+document.addEventListener('click',e=>{ if(e.target.classList.contains('sw')) e.target.classList.toggle('on'); });
+
+// ---- charts ----
+const timeSeries=[]; // {t, facts}
+function drawLine(cv, pts){
+  const c=cv.getContext('2d'), W=cv.width=cv.clientWidth*2, H=cv.height=300;
+  c.scale(1,1); c.clearRect(0,0,W,H);
+  if(pts.length<2){ c.fillStyle=css('--muted'); c.font='24px sans-serif'; c.fillText('collecting…',20,40); return; }
+  const xs=pts.map(p=>p.t), ys=pts.map(p=>p.facts);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y1=Math.max(...ys,1);
+  const px=t=>40+(W-60)*((t-x0)/((x1-x0)||1)), py=v=>H-30-(H-50)*(v/y1);
+  c.strokeStyle=css('--line'); c.lineWidth=2; c.beginPath(); c.moveTo(40,H-30); c.lineTo(W-20,H-30); c.stroke();
+  c.strokeStyle=css('--accent'); c.lineWidth=3; c.beginPath();
+  pts.forEach((p,i)=>{ const X=px(p.t),Y=py(p.facts); i?c.lineTo(X,Y):c.moveTo(X,Y); }); c.stroke();
+  c.fillStyle=css('--accent'); const last=pts[pts.length-1]; c.beginPath(); c.arc(px(last.t),py(last.facts),5,0,7); c.fill();
+  c.fillStyle=css('--muted'); c.font='22px sans-serif'; c.fillText(nf(y1)+' facts',44,28);
+}
+function drawBars(cv, rows){
+  const c=cv.getContext('2d'), W=cv.width=cv.clientWidth*2, H=cv.height=300;
+  c.clearRect(0,0,W,H);
+  if(!rows.length){ c.fillStyle=css('--muted'); c.font='24px sans-serif'; c.fillText('no data yet',20,40); return; }
+  const top=rows.slice(0,6), max=Math.max(...top.map(r=>r.count),1), bw=(W-40)/top.length;
+  c.font='20px sans-serif';
+  top.forEach((r,i)=>{ const h=(H-60)*(r.count/max), x=20+i*bw;
+    c.fillStyle=css('--accent'); c.fillRect(x+6,H-40-h,bw-14,h);
+    c.fillStyle=css('--muted'); c.save(); c.translate(x+bw/2, H-24);
+    const lab=r.predicate.length>10?r.predicate.slice(0,10)+'…':r.predicate; c.textAlign='center'; c.fillText(lab,0,0); c.restore();
+    c.fillStyle=css('--ink'); c.textAlign='center'; c.fillText(nf(r.count), x+bw/2, H-46-h); });
+}
+
+// ---- polling ----
+async function tick(){
+  try{
+    const s=await (await fetch('api/stats')).json();
+    $('t-facts').textContent=nf(s.facts||0);
+    const lv=s.last_verify;
+    if(lv){ $('t-verify').textContent=(lv.ok?'✓ verified on disk':'✗ VERIFY FAILED')+(lv.detail?' · '+lv.detail:'');
+            $('t-verify').style.color=lv.ok?'var(--good)':'var(--badc)'; }
+    $('t-blocks').textContent=nf(s.blocks||0);
+    $('t-disk').textContent=(s.disk_mb!=null?s.disk_mb:0)+' MB';
+    $('t-dupe').textContent=nf(s.duplicates||0);
+    $('t-loc').textContent=s.data_dir||'on this PC';
+    $('dot').classList.add('on'); $('livetext').textContent='live · updates every 2s';
+    timeSeries.push({t:Date.now(), facts:s.facts||0}); if(timeSeries.length>120) timeSeries.shift();
+    renderDomains(s.facts||0, currentRate());
+    drawLine($('c-time'), timeSeries);
+    // harvest progress
+    const hs=await (await fetch('api/harvest_status')).json();
+    if(hs.running){
+      $('stopbtn').hidden=false; $('startbtn').disabled=true; $('run247').disabled=true;
+      if(hs.continuous || !hs.target){
+        // 24x7 mode — no fixed target; show a moving bar + live saved count
+        $('progbar').style.width=(50+40*Math.sin(Date.now()/900))+'%';
+        $('runmeta').textContent='running 24×7 · '+nf(s.facts||0)+' saved';
+      } else {
+        const pct=Math.min(100,100*hs.done/hs.target);
+        $('progbar').style.width=pct+'%';
+        $('runmeta').textContent=nf(hs.done)+' / '+nf(hs.target)+' ('+pct.toFixed(1)+'%)';
+      }
+    } else {
+      $('stopbtn').hidden=true; $('startbtn').disabled=false; $('run247').disabled=false;
+      $('runmeta').textContent = hs.error ? ('error: '+hs.error) : (s.facts? 'idle · '+nf(s.facts)+' saved':'idle');
+      if(!hs.error && s.facts) $('progbar').style.width='100%';
+    }
+    if(hs.keepawake) renderAwake(hs.keepawake);
+    if(hs.meter) renderMeter(hs.meter, hs.running);
+    const dm=await (await fetch('api/domains')).json();
+    drawBars($('c-rel'), dm.by_relation||[]);
+    BYDOMAIN = dm.by_domain||{};   // real per-domain counts for the Navigator
+    const sm=await (await fetch('api/sample?n=8')).json();
+    if(sm.results&&sm.results.length){
+      $('samples').innerHTML='<div class="qb-note">Click any fact to see its full UFCS packet and source.</div>'+
+        sm.results.map(r=>
+        `<div class="fact clk" data-fp="${esc(r.fingerprint)}"><b>${esc(r.subject)}</b> <span class="p">${esc(r.predicate)}</span> ${esc(r.object)}`+
+        `<span class="fp">${esc((r.fingerprint||'').slice(0,10))}…</span></div>`).join('');
+    }
+  }catch(e){
+    $('dot').classList.remove('on'); $('livetext').textContent='not connected — is QueryBook running?';
+  }
+  setTimeout(tick, 2000);
+}
+tick();
+
+// ---- start harvest ----
+// Populate the domain picker from the REAL generators the engine exposes, so the
+// selector can only offer domains that actually harvest (fixes the stale selector).
+let LIVE_DOMAINS=['mathematics'];
+async function loadHarvestDomains(){
+  try{
+    const d=await (await fetch('api/domain_logic')).json();
+    const doms=(d.domains||[]).map(x=>x.domain);
+    if(doms.length) LIVE_DOMAINS=doms;
+    doms.forEach(x=>LIVE_SET.add(String(x).toLowerCase()));  // reflect real generators in the Navigator
+    const sel=$('h-domain'), cur=sel.value;
+    sel.innerHTML=doms.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    if(cur && doms.includes(cur)) sel.value=cur;
+  }catch(e){ $('h-domain').innerHTML='<option value="mathematics">mathematics</option>'; }
+}
+loadHarvestDomains();
+$('startbtn').onclick=async()=>{
+  const count=parseInt(($('count').value||'').replace(/[^0-9]/g,''))||250000;
+  const domain=$('h-domain').value||'mathematics';
+  $('startbtn').disabled=true; $('runmeta').textContent='starting '+domain+'…';
+  try{
+    const r=await (await fetch('api/harvest',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({count,domain})})).json();
+    if(r.error) $('runmeta').textContent=r.error;
+    else if(!r.started) $('runmeta').textContent=r.note||'already running';
+  }catch(e){ $('runmeta').textContent='could not start: '+e; }
+  finally{ $('startbtn').disabled=false; }
+};
+$('count').addEventListener('input',e=>{ const v=e.target.value.replace(/[^0-9]/g,''); e.target.value=v?Number(v).toLocaleString():''; });
+$('run247').onclick=async()=>{
+  const domain=$('h-domain').value||'mathematics';
+  $('runmeta').textContent='starting 24×7 '+domain+'…';
+  try{ await fetch('api/harvest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({count:0,domain})}); }
+  catch(e){ $('runmeta').textContent='could not start: '+e; }
+};
+
+// ---- 24×7 keep-awake (persistent master switch; independent of harvesting) ----
+let awakeOn=false;
+function renderAwake(ka){
+  awakeOn = !!(ka.holders && ka.holders.indexOf('mode:24x7')>=0);
+  const b=$('awake247');
+  b.textContent = (awakeOn?'🟢 24×7 Awake: ON':'💤 24×7 Awake: OFF');
+  b.style.background = awakeOn ? 'var(--good,#1a7f4b)' : '';
+  b.style.color = awakeOn ? '#fff' : '';
+  b.style.borderColor = awakeOn ? 'transparent' : '';
+  let msg = awakeOn ? 'this PC will NOT sleep until you turn it off'
+                    : (ka.engaged ? 'awake now (working) · will sleep when idle' : 'the PC may sleep when idle');
+  if(ka.sleep_count){
+    const last=ka.sleep_events && ka.sleep_events[ka.sleep_events.length-1];
+    const mins=last?Math.round(last.seconds/60):0;
+    msg += ` · ⚠ ${ka.sleep_count} sleep event${ka.sleep_count>1?'s':''} detected`+(mins?` (last ${mins} min)`:'');
+  }
+  $('awakemeta').textContent=msg;
+}
+$('awake247').onclick=async()=>{
+  $('awakemeta').textContent = awakeOn?'turning off…':'turning on…';
+  try{
+    const ka=await (await fetch('api/keepawake',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({on:!awakeOn})})).json();
+    renderAwake(ka);
+  }catch(e){ $('awakemeta').textContent='could not change: '+e; }
+};
+// reflect current state on load
+fetch('api/keepawake').then(r=>r.json()).then(renderAwake).catch(()=>{});
+$('stopbtn').onclick=async()=>{
+  try{ await fetch('api/harvest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stop:true})}); }catch(e){}
+};
+
+// ---- verify/search ----
+async function search(){
+  const term=$('q').value.trim(); if(!term) return;
+  $('result').innerHTML='<p class="qb-note">Searching…</p>';
+  try{
+    const d=await (await fetch('api/fql?subject='+encodeURIComponent(term)+'&limit=10')).json();
+    if(d.results&&d.results.length){
+      let h=`<div class="verdict v-yes">✓ ${d.results.length} record(s) for “${esc(term)}”</div>`;
+      h+=d.results.map(r=>`<div class="fact clk" data-fp="${esc(r.fingerprint)}"><b>${esc(r.subject)}</b> <span class="p">${esc(r.predicate)}</span> ${esc(r.object)}`+
+        `<span class="fp">trust ${Number(r.trust).toFixed(2)}</span></div>`).join('');
+      h+=`<p class="qb-note">Provenance hash: ${esc(d.response_provenance_hash||'')}</p>`;
+      $('result').innerHTML=h;
+    } else $('result').innerHTML=`<div class="verdict v-no">No stored fact for “${esc(term)}”. QueryBook will not invent one.</div>`;
+  }catch(e){ $('result').innerHTML='<div class="verdict v-no">Could not reach the store.</div>'; }
+}
+$('go').onclick=search; $('q').addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();search();} });
+
+// ---- UFCS packet drawer (drill down to source for every fact) ----
+function kv(k,v){ return `<div class="k">${esc(k)}</div><div class="v">${v}</div>`; }
+function showPacket(rec){
+  const n=rec.nucleus||{}, cert=rec.certification||{}, conf=rec.confidence||{}, temp=rec.temporal||{}, safe=rec.safety||{};
+  const srcs=rec.sources||[];
+  let h='<div class="kv">'+
+    kv('Subject', `<b>${esc(n.subject)}</b>`)+kv('Predicate', esc(n.predicate))+kv('Object', esc(String(n.object)))+
+    kv('Polarity', esc(rec.polarity||'+'))+kv('Domain', esc(rec.domain||'—'))+kv('Fact type', esc(rec.fact_type||'assertion'))+
+    '</div>';
+  h+='<div class="sect">Identity</div><div class="kv">'+
+    kv('Fingerprint', `<span class="mono">${esc(rec.semantic_fingerprint||'')}</span>`)+
+    kv('FUID', `<span class="mono">${esc(rec.fuid||'')}</span>`)+
+    kv('UFCS version', esc(rec.ufcs_version||'1.0'))+'</div>';
+  h+='<div class="sect">Provenance & source</div>';
+  if(srcs.length){ h+='<div class="kv">'+srcs.map(s=>
+      kv('Source', `${esc(s.name||s.id||'—')} <span class="qb-note">(${esc(s.class||'?')}${s.reputation!=null?', rep '+s.reputation:''})</span>`)).join('')+'</div>'; }
+  else h+='<div class="qb-note">No explicit source recorded.</div>';
+  h+='<div class="sect">Certification & confidence</div><div class="kv">'+
+    kv('Authority class', esc(cert.authority_class||'—'))+
+    kv('Trust score', (cert.trust_score!=null?cert.trust_score:(conf.trust_score!=null?conf.trust_score:'—')))+
+    kv('Confidence', (conf.score!=null?Number(conf.score).toFixed(4):'—'))+'</div>';
+  h+='<div class="sect">Temporal & safety</div><div class="kv">'+
+    kv('Ingested', esc(temp.ingested||'—'))+
+    kv('Classification', esc(safe.classification||'PUBLIC'))+
+    kv('ACL', esc((safe.acl||['reader']).join(', ')))+'</div>';
+  h+='<div class="sect">Raw packet (JSON)</div><pre class="mono" style="white-space:pre-wrap;background:var(--panel2);padding:10px;border-radius:8px">'+
+     esc(JSON.stringify(rec,null,2))+'</pre>';
+  $('dbody').innerHTML=h; $('scrim').hidden=false; $('drawer').hidden=false;
+}
+async function openPacket(fp){
+  if(!fp) return;
+  $('dbody').innerHTML='<p class="qb-note">Loading packet…</p>'; $('scrim').hidden=false; $('drawer').hidden=false;
+  try{
+    const r=await fetch('api/get?fp='+encodeURIComponent(fp));
+    if(!r.ok){ $('dbody').innerHTML='<p class="qb-note">Packet not found for this fingerprint.</p>'; return; }
+    showPacket(await r.json());
+  }catch(e){ $('dbody').innerHTML='<p class="qb-note">Could not load packet: '+esc(e)+'</p>'; }
+}
+function closeDrawer(){ $('scrim').hidden=true; $('drawer').hidden=true; }
+$('dclose').onclick=closeDrawer; $('scrim').onclick=closeDrawer;
+document.addEventListener('click',e=>{ const f=e.target.closest('.fact.clk'); if(f) openPacket(f.dataset.fp); });
+
+// ---- Create Fact Unit ----
+$('f-add').onclick=async()=>{
+  const body={subject:$('f-subj').value,predicate:$('f-pred').value,object:$('f-obj').value,source:$('f-src').value||'user entry'};
+  if(!body.subject||!body.predicate||!body.object){ $('f-result').textContent='Fill subject, predicate and object.'; return; }
+  $('f-result').textContent='Creating…';
+  try{
+    const r=await (await fetch('api/fact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(r.packet){ $('f-result').innerHTML=(r.added?'✓ stored':'already existed')+' — click to inspect packet.';
+      $('f-result').classList.add('clk'); $('f-result').onclick=()=>showPacket(r.packet);
+      $('f-subj').value=$('f-pred').value=$('f-obj').value=''; }
+    else $('f-result').textContent=r.error||'could not create';
+  }catch(e){ $('f-result').textContent='error: '+e; }
+};
+
+// ---- Parallel domain harvesting (each domain = own logic + AI strategy) ----
+let DOMLOGIC=[];
+async function loadDomainLogic(){
+  try{
+    const d=await (await fetch('api/domain_logic')).json();
+    DOMLOGIC=d.domains||[];
+    $('domlogic').innerHTML=DOMLOGIC.map(x=>
+      `<div class="src"><span class="nm"><b>${esc(x.domain)}</b><br><span class="qb-note">AI strategy: ${esc(x.strategy)}</span></span>`+
+      `<button class="abtn" data-dom="${esc(x.domain)}">▶ Start agent</button></div>`).join('');
+  }catch(e){ $('domlogic').innerHTML='<span class="qb-note">domain logic unavailable</span>'; }
+}
+async function startDomainAgent(dom){
+  await fetch('api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:dom+' 24×7',kind:'deterministic',target:dom,interval:1,chunk:5000})});
+  // find its id and start it
+  const snap=await (await fetch('api/agents')).json();
+  const a=(snap.agents||[]).filter(x=>x.kind==='deterministic'&&(x.target||'')===dom).slice(-1)[0];
+  if(a) await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id,action:'start'})});
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('#domlogic [data-dom]'); if(b){ b.textContent='starting…'; await startDomainAgent(b.dataset.dom); b.textContent='▶ Start agent'; }
+});
+$('start-all')?.addEventListener('click',async()=>{
+  $('start-all').textContent='launching…';
+  for(const x of DOMLOGIC){ await startDomainAgent(x.domain); }
+  $('start-all').textContent='▶ Start all domains in parallel';
+});
+loadDomainLogic();
+
+// ---- Quality Control ----
+async function runQC(){
+  $('qc-out').innerHTML='Running checks…';
+  try{
+    const r=await (await fetch('api/selftest')).json();
+    let h=`<div style="font-weight:700;margin:8px 0;color:${r.all_ok?'var(--good)':'var(--badc)'}">`+
+          `${r.all_ok?'✓ ALL PASS':'✗ ATTENTION'} — ${r.passed}/${r.total} checks</div>`;
+    h+=r.checks.map(c=>`<div style="margin:5px 0"><span style="color:${c.ok?'var(--good)':'var(--badc)'}">${c.ok?'✓':'✗'}</span> ${esc(c.name)}`+
+       `<br><span class="qb-note">${esc(c.detail)}</span></div>`).join('');
+    h+=`<div class="qb-note" style="margin-top:6px">checked ${esc(r.ts||'')}</div>`;
+    $('qc-out').innerHTML=h;
+  }catch(e){ $('qc-out').textContent='could not run checks: '+e; }
+}
+$('qc-run').onclick=runQC; runQC();
+
+// ---- Agents + Providers ----
+let PROVIDERS=[];
+async function refreshAgents(){
+  try{
+    const d=await (await fetch('api/agents')).json();
+    PROVIDERS=d.providers||[];
+    const sel=$('a-provider'), cur=sel.value;
+    sel.innerHTML='<option value="">none / structured</option>'+PROVIDERS.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+    sel.value=cur;
+    $('plist').innerHTML = PROVIDERS.length ? PROVIDERS.map((p,i)=>{
+      const ok=p.usable; const badge=ok?'<span style="color:var(--good);font-weight:700">● usable</span>'
+        :'<span style="color:var(--badc);font-weight:700">● no key</span>';
+      const src=p.has_key?'key stored':(p.key_env?('env '+esc(p.key_env)):'no key');
+      return `<div style="padding:6px 0;border-top:${i?'1px solid var(--line)':'none'}">`+
+      `${badge} <b>${esc(p.name)}</b> — ${esc(p.kind||'openai')} — ${esc(p.model||'(model?)')} — `+
+      `<span style="font-family:ui-monospace">${esc(p.base_url||'default')}</span> — <span class="qb-note">${src}</span> `+
+      `<button class="btn" style="padding:3px 10px;font-size:12px" data-test="${esc(p.name)}">Test</button> `+
+      `<a href="#" data-del="${esc(p.name)}">remove</a>`+
+      `<div class="ptest-res" id="ptest-${i}" style="font-size:12px;margin-top:4px"></div></div>`;
+      }).join('') : 'No providers yet — add one to enable LLM agents.';
+    const rows=(d.agents||[]).map(a=>{
+      const st=a.status||'stopped';
+      const last=a.last_run? new Date(a.last_run*1000).toLocaleTimeString() : '—';
+      const grounded=(a.kind==='grounded_qa'||a.kind==='watch');
+      let sub='';
+      if(a.kind==='web') sub=`<br><span class="qb-note">${esc((a.target||'').slice(0,42))}</span>`;
+      else if(grounded){
+        sub=`<br><span class="qb-note">Q: ${esc((a.target||'').slice(0,52))}</span>`;
+        if(a.last_verdict) sub+=`<br><span class="pill p-${a.last_verdict==='VERIFIED'?'running':(a.last_verdict==='CONTRADICTED'?'error':'paused')}">${esc(a.last_verdict)}</span>`+
+          ` <span class="qb-note">${a.citations||0} cite(s)${a.kind==='watch'&&a.changes?` · ${a.changes} change(s)`:''}</span>`;
+      }
+      // roadmap refusal / completion are expected states, not red errors
+      const roadmapy=(st==='roadmap');
+      const emsg=a.error?`<br><span style="font-size:11px;color:${roadmapy?'var(--accent)':'var(--badc)'}">${roadmapy?'ⓘ ':'⚠ '}${esc(a.error)}</span>`:'';
+      const pillcls = st==='complete'?'p-running' : st==='roadmap'?'p-paused' : 'p-'+st;
+      const pilltxt = st==='complete'?'complete ✓' : st;
+      return `<tr><td><b>${esc(a.name)}</b>${emsg}${a.heal_note?`<br><span class="qb-note">${esc(a.heal_note)}</span>`:''}</td>`+
+        `<td>${esc(a.kind)}${sub}</td>`+
+        `<td><span class="pill ${pillcls}">${esc(pilltxt)}</span></td>`+
+        `<td style="font-variant-numeric:tabular-nums">${nf(a.facts||0)}</td>`+
+        `<td>${a.cycles||0}</td><td>${last}</td><td>`+
+        (st==='running'
+          ? `<button class="abtn" data-a="${a.id}" data-act="pause">Pause</button>`
+          : `<button class="abtn" data-a="${a.id}" data-act="start">Start</button>`)+
+        `<button class="abtn" data-a="${a.id}" data-act="stop">Stop</button>`+
+        `<button class="abtn" data-a="${a.id}" data-act="delete">Delete</button></td></tr>`;
+    }).join('');
+    $('abody').innerHTML=rows||'<tr><td colspan="7" class="qb-note">No agents yet. Create one above.</td></tr>';
+  }catch(e){}
+  setTimeout(refreshAgents,2500);
+}
+refreshAgents();
+// ---- Grounded agent roles (from GET /api/agent_roles) ----
+let ROLES={};
+const ROLE_TARGET={
+  deterministic:{label:'Domain (mathematics / geometry / arithmetic)',ph:'mathematics'},
+  web:{label:'Target (seed URLs, comma-separated)',ph:'https://example.org/'},
+  grounded_qa:{label:'Question to answer (grounded, cite-or-refuse)',ph:'What is the capital of France?'},
+  watch:{label:'Standing question to watch over time',ph:'What is the current guidance on ...?'},
+  reasoning:{label:'(roadmap — not runnable yet)',ph:''},
+  hypothesis:{label:'(roadmap — not runnable yet)',ph:''},
+  planner:{label:'(roadmap — instruction to decompose)',ph:''}
+};
+function applyRoleHint(){
+  const k=$('a-kind').value, r=ROLES[k]||{}, t=ROLE_TARGET[k]||ROLE_TARGET.web;
+  const wrap=$('a-target-wrap'), inp=$('a-target');
+  wrap.childNodes[0].nodeValue=t.label; inp.placeholder=t.ph;
+  const roadmap=r.status==='roadmap';
+  $('a-role-hint').innerHTML=(r.title?('<b>'+r.title+'</b> — '+ (r.desc||'')):'')+
+    (roadmap?' <span class="pill p-error" style="margin-left:4px">roadmap · refuses (engine spec-only)</span>':'');
+}
+async function loadRoles(){
+  try{
+    const r=await fetch('api/agent_roles'); ROLES=await r.json();
+    const sel=$('a-kind'); const order=['deterministic','web','grounded_qa','watch','reasoning','hypothesis','planner'];
+    const keys=order.filter(k=>ROLES[k]).concat(Object.keys(ROLES).filter(k=>!order.includes(k)));
+    sel.innerHTML=keys.map(k=>{const r=ROLES[k];
+      const tag=r.status==='roadmap'?' (roadmap)':'';
+      return '<option value="'+k+'">'+(r.title||k)+tag+'</option>';}).join('');
+    applyRoleHint();
+  }catch(e){ /* keep the two static options if the API isn't up yet */ }
+}
+$('a-kind').addEventListener('change',applyRoleHint);
+loadRoles();
+
+$('a-create').onclick=async()=>{
+  const kind=$('a-kind').value, r=ROLES[kind]||{};
+  if(r.status==='roadmap'){
+    $('a-role-hint').innerHTML='<span class="pill p-error">This role is on the roadmap — its engine is spec-only, so an agent would refuse to run rather than fabricate. Pick a built role (Deterministic, Web, Grounded Q&amp;A, or Watch).</span>';
+    return;
+  }
+  const prov=$('a-provider').value||null;
+  const body={name:$('a-name').value,kind:kind,target:$('a-target').value,
+    interval:parseInt($('a-interval').value)||10,chunk:parseInt($('a-chunk').value)||50000,
+    provider:prov,extractor:prov?'both':'structured'};
+  await fetch('api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('a-name').value='';
+};
+$('abody').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:b.dataset.a,action:b.dataset.act})});
+});
+$('a-prune').onclick=async()=>{
+  $('a-prune').textContent='clearing…';
+  try{ await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'prune'})}); }catch(e){}
+  $('a-prune').textContent='Clear stopped / errored';
+};
+
+// ---- Store Health ----
+async function refreshHealth(){
+  try{
+    const h=await (await fetch('api/health')).json();
+    const st=h.selftest||{};
+    const okpill=(ok,txt)=>`<span class="pill ${ok?'p-running':'p-error'}">${txt}</span>`;
+    let dom=Object.entries(h.by_domain||{}).sort((a,b)=>b[1]-a[1])
+      .map(([k,v])=>`<span class="chip">${esc(k)} <b>${nf(v)}</b></span>`).join(' ')||'<span class="qb-note">no facts yet</span>';
+    let errs = (h.agents_errored&&h.agents_errored.length)
+      ? h.agents_errored.map(a=>`<div style="color:var(--badc);font-size:12px">⚠ <b>${esc(a.name)}</b> (${esc(a.kind)}): ${esc(a.error||'')} · retries ${a.retries||0}</div>`).join('')
+      : '<span class="pill p-running">no agents needing attention</span>';
+    $('health-body').innerHTML=
+      `<div class="hrow" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:8px">`+
+      `${okpill(h.ok, h.ok?'HEALTHY':'NEEDS ATTENTION')} `+
+      `${okpill(st.all_ok, 'self-test '+(st.passed||0)+'/'+(st.total||0))} `+
+      `<span class="chip">facts <b>${nf(h.facts||0)}</b></span>`+
+      `<span class="chip">dupes <b>${nf(h.duplicates||0)}</b></span>`+
+      `<span class="chip">blocks <b>${nf(h.blocks||0)}</b></span></div>`+
+      `<div style="margin:6px 0"><span class="qb-note">By domain:</span><br>${dom}</div>`+
+      `<div style="margin-top:8px"><span class="qb-note">Agents:</span><br>${errs}</div>`+
+      (h.last_verify?`<div class="qb-note" style="margin-top:8px">Last integrity check: ${h.last_verify.ok?'✓ ':'✗ '}${esc(h.last_verify.detail||'')}</div>`:'');
+  }catch(e){ $('health-body').innerHTML='<span class="qb-note">health unavailable</span>'; }
+  setTimeout(refreshHealth, 6000);
+}
+$('h-refresh').onclick=()=>refreshHealth();
+refreshHealth();
+
+// ---- Harvest meter ----
+function renderMeter(m, running){
+  const fps=n=>n>=1000?(n/1000).toFixed(1)+'k':Math.round(n);
+  $('m-now').textContent = running ? fps(m.now_fps||0) : '—';
+  $('m-avg').textContent = fps(m.avg_fps||0);
+  $('m-peak').textContent = fps(m.peak_fps||0);
+  $('m-day').textContent = m.avg_fps ? (m.avg_fps*86400/1e6).toFixed(0)+' M/day' : 'this run';
+  $('m-perfact').textContent = (m.per_fact_us!=null? m.per_fact_us+' µs':'—');
+  $('m-perfact-live').textContent = (m.per_fact_us_live!=null? 'all-in '+m.per_fact_us_live+' µs/fact':'CPU build time');
+  $('m-elapsed').textContent = m.elapsed_s
+    ? `${running?'running':'last run'}: ${nf(m.facts_run||0)} facts in ${m.elapsed_s}s`
+    : 'idle — start a harvest to meter throughput';
+}
+// ---- Drive offload (internal -> external, parallel) ----
+async function refreshMirror(){
+  try{
+    const d=await (await fetch('api/mirror')).json();
+    if(d.running || d.blocks_copied){
+      $('mir-status').innerHTML =
+        `<b style="color:${d.running?'var(--good)':'var(--muted)'}">${d.running?'● offloading':'○ stopped'}</b> → ${esc(d.dest||'')}<br>`+
+        `blocks ${d.blocks_copied}/${d.blocks_total} · ${(d.bytes_copied/1e9).toFixed(2)} GB copied · ${d.mbps||0} MB/s`+
+        (d.pending_files?` · ${d.pending_files} pending`:'')+
+        (d.dest_free_gb!=null?` · ${d.dest_free_gb} GB free on drive`:'')+
+        (d.last_sync?`<br><span class="qb-note">last sync ${esc(d.last_sync)}${d.index_synced_at?'; index '+esc(d.index_synced_at):''}</span>`:'')+
+        (d.last_error?`<br><span style="color:var(--badc)">⚠ ${esc(d.last_error)}</span>`:'');
+    }
+  }catch(e){}
+  setTimeout(refreshMirror, 3000);
+}
+$('mir-start').onclick=async()=>{
+  const dest=$('mir-dest').value.trim();
+  if(!dest){ $('mir-status').textContent='Enter your external drive path first.'; return; }
+  $('mir-status').textContent='starting offload…';
+  try{ const r=await (await fetch('api/mirror',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest})})).json();
+    if(r.error) $('mir-status').textContent='⚠ '+r.error; }
+  catch(e){ $('mir-status').textContent='could not start: '+e; }
+};
+$('mir-stop').onclick=async()=>{ try{ await fetch('api/mirror',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:false})}); }catch(e){} };
+refreshMirror();
+
+// ---- Diagnostics / event log (no more darkness) ----
+const LOG_COLOR={info:'var(--muted)',ok:'var(--good)',warn:'var(--warnc)',error:'var(--badc)',blocked:'#1f6feb'};
+const LOG_ICON={info:'·',ok:'✓',warn:'⚠',error:'✕',blocked:'ⓘ'};
+async function refreshLog(){
+  try{
+    const d=await (await fetch('api/log?limit=120')).json();
+    const c=d.counts||{};
+    $('log-counts').innerHTML=['ok','info','warn','blocked','error'].map(k=>
+      `<span class="chip" style="border-left:3px solid ${LOG_COLOR[k]}">${k} ${c[k]||0}</span>`).join(' ');
+    $('log-body').innerHTML=(d.entries||[]).map(e=>{
+      const col=LOG_COLOR[e.level]||'var(--ink)';
+      const tm=(e.t||'').slice(11,19);
+      return `<div style="padding:2px 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">${tm}</span> `+
+        `<span style="color:${col};font-weight:700">${LOG_ICON[e.level]||''} ${esc(e.level)}</span> `+
+        `<span style="color:var(--muted)">[${esc(e.source)}]</span> ${esc(e.msg)}</div>`;
+    }).join('')||'<span class="qb-note">no events yet</span>';
+  }catch(e){}
+  setTimeout(refreshLog, 3000);
+}
+$('log-clear').onclick=async()=>{ try{ await fetch('api/log?clear=1'); }catch(e){} refreshLog(); };
+refreshLog();
+
+// ---- "Build English first" priority banner ----
+async function refreshLangFirst(){
+  try{
+    const d=await (await fetch('api/language/status')).json();
+    const g=d.gate||{}, pct=g.opened?100:(g.progress||0);
+    if(g.opened){ $('langfirst').style.display='none'; }
+    else{
+      $('langfirst').style.display='flex';
+      $('langfirst-bar').style.width=pct+'%';
+      $('langfirst-msg').textContent = d.ingests
+        ? `Phase 1 is ${pct.toFixed(0)}% to the Transition Gate — ${d.distinct_words} words, ${d.distinct_phonemes}/${d.phoneme_target} phonemes learned. Finish before other harvesting.`
+        : 'Phase 1 language learning has not started yet — click “Open Language Lab”, then “Start building English”.';
+    }
+  }catch(e){ /* keep the banner visible with its default message if the API hiccups */ }
+  setTimeout(refreshLangFirst, 6000);
+}
+refreshLangFirst();
+$('p-add').onclick=async()=>{
+  const p={name:$('p-name').value.trim(),kind:$('p-kind').value,base_url:$('p-base').value.trim(),
+    model:$('p-model').value.trim(),key_env:$('p-key').value.trim()};
+  const kv=$('p-keyval').value.trim(); if(kv) p.key=kv;
+  if(!p.name){ return; }
+  const next=PROVIDERS.filter(x=>x.name!==p.name).concat([p]);
+  await fetch('api/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providers:next})});
+  $('p-name').value=$('p-base').value=$('p-model').value=$('p-key').value=$('p-keyval').value='';
+};
+$('plist').addEventListener('click',async e=>{
+  const d=e.target.getAttribute('data-del');
+  if(d){ e.preventDefault();
+    const next=PROVIDERS.filter(x=>x.name!==d);
+    await fetch('api/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providers:next})});
+    return; }
+  const t=e.target.getAttribute('data-test');
+  if(t){ e.preventDefault();
+    const i=PROVIDERS.findIndex(x=>x.name===t);
+    const cell=$('ptest-'+i); const btn=e.target; const label=btn.textContent;
+    btn.disabled=true; btn.textContent='Testing…';
+    if(cell) cell.innerHTML='<span class="qb-note">making one live API call…</span>';
+    try{
+      const r=await fetch('api/provider_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:t})});
+      const j=await r.json();
+      const good=j.ok;
+      const color=good?'var(--good)':'var(--badc)';
+      const mark=good?'✓':'✗';
+      const code=(j.code!==undefined&&j.code!==null)?(' <span style="font-family:ui-monospace;opacity:.7">['+esc(String(j.code))+']</span>'):'';
+      if(cell) cell.innerHTML=`<span style="color:${color};font-weight:700">${mark} ${good?'Working':'Blocked'}${code}</span> `+
+        `<span>${esc(j.detail||'')}</span>`;
+    }catch(err){
+      if(cell) cell.innerHTML='<span style="color:var(--badc);font-weight:700">✗ could not run the test</span> '+
+        '<span class="qb-note">'+esc(String(err))+'</span>';
+    }finally{ btn.disabled=false; btn.textContent=label; }
+    return; }
+});
+
+// One-click Claude (Anthropic) preset — swap model any time, re-add to switch.
+$('claude-add').onclick=async()=>{
+  const p={name:'Claude',kind:'anthropic',base_url:'https://api.anthropic.com/v1',
+    model:$('claude-model').value,key_env:'ANTHROPIC_API_KEY'};
+  const kv=$('claude-key').value.trim(); if(kv) p.key=kv;
+  const next=PROVIDERS.filter(x=>x.name!==p.name).concat([p]);
+  await fetch('api/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providers:next})});
+  $('claude-key').value='';
+  const b=$('claude-add'); const t=b.textContent; b.textContent=(kv?'✓ key stored · ':'✓ ')+p.model; setTimeout(()=>b.textContent=t,1800);
+};
+// Convenience: choosing "Anthropic" in the manual form fills the standard URL + key var.
+$('p-kind').addEventListener('change',e=>{
+  if(e.target.value==='anthropic'){
+    if(!$('p-base').value) $('p-base').value='https://api.anthropic.com/v1';
+    if(!$('p-key').value)  $('p-key').value='ANTHROPIC_API_KEY';
+    if(!$('p-model').value)$('p-model').value='claude-haiku-4-5';
+  }
+});
+</script>
+</body>
+</html>
