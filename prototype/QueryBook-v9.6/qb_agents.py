@@ -46,8 +46,8 @@ ROLES = {
                       "desc": "Re-answers a standing question on each cycle and records when the verdict or answer CHANGES as new facts arrive."},
     "reasoning":     {"title": "Gated reasoning agent", "status": "roadmap",
                       "desc": "Deduction asserts; induction/abduction propose. Requires the gated reasoning engine (spec-only)."},
-    "hypothesis":    {"title": "Hypothesis / creative agent", "status": "roadmap",
-                      "desc": "Diverse PROPOSED candidates (inverse-temperature), labelled unverified. Requires the hypothesis engine (spec-only)."},
+    "hypothesis":    {"title": "Hypothesis / creative agent (LLM-proposed, store-verified)", "status": "built",
+                      "desc": "An LLM PROPOSES candidate facts; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'hypothesis' domain at low trust. Non-asserting: nothing the LLM proposes becomes a fact. Needs an LLM provider."},
     "planner":       {"title": "NLPL planner (task/goal-oriented)", "status": "roadmap",
                       "desc": "Decomposes an instruction into operational intents; halts on ambiguity. Requires the NLPL engine (spec-only)."},
     # ---- Language Lab phase agents ----
@@ -60,7 +60,7 @@ ROLES = {
     "lang_speech":   {"title": "Language Phase 4 — speech output", "status": "roadmap",
                       "desc": "Render meaning to speech via the seven-stage pipeline. Requires the neural speech engine (spec-only)."},
 }
-_ROADMAP_ENGINE = {"reasoning": "gated reasoning", "hypothesis": "hypothesis/PROPOSED", "planner": "NLPL",
+_ROADMAP_ENGINE = {"reasoning": "gated reasoning", "planner": "NLPL",
                    "lang_multilingual": "Delta Acquisition", "lang_speech": "neural speech"}
 
 
@@ -404,6 +404,99 @@ class AgentManager:
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], "grounded %d words (+%d facts) from dictionary+store"
                         % (res["words_grounded"], res["facts_added"]))
+                elif a["kind"] == "hypothesis":
+                    # LLM-backed HYPOTHESIS agent — a PERMITTED, strictly non-asserting role.
+                    # The LLM only PROPOSES candidate facts; each candidate is then VERIFIED
+                    # against the deterministic store and stored isolated in a 'hypothesis'
+                    # domain at low trust (< the 0.5 assertion threshold), so nothing the LLM
+                    # proposes is ever asserted as a fact. This is exactly the sanctioned use:
+                    # an LLM may help QueryBook *wonder*, never decide what is true.
+                    import qb_chat, json as _json, re as _re
+                    prov = self._best_provider(a.get("provider"))
+                    if not (qb_chat.provider_usable(prov) or qb_chat._sdk_available()):
+                        a["status"] = "blocked"
+                        a["error"] = ("Hypothesis agent needs an LLM provider (this is a permitted, "
+                                      "non-asserting role). Open LLM Providers, paste your API key, press "
+                                      "Test, then start. Nothing the LLM proposes becomes a fact without "
+                                      "independent verification against the store.")
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    # gather context: verified facts (seeded by target subject, else a random sample)
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    try:
+                        seed = (a.get("target") or "").strip()
+                        rows = []
+                        if not st.no_fql:
+                            if seed:
+                                rows, _ = st.search(seed, 0.5, 12)
+                            if not rows:
+                                rows = st.db.execute("SELECT subject,predicate,object FROM nuc "
+                                                     "WHERE trust>=0.7 ORDER BY RANDOM() LIMIT 12").fetchall()
+                        context = "\n".join("%s | %s | %s" % (r[0], r[1], r[2]) for r in rows)
+                    finally:
+                        st.close()
+                    prompt = ("You are a HYPOTHESIS generator for a fact engine. Given the VERIFIED facts "
+                              "below, propose up to 6 NEW candidate facts that are plausible and testable "
+                              "but NOT already listed, as a JSON array of {subject,predicate,object} using "
+                              "snake_case predicates. These are PROPOSALS ONLY, to be verified independently; "
+                              "do not assert them as true. Return ONLY the JSON array.\n\nVERIFIED FACTS:\n"
+                              + (context or "(store is empty — propose foundational candidates)"))
+                    try:
+                        raw = qb_chat.llm_complete(prov, prompt,
+                                                   system="Propose testable hypotheses. JSON array only.",
+                                                   max_tokens=700)
+                    except Exception as e:
+                        diag = qb_chat.provider_test(prov)
+                        a["status"] = "blocked"
+                        a["error"] = "LLM call failed (%s). %s" % (e, diag.get("detail", ""))
+                        _ev("error", "agent:" + a["name"], a["error"]); self._save(); break
+                    m = _re.search(r"\[.*\]", raw or "", _re.S)
+                    props = []
+                    if m:
+                        try: props = _json.loads(m.group(0))
+                        except Exception: props = []
+                    HYP_SRC = ("SRC-LLM-HYP", "LLM hypothesis (unverified proposal via %s)"
+                               % (prov.get("name") if prov else "LLM"), "llm-proposed", 0.15)
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    corrob = contra = openh = 0; samples = []
+                    try:
+                        for pr in (props or []):
+                            if not isinstance(pr, dict):
+                                continue
+                            s = str(pr.get("subject", "")).strip()
+                            p = str(pr.get("predicate", "")).strip()
+                            o = str(pr.get("object", "")).strip()
+                            if not (s and p and o):
+                                continue
+                            status, trust = "open", 0.15
+                            try:
+                                if st.get(ufcs_store.fingerprint(s, p, o)):
+                                    status, trust = "corroborated", 0.20   # already independently verified
+                                elif not st.no_fql:
+                                    hit, _ = st.fql(s, p, 0.5, 5)
+                                    if hit and all(str(r[2]).lower() != o.lower() for r in hit):
+                                        status, trust = "contradicted", 0.05
+                            except Exception:
+                                pass
+                            # store PROPOSAL isolated in the 'hypothesis' domain (predicate namespaced,
+                            # low trust) so it can never be returned as a VERIFIED fact
+                            st.add(ufcs_store.make_packet(s, "hypothesis:" + p, o, "+", "hypothesis", HYP_SRC, trust))
+                            st.add(ufcs_store.make_packet('hypothesis "%s %s %s"' % (s, p, o),
+                                                          "verification_status", status, "+", "hypothesis", HYP_SRC, trust))
+                            if status == "corroborated": corrob += 1
+                            elif status == "contradicted": contra += 1
+                            else: openh += 1
+                            if len(samples) < 6:
+                                samples.append({"triple": "%s %s %s" % (s, p, o), "status": status})
+                        st.flush()
+                    finally:
+                        st.close()
+                    total = corrob + contra + openh
+                    a["facts"] = a.get("facts", 0) + total
+                    a["phase"] = ("Hypothesis — %d proposed (%d corroborated, %d contradicted, %d open); "
+                                  "none asserted" % (total, corrob, contra, openh))
+                    a["last_hypotheses"] = samples
+                    a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"])
                 elif a["kind"] in _ROADMAP_ENGINE:
                     # Roadmap roles REFUSE rather than fabricate: the engine is spec-only.
                     a["status"] = "roadmap"
