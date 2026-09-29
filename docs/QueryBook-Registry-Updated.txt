@@ -3526,17 +3526,24 @@ below record what is BUILT and the LLM lockout.
       (grounded_by_fact). Every meaning carries an auditable source. Runs to
       completion on its own; never blocks on a provider.
 
-[COVENANT - NO LLM IN LANGUAGE UNDERSTANDING]                          [ENFORCED]
-      QueryBook language understanding (Phases 1-2) uses NO large language model.
-      The LEL learns its own parameters bottom-up (SLPL); grounding is deterministic
-      (dictionary + verified store). An LLM is EXCLUDED from the language-understanding
-      and grounding path. Enforced in code by qb_language.LLM_LOCKOUT = True, which
-      drops any suggestor callable while set. A future dictionary-gated "suggestor"
-      may only PROPOSE a meaning that is accepted solely where it AGREES with the
-      public-domain dictionary; the dictionary remains the authority. Rationale: a
-      live provider "green" check proves connectivity, never that a returned meaning
-      is TRUE, so an LLM meaning cannot satisfy the provenance mandate. (The optional
-      chat/extraction layer, outside language understanding, may still use an LLM.)
+[COVENANT - NO LLM ASSERTS A FACT OR GROUNDS MEANING]                  [ENFORCED]
+      Locked out: QueryBook language understanding (Phases 1-2) uses NO large language
+      model. The LEL learns its own parameters bottom-up (SLPL); grounding is
+      deterministic (dictionary + verified store). An LLM is EXCLUDED from the
+      language-understanding and grounding path, and NO fact asserted by the system
+      originates from an LLM. Enforced in code by qb_language.LLM_LOCKOUT = True, which
+      drops any grounding suggestor callable while set. Rationale: a live provider
+      "green" check proves connectivity, never that a returned meaning is TRUE, so an
+      LLM meaning cannot satisfy the provenance mandate.
+
+      Permitted (non-asserting roles): an LLM MAY be used (i) to PHRASE / narrate an
+      answer over facts the system has already verified, and (ii) to build HYPOTHESES
+      and drive SIMULATIONS for exploration (the hypothesis / reasoning / simulation
+      roles). In every case the LLM never establishes truth: any candidate it proposes
+      is admitted only after independent verification against the deterministic store,
+      and a grounding suggestor is admitted only where it AGREES with the public-domain
+      dictionary, which remains the authority. These roles are outside the LLM_LOCKOUT
+      grounding gate and remain available.
 
 REVISED FEATURE COUNT: 189 (187 + 2 LEL reduced-to-practice, [184]-[185]).
 Patent: reflected in the single consolidated Provisional Patent Application

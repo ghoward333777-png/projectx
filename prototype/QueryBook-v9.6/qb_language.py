@@ -405,9 +405,13 @@ def learned_words(store_dir, n=400):
 # suggestor=None).)
 # --------------------------------------------------------------------------
 _DICT = None
-# COVENANT: no large language model participates in QueryBook language understanding
-# (Phases 1-2). This flag ENFORCES the lockout at runtime — even a future "suggestor"
-# callable is dropped while it is True. Flip it only by an explicit, recorded decision.
+# COVENANT: no large language model grounds meaning or asserts a fact in QueryBook
+# language understanding (Phases 1-2). This flag ENFORCES that lockout at runtime —
+# even a future grounding "suggestor" callable is dropped while it is True. It scopes
+# ONLY the grounding path here; LLMs remain permitted elsewhere in non-asserting roles
+# (phrasing answers over verified facts; building hypotheses and simulations), where
+# nothing an LLM proposes becomes a fact without independent verification. Flip this
+# only by an explicit, recorded decision.
 LLM_LOCKOUT = True
 # Webster's Unabridged Dictionary (1913) is out of copyright / public domain.
 DICT_SOURCE = ("SRC-DICT-WEB1913", "Webster's Unabridged Dictionary (1913, public domain)",
