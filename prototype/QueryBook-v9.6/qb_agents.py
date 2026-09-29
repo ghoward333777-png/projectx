@@ -44,8 +44,8 @@ ROLES = {
                       "desc": "Runs the grounded pipeline on a saved question each cycle: cited answer, verdict, refuses on unknown."},
     "watch":         {"title": "Watch / pondering-over-time (Continuous Query, lite)", "status": "built",
                       "desc": "Re-answers a standing question on each cycle and records when the verdict or answer CHANGES as new facts arrive."},
-    "reasoning":     {"title": "Gated reasoning agent", "status": "roadmap",
-                      "desc": "Deduction asserts; induction/abduction propose. Requires the gated reasoning engine (spec-only)."},
+    "reasoning":     {"title": "Gated reasoning agent (deduction asserts; induction/abduction propose)", "status": "built",
+                      "desc": "Deterministic transitive deductive closure over VERIFIED premises asserts derived facts (each carrying its two premises as provenance, trust decaying per hop). Induction/abduction are non-asserting LLM proposals verified against the store. Deduction needs no LLM."},
     "hypothesis":    {"title": "Hypothesis / creative agent (LLM-proposed, store-verified)", "status": "built",
                       "desc": "An LLM PROPOSES candidate facts; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'hypothesis' domain at low trust. Non-asserting: nothing the LLM proposes becomes a fact. Needs an LLM provider."},
     "simulation":    {"title": "Simulation agent (LLM-projected, store-verified)", "status": "built",
@@ -62,7 +62,7 @@ ROLES = {
     "lang_speech":   {"title": "Language Phase 4 — speech output", "status": "roadmap",
                       "desc": "Render meaning to speech via the seven-stage pipeline. Requires the neural speech engine (spec-only)."},
 }
-_ROADMAP_ENGINE = {"reasoning": "gated reasoning", "planner": "NLPL",
+_ROADMAP_ENGINE = {"planner": "NLPL",
                    "lang_multilingual": "Delta Acquisition", "lang_speech": "neural speech"}
 
 
@@ -584,6 +584,115 @@ class AgentManager:
                     a["phase"] = ("Simulation — %d projected (%d corroborated, %d contradicted, %d open); "
                                   "none asserted" % (total, corrob, contra, openh))
                     a["last_hypotheses"] = samples
+                    a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "reasoning":
+                    # GATED REASONING. Deduction ASSERTS — but only truth-preserving transitive
+                    # closure over VERIFIED premises, computed deterministically with NO LLM; the
+                    # conclusion is entailed by facts already in the store, so it is sound to assert
+                    # (each carries its two premises as provenance, and trust decays per hop so chains
+                    # terminate). Induction/abduction PROPOSE only — optional LLM candidates stored as
+                    # non-asserting proposals in a 'reasoning' domain, verified like a hypothesis.
+                    import qb_chat, json as _json, re as _re
+                    TAU = 0.6
+                    TRANSITIVE = ("is_a", "subclass_of", "subtype_of", "part_of", "located_in",
+                                  "contained_in", "precedes", "ancestor_of", "greater_than",
+                                  "older_than", "equals")
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    derived = 0; dsamples = []
+                    try:
+                        if not st.no_fql:
+                            qs = ",".join("?" * len(TRANSITIVE))
+                            rows = st.db.execute(
+                                "SELECT subject,predicate,object,trust FROM nuc WHERE trust>=? "
+                                "AND predicate IN (%s) LIMIT 4000" % qs, (TAU,) + TRANSITIVE).fetchall()
+                            idx = {}; present = set()   # index (predicate, subject) -> [(object, trust)]
+                            for s, p, o, t in rows:
+                                idx.setdefault((p, s.lower()), []).append((o, t))
+                                present.add((p, s.lower(), o.lower()))
+                            for s, p, o, t in rows:
+                                for (o2, t2) in idx.get((p, o.lower()), []):
+                                    if o2.lower() == s.lower():
+                                        continue                       # no trivial self-loop
+                                    if (p, s.lower(), o2.lower()) in present:
+                                        continue                       # already known/derived
+                                    if st.get(ufcs_store.fingerprint(s, p, o2)):
+                                        present.add((p, s.lower(), o2.lower())); continue
+                                    tr = round(min(t, t2) * 0.98, 4)   # decay: chains terminate below TAU
+                                    src = ("SRC-DEDUCTION",
+                                           "deductive closure: (%s %s %s) ∧ (%s %s %s)" % (s, p, o, o, p, o2),
+                                           "derived", tr)
+                                    st.add(ufcs_store.make_packet(s, p, o2, "+", "derived", src, tr))
+                                    present.add((p, s.lower(), o2.lower())); derived += 1
+                                    if len(dsamples) < 6:
+                                        dsamples.append("%s %s %s" % (s, p, o2))
+                                    if derived >= 200:
+                                        break
+                                if derived >= 200:
+                                    break
+                            st.flush()
+                    finally:
+                        st.close()
+                    # induction / abduction — optional, non-asserting LLM proposals
+                    proposed = 0
+                    prov = self._best_provider(a.get("provider"))
+                    if qb_chat.provider_usable(prov) or qb_chat._sdk_available():
+                        st = ufcs_store.UFCSStore(self.store_dir)
+                        try:
+                            rows = ([] if st.no_fql else st.db.execute(
+                                "SELECT subject,predicate,object FROM nuc WHERE trust>=0.7 "
+                                "ORDER BY RANDOM() LIMIT 12").fetchall())
+                            context = "\n".join("%s | %s | %s" % (r[0], r[1], r[2]) for r in rows)
+                        finally:
+                            st.close()
+                        prompt = ("You are a REASONING agent. From the VERIFIED facts below, propose up to 5 "
+                                  "INDUCTIVE generalizations or ABDUCTIVE explanations as a JSON array of "
+                                  "{subject,predicate,object}. These are non-deductive PROPOSALS to be verified, "
+                                  "never asserted. Return ONLY the JSON array.\n\nVERIFIED FACTS:\n"
+                                  + (context or "(none yet)"))
+                        try:
+                            raw = qb_chat.llm_complete(prov, prompt,
+                                                       system="Propose inductive/abductive candidates. JSON array only.",
+                                                       max_tokens=600)
+                        except Exception:
+                            raw = ""
+                        m = _re.search(r"\[.*\]", raw or "", _re.S); props = []
+                        if m:
+                            try: props = _json.loads(m.group(0))
+                            except Exception: props = []
+                        RSRC = ("SRC-LLM-REASON", "LLM reasoning proposal (inductive/abductive via %s)"
+                                % (prov.get("name") if prov else "LLM"), "llm-proposed", 0.15)
+                        st = ufcs_store.UFCSStore(self.store_dir)
+                        try:
+                            for pr in (props or []):
+                                if not isinstance(pr, dict):
+                                    continue
+                                s = str(pr.get("subject", "")).strip()
+                                p = str(pr.get("predicate", "")).strip()
+                                o = str(pr.get("object", "")).strip()
+                                if not (s and p and o):
+                                    continue
+                                status, trust = "open", 0.15
+                                try:
+                                    if st.get(ufcs_store.fingerprint(s, p, o)):
+                                        status, trust = "corroborated", 0.20
+                                    elif not st.no_fql:
+                                        hit, _ = st.fql(s, p, 0.5, 5)
+                                        if hit and all(str(r[2]).lower() != o.lower() for r in hit):
+                                            status, trust = "contradicted", 0.05
+                                except Exception:
+                                    pass
+                                st.add(ufcs_store.make_packet(s, "reasoning:" + p, o, "+", "reasoning", RSRC, trust))
+                                st.add(ufcs_store.make_packet('reasoning "%s %s %s"' % (s, p, o),
+                                                              "verification_status", status, "+", "reasoning", RSRC, trust))
+                                proposed += 1
+                            st.flush()
+                        finally:
+                            st.close()
+                    a["facts"] = a.get("facts", 0) + derived + proposed
+                    a["phase"] = ("Reasoning — %d deduced & asserted (transitive closure); %d inductive/"
+                                  "abductive proposed (non-asserting)" % (derived, proposed))
+                    a["last_derived"] = dsamples
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], a["phase"])
                 elif a["kind"] in _ROADMAP_ENGINE:

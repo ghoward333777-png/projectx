@@ -388,7 +388,8 @@ class H(BaseHTTPRequestHandler):
                         for subj, status, tr in rows:
                             kind = "hypothesis"
                             triple = subj
-                            for pfx, k in (('hypothesis "', "hypothesis"), ('simulation "', "simulation")):
+                            for pfx, k in (('hypothesis "', "hypothesis"), ('simulation "', "simulation"),
+                                           ('reasoning "', "reasoning")):
                                 if subj.startswith(pfx):
                                     kind = k; triple = subj[len(pfx):-1]; break
                             items.append({"type": kind, "candidate": triple, "status": status, "trust": tr})
@@ -443,10 +444,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.9", "date": "2026-09-29",
+                    self._send(200, {"build": "v9.10", "date": "2026-09-29",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -499,9 +500,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.9 · 2026-09-29  (Hypothesis + simulation agents — store-verified)", flush=True)
+    print("  QueryBook  BUILD v9.10 · 2026-09-29  (Gated reasoning — deduction asserts, induction proposes)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.9 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.10 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)
