@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.7 · 2026-09-29</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.13 · 2026-09-29</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -271,7 +271,7 @@ function renderPhases(gateOpen){
     const isBuilt = p.status==='built';
     const badge = isBuilt ? '<span class="badge b-built">Deterministic · no LLM</span>' : '<span class="badge b-road">Roadmap</span>';
     const btn = isBuilt
-      ? `<button class="btn mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Start Phase ${p.n} — dictionary + store grounding</button>
+      ? `<button class="btn mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Start Phase ${p.n} — ${p.key==='multilingual'?'Spanish (es) delta':'dictionary + store grounding'}</button>${p.key==='multilingual'?'<div class="note">Deterministic delta from a bundled bilingual dictionary (demo, CC BY-NC — swap for a public-domain source before commercial use). Defaults to Spanish; create a <code>lang_multilingual</code> agent with target <code>fr</code> for French.</div>':''}
          <div class="note">Runs on its own with <b>no LLM and no internet</b>. Grounds words from the bundled public-domain dictionary (Webster's 1913) and links them to verified facts in your store — every meaning has an auditable source. <span id="p2cov"></span></div>`
       : `<button class="btn ghost mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Try to start (will refuse — engine not built)</button>`;
     return `<div class="card"><div class="phase"><div class="pnum">${p.n}</div><div style="min-width:0">

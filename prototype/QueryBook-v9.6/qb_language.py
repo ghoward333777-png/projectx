@@ -530,6 +530,107 @@ def _agrees(a, b):
     return bool(wa & wb)
 
 
+# --------------------------------------------------------------------------
+# PHASE 3 — DETERMINISTIC MULTILINGUAL DELTA (dictionary-based). NO LLM.
+#
+# Approximates the Delta Acquisition Model: reuse the English foundation learned
+# in Phase 1 and learn ONLY the delta to a second language — the word-to-word
+# mapping — from a bundled bilingual dictionary. Deterministic, auditable source,
+# no LLM. (The full neural cross-lingual alignment remains the roadmap embodiment.)
+# --------------------------------------------------------------------------
+_BILING = None
+LANG_NAMES = {"es": "Spanish", "fr": "French"}
+# NOTE: the bundled bilingual data is a DEMONSTRATION set (MUSE, CC BY-NC 4.0) and is
+# to be replaced with a public-domain/permissive bilingual source before commercial use.
+BILINGUAL_SOURCE = ("SRC-BILINGUAL-DEMO",
+                    "MUSE bilingual dictionary (CC BY-NC 4.0; demo — replace with a "
+                    "public-domain/permissive source before commercial use)",
+                    "reference-demo", 0.85)
+
+
+def _biling_path():
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    for name in ("qb_bilingual.json.gz", "qb_bilingual.json"):
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    p = os.environ.get("QB_BILINGUAL")
+    return p if (p and os.path.exists(p)) else None
+
+
+def load_bilingual():
+    """Load the bundled bilingual dictionary {lang: {english: [translations]}}. Cached; stdlib only."""
+    global _BILING
+    if _BILING is not None:
+        return _BILING
+    d = {}
+    p = _biling_path()
+    if p:
+        try:
+            raw = (gzip.open(p, "rb").read() if p.endswith(".gz") else open(p, "rb").read())
+            d = json.loads(raw.decode("utf-8", "ignore"))
+        except Exception:
+            d = {}
+    _BILING = d
+    return _BILING
+
+
+def available_languages():
+    return [k for k in load_bilingual().keys() if not k.startswith("_")]
+
+
+def acquire_language(store_dir, lang="es", words=None, max_words=None):
+    """Phase-3 delta: for English words already learned in Phase 1, attach their L2 translation
+    from the bundled bilingual dictionary. Reuses the English foundation; learns only the delta.
+    Deterministic, NO LLM. Writes english word "w" · translation_<lang> · <tr> Fact Units."""
+    B = load_bilingual().get(lang) or {}
+    if not B:
+        return {"error": "no bilingual data for '%s' (available: %s)" % (lang, ", ".join(available_languages()))}
+    if words is None:
+        words = learned_words(store_dir, 400)
+    if max_words:
+        words = words[:max_words]
+    st = store.UFCSStore(store_dir)
+    added = 0; mapped = []
+    pred = "translation_" + lang
+    try:
+        for w in words:
+            wl = str(w).lower().strip()
+            trs = B.get(wl)
+            if not trs:
+                continue
+            for tr in trs[:2]:
+                if st.add(store.make_packet('english word "%s"' % wl, pred, tr, "+",
+                                            "language", BILINGUAL_SOURCE, 0.85)):
+                    added += 1
+            mapped.append({"word": wl, "translations": trs[:2]})
+        st.flush()
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "words_in": len(words),
+            "mapped": len(mapped), "facts_added": added, "sample": mapped[:8]}
+
+
+def multilingual_status(store_dir):
+    """Phase-3 coverage: per-language translation counts against the learned vocabulary."""
+    vocab = len(learned_words(store_dir, 400))
+    st = store.UFCSStore(store_dir)
+    langs = {}
+    try:
+        if not st.no_fql:
+            for lg in available_languages():
+                n = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate=?",
+                                  ("translation_" + lg,)).fetchone()[0]
+                langs[lg] = {"language": LANG_NAMES.get(lg, lg), "translations": n}
+    except Exception:
+        pass
+    finally:
+        st.close()
+    meta = load_bilingual().get("_meta", {})
+    return {"vocabulary": vocab, "languages": langs, "available": available_languages(),
+            "source": meta.get("source"), "license": meta.get("license"), "note": meta.get("note")}
+
+
 def grounding_status(store_dir):
     """How much of the Phase-1 vocabulary has been grounded (for the Phase 2 UI)."""
     words = learned_words(store_dir, 400)
@@ -610,10 +711,14 @@ LANGUAGE_PHASES = [
              "— every meaning carries an auditable source. (LLMs are locked out of this phase; a future "
              "'suggestor' mode may propose meanings that are accepted only when they match the "
              "dictionary.)"},
-    {"n": 3, "key": "multilingual", "agent_kind": "lang_multilingual", "status": "roadmap",
-     "name": "Multilingual delta (Phase 3)",
-     "desc": "Acquire further languages by learning only their delta over English (the flywheel). "
-             "Requires the Delta Acquisition engine (spec-only)."},
+    {"n": 3, "key": "multilingual", "agent_kind": "lang_multilingual", "status": "built",
+     "name": "Multilingual delta (Phase 3) — dictionary delta",
+     "desc": "Deterministic approximation of the Delta Acquisition Model: reuse the English "
+             "foundation from Phase 1 and learn only the DELTA to a second language (the word "
+             "mapping) from a bundled bilingual dictionary, stored as translation Fact Units. "
+             "No LLM, no internet. Set the agent target to a language code (es, fr). The full "
+             "neural cross-lingual alignment remains the roadmap embodiment; the bundled "
+             "bilingual data is a demo set to be replaced with a public-domain source."},
     {"n": 4, "key": "speech", "agent_kind": "lang_speech", "status": "roadmap",
      "name": "Speech output (Phase 4)",
      "desc": "Render meaning to speech through the seven-stage pipeline (G2P → coarticulation → "

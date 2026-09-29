@@ -378,6 +378,9 @@ class H(BaseHTTPRequestHandler):
                 elif u.path == "/api/language/grounding":
                     # Phase 2 deterministic grounding coverage (dictionary + store; no LLM).
                     self._send(200, qb_language.grounding_status(DATA_DIR))
+                elif u.path == "/api/language/multilingual":
+                    # Phase 3 deterministic delta coverage (bilingual dictionary; no LLM).
+                    self._send(200, qb_language.multilingual_status(DATA_DIR))
                 elif u.path == "/api/hypotheses":
                     # LLM-proposed/projected, store-verified candidates (non-asserting; isolated domains).
                     items = []
@@ -460,10 +463,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.12", "date": "2026-09-29",
+                    self._send(200, {"build": "v9.13", "date": "2026-09-29",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -516,9 +519,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.12 · 2026-09-29  (NLPL planner — halts on ambiguity)", flush=True)
+    print("  QueryBook  BUILD v9.13 · 2026-09-29  (Phase 3 multilingual delta — deterministic, no LLM)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.12 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.13 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)

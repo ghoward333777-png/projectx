@@ -3603,3 +3603,21 @@ ADDITIVE REVISION - NLPL PLANNER AGENT (2026-09-29)
 REVISED FEATURE COUNT: 193 (192 + 1 planner, [189]).
 Roadmap now: only Language Phase 3 (multilingual delta) and Phase 4 (speech),
 which require engines that remain spec-only.
+
+
+================================================================
+ADDITIVE REVISION - PHASE 3 MULTILINGUAL DELTA (deterministic) (2026-09-29)
+================================================================
+[190] 16.9 - Phase 3 multilingual delta (deterministic)                [BUILT]
+      Deterministic approximation of the Delta Acquisition Model ([181]): reuse the
+      Phase-1 English vocabulary and learn ONLY the delta to a second language (the
+      word mapping) from a bundled bilingual dictionary, stored as english word "w" ·
+      translation_<lang> · <t> Fact Units (trust 0.85). No LLM, no internet. Targets
+      bundled: Spanish (es), French (fr). Exposed at GET /api/language/multilingual.
+      NOTE: the bundled bilingual data is a DEMONSTRATION set (MUSE, CC BY-NC 4.0) to
+      be replaced with a public-domain/permissive bilingual source before commercial
+      use; the full neural cross-lingual alignment ([181]) remains the roadmap form.
+
+REVISED FEATURE COUNT: 194 (193 + 1 Phase-3 delta, [190]).
+Roadmap now: only Language Phase 4 (speech output), which requires the neural
+speech engine (spec-only).

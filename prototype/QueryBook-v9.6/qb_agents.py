@@ -57,12 +57,12 @@ ROLES = {
                       "desc": "Learns English STRUCTURE from a bundled corpus (or your material) each cycle, driving the four Transition-Gate thresholds until Phase 1 completes."},
     "lang_semantic": {"title": "Language Phase 2 — semantic grounding (dictionary + store)", "status": "built",
                       "desc": "Grounds Phase-1 words to auditable meanings: a bundled public-domain dictionary (Webster's 1913) plus self-grounding against the verified store. Fully deterministic, no internet, NO LLM. Runs to completion on its own."},
-    "lang_multilingual": {"title": "Language Phase 3 — multilingual delta", "status": "roadmap",
-                      "desc": "Acquire further languages by their delta over English. Requires the Delta Acquisition engine (spec-only)."},
+    "lang_multilingual": {"title": "Language Phase 3 — multilingual delta (dictionary)", "status": "built",
+                      "desc": "Deterministic delta acquisition: reuse the Phase-1 English vocabulary and learn only the mapping to a second language (target = es, fr) from a bundled bilingual dictionary, stored as translation Fact Units. No LLM. Full neural alignment remains roadmap."},
     "lang_speech":   {"title": "Language Phase 4 — speech output", "status": "roadmap",
                       "desc": "Render meaning to speech via the seven-stage pipeline. Requires the neural speech engine (spec-only)."},
 }
-_ROADMAP_ENGINE = {"lang_multilingual": "Delta Acquisition", "lang_speech": "neural speech"}
+_ROADMAP_ENGINE = {"lang_speech": "neural speech"}
 
 
 class AgentManager:
@@ -692,6 +692,45 @@ class AgentManager:
                     a["phase"] = ("Reasoning — %d deduced & asserted (transitive closure); %d inductive/"
                                   "abductive proposed (non-asserting)" % (derived, proposed))
                     a["last_derived"] = dsamples
+                    a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "lang_multilingual":
+                    # Phase 3 (DETERMINISTIC delta): reuse the Phase-1 English vocabulary and learn
+                    # only the delta to a second language from a bundled bilingual dictionary. No LLM,
+                    # no provider, no network. Target = language code (es, fr).
+                    import qb_language as L
+                    lang = (a.get("target") or "es").strip().lower()
+                    if lang not in L.available_languages():
+                        a["status"] = "blocked"
+                        a["error"] = ("Language '%s' not available. Set the agent target to one of: %s."
+                                      % (lang, ", ".join(L.available_languages()) or "(none bundled)"))
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    done = set(a.get("_mapped") or [])
+                    vocab = L.learned_words(self.store_dir, 400)
+                    if not vocab:
+                        a["status"] = "blocked"
+                        a["error"] = ("No Phase-1 vocabulary yet — build English first, then Phase 3 learns "
+                                      "the delta to '%s'." % lang)
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    batch = [w for w in vocab if w not in done][:60]
+                    if not batch:
+                        ms = L.multilingual_status(self.store_dir)
+                        n = (ms.get("languages", {}).get(lang) or {}).get("translations", 0)
+                        a["status"] = "complete"
+                        a["phase"] = "Phase 3 complete — %s delta mapped (%d translation facts)" % (
+                            L.LANG_NAMES.get(lang, lang), n)
+                        _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
+                    res = L.acquire_language(self.store_dir, lang, words=batch)
+                    if res.get("error"):
+                        a["status"] = "blocked"; a["error"] = res["error"]
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    for w in batch:
+                        done.add(w)
+                    a["_mapped"] = sorted(done)
+                    a["facts"] = a.get("facts", 0) + res["facts_added"]
+                    a["phase"] = ("Phase 3 (%s delta) — %d/%d words mapped (+%d translation facts)"
+                                  % (res["language"], len(done), len(vocab), res["facts_added"]))
+                    a["last_mapped"] = res.get("sample", [])
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], a["phase"])
                 elif a["kind"] == "planner":
