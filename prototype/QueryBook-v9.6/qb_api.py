@@ -395,6 +395,22 @@ class H(BaseHTTPRequestHandler):
                             items.append({"type": kind, "candidate": triple, "status": status, "trust": tr})
                     self._send(200, {"hypotheses": items, "count": len(items),
                                      "note": "LLM proposals/projections verified against the store; never asserted as fact."})
+                elif u.path == "/api/plans":
+                    # NLPL planner output: ordered operational steps (non-asserting proposals).
+                    plans = {}
+                    if not st.no_fql:
+                        rows = st.db.execute(
+                            "SELECT subject, predicate, object FROM nuc WHERE predicate LIKE 'plan_step:%' "
+                            "OR predicate='plan_status' ORDER BY subject, predicate").fetchall()
+                        for subj, pred, obj in rows:
+                            goal = subj[len('plan "'):-1] if subj.startswith('plan "') else subj
+                            g = plans.setdefault(goal, {"goal": goal, "status": "", "steps": []})
+                            if pred == "plan_status":
+                                g["status"] = obj
+                            else:
+                                g["steps"].append(obj)
+                    self._send(200, {"plans": list(plans.values()), "count": len(plans),
+                                     "note": "Plans are non-asserting proposals; they assert no facts."})
                 elif u.path == "/api/domains":
                     # real breakdown of what's actually stored, grouped by relation (predicate)
                     rows = []
@@ -444,10 +460,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.11", "date": "2026-09-29",
+                    self._send(200, {"build": "v9.12", "date": "2026-09-29",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -500,9 +516,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.11 · 2026-09-29  (Reasoning family complete + multi-valued gate)", flush=True)
+    print("  QueryBook  BUILD v9.12 · 2026-09-29  (NLPL planner — halts on ambiguity)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.11 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.12 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)

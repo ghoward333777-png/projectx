@@ -3587,3 +3587,19 @@ REVISED FEATURE COUNT: 192 (189 + 3 reasoning-family agents, [186]-[188]).
 Patent: recorded in the consolidated Provisional Patent Application, Section VII.
 Covenant: deduction asserts only entailed facts; induction/abduction/hypothesis/
 simulation are non-asserting proposals verified against the deterministic store.
+
+
+================================================================
+ADDITIVE REVISION - NLPL PLANNER AGENT (2026-09-29)
+================================================================
+[189] 17.8 - NLPL planner (kind=planner)                               [BUILT]
+      Decomposes a target goal into an ordered list of operational intents via an
+      LLM, and HALTS ON AMBIGUITY: for an underspecified goal it returns a single
+      clarifying question and blocks, rather than fabricating a plan. The plan is a
+      NON-ASSERTING proposal, stored in an isolated 'plan' domain at low trust
+      (predicates plan_step:NN, plan_status); it asserts no facts. Exposed at
+      GET /api/plans. Needs an LLM provider (permitted non-asserting role).
+
+REVISED FEATURE COUNT: 193 (192 + 1 planner, [189]).
+Roadmap now: only Language Phase 3 (multilingual delta) and Phase 4 (speech),
+which require engines that remain spec-only.

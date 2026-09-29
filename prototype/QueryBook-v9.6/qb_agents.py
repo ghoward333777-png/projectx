@@ -50,8 +50,8 @@ ROLES = {
                       "desc": "An LLM PROPOSES candidate facts; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'hypothesis' domain at low trust. Non-asserting: nothing the LLM proposes becomes a fact. Needs an LLM provider."},
     "simulation":    {"title": "Simulation agent (LLM-projected, store-verified)", "status": "built",
                       "desc": "An LLM projects plausible CONSEQUENCES of a scenario; each is verified against the deterministic store (corroborated / contradicted / open) and stored isolated in a 'simulation' domain at low trust. Non-asserting. Needs an LLM provider."},
-    "planner":       {"title": "NLPL planner (task/goal-oriented)", "status": "roadmap",
-                      "desc": "Decomposes an instruction into operational intents; halts on ambiguity. Requires the NLPL engine (spec-only)."},
+    "planner":       {"title": "NLPL planner (task/goal-oriented)", "status": "built",
+                      "desc": "Decomposes a target goal into ordered operational intents via an LLM; HALTS on ambiguity (asks a clarifying question instead of guessing). The plan is a non-asserting proposal stored in a 'plan' domain. Needs an LLM provider."},
     # ---- Language Lab phase agents ----
     "language":      {"title": "Language builder — Phase 1 (SLPL / structural)", "status": "built",
                       "desc": "Learns English STRUCTURE from a bundled corpus (or your material) each cycle, driving the four Transition-Gate thresholds until Phase 1 completes."},
@@ -62,8 +62,7 @@ ROLES = {
     "lang_speech":   {"title": "Language Phase 4 — speech output", "status": "roadmap",
                       "desc": "Render meaning to speech via the seven-stage pipeline. Requires the neural speech engine (spec-only)."},
 }
-_ROADMAP_ENGINE = {"planner": "NLPL",
-                   "lang_multilingual": "Delta Acquisition", "lang_speech": "neural speech"}
+_ROADMAP_ENGINE = {"lang_multilingual": "Delta Acquisition", "lang_speech": "neural speech"}
 
 
 class AgentManager:
@@ -695,6 +694,65 @@ class AgentManager:
                     a["last_derived"] = dsamples
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "planner":
+                    # NLPL PLANNER — decomposes a goal (agent target) into ordered operational
+                    # intents. HALTS ON AMBIGUITY: rather than fabricate a plan for an underspecified
+                    # goal, it blocks and asks for the missing detail. A plan is a PROPOSAL, never an
+                    # asserted fact; steps are stored non-asserting in a 'plan' domain at low trust.
+                    import qb_chat, json as _json, re as _re
+                    goal = (a.get("target") or "").strip()
+                    if not goal:
+                        a["status"] = "blocked"
+                        a["error"] = ("No goal to plan. Set the agent's target to the instruction/goal to "
+                                      "decompose (e.g. 'harvest and verify the capitals of every country').")
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    prov = self._best_provider(a.get("provider"))
+                    if not (qb_chat.provider_usable(prov) or qb_chat._sdk_available()):
+                        a["status"] = "blocked"
+                        a["error"] = ("Planner needs an LLM provider (permitted, non-asserting role). Open LLM "
+                                      "Providers, paste your API key, press Test, then start. The plan is a "
+                                      "proposal; it asserts no facts.")
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    prompt = ('Decompose the GOAL into an ordered list of concrete, operational steps for a '
+                              'fact-harvesting engine. If the goal is ambiguous or underspecified, DO NOT guess: '
+                              'set "ambiguous" true and give one specific clarifying question. Return ONLY JSON: '
+                              '{"ambiguous": bool, "clarification": string, "steps": [string, ...]}.\n\nGOAL: ' + goal)
+                    try:
+                        raw = qb_chat.llm_complete(prov, prompt,
+                                                   system="You are a task planner. Halt on ambiguity. JSON only.",
+                                                   max_tokens=700)
+                    except Exception as e:
+                        diag = qb_chat.provider_test(prov)
+                        a["status"] = "blocked"; a["error"] = "LLM call failed (%s). %s" % (e, diag.get("detail", ""))
+                        _ev("error", "agent:" + a["name"], a["error"]); self._save(); break
+                    m = _re.search(r"\{.*\}", raw or "", _re.S); plan = {}
+                    if m:
+                        try: plan = _json.loads(m.group(0))
+                        except Exception: plan = {}
+                    steps = [str(s).strip() for s in (plan.get("steps") or []) if str(s).strip()]
+                    if plan.get("ambiguous") or not steps:
+                        q = (plan.get("clarification") or "").strip() or "The goal is underspecified — please restate it with the specific target, scope, and success criterion."
+                        a["status"] = "blocked"
+                        a["error"] = "Halted on ambiguity: " + q
+                        a["plan"] = []
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    # store the plan as NON-ASSERTING proposals in an isolated 'plan' domain
+                    PSRC = ("SRC-LLM-PLAN", "NLPL plan (proposal via %s)" % (prov.get("name") if prov else "LLM"),
+                            "llm-plan", 0.15)
+                    st = ufcs_store.UFCSStore(self.store_dir)
+                    try:
+                        st.add(ufcs_store.make_packet('plan "%s"' % goal[:120], "plan_status", "complete",
+                                                      "+", "plan", PSRC, 0.15))
+                        for i, step in enumerate(steps[:20]):
+                            st.add(ufcs_store.make_packet('plan "%s"' % goal[:120], "plan_step:%02d" % (i + 1),
+                                                          step[:300], "+", "plan", PSRC, 0.15))
+                        st.flush()
+                    finally:
+                        st.close()
+                    a["plan"] = steps[:20]
+                    a["phase"] = "Planned '%s' — %d step(s); proposal, no facts asserted" % (goal[:48], len(steps))
+                    a["status"] = "complete"; a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                 elif a["kind"] in _ROADMAP_ENGINE:
                     # Roadmap roles REFUSE rather than fabricate: the engine is spec-only.
                     a["status"] = "roadmap"
