@@ -405,6 +405,10 @@ def learned_words(store_dir, n=400):
 # suggestor=None).)
 # --------------------------------------------------------------------------
 _DICT = None
+# COVENANT: no large language model participates in QueryBook language understanding
+# (Phases 1-2). This flag ENFORCES the lockout at runtime — even a future "suggestor"
+# callable is dropped while it is True. Flip it only by an explicit, recorded decision.
+LLM_LOCKOUT = True
 # Webster's Unabridged Dictionary (1913) is out of copyright / public domain.
 DICT_SOURCE = ("SRC-DICT-WEB1913", "Webster's Unabridged Dictionary (1913, public domain)",
                "reference-public-domain", 0.9)
@@ -453,6 +457,9 @@ def ground_words(store_dir, words, use_dictionary=True, use_store=True, max_link
     `suggestor` is an optional callable(word)->str for a FUTURE validated mode; a suggestion is
     accepted ONLY if it agrees with the dictionary. It is None here (LLMs locked out of Phase 2).
     """
+    # COVENANT ENFORCED: while the lockout holds, refuse any LLM-backed suggestor outright.
+    if LLM_LOCKOUT and suggestor is not None:
+        suggestor = None
     D = load_dictionary() if use_dictionary else {}
     st = store.UFCSStore(store_dir)
     grounded, added = [], 0

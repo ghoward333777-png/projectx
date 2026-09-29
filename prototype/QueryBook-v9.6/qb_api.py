@@ -427,10 +427,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.6", "date": "2026-09-29",
+                    self._send(200, {"build": "v9.7", "date": "2026-09-29",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -483,9 +483,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.6 · 2026-09-29  (Deterministic Phase 2 — dictionary + store)", flush=True)
+    print("  QueryBook  BUILD v9.7 · 2026-09-29  (LLM lockout enforced — no LLM in language understanding)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.6 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.7 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)
