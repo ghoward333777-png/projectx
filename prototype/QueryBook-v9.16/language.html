@@ -1,0 +1,437 @@
+<!doctype html><html lang="en" data-theme="light"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QueryBook Language Lab</title>
+<style>
+  :root{
+    --bg:#f5f3ee; --panel:#ffffff; --panel2:#faf8f2; --ink:#171410; --muted:#6b6457;
+    --line:#e2dccd; --accent:#0c5c4c; --accent2:#48ccac; --gold:#a9791c;
+    --good:#1a7f4b; --goodbg:rgba(26,127,75,.14); --warn:#b25d00; --warnbg:rgba(178,93,0,.14);
+    --bad:#b33b2f; --badbg:rgba(179,59,47,.14); --info:#1f5fd6; --infobg:rgba(31,95,214,.10);
+    color-scheme:light;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--accent2:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.16);
+    --warn:#e0913f;--warnbg:rgba(224,145,63,.16);--bad:#e8756a;--badbg:rgba(232,117,106,.16);
+    --info:#6f9bff;--infobg:rgba(111,155,255,.13);color-scheme:dark}}
+  :root[data-theme="dark"]{
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--accent2:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.16);
+    --warn:#e0913f;--warnbg:rgba(224,145,63,.16);--bad:#e8756a;--badbg:rgba(232,117,106,.16);
+    --info:#6f9bff;--infobg:rgba(111,155,255,.13);color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}
+  header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);
+    border-bottom:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .brand{font-weight:800;font-size:16px} .brand .q{color:var(--accent)}
+  nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  nav a{font-size:13px;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:7px}
+  nav a:hover{background:var(--panel2);color:var(--ink)} nav a.active{background:var(--accent);color:#fff}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 16px 60px}
+  .hero{padding:22px 0 6px}
+  .eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  h1{font-family:var(--serif);font-size:clamp(23px,4.5vw,33px);line-height:1.1;margin:8px 0}
+  .lede{color:var(--muted);font-size:14.5px;max-width:78ch;margin:0}
+  .honest{background:var(--warnbg);border:1px solid var(--line);border-left:4px solid var(--warn);
+    border-radius:10px;padding:11px 15px;margin:14px 0;font-size:12.5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin:14px 0}
+  .card h2{font-family:var(--serif);font-size:18px;margin:0 0 4px}
+  .card .sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 15px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .btn:hover{filter:brightness(1.06)} .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.big{font-size:15px;padding:12px 22px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .note{font-size:12px;color:var(--muted);margin-top:8px} .note.err{color:var(--bad)}
+  label.fld{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px;font-weight:600}
+  textarea,input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-family:var(--sans);font-size:13.5px;padding:9px 11px}
+  textarea{min-height:80px;resize:vertical;font-family:var(--mono);font-size:12.5px}
+  /* hero gate meter */
+  .meter{height:26px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden;position:relative}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:99px;transition:width .5s}
+  .meter span{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--ink)}
+  .done{background:var(--goodbg);border:1px solid var(--good);border-radius:10px;padding:12px 15px;color:var(--good);font-weight:700}
+  /* phase rail */
+  .phase{display:grid;grid-template-columns:52px 1fr;gap:14px;align-items:start}
+  .pnum{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-family:var(--serif);font-size:22px;font-weight:800;
+    background:var(--panel2);border:2px solid var(--line);color:var(--muted)}
+  .phase.built .pnum{border-color:var(--accent);color:var(--accent)}
+  .phase.done .pnum{background:var(--good);border-color:var(--good);color:#fff}
+  .badge{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;vertical-align:middle}
+  .b-built{background:var(--goodbg);color:var(--good)} .b-road{background:var(--infobg);color:var(--info)} .b-lock{background:var(--panel2);color:var(--muted)}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+  @media (max-width:560px){.metrics{grid-template-columns:repeat(2,1fr)}}
+  .met{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 11px}
+  .met .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .met .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums} .met .s{font-size:10.5px;color:var(--muted)}
+  .greq{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .greq:last-child{border-bottom:none} .greq .nm{flex:1;font-size:13px} .greq .nm small{display:block;color:var(--muted);font-size:11px}
+  .greq .val{font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;min-width:118px;text-align:right}
+  .pill{font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .pill.pass,.pill.running{background:var(--goodbg);color:var(--good)} .pill.fail{background:var(--badbg);color:var(--bad)}
+  .pill.road{background:var(--infobg);color:var(--info)} .pill.idle{background:var(--panel2);color:var(--muted)}
+  .bar{height:7px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:99px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .abtn{font-size:11px;padding:3px 8px;margin-right:4px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--ink);cursor:pointer}
+  .src{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .src:last-child{border-bottom:none} .src .info{flex:1} .src .info b{font-size:13px} .src .info small{display:block;color:var(--muted);font-size:11.5px}
+  .kind{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);font-weight:800}
+  details{margin-top:8px} summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600}
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;color:var(--muted);font-size:12px}
+  a{color:var(--accent)}
+</style></head><body>
+<header class="top">
+  <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.15 · 2026-09-30</span>
+  <nav>
+    <a href="/dashboard">Console</a>
+    <a href="/">Chat</a>
+    <a class="active" href="/language">Language Lab</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="eyebrow">Build English first · phase-by-phase · agent-driven</div>
+    <h1>Language Lab — teach QueryBook English from scratch</h1>
+    <p class="lede">QueryBook learns language the way its architecture documents it: in developmental
+    <b>phases</b>, driven by <b>agents</b>. Phase&nbsp;1 learns the STRUCTURE of English — sounds,
+    syllables, words, patterns — with no dictionary and no LLM, and drives the one-way
+    <b>Transition Gate</b>. Start Phase&nbsp;1 and let it run to completion before other harvesting.</p>
+  </div>
+
+  <div class="card" id="hero-card">
+    <div class="row" style="justify-content:space-between">
+      <div><h2 style="margin:0">Phase 1 progress — English structure</h2>
+        <p class="sub" id="hero-sub">Loading…</p></div>
+      <div class="row">
+        <button class="btn big" id="start-phase1">▶ Start building English</button>
+        <button class="btn ghost" id="stop-phase1" hidden>Pause</button>
+      </div>
+    </div>
+    <div class="meter" style="margin-top:10px"><i id="gate-fill" style="width:0%"></i><span id="gate-pct">0%</span></div>
+    <div id="done-banner" style="margin-top:10px" hidden></div>
+    <p class="note">One click runs a Phase-1 agent on a bundled English corpus — it needs no internet
+    and keeps working 24×7 until the gate opens. Add your own text/pages below to teach it faster.</p>
+  </div>
+
+  <div class="honest"><b>Honest scope.</b> Phase 1 (structural learning) and Phase 2 (semantic
+  grounding) are <b>built</b> and run here. Phase 2 is fully <b>deterministic</b> — it grounds words
+  from a bundled public-domain dictionary (Webster's 1913) and by self-grounding against your verified
+  store, with <b>no LLM and no internet</b>; every meaning carries an auditable source. (LLMs are
+  locked out of Phase 2 — a live API check can prove a connection works but never that a meaning is
+  true. A future "suggestor" mode may propose meanings accepted only when they match the dictionary.)
+  <b>All four phases now run deterministically:</b> Phase 3 learns the multilingual delta from a bundled
+  bilingual dictionary, and Phase 4 analyzes pronunciation (G2P phonemes, syllables, stress) and can speak
+  through your computer's built-in voice — no LLM anywhere. The full neural language and neural vocoder
+  engines remain the roadmap embodiment. The grapheme→phoneme map is rule-seeded; gate thresholds are the
+  prototype calibration.</div>
+
+  <!-- PHASE 1 -->
+  <div class="card">
+    <div class="phase built" id="p1">
+      <div class="pnum" id="p1num">1</div>
+      <div style="min-width:0">
+        <h2 style="margin:0">Phase 1 — Structural priming (SLPL) <span class="badge b-built">Built</span></h2>
+        <p class="sub">Grapheme inventory, rule-seeded phonemes, syllables, lexical stability, word
+        co-occurrence, and prosody. Semantics are suppressed. Every measurement is stored as a Fact Unit.</p>
+
+        <div class="metrics" id="metrics"></div>
+
+        <h3 style="font-size:14px;margin:16px 0 2px">Transition Gate — four thresholds</h3>
+        <div id="gate"></div>
+
+        <h3 style="font-size:14px;margin:16px 0 2px">Learning progress</h3>
+        <div id="progress"><span class="note">Start Phase 1 (or feed text) to begin plotting.</span></div>
+
+        <details>
+          <summary>Feed your own material (optional — speeds Phase 1)</summary>
+          <label class="fld">Paste English text</label>
+          <textarea id="text" placeholder="Paste sentences, a story, a transcript, a word list…"></textarea>
+          <label class="fld">…or fetch URL(s) — one per line or comma-separated</label>
+          <textarea id="url" style="min-height:52px" placeholder="https://en.wikipedia.org/wiki/English_phonology"></textarea>
+          <label class="fld">…or load text files</label>
+          <input id="files" type="file" accept=".txt,.md,.csv,text/*" multiple style="width:100%;font-size:12.5px;padding:6px 0">
+          <label class="fld">Source label</label>
+          <input id="source" type="text" placeholder="e.g. phonics primer">
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="learn">Learn from this</button>
+            <button class="btn ghost" id="preview">Preview only</button>
+          </div>
+          <div class="note" id="msg"></div>
+          <h3 style="font-size:13px;margin:14px 0 2px">Curated sources</h3>
+          <div id="sources"><span class="note">loading…</span></div>
+        </details>
+
+        <details>
+          <summary>Inventory learned so far</summary>
+          <label class="fld">Letters</label><div class="chips" id="letters"></div>
+          <label class="fld">Phonemes (rule-seeded)</label><div class="chips" id="phonemes"></div>
+          <label class="fld">Words</label><div class="chips" id="words"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASES 2-4 (roadmap) -->
+  <div id="phases-later"></div>
+
+  <!-- LANGUAGE AGENTS -->
+  <div class="card">
+    <h2>Language agents</h2>
+    <p class="sub">The agents driving each phase. Phase-1 agents build English; roadmap-phase agents
+    refuse until their engine exists. <button class="btn ghost" id="prune" style="font-size:11px;padding:3px 9px">Clear stopped/errored</button></p>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Agent</th><th>Phase</th><th>Status</th><th>Facts</th><th>Cycles</th><th>Controls</th>
+    </tr></thead><tbody id="agents"><tr><td colspan="6" class="note">No language agents yet.</td></tr></tbody></table></div>
+  </div>
+
+  <footer>
+    QueryBook Language Lab. Phase 1 (structural SLPL) is implemented and runs on-device with no LLM;
+    Phases 2–4 are specified/roadmap and their agents refuse rather than fabricate. Everything learned
+    is stored as provenance-tracked Fact Units in the <code>language</code> domain.
+  </footer>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const nf=n=>Number(n||0).toLocaleString();
+const LANG_KINDS=["language","lang_semantic","lang_multilingual","lang_speech"];
+const NAMES={phonemic_completeness:["Phonemic inventory","distinct phonemes ÷ 44 (τ1)"],
+  lexical_stability:["Lexical stability","top-word overlap between ingests (τ2)"],
+  cooccurrence_density:["Co-occurrence density","distinct bigrams ÷ distinct words (τ3)"],
+  pattern_saturation:["Pattern saturation","recent novel-trigram rate must fall BELOW ε"]};
+let PHASES=[];
+
+function renderHero(d){
+  const g=d.gate||{}, pct=g.opened?100:(g.progress||0);
+  $('gate-fill').style.width=pct+'%'; $('gate-pct').textContent=pct.toFixed(0)+'%';
+  $('hero-sub').textContent = d.ingests
+    ? `${d.ingests} ingest(s) · ${nf(d.total_tokens)} tokens · ${d.distinct_words} words · ${d.distinct_phonemes}/${d.phoneme_target} phonemes`
+    : 'Not started yet — click “Start building English”.';
+  const done=$('done-banner');
+  if(g.opened){ done.hidden=false; done.className='done';
+    done.innerHTML='✓ Phase 1 COMPLETE — the Transition Gate is OPEN. English structural learning is finished. Start <b>Phase 2 (semantic grounding)</b> below — deterministic, dictionary + store, no LLM.'; }
+  else done.hidden=true;
+  $('p1num').textContent = g.opened ? '✓' : '1';
+  $('p1').classList.toggle('done', !!g.opened);
+}
+function renderMetrics(d){
+  const m=[["Words",d.distinct_words,"distinct"],["Phonemes",d.distinct_phonemes+" / "+d.phoneme_target,"rule-seeded"],
+    ["Graphemes",d.distinct_graphemes,"letters"],["Bigrams",d.distinct_bigrams,"word pairs"],
+    ["Avg syllables",d.avg_syllables_per_word,"per top word"],["Sentence len",d.mean_sentence_len,"mean words"]];
+  $('metrics').innerHTML=m.map(x=>`<div class="met"><div class="k">${esc(x[0])}</div><div class="v">${esc(x[1])}</div><div class="s">${esc(x[2])}</div></div>`).join('');
+}
+function renderGate(g){
+  if(!g||!g.checks) return;
+  $('gate').innerHTML=Object.keys(NAMES).map(k=>{const c=g.checks[k]; if(!c) return '';
+    const isNov=k==='pattern_saturation';
+    const frac=isNov?Math.min(1,(c.threshold||1)/Math.max(c.value,0.0001)):Math.min(1,c.value/(c.threshold||1));
+    const cmp=isNov?('&lt; '+c.threshold):('≥ '+c.threshold);
+    return `<div class="greq"><div class="nm">${esc(NAMES[k][0])}<small>${NAMES[k][1]}</small>
+      <div class="bar"><i style="width:${(frac*100).toFixed(0)}%;background:${c.pass?'var(--good)':'var(--accent)'}"></i></div></div>
+      <div class="val">${esc(c.value)} <span style="color:var(--muted);font-weight:400">(${cmp})</span></div>
+      <span class="pill ${c.pass?'pass':'fail'}">${c.pass?'✓':'✕'}</span></div>`;}).join('');
+}
+function renderProgress(hist){
+  hist=hist||[];
+  if(hist.length<1){ $('progress').innerHTML='<span class="note">Start Phase 1 (or feed text) to begin plotting.</span>'; return; }
+  const series=[['phon','Phonemic',0.80,'#0c5c4c'],['stab','Lexical stab.',0.70,'#a9791c'],
+    ['dens','Co-occur.',null,'#1f6feb'],['novel','Novelty (↓)',0.20,'#b33b2f']];
+  const W=430,H=120,padL=8,padR=8,padT=10,padB=14,n=hist.length;
+  const xs=i=> n<2?padL:padL+(W-padL-padR)*i/(n-1);
+  let out='<div style="overflow-x:auto"><svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:100%;height:auto">';
+  for(const [key,label,thr,col] of series){
+    const vals=hist.map(h=>h[key]||0);
+    const scale=key==='dens'?Math.max(2,Math.max.apply(null,vals)):1;
+    const y=v=>padT+(H-padT-padB)*(1-Math.min(1,v/scale));
+    if(thr!=null){const ty=y(thr).toFixed(1);
+      out+='<line x1="'+padL+'" y1="'+ty+'" x2="'+(W-padR)+'" y2="'+ty+'" stroke="'+col+'" stroke-dasharray="3 3" stroke-width="1" opacity=".45"/>';}
+    let dd=''; hist.forEach((h,i)=>{dd+=(i?'L':'M')+xs(i).toFixed(1)+' '+y(h[key]||0).toFixed(1)+' ';});
+    out+='<path d="'+dd+'" fill="none" stroke="'+col+'" stroke-width="1.8"/>';
+    out+='<circle cx="'+xs(n-1).toFixed(1)+'" cy="'+y(hist[n-1][key]||0).toFixed(1)+'" r="2.5" fill="'+col+'"/>';
+  }
+  out+='</svg></div><div class="chips" style="margin-top:6px">'+series.map(([k,l,,c])=>'<span class="chip" style="border-left:3px solid '+c+'">'+l+'</span>').join('')+'</div>';
+  $('progress').innerHTML=out;
+}
+function renderInventory(d){
+  const chip=p=>(p&&p.length)?p.map(x=>`<span class="chip">${esc(x[0])} <span style="color:var(--muted)">${esc(x[1])}</span></span>`).join(''):'<span class="note">—</span>';
+  $('letters').innerHTML=chip(d.top_letters); $('phonemes').innerHTML=chip(d.top_phonemes); $('words').innerHTML=chip(d.top_words);
+}
+let _phSig='';
+const _LBL={semantic:'dictionary + store grounding',multilingual:'Spanish (es) delta',speech:'analyze pronunciation'};
+const _NOTE={
+  semantic:'Runs on its own with <b>no LLM and no internet</b>. Grounds words from the bundled public-domain dictionary (Webster\'s 1913) and links them to verified facts in your store — every meaning has an auditable source. <span id="p2cov"></span>',
+  multilingual:'Deterministic delta from a bundled bilingual dictionary (demo, CC BY-NC — swap for a public-domain source before commercial use). Defaults to Spanish; create a <code>lang_multilingual</code> agent with target <code>fr</code> for French.',
+  speech:'<b>4a</b> analyzes pronunciation (phonemes, syllables, stress) deterministically — no LLM. <b>4b</b> speaks via your computer\'s built-in voice. <span id="p4tts"></span>'
+};
+function renderPhases(gateOpen){
+  const sig=JSON.stringify([gateOpen, PHASES.map(p=>[p.n,p.status])]);
+  if(sig===_phSig) return;                 // don't clobber inputs on every poll
+  _phSig=sig;
+  const later=PHASES.filter(p=>p.n>=2);
+  $('phases-later').innerHTML=later.map(p=>{
+    const isBuilt = p.status==='built';
+    const badge = isBuilt ? '<span class="badge b-built">Deterministic · no LLM</span>' : '<span class="badge b-road">Roadmap</span>';
+    const speak = p.key==='speech'
+      ? `<div class="formrow" style="margin-top:10px;gap:8px;display:flex;flex-wrap:wrap">
+           <select id="speak-lang" style="padding:6px 8px" title="Language voice">
+             <option value="en">English</option><option value="es">Spanish</option>
+             <option value="fr">French</option><option value="de">German</option>
+             <option value="pt">Portuguese</option><option value="it">Italian</option>
+             <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
+           <input id="speak-text" placeholder="Type a word or sentence to analyze &amp; speak…" style="flex:1;min-width:200px;padding:6px 10px">
+           <button class="btn" id="speak-btn">Analyze &amp; Speak</button></div>
+         <div id="speak-out" class="note" style="margin-top:6px"></div>
+         <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>` : '';
+    const btn = isBuilt
+      ? `<button class="btn mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Start Phase ${p.n} — ${_LBL[p.key]||'run'}</button>
+         <div class="note">${_NOTE[p.key]||''}</div>${speak}`
+      : `<button class="btn ghost mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Try to start (will refuse — engine not built)</button>`;
+    return `<div class="card"><div class="phase"><div class="pnum">${p.n}</div><div style="min-width:0">
+      <h2 style="margin:0">${esc(p.name)} ${badge}</h2>
+      <p class="sub">${esc(p.desc)}</p>${btn}
+    </div></div></div>`;
+  }).join('');
+  wireSpeak();
+}
+function wireSpeak(){
+  const b=document.getElementById('speak-btn'); if(!b) return;
+  fetch('api/language/speech').then(r=>r.json()).then(s=>{
+    const el=document.getElementById('p4tts'); if(!el) return;
+    el.innerHTML = s.tts&&s.tts.available
+      ? 'Voice engine on this computer: <b>'+esc(s.tts.engine)+'</b> ✓'
+      : 'No built-in voice engine detected'+(s.tts&&s.tts.hint?(' — '+esc(s.tts.hint)):'')+'. Pronunciation analysis still works.';
+  }).catch(()=>{});
+  b.onclick=async()=>{
+    const t=(document.getElementById('speak-text').value||'').trim(); if(!t) return;
+    const out=document.getElementById('speak-out'), au=document.getElementById('speak-audio');
+    b.disabled=true; out.textContent='Analyzing…';
+    try{
+      const lang=(document.getElementById('speak-lang')||{}).value||'en';
+      const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang})})).json();
+      const ana=(r.analysis||[]).map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>no phonemizer for ${esc(a.lang||lang)}</i>`).join('<br>');
+      out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${ana}`+
+        (r.tts&&!r.tts.available?`<br><i>Voice: ${esc(r.tts.error||'no engine on this computer')}</i>`:'');
+      if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false; au.play().catch(()=>{}); }
+      else { au.hidden=true; }
+    }catch(e){ out.textContent='speak failed: '+e; }
+    b.disabled=false;
+  };
+}
+function agentRow(a){
+  const st=a.status||'stopped';
+  const cls = st==='running'?'running' : st==='complete'?'pass' : st==='error'?'fail' : (st==='roadmap'||st==='blocked')?'road' : 'idle';
+  const label = st==='complete'?'complete ✓' : st==='roadmap'?'roadmap' : st;
+  const phaseNum = {lang_semantic:2,lang_multilingual:3,lang_speech:4}[a.kind];
+  const phase = a.kind==='language' ? (a.phase||'Phase 1')
+              : a.kind==='lang_semantic' ? (a.phase||'Phase 2 (dictionary + store)')
+              : ('Phase '+(phaseNum||'')+' (roadmap)');
+  // roadmap refusal / blocked (needs a resource) / completion are expected statuses, NOT red errors.
+  let msg='';
+  if(a.error){
+    const neutral = (st==='roadmap'||st==='blocked');
+    msg = `<br><span style="font-size:11px;color:${neutral?'var(--info)':'var(--bad)'}">${neutral?'ⓘ ':'⚠ '}${esc(a.error)}</span>`;
+  }
+  return `<tr><td><b>${esc(a.name)}</b>${msg}${a.heal_note?`<br><span class="note">${esc(a.heal_note)}</span>`:''}</td>`+
+    `<td>${esc(phase)}${a.gate_progress!=null&&a.kind==='language'&&st!=='complete'?`<br><span class="note">${a.gate_progress.toFixed?a.gate_progress.toFixed(0):a.gate_progress}% to gate</span>`:''}</td>`+
+    `<td><span class="pill ${cls}">${esc(label)}</span></td>`+
+    `<td>${nf(a.facts)}</td><td>${a.cycles||0}</td>`+
+    `<td>${st==='running'?`<button class="abtn" data-a="${a.id}" data-act="pause">Pause</button>`:`<button class="abtn" data-a="${a.id}" data-act="start">Start</button>`}`+
+    `<button class="abtn" data-a="${a.id}" data-act="delete">Delete</button></td></tr>`;
+}
+async function refresh(){
+  try{
+    const d=await (await fetch('api/language/status')).json();
+    renderHero(d); renderMetrics(d); renderGate(d.gate); renderProgress(d.history); renderInventory(d);
+    renderPhases(!!(d.gate&&d.gate.opened));
+    const snap=await (await fetch('api/agents')).json();
+    const langs=(snap.agents||[]).filter(a=>LANG_KINDS.includes(a.kind));
+    $('agents').innerHTML = langs.length ? langs.map(agentRow).join('')
+      : '<tr><td colspan="6" class="note">No language agents yet — click “Start building English”.</td></tr>';
+    // reflect running Phase-1 agent on the hero buttons
+    const p1running=langs.some(a=>a.kind==='language'&&a.status==='running');
+    $('stop-phase1').hidden=!p1running; $('start-phase1').textContent=p1running?'▶ Add another Phase-1 agent':'▶ Start building English';
+    // Phase 2 deterministic coverage line
+    try{
+      const g=await (await fetch('api/language/grounding')).json();
+      const cov=$('p2cov');
+      if(cov) cov.innerHTML = `Dictionary loaded: <b>${nf(g.dict_entries)}</b> words. Grounded so far: `+
+        `<b>${nf(g.defined)}</b> defined, <b>${nf(g.store_links)}</b> store-links (${g.coverage_pct}% of the `+
+        `${nf(g.vocabulary)}-word vocabulary).`+
+        (g.samples&&g.samples.length?`<br>e.g. `+g.samples.slice(0,3).map(s=>`<i>${esc(s.word)}</i> — ${esc((s.definition||'').slice(0,70))}`).join('; '):'');
+    }catch(e){}
+  }catch(e){}
+  setTimeout(refresh, 2500);
+}
+async function loadPhases(){
+  try{ const d=await (await fetch('api/language/phases')).json(); PHASES=d.phases||[]; }catch(e){}
+}
+async function mkAgent(kind,name,target){
+  const body={name,kind,target:target||'',interval:2,chunk:1};
+  const r=await (await fetch('api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  if(r&&r.id) await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,action:'start'})});
+  return r;
+}
+$('start-phase1').onclick=async()=>{ $('start-phase1').disabled=true;
+  await mkAgent('language','English — Phase 1',''); $('start-phase1').disabled=false; refresh(); };
+$('stop-phase1').onclick=async()=>{
+  const snap=await (await fetch('api/agents')).json();
+  for(const a of (snap.agents||[])) if(a.kind==='language'&&a.status==='running')
+    await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id,action:'pause'})});
+  refresh();
+};
+document.addEventListener('click',async e=>{
+  const mk=e.target.closest('.mkagent'); if(mk){ mk.disabled=true; await mkAgent(mk.dataset.kind, mk.dataset.name, ''); mk.disabled=false; refresh(); return; }
+  const b=e.target.closest('#agents [data-act]'); if(b){ await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.a,action:b.dataset.act})}); refresh(); return; }
+});
+$('prune').onclick=async()=>{ await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'prune'})}); refresh(); };
+
+// ---- manual feed ----
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result||''));r.onerror=()=>rej(r.error);r.readAsText(f);});}
+async function postIngest(body){
+  try{ const r=await (await fetch('api/language/ingest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(r.error){ $('msg').className='note err'; $('msg').textContent='⚠ '+r.error; } return r;
+  }catch(e){ $('msg').className='note err'; $('msg').textContent='Ingest failed: '+e; return null; }
+}
+$('learn').onclick=async()=>{
+  const text=$('text').value.trim(), source=$('source').value.trim();
+  const urls=$('url').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const files=Array.from($('files').files||[]);
+  if(!text&&!urls.length&&!files.length){ $('msg').className='note err'; $('msg').textContent='Paste text, URL(s), or file(s) first.'; return; }
+  const btn=$('learn'); btn.disabled=true; const lbl=btn.textContent; btn.textContent='learning…';
+  let done=0,wrote=0;
+  try{
+    if(text){const r=await postIngest({text,source:source||'pasted text'}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    for(const f of files){const t=await readFile(f); const r=await postIngest({text:t,source:source||f.name}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    for(const u of urls){const r=await postIngest({url:u,source:source||u}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    await refresh(); $('msg').className='note'; $('msg').textContent='Learned from '+done+' source(s) · +'+wrote+' Fact Units.'; $('files').value='';
+  }finally{ btn.disabled=false; btn.textContent=lbl; }
+};
+$('preview').onclick=async()=>{
+  const text=$('text').value.trim(); if(!text){ $('msg').className='note err'; $('msg').textContent='Paste text to preview.'; return; }
+  const r=await postIngest({text,preview:true}); if(r&&!r.error){ renderMetrics(r); renderGate(r.gate); renderInventory(r);
+    $('msg').className='note'; $('msg').textContent='Preview only — analyzed, NOT stored.'; }
+};
+async function loadSources(){
+  try{ const d=await (await fetch('api/language/sources')).json();
+    $('sources').innerHTML=(d.sources||[]).map(s=>`<div class="src"><div class="info"><span class="kind">${esc(s.kind)}</span> <b>${esc(s.name)}</b><small>${esc(s.note||'')}</small></div>
+      <button class="btn ghost mkfetch" data-url="${esc(s.url)}" data-name="${esc(s.name)}">Fetch &amp; learn</button></div>`).join('');
+  }catch(e){ $('sources').innerHTML='<span class="note err">sources unavailable</span>'; }
+}
+document.addEventListener('click',async e=>{ const b=e.target.closest('.mkfetch'); if(!b) return;
+  b.disabled=true; b.textContent='learning…'; await postIngest({url:b.dataset.url,source:b.dataset.name}); await refresh(); b.disabled=false; b.textContent='Fetch & learn'; });
+
+loadPhases().then(refresh); loadSources();
+</script>
+</body></html>
