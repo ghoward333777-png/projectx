@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["qb-core"]
+
+# QueryBook Rust production engine (Gate 5). Additional crates from the Gate 4
+# spec (qb-store, qb-fql, qb-lang, qb-agents, qb-api, qbd) are added module by
+# module, each with a parity test against the Python oracle before acceptance.

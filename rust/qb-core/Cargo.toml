@@ -1,0 +1,12 @@
+[package]
+name = "qb-core"
+version = "0.1.0"
+edition = "2021"
+description = "QueryBook production engine — Fact Unit identity core (dependency-free)."
+
+[lib]
+name = "qb_core"
+path = "src/lib.rs"
+
+# Dependency-free by policy: the content-address must have no external surface.
+[dependencies]
