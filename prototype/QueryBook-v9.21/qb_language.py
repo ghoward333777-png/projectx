@@ -730,24 +730,138 @@ def _prosody(text):
     return "falling (declarative)"
 
 
+# --------------------------------------------------------------------------
+# BUNDLED rule-seeded grapheme-to-phoneme for the non-English languages, so
+# pronunciation works with NO external engine (exactly like the English G2P).
+# espeak-ng, when installed, is preferred for accuracy and provides audio; these
+# rule tables are the always-available fallback. Approximate and deterministic —
+# the same honesty level as the English rule-seeded G2P. No LLM.
+# --------------------------------------------------------------------------
+def _R(pairs):
+    return [(re.compile(p), ipa) for p, ipa in pairs]
+
+G2P_RULES = {
+    "es": _R([(r"ch","tʃ"),(r"ll","ʝ"),(r"rr","r"),(r"qu(?=[eiéí])","k"),(r"gu(?=[eiéí])","ɡ"),
+              (r"gü","ɡw"),(r"c(?=[eiéí])","θ"),(r"g(?=[eiéí])","x"),(r"á","a"),(r"é","e"),(r"í","i"),
+              (r"ó","o"),(r"ú","u"),(r"ü","u"),(r"ñ","ɲ"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),
+              (r"u","u"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","x"),
+              (r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ɾ"),(r"s","s"),
+              (r"t","t"),(r"v","b"),(r"w","w"),(r"x","ks"),(r"y","ʝ"),(r"z","θ")]),
+    "it": _R([(r"ch","k"),(r"gh","ɡ"),(r"gl(?=i)","ʎ"),(r"gn","ɲ"),(r"sc(?=[ie])","ʃ"),
+              (r"c(?=[ie])","tʃ"),(r"g(?=[ie])","dʒ"),(r"à","a"),(r"è","ɛ"),(r"é","e"),(r"ì","i"),
+              (r"ò","ɔ"),(r"ù","u"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),(r"u","u"),(r"b","b"),
+              (r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","j"),(r"k","k"),(r"l","l"),
+              (r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),
+              (r"w","v"),(r"x","ks"),(r"y","i"),(r"z","ts")]),
+    "de": _R([(r"sch","ʃ"),(r"tsch","tʃ"),(r"ch","x"),(r"ck","k"),(r"ph","f"),(r"th","t"),(r"qu","kv"),
+              (r"ng","ŋ"),(r"ei","aɪ"),(r"ai","aɪ"),(r"ie","iː"),(r"eu","ɔʏ"),(r"äu","ɔʏ"),(r"au","aʊ"),
+              (r"^sp","ʃp"),(r"^st","ʃt"),(r"ß","s"),(r"ö","ø"),(r"ü","y"),(r"ä","ɛ"),(r"a","a"),(r"e","e"),
+              (r"i","i"),(r"o","o"),(r"u","u"),(r"y","y"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),
+              (r"g","ɡ"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),
+              (r"r","ʁ"),(r"s","z"),(r"t","t"),(r"v","f"),(r"w","v"),(r"x","ks"),(r"z","ts")]),
+    "nl": _R([(r"sch","sx"),(r"ch","x"),(r"ij","ɛi"),(r"ui","œy"),(r"eu","ø"),(r"oe","u"),(r"aa","aː"),
+              (r"ee","eː"),(r"oo","oː"),(r"uu","y"),(r"ie","i"),(r"ou","ʌu"),(r"au","ʌu"),(r"ng","ŋ"),
+              (r"a","ɑ"),(r"e","ɛ"),(r"i","ɪ"),(r"o","ɔ"),(r"u","ʏ"),(r"y","i"),(r"b","b"),(r"c","k"),
+              (r"d","d"),(r"f","f"),(r"g","x"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),
+              (r"n","n"),(r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),(r"w","ʋ"),
+              (r"x","ks"),(r"z","z")]),
+    "sv": _R([(r"skj","ɧ"),(r"stj","ɧ"),(r"sj","ɧ"),(r"tj","ɕ"),(r"kj","ɕ"),(r"sk(?=[eiyäö])","ɧ"),
+              (r"k(?=[eiyäö])","ɕ"),(r"g(?=[eiyäö])","j"),(r"å","oː"),(r"ä","ɛ"),(r"ö","ø"),(r"a","a"),
+              (r"e","e"),(r"i","i"),(r"o","u"),(r"u","ʉ"),(r"y","y"),(r"b","b"),(r"c","k"),(r"d","d"),
+              (r"f","f"),(r"g","ɡ"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),
+              (r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),(r"w","v"),(r"x","ks"),
+              (r"z","s")]),
+    "pt": _R([(r"lh","ʎ"),(r"nh","ɲ"),(r"ch","ʃ"),(r"rr","ʁ"),(r"ss","s"),(r"qu(?=[ei])","k"),
+              (r"gu(?=[ei])","ɡ"),(r"ão","ɐ̃w"),(r"ç","s"),(r"c(?=[ei])","s"),(r"g(?=[ei])","ʒ"),
+              (r"ã","ɐ̃"),(r"õ","õ"),(r"á","a"),(r"â","ɐ"),(r"é","ɛ"),(r"ê","e"),(r"í","i"),(r"ó","ɔ"),
+              (r"ô","o"),(r"ú","u"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),(r"u","u"),(r"y","i"),
+              (r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","ʒ"),(r"k","k"),
+              (r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ʁ"),(r"s","s"),(r"t","t"),
+              (r"v","v"),(r"w","v"),(r"x","ʃ"),(r"z","z")]),
+    "fr": _R([(r"ph","f"),(r"ch","ʃ"),(r"gn","ɲ"),(r"qu","k"),(r"ç","s"),
+              (r"ain(?![aeiouy])","ɛ̃"),(r"ein(?![aeiouy])","ɛ̃"),(r"an(?![aeiouy])","ɑ̃"),
+              (r"am(?![aeiouy])","ɑ̃"),(r"en(?![aeiouy])","ɑ̃"),(r"em(?![aeiouy])","ɑ̃"),
+              (r"on(?![aeiouy])","ɔ̃"),(r"om(?![aeiouy])","ɔ̃"),(r"un(?![aeiouy])","œ̃"),
+              (r"in(?![aeiouy])","ɛ̃"),(r"im(?![aeiouy])","ɛ̃"),(r"eau","o"),(r"au","o"),(r"ou","u"),
+              (r"oi","wa"),(r"ai","ɛ"),(r"ei","ɛ"),(r"eu","ø"),(r"c(?=[eiy])","s"),(r"g(?=[eiy])","ʒ"),
+              (r"é","e"),(r"è","ɛ"),(r"ê","ɛ"),(r"ë","ɛ"),(r"à","a"),(r"â","a"),(r"ô","o"),(r"û","y"),
+              (r"î","i"),(r"ï","i"),(r"ù","y"),(r"a","a"),(r"e","ə"),(r"i","i"),(r"o","o"),(r"u","y"),
+              (r"y","i"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","ʒ"),
+              (r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ʁ"),(r"s","s"),
+              (r"t","t"),(r"v","v"),(r"w","v"),(r"x","ks"),(r"z","z")]),
+}
+_STRESS_RULE = {"es": "penult", "it": "penult", "pt": "penult", "fr": "final",
+                "de": "first", "nl": "first", "sv": "first"}
+
+
+def _rule_stress(lang, syl):
+    if syl <= 1:
+        return 1
+    r = _STRESS_RULE.get(lang, "first")
+    if r == "penult":
+        return max(1, syl - 1)
+    if r == "final":
+        return syl
+    return 1
+
+
+def _rule_source(lang):
+    return ("SRC-G2P-%s" % lang.upper(),
+            "QueryBook rule-seeded G2P (%s, approximate)" % LANG_NAMES.get(lang, lang),
+            "internal-derived", 0.65)
+
+
+def _g2p_rules(word, lang):
+    """Bundled rule-seeded IPA for `lang` — pure Python, no engine. Returns
+    (ipa, stress_syllable, syllable_count) or None if the language has no table."""
+    rules = G2P_RULES.get((lang or "").lower())
+    if not rules:
+        return None
+    w = str(word).lower()
+    out, i, n = [], 0, len(w)
+    while i < n:
+        hit = False
+        for rx, ipa in rules:
+            m = rx.match(w, i)
+            if m and m.end() > i:
+                if ipa:
+                    out.append(ipa)
+                i = m.end(); hit = True; break
+        if not hit:
+            i += 1
+    ipa = "".join(out)
+    if not ipa:
+        return None
+    syl = max(1, sum(1 for c in ipa if c in _IPA_VOWELS))
+    return ipa, _rule_stress(lang, syl), syl
+
+
 def analyze_pronunciation(word, lang="en"):
     """Deterministic pronunciation breakdown for one word (no store write). English uses the
-    rule-seeded G2P; other languages use the OS phonemizer (espeak-ng --ipa), which is
-    deterministic and auditable. Never fabricates: if no engine, ipa is None."""
+    rule-seeded G2P; other languages prefer espeak-ng when installed (most accurate) and
+    otherwise use the BUNDLED rule-seeded G2P, so pronunciation always works. No LLM, never
+    fabricates beyond the approximate rule model."""
     lang = (lang or "en").lower()
     if lang == "en":
         phon = _g2p(word)
         stress, syl = _stress_pattern(word)
         return {"word": word.lower(), "lang": "en", "phonemes": phon,
                 "ipa": "/" + "".join(phon) + "/", "syllables": syl, "stress_syllable": stress,
-                "source": "rule-seeded G2P"}
-    ipa, stress, syl = _ipa_espeak(word, lang)
-    if ipa is None:
-        return {"word": str(word).lower(), "lang": lang, "phonemes": [], "ipa": None,
-                "syllables": 1, "stress_syllable": 1, "source": "espeak-ng unavailable"}
-    return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
-            "ipa": "/" + ipa + "/", "syllables": syl, "stress_syllable": stress,
-            "source": "espeak-ng %s" % lang}
+                "source": "rule-seeded G2P", "via": "rules"}
+    if _espeak_exe():
+        ipa, stress, syl = _ipa_espeak(word, lang)
+        if ipa is not None:
+            return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
+                    "ipa": "/" + ipa + "/", "syllables": syl, "stress_syllable": stress,
+                    "source": "espeak-ng %s" % lang, "via": "espeak"}
+    r = _g2p_rules(word, lang)
+    if r is not None:
+        ipa, stress, syl = r
+        return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
+                "ipa": "/" + ipa + "/", "syllables": syl, "stress_syllable": stress,
+                "source": "rule-seeded G2P (%s)" % lang, "via": "rules"}
+    return {"word": str(word).lower(), "lang": lang, "phonemes": [], "ipa": None,
+            "syllables": 1, "stress_syllable": 1, "source": "no phonemizer", "via": None}
 
 
 def speech_analyze(store_dir, words=None, max_words=None, lang="en"):
@@ -759,7 +873,7 @@ def speech_analyze(store_dir, words=None, max_words=None, lang="en"):
         words = learned_words(store_dir, 400)
     if max_words:
         words = words[:max_words]
-    src = SPEECH_SOURCE if lang == "en" else _espeak_source(lang)
+    src = SPEECH_SOURCE if lang == "en" else (_espeak_source(lang) if _espeak_exe() else _rule_source(lang))
     st = store.UFCSStore(store_dir)
     added = 0; sample = []
     try:
@@ -768,7 +882,7 @@ def speech_analyze(store_dir, words=None, max_words=None, lang="en"):
             if not wl or not wl.isalpha() or len(wl) < 2:
                 continue
             a = analyze_pronunciation(wl, lang)
-            if a["ipa"] is None:                       # no engine -> skip, do not fabricate
+            if a["ipa"] is None:                       # unsupported language -> skip, do not fabricate
                 continue
             label = ('english word "%s"' % wl) if lang == "en" \
                 else ('%s word "%s"' % (LANG_NAMES.get(lang, lang).lower(), wl))
@@ -1026,7 +1140,7 @@ def learn_language(store_dir, lang, words=None, max_words=None):
     csrc = ("SRC-CORPUS-%s" % lang.upper(),
             "Bundled public-domain starter corpus (pangrams, %s)" % LANG_NAMES.get(lang, lang),
             "reference", 0.8)
-    psrc = SPEECH_SOURCE if lang == "en" else _espeak_source(lang)
+    psrc = SPEECH_SOURCE if lang == "en" else (_espeak_source(lang) if _espeak_exe() else _rule_source(lang))
     st = store.UFCSStore(store_dir)
     vocab_added = pron_added = 0
     sample = []

@@ -407,7 +407,7 @@ class H(BaseHTTPRequestHandler):
                                    or "anthropic" in (p.get("base_url") or "")), None) or (provs[0] if provs else None)
                     tts = qb_language.tts_status()
                     self._send(200, {
-                        "build": "v9.20", "date": "2026-09-30",
+                        "build": "v9.21", "date": "2026-09-30",
                         "uptime_s": round(time.time() - START_TIME, 1),
                         "host": {"platform": _pf.system(), "release": _pf.release(),
                                  "python": _pf.python_version(), "cpus": os.cpu_count()},
@@ -565,7 +565,7 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.20", "date": "2026-09-30",
+                    self._send(200, {"build": "v9.21", "date": "2026-09-30",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
                                                   "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech"]})
@@ -621,9 +621,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.20 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
+    print("  QueryBook  BUILD v9.21 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.20 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.21 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)

@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.20 · 2026-09-30</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.21 · 2026-09-30</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -191,9 +191,10 @@
   <div class="card">
     <h2>Learn another language</h2>
     <p class="sub">Build a new language the way English was built — from a bundled public-domain starter
-    corpus (pangrams, numbers, weekdays). The learner acquires the language's <b>vocabulary</b> and,
-    with <b>espeak-ng</b> installed, each word's <b>pronunciation</b>, stored as provenance-tracked Fact
-    Units. No LLM. (Meaning-grounding needs a per-language dictionary and is not included yet.)</p>
+    corpus (pangrams, numbers, weekdays). The learner acquires the language's <b>vocabulary</b> and each
+    word's <b>pronunciation</b> (bundled rule-seeded phonemizer — no install needed; espeak-ng adds audio
+    + accuracy), stored as provenance-tracked Fact Units. No LLM. (Meaning-grounding needs a per-language
+    dictionary and is not included yet.)</p>
     <div class="formrow" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select id="learn-lang" style="padding:6px 10px">
         <option value="es">Spanish</option><option value="fr">French</option>
@@ -312,7 +313,7 @@ function renderPhases(gateOpen){
              <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
            <input id="speak-text" placeholder="Type a word in the chosen language, e.g. maison…" style="flex:1;min-width:200px;padding:6px 10px">
            <button class="btn" id="speak-btn">Analyze &amp; Speak</button></div>
-         <div class="note" style="margin-top:4px">Type words <b>in the selected language</b> (this pronounces text, it does not translate it). Non-English needs <b>espeak-ng</b> (free, all platforms); English uses your built-in voice.</div>
+         <div class="note" style="margin-top:4px">Type words <b>in the selected language</b> (this pronounces text, it does not translate it). <b>Pronunciation works for every language with no install</b> (bundled rule-seeded phonemizer); <b>espeak-ng</b> (free) adds spoken audio and higher accuracy.</div>
          <div id="speak-out" class="note" style="margin-top:6px"></div>
          <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>` : '';
     const btn = isBuilt
@@ -345,7 +346,7 @@ function wireSpeak(){
       const haveIpa=items.some(a=>a.ipa);
       let body;
       if(lang!=='en' && !haveIpa){
-        body='<i>Multilingual pronunciation needs <b>espeak-ng</b> (free). Install it, restart QueryBook, and reopen this page. English works without it.<br>Windows/macOS/Linux installers: espeak-ng on GitHub.</i>';
+        body='<i>No phonemizer for this language yet.</i>';
       } else {
         body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
       }
