@@ -3621,3 +3621,68 @@ ADDITIVE REVISION - PHASE 3 MULTILINGUAL DELTA (deterministic) (2026-09-29)
 REVISED FEATURE COUNT: 194 (193 + 1 Phase-3 delta, [190]).
 Roadmap now: only Language Phase 4 (speech output), which requires the neural
 speech engine (spec-only).
+
+
+================================================================
+ADDITIVE REVISION - PHASE 4 SPEECH (deterministic + OS voice) (2026-09-30)
+================================================================
+[191] 16.10 - Phase 4 speech output (deterministic analysis + OS voice)  [BUILT]
+      Two honest parts, no LLM:
+      (4a) DETERMINISTIC pronunciation analysis of the learned vocabulary — rule-
+           seeded grapheme-to-phoneme phonemes, syllable split, heuristic stress,
+           and a punctuation-based prosody contour — stored as provenance-tracked
+           Fact Units (pronunciation / syllable_count / stress_syllable).
+      (4b) REAL speech via the computer's BUILT-IN text-to-speech engine (Windows
+           SAPI System.Speech, macOS `say`, Linux espeak-ng) called by subprocess —
+           no pip dependency. If no engine is present it reports that plainly and
+           NEVER fabricates audio. On-demand at POST /api/language/speak (returns
+           analysis + base64 WAV); status at GET /api/language/speech.
+      The full neural vocoder pipeline (7-stage) remains the roadmap embodiment.
+
+REVISED FEATURE COUNT: 195 (194 + 1 Phase-4 speech, [191]).
+Roadmap agents remaining: NONE — all specified agent engines are now reduced to
+practice deterministically (Phases 1-4 and the reasoning/hypothesis/simulation/
+planner family). Their full neural forms remain preferred (roadmap) embodiments.
+
+Robustness fix (2026-09-30): ufcs_store.harvest_into now flushes in bounded
+increments in continuous (24x7) mode and tolerates a mid-rotation block file, so a
+stop request halts promptly; the 24x7-stop self-test passes reliably.
+
+
+================================================================
+ADDITIVE REVISION - LLM-PARITY CREATIVITY LOOP (2026-09-30)
+================================================================
+[192] 17.9 - LLM-parity creativity loop (hypothesis+simulation parity)  [SPEC; components BUILT]
+      Names, as one capability, a loop already latent across the hypothesis
+      ([186] 17.5), simulation ([187] 17.6) agents and the event/archive log:
+      an explicit path toward EQUAL-OR-SUPERIOR LLM-level creativity and
+      language skill WITHOUT hallucination. Four steps:
+        (1) HYPOTHESIZE / SIMULATE — an LLM proposes candidate answers /
+            continuations (proposer only; never asserts).
+        (2) ARCHIVE — every candidate + its store-verification verdict is
+            recorded, timestamped.
+        (3) ANALYZE & GRAPH — trend the archived record over time (coverage,
+            corroboration rate, novelty, contradiction rate).
+        (4) MEASURE PARITY — score QueryBook's grounded output against a pinned
+            reference LLM on QB-CreativityBench v1 (a fixed, versioned,
+            license-clean set: grounded Q&A + a held-out refuse set, language
+            fluency, creative composition, multilingual+speech).
+      Two-axis scoring: QUALITY (blind, pre-registered panel vs. the pinned LLM
+      => quality_ratio) and COVENANT (QueryBook only: 100% cited, 0 fabricated,
+      deterministic across N>=3 runs). EQUAL := quality_ratio >= 0.95 AND perfect
+      covenant; SUPERIOR := quality_ratio >= 1.00 AND perfect covenant.
+      COVENANT: the LLM only PROPOSES; nothing it generates is asserted without
+      independent store verification (C6). Proposer is provider-agnostic but
+      pinned+logged per run (local preferred in prod); comparator is a named,
+      version-pinned LLM recorded per run.
+      STATUS: components (hypothesis, simulation, archive/log) BUILT; the named
+      loop, the graphing, and the parity benchmark are ROADMAP — acceptance
+      criteria set at Gate 2 (AC-F1..F5), harness built at Gate 3+.
+      Cross-refs: Canonical Engine Spec sections 8 and 8.1; Gate 2 Acceptance
+      Criteria AC-F1..F5; Bible amendment "Phase 4 Speech and the LLM-Parity
+      Creativity Loop (2026-09-30)"; Provisional Patent Application Section VII.
+
+REVISED FEATURE COUNT: 196 (195 + 1 creativity loop, [192]).
+Roadmap agents remaining: NONE (all specified engines reduced to practice). The
+creativity loop is a NAMED capability atop the built hypothesis/simulation
+family; its benchmark + graphing are the roadmap build, inside the covenant.

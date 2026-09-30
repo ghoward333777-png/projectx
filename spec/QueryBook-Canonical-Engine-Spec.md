@@ -129,10 +129,10 @@ POST: `/api/chat /harvest /agents /agents/control /providers /provider_test /fac
 |---|---|---|---|---|
 | Fact Unit (§3) | `ufcs_store.make_packet/fingerprint` | Fact Unit chapter | Fact Unit / Domain 4 | FIG 10, 27, 28 |
 | Gate/FQL (§5) | `qb_chat.gate`, `ufcs_store.fql` | Prime Directive | Reasoning/§8 | FIG 14, 15, 22 |
-| Phases 1–4 (§6) | `qb_language`, agent branches | Language Architecture + amendments | 16.x, [184]‑[191] | FIG 1‑8 |
-| Agents (§7) | `qb_agents` | Reasoning Family amendment | 17.x, [186]‑[189] | — |
-| Creativity loop (§8) | hypothesis/simulation + `qb_log` | **gap → Gate 3** | **gap → Gate 3** | **gap → Gate 3** |
-*(Cells marked "gap" are what "update everything" resolves at Gate 3.)*
+| Phases 1–4 (§6) | `qb_language`, agent branches | Language Architecture + amendments (incl. Phase 4 amendment, 2026‑09‑30) | 16.x, [184]‑[191] | FIG 1‑8; PPA [0021]‑[0025] |
+| Agents (§7) | `qb_agents` | Reasoning Family amendment | 17.x, [186]‑[189] | PPA [0023] |
+| Creativity loop (§8) | hypothesis/simulation + `qb_log` | Bible amendment "Phase 4 Speech and the LLM‑Parity Creativity Loop" (2026‑09‑30) | [192] 17.9 | PPA [0026] (preferred/prophetic) |
+*(The former "gap → Gate 3" cells were resolved at Gate 3, 2026‑09‑30; see `QueryBook-Gate3-Lockstep-Verification.md`.)*
 
 ## 11. Baseline reference
 `QueryBook-baseline-v9.15`, commit `df76b58`. Source + `BASELINE-CHECKSUMS.md5` in `prototype/QueryBook-baseline-v9.15/`. Self‑test 7/7 all_ok on 3 consecutive runs.
