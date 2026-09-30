@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — System Monitor</title>
+<style>
+:root{--bg:#f3f5f3;--card:#fff;--ink:#15201c;--muted:#5c6660;--line:#dde3df;
+  --accent:#0c5c4c;--accent2:#08453a;--soft:#e7f2ee;--ok:#0c5c4c;--warn:#9a7a1f;--bad:#9a3a2a;
+  --mono:ui-monospace,Consolas,"SF Mono",Menlo,monospace;--serif:Georgia,"Times New Roman",serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}
+.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}
+.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px}
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+@media(max-width:860px){.tiles{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:520px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.tile .n{font-family:var(--serif);font-size:26px;font-weight:700;color:var(--accent2)}
+.tile .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:20px;margin:0 0 12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eef2ef;vertical-align:top}
+th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dotted #e6ebe7}
+.kv .k{color:var(--muted)}.kv .v{font-family:var(--mono);text-align:right}
+.pill{display:inline-block;font:700 11px/1 var(--mono);padding:4px 8px;border-radius:999px}
+.p-ok{background:var(--soft);color:var(--accent2)}
+.p-run{background:#eaf3ff;color:#194b8a}
+.p-warn{background:#f6efd9;color:var(--warn)}
+.p-bad{background:#f6e4df;color:var(--bad)}
+.p-idle{background:#eef1ee;color:var(--muted)}
+.muted{color:var(--muted)}.sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.helprow{display:flex;gap:8px;flex-wrap:wrap}
+.helprow input{flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.6}
+.answer{margin-top:10px;padding:12px 14px;background:var(--soft);border:1px solid #bfe0d4;border-radius:10px;white-space:pre-wrap;font-size:14px}
+.src{font:700 10px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{font-size:12px;background:#eef1ee;border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;color:var(--muted)}
+.chip:hover{color:var(--accent);border-color:var(--accent)}
+.foot{color:var(--muted);font-size:12px;margin:22px 0 40px;text-align:center}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b> — System Monitor</div>
+  <span class="badge">BUILD v9.19 · 2026-09-30</span>
+  <nav class="nav">
+    <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
+    <a href="/chat">Chat</a><a href="/console">Console</a>
+    <a href="/guide">Guide</a><a href="/monitor">Monitor</a>
+  </nav>
+</div>
+
+<div class="wrap">
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid2">
+    <div class="card"><h2>Knowledge store</h2><div id="store"></div>
+      <h2 style="font-size:15px;margin-top:14px">Facts by domain</h2><div id="domains"></div></div>
+    <div class="card"><h2>Data collection</h2><div id="collection"></div></div>
+  </div>
+
+  <div class="card"><h2>Agents</h2>
+    <p class="sub">Every harvesting, language, and reasoning agent and its live state.</p>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Agent</th><th>Kind</th><th>Status</th><th>Facts</th><th>Cycles</th><th>Detail</th>
+    </tr></thead><tbody id="agents"><tr><td colspan="6" class="muted">loading…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h2>Subsystems &amp; processes</h2><div id="subsys"></div></div>
+    <div class="card"><h2>Languages learned</h2><p class="sub">Vocabulary and pronunciation per language.</p>
+      <div style="overflow-x:auto"><table><thead><tr><th>Language</th><th>Vocabulary</th><th>Pronounced</th></tr></thead>
+      <tbody id="langs"><tr><td colspan="3" class="muted">none yet — use "Learn another language" in the Language Lab</td></tr></tbody></table></div></div>
+  </div>
+
+  <div class="card"><h2>Ask about the interface</h2>
+    <p class="sub">A Claude-assisted help assistant. It explains how to use QueryBook (it never changes your data).
+    Uses your configured API key when present; otherwise answers from the built-in reference.</p>
+    <div class="helprow">
+      <input id="q" placeholder="e.g. How do I teach it German? How do I connect an API key?" />
+      <button class="btn" id="ask">Ask</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="ans"></div>
+  </div>
+
+  <div class="foot">Auto-refreshing every 3 seconds · QueryBook System Monitor</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function statusPill(s){const m={complete:'p-ok',ok:'p-ok',running:'p-run',harvesting:'p-run',
+  building:'p-run',paused:'p-warn',blocked:'p-warn',roadmap:'p-warn',stopped:'p-idle',error:'p-bad'};
+  return `<span class="pill ${m[s]||'p-idle'}">${esc(s||'—')}</span>`;}
+function fmtDur(s){s=Math.floor(s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+  return (h?h+'h ':'')+(m||h?m+'m ':'')+x+'s';}
+function kv(k,v){return `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;}
+
+async function refresh(){
+  let d; try{ d=await (await fetch('api/monitor')).json(); }catch(e){ return; }
+  const c=d.collection||{}, s=d.store||{}, sy=d.subsystems||{};
+  const fps=(c.meter&&c.meter.fps)||0;
+  $('tiles').innerHTML=[
+    ['Uptime',fmtDur(d.uptime_s)],
+    ['Total facts',(s.facts||0).toLocaleString()],
+    ['Blocks',(s.blocks||0).toLocaleString()],
+    ['Store size',(s.disk_mb||0)+' MB'],
+    ['Collecting',(c.running?fps.toFixed(0)+'/s':'idle')],
+    ['LLM layer',(sy.llm&&sy.llm.have_llm)?'on':'off'],
+  ].map(t=>`<div class="tile"><div class="n">${esc(t[1])}</div><div class="k">${esc(t[0])}</div></div>`).join('');
+
+  $('store').innerHTML=kv('Location',`<span class="mono">${esc(s.data_dir)}</span>`)
+    +kv('Facts',(s.facts||0).toLocaleString())+kv('Blocks',s.blocks||0)
+    +kv('Duplicates skipped',(s.duplicates||0).toLocaleString())
+    +kv('FQL index',s.fql_index?'on':'off')
+    +kv('Last verify',s.last_verify?esc(s.last_verify):'—');
+  const dom=s.domains||{};const dk=Object.keys(dom).sort((a,b)=>dom[b]-dom[a]);
+  $('domains').innerHTML=dk.length?dk.map(k=>kv(k,(dom[k]||0).toLocaleString())).join(''):'<div class="muted">no facts yet</div>';
+
+  $('collection').innerHTML=kv('Status',c.running?statusPill('harvesting'):statusPill('idle'))
+    +kv('This run',(c.done||0).toLocaleString()+(c.target?(' / '+c.target.toLocaleString()):' (continuous)'))
+    +kv('Rate',fps.toFixed(1)+' facts/s')+kv('Peak',(c.peak_fps||0)+' /s')
+    +kv('Cost per fact',c.per_fact_us!=null?(c.per_fact_us+' µs'):'—')
+    +(c.error?kv('Error',`<span style="color:var(--bad)">${esc(c.error)}</span>`):'');
+
+  const ags=d.agents||[];
+  $('agents').innerHTML=ags.length?ags.map(a=>`<tr>
+    <td>${esc(a.name)}</td><td class="mono">${esc(a.kind)}</td><td>${statusPill(a.status)}</td>
+    <td class="mono">${(a.facts||0).toLocaleString()}</td><td class="mono">${a.cycles||0}</td>
+    <td class="muted">${esc(a.phase||a.error||'')}</td></tr>`).join('')
+    :'<tr><td colspan="6" class="muted">no agents running — start one from the Dashboard or Language Lab</td></tr>';
+
+  const ka=sy.keepawake||{},mi=sy.mirror||{},ll=sy.llm||{},vo=sy.voice||{},st=sy.selftest||{};
+  const dotc=b=>`<span class="dot" style="background:${b?'var(--ok)':'var(--muted)'}"></span>`;
+  $('subsys').innerHTML=
+     kv('Keep-awake watchdog',dotc(ka.engaged||ka.running)+(ka.engaged?'engaged':(ka.running?'on':'off')))
+    +kv('Mirror / offload',dotc(mi.running)+(mi.running?('mirroring → '+esc(mi.dest||'')):'off'))
+    +kv('LLM provider',dotc(ll.usable)+(ll.configured?(esc(ll.provider||'configured')+(ll.usable?'':' (no key)')):'none'))
+    +kv('LLM model',ll.model?`<span class="mono">${esc(ll.model)}</span>`:'—')
+    +kv('Voice engine',dotc(vo.available)+(vo.available?esc(vo.engine):'none'))
+    +kv('espeak-ng (multilingual)',dotc(vo.espeak_ng)+(vo.espeak_ng?'installed':'not found'))
+    +kv('Self-test',st.all_ok===true?`<span style="color:var(--ok)">${st.passed}/${st.total} ✓</span>`:(st.total?`<span style="color:var(--bad)">${st.passed}/${st.total}</span>`:'—'))
+    +kv('Host',`<span class="mono">${esc((d.host||{}).platform)} · py${esc((d.host||{}).python)} · ${(d.host||{}).cpus||'?'} cpu</span>`);
+
+  const lg=d.languages||{};const lk=Object.keys(lg);
+  $('langs').innerHTML=lk.length?lk.map(k=>`<tr><td>${esc(lg[k].language)}</td>
+    <td class="mono">${lg[k].vocab||0}</td><td class="mono">${lg[k].pronounced||0}</td></tr>`).join('')
+    :'<tr><td colspan="3" class="muted">none yet — use "Learn another language" in the Language Lab</td></tr>';
+}
+
+const SAMPLES=['How do I teach it German?','How do I connect an API key?','What does Phase 1 do?',
+  'Why is a language silent?','How do I collect facts?'];
+$('chips').innerHTML=SAMPLES.map(s=>`<span class="chip">${esc(s)}</span>`).join('');
+$('chips').onclick=e=>{if(e.target.classList.contains('chip')){$('q').value=e.target.textContent;ask();}};
+async function ask(){
+  const q=$('q').value.trim(); if(!q) return;
+  const b=$('ask'); b.disabled=true; $('ans').innerHTML='<div class="answer muted">Thinking…</div>';
+  try{
+    const r=await (await fetch('api/help',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})).json();
+    const src=r.source==='claude'?('Claude · '+esc(r.model||'')):'Built-in reference';
+    $('ans').innerHTML=`<div class="answer">${esc(r.answer||'(no answer)')}</div><div class="src">Source: ${src}</div>`;
+  }catch(e){ $('ans').innerHTML=`<div class="answer" style="background:#f6e4df">Help failed: ${esc(e)}</div>`; }
+  b.disabled=false;
+}
+$('ask').onclick=ask;
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter')ask();});
+refresh(); setInterval(refresh,3000);
+</script>
+</body>
+</html>

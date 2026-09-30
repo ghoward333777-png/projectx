@@ -33,10 +33,12 @@ import qb_language
 import qb_mirror
 MIRROR = qb_mirror.MIRROR
 import qb_log
+import qb_help
 
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
+START_TIME = time.time()   # server start, for the System Monitor uptime
 
 def open_store():
     return store.UFCSStore(DATA_DIR)
@@ -137,7 +139,7 @@ class H(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
-                          "/api/language/ingest", "/api/language/speak", "/api/mirror"):
+                          "/api/language/ingest", "/api/language/speak", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
@@ -153,6 +155,29 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/agents/control":
             ok = AGENTS.control(body.get("id", ""), body.get("action", ""))
             return self._send(200 if ok else 404, {"ok": ok})
+        if u.path == "/api/help":
+            # Claude-assisted UI help: answer how-to questions about the prototype's interface,
+            # using the configured API provider when present, else a deterministic reference match.
+            # It explains the UI only and writes nothing to the store.
+            q = (body.get("question") or "").strip()
+            if not q:
+                return self._send(400, {"error": "question required"})
+            provs = AGENTS.providers or []
+            prov = next((p for p in provs if (p.get("kind") == "anthropic"
+                         or "anthropic" in (p.get("base_url") or ""))), None) or (provs[0] if provs else None)
+            if prov is None and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+                # honor a plain env key even when no provider was configured in the dashboard
+                prov = {"kind": "anthropic", "key_env": "ANTHROPIC_API_KEY", "model": "claude-haiku-4-5"}
+            if prov and qb_chat.provider_usable(prov):
+                try:
+                    ans = qb_chat.llm_complete(prov, "USER QUESTION: " + q,
+                                               system=qb_help.HELP_SYSTEM, max_tokens=700)
+                    if ans:
+                        return self._send(200, {"answer": ans, "source": "claude",
+                                                "model": prov.get("model") or "(provider default)"})
+                except Exception as e:
+                    qb_log.log("warn", "help", "LLM help failed, using reference: %s" % e)
+            return self._send(200, {"answer": qb_help.answer_fallback(q), "source": "reference"})
         if u.path == "/api/providers":
             AGENTS.set_providers(body.get("providers", []))
             return self._send(200, {"ok": True, "count": len(AGENTS.providers)})
@@ -340,6 +365,8 @@ class H(BaseHTTPRequestHandler):
             return self._send_html(self._asset_path("QB_LANGUAGE_HTML", "language.html"))
         if u.path in ("/guide", "/guide.html", "/help", "/docs"):
             return self._send_html(self._asset_path("QB_GUIDE_HTML", "guide.html"))
+        if u.path in ("/monitor", "/monitor.html", "/status"):
+            return self._send_html(self._asset_path("QB_MONITOR_HTML", "monitor.html"))
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()
@@ -353,6 +380,57 @@ class H(BaseHTTPRequestHandler):
                                      "packed": st.pack, "fql_index": not st.no_fql,
                                      "disk_bytes": disk, "disk_mb": round(disk/1e6, 2),
                                      "data_dir": DATA_DIR, "last_verify": m.get("last_verify")})
+                elif u.path == "/api/monitor":
+                    import platform as _pf
+                    m = st.manifest
+                    try: disk = st.compressed_bytes()
+                    except Exception: disk = 0
+                    domains = {k[len("facts_dom_"):]: v for k, v in m.items()
+                               if k.startswith("facts_dom_")}
+                    langs = {}
+                    if not st.no_fql:
+                        for lg in qb_language.speakable_languages():
+                            pref = ('english word "' if lg == "en"
+                                    else qb_language.LANG_NAMES.get(lg, lg).lower() + ' word "')
+                            try:
+                                voc = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
+                                pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
+                            except Exception:
+                                voc = pron = 0
+                            if voc or pron:
+                                langs[lg] = {"language": qb_language.LANG_NAMES.get(lg, lg),
+                                             "vocab": voc, "pronounced": pron}
+                    provs = AGENTS.providers or []
+                    active = next((p for p in provs if p.get("kind") == "anthropic"
+                                   or "anthropic" in (p.get("base_url") or "")), None) or (provs[0] if provs else None)
+                    tts = qb_language.tts_status()
+                    self._send(200, {
+                        "build": "v9.19", "date": "2026-09-30",
+                        "uptime_s": round(time.time() - START_TIME, 1),
+                        "host": {"platform": _pf.system(), "release": _pf.release(),
+                                 "python": _pf.python_version(), "cpus": os.cpu_count()},
+                        "store": {"data_dir": DATA_DIR, "facts": m.get("facts", 0),
+                                  "blocks": m.get("blocks", 0), "duplicates": m.get("duplicates", 0),
+                                  "disk_mb": round(disk / 1e6, 2), "last_verify": m.get("last_verify"),
+                                  "fql_index": not st.no_fql, "domains": domains},
+                        "collection": {**{k: v for k, v in HARVEST.items() if k != "samples"},
+                                       "meter": harvest_meter(), "per_fact_us": PERF["per_fact_create_us"]},
+                        "agents": AGENTS.snapshot().get("agents", []),
+                        "subsystems": {
+                            "keepawake": qb_keepawake.status(),
+                            "mirror": MIRROR.status(),
+                            "llm": {"configured": bool(active),
+                                    "usable": bool(active and qb_chat.provider_usable(active)),
+                                    "provider": (active or {}).get("name"),
+                                    "model": (active or {}).get("model"),
+                                    "have_llm": qb_chat._have_llm()},
+                            "voice": {"engine": tts.get("engine"), "available": tts.get("available"),
+                                      "espeak_ng": bool(qb_language._espeak_exe()),
+                                      "speakable": qb_language.speakable_languages()},
+                            "selftest": globals().get("LAST_SELFTEST") or {"note": "run /api/selftest"},
+                        },
+                        "languages": langs,
+                    })
                 elif u.path == "/api/sample":
                     if st.no_fql: return self._send(200, {"results": []})
                     n = max(1, min(50, int(q.get("n", 8) or 8)))
@@ -485,7 +563,7 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.18", "date": "2026-09-30",
+                    self._send(200, {"build": "v9.19", "date": "2026-09-30",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
                                                   "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech"]})
@@ -541,9 +619,9 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.18 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
+    print("  QueryBook  BUILD v9.19 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.18 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.19 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)

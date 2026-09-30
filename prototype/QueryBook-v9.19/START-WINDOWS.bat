@@ -83,6 +83,7 @@ set "QB_CONSOLE_HTML=%~dp0console.html"
 set "QB_DASHBOARD_HTML=%~dp0dashboard.html"
 set "QB_LANGUAGE_HTML=%~dp0language.html"
 set "QB_GUIDE_HTML=%~dp0guide.html"
+set "QB_MONITOR_HTML=%~dp0monitor.html"
 
 echo.
 echo ============================================================
