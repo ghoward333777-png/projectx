@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.17 · 2026-09-30</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.18 · 2026-09-30</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -184,6 +184,24 @@
 
   <!-- PHASES 2-4 (roadmap) -->
   <div id="phases-later"></div>
+
+  <!-- LEARN ANOTHER LANGUAGE -->
+  <div class="card">
+    <h2>Learn another language</h2>
+    <p class="sub">Build a new language the way English was built — from a bundled public-domain starter
+    corpus (pangrams, numbers, weekdays). The learner acquires the language's <b>vocabulary</b> and,
+    with <b>espeak-ng</b> installed, each word's <b>pronunciation</b>, stored as provenance-tracked Fact
+    Units. No LLM. (Meaning-grounding needs a per-language dictionary and is not included yet.)</p>
+    <div class="formrow" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="learn-lang" style="padding:6px 10px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option></select>
+      <button class="btn big" id="start-learn">▶ Start learning</button>
+      <span id="learn-note" class="note"></span>
+    </div>
+  </div>
 
   <!-- LANGUAGE AGENTS -->
   <div class="card">
@@ -393,6 +411,13 @@ async function mkAgent(kind,name,target){
 }
 $('start-phase1').onclick=async()=>{ $('start-phase1').disabled=true;
   await mkAgent('language','English — Phase 1',''); $('start-phase1').disabled=false; refresh(); };
+const _sl=$('start-learn'); if(_sl) _sl.onclick=async()=>{
+  const sel=$('learn-lang'); const code=sel.value; const name=sel.options[sel.selectedIndex].text;
+  _sl.disabled=true; $('learn-note').textContent='Starting…';
+  await mkAgent('lang_learn','Learn '+name, code);
+  $('learn-note').textContent='Learning '+name+' — watch Facts climb in Language agents below.';
+  _sl.disabled=false; refresh();
+};
 $('stop-phase1').onclick=async()=>{
   const snap=await (await fetch('api/agents')).json();
   for(const a of (snap.agents||[])) if(a.kind==='language'&&a.status==='running')

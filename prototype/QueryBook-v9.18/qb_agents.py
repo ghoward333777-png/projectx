@@ -61,6 +61,8 @@ ROLES = {
                       "desc": "Deterministic delta acquisition: reuse the Phase-1 English vocabulary and learn only the mapping to a second language (target = es, fr) from a bundled bilingual dictionary, stored as translation Fact Units. No LLM. Full neural alignment remains roadmap."},
     "lang_speech":   {"title": "Language Phase 4 — speech (analysis + OS voice)", "status": "built",
                       "desc": "Deterministic pronunciation analysis (G2P phonemes, syllables, stress) of the learned vocabulary, stored as Fact Units (no LLM); real audio on demand via the computer's built-in TTS. Full neural vocoder remains roadmap."},
+    "lang_learn":    {"title": "Language learner — build a new language (structural + pronunciation)", "status": "built",
+                      "desc": "Learns a target language the way English Phase 1 did: ingest a bundled public-domain starter corpus (pangrams + numbers + weekdays), build the language's vocabulary, and write a pronunciation Fact Unit per word via the OS phonemizer (espeak-ng). No LLM. Set the agent target to a language code (de, fr, es, pt, it, sv, nl). Meaning-grounding needs a per-language dictionary and stays gated."},
 }
 _ROADMAP_ENGINE = {}   # all specified agent engines are now reduced to practice (deterministically)
 
@@ -819,6 +821,37 @@ class AgentManager:
                     tts = L.tts_status()
                     a["phase"] = ("Phase 4 (analysis) — %d/%d words; voice engine: %s" %
                                   (len(done), len(vocab), tts["engine"] if tts["available"] else "none"))
+                    a["last_speech"] = res.get("sample", [])
+                    a["error"] = None
+                    _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "lang_learn":
+                    # Learn a target language like English Phase 1: build vocabulary + pronunciation
+                    # from a bundled public-domain starter corpus. No LLM. target = language code.
+                    import qb_language as L
+                    lang = (a.get("target") or "").strip().lower() or "es"
+                    allw = L._corpus_words(lang)
+                    if not allw:
+                        a["status"] = "blocked"
+                        a["error"] = ("No starter corpus bundled for '%s'. Available: %s."
+                                      % (lang, ", ".join(sorted(L.STARTER_CORPUS_L10N.keys()))))
+                        _ev("blocked", "agent:" + a["name"], a["error"]); self._save(); break
+                    done = set(a.get("_learned") or [])
+                    batch = [w for w in allw if w not in done][:40]
+                    if not batch:
+                        stt = L.language_learning_status(self.store_dir, lang)
+                        a["status"] = "complete"
+                        a["phase"] = ("%s learned — %d words in vocabulary, %d pronounced%s"
+                                      % (L.LANG_NAMES.get(lang, lang), stt["vocab_learned"], stt["pronounced"],
+                                         "" if stt["phonemizer"] else " (install espeak-ng for pronunciation)"))
+                        _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
+                    res = L.learn_language(self.store_dir, lang, words=batch)
+                    for w in batch:
+                        done.add(w)
+                    a["_learned"] = sorted(done)
+                    a["facts"] = a.get("facts", 0) + res["vocab_added"] + res["pron_added"]
+                    a["phase"] = ("Learning %s — %d/%d words%s"
+                                  % (L.LANG_NAMES.get(lang, lang), len(done), len(allw),
+                                     "" if res["phonemizer"] else " (vocabulary only — install espeak-ng for pronunciation)"))
                     a["last_speech"] = res.get("sample", [])
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], a["phase"])

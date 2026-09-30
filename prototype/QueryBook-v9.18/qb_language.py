@@ -960,6 +960,121 @@ def corpus_chunk(i):
     return STARTER_CORPUS[i % len(STARTER_CORPUS)]
 
 
+# --------------------------------------------------------------------------
+# PER-LANGUAGE LEARNING (structural + pronunciation), the same shape as the
+# English Phase-1 path: ingest a bundled PUBLIC-DOMAIN starter corpus (standard
+# pangrams + numbers + weekdays), build the language's vocabulary, and write a
+# pronunciation Fact Unit for each word via the deterministic OS phonemizer.
+# No LLM. Meaning-grounding (definitions) still needs a per-language dictionary
+# and stays gated — this is vocabulary + pronunciation acquisition.
+# --------------------------------------------------------------------------
+STARTER_CORPUS_L10N = {
+    "de": ["Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich.",
+           "Franz jagt im komplett verwahrlosten Taxi quer durch Bayern.",
+           "null eins zwei drei vier fünf sechs sieben acht neun zehn",
+           "Montag Dienstag Mittwoch Donnerstag Freitag Samstag Sonntag"],
+    "fr": ["Portez ce vieux whisky au juge blond qui fume.",
+           "Voix ambiguë d'un cœur qui au zéphyr préfère les jattes de kiwis.",
+           "zéro un deux trois quatre cinq six sept huit neuf dix",
+           "lundi mardi mercredi jeudi vendredi samedi dimanche"],
+    "es": ["El veloz murciélago hindú comía feliz cardillo y kiwi.",
+           "La cigüeña tocaba cada vez mejor el saxofón y el búho pedía queso.",
+           "cero uno dos tres cuatro cinco seis siete ocho nueve diez",
+           "lunes martes miércoles jueves viernes sábado domingo"],
+    "pt": ["Um pequeno jabuti xereta viu dez cegonhas felizes.",
+           "Luís argüía à Júlia que fé, chá, óxido, pôr e zângão eram palavras.",
+           "zero um dois três quatro cinco seis sete oito nove dez",
+           "segunda terça quarta quinta sexta sábado domingo"],
+    "it": ["Ma la volpe, col suo balzo, ha raggiunto il quieto Fido.",
+           "Quel fez sghembo copre davanti al pianoforte.",
+           "zero uno due tre quattro cinque sei sette otto nove dieci",
+           "lunedì martedì mercoledì giovedì venerdì sabato domenica"],
+    "sv": ["Flygande bäckasiner söka hwila på mjuka tuvor.",
+           "Yxskaftbud, ge vår WC-zonmö iq-hjälp.",
+           "noll ett två tre fyra fem sex sju åtta nio tio",
+           "måndag tisdag onsdag torsdag fredag lördag söndag"],
+    "nl": ["Pa's wijze lynx bezag vroom het fikse aquaduct.",
+           "Sexy qua lijf, doch bang voor het zwempak.",
+           "nul een twee drie vier vijf zes zeven acht negen tien",
+           "maandag dinsdag woensdag donderdag vrijdag zaterdag zondag"],
+}
+
+
+def _corpus_words(lang):
+    """Ordered unique word forms from the bundled starter corpus for `lang`
+    (English reuses STARTER_CORPUS). Letter-only tokens; accents preserved."""
+    lang = (lang or "en").lower()
+    chunks = STARTER_CORPUS if lang == "en" else STARTER_CORPUS_L10N.get(lang, [])
+    text = " ".join(chunks).lower()
+    seen, order = set(), []
+    for tok in re.findall(r"[^\W\d_]+", text, re.UNICODE):
+        if len(tok) >= 1 and tok not in seen:
+            seen.add(tok); order.append(tok)
+    return order
+
+
+def learn_language(store_dir, lang, words=None, max_words=None):
+    """Learn a language the way English Phase 1 learned: for each word in the bundled
+    starter corpus, write a vocabulary Fact Unit (attested in the corpus) and, when the
+    OS phonemizer is present, its pronunciation. Deterministic, no LLM. Returns counts."""
+    lang = (lang or "en").lower()
+    allw = _corpus_words(lang)
+    if words is None:
+        words = allw
+    if max_words:
+        words = words[:max_words]
+    csrc = ("SRC-CORPUS-%s" % lang.upper(),
+            "Bundled public-domain starter corpus (pangrams, %s)" % LANG_NAMES.get(lang, lang),
+            "reference", 0.8)
+    psrc = SPEECH_SOURCE if lang == "en" else _espeak_source(lang)
+    st = store.UFCSStore(store_dir)
+    vocab_added = pron_added = 0
+    sample = []
+    try:
+        for w in words:
+            wl = str(w).lower().strip()
+            if not wl or not wl.isalpha():
+                continue
+            label = '%s word "%s"' % (LANG_NAMES.get(lang, lang).lower(), wl)
+            if st.add(store.make_packet(label, "attested_in", "bundled starter corpus", "+", "language", csrc, 0.8)):
+                vocab_added += 1
+            a = analyze_pronunciation(wl, lang)
+            if a["ipa"]:
+                if st.add(store.make_packet(label, "pronunciation", a["ipa"], "+", "language", psrc, 0.70)):
+                    pron_added += 1
+                st.add(store.make_packet(label, "syllable_count", str(a["syllables"]), "+", "language", psrc, 0.70))
+                st.add(store.make_packet(label, "stress_syllable", str(a["stress_syllable"]), "+", "language", psrc, 0.70))
+            if len(sample) < 10:
+                sample.append({"word": wl, "ipa": a["ipa"]})
+        st.flush()
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": len(allw),
+            "vocab_added": vocab_added, "pron_added": pron_added,
+            "phonemizer": bool(_espeak_exe()) or lang == "en", "sample": sample}
+
+
+def language_learning_status(store_dir, lang):
+    """How much of a language has been learned (vocabulary + pronunciation)."""
+    lang = (lang or "en").lower()
+    total = len(_corpus_words(lang))
+    prefix = ('english word "' if lang == "en" else '%s word "' % LANG_NAMES.get(lang, lang).lower())
+    st = store.UFCSStore(store_dir)
+    vocab = pron = 0
+    try:
+        if not st.no_fql:
+            vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                                  (prefix + "%",)).fetchone()[0]
+            pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?",
+                                 (prefix + "%",)).fetchone()[0]
+    except Exception:
+        pass
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": total,
+            "vocab_learned": vocab, "pronounced": pron, "phonemizer": bool(_espeak_exe()) or lang == "en"}
+
+
 # The documented developmental phases (Bible LEL chapter). "built" phases run in
 # this prototype; "roadmap" phases require engines that are spec-only, so their
 # agents refuse rather than fabricate.
