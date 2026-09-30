@@ -1,6 +1,22 @@
 # QueryBook — Foolproof Phased Development Plan
-**Version 0.1 (draft for approval) · 2026‑09‑30**
+**Version 0.3 · 2026‑09‑30**
 Owner sign‑off required at every gate. No work crosses a gate without evidence + your approval.
+
+## Gate status (2026‑09‑30)
+| Gate | State | Evidence / deliverable |
+|---|---|---|
+| 0 Freeze & Spec | **done** | tag `QueryBook-baseline-v9.15` (`df76b58`); `spec/QueryBook-Canonical-Engine-Spec.md` v1.1 (§8.1 answered) |
+| 1 Test Harness | **done, green** | `gate1/` — engine 17/17 × 5 runs, one signature `937f6413…`; UI 5/5 pages, 0 JS errors |
+| 2 Acceptance Criteria | **done** | `spec/QueryBook-Gate2-Acceptance-Criteria.md` (AC‑C/B/D/P/E/F/G/R) |
+| 3 Hardening + Doc Lockstep | **done** | `spec/QueryBook-Gate3-Lockstep-Verification.md`; Bible + Registry + Patent (HTML+PDF) updated as one change‑set |
+| 4 Rust Production Spec | **done** | `spec/QueryBook-Gate4-Rust-Production-Spec.md` |
+| 5 Rust Implementation | **started; module 1 parity‑proven** | `rust/qb-core` — 14/14 fingerprint+fuid byte‑identical to the Python oracle; remaining crates queued |
+| 6 Scale/Security/Provenance | **plan ready; runs after Gate 5** | `spec/QueryBook-Gate6-Scale-Security-Provenance-Audit-Plan.md` |
+| 7 SaaS Deploy (Ubuntu) | **runbook ready; runs after Gates 5–6** | `spec/QueryBook-Gate7-SaaS-Deploy-Runbook.md` (needs a real host/DNS/TLS) |
+
+Gates 6–7 are engineering programs that require the completed Rust build and a live
+server; their methodology and runbook are written and reviewable, and they execute
+once Gate 5 finishes.
 
 ---
 
