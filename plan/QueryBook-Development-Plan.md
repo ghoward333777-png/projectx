@@ -49,7 +49,10 @@ For every gate: **I present evidence → you review → you approve or return it
 - **Baseline freeze** — tag the current prototype `QueryBook‑baseline` (folding in the already‑written Phase‑4 + stop‑race fix as *part of the frozen baseline*, not a live ship).
 - **Canonical Engine Spec** — the single source of truth: Fact Unit contract; storage/determinism; FQL + Prime‑Directive gate; the covenant as numbered testable invariants (§4); the phases and agent family with each item's status (reduced‑to‑practice vs roadmap); how the three product surfaces map onto the engine.
 - **Traceability map** — table linking every spec item → code location → Bible section → Registry entry → Patent section/figure. This is what makes "lockstep" enforceable.
-**Exit criteria (you approve on):** spec matches reality (no aspiration mixed in); every covenant invariant has a stated check; freeze tag exists; traceability map complete.
+**Tracked capability to specify in Gate 0 (owner‑raised, 2026‑09‑30):**
+- **"LLM‑parity creativity loop."** Hypothesize and *simulate LLM‑style answers*, archive them, and **analyze + graph the archived records over time** to drive QueryBook toward **equal‑or‑superior LLM‑level creativity and language skill without hallucination.** The spec must define: what "simulate an LLM answer" means operationally; what is archived and graphed; how "creativity/language parity" is *measured* (the benchmark); and how it stays inside the covenant (LLM output is a non‑asserting candidate, verified against the store; nothing generated becomes an asserted fact). Currently only *latent* across the hypothesis/simulation agents + the event/archive log; not documented as one capability. Documentation (Bible/Registry/Patent) is written at Gate 3, not before.
+
+**Exit criteria (you approve on):** spec matches reality (no aspiration mixed in); every covenant invariant has a stated check; the LLM‑parity creativity loop is specified and measurable; freeze tag exists; traceability map complete.
 **Evidence I show:** the spec text + a one‑command run of the baseline proving it behaves as specified.
 
 ### Gate 1 — Test Harness
