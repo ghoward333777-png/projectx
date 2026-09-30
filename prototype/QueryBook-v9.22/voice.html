@@ -54,7 +54,7 @@ label.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--mute
 <a href="#main" class="skip">Skip to content</a>
 <div class="top">
   <div class="brand">Query<b>Book</b> — Voice Lab</div>
-  <span class="badge">BUILD v9.21 · 2026-09-30</span>
+  <span class="badge">BUILD v9.22 · 2026-09-30</span>
   <nav class="nav" aria-label="Main">
     <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
     <a href="/chat">Chat</a><a href="/monitor">Monitor</a>
@@ -247,13 +247,22 @@ async function onUtterance(text){
 }
 
 /* ---------- speak (TTS) ---------- */
+function browserSpeak(text,lang){
+  try{ if(!('speechSynthesis' in window)) return false;
+    const u=new SpeechSynthesisUtterance(text); u.lang=BCP[lang]||'en-US';
+    const vs=window.speechSynthesis.getVoices()||[]; const v=vs.find(x=>x.lang&&x.lang.toLowerCase().slice(0,2)===lang);
+    if(v)u.voice=v; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); return true;
+  }catch(e){ return false; }
+}
+try{ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged=function(){}; } }catch(e){}
 async function speak(text,lang){
   if(!text) return;
   try{
     const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,lang})})).json();
-    if(r.audio_b64){ const au=new Audio('data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64); au.play().catch(()=>{}); }
-    else if(r.tts&&r.tts.error){ $('voice-warn').style.display='block'; $('voice-warn').textContent='Voice: '+r.tts.error; }
-  }catch(e){}
+    if(r.audio_b64){ const au=new Audio('data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64); au.play().catch(()=>{}); return; }
+    if(browserSpeak(text,lang)) return;                     // browser's built-in voice, no install
+    if(r.tts&&r.tts.error){ $('voice-warn').style.display='block'; $('voice-warn').textContent='Voice: '+r.tts.error; }
+  }catch(e){ browserSpeak(text,lang); }
 }
 $('speakbtn').onclick=()=>speak($('say').value.trim(),$('lang').value);
 $('listen').onclick=toggleListen;
