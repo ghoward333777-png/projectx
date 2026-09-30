@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.16 · 2026-09-30</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.17 · 2026-09-30</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -290,8 +290,9 @@ function renderPhases(gateOpen){
              <option value="fr">French</option><option value="de">German</option>
              <option value="pt">Portuguese</option><option value="it">Italian</option>
              <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
-           <input id="speak-text" placeholder="Type a word or sentence to analyze &amp; speak…" style="flex:1;min-width:200px;padding:6px 10px">
+           <input id="speak-text" placeholder="Type a word in the chosen language, e.g. maison…" style="flex:1;min-width:200px;padding:6px 10px">
            <button class="btn" id="speak-btn">Analyze &amp; Speak</button></div>
+         <div class="note" style="margin-top:4px">Type words <b>in the selected language</b> (this pronounces text, it does not translate it). Non-English needs <b>espeak-ng</b> (free, all platforms); English uses your built-in voice.</div>
          <div id="speak-out" class="note" style="margin-top:6px"></div>
          <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>` : '';
     const btn = isBuilt
@@ -320,9 +321,16 @@ function wireSpeak(){
     try{
       const lang=(document.getElementById('speak-lang')||{}).value||'en';
       const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang})})).json();
-      const ana=(r.analysis||[]).map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>no phonemizer for ${esc(a.lang||lang)}</i>`).join('<br>');
-      out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${ana}`+
-        (r.tts&&!r.tts.available?`<br><i>Voice: ${esc(r.tts.error||'no engine on this computer')}</i>`:'');
+      const items=(r.analysis||[]);
+      const haveIpa=items.some(a=>a.ipa);
+      let body;
+      if(lang!=='en' && !haveIpa){
+        body='<i>Multilingual pronunciation needs <b>espeak-ng</b> (free). Install it, restart QueryBook, and reopen this page. English works without it.<br>Windows/macOS/Linux installers: espeak-ng on GitHub.</i>';
+      } else {
+        body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
+      }
+      out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}`+
+        (r.tts&&!r.tts.available&&r.tts.error?`<br><i>Voice: ${esc(r.tts.error)}</i>`:'');
       if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false; au.play().catch(()=>{}); }
       else { au.hidden=true; }
     }catch(e){ out.textContent='speak failed: '+e; }

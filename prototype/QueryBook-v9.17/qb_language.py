@@ -653,6 +653,22 @@ SPEECH_SOURCE = ("SRC-G2P", "QueryBook rule-seeded G2P / prosody (approximate)",
 _IPA_VOWELS = set("iyɨʉɯuɪʏʊeøɘɵɤoəɛœɜɞʌɔæɐaɶɑɒ")
 
 
+def _espeak_exe():
+    """Locate espeak-ng/espeak — the deterministic multilingual phonemizer and voice — even
+    when it is not on PATH (common on Windows, where the installer uses Program Files)."""
+    import shutil, os as _os
+    for name in ("espeak-ng", "espeak"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for c in (r"C:\Program Files\eSpeak NG\espeak-ng.exe",
+              r"C:\Program Files (x86)\eSpeak NG\espeak-ng.exe",
+              "/opt/homebrew/bin/espeak-ng", "/usr/local/bin/espeak-ng"):
+        if _os.path.exists(c):
+            return c
+    return None
+
+
 def _espeak_source(lang):
     """Provenance for a pronunciation derived from the OS phonemizer. espeak-ng is a fixed,
     auditable external tool (same class of source as the English rule-seeded G2P), not an LLM."""
@@ -664,8 +680,8 @@ def _espeak_source(lang):
 def _ipa_espeak(word, lang):
     """Deterministic IPA for a word via espeak-ng --ipa. Returns (ipa, stress_syllable,
     syllable_count) or (None, 1, 1) when no engine is present. No LLM; never fabricates."""
-    import subprocess, shutil
-    exe = shutil.which("espeak-ng") or shutil.which("espeak")
+    import subprocess
+    exe = _espeak_exe()
     if not exe:
         return (None, 1, 1)
     try:
@@ -797,14 +813,47 @@ def speak(text, out_path=None, lang="en"):
     wav_bytes|None, error?}. Never fabricates audio."""
     import platform, subprocess, tempfile, os as _os
     lang = (lang or "en").lower()
-    kind, exe = _tts_engine()
-    if not kind:
-        return {"available": False, "engine": None, "wav_bytes": None,
-                "error": tts_status()["hint"]}
     text = (text or "").strip()[:400]
     if not text:
-        return {"available": True, "engine": kind, "wav_bytes": None, "error": "no text"}
+        return {"available": True, "engine": None, "lang": lang, "wav_bytes": None, "error": "no text"}
     tmp = out_path or _os.path.join(tempfile.gettempdir(), "qb_speech.wav")
+
+    # --- Non-English: espeak-ng is the reliable multilingual voice on every OS. ---
+    esp = _espeak_exe()
+    if lang != "en" and esp:
+        try:
+            subprocess.run([esp, "-v", lang, "-w", tmp, text], timeout=30, check=True, capture_output=True)
+            with open(tmp, "rb") as fh:
+                data = fh.read()
+            return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": data, "mime": "audio/wav"}
+        except Exception as e:
+            return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": None,
+                    "error": "espeak-ng failed for '%s': %s" % (lang, e)}
+
+    kind, exe = _tts_engine()
+    if not kind:
+        return {"available": False, "engine": None, "lang": lang, "wav_bytes": None,
+                "error": tts_status()["hint"]}
+
+    # --- Non-English but no espeak-ng: try a matching Windows SAPI voice; refuse if none. ---
+    if lang != "en" and kind == "sapi":
+        safe = text.replace("'", "''")
+        ps = ("Add-Type -AssemblyName System.Speech; "
+              "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+              "$v=$s.GetInstalledVoices()|?{$_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '%s'}|select -First 1; "
+              "if($v){$s.SelectVoice($v.VoiceInfo.Name);$s.SetOutputToWaveFile('%s');$s.Speak('%s');$s.Dispose();exit 0}else{exit 3}"
+              % (lang, tmp.replace("'", "''"), safe))
+        rc = subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=30, capture_output=True)
+        if rc.returncode == 0 and _os.path.exists(tmp):
+            with open(tmp, "rb") as fh:
+                data = fh.read()
+            return {"available": True, "engine": "sapi", "lang": lang, "wav_bytes": data, "mime": "audio/wav"}
+        return {"available": False, "engine": "sapi", "lang": lang, "wav_bytes": None,
+                "error": ("No %s voice on this computer. Install espeak-ng (free, works for all languages) "
+                          "or add a Windows %s voice in Settings. (Not speaking English for a %s request.)"
+                          % (LANG_NAMES.get(lang, lang), LANG_NAMES.get(lang, lang), LANG_NAMES.get(lang, lang)))}
+
+    # --- English (or a non-English 'say'/espeak default handled above). ---
     try:
         if kind == "sapi":
             safe = text.replace("'", "''")
