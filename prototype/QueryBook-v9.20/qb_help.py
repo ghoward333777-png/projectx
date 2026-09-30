@@ -71,6 +71,15 @@ SECTIONS = [
           "store must verify (never asserted); reasoning deduces new facts from verified ones; "
           "planner breaks a goal into steps; the language/lang_* agents run the four phases and "
           "language learning. See them live on the Monitor."},
+    {"k": "voice speak listen microphone camera two-way talk tone volume accessibility blind speaker who",
+     "t": "Voice Lab (two-way voice)",
+     "a": "Open the Voice page to talk with QueryBook. Pick a language, click 'Start listening' (or press "
+          "Space) and speak — in Converse mode it understands you, answers from verified facts, and speaks "
+          "the answer back. It also shows measured tone and volume while you talk, and an on-device "
+          "voiceprint 'who is who' match (with consent). Understanding speech needs Chrome or Edge and a "
+          "microphone. Audio/video stay in your browser; nothing is uploaded. Recognizing people by face "
+          "(audio-video) is roadmap; today 'who is who' is by voice. For screen-reader users, answers are "
+          "announced and controls are keyboard-operable."},
     {"k": "monitor system state status store process subsystem health uptime",
      "t": "The System Monitor",
      "a": "The Monitor page shows live state: build and uptime, the store (total facts, per-domain "

@@ -74,6 +74,7 @@ export QB_DASHBOARD_HTML="$PWD/dashboard.html"
 export QB_LANGUAGE_HTML="$PWD/language.html"
 export QB_GUIDE_HTML="$PWD/guide.html"
 export QB_MONITOR_HTML="$DIR/monitor.html"
+export QB_VOICE_HTML="$DIR/voice.html"
 
 echo
 echo "============================================================"
