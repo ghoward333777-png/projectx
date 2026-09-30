@@ -1,5 +1,5 @@
 # QueryBook — Canonical Engine Specification
-**Gate 0 deliverable · v1.0 (draft for approval) · 2026‑09‑30**
+**Gate 0 deliverable · v1.1 (§8 answered; ratify at Gate 2) · 2026‑09‑30**
 Single source of truth for the QueryBook prototype. Describes the **frozen baseline**
 `QueryBook-baseline-v9.15` (commit `df76b58`) exactly as it behaves — no aspiration mixed in.
 Aspirational/roadmap items are labelled **[ROADMAP]**. This is the reference all later gates
@@ -84,16 +84,41 @@ safety               = { classification, acl }
 
 Roadmap engine set is **empty**: every specified agent is reduced to practice deterministically; full neural forms remain [ROADMAP].
 
-## 8. The LLM‑parity creativity loop  *(owner‑raised; specify here, document at Gate 3)*
+## 8. The LLM‑parity creativity loop  *(owner‑raised; specified here, ratified at Gate 2, documented at Gate 3)*
 **Intent:** reach **equal‑or‑superior LLM‑level creativity and language skill without hallucination.**
 **Loop (to be built on the existing agents + archive):**
 1. **Hypothesize / simulate** — the hypothesis & simulation agents generate candidate "answers"/continuations (LLM as a *proposer*).
 2. **Archive** — every candidate + its verification verdict is recorded (event log / store), timestamped.
 3. **Analyze & graph** — trend the archived records over time (coverage, corroboration rate, novelty, contradiction rate).
-4. **Measure parity** — an explicit benchmark comparing QueryBook's grounded output to LLM output on **creativity** and **language** tasks, scored on quality **and** on the covenant metrics (citations, zero‑fabrication).
+4. **Measure parity** — an explicit benchmark comparing QueryBook's grounded output to a pinned reference LLM on **creativity** and **language** tasks, scored on quality **and** on the covenant metrics (citations, zero‑fabrication).
 **Covenant compliance:** the LLM only *proposes*; nothing it generates becomes an asserted fact without independent store verification (C6). "Superiority" is defined as *matching LLM fluency/creativity while guaranteeing provenance and zero hallucination.*
-**Status:** components exist (hypothesis, simulation, archive/log); the **named loop, the graphing, and the parity benchmark are [ROADMAP]** — to be designed in Gate 2 (criteria) and built in Gate 3+.
-**Open spec questions for you:** (a) what corpus/tasks define the creativity+language benchmark? (b) what is the pass bar for "equal" vs "superior"? (c) is the LLM used here local‑only, or any provider?
+**Status:** components exist (hypothesis, simulation, archive/log); the **named loop, the graphing, and the parity benchmark are [ROADMAP]** — designed in Gate 2 (criteria), built in Gate 3+.
+
+### 8.1 Answered spec questions *(proposed defaults — ratify or adjust at Gate 2)*
+
+**(a) What corpus/tasks define the creativity + language benchmark?**
+A fixed, versioned, license‑clean set — **QB‑CreativityBench v1** — checked into the repo with per‑item gold answers or rubrics, a `LICENSE` note per source, and a `manifest.json` recording size and provenance. Sources are public‑domain / permissively licensed only (consistent with C2 and the whole project's source discipline). Four task families (≈200 items total, fixed):
+1. **Grounded factual Q&A** — questions whose answers *are* in the store (measures citation coverage + accuracy) **plus a held‑out set the store does NOT contain** (measures honest‑UNKNOWN / refuse rate). Sources: Webster's 1913, Project Gutenberg reference texts, other public‑domain reference corpora.
+2. **Language fluency** — prompts requiring fluent multi‑paragraph explanation/summary; scored by the deterministic linguistic metrics already in the engine (rhythm/variety/hygiene) plus a blind judge panel (§b).
+3. **Creative composition** — constrained creative tasks (metaphor for X, continue a scenario) where the hypothesis/simulation agents propose and the store verifies; measures novelty + coherence + **zero fabrication** (every asserted claim cited).
+4. **Multilingual + speech** — a fixed translate‑and‑pronounce list scored deterministically against the bundled bilingual (es/fr) and G2P references (Phases 3–4).
+The set is versioned; a benchmark change bumps the version and never edits v1 in place (reproducibility).
+
+**(b) What is the pass bar for "equal" vs "superior"?**
+Two independent axes, both required:
+- **Quality axis** — blind, pre‑registered judge panel scores QueryBook output against a pinned reference LLM on the same items (judges do not know which is which). Report `quality_ratio = QB_score / LLM_score`.
+- **Covenant axis** — measured on QueryBook only: **100 %** of asserted facts carry a citation, **0** fabricated facts, and deterministic reproduction across **N ≥ 3** runs (identical export md5).
+Bars:
+- **EQUAL** ⇔ `quality_ratio ≥ 0.95` **AND** covenant axis perfect.
+- **SUPERIOR** ⇔ `quality_ratio ≥ 1.00` **AND** covenant axis perfect.
+Because the reference LLM cannot structurally achieve *cited, zero‑fabrication, deterministic* output, once quality parity is reached QueryBook is categorically ahead on the covenant axis — that is the operational meaning of "superior." All scores are reported against the **specific pinned baseline**, never "an LLM" generically.
+
+**(c) Is the LLM local‑only, or any provider?**
+Distinguish two roles:
+- **Proposer** (hypothesis / simulation / answer‑phrasing inside QueryBook): **provider‑agnostic but covenant‑bound.** Any provider — local or hosted — may be plugged in, because nothing it emits is asserted without store verification (C6). For a reproducible benchmark run the proposer must be **pinned** (fixed model + fixed decoding/seed where the provider allows) and recorded in the run manifest. Production SaaS **prefers a local, pinned model** for determinism and privacy; hosted providers are permitted when pinned and logged.
+- **Benchmark comparator**: a **named, version‑pinned frontier LLM**, recorded per run, so the comparison is reproducible and always attributable to a specific baseline.
+
+These three answers become the seed of the Gate‑2 acceptance criteria for the creativity loop; the benchmark corpus, scoring harness, and graphing are built in Gate 3+.
 
 ## 9. API surface (stdlib HTTP, `qb_api`)
 GET: `/api/stats /sample /harvest_status /perf /mirror /log /keepawake /agents /agent_roles /selftest /domain_logic /domains /health /fql /verify /get /version` and `/api/language/{status,phases,sources,grounding,multilingual,speech}` and `/api/{hypotheses,plans}`.
@@ -113,4 +138,4 @@ POST: `/api/chat /harvest /agents /agents/control /providers /provider_test /fac
 `QueryBook-baseline-v9.15`, commit `df76b58`. Source + `BASELINE-CHECKSUMS.md5` in `prototype/QueryBook-baseline-v9.15/`. Self‑test 7/7 all_ok on 3 consecutive runs.
 
 ## 12. Gate 0 exit criteria (your approval)
-1. This spec matches the frozen baseline (no aspiration presented as built). 2. Every covenant invariant (§2) has a stated check. 3. The creativity loop (§8) is specified with open questions surfaced. 4. Freeze tag + checksums exist (§11). 5. Traceability map (§10) accepted, with the Gate‑3 gaps agreed.
+1. This spec matches the frozen baseline (no aspiration presented as built). 2. Every covenant invariant (§2) has a stated check. 3. The creativity loop (§8) is specified, with the three open questions answered as proposed defaults (§8.1) for ratification at Gate 2. 4. Freeze tag + checksums exist (§11). 5. Traceability map (§10) accepted, with the Gate‑3 gaps agreed.
