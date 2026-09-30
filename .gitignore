@@ -1,0 +1,7 @@
+# Python bytecode caches (generated when the Gate 1 harness imports the baseline)
+__pycache__/
+*.pyc
+*.pyo
+
+# Throwaway stores / scratch
+*.tmp
