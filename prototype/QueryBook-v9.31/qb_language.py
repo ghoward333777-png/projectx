@@ -349,6 +349,21 @@ def learn(store_dir, text=None, url=None, source=None):
     m = load_model(store_dir)
     _ingest_into_model(m, text, persist_source=source)
     mx = metrics(m)
+    # Live feed: surface a few English words just seen (structure phase), so the activity
+    # stream shows motion during English Phases 1-2, not only during language learning.
+    try:
+        toks = [w.lower() for w in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
+        seen = set()
+        for w in toks:
+            if w in seen:
+                continue
+            seen.add(w)
+            ap = analyze_pronunciation(w, "en")
+            record_activity("en", w, ap.get("ipa"), None, kind="structure")
+            if len(seen) >= 8:
+                break
+    except Exception:
+        pass
     # one-way gate: latch OPEN the first time structural readiness is met
     if mx["gate"]["ready"] and not m.get("gate_opened"):
         m["gate_opened"] = True
@@ -1304,6 +1319,24 @@ def _corpus_words(lang):
     return order
 
 
+import collections as _collections
+RECENT_LEARNED = _collections.deque(maxlen=400)   # live activity feed ring buffer
+
+def record_activity(lang, word, ipa, means, kind="word"):
+    RECENT_LEARNED.append({"t": time.time(), "lang": lang, "word": word,
+                           "ipa": ipa or "", "means": means or "", "kind": kind})
+
+def recent_activity(limit=60, since=0.0):
+    items = [a for a in RECENT_LEARNED if a["t"] > since]
+    now = time.time()
+    rate = sum(1 for a in RECENT_LEARNED if a["t"] > now - 5) / 5.0   # words/sec over last 5s
+    last = RECENT_LEARNED[-1] if RECENT_LEARNED else None
+    return {"items": items[-limit:], "rate_per_s": round(rate, 1),
+            "current_lang": (last or {}).get("lang"),
+            "current_language": LANG_NAMES.get((last or {}).get("lang"), (last or {}).get("lang")),
+            "total_seen": len(RECENT_LEARNED), "now": now}
+
+
 def learn_language(store_dir, lang, words=None, max_words=None):
     """Learn a language the way English Phase 1 learned: for each word in the bundled
     starter corpus, write a vocabulary Fact Unit (attested in the corpus) and, when the
@@ -1343,6 +1376,7 @@ def learn_language(store_dir, lang, words=None, max_words=None):
                     pron_added += 1
                 st.add(store.make_packet(label, "syllable_count", str(a["syllables"]), "+", "language", psrc, 0.70))
                 st.add(store.make_packet(label, "stress_syllable", str(a["stress_syllable"]), "+", "language", psrc, 0.70))
+            record_activity(lang, wl, a.get("ipa"), (senses or [None])[0])
             if len(sample) < 10:
                 sample.append({"word": wl, "ipa": a["ipa"]})
         st.flush()

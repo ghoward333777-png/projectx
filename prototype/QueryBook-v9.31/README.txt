@@ -91,7 +91,16 @@ Reliability (new):
   * "Clear stopped / errored"  one click removes finished/errored agents.
 
 Top menu:
-  * Language Lab   learn languages, translate, and speak. It is built around one
+  * Language Lab   learn languages, translate, and speak.
+
+                   EASIEST WAY — press ONE button: at the top of the Language
+                   Lab, click "Start - do it all". QueryBook then runs English
+                   Phases 1-4 and learns EVERY other language to completion, one
+                   at a time, with no further input. A live feed shows each word
+                   as it is learned (word, pronunciation, translation) plus a
+                   words/second meter. You can leave the page; it keeps going.
+
+                   It is also built around one
                    idea: ENGLISH is the foundation language (learned in four
                    phases); EVERY OTHER language is taught in ONE CLICK. A legend
                    at the top shows which language each phase targets.

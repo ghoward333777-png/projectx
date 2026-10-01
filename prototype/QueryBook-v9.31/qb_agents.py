@@ -63,6 +63,8 @@ ROLES = {
                       "desc": "Deterministic pronunciation analysis (G2P phonemes, syllables, stress) of the learned vocabulary, stored as Fact Units (no LLM); real audio on demand via the computer's built-in TTS. Full neural vocoder remains roadmap."},
     "lang_learn":    {"title": "Language learner — build a new language (structural + pronunciation)", "status": "built",
                       "desc": "Learns a target language the way English Phase 1 did: ingest a bundled public-domain starter corpus (pangrams + numbers + weekdays), build the language's vocabulary, and write a pronunciation Fact Unit per word via the OS phonemizer (espeak-ng). No LLM. Set the agent target to a language code (de, fr, es, pt, it, sv, nl). Meaning-grounding needs a per-language dictionary and stays gated."},
+    "lang_pipeline": {"title": "Language pipeline — do everything automatically", "status": "built",
+                      "desc": "One agent that runs the whole Language Lab with no operator input: English Phases 1-4, then every other language learned to completion, one at a time. Records a live activity feed."},
 }
 _ROADMAP_ENGINE = {}   # all specified agent engines are now reduced to practice (deterministically)
 
@@ -824,6 +826,46 @@ class AgentManager:
                     a["last_speech"] = res.get("sample", [])
                     a["error"] = None
                     _ev("ok", "agent:" + a["name"], a["phase"])
+                elif a["kind"] == "lang_pipeline":
+                    # ONE button, no operator input: run English Phases 1-4, then every other
+                    # language to completion, one at a time. This agent only orchestrates — it
+                    # starts each child agent and advances when that child completes.
+                    import qb_language as L
+                    if not a.get("_plan"):
+                        plan = [{"kind": "language", "target": "", "label": "English — Phase 1 (structure)"},
+                                {"kind": "lang_semantic", "target": "", "label": "English — Phase 2 (meaning)"},
+                                {"kind": "lang_multilingual", "target": "", "label": "English — Phase 3 (translation)"},
+                                {"kind": "lang_speech", "target": "", "label": "English — Phase 4 (speech)"}]
+                        for lg in [x for x in sorted(L.LANG_NAMES) if x != "en"]:
+                            plan.append({"kind": "lang_learn", "target": lg,
+                                         "label": "Learn " + L.LANG_NAMES.get(lg, lg)})
+                        a["_plan"] = plan
+                        a["_step"] = 0
+                    plan = a["_plan"]; idx = a.get("_step", 0)
+                    if idx >= len(plan):
+                        a["status"] = "complete"
+                        a["phase"] = "All done — English Phases 1-4 and every language complete."
+                        _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
+                    step = plan[idx]
+                    child_id = step.get("agent_id")
+                    child = self.agents.get(child_id) if child_id else None
+                    if not child:
+                        # start this step's child agent
+                        c = self.create("» " + step["label"], step["kind"], target=step.get("target", ""), interval=1)
+                        step["agent_id"] = c["id"]; self._start(c)
+                        a["phase"] = "Step %d/%d — %s" % (idx + 1, len(plan), step["label"])
+                        _ev("ok", "agent:" + a["name"], a["phase"])
+                    elif child.get("status") in ("complete", "stopped", "error", "blocked", "roadmap"):
+                        # child finished (or cannot run) — advance to the next step
+                        a["_step"] = idx + 1
+                        a["facts"] = a.get("facts", 0) + int(child.get("facts", 0) or 0)
+                        a["phase"] = "Finished: %s (%d/%d)" % (step["label"], idx + 1, len(plan))
+                        _ev("ok", "agent:" + a["name"], a["phase"])
+                    else:
+                        # still working — surface live progress
+                        a["phase"] = "Step %d/%d — %s: %s" % (idx + 1, len(plan), step["label"],
+                                                              child.get("phase", "working…"))
+                    a["last_speech"] = L.recent_activity(8).get("items", [])
                 elif a["kind"] == "lang_learn":
                     # Learn a target language like English Phase 1: build vocabulary + pronunciation
                     # from a bundled public-domain starter corpus. No LLM. target = language code.

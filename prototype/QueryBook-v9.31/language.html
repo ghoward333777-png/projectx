@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.30 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.31 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -110,6 +110,28 @@
     (Spanish, French, …) is taught in <b>one click</b>: QueryBook learns its vocabulary, how to
     pronounce each word, and how it translates to and from English — all automatically, with no LLM.</p>
     <div id="lang-legend" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
+  </div>
+
+  <!-- THE BUTTON: do everything automatically -->
+  <div class="card" id="go-card" style="border:2px solid var(--accent)">
+    <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="min-width:0">
+        <h2 style="margin:0">Do everything — automatically</h2>
+        <p class="sub" style="margin:4px 0 0">One button. QueryBook runs <b>English Phases 1–4</b>, then
+        learns <b>every other language</b> to completion, one at a time. No setup, nothing else to click.</p>
+      </div>
+      <button class="btn big" id="go-btn" style="font-size:17px;padding:12px 22px"
+        data-tip="Start the whole Language Lab automatically: English Phases 1-4, then every language, one at a time. You don't need to do anything else.">▶ Start — do it all</button>
+    </div>
+    <div id="go-status" class="note" style="margin-top:10px"></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px">
+      <div><span id="go-rate" style="font:800 22px var(--mono)">0</span> <span class="note">words/sec</span></div>
+      <div><span id="go-step" class="note"></span></div>
+    </div>
+    <h3 style="font-size:13px;margin:14px 0 4px">Live activity — what it's learning right now</h3>
+    <div id="go-feed" style="height:180px;overflow:auto;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:12.5px/1.7 ui-monospace,Consolas,monospace">
+      <span class="note">Press “Start — do it all” to begin. Words will stream here as they're learned.</span>
+    </div>
   </div>
 
   <!-- ONE-CLICK: TEACH A LANGUAGE -->
@@ -581,6 +603,49 @@ function renderLegend(){
     <div class="note">${it[2]}</div></div>`).join('');
 }
 renderLegend();
+
+// ---- THE button: do everything + live activity feed -----------------------
+const FLAGS={es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇵🇹',nl:'🇳🇱',sv:'🇸🇪',en:'🇬🇧'};
+let _goSince=0, _goTimer=null;
+async function goPoll(){
+  try{
+    const d=await (await fetch('api/language/activity?since='+_goSince+'&limit=40')).json();
+    $('go-rate').textContent=d.rate_per_s||0;
+    if(d.pipeline){ $('go-step').innerHTML='<b>'+esc(d.pipeline.phase||'')+'</b>'
+      +(d.pipeline.status==='complete'?' · <span style="color:#2e9e78">ALL DONE ✓</span>':''); }
+    const feed=$('go-feed');
+    const items=d.items||[];
+    if(items.length){
+      _goSince=items[items.length-1].t;
+      const atBottom=feed.scrollHeight-feed.scrollTop-feed.clientHeight<40;
+      const html=items.map(a=>{
+        const fl=FLAGS[a.lang]||'';
+        const tr=a.means?(' <span style="color:#8fb7ab">→ '+esc(a.means)+'</span>'):'';
+        const ip=a.ipa?(' <span style="color:#e0c87a">'+esc(a.ipa)+'</span>'):'';
+        return `<div>${fl} <b>${esc(a.word)}</b>${ip}${tr}</div>`;
+      }).join('');
+      if(feed.querySelector('.note')) feed.innerHTML='';
+      feed.insertAdjacentHTML('beforeend',html);
+      // cap DOM size
+      while(feed.childElementCount>300) feed.removeChild(feed.firstChild);
+      if(atBottom) feed.scrollTop=feed.scrollHeight;
+    }
+  }catch(e){}
+}
+if($('go-btn')) $('go-btn').onclick=async()=>{
+  const b=$('go-btn'); b.disabled=true; const old=b.textContent; b.textContent='Starting…';
+  try{
+    const r=await (await fetch('api/language/go',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.error){ $('go-status').textContent='Error: '+esc(r.error); b.textContent=old; b.disabled=false; return; }
+    $('go-status').innerHTML='✓ Running everything automatically — you can leave this page; it keeps going.';
+    b.textContent='● Running…';
+    if(_goTimer) clearInterval(_goTimer); _goTimer=setInterval(goPoll,1200); goPoll();
+  }catch(e){ $('go-status').textContent='Error: '+e; b.textContent=old; b.disabled=false; }
+};
+// If a pipeline is already running when the page loads, resume the live feed.
+(async()=>{ try{ const d=await (await fetch('api/language/activity?limit=1')).json();
+  if(d.pipeline && d.pipeline.status==='running'){ $('go-status').innerHTML='● Pipeline already running — streaming live.';
+    if(_goTimer) clearInterval(_goTimer); _goTimer=setInterval(goPoll,1200); goPoll(); } }catch(e){} })();
 
 // ---- One-click teacher ----------------------------------------------------
 let _teachLang=null, _teachTotal=0, _teachTimer=null;

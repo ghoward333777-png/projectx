@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.30"
+BUILD = "v9.31"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -278,7 +278,7 @@ class H(BaseHTTPRequestHandler):
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
                           "/api/language/ingest", "/api/language/speak", "/api/language/translate",
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
-                          "/api/mirror", "/api/help"):
+                          "/api/language/go", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -451,6 +451,21 @@ class H(BaseHTTPRequestHandler):
                                         "message": "All languages are now learning automatically."})
             except Exception as e:
                 return self._send(500, {"error": "could not start learners: " + str(e)})
+        if u.path == "/api/language/go":
+            # THE button: start one orchestrator that does English Phases 1-4 and every
+            # language, one at a time, with no further operator input. Resumes if present.
+            try:
+                ex = next((a for a in AGENTS.snapshot().get("agents", [])
+                           if a.get("kind") == "lang_pipeline"), None)
+                if ex:
+                    AGENTS.control(ex["id"], "resume"); aid = ex["id"]
+                else:
+                    a = AGENTS.create("Language pipeline — everything", "lang_pipeline", interval=1)
+                    aid = a["id"]; AGENTS.control(aid, "start")
+                return self._send(200, {"ok": True, "agent_id": aid,
+                                        "message": "Running everything automatically: English Phases 1-4, then every language."})
+            except Exception as e:
+                return self._send(500, {"error": "could not start pipeline: " + str(e)})
         if u.path == "/api/language/run_all":
             # One-click automation of the whole English pipeline: Phase 1 (structure) →
             # Phase 2 (meaning) → Phase 3 (translation) → Phase 4 (speech). Each is a
@@ -719,6 +734,16 @@ class H(BaseHTTPRequestHandler):
                     except Exception as e:
                         d["agents"] = [{"error": repr(e)}]
                     self._send(200, d)
+                elif u.path == "/api/language/activity":
+                    # Live feed of words being learned right now (word · IPA · translation · rate).
+                    since = float(q.get("since", 0) or 0)
+                    limit = max(1, min(200, int(q.get("limit", 60) or 60)))
+                    act = qb_language.recent_activity(limit, since)
+                    pipe = next((a for a in AGENTS.snapshot().get("agents", [])
+                                 if a.get("kind") == "lang_pipeline"), None)
+                    act["pipeline"] = ({"status": pipe.get("status"), "phase": pipe.get("phase"),
+                                        "facts": pipe.get("facts")} if pipe else None)
+                    self._send(200, act)
                 elif u.path == "/api/language/readiness":
                     # Per-language readiness matrix for the UI (words, translation, speech).
                     self._send(200, qb_language.language_readiness(DATA_DIR))
