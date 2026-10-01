@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.35 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.36 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -259,6 +259,33 @@
   <!-- PHASES 2-4 (roadmap) -->
   <div id="phases-later"></div>
 
+  <!-- ANALYZE & SPEAK (stable card — never rebuilt by background polls) -->
+  <div class="card" id="speak-card">
+    <h2>Analyze &amp; Speak <span class="qb-ac qb-ac-det">Pronunciation: deterministic</span></h2>
+    <p class="sub">Type a word <b>in the selected language</b> to see its pronunciation (IPA, syllables,
+    stress) and hear it. This pronounces text — it does not translate it.
+    <span id="p4tts"></span></p>
+    <div class="formrow" style="margin-top:8px;gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+      <select id="speak-lang" style="padding:6px 8px" title="Language voice" data-tip="The language to analyze and speak the typed word in.">
+        <option value="en">English</option><option value="es">Spanish</option>
+        <option value="fr">French</option><option value="de">German</option>
+        <option value="pt">Portuguese</option><option value="it">Italian</option>
+        <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
+      <input id="speak-text" placeholder="Type a word, e.g. gracias, maison, danke…" style="flex:1;min-width:200px;padding:6px 10px">
+      <button class="btn" id="speak-btn" data-tip="Analyze the word's pronunciation and speak it aloud.">Analyze &amp; Speak</button>
+    </div>
+    <div class="note" style="margin-top:4px"><b>Pronunciation works for every language with no install</b>
+    (bundled rule-seeded phonemizer). <b>Spoken audio</b> uses your computer's voices; for guaranteed
+    offline audio in every language install the free <b>espeak-ng</b>.</div>
+    <div id="speak-out" class="note" style="margin-top:6px"></div>
+    <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+      <button class="btn ghost" id="voice-diag-btn" data-tip="List the voices your browser has for the selected language, test if they actually make sound, and copy a report.">🔎 Voice diagnostics (why no sound?)</button>
+      <button class="btn ghost" id="voice-diag-copy" style="display:none">Copy report</button>
+      <div id="voice-diag" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font:12px/1.5 var(--mono);max-height:340px;overflow:auto"></div>
+    </div>
+  </div>
+
   <!-- LIVE LEARNING DETAIL -->
   <div class="card">
     <h2>Live learning detail</h2>
@@ -394,25 +421,14 @@ function renderPhases(gateOpen){
   const sig=JSON.stringify([gateOpen, PHASES.map(p=>[p.n,p.status])]);
   if(sig===_phSig) return;                 // don't clobber inputs on every poll
   _phSig=sig;
-  // preserve the speak selector + typed word across re-renders (so it never snaps to English)
-  const _sl=document.getElementById('speak-lang'), _st=document.getElementById('speak-text');
-  const _keepLang=_sl?_sl.value:null, _keepText=_st?_st.value:null;
   const later=PHASES.filter(p=>p.n>=2);
   $('phases-later').innerHTML=later.map(p=>{
     const isBuilt = p.status==='built';
     const badge = isBuilt ? '<span class="badge b-built">Deterministic · no LLM</span>' : '<span class="badge b-road">Roadmap</span>';
+    // Analyze & Speak now lives in its own stable card (#speak-card), so background
+    // polls can't rebuild it mid-playback. The phase card links to it.
     const speak = p.key==='speech'
-      ? `<div class="formrow" style="margin-top:10px;gap:8px;display:flex;flex-wrap:wrap">
-           <select id="speak-lang" style="padding:6px 8px" title="Language voice">
-             <option value="en">English</option><option value="es">Spanish</option>
-             <option value="fr">French</option><option value="de">German</option>
-             <option value="pt">Portuguese</option><option value="it">Italian</option>
-             <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
-           <input id="speak-text" placeholder="Type a word in the chosen language, e.g. maison…" style="flex:1;min-width:200px;padding:6px 10px">
-           <button class="btn" id="speak-btn">Analyze &amp; Speak</button></div>
-         <div class="note" style="margin-top:4px">Type words <b>in the selected language</b> (this pronounces text, it does not translate it). <b>Pronunciation works for every language with no install</b> (bundled rule-seeded phonemizer); <b>spoken audio uses your browser’s built-in voice</b> (Chrome/Edge), or install <b>espeak-ng</b> (free) for offline audio + higher accuracy.</div>
-         <div id="speak-out" class="note" style="margin-top:6px"></div>
-         <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>` : '';
+      ? `<div class="note" style="margin-top:8px">Use the <b>Analyze &amp; Speak</b> box below to hear any word.</div>` : '';
     const btn = isBuilt
       ? `<button class="btn mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Start Phase ${p.n} — ${_LBL[p.key]||'run'}</button>
          <div class="note">${_NOTE[p.key]||''}</div>${speak}`
@@ -422,11 +438,6 @@ function renderPhases(gateOpen){
       <p class="sub">${esc(p.desc)}</p>${btn}
     </div></div></div>`;
   }).join('');
-  // restore preserved speak selection/text
-  const _sl2=document.getElementById('speak-lang'), _st2=document.getElementById('speak-text');
-  if(_sl2&&_keepLang) _sl2.value=_keepLang;
-  if(_st2&&_keepText!=null) _st2.value=_keepText;
-  wireSpeak();
 }
 function wireSpeak(){
   const b=document.getElementById('speak-btn'); if(!b) return;
@@ -862,6 +873,68 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('.mkfetch'
   b.disabled=true; b.textContent='learning…'; await postIngest({url:b.dataset.url,source:b.dataset.name}); await refresh(); b.disabled=false; b.textContent='Fetch & learn'; });
 
 loadPhases().then(refresh); loadSources();
+wireSpeak();   // Analyze & Speak now lives in a stable card; bind it once on load.
+
+// ---- Voice diagnostics: pinpoint exactly why a language won't speak -----------
+let _vdText='';
+async function runVoiceDiag(){
+  const box=$('voice-diag'); box.style.display='block'; box.textContent='Running voice diagnostics…';
+  const lang=(($('speak-lang')||{}).value)||'en';
+  const NAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
+  const L=[];
+  L.push('QueryBook voice diagnostics — '+new Date().toISOString());
+  L.push('Browser: '+navigator.userAgent);
+  L.push('Selected language: '+(NAMES[lang]||lang)+' ('+lang+')');
+  L.push('');
+  // 1) server side
+  try{ const s=await (await fetch('api/language/speech')).json();
+    L.push('SERVER voice engine: '+((s.tts&&s.tts.engine)||'none')+'  available='+(s.tts&&s.tts.available));
+  }catch(e){ L.push('SERVER voice engine: (could not read) '+e); }
+  // 2) browser voices
+  if(!('speechSynthesis' in window)){ L.push('BROWSER speechSynthesis: NOT supported'); finishVD(L); return; }
+  _loadVoices();
+  // voices can be empty on first call — wait briefly
+  if(!_qbVoices.length){ await new Promise(r=>{ let d=false; const f=()=>{if(d)return;d=true;_loadVoices();r();};
+    try{window.speechSynthesis.addEventListener('voiceschanged',f,{once:true});}catch(e){} setTimeout(f,600); }); }
+  L.push('BROWSER total voices: '+_qbVoices.length);
+  const forLang=_rankVoices(lang);
+  L.push('Voices for '+(NAMES[lang]||lang)+' ('+forLang.length+'), best first:');
+  if(!forLang.length) L.push('   (none — your system has no '+(NAMES[lang]||lang)+' voice)');
+  forLang.forEach((v,i)=>{ const cloud=/online|natural/i.test(v.name||'');
+    L.push('   '+(i===0?'→ ':'  ')+v.name+'  ['+v.lang+']  '+(v.localService?'LOCAL':'cloud')+(cloud?' (Online/Natural — often silent)':'')+(i===0?'  ← will be used':'')); });
+  L.push('');
+  // 3) live playback test on the top candidate
+  L.push('LIVE TEST: speaking a test word and checking if audio actually starts…');
+  const word={en:'hello',es:'hola',fr:'bonjour',de:'hallo',pt:'olá',it:'ciao',sv:'hej',nl:'hallo'}[lang]||'hello';
+  const result=await new Promise(resolve=>{
+    let started=false, done=false;
+    const cand=forLang[0];
+    if(!cand){ resolve({ok:false,reason:'no voice for this language'}); return; }
+    const u=new SpeechSynthesisUtterance(word); u.lang=cand.lang; u.voice=cand;
+    u.onstart=()=>{started=true;}; u.onend=()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name});} };
+    u.onerror=(e)=>{ if(!done){done=true;resolve({ok:false,voice:cand.name,reason:(e&&e.error)||'error'});} };
+    try{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch(e){ resolve({ok:false,reason:String(e)}); return; }
+    setTimeout(()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name,reason:started?'':'no audio within 2s (voice is silent)'});} },2000);
+  });
+  if(result.ok) L.push('   ✓ AUDIO PLAYED using "'+result.voice+'". Speech works for this language.');
+  else L.push('   ✗ NO AUDIO'+(result.voice?(' from "'+result.voice+'"'):'')+(result.reason?(' — '+result.reason):'')+'.');
+  L.push('');
+  // 4) verdict + fix
+  if(result.ok){ L.push('VERDICT: working. If you still hear nothing, check your system volume/output device.'); }
+  else if(!forLang.length){
+    L.push('VERDICT: your computer has NO '+(NAMES[lang]||lang)+' voice installed.');
+    L.push('FIX: Windows Settings → Time & language → Speech → Add voices → add '+(NAMES[lang]||lang)+',');
+    L.push('     OR install the free espeak-ng for offline audio in every language.');
+  } else {
+    const allCloud=forLang.every(v=>/online|natural/i.test(v.name||'')||!v.localService);
+    L.push('VERDICT: a '+(NAMES[lang]||lang)+' voice exists but produced no audio'+(allCloud?' (all available voices are cloud "Online/Natural" voices, which Edge/Chrome often fail to play).':'.'));
+    L.push('FIX: add a LOCAL '+(NAMES[lang]||lang)+' voice (Windows Settings → Speech), or install the free espeak-ng.');
+  }
+  finishVD(L);
+}
+function finishVD(L){ _vdText=L.join('\n'); $('voice-diag').textContent=_vdText; $('voice-diag-copy').style.display=''; }
+if($('voice-diag-btn')) $('voice-diag-btn').onclick=runVoiceDiag;
+if($('voice-diag-copy')) $('voice-diag-copy').onclick=function(){ if(navigator.clipboard&&_vdText){ navigator.clipboard.writeText(_vdText).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='select & copy';}); } };
 
 // ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
 (function(){
