@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.27 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.28 · 2026-10-01</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -132,6 +132,15 @@
     <div id="teach-detail" class="note" style="margin-top:8px"></div>
   </div>
 
+  <!-- ALL LANGUAGES AT A GLANCE -->
+  <div class="card" id="readiness-card">
+    <h2>All languages — status at a glance</h2>
+    <p class="sub">Every language has the same full support as English's vocabulary layer:
+    a real dictionary, translation both ways, and pronunciation. Press <b>Teach</b> on any row to
+    build it out. This table updates live.</p>
+    <div id="readiness" style="overflow-x:auto"><span class="note">loading…</span></div>
+  </div>
+
   <!-- TRANSLATE -->
   <div class="card" id="translate-card">
     <h2>Translate</h2>
@@ -139,12 +148,15 @@
     It uses what it has learned — <b>word by word from the dictionary, no LLM, no guessing</b>:
     any word it doesn't know yet is left as-is and marked, and it tells you the coverage.</p>
     <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <select id="tr-dir" style="padding:8px 12px;font-size:15px"></select>
+      <label class="note">From</label>
+      <select id="tr-src" style="padding:8px 12px;font-size:15px"></select>
+      <label class="note">to</label>
+      <select id="tr-dst" style="padding:8px 12px;font-size:15px"></select>
       <button class="btn" id="tr-go">Translate</button>
       <button class="btn ghost" id="tr-speak" style="display:none">🔊 Speak result</button>
-      <span id="tr-cov" class="note"></span>
     </div>
-    <textarea id="tr-in" placeholder="Type text to translate…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px"></textarea>
+    <textarea id="tr-in" placeholder="Type text in any supported language…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px"></textarea>
+    <div id="tr-cov" class="note" style="margin-top:6px"></div>
     <div id="tr-out" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:16px;line-height:1.6"></div>
     <div id="tr-pairs" class="note" style="margin-top:8px"></div>
   </div>
@@ -159,7 +171,8 @@
       <div><h2 style="margin:0">Phase 1 progress — English structure</h2>
         <p class="sub" id="hero-sub">Loading…</p></div>
       <div class="row">
-        <button class="btn big" id="start-phase1">▶ Start building English</button>
+        <button class="btn big" id="run-all-english">▶ Build English — run all 4 phases</button>
+        <button class="btn ghost" id="start-phase1">Phase 1 only</button>
         <button class="btn ghost" id="stop-phase1" hidden>Pause</button>
       </div>
     </div>
@@ -461,6 +474,18 @@ function browserSpeak(text, lang){
   }catch(e){ return {spoke:false}; }
 }
 try{ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged=function(){}; } }catch(e){}
+// Smarter speak: pick the best matching voice; if the language has no voice on this
+// device, say so clearly (and speak nothing wrong) instead of failing silently.
+function speakSmart(text, lang, btn){
+  const NAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
+  const note=(m)=>{ if(btn){ const old=btn.textContent; btn.textContent=m; setTimeout(()=>{btn.textContent=old;},2600);} };
+  if(!('speechSynthesis' in window)){ note('no speech in this browser'); return; }
+  const vs=window.speechSynthesis.getVoices()||[];
+  const has=vs.some(x=>x.lang&&x.lang.toLowerCase().slice(0,2)===lang);
+  const r=browserSpeak(text,lang);
+  if(!has && lang!=='en'){ note('⚠ no '+(NAMES[lang]||lang)+' voice on this device'); }
+  else if(r.spoke){ note('🔊 speaking…'); }
+}
 function agentRow(a){
   const st=a.status||'stopped';
   const cls = st==='running'?'running' : st==='complete'?'pass' : st==='error'?'fail' : (st==='roadmap'||st==='blocked')?'road' : 'idle';
@@ -517,6 +542,22 @@ async function mkAgent(kind,name,target){
 }
 $('start-phase1').onclick=async()=>{ $('start-phase1').disabled=true;
   await mkAgent('language','English — Phase 1',''); $('start-phase1').disabled=false; refresh(); };
+if($('run-all-english')) $('run-all-english').onclick=async()=>{
+  const b=$('run-all-english'); b.disabled=true; const old=b.textContent; b.textContent='Starting all 4 phases…';
+  try{
+    const r=await (await fetch('api/language/run_all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    b.textContent=r.ok?'✓ All 4 English phases running':'Error';
+    setTimeout(()=>{b.textContent=old;b.disabled=false;},2600);
+  }catch(e){ b.textContent='Error'; b.disabled=false; }
+  refresh();
+};
+// Teach buttons in the readiness table
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-teach]'); if(!t) return;
+  const lang=t.dataset.teach; const sel=$('teach-lang'); if(sel){ sel.value=lang; }
+  const go=$('teach-go'); if(go) go.click();
+  try{ $('teach-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
+});
 const _sl=$('start-learn'); if(_sl) _sl.onclick=async()=>{
   const sel=$('learn-lang'); const code=sel.value; const name=sel.options[sel.selectedIndex].text;
   _sl.disabled=true; $('learn-note').textContent='Starting…';
@@ -580,29 +621,56 @@ if($('teach-pause')) $('teach-pause').onclick=async()=>{
   if(_teachTimer) clearInterval(_teachTimer); $('teach-status').textContent='Paused.'; $('teach-pause').style.display='none';
 };
 
-// ---- Translate ------------------------------------------------------------
-const TR_DIRS=[['en','es','English → Spanish'],['es','en','Spanish → English'],
-  ['en','fr','English → French'],['fr','en','French → English']];
-(function initTr(){ const sel=$('tr-dir'); if(!sel) return;
-  sel.innerHTML=TR_DIRS.map((d,i)=>`<option value="${i}">${d[2]}</option>`).join(''); })();
+// ---- Translate (auto-detect source) ---------------------------------------
+const TR_LANGS=[['es','Spanish'],['fr','French'],['de','German'],['pt','Portuguese'],
+  ['it','Italian'],['sv','Swedish'],['nl','Dutch']];
+(function initTr(){
+  const s=$('tr-src'), d=$('tr-dst'); if(!s||!d) return;
+  s.innerHTML='<option value="auto">Auto-detect</option><option value="en">English</option>'
+    +TR_LANGS.map(l=>`<option value="${l[0]}">${l[1]}</option>`).join('');
+  d.innerHTML='<option value="en">English</option>'+TR_LANGS.map(l=>`<option value="${l[0]}">${l[1]}</option>`).join('');
+  s.value='auto'; d.value='es';
+})();
 let _trLast=null;
 if($('tr-go')) $('tr-go').onclick=async()=>{
-  const d=TR_DIRS[+$('tr-dir').value]; const text=$('tr-in').value.trim();
+  const src=$('tr-src').value, dst=$('tr-dst').value, text=$('tr-in').value.trim();
   if(!text){ $('tr-cov').textContent='Type some text first.'; return; }
   $('tr-go').disabled=true; $('tr-cov').textContent='Translating…';
   try{
-    const r=await (await fetch('api/language/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,src:d[0],dst:d[1]})})).json();
-    if(r.error){ $('tr-cov').textContent='Error: '+r.error; $('tr-go').disabled=false; return; }
-    _trLast={text:r.translation,lang:d[1]};
+    const r=await (await fetch('api/language/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,src,dst})})).json();
+    if(r.error){ $('tr-cov').textContent='Error: '+esc(r.error); $('tr-go').disabled=false; return; }
+    _trLast={text:r.translation,lang:r.dst};
     $('tr-out').style.display='block'; $('tr-out').textContent=r.translation;
-    $('tr-cov').innerHTML=`Coverage: <b>${r.coverage_pct}%</b> (${r.translated}/${r.words} words from the dictionary)`;
+    let det='';
+    if(r.detected){ det=` · <b>auto-detected ${esc(r.detected.detected_name)}</b> (${r.detected.confidence_pct}% match)`; }
+    $('tr-cov').innerHTML=`${esc(r.src_name)} → ${esc(r.dst_name)}${det} · coverage <b>${r.coverage_pct}%</b> (${r.translated}/${r.words} words)`;
     const unknown=(r.pairs||[]).filter(p=>!p.known).map(p=>esc(p.src));
     $('tr-pairs').innerHTML=unknown.length?('Not in dictionary yet (left as-is): '+unknown.map(u=>`<code>${u}</code>`).join(' ')):'';
     $('tr-speak').style.display='';
   }catch(e){ $('tr-cov').textContent='Error: '+e; }
   $('tr-go').disabled=false;
 };
-if($('tr-speak')) $('tr-speak').onclick=function(){ if(_trLast){ try{ browserSpeak(_trLast.text,_trLast.lang); }catch(e){} } };
+if($('tr-speak')) $('tr-speak').onclick=function(){ if(_trLast){ speakSmart(_trLast.text,_trLast.lang,this); } };
+
+// ---- Per-language readiness table (idiot-proof status) --------------------
+async function loadReadiness(){
+  const el=$('readiness'); if(!el) return;
+  try{
+    const d=await (await fetch('api/language/readiness')).json();
+    const audio=d.offline_audio_engine;
+    const rows=(d.languages||[]).map(r=>{
+      const yn=b=>b?'<span style="color:#2e9e78">✓</span>':'<span style="color:#c77">—</span>';
+      return `<tr><td><b>${esc(r.language)}</b></td>`
+        +`<td>${(r.words_learned||0).toLocaleString()} / ${(r.words_available||0).toLocaleString()}</td>`
+        +`<td>${yn(r.can_translate)}</td><td>${yn(r.can_pronounce)}</td>`
+        +`<td>${audio?yn(true):'browser voice'}</td>`
+        +`<td><button class="btn" style="font-size:11px;padding:3px 9px" data-teach="${r.lang}">Teach</button></td></tr>`;
+    }).join('');
+    el.innerHTML=`<table><thead><tr><th>Language</th><th>Words learned / available</th><th>Translate</th><th>Pronounce</th><th>Speak audio</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+      +`<p class="note" style="margin-top:6px">Every language has a full dictionary (~3,700+ words). <b>Translate</b> and <b>pronounce</b> work with no install. <b>Speak audio</b>: ${audio?('offline via '+esc(audio)):'uses your browser voice (English always; other languages if your system has that voice). Install espeak-ng for offline audio in every language.'}</p>`;
+  }catch(e){}
+}
+loadReadiness(); setInterval(loadReadiness, 4000);
 
 async function loadDetail(){
   const sel=$('detail-lang'); if(!sel) return;

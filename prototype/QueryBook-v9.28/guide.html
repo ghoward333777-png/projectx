@@ -85,7 +85,7 @@
     <a href="#create">Create a Fact Unit</a>
     <a href="#verify">Verify &amp; query</a>
     <a href="#chat">Grounded chat</a>
-    <a href="#language">Language Lab (learn English)</a>
+    <a href="#language">Language Lab (learn, translate, speak)</a>
     <a href="#agents">Agents &amp; roles</a>
     <a href="#awake">24×7 keep-awake</a>
     <a href="#llm">Connecting an LLM</a>
@@ -144,7 +144,7 @@
       <tr><th>Screen</th><th>Route</th><th>For</th></tr>
       <tr><td><b>Console</b></td><td><code>/dashboard</code></td><td>Harvest, watch the store grow, create/verify facts, run agents, keep-awake.</td></tr>
       <tr><td><b>Chat</b></td><td><code>/</code></td><td>Ask questions; get cited, gated answers or an honest refusal.</td></tr>
-      <tr><td><b>Language Lab</b></td><td><code>/language</code></td><td>Teach QueryBook English structure from text/pages (SLPL).</td></tr>
+      <tr><td><b>Language Lab</b></td><td><code>/language</code></td><td>Teach any language in one click, translate (auto-detect), speak, and build English in four phases.</td></tr>
       <tr><td><b>Pipeline demo</b></td><td><code>/console</code></td><td>Step-by-step view of plan → retrieve → gate → compose → check.</td></tr>
     </table>
 
@@ -198,34 +198,65 @@
     <b>forbidden to add anything not in the facts</b>. The answer always carries a
     <code>response_provenance_hash</code>.</p>
 
-    <h2 id="language">Language Lab — learn English on its own <span class="badge b-built">Built (structural)</span> <span class="badge b-road">Roadmap (neural LEL)</span></h2>
-    <p>The Language Lab (<code>/language</code>) builds English in documented developmental
-    <b>phases, driven by agents</b>. Click <b>“Start building English”</b> and a Phase-1 agent runs
-    on a bundled English corpus (no internet needed), driving the four Transition-Gate thresholds
-    24×7 until <b>Phase 1 completes</b>. The Console shows a “Build English first” banner until the
-    gate opens. Phase 1 learns the <i>structure</i> of English — no dictionary, no grammar rules, no
-    LLM — measuring and storing:</p>
+    <h2 id="language">Language Lab — learn &amp; translate languages <span class="badge b-built">Built (deterministic)</span></h2>
+    <p>The Language Lab (<code>/language</code>) is organized around one idea: <b>English is the
+    foundation language</b>, learned in four phases; <b>every other language</b> is taught in one
+    click. A legend at the top of the page shows which language each phase targets.</p>
+
+    <h3>Teach QueryBook a language — one click</h3>
+    <p>Pick a language in the <b>“Teach QueryBook a language”</b> card and press the button. QueryBook
+    then does everything automatically — no agents to wire, nothing to run by hand:</p>
     <ul>
-      <li><b>Grapheme inventory</b> — which letters appear and how often.</li>
-      <li><b>Phoneme approximation</b> — a <i>rule-seeded</i> grapheme→sound map (an initial inventory that seeds learning; a learned pronunciation engine is roadmap).</li>
-      <li><b>Syllables</b> — vowel-group segmentation.</li>
-      <li><b>Lexical stability</b> — do the common words hold steady as more text arrives?</li>
-      <li><b>Co-occurrence density</b> — how richly words pair up.</li>
-      <li><b>Pattern saturation</b> — is the flow of <i>new</i> word patterns slowing down?</li>
+      <li><b>Vocabulary</b> — ~3,700–4,000 words per language from a bundled bilingual dictionary.</li>
+      <li><b>Pronunciation</b> — IPA, syllables, and stress for every word (works with no install).</li>
+      <li><b>Translation</b> — each word linked to its English meaning(s).</li>
     </ul>
-    <p>These feed the one-way <b>Transition Gate</b> (four thresholds). When all four are met the
-    <b>structural phase completes</b>. Everything learned is written to the store as Fact Units in
-    the <code>language</code> domain, so it's queryable and cited like any other knowledge.</p>
-    <p>The page shows all four phases: <b>Phase 1 — Structural priming</b> (built, runs here),
-    <b>Phase 2 — Semantic grounding</b>, <b>Phase 3 — Multilingual delta</b>, and
-    <b>Phase 4 — Speech output</b> (roadmap). Each phase has its own agent; the roadmap-phase agents
-    <b>refuse to run</b> and name the engine they need rather than fabricate.</p>
+    <p>A live progress bar shows words learned / total, pronounced, and translated. The
+    <b>“All languages — status at a glance”</b> table shows every language's readiness; press
+    <b>Teach</b> on any row to build it.</p>
+
+    <h3>Translate (auto-detects the source language)</h3>
+    <p>The <b>Translate</b> card translates between English and any supported language. Leave
+    <b>From</b> on <b>Auto-detect</b> and QueryBook senses the source language for you; pick the
+    <b>to</b> language and press Translate. It is <b>word-by-word from the dictionary — no LLM, no
+    guessing</b>: any word it doesn't know is left as-is and flagged, and it reports a coverage %.
+    Press <b>🔊 Speak result</b> to hear it. (Word-by-word means grammar isn't adjusted — e.g.
+    Spanish <i>el/la</i> agreement — which is the honest limit of a dictionary translator.)</p>
+
+    <h3>English — the four phases</h3>
+    <p>English is learned in four phases, all <b>built and deterministic</b> (no LLM). Press
+    <b>“Build English — run all 4 phases”</b> to run the whole pipeline automatically, or
+    <b>“Phase 1 only”</b> to run just the first:</p>
+    <ul>
+      <li><b>Phase 1 — Structural priming:</b> grapheme inventory, rule-seeded phonemes, syllables,
+      lexical stability, co-occurrence, pattern saturation; drives the one-way Transition Gate.</li>
+      <li><b>Phase 2 — Semantic grounding:</b> grounds words from a bundled public-domain dictionary
+      (Webster's 1913) and self-grounds against your verified store; every meaning carries a source.</li>
+      <li><b>Phase 3 — Multilingual delta / translation:</b> maps English to/from other languages from
+      the bundled bilingual dictionaries.</li>
+      <li><b>Phase 4 — Speech:</b> pronunciation analysis (G2P phonemes, syllables, stress) and spoken
+      audio through your computer's built-in voice.</li>
+    </ul>
+    <p>Everything learned is written to the store as cited Fact Units in the <code>language</code>
+    domain, so it's queryable like any other knowledge.</p>
+
+    <h3>Speech — what needs no install, and what does</h3>
+    <p><b>Pronunciation (IPA) always works</b>, for every language, with no install. <b>Spoken
+    audio</b> uses your computer's voices: <b>English is always available</b>; other languages speak
+    in Chrome/Edge only if your system has that voice. For guaranteed offline audio in <i>every</i>
+    language, install the free <b>espeak-ng</b> and QueryBook uses it automatically.</p>
+
+    <h3>Diagnostics — if anything looks wrong</h3>
+    <p>The <b>Diagnostics</b> card (and <code>python qb_api.py diag</code>) runs a full self-check:
+    the dictionary source, the store and its index, a live write-and-read test, and an
+    <b>all-languages matrix</b> (words, translation, pronunciation, speech per language). It lists any
+    problems in plain words — press <b>Copy report</b> and send it if you need help.</p>
+
     <div class="callout warn"><b>Honest boundary.</b> This is the deterministic prototype of the
-    Language Expression Layer. Phase 1 measures structure and <i>suppresses semantics</i>.
-    Word→meaning grounding (Phase 2), the trained neural model, multilingual transfer (Phase 3), and
-    speech synthesis (Phase 4) are the LEL research program (<span class="badge b-road">Roadmap</span>),
-    not built here. The grapheme→phoneme map is rule-seeded and the gate thresholds are the prototype
-    calibration; gate “open” means <i>structural readiness</i>, not comprehension.</div>
+    Language Expression Layer. Translation is <b>dictionary word-by-word</b> (demo bilingual data,
+    MUSE, CC BY-NC) — accurate per word, but not grammar-aware; the trained neural model and neural
+    vocoder remain the roadmap. The grapheme→phoneme map is rule-seeded; gate thresholds are the
+    prototype calibration.</div>
 
     <h2 id="agents">Agents &amp; roles <span class="badge b-built">Built</span> <span class="badge b-road">+ roadmap roles</span></h2>
     <p>Agents are saved jobs that run on their own schedule (24×7) as background threads and survive
@@ -267,6 +298,12 @@
       <tr><td><code>GET /api/domain_logic</code></td><td>The live domains + their strategies (feeds the selector).</td></tr>
       <tr><td><code>POST /api/language/ingest</code></td><td><code>{"text": "..."}</code> or <code>{"url": "..."}</code> → learn structure, store facts. Add <code>"preview": true</code> to analyze without storing.</td></tr>
       <tr><td><code>GET /api/language/status</code></td><td>Current language model + Transition Gate.</td></tr>
+      <tr><td><code>POST /api/language/teach</code></td><td><code>{"lang":"es"}</code> → one-click: start the complete learner (vocabulary + pronunciation + translation).</td></tr>
+      <tr><td><code>POST /api/language/run_all</code></td><td>Start all four English phases automatically.</td></tr>
+      <tr><td><code>POST /api/language/translate</code></td><td><code>{"text":"…","src":"auto","dst":"en"}</code> → dictionary translation; <code>src:"auto"</code> auto-detects the source.</td></tr>
+      <tr><td><code>GET /api/language/detect?text=…</code></td><td>Auto-sense which language text is written in.</td></tr>
+      <tr><td><code>GET /api/language/readiness</code></td><td>Per-language status: words, translation, pronunciation, speech.</td></tr>
+      <tr><td><code>GET /api/language/diag?lang=es</code></td><td>Full diagnostics incl. all-languages matrix + live write/read test.</td></tr>
       <tr><td><code>GET /api/agent_roles</code></td><td>The grounded agent-role catalog.</td></tr>
     </table>
 

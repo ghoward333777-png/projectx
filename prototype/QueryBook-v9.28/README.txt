@@ -87,30 +87,43 @@ Reliability (new):
   * "Clear stopped / errored"  one click removes finished/errored agents.
 
 Top menu:
-  * Language Lab   teach QueryBook English from scratch. Paste text, fetch one or
-                   more phonics/grammar pages, OR load text files from your
-                   computer; it learns the STRUCTURE of English (letters, sounds,
-                   syllables, word patterns) with no LLM and stores every
-                   measurement as a Fact Unit. Watch the four Transition Gate
-                   thresholds fill in, and see the Learning-progress chart plot
-                   them over time.
+  * Language Lab   learn languages, translate, and speak. It is built around one
+                   idea: ENGLISH is the foundation language (learned in four
+                   phases); EVERY OTHER language is taught in ONE CLICK. A legend
+                   at the top shows which language each phase targets.
 
-                   PHASE 2 — SEMANTIC GROUNDING (NEW, and NO LLM):
-                   Once Phase 1 has learned words, click "Start Phase 2 —
-                   dictionary + store grounding". It attaches MEANING from two
-                   sources QueryBook can point to and audit:
-                     (a) a bundled PUBLIC-DOMAIN dictionary (Webster's 1913) —
-                         writes  english word "x" · means · <definition>, and
-                     (b) self-grounding — links each word to the verified Fact
-                         Units it already appears in in your store.
-                   It is fully deterministic: no internet, no API key, no LLM.
-                   Every meaning carries a real source you can check. (LLMs are
-                   deliberately locked out of Phase 2 — a live API test can prove
-                   a connection works but never that a meaning is TRUE. A future
-                   "suggestor" mode may propose meanings that are accepted only
-                   when they agree with the dictionary.)
-                   (Phases 3-4 — multilingual, speech — remain roadmap and refuse
-                   rather than fabricate; the page says so plainly.)
+                   TEACH A LANGUAGE — ONE CLICK:
+                   In "Teach QueryBook a language", pick a language and press the
+                   button. QueryBook does the rest automatically — builds the
+                   VOCABULARY (~3,700-4,000 words), the PRONUNCIATION of every word,
+                   and the TRANSLATIONS to/from English. A progress bar shows it
+                   climb. No agents to start, nothing to run by hand. The
+                   "All languages - status at a glance" table shows every
+                   language's readiness; press Teach on any row.
+
+                   TRANSLATE (AUTO-DETECTS THE SOURCE):
+                   The Translate card translates between English and any supported
+                   language. Leave "From" on Auto-detect and QueryBook senses the
+                   language for you; pick the "to" language and press Translate.
+                   It is word-by-word FROM THE DICTIONARY - no LLM, no guessing:
+                   unknown words are left as-is and flagged, with a coverage %.
+                   Press the speaker button to hear the result.
+
+                   BUILD ENGLISH - ALL FOUR PHASES (one button):
+                   Press "Build English - run all 4 phases" to run the whole
+                   English pipeline automatically (structure -> meaning ->
+                   translation -> speech), all deterministic, no LLM. Or press
+                   "Phase 1 only" for just the first.
+
+                   SPEECH: pronunciation (IPA) always works with no install.
+                   Spoken AUDIO uses your computer's voices - English is always
+                   there; other languages speak in Chrome/Edge if your system has
+                   that voice. Install the free espeak-ng for offline audio in
+                   EVERY language.
+
+                   DIAGNOSTICS: the Diagnostics card (or: python qb_api.py diag)
+                   runs a full self-check, including an all-languages matrix, and
+                   lists any problem in plain words with a Copy button.
   * Guide          the full online user guide for every feature.
   * Chat           ask questions; get cited answers or an honest "UNKNOWN".
 

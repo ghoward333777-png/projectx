@@ -635,6 +635,49 @@ def english_to_lang_map(lang):
     return out
 
 
+_LANG_VOCAB_SETS = {}
+
+def _lang_word_set(lang):
+    """A set of known word-forms for a language, for language detection. English uses the
+    bilingual english headwords; others use their foreign word forms. Cached."""
+    lang = (lang or "").lower()
+    if lang in _LANG_VOCAB_SETS:
+        return _LANG_VOCAB_SETS[lang]
+    if lang == "en":
+        s = set()
+        for lg in load_bilingual():
+            if not str(lg).startswith("_"):
+                s |= set(english_to_lang_map(lg).keys())
+    else:
+        s = set(bilingual_word_map(lang).keys())
+    _LANG_VOCAB_SETS[lang] = s
+    return s
+
+
+def detect_language(text):
+    """Auto-sense which language a piece of text is written in, by matching its words against
+    every bundled dictionary (English included). Deterministic, no LLM. Returns the best guess
+    plus per-language scores so the UI can show its reasoning and the user can override."""
+    text = (text or "").strip()
+    toks = [t.lower() for t in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
+    cand = ["en"] + [k for k in load_bilingual().keys() if not str(k).startswith("_")]
+    scores = {}
+    if toks:
+        for lg in cand:
+            ws = _lang_word_set(lg)
+            hits = sum(1 for t in toks if t in ws)
+            scores[lg] = round(100.0 * hits / len(toks), 1)
+    best = max(scores, key=lambda k: scores[k]) if scores else "en"
+    # If nothing matched at all, fall back to English.
+    if not scores or scores.get(best, 0) == 0:
+        best = "en"
+    ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+    return {"text": text, "detected": best, "detected_name": LANG_NAMES.get(best, best),
+            "confidence_pct": scores.get(best, 0.0),
+            "scores": [{"lang": k, "language": LANG_NAMES.get(k, k), "score": v}
+                       for k, v in ranked if v > 0][:5]}
+
+
 def translatable_pairs():
     """Language pairs the bundled dictionaries can translate (both directions with English)."""
     langs = [k for k in load_bilingual().keys() if not str(k).startswith("_")]
@@ -654,6 +697,16 @@ def translate(text, src, dst):
     text = (text or "").strip()
     if not text:
         return {"error": "empty text", "src": src, "dst": dst}
+    detected = None
+    # Auto-sense the source language when asked (src="auto" or blank).
+    if src in ("auto", ""):
+        det = detect_language(text)
+        detected = det
+        src = det["detected"]
+        # If the detected source equals the target, flip to translate the other way
+        # (usually detected language -> English) so the action still does something useful.
+        if src == dst:
+            dst = "en" if src != "en" else (dst if dst != "en" else "es")
     if src == dst:
         return {"error": "source and target are the same language", "src": src, "dst": dst}
     # Pick the lookup table for this direction.
@@ -693,6 +746,8 @@ def translate(text, src, dst):
             rendered.append(tok)
     coverage = round(100.0 * known / total, 1) if total else 0.0
     return {"src": src, "dst": dst, "input": text,
+            "src_name": LANG_NAMES.get(src, src), "dst_name": LANG_NAMES.get(dst, dst),
+            "detected": detected,
             "translation": "".join(rendered),
             "words": total, "translated": known, "coverage_pct": coverage,
             "pairs": [p for p in pairs if p["src"].strip()],
@@ -1452,9 +1507,59 @@ def diagnostics(store_dir, lang="es"):
         try: shutil.rmtree(tmp, ignore_errors=True)
         except Exception: pass
 
+    # 6) EVERY language at a glance — vocabulary, translation, speech. This is the matrix the
+    #    UI shows so no language is quietly empty.
+    matrix = []
+    for lg in sorted(LANG_NAMES):
+        if lg == "en":
+            continue
+        corpus = len(_corpus_words(lg))
+        has_tr = bool(english_to_lang_map(lg)) and bool(bilingual_word_map(lg))
+        learned = language_learning_status(store_dir, lg).get("vocab_learned", 0)
+        row = {"lang": lg, "language": LANG_NAMES.get(lg, lg),
+               "words_available": corpus, "words_learned": learned,
+               "can_translate": has_tr,
+               "can_pronounce": (lg in G2P_RULES) or bool(_espeak_exe()),
+               "can_speak_audio": bool(_espeak_exe()) or (lg in SPEAKABLE)}
+        matrix.append(row)
+        if corpus <= 40:
+            out["ok"] = False
+            out["problems"].append("%s has only %d words — its dictionary did not load."
+                                   % (LANG_NAMES.get(lg, lg), corpus))
+        if not has_tr:
+            out["problems"].append("%s cannot translate yet — no bundled dictionary." % LANG_NAMES.get(lg, lg))
+    out["languages_matrix"] = matrix
+
+    # 7) Speech reality check (so "only English speaks" is explained, not mysterious).
+    out["speech"] = {
+        "offline_audio_engine": _espeak_exe() or None,
+        "offline_audio_available_for_all_languages": bool(_espeak_exe()),
+        "browser_voice_fallback": "Chrome/Edge speak any language for which your system has a voice",
+        "note": ("With espeak-ng installed, EVERY language speaks offline. Without it, spoken audio "
+                 "uses your browser's voices — English is always present; other languages speak only "
+                 "if your system has that voice. Pronunciation (IPA) always works for every language.")}
+
     if not out["problems"]:
         out["problems"].append("No problems detected — learning reads and writes correctly on this machine.")
     return out
+
+
+def language_readiness(store_dir):
+    """Compact per-language readiness for the UI: words available/learned, translation, speech.
+    Lets the Language Lab show each language's true status so none looks mysteriously empty."""
+    rows = []
+    espeak = bool(_espeak_exe())
+    for lg in sorted(LANG_NAMES):
+        if lg == "en":
+            continue
+        corpus = len(_corpus_words(lg))
+        learned = language_learning_status(store_dir, lg).get("vocab_learned", 0)
+        rows.append({"lang": lg, "language": LANG_NAMES.get(lg, lg),
+                     "words_available": corpus, "words_learned": learned,
+                     "can_translate": bool(english_to_lang_map(lg)),
+                     "can_pronounce": (lg in G2P_RULES) or espeak,
+                     "offline_audio": espeak})
+    return {"languages": rows, "offline_audio_engine": espeak}
 
 
 # The documented developmental phases (Bible LEL chapter). "built" phases run in

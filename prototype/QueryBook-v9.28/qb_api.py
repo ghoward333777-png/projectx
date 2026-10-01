@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.27"
+BUILD = "v9.28"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -343,7 +343,7 @@ class H(BaseHTTPRequestHandler):
         if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
                           "/api/language/ingest", "/api/language/speak", "/api/language/translate",
-                          "/api/language/teach", "/api/mirror", "/api/help"):
+                          "/api/language/teach", "/api/language/run_all", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -466,9 +466,10 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, out)
         if u.path == "/api/language/translate":
             # Deterministic dictionary translation (no LLM). text + src + dst.
+            # src defaults to "auto" — the source language is auto-sensed.
             text = (body.get("text") or "").strip()
-            src = (body.get("src") or "en").lower()
-            dst = (body.get("dst") or "es").lower()
+            src = (body.get("src") or "auto").lower()
+            dst = (body.get("dst") or "en").lower()
             if not text:
                 return self._send(400, {"error": "text required"})
             r = qb_language.translate(text, src, dst)
@@ -494,6 +495,28 @@ class H(BaseHTTPRequestHandler):
                                         "words_to_learn": total})
             except Exception as e:
                 return self._send(500, {"error": "could not start learner: " + str(e)})
+        if u.path == "/api/language/run_all":
+            # One-click automation of the whole English pipeline: Phase 1 (structure) →
+            # Phase 2 (meaning) → Phase 3 (translation) → Phase 4 (speech). Each is a
+            # deterministic agent; we start (or resume) all four. Idiot-proof: one button.
+            plan = [("language", "English — Phase 1 (structure)"),
+                    ("lang_semantic", "English — Phase 2 (meaning)"),
+                    ("lang_multilingual", "English — Phase 3 (translation)"),
+                    ("lang_speech", "English — Phase 4 (speech)")]
+            started = []
+            try:
+                snap = AGENTS.snapshot().get("agents", [])
+                for kind, name in plan:
+                    ex = next((a for a in snap if a.get("kind") == kind), None)
+                    if ex:
+                        AGENTS.control(ex["id"], "resume"); started.append({"kind": kind, "id": ex["id"], "reused": True})
+                    else:
+                        a = AGENTS.create(name, kind, interval=2)
+                        AGENTS.control(a["id"], "start"); started.append({"kind": kind, "id": a["id"], "reused": False})
+                return self._send(200, {"ok": True, "started": started,
+                                        "message": "All four English phases are running automatically."})
+            except Exception as e:
+                return self._send(500, {"error": "could not start English phases: " + str(e)})
         if u.path == "/api/language/ingest":
             try:
                 if body.get("preview"):
@@ -750,6 +773,11 @@ class H(BaseHTTPRequestHandler):
                     except Exception as e:
                         d["agents"] = [{"error": repr(e)}]
                     self._send(200, d)
+                elif u.path == "/api/language/readiness":
+                    # Per-language readiness matrix for the UI (words, translation, speech).
+                    self._send(200, qb_language.language_readiness(DATA_DIR))
+                elif u.path == "/api/language/detect":
+                    self._send(200, qb_language.detect_language(q.get("text", "")))
                 elif u.path == "/api/language/status":
                     self._send(200, qb_language.status(DATA_DIR))
                 elif u.path == "/api/language/phases":
