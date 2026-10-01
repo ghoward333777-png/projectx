@@ -3867,3 +3867,27 @@ FEATURE COUNT: 207 (202 + 5 LIL features, [199]-[203]); [199]-[203] are SPEC
 (design), not yet BUILT. Cross-refs: LIL Voiceprint & Identity Specification
 (Word); Provisional Patent Section IX ([0032]-[0036]), claims 31-38, FIG. 33-34;
 Bible amendment "Language & Identity Linking (LIL) (2026-10-01)".
+
+
+================================================================
+ADDITIVE REVISION - DRAWINGS & DESCRIPTIONS CONSOLIDATION (2026-10-01)
+================================================================
+Housekeeping/consolidation (no new feature; feature count unchanged at 207).
+The QueryBook patent DRAWINGS and the DESCRIPTIONS of same are brought current
+to the full, unified figure set:
+  - One QueryBook figure set, FIG. 1-34: language & speech subsystem (LEL;
+    FIG. 1-8, 31-32), QueryBook platform (FIG. 9-30), and the LIL voiceprint &
+    identity subsystem (FIG. 33-34).
+  - Reference Numerals key completed to span 100-1026 (language 100-999 plus the
+    LIL 1000-series 1000-1026); the Brief Description of the Drawings covers all
+    34 figures.
+  - A standalone companion volume, QueryBook-Drawings-Description.pdf (Drawings +
+    Reference Numerals + Brief Description, FIG. 1-34), and an all-figures sheet
+    QueryBook-Drawings-FIG1-34.pdf, regenerated from the consolidated Provisional
+    Patent Application.
+  - Superseded, stale standalone artifacts removed: QueryBook-Drawings-FIG01-22,
+    QueryBook-Drawings-FIG1-30, and the QueryBook-22-Figures-2026-09-29 bundle.
+Counsel note (unchanged): the platform-figure numeral series and the language/
+LIL series are still to be consolidated into one QueryBook numeral series and
+finalized to 37 CFR 1.84 before filing. Cross-refs: consolidated QueryBook
+Provisional Patent Application; Bible drawings-consolidation note (2026-10-01).
