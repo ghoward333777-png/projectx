@@ -5,6 +5,11 @@ __pycache__/
 
 # Throwaway stores / scratch
 *.tmp
+# Runtime fact stores created when the local server/CLI runs
+mystore/
+querybook_store.txt
+out.wav
+sp.wav
 
 # Rust build artifacts
 rust/target/
