@@ -1127,78 +1127,104 @@ _STOPS   = set('ptkbdgʔ')          # stops → gap + burst
 _APPROX  = {'l': (360, 1300, 2600), 'ɾ': (400, 1300, 2600), 'r': (400, 1300, 2600),
             'ʎ': (300, 2000, 2800), 'j': (300, 2200, 3000), 'w': (320, 800, 2300), 'ʋ': (400, 1400, 2400)}
 
-def _syn_vowel(buf, rnd, f1, f2, f3, dur, f0=120.0, amp=0.26):
-    n = int(_SYN_SR * dur)
-    import math
-    for i in range(n):
-        t = i / _SYN_SR
-        env = min(1.0, i / (0.02 * _SYN_SR)) * min(1.0, (n - i) / (0.02 * _SYN_SR))  # 20ms fade in/out
-        # glottal buzz (a few harmonics of F0) shaped toward the formants
-        s = 0.0
-        s += 0.5 * math.sin(2 * math.pi * f0 * t)
-        s += 0.9 * math.sin(2 * math.pi * f1 * t)
-        s += 0.5 * math.sin(2 * math.pi * f2 * t)
-        s += 0.2 * math.sin(2 * math.pi * f3 * t)
-        buf.append(amp * env * s / 2.1)
-
-def _syn_noise(buf, rnd, dur, amp=0.18, low=False):
-    n = int(_SYN_SR * dur)
-    prev = 0.0
-    for i in range(n):
-        env = min(1.0, i / (0.01 * _SYN_SR)) * min(1.0, (n - i) / (0.01 * _SYN_SR))
-        w = rnd.uniform(-1, 1)
-        if low:                     # voiced-ish: low-pass the noise a little
-            w = 0.5 * w + 0.5 * prev; prev = w
-        buf.append(amp * env * w)
-
-def _syn_silence(buf, dur):
-    for _ in range(int(_SYN_SR * dur)):
-        buf.append(0.0)
-
 def synthesize_speech_wav(text, lang="en"):
-    """Deterministic formant synthesis of `text` from its IPA. Returns WAV bytes (16kHz
-    mono 16-bit). Works for every language with no install. No LLM, no cloud."""
-    import io, wave, struct, random, re as _re
-    rnd = random.Random(1234567)                 # fixed seed → deterministic audio
+    """Deterministic SOURCE-FILTER formant synthesis of `text` from its IPA.
+
+    This is a proper (compact) speech synthesizer, not summed sine tones:
+      • source  — a continuous glottal pulse train at F0 (voiced) or white noise (unvoiced),
+                  with phase/state carried across phonemes so there are no clicks/buzz;
+      • filter  — three 2-pole resonators at the phoneme's formants F1/F2/F3, whose
+                  centre frequencies GLIDE from the previous phoneme for smooth transitions.
+    Returns WAV bytes (16 kHz mono 16-bit). Works for every language, no install, no cloud,
+    no LLM. Robotic but intelligible. Deterministic (fixed noise seed)."""
+    import io, wave, struct, random, math, re as _re
+    SR = _SYN_SR
+    rnd = random.Random(20251001)
+
+    # ---- a 2-pole resonator (biquad band-pass), state kept across the whole utterance ----
+    class Res:
+        def __init__(self): self.y1 = self.y2 = 0.0; self.a1 = 0.0; self.a2 = 0.0; self.g = 0.0
+        def set(self, f, bw):
+            r = math.exp(-math.pi * bw / SR); th = 2 * math.pi * f / SR
+            self.a1 = 2 * r * math.cos(th); self.a2 = -(r * r)
+            self.g = (1 - r) * math.sqrt(1 - 2 * r * math.cos(2 * th) + r * r)
+        def step(self, x):
+            y = self.g * x + self.a1 * self.y1 + self.a2 * self.y2
+            self.y2 = self.y1; self.y1 = y; return y
+    R1, R2, R3 = Res(), Res(), Res()
+
+    F0 = 118.0                      # base pitch (Hz)
+    out = []
+    phase = 0.0                     # glottal phase accumulator (carried across phonemes)
+    cur = [500.0, 1500.0, 2500.0]   # current formant state, glided toward each target
+
+    def seg(target, dur, voiced, amp, noise_amt=0.0):
+        nonlocal phase
+        n = max(1, int(SR * dur))
+        glide = int(0.03 * SR)      # 30ms glide into the target formants
+        for i in range(n):
+            # glide formants from previous values to the target
+            for k in range(3):
+                if i < glide:
+                    cur[k] += (target[k] - cur[k]) * (1.0 / max(1, glide - i))
+                else:
+                    cur[k] = target[k]
+            R1.set(cur[0], 80); R2.set(cur[1], 110); R3.set(cur[2], 160)
+            # amplitude envelope (8ms fade in/out) to avoid clicks
+            env = min(1.0, i / (0.008 * SR)) * min(1.0, (n - i) / (0.008 * SR))
+            # excitation source
+            if voiced:
+                phase += F0 / SR
+                src = 0.0
+                if phase >= 1.0:
+                    phase -= 1.0; src = 1.0        # glottal impulse
+                src -= 0.5 * (1.0 if (phase < F0 / SR) else 0.0)  # slight DC balance
+                if noise_amt:                      # voiced fricative: add breath
+                    src += noise_amt * rnd.uniform(-1, 1)
+            else:
+                src = rnd.uniform(-1, 1)           # unvoiced: noise
+            y = R1.step(src) + 0.6 * R2.step(src) + 0.3 * R3.step(src)
+            out.append(amp * env * y)
+
+    def gap(dur):
+        for _ in range(int(SR * dur)): out.append(0.0)
+
     words = [w for w in _re.findall(r"[^\W\d_]+", (text or ""), _re.UNICODE)][:12]
-    buf = []
-    for wi, w in enumerate(words):
+    for w in words:
         a = analyze_pronunciation(w, lang)
-        ipa = (a.get("ipa") or "").strip().strip("/")
-        if not ipa:
-            ipa = w.lower()
+        ipa = (a.get("ipa") or "").strip().strip("/") or w.lower()
         chars = [c for c in ipa if c not in " ˈˌ.|‖"]
         j = 0
         while j < len(chars):
-            c = chars[j]
-            nxt = chars[j + 1] if j + 1 < len(chars) else ''
+            c = chars[j]; nxt = chars[j + 1] if j + 1 < len(chars) else ''
             longv = (nxt == 'ː')
-            dur_v = 0.16 if longv else 0.11
             if c in _VOWEL_FORMANTS:
-                f1, f2, f3 = _VOWEL_FORMANTS[c]; _syn_vowel(buf, rnd, f1, f2, f3, dur_v)
+                seg(list(_VOWEL_FORMANTS[c]), 0.18 if longv else 0.13, True, 0.9)
                 if longv: j += 1
             elif c in _NASALS:
-                f1, f2, f3 = _NASALS[c]; _syn_vowel(buf, rnd, f1, f2, f3, 0.09, amp=0.2)
+                seg(list(_NASALS[c]), 0.10, True, 0.7)
             elif c in _APPROX:
-                f1, f2, f3 = _APPROX[c]; _syn_vowel(buf, rnd, f1, f2, f3, 0.07, amp=0.22)
+                seg(list(_APPROX[c]), 0.08, True, 0.8)
             elif c in _STOPS:
-                _syn_silence(buf, 0.035); _syn_noise(buf, rnd, 0.018, amp=0.22)
+                gap(0.04); seg([1800, 2200, 2800], 0.02, False, 0.5)   # closure + burst
             elif c in _FRIC_VL:
-                _syn_noise(buf, rnd, 0.10, amp=0.16)
+                seg([2600, 4000, 6000], 0.11, False, 0.45)              # hiss
             elif c in _FRIC_VD:
-                _syn_noise(buf, rnd, 0.09, amp=0.13, low=True)
+                seg([400, 1600, 2600], 0.09, True, 0.55, noise_amt=0.6) # voiced hiss
             else:
-                _syn_vowel(buf, rnd, 500, 1500, 2500, 0.05, amp=0.12)   # neutral filler
+                seg([500, 1500, 2500], 0.06, True, 0.5)                 # neutral filler
             j += 1
-        _syn_silence(buf, 0.12)       # pause between words
-    if not buf:
-        _syn_silence(buf, 0.2)
-    # write WAV
+        gap(0.11)
+    if not out:
+        gap(0.2)
+    # normalize to a safe peak
+    peak = max((abs(s) for s in out), default=1.0) or 1.0
+    k = 0.3 * 32767 / peak
     bio = io.BytesIO()
-    wv = wave.open(bio, "wb"); wv.setnchannels(1); wv.setsampwidth(2); wv.setframerate(_SYN_SR)
+    wv = wave.open(bio, "wb"); wv.setnchannels(1); wv.setsampwidth(2); wv.setframerate(SR)
     frames = bytearray()
-    for s in buf:
-        v = int(max(-1.0, min(1.0, s)) * 32767)
+    for s in out:
+        v = int(max(-32767, min(32767, s * k)))
         frames += struct.pack("<h", v)
     wv.writeframes(bytes(frames)); wv.close()
     return bio.getvalue()
