@@ -338,4 +338,53 @@
     </footer>
   </main>
 </div>
+
+<script>
+// ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
+(function(){
+  // Auto-label the top navigation on every page (so menu items explain themselves).
+  var NAVTIPS={'/dashboard':'Console: start/stop harvesting facts, see totals, manage agents.',
+    '/':'Chat: ask questions and get cited answers (or an honest UNKNOWN).',
+    '/language':'Language Lab: teach languages, translate, and speak.',
+    '/guide':'Guide: the full user manual for every feature.',
+    '/monitor':'Monitor: live system health, store size, agents, and links to open from another device.',
+    '/voice':'Voice Lab: two-way voice, tone/volume, and voice matching.'};
+  function navKey(h){ if(!h) return ''; h=h.replace(/^\.?\//,'').replace(/\.html$/,'').toLowerCase();
+    var m={'':'/','chat':'/','dashboard':'/dashboard','live':'/dashboard','console':'/dashboard',
+      'language':'/language','lang':'/language','guide':'/guide','help':'/guide',
+      'monitor':'/monitor','status':'/monitor','voice':'/voice'}; return m[h]||('/'+h); }
+  try{ document.querySelectorAll('nav a[href]').forEach(function(a){
+    if(!a.getAttribute('data-tip')){ var k=navKey(a.getAttribute('href')); if(NAVTIPS[k]) a.setAttribute('data-tip',NAVTIPS[k]); }
+  }); }catch(e){}
+  let tip=null, hideT=null;
+  function ensure(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.style.cssText='position:fixed;z-index:9999;max-width:280px;background:#11201b;color:#eaf4ef;'
+      +'border:1px solid #2e5c4e;border-radius:10px;padding:9px 12px;font:13px/1.45 system-ui,sans-serif;'
+      +'box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .12s;'
+      +'display:none';
+    document.body.appendChild(tip); return tip;
+  }
+  function show(el){
+    const t=el.getAttribute('data-tip'); if(!t) return;
+    const n=ensure(); n.textContent=t; n.style.display='block';
+    const r=el.getBoundingClientRect();
+    // position below the element, clamped to the viewport
+    n.style.left='-9999px'; n.style.top='0px'; n.style.opacity='0';
+    requestAnimationFrame(()=>{
+      const w=n.offsetWidth, h=n.offsetHeight;
+      let x=r.left+r.width/2-w/2; x=Math.max(8,Math.min(x,window.innerWidth-w-8));
+      let y=r.bottom+8; if(y+h>window.innerHeight-8) y=r.top-h-8;
+      n.style.left=x+'px'; n.style.top=Math.max(8,y)+'px'; n.style.opacity='1';
+    });
+  }
+  function hide(){ if(hideT)clearTimeout(hideT); hideT=setTimeout(()=>{ if(tip){tip.style.opacity='0';tip.style.display='none';} },60); }
+  document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip]'); if(el){ if(hideT)clearTimeout(hideT); show(el);} });
+  document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip]'); if(el) hide(); });
+  document.addEventListener('focusin',e=>{ const el=e.target.closest('[data-tip]'); if(el) show(el); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',hide);
+})();
+</script>
 </body></html>

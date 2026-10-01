@@ -90,14 +90,14 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.29 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.30 · 2026-10-01</span>
   <nav>
-    <a href="/dashboard">Console</a>
-    <a href="/">Chat</a>
-    <a class="active" href="/language">Language Lab</a>
-    <a href="/guide">Guide</a>
-    <a href="/monitor">Monitor</a>
-    <a href="/voice">Voice</a>
+    <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
+    <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
+    <a class="active" href="/language" data-tip="Language Lab: teach languages, translate, and speak (you are here).">Language Lab</a>
+    <a href="/guide" data-tip="Guide: the full user manual for every feature.">Guide</a>
+    <a href="/monitor" data-tip="Monitor: live system health, store size, agents, and links to open from another device.">Monitor</a>
+    <a href="/voice" data-tip="Voice Lab: two-way voice, tone/volume, and voice matching.">Voice</a>
   </nav>
 </header>
 
@@ -119,13 +119,14 @@
     builds the <b>vocabulary</b>, the <b>pronunciation</b> of every word, and the <b>translations</b>
     to/from English. Watch it climb — you don't need to start agents or run anything by hand.</p>
     <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <select id="teach-lang" style="padding:8px 12px;font-size:15px">
+      <select id="teach-lang" style="padding:8px 12px;font-size:15px" data-tip="Choose which language to teach, then press “Teach this language”.">
         <option value="es">Spanish</option><option value="fr">French</option>
         <option value="de">German</option><option value="pt">Portuguese</option>
         <option value="it">Italian</option><option value="sv">Swedish</option>
         <option value="nl">Dutch</option></select>
-      <button class="btn big" id="teach-go">▶ Teach this language</button>
-      <button class="btn ghost" id="teach-pause" style="display:none">Pause</button>
+      <button class="btn big" id="teach-go" data-tip="Start learning the language chosen in the dropdown — vocabulary, pronunciation and translations, automatically.">▶ Teach this language</button>
+      <button class="btn big" id="teach-all" data-tip="Start learning EVERY language at once (German, Spanish, French, Italian, Portuguese, Dutch, Swedish). They all learn in the background.">▶ Teach ALL languages</button>
+      <button class="btn ghost" id="teach-pause" style="display:none" data-tip="Pause the current language learner. Press Teach again to resume where it left off.">Pause</button>
       <span id="teach-status" class="note"></span>
     </div>
     <div class="meter" style="margin-top:12px"><i id="teach-fill" style="width:0%"></i><span id="teach-pct">0%</span></div>
@@ -149,11 +150,11 @@
     any word it doesn't know yet is left as-is and marked, and it tells you the coverage.</p>
     <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <label class="note">From</label>
-      <select id="tr-src" style="padding:8px 12px;font-size:15px"></select>
+      <select id="tr-src" style="padding:8px 12px;font-size:15px" data-tip="The language you are translating FROM. Leave on Auto-detect to let QueryBook sense it."></select>
       <label class="note">to</label>
-      <select id="tr-dst" style="padding:8px 12px;font-size:15px"></select>
-      <button class="btn" id="tr-go">Translate</button>
-      <button class="btn ghost" id="tr-speak" style="display:none">🔊 Speak result</button>
+      <select id="tr-dst" style="padding:8px 12px;font-size:15px" data-tip="The language you are translating TO."></select>
+      <button class="btn" id="tr-go" data-tip="Translate the text below, word-by-word from the dictionary (no guessing). Shows a coverage %.">Translate</button>
+      <button class="btn ghost" id="tr-speak" style="display:none" data-tip="Speak the translated text aloud using your computer’s voice.">🔊 Speak result</button>
     </div>
     <textarea id="tr-in" placeholder="Type text in any supported language…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px"></textarea>
     <div id="tr-cov" class="note" style="margin-top:6px"></div>
@@ -171,8 +172,8 @@
       <div><h2 style="margin:0">Phase 1 progress — English structure</h2>
         <p class="sub" id="hero-sub">Loading…</p></div>
       <div class="row">
-        <button class="btn big" id="run-all-english">▶ Build English — run all 4 phases</button>
-        <button class="btn ghost" id="start-phase1">Phase 1 only</button>
+        <button class="btn big" id="run-all-english" data-tip="Run all four English phases automatically: structure → meaning → translation → speech.">▶ Build English — run all 4 phases</button>
+        <button class="btn ghost" id="start-phase1" data-tip="Run only Phase 1 (English structure): letters, sounds, syllables, word patterns.">Phase 1 only</button>
         <button class="btn ghost" id="stop-phase1" hidden>Pause</button>
       </div>
     </div>
@@ -296,8 +297,8 @@
         <option value="de">German</option><option value="pt">Portuguese</option>
         <option value="it">Italian</option><option value="sv">Swedish</option>
         <option value="nl">Dutch</option></select>
-      <button class="btn big" id="run-diag">▶ Run diagnostics</button>
-      <button class="btn ghost" id="copy-diag" style="display:none">Copy report</button>
+      <button class="btn big" id="run-diag" data-tip="Run a full self-check (dictionaries, store, every language, live write/read test) and list any problems in plain words.">▶ Run diagnostics</button>
+      <button class="btn ghost" id="copy-diag" style="display:none" data-tip="Copy the diagnostics report to paste and send for help.">Copy report</button>
       <span id="diag-verdict" class="note"></span>
     </div>
     <pre id="diag-out" style="display:none;white-space:pre-wrap;word-break:break-word;background:#0e1310;color:#cfe8dd;border:1px solid #28312b;border-radius:10px;padding:12px;margin-top:10px;max-height:420px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace"></pre>
@@ -613,6 +614,23 @@ if($('teach-go')) $('teach-go').onclick=async()=>{
   }catch(e){ $('teach-status').textContent='Error: '+e; }
   $('teach-go').disabled=false;
 };
+if($('teach-all')) $('teach-all').onclick=async()=>{
+  const b=$('teach-all'); b.disabled=true; const old=b.textContent; b.textContent='Starting all languages…';
+  try{
+    const r=await (await fetch('api/language/teach_all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.error){ $('teach-status').textContent='Error: '+esc(r.error); }
+    else {
+      const n=(r.started||[]).length;
+      $('teach-status').innerHTML='Teaching <b>all '+n+' languages</b> automatically — watch the table below fill in.';
+      // point the progress bar at the first one so there's a live bar too
+      if(r.started&&r.started[0]){ _teachLang=r.started[0].lang; _teachTotal=r.started[0].words_to_learn||0;
+        if(_teachTimer) clearInterval(_teachTimer); _teachTimer=setInterval(teachPoll,1500); teachPoll(); }
+      try{ $('readiness-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
+    }
+    b.textContent='✓ All languages learning'; setTimeout(()=>{b.textContent=old;b.disabled=false;},2600);
+  }catch(e){ $('teach-status').textContent='Error: '+e; b.textContent=old; b.disabled=false; }
+  loadReadiness();
+};
 if($('teach-pause')) $('teach-pause').onclick=async()=>{
   try{ const snap=await (await fetch('api/agents')).json();
     for(const a of (snap.agents||[])) if(a.kind==='lang_learn'&&(a.target||'').toLowerCase()===_teachLang&&a.status==='running')
@@ -753,5 +771,52 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('.mkfetch'
   b.disabled=true; b.textContent='learning…'; await postIngest({url:b.dataset.url,source:b.dataset.name}); await refresh(); b.disabled=false; b.textContent='Fetch & learn'; });
 
 loadPhases().then(refresh); loadSources();
+
+// ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
+(function(){
+  // Auto-label the top navigation on every page (so menu items explain themselves).
+  var NAVTIPS={'/dashboard':'Console: start/stop harvesting facts, see totals, manage agents.',
+    '/':'Chat: ask questions and get cited answers (or an honest UNKNOWN).',
+    '/language':'Language Lab: teach languages, translate, and speak.',
+    '/guide':'Guide: the full user manual for every feature.',
+    '/monitor':'Monitor: live system health, store size, agents, and links to open from another device.',
+    '/voice':'Voice Lab: two-way voice, tone/volume, and voice matching.'};
+  function navKey(h){ if(!h) return ''; h=h.replace(/^\.?\//,'').replace(/\.html$/,'').toLowerCase();
+    var m={'':'/','chat':'/','dashboard':'/dashboard','live':'/dashboard','console':'/dashboard',
+      'language':'/language','lang':'/language','guide':'/guide','help':'/guide',
+      'monitor':'/monitor','status':'/monitor','voice':'/voice'}; return m[h]||('/'+h); }
+  try{ document.querySelectorAll('nav a[href]').forEach(function(a){
+    if(!a.getAttribute('data-tip')){ var k=navKey(a.getAttribute('href')); if(NAVTIPS[k]) a.setAttribute('data-tip',NAVTIPS[k]); }
+  }); }catch(e){}
+  let tip=null, hideT=null;
+  function ensure(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.style.cssText='position:fixed;z-index:9999;max-width:280px;background:#11201b;color:#eaf4ef;'
+      +'border:1px solid #2e5c4e;border-radius:10px;padding:9px 12px;font:13px/1.45 system-ui,sans-serif;'
+      +'box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .12s;'
+      +'display:none';
+    document.body.appendChild(tip); return tip;
+  }
+  function show(el){
+    const t=el.getAttribute('data-tip'); if(!t) return;
+    const n=ensure(); n.textContent=t; n.style.display='block';
+    const r=el.getBoundingClientRect();
+    // position below the element, clamped to the viewport
+    n.style.left='-9999px'; n.style.top='0px'; n.style.opacity='0';
+    requestAnimationFrame(()=>{
+      const w=n.offsetWidth, h=n.offsetHeight;
+      let x=r.left+r.width/2-w/2; x=Math.max(8,Math.min(x,window.innerWidth-w-8));
+      let y=r.bottom+8; if(y+h>window.innerHeight-8) y=r.top-h-8;
+      n.style.left=x+'px'; n.style.top=Math.max(8,y)+'px'; n.style.opacity='1';
+    });
+  }
+  function hide(){ if(hideT)clearTimeout(hideT); hideT=setTimeout(()=>{ if(tip){tip.style.opacity='0';tip.style.display='none';} },60); }
+  document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip]'); if(el){ if(hideT)clearTimeout(hideT); show(el);} });
+  document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip]'); if(el) hide(); });
+  document.addEventListener('focusin',e=>{ const el=e.target.closest('[data-tip]'); if(el) show(el); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',hide);
+})();
 </script>
 </body></html>

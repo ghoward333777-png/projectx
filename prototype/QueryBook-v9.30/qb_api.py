@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.29"
+BUILD = "v9.30"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -277,7 +277,8 @@ class H(BaseHTTPRequestHandler):
         if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
                           "/api/language/ingest", "/api/language/speak", "/api/language/translate",
-                          "/api/language/teach", "/api/language/run_all", "/api/mirror", "/api/help"):
+                          "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
+                          "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -429,6 +430,27 @@ class H(BaseHTTPRequestHandler):
                                         "words_to_learn": total})
             except Exception as e:
                 return self._send(500, {"error": "could not start learner: " + str(e)})
+        if u.path == "/api/language/teach_all":
+            # Start (or resume) the complete learner for EVERY non-English language at once.
+            langs = [lg for lg in sorted(qb_language.LANG_NAMES) if lg != "en"]
+            started = []
+            try:
+                snap = AGENTS.snapshot().get("agents", [])
+                for lang in langs:
+                    ex = next((a for a in snap if a.get("kind") == "lang_learn"
+                               and (a.get("target") or "").lower() == lang), None)
+                    if ex:
+                        AGENTS.control(ex["id"], "resume"); aid = ex["id"]
+                    else:
+                        a = AGENTS.create("Learn " + qb_language.LANG_NAMES.get(lang, lang),
+                                          "lang_learn", target=lang, interval=2)
+                        aid = a["id"]; AGENTS.control(aid, "start")
+                    started.append({"lang": lang, "language": qb_language.LANG_NAMES.get(lang, lang),
+                                    "agent_id": aid, "words_to_learn": len(qb_language._corpus_words(lang))})
+                return self._send(200, {"ok": True, "started": started,
+                                        "message": "All languages are now learning automatically."})
+            except Exception as e:
+                return self._send(500, {"error": "could not start learners: " + str(e)})
         if u.path == "/api/language/run_all":
             # One-click automation of the whole English pipeline: Phase 1 (structure) →
             # Phase 2 (meaning) → Phase 3 (translation) → Phase 4 (speech). Each is a
