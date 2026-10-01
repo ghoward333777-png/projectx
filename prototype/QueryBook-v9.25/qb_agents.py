@@ -848,7 +848,7 @@ class AgentManager:
                     for w in batch:
                         done.add(w)
                     a["_learned"] = sorted(done)
-                    a["facts"] = a.get("facts", 0) + res["vocab_added"] + res["pron_added"]
+                    a["facts"] = a.get("facts", 0) + res["vocab_added"] + res["pron_added"] + res.get("trans_added", 0)
                     a["phase"] = ("Learning %s — %d/%d words%s"
                                   % (L.LANG_NAMES.get(lang, lang), len(done), len(allw),
                                      "" if res["phonemizer"] else " (vocabulary only — install espeak-ng for pronunciation)"))

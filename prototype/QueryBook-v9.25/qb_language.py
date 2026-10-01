@@ -585,6 +585,31 @@ def available_languages():
     return [k for k in load_bilingual().keys() if not k.startswith("_")]
 
 
+_BILING_VOCAB = {}
+
+def bilingual_word_map(lang):
+    """{foreign_word: [english senses]} inverted from the bundled bilingual dictionary.
+    This gives each supported language a REAL vocabulary (thousands of words) to learn,
+    instead of only the tiny pangram starter — so es/fr keep climbing like English did.
+    Single-token letter forms only (so each can be pronounced). Cached; deterministic."""
+    lang = (lang or "").lower()
+    if lang in _BILING_VOCAB:
+        return _BILING_VOCAB[lang]
+    B = load_bilingual().get(lang) or {}
+    inv = {}
+    for en, forms in B.items():
+        if not en or str(en).startswith("_"):
+            continue
+        for f in (forms if isinstance(forms, (list, tuple)) else [forms]):
+            fl = str(f).lower().strip()
+            if not fl or (" " in fl) or not fl.isalpha():
+                continue
+            inv.setdefault(fl, set()).add(str(en).lower())
+    out = {k: sorted(v) for k, v in inv.items()}
+    _BILING_VOCAB[lang] = out
+    return out
+
+
 def acquire_language(store_dir, lang="es", words=None, max_words=None):
     """Phase-3 delta: for English words already learned in Phase 1, attach their L2 translation
     from the bundled bilingual dictionary. Reuses the English foundation; learns only the delta.
@@ -1124,6 +1149,13 @@ def _corpus_words(lang):
     for tok in re.findall(r"[^\W\d_]+", text, re.UNICODE):
         if len(tok) >= 1 and tok not in seen:
             seen.add(tok); order.append(tok)
+    # Real vocabulary from the bundled bilingual dictionary (es/fr ~2,500 words each):
+    # the language keeps climbing with words + translations + pronunciation, instead of
+    # capping at the ~37-word pangram starter and looking "stalled". Deterministic order.
+    if lang != "en":
+        for w in sorted(bilingual_word_map(lang).keys()):
+            if w not in seen:
+                seen.add(w); order.append(w)
     return order
 
 
@@ -1141,8 +1173,9 @@ def learn_language(store_dir, lang, words=None, max_words=None):
             "Bundled public-domain starter corpus (pangrams, %s)" % LANG_NAMES.get(lang, lang),
             "reference", 0.8)
     psrc = SPEECH_SOURCE if lang == "en" else (_espeak_source(lang) if _espeak_exe() else _rule_source(lang))
+    tmap = {} if lang == "en" else bilingual_word_map(lang)
     st = store.UFCSStore(store_dir)
-    vocab_added = pron_added = 0
+    vocab_added = pron_added = trans_added = 0
     sample = []
     try:
         for w in words:
@@ -1150,8 +1183,15 @@ def learn_language(store_dir, lang, words=None, max_words=None):
             if not wl or not wl.isalpha():
                 continue
             label = '%s word "%s"' % (LANG_NAMES.get(lang, lang).lower(), wl)
-            if st.add(store.make_packet(label, "attested_in", "bundled starter corpus", "+", "language", csrc, 0.8)):
+            senses = tmap.get(wl)
+            attest = "bundled bilingual dictionary" if senses else "bundled starter corpus"
+            asrc = BILINGUAL_SOURCE if senses else csrc
+            if st.add(store.make_packet(label, "attested_in", attest, "+", "language", asrc, 0.8)):
                 vocab_added += 1
+            # Translation facts: the Spanish/French word MEANS its English sense(s).
+            for en in (senses or [])[:3]:
+                if st.add(store.make_packet(label, "means", en, "+", "language", BILINGUAL_SOURCE, 0.70)):
+                    trans_added += 1
             a = analyze_pronunciation(wl, lang)
             if a["ipa"]:
                 if st.add(store.make_packet(label, "pronunciation", a["ipa"], "+", "language", psrc, 0.70)):
@@ -1164,7 +1204,7 @@ def learn_language(store_dir, lang, words=None, max_words=None):
     finally:
         st.close()
     return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": len(allw),
-            "vocab_added": vocab_added, "pron_added": pron_added,
+            "vocab_added": vocab_added, "pron_added": pron_added, "trans_added": trans_added,
             "phonemizer": bool(_espeak_exe()) or lang == "en", "sample": sample}
 
 
