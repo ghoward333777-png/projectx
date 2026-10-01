@@ -154,3 +154,17 @@ amendment *"The Language Architecture Is an Integral QueryBook Subsystem (Consol
 Patent Application in which the LEL is an integral, co-grounded subsystem (the standalone LEL
 document retained only as a language-subsystem excerpt), with the LEL and platform figures
 forming one QueryBook figure set.
+
+---
+
+## 14. Service note — UIAS (Universal Integrity Audit Service) on QueryBook primitives (2026-10-01)
+QueryBook delivers the **Universal Integrity Audit Service (UIAS)** — an independent, pre-dispute
+integrity-monitoring, audit, and leakage-defense service for other parties' systems — entirely on
+the primitives specified above: the **content-addressed, provenance-tracked Fact Unit store** is
+the sealed-record ledger (§3–§4); the **Response Provenance Hash** (§5) binds a Proof Package to
+the fingerprints used; the **Prime-Directive gate** (§5) is the Arbitration Agent's factual-only
+determination boundary (VERIFIED/CONTRADICTED/UNKNOWN; never legal); the **agent family** (§7) hosts
+the UIAS ensemble; and **fact-level erasure / hash-only storage** realizes content-not-stored and
+one-way identity. The primitives are **BUILT**; the packaged UIAS service is **[ROADMAP/SPEC]**. Full
+detail: *QueryBook UIAS — Universal Integrity Audit Service Specification*; Provisional Patent
+Section X ([0037]–[0040]), claims 39–46, FIG. 35–36; Bible UIAS amendment; Registry [204]–[209].

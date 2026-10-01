@@ -3891,3 +3891,69 @@ Counsel note (unchanged): the platform-figure numeral series and the language/
 LIL series are still to be consolidated into one QueryBook numeral series and
 finalized to 37 CFR 1.84 before filing. Cross-refs: consolidated QueryBook
 Provisional Patent Application; Bible drawings-consolidation note (2026-10-01).
+
+
+================================================================
+ADDITIVE REVISION - UNIVERSAL INTEGRITY AUDIT SERVICE (UIAS) (2026-10-01)
+================================================================
+New QueryBook-delivered SERVICE: the Universal Integrity Audit Service (UIAS) -
+a standalone, AI-powered integrity-monitoring, audit, and leakage-defense
+service that attaches to ANY monitored digital system (conventional IT, LLM
+providers, AI-agent platforms) WITHOUT modifying its architecture, and produces
+independent, pre-dispute, cryptographically sealed, continuously verified,
+complete, and admissible evidence. UIAS is QueryBook's own primitives pointed
+outward - not a new engine. STATUS: underlying primitives BUILT; packaged
+service SPEC/design.
+
+[204] 20.1 - UIAS pre-dispute sealing (seal = Fact Unit)  [SPEC]
+      Every observable event sealed at observation as a content-addressed Fact
+      Unit: content hash, one-way (non-recoverable) submitter-id hash,
+      nanosecond timestamp from a clock INDEPENDENT of the monitored system,
+      source fingerprint, sealing-agent identity. Temporal priority (sealed
+      before any dispute) is the evidentiary property. Ledger = UFCS store
+      (append-only, content-addressed, immutable).
+
+[205] 20.2 - Real-time cross-submission similarity detection  [SPEC]
+      Similarity Detection Agent compares each new sealed record to others in a
+      configurable window across submitter identities, on SEMANTIC content
+      signatures (no content stored); sets a contemporaneous cross-party anomaly
+      flag at ingestion. Uses QueryBook semantic fingerprinting.
+
+[206] 20.3 - Signed Proof Package generation  [SPEC]
+      Proof Package Agent assembles verified sealed Fact Units + similarity-log
+      entry + chronological ledger extract bound by the Response Provenance Hash
+      + Arbitration factual determination, signed under the UIAS independent
+      identity. Independent / pre-dispute / tamper-proof / complete / admissible.
+
+[207] 20.4 - Agent ensemble on the QueryBook Agent Architecture  [SPEC]
+      Seven grounded agents on the AgentManager: Ingestion, Similarity Detection,
+      Verification (continuous self-evidencing re-verification), Arbitration
+      (FACTUAL determination via the Prime-Directive gate - never legal),
+      Proof Package, Audit (meta-transparency), Connector (universal integration
+      library; no architecture change to monitored systems).
+
+[208] 20.5 - Transparency at every workflow position + integration modes  [SPEC]
+      Five positions (input boundary, processing, storage, output boundary,
+      inter-system handoff) each produce sealed attributable records; no silent
+      failure mode. Four integration modes: direct API, sidecar, gateway proxy,
+      archive ingestion. Sector configs: government IP, academic publishing,
+      legal/admin filing, commercial/software, sports wagering, lottery/
+      sweepstakes, national security/classified.
+
+[209] 20.6 - UIAS constraints (covenant-aligned)  [SPEC]
+      Does NOT: access/store/transmit submission content (hashes + semantic
+      signatures only; fact-level erasure); modify/intercept in transit (proxy
+      seals before forwarding); make LEGAL determinations (factual only);
+      require architecture change; store recoverable submitter identity (one-way
+      hashes). Deterministic, reproducible, cannot fabricate.
+
+COVENANT: UIAS inherits C1-C6 / L1-L6 unchanged - the properties that make
+QueryBook a trustworthy knowledge engine make UIAS a trustworthy witness
+(immutable content-addressed ledger; sourced + trust-scored; deductive/cited
+factual determination; deterministic & reproducible; no fabrication).
+
+FEATURE COUNT: 213 (207 + 6 UIAS features, [204]-[209]); [204]-[209] are SPEC
+(primitives BUILT). Cross-refs: UIAS Service Specification (Word); Provisional
+Patent Section X ([0037]-[0040]), claims 39-46, FIG. 35-36; Bible amendment
+"Universal Integrity Audit Service (UIAS) (2026-10-01)"; Canonical Engine Spec
+service note.

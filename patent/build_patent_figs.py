@@ -383,6 +383,58 @@ s += arrow(360, 464, 360, 492)
 s += '</svg>'
 FIGS.append((34, "LIL — Trust-Gated Voice Authentication with Anti-Spoofing", s))
 
+# ===================== FIG. 35 — UIAS sealing + cross-submission similarity over the Fact-Unit ledger =====================
+w, h = 720, 680
+s = svg_open(w, h)
+s += box(110, 16, 500, 42, ["UIAS — PRE-DISPUTE SEALING & CROSS-SUBMISSION",
+                            "SIMILARITY OVER THE FACT-UNIT LEDGER (independent evidence)"], "1100")
+s += box(40, 74, 640, 42, ["Monitored system workflow (UNMODIFIED) — agents observe at each position"], "1101")
+s += box(55, 150, 120, 44, ["Input", "boundary"], "1102")
+s += box(195, 150, 120, 44, ["Processing", "layer"], "1103")
+s += box(335, 150, 120, 44, ["Storage", "layer"], "1104")
+s += box(475, 150, 120, 44, ["Output", "boundary / handoff"], "1105")
+for x in (115,255,395,535):
+    s += arrow(x,116,x,150); s += arrow(x,194,x,230)
+s += box(55, 230, 590, 54, ["Connector Agent (adapts to existing interface) → Ingestion Agent (seal at observation)"], "1106")
+s += arrow(350, 284, 350, 308)
+s += box(150, 308, 420, 58, ["SEAL = Fact Unit: content hash · one-way submitter-id hash ·",
+                             "independent nanosecond timestamp · source fingerprint · agent id"], "1107")
+s += arrow(240, 366, 240, 392); s += arrow(460, 366, 460, 392)
+s += box(40, 392, 300, 50, ["Similarity Detection Agent", "(semantic signatures; no content)"], "1108")
+s += box(360, 392, 320, 50, ["Fact-Unit audit ledger (UFCS store:", "content-addressed, append-only, immutable)"], "1109")
+s += arrow(190, 442, 190, 468)
+s += box(60, 468, 300, 46, ["Contemporaneous anomaly flag", "(cross-party similarity, pre-dispute)"], "1110")
+s += arrow(520, 442, 520, 468)
+s += box(400, 468, 280, 46, ["Verification Agent: continuous", "re-verification (self-evidencing)"], "1111")
+s += box(150, 556, 420, 48, ["Content-not-stored · one-way identity (fact-level erasure)"], "1112", dashed=True)
+s += arrow(350, 514, 350, 556)
+s += '</svg>'
+FIGS.append((35, "UIAS — Pre-Dispute Sealing and Cross-Submission Similarity over the Fact-Unit Ledger", s))
+
+# ===================== FIG. 36 — UIAS signed Proof Package generation (independent, pre-dispute evidence) =====================
+w, h = 720, 560
+s = svg_open(w, h)
+s += box(150, 16, 430, 42, ["UIAS — SIGNED PROOF PACKAGE GENERATION",
+                            "(independent · pre-dispute · tamper-proof · complete · admissible)"], "1120")
+s += box(260, 74, 200, 44, ["Accusation / inquiry", "(legal · regulatory)"], "1121")
+s += arrow(360, 118, 360, 140)
+s += box(250, 140, 220, 46, ["Proof Package Agent"], "1122")
+s += arrow(250, 163, 120, 210); s += arrow(320, 186, 230, 210)
+s += arrow(400, 186, 490, 210); s += arrow(470, 163, 600, 210)
+s += box(40, 210, 160, 54, ["Sealed Fact Units", "+ verified seals"], "1123")
+s += box(210, 210, 150, 54, ["Similarity log", "entry"], "1124")
+s += box(370, 210, 150, 54, ["Chronological", "ledger extract (RPH)"], "1125")
+s += box(530, 210, 150, 54, ["Arbitration Agent:", "factual determination", "(Prime-Directive gate)"], "1126")
+for x in (120,285,445,605):
+    s += arrow(x,264,360,316)
+s += box(220, 316, 280, 52, ["Assemble + sign under", "UIAS independent identity"], "1127")
+s += arrow(360, 368, 360, 394)
+s += box(210, 394, 300, 46, ["Signed Proof Package", "(reproducible · independently verifiable)"], "1128")
+s += box(150, 470, 420, 44, ["Factual determinations only — legal conclusions reserved to courts/regulators"], "1129", dashed=True)
+s += arrow(360, 440, 360, 470)
+s += '</svg>'
+FIGS.append((36, "UIAS — Signed Proof Package Generation", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -409,6 +461,8 @@ descr = {
  10: "is a flow diagram of the permanent, deterministic pronunciation-and-speech quality-control battery of the reduced-to-practice embodiment, which, for each supported language and without a large language model, verifies that a phonemic transcription is produced, that the syllable count is within tolerance, and that a short phrase synthesizes to a valid audio waveform, returning a per-language report and an overall pass score, per Section VIII.",
  33: "is a data-flow diagram of the Language & Identity Linking (LIL) voiceprint enrollment and matching subsystem, in which a consent-gated capture produces an acoustic speaker embedding (voiceprint), a match against stored voiceprints is passed through a QueryBook trust gate returning VERIFIED, CONTRADICTED, or UNKNOWN, and verified identity links are written as provenance-tracked, trust-scored Fact Units in the identity graph, with cross-script name and entity resolution performed by the language subsystem, per Section IX.",
  34: "is a flow diagram of the LIL trust-gated voice authentication process, in which a claimed-identity verification produces a match score and anti-spoofing signals that feed a deterministic risk-scoring policy and a decision gate returning accept, challenge (second factor), or reject, each decision recorded as a provenance-tracked auth-event Fact Unit, per Section IX.",
+ 35: "is a block diagram of the Universal Integrity Audit Service (UIAS), in which connector and ingestion agents observe an unmodified monitored system at multiple workflow positions and seal each observable event as a content-addressed Fact Unit carrying a content hash, a one-way submitter-identity hash, an independent nanosecond timestamp, a source fingerprint, and the sealing agent's identity; a similarity-detection agent sets a contemporaneous cross-party anomaly flag over content signatures without storing content; and a verification agent continuously re-verifies the append-only Fact-Unit ledger, per Section X.",
+ 36: "is a flow diagram of the UIAS signed Proof Package generation, in which, on an accusation or inquiry, a proof-package agent assembles verified sealed Fact Units, the similarity-log entry, a chronological ledger extract bound by the response-provenance hash, and a factual determination from the arbitration agent under the Prime-Directive gate, and signs the package under the UIAS independent identity to produce independent, pre-dispute, tamper-proof, complete, and admissible evidence, per Section X.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -482,6 +536,21 @@ REFS = [
  ("1021","capture phrase + embed"),("1022","anti-spoofing (liveness/replay/synthetic)"),
  ("1023","deterministic risk-scoring policy"),("1024","authentication decision gate"),
  ("1025","second-factor challenge"),("1026","auth-event Fact Unit (provenance)"),
+ ("1100","UIAS integrity audit service"),("1101","monitored system workflow (unmodified)"),
+ ("1102","input-boundary position"),("1103","processing-layer position"),
+ ("1104","storage-layer position"),("1105","output-boundary / handoff position"),
+ ("1106","Connector + Ingestion agents (seal at observation)"),
+ ("1107","seal = Fact Unit (hash · id-hash · independent timestamp · source · agent)"),
+ ("1108","Similarity Detection Agent (semantic signatures)"),
+ ("1109","Fact-Unit audit ledger (UFCS, append-only, immutable)"),
+ ("1110","contemporaneous cross-party anomaly flag"),("1111","Verification Agent (continuous re-verification)"),
+ ("1112","content-not-stored / one-way identity (fact-level erasure)"),
+ ("1120","UIAS signed Proof Package generation"),("1121","accusation / inquiry"),
+ ("1122","Proof Package Agent"),("1123","sealed Fact Units + verified seals"),
+ ("1124","cross-submission similarity log entry"),("1125","chronological ledger extract (RPH)"),
+ ("1126","Arbitration Agent (factual determination; Prime-Directive gate)"),
+ ("1127","assemble + sign under UIAS independent identity"),("1128","signed Proof Package"),
+ ("1129","factual-only determination (legal reserved to courts/regulators)"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']
