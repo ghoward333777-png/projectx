@@ -47,8 +47,12 @@ station from your dev device, you do NOT build or type any URL:
     discover.) Both devices must be on the same network (LAN / hotspot /
     Tailscale).
 
-For password-protected remote access over the internet, use the
-START-REMOTE launchers (they set a password and bind to all interfaces).
+There is NO password and NO login — the app is always open. To reach the
+station from another device, the station must bind to your network: open
+START-WINDOWS.bat (or START-MAC.command) in Notepad/TextEdit and set
+    QB_BIND=0.0.0.0:8090
+(use 127.0.0.1:8090 to keep it to this machine only). Only do this on a
+network you trust, since there is no password.
 
 
 USING IT

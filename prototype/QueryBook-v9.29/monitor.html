@@ -57,7 +57,7 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b> — System Monitor</div>
-  <span class="badge">BUILD v9.28 · 2026-10-01</span>
+  <span class="badge">BUILD v9.29 · 2026-10-01</span>
   <nav class="nav">
     <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
     <a href="/chat">Chat</a><a href="/console">Console</a>
@@ -139,7 +139,7 @@ async function refresh(){
       `<div class="kv"><a href="${esc(u)}" style="color:#5fd0b4;text-decoration:none;font-family:ui-monospace,Consolas,monospace;word-break:break-all">${esc(u)}</a>`
       +`<button class="btn" style="padding:3px 10px;font-size:12px" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(u)}').then(()=>{this.textContent='copied'},()=>{this.textContent='copy failed'})">copy</button></div>`
     ).join('')
-      + (ac.secure?'<p class="sub" style="margin-top:8px">🔒 Secure remote mode is ON — this device will ask for your password.</p>':'')
+      + ''
       + '<p class="sub" style="margin-top:8px">Both devices must be on the same network (LAN / hotspot / Tailscale). '
       + 'The <code>http://localhost…</code> link only works on the station itself.</p>';
   }
@@ -175,7 +175,7 @@ async function refresh(){
     +kv('Voice engine',dotc(vo.available)+(vo.available?esc(vo.engine):'none'))
     +kv('espeak-ng (multilingual)',dotc(vo.espeak_ng)+(vo.espeak_ng?'installed':'not found'))
     +kv('Self-test',st.all_ok===true?`<span style="color:var(--ok)">${st.passed}/${st.total} ✓</span>`:(st.total?`<span style="color:var(--bad)">${st.passed}/${st.total}</span>`:'—'))
-    +kv('Secure remote mode',dotc(rm.secure)+(rm.secure?('ON · '+esc(rm.bind||'')):'off (localhost only)'))
+    +kv('Network bind',`<span class="mono">${esc(rm.bind||'')}</span> · no password (open)`)
     +kv('Host',`<span class="mono">${esc((d.host||{}).platform)} · py${esc((d.host||{}).python)} · ${(d.host||{}).cpus||'?'} cpu</span>`);
 
   const lg=d.languages||{};const lk=Object.keys(lg);
