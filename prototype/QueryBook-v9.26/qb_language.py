@@ -1208,6 +1208,26 @@ def learn_language(store_dir, lang, words=None, max_words=None):
             "phonemizer": bool(_espeak_exe()) or lang == "en", "sample": sample}
 
 
+def _scan_language_counts(st, prefix):
+    """Count learned vocabulary + pronunciation by scanning the stored blocks directly.
+    Works even when the SQLite index is absent (no_fql) — so the word count is never
+    silently stuck at 0 just because the fast index did not build on this machine."""
+    subs = set(); pron = 0
+    try:
+        for rec in st.iter_all():
+            n = rec.get("nucleus") or {}
+            s = n.get("subject", ""); p = n.get("predicate", "")
+            if not s.startswith(prefix):
+                continue
+            if p == "attested_in":
+                subs.add(s)
+            elif p == "pronunciation":
+                pron += 1
+    except Exception:
+        pass
+    return len(subs), pron
+
+
 def language_learning_status(store_dir, lang):
     """How much of a language has been learned (vocabulary + pronunciation)."""
     lang = (lang or "en").lower()
@@ -1215,18 +1235,136 @@ def language_learning_status(store_dir, lang):
     prefix = ('english word "' if lang == "en" else '%s word "' % LANG_NAMES.get(lang, lang).lower())
     st = store.UFCSStore(store_dir)
     vocab = pron = 0
+    counted_via = "none"
     try:
         if not st.no_fql:
-            vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
-                                  (prefix + "%",)).fetchone()[0]
-            pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?",
-                                 (prefix + "%",)).fetchone()[0]
-    except Exception:
-        pass
+            try:
+                vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                                      (prefix + "%",)).fetchone()[0]
+                pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?",
+                                     (prefix + "%",)).fetchone()[0]
+                counted_via = "index"
+            except Exception:
+                vocab = pron = 0
+        # Fallback: no index, or the index returned nothing while blocks exist — scan the
+        # blocks so the real number always shows. This is the fix for "count never increases".
+        if (st.no_fql or vocab == 0) and st.manifest.get("blocks", 0):
+            sv, sp = _scan_language_counts(st, prefix)
+            if sv or sp:
+                vocab, pron, counted_via = sv, sp, "scan"
     finally:
         st.close()
     return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": total,
-            "vocab_learned": vocab, "pronounced": pron, "phonemizer": bool(_espeak_exe()) or lang == "en"}
+            "vocab_learned": vocab, "pronounced": pron,
+            "counted_via": counted_via, "phonemizer": bool(_espeak_exe()) or lang == "en"}
+
+
+def diagnostics(store_dir, lang="es"):
+    """Full self-check for language learning, so a failing machine can hand back exactly
+    what is wrong. Safe, read-mostly: the only write is a 5-word live test into a throwaway
+    temp store (never the real one). No LLM, no network."""
+    import tempfile, shutil, platform as _pf, traceback
+    lang = (lang or "es").lower()
+    out = {"ok": True, "problems": [], "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+           "python": _pf.python_version(), "platform": _pf.platform()}
+
+    # 1) Bilingual vocabulary source
+    try:
+        p = _biling_path()
+        B = load_bilingual()
+        langs = [k for k in B.keys() if not str(k).startswith("_")]
+        out["bilingual"] = {"file_found": bool(p), "path": p, "languages": langs,
+                            "es_entries": len(B.get("es", {}) or {}),
+                            "fr_entries": len(B.get("fr", {}) or {}),
+                            "words_for_%s" % lang: len(bilingual_word_map(lang))}
+        if not p:
+            out["ok"] = False
+            out["problems"].append("Bilingual dictionary file qb_bilingual.json.gz NOT found — "
+                                   "language vocabulary falls back to the ~37-word starter only.")
+    except Exception as e:
+        out["ok"] = False; out["bilingual"] = {"error": repr(e)}
+        out["problems"].append("Bilingual load failed: %r" % e)
+
+    # 2) Corpus size the learner will walk
+    try:
+        out["corpus_words_%s" % lang] = len(_corpus_words(lang))
+        if len(_corpus_words(lang)) <= 40:
+            out["problems"].append("Corpus for '%s' is only %d words (bilingual data not merged) — "
+                                   "it will finish almost instantly and then add 0."
+                                   % (lang, len(_corpus_words(lang))))
+    except Exception as e:
+        out["ok"] = False; out["problems"].append("Corpus build failed: %r" % e)
+
+    # 3) Phonemizer
+    out["phonemizer"] = {"espeak_ng_installed": bool(_espeak_exe()),
+                         "espeak_path": _espeak_exe(),
+                         "rule_g2p_available": lang in G2P_RULES,
+                         "speakable_languages": speakable_languages()}
+
+    # 4) The real store: can we read it, and does the index exist?
+    try:
+        st = store.UFCSStore(store_dir)
+        prefix = '%s word "' % LANG_NAMES.get(lang, lang).lower()
+        idx_vocab = scan_vocab = scan_pron = 0
+        if not st.no_fql:
+            try:
+                idx_vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                                          (prefix + "%",)).fetchone()[0]
+            except Exception as e:
+                out["problems"].append("SQL index present but query failed: %r" % e)
+        scan_vocab, scan_pron = _scan_language_counts(st, prefix)
+        out["store"] = {"path": os.path.abspath(store_dir),
+                        "exists": os.path.isdir(store_dir),
+                        "blocks": st.manifest.get("blocks", 0),
+                        "total_facts_manifest": st.manifest.get("facts", 0),
+                        "fast_index_active": (not st.no_fql),
+                        "%s_vocab_via_index" % lang: idx_vocab,
+                        "%s_vocab_via_scan" % lang: scan_vocab,
+                        "%s_pron_via_scan" % lang: scan_pron}
+        st.close()
+        if st.no_fql:
+            out["problems"].append("Fast SQLite index is OFF for this store (no_fql) — counts now "
+                                   "come from a block scan; learning still works.")
+        if (not st.no_fql) and idx_vocab == 0 and scan_vocab > 0:
+            out["ok"] = False
+            out["problems"].append("INDEX MISMATCH: %d %s words are in the store but the index "
+                                   "reports 0 — this is why the count looked stuck. Scan count is correct."
+                                   % (scan_vocab, lang))
+    except Exception as e:
+        out["ok"] = False; out["store"] = {"error": repr(e), "trace": traceback.format_exc()[-800:]}
+        out["problems"].append("Could not open the store at %s: %r" % (store_dir, e))
+
+    # 5) LIVE write test into a throwaway store — proves learning writes + re-reads.
+    tmp = tempfile.mkdtemp(prefix="qb_diag_")
+    try:
+        words = _corpus_words(lang)[:5] or ["uno", "dos", "tres"]
+        r = learn_language(tmp, lang, words=words)
+        chk = language_learning_status(tmp, lang)
+        out["live_test"] = {"tmp_store": tmp, "words_tried": words,
+                            "vocab_added": r.get("vocab_added"), "pron_added": r.get("pron_added"),
+                            "trans_added": r.get("trans_added"),
+                            "reread_vocab_learned": chk.get("vocab_learned"),
+                            "reread_counted_via": chk.get("counted_via"),
+                            "sample": r.get("sample", [])[:3]}
+        if not r.get("vocab_added"):
+            out["ok"] = False
+            out["problems"].append("LIVE TEST FAILED: writing vocabulary added 0 — the store is not "
+                                   "accepting writes on this machine (disk full? permissions? read-only drive?).")
+        elif not chk.get("vocab_learned"):
+            out["ok"] = False
+            out["problems"].append("LIVE TEST: wrote words but re-reading them returned 0 — the read path "
+                                   "is broken on this machine. Send this report.")
+    except Exception as e:
+        out["ok"] = False
+        out["live_test"] = {"error": repr(e), "trace": traceback.format_exc()[-800:]}
+        out["problems"].append("LIVE TEST crashed: %r" % e)
+    finally:
+        try: shutil.rmtree(tmp, ignore_errors=True)
+        except Exception: pass
+
+    if not out["problems"]:
+        out["problems"].append("No problems detected — learning reads and writes correctly on this machine.")
+    return out
 
 
 # The documented developmental phases (Bible LEL chapter). "built" phases run in

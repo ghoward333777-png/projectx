@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.25 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.26 · 2026-10-01</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -226,6 +226,25 @@
       <table><thead><tr><th>#</th><th>Word</th><th>IPA</th><th>Syll</th><th>Stress</th><th>Meaning / translation</th></tr></thead>
       <tbody id="detail-rows"><tr><td colspan="6" class="note">Pick a language and start a learner above.</td></tr></tbody></table>
     </div>
+  </div>
+
+  <!-- DIAGNOSTICS -->
+  <div class="card">
+    <h2>Diagnostics — why isn't the word count going up?</h2>
+    <p class="sub">Runs a full self-check: the vocabulary source, the store and its index, the
+    running learners, and a <b>live write-and-read test</b>. If something is wrong it says what, in
+    plain words. <b>Click, then copy the result and send it back.</b></p>
+    <div class="formrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="diag-lang" style="padding:6px 10px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option></select>
+      <button class="btn big" id="run-diag">▶ Run diagnostics</button>
+      <button class="btn ghost" id="copy-diag" style="display:none">Copy report</button>
+      <span id="diag-verdict" class="note"></span>
+    </div>
+    <pre id="diag-out" style="display:none;white-space:pre-wrap;word-break:break-word;background:#0e1310;color:#cfe8dd;border:1px solid #28312b;border-radius:10px;padding:12px;margin-top:10px;max-height:420px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace"></pre>
   </div>
 
   <!-- LANGUAGE AGENTS -->
@@ -477,6 +496,24 @@ async function loadDetail(){
 }
 if($('detail-lang')){ $('detail-lang').onchange=loadDetail; loadDetail();
   setInterval(()=>{ const a=$('detail-auto'); if(a&&a.checked) loadDetail(); }, 2000); }
+let _diagText='';
+if($('run-diag')) $('run-diag').onclick=async()=>{
+  const btn=$('run-diag'), out=$('diag-out'), v=$('diag-verdict');
+  btn.disabled=true; v.textContent='Running…'; out.style.display='block'; out.textContent='Running the self-check (includes a live write test)…';
+  try{
+    const lang=$('diag-lang').value;
+    const d=await (await fetch('api/language/diag?lang='+encodeURIComponent(lang))).json();
+    const head=(d.ok?'STATUS: OK\n':'PROBLEMS FOUND:\n')+(d.problems||[]).map(p=>'  • '+p).join('\n');
+    _diagText=head+'\n\n'+JSON.stringify(d,null,2);
+    out.textContent=_diagText;
+    v.innerHTML=d.ok?'<b style="color:#2e9e78">No problems detected</b>':'<b style="color:#d9534f">Problem found — copy the report and send it back</b>';
+    $('copy-diag').style.display='';
+  }catch(e){ out.textContent='Diagnostics request failed: '+e+'\n(Is the server running? Try the terminal command: python qb_api.py diag)'; v.textContent=''; }
+  btn.disabled=false;
+};
+if($('copy-diag')) $('copy-diag').onclick=function(){
+  if(navigator.clipboard&&_diagText){ navigator.clipboard.writeText(_diagText).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='Copy failed — select the text';}); }
+};
 $('stop-phase1').onclick=async()=>{
   const snap=await (await fetch('api/agents')).json();
   for(const a of (snap.agents||[])) if(a.kind==='language'&&a.status==='running')

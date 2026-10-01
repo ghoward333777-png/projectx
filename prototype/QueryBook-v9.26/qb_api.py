@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.25"
+BUILD = "v9.26"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -598,18 +598,40 @@ class H(BaseHTTPRequestHandler):
                     domains = {k[len("facts_dom_"):]: v for k, v in m.items()
                                if k.startswith("facts_dom_")}
                     langs = {}
-                    if not st.no_fql:
-                        for lg in qb_language.speakable_languages():
-                            pref = ('english word "' if lg == "en"
+                    prefmap = {lg: ('english word "' if lg == "en"
                                     else qb_language.LANG_NAMES.get(lg, lg).lower() + ' word "')
+                               for lg in qb_language.speakable_languages()}
+                    indexed = False
+                    if not st.no_fql:
+                        for lg, pref in prefmap.items():
                             try:
                                 voc = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
                                 pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
+                                indexed = True
                             except Exception:
                                 voc = pron = 0
                             if voc or pron:
                                 langs[lg] = {"language": qb_language.LANG_NAMES.get(lg, lg),
                                              "vocab": voc, "pronounced": pron}
+                    # Fallback (no index, or index empty while blocks exist): ONE pass over the
+                    # blocks tallies every language — so the monitor never shows 0 when it isn't.
+                    if (not indexed or not langs) and st.manifest.get("blocks", 0):
+                        tally = {lg: {"subs": set(), "pron": 0} for lg in prefmap}
+                        try:
+                            for rec in st.iter_all():
+                                n = rec.get("nucleus") or {}
+                                s = n.get("subject", ""); p = n.get("predicate", "")
+                                for lg, pref in prefmap.items():
+                                    if s.startswith(pref):
+                                        if p == "attested_in": tally[lg]["subs"].add(s)
+                                        elif p == "pronunciation": tally[lg]["pron"] += 1
+                                        break
+                        except Exception:
+                            pass
+                        for lg, t in tally.items():
+                            if t["subs"] or t["pron"]:
+                                langs[lg] = {"language": qb_language.LANG_NAMES.get(lg, lg),
+                                             "vocab": len(t["subs"]), "pronounced": t["pron"]}
                     provs = AGENTS.providers or []
                     active = next((p for p in provs if p.get("kind") == "anthropic"
                                    or "anthropic" in (p.get("base_url") or "")), None) or (provs[0] if provs else None)
@@ -680,6 +702,23 @@ class H(BaseHTTPRequestHandler):
                     self._send(200, LAST_SELFTEST)
                 elif u.path == "/api/domain_logic":
                     self._send(200, {"domains": store.domain_list()})
+                elif u.path == "/api/language/diag":
+                    # One-click diagnostics for "the word count never increases" — reports the
+                    # vocabulary source, the store/index state, and a live write+reread test.
+                    lang = (q.get("lang") or "es").lower()
+                    d = qb_language.diagnostics(DATA_DIR, lang)
+                    d["build"] = BUILD
+                    try:
+                        d["agents"] = [{"name": a.get("name"), "kind": a.get("kind"),
+                                        "target": a.get("target"), "status": a.get("status"),
+                                        "cycles": a.get("cycles"), "facts": a.get("facts"),
+                                        "phase": a.get("phase"), "error": a.get("error"),
+                                        "learned": len(a.get("_learned") or [])}
+                                       for a in AGENTS.snapshot().get("agents", [])
+                                       if a.get("kind") == "lang_learn"]
+                    except Exception as e:
+                        d["agents"] = [{"error": repr(e)}]
+                    self._send(200, d)
                 elif u.path == "/api/language/status":
                     self._send(200, qb_language.status(DATA_DIR))
                 elif u.path == "/api/language/phases":
@@ -702,6 +741,16 @@ class H(BaseHTTPRequestHandler):
                     prefix = ('english word "' if lang == "en"
                               else qb_language.LANG_NAMES.get(lang, lang).lower() + ' word "')
                     words = {}
+                    def _absorb(s, p, o):
+                        w = s[len(prefix):-1] if (s.startswith(prefix) and s.endswith('"')) else s
+                        d = words.setdefault(w, {"word": w})
+                        if p == "pronunciation": d["ipa"] = o
+                        elif p == "syllable_count": d["syllables"] = o
+                        elif p == "stress_syllable": d["stress"] = o
+                        elif p == "attested_in": d["attested"] = True
+                        elif p == "means": d["means"] = str(o)[:140]
+                        elif p.startswith("translation_"): d.setdefault("translations", []).append(o)
+                    rows = []
                     if not st.no_fql:
                         try:
                             rows = st.db.execute(
@@ -709,15 +758,17 @@ class H(BaseHTTPRequestHandler):
                                 (prefix + "%",)).fetchall()
                         except Exception:
                             rows = []
+                    if rows:
                         for s, p, o, t in rows:
-                            w = s[len(prefix):-1] if (s.startswith(prefix) and s.endswith('"')) else s
-                            d = words.setdefault(w, {"word": w})
-                            if p == "pronunciation": d["ipa"] = o
-                            elif p == "syllable_count": d["syllables"] = o
-                            elif p == "stress_syllable": d["stress"] = o
-                            elif p == "attested_in": d["attested"] = True
-                            elif p == "means": d["means"] = o[:140]
-                            elif p.startswith("translation_"): d.setdefault("translations", []).append(o)
+                            _absorb(s, p, o)
+                    elif st.manifest.get("blocks", 0):
+                        # No index (or it returned nothing) — scan the blocks so the detail and
+                        # the count still reflect what was actually learned. Fix for stuck count.
+                        for rec in st.iter_all():
+                            n = rec.get("nucleus") or {}
+                            s = n.get("subject", "")
+                            if s.startswith(prefix):
+                                _absorb(s, n.get("predicate", ""), n.get("object", ""))
                     items = sorted(words.values(), key=lambda x: x["word"])
                     inv = {}
                     for it in items:
@@ -929,9 +980,27 @@ def _cli_discover():
     print("=" * 60, flush=True)
 
 
+def _cli_diag():
+    """Print full language-learning diagnostics to the terminal (copy/paste to send back)."""
+    import sys, json as _j
+    lang = sys.argv[2] if len(sys.argv) > 2 else "es"
+    print("Running QueryBook language diagnostics for '%s' (store: %s)…\n" % (lang, DATA_DIR), flush=True)
+    d = qb_language.diagnostics(DATA_DIR, lang)
+    d["build"] = BUILD
+    print("=" * 64)
+    print("  PROBLEMS FOUND:" if not d.get("ok") else "  STATUS: OK")
+    for pr in d.get("problems", []):
+        print("   • " + pr)
+    print("=" * 64)
+    print(_j.dumps(d, indent=2, ensure_ascii=False))
+    print("\n(Copy everything above and send it back.)", flush=True)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
         _cli_discover()
+    elif len(sys.argv) > 1 and sys.argv[1] in ("diag", "diagnose", "--diag"):
+        _cli_diag()
     else:
         main()
