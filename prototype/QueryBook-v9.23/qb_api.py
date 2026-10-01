@@ -20,7 +20,7 @@ Env:
   QB_BIND            host:port to listen on (default 127.0.0.1:8099)
   ANTHROPIC_API_KEY  optional; enables the LLM plan/compose/check layer for /api/chat
 """
-import json, os, sys, time, threading, urllib.parse
+import json, os, sys, time, threading, urllib.parse, hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +39,34 @@ DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
 START_TIME = time.time()   # server start, for the System Monitor uptime
+
+# ---- Secure Remote Mode: when QB_ACCESS_TOKEN is set, every page and API call
+# requires the password (via a login cookie or an X-QB-Token header). Unset => open
+# (localhost development, unchanged). Pair with QB_BIND=0.0.0.0:<port> to reach it
+# from your phone over a private network (e.g. Tailscale). ----
+ACCESS_TOKEN = os.environ.get("QB_ACCESS_TOKEN", "").strip()
+
+LOGIN_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width, initial-scale=1"><title>QueryBook — Sign in</title>
+<style>body{margin:0;background:#0e1310;color:#e9ede9;font:16px/1.6 system-ui,sans-serif;
+display:flex;min-height:100vh;align-items:center;justify-content:center}
+.box{background:#151b17;border:1px solid #28312b;border-radius:16px;padding:30px 28px;width:min(92vw,360px)}
+h1{font:600 22px Georgia,serif;margin:0 0 4px}.s{color:#9aa39d;font-size:13px;margin:0 0 18px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid #28312b;background:#0e1310;color:#e9ede9;font-size:16px}
+button{width:100%;margin-top:12px;padding:12px;border:none;border-radius:10px;background:#57c2a3;color:#06231c;font-weight:700;font-size:16px;cursor:pointer}
+.e{color:#e08a76;font-size:13px;margin-top:10px;min-height:16px}</style></head><body>
+<div class=box><h1>Query<span style="color:#57c2a3">Book</span></h1>
+<p class=s>Secure Remote Mode — enter the access password set on the harvesting machine.</p>
+<input id=t type=password placeholder="Access password" autofocus>
+<button id=b>Sign in</button><div class=e id=e></div></div>
+<script>
+const go=async()=>{const t=document.getElementById('t').value;document.getElementById('e').textContent='';
+try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});
+if(r.ok){location.href='/monitor';}else{document.getElementById('e').textContent='Wrong password.';}}
+catch(e){document.getElementById('e').textContent='Error: '+e;}};
+document.getElementById('b').onclick=go;
+document.getElementById('t').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+</script></body></html>"""
 
 def open_store():
     return store.UFCSStore(DATA_DIR)
@@ -133,19 +161,60 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _cookie(self, name):
+        raw = self.headers.get("Cookie", "") or ""
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
+
+    def _authed(self):
+        if not ACCESS_TOKEN:
+            return True
+        tok = self.headers.get("X-QB-Token", "") or self._cookie("qb_token")
+        try:
+            return hmac.compare_digest(str(tok), ACCESS_TOKEN)
+        except Exception:
+            return False
+
+    def _send_login_cookie(self):
+        body = json.dumps({"ok": True}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Set-Cookie",
+                         "qb_token=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000" % ACCESS_TOKEN)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirect(self, to):
+        self.send_response(302)
+        self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def log_message(self, *a): pass  # quiet; nginx logs
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
-        if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
-                          "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
-                          "/api/language/ingest", "/api/language/speak", "/api/mirror", "/api/help"):
-            return self._send(404, {"error": "unknown endpoint"})
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._send(400, {"error": "invalid JSON body"})
+        # Secure Remote Mode: /api/login exchanges the password for a cookie; everything
+        # else requires that cookie/header when a token is configured.
+        if u.path == "/api/login":
+            if ACCESS_TOKEN and hmac.compare_digest(str(body.get("token", "")), ACCESS_TOKEN):
+                return self._send_login_cookie()
+            return self._send(401, {"ok": False, "error": "wrong password"})
+        if ACCESS_TOKEN and not self._authed():
+            return self._send(401, {"error": "unauthorized — sign in at /login"})
+        if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
+                          "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
+                          "/api/language/ingest", "/api/language/speak", "/api/mirror", "/api/help"):
+            return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
                               body.get("target", ""), body.get("interval", 10),
@@ -355,6 +424,16 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
+        # Secure Remote Mode gate: show the login page / redirect when not signed in.
+        if u.path in ("/login", "/login.html"):
+            b = LOGIN_HTML.encode()
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+            return
+        if ACCESS_TOKEN and not self._authed():
+            if u.path.startswith("/api/"):
+                return self._send(401, {"error": "unauthorized — sign in at /login"})
+            return self._redirect("/login")
         if u.path in ("/", "/chat", "/chat.html"):
             return self._send_html(self._asset_path("QB_CHAT_HTML", "chat.html"))
         if u.path in ("/dashboard", "/dashboard.html", "/live"):
@@ -407,7 +486,7 @@ class H(BaseHTTPRequestHandler):
                                    or "anthropic" in (p.get("base_url") or "")), None) or (provs[0] if provs else None)
                     tts = qb_language.tts_status()
                     self._send(200, {
-                        "build": "v9.22", "date": "2026-09-30",
+                        "build": "v9.23", "date": "2026-09-30",
                         "uptime_s": round(time.time() - START_TIME, 1),
                         "host": {"platform": _pf.system(), "release": _pf.release(),
                                  "python": _pf.python_version(), "cpus": os.cpu_count()},
@@ -430,6 +509,7 @@ class H(BaseHTTPRequestHandler):
                                       "espeak_ng": bool(qb_language._espeak_exe()),
                                       "speakable": qb_language.speakable_languages()},
                             "selftest": globals().get("LAST_SELFTEST") or {"note": "run /api/selftest"},
+                            "remote": {"secure": bool(ACCESS_TOKEN), "bind": BIND},
                         },
                         "languages": langs,
                     })
@@ -483,6 +563,39 @@ class H(BaseHTTPRequestHandler):
                 elif u.path == "/api/language/speech":
                     # Phase 4 status: pronunciation-analysis coverage + OS TTS availability.
                     self._send(200, qb_language.speech_status(DATA_DIR))
+                elif u.path == "/api/language/words":
+                    # Live learning detail: every learned word with its phonic elements
+                    # (IPA, syllables, stress, source) + a phoneme inventory. For the monitor.
+                    lang = (q.get("lang") or "en").lower()
+                    prefix = ('english word "' if lang == "en"
+                              else qb_language.LANG_NAMES.get(lang, lang).lower() + ' word "')
+                    words = {}
+                    if not st.no_fql:
+                        try:
+                            rows = st.db.execute(
+                                "SELECT subject, predicate, object, trust FROM nuc WHERE subject LIKE ? LIMIT 60000",
+                                (prefix + "%",)).fetchall()
+                        except Exception:
+                            rows = []
+                        for s, p, o, t in rows:
+                            w = s[len(prefix):-1] if (s.startswith(prefix) and s.endswith('"')) else s
+                            d = words.setdefault(w, {"word": w})
+                            if p == "pronunciation": d["ipa"] = o
+                            elif p == "syllable_count": d["syllables"] = o
+                            elif p == "stress_syllable": d["stress"] = o
+                            elif p == "attested_in": d["attested"] = True
+                            elif p == "means": d["means"] = o[:140]
+                            elif p.startswith("translation_"): d.setdefault("translations", []).append(o)
+                    items = sorted(words.values(), key=lambda x: x["word"])
+                    inv = {}
+                    for it in items:
+                        for ch in (it.get("ipa") or "").strip("/"):
+                            if ch not in " ˈˌː.":
+                                inv[ch] = inv.get(ch, 0) + 1
+                    phon = sorted(({"ipa": k, "count": v} for k, v in inv.items()), key=lambda x: -x["count"])
+                    self._send(200, {"lang": lang, "language": qb_language.LANG_NAMES.get(lang, lang),
+                                     "count": len(items), "pronounced": sum(1 for i in items if i.get("ipa")),
+                                     "phonemes": phon, "words": items[:3000]})
                 elif u.path == "/api/hypotheses":
                     # LLM-proposed/projected, store-verified candidates (non-asserting; isolated domains).
                     items = []
@@ -565,7 +678,7 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.22", "date": "2026-09-30",
+                    self._send(200, {"build": "v9.23", "date": "2026-09-30",
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
                                                   "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech"]})
@@ -621,11 +734,17 @@ def main():
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.22 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
+    print("  QueryBook  BUILD v9.23 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.22 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD v9.23 started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
+    if ACCESS_TOKEN:
+        print("  SECURE REMOTE MODE: ON — a password is required; sign in at /login.", flush=True)
+        host = BIND.split(":")[0]
+        if host in ("0.0.0.0", ""):
+            print("  Reachable on this machine's network address (e.g. your Tailscale name) at port "
+                  + BIND.split(":")[-1] + " — open http://<this-machine>:" + BIND.split(":")[-1] + "/monitor", flush=True)
     print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)
     print(f"  GET /api/stats /api/fql /api/verify /api/get   ·   POST /api/chat (LLM layer: {llm})", flush=True)
     # Quality control: run the self-test battery ONCE at startup (cached for /api/health).

@@ -57,7 +57,7 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b> — System Monitor</div>
-  <span class="badge">BUILD v9.22 · 2026-09-30</span>
+  <span class="badge">BUILD v9.23 · 2026-10-01</span>
   <nav class="nav">
     <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
     <a href="/chat">Chat</a><a href="/console">Console</a>
@@ -146,7 +146,7 @@ async function refresh(){
     <td class="muted">${esc(a.phase||a.error||'')}</td></tr>`).join('')
     :'<tr><td colspan="6" class="muted">no agents running — start one from the Dashboard or Language Lab</td></tr>';
 
-  const ka=sy.keepawake||{},mi=sy.mirror||{},ll=sy.llm||{},vo=sy.voice||{},st=sy.selftest||{};
+  const ka=sy.keepawake||{},mi=sy.mirror||{},ll=sy.llm||{},vo=sy.voice||{},st=sy.selftest||{},rm=sy.remote||{};
   const dotc=b=>`<span class="dot" style="background:${b?'var(--ok)':'var(--muted)'}"></span>`;
   $('subsys').innerHTML=
      kv('Keep-awake watchdog',dotc(ka.engaged||ka.running)+(ka.engaged?'engaged':(ka.running?'on':'off')))
@@ -156,6 +156,7 @@ async function refresh(){
     +kv('Voice engine',dotc(vo.available)+(vo.available?esc(vo.engine):'none'))
     +kv('espeak-ng (multilingual)',dotc(vo.espeak_ng)+(vo.espeak_ng?'installed':'not found'))
     +kv('Self-test',st.all_ok===true?`<span style="color:var(--ok)">${st.passed}/${st.total} ✓</span>`:(st.total?`<span style="color:var(--bad)">${st.passed}/${st.total}</span>`:'—'))
+    +kv('Secure remote mode',dotc(rm.secure)+(rm.secure?('ON · '+esc(rm.bind||'')):'off (localhost only)'))
     +kv('Host',`<span class="mono">${esc((d.host||{}).platform)} · py${esc((d.host||{}).python)} · ${(d.host||{}).cpus||'?'} cpu</span>`);
 
   const lg=d.languages||{};const lk=Object.keys(lg);

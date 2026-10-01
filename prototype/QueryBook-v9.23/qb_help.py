@@ -92,6 +92,21 @@ SECTIONS = [
           "score, and a content fingerprint. Identical facts dedup to one. Facts are grouped by "
           "domain (mathematics, language, derived, hypothesis, …). The store is plain files plus an "
           "index; you can copy the store folder to back it up."},
+    {"k": "remote secure monitor phone tailscale password access network update status",
+     "t": "Secure Remote Mode (watch it from your phone)",
+     "a": "To monitor and control the harvester from another device, start it with the Secure Remote "
+          "Mode launcher (START-REMOTE-WINDOWS.bat / START-REMOTE-MAC.command). It asks for a password, "
+          "listens on your whole network, and requires sign-in at /login. Pair it with a private network "
+          "like Tailscale (install Tailscale on the harvester and your phone), then open "
+          "http://<this-machine-name>:8090/monitor on your phone and sign in. No static IP or "
+          "port-forwarding needed. Keep it on a PRIVATE network; the control buttons let you start/stop "
+          "harvesting and learners remotely. The System Monitor shows whether Secure Remote Mode is on."},
+    {"k": "learning detail progress words phonemes ipa track every word spanish slow",
+     "t": "Tracking learning in detail",
+     "a": "On the Language Lab, the 'Live learning detail' panel lists every learned word with its IPA, "
+          "syllables, stress and source, plus the phoneme inventory, refreshing live. Pick the language "
+          "to watch its words appear. A bundled language learns a fixed starter corpus (~37 words) and "
+          "then shows complete, so it finishes quickly rather than climbing forever."},
     {"k": "trouble dead link stale server 8090 version old not working refresh build badge",
      "t": "Troubleshooting",
      "a": "If a page looks old or a link seems dead, a previous server is still running on port 8090. "

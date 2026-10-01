@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.22 · 2026-09-30</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.23 · 2026-10-01</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -203,6 +203,28 @@
         <option value="nl">Dutch</option></select>
       <button class="btn big" id="start-learn">▶ Start learning</button>
       <span id="learn-note" class="note"></span>
+    </div>
+  </div>
+
+  <!-- LIVE LEARNING DETAIL -->
+  <div class="card">
+    <h2>Live learning detail</h2>
+    <p class="sub">Every word the engine has learned, with its phonic elements — <b>IPA, syllables, stress</b> —
+    its source, and the <b>phoneme inventory</b>. Updates live while a learner runs, so you can watch progress
+    word by word.</p>
+    <div class="formrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="detail-lang" style="padding:6px 10px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option><option value="en">English</option></select>
+      <span id="detail-count" class="note"></span>
+      <label class="note" style="margin-left:auto"><input type="checkbox" id="detail-auto" checked> auto-refresh</label>
+    </div>
+    <div id="detail-phon" class="note" style="margin-top:8px;line-height:2"></div>
+    <div style="overflow:auto;max-height:360px;margin-top:8px">
+      <table><thead><tr><th>#</th><th>Word</th><th>IPA</th><th>Syll</th><th>Stress</th><th>Meaning / translation</th></tr></thead>
+      <tbody id="detail-rows"><tr><td colspan="6" class="note">Pick a language and start a learner above.</td></tr></tbody></table>
     </div>
   </div>
 
@@ -440,6 +462,21 @@ const _sl=$('start-learn'); if(_sl) _sl.onclick=async()=>{
   $('learn-note').textContent='Learning '+name+' — watch Facts climb in Language agents below.';
   _sl.disabled=false; refresh();
 };
+async function loadDetail(){
+  const sel=$('detail-lang'); if(!sel) return;
+  try{
+    const d=await (await fetch('api/language/words?lang='+encodeURIComponent(sel.value))).json();
+    $('detail-count').textContent=(d.count||0)+' words learned · '+(d.pronounced||0)+' pronounced';
+    const ph=(d.phonemes||[]).slice(0,48).map(p=>`<span style="display:inline-block;font-family:monospace;font-size:12px;background:#eef1ee;border:1px solid #dde3df;border-radius:6px;padding:2px 7px;margin:2px">${esc(p.ipa)}·${p.count}</span>`).join(' ');
+    $('detail-phon').innerHTML=ph?('<b>Phoneme inventory ('+(d.phonemes||[]).length+'):</b> '+ph):'';
+    const rows=(d.words||[]).map((w,i)=>`<tr><td>${i+1}</td><td><b>${esc(w.word)}</b></td>`
+      +`<td style="font-family:monospace">${esc(w.ipa||'—')}</td><td>${esc(w.syllables||'')}</td>`
+      +`<td>${esc(w.stress||'')}</td><td class="note">${esc(w.means||((w.translations||[]).join(', '))||'')}</td></tr>`).join('');
+    $('detail-rows').innerHTML=rows||'<tr><td colspan="6" class="note">No words yet — pick a language and click “Start learning” above.</td></tr>';
+  }catch(e){}
+}
+if($('detail-lang')){ $('detail-lang').onchange=loadDetail; loadDetail();
+  setInterval(()=>{ const a=$('detail-auto'); if(a&&a.checked) loadDetail(); }, 2000); }
 $('stop-phase1').onclick=async()=>{
   const snap=await (await fetch('api/agents')).json();
   for(const a of (snap.agents||[])) if(a.kind==='language'&&a.status==='running')
