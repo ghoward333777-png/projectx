@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.36 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.37 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -284,6 +284,15 @@
       <button class="btn ghost" id="voice-diag-copy" style="display:none">Copy report</button>
       <div id="voice-diag" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font:12px/1.5 var(--mono);max-height:340px;overflow:auto"></div>
     </div>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <b style="font-size:13px">🔴 Live speech log</b>
+        <span class="note">records every speech event as it happens — click Speak, then copy this.</span>
+        <button class="btn ghost" id="speechlog-copy" style="margin-left:auto;font-size:11px;padding:3px 9px">Copy log</button>
+        <button class="btn ghost" id="speechlog-clear" style="font-size:11px;padding:3px 9px">Clear</button>
+      </div>
+      <div id="speech-log" style="margin-top:8px;white-space:pre-wrap;word-break:break-word;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:11.5px/1.5 var(--mono);max-height:240px;overflow:auto"></div>
+    </div>
   </div>
 
   <!-- LIVE LEARNING DETAIL -->
@@ -347,6 +356,27 @@
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// ---- LIVE SPEECH DIAGNOSTIC: records what happens as the app runs, persists across
+//      reloads (localStorage), so the speech problem can be pinpointed from real events. ----
+const QBLOG_KEY='qb-speechlog';
+let QBLOG=[];
+try{ QBLOG=JSON.parse(localStorage.getItem(QBLOG_KEY)||'[]'); }catch(e){ QBLOG=[]; }
+function qblog(tag, data){
+  const e={t:new Date().toISOString().slice(11,23), tag:tag, data:(data===undefined?null:data)};
+  QBLOG.push(e); if(QBLOG.length>300) QBLOG=QBLOG.slice(-300);
+  try{ localStorage.setItem(QBLOG_KEY, JSON.stringify(QBLOG)); }catch(_){}
+  try{ console.log('[QB]', e.t, tag, data!==undefined?data:''); }catch(_){}
+  try{ renderSpeechLog(); }catch(_){}
+}
+function speechLogText(){
+  return QBLOG.map(e=>e.t+'  '+e.tag+(e.data!=null?('  '+(typeof e.data==='string'?e.data:JSON.stringify(e.data))):'')).join('\n');
+}
+function renderSpeechLog(){
+  const box=$('speech-log'); if(!box) return;
+  box.textContent = QBLOG.length? speechLogText() : '(no events yet — click “Analyze & Speak”)';
+  box.scrollTop=box.scrollHeight;
+}
+qblog('page.load', {href:location.pathname, ua:navigator.userAgent.slice(0,80), tts:('speechSynthesis' in window)});
 const nf=n=>Number(n||0).toLocaleString();
 const LANG_KINDS=["language","lang_semantic","lang_multilingual","lang_speech"];
 const NAMES={phonemic_completeness:["Phonemic inventory","distinct phonemes ÷ 44 (τ1)"],
@@ -421,6 +451,7 @@ function renderPhases(gateOpen){
   const sig=JSON.stringify([gateOpen, PHASES.map(p=>[p.n,p.status])]);
   if(sig===_phSig) return;                 // don't clobber inputs on every poll
   _phSig=sig;
+  try{ qblog('phases.rerender', {audio_present_before:!!document.getElementById('speak-audio')}); }catch(_){}
   const later=PHASES.filter(p=>p.n>=2);
   $('phases-later').innerHTML=later.map(p=>{
     const isBuilt = p.status==='built';
@@ -453,7 +484,9 @@ function wireSpeak(){
     b.disabled=true; out.textContent='Analyzing…';
     try{
       const lang=(document.getElementById('speak-lang')||{}).value||'en';
+      qblog('speak.click', {lang:lang, text:t});
       const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang})})).json();
+      qblog('speak.server', {audio_b64:!!r.audio_b64, bytes:(r.audio_b64||'').length, engine:(r.tts&&r.tts.engine)||null, tts_avail:!!(r.tts&&r.tts.available), analysis:(r.analysis||[]).length});
       const items=(r.analysis||[]);
       const haveIpa=items.some(a=>a.ipa);
       let body;
@@ -463,11 +496,16 @@ function wireSpeak(){
         body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
       }
       function paint(voiceMsg){ out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}${voiceMsg}`; }
-      if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false; au.play().catch(()=>{});
+      if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false;
+        au.onplay=()=>qblog('audio.play'); au.onended=()=>qblog('audio.ended'); au.onerror=()=>qblog('audio.error',{code:(au.error&&au.error.code)});
+        au.play().then(()=>qblog('audio.play_ok')).catch(e=>qblog('audio.play_rejected',String(e)));
+        qblog('audio.show', {src_bytes:au.src.length});
         paint(`<br><i>Voice: ${esc((r.tts&&r.tts.engine)||'built-in')} ✓</i>`); }
       else { au.hidden=true;
+        qblog('speak.browser_fallback', {lang:lang});
         paint(`<br><i>Speaking…</i>`);
         browserSpeak(t, lang, bs=>{
+          qblog('speak.browser_result', bs);
           let m;
           if(bs.spoke && bs.heard) m=`<br><i>Voice: your computer’s ${esc(bs.voice||lang)} voice ✓</i>`;
           else if(bs.reason==='no-voice' || !bs.spoke) m=`<br><i>Your computer has no ${esc(_LANGNAMES[lang]||lang)} voice installed. The pronunciation above is correct; for spoken ${esc(_LANGNAMES[lang]||lang)} audio, install the free <b>espeak-ng</b>, or add the ${esc(_LANGNAMES[lang]||lang)} voice in Windows Settings → Time&nbsp;&amp;&nbsp;language → Speech.</i>`;
@@ -512,15 +550,17 @@ function _pickVoice(lang){ const r=_rankVoices(lang); return r.length?r[0]:null;
 function browserSpeak(text, lang, cb){
   if(!('speechSynthesis' in window)){ cb&&cb({spoke:false, reason:'no-tts'}); return; }
   function speakWith(cands, idx, best){
-    if(idx>=cands.length){ cb&&cb({spoke:true, matched:!!best, voice:best?best.name:null, heard:false}); return; }
+    if(idx>=cands.length){ qblog('tts.exhausted',{tried:idx}); cb&&cb({spoke:true, matched:!!best, voice:best?best.name:null, heard:false}); return; }
     const v=cands[idx];
+    try{ qblog('tts.try',{idx:idx, voice:v.name, lang:v.lang, local:!!v.localService, cloud:/online|natural/i.test(v.name||'')}); }catch(_){}
     const u=new SpeechSynthesisUtterance(text);
     u.lang=(v&&v.lang)||BCP[lang]||'en-US'; if(v) u.voice=v;
     let started=false, done=false;
     const finish=(heard)=>{ if(done) return; done=true; cb&&cb({spoke:true, matched:!!v, voice:v?v.name:null, heard:heard}); };
-    u.onstart=()=>{ started=true; };
-    u.onend=()=>{ if(started) finish(true); };
-    u.onerror=()=>{ /* this voice failed (common for cloud voices) — try the next candidate */
+    u.onstart=()=>{ started=true; qblog('tts.onstart',{voice:v.name}); };
+    u.onend=()=>{ qblog('tts.onend',{voice:v.name, started:started}); if(started) finish(true); };
+    u.onerror=(e)=>{ /* this voice failed (common for cloud voices) — try the next candidate */
+      qblog('tts.onerror',{voice:v.name, err:(e&&e.error)||'error'});
       if(done) return;
       if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
       else finish(false); };
@@ -528,12 +568,14 @@ function browserSpeak(text, lang, cb){
     catch(e){ if(idx+1<cands.length) speakWith(cands, idx+1, v); else cb&&cb({spoke:false}); return; }
     // Watchdog: if nothing started within 1.2s, this (usually cloud) voice is silent — fall back.
     setTimeout(()=>{ if(done||started) return;
+      qblog('tts.watchdog_silent',{voice:v.name});
       if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
       else finish(false);
     }, 1200);
   }
   function go(){
     const cands=_rankVoices(lang);
+    qblog('tts.candidates', cands.map(v=>({name:v.name, lang:v.lang, local:!!v.localService})));
     if(!cands.length){ cb&&cb({spoke:false, matched:false, reason:'no-voice'}); return; }
     speakWith(cands, 0, null);
   }
@@ -874,6 +916,11 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('.mkfetch'
 
 loadPhases().then(refresh); loadSources();
 wireSpeak();   // Analyze & Speak now lives in a stable card; bind it once on load.
+renderSpeechLog();
+if($('speechlog-copy')) $('speechlog-copy').onclick=function(){ const txt=speechLogText()||'(empty)';
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='select & copy';}); } };
+if($('speechlog-clear')) $('speechlog-clear').onclick=function(){ QBLOG=[]; try{localStorage.removeItem(QBLOG_KEY);}catch(_){}
+  qblog('log.cleared'); };
 
 // ---- Voice diagnostics: pinpoint exactly why a language won't speak -----------
 let _vdText='';
