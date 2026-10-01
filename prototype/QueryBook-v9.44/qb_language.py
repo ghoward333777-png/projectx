@@ -1,0 +1,1903 @@
+#!/usr/bin/env python3
+"""
+qb_language.py — QueryBook Language Lab: deterministic Sub-Language Priming Layer
+(SLPL) + English-learning-from-scratch harvester (stdlib only).
+
+WHAT THIS IS (honest scope)
+---------------------------
+This is the *deterministic, prototype* realization of the QueryBook Language
+Architecture (Bible Chapter [LX] / LEL): the parts of the Sub-Language Priming
+Layer that can be COMPUTED from ingested text today, with no external model and
+no API key. It learns the STRUCTURE of English from raw text on its own:
+grapheme inventory, a rule-seeded phoneme approximation, syllable segmentation,
+lexical stability, word co-occurrence density, prosodic proxies, and the
+four one-way Transition Gate thresholds. Everything it learns is written into
+the shared UFCS store as provenance-tracked Fact Units (domain "language").
+
+WHAT THIS IS NOT (roadmap — do not overclaim)
+---------------------------------------------
+It is NOT the full neural Language Expression Layer. Word->referent grounding,
+emergent semantics, the trained learned-parameter model, and the neural speech
+vocoder are the research program (LEL Research Gates A/B/C) and remain roadmap.
+The grapheme->phoneme mapping here is RULE-SEEDED (an initial inventory that
+seeds learning, per Bible [L02] audit-fix), not a learned G2P. Metrics are
+measured structural statistics, not a claim of language understanding.
+
+The developmental sequence is honored: this module operates in Phase 1
+(structural-acoustic) — it extracts structure and suppresses semantics. The
+Transition Gate must OPEN before Phase 2 (semantic grounding) would begin, and
+Phase 2 requires the roadmap engines, so the gate opening here reports
+"structural readiness," not comprehension.
+
+State: <store>/language_model.json holds the cumulative counters (the learned
+model). It is the source of truth for status; Fact Units are the provenance
+trail written into the store.
+"""
+import json, os, re, math, time, sys, gzip
+
+import ufcs_store as store
+
+# --------------------------------------------------------------------------
+# Rule-seeded English phoneme inventory (initial SLPL scaffold, ~44 phonemes).
+# Per Bible [L02] audit-fix: structured resources may SEED the inventory; they
+# are the starting parameters, not a retained lookup engine. A learned G2P is
+# roadmap. Digraphs are tried before single letters (left-to-right, longest
+# match). This is an APPROXIMATION for structural measurement, not correct
+# pronunciation.
+# --------------------------------------------------------------------------
+PHONEME_TARGET = 44                     # standard count of English phonemes (~44)
+_DIGRAPH = {
+    "th": "θ", "sh": "ʃ", "ch": "tʃ", "ph": "f", "wh": "w", "ng": "ŋ", "ck": "k",
+    "qu": "kw", "oo": "uː", "ee": "iː", "ea": "iː", "ou": "aʊ", "ow": "aʊ",
+    "ai": "eɪ", "ay": "eɪ", "oa": "oʊ", "oi": "ɔɪ", "oy": "ɔɪ", "au": "ɔː",
+    "aw": "ɔː", "ir": "ɜː", "er": "ɜː", "ur": "ɜː", "ar": "ɑː", "or": "ɔː",
+}
+_SINGLE = {
+    "a": "æ", "e": "ɛ", "i": "ɪ", "o": "ɒ", "u": "ʌ", "y": "ɪ",
+    "b": "b", "c": "k", "d": "d", "f": "f", "g": "g", "h": "h", "j": "dʒ",
+    "k": "k", "l": "l", "m": "m", "n": "n", "p": "p", "r": "r", "s": "s",
+    "t": "t", "v": "v", "w": "w", "x": "ks", "z": "z",
+}
+_VOWELS = set("aeiouy")
+
+# Cumulative-model size caps (bound memory; a prototype, not a corpus warehouse).
+_CAP_WORDS = 60000
+_CAP_BIGRAMS = 200000
+_CAP_TRIGRAMS = 200000
+_SATURATION_WINDOW = 4000               # W: trigrams considered "recent"
+
+# One-way Transition Gate thresholds (Bible [L08]). Calibratable; these are the
+# prototype defaults, clearly labelled as such.
+# Prototype calibration of the Transition Gate (Bible [L08] says thresholds are
+# calibrated at "Research Gate B"; these are the prototype values the bundled corpus
+# can reach over several Phase-1 agent cycles, so English learning can actually finish).
+GATE = {
+    "phonemic_completeness": 0.80,      # τ1: distinct phonemes / 44
+    "lexical_stability":     0.70,      # τ2: top-word overlap between successive ingests
+    "cooccurrence_density":  1.50,      # τ3: distinct bigrams / distinct words
+    "pattern_saturation":    0.20,      # ε : recent novel-trigram rate must fall BELOW this
+}
+
+
+def _g2p(word):
+    """Rule-seeded grapheme->phoneme approximation. Returns a list of phoneme symbols."""
+    w = re.sub(r"[^a-z]", "", word.lower())
+    out, i, n = [], 0, len(w)
+    while i < n:
+        pair = w[i:i + 2]
+        if len(pair) == 2 and pair in _DIGRAPH:
+            out.append(_DIGRAPH[pair]); i += 2; continue
+        ch = w[i]
+        if ch in _SINGLE:
+            out.append(_SINGLE[ch])
+        i += 1
+    return out
+
+
+def _syllables(word):
+    """Vowel-group heuristic syllable count (deterministic, approximate)."""
+    w = re.sub(r"[^a-z]", "", word.lower())
+    if not w:
+        return 0
+    groups = re.findall(r"[aeiouy]+", w)
+    c = len(groups)
+    if w.endswith("e") and c > 1:       # silent final 'e'
+        c -= 1
+    return max(1, c)
+
+
+def _blank_model():
+    return {
+        "version": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sources": [], "ingests": 0,
+        "total_tokens": 0, "total_chars": 0,
+        "graphemes": {}, "phonemes": {},
+        "words": {}, "prev_top": [],   # rolling top-word snapshot for lexical stability
+        "bigrams": {},
+        "trigram_recent": [], "novel_recent": [],  # rolling window of (was_novel) flags
+        "trigrams_seen_count": 0,
+        "trigram_keys": {},                     # bounded set: key -> 1
+        "sent_count": 0, "sent_len_sum": 0, "sent_len_sq": 0,
+        "questions": 0, "exclamations": 0,
+        "gate_opened": False, "gate_opened_at": None,
+        "history": [],          # gate-metric snapshots over time (capped)
+    }
+
+
+def load_model(store_dir):
+    p = os.path.join(store_dir, "language_model.json")
+    if os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return _blank_model()
+
+
+def save_model(store_dir, m):
+    os.makedirs(store_dir, exist_ok=True)
+    p = os.path.join(store_dir, "language_model.json")
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(m, f)
+    os.replace(tmp, p)
+
+
+def _trim(d, cap):
+    """Keep the `cap` highest-count keys (deterministic tie-break by key)."""
+    if len(d) <= cap:
+        return d
+    keep = sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))[:cap]
+    return dict(keep)
+
+
+def _tokenize(text):
+    # sentences by terminal punctuation; words as alphabetic runs (apostrophes kept)
+    sents = re.split(r"[.!?]+", text)
+    words = re.findall(r"[A-Za-z][A-Za-z']*", text)
+    return sents, [w.lower() for w in words]
+
+
+def analyze_only(text):
+    """Compute SLPL metrics for a single text WITHOUT persisting (preview)."""
+    m = _blank_model()
+    _ingest_into_model(m, text, persist_source=None)
+    return metrics(m)
+
+
+def _ingest_into_model(m, text, persist_source):
+    sents, words = _tokenize(text)
+    # graphemes + phonemes
+    for w in words:
+        for ch in re.sub(r"[^a-z]", "", w):
+            m["graphemes"][ch] = m["graphemes"].get(ch, 0) + 1
+        for ph in _g2p(w):
+            m["phonemes"][ph] = m["phonemes"].get(ph, 0) + 1
+    # words
+    half = m["total_tokens"] < 1  # remember if this is the very first ingest (for stability split)
+    for w in words:
+        m["words"][w] = m["words"].get(w, 0) + 1
+    m["total_tokens"] += len(words)
+    m["total_chars"] += sum(len(w) for w in words)
+    # bigrams
+    for a, b in zip(words, words[1:]):
+        m["bigrams"][a + " " + b] = m["bigrams"].get(a + " " + b, 0) + 1
+    # trigram novelty (pattern saturation)
+    for a, b, c in zip(words, words[1:], words[2:]):
+        key = a + " " + b + " " + c
+        was_novel = 0 if key in m["trigram_keys"] else 1
+        if was_novel and len(m["trigram_keys"]) < _CAP_TRIGRAMS:
+            m["trigram_keys"][key] = 1
+        m["trigrams_seen_count"] += 1
+        m["novel_recent"].append(was_novel)
+    # keep the novelty window bounded
+    if len(m["novel_recent"]) > _SATURATION_WINDOW:
+        m["novel_recent"] = m["novel_recent"][-_SATURATION_WINDOW:]
+    # prosody proxies (pre-semantic: structure only)
+    for s in sents:
+        toks = re.findall(r"[A-Za-z][A-Za-z']*", s)
+        if not toks:
+            continue
+        m["sent_count"] += 1
+        m["sent_len_sum"] += len(toks)
+        m["sent_len_sq"] += len(toks) * len(toks)
+    m["questions"] += text.count("?")
+    m["exclamations"] += text.count("!")
+    # trim caps
+    m["words"] = _trim(m["words"], _CAP_WORDS)
+    m["bigrams"] = _trim(m["bigrams"], _CAP_BIGRAMS)
+    if persist_source:
+        m["ingests"] += 1
+        if persist_source not in m["sources"]:
+            m["sources"].append(persist_source)
+
+
+def metrics(m):
+    """Derive the measurable SLPL representations + gate verdict from the model."""
+    distinct_phon = len(m["phonemes"])
+    phon_complete = min(1.0, distinct_phon / PHONEME_TARGET)
+    distinct_words = len(m["words"]) or 1
+    distinct_bigrams = len(m["bigrams"])
+    density = distinct_bigrams / distinct_words
+    # lexical stability: overlap of the top words between successive ingests. As more
+    # same-language text arrives, the high-frequency words settle and overlap → 1.0.
+    prev = set(m.get("prev_top") or [])
+    cur_top = [k for k, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:40]]
+    stability = (len(prev & set(cur_top)) / len(prev)) if prev else 0.0
+    novelty = (sum(m["novel_recent"]) / len(m["novel_recent"])) if m["novel_recent"] else 1.0
+    # syllable stats over top words (bounded work)
+    top_words = [w for w, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:500]]
+    syl = [_syllables(w) for w in top_words] or [0]
+    avg_syl = sum(syl) / len(syl)
+    mean_len = (m["sent_len_sum"] / m["sent_count"]) if m["sent_count"] else 0.0
+    var = ((m["sent_len_sq"] / m["sent_count"]) - mean_len * mean_len) if m["sent_count"] else 0.0
+    checks = {
+        "phonemic_completeness": (round(phon_complete, 4), GATE["phonemic_completeness"], phon_complete >= GATE["phonemic_completeness"]),
+        "lexical_stability":     (round(stability, 4),     GATE["lexical_stability"],     stability >= GATE["lexical_stability"]),
+        "cooccurrence_density":  (round(density, 4),        GATE["cooccurrence_density"],  density >= GATE["cooccurrence_density"]),
+        "pattern_saturation":    (round(novelty, 4),        GATE["pattern_saturation"],    novelty < GATE["pattern_saturation"]),
+    }
+    gate_ready = all(c[2] for c in checks.values())
+    # a single 0..100 "% toward Phase 1 complete" (mean of the four normalized metrics)
+    def _frac(k, v, thr):
+        if k == "pattern_saturation":
+            return min(1.0, thr / v) if v > 0 else 1.0   # lower novelty is better
+        return min(1.0, v / thr) if thr else 1.0
+    gate_progress = round(100.0 * sum(_frac(k, checks[k][0], checks[k][1]) for k in checks) / len(checks), 1)
+    return {
+        "total_tokens": m["total_tokens"], "distinct_words": len(m["words"]),
+        "distinct_phonemes": distinct_phon, "phoneme_target": PHONEME_TARGET,
+        "distinct_bigrams": distinct_bigrams, "distinct_graphemes": len(m["graphemes"]),
+        "avg_syllables_per_word": round(avg_syl, 3),
+        "mean_sentence_len": round(mean_len, 2), "sentence_len_var": round(var, 2),
+        "questions": m["questions"], "exclamations": m["exclamations"],
+        "sources": list(m["sources"]), "ingests": m["ingests"],
+        "gate": {
+            "checks": {k: {"value": v[0], "threshold": v[1], "pass": v[2]} for k, v in checks.items()},
+            "ready": gate_ready,
+            "progress": gate_progress,
+            "opened": m.get("gate_opened", False),
+            "opened_at": m.get("gate_opened_at"),
+            "phase": ("Phase 2 eligible (structural readiness met)" if (gate_ready or m.get("gate_opened"))
+                      else "Phase 1 (structural-acoustic) — semantics suppressed"),
+        },
+        "top_letters": sorted(m["graphemes"].items(), key=lambda kv: -kv[1])[:12],
+        "top_phonemes": sorted(m["phonemes"].items(), key=lambda kv: -kv[1])[:12],
+        "top_words": sorted(m["words"].items(), key=lambda kv: -kv[1])[:20],
+    }
+
+
+_SRC = ("SRC-LANG", "QueryBook Language Lab (SLPL, deterministic)", "internal-derived", 0.85)
+
+
+def _store_facts(store_dir, mx):
+    """Write the learned structure into the shared UFCS store as Fact Units.
+    Aggregate metrics + top inventory. Rule-seeded phonemes carry lower trust."""
+    st = store.UFCSStore(store_dir)
+    added = 0
+    try:
+        def put(subj, pred, obj, trust=0.85, src=_SRC):
+            nonlocal added
+            pkt = store.make_packet(str(subj), str(pred), str(obj), "+", "language", src, trust)
+            if st.add(pkt):
+                added += 1
+        g = mx["gate"]
+        put("english", "phoneme_inventory_completeness", g["checks"]["phonemic_completeness"]["value"])
+        put("english", "lexical_stability", g["checks"]["lexical_stability"]["value"])
+        put("english", "cooccurrence_density", g["checks"]["cooccurrence_density"]["value"])
+        put("english", "pattern_saturation_novelty", g["checks"]["pattern_saturation"]["value"])
+        put("english", "distinct_words_learned", mx["distinct_words"])
+        put("english", "distinct_phonemes_observed", mx["distinct_phonemes"])
+        put("english", "avg_syllables_per_word", mx["avg_syllables_per_word"])
+        put("english", "mean_sentence_length", mx["mean_sentence_len"])
+        if g["opened"]:
+            put("english", "transition_gate", "OPEN")
+        # top letters (grapheme frequency facts)
+        tot = sum(c for _, c in mx["top_letters"]) or 1
+        for ch, c in mx["top_letters"]:
+            put("english letter %s" % ch, "grapheme_frequency", round(c / tot, 4))
+        # rule-seeded phoneme facts (lower trust — labelled rule-seeded, learned G2P is roadmap)
+        for ph, c in mx["top_phonemes"]:
+            put("english phoneme %s" % ph, "phoneme_rule_seeded", "observed", trust=0.70)
+        st.flush()
+    finally:
+        st.close()
+    return added
+
+
+_TAG = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+
+def strip_html(html):
+    html = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+    text = _TAG.sub(" ", html)
+    text = (text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&nbsp;", " ").replace("&#39;", "'").replace("&quot;", '"'))
+    return _WS.sub(" ", text).strip()
+
+
+def fetch_text(url, max_bytes=800000, timeout=12):
+    """Politely fetch ONE user-chosen page and return extracted text (stdlib)."""
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "QueryBook-LanguageLab/1.0 (+structural language learning; single manual fetch)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read(max_bytes)
+    enc = "utf-8"
+    try:
+        ctype = r.headers.get("Content-Type", "")
+        m = re.search(r"charset=([\w-]+)", ctype)
+        if m:
+            enc = m.group(1)
+    except Exception:
+        pass
+    return strip_html(raw.decode(enc, "replace"))
+
+
+def learn(store_dir, text=None, url=None, source=None):
+    """Ingest text (or a fetched URL), update the cumulative model, store Fact Units.
+    Returns metrics + how many new facts were written. Deterministic."""
+    if url and not text:
+        text = fetch_text(url)
+        source = source or url
+    text = (text or "").strip()
+    if not text:
+        return {"error": "no text to learn from"}
+    source = (source or "pasted text").strip()
+    m = load_model(store_dir)
+    _ingest_into_model(m, text, persist_source=source)
+    mx = metrics(m)
+    # Live feed: surface a few English words just seen (structure phase), so the activity
+    # stream shows motion during English Phases 1-2, not only during language learning.
+    try:
+        toks = [w.lower() for w in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
+        seen = set()
+        for w in toks:
+            if w in seen:
+                continue
+            seen.add(w)
+            ap = analyze_pronunciation(w, "en")
+            record_activity("en", w, ap.get("ipa"), None, kind="structure")
+            if len(seen) >= 8:
+                break
+    except Exception:
+        pass
+    # one-way gate: latch OPEN the first time structural readiness is met
+    if mx["gate"]["ready"] and not m.get("gate_opened"):
+        m["gate_opened"] = True
+        m["gate_opened_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        mx = metrics(m)
+    # append a gate-metric snapshot for the progress view (cap the history)
+    g = mx["gate"]["checks"]
+    m.setdefault("history", []).append({
+        "t": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "tokens": m["total_tokens"], "words": len(m["words"]),
+        "phon": g["phonemic_completeness"]["value"],
+        "stab": g["lexical_stability"]["value"],
+        "dens": g["cooccurrence_density"]["value"],
+        "novel": g["pattern_saturation"]["value"],
+        "ready": mx["gate"]["ready"], "opened": m.get("gate_opened", False),
+    })
+    m["history"] = m["history"][-200:]
+    # roll the top-word snapshot forward for the NEXT ingest's stability comparison
+    m["prev_top"] = [k for k, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:40]]
+    save_model(store_dir, m)
+    mx["history"] = m["history"]
+    added = _store_facts(store_dir, mx)
+    mx["chars_ingested"] = len(text)
+    mx["facts_written"] = added
+    mx["source"] = source
+    return mx
+
+
+def status(store_dir):
+    m = load_model(store_dir)
+    mx = metrics(m)
+    mx["thresholds"] = GATE
+    mx["history"] = m.get("history", [])
+    return mx
+
+
+def learned_words(store_dir, n=400):
+    """Most-frequent words Phase 1 has actually seen, highest first (for grounding)."""
+    m = load_model(store_dir)
+    return [w for w, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:n]]
+
+
+# --------------------------------------------------------------------------
+# PHASE 2 — DETERMINISTIC SEMANTIC GROUNDING (dictionary + store). NO LLM.
+#
+# Meaning is attached only from sources QueryBook can point to and audit:
+#   (a) a bundled PUBLIC-DOMAIN dictionary (Webster's 1913 / GCIDE), and
+#   (b) SELF-GROUNDING — the verified Fact Units a word already appears in.
+# An LLM is deliberately LOCKED OUT of this phase: a live "green" API check
+# proves the connection works, never that a returned meaning is TRUE, so an
+# LLM meaning cannot satisfy the provenance mandate. (A future "suggestor"
+# mode may propose meanings that are ACCEPTED only when they agree with the
+# dictionary — the dictionary staying the authority. Hook: ground_words(...,
+# suggestor=None).)
+# --------------------------------------------------------------------------
+_DICT = None
+# COVENANT: no large language model grounds meaning or asserts a fact in QueryBook
+# language understanding (Phases 1-2). This flag ENFORCES that lockout at runtime —
+# even a future grounding "suggestor" callable is dropped while it is True. It scopes
+# ONLY the grounding path here; LLMs remain permitted elsewhere in non-asserting roles
+# (phrasing answers over verified facts; building hypotheses and simulations), where
+# nothing an LLM proposes becomes a fact without independent verification. Flip this
+# only by an explicit, recorded decision.
+LLM_LOCKOUT = True
+# Webster's Unabridged Dictionary (1913) is out of copyright / public domain.
+DICT_SOURCE = ("SRC-DICT-WEB1913", "Webster's Unabridged Dictionary (1913, public domain)",
+               "reference-public-domain", 0.9)
+LINK_SOURCE = ("SRC-STORE-LINK", "QueryBook UFCS store (self-grounding)", "internal-derived", 0.85)
+
+
+def _dict_path():
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    for name in ("qb_dict.json.gz", "qb_dict.json"):
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    # explicit override
+    p = os.environ.get("QB_DICT")
+    return p if (p and os.path.exists(p)) else None
+
+
+def load_dictionary():
+    """Load the bundled public-domain dictionary (word -> definition). Cached; stdlib only."""
+    global _DICT
+    if _DICT is not None:
+        return _DICT
+    d = {}
+    p = _dict_path()
+    if p:
+        try:
+            raw = (gzip.open(p, "rb").read() if p.endswith(".gz") else open(p, "rb").read())
+            d = json.loads(raw.decode("utf-8", "ignore"))
+        except Exception:
+            d = {}
+    _DICT = {str(k).lower(): str(v) for k, v in d.items()}
+    return _DICT
+
+
+def dictionary_size():
+    return len(load_dictionary())
+
+
+def ground_words(store_dir, words, use_dictionary=True, use_store=True, max_links=4, suggestor=None):
+    """Deterministically ground each word and write the meanings as Fact Units (domain
+    'language'). Returns a summary with per-word results. No network, no LLM.
+
+    - dictionary: `english word "<w>" · means · <definition>`  (trust 0.9, source = Webster 1913)
+    - store-link: `english word "<w>" · grounded_by_fact · <s p o>`  (from facts the word appears in)
+
+    `suggestor` is an optional callable(word)->str for a FUTURE validated mode; a suggestion is
+    accepted ONLY if it agrees with the dictionary. It is None here (LLMs locked out of Phase 2).
+    """
+    # COVENANT ENFORCED: while the lockout holds, refuse any LLM-backed suggestor outright.
+    if LLM_LOCKOUT and suggestor is not None:
+        suggestor = None
+    D = load_dictionary() if use_dictionary else {}
+    st = store.UFCSStore(store_dir)
+    grounded, added = [], 0
+    try:
+        def put(subj, pred, obj, trust, src):
+            nonlocal added
+            pkt = store.make_packet(str(subj), str(pred), str(obj)[:300], "+", "language", src, trust)
+            if st.add(pkt):
+                added += 1
+
+        for w in words:
+            wl = str(w).lower().strip()
+            if not wl or not wl.isalpha() or len(wl) < 2:
+                continue
+            subj = 'english word "%s"' % wl
+            rec = {"word": wl, "definition": None, "source": None, "links": []}
+
+            if use_dictionary and wl in D:
+                defn = D[wl].strip()
+                if defn:
+                    put(subj, "means", defn, 0.9, DICT_SOURCE)
+                    rec["definition"] = defn
+                    rec["source"] = "Webster's 1913 (public domain)"
+
+            if use_store:
+                try:
+                    rows, _ = st.search(wl, 0.0, 12)
+                except Exception:
+                    rows = []
+                for s, p, o, t, fp in rows:
+                    # link only to REAL-WORLD knowledge facts, never to language bookkeeping
+                    if str(s).startswith("english") or p in ("means", "grounded_by_fact",
+                                                              "grapheme_frequency", "phoneme_rule_seeded"):
+                        continue
+                    triple = "%s %s %s" % (s, p, o)
+                    put(subj, "grounded_by_fact", triple, min(0.85, float(t or 0.0)), LINK_SOURCE)
+                    rec["links"].append({"triple": triple, "trust": round(float(t or 0.0), 3)})
+                    if len(rec["links"]) >= max_links:
+                        break
+
+            # future validated-suggestor hook: accept ONLY if it matches the dictionary
+            if suggestor and rec["definition"]:
+                try:
+                    sug = (suggestor(wl) or "").strip()
+                    if sug and _agrees(sug, rec["definition"]):
+                        put(subj, "means_confirmed", sug, 0.9, LINK_SOURCE)
+                except Exception:
+                    pass
+
+            if rec["definition"] or rec["links"]:
+                grounded.append(rec)
+        st.flush()
+    finally:
+        st.close()
+    return {"words_in": len(words), "words_grounded": len(grounded),
+            "facts_added": added, "dict_entries": len(D), "grounded": grounded}
+
+
+def _agrees(a, b):
+    """Cheap agreement test for the future suggestor gate: meaningful word overlap."""
+    stop = {"a", "an", "the", "of", "to", "or", "and", "is", "that", "which", "with", "as"}
+    wa = {w for w in re.findall(r"[a-z]+", a.lower()) if w not in stop and len(w) > 2}
+    wb = {w for w in re.findall(r"[a-z]+", b.lower()) if w not in stop and len(w) > 2}
+    return bool(wa & wb)
+
+
+# --------------------------------------------------------------------------
+# PHASE 3 — DETERMINISTIC MULTILINGUAL DELTA (dictionary-based). NO LLM.
+#
+# Approximates the Delta Acquisition Model: reuse the English foundation learned
+# in Phase 1 and learn ONLY the delta to a second language — the word-to-word
+# mapping — from a bundled bilingual dictionary. Deterministic, auditable source,
+# no LLM. (The full neural cross-lingual alignment remains the roadmap embodiment.)
+# --------------------------------------------------------------------------
+_BILING = None
+LANG_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German",
+              "pt": "Portuguese", "it": "Italian", "sv": "Swedish", "nl": "Dutch"}
+# Languages the bundled OS phonemizer (espeak-ng) can PRONOUNCE deterministically (Phase 4).
+# Translation (Phase 3) is a separate capability that needs a licensed bilingual lexicon per
+# language: es and fr ship with bundled data; de/pt/it/sv/nl register here and activate their
+# translation the moment their lexicon is added (no fabricated dictionaries — covenant C2).
+SPEAKABLE = {"en", "es", "fr", "de", "pt", "it", "sv", "nl"}
+# NOTE: the bundled bilingual data is a DEMONSTRATION set (MUSE, CC BY-NC 4.0) and is
+# to be replaced with a public-domain/permissive bilingual source before commercial use.
+BILINGUAL_SOURCE = ("SRC-BILINGUAL-DEMO",
+                    "MUSE bilingual dictionary (CC BY-NC 4.0; demo — replace with a "
+                    "public-domain/permissive source before commercial use)",
+                    "reference-demo", 0.85)
+
+
+def _biling_path():
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    for name in ("qb_bilingual.json.gz", "qb_bilingual.json"):
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    p = os.environ.get("QB_BILINGUAL")
+    return p if (p and os.path.exists(p)) else None
+
+
+def load_bilingual():
+    """Load the bundled bilingual dictionary {lang: {english: [translations]}}. Cached; stdlib only."""
+    global _BILING
+    if _BILING is not None:
+        return _BILING
+    d = {}
+    p = _biling_path()
+    if p:
+        try:
+            raw = (gzip.open(p, "rb").read() if p.endswith(".gz") else open(p, "rb").read())
+            d = json.loads(raw.decode("utf-8", "ignore"))
+        except Exception:
+            d = {}
+    _BILING = d
+    return _BILING
+
+
+def available_languages():
+    return [k for k in load_bilingual().keys() if not k.startswith("_")]
+
+
+_BILING_VOCAB = {}
+
+def bilingual_word_map(lang):
+    """{foreign_word: [english senses]} inverted from the bundled bilingual dictionary.
+    This gives each supported language a REAL vocabulary (thousands of words) to learn,
+    instead of only the tiny pangram starter — so es/fr keep climbing like English did.
+    Single-token letter forms only (so each can be pronounced). Cached; deterministic."""
+    lang = (lang or "").lower()
+    if lang in _BILING_VOCAB:
+        return _BILING_VOCAB[lang]
+    B = load_bilingual().get(lang) or {}
+    inv = {}
+    for en, forms in B.items():
+        if not en or str(en).startswith("_"):
+            continue
+        for f in (forms if isinstance(forms, (list, tuple)) else [forms]):
+            fl = str(f).lower().strip()
+            if not fl or (" " in fl) or not fl.isalpha():
+                continue
+            inv.setdefault(fl, set()).add(str(en).lower())
+    out = {k: sorted(v) for k, v in inv.items()}
+    _BILING_VOCAB[lang] = out
+    return out
+
+
+_EN2L = {}
+
+def english_to_lang_map(lang):
+    """{english_word: [foreign forms]} from the bundled bilingual dictionary (for EN→L2).
+    Cached; deterministic; single-token letter forms only."""
+    lang = (lang or "").lower()
+    if lang in _EN2L:
+        return _EN2L[lang]
+    B = load_bilingual().get(lang) or {}
+    out = {}
+    for en, forms in B.items():
+        if not en or str(en).startswith("_"):
+            continue
+        enl = str(en).lower().strip()
+        keep = []
+        for f in (forms if isinstance(forms, (list, tuple)) else [forms]):
+            fl = str(f).lower().strip()
+            if fl and (" " not in fl) and fl.isalpha():
+                keep.append(fl)
+        if keep:
+            out[enl] = keep
+    _EN2L[lang] = out
+    return out
+
+
+_LANG_VOCAB_SETS = {}
+
+def _lang_word_set(lang):
+    """A set of known word-forms for a language, for language detection. English uses the
+    bilingual english headwords; others use their foreign word forms. Cached."""
+    lang = (lang or "").lower()
+    if lang in _LANG_VOCAB_SETS:
+        return _LANG_VOCAB_SETS[lang]
+    if lang == "en":
+        s = set()
+        for lg in load_bilingual():
+            if not str(lg).startswith("_"):
+                s |= set(english_to_lang_map(lg).keys())
+    else:
+        s = set(bilingual_word_map(lang).keys())
+    _LANG_VOCAB_SETS[lang] = s
+    return s
+
+
+def detect_language(text):
+    """Auto-sense which language a piece of text is written in, by matching its words against
+    every bundled dictionary (English included). Deterministic, no LLM. Returns the best guess
+    plus per-language scores so the UI can show its reasoning and the user can override."""
+    text = (text or "").strip()
+    toks = [t.lower() for t in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
+    cand = ["en"] + [k for k in load_bilingual().keys() if not str(k).startswith("_")]
+    scores = {}
+    if toks:
+        for lg in cand:
+            ws = _lang_word_set(lg)
+            hits = sum(1 for t in toks if t in ws)
+            scores[lg] = round(100.0 * hits / len(toks), 1)
+    best = max(scores, key=lambda k: scores[k]) if scores else "en"
+    # If nothing matched at all, fall back to English.
+    if not scores or scores.get(best, 0) == 0:
+        best = "en"
+    ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+    return {"text": text, "detected": best, "detected_name": LANG_NAMES.get(best, best),
+            "confidence_pct": scores.get(best, 0.0),
+            "scores": [{"lang": k, "language": LANG_NAMES.get(k, k), "score": v}
+                       for k, v in ranked if v > 0][:5]}
+
+
+def translatable_pairs():
+    """Language pairs the bundled dictionaries can translate (both directions with English)."""
+    langs = [k for k in load_bilingual().keys() if not str(k).startswith("_")]
+    pairs = []
+    for lg in langs:
+        pairs.append(("en", lg)); pairs.append((lg, "en"))
+    return pairs
+
+
+def translate(text, src, dst):
+    """Deterministic, dictionary-based translation between English and a bundled language
+    (es/fr). Word-by-word using the bundled bilingual dictionary — NO LLM, no network, no
+    fabrication: unknown words are passed through and flagged, never guessed. Covenant-safe
+    (every rendered word comes from the auditable dictionary). Returns the translation plus
+    a per-word breakdown and a coverage figure so the user can trust exactly what it did."""
+    src = (src or "").lower(); dst = (dst or "").lower()
+    text = (text or "").strip()
+    if not text:
+        return {"error": "empty text", "src": src, "dst": dst}
+    detected = None
+    # Auto-sense the source language when asked (src="auto" or blank).
+    if src in ("auto", ""):
+        det = detect_language(text)
+        detected = det
+        src = det["detected"]
+        # If the detected source equals the target, flip to translate the other way
+        # (usually detected language -> English) so the action still does something useful.
+        if src == dst:
+            dst = "en" if src != "en" else (dst if dst != "en" else "es")
+    if src == dst:
+        return {"error": "source and target are the same language", "src": src, "dst": dst}
+    # Pick the lookup table for this direction.
+    if src == "en":
+        table = english_to_lang_map(dst)
+        if not table:
+            return {"error": "no bundled dictionary for %s→%s" % (src, dst), "src": src, "dst": dst}
+    elif dst == "en":
+        table = bilingual_word_map(src)
+        if not table:
+            return {"error": "no bundled dictionary for %s→%s" % (src, dst), "src": src, "dst": dst}
+    else:
+        return {"error": "translation runs through English; pick English as one side", "src": src, "dst": dst}
+    # Tokenize keeping punctuation/spacing so the output reads naturally.
+    toks = re.findall(r"[^\W\d_]+|\d+|\s+|[^\w\s]", text, re.UNICODE)
+    pairs = []
+    rendered = []
+    known = total = 0
+    for tok in toks:
+        if re.match(r"^[^\W\d_]+$", tok, re.UNICODE):   # a word
+            total += 1
+            low = tok.lower()
+            opts = table.get(low)
+            if opts:
+                known += 1
+                choice = opts[0]
+                # preserve simple capitalization of the source word
+                if tok[:1].isupper():
+                    choice = choice[:1].upper() + choice[1:]
+                rendered.append(choice)
+                pairs.append({"src": tok, "dst": choice, "known": True,
+                              "alternatives": opts[1:4]})
+            else:
+                rendered.append(tok)   # pass through, flagged
+                pairs.append({"src": tok, "dst": tok, "known": False, "alternatives": []})
+        else:
+            rendered.append(tok)
+    coverage = round(100.0 * known / total, 1) if total else 0.0
+    return {"src": src, "dst": dst, "input": text,
+            "src_name": LANG_NAMES.get(src, src), "dst_name": LANG_NAMES.get(dst, dst),
+            "detected": detected,
+            "translation": "".join(rendered),
+            "words": total, "translated": known, "coverage_pct": coverage,
+            "pairs": [p for p in pairs if p["src"].strip()],
+            "note": ("Dictionary word-by-word translation (MUSE bilingual, demo data). "
+                     "Unknown words are left as-is and marked — never guessed. No LLM.")}
+
+
+def acquire_language(store_dir, lang="es", words=None, max_words=None):
+    """Phase-3 delta: for English words already learned in Phase 1, attach their L2 translation
+    from the bundled bilingual dictionary. Reuses the English foundation; learns only the delta.
+    Deterministic, NO LLM. Writes english word "w" · translation_<lang> · <tr> Fact Units."""
+    B = load_bilingual().get(lang) or {}
+    if not B:
+        return {"error": "no bilingual data for '%s' (available: %s)" % (lang, ", ".join(available_languages()))}
+    if words is None:
+        words = learned_words(store_dir, 400)
+    if max_words:
+        words = words[:max_words]
+    st = store.UFCSStore(store_dir)
+    added = 0; mapped = []
+    pred = "translation_" + lang
+    try:
+        for w in words:
+            wl = str(w).lower().strip()
+            trs = B.get(wl)
+            if not trs:
+                continue
+            for tr in trs[:2]:
+                if st.add(store.make_packet('english word "%s"' % wl, pred, tr, "+",
+                                            "language", BILINGUAL_SOURCE, 0.85)):
+                    added += 1
+            mapped.append({"word": wl, "translations": trs[:2]})
+        st.flush()
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "words_in": len(words),
+            "mapped": len(mapped), "facts_added": added, "sample": mapped[:8]}
+
+
+def multilingual_status(store_dir):
+    """Phase-3 coverage: per-language translation counts against the learned vocabulary."""
+    vocab = len(learned_words(store_dir, 400))
+    st = store.UFCSStore(store_dir)
+    langs = {}
+    try:
+        if not st.no_fql:
+            for lg in available_languages():
+                n = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate=?",
+                                  ("translation_" + lg,)).fetchone()[0]
+                langs[lg] = {"language": LANG_NAMES.get(lg, lg), "translations": n}
+    except Exception:
+        pass
+    finally:
+        st.close()
+    meta = load_bilingual().get("_meta", {})
+    return {"vocabulary": vocab, "languages": langs, "available": available_languages(),
+            "source": meta.get("source"), "license": meta.get("license"), "note": meta.get("note")}
+
+
+# --------------------------------------------------------------------------
+# PHASE 4 — SPEECH (two parts, both honest):
+#   4a  DETERMINISTIC ANALYSIS (no dependency): rule-seeded G2P phonemes, syllable
+#       split, a heuristic stress pattern, and a punctuation-based prosody contour,
+#       stored as provenance-tracked Fact Units. Always runs. No LLM.
+#   4b  REAL SPEECH (optional): render text to audio with the OS's BUILT-IN TTS —
+#       Windows SAPI (System.Speech), macOS `say`, Linux `espeak-ng`/`espeak` — via
+#       subprocess, no pip dependency. If no engine is present it reports that
+#       plainly and NEVER fabricates audio.
+# --------------------------------------------------------------------------
+SPEECH_SOURCE = ("SRC-G2P", "QueryBook rule-seeded G2P / prosody (approximate)", "internal-derived", 0.70)
+
+# Vowel nuclei used to count syllables in an IPA string (approximate, deterministic).
+_IPA_VOWELS = set("iyɨʉɯuɪʏʊeøɘɵɤoəɛœɜɞʌɔæɐaɶɑɒ")
+
+
+def _bundled_espeak_dir():
+    """Directory of the espeak-ng bundled WITH the app (Windows), or None."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "espeak")
+
+def _espeak_exe():
+    """Locate espeak-ng — prefer the copy BUNDLED WITH QueryBook (so speech works with no
+    install), then PATH, then the usual install locations. On Windows the bundled exe is used;
+    on macOS/Linux the bundled Windows exe is skipped and the system espeak-ng is used."""
+    import shutil, os as _os, platform as _pf
+    # 1) bundled (Windows only — the bundled binary is espeak-ng.exe)
+    try:
+        bexe = _os.path.join(_bundled_espeak_dir(), "espeak-ng.exe")
+        if _pf.system() == "Windows" and _os.path.exists(bexe):
+            return bexe
+    except Exception:
+        pass
+    # 2) on PATH
+    for name in ("espeak-ng", "espeak"):
+        p = shutil.which(name)
+        if p:
+            return p
+    # 3) usual install locations
+    for c in (r"C:\Program Files\eSpeak NG\espeak-ng.exe",
+              r"C:\Program Files (x86)\eSpeak NG\espeak-ng.exe",
+              "/opt/homebrew/bin/espeak-ng", "/usr/local/bin/espeak-ng"):
+        if _os.path.exists(c):
+            return c
+    return None
+
+def _espeak_pathargs():
+    """['--path', <dir>] when using the BUNDLED espeak so it finds the bundled espeak-ng-data;
+    [] when using a system espeak (which knows its own data path)."""
+    import os as _os
+    exe = _espeak_exe() or ""
+    bdir = _bundled_espeak_dir()
+    try:
+        if _os.path.abspath(_os.path.dirname(exe)) == _os.path.abspath(bdir):
+            return ["--path", bdir]
+    except Exception:
+        pass
+    return []
+
+
+def _espeak_source(lang):
+    """Provenance for a pronunciation derived from the OS phonemizer. espeak-ng is a fixed,
+    auditable external tool (same class of source as the English rule-seeded G2P), not an LLM."""
+    return ("SRC-ESPEAK-%s" % lang.upper(),
+            "espeak-ng grapheme-to-phoneme (%s, deterministic IPA)" % LANG_NAMES.get(lang, lang),
+            "external-tool", 0.75)
+
+
+import collections as _coll_e
+_ESPEAK_LOG = _coll_e.deque(maxlen=60)    # troubleshooting: recent espeak calls
+_ESPEAK_CACHE = {}                        # (word,lang) -> (ipa,stress,syl), avoids re-spawning
+
+def _espeak_log(tag, **kw):
+    kw["t"] = time.strftime("%H:%M:%S"); kw["tag"] = tag
+    _ESPEAK_LOG.append(kw)
+
+def _ipa_espeak(word, lang):
+    """Deterministic IPA for a word via espeak-ng --ipa. Returns (ipa, stress_syllable,
+    syllable_count) or (None, 1, 1) when no engine is present. Cached + timed + logged.
+    Short timeout so a hung espeak can never block the app. No LLM; never fabricates."""
+    import subprocess
+    exe = _espeak_exe()
+    if not exe:
+        _espeak_log("no-exe", word=str(word), lang=lang)
+        return (None, 1, 1)
+    key = (str(word).lower(), lang)
+    if key in _ESPEAK_CACHE:
+        return _ESPEAK_CACHE[key]
+    t0 = time.time()
+    try:
+        out = subprocess.run([exe] + _espeak_pathargs() + ["-v", lang, "--ipa", "-q", str(word)],
+                             timeout=6, check=True, capture_output=True, text=True).stdout
+        _espeak_log("ok", word=str(word), lang=lang, ms=int((time.time() - t0) * 1000))
+    except subprocess.TimeoutExpired:
+        _espeak_log("TIMEOUT", word=str(word), lang=lang, ms=int((time.time() - t0) * 1000))
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
+    except Exception as e:
+        _espeak_log("error", word=str(word), lang=lang, err=repr(e)[:120], ms=int((time.time() - t0) * 1000))
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
+    ipa = out.strip().replace("\n", " ").strip()
+    if not ipa:
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
+    nuclei = [i for i, c in enumerate(ipa) if c in _IPA_VOWELS]
+    syl = max(1, len(nuclei))
+    stress = 1
+    mark = ipa.find("ˈ")                    # espeak marks primary stress with U+02C8
+    if mark >= 0 and nuclei:
+        stress = min(max(1, 1 + sum(1 for n in nuclei if n < mark)), syl)
+    _ESPEAK_CACHE[key] = (ipa, stress, syl)
+    return (ipa, stress, syl)
+
+
+def espeak_status():
+    """Troubleshooting snapshot of espeak-ng, usable at any time: whether it's found, where,
+    its version, a quick timed self-test ('hola'→IPA), and the recent call log (incl. any
+    timeouts/errors that would make speech hang)."""
+    import subprocess, time as _t
+    exe = _espeak_exe()
+    pargs = _espeak_pathargs()
+    out = {"found": bool(exe), "path": exe, "bundled": bool(pargs), "version": None, "selftest": None,
+           "recent_calls": list(_ESPEAK_LOG)[-20:]}
+    if not exe:
+        out["hint"] = "espeak-ng not found (bundled copy missing?). On Windows it ships in the app's espeak\\ folder."
+        return out
+    try:
+        v = subprocess.run([exe] + pargs + ["--version"], timeout=5, capture_output=True, text=True)
+        out["version"] = (v.stdout or v.stderr).strip().split("\n")[0][:160]
+    except Exception as e:
+        out["version"] = "version check failed: " + repr(e)[:120]
+    t0 = _t.time()
+    ipa, st, syl = _ipa_espeak("hola", "es")
+    out["selftest"] = {"word": "hola", "lang": "es", "ipa": ipa, "ms": int((_t.time() - t0) * 1000),
+                       "ok": ipa is not None}
+    if ipa is None:
+        out["hint"] = ("espeak-ng is present but a test call did not return audio/IPA in time "
+                       "(see recent_calls for TIMEOUT/error). Pronunciation still works via the "
+                       "bundled rule phonemizer; speech audio may be slow or unavailable.")
+    return out
+
+
+def speakable_languages():
+    """Languages Phase 4 can pronounce/voice deterministically via the OS engine."""
+    return sorted(SPEAKABLE)
+
+
+def _stress_pattern(word):
+    """Heuristic primary-stress syllable (1-indexed). Approximate, deterministic."""
+    w = re.sub(r"[^a-z]", "", word.lower())
+    n = _syllables(w)
+    if n <= 1:
+        return 1, n
+    for suf, back in (("tion", 1), ("sion", 1), ("ic", 1), ("ity", 2), ("ical", 2), ("logy", 2)):
+        if w.endswith(suf):
+            return max(1, n - back), n            # stress falls before the suffix
+    if w.endswith(("ate", "ize", "ise")) and n >= 3:
+        return max(1, n - 2), n
+    return 1, n                                    # default: initial stress
+
+
+def _prosody(text):
+    """Sentence-level intonation contour from punctuation (declarative/interrogative/exclamatory)."""
+    t = text.strip()
+    if t.endswith("?"):
+        return "rising (interrogative)"
+    if t.endswith("!"):
+        return "emphatic fall (exclamatory)"
+    return "falling (declarative)"
+
+
+# --------------------------------------------------------------------------
+# BUNDLED rule-seeded grapheme-to-phoneme for the non-English languages, so
+# pronunciation works with NO external engine (exactly like the English G2P).
+# espeak-ng, when installed, is preferred for accuracy and provides audio; these
+# rule tables are the always-available fallback. Approximate and deterministic —
+# the same honesty level as the English rule-seeded G2P. No LLM.
+# --------------------------------------------------------------------------
+def _R(pairs):
+    return [(re.compile(p), ipa) for p, ipa in pairs]
+
+G2P_RULES = {
+    "es": _R([(r"ch","tʃ"),(r"ll","ʝ"),(r"rr","r"),(r"qu(?=[eiéí])","k"),(r"gu(?=[eiéí])","ɡ"),
+              (r"gü","ɡw"),(r"c(?=[eiéí])","θ"),(r"g(?=[eiéí])","x"),(r"á","a"),(r"é","e"),(r"í","i"),
+              (r"ó","o"),(r"ú","u"),(r"ü","u"),(r"ñ","ɲ"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),
+              (r"u","u"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","x"),
+              (r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ɾ"),(r"s","s"),
+              (r"t","t"),(r"v","b"),(r"w","w"),(r"x","ks"),(r"y","ʝ"),(r"z","θ")]),
+    "it": _R([(r"ch","k"),(r"gh","ɡ"),(r"gl(?=i)","ʎ"),(r"gn","ɲ"),(r"sc(?=[ie])","ʃ"),
+              (r"c(?=[ie])","tʃ"),(r"g(?=[ie])","dʒ"),(r"à","a"),(r"è","ɛ"),(r"é","e"),(r"ì","i"),
+              (r"ò","ɔ"),(r"ù","u"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),(r"u","u"),(r"b","b"),
+              (r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","j"),(r"k","k"),(r"l","l"),
+              (r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),
+              (r"w","v"),(r"x","ks"),(r"y","i"),(r"z","ts")]),
+    "de": _R([(r"sch","ʃ"),(r"tsch","tʃ"),(r"ch","x"),(r"ck","k"),(r"ph","f"),(r"th","t"),(r"qu","kv"),
+              (r"ng","ŋ"),(r"ei","aɪ"),(r"ai","aɪ"),(r"ie","iː"),(r"eu","ɔʏ"),(r"äu","ɔʏ"),(r"au","aʊ"),
+              (r"^sp","ʃp"),(r"^st","ʃt"),(r"ß","s"),(r"ö","ø"),(r"ü","y"),(r"ä","ɛ"),(r"a","a"),(r"e","e"),
+              (r"i","i"),(r"o","o"),(r"u","u"),(r"y","y"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),
+              (r"g","ɡ"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),
+              (r"r","ʁ"),(r"s","z"),(r"t","t"),(r"v","f"),(r"w","v"),(r"x","ks"),(r"z","ts")]),
+    "nl": _R([(r"sch","sx"),(r"ch","x"),(r"ij","ɛi"),(r"ui","œy"),(r"eu","ø"),(r"oe","u"),(r"aa","aː"),
+              (r"ee","eː"),(r"oo","oː"),(r"uu","y"),(r"ie","i"),(r"ou","ʌu"),(r"au","ʌu"),(r"ng","ŋ"),
+              (r"a","ɑ"),(r"e","ɛ"),(r"i","ɪ"),(r"o","ɔ"),(r"u","ʏ"),(r"y","i"),(r"b","b"),(r"c","k"),
+              (r"d","d"),(r"f","f"),(r"g","x"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),
+              (r"n","n"),(r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),(r"w","ʋ"),
+              (r"x","ks"),(r"z","z")]),
+    "sv": _R([(r"skj","ɧ"),(r"stj","ɧ"),(r"sj","ɧ"),(r"tj","ɕ"),(r"kj","ɕ"),(r"sk(?=[eiyäö])","ɧ"),
+              (r"k(?=[eiyäö])","ɕ"),(r"g(?=[eiyäö])","j"),(r"å","oː"),(r"ä","ɛ"),(r"ö","ø"),(r"a","a"),
+              (r"e","e"),(r"i","i"),(r"o","u"),(r"u","ʉ"),(r"y","y"),(r"b","b"),(r"c","k"),(r"d","d"),
+              (r"f","f"),(r"g","ɡ"),(r"h","h"),(r"j","j"),(r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),
+              (r"p","p"),(r"q","k"),(r"r","r"),(r"s","s"),(r"t","t"),(r"v","v"),(r"w","v"),(r"x","ks"),
+              (r"z","s")]),
+    "pt": _R([(r"lh","ʎ"),(r"nh","ɲ"),(r"ch","ʃ"),(r"rr","ʁ"),(r"ss","s"),(r"qu(?=[ei])","k"),
+              (r"gu(?=[ei])","ɡ"),(r"ão","ɐ̃w"),(r"ç","s"),(r"c(?=[ei])","s"),(r"g(?=[ei])","ʒ"),
+              (r"ã","ɐ̃"),(r"õ","õ"),(r"á","a"),(r"â","ɐ"),(r"é","ɛ"),(r"ê","e"),(r"í","i"),(r"ó","ɔ"),
+              (r"ô","o"),(r"ú","u"),(r"a","a"),(r"e","e"),(r"i","i"),(r"o","o"),(r"u","u"),(r"y","i"),
+              (r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","ʒ"),(r"k","k"),
+              (r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ʁ"),(r"s","s"),(r"t","t"),
+              (r"v","v"),(r"w","v"),(r"x","ʃ"),(r"z","z")]),
+    "fr": _R([(r"ph","f"),(r"ch","ʃ"),(r"gn","ɲ"),(r"qu","k"),(r"ç","s"),
+              (r"ain(?![aeiouy])","ɛ̃"),(r"ein(?![aeiouy])","ɛ̃"),(r"an(?![aeiouy])","ɑ̃"),
+              (r"am(?![aeiouy])","ɑ̃"),(r"en(?![aeiouy])","ɑ̃"),(r"em(?![aeiouy])","ɑ̃"),
+              (r"on(?![aeiouy])","ɔ̃"),(r"om(?![aeiouy])","ɔ̃"),(r"un(?![aeiouy])","œ̃"),
+              (r"in(?![aeiouy])","ɛ̃"),(r"im(?![aeiouy])","ɛ̃"),(r"eau","o"),(r"au","o"),(r"ou","u"),
+              (r"oi","wa"),(r"ai","ɛ"),(r"ei","ɛ"),(r"eu","ø"),(r"c(?=[eiy])","s"),(r"g(?=[eiy])","ʒ"),
+              (r"é","e"),(r"è","ɛ"),(r"ê","ɛ"),(r"ë","ɛ"),(r"à","a"),(r"â","a"),(r"ô","o"),(r"û","y"),
+              (r"î","i"),(r"ï","i"),(r"ù","y"),(r"a","a"),(r"e","ə"),(r"i","i"),(r"o","o"),(r"u","y"),
+              (r"y","i"),(r"b","b"),(r"c","k"),(r"d","d"),(r"f","f"),(r"g","ɡ"),(r"h",""),(r"j","ʒ"),
+              (r"k","k"),(r"l","l"),(r"m","m"),(r"n","n"),(r"p","p"),(r"q","k"),(r"r","ʁ"),(r"s","s"),
+              (r"t","t"),(r"v","v"),(r"w","v"),(r"x","ks"),(r"z","z")]),
+}
+_STRESS_RULE = {"es": "penult", "it": "penult", "pt": "penult", "fr": "final",
+                "de": "first", "nl": "first", "sv": "first"}
+
+
+def _rule_stress(lang, syl):
+    if syl <= 1:
+        return 1
+    r = _STRESS_RULE.get(lang, "first")
+    if r == "penult":
+        return max(1, syl - 1)
+    if r == "final":
+        return syl
+    return 1
+
+
+def _rule_source(lang):
+    return ("SRC-G2P-%s" % lang.upper(),
+            "QueryBook rule-seeded G2P (%s, approximate)" % LANG_NAMES.get(lang, lang),
+            "internal-derived", 0.65)
+
+
+def _g2p_rules(word, lang):
+    """Bundled rule-seeded IPA for `lang` — pure Python, no engine. Returns
+    (ipa, stress_syllable, syllable_count) or None if the language has no table."""
+    rules = G2P_RULES.get((lang or "").lower())
+    if not rules:
+        return None
+    w = str(word).lower()
+    out, i, n = [], 0, len(w)
+    while i < n:
+        hit = False
+        for rx, ipa in rules:
+            m = rx.match(w, i)
+            if m and m.end() > i:
+                if ipa:
+                    out.append(ipa)
+                i = m.end(); hit = True; break
+        if not hit:
+            i += 1
+    ipa = "".join(out)
+    if not ipa:
+        return None
+    syl = max(1, sum(1 for c in ipa if c in _IPA_VOWELS))
+    return ipa, _rule_stress(lang, syl), syl
+
+
+def analyze_pronunciation(word, lang="en", fast=False):
+    """Deterministic pronunciation breakdown for one word (no store write). English uses the
+    rule-seeded G2P; other languages prefer espeak-ng when installed (most accurate) and
+    otherwise use the BUNDLED rule-seeded G2P, so pronunciation always works. No LLM, never
+    fabricates beyond the approximate rule model.
+
+    fast=True skips espeak entirely and uses the instant rule-seeded G2P — used for the
+    per-word display so the UI never blocks spawning one espeak process per word."""
+    lang = (lang or "en").lower()
+    if lang == "en":
+        phon = _g2p(word)
+        stress, syl = _stress_pattern(word)
+        return {"word": word.lower(), "lang": "en", "phonemes": phon,
+                "ipa": "/" + "".join(phon) + "/", "syllables": syl, "stress_syllable": stress,
+                "source": "rule-seeded G2P", "via": "rules"}
+    if not fast and _espeak_exe():
+        ipa, stress, syl = _ipa_espeak(word, lang)
+        if ipa is not None:
+            return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
+                    "ipa": "/" + ipa + "/", "syllables": syl, "stress_syllable": stress,
+                    "source": "espeak-ng %s" % lang, "via": "espeak"}
+    r = _g2p_rules(word, lang)
+    if r is not None:
+        ipa, stress, syl = r
+        return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
+                "ipa": "/" + ipa + "/", "syllables": syl, "stress_syllable": stress,
+                "source": "rule-seeded G2P (%s)" % lang, "via": "rules"}
+    return {"word": str(word).lower(), "lang": lang, "phonemes": [], "ipa": None,
+            "syllables": 1, "stress_syllable": 1, "source": "no phonemizer", "via": None}
+
+
+def speech_analyze(store_dir, words=None, max_words=None, lang="en"):
+    """Phase 4a: write deterministic pronunciation Fact Units for words. No LLM. English uses
+    the rule-seeded G2P; other languages use the OS phonemizer, each fact sourced accordingly.
+    A word whose phonemizer is unavailable is skipped, never fabricated."""
+    lang = (lang or "en").lower()
+    if words is None:
+        words = learned_words(store_dir, 400)
+    if max_words:
+        words = words[:max_words]
+    src = SPEECH_SOURCE if lang == "en" else (_espeak_source(lang) if _espeak_exe() else _rule_source(lang))
+    st = store.UFCSStore(store_dir)
+    added = 0; sample = []
+    try:
+        for w in words:
+            wl = str(w).lower().strip()
+            if not wl or not wl.isalpha() or len(wl) < 2:
+                continue
+            a = analyze_pronunciation(wl, lang)
+            if a["ipa"] is None:                       # unsupported language -> skip, do not fabricate
+                continue
+            label = ('english word "%s"' % wl) if lang == "en" \
+                else ('%s word "%s"' % (LANG_NAMES.get(lang, lang).lower(), wl))
+            if st.add(store.make_packet(label, "pronunciation", a["ipa"], "+", "language", src, 0.70)):
+                added += 1
+            st.add(store.make_packet(label, "syllable_count", str(a["syllables"]), "+", "language", src, 0.70))
+            st.add(store.make_packet(label, "stress_syllable", str(a["stress_syllable"]), "+", "language", src, 0.70))
+            if len(sample) < 8:
+                sample.append(a)
+        st.flush()
+    finally:
+        st.close()
+    return {"words_in": len(words), "analyzed": added, "lang": lang, "sample": sample}
+
+
+def _tts_engine():
+    """Detect an available OS text-to-speech engine without synthesizing. Returns (kind, exe) or (None, None)."""
+    import platform, shutil
+    sysname = platform.system()
+    if sysname == "Windows":
+        return ("sapi", "powershell")          # System.Speech ships with Windows
+    if sysname == "Darwin":
+        return ("say", "say") if shutil.which("say") else (None, None)
+    for exe in ("espeak-ng", "espeak"):
+        if shutil.which(exe):
+            return ("espeak", exe)
+    return (None, None)
+
+
+def tts_status():
+    kind, exe = _tts_engine()
+    hints = {"Linux": "install espeak-ng (e.g. `sudo apt install espeak-ng`)",
+             "Windows": "built in (System.Speech)", "Darwin": "built in (`say`)"}
+    import platform
+    return {"available": bool(kind), "engine": kind, "platform": platform.system(),
+            "hint": None if kind else hints.get(platform.system(), "install a local TTS engine")}
+
+
+# ---- Bundled phoneme synthesizer (pure stdlib, deterministic, no install, no cloud) ----
+# When the OS/browser has no voice for a language, we still produce AUDIBLE speech by
+# synthesizing a formant voice directly from the IPA we computed. It is robotic, not a
+# natural human voice, but it is real, language-correct, offline audio for EVERY language.
+# Deterministic (seeded noise) so the same word always yields the same audio.
+_SYN_SR = 16000
+_VOWEL_FORMANTS = {   # F1, F2, F3 (Hz)
+    'i': (300, 2300, 3000), 'ɪ': (390, 1990, 2550), 'e': (440, 2100, 2800), 'ɛ': (550, 1900, 2550),
+    'æ': (660, 1720, 2410), 'a': (750, 1200, 2600), 'ɑ': (750, 1050, 2600), 'ʌ': (640, 1200, 2600),
+    'ɔ': (600, 1000, 2600), 'o': (480, 900, 2500), 'ʊ': (420, 1020, 2300), 'u': (320, 800, 2400),
+    'ə': (500, 1500, 2500), 'ɐ': (650, 1300, 2500), 'y': (300, 1800, 2400), 'ø': (450, 1600, 2400),
+    'œ': (550, 1550, 2400), 'ɨ': (350, 1600, 2600), 'ɯ': (350, 900, 2400), 'ɜ': (580, 1400, 2500),
+    'ɒ': (680, 1000, 2500),
+}
+_NASALS = {'m': (250, 1000, 2200), 'n': (250, 1700, 2600), 'ɲ': (250, 2000, 2800), 'ŋ': (250, 1200, 2400)}
+_FRIC_VL = set('sʃfθxçh')          # voiceless fricatives → noise
+_FRIC_VD = set('zʒvðɣβʝ')          # voiced fricatives → noise + buzz
+_STOPS   = set('ptkbdgʔ')          # stops → gap + burst
+_APPROX  = {'l': (360, 1300, 2600), 'ɾ': (400, 1300, 2600), 'r': (400, 1300, 2600),
+            'ʎ': (300, 2000, 2800), 'j': (300, 2200, 3000), 'w': (320, 800, 2300), 'ʋ': (400, 1400, 2400)}
+
+def synthesize_speech_wav(text, lang="en"):
+    """Deterministic SOURCE-FILTER formant synthesis of `text` from its IPA.
+
+    This is a proper (compact) speech synthesizer, not summed sine tones:
+      • source  — a continuous glottal pulse train at F0 (voiced) or white noise (unvoiced),
+                  with phase/state carried across phonemes so there are no clicks/buzz;
+      • filter  — three 2-pole resonators at the phoneme's formants F1/F2/F3, whose
+                  centre frequencies GLIDE from the previous phoneme for smooth transitions.
+    Returns WAV bytes (16 kHz mono 16-bit). Works for every language, no install, no cloud,
+    no LLM. Robotic but intelligible. Deterministic (fixed noise seed)."""
+    import io, wave, struct, random, math, re as _re
+    SR = _SYN_SR
+    rnd = random.Random(20251001)
+
+    # ---- a 2-pole resonator (biquad band-pass), state kept across the whole utterance ----
+    class Res:
+        def __init__(self): self.y1 = self.y2 = 0.0; self.a1 = 0.0; self.a2 = 0.0; self.g = 0.0
+        def set(self, f, bw):
+            r = math.exp(-math.pi * bw / SR); th = 2 * math.pi * f / SR
+            self.a1 = 2 * r * math.cos(th); self.a2 = -(r * r)
+            self.g = (1 - r) * math.sqrt(1 - 2 * r * math.cos(2 * th) + r * r)
+        def step(self, x):
+            y = self.g * x + self.a1 * self.y1 + self.a2 * self.y2
+            self.y2 = self.y1; self.y1 = y; return y
+    R1, R2, R3 = Res(), Res(), Res()
+
+    F0 = 118.0                      # base pitch (Hz)
+    out = []
+    phase = 0.0                     # glottal phase accumulator (carried across phonemes)
+    cur = [500.0, 1500.0, 2500.0]   # current formant state, glided toward each target
+
+    def seg(target, dur, voiced, amp, noise_amt=0.0):
+        nonlocal phase
+        n = max(1, int(SR * dur))
+        glide = int(0.03 * SR)      # 30ms glide into the target formants
+        for i in range(n):
+            # glide formants from previous values to the target
+            for k in range(3):
+                if i < glide:
+                    cur[k] += (target[k] - cur[k]) * (1.0 / max(1, glide - i))
+                else:
+                    cur[k] = target[k]
+            R1.set(cur[0], 80); R2.set(cur[1], 110); R3.set(cur[2], 160)
+            # amplitude envelope (8ms fade in/out) to avoid clicks
+            env = min(1.0, i / (0.008 * SR)) * min(1.0, (n - i) / (0.008 * SR))
+            # excitation source
+            if voiced:
+                phase += F0 / SR
+                src = 0.0
+                if phase >= 1.0:
+                    phase -= 1.0; src = 1.0        # glottal impulse
+                src -= 0.5 * (1.0 if (phase < F0 / SR) else 0.0)  # slight DC balance
+                if noise_amt:                      # voiced fricative: add breath
+                    src += noise_amt * rnd.uniform(-1, 1)
+            else:
+                src = rnd.uniform(-1, 1)           # unvoiced: noise
+            y = R1.step(src) + 0.6 * R2.step(src) + 0.3 * R3.step(src)
+            out.append(amp * env * y)
+
+    def gap(dur):
+        for _ in range(int(SR * dur)): out.append(0.0)
+
+    words = [w for w in _re.findall(r"[^\W\d_]+", (text or ""), _re.UNICODE)][:12]
+    for w in words:
+        a = analyze_pronunciation(w, lang)
+        ipa = (a.get("ipa") or "").strip().strip("/") or w.lower()
+        chars = [c for c in ipa if c not in " ˈˌ.|‖"]
+        j = 0
+        while j < len(chars):
+            c = chars[j]; nxt = chars[j + 1] if j + 1 < len(chars) else ''
+            longv = (nxt == 'ː')
+            if c in _VOWEL_FORMANTS:
+                seg(list(_VOWEL_FORMANTS[c]), 0.18 if longv else 0.13, True, 0.9)
+                if longv: j += 1
+            elif c in _NASALS:
+                seg(list(_NASALS[c]), 0.10, True, 0.7)
+            elif c in _APPROX:
+                seg(list(_APPROX[c]), 0.08, True, 0.8)
+            elif c in _STOPS:
+                gap(0.04); seg([1800, 2200, 2800], 0.02, False, 0.5)   # closure + burst
+            elif c in _FRIC_VL:
+                seg([2600, 4000, 6000], 0.11, False, 0.45)              # hiss
+            elif c in _FRIC_VD:
+                seg([400, 1600, 2600], 0.09, True, 0.55, noise_amt=0.6) # voiced hiss
+            else:
+                seg([500, 1500, 2500], 0.06, True, 0.5)                 # neutral filler
+            j += 1
+        gap(0.11)
+    if not out:
+        gap(0.2)
+    # normalize to a safe peak
+    peak = max((abs(s) for s in out), default=1.0) or 1.0
+    k = 0.3 * 32767 / peak
+    bio = io.BytesIO()
+    wv = wave.open(bio, "wb"); wv.setnchannels(1); wv.setsampwidth(2); wv.setframerate(SR)
+    frames = bytearray()
+    for s in out:
+        v = int(max(-32767, min(32767, s * k)))
+        frames += struct.pack("<h", v)
+    wv.writeframes(bytes(frames)); wv.close()
+    return bio.getvalue()
+
+
+def speak(text, out_path=None, lang="en"):
+    """Phase 4b: synthesize `text` to a WAV using the OS's built-in TTS, in the given
+    language's voice where the engine supports it. Returns {available, engine, lang,
+    wav_bytes|None, error?}. Never fabricates audio."""
+    import platform, subprocess, tempfile, os as _os
+    lang = (lang or "en").lower()
+    text = (text or "").strip()[:400]
+    if not text:
+        return {"available": True, "engine": None, "lang": lang, "wav_bytes": None, "error": "no text"}
+    tmp = out_path or _os.path.join(tempfile.gettempdir(), "qb_speech.wav")
+
+    # --- Non-English: espeak-ng is the reliable multilingual voice on every OS. ---
+    esp = _espeak_exe()
+    if lang != "en" and esp:
+        _t0 = time.time()
+        try:
+            subprocess.run([esp] + _espeak_pathargs() + ["-v", lang, "-w", tmp, text], timeout=12, check=True, capture_output=True)
+            _espeak_log("speak-ok", lang=lang, ms=int((time.time() - _t0) * 1000), chars=len(text))
+            with open(tmp, "rb") as fh:
+                data = fh.read()
+            return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": data, "mime": "audio/wav"}
+        except Exception as e:
+            _espeak_log("speak-FAIL", lang=lang, err=repr(e)[:120])
+            return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": None,
+                    "error": "espeak-ng failed/timed out for '%s': %s" % (lang, e)}
+
+    kind, exe = _tts_engine()
+    if not kind:
+        return {"available": False, "engine": None, "lang": lang, "wav_bytes": None,
+                "error": "No speech engine. Double-click GET-VOICES-WINDOWS.bat (or GET-VOICES-MAC.command) "
+                         "to install espeak-ng (free) — then every language speaks."}
+
+    # --- Non-English but no espeak-ng: try a matching Windows SAPI voice; refuse if none. ---
+    if lang != "en" and kind == "sapi":
+        safe = text.replace("'", "''")
+        ps = ("Add-Type -AssemblyName System.Speech; "
+              "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+              "$v=$s.GetInstalledVoices()|?{$_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '%s'}|select -First 1; "
+              "if($v){$s.SelectVoice($v.VoiceInfo.Name);$s.SetOutputToWaveFile('%s');$s.Speak('%s');$s.Dispose();exit 0}else{exit 3}"
+              % (lang, tmp.replace("'", "''"), safe))
+        rc = subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=30, capture_output=True)
+        if rc.returncode == 0 and _os.path.exists(tmp):
+            with open(tmp, "rb") as fh:
+                data = fh.read()
+            return {"available": True, "engine": "sapi", "lang": lang, "wav_bytes": data, "mime": "audio/wav"}
+        # No matching OS voice. We do NOT fabricate robotic audio — we tell the user how to get
+        # a real voice for this language in one click.
+        return {"available": False, "engine": "sapi", "lang": lang, "wav_bytes": None,
+                "error": ("Your computer has no %s voice. Double-click GET-VOICES-WINDOWS.bat to install "
+                          "espeak-ng (free) — then %s and every other language speaks with a real voice. "
+                          "(The pronunciation shown above is already correct.)"
+                          % (LANG_NAMES.get(lang, lang), LANG_NAMES.get(lang, lang)))}
+
+    # --- English (or a non-English 'say'/espeak default handled above). ---
+    try:
+        if kind == "sapi":
+            safe = text.replace("'", "''")
+            ps = ("Add-Type -AssemblyName System.Speech; "
+                  "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                  "$s.SetOutputToWaveFile('%s'); $s.Speak('%s'); $s.Dispose()" % (tmp.replace("'", "''"), safe))
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=30,
+                           check=True, capture_output=True)
+        elif kind == "say":
+            aiff = tmp[:-4] + ".aiff"
+            subprocess.run(["say", "-o", aiff, text], timeout=30, check=True, capture_output=True)
+            # convert to wav if afconvert exists, else return aiff bytes
+            import shutil as _sh
+            if _sh.which("afconvert"):
+                subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16", aiff, tmp], timeout=30, check=True)
+            else:
+                tmp = aiff
+        else:  # espeak / espeak-ng — select the language voice when not English
+            cmd = [exe] + (["-v", lang] if lang and lang != "en" else []) + ["-w", tmp, text]
+            subprocess.run(cmd, timeout=30, check=True, capture_output=True)
+        with open(tmp, "rb") as fh:
+            data = fh.read()
+        return {"available": True, "engine": kind, "lang": lang, "wav_bytes": data,
+                "mime": "audio/aiff" if tmp.endswith(".aiff") else "audio/wav"}
+    except Exception as e:
+        return {"available": True, "engine": kind, "wav_bytes": None, "error": "TTS call failed: %s" % e}
+
+
+def speech_status(store_dir):
+    """Phase 4 status: analysis coverage + whether a real TTS engine is available."""
+    vocab = len(learned_words(store_dir, 400))
+    st = store.UFCSStore(store_dir)
+    analyzed = 0
+    try:
+        if not st.no_fql:
+            analyzed = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation'").fetchone()[0]
+    except Exception:
+        pass
+    finally:
+        st.close()
+    return {"vocabulary": vocab, "analyzed": analyzed, "tts": tts_status()}
+
+
+def grounding_status(store_dir):
+    """How much of the Phase-1 vocabulary has been grounded (for the Phase 2 UI)."""
+    words = learned_words(store_dir, 400)
+    st = store.UFCSStore(store_dir)
+    means = links = 0
+    samples = []
+    try:
+        if not st.no_fql:
+            means = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='means'").fetchone()[0]
+            links = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='grounded_by_fact'").fetchone()[0]
+            rows = st.db.execute(
+                "SELECT subject, object FROM nuc WHERE predicate='means' ORDER BY rowid DESC LIMIT 8").fetchall()
+            samples = [{"word": r[0].replace('english word "', "").rstrip('"'),
+                        "definition": r[1]} for r in rows]
+    except Exception:
+        pass
+    finally:
+        st.close()
+    return {"vocabulary": len(words), "defined": means, "store_links": links,
+            "coverage_pct": (round(100.0 * means / len(words), 1) if words else 0.0),
+            "dict_entries": dictionary_size(), "samples": samples}
+
+
+# --------------------------------------------------------------------------
+# Bundled public-domain English starter corpus. Lets a Phase-1 Language agent
+# drive learning to the Transition Gate with ONE click and NO internet — pangrams
+# (broad letter/phoneme coverage), classic public-domain nursery rhymes, and
+# common-word sentences. Split into chunks so an agent shows steady progress.
+# --------------------------------------------------------------------------
+STARTER_CORPUS = [
+    # Pangrams — maximize grapheme/phoneme coverage (τ1)
+    "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. "
+    "Sphinx of black quartz, judge my vow. How vexingly quick daft zebras jump! "
+    "The five boxing wizards jump quickly. Bright vixens jump; dozy fowl quack.",
+    # Phoneme-targeted words: digraphs and vowel teams (th, sh, ch, ph, wh, ng, oo, ee, ea, ou, ow, ai, oa, oi, aw, ir, ar, or)
+    "The ship sails on the shore while children chat. The phone rang; the whale sang a long song. "
+    "The moon and the trees stand near the sea. A house on the cow path saw rain in the day. "
+    "The boat found a coin; the boy heard a saw. A bird with fur sat in a car by the door.",
+    # Nursery rhymes (public domain) — rhythm, prosody, repetition
+    "Twinkle, twinkle, little star, how I wonder what you are. Up above the world so high, "
+    "like a diamond in the sky. Jack and Jill went up the hill to fetch a pail of water. "
+    "Jack fell down and broke his crown, and Jill came tumbling after.",
+    "Mary had a little lamb, its fleece was white as snow. And everywhere that Mary went, "
+    "the lamb was sure to go. Humpty Dumpty sat on a wall. Humpty Dumpty had a great fall. "
+    "The itsy bitsy spider climbed up the water spout.",
+    # Common-word sentences — high-frequency function words for lexical stability (τ2) and density (τ3)
+    "The cat sat on the mat and the dog ran to the park. She sells sea shells by the sea shore. "
+    "We can go to the shop when the sun comes up. They will read a book and write a note. "
+    "I like to run and jump and play. He said that this is the way we do it.",
+    "People use words to share what they think and feel. A child learns to hear sounds, then say "
+    "words, then read and write them. Water flows to the river and the rain falls on the plain. "
+    "Time and light and sound move through the air around us every day.",
+    "Phonics teaches the sounds that letters make in words. Every language has its own set of "
+    "sounds and rules. When we speak, we join sounds into words and words into sentences. "
+    "Grammar is the pattern that holds the words of a sentence together in order.",
+]
+
+
+def corpus_chunk(i):
+    """Return the i-th starter-corpus chunk (cycling)."""
+    return STARTER_CORPUS[i % len(STARTER_CORPUS)]
+
+
+# --------------------------------------------------------------------------
+# PER-LANGUAGE LEARNING (structural + pronunciation), the same shape as the
+# English Phase-1 path: ingest a bundled PUBLIC-DOMAIN starter corpus (standard
+# pangrams + numbers + weekdays), build the language's vocabulary, and write a
+# pronunciation Fact Unit for each word via the deterministic OS phonemizer.
+# No LLM. Meaning-grounding (definitions) still needs a per-language dictionary
+# and stays gated — this is vocabulary + pronunciation acquisition.
+# --------------------------------------------------------------------------
+STARTER_CORPUS_L10N = {
+    "de": ["Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich.",
+           "Franz jagt im komplett verwahrlosten Taxi quer durch Bayern.",
+           "null eins zwei drei vier fünf sechs sieben acht neun zehn",
+           "Montag Dienstag Mittwoch Donnerstag Freitag Samstag Sonntag"],
+    "fr": ["Portez ce vieux whisky au juge blond qui fume.",
+           "Voix ambiguë d'un cœur qui au zéphyr préfère les jattes de kiwis.",
+           "zéro un deux trois quatre cinq six sept huit neuf dix",
+           "lundi mardi mercredi jeudi vendredi samedi dimanche"],
+    "es": ["El veloz murciélago hindú comía feliz cardillo y kiwi.",
+           "La cigüeña tocaba cada vez mejor el saxofón y el búho pedía queso.",
+           "cero uno dos tres cuatro cinco seis siete ocho nueve diez",
+           "lunes martes miércoles jueves viernes sábado domingo"],
+    "pt": ["Um pequeno jabuti xereta viu dez cegonhas felizes.",
+           "Luís argüía à Júlia que fé, chá, óxido, pôr e zângão eram palavras.",
+           "zero um dois três quatro cinco seis sete oito nove dez",
+           "segunda terça quarta quinta sexta sábado domingo"],
+    "it": ["Ma la volpe, col suo balzo, ha raggiunto il quieto Fido.",
+           "Quel fez sghembo copre davanti al pianoforte.",
+           "zero uno due tre quattro cinque sei sette otto nove dieci",
+           "lunedì martedì mercoledì giovedì venerdì sabato domenica"],
+    "sv": ["Flygande bäckasiner söka hwila på mjuka tuvor.",
+           "Yxskaftbud, ge vår WC-zonmö iq-hjälp.",
+           "noll ett två tre fyra fem sex sju åtta nio tio",
+           "måndag tisdag onsdag torsdag fredag lördag söndag"],
+    "nl": ["Pa's wijze lynx bezag vroom het fikse aquaduct.",
+           "Sexy qua lijf, doch bang voor het zwempak.",
+           "nul een twee drie vier vijf zes zeven acht negen tien",
+           "maandag dinsdag woensdag donderdag vrijdag zaterdag zondag"],
+}
+
+
+def _corpus_words(lang):
+    """Ordered unique word forms from the bundled starter corpus for `lang`
+    (English reuses STARTER_CORPUS). Letter-only tokens; accents preserved."""
+    lang = (lang or "en").lower()
+    chunks = STARTER_CORPUS if lang == "en" else STARTER_CORPUS_L10N.get(lang, [])
+    text = " ".join(chunks).lower()
+    seen, order = set(), []
+    for tok in re.findall(r"[^\W\d_]+", text, re.UNICODE):
+        if len(tok) >= 1 and tok not in seen:
+            seen.add(tok); order.append(tok)
+    # Real vocabulary from the bundled bilingual dictionary (es/fr ~2,500 words each):
+    # the language keeps climbing with words + translations + pronunciation, instead of
+    # capping at the ~37-word pangram starter and looking "stalled". Deterministic order.
+    if lang != "en":
+        for w in sorted(bilingual_word_map(lang).keys()):
+            if w not in seen:
+                seen.add(w); order.append(w)
+    return order
+
+
+import collections as _collections
+RECENT_LEARNED = _collections.deque(maxlen=400)   # live activity feed ring buffer
+
+def record_activity(lang, word, ipa, means, kind="word"):
+    RECENT_LEARNED.append({"t": time.time(), "lang": lang, "word": word,
+                           "ipa": ipa or "", "means": means or "", "kind": kind})
+
+def recent_activity(limit=60, since=0.0):
+    items = [a for a in RECENT_LEARNED if a["t"] > since]
+    now = time.time()
+    rate = sum(1 for a in RECENT_LEARNED if a["t"] > now - 5) / 5.0   # words/sec over last 5s
+    last = RECENT_LEARNED[-1] if RECENT_LEARNED else None
+    return {"items": items[-limit:], "rate_per_s": round(rate, 1),
+            "current_lang": (last or {}).get("lang"),
+            "current_language": LANG_NAMES.get((last or {}).get("lang"), (last or {}).get("lang")),
+            "total_seen": len(RECENT_LEARNED), "now": now}
+
+
+def learn_language(store_dir, lang, words=None, max_words=None):
+    """Learn a language the way English Phase 1 learned: for each word in the bundled
+    starter corpus, write a vocabulary Fact Unit (attested in the corpus) and, when the
+    OS phonemizer is present, its pronunciation. Deterministic, no LLM. Returns counts."""
+    lang = (lang or "en").lower()
+    allw = _corpus_words(lang)
+    if words is None:
+        words = allw
+    if max_words:
+        words = words[:max_words]
+    csrc = ("SRC-CORPUS-%s" % lang.upper(),
+            "Bundled public-domain starter corpus (pangrams, %s)" % LANG_NAMES.get(lang, lang),
+            "reference", 0.8)
+    psrc = SPEECH_SOURCE if lang == "en" else (_espeak_source(lang) if _espeak_exe() else _rule_source(lang))
+    tmap = {} if lang == "en" else bilingual_word_map(lang)
+    st = store.UFCSStore(store_dir)
+    vocab_added = pron_added = trans_added = 0
+    sample = []
+    try:
+        for w in words:
+            wl = str(w).lower().strip()
+            if not wl or not wl.isalpha():
+                continue
+            label = '%s word "%s"' % (LANG_NAMES.get(lang, lang).lower(), wl)
+            senses = tmap.get(wl)
+            attest = "bundled bilingual dictionary" if senses else "bundled starter corpus"
+            asrc = BILINGUAL_SOURCE if senses else csrc
+            if st.add(store.make_packet(label, "attested_in", attest, "+", "language", asrc, 0.8)):
+                vocab_added += 1
+            # Translation facts: the Spanish/French word MEANS its English sense(s).
+            for en in (senses or [])[:3]:
+                if st.add(store.make_packet(label, "means", en, "+", "language", BILINGUAL_SOURCE, 0.70)):
+                    trans_added += 1
+            a = analyze_pronunciation(wl, lang)
+            if a["ipa"]:
+                if st.add(store.make_packet(label, "pronunciation", a["ipa"], "+", "language", psrc, 0.70)):
+                    pron_added += 1
+                st.add(store.make_packet(label, "syllable_count", str(a["syllables"]), "+", "language", psrc, 0.70))
+                st.add(store.make_packet(label, "stress_syllable", str(a["stress_syllable"]), "+", "language", psrc, 0.70))
+            record_activity(lang, wl, a.get("ipa"), (senses or [None])[0])
+            if len(sample) < 10:
+                sample.append({"word": wl, "ipa": a["ipa"]})
+        st.flush()
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": len(allw),
+            "vocab_added": vocab_added, "pron_added": pron_added, "trans_added": trans_added,
+            "phonemizer": bool(_espeak_exe()) or lang == "en", "sample": sample}
+
+
+def _scan_language_counts(st, prefix):
+    """Count learned vocabulary + pronunciation by scanning the stored blocks directly.
+    Works even when the SQLite index is absent (no_fql) — so the word count is never
+    silently stuck at 0 just because the fast index did not build on this machine."""
+    subs = set(); pron = 0
+    try:
+        for rec in st.iter_all():
+            n = rec.get("nucleus") or {}
+            s = n.get("subject", ""); p = n.get("predicate", "")
+            if not s.startswith(prefix):
+                continue
+            if p == "attested_in":
+                subs.add(s)
+            elif p == "pronunciation":
+                pron += 1
+    except Exception:
+        pass
+    return len(subs), pron
+
+
+def language_learning_status(store_dir, lang):
+    """How much of a language has been learned (vocabulary + pronunciation)."""
+    lang = (lang or "en").lower()
+    total = len(_corpus_words(lang))
+    prefix = ('english word "' if lang == "en" else '%s word "' % LANG_NAMES.get(lang, lang).lower())
+    st = store.UFCSStore(store_dir)
+    vocab = pron = 0
+    counted_via = "none"
+    try:
+        if not st.no_fql:
+            try:
+                vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                                      (prefix + "%",)).fetchone()[0]
+                pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?",
+                                     (prefix + "%",)).fetchone()[0]
+                counted_via = "index"
+            except Exception:
+                vocab = pron = 0
+        # Fallback: no index, or the index returned nothing while blocks exist — scan the
+        # blocks so the real number always shows. This is the fix for "count never increases".
+        if (st.no_fql or vocab == 0) and st.manifest.get("blocks", 0):
+            sv, sp = _scan_language_counts(st, prefix)
+            if sv or sp:
+                vocab, pron, counted_via = sv, sp, "scan"
+    finally:
+        st.close()
+    return {"lang": lang, "language": LANG_NAMES.get(lang, lang), "vocab_total": total,
+            "vocab_learned": vocab, "pronounced": pron,
+            "counted_via": counted_via, "phonemizer": bool(_espeak_exe()) or lang == "en"}
+
+
+def diagnostics(store_dir, lang="es"):
+    """Full self-check for language learning, so a failing machine can hand back exactly
+    what is wrong. Safe, read-mostly: the only write is a 5-word live test into a throwaway
+    temp store (never the real one). No LLM, no network."""
+    import tempfile, shutil, platform as _pf, traceback
+    lang = (lang or "es").lower()
+    out = {"ok": True, "problems": [], "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+           "python": _pf.python_version(), "platform": _pf.platform()}
+
+    # 1) Bilingual vocabulary source
+    try:
+        p = _biling_path()
+        B = load_bilingual()
+        langs = [k for k in B.keys() if not str(k).startswith("_")]
+        out["bilingual"] = {"file_found": bool(p), "path": p, "languages": langs,
+                            "es_entries": len(B.get("es", {}) or {}),
+                            "fr_entries": len(B.get("fr", {}) or {}),
+                            "words_for_%s" % lang: len(bilingual_word_map(lang))}
+        if not p:
+            out["ok"] = False
+            out["problems"].append("Bilingual dictionary file qb_bilingual.json.gz NOT found — "
+                                   "language vocabulary falls back to the ~37-word starter only.")
+    except Exception as e:
+        out["ok"] = False; out["bilingual"] = {"error": repr(e)}
+        out["problems"].append("Bilingual load failed: %r" % e)
+
+    # 2) Corpus size the learner will walk
+    try:
+        out["corpus_words_%s" % lang] = len(_corpus_words(lang))
+        if len(_corpus_words(lang)) <= 40:
+            out["problems"].append("Corpus for '%s' is only %d words (bilingual data not merged) — "
+                                   "it will finish almost instantly and then add 0."
+                                   % (lang, len(_corpus_words(lang))))
+    except Exception as e:
+        out["ok"] = False; out["problems"].append("Corpus build failed: %r" % e)
+
+    # 3) Phonemizer
+    out["phonemizer"] = {"espeak_ng_installed": bool(_espeak_exe()),
+                         "espeak_path": _espeak_exe(),
+                         "rule_g2p_available": lang in G2P_RULES,
+                         "speakable_languages": speakable_languages()}
+
+    # 4) The real store: can we read it, and does the index exist?
+    try:
+        st = store.UFCSStore(store_dir)
+        prefix = '%s word "' % LANG_NAMES.get(lang, lang).lower()
+        idx_vocab = scan_vocab = scan_pron = 0
+        if not st.no_fql:
+            try:
+                idx_vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                                          (prefix + "%",)).fetchone()[0]
+            except Exception as e:
+                out["problems"].append("SQL index present but query failed: %r" % e)
+        scan_vocab, scan_pron = _scan_language_counts(st, prefix)
+        out["store"] = {"path": os.path.abspath(store_dir),
+                        "exists": os.path.isdir(store_dir),
+                        "blocks": st.manifest.get("blocks", 0),
+                        "total_facts_manifest": st.manifest.get("facts", 0),
+                        "fast_index_active": (not st.no_fql),
+                        "%s_vocab_via_index" % lang: idx_vocab,
+                        "%s_vocab_via_scan" % lang: scan_vocab,
+                        "%s_pron_via_scan" % lang: scan_pron}
+        st.close()
+        if st.no_fql:
+            out["problems"].append("Fast SQLite index is OFF for this store (no_fql) — counts now "
+                                   "come from a block scan; learning still works.")
+        if (not st.no_fql) and idx_vocab == 0 and scan_vocab > 0:
+            out["ok"] = False
+            out["problems"].append("INDEX MISMATCH: %d %s words are in the store but the index "
+                                   "reports 0 — this is why the count looked stuck. Scan count is correct."
+                                   % (scan_vocab, lang))
+    except Exception as e:
+        out["ok"] = False; out["store"] = {"error": repr(e), "trace": traceback.format_exc()[-800:]}
+        out["problems"].append("Could not open the store at %s: %r" % (store_dir, e))
+
+    # 5) LIVE write test into a throwaway store — proves learning writes + re-reads.
+    tmp = tempfile.mkdtemp(prefix="qb_diag_")
+    try:
+        words = _corpus_words(lang)[:5] or ["uno", "dos", "tres"]
+        r = learn_language(tmp, lang, words=words)
+        chk = language_learning_status(tmp, lang)
+        out["live_test"] = {"tmp_store": tmp, "words_tried": words,
+                            "vocab_added": r.get("vocab_added"), "pron_added": r.get("pron_added"),
+                            "trans_added": r.get("trans_added"),
+                            "reread_vocab_learned": chk.get("vocab_learned"),
+                            "reread_counted_via": chk.get("counted_via"),
+                            "sample": r.get("sample", [])[:3]}
+        if not r.get("vocab_added"):
+            out["ok"] = False
+            out["problems"].append("LIVE TEST FAILED: writing vocabulary added 0 — the store is not "
+                                   "accepting writes on this machine (disk full? permissions? read-only drive?).")
+        elif not chk.get("vocab_learned"):
+            out["ok"] = False
+            out["problems"].append("LIVE TEST: wrote words but re-reading them returned 0 — the read path "
+                                   "is broken on this machine. Send this report.")
+    except Exception as e:
+        out["ok"] = False
+        out["live_test"] = {"error": repr(e), "trace": traceback.format_exc()[-800:]}
+        out["problems"].append("LIVE TEST crashed: %r" % e)
+    finally:
+        try: shutil.rmtree(tmp, ignore_errors=True)
+        except Exception: pass
+
+    # 6) EVERY language at a glance — vocabulary, translation, speech. This is the matrix the
+    #    UI shows so no language is quietly empty.
+    matrix = []
+    for lg in sorted(LANG_NAMES):
+        if lg == "en":
+            continue
+        corpus = len(_corpus_words(lg))
+        has_tr = bool(english_to_lang_map(lg)) and bool(bilingual_word_map(lg))
+        learned = language_learning_status(store_dir, lg).get("vocab_learned", 0)
+        row = {"lang": lg, "language": LANG_NAMES.get(lg, lg),
+               "words_available": corpus, "words_learned": learned,
+               "can_translate": has_tr,
+               "can_pronounce": (lg in G2P_RULES) or bool(_espeak_exe()),
+               "can_speak_audio": bool(_espeak_exe()) or (lg in SPEAKABLE)}
+        matrix.append(row)
+        if corpus <= 40:
+            out["ok"] = False
+            out["problems"].append("%s has only %d words — its dictionary did not load."
+                                   % (LANG_NAMES.get(lg, lg), corpus))
+        if not has_tr:
+            out["problems"].append("%s cannot translate yet — no bundled dictionary." % LANG_NAMES.get(lg, lg))
+    out["languages_matrix"] = matrix
+
+    # 7) Speech reality check (so "only English speaks" is explained, not mysterious).
+    out["speech"] = {
+        "offline_audio_engine": _espeak_exe() or None,
+        "offline_audio_available_for_all_languages": bool(_espeak_exe()),
+        "browser_voice_fallback": "Chrome/Edge speak any language for which your system has a voice",
+        "note": ("With espeak-ng installed, EVERY language speaks offline. Without it, spoken audio "
+                 "uses your browser's voices — English is always present; other languages speak only "
+                 "if your system has that voice. Pronunciation (IPA) always works for every language.")}
+
+    if not out["problems"]:
+        out["problems"].append("No problems detected — learning reads and writes correctly on this machine.")
+    return out
+
+
+def language_readiness(store_dir):
+    """Compact per-language readiness for the UI: words available/learned, translation, speech.
+    Lets the Language Lab show each language's true status so none looks mysteriously empty."""
+    rows = []
+    espeak = bool(_espeak_exe())
+    for lg in sorted(LANG_NAMES):
+        if lg == "en":
+            continue
+        corpus = len(_corpus_words(lg))
+        learned = language_learning_status(store_dir, lg).get("vocab_learned", 0)
+        rows.append({"lang": lg, "language": LANG_NAMES.get(lg, lg),
+                     "words_available": corpus, "words_learned": learned,
+                     "can_translate": bool(english_to_lang_map(lg)),
+                     "can_pronounce": (lg in G2P_RULES) or espeak,
+                     "offline_audio": espeak})
+    return {"languages": rows, "offline_audio_engine": espeak}
+
+
+# The documented developmental phases (Bible LEL chapter). "built" phases run in
+# this prototype; "roadmap" phases require engines that are spec-only, so their
+# agents refuse rather than fabricate.
+LANGUAGE_PHASES = [
+    {"n": 1, "key": "structural", "agent_kind": "language", "status": "built",
+     "name": "Structural priming (SLPL + Phase 1)",
+     "desc": "Learn the STRUCTURE of English from raw text — grapheme inventory, rule-seeded "
+             "phonemes, syllables, lexical stability, co-occurrence, prosody. Semantics are "
+             "suppressed. Advances the four Transition Gate thresholds."},
+    {"n": 2, "key": "semantic", "agent_kind": "lang_semantic", "status": "built",
+     "name": "Semantic grounding (Phase 2) — dictionary + store",
+     "desc": "Grounds Phase-1 words to meanings QueryBook can point to: a bundled PUBLIC-DOMAIN "
+             "dictionary (Webster's 1913) writes `means` facts, and self-grounding links each word to "
+             "the verified Fact Units it already appears in. Fully deterministic, no internet, NO LLM "
+             "— every meaning carries an auditable source. (LLMs are locked out of this phase; a future "
+             "'suggestor' mode may propose meanings that are accepted only when they match the "
+             "dictionary.)"},
+    {"n": 3, "key": "multilingual", "agent_kind": "lang_multilingual", "status": "built",
+     "name": "Multilingual delta (Phase 3) — dictionary delta",
+     "desc": "Deterministic approximation of the Delta Acquisition Model: reuse the English "
+             "foundation from Phase 1 and learn only the DELTA to a second language (the word "
+             "mapping) from a bundled bilingual dictionary, stored as translation Fact Units. "
+             "No LLM, no internet. Set the agent target to a language code (es, fr). The full "
+             "neural cross-lingual alignment remains the roadmap embodiment; the bundled "
+             "bilingual data is a demo set to be replaced with a public-domain source."},
+    {"n": 4, "key": "speech", "agent_kind": "lang_speech", "status": "built",
+     "name": "Speech output (Phase 4) — analysis + OS voice",
+     "desc": "Two honest parts. (4a) Deterministic pronunciation analysis of the learned vocabulary — "
+             "rule-seeded G2P phonemes, syllable split, stress, prosody — stored as Fact Units, no LLM. "
+             "(4b) Real speech via the computer's BUILT-IN text-to-speech (Windows SAPI, macOS say, Linux "
+             "espeak-ng); if no engine is present it says so and never fabricates audio. The full neural "
+             "vocoder pipeline remains the roadmap embodiment."},
+]
+
+
+def phases(store_dir):
+    """Phase catalog + the current structural status/gate, for the Language Lab page."""
+    return {"phases": LANGUAGE_PHASES, "status": status(store_dir)}
+
+
+# Curated seed sources for the Language Lab (structural / sub-language material).
+# These are SUGGESTIONS the user can fetch; QueryBook does not auto-crawl them.
+SEED_SOURCES = [
+    {"name": "English phonology (overview)", "url": "https://en.wikipedia.org/wiki/English_phonology",
+     "kind": "phonology", "note": "Phoneme inventory, syllable structure — seeds τ1."},
+    {"name": "English phonemic chart / IPA", "url": "https://en.wikipedia.org/wiki/Help:IPA/English",
+     "kind": "phonetics", "note": "Grapheme→phoneme correspondences."},
+    {"name": "Phonics (letter–sound rules)", "url": "https://en.wikipedia.org/wiki/Phonics",
+     "kind": "phonics", "note": "Sub-language sound structure."},
+    {"name": "Most common English words", "url": "https://en.wikipedia.org/wiki/Most_common_words_in_English",
+     "kind": "lexicon", "note": "Seeds lexical stability (τ2)."},
+    {"name": "English grammar", "url": "https://en.wikipedia.org/wiki/English_grammar",
+     "kind": "grammar", "note": "Co-occurrence & structure (τ3)."},
+    {"name": "Syllable", "url": "https://en.wikipedia.org/wiki/Syllable",
+     "kind": "prosody", "note": "Syllable segmentation reference."},
+    {"name": "Prosody (linguistics)", "url": "https://en.wikipedia.org/wiki/Prosody_(linguistics)",
+     "kind": "prosody", "note": "Rhythm/intonation — pre-semantic contours."},
+    {"name": "International Phonetic Alphabet", "url": "https://en.wikipedia.org/wiki/International_Phonetic_Alphabet",
+     "kind": "phonetics", "note": "Phonetic symbol inventory."},
+    {"name": "English orthography", "url": "https://en.wikipedia.org/wiki/English_orthography",
+     "kind": "phonics", "note": "Spelling→sound correspondences (seeds G2P)."},
+    {"name": "Morphology (linguistics)", "url": "https://en.wikipedia.org/wiki/Morphology_(linguistics)",
+     "kind": "grammar", "note": "Word-formation structure."},
+    {"name": "Function word", "url": "https://en.wikipedia.org/wiki/Function_word",
+     "kind": "lexicon", "note": "High-frequency closed-class words (lexical stability)."},
+    {"name": "English verbs", "url": "https://en.wikipedia.org/wiki/English_verbs",
+     "kind": "grammar", "note": "Inflection and conjugation patterns."},
+    {"name": "Vowel", "url": "https://en.wikipedia.org/wiki/Vowel",
+     "kind": "phonetics", "note": "Vowel space — completes the phoneme inventory (τ1)."},
+    {"name": "Consonant", "url": "https://en.wikipedia.org/wiki/Consonant",
+     "kind": "phonetics", "note": "Consonant inventory — completes τ1."},
+    {"name": "Stress (linguistics)", "url": "https://en.wikipedia.org/wiki/Stress_(linguistics)",
+     "kind": "prosody", "note": "Lexical/sentence stress patterns."},
+]
+
+
+def main():
+    import sys
+    if len(sys.argv) < 2:
+        print("usage: python qb_language.py <store> [--url URL | --file PATH | \"text\"]"); return
+    sd = sys.argv[1]
+    if "--url" in sys.argv:
+        res = learn(sd, url=sys.argv[sys.argv.index("--url") + 1])
+    elif "--file" in sys.argv:
+        p = sys.argv[sys.argv.index("--file") + 1]
+        res = learn(sd, text=open(p, encoding="utf-8", errors="replace").read(), source=os.path.basename(p))
+    elif len(sys.argv) >= 3:
+        res = learn(sd, text=sys.argv[2], source="cli text")
+    else:
+        res = status(sd)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
