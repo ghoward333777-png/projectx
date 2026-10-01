@@ -3686,3 +3686,88 @@ REVISED FEATURE COUNT: 196 (195 + 1 creativity loop, [192]).
 Roadmap agents remaining: NONE (all specified engines reduced to practice). The
 creativity loop is a NAMED capability atop the built hypothesis/simulation
 family; its benchmark + graphing are the roadmap build, inside the covenant.
+
+
+================================================================
+ADDITIVE REVISION - ADVANCED LANGUAGE & SPEECH TECHNOLOGY (2026-10-01)
+================================================================
+Records the advanced, reduced-to-practice refinements of the language/speech
+subsystem (Phases 1-4) made since the 2026-09-30 revision. Third-party
+dependencies are named ONLY by the role they fill - each is an OPEN-SOURCE
+component behind a stable internal interface, never a hard-wired product - so
+these entries stay accurate as components are substituted for a commercial
+deployment (covenant L5 of the Language & Speech Technology Specification).
+
+[193] 18.1 - Multilingual pronunciation preference ladder  [BUILT]
+      For any word in any supported language, QueryBook derives IPA, a syllable
+      count and the primary-stress syllable deterministically, and ALWAYS
+      offline. Ladder (most accurate first): (a) a bundled OPEN-SOURCE
+      phonemizer when present; else (b) a bundled, pure-code rule-seeded
+      grapheme-to-phoneme table per language (es/fr/de/it/pt/nl/sv, longest-
+      match rules; English has its own rule G2P); else (c) an explicit NULL -
+      never a fabricated pronunciation (covenant L4). Phonemizer calls are
+      cached, logged to a bounded ring buffer, and time-bounded so the UI never
+      blocks.
+
+[194] 18.2 - Phrase-consistent phonetic transcription  [BUILT]
+      The "analyze & speak" surface transcribes a whole phrase in ONE
+      phonemizer call rather than per word. This makes the DISPLAYED IPA
+      identical to what the voice engine actually speaks, removing the earlier
+      mismatch where the panel showed a rule-fallback transcription while the
+      audio came from the phonemizer. English and the no-phonemizer case keep
+      the instant rule path.
+
+[195] 18.3 - Self-contained bundled open-source speech engine  [BUILT]
+      So the app "assumes nothing" about a user's machine, the reference bundle
+      ships an OPEN-SOURCE speech engine INSIDE the application - the engine
+      binary, its runtime-support libraries and its phoneme data - so Windows
+      and macOS users with none of the usual tools installed still get real
+      audio in every supported language with no install, no account and no
+      cloud. A one-click installer remains only as a fallback.
+
+[196] 18.4 - Speech engine-selection ladder + no fabricated audio  [BUILT]
+      Audio output selects an engine per OS and reports which it used:
+      (1) non-English + bundled open-source engine -> use it; (2) non-English on
+      macOS -> the host OS built-in voice service (language voice if installed,
+      else default with a note); (3) non-English on Windows -> a culture-matched
+      OS voice if installed, else an HONEST refusal with a one-click remedy;
+      (4) English -> the OS built-in service or the bundled engine. When no real
+      voice exists the subsystem REFUSES rather than emit synthetic or
+      placeholder audio (covenant L6). The earlier pure-code formant synthesizer
+      was removed from the playback path (robotic/occasionally corrupt, far too
+      slow). Pronunciation (IPA) remains available with or without a voice.
+
+[197] 18.5 - Deterministic translation, detection & coverage  [BUILT]
+      Word-by-word translation through English from bundled OPEN-SOURCE bilingual
+      dictionaries: known words rendered (with up to three alternatives), unknown
+      words PASSED THROUGH and flagged - never guessed - with a coverage % so the
+      user can trust exactly what was and was not translated. Language detection
+      scores text against every bundled dictionary and reports a ranked best
+      guess with confidence. No LLM, no network.
+
+[198] 18.6 - Permanent pronunciation/speech QC battery  [BUILT]
+      A deterministic, local, LLM-free standing gate on the voice subsystem.
+      Per language it checks: IPA is produced for known words; syllable counts
+      are sane (+/-1 of expected); and a short phrase actually synthesizes to a
+      VALID WAV (RIFF header, non-trivial length, decodable duration). Returns a
+      per-language report + overall pass score + all_ok flag; exposed on a read-
+      only status endpoint and a one-click control. Reference run: es/fr/de =
+      13/13 (100%) with real ~1s clips. Supporting controls: deterministic text
+      hygiene, phonemizer self-test, runtime-dependency presence check.
+
+COVENANT: all of [193]-[198] hold the Language covenant L1-L6 - no LLM in the
+language/speech path; every asserted fact sourced; deterministic; refuse (never
+invent); open-source components pluggable behind role interfaces; no fabricated
+audio. The open-source parts are commodities; QueryBook's deterministic,
+provenance-tracked, LLM-free engine is the defensible asset.
+
+Cross-refs: Language & Speech Technology Specification (spec/QueryBook-Language-
+Technology-Specification.md, sections 8-10 and the predicate/source ledger);
+Canonical Engine Spec section 6 (the four language phases); Bible amendment
+"Advanced Language & Speech Technology (2026-10-01)"; Provisional Patent
+Application Section VIII ([0027]-[0031]) and claims 21-30, FIG. 9 and FIG. 10.
+
+REVISED FEATURE COUNT: 202 (196 + 6 advanced language/speech features,
+[193]-[198]). All six are BUILT and tested in the prototype; only the full
+neural embodiments (LEL / neural vocoder / neural cross-lingual alignment)
+remain preferred roadmap forms.

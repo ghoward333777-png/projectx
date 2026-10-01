@@ -266,6 +266,69 @@ s += box(380, 520, 300, 74, ["Optional 'suggestor' (future):", "LLM proposes; AC
 s += '</svg>'
 FIGS.append((8, "Deterministic Phase-Two Semantic Grounding — Dictionary and Store (No LLM)", s))
 
+# ===================== FIG. 9 — Advanced multilingual pronunciation + self-contained speech =====================
+w, h = 720, 720
+s = svg_open(w, h)
+s += box(120, 16, 480, 42, ["ADVANCED MULTILINGUAL PRONUNCIATION &",
+                            "SELF-CONTAINED SPEECH (prototype — no LLM)"], "900")
+# input + selector
+s += box(285, 72, 150, 44, ["Word / phrase", "+ language"], "910")
+s += arrow(360, 116, 360, 138)
+s += box(265, 138, 190, 48, ["Pronunciation", "preference ladder"], "920")
+# three parallel paths out of the selector
+s += arrow(300, 186, 130, 224); s += label(150, 214, "open-source present", 9)
+s += arrow(360, 186, 360, 224); s += label(368, 214, "fallback", 9)
+s += arrow(420, 186, 590, 224); s += label(545, 214, "neither", 9)
+s += box(30, 224, 205, 54, ["Bundled open-source", "phonemizer", "(most accurate)"], "930")
+s += box(258, 224, 205, 54, ["Rule-seeded G2P tables", "per language (es/fr/de/", "it/pt/nl/sv; longest-match)"], "940")
+s += box(486, 224, 205, 54, ["No phonemizer and", "no table → explicit null", "(NOT fabricated)"], "960")
+s += arrow(132, 278, 132, 300); s += box(30, 300, 205, 36, ["IPA transcription"], "931")
+s += arrow(360, 278, 360, 300); s += box(258, 300, 205, 36, ["Approximate IPA (offline)"], "941")
+s += box(30, 352, 205, 46, ["Call cache (memoized) +", "timeout / bounded log", "(never blocks UI)"], "932", dashed=True)
+s += numeral(225, 372, "933")
+# merge to syllable/stress derivation
+s += arrow(132, 336, 300, 420); s += arrow(360, 336, 360, 420)
+s += box(255, 420, 210, 48, ["Syllable count + primary", "stress (IPA nuclei / marks)"], "950")
+# phrase-level transcription consistency
+s += box(486, 420, 205, 48, ["Phrase-level single-call", "transcription"], "970")
+s += arrow(588, 468, 588, 490)
+s += box(470, 490, 230, 42, ["Displayed IPA == synthesized audio"], "971")
+# self-contained speech band
+s += line(30, 552, 690, 552)
+s += label(30, 548, "SELF-CONTAINED SPEECH OUTPUT", 11, bold=True)
+s += box(30, 562, 320, 140, ["Self-contained application bundle"], "980")
+s += box(45, 606, 92, 80, ["open-source", "speech", "engine"], "981")
+s += box(147, 606, 92, 80, ["runtime", "support", "libraries"], "982")
+s += box(249, 606, 86, 80, ["phoneme", "data"], "983")
+s += box(370, 562, 320, 140, ["Engine-selection ladder (per OS / language)"], "984")
+s += box(385, 606, 95, 80, ["OS built-in", "voice service"], "985")
+s += box(488, 606, 95, 80, ["culture-", "matched OS", "voice"], "986")
+s += box(591, 606, 90, 80, ["honest", "refusal — no", "fabricated", "audio"], "987")
+s += arrow(360, 532, 360, 562)  # from derivation/consistency into speech band
+s += '</svg>'
+FIGS.append((9, "Advanced Multilingual Pronunciation and Self-Contained Speech (No LLM)", s))
+
+# ===================== FIG. 10 — Permanent pronunciation/speech QC battery =====================
+w, h = 720, 500
+s = svg_open(w, h)
+s += box(150, 18, 420, 42, ["PERMANENT PRONUNCIATION / SPEECH QUALITY CONTROL",
+                            "(deterministic, local, no LLM)"], "995")
+s += arrow(360, 60, 360, 82)
+s += box(210, 82, 300, 40, ["For each supported language"], None)
+# three deterministic checks
+s += arrow(260, 122, 150, 160); s += arrow(360, 122, 360, 160); s += arrow(460, 122, 575, 160)
+s += box(40, 160, 200, 74, ["Check 1", "IPA produced for", "known words"], "996")
+s += box(260, 160, 200, 74, ["Check 2", "syllable count within", "±1 of expected"], "997")
+s += box(480, 160, 200, 74, ["Check 3", "phrase synthesizes to a", "VALID WAV (RIFF, length,", "duration)"], "998")
+# merge to report
+s += arrow(140, 234, 300, 296); s += arrow(360, 234, 360, 296); s += arrow(580, 234, 420, 296)
+s += box(230, 296, 260, 66, ["Per-language report +", "overall pass score +", "all-pass flag"], "999")
+# supporting controls
+s += box(90, 392, 540, 60, ["Supporting: deterministic text hygiene · phonemizer self-test ·",
+                            "runtime-dependency presence check (all inspectable, reproducible)"], None, dashed=True)
+s += '</svg>'
+FIGS.append((10, "Permanent Pronunciation and Speech Quality-Control Battery (No LLM)", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -288,6 +351,8 @@ descr = {
  6: "is a data-flow diagram of the co-grounded integration of the LEL with the Federated Query Language (FQL) and the Universal Federated Connectivity System (UFCS).",
  7: "is a block diagram of a reduced-to-practice embodiment (the Language Lab) implementing Phase One, the Transition Gate, and a deterministic Phase Two, per Section VII.",
  8: "is a data-flow diagram of the deterministic Phase-Two semantic grounding of the reduced-to-practice embodiment, in which word meanings are attached only from auditable sources — a bundled public-domain dictionary and self-grounding against verified Fact Units in the store — with any large-language-model meaning source excluded from the grounding path.",
+ 9: "is a block diagram of the advanced multilingual pronunciation subsystem and self-contained speech output of the reduced-to-practice embodiment, showing the pronunciation preference ladder (bundled open-source phonemizer, then per-language rule-seeded grapheme-to-phoneme tables, then an explicit non-fabricated null), the single-call phrase transcription that keeps the displayed transcription consistent with the synthesized audio, and the self-contained bundle and engine-selection ladder that produce offline audio or an honest refusal without fabricating audio, per Section VIII.",
+ 10: "is a flow diagram of the permanent, deterministic pronunciation-and-speech quality-control battery of the reduced-to-practice embodiment, which, for each supported language and without a large language model, verifies that a phonemic transcription is produced, that the syllable count is within tolerance, and that a short phrase synthesizes to a valid audio waveform, returning a per-language report and an overall pass score, per Section VIII.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -336,6 +401,22 @@ REFS = [
  ("841","store-link Fact Unit (grounded_by_fact)"),("850","Fact Unit store (provenance, domain language)"),
  ("860","excluded large-language-model meaning source"),
  ("870","optional future dictionary-gated suggestor"),
+ ("900","advanced multilingual pronunciation subsystem"),("910","pronunciation request (word/phrase, language)"),
+ ("920","pronunciation preference-ladder selector"),("930","bundled open-source phonemizer"),
+ ("931","phonemizer IPA transcription"),("932","phonemizer call cache"),
+ ("933","bounded call log / timeout guard"),("940","rule-seeded G2P tables (per language)"),
+ ("941","approximate rule-seeded IPA (offline)"),("950","syllable count + primary-stress derivation"),
+ ("960","explicit null result (not fabricated)"),("970","phrase-level single-call transcription"),
+ ("971","displayed transcription consistent with synthesized audio"),
+ ("980","self-contained application bundle"),("981","bundled open-source speech engine"),
+ ("982","runtime-support libraries"),("983","bundled phoneme data"),
+ ("984","engine-selection ladder (per OS / language)"),("985","host OS built-in voice service"),
+ ("986","culture-matched OS voice (when installed)"),("987","honest refusal with remedy (no fabricated audio)"),
+ ("990","deterministic translator (through English)"),("991","bundled open-source bilingual dictionary"),
+ ("992","coverage accounting + unknown-word passthrough (flagged)"),
+ ("993","deterministic language detector"),("995","permanent quality-control battery"),
+ ("996","IPA-produced check"),("997","syllable-sanity check (±1)"),
+ ("998","valid-waveform synthesis check"),("999","per-language QC report + overall pass score"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']
