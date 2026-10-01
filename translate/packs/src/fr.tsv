@@ -1,0 +1,216 @@
+# French seed lexicon — QueryBook Translate v1
+@rules {"elision": true, "spaceBeforeHighPunct": true, "suffixes": ["aux>al", "s", "x"]}
+@norm chuis	je suis
+@norm ya	il y a
+hello	bonjour ; salut | fr-CA: bonjour ; allô ; salut
+goodbye	au revoir ; salut ; à bientôt | fr-CA: bonne journée ; au revoir ; salut
+good_morning	bonjour
+good_afternoon	bon après-midi ; bonjour
+good_evening	bonsoir
+good_night	bonne nuit
+please	s'il vous plaît ; s'il te plaît | fr-BE: s'il vous plaît ; s'il vous plait
+thank_you	merci
+thank_you_very_much	merci beaucoup ; merci bien
+youre_welcome	de rien ; je vous en prie ; avec plaisir | fr-CA: bienvenue ; de rien ; avec plaisir | fr-BE: s'il vous plaît ; de rien
+sorry	désolé ; désolée ; pardon
+excuse_me	excusez-moi ; pardon
+yes	oui
+no	non
+ok	d'accord ; ok
+how_are_you	comment allez-vous ; comment ça va ; ça va
+im_fine	je vais bien ; ça va bien
+nice_to_meet_you	enchanté ; enchantée
+what_is_your_name	comment vous appelez-vous ; comment tu t'appelles
+my_name_is	je m'appelle
+i_dont_understand	je ne comprends pas
+i_understand	je comprends
+do_you_speak_english	parlez-vous anglais ; vous parlez anglais
+speak_slowly	parlez lentement s'il vous plaît ; parlez plus lentement
+repeat_please	répétez s'il vous plaît ; pouvez-vous répéter
+i_dont_know	je ne sais pas
+i	je ; moi ; j'
+you	vous ; tu ; toi
+he	il ; lui
+she	elle
+we	nous ; on
+they	ils ; elles ; eux
+my	mon ; ma ; mes
+your	votre ; vos ; ton ; ta ; tes
+the	le ; la ; les ; l'
+a	un ; une
+this	ce ; cet ; cette ; ceci
+that	cela ; ça
+be	est ; sont ; suis ; es ; êtes ; sommes ; être
+not	pas ; ne ; n'
+and	et
+or	ou
+with	avec
+without	sans
+very	très
+what	quoi ; que ; qu'est-ce que
+where	où
+when	quand
+who	qui
+why	pourquoi
+how	comment
+how_much	combien
+how_many	combien de
+which	quel ; quelle ; quels ; quelles
+where_is	où est ; où sont ; où se trouve
+i_want	je veux
+i_would_like	je voudrais ; j'aimerais
+i_need	j'ai besoin de ; j'ai besoin d'
+i_have	j'ai
+do_you_have	avez-vous ; vous avez
+is_there	y a-t-il ; il y a
+want	vouloir
+need	avoir besoin
+have	avoir
+go	aller
+come	venir
+eat	manger
+drink	boire
+speak	parler
+understand	comprendre
+know	savoir
+like	aimer
+see	voir
+wait	attendre
+buy	acheter
+pay	payer
+help	aide ; aider ; au secours
+water	eau
+food	nourriture
+bread	pain
+coffee	café
+tea	thé
+beer	bière
+wine	vin
+milk	lait
+money	argent | fr-CA: argent ; sous
+day	jour ; journée
+today	aujourd'hui
+tomorrow	demain
+yesterday	hier
+now	maintenant
+later	plus tard
+here	ici
+there	là ; là-bas
+man	homme
+woman	femme
+child	enfant
+friend	ami ; amie
+family	famille
+house	maison
+name	nom
+phone	téléphone ; portable | fr-CA: téléphone ; cellulaire
+bathroom	toilettes ; salle de bain
+door	porte
+language	langue
+good	bon ; bonne ; bien
+bad	mauvais ; mauvaise
+big	grand ; grande ; gros
+small	petit ; petite
+hot	chaud ; chaude
+cold	froid ; froide
+open	ouvert ; ouverte
+closed	fermé ; fermée
+new	nouveau ; nouvelle ; neuf
+one	un ; une
+two	deux
+three	trois
+four	quatre
+five	cinq
+six	six
+seven	sept
+eight	huit
+nine	neuf
+ten	dix
+hundred	cent
+thousand	mille
+airport	aéroport
+train_station	gare
+bus_stop	arrêt de bus ; arrêt d'autobus | fr-CA: arrêt d'autobus ; arrêt de bus
+bus	bus ; autobus | fr-CA: autobus ; bus
+train	train
+taxi	taxi
+ticket	billet ; ticket
+passport	passeport
+hotel	hôtel
+room	chambre
+reservation	réservation
+restaurant	restaurant
+menu	menu ; carte
+the_bill_please	l'addition s'il vous plaît | fr-CA: la facture s'il vous plaît ; l'addition s'il vous plaît
+table_for_two	une table pour deux ; table pour deux
+how_much_is_this	combien ça coûte ; c'est combien
+too_expensive	trop cher
+cheap	bon marché ; pas cher
+expensive	cher ; chère
+left	gauche
+right	droite
+straight_ahead	tout droit
+near	près ; proche
+far	loin
+street	rue
+map	carte ; plan
+city	ville
+beach	plage
+museum	musée
+bank	banque
+atm	distributeur ; distributeur automatique | fr-CA: guichet automatique ; distributeur
+pharmacy	pharmacie
+market	marché
+shop	magasin ; boutique
+entrance	entrée
+exit	sortie
+luggage	bagages ; valise
+i_am_lost	je suis perdu ; je suis perdue
+where_is_the_bathroom	où sont les toilettes
+call_the_police	appelez la police
+police	police
+wifi	wifi ; wi-fi
+password	mot de passe
+credit_card	carte de crédit ; carte bancaire
+cash	espèces ; liquide ; comptant
+vegetarian	végétarien ; végétarienne
+breakfast	petit-déjeuner ; petit déjeuner | fr-CA: déjeuner | fr-BE: déjeuner ; petit-déjeuner | fr-CH: déjeuner ; petit-déjeuner
+lunch	déjeuner | fr-CA: dîner | fr-BE: dîner ; déjeuner | fr-CH: dîner ; déjeuner
+dinner	dîner | fr-CA: souper | fr-BE: souper ; dîner | fr-CH: souper ; dîner
+chicken	poulet
+fish	poisson
+meat	viande
+rice	riz
+doctor	médecin ; docteur
+hospital	hôpital
+emergency	urgence ; urgences
+ambulance	ambulance
+i_need_a_doctor	j'ai besoin d'un médecin
+call_an_ambulance	appelez une ambulance
+pain	douleur
+it_hurts_here	j'ai mal ici ; ça fait mal ici
+headache	mal de tête
+fever	fièvre
+cold_illness	rhume
+cough	toux
+nausea	nausée
+diarrhea	diarrhée
+allergy	allergie
+i_am_allergic_to	je suis allergique à ; je suis allergique au ; je suis allergique aux
+penicillin	pénicilline
+medicine	médicament ; médicaments
+prescription	ordonnance
+blood	sang
+heart	cœur
+stomach	estomac ; ventre
+head	tête
+chest	poitrine
+pregnant	enceinte
+diabetes	diabète
+asthma	asthme
+dizzy	étourdi ; étourdie ; j'ai des vertiges
+i_cant_breathe	je ne peux pas respirer ; je n'arrive pas à respirer
+sick	malade
+insurance	assurance ; assurance maladie
+nurse	infirmier ; infirmière
+pill	comprimé ; pilule ; cachet

@@ -34,6 +34,14 @@ Then open:
 The application uses PHP session state for the last topic and deterministic heuristics,
 so it runs without third-party credentials.
 
+## QueryBook Translate (phones and tablets)
+
+`translate/` holds a separate, dependency-free app: an offline-first universal translator
+(139 languages, 202 dialects) with a deterministic engine that never makes up a translation.
+It runs as an installable web app and in native Android and iPhone/iPad shells. The internal admin
+page at `translate/admin/` downloads those apps and manages the cloud QueryBook pack store.
+See [translate/README.md](translate/README.md).
+
 ## Amazon Book Writer
 
 `amazon-book-writer.php` runs the full pipeline (strategy kit → manuscript draft → KDP

@@ -1,0 +1,14 @@
+# Secrets and runtime data — never commit
+admin/admin-config.php
+store/store-config.php
+store/data/
+# Native build outputs and copied web assets
+native/android/.gradle/
+native/android/local.properties
+native/android/app/build/
+native/android/build/
+native/android/app/src/main/assets/www/
+native/ios/QueryBookTranslate/www/*
+!native/ios/QueryBookTranslate/www/README.txt
+native/ios/build/
+native/ios/**/xcuserdata/

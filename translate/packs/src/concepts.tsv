@@ -1,0 +1,213 @@
+# concept	domain	gloss (English description for reviewers; not a translation source)
+hello	base	greeting, any time of day
+goodbye	base	parting
+good_morning	base	morning greeting
+good_afternoon	base	afternoon greeting
+good_evening	base	evening greeting
+good_night	base	parting at night
+please	base	politeness marker
+thank_you	base	thanks
+thank_you_very_much	base	strong thanks
+youre_welcome	base	reply to thanks
+sorry	base	apology
+excuse_me	base	attention / passing by
+yes	base	affirmative
+no	base	negative answer
+ok	base	agreement
+how_are_you	base	asking after wellbeing
+im_fine	base	reply: I am well
+nice_to_meet_you	base	on introduction
+what_is_your_name	base	question
+my_name_is	base	introduction frame
+i_dont_understand	base	comprehension failure
+i_understand	base	comprehension
+do_you_speak_english	base	question
+speak_slowly	base	please speak slowly
+repeat_please	base	please say that again
+i_dont_know	base	ignorance
+i	base	first person singular pronoun
+you	base	second person pronoun (polite form first where it exists)
+he	base	third person masculine
+she	base	third person feminine
+we	base	first person plural
+they	base	third person plural
+my	base	possessive, first person
+your	base	possessive, second person
+the	base	definite article (empty where the language has none)
+a	base	indefinite article (empty where the language has none)
+this	base	demonstrative, near
+that	base	demonstrative, far
+be	base	copula (empty where the present tense omits it)
+not	base	negation
+and	base	conjunction
+or	base	conjunction
+with	base	preposition
+without	base	preposition
+very	base	intensifier
+what	base	question word
+where	base	question word
+when	base	question word
+who	base	question word
+why	base	question word
+how	base	question word
+how_much	base	price / quantity (mass)
+how_many	base	count
+which	base	question word
+where_is	base	question frame: where is …
+i_want	base	frame: I want …
+i_would_like	base	polite frame: I would like …
+i_need	base	frame: I need …
+i_have	base	frame: I have …
+do_you_have	base	question frame
+is_there	base	existential question frame
+want	base	verb, base form
+need	base	verb, base form
+have	base	verb, base form
+go	base	verb, base form
+come	base	verb, base form
+eat	base	verb, base form
+drink	base	verb, base form
+speak	base	verb, base form
+understand	base	verb, base form
+know	base	verb, base form (a fact)
+like	base	verb, base form
+see	base	verb, base form
+wait	base	verb, base form
+buy	base	verb, base form
+pay	base	verb, base form
+help	base	help (noun / verb / call for help)
+water	base	drinking water
+food	base	food
+bread	base	bread
+coffee	base	coffee
+tea	base	tea
+beer	base	beer
+wine	base	wine
+milk	base	milk
+money	base	money
+day	base	day
+today	base	today
+tomorrow	base	tomorrow
+yesterday	base	yesterday
+now	base	now
+later	base	later
+here	base	here
+there	base	there
+man	base	man
+woman	base	woman
+child	base	child
+friend	base	friend
+family	base	family
+house	base	house
+name	base	name
+phone	base	telephone / mobile phone
+bathroom	base	toilet / restroom
+door	base	door
+language	base	language
+good	base	good
+bad	base	bad
+big	base	big
+small	base	small
+hot	base	hot (temperature)
+cold	base	cold (temperature)
+open	base	open (state)
+closed	base	closed (state)
+new	base	new
+one	base	1
+two	base	2
+three	base	3
+four	base	4
+five	base	5
+six	base	6
+seven	base	7
+eight	base	8
+nine	base	9
+ten	base	10
+hundred	base	100
+thousand	base	1000
+airport	travel	airport
+train_station	travel	railway station
+bus_stop	travel	bus stop
+bus	travel	bus
+train	travel	train
+taxi	travel	taxi
+ticket	travel	travel ticket
+passport	travel	passport
+hotel	travel	hotel
+room	travel	room
+reservation	travel	booking
+restaurant	travel	restaurant
+menu	travel	menu
+the_bill_please	travel	asking for the bill
+table_for_two	travel	restaurant request
+how_much_is_this	travel	price question
+too_expensive	travel	complaint
+cheap	travel	inexpensive
+expensive	travel	costly
+left	travel	direction
+right	travel	direction
+straight_ahead	travel	direction
+near	travel	close by
+far	travel	distant
+street	travel	street
+map	travel	map
+city	travel	city
+beach	travel	beach
+museum	travel	museum
+bank	travel	bank (money)
+atm	travel	cash machine
+pharmacy	travel	pharmacy
+market	travel	market
+shop	travel	shop
+entrance	travel	entrance
+exit	travel	exit
+luggage	travel	luggage
+i_am_lost	travel	I am lost
+where_is_the_bathroom	travel	question
+call_the_police	travel	emergency request
+police	travel	police
+wifi	travel	wireless internet
+password	travel	password
+credit_card	travel	credit card
+cash	travel	cash
+vegetarian	travel	vegetarian
+breakfast	travel	breakfast
+lunch	travel	lunch
+dinner	travel	dinner
+chicken	travel	chicken (food)
+fish	travel	fish (food)
+meat	travel	meat
+rice	travel	rice (cooked)
+doctor	medical	physician
+hospital	medical	hospital
+emergency	medical	emergency
+ambulance	medical	ambulance
+i_need_a_doctor	medical	request
+call_an_ambulance	medical	request
+pain	medical	pain
+it_hurts_here	medical	pointing to pain
+headache	medical	headache
+fever	medical	fever
+cold_illness	medical	common cold (illness)
+cough	medical	cough
+nausea	medical	nausea
+diarrhea	medical	diarrhea
+allergy	medical	allergy
+i_am_allergic_to	medical	frame: I am allergic to …
+penicillin	medical	penicillin
+medicine	medical	medication
+prescription	medical	prescription
+blood	medical	blood
+heart	medical	heart
+stomach	medical	stomach
+head	medical	head
+chest	medical	chest
+pregnant	medical	pregnant
+diabetes	medical	diabetes
+asthma	medical	asthma
+dizzy	medical	dizzy
+i_cant_breathe	medical	emergency statement
+sick	medical	ill
+insurance	medical	health insurance
+nurse	medical	nurse
+pill	medical	tablet / pill

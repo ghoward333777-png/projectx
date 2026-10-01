@@ -1,0 +1,215 @@
+# Japanese seed lexicon — QueryBook Translate v1
+# Readings in {braces} are hiragana; kana-only forms need none.
+@rules {"particles": ["は", "が", "を", "に", "で", "の", "も", "へ", "か", "ね", "よ"]}
+hello	こんにちは{こんにちわ} ; もしもし
+goodbye	さようなら ; じゃあね ; またね
+good_morning	おはようございます ; おはよう
+good_afternoon	こんにちは{こんにちわ}
+good_evening	こんばんは{こんばんわ}
+good_night	おやすみなさい ; おやすみ
+please	お願いします{おねがいします} ; ください
+thank_you	ありがとうございます ; ありがとう
+thank_you_very_much	どうもありがとうございます ; 本当にありがとうございます{ほんとうにありがとうございます}
+youre_welcome	どういたしまして
+sorry	すみません ; ごめんなさい ; 申し訳ありません{もうしわけありません}
+excuse_me	すみません ; 失礼します{しつれいします}
+yes	はい ; ええ
+no	いいえ ; いや
+ok	大丈夫です{だいじょうぶです} ; いいです ; オーケー
+how_are_you	お元気ですか{おげんきですか} ; 元気ですか{げんきですか}
+im_fine	元気です{げんきです}
+nice_to_meet_you	はじめまして ; よろしくお願いします{よろしくおねがいします}
+what_is_your_name	お名前は何ですか{おなまえわなんですか} ; お名前は{おなまえわ}
+my_name_is	私の名前は{わたしのなまえわ}
+i_dont_understand	わかりません ; 分かりません{わかりません}
+i_understand	わかります ; 分かります{わかります} ; わかりました
+do_you_speak_english	英語を話せますか{えいごをはなせますか} ; 英語が話せますか{えいごがはなせますか}
+speak_slowly	ゆっくり話してください{ゆっくりはなしてください}
+repeat_please	もう一度お願いします{もういちどおねがいします} ; もう一度言ってください{もういちどいってください}
+i_dont_know	知りません{しりません} ; わかりません
+i	私{わたし} ; 僕{ぼく} ; 俺{おれ}
+you	あなた
+he	彼{かれ}
+she	彼女{かのじょ}
+we	私たち{わたしたち}
+they	彼ら{かれら}
+my	私の{わたしの}
+your	あなたの
+the	∅
+a	∅
+this	これ ; この
+that	それ ; あれ ; その ; あの
+be	です ; だ
+not	ない ; ません
+and	と ; そして
+or	または ; か
+with	と一緒に{といっしょに} ; と
+without	なしで
+very	とても ; すごく
+what	何{なに} ; 何{なん}
+where	どこ
+when	いつ
+who	誰{だれ}
+why	なぜ ; どうして
+how	どう ; どうやって
+how_much	いくら
+how_many	いくつ ; 何個{なんこ}
+which	どれ ; どちら ; どの
+where_is	はどこですか{わどこですか} ; どこですか
+i_want	が欲しいです{がほしいです} ; 欲しい{ほしい}
+i_would_like	をお願いします{をおねがいします} ; をください
+i_need	が必要です{がひつようです} ; 必要です{ひつようです}
+i_have	があります ; を持っています{をもっています}
+do_you_have	はありますか{わありますか} ; ありますか
+is_there	はありますか{わありますか} ; ありますか
+want	欲しい{ほしい}
+need	必要{ひつよう}
+have	持つ{もつ} ; ある
+go	行く{いく}
+come	来る{くる}
+eat	食べる{たべる}
+drink	飲む{のむ}
+speak	話す{はなす}
+understand	わかる ; 分かる{わかる}
+know	知る{しる} ; 知っている{しっている}
+like	好き{すき}
+see	見る{みる}
+wait	待つ{まつ} ; 待ってください{まってください}
+buy	買う{かう}
+pay	払う{はらう}
+help	助けて{たすけて} ; 手伝う{てつだう} ; 助け{たすけ}
+water	水{みず} ; お水{おみず}
+food	食べ物{たべもの}
+bread	パン
+coffee	コーヒー
+tea	お茶{おちゃ} ; 紅茶{こうちゃ}
+beer	ビール
+wine	ワイン
+milk	牛乳{ぎゅうにゅう} ; ミルク
+money	お金{おかね}
+day	日{ひ}
+today	今日{きょう}
+tomorrow	明日{あした}
+yesterday	昨日{きのう}
+now	今{いま}
+later	後で{あとで}
+here	ここ
+there	そこ ; あそこ
+man	男性{だんせい} ; 男の人{おとこのひと}
+woman	女性{じょせい} ; 女の人{おんなのひと}
+child	子供{こども} ; 子ども{こども}
+friend	友達{ともだち}
+family	家族{かぞく}
+house	家{いえ}
+name	名前{なまえ}
+phone	電話{でんわ} ; 携帯{けいたい} ; スマホ
+bathroom	トイレ ; お手洗い{おてあらい}
+door	ドア ; 扉{とびら}
+language	言語{げんご} ; 言葉{ことば}
+good	いい ; 良い{よい}
+bad	悪い{わるい}
+big	大きい{おおきい}
+small	小さい{ちいさい}
+hot	熱い{あつい} ; 暑い{あつい}
+cold	冷たい{つめたい} ; 寒い{さむい}
+open	開いている{あいている} ; 営業中{えいぎょうちゅう}
+closed	閉まっている{しまっている} ; 閉店{へいてん}
+new	新しい{あたらしい}
+one	一{いち} ; 一つ{ひとつ}
+two	二{に} ; 二つ{ふたつ}
+three	三{さん} ; 三つ{みっつ}
+four	四{よん} ; 四つ{よっつ}
+five	五{ご} ; 五つ{いつつ}
+six	六{ろく} ; 六つ{むっつ}
+seven	七{なな} ; 七つ{ななつ}
+eight	八{はち} ; 八つ{やっつ}
+nine	九{きゅう} ; 九つ{ここのつ}
+ten	十{じゅう} ; 十{とお}
+hundred	百{ひゃく}
+thousand	千{せん}
+airport	空港{くうこう}
+train_station	駅{えき}
+bus_stop	バス停{バスてい}
+bus	バス
+train	電車{でんしゃ} ; 列車{れっしゃ}
+taxi	タクシー
+ticket	切符{きっぷ} ; チケット
+passport	パスポート
+hotel	ホテル
+room	部屋{へや}
+reservation	予約{よやく}
+restaurant	レストラン
+menu	メニュー
+the_bill_please	お会計お願いします{おかいけいおねがいします} ; お勘定お願いします{おかんじょうおねがいします}
+table_for_two	二人です{ふたりです} ; 二名です{にめいです}
+how_much_is_this	これはいくらですか{これわいくらですか} ; いくらですか
+too_expensive	高すぎます{たかすぎます}
+cheap	安い{やすい}
+expensive	高い{たかい}
+left	左{ひだり}
+right	右{みぎ}
+straight_ahead	まっすぐ
+near	近い{ちかい} ; 近く{ちかく}
+far	遠い{とおい}
+street	通り{とおり} ; 道{みち}
+map	地図{ちず}
+city	町{まち} ; 都市{とし}
+beach	ビーチ ; 海辺{うみべ}
+museum	博物館{はくぶつかん} ; 美術館{びじゅつかん}
+bank	銀行{ぎんこう}
+atm	ATM
+pharmacy	薬局{やっきょく} ; 薬屋{くすりや}
+market	市場{いちば}
+shop	店{みせ} ; お店{おみせ}
+entrance	入口{いりぐち}
+exit	出口{でぐち}
+luggage	荷物{にもつ}
+i_am_lost	道に迷いました{みちにまよいました}
+where_is_the_bathroom	トイレはどこですか{といれわどこですか} ; お手洗いはどこですか{おてあらいわどこですか}
+call_the_police	警察を呼んでください{けいさつをよんでください}
+police	警察{けいさつ}
+wifi	Wi-Fi ; ワイファイ
+password	パスワード
+credit_card	クレジットカード
+cash	現金{げんきん}
+vegetarian	ベジタリアン ; 菜食主義者{さいしょくしゅぎしゃ}
+breakfast	朝ご飯{あさごはん} ; 朝食{ちょうしょく}
+lunch	昼ご飯{ひるごはん} ; 昼食{ちゅうしょく} ; ランチ
+dinner	晩ご飯{ばんごはん} ; 夕食{ゆうしょく}
+chicken	鶏肉{とりにく} ; チキン
+fish	魚{さかな}
+meat	肉{にく}
+rice	ご飯{ごはん} ; ライス
+doctor	医者{いしゃ} ; お医者さん{おいしゃさん}
+hospital	病院{びょういん}
+emergency	緊急{きんきゅう} ; 救急{きゅうきゅう}
+ambulance	救急車{きゅうきゅうしゃ}
+i_need_a_doctor	医者が必要です{いしゃがひつようです}
+call_an_ambulance	救急車を呼んでください{きゅうきゅうしゃをよんでください}
+pain	痛み{いたみ}
+it_hurts_here	ここが痛いです{ここがいたいです}
+headache	頭痛{ずつう}
+fever	熱{ねつ}
+cold_illness	風邪{かぜ}
+cough	咳{せき}
+nausea	吐き気{はきけ}
+diarrhea	下痢{げり}
+allergy	アレルギー
+i_am_allergic_to	アレルギーがあります
+penicillin	ペニシリン
+medicine	薬{くすり}
+prescription	処方箋{しょほうせん}
+blood	血{ち} ; 血液{けつえき}
+heart	心臓{しんぞう}
+stomach	胃{い} ; お腹{おなか}
+head	頭{あたま}
+chest	胸{むね}
+pregnant	妊娠しています{にんしんしています} ; 妊娠中{にんしんちゅう}
+diabetes	糖尿病{とうにょうびょう}
+asthma	喘息{ぜんそく}
+dizzy	めまいがします ; めまい
+i_cant_breathe	息ができません{いきができません}
+sick	病気{びょうき}
+insurance	保険{ほけん}
+nurse	看護師{かんごし}
+pill	錠剤{じょうざい} ; 薬{くすり}

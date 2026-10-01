@@ -1,0 +1,217 @@
+# Portuguese seed lexicon — QueryBook Translate v1 (default forms follow pt-BR, the registry's first dialect)
+@rules {"suffixes": ["ões>ão", "ães>ão", "s"]}
+@norm vc	você
+@norm tá	está
+@norm pra	para
+hello	olá ; oi | pt-PT: olá ; bom dia
+goodbye	tchau ; adeus ; até logo | pt-PT: adeus ; até logo ; tchau
+good_morning	bom dia
+good_afternoon	boa tarde
+good_evening	boa noite
+good_night	boa noite
+please	por favor
+thank_you	obrigado ; obrigada
+thank_you_very_much	muito obrigado ; muito obrigada
+youre_welcome	de nada ; não há de quê | pt-PT: de nada ; não tem de quê
+sorry	desculpe ; desculpa ; sinto muito
+excuse_me	com licença ; desculpe
+yes	sim
+no	não
+ok	tudo bem ; está bem ; ok | pt-PT: está bem ; pronto ; ok
+how_are_you	como vai ; tudo bem ; como está
+im_fine	estou bem ; tudo bem
+nice_to_meet_you	prazer ; muito prazer ; prazer em conhecê-lo
+what_is_your_name	qual é o seu nome ; como você se chama | pt-PT: como se chama ; qual é o seu nome
+my_name_is	meu nome é ; me chamo | pt-PT: chamo-me ; o meu nome é
+i_dont_understand	não entendo ; não compreendo | pt-PT: não percebo ; não entendo
+i_understand	entendo ; compreendo | pt-PT: percebo ; entendo
+do_you_speak_english	você fala inglês ; fala inglês | pt-PT: fala inglês
+speak_slowly	fale devagar por favor ; fale mais devagar
+repeat_please	repita por favor ; pode repetir
+i_dont_know	não sei
+i	eu ; mim ; me
+you	você ; tu ; vocês ; o senhor ; a senhora | pt-PT: tu ; você ; o senhor ; a senhora
+he	ele
+she	ela
+we	nós ; a gente
+they	eles ; elas
+my	meu ; minha ; meus ; minhas
+your	seu ; sua ; teu ; tua
+the	o ; a ; os ; as
+a	um ; uma
+this	isto ; este ; esta ; isso
+that	aquilo ; esse ; essa ; aquele
+be	é ; está ; são ; estão ; sou ; estou ; ser ; estar
+not	não
+and	e
+or	ou
+with	com
+without	sem
+very	muito
+what	o que ; que
+where	onde
+when	quando
+who	quem
+why	por que ; porque | pt-PT: porque ; porquê
+how	como
+how_much	quanto ; quanta
+how_many	quantos ; quantas
+which	qual ; quais
+where_is	onde fica ; onde está ; onde é
+i_want	eu quero ; quero
+i_would_like	eu gostaria ; gostaria ; queria
+i_need	preciso ; eu preciso ; preciso de
+i_have	tenho ; eu tenho
+do_you_have	você tem ; tem
+is_there	tem ; há
+want	querer
+need	precisar
+have	ter
+go	ir
+come	vir
+eat	comer
+drink	beber ; tomar
+speak	falar
+understand	entender ; compreender | pt-PT: perceber ; entender
+know	saber
+like	gostar
+see	ver
+wait	esperar
+buy	comprar
+pay	pagar
+help	ajuda ; ajudar ; socorro
+water	água
+food	comida
+bread	pão
+coffee	café
+tea	chá
+beer	cerveja
+wine	vinho
+milk	leite
+money	dinheiro
+day	dia
+today	hoje
+tomorrow	amanhã
+yesterday	ontem
+now	agora
+later	mais tarde ; depois
+here	aqui ; cá
+there	ali ; lá ; aí
+man	homem
+woman	mulher
+child	criança
+friend	amigo ; amiga
+family	família
+house	casa
+name	nome
+phone	telefone ; celular | pt-PT: telefone ; telemóvel
+bathroom	banheiro | pt-PT: casa de banho
+door	porta
+language	língua ; idioma
+good	bom ; boa ; bem
+bad	ruim ; mau ; má | pt-PT: mau ; má
+big	grande
+small	pequeno ; pequena
+hot	quente
+cold	frio ; fria
+open	aberto ; aberta
+closed	fechado ; fechada
+new	novo ; nova
+one	um ; uma
+two	dois ; duas
+three	três
+four	quatro
+five	cinco
+six	seis
+seven	sete
+eight	oito
+nine	nove
+ten	dez
+hundred	cem ; cento
+thousand	mil
+airport	aeroporto
+train_station	estação de trem | pt-PT: estação de comboios ; estação
+bus_stop	ponto de ônibus | pt-PT: paragem de autocarro ; paragem
+bus	ônibus | pt-PT: autocarro
+train	trem | pt-PT: comboio
+taxi	táxi
+ticket	passagem ; bilhete ; ingresso | pt-PT: bilhete
+passport	passaporte
+hotel	hotel
+room	quarto
+reservation	reserva
+restaurant	restaurante
+menu	cardápio ; menu | pt-PT: ementa ; menu
+the_bill_please	a conta por favor
+table_for_two	uma mesa para dois ; mesa para dois
+how_much_is_this	quanto custa ; quanto custa isto ; quanto é
+too_expensive	caro demais ; muito caro
+cheap	barato ; barata
+expensive	caro ; cara
+left	esquerda
+right	direita
+straight_ahead	em frente ; reto | pt-PT: em frente ; sempre em frente
+near	perto
+far	longe
+street	rua
+map	mapa
+city	cidade
+beach	praia
+museum	museu
+bank	banco
+atm	caixa eletrônico | pt-PT: multibanco ; caixa automático
+pharmacy	farmácia
+market	mercado ; feira
+shop	loja
+entrance	entrada
+exit	saída
+luggage	bagagem ; malas
+i_am_lost	estou perdido ; estou perdida
+where_is_the_bathroom	onde fica o banheiro ; onde é o banheiro | pt-PT: onde é a casa de banho
+call_the_police	chame a polícia
+police	polícia
+wifi	wi-fi ; wifi
+password	senha | pt-PT: palavra-passe ; senha
+credit_card	cartão de crédito
+cash	dinheiro vivo ; em espécie | pt-PT: dinheiro ; numerário
+vegetarian	vegetariano ; vegetariana
+breakfast	café da manhã | pt-PT: pequeno-almoço
+lunch	almoço
+dinner	jantar
+chicken	frango
+fish	peixe
+meat	carne
+rice	arroz
+doctor	médico ; médica ; doutor
+hospital	hospital
+emergency	emergência ; pronto-socorro | pt-PT: urgência ; emergência
+ambulance	ambulância
+i_need_a_doctor	preciso de um médico
+call_an_ambulance	chame uma ambulância
+pain	dor
+it_hurts_here	dói aqui
+headache	dor de cabeça
+fever	febre
+cold_illness	resfriado | pt-PT: constipação
+cough	tosse
+nausea	náusea ; enjoo
+diarrhea	diarreia
+allergy	alergia
+i_am_allergic_to	sou alérgico a ; sou alérgica a
+penicillin	penicilina
+medicine	remédio ; medicamento | pt-PT: medicamento ; remédio
+prescription	receita
+blood	sangue
+heart	coração
+stomach	estômago ; barriga
+head	cabeça
+chest	peito
+pregnant	grávida
+diabetes	diabetes
+asthma	asma
+dizzy	tonto ; tonta
+i_cant_breathe	não consigo respirar
+sick	doente
+insurance	seguro ; seguro de saúde
+nurse	enfermeiro ; enfermeira
+pill	comprimido ; pílula

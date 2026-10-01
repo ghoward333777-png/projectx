@@ -1,0 +1,4 @@
+Options -Indexes
+<FilesMatch "^(admin-config\.php|TranslatePackager\.php|set-password\.php)$">
+  Require all denied
+</FilesMatch>

@@ -1,0 +1,11 @@
+# Pretty store URLs on Apache: /translate/store/catalog.json → index.php/catalog.json
+Options -Indexes
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^(.*)$ index.php/$1 [L,QSA]
+</IfModule>
+<FilesMatch "^(store-config\.php|PackStore\.php)$">
+  Require all denied
+</FilesMatch>

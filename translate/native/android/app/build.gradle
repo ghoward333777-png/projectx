@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.querybook.translate'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.querybook.translate'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Signing: provide a keystore via ~/.gradle/gradle.properties or Android Studio
+            // (Build ▸ Generate Signed Bundle / APK). Debug builds install directly for internal use.
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The web app is the UI; keep its JSON and JS files uncompressed and intact.
+    androidResources {
+        noCompress += ['json', 'js', 'css', 'html', 'webmanifest']
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}
+
+// Copy the web app (translate/) into the APK assets before every build, so the
+// shell always ships the current engine, registry and packs. In an exported
+// project zip the assets are already in place and the source folder is absent.
+def webRoot = file('../../..')
+tasks.register('copyWebAssets', Copy) {
+    onlyIf { new File(webRoot, 'index.html').exists() }
+    from(webRoot) {
+        include 'index.html', 'app.css', 'manifest.webmanifest', 'config.json'
+        include 'src/**', 'data/**', 'icons/**', 'packs/**'
+        exclude 'packs/src/**'
+    }
+    into 'src/main/assets/www'
+}
+preBuild.dependsOn copyWebAssets

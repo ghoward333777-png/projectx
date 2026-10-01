@@ -67,3 +67,19 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+
+## QueryBook Translate (`translate/`)
+
+A separate app with its own packager (admin page), so it is not in `SitePackageExporter::FILES`.
+- **Covenant**: never render a word without a dictionary source. Unknown words pass through
+  flagged, coverage is always reported, and TTS refuses rather than substituting a voice.
+  Cloud answers without coverage and provenance are rejected.
+- **Deterministic**: the same input and packs must give the same output and fingerprint,
+  whatever the pack load order.
+- Edit lexicons in `translate/packs/src/*.tsv`, then run `node translate/tools/build-packs.mjs`.
+  Never hand-edit `packs/*/*.json`.
+- New files under `translate/src/` must be added to the `SHELL` list in `translate/sw.js`
+  (a test enforces this).
+- Run `node --test translate/tests/*.test.mjs` and `php tests/translate-admin-contract.php`.
+  The admin page stays locked until `translate/admin/set-password.php` is run; never commit
+  `admin-config.php`, `store-config.php` or `store/data/`.

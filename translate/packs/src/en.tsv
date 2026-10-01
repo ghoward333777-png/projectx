@@ -1,0 +1,218 @@
+# English seed lexicon — QueryBook Translate v1
+# Cell syntax: forms separated by " ; " (first is rendered, rest are accepted alternatives),
+# dialect variants after " | tag: ", readings in {braces}, ∅ = no separate word (omitted by rule).
+@rules {"suffixes": ["ies>y", "es", "s"]}
+@norm wanna	want
+@norm y'all	you	en-US
+hello	hello ; hi ; hey
+goodbye	goodbye ; bye ; see you
+good_morning	good morning
+good_afternoon	good afternoon
+good_evening	good evening
+good_night	good night
+please	please
+thank_you	thank you ; thanks | en-GB: thank you ; thanks ; cheers
+thank_you_very_much	thank you very much ; thanks a lot ; many thanks
+youre_welcome	you're welcome ; you are welcome ; no problem
+sorry	sorry ; I'm sorry
+excuse_me	excuse me ; pardon me
+yes	yes ; yeah
+no	no
+ok	okay ; ok ; all right
+how_are_you	how are you
+im_fine	I'm fine ; I am fine ; I'm well
+nice_to_meet_you	nice to meet you ; pleased to meet you
+what_is_your_name	what is your name ; what's your name
+my_name_is	my name is
+i_dont_understand	I don't understand ; I do not understand
+i_understand	I understand
+do_you_speak_english	do you speak English
+speak_slowly	please speak slowly ; speak slowly
+repeat_please	please repeat ; can you repeat that ; say that again
+i_dont_know	I don't know ; I do not know
+i	I ; me
+you	you
+he	he ; him
+she	she ; her
+we	we ; us
+they	they ; them
+my	my
+your	your
+the	the
+a	a ; an
+this	this
+that	that
+be	is ; are ; am ; be
+not	not ; don't ; doesn't ; do not
+and	and
+or	or
+with	with
+without	without
+very	very
+what	what
+where	where
+when	when
+who	who
+why	why
+how	how
+how_much	how much
+how_many	how many
+which	which
+where_is	where is ; where's ; where are
+i_want	I want
+i_would_like	I would like ; I'd like
+i_need	I need
+i_have	I have ; I've got
+do_you_have	do you have
+is_there	is there ; are there
+want	want
+need	need
+have	have
+go	go
+come	come
+eat	eat
+drink	drink
+speak	speak ; talk
+understand	understand
+know	know
+like	like
+see	see
+wait	wait
+buy	buy
+pay	pay
+help	help
+water	water
+food	food
+bread	bread
+coffee	coffee
+tea	tea
+beer	beer
+wine	wine
+milk	milk
+money	money
+day	day
+today	today
+tomorrow	tomorrow
+yesterday	yesterday
+now	now
+later	later
+here	here
+there	there
+man	man
+woman	woman
+child	child ; kid
+friend	friend
+family	family
+house	house ; home
+name	name
+phone	phone ; telephone ; cell phone | en-GB: phone ; mobile ; telephone
+bathroom	bathroom ; restroom ; toilet | en-GB: toilet ; loo ; toilets
+door	door
+language	language
+good	good
+bad	bad
+big	big ; large
+small	small ; little
+hot	hot
+cold	cold
+open	open
+closed	closed
+new	new
+one	one
+two	two
+three	three
+four	four
+five	five
+six	six
+seven	seven
+eight	eight
+nine	nine
+ten	ten
+hundred	hundred ; one hundred
+thousand	thousand ; one thousand
+airport	airport
+train_station	train station ; railway station | en-GB: railway station ; train station
+bus_stop	bus stop
+bus	bus
+train	train
+taxi	taxi ; cab
+ticket	ticket
+passport	passport
+hotel	hotel
+room	room
+reservation	reservation ; booking | en-GB: booking ; reservation
+restaurant	restaurant
+menu	menu
+the_bill_please	the check please ; check please | en-GB: the bill please ; bill please
+table_for_two	a table for two ; table for two
+how_much_is_this	how much is this ; how much does this cost
+too_expensive	too expensive
+cheap	cheap ; inexpensive
+expensive	expensive
+left	left
+right	right
+straight_ahead	straight ahead
+near	near ; nearby ; close
+far	far
+street	street
+map	map
+city	city
+beach	beach
+museum	museum
+bank	bank
+atm	ATM | en-GB: cash machine ; ATM
+pharmacy	pharmacy ; drugstore | en-GB: chemist ; pharmacy
+market	market
+shop	store ; shop | en-GB: shop ; store
+entrance	entrance
+exit	exit ; way out
+luggage	luggage ; baggage
+i_am_lost	I am lost ; I'm lost
+where_is_the_bathroom	where is the bathroom ; where is the restroom ; where is the toilet | en-GB: where is the toilet ; where are the toilets
+call_the_police	call the police
+police	police
+wifi	Wi-Fi ; wifi
+password	password
+credit_card	credit card
+cash	cash
+vegetarian	vegetarian
+breakfast	breakfast
+lunch	lunch
+dinner	dinner
+chicken	chicken
+fish	fish
+meat	meat
+rice	rice
+doctor	doctor
+hospital	hospital
+emergency	emergency
+ambulance	ambulance
+i_need_a_doctor	I need a doctor
+call_an_ambulance	call an ambulance
+pain	pain
+it_hurts_here	it hurts here
+headache	headache
+fever	fever
+cold_illness	cold
+cough	cough
+nausea	nausea
+diarrhea	diarrhea | en-GB: diarrhoea
+allergy	allergy
+i_am_allergic_to	I am allergic to ; I'm allergic to
+penicillin	penicillin
+medicine	medicine ; medication
+prescription	prescription
+blood	blood
+heart	heart
+stomach	stomach
+head	head
+chest	chest
+pregnant	pregnant
+diabetes	diabetes
+asthma	asthma
+dizzy	dizzy
+i_cant_breathe	I can't breathe ; I cannot breathe
+sick	sick ; ill
+insurance	insurance
+nurse	nurse
+pill	pill ; tablet

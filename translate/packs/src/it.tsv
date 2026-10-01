@@ -1,0 +1,214 @@
+# Italian seed lexicon — QueryBook Translate v1
+@rules {"elision": true, "suffixes": ["i>o", "e>a", "i>e", "che>ca", "ghi>go"]}
+hello	ciao ; salve ; buongiorno
+goodbye	arrivederci ; ciao
+good_morning	buongiorno
+good_afternoon	buon pomeriggio
+good_evening	buonasera
+good_night	buonanotte
+please	per favore ; per piacere
+thank_you	grazie
+thank_you_very_much	grazie mille ; molte grazie
+youre_welcome	prego ; di niente
+sorry	mi dispiace ; scusa ; scusi
+excuse_me	mi scusi ; scusi ; permesso
+yes	sì
+no	no
+ok	va bene ; d'accordo ; ok
+how_are_you	come sta ; come stai
+im_fine	sto bene
+nice_to_meet_you	piacere ; piacere di conoscerla
+what_is_your_name	come si chiama ; come ti chiami
+my_name_is	mi chiamo
+i_dont_understand	non capisco
+i_understand	capisco
+do_you_speak_english	parla inglese ; parli inglese
+speak_slowly	parli lentamente per favore ; parli più piano
+repeat_please	ripeta per favore ; può ripetere
+i_dont_know	non lo so ; non so
+i	io ; me ; mi
+you	lei ; tu ; voi ; te ; ti
+he	lui
+she	lei
+we	noi ; ci
+they	loro
+my	mio ; mia ; miei ; mie
+your	suo ; sua ; tuo ; tua
+the	il ; la ; lo ; i ; gli ; le ; l'
+a	un ; una ; uno ; un'
+this	questo ; questa
+that	quello ; quella ; ciò
+be	è ; sono ; sei ; siamo ; siete ; essere
+not	non
+and	e ; ed
+or	o ; oppure
+with	con
+without	senza
+very	molto
+what	cosa ; che cosa ; che
+where	dove
+when	quando
+who	chi
+why	perché
+how	come
+how_much	quanto ; quanta
+how_many	quanti ; quante
+which	quale ; quali
+where_is	dov'è ; dove si trova ; dove sono
+i_want	voglio
+i_would_like	vorrei
+i_need	ho bisogno di ; mi serve
+i_have	ho
+do_you_have	ha ; avete ; hai
+is_there	c'è ; ci sono
+want	volere
+need	avere bisogno
+have	avere
+go	andare
+come	venire
+eat	mangiare
+drink	bere
+speak	parlare
+understand	capire
+know	sapere
+like	piacere
+see	vedere
+wait	aspettare
+buy	comprare
+pay	pagare
+help	aiuto ; aiutare
+water	acqua
+food	cibo
+bread	pane
+coffee	caffè
+tea	tè
+beer	birra
+wine	vino
+milk	latte
+money	soldi ; denaro
+day	giorno
+today	oggi
+tomorrow	domani
+yesterday	ieri
+now	adesso ; ora
+later	più tardi ; dopo
+here	qui ; qua
+there	lì ; là
+man	uomo
+woman	donna
+child	bambino ; bambina
+friend	amico ; amica
+family	famiglia
+house	casa
+name	nome
+phone	telefono ; cellulare
+bathroom	bagno ; toilette
+door	porta
+language	lingua
+good	buono ; buona ; bene
+bad	cattivo ; cattiva ; male
+big	grande
+small	piccolo ; piccola
+hot	caldo ; calda
+cold	freddo ; fredda
+open	aperto ; aperta
+closed	chiuso ; chiusa
+new	nuovo ; nuova
+one	uno ; una
+two	due
+three	tre
+four	quattro
+five	cinque
+six	sei
+seven	sette
+eight	otto
+nine	nove
+ten	dieci
+hundred	cento
+thousand	mille
+airport	aeroporto
+train_station	stazione ; stazione ferroviaria
+bus_stop	fermata dell'autobus ; fermata del bus
+bus	autobus ; bus
+train	treno
+taxi	taxi
+ticket	biglietto
+passport	passaporto
+hotel	albergo ; hotel
+room	camera ; stanza
+reservation	prenotazione
+restaurant	ristorante
+menu	menù ; menu
+the_bill_please	il conto per favore
+table_for_two	un tavolo per due ; tavolo per due
+how_much_is_this	quanto costa ; quanto costa questo
+too_expensive	troppo caro
+cheap	economico ; economica
+expensive	caro ; cara
+left	sinistra
+right	destra
+straight_ahead	sempre dritto ; dritto
+near	vicino
+far	lontano
+street	strada ; via
+map	mappa ; cartina
+city	città
+beach	spiaggia
+museum	museo
+bank	banca
+atm	bancomat
+pharmacy	farmacia
+market	mercato
+shop	negozio
+entrance	entrata ; ingresso
+exit	uscita
+luggage	bagagli ; bagaglio
+i_am_lost	mi sono perso ; mi sono persa
+where_is_the_bathroom	dov'è il bagno
+call_the_police	chiami la polizia
+police	polizia
+wifi	wifi ; wi-fi
+password	password
+credit_card	carta di credito
+cash	contanti
+vegetarian	vegetariano ; vegetariana
+breakfast	colazione
+lunch	pranzo
+dinner	cena
+chicken	pollo
+fish	pesce
+meat	carne
+rice	riso
+doctor	medico ; dottore ; dottoressa
+hospital	ospedale
+emergency	emergenza ; pronto soccorso
+ambulance	ambulanza
+i_need_a_doctor	ho bisogno di un medico
+call_an_ambulance	chiami un'ambulanza
+pain	dolore
+it_hurts_here	mi fa male qui
+headache	mal di testa
+fever	febbre
+cold_illness	raffreddore
+cough	tosse
+nausea	nausea
+diarrhea	diarrea
+allergy	allergia
+i_am_allergic_to	sono allergico a ; sono allergica a
+penicillin	penicillina
+medicine	medicina ; farmaco
+prescription	ricetta
+blood	sangue
+heart	cuore
+stomach	stomaco ; pancia
+head	testa
+chest	petto
+pregnant	incinta
+diabetes	diabete
+asthma	asma
+dizzy	ho le vertigini ; mi gira la testa
+i_cant_breathe	non riesco a respirare
+sick	malato ; malata
+insurance	assicurazione ; assicurazione sanitaria
+nurse	infermiere ; infermiera
+pill	pillola ; compressa
