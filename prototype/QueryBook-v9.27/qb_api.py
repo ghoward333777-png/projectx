@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.26"
+BUILD = "v9.27"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -342,7 +342,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(401, {"error": "unauthorized — sign in at /login"})
         if u.path not in ("/api/chat", "/api/harvest", "/api/agents", "/api/agents/control",
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
-                          "/api/language/ingest", "/api/language/speak", "/api/mirror", "/api/help"):
+                          "/api/language/ingest", "/api/language/speak", "/api/language/translate",
+                          "/api/language/teach", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -463,6 +464,36 @@ class H(BaseHTTPRequestHandler):
                 out["audio_b64"] = base64.b64encode(tts["wav_bytes"]).decode("ascii")
                 out["mime"] = tts.get("mime", "audio/wav")
             return self._send(200, out)
+        if u.path == "/api/language/translate":
+            # Deterministic dictionary translation (no LLM). text + src + dst.
+            text = (body.get("text") or "").strip()
+            src = (body.get("src") or "en").lower()
+            dst = (body.get("dst") or "es").lower()
+            if not text:
+                return self._send(400, {"error": "text required"})
+            r = qb_language.translate(text, src, dst)
+            return self._send(200 if "error" not in r else 400, r)
+        if u.path == "/api/language/teach":
+            # One-click automation: start (or resume) the complete learner for a language —
+            # vocabulary + pronunciation + translation — without the user wiring agents by hand.
+            lang = (body.get("lang") or "es").lower()
+            name = "Learn " + qb_language.LANG_NAMES.get(lang, lang)
+            try:
+                existing = next((a for a in AGENTS.snapshot().get("agents", [])
+                                 if a.get("kind") == "lang_learn" and (a.get("target") or "").lower() == lang), None)
+                if existing:
+                    AGENTS.control(existing["id"], "resume")
+                    aid = existing["id"]
+                else:
+                    a = AGENTS.create(name, "lang_learn", target=lang, interval=2)
+                    aid = a["id"]
+                    AGENTS.control(aid, "start")
+                total = len(qb_language._corpus_words(lang))
+                return self._send(200, {"ok": True, "agent_id": aid, "lang": lang,
+                                        "language": qb_language.LANG_NAMES.get(lang, lang),
+                                        "words_to_learn": total})
+            except Exception as e:
+                return self._send(500, {"error": "could not start learner: " + str(e)})
         if u.path == "/api/language/ingest":
             try:
                 if body.get("preview"):
@@ -864,7 +895,7 @@ class H(BaseHTTPRequestHandler):
                     self._send(200, {"build": BUILD, "date": BUILD_DATE,
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech", "secure-remote-mode", "auto-discovery"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech", "secure-remote-mode", "auto-discovery", "dictionary-translation", "one-click-teach", "index-free-counts"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:

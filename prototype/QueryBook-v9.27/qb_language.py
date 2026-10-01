@@ -610,6 +610,96 @@ def bilingual_word_map(lang):
     return out
 
 
+_EN2L = {}
+
+def english_to_lang_map(lang):
+    """{english_word: [foreign forms]} from the bundled bilingual dictionary (for EN→L2).
+    Cached; deterministic; single-token letter forms only."""
+    lang = (lang or "").lower()
+    if lang in _EN2L:
+        return _EN2L[lang]
+    B = load_bilingual().get(lang) or {}
+    out = {}
+    for en, forms in B.items():
+        if not en or str(en).startswith("_"):
+            continue
+        enl = str(en).lower().strip()
+        keep = []
+        for f in (forms if isinstance(forms, (list, tuple)) else [forms]):
+            fl = str(f).lower().strip()
+            if fl and (" " not in fl) and fl.isalpha():
+                keep.append(fl)
+        if keep:
+            out[enl] = keep
+    _EN2L[lang] = out
+    return out
+
+
+def translatable_pairs():
+    """Language pairs the bundled dictionaries can translate (both directions with English)."""
+    langs = [k for k in load_bilingual().keys() if not str(k).startswith("_")]
+    pairs = []
+    for lg in langs:
+        pairs.append(("en", lg)); pairs.append((lg, "en"))
+    return pairs
+
+
+def translate(text, src, dst):
+    """Deterministic, dictionary-based translation between English and a bundled language
+    (es/fr). Word-by-word using the bundled bilingual dictionary — NO LLM, no network, no
+    fabrication: unknown words are passed through and flagged, never guessed. Covenant-safe
+    (every rendered word comes from the auditable dictionary). Returns the translation plus
+    a per-word breakdown and a coverage figure so the user can trust exactly what it did."""
+    src = (src or "").lower(); dst = (dst or "").lower()
+    text = (text or "").strip()
+    if not text:
+        return {"error": "empty text", "src": src, "dst": dst}
+    if src == dst:
+        return {"error": "source and target are the same language", "src": src, "dst": dst}
+    # Pick the lookup table for this direction.
+    if src == "en":
+        table = english_to_lang_map(dst)
+        if not table:
+            return {"error": "no bundled dictionary for %s→%s" % (src, dst), "src": src, "dst": dst}
+    elif dst == "en":
+        table = bilingual_word_map(src)
+        if not table:
+            return {"error": "no bundled dictionary for %s→%s" % (src, dst), "src": src, "dst": dst}
+    else:
+        return {"error": "translation runs through English; pick English as one side", "src": src, "dst": dst}
+    # Tokenize keeping punctuation/spacing so the output reads naturally.
+    toks = re.findall(r"[^\W\d_]+|\d+|\s+|[^\w\s]", text, re.UNICODE)
+    pairs = []
+    rendered = []
+    known = total = 0
+    for tok in toks:
+        if re.match(r"^[^\W\d_]+$", tok, re.UNICODE):   # a word
+            total += 1
+            low = tok.lower()
+            opts = table.get(low)
+            if opts:
+                known += 1
+                choice = opts[0]
+                # preserve simple capitalization of the source word
+                if tok[:1].isupper():
+                    choice = choice[:1].upper() + choice[1:]
+                rendered.append(choice)
+                pairs.append({"src": tok, "dst": choice, "known": True,
+                              "alternatives": opts[1:4]})
+            else:
+                rendered.append(tok)   # pass through, flagged
+                pairs.append({"src": tok, "dst": tok, "known": False, "alternatives": []})
+        else:
+            rendered.append(tok)
+    coverage = round(100.0 * known / total, 1) if total else 0.0
+    return {"src": src, "dst": dst, "input": text,
+            "translation": "".join(rendered),
+            "words": total, "translated": known, "coverage_pct": coverage,
+            "pairs": [p for p in pairs if p["src"].strip()],
+            "note": ("Dictionary word-by-word translation (MUSE bilingual, demo data). "
+                     "Unknown words are left as-is and marked — never guessed. No LLM.")}
+
+
 def acquire_language(store_dir, lang="es", words=None, max_words=None):
     """Phase-3 delta: for English words already learned in Phase 1, attach their L2 translation
     from the bundled bilingual dictionary. Reuses the English foundation; learns only the delta.

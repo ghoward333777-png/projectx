@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.26 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.27 · 2026-10-01</span>
   <nav>
     <a href="/dashboard">Console</a>
     <a href="/">Chat</a>
@@ -103,13 +103,56 @@
 
 <div class="wrap">
   <div class="hero">
-    <div class="eyebrow">Build English first · phase-by-phase · agent-driven</div>
-    <h1>Language Lab — teach QueryBook English from scratch</h1>
-    <p class="lede">QueryBook learns language the way its architecture documents it: in developmental
-    <b>phases</b>, driven by <b>agents</b>. Phase&nbsp;1 learns the STRUCTURE of English — sounds,
-    syllables, words, patterns — with no dictionary and no LLM, and drives the one-way
-    <b>Transition Gate</b>. Start Phase&nbsp;1 and let it run to completion before other harvesting.</p>
+    <div class="eyebrow">English is the foundation · other languages in one click · deterministic, no LLM</div>
+    <h1>Language Lab</h1>
+    <p class="lede"><b>English is QueryBook's foundation language</b> — it is learned in the four
+    <b>phases</b> below (structure → meaning → translation → speech). <b>Every other language</b>
+    (Spanish, French, …) is taught in <b>one click</b>: QueryBook learns its vocabulary, how to
+    pronounce each word, and how it translates to and from English — all automatically, with no LLM.</p>
+    <div id="lang-legend" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
   </div>
+
+  <!-- ONE-CLICK: TEACH A LANGUAGE -->
+  <div class="card" id="teach-card">
+    <h2>Teach QueryBook a language — one click</h2>
+    <p class="sub">Pick a language and press the button. QueryBook does the rest automatically:
+    builds the <b>vocabulary</b>, the <b>pronunciation</b> of every word, and the <b>translations</b>
+    to/from English. Watch it climb — you don't need to start agents or run anything by hand.</p>
+    <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="teach-lang" style="padding:8px 12px;font-size:15px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option></select>
+      <button class="btn big" id="teach-go">▶ Teach this language</button>
+      <button class="btn ghost" id="teach-pause" style="display:none">Pause</button>
+      <span id="teach-status" class="note"></span>
+    </div>
+    <div class="meter" style="margin-top:12px"><i id="teach-fill" style="width:0%"></i><span id="teach-pct">0%</span></div>
+    <div id="teach-detail" class="note" style="margin-top:8px"></div>
+  </div>
+
+  <!-- TRANSLATE -->
+  <div class="card" id="translate-card">
+    <h2>Translate</h2>
+    <p class="sub">Translate between English and any language QueryBook has a dictionary for.
+    It uses what it has learned — <b>word by word from the dictionary, no LLM, no guessing</b>:
+    any word it doesn't know yet is left as-is and marked, and it tells you the coverage.</p>
+    <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="tr-dir" style="padding:8px 12px;font-size:15px"></select>
+      <button class="btn" id="tr-go">Translate</button>
+      <button class="btn ghost" id="tr-speak" style="display:none">🔊 Speak result</button>
+      <span id="tr-cov" class="note"></span>
+    </div>
+    <textarea id="tr-in" placeholder="Type text to translate…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px"></textarea>
+    <div id="tr-out" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:16px;line-height:1.6"></div>
+    <div id="tr-pairs" class="note" style="margin-top:8px"></div>
+  </div>
+
+  <h2 style="margin:28px 0 6px;padding-top:14px;border-top:2px solid var(--line);font-size:20px">
+    English — the foundation language <span class="note" style="font-weight:400">(learned in four phases below)</span></h2>
+  <p class="sub" style="margin:0 0 12px">These four phases are how QueryBook learned <b>English</b>, the language
+  everything else builds on. For <b>other</b> languages, use the one-click teacher above — you don't run these phases yourself.</p>
 
   <div class="card" id="hero-card">
     <div class="row" style="justify-content:space-between">
@@ -481,6 +524,86 @@ const _sl=$('start-learn'); if(_sl) _sl.onclick=async()=>{
   $('learn-note').textContent='Learning '+name+' — watch Facts climb in Language agents below.';
   _sl.disabled=false; refresh();
 };
+// ---- Language legend: which language each phase targets -------------------
+function renderLegend(){
+  const el=$('lang-legend'); if(!el) return;
+  const items=[
+    ['Phase 1–2','English','structure + meaning','#0c5c4c'],
+    ['Phase 3','English ⇄ others','translation','#1b6ea8'],
+    ['Phase 4','All languages','pronunciation + speech','#7a4ea8'],
+    ['One click','Any language','vocabulary + pronunciation + translation','#b06a00'],
+  ];
+  el.innerHTML=items.map(it=>`<div style="flex:1;min-width:150px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid ${it[3]};border-radius:8px;padding:8px 10px">
+    <div style="font:800 10px/1 var(--mono);letter-spacing:.04em;color:${it[3]};text-transform:uppercase">${it[0]}</div>
+    <div style="font-weight:700;margin-top:3px">${it[1]}</div>
+    <div class="note">${it[2]}</div></div>`).join('');
+}
+renderLegend();
+
+// ---- One-click teacher ----------------------------------------------------
+let _teachLang=null, _teachTotal=0, _teachTimer=null;
+async function teachPoll(){
+  if(!_teachLang) return;
+  try{
+    const d=await (await fetch('api/language/words?lang='+encodeURIComponent(_teachLang))).json();
+    const learned=d.count||0, pron=d.pronounced||0;
+    const tr=(d.words||[]).filter(w=>w.means||(w.translations&&w.translations.length)).length;
+    const pct=_teachTotal?Math.min(100,Math.round(100*learned/_teachTotal)):0;
+    $('teach-fill').style.width=pct+'%'; $('teach-pct').textContent=pct+'%';
+    $('teach-detail').innerHTML=`<b>${learned.toLocaleString()}</b> of ${_teachTotal.toLocaleString()} words learned · `
+      +`<b>${pron.toLocaleString()}</b> pronounced · <b>${tr.toLocaleString()}</b> with translations`
+      +(pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':' · learning…');
+  }catch(e){}
+}
+if($('teach-go')) $('teach-go').onclick=async()=>{
+  const sel=$('teach-lang'); _teachLang=sel.value;
+  const name=sel.options[sel.selectedIndex].text;
+  $('teach-go').disabled=true; $('teach-status').textContent='Starting '+name+'…';
+  try{
+    const r=await (await fetch('api/language/teach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lang:_teachLang})})).json();
+    if(r.error){ $('teach-status').textContent='Error: '+r.error; $('teach-go').disabled=false; return; }
+    _teachTotal=r.words_to_learn||0;
+    $('teach-status').innerHTML='Teaching <b>'+esc(name)+'</b> automatically — no further action needed.';
+    $('teach-pause').style.display='';
+    if(_teachTimer) clearInterval(_teachTimer);
+    _teachTimer=setInterval(teachPoll,1500); teachPoll();
+    // keep the translate direction list and detail view pointed at this language
+    const td=$('detail-lang'); if(td){ td.value=_teachLang; loadDetail(); }
+  }catch(e){ $('teach-status').textContent='Error: '+e; }
+  $('teach-go').disabled=false;
+};
+if($('teach-pause')) $('teach-pause').onclick=async()=>{
+  try{ const snap=await (await fetch('api/agents')).json();
+    for(const a of (snap.agents||[])) if(a.kind==='lang_learn'&&(a.target||'').toLowerCase()===_teachLang&&a.status==='running')
+      await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id,action:'pause'})});
+  }catch(e){}
+  if(_teachTimer) clearInterval(_teachTimer); $('teach-status').textContent='Paused.'; $('teach-pause').style.display='none';
+};
+
+// ---- Translate ------------------------------------------------------------
+const TR_DIRS=[['en','es','English → Spanish'],['es','en','Spanish → English'],
+  ['en','fr','English → French'],['fr','en','French → English']];
+(function initTr(){ const sel=$('tr-dir'); if(!sel) return;
+  sel.innerHTML=TR_DIRS.map((d,i)=>`<option value="${i}">${d[2]}</option>`).join(''); })();
+let _trLast=null;
+if($('tr-go')) $('tr-go').onclick=async()=>{
+  const d=TR_DIRS[+$('tr-dir').value]; const text=$('tr-in').value.trim();
+  if(!text){ $('tr-cov').textContent='Type some text first.'; return; }
+  $('tr-go').disabled=true; $('tr-cov').textContent='Translating…';
+  try{
+    const r=await (await fetch('api/language/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,src:d[0],dst:d[1]})})).json();
+    if(r.error){ $('tr-cov').textContent='Error: '+r.error; $('tr-go').disabled=false; return; }
+    _trLast={text:r.translation,lang:d[1]};
+    $('tr-out').style.display='block'; $('tr-out').textContent=r.translation;
+    $('tr-cov').innerHTML=`Coverage: <b>${r.coverage_pct}%</b> (${r.translated}/${r.words} words from the dictionary)`;
+    const unknown=(r.pairs||[]).filter(p=>!p.known).map(p=>esc(p.src));
+    $('tr-pairs').innerHTML=unknown.length?('Not in dictionary yet (left as-is): '+unknown.map(u=>`<code>${u}</code>`).join(' ')):'';
+    $('tr-speak').style.display='';
+  }catch(e){ $('tr-cov').textContent='Error: '+e; }
+  $('tr-go').disabled=false;
+};
+if($('tr-speak')) $('tr-speak').onclick=function(){ if(_trLast){ try{ browserSpeak(_trLast.text,_trLast.lang); }catch(e){} } };
+
 async function loadDetail(){
   const sel=$('detail-lang'); if(!sel) return;
   try{
