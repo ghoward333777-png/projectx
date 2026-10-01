@@ -1,0 +1,68 @@
+/* QueryBook shared design system — one brand (forest/teal), light + dark, app-wide.
+   Loaded before each page's own <style>; pages keep their layout, inherit these tokens.
+   Dark mode is driven by <html data-theme="dark"> (set by qb-ui.js). The dark block uses
+   higher specificity (:root[data-theme="dark"]) so it wins even over page-local :root. */
+
+:root{
+  color-scheme:light;
+  /* surfaces */
+  --bg:#f4f2ec; --panel:#ffffff; --card:#ffffff; --panel2:#faf8f2; --panel-2:#faf8f2;
+  --soft:#e7f2ee; --accent-soft:#e7f2ee; --teal-soft:#dcf1ef; --chip:#eef2ef; --row:#faf8f2;
+  /* text + lines */
+  --ink:#16130f; --ink-soft:#44413a; --muted:#6b6457; --line:#e4dfd3; --line-strong:#cfc9ba; --spine:#cfc9ba;
+  /* brand */
+  --accent:#0c5c4c; --accent2:#2f9e86; --accent-ink:#08453a; --teal:#0f8f86;
+  --gold:#a9791c;
+  /* status */
+  --good:#1a7f4b; --ok:#1a7f4b; --verified:#1a7f4b; --goodbg:rgba(26,127,75,.13);
+  --warn:#b25d00; --warnc:#b25d00; --contra:#b25d00; --warnbg:rgba(178,93,0,.13);
+  --bad:#b33b2f; --badc:#b33b2f; --unknown:#8a3b3b; --badbg:rgba(179,59,47,.13);
+  --info:#1f5fd6; --infobg:rgba(31,95,214,.10);
+  --user:#0c5c4c; --userink:#ffffff;
+  /* tiers */
+  --tier:#0c5c4c; --tierA:#1a9e63; --tierB:#1f6feb; --tierC:#c77d1a; --tierD:#c2564e;
+  /* type + shape */
+  --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,Menlo,Consolas,"SF Mono",monospace;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(20,24,20,.06),0 8px 24px rgba(20,24,20,.07);
+  --shadow-lg:0 12px 40px rgba(20,24,20,.20);
+}
+
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0e1310; --panel:#151b17; --card:#151b17; --panel2:#1b2420; --panel-2:#1b2420;
+  --soft:#1b2420; --accent-soft:#17241e; --teal-soft:#17241e; --chip:#1b2420; --row:#131a16;
+  --ink:#e9ede9; --ink-soft:#c3ccc5; --muted:#9aa39d; --line:#28312b; --line-strong:#3a463f; --spine:#3a463f;
+  --accent:#48ccac; --accent2:#6fe0c4; --accent-ink:#bdeee0; --teal:#48ccac;
+  --gold:#d8b45a;
+  --good:#56c98a; --ok:#56c98a; --verified:#56c98a; --goodbg:rgba(86,201,138,.16);
+  --warn:#e0a85a; --warnc:#e0a85a; --contra:#e0a85a; --warnbg:rgba(224,168,90,.16);
+  --bad:#e88a7d; --badc:#e88a7d; --unknown:#e88a7d; --badbg:rgba(232,138,125,.16);
+  --info:#6fa8ff; --infobg:rgba(111,168,255,.14);
+  --user:#48ccac; --userink:#06231c;
+  --tier:#48ccac; --tierA:#56c98a; --tierB:#6fa8ff; --tierC:#e0a85a; --tierD:#e88a7d;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 24px rgba(0,0,0,.38);
+  --shadow-lg:0 12px 40px rgba(0,0,0,.55);
+}
+
+/* App-wide theme toggle button (injected by qb-ui.js) */
+#qb-theme-toggle{
+  position:fixed; top:10px; right:12px; z-index:10000;
+  width:38px; height:38px; border-radius:11px; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink);
+  font-size:17px; line-height:1; display:flex; align-items:center; justify-content:center;
+  box-shadow:var(--shadow); transition:transform .12s, background .12s;
+}
+#qb-theme-toggle:hover{ transform:translateY(-1px); }
+
+/* Accuracy-class badges — a consistent, honest signal of how a feature produces its output.
+   Use: <span class="qb-ac qb-ac-det">Deterministic</span> (det|dict|heur|road). */
+.qb-ac{ display:inline-block; font:700 10px/1 var(--mono); letter-spacing:.04em;
+  text-transform:uppercase; padding:3px 7px; border-radius:999px; border:1px solid transparent;
+  vertical-align:middle; }
+.qb-ac-det{  color:var(--good); background:var(--goodbg); border-color:var(--good); }
+.qb-ac-dict{ color:var(--info); background:var(--infobg); border-color:var(--info); }
+.qb-ac-heur{ color:var(--warn); background:var(--warnbg); border-color:var(--warn); }
+.qb-ac-road{ color:var(--muted); background:transparent; border-color:var(--line-strong); }
