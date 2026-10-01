@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Voice Lab</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}
+.wrap{max-width:980px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input[type=text]{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:#fff;color:var(--ink)}
+input[type=text]{flex:1;min-width:200px}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:600;cursor:pointer}
+.btn.big{padding:16px 22px;font-size:18px}
+.btn.ghost{background:#fff;color:var(--accent);border:1.5px solid var(--accent)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.rec{background:var(--bad)}
+button:focus-visible,select:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:3px solid #7fc4ad;outline-offset:2px}
+.live{margin-top:12px;padding:14px 16px;background:var(--soft);border:1px solid #bfe0d4;border-radius:10px;min-height:52px;font-size:17px}
+.live .interim{color:var(--muted)}
+.meterwrap{margin-top:12px}
+.meter{height:16px;background:#e7ece8;border-radius:8px;overflow:hidden}
+.meter>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#3fae8f,#0c5c4c);transition:width .08s linear}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center}
+.stat .n{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--accent2)}
+.stat .k{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.pill{display:inline-block;font:700 12px/1 var(--mono);padding:5px 10px;border-radius:999px;background:#eef1ee;color:var(--muted)}
+.pill.on{background:var(--soft);color:var(--accent2)}
+.note{font-size:13px;color:var(--muted);margin-top:10px}
+.warnbox{border-left:3px solid var(--warn);background:#f7efd9;border-radius:0 10px 10px 0;padding:12px 14px;margin-top:12px;font-size:14px}
+.okbox{border-left:3px solid var(--accent);background:var(--soft);border-radius:0 10px 10px 0;padding:12px 14px;margin-top:12px;font-size:14px}
+video{width:100%;max-width:420px;border-radius:12px;background:#000;margin-top:12px}
+.enrolled{margin-top:10px;font-size:14px}
+.enrolled li{margin:3px 0}
+label.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--muted)}
+.skip{position:absolute;left:-999px}.skip:focus{left:8px;top:8px;position:fixed;background:#fff;padding:8px;border:2px solid var(--accent);z-index:9}
+</style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to content</a>
+<div class="top">
+  <div class="brand">Query<b>Book</b> — Voice Lab</div>
+  <span class="badge">BUILD v9.40 · 2026-10-01</span>
+  <nav class="nav" aria-label="Main">
+    <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
+    <a href="/chat">Chat</a><a href="/monitor">Monitor</a>
+    <a href="/guide">Guide</a><a href="/voice">Voice</a>
+  </nav>
+</div>
+
+<div class="wrap" id="main">
+  <div class="okbox" role="note">
+    <b>Voice-first &amp; accessible.</b> Speak to QueryBook and it speaks back, in any supported language.
+    Answers are announced for screen readers, controls are keyboard-operable (press <b>Space</b> to start/stop
+    listening), and everything works hands-free in Converse mode. Your microphone and camera are used only in
+    your browser — no audio or video is uploaded, and voice identity stays on this computer.
+  </div>
+
+  <!-- TWO-WAY VOICE -->
+  <div class="card">
+    <h2>Two-way voice</h2>
+    <p class="sub">Speak in your language; QueryBook understands it, answers from verified facts (or says it
+    doesn't know), and speaks the answer back. Understanding uses your browser's speech recognition
+    (Chrome or Edge); speaking uses the built-in / espeak-ng voices.</p>
+    <div class="row">
+      <label for="lang" class="pill">Language</label>
+      <select id="lang" aria-label="Language">
+        <option value="en">English</option><option value="es">Spanish</option>
+        <option value="fr">French</option><option value="de">German</option>
+        <option value="pt">Portuguese</option><option value="it">Italian</option>
+        <option value="sv">Swedish</option><option value="nl">Dutch</option>
+      </select>
+      <button class="btn big" id="listen" aria-pressed="false">🎤 Start listening</button>
+      <label class="ck"><input type="checkbox" id="converse" checked> Converse (speak answers back)</label>
+    </div>
+    <div class="live" id="transcript" aria-live="polite" aria-atomic="true" role="status">Press “Start listening” and say something…</div>
+    <div class="live" id="answer" aria-live="polite" aria-atomic="true" role="status" style="display:none"></div>
+    <div class="row" style="margin-top:12px">
+      <input type="text" id="say" placeholder="…or type text for QueryBook to speak in the chosen language">
+      <button class="btn ghost" id="speakbtn">🔊 Speak</button>
+    </div>
+    <div id="voice-warn" class="warnbox" style="display:none"></div>
+  </div>
+
+  <!-- TONE & VOLUME -->
+  <div class="card">
+    <h2>Tone &amp; volume (measured)</h2>
+    <p class="sub">Real acoustic analysis of your voice while you speak — loudness, pitch, and a cautious
+    emphasis estimate. These are measured signal features, not a claim about your feelings.</p>
+    <div class="meterwrap"><div class="meter"><span id="volbar"></span></div></div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="s-db">—</div><div class="k">Loudness (dB)</div></div>
+      <div class="stat"><div class="n" id="s-pitch">—</div><div class="k">Pitch (Hz)</div></div>
+      <div class="stat"><div class="n" id="s-reg">—</div><div class="k">Register</div></div>
+      <div class="stat"><div class="n" id="s-emph">—</div><div class="k">Emphasis (est.)</div></div>
+    </div>
+    <div class="note" id="tone-note" aria-live="polite">Start listening to see live tone and volume.</div>
+  </div>
+
+  <!-- VOICEPRINT -->
+  <div class="card">
+    <h2>Who is who — voice match</h2>
+    <p class="sub">Tell speakers apart by their voice. This is an <b>approximate, on-device demo</b> from
+    acoustic features (pitch, timbre) — not a biometric identity system. It needs your consent and stores
+    voiceprints only in this browser.</p>
+    <label class="ck"><input type="checkbox" id="vp-consent"> I consent to creating voiceprints on this computer.</label>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="vp-name" placeholder="Speaker name" disabled>
+      <button class="btn ghost" id="vp-enroll" disabled>Enroll voice (speak ~2s)</button>
+      <button class="btn" id="vp-id" disabled>Identify speaker</button>
+      <button class="btn ghost" id="vp-clear" disabled>Clear all</button>
+    </div>
+    <div class="live" id="vp-out" aria-live="polite" role="status" style="min-height:40px">No voiceprints yet.</div>
+    <ul class="enrolled" id="vp-list"></ul>
+  </div>
+
+  <!-- CAMERA & SENSORS -->
+  <div class="card">
+    <h2>Camera &amp; sensors</h2>
+    <p class="sub">The camera and device sensors support accessibility and future audio-visual features.</p>
+    <div class="row">
+      <button class="btn ghost" id="cam-btn">📷 Enable camera</button>
+      <span class="pill" id="cam-state">camera off</span>
+    </div>
+    <video id="cam" playsinline muted hidden></video>
+    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat"><div class="n" id="sen-motion">—</div><div class="k">Motion sensor</div></div>
+      <div class="stat"><div class="n" id="sen-orient">—</div><div class="k">Orientation</div></div>
+      <div class="stat"><div class="n" id="sen-light">—</div><div class="k">Ambient light</div></div>
+    </div>
+    <div class="warnbox">
+      <b>Roadmap — audio-video “who is who”.</b> Recognizing people by <b>face</b> and synchronizing it with
+      the voice (audio-visual speaker identification) needs trained vision models and careful consent and
+      privacy handling, so it is not included here. Today, “who is who” is done by <b>voice</b> above. The
+      camera preview and sensor readouts are live; scene/face understanding is the roadmap embodiment.
+    </div>
+  </div>
+
+  <div class="note" style="margin:22px 0 40px">
+    <b>Covenant &amp; privacy.</b> Speech recognition, tone, and speaker identity are <i>estimates</i>, so they
+    are never stored as verified facts — a spoken question runs through the grounded engine, which cites a source
+    or honestly says it doesn’t know. Audio and video are processed only in your browser and are not uploaded;
+    voiceprints live only on this computer and can be cleared at any time.
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:'sv-SE',nl:'nl-NL'};
+
+/* ---------- audio graph (mic) shared by tone + voiceprint ---------- */
+const AC=window.AudioContext||window.webkitAudioContext;
+let actx,analyser,micStream,tbuf,fbuf,running=false;
+let pitchHist=[],dbBaseline=null;
+async function ensureMic(){
+  if(micStream) return true;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ return false; }
+  try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ return false; }
+  actx=new AC(); const src=actx.createMediaStreamSource(micStream);
+  analyser=actx.createAnalyser(); analyser.fftSize=2048; src.connect(analyser);
+  tbuf=new Float32Array(analyser.fftSize); fbuf=new Uint8Array(analyser.frequencyBinCount);
+  return true;
+}
+function rms(){ analyser.getFloatTimeDomainData(tbuf); let s=0; for(let i=0;i<tbuf.length;i++)s+=tbuf[i]*tbuf[i]; return Math.sqrt(s/tbuf.length); }
+function autoCorrelate(sr){
+  analyser.getFloatTimeDomainData(tbuf); const N=tbuf.length; let s=0;
+  for(let i=0;i<N;i++)s+=tbuf[i]*tbuf[i]; if(Math.sqrt(s/N)<0.01) return 0;
+  let best=-1,bestOff=-1; const MIN=Math.floor(sr/400),MAX=Math.floor(sr/70);
+  for(let off=MIN;off<=MAX;off++){ let c=0; for(let i=0;i<N-off;i++)c+=tbuf[i]*tbuf[i+off];
+    if(c>best){best=c;bestOff=off;} }
+  return bestOff>0? sr/bestOff:0;
+}
+function centroid(){ analyser.getByteFrequencyData(fbuf); let num=0,den=0;
+  for(let i=0;i<fbuf.length;i++){ const f=i*actx.sampleRate/analyser.fftSize; num+=f*fbuf[i]; den+=fbuf[i]; }
+  return den? num/den:0; }
+function feature(){ const r=rms(); return {db:r>0?20*Math.log10(r):-100, pitch:autoCorrelate(actx.sampleRate), centroid:centroid(), r}; }
+
+function toneLoop(){
+  if(!running){ return; }
+  const f=feature();
+  const pct=Math.max(0,Math.min(100,(f.db+70)/70*100));
+  $('volbar').style.width=pct+'%';
+  if(f.r>0.012){
+    if(dbBaseline==null)dbBaseline=f.db; else dbBaseline=dbBaseline*0.98+f.db*0.02;
+    $('s-db').textContent=f.db.toFixed(0);
+    if(f.pitch){ $('s-pitch').textContent=f.pitch.toFixed(0); pitchHist.push(f.pitch); if(pitchHist.length>60)pitchHist.shift(); }
+    const p=f.pitch||0;
+    const reg=p?(p<140?'low':p<220?'mid':'high'):'—'; $('s-reg').textContent=reg;
+    const loud=f.db>dbBaseline+6, rising=pitchHist.length>8&&(pitchHist[pitchHist.length-1]>pitchHist[pitchHist.length-8]+15);
+    const emph=loud&&rising?'strong':loud?'raised':rising?'rising':'even'; $('s-emph').textContent=emph;
+    $('tone-note').textContent='Measured: '+f.db.toFixed(0)+' dB, '+(p?p.toFixed(0)+' Hz '+reg+' register':'unvoiced')+', emphasis '+emph+' (acoustic estimate).';
+  }
+  requestAnimationFrame(toneLoop);
+}
+
+/* ---------- speech recognition (understand) ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let recog=null, listening=false;
+function setListen(on){
+  listening=on; const b=$('listen');
+  b.textContent=on?'■ Stop listening':'🎤 Start listening'; b.classList.toggle('rec',on); b.setAttribute('aria-pressed',on);
+}
+async function toggleListen(){
+  if(listening){ if(recog)recog.stop(); setListen(false); running=false; return; }
+  if(!SR){ $('voice-warn').style.display='block';
+    $('voice-warn').innerHTML='Speech recognition needs Chrome or Edge. You can still type text to be spoken, and use tone/voiceprint.'; return; }
+  const gotMic=await ensureMic();
+  if(!gotMic){ $('voice-warn').style.display='block';
+    $('voice-warn').innerHTML='Microphone permission is needed. Allow the mic and try again.'; return; }
+  running=true; if(actx&&actx.state==='suspended')actx.resume(); toneLoop();
+  recog=new SR(); recog.lang=BCP[$('lang').value]||'en-US'; recog.interimResults=true; recog.continuous=true;
+  recog.onresult=ev=>{ let fin='',inter='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){ const t=ev.results[i][0].transcript;
+      if(ev.results[i].isFinal)fin+=t; else inter+=t; }
+    if(inter)$('transcript').innerHTML='<span class="interim">'+esc(inter)+'…</span>';
+    if(fin){ $('transcript').textContent='You said: '+fin; onUtterance(fin.trim()); }
+  };
+  recog.onerror=e=>{ $('voice-warn').style.display='block'; $('voice-warn').textContent='Recognition error: '+e.error; };
+  recog.onend=()=>{ if(listening){ try{recog.start();}catch(e){} } };
+  try{ recog.start(); setListen(true); }catch(e){}
+}
+async function onUtterance(text){
+  if(!text||!$('converse').checked) return;
+  const a=$('answer'); a.style.display='block'; a.textContent='Thinking…';
+  try{
+    const r=await (await fetch('api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text})})).json();
+    const ans=r.answer||r.text||'(no answer)';
+    a.textContent='QueryBook: '+ans;
+    speak(ans, $('lang').value);
+  }catch(e){ a.textContent='Could not answer: '+e; }
+}
+
+/* ---------- speak (TTS) ---------- */
+/* Prefer LOCAL voices and avoid "Online (Natural)" cloud voices, which are listed but
+   often produce no audio through the Web Speech API; handle the async getVoices() race. */
+let _qbVoices=[];
+function _loadVoices(){ try{ _qbVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ _qbVoices=[]; } return _qbVoices; }
+try{ if('speechSynthesis' in window){ _loadVoices(); window.speechSynthesis.addEventListener('voiceschanged', _loadVoices); } }catch(e){}
+function _rankVoices(lang){
+  const vs=_qbVoices.length?_qbVoices:_loadVoices(); const l=(lang||'en').toLowerCase();
+  const region=(BCP[l]||'').toLowerCase(); const cloud=v=>/online|natural/i.test(v.name||"");
+  return vs.filter(v=>v.lang&&v.lang.toLowerCase().slice(0,2)===l).map(v=>{
+    let s=0; if(v.localService) s+=100; if(!cloud(v)) s+=40;
+    if(v.lang.toLowerCase()===region) s+=10; else if(v.lang.toLowerCase().startsWith(l+'-')) s+=5;
+    if(v.default) s+=1; return {v,s};
+  }).sort((a,b)=>b.s-a.s).map(x=>x.v);
+}
+function browserSpeak(text,lang){
+  try{ if(!('speechSynthesis' in window)) return false;
+    const cands=_rankVoices(lang);
+    function speakWith(i){
+      if(i>=cands.length){ // no local match — speak with lang hint only
+        const u=new SpeechSynthesisUtterance(text); u.lang=BCP[lang]||'en-US';
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); return; }
+      const v=cands[i]; const u=new SpeechSynthesisUtterance(text);
+      u.lang=v.lang||BCP[lang]||'en-US'; u.voice=v; let started=false,done=false;
+      u.onstart=()=>{started=true;}; u.onerror=()=>{ if(done)return; done=true; if(i+1<cands.length){try{window.speechSynthesis.cancel();}catch(e){} speakWith(i+1);} };
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      setTimeout(()=>{ if(done||started)return; done=true; if(i+1<cands.length){try{window.speechSynthesis.cancel();}catch(e){} speakWith(i+1);} },1200);
+    }
+    if(_loadVoices().length) speakWith(0);
+    else { let d=false; const r=()=>{if(d)return;d=true;_loadVoices();speakWith(0);};
+      try{window.speechSynthesis.addEventListener('voiceschanged',r,{once:true});}catch(e){} setTimeout(r,350); }
+    return true;
+  }catch(e){ return false; }
+}
+async function speak(text,lang){
+  if(!text) return;
+  try{
+    const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,lang})})).json();
+    if(r.audio_b64){ const au=new Audio('data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64); au.play().catch(()=>{}); return; }
+    if(browserSpeak(text,lang)) return;                     // browser's built-in voice, no install
+    if(r.tts&&r.tts.error){ $('voice-warn').style.display='block'; $('voice-warn').textContent='Voice: '+r.tts.error; }
+  }catch(e){ browserSpeak(text,lang); }
+}
+$('speakbtn').onclick=()=>speak($('say').value.trim(),$('lang').value);
+$('listen').onclick=toggleListen;
+document.addEventListener('keydown',e=>{ if(e.code==='Space'&&e.target.tagName!=='INPUT'&&e.target.tagName!=='TEXTAREA'){ e.preventDefault(); toggleListen(); }});
+
+/* ---------- voiceprint ---------- */
+function loadVP(){ try{ return JSON.parse(localStorage.getItem('qb_voiceprints')||'{}'); }catch(e){ return {}; } }
+function saveVP(v){ try{ localStorage.setItem('qb_voiceprints',JSON.stringify(v)); }catch(e){} }
+function renderVP(){ const v=loadVP(); const names=Object.keys(v);
+  $('vp-list').innerHTML=names.length?names.map(n=>'<li><b>'+esc(n)+'</b> <span class="note">('+v[n].count+' samples)</span></li>').join(''):'';
+  if(!names.length)$('vp-out').textContent='No voiceprints yet.'; }
+async function captureVector(ms){
+  const ok=await ensureMic(); if(!ok){ return null; }
+  if(actx.state==='suspended')actx.resume();
+  const t0=performance.now(); const ps=[],ds=[],cs=[];
+  return new Promise(res=>{ (function grab(){
+    const f=feature(); if(f.r>0.015&&f.pitch){ ps.push(f.pitch); ds.push(f.db); cs.push(f.centroid); }
+    if(performance.now()-t0<ms){ requestAnimationFrame(grab); }
+    else{ if(ps.length<5){ res(null); return; }
+      const mean=a=>a.reduce((x,y)=>x+y,0)/a.length; const std=a=>{const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)*(x-m))));};
+      res({pitch:mean(ps),pstd:std(ps),centroid:mean(cs),count:ps.length}); }
+  })(); });
+}
+function dist(a,b){ return Math.sqrt(Math.pow((a.pitch-b.pitch)/60,2)+Math.pow((a.pstd-b.pstd)/40,2)+Math.pow((a.centroid-b.centroid)/800,2)); }
+$('vp-consent').onchange=e=>{ const on=e.target.checked;
+  ['vp-name','vp-enroll','vp-id','vp-clear'].forEach(id=>$(id).disabled=!on); if(on)renderVP(); };
+$('vp-enroll').onclick=async()=>{ const name=$('vp-name').value.trim(); if(!name){ $('vp-out').textContent='Enter a speaker name first.'; return; }
+  $('vp-out').textContent='Listening… speak for about 2 seconds.'; const v=await captureVector(2200);
+  if(!v){ $('vp-out').textContent='Not enough voiced audio — try again, a bit louder.'; return; }
+  const all=loadVP(); all[name]=v; saveVP(all); renderVP(); $('vp-out').textContent='Enrolled '+name+'.'; };
+$('vp-id').onclick=async()=>{ const all=loadVP(); const names=Object.keys(all);
+  if(!names.length){ $('vp-out').textContent='Enroll at least one voice first.'; return; }
+  $('vp-out').textContent='Listening… speak for about 1.5 seconds.'; const v=await captureVector(1800);
+  if(!v){ $('vp-out').textContent='Not enough voiced audio — try again.'; return; }
+  let best=null,bd=1e9; for(const n of names){ const d=dist(v,all[n]); if(d<bd){bd=d;best=n;} }
+  const conf=bd<0.6?'likely':bd<1.1?'possibly':'unsure';
+  $('vp-out').innerHTML=conf==='unsure'?('<b>Not sure</b> — closest is '+esc(best)+' (distance '+bd.toFixed(2)+'). Enroll more samples.')
+    :('This sounds <b>'+conf+' '+esc(best)+'</b> (distance '+bd.toFixed(2)+'). Approximate voice match, not identity proof.'); };
+$('vp-clear').onclick=()=>{ saveVP({}); renderVP(); $('vp-out').textContent='Cleared all voiceprints.'; };
+
+/* ---------- camera + sensors ---------- */
+let camStream=null;
+$('cam-btn').onclick=async()=>{
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; $('cam').hidden=true; $('cam-state').textContent='camera off'; $('cam-state').classList.remove('on'); $('cam-btn').textContent='📷 Enable camera'; return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ $('cam-state').textContent='camera not available'; return; }
+  try{ camStream=await navigator.mediaDevices.getUserMedia({video:true}); const v=$('cam'); v.srcObject=camStream; v.hidden=false; await v.play().catch(()=>{});
+    $('cam-state').textContent='camera on'; $('cam-state').classList.add('on'); $('cam-btn').textContent='Stop camera'; }
+  catch(e){ $('cam-state').textContent='camera permission denied'; }
+};
+// sensors — report availability honestly
+$('sen-motion').textContent=('DeviceMotionEvent' in window)?'available':'no';
+$('sen-orient').textContent=('DeviceOrientationEvent' in window)?'available':'no';
+if('ondevicelight' in window || (window.AmbientLightSensor)) $('sen-light').textContent='available'; else $('sen-light').textContent='no';
+if('DeviceOrientationEvent' in window){ let shown=false;
+  window.addEventListener('deviceorientation',ev=>{ if(shown||ev.beta==null)return; shown=true;
+    $('sen-orient').textContent=Math.round(ev.beta)+'°/'+Math.round(ev.gamma||0)+'°'; },{once:false}); }
+
+/* feature detection banner */
+if(!SR){ $('voice-warn').style.display='block';
+  $('voice-warn').innerHTML='Note: your browser has no speech recognition (use Chrome or Edge to <b>understand</b> speech). Speaking, tone, and voiceprint still work.'; }
+renderVP();
+</script>
+
+<script>
+// ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
+(function(){
+  // Auto-label the top navigation on every page (so menu items explain themselves).
+  var NAVTIPS={'/dashboard':'Console: start/stop harvesting facts, see totals, manage agents.',
+    '/':'Chat: ask questions and get cited answers (or an honest UNKNOWN).',
+    '/language':'Language Lab: teach languages, translate, and speak.',
+    '/guide':'Guide: the full user manual for every feature.',
+    '/monitor':'Monitor: live system health, store size, agents, and links to open from another device.',
+    '/voice':'Voice Lab: two-way voice, tone/volume, and voice matching.'};
+  function navKey(h){ if(!h) return ''; h=h.replace(/^\.?\//,'').replace(/\.html$/,'').toLowerCase();
+    var m={'':'/','chat':'/','dashboard':'/dashboard','live':'/dashboard','console':'/dashboard',
+      'language':'/language','lang':'/language','guide':'/guide','help':'/guide',
+      'monitor':'/monitor','status':'/monitor','voice':'/voice'}; return m[h]||('/'+h); }
+  try{ document.querySelectorAll('nav a[href]').forEach(function(a){
+    if(!a.getAttribute('data-tip')){ var k=navKey(a.getAttribute('href')); if(NAVTIPS[k]) a.setAttribute('data-tip',NAVTIPS[k]); }
+  }); }catch(e){}
+  let tip=null, hideT=null;
+  function ensure(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.style.cssText='position:fixed;z-index:9999;max-width:280px;background:#11201b;color:#eaf4ef;'
+      +'border:1px solid #2e5c4e;border-radius:10px;padding:9px 12px;font:13px/1.45 system-ui,sans-serif;'
+      +'box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .12s;'
+      +'display:none';
+    document.body.appendChild(tip); return tip;
+  }
+  function show(el){
+    const t=el.getAttribute('data-tip'); if(!t) return;
+    const n=ensure(); n.textContent=t; n.style.display='block';
+    const r=el.getBoundingClientRect();
+    // position below the element, clamped to the viewport
+    n.style.left='-9999px'; n.style.top='0px'; n.style.opacity='0';
+    requestAnimationFrame(()=>{
+      const w=n.offsetWidth, h=n.offsetHeight;
+      let x=r.left+r.width/2-w/2; x=Math.max(8,Math.min(x,window.innerWidth-w-8));
+      let y=r.bottom+8; if(y+h>window.innerHeight-8) y=r.top-h-8;
+      n.style.left=x+'px'; n.style.top=Math.max(8,y)+'px'; n.style.opacity='1';
+    });
+  }
+  function hide(){ if(hideT)clearTimeout(hideT); hideT=setTimeout(()=>{ if(tip){tip.style.opacity='0';tip.style.display='none';} },60); }
+  document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip]'); if(el){ if(hideT)clearTimeout(hideT); show(el);} });
+  document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip]'); if(el) hide(); });
+  document.addEventListener('focusin',e=>{ const el=e.target.closest('[data-tip]'); if(el) show(el); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',hide);
+})();
+</script>
+<script src="/qb-ui.js"></script>
+</body>
+</html>

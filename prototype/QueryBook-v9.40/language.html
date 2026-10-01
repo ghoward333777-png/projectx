@@ -1,0 +1,1050 @@
+<!doctype html><html lang="en" data-theme="light"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QueryBook Language Lab</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+  
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--accent2:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.16);
+    --warn:#e0913f;--warnbg:rgba(224,145,63,.16);--bad:#e8756a;--badbg:rgba(232,117,106,.16);
+    --info:#6f9bff;--infobg:rgba(111,155,255,.13);color-scheme:dark}}
+  :root[data-theme="dark"]{
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--accent2:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.16);
+    --warn:#e0913f;--warnbg:rgba(224,145,63,.16);--bad:#e8756a;--badbg:rgba(232,117,106,.16);
+    --info:#6f9bff;--infobg:rgba(111,155,255,.13);color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}
+  header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);
+    border-bottom:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .brand{font-weight:800;font-size:16px} .brand .q{color:var(--accent)}
+  nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  nav a{font-size:13px;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:7px}
+  nav a:hover{background:var(--panel2);color:var(--ink)} nav a.active{background:var(--accent);color:#fff}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 16px 60px}
+  .hero{padding:22px 0 6px}
+  .eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  h1{font-family:var(--serif);font-size:clamp(23px,4.5vw,33px);line-height:1.1;margin:8px 0}
+  .lede{color:var(--muted);font-size:14.5px;max-width:78ch;margin:0}
+  .honest{background:var(--warnbg);border:1px solid var(--line);border-left:4px solid var(--warn);
+    border-radius:10px;padding:11px 15px;margin:14px 0;font-size:12.5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin:14px 0}
+  .card h2{font-family:var(--serif);font-size:18px;margin:0 0 4px}
+  .card .sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 15px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .btn:hover{filter:brightness(1.06)} .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.big{font-size:15px;padding:12px 22px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .note{font-size:12px;color:var(--muted);margin-top:8px} .note.err{color:var(--bad)}
+  label.fld{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px;font-weight:600}
+  textarea,input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-family:var(--sans);font-size:13.5px;padding:9px 11px}
+  textarea{min-height:80px;resize:vertical;font-family:var(--mono);font-size:12.5px}
+  /* hero gate meter */
+  .meter{height:26px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden;position:relative}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:99px;transition:width .5s}
+  .meter span{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--ink)}
+  .done{background:var(--goodbg);border:1px solid var(--good);border-radius:10px;padding:12px 15px;color:var(--good);font-weight:700}
+  /* phase rail */
+  .phase{display:grid;grid-template-columns:52px 1fr;gap:14px;align-items:start}
+  .pnum{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-family:var(--serif);font-size:22px;font-weight:800;
+    background:var(--panel2);border:2px solid var(--line);color:var(--muted)}
+  .phase.built .pnum{border-color:var(--accent);color:var(--accent)}
+  .phase.done .pnum{background:var(--good);border-color:var(--good);color:#fff}
+  .badge{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;vertical-align:middle}
+  .b-built{background:var(--goodbg);color:var(--good)} .b-road{background:var(--infobg);color:var(--info)} .b-lock{background:var(--panel2);color:var(--muted)}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+  @media (max-width:560px){.metrics{grid-template-columns:repeat(2,1fr)}}
+  .met{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 11px}
+  .met .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .met .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums} .met .s{font-size:10.5px;color:var(--muted)}
+  .greq{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .greq:last-child{border-bottom:none} .greq .nm{flex:1;font-size:13px} .greq .nm small{display:block;color:var(--muted);font-size:11px}
+  .greq .val{font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;min-width:118px;text-align:right}
+  .pill{font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .pill.pass,.pill.running{background:var(--goodbg);color:var(--good)} .pill.fail{background:var(--badbg);color:var(--bad)}
+  .pill.road{background:var(--infobg);color:var(--info)} .pill.idle{background:var(--panel2);color:var(--muted)}
+  .bar{height:7px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:99px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .abtn{font-size:11px;padding:3px 8px;margin-right:4px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--ink);cursor:pointer}
+  .src{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .src:last-child{border-bottom:none} .src .info{flex:1} .src .info b{font-size:13px} .src .info small{display:block;color:var(--muted);font-size:11.5px}
+  .kind{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);font-weight:800}
+  details{margin-top:8px} summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600}
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;color:var(--muted);font-size:12px}
+  a{color:var(--accent)}
+</style></head><body>
+<header class="top">
+  <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.40 · 2026-10-01</span>
+  <nav>
+    <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
+    <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
+    <a class="active" href="/language" data-tip="Language Lab: teach languages, translate, and speak (you are here).">Language Lab</a>
+    <a href="/guide" data-tip="Guide: the full user manual for every feature.">Guide</a>
+    <a href="/monitor" data-tip="Monitor: live system health, store size, agents, and links to open from another device.">Monitor</a>
+    <a href="/voice" data-tip="Voice Lab: two-way voice, tone/volume, and voice matching.">Voice</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="eyebrow">English is the foundation · other languages in one click · deterministic, no LLM</div>
+    <h1>Language Lab</h1>
+    <p class="lede"><b>English is QueryBook's foundation language</b> — it is learned in the four
+    <b>phases</b> below (structure → meaning → translation → speech). <b>Every other language</b>
+    (Spanish, French, …) is taught in <b>one click</b>: QueryBook learns its vocabulary, how to
+    pronounce each word, and how it translates to and from English — all automatically, with no LLM.</p>
+    <div id="lang-legend" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
+  </div>
+
+  <!-- THE BUTTON: do everything automatically -->
+  <div class="card" id="go-card" style="border:2px solid var(--accent)">
+    <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="min-width:0">
+        <h2 style="margin:0">Do everything — automatically</h2>
+        <p class="sub" style="margin:4px 0 0">One button. QueryBook runs <b>English Phases 1–4</b>, then
+        learns <b>every other language</b> to completion, one at a time. No setup, nothing else to click.</p>
+      </div>
+      <button class="btn big" id="go-btn" style="font-size:17px;padding:12px 22px"
+        data-tip="Start the whole Language Lab automatically: English Phases 1-4, then every language, one at a time. You don't need to do anything else.">▶ Start — do it all</button>
+    </div>
+    <div id="go-status" class="note" style="margin-top:10px"></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px">
+      <div><span id="go-rate" style="font:800 22px var(--mono)">0</span> <span class="note">words/sec</span></div>
+      <div><span id="go-step" class="note"></span></div>
+    </div>
+    <h3 style="font-size:13px;margin:14px 0 4px">Live activity — what it's learning right now</h3>
+    <div id="go-feed" style="height:180px;overflow:auto;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:12.5px/1.7 ui-monospace,Consolas,monospace">
+      <span class="note">Press “Start — do it all” to begin. Words will stream here as they're learned.</span>
+    </div>
+  </div>
+
+  <!-- ONE-CLICK: TEACH A LANGUAGE -->
+  <div class="card" id="teach-card">
+    <h2>Just one language? (optional)</h2>
+    <p class="sub"><b>Most people only need the button above.</b> Use this only if you want to teach a
+    single language on its own instead of all of them. Pick a language and press Teach — QueryBook builds
+    its <b>vocabulary</b>, <b>pronunciation</b>, and <b>translations</b> automatically.</p>
+    <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="teach-lang" style="padding:8px 12px;font-size:15px" data-tip="Choose which language to teach, then press “Teach this language”.">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option></select>
+      <button class="btn big" id="teach-go" data-tip="Start learning the language chosen in the dropdown — vocabulary, pronunciation and translations, automatically.">▶ Teach this language</button>
+      <button class="btn big" id="teach-all" data-tip="Start learning EVERY language at once (German, Spanish, French, Italian, Portuguese, Dutch, Swedish). They all learn in the background.">▶ Teach ALL languages</button>
+      <button class="btn ghost" id="teach-pause" style="display:none" data-tip="Pause the current language learner. Press Teach again to resume where it left off.">Pause</button>
+      <span id="teach-status" class="note"></span>
+    </div>
+    <div class="meter" style="margin-top:12px"><i id="teach-fill" style="width:0%"></i><span id="teach-pct">0%</span></div>
+    <div id="teach-detail" class="note" style="margin-top:8px"></div>
+  </div>
+
+  <!-- ALL LANGUAGES AT A GLANCE -->
+  <div class="card" id="readiness-card">
+    <h2>All languages — status at a glance</h2>
+    <p class="sub">Every language has the same full support as English's vocabulary layer:
+    a real dictionary, translation both ways, and pronunciation. Press <b>Teach</b> on any row to
+    build it out. This table updates live.</p>
+    <div id="readiness" style="overflow-x:auto"><span class="note">loading…</span></div>
+  </div>
+
+  <!-- TRANSLATE -->
+  <div class="card" id="translate-card">
+    <h2>Translate</h2>
+    <p class="sub">Translate between English and any language QueryBook has a dictionary for.
+    It uses what it has learned — <b>word by word from the dictionary, no LLM, no guessing</b>:
+    any word it doesn't know yet is left as-is and marked, and it tells you the coverage.</p>
+    <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <label class="note">From</label>
+      <select id="tr-src" style="padding:8px 12px;font-size:15px" data-tip="The language you are translating FROM. Leave on Auto-detect to let QueryBook sense it."></select>
+      <label class="note">to</label>
+      <select id="tr-dst" style="padding:8px 12px;font-size:15px" data-tip="The language you are translating TO."></select>
+      <button class="btn" id="tr-go" data-tip="Translate the text below, word-by-word from the dictionary (no guessing). Shows a coverage %.">Translate</button>
+      <button class="btn ghost" id="tr-speak" style="display:none" data-tip="Speak the translated text aloud using your computer’s voice.">🔊 Speak result</button>
+    </div>
+    <textarea id="tr-in" placeholder="Type text in any supported language…" style="width:100%;min-height:70px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px"></textarea>
+    <div id="tr-cov" class="note" style="margin-top:6px"></div>
+    <div id="tr-out" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:16px;line-height:1.6"></div>
+    <div id="tr-pairs" class="note" style="margin-top:8px"></div>
+  </div>
+
+  <h2 style="margin:28px 0 6px;padding-top:14px;border-top:2px solid var(--line);font-size:20px">
+    English details <span class="note" style="font-weight:400">(optional — the button at the top already runs these)</span></h2>
+  <p class="sub" style="margin:0 0 12px">This section just shows the four phases QueryBook uses to learn <b>English</b>,
+  its foundation language, and lets you run them by hand if you want. <b>You don't need to touch this</b> — the
+  “Start — do it all” button at the top does it for you.</p>
+
+  <div class="card" id="hero-card">
+    <div class="row" style="justify-content:space-between">
+      <div><h2 style="margin:0">Phase 1 progress — English structure</h2>
+        <p class="sub" id="hero-sub">Loading…</p></div>
+      <div class="row">
+        <button class="btn big" id="run-all-english" data-tip="Run all four English phases automatically: structure → meaning → translation → speech.">▶ Build English — run all 4 phases</button>
+        <button class="btn ghost" id="start-phase1" data-tip="Run only Phase 1 (English structure): letters, sounds, syllables, word patterns.">Phase 1 only</button>
+        <button class="btn ghost" id="stop-phase1" hidden>Pause</button>
+      </div>
+    </div>
+    <div class="meter" style="margin-top:10px"><i id="gate-fill" style="width:0%"></i><span id="gate-pct">0%</span></div>
+    <div id="done-banner" style="margin-top:10px" hidden></div>
+    <p class="note">One click runs a Phase-1 agent on a bundled English corpus — it needs no internet
+    and keeps working 24×7 until the gate opens. Add your own text/pages below to teach it faster.</p>
+  </div>
+
+  <div class="honest"><b>Honest scope.</b> Phase 1 (structural learning) and Phase 2 (semantic
+  grounding) are <b>built</b> and run here. Phase 2 is fully <b>deterministic</b> — it grounds words
+  from a bundled public-domain dictionary (Webster's 1913) and by self-grounding against your verified
+  store, with <b>no LLM and no internet</b>; every meaning carries an auditable source. (LLMs are
+  locked out of Phase 2 — a live API check can prove a connection works but never that a meaning is
+  true. A future "suggestor" mode may propose meanings accepted only when they match the dictionary.)
+  <b>All four phases now run deterministically:</b> Phase 3 learns the multilingual delta from a bundled
+  bilingual dictionary, and Phase 4 analyzes pronunciation (G2P phonemes, syllables, stress) and can speak
+  through your computer's built-in voice — no LLM anywhere. The full neural language and neural vocoder
+  engines remain the roadmap embodiment. The grapheme→phoneme map is rule-seeded; gate thresholds are the
+  prototype calibration.</div>
+
+  <!-- PHASE 1 -->
+  <div class="card">
+    <div class="phase built" id="p1">
+      <div class="pnum" id="p1num">1</div>
+      <div style="min-width:0">
+        <h2 style="margin:0">Phase 1 — Structural priming (SLPL) <span class="badge b-built">Built</span></h2>
+        <p class="sub">Grapheme inventory, rule-seeded phonemes, syllables, lexical stability, word
+        co-occurrence, and prosody. Semantics are suppressed. Every measurement is stored as a Fact Unit.</p>
+
+        <div class="metrics" id="metrics"></div>
+
+        <h3 style="font-size:14px;margin:16px 0 2px">Transition Gate — four thresholds</h3>
+        <div id="gate"></div>
+
+        <h3 style="font-size:14px;margin:16px 0 2px">Learning progress</h3>
+        <div id="progress"><span class="note">Start Phase 1 (or feed text) to begin plotting.</span></div>
+
+        <details>
+          <summary>Feed your own material (optional — speeds Phase 1)</summary>
+          <label class="fld">Paste English text</label>
+          <textarea id="text" placeholder="Paste sentences, a story, a transcript, a word list…"></textarea>
+          <label class="fld">…or fetch URL(s) — one per line or comma-separated</label>
+          <textarea id="url" style="min-height:52px" placeholder="https://en.wikipedia.org/wiki/English_phonology"></textarea>
+          <label class="fld">…or load text files</label>
+          <input id="files" type="file" accept=".txt,.md,.csv,text/*" multiple style="width:100%;font-size:12.5px;padding:6px 0">
+          <label class="fld">Source label</label>
+          <input id="source" type="text" placeholder="e.g. phonics primer">
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="learn">Learn from this</button>
+            <button class="btn ghost" id="preview">Preview only</button>
+          </div>
+          <div class="note" id="msg"></div>
+          <h3 style="font-size:13px;margin:14px 0 2px">Curated sources</h3>
+          <div id="sources"><span class="note">loading…</span></div>
+        </details>
+
+        <details>
+          <summary>Inventory learned so far</summary>
+          <label class="fld">Letters</label><div class="chips" id="letters"></div>
+          <label class="fld">Phonemes (rule-seeded)</label><div class="chips" id="phonemes"></div>
+          <label class="fld">Words</label><div class="chips" id="words"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASES 2-4 (roadmap) -->
+  <div id="phases-later"></div>
+
+  <!-- ANALYZE & SPEAK (stable card — never rebuilt by background polls) -->
+  <div class="card" id="speak-card">
+    <h2>Analyze &amp; Speak <span class="qb-ac qb-ac-det">Pronunciation: deterministic</span></h2>
+    <p class="sub">Type a word <b>in the selected language</b> to see its pronunciation (IPA, syllables,
+    stress) and hear it. This pronounces text — it does not translate it.
+    <span id="p4tts"></span></p>
+    <div class="formrow" style="margin-top:8px;gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+      <select id="speak-lang" style="padding:6px 8px" title="Language voice" data-tip="The language to analyze and speak the typed word in.">
+        <option value="en">English</option><option value="es">Spanish</option>
+        <option value="fr">French</option><option value="de">German</option>
+        <option value="pt">Portuguese</option><option value="it">Italian</option>
+        <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
+      <input id="speak-text" placeholder="Type a word, e.g. gracias, maison, danke…" style="flex:1;min-width:200px;padding:6px 10px">
+      <button class="btn" id="speak-btn" data-tip="Analyze the word's pronunciation and speak it aloud.">Analyze &amp; Speak</button>
+    </div>
+    <div class="note" style="margin-top:4px"><b>Pronunciation works for every language with no install</b>
+    (bundled rule-seeded phonemizer). <b>Spoken audio</b> uses your computer's voices; for guaranteed
+    offline audio in every language install the free <b>espeak-ng</b>.</div>
+    <div id="speak-out" class="note" style="margin-top:6px"></div>
+    <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+      <button class="btn ghost" id="voice-diag-btn" data-tip="List the voices your browser has for the selected language, test if they actually make sound, and copy a report.">🔎 Voice diagnostics (why no sound?)</button>
+      <button class="btn ghost" id="voice-diag-copy" style="display:none">Copy report</button>
+      <div id="voice-diag" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font:12px/1.5 var(--mono);max-height:340px;overflow:auto"></div>
+    </div>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <b style="font-size:13px">🔴 Live speech log</b>
+        <span class="note">records every speech event as it happens — click Speak, then copy this.</span>
+        <button class="btn ghost" id="speechlog-copy" style="margin-left:auto;font-size:11px;padding:3px 9px">Copy log</button>
+        <button class="btn ghost" id="speechlog-clear" style="font-size:11px;padding:3px 9px">Clear</button>
+      </div>
+      <div id="speech-log" style="margin-top:8px;white-space:pre-wrap;word-break:break-word;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:11.5px/1.5 var(--mono);max-height:240px;overflow:auto"></div>
+    </div>
+  </div>
+
+  <!-- LIVE LEARNING DETAIL -->
+  <div class="card">
+    <h2>Live learning detail</h2>
+    <p class="sub">Every word the engine has learned, with its phonic elements — <b>IPA, syllables, stress</b> —
+    its source, and the <b>phoneme inventory</b>. Updates live while a learner runs, so you can watch progress
+    word by word.</p>
+    <div class="formrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="detail-lang" style="padding:6px 10px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option><option value="en">English</option></select>
+      <span id="detail-count" class="note"></span>
+      <label class="note" style="margin-left:auto"><input type="checkbox" id="detail-auto" checked> auto-refresh</label>
+    </div>
+    <div id="detail-phon" class="note" style="margin-top:8px;line-height:2"></div>
+    <div style="overflow:auto;max-height:360px;margin-top:8px">
+      <table><thead><tr><th>#</th><th>Word</th><th>IPA</th><th>Syll</th><th>Stress</th><th>Meaning / translation</th></tr></thead>
+      <tbody id="detail-rows"><tr><td colspan="6" class="note">Pick a language and start a learner above.</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- DIAGNOSTICS -->
+  <div class="card">
+    <h2>Diagnostics — why isn't the word count going up?</h2>
+    <p class="sub">Runs a full self-check: the vocabulary source, the store and its index, the
+    running learners, and a <b>live write-and-read test</b>. If something is wrong it says what, in
+    plain words. <b>Click, then copy the result and send it back.</b></p>
+    <div class="formrow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="diag-lang" style="padding:6px 10px">
+        <option value="es">Spanish</option><option value="fr">French</option>
+        <option value="de">German</option><option value="pt">Portuguese</option>
+        <option value="it">Italian</option><option value="sv">Swedish</option>
+        <option value="nl">Dutch</option></select>
+      <button class="btn big" id="run-diag" data-tip="Run a full self-check (dictionaries, store, every language, live write/read test) and list any problems in plain words.">▶ Run diagnostics</button>
+      <button class="btn ghost" id="copy-diag" style="display:none" data-tip="Copy the diagnostics report to paste and send for help.">Copy report</button>
+      <span id="diag-verdict" class="note"></span>
+    </div>
+    <pre id="diag-out" style="display:none;white-space:pre-wrap;word-break:break-word;background:#0e1310;color:#cfe8dd;border:1px solid #28312b;border-radius:10px;padding:12px;margin-top:10px;max-height:420px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace"></pre>
+  </div>
+
+  <!-- LANGUAGE AGENTS -->
+  <div class="card">
+    <h2>Language agents</h2>
+    <p class="sub">The agents driving each phase. Phase-1 agents build English; roadmap-phase agents
+    refuse until their engine exists. <button class="btn ghost" id="prune" style="font-size:11px;padding:3px 9px">Clear stopped/errored</button></p>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Agent</th><th>Phase</th><th>Status</th><th>Facts</th><th>Cycles</th><th>Controls</th>
+    </tr></thead><tbody id="agents"><tr><td colspan="6" class="note">No language agents yet.</td></tr></tbody></table></div>
+  </div>
+
+  <footer>
+    QueryBook Language Lab. Phase 1 (structural SLPL) is implemented and runs on-device with no LLM;
+    Phases 2–4 are specified/roadmap and their agents refuse rather than fabricate. Everything learned
+    is stored as provenance-tracked Fact Units in the <code>language</code> domain.
+  </footer>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// ---- LIVE SPEECH DIAGNOSTIC: records what happens as the app runs, persists across
+//      reloads (localStorage), so the speech problem can be pinpointed from real events. ----
+const QBLOG_KEY='qb-speechlog';
+let QBLOG=[];
+try{ QBLOG=JSON.parse(localStorage.getItem(QBLOG_KEY)||'[]'); }catch(e){ QBLOG=[]; }
+function qblog(tag, data){
+  const e={t:new Date().toISOString().slice(11,23), tag:tag, data:(data===undefined?null:data)};
+  QBLOG.push(e); if(QBLOG.length>300) QBLOG=QBLOG.slice(-300);
+  try{ localStorage.setItem(QBLOG_KEY, JSON.stringify(QBLOG)); }catch(_){}
+  try{ console.log('[QB]', e.t, tag, data!==undefined?data:''); }catch(_){}
+  try{ renderSpeechLog(); }catch(_){}
+}
+function speechLogText(){
+  return QBLOG.map(e=>e.t+'  '+e.tag+(e.data!=null?('  '+(typeof e.data==='string'?e.data:JSON.stringify(e.data))):'')).join('\n');
+}
+function renderSpeechLog(){
+  const box=$('speech-log'); if(!box) return;
+  box.textContent = QBLOG.length? speechLogText() : '(no events yet — click “Analyze & Speak”)';
+  box.scrollTop=box.scrollHeight;
+}
+qblog('page.load', {href:location.pathname, ua:navigator.userAgent.slice(0,80), tts:('speechSynthesis' in window)});
+const nf=n=>Number(n||0).toLocaleString();
+const LANG_KINDS=["language","lang_semantic","lang_multilingual","lang_speech"];
+const NAMES={phonemic_completeness:["Phonemic inventory","distinct phonemes ÷ 44 (τ1)"],
+  lexical_stability:["Lexical stability","top-word overlap between ingests (τ2)"],
+  cooccurrence_density:["Co-occurrence density","distinct bigrams ÷ distinct words (τ3)"],
+  pattern_saturation:["Pattern saturation","recent novel-trigram rate must fall BELOW ε"]};
+let PHASES=[];
+
+function renderHero(d){
+  const g=d.gate||{}, pct=g.opened?100:(g.progress||0);
+  $('gate-fill').style.width=pct+'%'; $('gate-pct').textContent=pct.toFixed(0)+'%';
+  $('hero-sub').textContent = d.ingests
+    ? `${d.ingests} ingest(s) · ${nf(d.total_tokens)} tokens · ${d.distinct_words} words · ${d.distinct_phonemes}/${d.phoneme_target} phonemes`
+    : 'Not started yet — click “Start building English”.';
+  const done=$('done-banner');
+  if(g.opened){ done.hidden=false; done.className='done';
+    done.innerHTML='✓ Phase 1 COMPLETE — the Transition Gate is OPEN. English structural learning is finished. Start <b>Phase 2 (semantic grounding)</b> below — deterministic, dictionary + store, no LLM.'; }
+  else done.hidden=true;
+  $('p1num').textContent = g.opened ? '✓' : '1';
+  $('p1').classList.toggle('done', !!g.opened);
+}
+function renderMetrics(d){
+  const m=[["Words",d.distinct_words,"distinct"],["Phonemes",d.distinct_phonemes+" / "+d.phoneme_target,"rule-seeded"],
+    ["Graphemes",d.distinct_graphemes,"letters"],["Bigrams",d.distinct_bigrams,"word pairs"],
+    ["Avg syllables",d.avg_syllables_per_word,"per top word"],["Sentence len",d.mean_sentence_len,"mean words"]];
+  $('metrics').innerHTML=m.map(x=>`<div class="met"><div class="k">${esc(x[0])}</div><div class="v">${esc(x[1])}</div><div class="s">${esc(x[2])}</div></div>`).join('');
+}
+function renderGate(g){
+  if(!g||!g.checks) return;
+  $('gate').innerHTML=Object.keys(NAMES).map(k=>{const c=g.checks[k]; if(!c) return '';
+    const isNov=k==='pattern_saturation';
+    const frac=isNov?Math.min(1,(c.threshold||1)/Math.max(c.value,0.0001)):Math.min(1,c.value/(c.threshold||1));
+    const cmp=isNov?('&lt; '+c.threshold):('≥ '+c.threshold);
+    return `<div class="greq"><div class="nm">${esc(NAMES[k][0])}<small>${NAMES[k][1]}</small>
+      <div class="bar"><i style="width:${(frac*100).toFixed(0)}%;background:${c.pass?'var(--good)':'var(--accent)'}"></i></div></div>
+      <div class="val">${esc(c.value)} <span style="color:var(--muted);font-weight:400">(${cmp})</span></div>
+      <span class="pill ${c.pass?'pass':'fail'}">${c.pass?'✓':'✕'}</span></div>`;}).join('');
+}
+function renderProgress(hist){
+  hist=hist||[];
+  if(hist.length<1){ $('progress').innerHTML='<span class="note">Start Phase 1 (or feed text) to begin plotting.</span>'; return; }
+  const series=[['phon','Phonemic',0.80,'#0c5c4c'],['stab','Lexical stab.',0.70,'#a9791c'],
+    ['dens','Co-occur.',null,'#1f6feb'],['novel','Novelty (↓)',0.20,'#b33b2f']];
+  const W=430,H=120,padL=8,padR=8,padT=10,padB=14,n=hist.length;
+  const xs=i=> n<2?padL:padL+(W-padL-padR)*i/(n-1);
+  let out='<div style="overflow-x:auto"><svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:100%;height:auto">';
+  for(const [key,label,thr,col] of series){
+    const vals=hist.map(h=>h[key]||0);
+    const scale=key==='dens'?Math.max(2,Math.max.apply(null,vals)):1;
+    const y=v=>padT+(H-padT-padB)*(1-Math.min(1,v/scale));
+    if(thr!=null){const ty=y(thr).toFixed(1);
+      out+='<line x1="'+padL+'" y1="'+ty+'" x2="'+(W-padR)+'" y2="'+ty+'" stroke="'+col+'" stroke-dasharray="3 3" stroke-width="1" opacity=".45"/>';}
+    let dd=''; hist.forEach((h,i)=>{dd+=(i?'L':'M')+xs(i).toFixed(1)+' '+y(h[key]||0).toFixed(1)+' ';});
+    out+='<path d="'+dd+'" fill="none" stroke="'+col+'" stroke-width="1.8"/>';
+    out+='<circle cx="'+xs(n-1).toFixed(1)+'" cy="'+y(hist[n-1][key]||0).toFixed(1)+'" r="2.5" fill="'+col+'"/>';
+  }
+  out+='</svg></div><div class="chips" style="margin-top:6px">'+series.map(([k,l,,c])=>'<span class="chip" style="border-left:3px solid '+c+'">'+l+'</span>').join('')+'</div>';
+  $('progress').innerHTML=out;
+}
+function renderInventory(d){
+  const chip=p=>(p&&p.length)?p.map(x=>`<span class="chip">${esc(x[0])} <span style="color:var(--muted)">${esc(x[1])}</span></span>`).join(''):'<span class="note">—</span>';
+  $('letters').innerHTML=chip(d.top_letters); $('phonemes').innerHTML=chip(d.top_phonemes); $('words').innerHTML=chip(d.top_words);
+}
+let _phSig='';
+const _LBL={semantic:'dictionary + store grounding',multilingual:'Spanish (es) delta',speech:'analyze pronunciation'};
+const _NOTE={
+  semantic:'Runs on its own with <b>no LLM and no internet</b>. Grounds words from the bundled public-domain dictionary (Webster\'s 1913) and links them to verified facts in your store — every meaning has an auditable source. <span id="p2cov"></span>',
+  multilingual:'Deterministic delta from a bundled bilingual dictionary (demo, CC BY-NC — swap for a public-domain source before commercial use). Defaults to Spanish; create a <code>lang_multilingual</code> agent with target <code>fr</code> for French.',
+  speech:'<b>4a</b> analyzes pronunciation (phonemes, syllables, stress) deterministically — no LLM. <b>4b</b> speaks via your computer\'s built-in voice. <span id="p4tts"></span>'
+};
+function renderPhases(gateOpen){
+  const sig=JSON.stringify([gateOpen, PHASES.map(p=>[p.n,p.status])]);
+  if(sig===_phSig) return;                 // don't clobber inputs on every poll
+  _phSig=sig;
+  try{ qblog('phases.rerender', {audio_present_before:!!document.getElementById('speak-audio')}); }catch(_){}
+  const later=PHASES.filter(p=>p.n>=2);
+  $('phases-later').innerHTML=later.map(p=>{
+    const isBuilt = p.status==='built';
+    const badge = isBuilt ? '<span class="badge b-built">Deterministic · no LLM</span>' : '<span class="badge b-road">Roadmap</span>';
+    // Analyze & Speak now lives in its own stable card (#speak-card), so background
+    // polls can't rebuild it mid-playback. The phase card links to it.
+    const speak = p.key==='speech'
+      ? `<div class="note" style="margin-top:8px">Use the <b>Analyze &amp; Speak</b> box below to hear any word.</div>` : '';
+    const btn = isBuilt
+      ? `<button class="btn mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Start Phase ${p.n} — ${_LBL[p.key]||'run'}</button>
+         <div class="note">${_NOTE[p.key]||''}</div>${speak}`
+      : `<button class="btn ghost mkagent" data-kind="${esc(p.agent_kind)}" data-name="${esc('Phase '+p.n)}">Try to start (will refuse — engine not built)</button>`;
+    return `<div class="card"><div class="phase"><div class="pnum">${p.n}</div><div style="min-width:0">
+      <h2 style="margin:0">${esc(p.name)} ${badge}</h2>
+      <p class="sub">${esc(p.desc)}</p>${btn}
+    </div></div></div>`;
+  }).join('');
+}
+function wireSpeak(){
+  const b=document.getElementById('speak-btn'); if(!b) return;
+  fetch('api/language/speech').then(r=>r.json()).then(s=>{
+    const el=document.getElementById('p4tts'); if(!el) return;
+    el.innerHTML = s.tts&&s.tts.available
+      ? 'Voice engine on this computer: <b>'+esc(s.tts.engine)+'</b> ✓'
+      : 'No built-in voice engine detected'+(s.tts&&s.tts.hint?(' — '+esc(s.tts.hint)):'')+'. Pronunciation analysis still works.';
+  }).catch(()=>{});
+  b.onclick=async()=>{
+    const t=(document.getElementById('speak-text').value||'').trim(); if(!t) return;
+    const out=document.getElementById('speak-out'), au=document.getElementById('speak-audio');
+    b.disabled=true; out.textContent='Analyzing…';
+    try{
+      const lang=(document.getElementById('speak-lang')||{}).value||'en';
+      qblog('speak.click', {lang:lang, text:t});
+      const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang})})).json();
+      qblog('speak.server', {audio_b64:!!r.audio_b64, bytes:(r.audio_b64||'').length, engine:(r.tts&&r.tts.engine)||null, tts_avail:!!(r.tts&&r.tts.available), analysis:(r.analysis||[]).length});
+      const items=(r.analysis||[]);
+      const haveIpa=items.some(a=>a.ipa);
+      let body;
+      if(lang!=='en' && !haveIpa){
+        body='<i>No phonemizer for this language yet.</i>';
+      } else {
+        body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
+      }
+      function paint(voiceMsg){ out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}${voiceMsg}`; }
+      if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false;
+        au.onplay=()=>qblog('audio.play'); au.onended=()=>qblog('audio.ended'); au.onerror=()=>qblog('audio.error',{code:(au.error&&au.error.code)});
+        au.play().then(()=>qblog('audio.play_ok')).catch(e=>qblog('audio.play_rejected',String(e)));
+        qblog('audio.show', {src_bytes:au.src.length, engine:(r.tts&&r.tts.engine)});
+        const eng=(r.tts&&r.tts.engine)||'built-in';
+        const vmsg = eng==='querybook-synth'
+          ? `<br><i>Voice: <b>QueryBook offline voice</b> (robotic, built-in — plays on any machine). Install <b>espeak-ng</b> for a natural ${esc(_LANGNAMES[lang]||lang)} voice.</i>`
+          : `<br><i>Voice: ${esc(eng)} ✓</i>`;
+        paint(vmsg); }
+      else { au.hidden=true;
+        qblog('speak.browser_fallback', {lang:lang});
+        paint(`<br><i>Speaking…</i>`);
+        browserSpeak(t, lang, bs=>{
+          qblog('speak.browser_result', bs);
+          let m;
+          if(bs.spoke && bs.heard) m=`<br><i>Voice: your computer’s ${esc(bs.voice||lang)} voice ✓</i>`;
+          else if(bs.reason==='no-voice' || !bs.spoke) m=`<br><i>Your computer has no ${esc(_LANGNAMES[lang]||lang)} voice installed. The pronunciation above is correct; for spoken ${esc(_LANGNAMES[lang]||lang)} audio, install the free <b>espeak-ng</b>, or add the ${esc(_LANGNAMES[lang]||lang)} voice in Windows Settings → Time&nbsp;&amp;&nbsp;language → Speech.</i>`;
+          else m=`<br><i>The only ${esc(_LANGNAMES[lang]||lang)} voice on this device (${esc(bs.voice||'cloud voice')}) produced no audio — these “Online (Natural)” cloud voices often don’t play through the browser. Install the free <b>espeak-ng</b> for reliable offline ${esc(_LANGNAMES[lang]||lang)} audio, or add a local voice in Windows Settings → Speech.</i>`;
+          paint(m);
+        });
+      }
+    }catch(e){ out.textContent='speak failed: '+e; }
+    b.disabled=false;
+  };
+}
+// Browser speech, fixed for the getVoices() async race: Chrome/Edge return an EMPTY
+// voice list on the first calls after load (voices arrive later via voiceschanged).
+// We cache voices, keep them fresh, and if they aren't ready yet we wait briefly and
+// then speak — so non-English voices (which Edge/Chrome ship) are actually used.
+const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:'sv-SE',nl:'nl-NL'};
+let _qbVoices=[];
+function _loadVoices(){ try{ _qbVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ _qbVoices=[]; } return _qbVoices; }
+try{ if('speechSynthesis' in window){ _loadVoices(); window.speechSynthesis.addEventListener('voiceschanged', _loadVoices); } }catch(e){}
+// Rank all voices for a language and return them BEST-FIRST. Critically, we prefer
+// LOCAL/offline voices and push "Online (Natural)" cloud voices to the end: those cloud
+// voices are listed by the browser but very often produce NO audio through the Web Speech
+// API (they belong to Microsoft's cloud TTS, and the bridge fails silently). That is the
+// real reason non-English "spoke ✓" yet nothing was heard.
+function _rankVoices(lang){
+  const vs=_qbVoices.length?_qbVoices:_loadVoices(); const l=(lang||'en').toLowerCase();
+  const region=(BCP[l]||'').toLowerCase();
+  const cloud=v=>/online|natural/i.test(v.name||"");     // flaky-through-WebSpeech voices
+  const matches=vs.filter(v=>v.lang && v.lang.toLowerCase().slice(0,2)===l);
+  return matches.map(v=>{
+    let s=0;
+    if(v.localService) s+=100;                 // offline/local = reliable
+    if(!cloud(v)) s+=40;                        // avoid Online/Natural cloud voices
+    if(v.lang.toLowerCase()===region) s+=10;    // exact region
+    else if(v.lang.toLowerCase().startsWith(l+'-')) s+=5;
+    if(v.default) s+=1;
+    return {v,s};
+  }).sort((a,b)=>b.s-a.s).map(x=>x.v);
+}
+function _pickVoice(lang){ const r=_rankVoices(lang); return r.length?r[0]:null; }
+// cb({spoke, matched, voice, heard}) — `heard` becomes true only if speech actually STARTED.
+function browserSpeak(text, lang, cb){
+  if(!('speechSynthesis' in window)){ cb&&cb({spoke:false, reason:'no-tts'}); return; }
+  function speakWith(cands, idx, best){
+    if(idx>=cands.length){ qblog('tts.exhausted',{tried:idx}); cb&&cb({spoke:true, matched:!!best, voice:best?best.name:null, heard:false}); return; }
+    const v=cands[idx];
+    try{ qblog('tts.try',{idx:idx, voice:v.name, lang:v.lang, local:!!v.localService, cloud:/online|natural/i.test(v.name||'')}); }catch(_){}
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=(v&&v.lang)||BCP[lang]||'en-US'; if(v) u.voice=v;
+    let started=false, done=false;
+    const finish=(heard)=>{ if(done) return; done=true; cb&&cb({spoke:true, matched:!!v, voice:v?v.name:null, heard:heard}); };
+    u.onstart=()=>{ started=true; qblog('tts.onstart',{voice:v.name}); };
+    u.onend=()=>{ qblog('tts.onend',{voice:v.name, started:started}); if(started) finish(true); };
+    u.onerror=(e)=>{ /* this voice failed (common for cloud voices) — try the next candidate */
+      qblog('tts.onerror',{voice:v.name, err:(e&&e.error)||'error'});
+      if(done) return;
+      if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
+      else finish(false); };
+    try{
+      const synth=window.speechSynthesis;
+      // Only clear the queue if something is actually speaking. Calling cancel()
+      // immediately before speak() makes Edge's "Online (Natural)" cloud voices go
+      // SILENT (the cancel aborts their network setup) — that was a real cause here.
+      if(synth.speaking||synth.pending){ synth.cancel(); }
+      synth.speak(u);
+      // Edge frequently queues the utterance PAUSED — nudge it a few times so audio starts.
+      setTimeout(()=>{ try{ synth.resume(); }catch(_){}}, 120);
+      setTimeout(()=>{ try{ synth.resume(); }catch(_){}}, 500);
+    }
+    catch(e){ if(idx+1<cands.length) speakWith(cands, idx+1, v); else cb&&cb({spoke:false}); return; }
+    // Watchdog: if nothing started within 2.2s (cloud voices need network), fall back.
+    setTimeout(()=>{ if(done||started) return;
+      qblog('tts.watchdog_silent',{voice:v.name});
+      if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
+      else finish(false);
+    }, 2200);
+  }
+  function go(){
+    const cands=_rankVoices(lang);
+    qblog('tts.candidates', cands.map(v=>({name:v.name, lang:v.lang, local:!!v.localService})));
+    if(!cands.length){ cb&&cb({spoke:false, matched:false, reason:'no-voice'}); return; }
+    speakWith(cands, 0, null);
+  }
+  if(_loadVoices().length){ go(); return; }
+  let done=false; const run=()=>{ if(done) return; done=true; _loadVoices(); go(); };
+  try{ window.speechSynthesis.addEventListener('voiceschanged', run, {once:true}); }catch(e){}
+  setTimeout(run, 350);
+}
+const _LANGNAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
+// Speak with honest feedback on the button.
+function speakSmart(text, lang, btn){
+  const note=(m)=>{ if(btn){ const old=btn.dataset._old||btn.textContent; btn.dataset._old=old; btn.textContent=m; setTimeout(()=>{btn.textContent=old;},2800);} };
+  if(!('speechSynthesis' in window)){ note('no speech in this browser'); return; }
+  browserSpeak(text, lang, r=>{
+    if(!r.spoke || r.reason==='no-voice') note('⚠ no '+(_LANGNAMES[lang]||lang)+' voice on this device');
+    else if(r.heard) note('🔊 spoke');
+    else note('⚠ '+(_LANGNAMES[lang]||lang)+' voice produced no audio');
+  });
+}
+function agentRow(a){
+  const st=a.status||'stopped';
+  const cls = st==='running'?'running' : st==='complete'?'pass' : st==='error'?'fail' : (st==='roadmap'||st==='blocked')?'road' : 'idle';
+  const label = st==='complete'?'complete ✓' : st==='roadmap'?'roadmap' : st;
+  const phaseNum = {lang_semantic:2,lang_multilingual:3,lang_speech:4}[a.kind];
+  const phase = a.kind==='language' ? (a.phase||'Phase 1')
+              : a.kind==='lang_semantic' ? (a.phase||'Phase 2 (dictionary + store)')
+              : ('Phase '+(phaseNum||'')+' (roadmap)');
+  // roadmap refusal / blocked (needs a resource) / completion are expected statuses, NOT red errors.
+  let msg='';
+  if(a.error){
+    const neutral = (st==='roadmap'||st==='blocked');
+    msg = `<br><span style="font-size:11px;color:${neutral?'var(--info)':'var(--bad)'}">${neutral?'ⓘ ':'⚠ '}${esc(a.error)}</span>`;
+  }
+  return `<tr><td><b>${esc(a.name)}</b>${msg}${a.heal_note?`<br><span class="note">${esc(a.heal_note)}</span>`:''}</td>`+
+    `<td>${esc(phase)}${a.gate_progress!=null&&a.kind==='language'&&st!=='complete'?`<br><span class="note">${a.gate_progress.toFixed?a.gate_progress.toFixed(0):a.gate_progress}% to gate</span>`:''}</td>`+
+    `<td><span class="pill ${cls}">${esc(label)}</span></td>`+
+    `<td>${nf(a.facts)}</td><td>${a.cycles||0}</td>`+
+    `<td>${st==='running'?`<button class="abtn" data-a="${a.id}" data-act="pause">Pause</button>`:`<button class="abtn" data-a="${a.id}" data-act="start">Start</button>`}`+
+    `<button class="abtn" data-a="${a.id}" data-act="delete">Delete</button></td></tr>`;
+}
+async function refresh(){
+  try{
+    const d=await (await fetch('api/language/status')).json();
+    renderHero(d); renderMetrics(d); renderGate(d.gate); renderProgress(d.history); renderInventory(d);
+    renderPhases(!!(d.gate&&d.gate.opened));
+    const snap=await (await fetch('api/agents')).json();
+    const langs=(snap.agents||[]).filter(a=>LANG_KINDS.includes(a.kind));
+    $('agents').innerHTML = langs.length ? langs.map(agentRow).join('')
+      : '<tr><td colspan="6" class="note">No language agents yet — click “Start building English”.</td></tr>';
+    // reflect running Phase-1 agent on the hero buttons
+    const p1running=langs.some(a=>a.kind==='language'&&a.status==='running');
+    $('stop-phase1').hidden=!p1running; $('start-phase1').textContent=p1running?'▶ Add another Phase-1 agent':'▶ Start building English';
+    // Phase 2 deterministic coverage line
+    try{
+      const g=await (await fetch('api/language/grounding')).json();
+      const cov=$('p2cov');
+      if(cov) cov.innerHTML = `Dictionary loaded: <b>${nf(g.dict_entries)}</b> words. Grounded so far: `+
+        `<b>${nf(g.defined)}</b> defined, <b>${nf(g.store_links)}</b> store-links (${g.coverage_pct}% of the `+
+        `${nf(g.vocabulary)}-word vocabulary).`+
+        (g.samples&&g.samples.length?`<br>e.g. `+g.samples.slice(0,3).map(s=>`<i>${esc(s.word)}</i> — ${esc((s.definition||'').slice(0,70))}`).join('; '):'');
+    }catch(e){}
+  }catch(e){}
+  setTimeout(refresh, 2500);
+}
+async function loadPhases(){
+  try{ const d=await (await fetch('api/language/phases')).json(); PHASES=d.phases||[]; }catch(e){}
+}
+async function mkAgent(kind,name,target){
+  const body={name,kind,target:target||'',interval:2,chunk:1};
+  const r=await (await fetch('api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+  if(r&&r.id) await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,action:'start'})});
+  return r;
+}
+$('start-phase1').onclick=async()=>{ $('start-phase1').disabled=true;
+  await mkAgent('language','English — Phase 1',''); $('start-phase1').disabled=false; refresh(); };
+if($('run-all-english')) $('run-all-english').onclick=async()=>{
+  const b=$('run-all-english'); b.disabled=true; const old=b.textContent; b.textContent='Starting all 4 phases…';
+  try{
+    const r=await (await fetch('api/language/run_all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    b.textContent=r.ok?'✓ All 4 English phases running':'Error';
+    setTimeout(()=>{b.textContent=old;b.disabled=false;},2600);
+  }catch(e){ b.textContent='Error'; b.disabled=false; }
+  refresh();
+};
+// Teach buttons in the readiness table
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-teach]'); if(!t) return;
+  const lang=t.dataset.teach; const sel=$('teach-lang'); if(sel){ sel.value=lang; }
+  const go=$('teach-go'); if(go) go.click();
+  try{ $('teach-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
+});
+// ---- Language legend: which language each phase targets -------------------
+function renderLegend(){
+  const el=$('lang-legend'); if(!el) return;
+  const items=[
+    ['Phase 1–2','English','structure + meaning','#0c5c4c'],
+    ['Phase 3','English ⇄ others','translation','#1b6ea8'],
+    ['Phase 4','All languages','pronunciation + speech','#7a4ea8'],
+    ['One click','Any language','vocabulary + pronunciation + translation','#b06a00'],
+  ];
+  el.innerHTML=items.map(it=>`<div style="flex:1;min-width:150px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid ${it[3]};border-radius:8px;padding:8px 10px">
+    <div style="font:800 10px/1 var(--mono);letter-spacing:.04em;color:${it[3]};text-transform:uppercase">${it[0]}</div>
+    <div style="font-weight:700;margin-top:3px">${it[1]}</div>
+    <div class="note">${it[2]}</div></div>`).join('');
+}
+renderLegend();
+
+// ---- THE button: do everything + live activity feed -----------------------
+const FLAGS={es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇵🇹',nl:'🇳🇱',sv:'🇸🇪',en:'🇬🇧'};
+let _goSince=0, _goTimer=null;
+async function goPoll(){
+  try{
+    const d=await (await fetch('api/language/activity?since='+_goSince+'&limit=40')).json();
+    $('go-rate').textContent=d.rate_per_s||0;
+    if(d.pipeline){ $('go-step').innerHTML='<b>'+esc(d.pipeline.phase||'')+'</b>'
+      +(d.pipeline.status==='complete'?' · <span style="color:#2e9e78">ALL DONE ✓</span>':''); }
+    const feed=$('go-feed');
+    const items=d.items||[];
+    if(items.length){
+      _goSince=items[items.length-1].t;
+      const atBottom=feed.scrollHeight-feed.scrollTop-feed.clientHeight<40;
+      const html=items.map(a=>{
+        const fl=FLAGS[a.lang]||'';
+        const tr=a.means?(' <span style="color:#8fb7ab">→ '+esc(a.means)+'</span>'):'';
+        const ip=a.ipa?(' <span style="color:#e0c87a">'+esc(a.ipa)+'</span>'):'';
+        return `<div>${fl} <b>${esc(a.word)}</b>${ip}${tr}</div>`;
+      }).join('');
+      if(feed.querySelector('.note')) feed.innerHTML='';
+      feed.insertAdjacentHTML('beforeend',html);
+      // cap DOM size
+      while(feed.childElementCount>300) feed.removeChild(feed.firstChild);
+      if(atBottom) feed.scrollTop=feed.scrollHeight;
+    }
+  }catch(e){}
+}
+if($('go-btn')) $('go-btn').onclick=async()=>{
+  const b=$('go-btn'); b.disabled=true; const old=b.textContent; b.textContent='Starting…';
+  try{
+    const r=await (await fetch('api/language/go',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.error){ $('go-status').textContent='Error: '+esc(r.error); b.textContent=old; b.disabled=false; return; }
+    $('go-status').innerHTML='✓ Running everything automatically — you can leave this page; it keeps going.';
+    b.textContent='● Running…';
+    if(_goTimer) clearInterval(_goTimer); _goTimer=setInterval(goPoll,1200); goPoll();
+  }catch(e){ $('go-status').textContent='Error: '+e; b.textContent=old; b.disabled=false; }
+};
+// If a pipeline is already running when the page loads, resume the live feed.
+(async()=>{ try{ const d=await (await fetch('api/language/activity?limit=1')).json();
+  if(d.pipeline && d.pipeline.status==='running'){ $('go-status').innerHTML='● Pipeline already running — streaming live.';
+    if(_goTimer) clearInterval(_goTimer); _goTimer=setInterval(goPoll,1200); goPoll(); } }catch(e){} })();
+
+// ---- One-click teacher ----------------------------------------------------
+let _teachLang=null, _teachTotal=0, _teachTimer=null;
+async function teachPoll(){
+  if(!_teachLang) return;
+  try{
+    const d=await (await fetch('api/language/words?lang='+encodeURIComponent(_teachLang))).json();
+    const learned=d.count||0, pron=d.pronounced||0;
+    const tr=(d.words||[]).filter(w=>w.means||(w.translations&&w.translations.length)).length;
+    const pct=_teachTotal?Math.min(100,Math.round(100*learned/_teachTotal)):0;
+    $('teach-fill').style.width=pct+'%'; $('teach-pct').textContent=pct+'%';
+    $('teach-detail').innerHTML=`<b>${learned.toLocaleString()}</b> of ${_teachTotal.toLocaleString()} words learned · `
+      +`<b>${pron.toLocaleString()}</b> pronounced · <b>${tr.toLocaleString()}</b> with translations`
+      +(pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':' · learning…');
+  }catch(e){}
+}
+if($('teach-go')) $('teach-go').onclick=async()=>{
+  const sel=$('teach-lang'); _teachLang=sel.value;
+  const name=sel.options[sel.selectedIndex].text;
+  $('teach-go').disabled=true; $('teach-status').textContent='Starting '+name+'…';
+  try{
+    const r=await (await fetch('api/language/teach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lang:_teachLang})})).json();
+    if(r.error){ $('teach-status').textContent='Error: '+r.error; $('teach-go').disabled=false; return; }
+    _teachTotal=r.words_to_learn||0;
+    $('teach-status').innerHTML='Teaching <b>'+esc(name)+'</b> automatically — no further action needed.';
+    $('teach-pause').style.display='';
+    if(_teachTimer) clearInterval(_teachTimer);
+    _teachTimer=setInterval(teachPoll,1500); teachPoll();
+    // keep the translate direction list and detail view pointed at this language
+    const td=$('detail-lang'); if(td){ td.value=_teachLang; loadDetail(); }
+  }catch(e){ $('teach-status').textContent='Error: '+e; }
+  $('teach-go').disabled=false;
+};
+if($('teach-all')) $('teach-all').onclick=async()=>{
+  const b=$('teach-all'); b.disabled=true; const old=b.textContent; b.textContent='Starting all languages…';
+  try{
+    const r=await (await fetch('api/language/teach_all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.error){ $('teach-status').textContent='Error: '+esc(r.error); }
+    else {
+      const n=(r.started||[]).length;
+      $('teach-status').innerHTML='Teaching <b>all '+n+' languages</b> automatically — watch the table below fill in.';
+      // point the progress bar at the first one so there's a live bar too
+      if(r.started&&r.started[0]){ _teachLang=r.started[0].lang; _teachTotal=r.started[0].words_to_learn||0;
+        if(_teachTimer) clearInterval(_teachTimer); _teachTimer=setInterval(teachPoll,1500); teachPoll(); }
+      try{ $('readiness-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
+    }
+    b.textContent='✓ All languages learning'; setTimeout(()=>{b.textContent=old;b.disabled=false;},2600);
+  }catch(e){ $('teach-status').textContent='Error: '+e; b.textContent=old; b.disabled=false; }
+  loadReadiness();
+};
+if($('teach-pause')) $('teach-pause').onclick=async()=>{
+  try{ const snap=await (await fetch('api/agents')).json();
+    for(const a of (snap.agents||[])) if(a.kind==='lang_learn'&&(a.target||'').toLowerCase()===_teachLang&&a.status==='running')
+      await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id,action:'pause'})});
+  }catch(e){}
+  if(_teachTimer) clearInterval(_teachTimer); $('teach-status').textContent='Paused.'; $('teach-pause').style.display='none';
+};
+
+// ---- Translate (auto-detect source) ---------------------------------------
+const TR_LANGS=[['es','Spanish'],['fr','French'],['de','German'],['pt','Portuguese'],
+  ['it','Italian'],['sv','Swedish'],['nl','Dutch']];
+(function initTr(){
+  const s=$('tr-src'), d=$('tr-dst'); if(!s||!d) return;
+  s.innerHTML='<option value="auto">Auto-detect</option><option value="en">English</option>'
+    +TR_LANGS.map(l=>`<option value="${l[0]}">${l[1]}</option>`).join('');
+  d.innerHTML='<option value="en">English</option>'+TR_LANGS.map(l=>`<option value="${l[0]}">${l[1]}</option>`).join('');
+  s.value='auto'; d.value='es';
+})();
+let _trLast=null;
+if($('tr-go')) $('tr-go').onclick=async()=>{
+  const src=$('tr-src').value, dst=$('tr-dst').value, text=$('tr-in').value.trim();
+  if(!text){ $('tr-cov').textContent='Type some text first.'; return; }
+  $('tr-go').disabled=true; $('tr-cov').textContent='Translating…';
+  try{
+    const r=await (await fetch('api/language/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,src,dst})})).json();
+    if(r.error){ $('tr-cov').textContent='Error: '+esc(r.error); $('tr-go').disabled=false; return; }
+    _trLast={text:r.translation,lang:r.dst};
+    $('tr-out').style.display='block'; $('tr-out').textContent=r.translation;
+    let det='';
+    if(r.detected){ det=` · <b>auto-detected ${esc(r.detected.detected_name)}</b> (${r.detected.confidence_pct}% match)`; }
+    $('tr-cov').innerHTML=`${esc(r.src_name)} → ${esc(r.dst_name)}${det} · coverage <b>${r.coverage_pct}%</b> (${r.translated}/${r.words} words)`;
+    const unknown=(r.pairs||[]).filter(p=>!p.known).map(p=>esc(p.src));
+    $('tr-pairs').innerHTML=unknown.length?('Not in dictionary yet (left as-is): '+unknown.map(u=>`<code>${u}</code>`).join(' ')):'';
+    $('tr-speak').style.display='';
+  }catch(e){ $('tr-cov').textContent='Error: '+e; }
+  $('tr-go').disabled=false;
+};
+if($('tr-speak')) $('tr-speak').onclick=function(){ if(_trLast){ speakSmart(_trLast.text,_trLast.lang,this); } };
+
+// ---- Per-language readiness table (idiot-proof status) --------------------
+async function loadReadiness(){
+  const el=$('readiness'); if(!el) return;
+  try{
+    const d=await (await fetch('api/language/readiness')).json();
+    const audio=d.offline_audio_engine;
+    const rows=(d.languages||[]).map(r=>{
+      const yn=b=>b?'<span style="color:#2e9e78">✓</span>':'<span style="color:#c77">—</span>';
+      return `<tr><td><b>${esc(r.language)}</b></td>`
+        +`<td>${(r.words_learned||0).toLocaleString()} / ${(r.words_available||0).toLocaleString()}</td>`
+        +`<td>${yn(r.can_translate)}</td><td>${yn(r.can_pronounce)}</td>`
+        +`<td>${audio?yn(true):'browser voice'}</td>`
+        +`<td><button class="btn" style="font-size:11px;padding:3px 9px" data-teach="${r.lang}">Teach</button></td></tr>`;
+    }).join('');
+    el.innerHTML=`<table><thead><tr><th>Language</th><th>Words learned / available</th><th>Translate</th><th>Pronounce</th><th>Speak audio</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+      +`<p class="note" style="margin-top:6px">Every language has a full dictionary (~3,700+ words). <b>Translate</b> and <b>pronounce</b> work with no install. <b>Speak audio</b>: ${audio?('offline via '+esc(audio)):'uses your browser voice (English always; other languages if your system has that voice). Install espeak-ng for offline audio in every language.'}</p>`;
+  }catch(e){}
+}
+loadReadiness(); setInterval(loadReadiness, 4000);
+
+async function loadDetail(){
+  const sel=$('detail-lang'); if(!sel) return;
+  try{
+    const d=await (await fetch('api/language/words?lang='+encodeURIComponent(sel.value))).json();
+    $('detail-count').textContent=(d.count||0)+' words learned · '+(d.pronounced||0)+' pronounced';
+    const ph=(d.phonemes||[]).slice(0,48).map(p=>`<span style="display:inline-block;font-family:monospace;font-size:12px;background:#eef1ee;border:1px solid #dde3df;border-radius:6px;padding:2px 7px;margin:2px">${esc(p.ipa)}·${p.count}</span>`).join(' ');
+    $('detail-phon').innerHTML=ph?('<b>Phoneme inventory ('+(d.phonemes||[]).length+'):</b> '+ph):'';
+    const rows=(d.words||[]).map((w,i)=>`<tr><td>${i+1}</td><td><b>${esc(w.word)}</b></td>`
+      +`<td style="font-family:monospace">${esc(w.ipa||'—')}</td><td>${esc(w.syllables||'')}</td>`
+      +`<td>${esc(w.stress||'')}</td><td class="note">${esc(w.means||((w.translations||[]).join(', '))||'')}</td></tr>`).join('');
+    $('detail-rows').innerHTML=rows||'<tr><td colspan="6" class="note">No words yet — pick a language and click “Start learning” above.</td></tr>';
+  }catch(e){}
+}
+if($('detail-lang')){ $('detail-lang').onchange=loadDetail; loadDetail();
+  setInterval(()=>{ const a=$('detail-auto'); if(a&&a.checked) loadDetail(); }, 2000); }
+let _diagText='';
+if($('run-diag')) $('run-diag').onclick=async()=>{
+  const btn=$('run-diag'), out=$('diag-out'), v=$('diag-verdict');
+  btn.disabled=true; v.textContent='Running…'; out.style.display='block'; out.textContent='Running the self-check (includes a live write test)…';
+  try{
+    const lang=$('diag-lang').value;
+    const d=await (await fetch('api/language/diag?lang='+encodeURIComponent(lang))).json();
+    const head=(d.ok?'STATUS: OK\n':'PROBLEMS FOUND:\n')+(d.problems||[]).map(p=>'  • '+p).join('\n');
+    _diagText=head+'\n\n'+JSON.stringify(d,null,2);
+    out.textContent=_diagText;
+    v.innerHTML=d.ok?'<b style="color:#2e9e78">No problems detected</b>':'<b style="color:#d9534f">Problem found — copy the report and send it back</b>';
+    $('copy-diag').style.display='';
+  }catch(e){ out.textContent='Diagnostics request failed: '+e+'\n(Is the server running? Try the terminal command: python qb_api.py diag)'; v.textContent=''; }
+  btn.disabled=false;
+};
+if($('copy-diag')) $('copy-diag').onclick=function(){
+  if(navigator.clipboard&&_diagText){ navigator.clipboard.writeText(_diagText).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='Copy failed — select the text';}); }
+};
+$('stop-phase1').onclick=async()=>{
+  const snap=await (await fetch('api/agents')).json();
+  for(const a of (snap.agents||[])) if(a.kind==='language'&&a.status==='running')
+    await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id,action:'pause'})});
+  refresh();
+};
+document.addEventListener('click',async e=>{
+  const mk=e.target.closest('.mkagent'); if(mk){ mk.disabled=true; await mkAgent(mk.dataset.kind, mk.dataset.name, ''); mk.disabled=false; refresh(); return; }
+  const b=e.target.closest('#agents [data-act]'); if(b){ await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.a,action:b.dataset.act})}); refresh(); return; }
+});
+$('prune').onclick=async()=>{ await fetch('api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'prune'})}); refresh(); };
+
+// ---- manual feed ----
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result||''));r.onerror=()=>rej(r.error);r.readAsText(f);});}
+async function postIngest(body){
+  try{ const r=await (await fetch('api/language/ingest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(r.error){ $('msg').className='note err'; $('msg').textContent='⚠ '+r.error; } return r;
+  }catch(e){ $('msg').className='note err'; $('msg').textContent='Ingest failed: '+e; return null; }
+}
+$('learn').onclick=async()=>{
+  const text=$('text').value.trim(), source=$('source').value.trim();
+  const urls=$('url').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const files=Array.from($('files').files||[]);
+  if(!text&&!urls.length&&!files.length){ $('msg').className='note err'; $('msg').textContent='Paste text, URL(s), or file(s) first.'; return; }
+  const btn=$('learn'); btn.disabled=true; const lbl=btn.textContent; btn.textContent='learning…';
+  let done=0,wrote=0;
+  try{
+    if(text){const r=await postIngest({text,source:source||'pasted text'}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    for(const f of files){const t=await readFile(f); const r=await postIngest({text:t,source:source||f.name}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    for(const u of urls){const r=await postIngest({url:u,source:source||u}); if(r&&!r.error){done++;wrote+=r.facts_written||0;}}
+    await refresh(); $('msg').className='note'; $('msg').textContent='Learned from '+done+' source(s) · +'+wrote+' Fact Units.'; $('files').value='';
+  }finally{ btn.disabled=false; btn.textContent=lbl; }
+};
+$('preview').onclick=async()=>{
+  const text=$('text').value.trim(); if(!text){ $('msg').className='note err'; $('msg').textContent='Paste text to preview.'; return; }
+  const r=await postIngest({text,preview:true}); if(r&&!r.error){ renderMetrics(r); renderGate(r.gate); renderInventory(r);
+    $('msg').className='note'; $('msg').textContent='Preview only — analyzed, NOT stored.'; }
+};
+async function loadSources(){
+  try{ const d=await (await fetch('api/language/sources')).json();
+    $('sources').innerHTML=(d.sources||[]).map(s=>`<div class="src"><div class="info"><span class="kind">${esc(s.kind)}</span> <b>${esc(s.name)}</b><small>${esc(s.note||'')}</small></div>
+      <button class="btn ghost mkfetch" data-url="${esc(s.url)}" data-name="${esc(s.name)}">Fetch &amp; learn</button></div>`).join('');
+  }catch(e){ $('sources').innerHTML='<span class="note err">sources unavailable</span>'; }
+}
+document.addEventListener('click',async e=>{ const b=e.target.closest('.mkfetch'); if(!b) return;
+  b.disabled=true; b.textContent='learning…'; await postIngest({url:b.dataset.url,source:b.dataset.name}); await refresh(); b.disabled=false; b.textContent='Fetch & learn'; });
+
+loadPhases().then(refresh); loadSources();
+wireSpeak();   // Analyze & Speak now lives in a stable card; bind it once on load.
+renderSpeechLog();
+if($('speechlog-copy')) $('speechlog-copy').onclick=function(){ const txt=speechLogText()||'(empty)';
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='select & copy';}); } };
+if($('speechlog-clear')) $('speechlog-clear').onclick=function(){ QBLOG=[]; try{localStorage.removeItem(QBLOG_KEY);}catch(_){}
+  qblog('log.cleared'); };
+
+// ---- Voice diagnostics: pinpoint exactly why a language won't speak -----------
+let _vdText='';
+async function runVoiceDiag(){
+  const box=$('voice-diag'); box.style.display='block'; box.textContent='Running voice diagnostics…';
+  const lang=(($('speak-lang')||{}).value)||'en';
+  const NAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
+  const L=[];
+  L.push('QueryBook voice diagnostics — '+new Date().toISOString());
+  L.push('Browser: '+navigator.userAgent);
+  L.push('Selected language: '+(NAMES[lang]||lang)+' ('+lang+')');
+  L.push('');
+  // 1) server side
+  try{ const s=await (await fetch('api/language/speech')).json();
+    L.push('SERVER voice engine: '+((s.tts&&s.tts.engine)||'none')+'  available='+(s.tts&&s.tts.available));
+  }catch(e){ L.push('SERVER voice engine: (could not read) '+e); }
+  // 2) browser voices
+  if(!('speechSynthesis' in window)){ L.push('BROWSER speechSynthesis: NOT supported'); finishVD(L); return; }
+  _loadVoices();
+  // voices can be empty on first call — wait briefly
+  if(!_qbVoices.length){ await new Promise(r=>{ let d=false; const f=()=>{if(d)return;d=true;_loadVoices();r();};
+    try{window.speechSynthesis.addEventListener('voiceschanged',f,{once:true});}catch(e){} setTimeout(f,600); }); }
+  L.push('BROWSER total voices: '+_qbVoices.length);
+  const forLang=_rankVoices(lang);
+  L.push('Voices for '+(NAMES[lang]||lang)+' ('+forLang.length+'), best first:');
+  if(!forLang.length) L.push('   (none — your system has no '+(NAMES[lang]||lang)+' voice)');
+  forLang.forEach((v,i)=>{ const cloud=/online|natural/i.test(v.name||'');
+    L.push('   '+(i===0?'→ ':'  ')+v.name+'  ['+v.lang+']  '+(v.localService?'LOCAL':'cloud')+(cloud?' (Online/Natural — often silent)':'')+(i===0?'  ← will be used':'')); });
+  L.push('');
+  // 3) live playback test on the top candidate
+  L.push('LIVE TEST: speaking a test word and checking if audio actually starts…');
+  const word={en:'hello',es:'hola',fr:'bonjour',de:'hallo',pt:'olá',it:'ciao',sv:'hej',nl:'hallo'}[lang]||'hello';
+  const result=await new Promise(resolve=>{
+    let started=false, done=false;
+    const cand=forLang[0];
+    if(!cand){ resolve({ok:false,reason:'no voice for this language'}); return; }
+    const u=new SpeechSynthesisUtterance(word); u.lang=cand.lang; u.voice=cand;
+    u.onstart=()=>{started=true;}; u.onend=()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name});} };
+    u.onerror=(e)=>{ if(!done){done=true;resolve({ok:false,voice:cand.name,reason:(e&&e.error)||'error'});} };
+    try{ const sy=window.speechSynthesis; if(sy.speaking||sy.pending) sy.cancel(); sy.speak(u);
+      setTimeout(()=>{try{sy.resume();}catch(_){}},120); setTimeout(()=>{try{sy.resume();}catch(_){}},500);
+    }catch(e){ resolve({ok:false,reason:String(e)}); return; }
+    setTimeout(()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name,reason:started?'':'no audio within 2s (voice is silent)'});} },2000);
+  });
+  if(result.ok) L.push('   ✓ AUDIO PLAYED using "'+result.voice+'". Speech works for this language.');
+  else L.push('   ✗ NO AUDIO'+(result.voice?(' from "'+result.voice+'"'):'')+(result.reason?(' — '+result.reason):'')+'.');
+  L.push('');
+  // 4) verdict + fix
+  if(result.ok){ L.push('VERDICT: working. If you still hear nothing, check your system volume/output device.'); }
+  else if(!forLang.length){
+    L.push('VERDICT: your computer has NO '+(NAMES[lang]||lang)+' voice installed.');
+    L.push('FIX: Windows Settings → Time & language → Speech → Add voices → add '+(NAMES[lang]||lang)+',');
+    L.push('     OR install the free espeak-ng for offline audio in every language.');
+  } else {
+    const allCloud=forLang.every(v=>/online|natural/i.test(v.name||'')||!v.localService);
+    L.push('VERDICT: a '+(NAMES[lang]||lang)+' voice exists but produced no audio'+(allCloud?' (all available voices are cloud "Online/Natural" voices, which Edge/Chrome often fail to play).':'.'));
+    L.push('FIX: add a LOCAL '+(NAMES[lang]||lang)+' voice (Windows Settings → Speech), or install the free espeak-ng.');
+  }
+  finishVD(L);
+}
+function finishVD(L){ _vdText=L.join('\n'); $('voice-diag').textContent=_vdText; $('voice-diag-copy').style.display=''; }
+if($('voice-diag-btn')) $('voice-diag-btn').onclick=runVoiceDiag;
+if($('voice-diag-copy')) $('voice-diag-copy').onclick=function(){ if(navigator.clipboard&&_vdText){ navigator.clipboard.writeText(_vdText).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='select & copy';}); } };
+
+// ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
+(function(){
+  // Auto-label the top navigation on every page (so menu items explain themselves).
+  var NAVTIPS={'/dashboard':'Console: start/stop harvesting facts, see totals, manage agents.',
+    '/':'Chat: ask questions and get cited answers (or an honest UNKNOWN).',
+    '/language':'Language Lab: teach languages, translate, and speak.',
+    '/guide':'Guide: the full user manual for every feature.',
+    '/monitor':'Monitor: live system health, store size, agents, and links to open from another device.',
+    '/voice':'Voice Lab: two-way voice, tone/volume, and voice matching.'};
+  function navKey(h){ if(!h) return ''; h=h.replace(/^\.?\//,'').replace(/\.html$/,'').toLowerCase();
+    var m={'':'/','chat':'/','dashboard':'/dashboard','live':'/dashboard','console':'/dashboard',
+      'language':'/language','lang':'/language','guide':'/guide','help':'/guide',
+      'monitor':'/monitor','status':'/monitor','voice':'/voice'}; return m[h]||('/'+h); }
+  try{ document.querySelectorAll('nav a[href]').forEach(function(a){
+    if(!a.getAttribute('data-tip')){ var k=navKey(a.getAttribute('href')); if(NAVTIPS[k]) a.setAttribute('data-tip',NAVTIPS[k]); }
+  }); }catch(e){}
+  let tip=null, hideT=null;
+  function ensure(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.style.cssText='position:fixed;z-index:9999;max-width:280px;background:#11201b;color:#eaf4ef;'
+      +'border:1px solid #2e5c4e;border-radius:10px;padding:9px 12px;font:13px/1.45 system-ui,sans-serif;'
+      +'box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .12s;'
+      +'display:none';
+    document.body.appendChild(tip); return tip;
+  }
+  function show(el){
+    const t=el.getAttribute('data-tip'); if(!t) return;
+    const n=ensure(); n.textContent=t; n.style.display='block';
+    const r=el.getBoundingClientRect();
+    // position below the element, clamped to the viewport
+    n.style.left='-9999px'; n.style.top='0px'; n.style.opacity='0';
+    requestAnimationFrame(()=>{
+      const w=n.offsetWidth, h=n.offsetHeight;
+      let x=r.left+r.width/2-w/2; x=Math.max(8,Math.min(x,window.innerWidth-w-8));
+      let y=r.bottom+8; if(y+h>window.innerHeight-8) y=r.top-h-8;
+      n.style.left=x+'px'; n.style.top=Math.max(8,y)+'px'; n.style.opacity='1';
+    });
+  }
+  function hide(){ if(hideT)clearTimeout(hideT); hideT=setTimeout(()=>{ if(tip){tip.style.opacity='0';tip.style.display='none';} },60); }
+  document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip]'); if(el){ if(hideT)clearTimeout(hideT); show(el);} });
+  document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip]'); if(el) hide(); });
+  document.addEventListener('focusin',e=>{ const el=e.target.closest('[data-tip]'); if(el) show(el); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',hide);
+})();
+</script>
+<script src="/qb-ui.js"></script>
+</body></html>
