@@ -3808,3 +3808,62 @@ FEATURE COUNT UNCHANGED at 202 - this revision consolidates framing only and add
 no new feature. Cross-refs: Bible consolidation amendment (2026-10-01); Canonical
 Engine Spec; Language & Speech Technology Specification; consolidated QueryBook
 Provisional Patent Application.
+
+
+================================================================
+ADDITIVE REVISION - LANGUAGE & IDENTITY LINKING (LIL) VOICEPRINT (2026-10-01)
+================================================================
+New QueryBook subsystem: Language & Identity Linking (LIL) - a voiceprint
+record/profile/match/link/authenticate platform in which voices (and faces,
+names, emails, websites, phones, social handles, organizations, devices) are
+FIRST-CLASS ENTITIES in the QueryBook Fact Unit identity graph. Integral
+QueryBook subsystem, not a separate product. STATUS: specified / design (not
+yet reduced to practice, unlike language Phases 1-4). Third-party acoustic
+components named only by role as substitutable open-source / industry-standard
+components.
+
+[199] 19.1 - LIL voiceprint engine  [SPEC]
+      Industry-standard acoustic analysis (MFCC, filterbanks, spectrogram,
+      pitch/F0, formants, jitter/shimmer, HNR) + speaker embedding (x-vector /
+      d-vector / ECAPA-TDNN by role) -> fixed-length voiceprint; enrollment
+      aggregates N samples into a canonical voiceprint; matching by cosine /
+      PLDA. Acoustic layer is statistical (stated honestly).
+
+[200] 19.2 - Fact-Unit identity graph (voice/face/entities)  [SPEC]
+      Voiceprints, face embeddings (from images/video, time-aligned to speech),
+      names, emails, phones, websites, social handles, orgs, devices are
+      entities; every link is a provenance-tracked, trust-scored Fact Unit on
+      the UFCS/FQL graph. Cross-script person/entity resolution via the LEL
+      language technology (the "Language" in LIL).
+
+[201] 19.3 - Trust-gated identity assertion (covenant)  [SPEC]
+      A voice match is a hypothesis; identity is asserted only via the trust
+      gate -> VERIFIED / CONTRADICTED / UNKNOWN(refuse). Never fabricates an
+      identity; below-threshold and conflicting cases are refused or surfaced,
+      never invented. Deterministic and reproducible given stored voiceprints.
+
+[202] 19.4 - Voice authentication + anti-spoofing  [SPEC]
+      Deterministic decision gate (accept / challenge-second-factor / reject)
+      over a published risk-scoring policy; anti-spoofing (liveness, replay,
+      synthetic/deepfake) feeds risk; no accept below threshold; every decision
+      a provenance-tracked auth-event Fact Unit, reproducible from the fixed
+      policy.
+
+[203] 19.5 - Consent gate + biometric privacy  [SPEC]
+      Capture for enrollment/profiling blocked without a recorded, revocable
+      consent record (extends QueryBook voice-consent gate); revocation disables
+      matching + triggers retention cleanup. BIPA/GDPR (special-category) /CCPA
+      aligned; audio retention off by default; embeddings encrypted; RBAC +
+      audit. On-device/offline-capable (embeddings are small vectors); identity
+      store domain-partitioned.
+
+COVENANT: LIL inherits C1-C6 / L1-L6 unchanged, applied to identity - no LLM
+asserts an identity; every link sourced + trust-scored; deterministic decisions;
+refuse (UNKNOWN) rather than invent; consent-gated. The acoustic edge is
+statistical; the gate, graph, resolution, policy, and provenance are
+deterministic and auditable.
+
+FEATURE COUNT: 207 (202 + 5 LIL features, [199]-[203]); [199]-[203] are SPEC
+(design), not yet BUILT. Cross-refs: LIL Voiceprint & Identity Specification
+(Word); Provisional Patent Section IX ([0032]-[0036]), claims 31-38, FIG. 33-34;
+Bible amendment "Language & Identity Linking (LIL) (2026-10-01)".

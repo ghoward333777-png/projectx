@@ -329,6 +329,60 @@ s += box(90, 392, 540, 60, ["Supporting: deterministic text hygiene · phonemize
 s += '</svg>'
 FIGS.append((10, "Permanent Pronunciation and Speech Quality-Control Battery (No LLM)", s))
 
+# ===================== FIG. 33 — LIL voiceprint enrollment/matching over the Fact-Unit identity graph =====================
+w, h = 720, 700
+s = svg_open(w, h)
+s += box(110, 16, 500, 42, ["LIL — VOICEPRINT ENROLLMENT & MATCHING OVER THE",
+                            "FACT-UNIT IDENTITY GRAPH (identity assertion: no fabrication)"], "1000")
+s += box(40, 74, 230, 40, ["Consent gate (precondition)"], "1001", dashed=True)
+s += arrow(155, 114, 155, 136)
+s += box(40, 136, 230, 48, ["Capture: audio / video", "VAD · 16 kHz · segment"], "1002")
+s += arrow(270, 160, 300, 160)
+s += box(300, 136, 180, 48, ["Acoustic features", "(MFCC · formants · prosody)"], "1003")
+s += arrow(390, 184, 390, 206)
+s += box(300, 206, 180, 46, ["Speaker embedding", "(voiceprint vector)"], "1004")
+s += arrow(300, 229, 270, 229); s += box(40, 206, 230, 46, ["Enrollment: aggregate N", "→ canonical voiceprint"], "1005")
+s += arrow(390, 252, 390, 276)
+s += box(255, 276, 270, 50, ["Match / score (cosine · PLDA)", "vs stored voiceprints"], "1006")
+s += arrow(390, 326, 390, 350)
+s += box(230, 350, 320, 52, ["QueryBook TRUST GATE →", "VERIFIED · CONTRADICTED · UNKNOWN (refuse)"], "1007")
+s += arrow(390, 402, 390, 428)
+s += box(150, 428, 470, 92, ["Fact-Unit identity graph (provenance + trust)"], "1008")
+s += box(168, 470, 120, 42, ["person ↔", "voiceprint"], None)
+s += box(298, 470, 120, 42, ["person ↔ face", "↔ email/site"], None)
+s += box(428, 470, 120, 42, ["person ↔", "organization"], None)
+s += box(40, 560, 300, 54, ["LEL cross-script name /", "entity resolution", "(the 'Language' in LIL)"], "1009")
+s += arrow(190, 560, 300, 520)
+s += box(390, 560, 290, 54, ["Provenance-tracked link Fact Unit", "(subject predicate object · trust · source)"], "1010")
+s += arrow(500, 560, 470, 520)
+s += '</svg>'
+FIGS.append((33, "LIL — Voiceprint Enrollment and Matching over the Fact-Unit Identity Graph", s))
+
+# ===================== FIG. 34 — LIL trust-gated voice authentication + anti-spoofing =====================
+w, h = 720, 560
+s = svg_open(w, h)
+s += box(140, 16, 440, 42, ["LIL — TRUST-GATED VOICE AUTHENTICATION",
+                            "(deterministic decision · anti-spoofing · no fabricated identity)"], "1020")
+s += box(270, 74, 180, 44, ["Auth request", "(claimed identity)"], "1021")
+s += arrow(360, 118, 360, 140)
+s += box(270, 140, 180, 44, ["Capture phrase → embed"], None)
+s += arrow(360, 184, 360, 206)
+s += box(230, 206, 260, 46, ["Anti-spoofing: liveness ·", "replay · synthetic / deepfake"], "1022")
+s += arrow(360, 252, 360, 274)
+s += box(240, 274, 240, 46, ["Risk-scoring model", "(deterministic policy)"], "1023")
+s += arrow(360, 320, 360, 344)
+s += box(250, 344, 220, 50, ["DECISION GATE"], "1024")
+s += arrow(250, 369, 120, 420); s += label(110, 414, "accept", 10)
+s += arrow(360, 394, 360, 420); s += label(368, 414, "challenge", 10)
+s += arrow(470, 369, 600, 420); s += label(560, 414, "reject", 10)
+s += box(40, 420, 150, 44, ["Accept", "(score≥θ, risk low)"], None)
+s += box(285, 420, 150, 44, ["Second factor", "(OTP · device)"], "1025")
+s += box(540, 420, 150, 44, ["Reject · log", "· alert"], None)
+s += box(210, 492, 300, 46, ["Auth event Fact Unit (score · risk ·", "decision · spoof flags · provenance)"], "1026")
+s += arrow(360, 464, 360, 492)
+s += '</svg>'
+FIGS.append((34, "LIL — Trust-Gated Voice Authentication with Anti-Spoofing", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -353,6 +407,8 @@ descr = {
  8: "is a data-flow diagram of the deterministic Phase-Two semantic grounding of the reduced-to-practice embodiment, in which word meanings are attached only from auditable sources — a bundled public-domain dictionary and self-grounding against verified Fact Units in the store — with any large-language-model meaning source excluded from the grounding path.",
  9: "is a block diagram of the advanced multilingual pronunciation subsystem and self-contained speech output of the reduced-to-practice embodiment, showing the pronunciation preference ladder (bundled open-source phonemizer, then per-language rule-seeded grapheme-to-phoneme tables, then an explicit non-fabricated null), the single-call phrase transcription that keeps the displayed transcription consistent with the synthesized audio, and the self-contained bundle and engine-selection ladder that produce offline audio or an honest refusal without fabricating audio, per Section VIII.",
  10: "is a flow diagram of the permanent, deterministic pronunciation-and-speech quality-control battery of the reduced-to-practice embodiment, which, for each supported language and without a large language model, verifies that a phonemic transcription is produced, that the syllable count is within tolerance, and that a short phrase synthesizes to a valid audio waveform, returning a per-language report and an overall pass score, per Section VIII.",
+ 33: "is a data-flow diagram of the Language & Identity Linking (LIL) voiceprint enrollment and matching subsystem, in which a consent-gated capture produces an acoustic speaker embedding (voiceprint), a match against stored voiceprints is passed through a QueryBook trust gate returning VERIFIED, CONTRADICTED, or UNKNOWN, and verified identity links are written as provenance-tracked, trust-scored Fact Units in the identity graph, with cross-script name and entity resolution performed by the language subsystem, per Section IX.",
+ 34: "is a flow diagram of the LIL trust-gated voice authentication process, in which a claimed-identity verification produces a match score and anti-spoofing signals that feed a deterministic risk-scoring policy and a decision gate returning accept, challenge (second factor), or reject, each decision recorded as a provenance-tracked auth-event Fact Unit, per Section IX.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -417,6 +473,15 @@ REFS = [
  ("993","deterministic language detector"),("995","permanent quality-control battery"),
  ("996","IPA-produced check"),("997","syllable-sanity check (±1)"),
  ("998","valid-waveform synthesis check"),("999","per-language QC report + overall pass score"),
+ ("1000","LIL voiceprint & identity subsystem"),("1001","consent gate (precondition)"),
+ ("1002","audio/video capture + VAD/segmentation"),("1003","acoustic feature extraction"),
+ ("1004","speaker embedding (voiceprint vector)"),("1005","enrollment — canonical voiceprint"),
+ ("1006","match / score (cosine · PLDA)"),("1007","QueryBook trust gate (VERIFIED/CONTRADICTED/UNKNOWN)"),
+ ("1008","Fact-Unit identity graph"),("1009","LEL cross-script name/entity resolution"),
+ ("1010","provenance-tracked link Fact Unit"),("1020","voice authentication request"),
+ ("1021","capture phrase + embed"),("1022","anti-spoofing (liveness/replay/synthetic)"),
+ ("1023","deterministic risk-scoring policy"),("1024","authentication decision gate"),
+ ("1025","second-factor challenge"),("1026","auth-event Fact Unit (provenance)"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']
