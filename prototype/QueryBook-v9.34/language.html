@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.33 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.34 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -394,6 +394,9 @@ function renderPhases(gateOpen){
   const sig=JSON.stringify([gateOpen, PHASES.map(p=>[p.n,p.status])]);
   if(sig===_phSig) return;                 // don't clobber inputs on every poll
   _phSig=sig;
+  // preserve the speak selector + typed word across re-renders (so it never snaps to English)
+  const _sl=document.getElementById('speak-lang'), _st=document.getElementById('speak-text');
+  const _keepLang=_sl?_sl.value:null, _keepText=_st?_st.value:null;
   const later=PHASES.filter(p=>p.n>=2);
   $('phases-later').innerHTML=later.map(p=>{
     const isBuilt = p.status==='built';
@@ -419,6 +422,10 @@ function renderPhases(gateOpen){
       <p class="sub">${esc(p.desc)}</p>${btn}
     </div></div></div>`;
   }).join('');
+  // restore preserved speak selection/text
+  const _sl2=document.getElementById('speak-lang'), _st2=document.getElementById('speak-text');
+  if(_sl2&&_keepLang) _sl2.value=_keepLang;
+  if(_st2&&_keepText!=null) _st2.value=_keepText;
   wireSpeak();
 }
 function wireSpeak(){
@@ -444,44 +451,66 @@ function wireSpeak(){
       } else {
         body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
       }
-      let voiceMsg='';
+      function paint(voiceMsg){ out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}${voiceMsg}`; }
       if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false; au.play().catch(()=>{});
-        voiceMsg=`<br><i>Voice: ${esc((r.tts&&r.tts.engine)||'built-in')}</i>`; }
+        paint(`<br><i>Voice: ${esc((r.tts&&r.tts.engine)||'built-in')} ✓</i>`); }
       else { au.hidden=true;
-        const bs=browserSpeak(t, lang);
-        if(bs.spoke && bs.matched) voiceMsg=`<br><i>Voice: your browser’s ${esc(bs.voice)} voice ✓</i>`;
-        else if(bs.spoke) voiceMsg=`<br><i>Voice: spoken with a default browser voice — no ${esc(lang)} voice found here. For an accurate ${esc(lang)} voice, use Chrome/Edge or install espeak-ng.</i>`;
-        else voiceMsg=`<br><i>Voice: ${esc((r.tts&&r.tts.error)||'no voice available')}. Install espeak-ng (free) for spoken audio.</i>`;
+        paint(`<br><i>Speaking…</i>`);
+        browserSpeak(t, lang, bs=>{
+          let m;
+          if(bs.spoke && bs.matched) m=`<br><i>Voice: your browser’s ${esc(bs.voice||lang)} voice ✓</i>`;
+          else if(bs.spoke) m=`<br><i>No ${esc(_LANGNAMES[lang]||lang)} voice is installed on this device, so audio may be absent or use a default voice. Pronunciation (above) is correct. For guaranteed ${esc(_LANGNAMES[lang]||lang)} audio, use Microsoft Edge or install the free espeak-ng.</i>`;
+          else m=`<br><i>No speech available in this browser. Install espeak-ng (free) for offline audio.</i>`;
+          paint(m);
+        });
       }
-      out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}${voiceMsg}`;
     }catch(e){ out.textContent='speak failed: '+e; }
     b.disabled=false;
   };
 }
-function browserSpeak(text, lang){
-  try{
-    if(!('speechSynthesis' in window)) return {spoke:false};
-    const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:'sv-SE',nl:'nl-NL'};
-    const u=new SpeechSynthesisUtterance(text); u.lang=BCP[lang]||'en-US';
-    const vs=window.speechSynthesis.getVoices()||[];
-    const v=vs.find(x=>x.lang&&x.lang.toLowerCase().slice(0,2)===lang);
-    if(v) u.voice=v;
-    window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-    return {spoke:true, matched:!!v, voice:(v?v.name:(BCP[lang]||lang))};
-  }catch(e){ return {spoke:false}; }
+// Browser speech, fixed for the getVoices() async race: Chrome/Edge return an EMPTY
+// voice list on the first calls after load (voices arrive later via voiceschanged).
+// We cache voices, keep them fresh, and if they aren't ready yet we wait briefly and
+// then speak — so non-English voices (which Edge/Chrome ship) are actually used.
+const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:'sv-SE',nl:'nl-NL'};
+let _qbVoices=[];
+function _loadVoices(){ try{ _qbVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ _qbVoices=[]; } return _qbVoices; }
+try{ if('speechSynthesis' in window){ _loadVoices(); window.speechSynthesis.addEventListener('voiceschanged', _loadVoices); } }catch(e){}
+function _pickVoice(lang){
+  const vs=_qbVoices.length?_qbVoices:_loadVoices(); const l=(lang||'en').toLowerCase();
+  return vs.find(v=>v.lang&&v.lang.toLowerCase()===(BCP[l]||'').toLowerCase())   // es-ES
+      || vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(l+'-'))              // es-*
+      || vs.find(v=>v.lang&&v.lang.toLowerCase()===l)                           // es
+      || vs.find(v=>v.lang&&v.lang.toLowerCase().slice(0,2)===l)                // es...
+      || null;
 }
-try{ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged=function(){}; } }catch(e){}
-// Smarter speak: pick the best matching voice; if the language has no voice on this
-// device, say so clearly (and speak nothing wrong) instead of failing silently.
+// cb({spoke, matched, voice}) — matched=true only when a real voice for THIS language was used.
+function browserSpeak(text, lang, cb){
+  if(!('speechSynthesis' in window)){ cb&&cb({spoke:false, reason:'no-tts'}); return; }
+  function go(){
+    const v=_pickVoice(lang);
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=(v&&v.lang)||BCP[lang]||'en-US'; if(v) u.voice=v;
+    try{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }
+    catch(e){ cb&&cb({spoke:false}); return; }
+    cb&&cb({spoke:true, matched:!!v, voice:(v?v.name:null)});
+  }
+  if(_loadVoices().length){ go(); return; }
+  // voices not ready — wait for them (once), then speak regardless after a short grace
+  let done=false; const run=()=>{ if(done) return; done=true; _loadVoices(); go(); };
+  try{ window.speechSynthesis.addEventListener('voiceschanged', run, {once:true}); }catch(e){}
+  setTimeout(run, 350);
+}
+const _LANGNAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
+// Speak with honest feedback on the button.
 function speakSmart(text, lang, btn){
-  const NAMES={en:'English',es:'Spanish',fr:'French',de:'German',pt:'Portuguese',it:'Italian',sv:'Swedish',nl:'Dutch'};
-  const note=(m)=>{ if(btn){ const old=btn.textContent; btn.textContent=m; setTimeout(()=>{btn.textContent=old;},2600);} };
+  const note=(m)=>{ if(btn){ const old=btn.dataset._old||btn.textContent; btn.dataset._old=old; btn.textContent=m; setTimeout(()=>{btn.textContent=old;},2800);} };
   if(!('speechSynthesis' in window)){ note('no speech in this browser'); return; }
-  const vs=window.speechSynthesis.getVoices()||[];
-  const has=vs.some(x=>x.lang&&x.lang.toLowerCase().slice(0,2)===lang);
-  const r=browserSpeak(text,lang);
-  if(!has && lang!=='en'){ note('⚠ no '+(NAMES[lang]||lang)+' voice on this device'); }
-  else if(r.spoke){ note('🔊 speaking…'); }
+  browserSpeak(text, lang, r=>{
+    if(!r.spoke) note('speech unavailable');
+    else if(r.matched) note('🔊 speaking…');
+    else note('⚠ no '+(_LANGNAMES[lang]||lang)+' voice installed — install espeak-ng');
+  });
 }
 function agentRow(a){
   const st=a.status||'stopped';
