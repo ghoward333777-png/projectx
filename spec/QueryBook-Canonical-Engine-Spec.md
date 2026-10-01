@@ -139,3 +139,18 @@ POST: `/api/chat /harvest /agents /agents/control /providers /provider_test /fac
 
 ## 12. Gate 0 exit criteria (your approval)
 1. This spec matches the frozen baseline (no aspiration presented as built). 2. Every covenant invariant (§2) has a stated check. 3. The creativity loop (§8) is specified, with the three open questions answered as proposed defaults (§8.1) for ratification at Gate 2. 4. Freeze tag + checksums exist (§11). 5. Traceability map (§10) accepted, with the Gate‑3 gaps agreed.
+
+---
+
+## 13. Consolidation note — the language subsystem is integral QueryBook (2026-10-01)
+The developmental language and speech subsystem (the Language Expression Layer, LEL) is an
+**integral subsystem of QueryBook**, not a separate system or invention. It is co-grounded
+with the Fact Unit / FQL / UFCS core (§5–§6, and the LEL↔FQL co-grounding), inherits the
+Covenant unchanged (§2), and is reduced to practice deterministically for Phases 1–4; only
+the full neural embodiments remain **[ROADMAP]**. This consolidation is reflected across the
+canon: the Language & Speech Technology Specification (the subsystem's detail), the Bible
+amendment *"The Language Architecture Is an Integral QueryBook Subsystem (Consolidation,
+2026-10-01)"*, the Registry consolidation revision, and the single QueryBook-first Provisional
+Patent Application in which the LEL is an integral, co-grounded subsystem (the standalone LEL
+document retained only as a language-subsystem excerpt), with the LEL and platform figures
+forming one QueryBook figure set.

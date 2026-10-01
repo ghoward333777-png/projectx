@@ -10,6 +10,13 @@ a stable internal interface, never a hard-wired product — so the specification
 individual components are substituted for a commercial deployment. Where a capability is not
 yet built, it is labelled **[ROADMAP]**.
 
+This subsystem is **integral to QueryBook**, not a separate system: the Language Expression
+Layer (LEL) is a QueryBook subsystem, co-grounded with the Fact Unit / FQL / UFCS core, and it
+is consolidated as such across the canon (Canonical Engine Spec §1, §6, §13; the Bible
+consolidation amendment of 2026-10-01; the Registry consolidation revision; and the single
+QueryBook-first Provisional Patent Application in which the LEL is an integral, co-grounded
+subsystem).
+
 This document is scoped to the language/speech subsystem. The whole-engine contract (Fact
 Unit, store, gate, API surface) lives in *QueryBook-Canonical-Engine-Specification*; this
 specification references it where the language subsystem builds on it and does not restate it.

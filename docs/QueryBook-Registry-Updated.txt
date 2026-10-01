@@ -3771,3 +3771,40 @@ REVISED FEATURE COUNT: 202 (196 + 6 advanced language/speech features,
 [193]-[198]). All six are BUILT and tested in the prototype; only the full
 neural embodiments (LEL / neural vocoder / neural cross-lingual alignment)
 remain preferred roadmap forms.
+
+
+================================================================
+ADDITIVE REVISION - LANGUAGE SUBSYSTEM CONSOLIDATION (2026-10-01)
+================================================================
+Governing fact, recorded for the registry: the Language Expression Layer (LEL)
+and the entire developmental language and speech capability are an INTEGRAL
+SUBSYSTEM OF QUERYBOOK - QueryBook-based, not a separate system, product, or
+module set. Knowledge lives in QueryBook as language-independent Fact Units;
+the language subsystem is the learned rendering of that meaning to and from
+language and speech, co-grounded with the Fact Unit / FQL / UFCS core.
+
+Consolidation of the registry entries (no features removed; framing unified):
+  - The language features in this registry - the L-series (Sub-Language Priming
+    Layer, Language Expression Layer, Transition Gate, Delta Acquisition /
+    Flywheel, Speech Output Pipeline, LEL<->FQL Co-Grounding) and the advanced
+    language/speech features [193]-[198] - are INTEGRAL QueryBook features in the
+    one unified feature registry, not a separate appendix or a separate
+    language product.
+  - They inherit the QueryBook covenant unchanged (no-LLM in the truth path,
+    sourced, deterministic, refuse-not-invent, no fabricated audio).
+  - The four developmental phases (1-4) are reduced to practice deterministically
+    in the prototype; only the full neural embodiments remain roadmap forms.
+
+Consolidation across the canon: design (Canonical Engine Spec sections 1 and 6;
+Language & Speech Technology Specification), Bible (chapter [LX] reconciled as an
+integral subsystem; amendment "The Language Architecture Is an Integral QueryBook
+Subsystem (Consolidation, 2026-10-01)"), Provisional Patent (reframed as the
+single QueryBook-first application with the LEL as an integral co-grounded
+subsystem; standalone LEL retained only as a language-subsystem excerpt), and
+Figures (the LEL figures and the QueryBook platform figures are one QueryBook
+figure set).
+
+FEATURE COUNT UNCHANGED at 202 - this revision consolidates framing only and adds
+no new feature. Cross-refs: Bible consolidation amendment (2026-10-01); Canonical
+Engine Spec; Language & Speech Technology Specification; consolidated QueryBook
+Provisional Patent Application.
