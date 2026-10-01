@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.42"
+BUILD = "v9.43"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -388,9 +388,11 @@ class H(BaseHTTPRequestHandler):
             lang = (body.get("lang") or "en").lower()
             if not text:
                 return self._send(400, {"error": "text required"})
-            analysis = [qb_language.analyze_pronunciation(w, lang) for w in text.split()[:20]]
+            # Per-word analysis uses the INSTANT rule phonemizer (fast=True) — never spawns one
+            # espeak process per word, which could make this request hang for minutes.
+            analysis = [qb_language.analyze_pronunciation(w, lang, fast=True) for w in text.split()[:12]]
             prosody = qb_language._prosody(text)
-            tts = qb_language.speak(text, lang=lang)
+            tts = qb_language.speak(text, lang=lang)   # ONE engine call for the whole phrase
             out = {"text": text, "lang": lang, "speakable": qb_language.speakable_languages(),
                    "prosody": prosody, "analysis": analysis,
                    "tts": {"available": tts.get("available"), "engine": tts.get("engine"),
@@ -762,6 +764,9 @@ class H(BaseHTTPRequestHandler):
                     act["pipeline"] = ({"status": pipe.get("status"), "phase": pipe.get("phase"),
                                         "facts": pipe.get("facts")} if pipe else None)
                     self._send(200, act)
+                elif u.path == "/api/language/espeak":
+                    # Troubleshooting: espeak-ng status at any time (found/path/version/self-test/log).
+                    self._send(200, qb_language.espeak_status())
                 elif u.path == "/api/language/readiness":
                     # Per-language readiness matrix for the UI (words, translation, speech).
                     self._send(200, qb_language.language_readiness(DATA_DIR))

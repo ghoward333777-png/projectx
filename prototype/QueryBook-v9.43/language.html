@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.42 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.43 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -281,6 +281,7 @@
     <audio id="speak-audio" controls hidden style="margin-top:8px;width:100%"></audio>
     <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
       <button class="btn ghost" id="voice-diag-btn" data-tip="List the voices your browser has for the selected language, test if they actually make sound, and copy a report.">🔎 Voice diagnostics (why no sound?)</button>
+      <button class="btn ghost" id="espeak-btn" data-tip="Check the espeak-ng voice engine on the server: installed? where? version? a timed self-test and recent call log.">🩺 Check espeak-ng</button>
       <button class="btn ghost" id="voice-diag-copy" style="display:none">Copy report</button>
       <div id="voice-diag" style="display:none;margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font:12px/1.5 var(--mono);max-height:340px;overflow:auto"></div>
     </div>
@@ -485,7 +486,14 @@ function wireSpeak(){
     try{
       const lang=(document.getElementById('speak-lang')||{}).value||'en';
       qblog('speak.click', {lang:lang, text:t});
-      const r=await (await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang})})).json();
+      // Never hang the UI: give the request 20s, then abort and tell the user.
+      const ctrl=new AbortController(); const killer=setTimeout(()=>ctrl.abort(),20000);
+      let resp;
+      try{ resp=await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang}),signal:ctrl.signal}); }
+      catch(ab){ clearTimeout(killer); qblog('speak.timeout'); out.innerHTML='<i>Speech took too long and was cancelled. Run <b>🔎 Voice diagnostics</b> or <b>Check espeak-ng</b> below to see why.</i>'; b.disabled=false; return; }
+      clearTimeout(killer);
+      const r=await resp.json();
+      qblog('speak.server', {audio_b64:!!r.audio_b64, bytes:(r.audio_b64||'').length, engine:(r.tts&&r.tts.engine)||null, tts_avail:!!(r.tts&&r.tts.available), analysis:(r.analysis||[]).length});
       qblog('speak.server', {audio_b64:!!r.audio_b64, bytes:(r.audio_b64||'').length, engine:(r.tts&&r.tts.engine)||null, tts_avail:!!(r.tts&&r.tts.available), analysis:(r.analysis||[]).length});
       const items=(r.analysis||[]);
       const haveIpa=items.some(a=>a.ipa);
@@ -994,6 +1002,22 @@ async function runVoiceDiag(){
 function finishVD(L){ _vdText=L.join('\n'); $('voice-diag').textContent=_vdText; $('voice-diag-copy').style.display=''; }
 if($('voice-diag-btn')) $('voice-diag-btn').onclick=runVoiceDiag;
 if($('voice-diag-copy')) $('voice-diag-copy').onclick=function(){ if(navigator.clipboard&&_vdText){ navigator.clipboard.writeText(_vdText).then(()=>{this.textContent='Copied ✓';},()=>{this.textContent='select & copy';}); } };
+if($('espeak-btn')) $('espeak-btn').onclick=async function(){
+  const box=$('voice-diag'); box.style.display='block'; box.textContent='Checking espeak-ng on the server…';
+  try{
+    const d=await (await fetch('api/language/espeak')).json();
+    const L=[];
+    L.push('espeak-ng status — '+new Date().toISOString());
+    L.push('found: '+d.found+(d.path?('   path: '+d.path):''));
+    L.push('version: '+(d.version||'(n/a)'));
+    if(d.selftest) L.push('self-test: "'+d.selftest.word+'" -> '+(d.selftest.ipa||'(none)')+'   '+d.selftest.ms+'ms   '+(d.selftest.ok?'OK':'FAILED'));
+    if(d.hint) L.push('hint: '+d.hint);
+    L.push('recent espeak calls:');
+    (d.recent_calls||[]).forEach(c=>L.push('   '+JSON.stringify(c)));
+    if(!(d.recent_calls||[]).length) L.push('   (none yet)');
+    _vdText=L.join('\n'); box.textContent=_vdText; $('voice-diag-copy').style.display='';
+  }catch(e){ box.textContent='espeak check failed: '+e; }
+};
 
 // ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
 (function(){

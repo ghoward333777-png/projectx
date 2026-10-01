@@ -862,28 +862,75 @@ def _espeak_source(lang):
             "external-tool", 0.75)
 
 
+import collections as _coll_e
+_ESPEAK_LOG = _coll_e.deque(maxlen=60)    # troubleshooting: recent espeak calls
+_ESPEAK_CACHE = {}                        # (word,lang) -> (ipa,stress,syl), avoids re-spawning
+
+def _espeak_log(tag, **kw):
+    kw["t"] = time.strftime("%H:%M:%S"); kw["tag"] = tag
+    _ESPEAK_LOG.append(kw)
+
 def _ipa_espeak(word, lang):
     """Deterministic IPA for a word via espeak-ng --ipa. Returns (ipa, stress_syllable,
-    syllable_count) or (None, 1, 1) when no engine is present. No LLM; never fabricates."""
+    syllable_count) or (None, 1, 1) when no engine is present. Cached + timed + logged.
+    Short timeout so a hung espeak can never block the app. No LLM; never fabricates."""
     import subprocess
     exe = _espeak_exe()
     if not exe:
+        _espeak_log("no-exe", word=str(word), lang=lang)
         return (None, 1, 1)
+    key = (str(word).lower(), lang)
+    if key in _ESPEAK_CACHE:
+        return _ESPEAK_CACHE[key]
+    t0 = time.time()
     try:
         out = subprocess.run([exe, "-v", lang, "--ipa", "-q", str(word)],
-                             timeout=15, check=True, capture_output=True, text=True).stdout
-    except Exception:
-        return (None, 1, 1)
+                             timeout=6, check=True, capture_output=True, text=True).stdout
+        _espeak_log("ok", word=str(word), lang=lang, ms=int((time.time() - t0) * 1000))
+    except subprocess.TimeoutExpired:
+        _espeak_log("TIMEOUT", word=str(word), lang=lang, ms=int((time.time() - t0) * 1000))
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
+    except Exception as e:
+        _espeak_log("error", word=str(word), lang=lang, err=repr(e)[:120], ms=int((time.time() - t0) * 1000))
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
     ipa = out.strip().replace("\n", " ").strip()
     if not ipa:
-        return (None, 1, 1)
+        _ESPEAK_CACHE[key] = (None, 1, 1); return (None, 1, 1)
     nuclei = [i for i, c in enumerate(ipa) if c in _IPA_VOWELS]
     syl = max(1, len(nuclei))
     stress = 1
     mark = ipa.find("ˈ")                    # espeak marks primary stress with U+02C8
     if mark >= 0 and nuclei:
         stress = min(max(1, 1 + sum(1 for n in nuclei if n < mark)), syl)
+    _ESPEAK_CACHE[key] = (ipa, stress, syl)
     return (ipa, stress, syl)
+
+
+def espeak_status():
+    """Troubleshooting snapshot of espeak-ng, usable at any time: whether it's found, where,
+    its version, a quick timed self-test ('hola'→IPA), and the recent call log (incl. any
+    timeouts/errors that would make speech hang)."""
+    import subprocess, time as _t
+    exe = _espeak_exe()
+    out = {"found": bool(exe), "path": exe, "version": None, "selftest": None,
+           "recent_calls": list(_ESPEAK_LOG)[-20:]}
+    if not exe:
+        out["hint"] = "espeak-ng not installed/found. Double-click GET-VOICES-WINDOWS.bat to install it."
+        return out
+    try:
+        v = subprocess.run([exe, "--version"], timeout=5, capture_output=True, text=True)
+        out["version"] = (v.stdout or v.stderr).strip().split("\n")[0][:160]
+    except Exception as e:
+        out["version"] = "version check failed: " + repr(e)[:120]
+    t0 = _t.time()
+    ipa, st, syl = _ipa_espeak("hola", "es")
+    out["selftest"] = {"word": "hola", "lang": "es", "ipa": ipa, "ms": int((_t.time() - t0) * 1000),
+                       "ok": ipa is not None}
+    if ipa is None:
+        out["hint"] = ("espeak-ng is present but a test call did not return audio/IPA in time "
+                       "(see recent_calls for TIMEOUT/error). Pronunciation still works via the "
+                       "bundled rule phonemizer; speech audio may be slow or unavailable.")
+    return out
 
 
 def speakable_languages():
@@ -1021,11 +1068,14 @@ def _g2p_rules(word, lang):
     return ipa, _rule_stress(lang, syl), syl
 
 
-def analyze_pronunciation(word, lang="en"):
+def analyze_pronunciation(word, lang="en", fast=False):
     """Deterministic pronunciation breakdown for one word (no store write). English uses the
     rule-seeded G2P; other languages prefer espeak-ng when installed (most accurate) and
     otherwise use the BUNDLED rule-seeded G2P, so pronunciation always works. No LLM, never
-    fabricates beyond the approximate rule model."""
+    fabricates beyond the approximate rule model.
+
+    fast=True skips espeak entirely and uses the instant rule-seeded G2P — used for the
+    per-word display so the UI never blocks spawning one espeak process per word."""
     lang = (lang or "en").lower()
     if lang == "en":
         phon = _g2p(word)
@@ -1033,7 +1083,7 @@ def analyze_pronunciation(word, lang="en"):
         return {"word": word.lower(), "lang": "en", "phonemes": phon,
                 "ipa": "/" + "".join(phon) + "/", "syllables": syl, "stress_syllable": stress,
                 "source": "rule-seeded G2P", "via": "rules"}
-    if _espeak_exe():
+    if not fast and _espeak_exe():
         ipa, stress, syl = _ipa_espeak(word, lang)
         if ipa is not None:
             return {"word": str(word).lower(), "lang": lang, "phonemes": list(ipa),
@@ -1244,14 +1294,17 @@ def speak(text, out_path=None, lang="en"):
     # --- Non-English: espeak-ng is the reliable multilingual voice on every OS. ---
     esp = _espeak_exe()
     if lang != "en" and esp:
+        _t0 = time.time()
         try:
-            subprocess.run([esp, "-v", lang, "-w", tmp, text], timeout=30, check=True, capture_output=True)
+            subprocess.run([esp, "-v", lang, "-w", tmp, text], timeout=12, check=True, capture_output=True)
+            _espeak_log("speak-ok", lang=lang, ms=int((time.time() - _t0) * 1000), chars=len(text))
             with open(tmp, "rb") as fh:
                 data = fh.read()
             return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": data, "mime": "audio/wav"}
         except Exception as e:
+            _espeak_log("speak-FAIL", lang=lang, err=repr(e)[:120])
             return {"available": True, "engine": "espeak", "lang": lang, "wav_bytes": None,
-                    "error": "espeak-ng failed for '%s': %s" % (lang, e)}
+                    "error": "espeak-ng failed/timed out for '%s': %s" % (lang, e)}
 
     kind, exe = _tts_engine()
     if not kind:
