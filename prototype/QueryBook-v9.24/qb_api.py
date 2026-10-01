@@ -35,6 +35,8 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
+BUILD = "v9.24"
+BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
@@ -45,6 +47,133 @@ START_TIME = time.time()   # server start, for the System Monitor uptime
 # (localhost development, unchanged). Pair with QB_BIND=0.0.0.0:<port> to reach it
 # from your phone over a private network (e.g. Tailscale). ----
 ACCESS_TOKEN = os.environ.get("QB_ACCESS_TOKEN", "").strip()
+
+
+def _local_ipv4s():
+    """Detect this machine's own IPv4 addresses (LAN + Tailscale), so the app can print
+    complete, ready-to-click monitor links instead of asking the user to build a URL."""
+    import socket
+    ips = []
+    seen = set()
+    def add(ip):
+        if ip and ip not in seen and not ip.startswith("127.") and ":" not in ip:
+            seen.add(ip); ips.append(ip)
+    # primary route IP (the LAN address other devices use)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80))
+        add(s.getsockname()[0]); s.close()
+    except Exception:
+        pass
+    # every address bound to the hostname (picks up Tailscale 100.x, extra NICs)
+    try:
+        for res in socket.getaddrinfo(socket.gethostname(), None):
+            add(res[4][0])
+    except Exception:
+        pass
+    # Tailscale addresses sort first (most useful for remote), then other LAN IPs
+    ips.sort(key=lambda x: (not x.startswith("100."), x))
+    return ips
+
+
+def access_urls():
+    """Full monitor URLs for every way to reach this server from a device."""
+    port = BIND.split(":")[-1]
+    urls = ["http://localhost:%s/monitor" % port]
+    for ip in _local_ipv4s():
+        urls.append("http://%s:%s/monitor" % (ip, port))
+    return urls
+
+
+# ---- Zero-config auto-discovery ------------------------------------------------
+# The learning STATION announces itself on the local network with a small UDP
+# beacon. Any other device on the same network (your dev machine) can find it
+# with `python qb_api.py discover` — no IP typing, no URL building, no static IP.
+# Pure stdlib UDP broadcast on 255.255.255.255; works on any LAN / hotspot / VPN
+# that passes broadcast. Nothing leaves the local network.
+QB_BEACON_PORT = int(os.environ.get("QB_BEACON_PORT", "48900"))
+QB_BEACON_MAGIC = "QUERYBOOK-STATION/1"
+
+
+def _beacon_payload():
+    import socket as _s, json as _j
+    port = BIND.split(":")[-1]
+    return (QB_BEACON_MAGIC + " " + _j.dumps({
+        "magic": QB_BEACON_MAGIC,
+        "name": _s.gethostname(),
+        "build": BUILD,
+        "port": port,
+        "secure": bool(ACCESS_TOKEN),
+        "ips": _local_ipv4s(),
+        "urls": access_urls(),
+    })).encode("utf-8")
+
+
+def _start_beacon():
+    """Broadcast this station's presence every few seconds so other devices find it."""
+    import socket, threading
+    def loop():
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        except Exception:
+            return
+        while True:
+            try:
+                sock.sendto(_beacon_payload(), ("255.255.255.255", QB_BEACON_PORT))
+            except Exception:
+                pass
+            time.sleep(3)
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    return t
+
+
+def discover_stations(timeout=6.0):
+    """Listen for station beacons on this network and return what we hear."""
+    import socket, json
+    found = {}
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except Exception:
+            pass
+        sock.bind(("", QB_BEACON_PORT))
+        sock.settimeout(1.0)
+    except Exception as e:
+        return {"error": str(e), "stations": []}
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            data, addr = sock.recvfrom(4096)
+        except socket.timeout:
+            continue
+        except Exception:
+            break
+        txt = data.decode("utf-8", "replace")
+        if not txt.startswith(QB_BEACON_MAGIC):
+            continue
+        try:
+            info = json.loads(txt[len(QB_BEACON_MAGIC):].strip())
+        except Exception:
+            continue
+        # build URLs the finding device can actually reach: the sender's source IP
+        src = addr[0]
+        port = info.get("port", "8099")
+        urls = ["http://%s:%s/monitor" % (src, port)]
+        for ip in info.get("ips", []):
+            u = "http://%s:%s/monitor" % (ip, port)
+            if u not in urls:
+                urls.append(u)
+        info["reachable_urls"] = urls
+        info["source_ip"] = src
+        found[info.get("name", src) + "@" + src] = info
+    try:
+        sock.close()
+    except Exception:
+        pass
+    return {"error": None, "stations": list(found.values())}
 
 LOGIN_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1"><title>QueryBook — Sign in</title>
@@ -486,7 +615,10 @@ class H(BaseHTTPRequestHandler):
                                    or "anthropic" in (p.get("base_url") or "")), None) or (provs[0] if provs else None)
                     tts = qb_language.tts_status()
                     self._send(200, {
-                        "build": "v9.23", "date": "2026-09-30",
+                        "build": BUILD, "date": BUILD_DATE,
+                        "access": {"urls": access_urls(), "secure": bool(ACCESS_TOKEN),
+                                   "ips": _local_ipv4s(),
+                                   "beacon": True, "beacon_port": QB_BEACON_PORT},
                         "uptime_s": round(time.time() - START_TIME, 1),
                         "host": {"platform": _pf.system(), "release": _pf.release(),
                                  "python": _pf.python_version(), "cpus": os.cpu_count()},
@@ -678,10 +810,10 @@ class H(BaseHTTPRequestHandler):
                     rec = st.get(fp)
                     self._send(200 if rec else 404, rec or {"error": "not found"})
                 elif u.path == "/api/version":
-                    self._send(200, {"build": "v9.23", "date": "2026-09-30",
+                    self._send(200, {"build": BUILD, "date": BUILD_DATE,
                                      "features": ["language-lab", "phased-agents", "build-english-first",
                                                   "per-domain-counts", "self-heal", "store-health",
-                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech"]})
+                                                  "provider-live-test", "phase2-deterministic-dictionary-store", "llm-lockout-enforced", "hypothesis-agent", "simulation-agent", "reasoning-agent", "gate-multivalued", "planner-agent", "phase3-multilingual-delta", "launcher-frees-port", "phase4-speech", "secure-remote-mode", "auto-discovery"]})
                 elif u.path == "/api/":
                     self._send(200, {"ok": True, "data_dir": DATA_DIR})
                 else:
@@ -733,19 +865,31 @@ def main():
               flush=True)
     except Exception as e:
         print(f"  KEEP-AWAKE could not start: {e}", flush=True)
+    # Auto-discovery: broadcast this station on the local network so your other
+    # device finds it with `python qb_api.py discover` — no URL typing, no static IP.
+    try:
+        _start_beacon()
+        print(f"  AUTO-DISCOVERY: broadcasting on your network (UDP {QB_BEACON_PORT}) — "
+              f"on your OTHER device run:  python qb_api.py discover", flush=True)
+    except Exception as e:
+        print(f"  auto-discovery beacon could not start: {e}", flush=True)
     print("=" * 60, flush=True)
-    print("  QueryBook  BUILD v9.23 · 2026-09-30  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
+    print(f"  QueryBook  BUILD {BUILD} · {BUILD_DATE}  (Phase 4 multilingual speech: en/es/fr/de/pt/it/sv/nl)", flush=True)
     print("=" * 60, flush=True)
-    qb_log.log("info", "server", "QueryBook BUILD v9.23 started on http://" + BIND)
+    qb_log.log("info", "server", "QueryBook BUILD " + BUILD + " started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
     print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
     if ACCESS_TOKEN:
         print("  SECURE REMOTE MODE: ON — a password is required; sign in at /login.", flush=True)
-        host = BIND.split(":")[0]
-        if host in ("0.0.0.0", ""):
-            print("  Reachable on this machine's network address (e.g. your Tailscale name) at port "
-                  + BIND.split(":")[-1] + " — open http://<this-machine>:" + BIND.split(":")[-1] + "/monitor", flush=True)
-    print(f"  OPEN THIS:  http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)
+    # Full, ready-to-click monitor links for every address this machine has.
+    print("  " + "-" * 56, flush=True)
+    print("  OPEN THE MONITOR — click one of these (full links, no typing):", flush=True)
+    for u in access_urls():
+        print("      " + u, flush=True)
+    print("  From your OTHER device, use one of the http://<ip>:... links above,", flush=True)
+    print("  or just run  python qb_api.py discover  there to find this station.", flush=True)
+    print("  " + "-" * 56, flush=True)
+    print(f"  Dashboard: http://{BIND}/dashboard   ·   Language Lab: http://{BIND}/language", flush=True)
     print(f"  GET /api/stats /api/fql /api/verify /api/get   ·   POST /api/chat (LLM layer: {llm})", flush=True)
     # Quality control: run the self-test battery ONCE at startup (cached for /api/health).
     global LAST_SELFTEST
@@ -760,5 +904,34 @@ def main():
         print(f"  SELF-TEST could not run: {e}", flush=True)
     srv.serve_forever()
 
+def _cli_discover():
+    """Run on your DEV device to find the learning station automatically."""
+    print("Searching your network for a QueryBook station (listening ~6s)…", flush=True)
+    res = discover_stations(timeout=6.0)
+    if res.get("error"):
+        print("  Could not listen for stations: " + str(res["error"]), flush=True)
+        print("  (Another QueryBook on THIS device may hold the discovery port — that's fine,", flush=True)
+        print("   run discover from a device that is NOT also running the station.)", flush=True)
+        return
+    stations = res.get("stations", [])
+    if not stations:
+        print("  No station found. Make sure the station is running (START-WINDOWS.bat /", flush=True)
+        print("  START-REMOTE-WINDOWS.bat) and that both devices are on the SAME network.", flush=True)
+        return
+    print("=" * 60, flush=True)
+    print(f"  Found {len(stations)} station(s). Open one of these links:", flush=True)
+    print("=" * 60, flush=True)
+    for s in stations:
+        lock = "  🔒 password required" if s.get("secure") else ""
+        print(f"  • {s.get('name','station')}  (build {s.get('build','?')}){lock}", flush=True)
+        for u in s.get("reachable_urls", []):
+            print("      " + u, flush=True)
+    print("=" * 60, flush=True)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
+        _cli_discover()
+    else:
+        main()

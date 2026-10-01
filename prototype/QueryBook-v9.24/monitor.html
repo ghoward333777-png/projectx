@@ -57,7 +57,7 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b> — System Monitor</div>
-  <span class="badge">BUILD v9.23 · 2026-10-01</span>
+  <span class="badge">BUILD v9.24 · 2026-10-01</span>
   <nav class="nav">
     <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
     <a href="/chat">Chat</a><a href="/console">Console</a>
@@ -67,6 +67,13 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
 
 <div class="wrap">
   <div class="tiles" id="tiles"></div>
+
+  <div class="card" id="access-card">
+    <h2>Open this station on another device</h2>
+    <p class="sub">Full links — click or copy, no typing, no building a URL. From your other
+    device you can also just run <code>python qb_api.py discover</code> to find this station automatically.</p>
+    <div id="access-urls" class="muted">detecting addresses…</div>
+  </div>
 
   <div class="grid2">
     <div class="card"><h2>Knowledge store</h2><div id="store"></div>
@@ -124,6 +131,18 @@ async function refresh(){
     ['Collecting',(c.running?fps.toFixed(0)+'/s':'idle')],
     ['LLM layer',(sy.llm&&sy.llm.have_llm)?'on':'off'],
   ].map(t=>`<div class="tile"><div class="n">${esc(t[1])}</div><div class="k">${esc(t[0])}</div></div>`).join('');
+
+  // Full, ready-to-click links to reach this station from any device.
+  const ac=d.access||{}; const urls=ac.urls||[];
+  if(urls.length){
+    $('access-urls').innerHTML = urls.map(u=>
+      `<div class="kv"><a href="${esc(u)}" style="color:#5fd0b4;text-decoration:none;font-family:ui-monospace,Consolas,monospace;word-break:break-all">${esc(u)}</a>`
+      +`<button class="btn" style="padding:3px 10px;font-size:12px" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(u)}').then(()=>{this.textContent='copied'},()=>{this.textContent='copy failed'})">copy</button></div>`
+    ).join('')
+      + (ac.secure?'<p class="sub" style="margin-top:8px">🔒 Secure remote mode is ON — this device will ask for your password.</p>':'')
+      + '<p class="sub" style="margin-top:8px">Both devices must be on the same network (LAN / hotspot / Tailscale). '
+      + 'The <code>http://localhost…</code> link only works on the station itself.</p>';
+  }
 
   $('store').innerHTML=kv('Location',`<span class="mono">${esc(s.data_dir)}</span>`)
     +kv('Facts',(s.facts||0).toLocaleString())+kv('Blocks',s.blocks||0)

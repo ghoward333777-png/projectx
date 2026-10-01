@@ -28,6 +28,29 @@ MAC
 Next time it remembers your drive — just press Enter.
 
 
+MONITOR THE STATION FROM ANOTHER DEVICE  (no static IP, nothing to type)
+-----------------------------------------------------------------------
+You develop on one device and the station learns on another. To watch the
+station from your dev device, you do NOT build or type any URL:
+
+  * On the STATION: when it starts, its black server window now prints the
+    exact, complete links to open the Monitor — e.g.
+        http://192.168.1.23:8090/monitor      (your LAN)
+        http://100.x.x.x:8090/monitor         (Tailscale, if installed)
+    The Monitor page itself also shows these under "Open this station on
+    another device" with copy buttons.
+
+  * On your DEV device: double-click  FIND-STATION-WINDOWS.bat  (or
+    FIND-STATION-MAC.command). It listens on your network and prints the
+    exact link to click — it finds the station automatically. No IP, no
+    static address, no URL building. (Equivalent command: python qb_api.py
+    discover.) Both devices must be on the same network (LAN / hotspot /
+    Tailscale).
+
+For password-protected remote access over the internet, use the
+START-REMOTE launchers (they set a password and bind to all interfaces).
+
+
 USING IT
 --------
 On the dashboard:
