@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.37 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.38 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -564,14 +564,24 @@ function browserSpeak(text, lang, cb){
       if(done) return;
       if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
       else finish(false); };
-    try{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }
+    try{
+      const synth=window.speechSynthesis;
+      // Only clear the queue if something is actually speaking. Calling cancel()
+      // immediately before speak() makes Edge's "Online (Natural)" cloud voices go
+      // SILENT (the cancel aborts their network setup) — that was a real cause here.
+      if(synth.speaking||synth.pending){ synth.cancel(); }
+      synth.speak(u);
+      // Edge frequently queues the utterance PAUSED — nudge it a few times so audio starts.
+      setTimeout(()=>{ try{ synth.resume(); }catch(_){}}, 120);
+      setTimeout(()=>{ try{ synth.resume(); }catch(_){}}, 500);
+    }
     catch(e){ if(idx+1<cands.length) speakWith(cands, idx+1, v); else cb&&cb({spoke:false}); return; }
-    // Watchdog: if nothing started within 1.2s, this (usually cloud) voice is silent — fall back.
+    // Watchdog: if nothing started within 2.2s (cloud voices need network), fall back.
     setTimeout(()=>{ if(done||started) return;
       qblog('tts.watchdog_silent',{voice:v.name});
       if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
       else finish(false);
-    }, 1200);
+    }, 2200);
   }
   function go(){
     const cands=_rankVoices(lang);
@@ -960,7 +970,9 @@ async function runVoiceDiag(){
     const u=new SpeechSynthesisUtterance(word); u.lang=cand.lang; u.voice=cand;
     u.onstart=()=>{started=true;}; u.onend=()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name});} };
     u.onerror=(e)=>{ if(!done){done=true;resolve({ok:false,voice:cand.name,reason:(e&&e.error)||'error'});} };
-    try{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch(e){ resolve({ok:false,reason:String(e)}); return; }
+    try{ const sy=window.speechSynthesis; if(sy.speaking||sy.pending) sy.cancel(); sy.speak(u);
+      setTimeout(()=>{try{sy.resume();}catch(_){}},120); setTimeout(()=>{try{sy.resume();}catch(_){}},500);
+    }catch(e){ resolve({ok:false,reason:String(e)}); return; }
     setTimeout(()=>{ if(!done){done=true;resolve({ok:started,voice:cand.name,reason:started?'':'no audio within 2s (voice is silent)'});} },2000);
   });
   if(result.ok) L.push('   ✓ AUDIO PLAYED using "'+result.voice+'". Speech works for this language.');
