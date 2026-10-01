@@ -53,7 +53,7 @@ label.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--mute
 <a href="#main" class="skip">Skip to content</a>
 <div class="top">
   <div class="brand">Query<b>Book</b> — Voice Lab</div>
-  <span class="badge">BUILD v9.34 · 2026-10-01</span>
+  <span class="badge">BUILD v9.35 · 2026-10-01</span>
   <nav class="nav" aria-label="Main">
     <a href="/dashboard">Dashboard</a><a href="/language">Language Lab</a>
     <a href="/chat">Chat</a><a href="/monitor">Monitor</a>
@@ -246,14 +246,39 @@ async function onUtterance(text){
 }
 
 /* ---------- speak (TTS) ---------- */
+/* Prefer LOCAL voices and avoid "Online (Natural)" cloud voices, which are listed but
+   often produce no audio through the Web Speech API; handle the async getVoices() race. */
+let _qbVoices=[];
+function _loadVoices(){ try{ _qbVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ _qbVoices=[]; } return _qbVoices; }
+try{ if('speechSynthesis' in window){ _loadVoices(); window.speechSynthesis.addEventListener('voiceschanged', _loadVoices); } }catch(e){}
+function _rankVoices(lang){
+  const vs=_qbVoices.length?_qbVoices:_loadVoices(); const l=(lang||'en').toLowerCase();
+  const region=(BCP[l]||'').toLowerCase(); const cloud=v=>/online|natural/i.test(v.name||"");
+  return vs.filter(v=>v.lang&&v.lang.toLowerCase().slice(0,2)===l).map(v=>{
+    let s=0; if(v.localService) s+=100; if(!cloud(v)) s+=40;
+    if(v.lang.toLowerCase()===region) s+=10; else if(v.lang.toLowerCase().startsWith(l+'-')) s+=5;
+    if(v.default) s+=1; return {v,s};
+  }).sort((a,b)=>b.s-a.s).map(x=>x.v);
+}
 function browserSpeak(text,lang){
   try{ if(!('speechSynthesis' in window)) return false;
-    const u=new SpeechSynthesisUtterance(text); u.lang=BCP[lang]||'en-US';
-    const vs=window.speechSynthesis.getVoices()||[]; const v=vs.find(x=>x.lang&&x.lang.toLowerCase().slice(0,2)===lang);
-    if(v)u.voice=v; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); return true;
+    const cands=_rankVoices(lang);
+    function speakWith(i){
+      if(i>=cands.length){ // no local match — speak with lang hint only
+        const u=new SpeechSynthesisUtterance(text); u.lang=BCP[lang]||'en-US';
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); return; }
+      const v=cands[i]; const u=new SpeechSynthesisUtterance(text);
+      u.lang=v.lang||BCP[lang]||'en-US'; u.voice=v; let started=false,done=false;
+      u.onstart=()=>{started=true;}; u.onerror=()=>{ if(done)return; done=true; if(i+1<cands.length){try{window.speechSynthesis.cancel();}catch(e){} speakWith(i+1);} };
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      setTimeout(()=>{ if(done||started)return; done=true; if(i+1<cands.length){try{window.speechSynthesis.cancel();}catch(e){} speakWith(i+1);} },1200);
+    }
+    if(_loadVoices().length) speakWith(0);
+    else { let d=false; const r=()=>{if(d)return;d=true;_loadVoices();speakWith(0);};
+      try{window.speechSynthesis.addEventListener('voiceschanged',r,{once:true});}catch(e){} setTimeout(r,350); }
+    return true;
   }catch(e){ return false; }
 }
-try{ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged=function(){}; } }catch(e){}
 async function speak(text,lang){
   if(!text) return;
   try{

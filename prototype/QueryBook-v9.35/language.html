@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.34 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.35 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -458,9 +458,9 @@ function wireSpeak(){
         paint(`<br><i>Speaking…</i>`);
         browserSpeak(t, lang, bs=>{
           let m;
-          if(bs.spoke && bs.matched) m=`<br><i>Voice: your browser’s ${esc(bs.voice||lang)} voice ✓</i>`;
-          else if(bs.spoke) m=`<br><i>No ${esc(_LANGNAMES[lang]||lang)} voice is installed on this device, so audio may be absent or use a default voice. Pronunciation (above) is correct. For guaranteed ${esc(_LANGNAMES[lang]||lang)} audio, use Microsoft Edge or install the free espeak-ng.</i>`;
-          else m=`<br><i>No speech available in this browser. Install espeak-ng (free) for offline audio.</i>`;
+          if(bs.spoke && bs.heard) m=`<br><i>Voice: your computer’s ${esc(bs.voice||lang)} voice ✓</i>`;
+          else if(bs.reason==='no-voice' || !bs.spoke) m=`<br><i>Your computer has no ${esc(_LANGNAMES[lang]||lang)} voice installed. The pronunciation above is correct; for spoken ${esc(_LANGNAMES[lang]||lang)} audio, install the free <b>espeak-ng</b>, or add the ${esc(_LANGNAMES[lang]||lang)} voice in Windows Settings → Time&nbsp;&amp;&nbsp;language → Speech.</i>`;
+          else m=`<br><i>The only ${esc(_LANGNAMES[lang]||lang)} voice on this device (${esc(bs.voice||'cloud voice')}) produced no audio — these “Online (Natural)” cloud voices often don’t play through the browser. Install the free <b>espeak-ng</b> for reliable offline ${esc(_LANGNAMES[lang]||lang)} audio, or add a local voice in Windows Settings → Speech.</i>`;
           paint(m);
         });
       }
@@ -476,27 +476,57 @@ const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:
 let _qbVoices=[];
 function _loadVoices(){ try{ _qbVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ _qbVoices=[]; } return _qbVoices; }
 try{ if('speechSynthesis' in window){ _loadVoices(); window.speechSynthesis.addEventListener('voiceschanged', _loadVoices); } }catch(e){}
-function _pickVoice(lang){
+// Rank all voices for a language and return them BEST-FIRST. Critically, we prefer
+// LOCAL/offline voices and push "Online (Natural)" cloud voices to the end: those cloud
+// voices are listed by the browser but very often produce NO audio through the Web Speech
+// API (they belong to Microsoft's cloud TTS, and the bridge fails silently). That is the
+// real reason non-English "spoke ✓" yet nothing was heard.
+function _rankVoices(lang){
   const vs=_qbVoices.length?_qbVoices:_loadVoices(); const l=(lang||'en').toLowerCase();
-  return vs.find(v=>v.lang&&v.lang.toLowerCase()===(BCP[l]||'').toLowerCase())   // es-ES
-      || vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(l+'-'))              // es-*
-      || vs.find(v=>v.lang&&v.lang.toLowerCase()===l)                           // es
-      || vs.find(v=>v.lang&&v.lang.toLowerCase().slice(0,2)===l)                // es...
-      || null;
+  const region=(BCP[l]||'').toLowerCase();
+  const cloud=v=>/online|natural/i.test(v.name||"");     // flaky-through-WebSpeech voices
+  const matches=vs.filter(v=>v.lang && v.lang.toLowerCase().slice(0,2)===l);
+  return matches.map(v=>{
+    let s=0;
+    if(v.localService) s+=100;                 // offline/local = reliable
+    if(!cloud(v)) s+=40;                        // avoid Online/Natural cloud voices
+    if(v.lang.toLowerCase()===region) s+=10;    // exact region
+    else if(v.lang.toLowerCase().startsWith(l+'-')) s+=5;
+    if(v.default) s+=1;
+    return {v,s};
+  }).sort((a,b)=>b.s-a.s).map(x=>x.v);
 }
-// cb({spoke, matched, voice}) — matched=true only when a real voice for THIS language was used.
+function _pickVoice(lang){ const r=_rankVoices(lang); return r.length?r[0]:null; }
+// cb({spoke, matched, voice, heard}) — `heard` becomes true only if speech actually STARTED.
 function browserSpeak(text, lang, cb){
   if(!('speechSynthesis' in window)){ cb&&cb({spoke:false, reason:'no-tts'}); return; }
-  function go(){
-    const v=_pickVoice(lang);
+  function speakWith(cands, idx, best){
+    if(idx>=cands.length){ cb&&cb({spoke:true, matched:!!best, voice:best?best.name:null, heard:false}); return; }
+    const v=cands[idx];
     const u=new SpeechSynthesisUtterance(text);
     u.lang=(v&&v.lang)||BCP[lang]||'en-US'; if(v) u.voice=v;
+    let started=false, done=false;
+    const finish=(heard)=>{ if(done) return; done=true; cb&&cb({spoke:true, matched:!!v, voice:v?v.name:null, heard:heard}); };
+    u.onstart=()=>{ started=true; };
+    u.onend=()=>{ if(started) finish(true); };
+    u.onerror=()=>{ /* this voice failed (common for cloud voices) — try the next candidate */
+      if(done) return;
+      if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
+      else finish(false); };
     try{ window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }
-    catch(e){ cb&&cb({spoke:false}); return; }
-    cb&&cb({spoke:true, matched:!!v, voice:(v?v.name:null)});
+    catch(e){ if(idx+1<cands.length) speakWith(cands, idx+1, v); else cb&&cb({spoke:false}); return; }
+    // Watchdog: if nothing started within 1.2s, this (usually cloud) voice is silent — fall back.
+    setTimeout(()=>{ if(done||started) return;
+      if(idx+1<cands.length){ try{window.speechSynthesis.cancel();}catch(e){} speakWith(cands, idx+1, v); }
+      else finish(false);
+    }, 1200);
+  }
+  function go(){
+    const cands=_rankVoices(lang);
+    if(!cands.length){ cb&&cb({spoke:false, matched:false, reason:'no-voice'}); return; }
+    speakWith(cands, 0, null);
   }
   if(_loadVoices().length){ go(); return; }
-  // voices not ready — wait for them (once), then speak regardless after a short grace
   let done=false; const run=()=>{ if(done) return; done=true; _loadVoices(); go(); };
   try{ window.speechSynthesis.addEventListener('voiceschanged', run, {once:true}); }catch(e){}
   setTimeout(run, 350);
@@ -507,9 +537,9 @@ function speakSmart(text, lang, btn){
   const note=(m)=>{ if(btn){ const old=btn.dataset._old||btn.textContent; btn.dataset._old=old; btn.textContent=m; setTimeout(()=>{btn.textContent=old;},2800);} };
   if(!('speechSynthesis' in window)){ note('no speech in this browser'); return; }
   browserSpeak(text, lang, r=>{
-    if(!r.spoke) note('speech unavailable');
-    else if(r.matched) note('🔊 speaking…');
-    else note('⚠ no '+(_LANGNAMES[lang]||lang)+' voice installed — install espeak-ng');
+    if(!r.spoke || r.reason==='no-voice') note('⚠ no '+(_LANGNAMES[lang]||lang)+' voice on this device');
+    else if(r.heard) note('🔊 spoke');
+    else note('⚠ '+(_LANGNAMES[lang]||lang)+' voice produced no audio');
   });
 }
 function agentRow(a){
