@@ -90,7 +90,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.31 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.32 · 2026-10-01</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -136,10 +136,10 @@
 
   <!-- ONE-CLICK: TEACH A LANGUAGE -->
   <div class="card" id="teach-card">
-    <h2>Teach QueryBook a language — one click</h2>
-    <p class="sub">Pick a language and press the button. QueryBook does the rest automatically:
-    builds the <b>vocabulary</b>, the <b>pronunciation</b> of every word, and the <b>translations</b>
-    to/from English. Watch it climb — you don't need to start agents or run anything by hand.</p>
+    <h2>Just one language? (optional)</h2>
+    <p class="sub"><b>Most people only need the button above.</b> Use this only if you want to teach a
+    single language on its own instead of all of them. Pick a language and press Teach — QueryBook builds
+    its <b>vocabulary</b>, <b>pronunciation</b>, and <b>translations</b> automatically.</p>
     <div class="formrow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <select id="teach-lang" style="padding:8px 12px;font-size:15px" data-tip="Choose which language to teach, then press “Teach this language”.">
         <option value="es">Spanish</option><option value="fr">French</option>
@@ -185,9 +185,10 @@
   </div>
 
   <h2 style="margin:28px 0 6px;padding-top:14px;border-top:2px solid var(--line);font-size:20px">
-    English — the foundation language <span class="note" style="font-weight:400">(learned in four phases below)</span></h2>
-  <p class="sub" style="margin:0 0 12px">These four phases are how QueryBook learned <b>English</b>, the language
-  everything else builds on. For <b>other</b> languages, use the one-click teacher above — you don't run these phases yourself.</p>
+    English details <span class="note" style="font-weight:400">(optional — the button at the top already runs these)</span></h2>
+  <p class="sub" style="margin:0 0 12px">This section just shows the four phases QueryBook uses to learn <b>English</b>,
+  its foundation language, and lets you run them by hand if you want. <b>You don't need to touch this</b> — the
+  “Start — do it all” button at the top does it for you.</p>
 
   <div class="card" id="hero-card">
     <div class="row" style="justify-content:space-between">
@@ -265,25 +266,6 @@
 
   <!-- PHASES 2-4 (roadmap) -->
   <div id="phases-later"></div>
-
-  <!-- LEARN ANOTHER LANGUAGE -->
-  <div class="card">
-    <h2>Learn another language</h2>
-    <p class="sub">Build a new language the way English was built — from a bundled public-domain starter
-    corpus (pangrams, numbers, weekdays). The learner acquires the language's <b>vocabulary</b> and each
-    word's <b>pronunciation</b> (bundled rule-seeded phonemizer — no install needed; espeak-ng adds audio
-    + accuracy), stored as provenance-tracked Fact Units. No LLM. (Meaning-grounding needs a per-language
-    dictionary and is not included yet.)</p>
-    <div class="formrow" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select id="learn-lang" style="padding:6px 10px">
-        <option value="es">Spanish</option><option value="fr">French</option>
-        <option value="de">German</option><option value="pt">Portuguese</option>
-        <option value="it">Italian</option><option value="sv">Swedish</option>
-        <option value="nl">Dutch</option></select>
-      <button class="btn big" id="start-learn">▶ Start learning</button>
-      <span id="learn-note" class="note"></span>
-    </div>
-  </div>
 
   <!-- LIVE LEARNING DETAIL -->
   <div class="card">
@@ -581,13 +563,6 @@ document.addEventListener('click',e=>{
   const go=$('teach-go'); if(go) go.click();
   try{ $('teach-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
 });
-const _sl=$('start-learn'); if(_sl) _sl.onclick=async()=>{
-  const sel=$('learn-lang'); const code=sel.value; const name=sel.options[sel.selectedIndex].text;
-  _sl.disabled=true; $('learn-note').textContent='Starting…';
-  await mkAgent('lang_learn','Learn '+name, code);
-  $('learn-note').textContent='Learning '+name+' — watch Facts climb in Language agents below.';
-  _sl.disabled=false; refresh();
-};
 // ---- Language legend: which language each phase targets -------------------
 function renderLegend(){
   const el=$('lang-legend'); if(!el) return;
