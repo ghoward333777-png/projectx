@@ -35,8 +35,8 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.48"
-BUILD_DATE = "2026-10-01"
+BUILD = "v9.49"
+BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
@@ -278,7 +278,8 @@ class H(BaseHTTPRequestHandler):
                           "/api/providers", "/api/provider_test", "/api/fact", "/api/keepawake",
                           "/api/language/ingest", "/api/language/speak", "/api/language/translate",
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
-                          "/api/language/go", "/api/mirror", "/api/help"):
+                          "/api/language/go", "/api/language/tts_key", "/api/language/voices",
+                          "/api/language/custom_voice", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -396,7 +397,14 @@ class H(BaseHTTPRequestHandler):
             # and the offline fallback. 'provider' empty/omitted => open-source engine.
             provider = (body.get("provider") or "").lower() or None
             voice = body.get("voice") or None
-            tts = qb_language.speak(text, lang=lang, provider=provider, voice=voice)  # ONE call for the whole phrase
+            # Google natural-language style steering (tone/emotion/accent/pace/acting direction);
+            # ElevenLabs voice-control settings; a locally-built Google custom (cloned) voice.
+            style = body.get("style") or None
+            settings = body.get("settings") if isinstance(body.get("settings"), dict) else None
+            custom_voice = body.get("custom_voice") or None
+            model = body.get("model") or None
+            tts = qb_language.speak(text, lang=lang, provider=provider, voice=voice, style=style,
+                                    settings=settings, custom_voice=custom_voice, model=model)  # ONE call
             out = {"text": text, "lang": lang, "speakable": qb_language.speakable_languages(),
                    "prosody": prosody, "analysis": analysis,
                    "tts": {"available": tts.get("available"), "engine": tts.get("engine"),
@@ -412,15 +420,42 @@ class H(BaseHTTPRequestHandler):
             provider = (body.get("provider") or "").lower()
             key = body.get("key")
             voice = body.get("voice")
+            model = body.get("model")
+            settings = body.get("settings") if isinstance(body.get("settings"), dict) else None
             r = {"ok": True, "provider": provider}
-            if key or voice:
-                r = qb_language.save_tts_key(provider, key=key, voice=voice)
+            if key or voice or model or settings:
+                r = qb_language.save_tts_key(provider, key=key, voice=voice, model=model, settings=settings)
             # Optionally make this the default voice engine (e.g. Google), or set default only.
             if body.get("make_default") or body.get("default_only"):
                 d = qb_language.set_default_provider(provider)
                 r["default_provider"] = d.get("default_provider")
                 if not d.get("ok"):
                     r["ok"] = False; r["error"] = d.get("error")
+            return self._send(200 if r.get("ok") else 400, r)
+        if u.path == "/api/language/voices":
+            # List selectable voices for a provider (Google = 30 prebuilt + local custom voices;
+            # ElevenLabs = live account lookup). Never returns any key.
+            provider = (body.get("provider") or "google").lower()
+            return self._send(200, qb_language.list_voices(provider))
+        if u.path == "/api/language/custom_voice":
+            # Build a Google custom (cloned) voice from an uploaded voice SAMPLE. Gated on
+            # explicit consent (covenant). The cloning key is stored locally and NEVER returned.
+            import base64 as _b64
+            action = (body.get("action") or "build").lower()
+            if action == "delete":
+                return self._send(200, qb_language.delete_custom_voice(body.get("name") or ""))
+            name = (body.get("name") or "").strip()
+            consent = bool(body.get("consent"))
+            audio_b64 = body.get("audio_b64") or ""
+            mime = body.get("mime") or ""
+            lang = body.get("language") or "en-US"
+            if not audio_b64:
+                return self._send(400, {"ok": False, "error": "a voice sample (audio_b64) is required"})
+            try:
+                audio = _b64.b64decode(audio_b64)
+            except Exception:
+                return self._send(400, {"ok": False, "error": "invalid audio_b64"})
+            r = qb_language.google_build_custom_voice(name, audio, consent=consent, language=lang, mime=mime)
             return self._send(200 if r.get("ok") else 400, r)
         if u.path == "/api/language/translate":
             # Deterministic dictionary translation (no LLM). text + src + dst.

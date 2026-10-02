@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.48 · 2026-10-02</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.49 · 2026-10-02</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -276,9 +276,77 @@
         <option value="google" selected>Google (Gemini) — neural</option>
         <option value="">Open-source (offline)</option>
         <option value="elevenlabs">ElevenLabs — neural</option></select>
-      <input id="speak-voice" placeholder="voice (optional)" style="width:130px;padding:6px 10px" title="Optional voice name/ID for the selected cloud engine (e.g. Kore for Google)">
+      <select id="speak-voice" style="padding:6px 8px;min-width:150px" title="Voice for the selected cloud engine"><option value="">default voice</option></select>
       <button class="btn" id="speak-btn" data-tip="Analyze the word's pronunciation and speak it aloud.">Analyze &amp; Speak</button>
     </div>
+
+    <details id="voicestyle" style="margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🎚️ Voice &amp; style — pick a voice and steer tone, emotion, accent, pace</summary>
+
+      <!-- Google (Gemini) natural-language style steering -->
+      <div id="gstyle" style="margin-top:8px">
+        <p class="note" style="margin:4px 0"><b>Google (Gemini):</b> choose a voice above, then steer delivery. These become a natural-language instruction Gemini follows while speaking.</p>
+        <div class="formrow" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+          <label style="font-size:13px">Tone
+            <select id="g-tone" style="padding:5px 7px"><option value="">—</option>
+              <option>neutral</option><option>warm</option><option>authoritative</option><option>friendly</option>
+              <option>formal</option><option>conversational</option><option>serious</option><option>playful</option></select></label>
+          <label style="font-size:13px">Emotion
+            <select id="g-emotion" style="padding:5px 7px"><option value="">—</option>
+              <option>calm</option><option>happy</option><option>excited</option><option>empathetic</option>
+              <option>sad</option><option>confident</option><option>urgent</option><option>soothing</option></select></label>
+          <label style="font-size:13px">Accent
+            <select id="g-accent" style="padding:5px 7px"><option value="">—</option>
+              <option value="American English">American</option><option value="British English">British</option>
+              <option value="Australian English">Australian</option><option value="Indian English">Indian</option>
+              <option value="Irish English">Irish</option><option value="Scottish English">Scottish</option></select></label>
+          <label style="font-size:13px">Pace
+            <select id="g-pace" style="padding:5px 7px"><option value="">—</option>
+              <option value="slowly">slow</option><option value="at a measured pace">measured</option>
+              <option value="at a natural pace">natural</option><option value="quickly">fast</option></select></label>
+          <label style="font-size:13px">Pitch
+            <select id="g-pitch" style="padding:5px 7px"><option value="">—</option>
+              <option value="in a low, deep voice">low / deep</option><option value="in a medium pitch">medium</option>
+              <option value="in a higher pitch">high</option></select></label>
+        </div>
+        <input id="g-direction" placeholder="Free-form acting direction, e.g. 'Read like a late-night radio host, with dramatic pauses'" style="width:100%;margin-top:8px;padding:6px 10px">
+        <div class="note" id="g-style-preview" style="margin-top:4px;font-style:italic"></div>
+      </div>
+
+      <!-- ElevenLabs voice controls -->
+      <div id="estyle" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:none">
+        <p class="note" style="margin:4px 0"><b>ElevenLabs:</b> model + voice settings.</p>
+        <div class="formrow" style="gap:12px;display:flex;flex-wrap:wrap;align-items:center">
+          <label style="font-size:13px">Model
+            <select id="e-model" style="padding:5px 7px">
+              <option value="eleven_multilingual_v2">Multilingual v2</option>
+              <option value="eleven_turbo_v2_5">Turbo v2.5</option>
+              <option value="eleven_flash_v2_5">Flash v2.5</option>
+              <option value="eleven_v3">v3 (expressive)</option></select></label>
+          <label style="font-size:13px">Stability <input id="e-stability" type="range" min="0" max="1" step="0.05" value="0.5" style="vertical-align:middle"> <span id="e-stability-v">0.50</span></label>
+          <label style="font-size:13px">Similarity <input id="e-similarity" type="range" min="0" max="1" step="0.05" value="0.75" style="vertical-align:middle"> <span id="e-similarity-v">0.75</span></label>
+          <label style="font-size:13px">Style <input id="e-style" type="range" min="0" max="1" step="0.05" value="0" style="vertical-align:middle"> <span id="e-style-v">0.00</span></label>
+          <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="e-boost" checked> speaker boost</label>
+        </div>
+      </div>
+
+      <!-- Google custom voice (voice sample -> cloned voice), consent-gated -->
+      <div id="gclone" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+        <p class="note" style="margin:4px 0"><b>Build a custom Google voice from a sample.</b> Record or upload a short, clean sample of the speaker's own voice; QueryBook builds a cloned voice you can then pick above. Requires the speaker's explicit consent — this is a biometric voice feature.</p>
+        <div class="formrow" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+          <input id="cv-name" placeholder="name this voice (e.g. Garry)" style="width:180px;padding:6px 10px">
+          <button class="btn ghost" id="cv-record" type="button">● Record sample</button>
+          <input id="cv-file" type="file" accept="audio/*" style="font-size:12px">
+          <span id="cv-sample" class="note"></span>
+        </div>
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="cv-consent"> I am (or am authorized by) the speaker and consent to creating a synthetic clone of this voice.</label>
+        <div class="formrow" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center;margin-top:6px">
+          <button class="btn" id="cv-build" type="button" disabled>Build custom voice</button>
+          <span id="cv-status" class="note"></span>
+        </div>
+        <audio id="cv-preview" controls hidden style="margin-top:6px;width:100%"></audio>
+      </div>
+    </details>
     <details style="margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
       <summary style="cursor:pointer;font-weight:600">🔊 Realistic neural voices (optional) — connect Google or ElevenLabs</summary>
       <p class="note" style="margin:6px 0">Add your own API key to use a realistic AI voice. Your key is stored <b>only on this computer</b> (a local, git-ignored file) and is <b>never shown back</b> or sent anywhere but the provider. The open-source engine stays the default and the offline fallback.</p>
@@ -511,8 +579,14 @@ function wireSpeak(){
       const ctrl=new AbortController(); const killer=setTimeout(()=>ctrl.abort(),20000);
       let resp;
       const provider=((document.getElementById('speak-engine')||{}).value||'');
-      const voice=((document.getElementById('speak-voice')||{}).value||'').trim();
-      try{ resp=await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang,provider:provider,voice:voice}),signal:ctrl.signal}); }
+      const vsel=(document.getElementById('speak-voice')||{}).value||'';
+      const req={text:t,lang:lang,provider:provider};
+      // A custom (cloned) Google voice is tagged "custom:" in the dropdown.
+      if(provider==='google' && vsel.indexOf('custom:')===0){ req.custom_voice=vsel.slice(7); }
+      else { req.voice=vsel.trim(); }
+      if(provider==='google'){ const st=buildGoogleStyle(); if(st) req.style=st; }
+      if(provider==='elevenlabs'){ req.settings=elevenSettings(); const m=($('e-model')||{}).value; if(m) req.model=m; }
+      try{ resp=await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req),signal:ctrl.signal}); }
       catch(ab){ clearTimeout(killer); qblog('speak.timeout'); out.innerHTML='<i>Speech took too long and was cancelled. Run <b>🔎 Voice diagnostics</b> or <b>Check espeak-ng</b> below to see why.</i>'; b.disabled=false; return; }
       clearTimeout(killer);
       const r=await resp.json();
@@ -1082,7 +1156,8 @@ if($('tts-check')) $('tts-check').onclick=async function(){
     const d=await (await fetch('api/language/tts_providers')).json();
     const c=d.cloud||{}; const parts=[];
     parts.push('Open-source (offline): '+(d.available?('available — '+d.engine):'not installed'));
-    parts.push('Google (Gemini): '+((c.google&&c.google.configured)?('configured ✓ (voice '+c.google.voice+')'):'not configured'));
+    var gcv=(c.google&&c.google.custom_voices)||[];
+    parts.push('Google (Gemini): '+((c.google&&c.google.configured)?('configured ✓ (voice '+c.google.voice+')'):'not configured')+(gcv.length?(' — custom voices: '+gcv.join(', ')):''));
     parts.push('ElevenLabs: '+((c.elevenlabs&&c.elevenlabs.configured)?('configured ✓ (voice '+c.elevenlabs.voice+')'):'not configured'));
     st.innerHTML=parts.join('<br>');
   }catch(e){ st.textContent='Check failed: '+e; }
@@ -1091,7 +1166,111 @@ if($('tts-check')) $('tts-check').onclick=async function(){
 // Remember the chosen voice engine across visits (default: Google).
 (function(){ var se=$('speak-engine'); if(!se) return;
   try{ var v=localStorage.getItem('qb-voice-engine'); if(v!==null) se.value=v; }catch(_){}
-  se.addEventListener('change',function(){ try{localStorage.setItem('qb-voice-engine',se.value);}catch(_){} }); })();
+  se.addEventListener('change',function(){ try{localStorage.setItem('qb-voice-engine',se.value);}catch(_){}
+    syncVoiceUI(); loadVoices(); });
+  syncVoiceUI(); loadVoices(); })();
+
+// ---- Voice & style controls (Google steering, ElevenLabs settings, custom voices) ----
+function curEngine(){ return (($('speak-engine')||{}).value||''); }
+
+// Show the style block that matches the engine; hide the cloud-only blocks for open-source.
+function syncVoiceUI(){
+  var eng=curEngine();
+  var vs=$('voicestyle'); if(vs) vs.style.display = eng?'':'none';
+  var g=$('gstyle'), e=$('estyle'), gc=$('gclone');
+  if(g) g.style.display = (eng==='google')?'':'none';
+  if(gc) gc.style.display = (eng==='google')?'':'none';
+  if(e) e.style.display = (eng==='elevenlabs')?'':'none';
+}
+
+// Build Gemini's natural-language style instruction from the selects + free-form direction.
+function buildGoogleStyle(){
+  var bits=[];
+  var tone=($('g-tone')||{}).value, emo=($('g-emotion')||{}).value, acc=($('g-accent')||{}).value,
+      pace=($('g-pace')||{}).value, pitch=($('g-pitch')||{}).value, dir=(($('g-direction')||{}).value||'').trim();
+  if(dir) bits.push(dir);
+  var delivery=[];
+  if(emo) delivery.push('in a '+emo);
+  if(tone) delivery.push((emo?'':'in a ')+tone+' tone');
+  if(acc) delivery.push('with a '+acc.toLowerCase()+' accent');
+  if(pitch) delivery.push(pitch);
+  if(pace) delivery.push(pace);
+  if(delivery.length) bits.push('Say this '+delivery.join(', '));
+  var s=bits.join('. ');
+  var prev=$('g-style-preview'); if(prev) prev.textContent = s?('Direction → '+s):'';
+  return s;
+}
+
+// ElevenLabs voice settings from the sliders.
+function elevenSettings(){
+  return {stability:parseFloat(($('e-stability')||{}).value||'0.5'),
+          similarity_boost:parseFloat(($('e-similarity')||{}).value||'0.75'),
+          style:parseFloat(($('e-style')||{}).value||'0'),
+          use_speaker_boost:!($('e-boost')&&!$('e-boost').checked)};
+}
+['g-tone','g-emotion','g-accent','g-pace','g-pitch','g-direction'].forEach(function(id){
+  var el=$(id); if(el) el.addEventListener('input',buildGoogleStyle); });
+[['e-stability','e-stability-v'],['e-similarity','e-similarity-v'],['e-style','e-style-v']].forEach(function(p){
+  var el=$(p[0]), lab=$(p[1]); if(el&&lab){ el.addEventListener('input',function(){ lab.textContent=parseFloat(el.value).toFixed(2); }); }});
+
+// Populate the voice dropdown for the current engine (Google = 30 prebuilt + custom; 11L = live).
+async function loadVoices(){
+  var sel=$('speak-voice'); if(!sel) return;
+  var eng=curEngine();
+  if(!eng){ sel.innerHTML='<option value="">(open-source uses the OS voice)</option>'; return; }
+  sel.innerHTML='<option value="">loading voices…</option>';
+  try{
+    var d=await (await fetch('api/language/voices',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({provider:eng})})).json();
+    var vs=(d&&d.voices)||[]; var html='<option value="">default voice</option>';
+    var pre=vs.filter(function(v){return v.kind!=='custom';}), cust=vs.filter(function(v){return v.kind==='custom';});
+    pre.forEach(function(v){ html+='<option value="'+v.id+'">'+v.name+(v.style?(' — '+v.style):'')+'</option>'; });
+    if(cust.length){ html+='<optgroup label="Your custom voices">';
+      cust.forEach(function(v){ html+='<option value="custom:'+v.id+'">'+v.name+' (cloned)</option>'; });
+      html+='</optgroup>'; }
+    sel.innerHTML=html;
+    if(d&&d.error && eng==='elevenlabs'){ sel.innerHTML='<option value="">default voice</option>'; }
+  }catch(e){ sel.innerHTML='<option value="">default voice</option>'; }
+}
+
+// ---- Build a custom Google voice from a recorded/uploaded sample (consent-gated) ----
+(function(){
+  var sampleB64=null, sampleMime='', rec=null, chunks=[];
+  function refreshBuild(){ var ok=(($('cv-name')||{}).value||'').trim() && sampleB64 && ($('cv-consent')&&$('cv-consent').checked);
+    if($('cv-build')) $('cv-build').disabled=!ok; }
+  if($('cv-name')) $('cv-name').addEventListener('input',refreshBuild);
+  if($('cv-consent')) $('cv-consent').addEventListener('change',refreshBuild);
+  function setSample(blob){ var fr=new FileReader(); fr.onload=function(){ var s=fr.result||''; var i=s.indexOf(',');
+      sampleB64=i>=0?s.slice(i+1):s; sampleMime=(blob.type||'audio/wav');
+      if($('cv-sample')) $('cv-sample').textContent='sample ready ('+Math.round((blob.size||0)/1024)+' KB)';
+      var pv=$('cv-preview'); if(pv){ pv.src=URL.createObjectURL(blob); pv.hidden=false; } refreshBuild(); };
+    fr.readAsDataURL(blob); }
+  if($('cv-file')) $('cv-file').addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; if(f) setSample(f); });
+  if($('cv-record')) $('cv-record').addEventListener('click',async function(){
+    var btn=$('cv-record');
+    if(rec && rec.state==='recording'){ rec.stop(); return; }
+    try{
+      var stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      chunks=[]; rec=new MediaRecorder(stream);
+      rec.ondataavailable=function(ev){ if(ev.data&&ev.data.size) chunks.push(ev.data); };
+      rec.onstop=function(){ stream.getTracks().forEach(function(t){t.stop();}); setSample(new Blob(chunks,{type:'audio/webm'})); btn.textContent='● Record sample'; };
+      rec.start(); btn.textContent='■ Stop recording';
+    }catch(err){ if($('cv-status')) $('cv-status').textContent='Microphone unavailable: '+err+' — use the file picker instead.'; }
+  });
+  if($('cv-build')) $('cv-build').addEventListener('click',async function(){
+    var st=$('cv-status'); var name=(($('cv-name')||{}).value||'').trim();
+    if(!sampleB64){ st.textContent='Record or choose a sample first.'; return; }
+    st.textContent='Building custom voice with Google…'; $('cv-build').disabled=true;
+    try{
+      var d=await (await fetch('api/language/custom_voice',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:name,consent:!!($('cv-consent')&&$('cv-consent').checked),audio_b64:sampleB64,mime:sampleMime,language:'en-US'})})).json();
+      if(d.ok){ st.innerHTML='✓ Built custom voice <b>'+name+'</b>. Pick it from the voice list above.';
+        if($('speak-engine')) $('speak-engine').value='google'; syncVoiceUI(); await loadVoices();
+        var sel=$('speak-voice'); if(sel) sel.value='custom:'+name; }
+      else { st.textContent='Could not build: '+(d.error||'unknown'); $('cv-build').disabled=false; }
+    }catch(e){ st.textContent='Build failed: '+e; $('cv-build').disabled=false; }
+  });
+})();
 
 // ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
 (function(){

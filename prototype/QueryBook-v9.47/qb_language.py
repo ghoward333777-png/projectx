@@ -1464,10 +1464,12 @@ def load_tts_keys():
     return {"google": {"key": gkey, "model": (g or {}).get("model") or "gemini-2.5-flash-preview-tts",
                        "voice": (g or {}).get("voice") or "Kore"},
             "elevenlabs": {"key": ekey, "voice": (e or {}).get("voice") or "21m00Tcm4TlvDq8ikWAM",
-                           "model": (e or {}).get("model") or "eleven_multilingual_v2"}}
+                           "model": (e or {}).get("model") or "eleven_multilingual_v2",
+                           "settings": (e or {}).get("settings") or {}}}
 
-def save_tts_key(provider, key=None, voice=None, model=None):
-    """Persist a cloud TTS key/voice to the LOCAL git-ignored file. Never committed."""
+def save_tts_key(provider, key=None, voice=None, model=None, settings=None):
+    """Persist a cloud TTS key/voice/settings to the LOCAL git-ignored file. Never committed.
+    `settings` (ElevenLabs) is a dict of voice controls merged into the saved defaults."""
     provider = (provider or "").lower()
     if provider not in ("google", "elevenlabs"):
         return {"ok": False, "error": "unknown provider"}
@@ -1480,12 +1482,15 @@ def save_tts_key(provider, key=None, voice=None, model=None):
         if key is not None and str(key).strip(): ent["key"] = str(key).strip()
         if voice: ent["voice"] = str(voice).strip()
         if model: ent["model"] = str(model).strip()
+        if isinstance(settings, dict):
+            cur = dict(ent.get("settings") or {}); cur.update(settings); ent["settings"] = cur
         cfg[provider] = ent
         with open(_tts_key_file(), "w", encoding="utf-8") as fh:
             _json.dump(cfg, fh)
         try: _osm.chmod(_tts_key_file(), 0o600)
         except Exception: pass
-        return {"ok": True, "provider": provider, "has_key": bool(ent.get("key")), "voice": ent.get("voice")}
+        return {"ok": True, "provider": provider, "has_key": bool(ent.get("key")),
+                "voice": ent.get("voice"), "settings": ent.get("settings")}
     except Exception as ex:
         return {"ok": False, "error": str(ex)}
 
@@ -1536,8 +1541,10 @@ def cloud_tts_status():
     dflt = default_tts_provider()
     return {"default": dflt, "effective_default": effective_default_provider() or "open-source",
             "google": {"configured": bool(k["google"]["key"]), "voice": k["google"]["voice"],
-                       "model": k["google"]["model"], "is_default": dflt == "google"},
+                       "model": k["google"]["model"], "is_default": dflt == "google",
+                       "custom_voices": sorted(_custom_voices().keys())},
             "elevenlabs": {"configured": bool(k["elevenlabs"]["key"]), "voice": k["elevenlabs"]["voice"],
+                           "settings": k["elevenlabs"].get("settings") or {},
                            "is_default": dflt == "elevenlabs"}}
 
 def _pcm_to_wav(pcm, rate=24000, ch=1, width=2):
@@ -1553,14 +1560,32 @@ def _http_post(url, data, headers, timeout=30):
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read(), resp.headers.get("Content-Type", "")
 
-def google_tts(text, lang="en", voice=None, key=None, model=None):
-    """Google Gemini TTS -> (WAV bytes, mime). Realistic neural voice. Raises on failure."""
+# The 30 Gemini TTS prebuilt voices (name, characteristic style).
+GOOGLE_VOICES = [
+    ("Zephyr", "Bright"), ("Puck", "Upbeat"), ("Charon", "Informative"), ("Kore", "Firm"),
+    ("Fenrir", "Excitable"), ("Leda", "Youthful"), ("Orus", "Firm"), ("Aoede", "Breezy"),
+    ("Callirrhoe", "Easy-going"), ("Autonoe", "Bright"), ("Enceladus", "Breathy"), ("Iapetus", "Clear"),
+    ("Umbriel", "Easy-going"), ("Algieba", "Smooth"), ("Despina", "Smooth"), ("Erinome", "Clear"),
+    ("Algenib", "Gravelly"), ("Rasalgethi", "Informative"), ("Laomedeia", "Upbeat"), ("Achernar", "Soft"),
+    ("Alnilam", "Firm"), ("Schedar", "Even"), ("Gacrux", "Mature"), ("Pulcherrima", "Forward"),
+    ("Achird", "Friendly"), ("Zubenelgenubi", "Casual"), ("Vindemiatrix", "Gentle"), ("Sadachbia", "Lively"),
+    ("Sadaltager", "Knowledgeable"), ("Sulafat", "Warm"),
+]
+
+def google_tts(text, lang="en", voice=None, key=None, model=None, style=None):
+    """Google Gemini TTS -> (WAV bytes, mime). Realistic neural voice with natural-language
+    style steering (tone/emotion/accent/pace/acting direction prepended as an instruction).
+    Raises on failure."""
     import urllib.error, base64, re as _re
     k = load_tts_keys()["google"]
     key = key or k["key"]; voice = voice or k["voice"]; model = model or k["model"]
     if not key: raise RuntimeError("no Google API key configured")
+    # Gemini steers style/emotion/accent/pace via a natural-language instruction on the prompt.
+    prompt = text
+    if style and str(style).strip():
+        prompt = "%s:\n%s" % (str(style).strip().rstrip(":"), text)
     url = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s" % (model, key)
-    body = _json.dumps({"contents": [{"parts": [{"text": text}]}],
+    body = _json.dumps({"contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseModalities": ["AUDIO"],
             "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}}}).encode("utf-8")
     try:
@@ -1574,15 +1599,166 @@ def google_tts(text, lang="en", voice=None, key=None, model=None):
     m = _re.search(r"rate=(\d+)", mime); rate = int(m.group(1)) if m else 24000
     return _pcm_to_wav(pcm, rate=rate), "audio/wav"
 
-def elevenlabs_tts(text, voice=None, key=None, model=None):
-    """ElevenLabs TTS -> (MP3 bytes, mime). Realistic neural voice. Raises on failure."""
+# ---- Google custom voice (Instant Custom Voice: a voice sample -> a cloned voice) ----
+# This uses the Cloud Text-to-Speech API (texttospeech.googleapis.com), which is a different
+# surface from the Gemini prebuilt voices above and must be enabled on the same Google project.
+# Instant Custom Voice is an allowlisted preview feature; building a voice REQUIRES the speaker's
+# explicit consent (QueryBook covenant: voice cloning stays behind the consent gate). The
+# resulting cloning key is a secret; it is stored ONLY in the local git-ignored key file.
+
+def google_build_custom_voice(name, audio_bytes, consent=False, consent_script=None,
+                              language="en-US", mime=None, key=None):
+    """Take a voice SAMPLE (WAV/MP3 bytes) and build a Google custom (cloned) voice.
+    Returns {ok, name} on success; the cloning key is stored locally and NEVER returned/echoed.
+    Requires explicit consent=True (covenant). Raises/returns error on failure."""
+    import urllib.error, base64
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "error": "a name for the custom voice is required"}
+    if not consent:
+        return {"ok": False, "error": "voice cloning requires explicit consent (covenant gate)"}
+    if not audio_bytes:
+        return {"ok": False, "error": "a voice sample (audio) is required"}
+    key = key or load_tts_keys()["google"]["key"]
+    if not key:
+        return {"ok": False, "error": "no Google API key configured"}
+    enc = "LINEAR16"
+    if mime and "mpeg" in str(mime).lower() or mime and "mp3" in str(mime).lower():
+        enc = "MP3"
+    script = (consent_script or
+              "I am the owner of this voice and I consent to Google using this sample to create a "
+              "synthetic version of my voice.")
+    body = _json.dumps({
+        "reference_audio": {"audio_config": {"audio_encoding": enc, "sample_rate_hertz": 24000},
+                            "content": base64.b64encode(audio_bytes).decode("ascii")},
+        "voice_talent_consent": {"audio_config": {"audio_encoding": enc, "sample_rate_hertz": 24000},
+                                 "content": base64.b64encode(audio_bytes).decode("ascii")},
+        "consent_script": script, "language_code": language,
+    }).encode("utf-8")
+    url = "https://texttospeech.googleapis.com/v1beta1/voices:generateVoiceCloningKey?key=%s" % key
+    try:
+        raw, _ct = _http_post(url, body, {"Content-Type": "application/json"}, timeout=60)
+    except urllib.error.HTTPError as he:
+        return {"ok": False, "error": "google custom-voice http %s: %s"
+                % (he.code, he.read().decode("utf-8", "ignore")[:200])}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+    data = _json.loads(raw)
+    ck = data.get("voiceCloningKey") or data.get("voice_cloning_key")
+    if not ck:
+        return {"ok": False, "error": "no cloning key returned"}
+    return _save_custom_voice(name, ck, language)
+
+def _save_custom_voice(name, cloning_key, language="en-US"):
+    """Persist a custom-voice cloning key to the LOCAL git-ignored file (never committed)."""
+    try:
+        try: cfg = _json.load(open(_tts_key_file(), encoding="utf-8"))
+        except Exception: cfg = {}
+        g = cfg.get("google") or {}
+        cv = g.get("custom_voices") or {}
+        cv[name] = {"cloning_key": cloning_key, "language": language, "created": int(time.time())}
+        g["custom_voices"] = cv; cfg["google"] = g
+        with open(_tts_key_file(), "w", encoding="utf-8") as fh:
+            _json.dump(cfg, fh)
+        try: _osm.chmod(_tts_key_file(), 0o600)
+        except Exception: pass
+        return {"ok": True, "name": name}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
+def _custom_voices():
+    """Local custom voices {name: {cloning_key, language, created}}. Never exposes keys upward."""
+    try:
+        cfg = _json.load(open(_tts_key_file(), encoding="utf-8")) or {}
+        return (cfg.get("google") or {}).get("custom_voices") or {}
+    except Exception:
+        return {}
+
+def delete_custom_voice(name):
+    """Forget a locally-stored custom voice (does not delete it from Google)."""
+    try:
+        cfg = _json.load(open(_tts_key_file(), encoding="utf-8")); g = cfg.get("google") or {}
+        cv = g.get("custom_voices") or {}
+        if name in cv: del cv[name]
+        g["custom_voices"] = cv; cfg["google"] = g
+        _json.dump(cfg, open(_tts_key_file(), "w", encoding="utf-8"))
+        return {"ok": True}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
+def google_custom_tts(text, custom_voice, key=None, language=None):
+    """Synthesize `text` with a previously-built Google custom (cloned) voice -> (WAV bytes, mime)."""
+    import urllib.error, base64
+    cv = _custom_voices().get(custom_voice)
+    if not cv:
+        raise RuntimeError("unknown custom voice: %s" % custom_voice)
+    key = key or load_tts_keys()["google"]["key"]
+    if not key: raise RuntimeError("no Google API key configured")
+    lang = language or cv.get("language") or "en-US"
+    body = _json.dumps({"input": {"text": text},
+        "voice": {"language_code": lang, "voice_clone": {"voice_cloning_key": cv["cloning_key"]}},
+        "audioConfig": {"audio_encoding": "LINEAR16", "sample_rate_hertz": 24000}}).encode("utf-8")
+    url = "https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=%s" % key
+    try:
+        raw, _ct = _http_post(url, body, {"Content-Type": "application/json"}, timeout=45)
+    except urllib.error.HTTPError as he:
+        raise RuntimeError("google custom-tts http %s: %s" % (he.code, he.read().decode("utf-8", "ignore")[:200]))
+    data = _json.loads(raw)
+    audio = data.get("audioContent") or data.get("audio_content")
+    if not audio: raise RuntimeError("no audio returned")
+    return base64.b64decode(audio), "audio/wav"
+
+def list_voices(provider="google"):
+    """List selectable voices for a provider. Google = the 30 prebuilt Gemini voices (static,
+    offline) plus any locally-built custom voices; ElevenLabs = a live account lookup. Never
+    returns any API key or cloning key."""
+    provider = (provider or "google").lower()
+    if provider == "google":
+        voices = [{"id": n, "name": n, "style": s, "kind": "prebuilt"} for (n, s) in GOOGLE_VOICES]
+        for nm, cv in sorted(_custom_voices().items()):
+            voices.append({"id": nm, "name": nm, "style": "custom (cloned)",
+                           "kind": "custom", "language": cv.get("language")})
+        return {"provider": "google", "voices": voices}
+    if provider == "elevenlabs":
+        import urllib.request, urllib.error
+        key = load_tts_keys()["elevenlabs"]["key"]
+        if not key:
+            return {"provider": "elevenlabs", "voices": [], "error": "no ElevenLabs API key configured"}
+        try:
+            req = urllib.request.Request("https://api.elevenlabs.io/v1/voices",
+                                         headers={"xi-api-key": key}, method="GET")
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = _json.loads(resp.read())
+            out = []
+            for v in data.get("voices", []):
+                out.append({"id": v.get("voice_id"), "name": v.get("name"),
+                            "style": v.get("category") or "", "kind": v.get("category") or "premade"})
+            return {"provider": "elevenlabs", "voices": out}
+        except urllib.error.HTTPError as he:
+            return {"provider": "elevenlabs", "voices": [],
+                    "error": "elevenlabs http %s" % he.code}
+        except Exception as ex:
+            return {"provider": "elevenlabs", "voices": [], "error": str(ex)}
+    return {"provider": provider, "voices": [], "error": "unknown provider"}
+
+def elevenlabs_tts(text, voice=None, key=None, model=None, settings=None):
+    """ElevenLabs TTS -> (MP3 bytes, mime). Realistic neural voice. `settings` overrides the
+    voice controls (stability, similarity_boost, style, use_speaker_boost). Raises on failure."""
     import urllib.error
     k = load_tts_keys()["elevenlabs"]
     key = key or k["key"]; voice = voice or k["voice"]; model = model or k["model"]
     if not key: raise RuntimeError("no ElevenLabs API key configured")
+    vs = {"stability": 0.5, "similarity_boost": 0.75}
+    sv = dict(k.get("settings") or {})           # saved defaults
+    if isinstance(settings, dict): sv.update(settings)   # per-request override
+    for name in ("stability", "similarity_boost", "style"):
+        if sv.get(name) is not None:
+            try: vs[name] = float(sv[name])
+            except Exception: pass
+    if sv.get("use_speaker_boost") is not None:
+        vs["use_speaker_boost"] = bool(sv["use_speaker_boost"])
     url = "https://api.elevenlabs.io/v1/text-to-speech/%s" % voice
-    body = _json.dumps({"text": text, "model_id": model,
-                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}).encode("utf-8")
+    body = _json.dumps({"text": text, "model_id": model, "voice_settings": vs}).encode("utf-8")
     try:
         raw, _ct = _http_post(url, body, {"xi-api-key": key, "Content-Type": "application/json",
                                           "Accept": "audio/mpeg"}, timeout=30)
@@ -1590,17 +1766,27 @@ def elevenlabs_tts(text, voice=None, key=None, model=None):
         raise RuntimeError("elevenlabs http %s: %s" % (he.code, he.read().decode("utf-8", "ignore")[:200]))
     return raw, "audio/mpeg"
 
-def cloud_tts(text, lang="en", provider="google", voice=None):
-    """Dispatch to a cloud provider. Returns {engine, wav_bytes, mime} or raises."""
+def cloud_tts(text, lang="en", provider="google", voice=None, style=None, settings=None,
+              custom_voice=None, model=None):
+    """Dispatch to a cloud provider. `style` = Gemini natural-language steering (tone/emotion/
+    accent/pace/acting direction); `settings` = ElevenLabs voice controls; `custom_voice` = a
+    locally-built Google cloned voice; `model` = provider model override. Returns
+    {engine, wav_bytes, mime} or raises."""
     provider = (provider or "").lower()
     if provider == "google":
-        data, mime = google_tts(text, lang, voice); return {"engine": "google-gemini-tts", "wav_bytes": data, "mime": mime}
+        if custom_voice:
+            data, mime = google_custom_tts(text, custom_voice, language=(lang if "-" in (lang or "") else None))
+            return {"engine": "google-custom-voice", "wav_bytes": data, "mime": mime}
+        data, mime = google_tts(text, lang, voice, model=model, style=style)
+        return {"engine": "google-gemini-tts", "wav_bytes": data, "mime": mime}
     if provider == "elevenlabs":
-        data, mime = elevenlabs_tts(text, voice); return {"engine": "elevenlabs", "wav_bytes": data, "mime": mime}
+        data, mime = elevenlabs_tts(text, voice, model=model, settings=settings)
+        return {"engine": "elevenlabs", "wav_bytes": data, "mime": mime}
     raise RuntimeError("unknown cloud provider: %s" % provider)
 
 
-def speak(text, out_path=None, lang="en", provider=None, voice=None):
+def speak(text, out_path=None, lang="en", provider=None, voice=None, style=None, settings=None,
+          custom_voice=None, model=None):
     """Phase 4b: synthesize `text` to audio. The open-source engine is the default and the
     offline fallback; an OPTIONAL cloud `provider` ('google'|'elevenlabs') gives a realistic
     neural voice when a key is configured, and falls back to the open-source engine on any
@@ -1623,7 +1809,8 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None):
     if prov in ("google", "elevenlabs"):
         _t0 = time.time()
         try:
-            c = cloud_tts(text, lang, prov, voice)
+            c = cloud_tts(text, lang, prov, voice, style=style, settings=settings,
+                          custom_voice=custom_voice, model=model)
             if c.get("wav_bytes"):
                 _espeak_log("cloud-ok", provider=prov, ms=int((time.time() - _t0) * 1000), chars=len(text))
                 return {"available": True, "engine": c["engine"], "lang": lang,
