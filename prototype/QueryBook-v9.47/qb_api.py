@@ -281,7 +281,10 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
                           "/api/language/custom_voice", "/api/language/dialects",
                           "/api/language/dialect_detect", "/api/mirror", "/api/help") \
-                and not u.path.startswith("/api/director/"):
+                and not u.path.startswith("/api/director/") \
+                and not u.path.startswith("/api/lil/") \
+                and not u.path.startswith("/api/pil/") \
+                and not u.path.startswith("/api/query/"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -540,6 +543,41 @@ class H(BaseHTTPRequestHandler):
                     observed_per_iteration=body.get("observed_per_iteration"),
                     model=body.get("model") or "veo-3.0-generate-preview"))
             return self._send(404, {"error": "unknown director endpoint"})
+        if u.path.startswith("/api/lil/"):
+            # LIL voiceprint (consent-gated, deterministic). audio_b64 = 16-bit PCM WAV.
+            import qb_lil
+            tail = u.path[len("/api/lil/"):]
+            audio = body.get("audio_b64")
+            if tail == "enroll":
+                return self._send(200, qb_lil.enroll(body.get("name"), audio,
+                    consent=bool(body.get("consent")), email=body.get("email"),
+                    venue=body.get("venue"), event=body.get("event")))
+            if tail == "match":
+                return self._send(200, qb_lil.match(audio))
+            if tail == "authenticate":
+                return self._send(200, qb_lil.authenticate(body.get("name"), audio))
+            if tail == "profiles":
+                return self._send(200, qb_lil.list_profiles())
+            if tail == "delete":
+                return self._send(200, qb_lil.delete(body.get("name")))
+            return self._send(404, {"error": "unknown lil endpoint"})
+        if u.path == "/api/pil/analyze":
+            # PIL paralinguistic estimate from audio (+ optional transcript).
+            import qb_pil
+            return self._send(200, qb_pil.analyze(body.get("audio_b64"), body.get("text")))
+        if u.path == "/api/pil/interpret":
+            import qb_pil
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._send(400, {"error": "text required"})
+            return self._send(200, qb_pil.interpret_query(text))
+        if u.path == "/api/query/understand":
+            # Deterministic query plan (entities/predicate/intent/scope/expansion/pragmatics).
+            import qb_query
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._send(400, {"error": "text required"})
+            return self._send(200, qb_query.understand(text))
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.
