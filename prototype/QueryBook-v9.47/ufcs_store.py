@@ -349,16 +349,130 @@ def arithmetic_records(start_n=1):
             yield n, make_packet(f"{n} × {b}", "equals", str(n * b), domain="arithmetic")
         n += 1
 
+# ---------------------------------------------------------------------------
+# Staged ingestion domains (Wave 2): History, News, Culture, Art.
+# Each generator is FINITE and yields either (a) rule-TRUE facts (definitionally
+# true, trust 0.99, like the math domains) or (b) curated public-domain reference
+# facts stored as ATTRIBUTED claims (source names the reference; 'recorded by X'
+# is not 'asserted true'). Nothing is fabricated; sample/news items are labelled.
+# ---------------------------------------------------------------------------
+_HIST_SRC = ("SRC-HIST", "Public-domain historical reference", "attributed", 0.9)
+_CURATED_HISTORY = [
+    ("476", "Western Roman Empire falls"), ("1066", "Norman conquest of England"),
+    ("1215", "Magna Carta sealed"), ("1440", "Gutenberg printing press"),
+    ("1492", "Columbus crosses the Atlantic"), ("1543", "Copernicus publishes heliocentrism"),
+    ("1687", "Newton publishes the Principia"), ("1776", "US Declaration of Independence"),
+    ("1789", "French Revolution begins"), ("1804", "Haitian independence"),
+    ("1859", "Darwin publishes On the Origin of Species"), ("1865", "US Civil War ends"),
+    ("1885", "First automobile (Benz)"), ("1903", "First powered flight (Wright)"),
+    ("1945", "Second World War ends"), ("1947", "Transistor invented"),
+    ("1969", "First Moon landing"), ("1989", "World Wide Web proposed"),
+    ("1991", "Public Internet expands"), ("2007", "First smartphone era begins"),
+]
+
+def history_records(start_n=1):
+    """Curated attributed milestones, then rule-TRUE temporal facts over years 1..2025."""
+    import datetime
+    idx = int(start_n) if int(start_n) >= 1 else 1
+    k = len(_CURATED_HISTORY)
+    n = idx
+    # Phase A: curated attributed events.
+    while n <= k:
+        yr, desc = _CURATED_HISTORY[n - 1]
+        yield n, make_packet("year %s" % yr, "recorded_event", desc, domain="history",
+                             source=_HIST_SRC, trust=0.9)
+        n += 1
+    # Phase B: rule-true temporal facts (definitionally true) for each year.
+    for yr in range(1, 2026):
+        n += 1
+        century = (yr - 1) // 100 + 1
+        decade = (yr // 10) * 10
+        leap = (yr % 4 == 0 and (yr % 100 != 0 or yr % 400 == 0))
+        yield n, make_packet("year %d" % yr, "in_century", str(century), domain="history")
+        yield n, make_packet("year %d" % yr, "in_decade", "%ds" % decade, domain="history")
+        yield n, make_packet("year %d" % yr, "is_leap_year", "yes" if leap else "no", domain="history")
+
+_NEWS_SRC = ("SRC-NEWS-SAMPLE", "Bundled EXAMPLE news item (not live)", "attributed", 0.5)
+_SAMPLE_NEWS = [
+    ("Example Daily", "reports a local council approved a new transit line"),
+    ("Example Wire", "reports researchers published an open dataset"),
+    ("Example Times", "reports a regional festival drew record attendance"),
+    ("Example Post", "reports a new public library branch opened"),
+    ("Example Herald", "reports a city adopted a tree-planting program"),
+]
+
+def news_records(start_n=1):
+    """Bundled EXAMPLE attributed items (clearly not live news). Live news is web-agent driven."""
+    idx = int(start_n) if int(start_n) >= 1 else 1
+    for i in range(idx, len(_SAMPLE_NEWS) + 1):
+        outlet, claim = _SAMPLE_NEWS[i - 1]
+        yield i, make_packet(outlet, "sample_reports", claim, domain="news",
+                             source=_NEWS_SRC, trust=0.5)
+
+_CULT_SRC = ("SRC-CULT", "Public-domain cultural reference", "attributed", 0.9)
+_CURATED_CULTURE = [
+    ("Romance languages", "descend_from", "Latin"), ("Japanese tea ceremony", "origin", "Japan"),
+    ("Flamenco", "origin", "Andalusia, Spain"), ("Haiku", "form", "Japanese 5-7-5 verse"),
+    ("Diwali", "is_a", "festival of lights"), ("Lunar New Year", "observed_in", "East Asia"),
+    ("Oktoberfest", "origin", "Munich, Germany"), ("Capoeira", "origin", "Brazil"),
+    ("Gamelan", "is_a", "Indonesian ensemble music"), ("Origami", "is_a", "Japanese paper folding"),
+]
+
+def culture_records(start_n=1):
+    """Curated attributed cultural reference facts, then rule-true calendar facts."""
+    idx = int(start_n) if int(start_n) >= 1 else 1
+    k = len(_CURATED_CULTURE)
+    n = idx
+    while n <= k:
+        s, p, o = _CURATED_CULTURE[n - 1]
+        yield n, make_packet(s, p, o, domain="culture", source=_CULT_SRC, trust=0.9)
+        n += 1
+    months = [("January",31),("February",28),("March",31),("April",30),("May",31),("June",30),
+              ("July",31),("August",31),("September",30),("October",31),("November",30),("December",31)]
+    for name, days in months:
+        n += 1
+        yield n, make_packet(name, "days_in_common_year", str(days), domain="culture")
+
+_ART_SRC = ("SRC-ART", "Public-domain art reference", "attributed", 0.9)
+_CURATED_ART = [
+    ("Mona Lisa", "painted_by", "Leonardo da Vinci"), ("The Starry Night", "painted_by", "Vincent van Gogh"),
+    ("Impressionism", "period", "late 19th century"), ("Cubism", "founded_by", "Picasso and Braque"),
+    ("The Night Watch", "painted_by", "Rembrandt"), ("Guernica", "painted_by", "Pablo Picasso"),
+    ("Baroque", "period", "17th century"), ("Surrealism", "period", "early 20th century"),
+    ("The Great Wave", "created_by", "Hokusai"), ("Renaissance", "origin", "15th-century Italy"),
+]
+
+def art_records(start_n=1):
+    """Curated attributed art-history facts, then rule-true color facts (grayscale hex)."""
+    idx = int(start_n) if int(start_n) >= 1 else 1
+    k = len(_CURATED_ART)
+    n = idx
+    while n <= k:
+        s, p, o = _CURATED_ART[n - 1]
+        yield n, make_packet(s, p, o, domain="art", source=_ART_SRC, trust=0.9)
+        n += 1
+    for v in range(0, 256):
+        n += 1
+        yield n, make_packet("grayscale level %d" % v, "hex", "#%02x%02x%02x" % (v, v, v), domain="art")
+
 # Per-domain harvest logic + the AI strategy each domain uses.
 DOMAIN_GEN = {
     "mathematics": det_records,
     "geometry": geo_records,
     "arithmetic": arithmetic_records,
+    "history": history_records,
+    "news": news_records,
+    "culture": culture_records,
+    "art": art_records,
 }
 DOMAIN_STRATEGY = {
     "mathematics": "Entity-first + confidence-weighted extraction",
     "geometry":    "Adaptive depth + ontology alignment",
     "arithmetic":  "Parallel batch generation",
+    "history":     "Curated attributed events + rule-true temporal facts",
+    "news":        "Attributed web harvest (sample seed bundled; live via web agent)",
+    "culture":     "Curated attributed references + rule-true calendar facts",
+    "art":         "Curated attributed works + rule-true color facts",
 }
 def domain_list():
     return [{"domain": d, "strategy": DOMAIN_STRATEGY.get(d, "structured"),
