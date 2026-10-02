@@ -284,7 +284,8 @@ class H(BaseHTTPRequestHandler):
                 and not u.path.startswith("/api/director/") \
                 and not u.path.startswith("/api/lil/") \
                 and not u.path.startswith("/api/pil/") \
-                and not u.path.startswith("/api/query/"):
+                and not u.path.startswith("/api/query/") \
+                and u.path not in ("/api/ontology", "/api/assess"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -578,6 +579,26 @@ class H(BaseHTTPRequestHandler):
             if not text:
                 return self._send(400, {"error": "text required"})
             return self._send(200, qb_query.understand(text))
+        if u.path == "/api/ontology":
+            # Concept graph from the store (or supplied triples). type=path for a concept path.
+            import qb_ontology
+            tris = body.get("triples")
+            g = qb_ontology.build([tuple(t) for t in tris]) if tris else qb_ontology.from_store(DATA_DIR, int(body.get("limit", 3000)))
+            if body.get("from") and body.get("to"):
+                return self._send(200, {"path": qb_ontology.concept_path(g, body["from"], body["to"]),
+                                        "counts": g.get("counts", {})})
+            return self._send(200, qb_ontology.public(g))
+        if u.path == "/api/assess":
+            # Generate assessment items from the store (or supplied triples).
+            import qb_assess
+            tris = body.get("triples")
+            if tris:
+                items = qb_assess.items_from_triples([tuple(t) for t in tris],
+                                                     max_items=int(body.get("count", 20)))
+            else:
+                items = qb_assess.from_store(DATA_DIR, max_items=int(body.get("count", 20)),
+                                             domain=body.get("domain"))
+            return self._send(200, {"items": items, "count": len(items)})
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.
