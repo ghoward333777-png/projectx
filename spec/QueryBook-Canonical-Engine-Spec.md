@@ -168,3 +168,19 @@ the UIAS ensemble; and **fact-level erasure / hash-only storage** realizes conte
 one-way identity. The primitives are **BUILT**; the packaged UIAS service is **[ROADMAP/SPEC]**. Full
 detail: *QueryBook UIAS — Universal Integrity Audit Service Specification*; Provisional Patent
 Section X ([0037]–[0040]), claims 39–46, FIG. 35–36; Bible UIAS amendment; Registry [204]–[209].
+
+---
+
+## 15. Interpretation note — PIL (Paralinguistic & Pragmatic Interpretation Layer) (2026-10-02)
+QueryBook interprets **how** an utterance is spoken and **in what human frame** via the
+**Paralinguistic & Pragmatic Interpretation Layer (PIL)**, applied to ingested voices and to human
+queries. Paralinguistic readings (tone, pacing, affect) are **labeled estimates** — measured
+signal features, never assertions of a person's feelings; pragmatic frames (context, perspective,
+ergonomics, culture, social mores) come from **sourced, provenance-tracked packs**, unknown rather
+than guessed when absent. A materially ambiguous interpretation **halts and asks** (§5 gate
+discipline); for a query, PIL sets which question is answered and the register/ergonomic delivery,
+but the **answer's facts remain store-sourced and refusable** (§5). The acoustic paralinguistic
+analysis is **BUILT** (Voice Lab, extended with pacing + labeled arousal); the pragmatic stack and
+query front stage are **[ROADMAP/SPEC]**. Full detail: *QueryBook PIL — Paralinguistic & Pragmatic
+Interpretation Layer Specification*; Provisional Patent Section XI ([0041]–[0044]), claims 47–54,
+FIG. 37–38; Bible PIL amendment; Registry [210]–[214].

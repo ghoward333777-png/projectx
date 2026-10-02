@@ -98,14 +98,18 @@ label.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--mute
   <!-- TONE & VOLUME -->
   <div class="card">
     <h2>Tone &amp; volume (measured)</h2>
-    <p class="sub">Real acoustic analysis of your voice while you speak — loudness, pitch, and a cautious
-    emphasis estimate. These are measured signal features, not a claim about your feelings.</p>
+    <p class="sub">Real acoustic analysis of your voice while you speak — loudness, pitch, pacing, and cautious
+    emphasis and arousal estimates. These are measured signal features and labeled estimates, <b>not a claim
+    about your feelings</b>.</p>
     <div class="meterwrap"><div class="meter"><span id="volbar"></span></div></div>
     <div class="stats">
       <div class="stat"><div class="n" id="s-db">—</div><div class="k">Loudness (dB)</div></div>
       <div class="stat"><div class="n" id="s-pitch">—</div><div class="k">Pitch (Hz)</div></div>
       <div class="stat"><div class="n" id="s-reg">—</div><div class="k">Register</div></div>
       <div class="stat"><div class="n" id="s-emph">—</div><div class="k">Emphasis (est.)</div></div>
+      <div class="stat"><div class="n" id="s-pace">—</div><div class="k">Pace (syll/s)</div></div>
+      <div class="stat"><div class="n" id="s-pause">—</div><div class="k">Last pause (ms)</div></div>
+      <div class="stat"><div class="n" id="s-arousal">—</div><div class="k">Arousal (est.)</div></div>
     </div>
     <div class="note" id="tone-note" aria-live="polite">Start listening to see live tone and volume.</div>
   </div>
@@ -166,6 +170,10 @@ const BCP={en:'en-US',es:'es-ES',fr:'fr-FR',de:'de-DE',pt:'pt-PT',it:'it-IT',sv:
 const AC=window.AudioContext||window.webkitAudioContext;
 let actx,analyser,micStream,tbuf,fbuf,running=false;
 let pitchHist=[],dbBaseline=null;
+// --- PIL paralinguistic: pacing (onset rate + pauses) + labeled arousal estimate (deterministic) ---
+let onsetTimes=[], wasVoiced=false, silenceStart=null, lastPauseMs=0;
+function _std(a){ if(a.length<2)return 0; const m=a.reduce((x,y)=>x+y,0)/a.length;
+  return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length); }
 async function ensureMic(){
   if(micStream) return true;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ return false; }
@@ -195,7 +203,19 @@ function toneLoop(){
   const f=feature();
   const pct=Math.max(0,Math.min(100,(f.db+70)/70*100));
   $('volbar').style.width=pct+'%';
-  if(f.r>0.012){
+  const now=performance.now(), voiced=f.r>0.012;
+  // --- pacing: count voiced onsets (unvoiced->voiced transitions) ~ syllable rate; track pauses ---
+  if(voiced && !wasVoiced){
+    onsetTimes.push(now); if(onsetTimes.length>40)onsetTimes.shift();
+    if(silenceStart!=null){ lastPauseMs=Math.round(now-silenceStart); silenceStart=null;
+      try{ $('s-pause').textContent=lastPauseMs; }catch(e){} }
+  }
+  if(!voiced && wasVoiced){ silenceStart=now; }
+  wasVoiced=voiced;
+  const recent=onsetTimes.filter(t=>now-t<=3000);
+  const rate=recent.length>1?(recent.length-1)/((now-recent[0])/1000||1):0;
+  try{ $('s-pace').textContent=rate>0?rate.toFixed(1):'—'; }catch(e){}
+  if(voiced){
     if(dbBaseline==null)dbBaseline=f.db; else dbBaseline=dbBaseline*0.98+f.db*0.02;
     $('s-db').textContent=f.db.toFixed(0);
     if(f.pitch){ $('s-pitch').textContent=f.pitch.toFixed(0); pitchHist.push(f.pitch); if(pitchHist.length>60)pitchHist.shift(); }
@@ -203,7 +223,14 @@ function toneLoop(){
     const reg=p?(p<140?'low':p<220?'mid':'high'):'—'; $('s-reg').textContent=reg;
     const loud=f.db>dbBaseline+6, rising=pitchHist.length>8&&(pitchHist[pitchHist.length-1]>pitchHist[pitchHist.length-8]+15);
     const emph=loud&&rising?'strong':loud?'raised':rising?'rising':'even'; $('s-emph').textContent=emph;
-    $('tone-note').textContent='Measured: '+f.db.toFixed(0)+' dB, '+(p?p.toFixed(0)+' Hz '+reg+' register':'unvoiced')+', emphasis '+emph+' (acoustic estimate).';
+    // --- labeled arousal ESTIMATE: pitch variability + loudness-above-baseline + pace (NOT a feeling) ---
+    const pstd=_std(pitchHist.slice(-20)), above=Math.max(0,f.db-(dbBaseline||f.db));
+    const score=(pstd/40)+(above/10)+(rate/5);
+    const arousal=score>2.2?'high (agitated-sounding)':score>1.3?'elevated':score>0.6?'moderate':'low (calm-sounding)';
+    try{ $('s-arousal').textContent=arousal; }catch(e){}
+    $('tone-note').textContent='Measured: '+f.db.toFixed(0)+' dB, '+(p?p.toFixed(0)+' Hz '+reg+' register':'unvoiced')
+      +', emphasis '+emph+', pace '+(rate>0?rate.toFixed(1)+' syll/s':'—')+', arousal '+arousal
+      +' — acoustic ESTIMATES, not a claim about your feelings.';
   }
   requestAnimationFrame(toneLoop);
 }

@@ -3957,3 +3957,54 @@ FEATURE COUNT: 213 (207 + 6 UIAS features, [204]-[209]); [204]-[209] are SPEC
 Patent Section X ([0037]-[0040]), claims 39-46, FIG. 35-36; Bible amendment
 "Universal Integrity Audit Service (UIAS) (2026-10-01)"; Canonical Engine Spec
 service note.
+
+
+================================================================
+ADDITIVE REVISION - PARALINGUISTIC & PRAGMATIC INTERPRETATION (PIL) (2026-10-02)
+================================================================
+New QueryBook subsystem: the Paralinguistic & Pragmatic Interpretation Layer
+(PIL) - judges HOW an utterance is spoken (tone, pacing, emotion) and IN WHAT
+HUMAN FRAME it occurs (context, perspective, ergonomics, culture, social mores),
+and applies that interpretation to (A) voices QueryBook ingests and (B) human
+queries put to QueryBook. In the LEL/LIL/SLPL family.
+
+[210] 21.1 - Paralinguistic analysis (measured estimates)  [PARTIAL: acoustic BUILT]
+      From the voice signal: tone (pitch/register/contour), volume (loudness dB),
+      pacing/spacing (speaking rate, pauses, rhythm), emphasis, and a LABELED
+      arousal/affect ESTIMATE (confidence-scored; never asserted as a true
+      feeling). Loudness/pitch/register/emphasis built in the Voice Lab;
+      this revision adds deterministic PACING + labeled AROUSAL (on-device,
+      consent-gated). Formants/jitter/shimmer remain roadmap (see LIL).
+
+[211] 21.2 - Pragmatic framing (sourced)  [SPEC]
+      Applies, from auditable provenance-tracked resources, annotations for
+      context, perspective, ergonomics, culture, and social mores. Delivered as
+      pluggable culture/register/ergonomics PACKS, domain/locale-partitioned
+      like the language packs. Absent pack -> UNKNOWN, never a guess/stereotype.
+
+[212] 21.3 - Interpretation Frame (Fact Units)  [SPEC]
+      Each utterance/query -> one Interpretation Frame = {labeled paralinguistic
+      estimates} + {sourced pragmatic annotations} + confidence/trust, written
+      as provenance-tracked Fact Units. Feeds (A) the ingestion record and
+      (B) the query pipeline.
+
+[213] 21.4 - Query interpretation front stage  [SPEC]
+      Front stage of PLAN->RETRIEVE->GATE->COMPOSE->CHECK: interpret query ->
+      disambiguate intent (context/perspective) -> AMBIGUITY GATE (ask ONE
+      clarifying question + halt when intent materially uncertain) -> select
+      register & ergonomic delivery mode (culture/mores/ergonomics) -> answer
+      from verified Fact Units in that register. Interpretation sets WHICH
+      question and HOW phrased/delivered; FACTS unchanged (cite or refuse).
+
+[214] 21.5 - Interpretation covenant  [enforced by design]
+      Estimates labeled + never asserted as feelings; frames sourced + trust-
+      scored + correctable; ambiguity asked not guessed; facts only from the
+      store; consent + privacy (no feelings-dossier); no fabricated culture.
+      Acoustic/model-proposed readings statistical (labeled); framing, gating,
+      register selection, and provenance deterministic.
+
+FEATURE COUNT: 218 (213 + 5 PIL features, [210]-[214]); acoustic paralinguistic
+reduced to practice, pragmatic stack + query front stage SPEC. Cross-refs: PIL
+Interpretation-Layer Specification (Word); Provisional Patent Section XI
+([0041]-[0044]), claims 47-54, FIG. 37-38; Bible amendment "Paralinguistic &
+Pragmatic Interpretation Layer (PIL) (2026-10-02)"; Canonical Engine Spec note.

@@ -435,6 +435,59 @@ s += arrow(360, 440, 360, 470)
 s += '</svg>'
 FIGS.append((36, "UIAS — Signed Proof Package Generation", s))
 
+# ===================== FIG. 37 — PIL paralinguistic + pragmatic interpretation of an ingested voice =====================
+w, h = 720, 700
+s = svg_open(w, h)
+s += box(90, 16, 540, 42, ["PIL — PARALINGUISTIC & PRAGMATIC INTERPRETATION",
+                           "OF AN INGESTED VOICE (estimates labeled · frames sourced)"], "1200")
+s += box(270, 72, 180, 44, ["Ingested voice", "(consent-gated)"], "1201")
+s += arrow(360, 116, 360, 138)
+s += box(230, 138, 260, 40, ["Transcription (words)"], "1202")
+s += arrow(240, 178, 170, 210); s += arrow(480, 178, 560, 210)
+# paralinguistic (left)
+s += box(30, 210, 300, 46, ["Paralinguistic Analyzer (measured)"], "1203")
+s += box(30, 262, 300, 64, ["tone/pitch/register · loudness(dB) ·", "pacing(rate,pauses) · emphasis ·",
+                            "arousal ESTIMATE (labeled, conf.)"], "1204")
+# pragmatic (right)
+s += box(390, 210, 300, 46, ["Pragmatic Framer (sourced)"], "1205")
+s += box(390, 262, 300, 64, ["context · perspective · ergonomics ·", "culture · social mores",
+                             "(from provenance-tracked packs)"], "1206")
+s += arrow(180, 326, 300, 372); s += arrow(540, 326, 420, 372)
+s += box(210, 372, 300, 66, ["INTERPRETATION FRAME", "(labeled estimates + sourced frames,",
+                             "with confidence/trust)"], "1207")
+s += arrow(360, 438, 360, 464)
+s += box(230, 464, 260, 46, ["Written as provenance-tracked", "Fact Units on the ingested content"], "1208")
+s += box(90, 552, 540, 56, ["Covenant: estimates never asserted as true feelings; frames sourced &",
+                            "correctable; unknown is marked, not guessed; consent; no feelings-dossier"], "1209", dashed=True)
+s += arrow(360, 510, 360, 552)
+s += '</svg>'
+FIGS.append((37, "PIL — Paralinguistic and Pragmatic Interpretation of an Ingested Voice", s))
+
+# ===================== FIG. 38 — PIL query interpretation (intent, register, clarify-or-answer gate) =====================
+w, h = 720, 620
+s = svg_open(w, h)
+s += box(120, 16, 480, 42, ["PIL — HUMAN QUERY INTERPRETATION",
+                            "(shapes WHICH question & HOW; facts still from the verified store)"], "1210")
+s += box(270, 72, 180, 44, ["Human query", "(typed or spoken)"], "1211")
+s += arrow(360, 116, 360, 138)
+s += box(250, 138, 220, 44, ["Interpretation Frame", "(para + pragmatic)"], "1212")
+s += arrow(360, 182, 360, 206)
+s += box(240, 206, 240, 46, ["Intent disambiguation", "(context · perspective)"], "1213")
+s += arrow(360, 252, 360, 276)
+s += box(255, 276, 210, 48, ["AMBIGUITY GATE"], "1214")
+s += arrow(255, 300, 110, 344); s += label(95, 338, "ambiguous", 10)
+s += box(40, 344, 170, 48, ["Ask ONE clarifying", "question · stop"], "1215")
+s += arrow(430, 324, 430, 352); s += label(438, 344, "resolved", 10)
+s += box(330, 352, 220, 46, ["Register & ergonomic", "mode selector"], "1216")
+s += box(560, 352, 120, 46, ["culture · mores ·", "ergonomics packs"], "1217")
+s += arrow(560, 375, 550, 375)
+s += arrow(440, 398, 440, 424)
+s += box(250, 424, 300, 50, ["PLAN→RETRIEVE→GATE→COMPOSE→CHECK", "(verified Fact Units; cite or refuse)"], "1218")
+s += arrow(400, 474, 400, 500)
+s += box(230, 500, 340, 48, ["Answer composed IN the selected register/mode", "— facts unchanged, sourced or refused"], "1219")
+s += '</svg>'
+FIGS.append((38, "PIL — Human Query Interpretation and Covenant-Bound Answering", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -463,6 +516,8 @@ descr = {
  34: "is a flow diagram of the LIL trust-gated voice authentication process, in which a claimed-identity verification produces a match score and anti-spoofing signals that feed a deterministic risk-scoring policy and a decision gate returning accept, challenge (second factor), or reject, each decision recorded as a provenance-tracked auth-event Fact Unit, per Section IX.",
  35: "is a block diagram of the Universal Integrity Audit Service (UIAS), in which connector and ingestion agents observe an unmodified monitored system at multiple workflow positions and seal each observable event as a content-addressed Fact Unit carrying a content hash, a one-way submitter-identity hash, an independent nanosecond timestamp, a source fingerprint, and the sealing agent's identity; a similarity-detection agent sets a contemporaneous cross-party anomaly flag over content signatures without storing content; and a verification agent continuously re-verifies the append-only Fact-Unit ledger, per Section X.",
  36: "is a flow diagram of the UIAS signed Proof Package generation, in which, on an accusation or inquiry, a proof-package agent assembles verified sealed Fact Units, the similarity-log entry, a chronological ledger extract bound by the response-provenance hash, and a factual determination from the arbitration agent under the Prime-Directive gate, and signs the package under the UIAS independent identity to produce independent, pre-dispute, tamper-proof, complete, and admissible evidence, per Section X.",
+ 37: "is a data-flow diagram of the Paralinguistic & Pragmatic Interpretation Layer (PIL) applied to an ingested voice, in which a paralinguistic analyzer produces measured acoustic readings and a labeled arousal estimate while a pragmatic framer applies sourced context, perspective, ergonomics, culture, and social-mores frames, the two combining into an Interpretation Frame written as provenance-tracked Fact Units, with estimates labeled and never asserted as true feelings, per Section XI.",
+ 38: "is a flow diagram of the PIL human-query interpretation, in which a query is reduced to an Interpretation Frame, intent is disambiguated from context and perspective, an ambiguity gate asks one clarifying question when intent is materially uncertain, a register-and-ergonomic-mode selector sets the reply style and delivery from sourced culture/mores/ergonomics packs, and the existing retrieve-gate-compose pipeline answers from verified Fact Units in that register without altering the facts, per Section XI.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -551,6 +606,19 @@ REFS = [
  ("1126","Arbitration Agent (factual determination; Prime-Directive gate)"),
  ("1127","assemble + sign under UIAS independent identity"),("1128","signed Proof Package"),
  ("1129","factual-only determination (legal reserved to courts/regulators)"),
+ ("1200","PIL paralinguistic & pragmatic interpretation"),("1201","ingested voice (consent-gated)"),
+ ("1202","transcription (words)"),("1203","Paralinguistic Analyzer (measured)"),
+ ("1204","tone/loudness/pacing/emphasis + labeled arousal estimate"),
+ ("1205","Pragmatic Framer (sourced)"),
+ ("1206","context · perspective · ergonomics · culture · social mores"),
+ ("1207","Interpretation Frame (labeled estimates + sourced frames)"),
+ ("1208","Fact Units on ingested content"),("1209","covenant: estimates not asserted; frames sourced; consent"),
+ ("1210","PIL human query interpretation"),("1211","human query (typed/spoken)"),
+ ("1212","Interpretation Frame (para + pragmatic)"),("1213","intent disambiguation (context/perspective)"),
+ ("1214","ambiguity gate"),("1215","ask one clarifying question / stop"),
+ ("1216","register & ergonomic mode selector"),("1217","culture/mores/ergonomics packs"),
+ ("1218","retrieve-gate-compose (verified Fact Units; cite or refuse)"),
+ ("1219","answer in selected register/mode (facts unchanged)"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']
