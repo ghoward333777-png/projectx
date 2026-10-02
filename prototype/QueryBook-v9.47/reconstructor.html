@@ -41,7 +41,7 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:12px;overfl
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">Scene Reconstructor · v9.56</span>
+  <span class="badge">Scene Reconstructor · v9.57</span>
   <nav class="nav">
     <a href="/">Home</a><a href="/ingest">Ingestion</a><a href="/chat">Query</a>
     <a href="/director">Director</a><a class="active" href="/reconstructor">Reconstructor</a><a href="/guide">Guide</a>
@@ -93,6 +93,12 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:12px;overfl
     </div>
   </div>
 
+  <div class="card" id="video-card" style="display:none">
+    <h2>Generated clip <span id="video-status" class="note"></span></h2>
+    <video id="video" controls playsinline style="width:100%;max-width:720px;border-radius:10px;background:#000;display:none"></video>
+    <div id="video-plan" class="note"></div>
+  </div>
+
   <div class="card">
     <p class="note" id="prov"></p>
   </div>
@@ -128,10 +134,38 @@ $('go').onclick=async function(){
     $('music').innerHTML=mt?('<b>'+esc(mt.genre)+'</b> <span class="note">('+esc((mt.instrumentation||[]).join(', '))+')</span>'+cues+'<div class="note" style="margin-top:6px">'+esc(r.mix?r.mix.note:'')+'</div>'):'<span class="note">music off</span>';
     $('scene').textContent=JSON.stringify(r.scene,null,2);
     $('prov').innerHTML='⚖️ '+esc(r.covenant)+'<br><span class="note">Provenance: text hash '+esc((r.provenance.text_hash||'').slice(0,16))+'… '+(r.provenance.sealed?'(sealed)':'')+' · '+(r.dry_run?'dry-run plan (no Gemini key — video not generated)':'submitted to Gemini')+'</span>';
+    // Video: dry-run (no key) shows the plan; otherwise poll Veo until the clip is ready.
+    var gen=r.generation||{};
+    if(r.dry_run || !gen.operation){
+      $('video-card').style.display=''; $('video').style.display='none';
+      $('video-status').textContent=gen.error?('error: '+gen.error):'dry-run — add a Gemini/Veo key to render video';
+      $('video-plan').textContent='';
+    } else {
+      $('video-card').style.display=''; $('video').style.display='none';
+      $('video-status').textContent='rendering with Gemini/Veo…';
+      pollVideo(gen.operation);
+    }
     $('status').textContent='Done.';
   }catch(e){ $('status').textContent='Failed: '+e; }
   $('go').disabled=false;
 };
+async function pollVideo(op){
+  var t0=Date.now();
+  for(var i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r,8000));
+    var pr=await post('/api/video/poll',{operation:op});
+    if(pr.done){
+      if(pr.ready && pr.url){
+        var v=$('video'); v.src=pr.url; v.style.display='';
+        $('video-status').textContent='✓ '+Math.round((Date.now()-t0)/1000)+'s · '+Math.round(pr.bytes/1024)+' KB';
+        v.play().catch(function(){});
+      } else { $('video-status').textContent='render issue: '+(pr.error||'no video'); }
+      return;
+    }
+    $('video-status').textContent='rendering with Gemini/Veo… ('+Math.round((Date.now()-t0)/1000)+'s)';
+  }
+  $('video-status').textContent='still rendering — check back shortly (Veo can take a few minutes)';
+}
 loadStyles(); $('example').click();
 </script>
 </body>

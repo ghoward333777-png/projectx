@@ -362,16 +362,16 @@ def _gemini_key():
     except Exception:
         return None
 
-def build_request_payload(bundle, base_media=None, model="veo-3.0-generate-preview"):
+def build_request_payload(bundle, base_media=None, model="veo-3.1-fast-generate-preview"):
     """The exact JSON QueryBook would send (also returned in dry-run so it is inspectable)."""
     prompts = [bundle["basePrompt"]] + [b["prompt"] for b in bundle.get("beatPrompts", [])]
     instances = [{"prompt": "\n\n".join(prompts)}]
     if base_media and base_media.get("uri"):
         instances[0]["video"] = {"uri": base_media["uri"]}
     return {"model": model, "instances": instances,
-            "parameters": {"aspectRatio": "16:9", "personGeneration": "allow_adult"}}
+            "parameters": {"aspectRatio": "16:9"}}
 
-def build_edit_payload(video, edit_prompts, model="veo-3.0-generate-preview"):
+def build_edit_payload(video, edit_prompts, model="veo-3.1-fast-generate-preview"):
     return {"model": model, "instances": [{"prompt": "\n\n".join(e["prompt"] for e in edit_prompts),
                                            "video": {"uri": (video or {}).get("uri", "")}}],
             "parameters": {"aspectRatio": "16:9"}}
@@ -382,7 +382,7 @@ def _post(url, payload, timeout=60):
     with _ulr.urlopen(req, timeout=timeout) as r:
         return _json.loads(r.read())
 
-def generate_video(bundle, base_media=None, model="veo-3.0-generate-preview", key=None):
+def generate_video(bundle, base_media=None, model="veo-3.1-fast-generate-preview", key=None):
     """Attempt a Gemini video render. Returns {ok, dry_run, video?|operation?, payload, error?}.
     Offline-first: with no key, returns the dry-run plan and never fabricates a video."""
     key = key or _gemini_key()
@@ -406,10 +406,52 @@ def generate_video(bundle, base_media=None, model="veo-3.0-generate-preview", ke
         return {"ok": False, "dry_run": False, "payload": payload, "error": str(ex)}
 
 
+def _find_file_uri(obj):
+    """Walk a Veo operation response for the generated video's download URI."""
+    import re as _re2
+    uris = _re2.findall(r'https?://[^\s"\\]+', _json.dumps(obj))
+    for u in uris:
+        if "files/" in u:
+            return u
+    return uris[0] if uris else None
+
+def poll_operation(operation, key=None):
+    """Poll a Veo long-running operation. Returns {done, running?, video_uri?, error?}.
+    The video_uri still needs the server-side key to download (see download_video)."""
+    key = key or _gemini_key()
+    if not key:
+        return {"done": False, "error": "no Gemini key configured"}
+    if not operation:
+        return {"done": False, "error": "no operation name"}
+    url = "https://generativelanguage.googleapis.com/v1beta/%s?key=%s" % (operation, key)
+    try:
+        import urllib.request
+        st = _json.loads(urllib.request.urlopen(url, timeout=30).read())
+    except _ule.HTTPError as he:
+        return {"done": False, "error": "poll http %s: %s" % (he.code, he.read().decode("utf-8", "ignore")[:160])}
+    except Exception as ex:
+        return {"done": False, "error": str(ex)}
+    if not st.get("done"):
+        return {"done": False, "running": True}
+    if st.get("error"):
+        return {"done": True, "error": str(st["error"])[:200]}
+    return {"done": True, "video_uri": _find_file_uri(st.get("response") or st), "raw_keys": list((st.get("response") or {}).keys())}
+
+def download_video(video_uri, key=None):
+    """Download the generated MP4 server-side (key stays here, never reaches the browser).
+    Returns (bytes, mime) or raises."""
+    key = key or _gemini_key()
+    sep = "&" if "?" in video_uri else "?"
+    url = video_uri + sep + "key=" + key if "key=" not in video_uri else video_uri
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=90) as r:
+        return r.read(), (r.headers.get("Content-Type") or "video/mp4")
+
+
 # ==========================================================================
 # 7. Orchestrator — FUGraph -> refined VideoRef (or a dry-run plan) in one call
 # ==========================================================================
-def render_scene_from_fu(fu, base_media=None, observed_per_iteration=None, model="veo-3.0-generate-preview"):
+def render_scene_from_fu(fu, base_media=None, observed_per_iteration=None, model="veo-3.1-fast-generate-preview"):
     """One-call pipeline: FU -> SceneGraph -> PromptBundle -> (Gemini) -> refine loop.
     `observed_per_iteration` (optional) is a list of observed-video metadata dicts that drive
     the deterministic refinement loop; without them the loop is a no-op (we do not fabricate

@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.56"
+BUILD = "v9.57"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -292,7 +292,7 @@ class H(BaseHTTPRequestHandler):
                 and not u.path.startswith("/api/edu/") \
                 and not u.path.startswith("/api/collab/") \
                 and not u.path.startswith("/api/saas/") \
-                and u.path not in ("/api/ontology", "/api/assess", "/api/webhooks"):
+                and u.path not in ("/api/ontology", "/api/assess", "/api/webhooks", "/api/video/poll"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -549,7 +549,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, qb_gemini.render_scene_from_fu(
                     fu, base_media=body.get("base_media"),
                     observed_per_iteration=body.get("observed_per_iteration"),
-                    model=body.get("model") or "veo-3.0-generate-preview"))
+                    model=body.get("model") or "veo-3.1-fast-generate-preview"))
             return self._send(404, {"error": "unknown director endpoint"})
         if u.path.startswith("/api/scene/"):
             # Scene Reconstructor: prose/script → director-controlled video plan + prompts + music.
@@ -574,7 +574,7 @@ class H(BaseHTTPRequestHandler):
                     social=body.get("socialConditionsHint") or body.get("social"),
                     enforce_silhouette_for_extras=body.get("enforceSilhouetteForExtras", True),
                     music=body.get("music", True),
-                    model=body.get("model") or "veo-3.0-generate-preview")
+                    model=body.get("model") or "veo-3.1-fast-generate-preview")
                 return self._send(200 if r.get("ok") else 400, r)
             return self._send(404, {"error": "unknown scene endpoint"})
         if u.path.startswith("/api/lil/"):
@@ -729,6 +729,29 @@ class H(BaseHTTPRequestHandler):
             if tail == "summary":
                 return self._send(200, qb_saas.tenant_summary(body.get("tenant_id")))
             return self._send(404, {"error": "unknown saas endpoint"})
+        if u.path == "/api/video/poll":
+            # Poll a Veo operation; when done, download the MP4 SERVER-SIDE (key never reaches the
+            # browser) and cache it under a random id served by GET /api/video/get.
+            import qb_gemini, base64 as _b64, uuid as _uuid
+            op = body.get("operation")
+            r = qb_gemini.poll_operation(op)
+            if r.get("done") and r.get("video_uri") and not r.get("error"):
+                try:
+                    data, mime = qb_gemini.download_video(r["video_uri"])
+                    global VIDEO_CACHE
+                    try: VIDEO_CACHE
+                    except NameError: VIDEO_CACHE = {}
+                    vid = _uuid.uuid4().hex[:16]
+                    VIDEO_CACHE[vid] = (data, mime)
+                    # keep the cache bounded
+                    if len(VIDEO_CACHE) > 12:
+                        for k in list(VIDEO_CACHE)[:-12]: VIDEO_CACHE.pop(k, None)
+                    return self._send(200, {"done": True, "ready": True, "id": vid,
+                                            "bytes": len(data), "mime": mime,
+                                            "url": "/api/video/get?id=" + vid})
+                except Exception as ex:
+                    return self._send(200, {"done": True, "error": "download failed: %s" % ex})
+            return self._send(200, r)
         if u.path == "/api/middleware/verify":
             import qb_middleware
             return self._send(200, qb_middleware.verify_claim(body.get("text", ""), store_dir=DATA_DIR))
@@ -918,6 +941,23 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         # Shared design system (theme tokens + toggle) served to every page.
+        if u.path == "/api/video/get":
+            # Serve a cached, server-downloaded MP4 by id (no key exposed to the browser).
+            vid = (urllib.parse.parse_qs(u.query).get("id", [""]) or [""])[0]
+            try: cache = VIDEO_CACHE
+            except NameError: cache = {}
+            ent = cache.get(vid)
+            if not ent:
+                return self._send(404, {"error": "no such video"})
+            data, mime = ent
+            self.send_response(200)
+            self.send_header("Content-Type", mime or "video/mp4")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try: self.wfile.write(data)
+            except Exception: pass
+            return
         if u.path == "/qb-theme.css":
             return self._send_static("qb-theme.css", "text/css; charset=utf-8")
         if u.path == "/qb-ui.js":

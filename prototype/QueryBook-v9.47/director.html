@@ -40,7 +40,7 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:14px;overfl
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">Scene Director · v9.56</span>
+  <span class="badge">Scene Director · v9.57</span>
   <nav class="nav">
     <a href="/dashboard">Console</a>
     <a href="/">Home</a><a href="/chat">Chat</a>
@@ -93,6 +93,7 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:14px;overfl
       <h2>3 · Scene graph &amp; render trace</h2>
       <p class="sub">The deterministic SceneGraph (and, on render, the Gemini payload / dry-run plan).</p>
       <pre class="json" id="scene"></pre>
+      <video id="video" controls playsinline style="width:100%;border-radius:10px;background:#000;display:none;margin-top:8px"></video>
     </div>
   </div>
 
@@ -156,10 +157,31 @@ $('render').onclick=async function(){
   renderBundle(r.promptBundle, r.validation);
   $('scene-card').style.display='';
   $('scene').textContent=JSON.stringify({dry_run:r.dry_run, trace:r.trace, scene:r.scene},null,2);
-  $('status').innerHTML=r.dry_run
-    ? 'Dry-run plan ready <span class="pill warn">no Gemini key — video not generated</span>'
-    : 'Submitted to Gemini <span class="pill ok">operation started</span>';
+  var op=(r.trace&&r.trace[0]&&r.trace[0].result&&r.trace[0].result.operation)||null;
+  if(r.dry_run || !op){
+    $('status').innerHTML=r.dry_run
+      ? 'Dry-run plan ready <span class="pill warn">no Gemini key — video not generated</span>'
+      : 'Submitted <span class="pill">no operation</span>';
+  } else {
+    $('status').innerHTML='Rendering with Gemini/Veo… <span class="pill ok">operation started</span>';
+    pollVideo(op);
+  }
 };
+async function pollVideo(op){
+  var t0=Date.now(), v=$('video');
+  for(var i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r,8000));
+    var pr=await post('/api/video/poll',{operation:op});
+    if(pr.done){
+      if(pr.ready&&pr.url){ v.src=pr.url; v.style.display=''; v.play().catch(function(){});
+        $('status').innerHTML='✓ clip ready <span class="pill ok">'+Math.round((Date.now()-t0)/1000)+'s · '+Math.round(pr.bytes/1024)+' KB</span>'; }
+      else { $('status').textContent='render issue: '+(pr.error||'no video'); }
+      return;
+    }
+    $('status').textContent='rendering with Gemini/Veo… ('+Math.round((Date.now()-t0)/1000)+'s)';
+  }
+  $('status').textContent='still rendering — Veo can take a few minutes';
+}
 loadExample();
 </script>
 </body>

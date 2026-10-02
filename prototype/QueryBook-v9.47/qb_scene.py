@@ -405,7 +405,7 @@ def _provenance(text):
 def render_scene_from_text(text, style="film_noir", duration=20, perspective="objective",
                            period=None, culture=None, social=None,
                            enforce_silhouette_for_extras=True, music=True,
-                           base_media=None, model="veo-3.0-generate-preview"):
+                           base_media=None, model="veo-3.1-fast-generate-preview"):
     """One call: text → FU → SceneGraph → context → style → silhouettes → prompts → (Gemini
     dry-run) → compliance → music cue sheet → mix plan. Returns the full inspectable result.
     The clip is an INTERPRETIVE RENDERING of the source text, not an asserted fact."""
