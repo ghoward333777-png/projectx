@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.51"
+BUILD = "v9.52"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -727,8 +727,12 @@ class H(BaseHTTPRequestHandler):
             return self._send_static("qb-theme.css", "text/css; charset=utf-8")
         if u.path == "/qb-ui.js":
             return self._send_static("qb-ui.js", "application/javascript; charset=utf-8")
-        if u.path in ("/", "/chat", "/chat.html"):
+        if u.path in ("/", "/home", "/home.html"):
+            return self._send_html(self._asset_path("QB_HOME_HTML", "home.html"))
+        if u.path in ("/chat", "/chat.html"):
             return self._send_html(self._asset_path("QB_CHAT_HTML", "chat.html"))
+        if u.path in ("/ingest", "/ingest.html", "/ingestion"):
+            return self._send_html(self._asset_path("QB_INGEST_HTML", "ingest.html"))
         if u.path in ("/dashboard", "/dashboard.html", "/live"):
             return self._send_html(self._asset_path("QB_DASHBOARD_HTML", "dashboard.html"))
         if u.path in ("/console", "/console.html", "/dashboards"):
@@ -868,6 +872,33 @@ class H(BaseHTTPRequestHandler):
                     self._send(200, LAST_SELFTEST)
                 elif u.path == "/api/domain_logic":
                     self._send(200, {"domains": store.domain_list()})
+                elif u.path == "/api/edition":
+                    import qb_editions
+                    self._send(200, qb_editions.info())
+                elif u.path == "/api/embodiments":
+                    import qb_embodiment
+                    self._send(200, qb_embodiment.info())
+                elif u.path == "/api/ingest/strategy":
+                    import qb_ingest_strategy
+                    self._send(200, qb_ingest_strategy.status(DATA_DIR))
+                elif u.path == "/api/system":
+                    # Two-system overview for the home page: Ingestion + Query, edition, embodiments.
+                    import qb_editions, qb_embodiment, qb_ingest_strategy
+                    ed = qb_editions.info()
+                    enabled = set(ed["enabled"])
+                    def grp(keys):
+                        return [{"key": k, "label": qb_editions.FEATURES[k], "enabled": k in enabled}
+                                for k in keys if k in qb_editions.FEATURES]
+                    self._send(200, {
+                        "build": BUILD, "edition": ed["edition"], "edition_name": ed["name"],
+                        "systems": {
+                            "ingestion": {"title": "Ingestion", "subtitle": "Build the knowledge base, staged and automated",
+                                "features": grp([k for k in qb_editions.FEATURES if k.startswith("ingest.")]),
+                                "strategy": qb_ingest_strategy.status(DATA_DIR)},
+                            "query": {"title": "Query", "subtitle": "Ask, translate, speak, direct — grounded or UNKNOWN",
+                                "features": grp([k for k in qb_editions.FEATURES if k.startswith("query.")])},
+                        },
+                        "embodiments": qb_embodiment.matrix()})
                 elif u.path == "/api/language/diag":
                     # One-click diagnostics for "the word count never increases" — reports the
                     # vocabulary source, the store/index state, and a live write+reread test.
