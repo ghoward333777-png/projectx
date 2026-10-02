@@ -23,3 +23,6 @@ prototype/QueryBook-v9.47/qb_rights_store.json
 prototype/QueryBook-v9.47/qb_ledger.json
 prototype/QueryBook-v9.47/qb_integrity_key
 *.qc
+
+# Build artifacts: deliver zips to the user directly, never commit (may contain local keys)
+prototype/*.zip
