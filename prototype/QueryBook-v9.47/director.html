@@ -40,7 +40,7 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:14px;overfl
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">Scene Director · v9.57</span>
+  <span class="badge">Scene Director · v9.58</span>
   <nav class="nav">
     <a href="/dashboard">Console</a>
     <a href="/">Home</a><a href="/chat">Chat</a>
@@ -73,6 +73,12 @@ pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:14px;overfl
       <button class="btn ghost" id="run-qc">Run director QC</button>
       <span id="qc-out" class="note"></span>
     </div>
+    <details id="keybox" style="margin:0 0 10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🔑 Gemini / Veo video key <span id="keystat" class="note"></span></summary>
+      <p class="sub" style="margin:6px 0">Paste your Google Gemini API key (with Veo access) to render real video. Stored only on this computer; never committed. Without it, Render returns a dry-run plan.</p>
+      <div class="row"><input type="password" id="gkey" placeholder="paste Gemini API key" autocomplete="off" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)">
+        <button class="btn ghost" id="savekey">Save key</button></div>
+    </details>
     <textarea id="fu" spellcheck="false"></textarea>
     <div class="row" style="margin-top:12px">
       <button class="btn" id="gen">Generate prompts →</button>
@@ -182,7 +188,19 @@ async function pollVideo(op){
   }
   $('status').textContent='still rendering — Veo can take a few minutes';
 }
-loadExample();
+async function keyStatus(){
+  try{ var d=await (await fetch('/api/language/tts_providers')).json();
+    var on=d&&d.cloud&&d.cloud.google&&d.cloud.google.configured;
+    $('keystat').innerHTML=on?'<span style="color:#0c7a5c">✓ configured</span>':'<span style="color:#c0392b">— not set (dry-run only)</span>';
+    if(!on&&$('keybox')) $('keybox').open=true;
+  }catch(e){}
+}
+if($('savekey')) $('savekey').onclick=async function(){
+  var k=($('gkey').value||'').trim(); if(!k){ $('keystat').textContent='paste a key first'; return; }
+  var d=await post('/api/language/tts_key',{provider:'google',key:k});
+  $('gkey').value=''; $('keystat').textContent=d.ok?'saved ✓':'save failed'; keyStatus();
+};
+loadExample(); keyStatus();
 </script>
 </body>
 </html>
