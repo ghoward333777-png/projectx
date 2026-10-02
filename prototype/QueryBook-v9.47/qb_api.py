@@ -285,7 +285,9 @@ class H(BaseHTTPRequestHandler):
                 and not u.path.startswith("/api/lil/") \
                 and not u.path.startswith("/api/pil/") \
                 and not u.path.startswith("/api/query/") \
-                and u.path not in ("/api/ontology", "/api/assess"):
+                and not u.path.startswith("/api/rights/") \
+                and not u.path.startswith("/api/integrity/") \
+                and u.path not in ("/api/ontology", "/api/assess", "/api/webhooks"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -599,6 +601,48 @@ class H(BaseHTTPRequestHandler):
                 items = qb_assess.from_store(DATA_DIR, max_items=int(body.get("count", 20)),
                                              domain=body.get("domain"))
             return self._send(200, {"items": items, "count": len(items)})
+        if u.path.startswith("/api/rights/"):
+            import qb_rights
+            tail = u.path[len("/api/rights/"):]
+            if tail == "grant":
+                return self._send(200, qb_rights.grant(body.get("resource"), body.get("territories"),
+                    body.get("editions"), body.get("expires"), body.get("holder")))
+            if tail == "revoke":
+                return self._send(200, qb_rights.revoke(body.get("resource")))
+            if tail == "check":
+                return self._send(200, qb_rights.check(body.get("resource"),
+                    body.get("territory", "*"), body.get("edition", "*")))
+            if tail == "registry":
+                return self._send(200, qb_rights.registry())
+            return self._send(404, {"error": "unknown rights endpoint"})
+        if u.path.startswith("/api/integrity/"):
+            import qb_integrity
+            tail = u.path[len("/api/integrity/"):]
+            if tail == "mint":
+                return self._send(200, qb_integrity.mint(body.get("kind", "seal"),
+                    body.get("ref", ""), body.get("meta")))
+            if tail == "seal":
+                return self._send(200, qb_integrity.seal(body.get("text", ""), body.get("author", "anonymous")))
+            if tail == "similarity":
+                return self._send(200, qb_integrity.similarity(body.get("a", ""), body.get("b", "")))
+            if tail == "proof":
+                return self._send(200, qb_integrity.proof_package(body.get("seal_id", "")))
+            if tail == "verify":
+                return self._send(200, qb_integrity.verify_chain())
+            return self._send(404, {"error": "unknown integrity endpoint"})
+        if u.path == "/api/webhooks":
+            # Minimal webhook registry (deployment/integration feature 177). Local, in-memory.
+            act = (body.get("action") or "list").lower()
+            global WEBHOOKS
+            try: WEBHOOKS
+            except NameError: WEBHOOKS = []
+            if act == "register":
+                WEBHOOKS.append({"event": body.get("event", "*"), "url": body.get("url", "")})
+                return self._send(200, {"ok": True, "count": len(WEBHOOKS)})
+            if act == "clear":
+                WEBHOOKS = []
+                return self._send(200, {"ok": True})
+            return self._send(200, {"webhooks": WEBHOOKS})
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.

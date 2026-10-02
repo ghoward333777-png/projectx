@@ -16,3 +16,10 @@ rust/target/
 
 # Cloud TTS provider API keys (local secrets — never commit)
 qb_tts_keys.json
+
+# Wave 1-4 local state / secrets (never commit)
+prototype/QueryBook-v9.47/qb_lil_store.json
+prototype/QueryBook-v9.47/qb_rights_store.json
+prototype/QueryBook-v9.47/qb_ledger.json
+prototype/QueryBook-v9.47/qb_integrity_key
+*.qc
