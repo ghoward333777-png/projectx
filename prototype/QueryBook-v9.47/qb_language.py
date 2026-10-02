@@ -1489,11 +1489,56 @@ def save_tts_key(provider, key=None, voice=None, model=None):
     except Exception as ex:
         return {"ok": False, "error": str(ex)}
 
+_CLOUD_COOLDOWN = {}   # provider -> epoch until which to skip it (set after a failure)
+
+def default_tts_provider():
+    """Configured default voice provider NAME (may be unkeyed): env QB_TTS_DEFAULT, else the
+    config's 'default_provider', else 'google'."""
+    v = _osm.environ.get("QB_TTS_DEFAULT")
+    if v is None:
+        try:
+            v = (_json.load(open(_tts_key_file(), encoding="utf-8")) or {}).get("default_provider")
+        except Exception:
+            v = None
+    return (v or "google").lower()
+
+def effective_default_provider():
+    """The provider actually used for a request that does not specify one: the configured
+    default if it has a key and is not in cooldown; else '' (open-source, offline fallback)."""
+    name = default_tts_provider()
+    if name in ("", "none", "os", "offline", "espeak", "open-source", "opensource"):
+        return ""
+    k = load_tts_keys()
+    if name in k and k[name]["key"] and _CLOUD_COOLDOWN.get(name, 0) < time.time():
+        return name
+    return ""
+
+def set_default_provider(provider):
+    """Persist the default voice provider to the LOCAL git-ignored file."""
+    provider = (provider or "").lower()
+    try:
+        try:
+            cfg = _json.load(open(_tts_key_file(), encoding="utf-8"))
+        except Exception:
+            cfg = {}
+        cfg["default_provider"] = provider
+        with open(_tts_key_file(), "w", encoding="utf-8") as fh:
+            _json.dump(cfg, fh)
+        try: _osm.chmod(_tts_key_file(), 0o600)
+        except Exception: pass
+        return {"ok": True, "default_provider": provider}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
 def cloud_tts_status():
     """Which cloud providers are configured (key present). NEVER returns the key."""
     k = load_tts_keys()
-    return {"google": {"configured": bool(k["google"]["key"]), "voice": k["google"]["voice"], "model": k["google"]["model"]},
-            "elevenlabs": {"configured": bool(k["elevenlabs"]["key"]), "voice": k["elevenlabs"]["voice"]}}
+    dflt = default_tts_provider()
+    return {"default": dflt, "effective_default": effective_default_provider() or "open-source",
+            "google": {"configured": bool(k["google"]["key"]), "voice": k["google"]["voice"],
+                       "model": k["google"]["model"], "is_default": dflt == "google"},
+            "elevenlabs": {"configured": bool(k["elevenlabs"]["key"]), "voice": k["elevenlabs"]["voice"],
+                           "is_default": dflt == "elevenlabs"}}
 
 def _pcm_to_wav(pcm, rate=24000, ch=1, width=2):
     import wave, io
@@ -1572,7 +1617,9 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None):
     #     key is configured. Offline-first: on ANY failure we fall through to the open-source
     #     engine below and record the reason. ---
     _CLOUD_ERR[0] = None
-    prov = (provider or "").lower()
+    # An empty/omitted provider uses the configured DEFAULT (e.g. Google) when it has a key and
+    # is not in cooldown; otherwise the open-source engine. An explicit provider overrides.
+    prov = (provider or "").lower() or effective_default_provider()
     if prov in ("google", "elevenlabs"):
         _t0 = time.time()
         try:
@@ -1583,6 +1630,7 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None):
                         "wav_bytes": c["wav_bytes"], "mime": c.get("mime", "audio/wav")}
         except Exception as _ce:
             _CLOUD_ERR[0] = "%s: %s" % (prov, _ce)
+            _CLOUD_COOLDOWN[prov] = time.time() + 120   # back off a failing provider (e.g. billing 402)
             _espeak_log("cloud-FAIL", provider=prov, err=repr(_ce)[:160])
             # fall through to the open-source engine (offline-first)
 

@@ -412,7 +412,15 @@ class H(BaseHTTPRequestHandler):
             provider = (body.get("provider") or "").lower()
             key = body.get("key")
             voice = body.get("voice")
-            r = qb_language.save_tts_key(provider, key=key, voice=voice)
+            r = {"ok": True, "provider": provider}
+            if key or voice:
+                r = qb_language.save_tts_key(provider, key=key, voice=voice)
+            # Optionally make this the default voice engine (e.g. Google), or set default only.
+            if body.get("make_default") or body.get("default_only"):
+                d = qb_language.set_default_provider(provider)
+                r["default_provider"] = d.get("default_provider")
+                if not d.get("ok"):
+                    r["ok"] = False; r["error"] = d.get("error")
             return self._send(200 if r.get("ok") else 400, r)
         if u.path == "/api/language/translate":
             # Deterministic dictionary translation (no LLM). text + src + dst.
