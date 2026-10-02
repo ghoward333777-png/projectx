@@ -19,6 +19,8 @@ FEATURES = {
     "query.language":      "Query · Language (translate, detect, pronounce, speak)",
     "query.voice":         "Query · Voice Lab (two-way voice, tone, matching)",
     "query.director":      "Query · Scene Director (Gemini Omni adapter)",
+    "query.scene":         "Query · Scene Reconstructor (prose → video clip)",
+    "query.intel":         "Query · Query understanding (entities/intent/expansion)",
     # ---- INGESTION system (staged domains) ----
     "ingest.language":     "Ingest · Language (structural → semantic → multilingual → speech)",
     "ingest.deterministic":"Ingest · Deterministic domains (mathematics, geometry, arithmetic)",
@@ -36,6 +38,10 @@ FEATURES = {
     "dialects":            "Language · Dialect Parameter Clusters",
     "lil":                 "Identity · LIL voiceprint (consent-gated)",
     "pil":                 "Interpretation · PIL paralinguistics",
+    "knowledge.ontology":  "Knowledge · Ontology / concept graph",
+    "knowledge.assess":    "Knowledge · Assessment + study-guide generator",
+    "integrity.rights":    "Integrity · Licensing & rights gate",
+    "integrity.ledger":    "Integrity · Provenance ledger + proof",
     "uias":                "Integrity · UIAS audit service",
     "saas":                "Platform · Multi-tenant / rights / analytics (enterprise)",
 }
@@ -48,8 +54,9 @@ _LIGHT = {
     "query.chat", "query.language", "ingest.language", "ingest.qa",
 }
 _MEDIUM = _LIGHT | {
-    "query.voice", "ingest.deterministic", "ingest.history", "ingest.news", "ingest.web",
+    "query.voice", "query.intel", "ingest.deterministic", "ingest.history", "ingest.news", "ingest.web",
     "agents.reasoning", "agents.creativity", "agents.planner", "speech.cloud",
+    "knowledge.ontology", "knowledge.assess",
 }
 _FULL = set(FEATURES.keys())   # everything
 

@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.54"
+BUILD = "v9.55"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -1017,6 +1017,9 @@ class H(BaseHTTPRequestHandler):
                 elif u.path == "/api/embodiments":
                     import qb_embodiment
                     self._send(200, qb_embodiment.info())
+                elif u.path == "/api/features":
+                    import qb_features
+                    self._send(200, qb_features.catalog())
                 elif u.path == "/api/ingest/strategy":
                     import qb_ingest_strategy
                     self._send(200, qb_ingest_strategy.status(DATA_DIR))

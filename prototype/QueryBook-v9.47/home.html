@@ -57,11 +57,13 @@ a{color:var(--accent);text-decoration:none}
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">v9.54</span>
+  <span class="badge">v9.55</span>
   <span class="edpill" id="edpill">edition…</span>
   <nav class="nav">
     <a href="/ingest">Ingestion</a>
     <a href="/chat">Query</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
     <a href="/guide">Guide</a>
   </nav>
 </div>
@@ -102,6 +104,12 @@ a{color:var(--accent);text-decoration:none}
       <div><b>AI-based infrastructure</b><div id="emb-ai" style="margin-top:6px"></div></div>
     </div>
     <p class="note" id="emb-principle" style="margin-top:10px"></p>
+  </div>
+
+  <div class="emb">
+    <h3>Full capability catalog <span class="edpill" id="feat-count"></span></h3>
+    <p class="note" style="margin:0 0 8px">Every subsystem the prototype ships, synchronized to the Bible &amp; Registry and live-checked against the running app.</p>
+    <div id="catalog"></div>
   </div>
 </div>
 
@@ -144,6 +152,20 @@ function feat(f){
     $('emb-conv').innerHTML=embList(em.matrix.conventional);
     $('emb-ai').innerHTML=embList(em.matrix.ai);
     $('emb-principle').textContent=em.principle;
+    // full capability catalog (all systems), live-checked
+    var fc=await (await fetch('/api/features')).json();
+    $('feat-count').textContent=fc.live+'/'+fc.count+' live';
+    var bySys={};
+    (fc.features||[]).forEach(function(f){ (bySys[f.system]=bySys[f.system]||[]).push(f); });
+    var order=['ingestion','query','language','identity','knowledge','integrity','reasoning','platform'];
+    $('catalog').innerHTML=order.filter(function(s){return bySys[s];}).map(function(s){
+      return '<div style="margin-top:10px"><b style="text-transform:capitalize">'+esc(s)+'</b>'+
+        bySys[s].map(function(f){
+          return '<div class="feat on" style="background:#fff"><span class="dot" style="background:'+(f.live?'#1a9e73':'#cdd4d0')+'"></span>'+
+            '<span class="lbl"><b>'+esc(f.title)+'</b> <span class="note">· '+esc(f.module)+' · Registry '+esc(f.registry)+'</span></span>'+
+            (f.page?('<a class="go" href="'+f.page+'">open →</a>'):'<span class="go note">'+esc((f.endpoints||[])[0]||'')+'</span>')+'</div>';
+        }).join('')+'</div>';
+    }).join('');
   }catch(e){ $('edpill').textContent='offline'; }
 })();
 </script>
