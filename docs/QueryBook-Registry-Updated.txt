@@ -4059,3 +4059,64 @@ built + specified subsystems, packaged mode SPEC. Cross-refs: Lecture Query Mode
 Specification (Word); Provisional Patent Section XII ([0045]-[0048]), claims 55-62,
 FIG. 39-40; Bible amendment "Lecture Query: a New Interaction Mode (2026-10-02)";
 Canonical Engine Spec mode note.
+
+================================================================================
+23. Scene Reconstructor (Scene Replayer) — prose → director-controlled video
+    Added 2026-10-02 (prototype v9.54). Built on the Scene Director (qb_gemini);
+    rendering, not fact assertion. Prompt building is deterministic templating.
+================================================================================
+
+[220] 23.1 - Text → FU scene parser  [BUILT]
+      Deterministic shallow parser: prose/script/article → FUGraph (characters by
+      proper-noun/role-noun/focal-pronoun detection, setting, actions per sentence
+      with salient-object preservation, dialogue, mood lexicon, POV, beats by
+      duration). Approximate and labelled as such; a staging aid, not literary
+      analysis. qb_scene.parse_text_to_fu().
+
+[221] 23.2 - StyleProfile catalog (15 styles)  [BUILT]
+      Film Noir, 1920s/1950s/1980s period, 1K/4K color, Cartoon, Sketch,
+      Silhouette, Watercolor, Hyperrealism, Minimalist, Surreal, Documentary,
+      Anime. Each: color_grade, lighting_preset (→ LightRig set), camera_behavior,
+      texture, silhouette_policy (none|extras|all_non_primary), prompt_tags.
+      qb_scene.STYLE_PROFILES / apply_style(). A StyleProfile transforms visual
+      realization ONLY, never meaning/blocking/beats.
+
+[222] 23.3 - Context & culture enrichment  [BUILT]
+      Period / culture / social-conditions / perspective fold into environment and
+      pragmatics; rendered respectfully (no caricature — shares the dialect safety
+      stance). qb_scene (_enrich_environment + parse pragmatics).
+
+[223] 23.4 - Silhouette handling for extra characters  [BUILT]
+      Primary characters (1-2 by importance) fully described; extras become
+      silhouettes (dark outline, no facial detail), honoring Gemini's small
+      explicit-character limit while preserving scene density. qb_scene.apply_style
+      silhouette policy + base-prompt silhouette rule.
+
+[224] 23.5 - Automatic mood-matched music  [BUILT]
+      MusicSelector: style → music palette (15, jazz_noir … emotional_anime),
+      scene mood → intensity, beats → a beat-aware cue map (intensity + motif
+      [entrance/danger/dialogue/resolution] + transition). CueEngine +
+      MUSIC_PALETTES. AudioMixer returns an honest MIX PLAN (cue sheet + ffmpeg
+      template); audio is NOT bundled and is not rendered in-engine.
+
+[225] 23.6 - Scene Reconstructor orchestrator + API  [BUILT]
+      render_scene_from_text(text, style, duration, perspective, period, culture,
+      social, silhouette, music) → FU → SceneGraph → enrich → style → prompts →
+      Gemini dry-run → compliance → music/mix. REST: /api/scene/{render,styles,
+      example,qc}; UI page /reconstructor. Reuses the Scene Director unchanged.
+
+[226] 23.7 - Interpretive-rendering covenant + provenance seal  [enforced by design]
+      A reconstructed clip is an INTERPRETIVE VISUALIZATION of the source text,
+      never an asserted fact. Every result carries a provenance note (source hash,
+      "visualized interpretation, not asserted truth") and, when qb_integrity is
+      present, a tamper-evident seal over the source text. No LLM asserts anything;
+      the Gemini call is rendering, gated, and never fabricated offline.
+
+COVENANT: inherits C1-C6 / L1-L6 - prompt building deterministic; output is
+rendering not assertion; cultural fidelity without caricature; video gated +
+never fabricated; source attributed + sealed.
+
+FEATURE COUNT: 230 (223 + 7 Scene Reconstructor features, [220]-[226]). Cross-refs:
+QueryBook Scene Reconstructor Specification (Word); Scene Director (qb_gemini) +
+Provisional Patent Scene-Director section; Bible amendment "Scene Reconstructor
+(2026-10-02)".

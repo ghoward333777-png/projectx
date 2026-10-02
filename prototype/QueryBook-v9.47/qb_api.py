@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.53"
+BUILD = "v9.54"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -282,6 +282,7 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/custom_voice", "/api/language/dialects",
                           "/api/language/dialect_detect", "/api/mirror", "/api/help") \
                 and not u.path.startswith("/api/director/") \
+                and not u.path.startswith("/api/scene/") \
                 and not u.path.startswith("/api/lil/") \
                 and not u.path.startswith("/api/pil/") \
                 and not u.path.startswith("/api/query/") \
@@ -547,6 +548,32 @@ class H(BaseHTTPRequestHandler):
                     observed_per_iteration=body.get("observed_per_iteration"),
                     model=body.get("model") or "veo-3.0-generate-preview"))
             return self._send(404, {"error": "unknown director endpoint"})
+        if u.path.startswith("/api/scene/"):
+            # Scene Reconstructor: prose/script → director-controlled video plan + prompts + music.
+            import qb_scene
+            tail = u.path[len("/api/scene/"):]
+            if tail == "styles":
+                return self._send(200, {"styles": qb_scene.list_styles()})
+            if tail == "example":
+                return self._send(200, {"sourceText": qb_scene.NOIR_TEXT})
+            if tail == "qc":
+                return self._send(200, qb_scene.qc())
+            if tail == "render":
+                text = (body.get("sourceText") or body.get("text") or "").strip()
+                if not text:
+                    return self._send(400, {"error": "sourceText required"})
+                r = qb_scene.render_scene_from_text(
+                    text, style=body.get("styleId") or body.get("style") or "film_noir",
+                    duration=int(body.get("durationSeconds") or body.get("duration") or 20),
+                    perspective=body.get("perspective") or "objective",
+                    period=body.get("periodHint") or body.get("period"),
+                    culture=body.get("cultureHint") or body.get("culture"),
+                    social=body.get("socialConditionsHint") or body.get("social"),
+                    enforce_silhouette_for_extras=body.get("enforceSilhouetteForExtras", True),
+                    music=body.get("music", True),
+                    model=body.get("model") or "veo-3.0-generate-preview")
+                return self._send(200 if r.get("ok") else 400, r)
+            return self._send(404, {"error": "unknown scene endpoint"})
         if u.path.startswith("/api/lil/"):
             # LIL voiceprint (consent-gated, deterministic). audio_b64 = 16-bit PCM WAV.
             import qb_lil
@@ -857,6 +884,8 @@ class H(BaseHTTPRequestHandler):
             return self._send_html(self._asset_path("QB_VOICE_HTML", "voice.html"))
         if u.path in ("/director", "/director.html", "/studio"):
             return self._send_html(self._asset_path("QB_DIRECTOR_HTML", "director.html"))
+        if u.path in ("/reconstructor", "/reconstructor.html", "/replayer", "/scene"):
+            return self._send_html(self._asset_path("QB_RECONSTRUCTOR_HTML", "reconstructor.html"))
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()
