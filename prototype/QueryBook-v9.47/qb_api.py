@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.47"
+BUILD = "v9.48"
 BUILD_DATE = "2026-10-01"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -392,15 +392,28 @@ class H(BaseHTTPRequestHandler):
             # is present, else the instant rule phonemizer. Never one process per word.
             analysis = qb_language.analyze_phrase(text, lang, max_words=12)
             prosody = qb_language._prosody(text)
-            tts = qb_language.speak(text, lang=lang)   # ONE engine call for the whole phrase
+            # Optional cloud voice provider ('google'|'elevenlabs'); open-source stays the default
+            # and the offline fallback. 'provider' empty/omitted => open-source engine.
+            provider = (body.get("provider") or "").lower() or None
+            voice = body.get("voice") or None
+            tts = qb_language.speak(text, lang=lang, provider=provider, voice=voice)  # ONE call for the whole phrase
             out = {"text": text, "lang": lang, "speakable": qb_language.speakable_languages(),
                    "prosody": prosody, "analysis": analysis,
                    "tts": {"available": tts.get("available"), "engine": tts.get("engine"),
-                           "lang": tts.get("lang"), "error": tts.get("error")}}
+                           "lang": tts.get("lang"), "error": tts.get("error"),
+                           "cloud_error": qb_language._CLOUD_ERR[0]}}
             if tts.get("wav_bytes"):
                 out["audio_b64"] = base64.b64encode(tts["wav_bytes"]).decode("ascii")
                 out["mime"] = tts.get("mime", "audio/wav")
             return self._send(200, out)
+        if u.path == "/api/language/tts_key":
+            # Save a cloud voice provider key/voice LOCALLY (git-ignored file). The key is a
+            # secret: it is stored on this machine only and is NEVER returned to the client.
+            provider = (body.get("provider") or "").lower()
+            key = body.get("key")
+            voice = body.get("voice")
+            r = qb_language.save_tts_key(provider, key=key, voice=voice)
+            return self._send(200 if r.get("ok") else 400, r)
         if u.path == "/api/language/translate":
             # Deterministic dictionary translation (no LLM). text + src + dst.
             # src defaults to "auto" — the source language is auto-sensed.
@@ -771,6 +784,10 @@ class H(BaseHTTPRequestHandler):
                     # Permanent pronunciation/speech quality control battery (per language).
                     only = q.get("lang")
                     self._send(200, qb_language.pronunciation_qc([only.lower()] if only else None))
+                elif u.path == "/api/language/tts_providers":
+                    # Which voice engines are available: open-source (offline) + any configured
+                    # cloud providers (Google / ElevenLabs). NEVER returns the keys themselves.
+                    self._send(200, qb_language.tts_status())
                 elif u.path == "/api/language/readiness":
                     # Per-language readiness matrix for the UI (words, translation, speech).
                     self._send(200, qb_language.language_readiness(DATA_DIR))

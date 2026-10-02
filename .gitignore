@@ -13,3 +13,6 @@ sp.wav
 
 # Rust build artifacts
 rust/target/
+
+# Cloud TTS provider API keys (local secrets — never commit)
+qb_tts_keys.json

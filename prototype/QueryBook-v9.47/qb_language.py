@@ -1308,7 +1308,8 @@ def tts_status():
              "Windows": "built in (System.Speech)", "Darwin": "built in (`say`)"}
     import platform
     return {"available": bool(kind), "engine": kind, "platform": platform.system(),
-            "hint": None if kind else hints.get(platform.system(), "install a local TTS engine")}
+            "hint": None if kind else hints.get(platform.system(), "install a local TTS engine"),
+            "cloud": cloud_tts_status()}
 
 
 # ---- Bundled phoneme synthesizer (pure stdlib, deterministic, no install, no cloud) ----
@@ -1435,16 +1436,155 @@ def synthesize_speech_wav(text, lang="en"):
     return bio.getvalue()
 
 
-def speak(text, out_path=None, lang="en"):
-    """Phase 4b: synthesize `text` to a WAV using the OS's built-in TTS, in the given
-    language's voice where the engine supports it. Returns {available, engine, lang,
-    wav_bytes|None, error?}. Never fabricates audio."""
+# ---- OPTIONAL cloud TTS providers (realistic neural voices) --------------------------------
+# Google (Gemini TTS) and ElevenLabs. The open-source engine stays the DEFAULT and the OFFLINE
+# fallback; cloud is an opt-in enhancement. Keys are read from the environment or a LOCAL,
+# git-ignored file (qb_tts_keys.json next to this module) — NEVER hardcoded, NEVER committed, and
+# NEVER echoed back. If no key is set or a cloud call fails, speak() falls through to the
+# open-source engine. TTS is audio rendering, not fact assertion — the covenant is unaffected.
+import os as _osm, json as _json
+_CLOUD_ERR = [None]   # last cloud TTS error (surfaced by the API; never contains the key)
+
+def _tts_key_file():
+    return _osm.path.join(_osm.path.dirname(_osm.path.abspath(__file__)), "qb_tts_keys.json")
+
+def load_tts_keys():
+    """{'google':{key,model,voice}, 'elevenlabs':{key,voice,model}} from env + the git-ignored
+    local file. Keys are secrets: never log or echo them."""
+    cfg = {}
+    try:
+        with open(_tts_key_file(), "r", encoding="utf-8") as fh:
+            cfg = _json.load(fh) or {}
+    except Exception:
+        cfg = {}
+    g = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
+    e = cfg.get("elevenlabs") if isinstance(cfg.get("elevenlabs"), dict) else {}
+    gkey = _osm.environ.get("GEMINI_API_KEY") or _osm.environ.get("GOOGLE_TTS_API_KEY") or (g or {}).get("key")
+    ekey = _osm.environ.get("ELEVENLABS_API_KEY") or (e or {}).get("key")
+    return {"google": {"key": gkey, "model": (g or {}).get("model") or "gemini-2.5-flash-preview-tts",
+                       "voice": (g or {}).get("voice") or "Kore"},
+            "elevenlabs": {"key": ekey, "voice": (e or {}).get("voice") or "21m00Tcm4TlvDq8ikWAM",
+                           "model": (e or {}).get("model") or "eleven_multilingual_v2"}}
+
+def save_tts_key(provider, key=None, voice=None, model=None):
+    """Persist a cloud TTS key/voice to the LOCAL git-ignored file. Never committed."""
+    provider = (provider or "").lower()
+    if provider not in ("google", "elevenlabs"):
+        return {"ok": False, "error": "unknown provider"}
+    try:
+        try:
+            cfg = _json.load(open(_tts_key_file(), encoding="utf-8"))
+        except Exception:
+            cfg = {}
+        ent = cfg.get(provider) or {}
+        if key is not None and str(key).strip(): ent["key"] = str(key).strip()
+        if voice: ent["voice"] = str(voice).strip()
+        if model: ent["model"] = str(model).strip()
+        cfg[provider] = ent
+        with open(_tts_key_file(), "w", encoding="utf-8") as fh:
+            _json.dump(cfg, fh)
+        try: _osm.chmod(_tts_key_file(), 0o600)
+        except Exception: pass
+        return {"ok": True, "provider": provider, "has_key": bool(ent.get("key")), "voice": ent.get("voice")}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
+def cloud_tts_status():
+    """Which cloud providers are configured (key present). NEVER returns the key."""
+    k = load_tts_keys()
+    return {"google": {"configured": bool(k["google"]["key"]), "voice": k["google"]["voice"], "model": k["google"]["model"]},
+            "elevenlabs": {"configured": bool(k["elevenlabs"]["key"]), "voice": k["elevenlabs"]["voice"]}}
+
+def _pcm_to_wav(pcm, rate=24000, ch=1, width=2):
+    import wave, io
+    buf = io.BytesIO()
+    wf = wave.open(buf, "wb"); wf.setnchannels(ch); wf.setsampwidth(width); wf.setframerate(rate)
+    wf.writeframes(pcm); wf.close()
+    return buf.getvalue()
+
+def _http_post(url, data, headers, timeout=30):
+    import urllib.request
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read(), resp.headers.get("Content-Type", "")
+
+def google_tts(text, lang="en", voice=None, key=None, model=None):
+    """Google Gemini TTS -> (WAV bytes, mime). Realistic neural voice. Raises on failure."""
+    import urllib.error, base64, re as _re
+    k = load_tts_keys()["google"]
+    key = key or k["key"]; voice = voice or k["voice"]; model = model or k["model"]
+    if not key: raise RuntimeError("no Google API key configured")
+    url = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s" % (model, key)
+    body = _json.dumps({"contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {"responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}}}).encode("utf-8")
+    try:
+        raw, _ct = _http_post(url, body, {"Content-Type": "application/json"}, timeout=30)
+    except urllib.error.HTTPError as he:
+        raise RuntimeError("google http %s: %s" % (he.code, he.read().decode("utf-8", "ignore")[:200]))
+    data = _json.loads(raw)
+    part = data["candidates"][0]["content"]["parts"][0]
+    inl = part.get("inlineData") or part.get("inline_data")
+    pcm = base64.b64decode(inl["data"]); mime = inl.get("mimeType") or inl.get("mime_type") or ""
+    m = _re.search(r"rate=(\d+)", mime); rate = int(m.group(1)) if m else 24000
+    return _pcm_to_wav(pcm, rate=rate), "audio/wav"
+
+def elevenlabs_tts(text, voice=None, key=None, model=None):
+    """ElevenLabs TTS -> (MP3 bytes, mime). Realistic neural voice. Raises on failure."""
+    import urllib.error
+    k = load_tts_keys()["elevenlabs"]
+    key = key or k["key"]; voice = voice or k["voice"]; model = model or k["model"]
+    if not key: raise RuntimeError("no ElevenLabs API key configured")
+    url = "https://api.elevenlabs.io/v1/text-to-speech/%s" % voice
+    body = _json.dumps({"text": text, "model_id": model,
+                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}).encode("utf-8")
+    try:
+        raw, _ct = _http_post(url, body, {"xi-api-key": key, "Content-Type": "application/json",
+                                          "Accept": "audio/mpeg"}, timeout=30)
+    except urllib.error.HTTPError as he:
+        raise RuntimeError("elevenlabs http %s: %s" % (he.code, he.read().decode("utf-8", "ignore")[:200]))
+    return raw, "audio/mpeg"
+
+def cloud_tts(text, lang="en", provider="google", voice=None):
+    """Dispatch to a cloud provider. Returns {engine, wav_bytes, mime} or raises."""
+    provider = (provider or "").lower()
+    if provider == "google":
+        data, mime = google_tts(text, lang, voice); return {"engine": "google-gemini-tts", "wav_bytes": data, "mime": mime}
+    if provider == "elevenlabs":
+        data, mime = elevenlabs_tts(text, voice); return {"engine": "elevenlabs", "wav_bytes": data, "mime": mime}
+    raise RuntimeError("unknown cloud provider: %s" % provider)
+
+
+def speak(text, out_path=None, lang="en", provider=None, voice=None):
+    """Phase 4b: synthesize `text` to audio. The open-source engine is the default and the
+    offline fallback; an OPTIONAL cloud `provider` ('google'|'elevenlabs') gives a realistic
+    neural voice when a key is configured, and falls back to the open-source engine on any
+    failure. Returns {available, engine, lang, wav_bytes|None, mime, error?}. Never fabricates
+    audio; TTS is rendering, not fact assertion (covenant unaffected)."""
     import platform, subprocess, tempfile, os as _os
     lang = (lang or "en").lower()
     text = (text or "").strip()[:400]
     if not text:
         return {"available": True, "engine": None, "lang": lang, "wav_bytes": None, "error": "no text"}
     tmp = out_path or _os.path.join(tempfile.gettempdir(), "qb_speech.wav")
+
+    # --- OPTIONAL cloud provider first (realistic neural voice), when explicitly selected AND a
+    #     key is configured. Offline-first: on ANY failure we fall through to the open-source
+    #     engine below and record the reason. ---
+    _CLOUD_ERR[0] = None
+    prov = (provider or "").lower()
+    if prov in ("google", "elevenlabs"):
+        _t0 = time.time()
+        try:
+            c = cloud_tts(text, lang, prov, voice)
+            if c.get("wav_bytes"):
+                _espeak_log("cloud-ok", provider=prov, ms=int((time.time() - _t0) * 1000), chars=len(text))
+                return {"available": True, "engine": c["engine"], "lang": lang,
+                        "wav_bytes": c["wav_bytes"], "mime": c.get("mime", "audio/wav")}
+        except Exception as _ce:
+            _CLOUD_ERR[0] = "%s: %s" % (prov, _ce)
+            _espeak_log("cloud-FAIL", provider=prov, err=repr(_ce)[:160])
+            # fall through to the open-source engine (offline-first)
 
     # --- Non-English: espeak-ng is the reliable multilingual voice on every OS. ---
     esp = _espeak_exe()

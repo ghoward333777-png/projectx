@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.47 · 2026-10-01</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.48 · 2026-10-02</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -272,8 +272,27 @@
         <option value="pt">Portuguese</option><option value="it">Italian</option>
         <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
       <input id="speak-text" placeholder="Type a word, e.g. gracias, maison, danke…" style="flex:1;min-width:200px;padding:6px 10px">
+      <select id="speak-engine" style="padding:6px 8px" title="Voice engine" data-tip="Open-source is offline and always available. Google / ElevenLabs are optional realistic neural voices (require your API key, set below).">
+        <option value="">Open-source (offline)</option>
+        <option value="google">Google (Gemini) — neural</option>
+        <option value="elevenlabs">ElevenLabs — neural</option></select>
+      <input id="speak-voice" placeholder="voice (optional)" style="width:130px;padding:6px 10px" title="Optional voice name/ID for the selected cloud engine (e.g. Kore for Google)">
       <button class="btn" id="speak-btn" data-tip="Analyze the word's pronunciation and speak it aloud.">Analyze &amp; Speak</button>
     </div>
+    <details style="margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🔊 Realistic neural voices (optional) — connect Google or ElevenLabs</summary>
+      <p class="note" style="margin:6px 0">Add your own API key to use a realistic AI voice. Your key is stored <b>only on this computer</b> (a local, git-ignored file) and is <b>never shown back</b> or sent anywhere but the provider. The open-source engine stays the default and the offline fallback.</p>
+      <div class="formrow" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+        <select id="tts-prov" style="padding:6px 8px">
+          <option value="google">Google (Gemini TTS)</option>
+          <option value="elevenlabs">ElevenLabs</option></select>
+        <input id="tts-key" type="password" placeholder="paste API key" style="flex:1;min-width:200px;padding:6px 10px" autocomplete="off">
+        <input id="tts-voice" placeholder="default voice (optional)" style="width:150px;padding:6px 10px">
+        <button class="btn ghost" id="tts-save">Save key (local)</button>
+        <button class="btn ghost" id="tts-check">Check providers</button>
+      </div>
+      <div id="tts-status" class="note" style="margin-top:6px"></div>
+    </details>
     <div class="note" style="margin-top:4px"><b>Pronunciation (IPA) works for every language with no install.</b>
     To <b>hear</b> non-English languages, double-click <b>GET-VOICES-WINDOWS.bat</b> once — it installs the free
     espeak-ng voice engine so every language speaks with a real voice, offline. (English speaks already.)</div>
@@ -490,7 +509,9 @@ function wireSpeak(){
       // Never hang the UI: give the request 20s, then abort and tell the user.
       const ctrl=new AbortController(); const killer=setTimeout(()=>ctrl.abort(),20000);
       let resp;
-      try{ resp=await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang}),signal:ctrl.signal}); }
+      const provider=((document.getElementById('speak-engine')||{}).value||'');
+      const voice=((document.getElementById('speak-voice')||{}).value||'').trim();
+      try{ resp=await fetch('api/language/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,lang:lang,provider:provider,voice:voice}),signal:ctrl.signal}); }
       catch(ab){ clearTimeout(killer); qblog('speak.timeout'); out.innerHTML='<i>Speech took too long and was cancelled. Run <b>🔎 Voice diagnostics</b> or <b>Check espeak-ng</b> below to see why.</i>'; b.disabled=false; return; }
       clearTimeout(killer);
       const r=await resp.json();
@@ -1036,6 +1057,31 @@ if($('espeak-btn')) $('espeak-btn').onclick=async function(){
     if(!(d.recent_calls||[]).length) L.push('   (none yet)');
     _vdText=L.join('\n'); box.textContent=_vdText; $('voice-diag-copy').style.display='';
   }catch(e){ box.textContent='espeak check failed: '+e; }
+};
+
+// ---- Cloud voice providers (optional): save key locally + check which are configured ----
+if($('tts-save')) $('tts-save').onclick=async function(){
+  const st=$('tts-status'); const provider=($('tts-prov')||{}).value||'google';
+  const key=($('tts-key')||{}).value||''; const voice=(($('tts-voice')||{}).value||'').trim();
+  if(!key.trim()){ st.textContent='Paste an API key first.'; return; }
+  st.textContent='Saving locally…';
+  try{
+    const d=await (await fetch('api/language/tts_key',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({provider:provider,key:key,voice:voice})})).json();
+    if(d.ok){ $('tts-key').value=''; st.innerHTML='✓ Saved <b>'+provider+'</b> key on this computer'+(d.voice?(' (voice '+d.voice+')'):'')+'. Pick '+provider+' in the voice engine selector above, then Analyze &amp; Speak.'; }
+    else { st.textContent='Could not save: '+(d.error||'unknown'); }
+  }catch(e){ st.textContent='Save failed: '+e; }
+};
+if($('tts-check')) $('tts-check').onclick=async function(){
+  const st=$('tts-status'); st.textContent='Checking…';
+  try{
+    const d=await (await fetch('api/language/tts_providers')).json();
+    const c=d.cloud||{}; const parts=[];
+    parts.push('Open-source (offline): '+(d.available?('available — '+d.engine):'not installed'));
+    parts.push('Google (Gemini): '+((c.google&&c.google.configured)?('configured ✓ (voice '+c.google.voice+')'):'not configured'));
+    parts.push('ElevenLabs: '+((c.elevenlabs&&c.elevenlabs.configured)?('configured ✓ (voice '+c.elevenlabs.voice+')'):'not configured'));
+    st.innerHTML=parts.join('<br>');
+  }catch(e){ st.textContent='Check failed: '+e; }
 };
 
 // ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
