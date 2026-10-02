@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.55"
+BUILD = "v9.56"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -289,6 +289,9 @@ class H(BaseHTTPRequestHandler):
                 and not u.path.startswith("/api/rights/") \
                 and not u.path.startswith("/api/integrity/") \
                 and not u.path.startswith("/api/middleware/") \
+                and not u.path.startswith("/api/edu/") \
+                and not u.path.startswith("/api/collab/") \
+                and not u.path.startswith("/api/saas/") \
                 and u.path not in ("/api/ontology", "/api/assess", "/api/webhooks"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
@@ -671,6 +674,61 @@ class H(BaseHTTPRequestHandler):
                 WEBHOOKS = []
                 return self._send(200, {"ok": True})
             return self._send(200, {"webhooks": WEBHOOKS})
+        if u.path.startswith("/api/edu/"):
+            import qb_education
+            tail = u.path[len("/api/edu/"):]
+            if tail == "lesson":
+                return self._send(200, qb_education.generate_lesson(body.get("domain", "history"),
+                    int(body.get("count", 5)), store_dir=DATA_DIR))
+            if tail == "grade":
+                return self._send(200, qb_education.grade_attempt(body.get("learner"),
+                    body.get("domain", "history"), body.get("answers") or [],
+                    class_id=body.get("class_id"), store_dir=DATA_DIR))
+            if tail == "learner":
+                return self._send(200, qb_education.learner_state(body.get("learner")))
+            if tail == "class":
+                return self._send(200, qb_education.class_analytics(body.get("class_id")))
+            if tail == "study_guide":
+                return self._send(200, qb_education.study_guide(body.get("domain", "history"), store_dir=DATA_DIR))
+            return self._send(404, {"error": "unknown edu endpoint"})
+        if u.path.startswith("/api/collab/"):
+            import qb_collab
+            tail = u.path[len("/api/collab/"):]
+            if tail == "resource":
+                return self._send(200, qb_collab.add_resource(body.get("title"), body.get("owner", "anonymous"),
+                    body.get("body", ""), tenant=body.get("tenant")))
+            if tail == "resources":
+                return self._send(200, qb_collab.list_resources(tenant=body.get("tenant")))
+            if tail == "annotate":
+                return self._send(200, qb_collab.add_annotation(body.get("resource"), body.get("author", "anonymous"),
+                    body.get("text", ""), anchor=body.get("anchor")))
+            if tail == "annotations":
+                return self._send(200, qb_collab.list_annotations(body.get("resource")))
+            if tail == "post":
+                return self._send(200, qb_collab.post_thread(body.get("resource"), body.get("author", "anonymous"),
+                    body.get("text", ""), parent=body.get("parent")))
+            if tail == "thread":
+                return self._send(200, qb_collab.get_thread(body.get("root")))
+            if tail == "activity":
+                return self._send(200, qb_collab.activity(int(body.get("limit", 30))))
+            return self._send(404, {"error": "unknown collab endpoint"})
+        if u.path.startswith("/api/saas/"):
+            import qb_saas
+            tail = u.path[len("/api/saas/"):]
+            if tail == "tenant":
+                return self._send(200, qb_saas.create_tenant(body.get("name"), body.get("plan", "team"),
+                    owner_email=body.get("owner_email")))
+            if tail == "tenants":
+                return self._send(200, qb_saas.list_tenants())
+            if tail == "plan":
+                return self._send(200, qb_saas.set_plan(body.get("tenant_id"), body.get("plan")))
+            if tail == "user":
+                return self._send(200, qb_saas.add_user(body.get("tenant_id"), body.get("email"), body.get("role", "reader")))
+            if tail == "usage":
+                return self._send(200, qb_saas.record_usage(body.get("tenant_id"), body.get("metric", "api"), int(body.get("n", 1))))
+            if tail == "summary":
+                return self._send(200, qb_saas.tenant_summary(body.get("tenant_id")))
+            return self._send(404, {"error": "unknown saas endpoint"})
         if u.path == "/api/middleware/verify":
             import qb_middleware
             return self._send(200, qb_middleware.verify_claim(body.get("text", ""), store_dir=DATA_DIR))
@@ -886,6 +944,14 @@ class H(BaseHTTPRequestHandler):
             return self._send_html(self._asset_path("QB_DIRECTOR_HTML", "director.html"))
         if u.path in ("/reconstructor", "/reconstructor.html", "/replayer", "/scene"):
             return self._send_html(self._asset_path("QB_RECONSTRUCTOR_HTML", "reconstructor.html"))
+        if u.path in ("/learn", "/learn.html", "/reader"):
+            return self._send_html(self._asset_path("QB_LEARN_HTML", "learn.html"))
+        if u.path in ("/educator", "/educator.html"):
+            return self._send_html(self._asset_path("QB_EDUCATOR_HTML", "educator.html"))
+        if u.path in ("/collab", "/collab.html", "/workspace"):
+            return self._send_html(self._asset_path("QB_COLLAB_HTML", "collab.html"))
+        if u.path in ("/admin", "/admin.html", "/tenants"):
+            return self._send_html(self._asset_path("QB_ADMIN_HTML", "admin.html"))
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Educator</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#1e5f9f;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#1e5f9f;font-weight:700}
+.wrap{max-width:960px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}@media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
+.kpi .n{font-family:var(--serif);font-size:26px;color:#1e5f9f;font-variant-numeric:tabular-nums}
+.kpi .k{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.barrow{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:13px}
+.barrow .lab{width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{flex:1;height:14px;background:#e7ecf2;border-radius:7px;overflow:hidden}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,#5aa0e0,#1e5f9f)}
+.bar.low>span{background:linear-gradient(90deg,#e0a05a,#c0392b)}
+.val{width:48px;text-align:right;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.chip{display:inline-block;font:700 11px/1 var(--mono);padding:3px 7px;border-radius:999px;background:#fdeaea;color:#8a1111;margin:2px}
+.note{color:var(--muted);font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input[type=text]{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+.btn{background:#1e5f9f;color:#fff;border:none;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Educator · v9.56</span>
+  <nav class="nav">
+    <a href="/">Home</a><a href="/learn">Learn</a><a class="active" href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a><a href="/admin">Admin</a><a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="card">
+    <h2>Educator dashboard</h2>
+    <p class="sub">Class mastery, misconception clusters, engagement, and cohort comparison — aggregated
+    deterministically from learners' graded attempts (generate some on the Learn page first).</p>
+    <div class="row">
+      <label class="note">Class <input type="text" id="class" placeholder="(all classes)" style="width:140px"></label>
+      <button class="btn" id="refresh">Refresh</button>
+      <span id="status" class="note"></span>
+    </div>
+  </div>
+  <div class="card" id="kpi-card"><div class="kpis" id="kpis"></div></div>
+  <div class="card" id="mastery-card"><h2>Mastery by competency</h2><div id="mastery"></div></div>
+  <div class="card" id="misc-card"><h2>Misconception clusters (weakest)</h2><div id="misc"></div></div>
+  <div class="card" id="cohort-card"><h2>Cohort comparison</h2><div id="cohort"></div></div>
+</div>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function post(p,o){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(r=>r.json());}
+function bars(mastery){
+  var keys=Object.keys(mastery||{}); if(!keys.length) return '<span class="note">No data yet — grade a lesson on the Learn page.</span>';
+  return keys.map(function(c){var v=mastery[c];return '<div class="barrow"><span class="lab">'+esc(c)+'</span><span class="bar'+(v<50?' low':'')+'"><span style="width:'+v+'%"></span></span><span class="val">'+v+'%</span></div>';}).join('');
+}
+async function load(){
+  $('status').textContent='Loading…';
+  var cls=($('class').value||'').trim();
+  var d=await post('/api/edu/class', cls?{class_id:cls}:{});
+  if(cls){
+    $('kpis').innerHTML=[['Members',d.members],['Avg score',d.avg_score+'%'],['Attempts',d.attempts],['Engagement',d.engagement]].map(function(k){return '<div class="kpi"><div class="n">'+esc(k[1])+'</div><div class="k">'+k[0]+'</div></div>';}).join('');
+    $('mastery').innerHTML=bars(d.mastery);
+    $('misc').innerHTML=(d.misconception_clusters||[]).map(m=>'<span class="chip">'+esc(m.competency)+' · '+m.mastery+'%</span>').join('')||'<span class="note">none</span>';
+    $('cohort-card').style.display='none';
+  } else {
+    $('kpis').innerHTML=[['Classes',(d.classes||[]).length],['Learners',d.total_learners],['Attempts',d.total_attempts],['',''  ]].filter(k=>k[0]).map(function(k){return '<div class="kpi"><div class="n">'+esc(k[1])+'</div><div class="k">'+k[0]+'</div></div>';}).join('');
+    var allM={}; (d.classes||[]).forEach(function(c){Object.keys(c.mastery||{}).forEach(function(k){allM[k]=c.mastery[k];});});
+    $('mastery').innerHTML=bars(allM);
+    var clusters=[]; (d.classes||[]).forEach(function(c){(c.misconception_clusters||[]).forEach(function(m){clusters.push(m);});});
+    $('misc').innerHTML=clusters.map(m=>'<span class="chip">'+esc(m.competency)+' · '+m.mastery+'%</span>').join('')||'<span class="note">none</span>';
+    $('cohort-card').style.display='';
+    $('cohort').innerHTML='<table><tr><th>Class</th><th>Members</th><th>Avg score</th></tr>'+(d.cohort_comparison||[]).map(function(c){return '<tr><td>'+esc(c.class)+'</td><td>'+c.members+'</td><td>'+c.avg_score+'%</td></tr>';}).join('')+'</table>'||'<span class="note">no classes</span>';
+  }
+  $('status').textContent='';
+}
+$('refresh').onclick=load; load();
+</script>
+</body>
+</html>

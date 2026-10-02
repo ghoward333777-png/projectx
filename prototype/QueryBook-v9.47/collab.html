@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Collaborate</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#8a5a1e;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#8a5a1e;font-weight:700}
+.wrap{max-width:980px;margin:0 auto;padding:20px}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:16px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:20px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text],textarea{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font-size:14px}
+input[type=text]{width:100%}textarea{width:100%;min-height:60px}
+.btn{background:#8a5a1e;color:#fff;border:none;border-radius:9px;padding:8px 13px;font-weight:600;cursor:pointer;font-size:14px}
+.btn.ghost{background:#fff;color:#8a5a1e;border:1.5px solid #8a5a1e}
+.res{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:7px;cursor:pointer;background:#fbfcfb}
+.res.sel{border-color:#8a5a1e;background:#f7efe3}
+.res .t{font-weight:600}.res .m{font-size:12px;color:var(--muted)}
+.ann{border-left:3px solid #d8b887;padding:6px 10px;margin-top:6px;background:#fbf7f0;font-size:14px}
+.msg{border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-top:6px;font-size:14px}
+.msg .who{font-weight:600;font-size:12px;color:#8a5a1e}
+.note{color:var(--muted);font-size:12px}
+.seal{font:10px/1 var(--mono);color:#1e7f3c}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Collaborate · v9.56</span>
+  <nav class="nav">
+    <a href="/">Home</a><a href="/learn">Learn</a><a href="/educator">Educator</a>
+    <a class="active" href="/collab">Collaborate</a><a href="/admin">Admin</a><a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Resources</h2>
+        <p class="sub">Shared documents. Each record is provenance-sealed.</p>
+        <input type="text" id="r-title" placeholder="new resource title">
+        <div class="row" style="margin-top:6px"><input type="text" id="r-owner" placeholder="your name" value="you" style="flex:1"><button class="btn" id="add-res">Add</button></div>
+        <div id="resources" style="margin-top:10px"></div>
+      </div>
+      <div class="card"><h2>Activity</h2><div id="activity" class="note"></div></div>
+    </div>
+    <div>
+      <div class="card" id="detail" style="display:none">
+        <h2 id="d-title"></h2>
+        <p class="sub" id="d-seal"></p>
+        <h3 style="font-size:15px;margin:10px 0 2px">Annotations</h3>
+        <div class="row"><input type="text" id="a-text" placeholder="add an annotation" style="flex:1"><button class="btn ghost" id="add-ann">Annotate</button></div>
+        <div id="annotations"></div>
+        <h3 style="font-size:15px;margin:14px 0 2px">Discussion</h3>
+        <div class="row"><input type="text" id="m-text" placeholder="post a message" style="flex:1"><button class="btn" id="post-msg">Post</button></div>
+        <div id="thread"></div>
+      </div>
+      <div class="card" id="empty"><p class="note">Select or add a resource to annotate and discuss.</p></div>
+    </div>
+  </div>
+</div>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function post(p,o){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(r=>r.json());}
+var SEL=null;
+function who(){return ($('r-owner').value||'you').trim();}
+async function loadResources(){
+  var d=await post('/api/collab/resources',{});
+  $('resources').innerHTML=(d.resources||[]).map(function(r){return '<div class="res'+(SEL&&SEL.id===r.id?' sel':'')+'" data-id="'+r.id+'"><div class="t">'+esc(r.title)+'</div><div class="m">by '+esc(r.owner)+'</div></div>';}).join('')||'<span class="note">no resources yet</span>';
+  document.querySelectorAll('.res').forEach(function(el){ el.onclick=function(){ var r=(d.resources||[]).find(x=>x.id===el.dataset.id); open(r); }; });
+  loadActivity();
+}
+async function open(r){
+  SEL=r; $('empty').style.display='none'; $('detail').style.display='';
+  $('d-title').textContent=r.title; $('d-seal').innerHTML='owner '+esc(r.owner)+(r.seal?(' · <span class="seal">sealed '+esc(r.seal)+'</span>'):'');
+  loadResources();
+  var a=await post('/api/collab/annotations',{resource:r.id});
+  $('annotations').innerHTML=(a.annotations||[]).map(an=>'<div class="ann">'+esc(an.text)+' <span class="note">— '+esc(an.author)+'</span></div>').join('')||'<span class="note">no annotations</span>';
+  var t=await post('/api/collab/thread',{root:r.id});
+  $('thread').innerHTML=(t.messages||[]).map(m=>'<div class="msg"><div class="who">'+esc(m.author)+'</div>'+esc(m.text)+'</div>').join('')||'<span class="note">no messages</span>';
+}
+async function loadActivity(){
+  var d=await post('/api/collab/activity',{limit:12});
+  $('activity').innerHTML=(d.activity||[]).map(a=>'• <b>'+esc(a.who)+'</b> '+esc(a.what)).join('<br>')||'no activity';
+}
+$('add-res').onclick=async function(){ var t=($('r-title').value||'').trim(); if(!t) return; await post('/api/collab/resource',{title:t,owner:who()}); $('r-title').value=''; loadResources(); };
+$('add-ann').onclick=async function(){ if(!SEL) return; var t=($('a-text').value||'').trim(); if(!t) return; await post('/api/collab/annotate',{resource:SEL.id,author:who(),text:t}); $('a-text').value=''; open(SEL); };
+$('post-msg').onclick=async function(){ if(!SEL) return; var t=($('m-text').value||'').trim(); if(!t) return; await post('/api/collab/post',{resource:SEL.id,author:who(),text:t,parent:SEL.id}); $('m-text').value=''; open(SEL); };
+loadResources();
+</script>
+</body>
+</html>

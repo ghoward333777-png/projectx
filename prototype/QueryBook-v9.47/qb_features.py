@@ -78,6 +78,16 @@ FEATURES = [
     {"id": "identity.pil", "title": "PIL paralinguistics + pragmatic interpretation", "system": "identity",
      "registry": "[210]-[214]", "module": "qb_pil",
      "endpoints": ["/api/pil/analyze", "/api/pil/interpret"], "page": "/voice", "status": "built"},
+    # ---- Education ----
+    {"id": "edu.learn", "title": "Learner / Reader experience (lessons, quiz, mastery)", "system": "education",
+     "registry": "[081]-[096],[119]-[130]", "module": "qb_education,qb_assess,qb_ontology",
+     "endpoints": ["/api/edu/lesson", "/api/edu/grade", "/api/edu/study_guide"], "page": "/learn", "status": "built"},
+    {"id": "edu.educator", "title": "Educator analytics dashboard (class/cohort mastery)", "system": "education",
+     "registry": "[131]-[145]", "module": "qb_education", "endpoints": ["/api/edu/class", "/api/edu/learner"],
+     "page": "/educator", "status": "built"},
+    {"id": "edu.collab", "title": "Collaboration workspace (annotations/threads/resources)", "system": "education",
+     "registry": "[146]-[155]", "module": "qb_collab",
+     "endpoints": ["/api/collab/resource", "/api/collab/annotate", "/api/collab/post"], "page": "/collab", "status": "built"},
     # ---- Knowledge ----
     {"id": "knowledge.ontology", "title": "Ontology / concept graph", "system": "knowledge",
      "registry": "[068]-[080]", "module": "qb_ontology", "endpoints": ["/api/ontology"], "page": None, "status": "built"},
@@ -108,6 +118,9 @@ FEATURES = [
      "endpoints": ["/api/embodiments"], "page": "/", "status": "built"},
     {"id": "platform.two_system", "title": "Two-system home (Ingestion | Query)", "system": "platform",
      "registry": "Two-System Arch.", "module": "qb_api", "endpoints": ["/api/system"], "page": "/", "status": "built"},
+    {"id": "platform.saas", "title": "Multi-tenant SaaS admin (tenants/users/roles/usage/plans)",
+     "system": "platform", "registry": "[097]-[108],[173]-[177] (SaaS)", "module": "qb_saas",
+     "endpoints": ["/api/saas/tenant", "/api/saas/user", "/api/saas/summary"], "page": "/admin", "status": "built"},
 ]
 
 
@@ -128,7 +141,9 @@ def _page_ok(spec):
         return True
     fname = {"/": "home.html", "/chat": "chat.html", "/ingest": "ingest.html",
              "/language": "language.html", "/voice": "voice.html", "/director": "director.html",
-             "/reconstructor": "reconstructor.html", "/dashboard": "dashboard.html"}.get(page)
+             "/reconstructor": "reconstructor.html", "/dashboard": "dashboard.html",
+             "/learn": "learn.html", "/educator": "educator.html", "/collab": "collab.html",
+             "/admin": "admin.html"}.get(page)
     return bool(fname) and _os.path.exists(_os.path.join(_HERE, fname))
 
 def catalog():

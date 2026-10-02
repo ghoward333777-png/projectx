@@ -38,6 +38,9 @@ FEATURES = {
     "dialects":            "Language · Dialect Parameter Clusters",
     "lil":                 "Identity · LIL voiceprint (consent-gated)",
     "pil":                 "Interpretation · PIL paralinguistics",
+    "edu.learn":           "Education · Learner / Reader experience",
+    "edu.educator":        "Education · Educator analytics dashboard",
+    "edu.collab":          "Education · Collaboration workspace",
     "knowledge.ontology":  "Knowledge · Ontology / concept graph",
     "knowledge.assess":    "Knowledge · Assessment + study-guide generator",
     "integrity.rights":    "Integrity · Licensing & rights gate",
@@ -56,7 +59,7 @@ _LIGHT = {
 _MEDIUM = _LIGHT | {
     "query.voice", "query.intel", "ingest.deterministic", "ingest.history", "ingest.news", "ingest.web",
     "agents.reasoning", "agents.creativity", "agents.planner", "speech.cloud",
-    "knowledge.ontology", "knowledge.assess",
+    "knowledge.ontology", "knowledge.assess", "edu.learn", "edu.educator", "edu.collab",
 }
 _FULL = set(FEATURES.keys())   # everything
 
