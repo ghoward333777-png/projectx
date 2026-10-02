@@ -41,21 +41,21 @@ EMBODIMENTS = [
      "how": "Expose query + verify + ingest as tools an LLM agent can call. The covenant makes "
             "QueryBook a trustworthy ground-truth tool: it returns cited facts or UNKNOWN, so "
             "a calling model cannot launder a guess through it.",
-     "entrypoints": ["(roadmap) MCP server wrapping /api/fql, /api/verify, /api/chat"],
-     "status": "roadmap"},
+     "entrypoints": ["qb_mcp.py (stdio JSON-RPC: initialize/tools/list/tools/call)"],
+     "status": "built"},
     {"id": "middleware", "name": "Middleware / sidecar", "surface": "In-line verification layer",
      "infra": "ai",
      "how": "Sits between an application and an LLM: every model claim is checked against the "
             "store (VERIFIED / CONTRADICTED / UNKNOWN) before it reaches the user — a "
             "provenance firewall for AI pipelines.",
-     "entrypoints": ["(roadmap) qb_middleware adapter over /api/verify"],
-     "status": "roadmap"},
+     "entrypoints": ["qb_middleware.py", "/api/middleware/verify", "/api/middleware/guard"],
+     "status": "built"},
     {"id": "sdk", "name": "Client SDKs", "surface": "Language bindings",
      "infra": "both",
      "how": "Thin clients (JS/Python/…) over the HTTP API for conventional apps and AI back "
             "ends alike.",
-     "entrypoints": ["(roadmap) generated from the /api/* contract"],
-     "status": "roadmap"},
+     "entrypoints": ["qb-client.js (fetch SDK over /api/*)"],
+     "status": "built"},
 ]
 
 

@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.52"
+BUILD = "v9.53"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -287,6 +287,7 @@ class H(BaseHTTPRequestHandler):
                 and not u.path.startswith("/api/query/") \
                 and not u.path.startswith("/api/rights/") \
                 and not u.path.startswith("/api/integrity/") \
+                and not u.path.startswith("/api/middleware/") \
                 and u.path not in ("/api/ontology", "/api/assess", "/api/webhooks"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
@@ -643,6 +644,12 @@ class H(BaseHTTPRequestHandler):
                 WEBHOOKS = []
                 return self._send(200, {"ok": True})
             return self._send(200, {"webhooks": WEBHOOKS})
+        if u.path == "/api/middleware/verify":
+            import qb_middleware
+            return self._send(200, qb_middleware.verify_claim(body.get("text", ""), store_dir=DATA_DIR))
+        if u.path == "/api/middleware/guard":
+            import qb_middleware
+            return self._send(200, qb_middleware.guard(body.get("text", ""), store_dir=DATA_DIR))
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.
