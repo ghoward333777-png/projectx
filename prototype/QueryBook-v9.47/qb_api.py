@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.49"
+BUILD = "v9.50"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -279,7 +279,8 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/ingest", "/api/language/speak", "/api/language/translate",
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
-                          "/api/language/custom_voice", "/api/mirror", "/api/help"):
+                          "/api/language/custom_voice", "/api/language/dialects",
+                          "/api/language/dialect_detect", "/api/mirror", "/api/help"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -391,7 +392,10 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "text required"})
             # Whole-phrase analysis: ONE espeak call (accurate, matches the audio) when espeak
             # is present, else the instant rule phonemizer. Never one process per word.
-            analysis = qb_language.analyze_phrase(text, lang, max_words=12)
+            # Optional dialect (DPC): overlays deterministic phonology on the IPA and steers
+            # the voice (accent via cloud style / espeak voice variant).
+            dialect = body.get("dialect") or None
+            analysis = qb_language.analyze_phrase(text, lang, max_words=12, dialect=dialect)
             prosody = qb_language._prosody(text)
             # Optional cloud voice provider ('google'|'elevenlabs'); open-source stays the default
             # and the offline fallback. 'provider' empty/omitted => open-source engine.
@@ -404,9 +408,10 @@ class H(BaseHTTPRequestHandler):
             custom_voice = body.get("custom_voice") or None
             model = body.get("model") or None
             tts = qb_language.speak(text, lang=lang, provider=provider, voice=voice, style=style,
-                                    settings=settings, custom_voice=custom_voice, model=model)  # ONE call
+                                    settings=settings, custom_voice=custom_voice, model=model,
+                                    dialect=dialect)  # ONE call
             out = {"text": text, "lang": lang, "speakable": qb_language.speakable_languages(),
-                   "prosody": prosody, "analysis": analysis,
+                   "prosody": prosody, "analysis": analysis, "dialect": dialect,
                    "tts": {"available": tts.get("available"), "engine": tts.get("engine"),
                            "lang": tts.get("lang"), "error": tts.get("error"),
                            "cloud_error": qb_language._CLOUD_ERR[0]}}
@@ -463,10 +468,42 @@ class H(BaseHTTPRequestHandler):
             text = (body.get("text") or "").strip()
             src = (body.get("src") or "auto").lower()
             dst = (body.get("dst") or "en").lower()
+            dialect = body.get("dialect") or None
             if not text:
                 return self._send(400, {"error": "text required"})
+            # If a source dialect is named, normalize dialect surface forms to their standard
+            # forms (+ record FU meaning atoms) BEFORE the deterministic translator runs, so a
+            # dialect word carries its shared meaning across languages.
+            dialect_norm = None
+            try:
+                import qb_dialect
+                if dialect and dialect in qb_dialect.DIALECTS:
+                    std, hits = qb_dialect.normalize_lexicon(text, dialect)
+                    if hits:
+                        text = std; dialect_norm = {"standardized": std, "hits": hits}
+            except Exception:
+                pass
             r = qb_language.translate(text, src, dst)
+            if dialect_norm:
+                r["dialect_normalization"] = dialect_norm
             return self._send(200 if "error" not in r else 400, r)
+        if u.path == "/api/language/dialects":
+            # List available Dialect Parameter Clusters (optionally for one parent language), or
+            # the full DPC for one dialect when 'id' is given.
+            import qb_dialect
+            did = body.get("id")
+            if did:
+                info = qb_dialect.dialect_info(did)
+                return self._send(200 if info else 404, info or {"error": "unknown dialect"})
+            return self._send(200, {"dialects": qb_dialect.dialects_for(body.get("lang") or None)})
+        if u.path == "/api/language/dialect_detect":
+            # Deterministic dialect detection: rank DPCs by lexical markers + orthographic cues.
+            import qb_dialect
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._send(400, {"error": "text required"})
+            return self._send(200, {"text": text,
+                "candidates": qb_dialect.detect_dialect(text, body.get("lang") or None)})
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.

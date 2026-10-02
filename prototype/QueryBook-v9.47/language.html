@@ -82,7 +82,7 @@
 </style></head><body>
 <header class="top">
   <span class="brand"><span class="q">Query</span>Book — Language Lab</span>
-  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.49 · 2026-10-02</span>
+  <span style="font:800 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;letter-spacing:.03em">BUILD v9.50 · 2026-10-02</span>
   <nav>
     <a href="/dashboard" data-tip="Console: start/stop harvesting facts, see totals, manage agents.">Console</a>
     <a href="/" data-tip="Chat: ask questions and get cited answers (or an honest 'UNKNOWN').">Chat</a>
@@ -271,6 +271,7 @@
         <option value="fr">French</option><option value="de">German</option>
         <option value="pt">Portuguese</option><option value="it">Italian</option>
         <option value="sv">Swedish</option><option value="nl">Dutch</option></select>
+      <select id="speak-dialect" style="padding:6px 8px" title="Dialect (optional)" data-tip="A Dialect Parameter Cluster overlays deterministic phonology (e.g. th-fronting, pin–pen merger) on the pronunciation and steers the voice's accent."><option value="">Standard (no dialect)</option></select>
       <input id="speak-text" placeholder="Type a word, e.g. gracias, maison, danke…" style="flex:1;min-width:200px;padding:6px 10px">
       <select id="speak-engine" style="padding:6px 8px" title="Voice engine" data-tip="Open-source is offline and always available. Google / ElevenLabs are optional realistic neural voices (require your API key, set below).">
         <option value="google" selected>Google (Gemini) — neural</option>
@@ -345,6 +346,19 @@
           <span id="cv-status" class="note"></span>
         </div>
         <audio id="cv-preview" controls hidden style="margin-top:6px;width:100%"></audio>
+      </div>
+    </details>
+
+    <details id="dialectpanel" style="margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🗣️ Dialects — features &amp; detection <span class="qb-ac qb-ac-det">deterministic</span></summary>
+      <p class="note" style="margin:6px 0">Dialects are first-class linguistic systems here (Dialect Parameter Clusters). Choosing one above overlays its <b>phonology</b> on the pronunciation (deterministic, approximate) and steers the <b>voice's accent</b>. Rules below are rule-based and reproducible — no model asserts anything.</p>
+      <div id="dialect-features" class="note" style="margin-top:4px"></div>
+      <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+        <div class="formrow" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center">
+          <input id="dialect-detect-text" placeholder="Paste text to detect its dialect, e.g. 'Aye, a wee bit cold, ken?'" style="flex:1;min-width:220px;padding:6px 10px">
+          <button class="btn ghost" id="dialect-detect-btn" type="button">Detect dialect</button>
+        </div>
+        <div id="dialect-detect-out" class="note" style="margin-top:6px"></div>
       </div>
     </details>
     <details style="margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
@@ -580,7 +594,9 @@ function wireSpeak(){
       let resp;
       const provider=((document.getElementById('speak-engine')||{}).value||'');
       const vsel=(document.getElementById('speak-voice')||{}).value||'';
+      const dialect=((document.getElementById('speak-dialect')||{}).value||'');
       const req={text:t,lang:lang,provider:provider};
+      if(dialect) req.dialect=dialect;
       // A custom (cloned) Google voice is tagged "custom:" in the dropdown.
       if(provider==='google' && vsel.indexOf('custom:')===0){ req.custom_voice=vsel.slice(7); }
       else { req.voice=vsel.trim(); }
@@ -598,8 +614,9 @@ function wireSpeak(){
       if(lang!=='en' && !haveIpa){
         body='<i>No phonemizer for this language yet.</i>';
       } else {
-        body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b> · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
+        body=items.map(a=>a.ipa?`${esc(a.word)} <b>${esc(a.ipa)}</b>${a.dialect_ipa?` → <b>${esc(a.dialect_ipa)}</b> <span class="note">[${esc((a.dialect_rules||[]).join('; '))}]</span>`:''} · ${a.syllables} syll · stress σ${a.stress_syllable} <span class="note">[${esc(a.source||'')}]</span>`:`${esc(a.word)} <i>—</i>`).join('<br>');
       }
+      if(r.dialect){ body='<span class="note">Dialect: <b>'+esc(r.dialect)+'</b></span><br>'+body; }
       function paint(voiceMsg){ out.innerHTML=`<b>Prosody:</b> ${esc(r.prosody||'')}<br>${body}${voiceMsg}`; }
       if(r.audio_b64){ au.src='data:'+(r.mime||'audio/wav')+';base64,'+r.audio_b64; au.hidden=false;
         au.onplay=()=>qblog('audio.play'); au.onended=()=>qblog('audio.ended'); au.onerror=()=>qblog('audio.error',{code:(au.error&&au.error.code)});
@@ -1169,6 +1186,59 @@ if($('tts-check')) $('tts-check').onclick=async function(){
   se.addEventListener('change',function(){ try{localStorage.setItem('qb-voice-engine',se.value);}catch(_){}
     syncVoiceUI(); loadVoices(); });
   syncVoiceUI(); loadVoices(); })();
+
+// ---- Dialects (Dialect Parameter Clusters): picker, features, detection ----
+var _DIALECT_CACHE={};
+async function loadDialects(){
+  var sel=$('speak-dialect'); if(!sel) return;
+  var lang=(($('speak-lang')||{}).value||'en');
+  var keep=sel.value;
+  try{
+    var d=await (await fetch('api/language/dialects',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lang:lang})})).json();
+    var list=(d&&d.dialects)||[]; var html='<option value="">Standard (no dialect)</option>';
+    list.forEach(function(x){ html+='<option value="'+x.id+'">'+esc(x.name)+'</option>'; });
+    sel.innerHTML=html;
+    if([''].concat(list.map(function(x){return x.id;})).indexOf(keep)>=0) sel.value=keep; else sel.value='';
+    renderDialectFeatures();
+  }catch(e){}
+}
+async function renderDialectFeatures(){
+  var box=$('dialect-features'); if(!box) return;
+  var id=(($('speak-dialect')||{}).value||'');
+  if(!id){ box.innerHTML='<i>No dialect selected — standard pronunciation and voice.</i>'; return; }
+  var info=_DIALECT_CACHE[id];
+  if(!info){
+    try{ info=await (await fetch('api/language/dialects',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:id})})).json(); _DIALECT_CACHE[id]=info; }catch(e){ return; }
+  }
+  if(!info||info.error){ box.textContent='(no details)'; return; }
+  function li(arr){ return '<ul style="margin:4px 0 8px 18px;padding:0">'+arr.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul>'; }
+  var h='<b>'+esc(info.name)+'</b> <span class="note">('+esc(info.parent)+' · voice '+esc(info.espeak_voice||'')+')</span><br><span class="note">'+esc(info.summary)+'</span>';
+  if((info.phonology||[]).length) h+='<br><b>Phonology</b>'+li(info.phonology.map(esc));
+  if((info.lexicon||[]).length) h+='<b>Lexicon → meaning (FU)</b>'+li(info.lexicon.map(function(e){return esc(e.surface)+' → '+esc(e.standard)+' <span class="note">['+esc(e.fu)+' · '+esc(e.register)+']</span>';}));
+  if((info.morphosyntax||[]).length) h+='<b>Morphosyntax</b>'+li(info.morphosyntax.map(function(m){return esc(m.pattern)+' <span class="note">— '+esc(m.note)+'</span>';}));
+  if(info.sociolect) h+='<b>Sociolect</b> <span class="note">regions: '+esc((info.sociolect.regions||[]).join(', '))+' · registers: '+esc((info.sociolect.registers||[]).join(', '))+'</span>';
+  if(info.safety&&info.safety.guidelines) h+='<br><b>⚖️ Use responsibly</b> <span class="note">'+esc(info.safety.guidelines)+'</span>';
+  box.innerHTML=h;
+}
+if($('speak-dialect')) $('speak-dialect').addEventListener('change',renderDialectFeatures);
+if($('speak-lang')) $('speak-lang').addEventListener('change',loadDialects);
+if($('dialect-detect-btn')) $('dialect-detect-btn').addEventListener('click',async function(){
+  var o=$('dialect-detect-out'); var t=(($('dialect-detect-text')||{}).value||'').trim();
+  if(!t){ o.textContent='Type or paste some text first.'; return; }
+  o.textContent='Detecting…';
+  try{
+    var d=await (await fetch('api/language/dialect_detect',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:t})})).json();
+    var c=(d&&d.candidates)||[];
+    if(!c.length){ o.innerHTML='<i>No dialect markers found — reads as standard.</i>'; return; }
+    o.innerHTML='Most likely:<br>'+c.map(function(x){return '• <b>'+esc(x.name)+'</b> — '+Math.round(x.confidence*100)+'% <span class="note">(markers: '+esc((x.markers||[]).join(', '))+')</span> <a href="#" data-did="'+x.id+'" class="dia-pick">use</a>';}).join('<br>');
+    o.querySelectorAll('.dia-pick').forEach(function(a){ a.onclick=function(ev){ ev.preventDefault();
+      if($('speak-dialect')){ $('speak-dialect').value=a.dataset.did; renderDialectFeatures(); } }; });
+  }catch(e){ o.textContent='Detect failed: '+e; }
+});
+(function(){ loadDialects(); })();
 
 // ---- Voice & style controls (Google steering, ElevenLabs settings, custom voices) ----
 function curEngine(){ return (($('speak-engine')||{}).value||''); }

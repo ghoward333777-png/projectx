@@ -34,6 +34,10 @@ model). It is the source of truth for status; Fact Units are the provenance
 trail written into the store.
 """
 import json, os, re, math, time, sys, gzip
+try:
+    import qb_dialect                      # deterministic Dialect Parameter Clusters (DPCs)
+except Exception:
+    qb_dialect = None
 
 import ufcs_store as store
 
@@ -1165,11 +1169,16 @@ def _ipa_meta(ipa):
     return syl, stress
 
 
-def analyze_phrase(text, lang="en", max_words=12):
+def analyze_phrase(text, lang="en", max_words=12, dialect=None):
     """Analyze a whole phrase for the Analyze & Speak display. When espeak-ng is present we
     get the IPA for ALL words in ONE espeak call — fast (no per-word processes) AND it MATCHES
     the audio espeak actually speaks (so the shown IPA is never out of sync with what you hear).
-    English and the no-espeak case use the instant rule-seeded G2P."""
+    English and the no-espeak case use the instant rule-seeded G2P.
+
+    When `dialect` names a Dialect Parameter Cluster (DPC), each word's IPA is additionally
+    rewritten by that dialect's deterministic phonology rules (e.g. non-rhotic r-dropping,
+    th-fronting, pin–pen merger) and the fired rule notes are attached as `dialect_ipa`/
+    `dialect_rules`. The standard IPA is kept alongside it."""
     import subprocess
     lang = (lang or "en").lower()
     words = re.findall(r"[^\W\d_]+", text or "", re.UNICODE)[:max_words]
@@ -1177,22 +1186,34 @@ def analyze_phrase(text, lang="en", max_words=12):
         return []
     exe = _espeak_exe()
     if lang == "en" or not exe:
-        return [analyze_pronunciation(w, lang, fast=True) for w in words]
-    try:
-        out = subprocess.run([exe] + _espeak_pathargs() + ["-v", lang, "--ipa", "-q", " ".join(words)],
-                             timeout=10, check=True, capture_output=True, text=True).stdout
-        toks = [t for t in out.replace("\n", " ").split(" ") if t.strip()]
-    except Exception:
-        return [analyze_pronunciation(w, lang, fast=True) for w in words]
-    res = []
-    for i, w in enumerate(words):
-        ipa = toks[i] if i < len(toks) else ""
-        if not ipa:
-            res.append(analyze_pronunciation(w, lang, fast=True)); continue
-        syl, stress = _ipa_meta(ipa)
-        res.append({"word": w.lower(), "lang": lang, "phonemes": list(ipa), "ipa": "/" + ipa + "/",
-                    "syllables": syl, "stress_syllable": stress,
-                    "source": "espeak-ng %s" % lang, "via": "espeak"})
+        res = [analyze_pronunciation(w, lang, fast=True) for w in words]
+    else:
+        try:
+            out = subprocess.run([exe] + _espeak_pathargs() + ["-v", lang, "--ipa", "-q", " ".join(words)],
+                                 timeout=10, check=True, capture_output=True, text=True).stdout
+            toks = [t for t in out.replace("\n", " ").split(" ") if t.strip()]
+            res = []
+            for i, w in enumerate(words):
+                ipa = toks[i] if i < len(toks) else ""
+                if not ipa:
+                    res.append(analyze_pronunciation(w, lang, fast=True)); continue
+                syl, stress = _ipa_meta(ipa)
+                res.append({"word": w.lower(), "lang": lang, "phonemes": list(ipa), "ipa": "/" + ipa + "/",
+                            "syllables": syl, "stress_syllable": stress,
+                            "source": "espeak-ng %s" % lang, "via": "espeak"})
+        except Exception:
+            res = [analyze_pronunciation(w, lang, fast=True) for w in words]
+    # Dialect phonology overlay (deterministic, approximate): rewrite each word's IPA.
+    if dialect and qb_dialect and dialect in getattr(qb_dialect, "DIALECTS", {}):
+        for r in res:
+            base = r.get("ipa")
+            if base:
+                dip, fired = qb_dialect.apply_phonology(base, dialect)
+                if dip != base or fired:
+                    r["dialect_ipa"] = dip
+                    r["dialect_rules"] = fired
+        for r in res:
+            r["dialect"] = dialect
     return res
 
 
@@ -1785,8 +1806,21 @@ def cloud_tts(text, lang="en", provider="google", voice=None, style=None, settin
     raise RuntimeError("unknown cloud provider: %s" % provider)
 
 
+def _dialect_espeak_args(dialect):
+    """espeak-ng args [-v voice, -s rate, -p pitch] for a DPC, or [] if none/unknown."""
+    if not (dialect and qb_dialect):
+        return [], None
+    o = qb_dialect.espeak_opts(dialect)
+    if not o:
+        return [], None
+    args = []
+    if o.get("voice"): args += ["-v", o["voice"]]
+    if o.get("rate"):  args += ["-s", str(o["rate"])]
+    if o.get("pitch") is not None: args += ["-p", str(o["pitch"])]
+    return args, o.get("voice")
+
 def speak(text, out_path=None, lang="en", provider=None, voice=None, style=None, settings=None,
-          custom_voice=None, model=None):
+          custom_voice=None, model=None, dialect=None):
     """Phase 4b: synthesize `text` to audio. The open-source engine is the default and the
     offline fallback; an OPTIONAL cloud `provider` ('google'|'elevenlabs') gives a realistic
     neural voice when a key is configured, and falls back to the open-source engine on any
@@ -1798,6 +1832,13 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None, style=None,
     if not text:
         return {"available": True, "engine": None, "lang": lang, "wav_bytes": None, "error": "no text"}
     tmp = out_path or _os.path.join(tempfile.gettempdir(), "qb_speech.wav")
+
+    # Dialect (DPC): fold the dialect's accent/cadence into the Gemini style instruction so a
+    # cloud neural voice renders the accent; the offline engine uses the dialect voice variant.
+    if dialect and qb_dialect and dialect in getattr(qb_dialect, "DIALECTS", {}):
+        frag = qb_dialect.cloud_style(dialect)
+        if frag:
+            style = ((str(style).strip().rstrip(".") + ". ") if style else "") + "Speak " + frag
 
     # --- OPTIONAL cloud provider first (realistic neural voice), when explicitly selected AND a
     #     key is configured. Offline-first: on ANY failure we fall through to the open-source
@@ -1823,10 +1864,12 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None, style=None,
 
     # --- Non-English: espeak-ng is the reliable multilingual voice on every OS. ---
     esp = _espeak_exe()
+    dargs, dvoice = _dialect_espeak_args(dialect)
     if lang != "en" and esp:
         _t0 = time.time()
         try:
-            subprocess.run([esp] + _espeak_pathargs() + ["-v", lang, "-w", tmp, text], timeout=12, check=True, capture_output=True)
+            voice_args = dargs if dvoice else ["-v", lang]
+            subprocess.run([esp] + _espeak_pathargs() + voice_args + ["-w", tmp, text], timeout=12, check=True, capture_output=True)
             _espeak_log("speak-ok", lang=lang, ms=int((time.time() - _t0) * 1000), chars=len(text))
             with open(tmp, "rb") as fh:
                 data = fh.read()
@@ -1902,8 +1945,13 @@ def speak(text, out_path=None, lang="en", provider=None, voice=None, style=None,
                 subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16", aiff, tmp], timeout=30, check=True)
             else:
                 tmp = aiff
-        else:  # espeak / espeak-ng — select the language voice when not English
-            cmd = [exe] + (["-v", lang] if lang and lang != "en" else []) + ["-w", tmp, text]
+        else:  # espeak / espeak-ng — a dialect voice variant (e.g. en-gb-scotland) when set,
+               # otherwise the language voice (non-English) or the default English voice.
+            if dvoice:
+                voice_args = dargs
+            else:
+                voice_args = ["-v", lang] if lang and lang != "en" else []
+            cmd = [exe] + voice_args + ["-w", tmp, text]
             subprocess.run(cmd, timeout=30, check=True, capture_output=True)
         with open(tmp, "rb") as fh:
             data = fh.read()
