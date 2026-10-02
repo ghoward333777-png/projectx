@@ -488,6 +488,57 @@ s += box(230, 500, 340, 48, ["Answer composed IN the selected register/mode", "�
 s += '</svg>'
 FIGS.append((38, "PIL — Human Query Interpretation and Covenant-Bound Answering", s))
 
+# ===================== FIG. 39 — Lecture Query ingestion pipeline =====================
+w, h = 720, 700
+s = svg_open(w, h)
+s += box(130, 16, 460, 42, ["LECTURE QUERY — INGESTION PIPELINE",
+                            "(claims attributed, not asserted · emotion labeled · identity trust-gated)"], "1300")
+s += box(250, 72, 220, 46, ["Live or recorded", "audio / video program"], "1301")
+s += arrow(360, 118, 360, 140)
+s += box(230, 140, 260, 44, ["Capture + consent gate"], "1302")
+s += arrow(240, 184, 160, 214); s += arrow(480, 184, 560, 214)
+s += box(40, 214, 250, 48, ["ASR transcription + diarization", "(untrusted input; shown)"], "1303")
+s += box(440, 214, 240, 48, ["Video frames → faces (LIL)"], "1304")
+s += arrow(165, 262, 165, 288); s += arrow(560, 262, 440, 340)
+s += box(40, 288, 300, 64, ["PIL analysis (over time):", "tone · loudness · pacing ·",
+                            "labeled arousal + pragmatic frame"], "1305")
+s += box(360, 288, 320, 48, ["LEL: segment · structure ·", "extract claims & key points"], "1306")
+s += arrow(190, 352, 300, 400); s += arrow(520, 336, 420, 400)
+s += box(220, 400, 300, 48, ["Deterministic summary", "(TOC · key points · claim list)"], "1307")
+s += arrow(360, 448, 360, 474)
+s += box(170, 474, 400, 52, ["INGEST → LECTURE RECORD in Fact Unit library;",
+                             "claims = ATTRIBUTED utterance facts (gate-verifiable)"], "1308")
+s += arrow(360, 526, 360, 552)
+s += box(70, 552, 580, 56, ["Forever-link (immutable, provenance, trust-gated via LIL):",
+                            "speaker (voiceprint/face) · venue · event · organization · date"], "1309")
+s += '</svg>'
+FIGS.append((39, "Lecture Query — Ingestion Pipeline", s))
+
+# ===================== FIG. 40 — the forever-linked Lecture Record in the Fact-Unit graph + query =====================
+w, h = 720, 600
+s = svg_open(w, h)
+s += box(170, 16, 380, 42, ["THE FOREVER-LINKED LECTURE RECORD",
+                            "(queryable · attributed · tamper-evident)"], "1310")
+s += box(280, 74, 160, 56, ["LECTURE RECORD", "(content-addressed)"], "1311")
+# entity links around it
+s += box(40, 170, 150, 44, ["Speaker (LIL:", "voiceprint/face)"], "1312")
+s += box(210, 170, 150, 44, ["Venue"], "1313")
+s += box(380, 170, 150, 44, ["Event"], "1314")
+s += box(550, 170, 130, 44, ["Organization", "· date"], "1315")
+for x in (115,285,455,615):
+    s += line(360,130,x,170); s += arrow(x,168,x,170)
+s += box(90, 250, 250, 48, ["Transcript + diarization"], "1316")
+s += box(380, 250, 250, 48, ["PIL track (tone/pacing over time)"], "1317")
+s += arrow(250,130,215,250); s += arrow(470,130,505,250)
+s += box(150, 330, 420, 50, ["Attributed claims (per speaker@event):", "gate → corroborated / contradicted / open"], "1318")
+s += arrow(360,298,360,330)
+s += arrow(360,380,360,406)
+s += box(170, 406, 380, 48, ["FQL / Q&A: 'what did X say about Y at Z?' ·", "'where did A and B disagree?' · 'tone during Q&A?'"], "1319")
+s += arrow(360,454,360,480)
+s += box(200, 480, 320, 46, ["Answer: cited to the record, attributed,", "refused where unknown (covenant)"], "1320")
+s += '</svg>'
+FIGS.append((40, "Lecture Query — The Forever-Linked Lecture Record and Its Querying", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -518,6 +569,8 @@ descr = {
  36: "is a flow diagram of the UIAS signed Proof Package generation, in which, on an accusation or inquiry, a proof-package agent assembles verified sealed Fact Units, the similarity-log entry, a chronological ledger extract bound by the response-provenance hash, and a factual determination from the arbitration agent under the Prime-Directive gate, and signs the package under the UIAS independent identity to produce independent, pre-dispute, tamper-proof, complete, and admissible evidence, per Section X.",
  37: "is a data-flow diagram of the Paralinguistic & Pragmatic Interpretation Layer (PIL) applied to an ingested voice, in which a paralinguistic analyzer produces measured acoustic readings and a labeled arousal estimate while a pragmatic framer applies sourced context, perspective, ergonomics, culture, and social-mores frames, the two combining into an Interpretation Frame written as provenance-tracked Fact Units, with estimates labeled and never asserted as true feelings, per Section XI.",
  38: "is a flow diagram of the PIL human-query interpretation, in which a query is reduced to an Interpretation Frame, intent is disambiguated from context and perspective, an ambiguity gate asks one clarifying question when intent is materially uncertain, a register-and-ergonomic-mode selector sets the reply style and delivery from sourced culture/mores/ergonomics packs, and the existing retrieve-gate-compose pipeline answers from verified Fact Units in that register without altering the facts, per Section XI.",
+ 39: "is a block diagram of the Lecture Query mode ingestion pipeline, in which a live or recorded audio/video program is captured under consent, transcribed and diarized, analyzed by the paralinguistic layer over time and by the language layer for structure and claims, summarized deterministically, and ingested as a Lecture Record whose claims are stored as attributed utterance facts and which is forever-linked to the speaker, venue, event, organization, and date by immutable provenance-tracked, trust-gated identity links, per Section XII.",
+ 40: "is a data-flow diagram of the forever-linked Lecture Record in the Fact-Unit identity graph and its querying, showing the record bound to speaker, venue, event, and organization entities and to the transcript and paralinguistic track, its attributed claims gated as corroborated, contradicted, or open, and a query answered with citations to the record and attribution to the speaker, refused where unknown, per Section XII.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -619,6 +672,17 @@ REFS = [
  ("1216","register & ergonomic mode selector"),("1217","culture/mores/ergonomics packs"),
  ("1218","retrieve-gate-compose (verified Fact Units; cite or refuse)"),
  ("1219","answer in selected register/mode (facts unchanged)"),
+ ("1300","Lecture Query ingestion pipeline"),("1301","live or recorded audio/video program"),
+ ("1302","capture + consent gate"),("1303","ASR transcription + diarization (untrusted input)"),
+ ("1304","video frames → faces (LIL)"),("1305","PIL analysis over time (tone/pacing/arousal + frame)"),
+ ("1306","LEL segment/structure/extract claims"),("1307","deterministic summary (TOC/key points/claims)"),
+ ("1308","ingest → Lecture Record; claims = attributed utterance facts"),
+ ("1309","forever-link: speaker/venue/event/org/date (immutable, trust-gated)"),
+ ("1310","forever-linked Lecture Record (queryable)"),("1311","Lecture Record (content-addressed)"),
+ ("1312","speaker entity (LIL voiceprint/face)"),("1313","venue entity"),("1314","event entity"),
+ ("1315","organization + date"),("1316","transcript + diarization"),("1317","PIL track (tone/pacing over time)"),
+ ("1318","attributed claims → corroborated/contradicted/open"),("1319","FQL / Q&A over the record"),
+ ("1320","answer: cited, attributed, refused where unknown"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']

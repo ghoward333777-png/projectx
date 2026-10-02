@@ -184,3 +184,19 @@ analysis is **BUILT** (Voice Lab, extended with pacing + labeled arousal); the p
 query front stage are **[ROADMAP/SPEC]**. Full detail: *QueryBook PIL — Paralinguistic & Pragmatic
 Interpretation Layer Specification*; Provisional Patent Section XI ([0041]–[0044]), claims 47–54,
 FIG. 37–38; Bible PIL amendment; Registry [210]–[214].
+
+---
+
+## 16. Mode note — Lecture Query (2026-10-02)
+QueryBook adds a **Lecture Query** interaction mode (alongside Q&A, Tutorial, Conversational): a
+user submits a live or recorded audio/video program, which QueryBook transcribes, analyzes (PIL
+tone/emotion/pacing + LEL structure), summarizes deterministically, and ingests into the Fact
+Unit library as a **Lecture Record forever-linked** (immutable, provenance-tracked, trust-gated)
+to the speaker (LIL voiceprint/face), venue, event, organization, and date. **Said is not true:**
+each extracted claim is stored as an **attributed utterance fact** (per speaker/event), never
+promoted to world-truth, then gate-verifiable against the library (corroborated/contradicted/
+open); emotion/tone are labeled estimates; the transcript is untrusted input shown for
+confirmation; biometric linking is consent-gated. It composes ASR, PIL, LEL, LIL, the UIAS
+ingestion path, and the library; as a packaged mode it is **[ROADMAP/SPEC]**. Full detail:
+*QueryBook Lecture Query — Mode Specification*; Provisional Patent Section XII ([0045]–[0048]),
+claims 55–62, FIG. 39–40; Bible Lecture Query amendment; Registry [215]–[219].

@@ -4008,3 +4008,54 @@ reduced to practice, pragmatic stack + query front stage SPEC. Cross-refs: PIL
 Interpretation-Layer Specification (Word); Provisional Patent Section XI
 ([0041]-[0044]), claims 47-54, FIG. 37-38; Bible amendment "Paralinguistic &
 Pragmatic Interpretation Layer (PIL) (2026-10-02)"; Canonical Engine Spec note.
+
+
+================================================================
+ADDITIVE REVISION - LECTURE QUERY INTERACTION MODE (2026-10-02)
+================================================================
+New QueryBook INTERACTION/QUERY MODE (alongside Q&A, Tutorial, Conversational):
+LECTURE QUERY. A user submits a LIVE or RECORDED audio/video program - a lecture,
+talk, sermon, briefing, hearing, deposition, panel, or class - which QueryBook
+transcribes, analyzes, summarizes, and ingests into the library as a LECTURE
+RECORD, FOREVER LINKED to the speaker, venue, event, organization, and date.
+Composes ASR + PIL (tone/emotion/pacing) + LEL (structure) + LIL (speaker/entity
+linking) + UIAS ingestion + the Fact Unit library.
+
+[215] 22.1 - Lecture Query capture + transcription  [SPEC]
+      Accept live stream or uploaded recording (audio or video); consent gate for
+      speaker biometric linking; ASR transcription + speaker diarization; video
+      frames -> faces (LIL). Transcript = untrusted input, shown for confirmation.
+
+[216] 22.2 - Lecture analysis (PIL + LEL)  [composed: acoustic PIL BUILT]
+      PIL paralinguistic track OVER TIME (tone, loudness, pacing, labeled arousal)
+      + pragmatic frame; LEL topic segmentation, discourse structure, and claim/
+      key-point extraction. Emotion/tone = labeled estimates (never asserted).
+
+[217] 22.3 - Deterministic summary + ingest as Lecture Record  [SPEC]
+      Deterministic summary (TOC, section summaries, key points, claim list);
+      ingested as a content-addressed Lecture Record (transcript + summary + PIL
+      track + claims) into the Fact Unit library. Any LLM phrasing = non-asserting
+      proposer over extracted content; adds no facts.
+
+[218] 22.4 - Attributed utterance facts (said != true)  [enforced by design]
+      Each extracted claim stored as an ATTRIBUTED utterance fact
+      (per <speaker> at <event> on <date> -> asserted -> <claim>), sourced to the
+      lecture; NEVER promoted to world-truth. Subsequently gate-verifiable vs the
+      library: corroborated / contradicted / open.
+
+[219] 22.5 - Forever-links + querying  [SPEC]
+      Immutable, content-addressed, provenance-tracked, trust-gated links to
+      speaker (LIL voiceprint/face), venue, event, organization, date; same speaker
+      across lectures resolves to one person (accruing a speaker corpus). Queryable
+      via FQL/Q&A (what X said about Y at Z; where A and B disagreed; tone over
+      time); answers cited + attributed, refused where unknown.
+
+COVENANT: inherits C1-C6 / L1-L6 - claims attributed not asserted; emotion/tone
+labeled; identity trust-gated (UNKNOWN not guessed); transcription untrusted/shown;
+consent + immutable provenance. "Said is not true" is enforced at ingest.
+
+FEATURE COUNT: 223 (218 + 5 Lecture Query features, [215]-[219]); composed of
+built + specified subsystems, packaged mode SPEC. Cross-refs: Lecture Query Mode
+Specification (Word); Provisional Patent Section XII ([0045]-[0048]), claims 55-62,
+FIG. 39-40; Bible amendment "Lecture Query: a New Interaction Mode (2026-10-02)";
+Canonical Engine Spec mode note.
