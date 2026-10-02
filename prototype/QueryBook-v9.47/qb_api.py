@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.50"
+BUILD = "v9.51"
 BUILD_DATE = "2026-10-02"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -280,7 +280,8 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
                           "/api/language/custom_voice", "/api/language/dialects",
-                          "/api/language/dialect_detect", "/api/mirror", "/api/help"):
+                          "/api/language/dialect_detect", "/api/mirror", "/api/help") \
+                and not u.path.startswith("/api/director/"):
             return self._send(404, {"error": "unknown endpoint"})
         if u.path == "/api/agents":
             a = AGENTS.create(body.get("name", ""), body.get("kind", "deterministic"),
@@ -504,6 +505,41 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "text required"})
             return self._send(200, {"text": text,
                 "candidates": qb_dialect.detect_dialect(text, body.get("lang") or None)})
+        if u.path.startswith("/api/director/"):
+            # QueryBook -> Gemini Omni adapter (deterministic scene director). Prompt generation
+            # is pure templating (no LLM, covenant-safe); video rendering is gated + offline-first.
+            import qb_gemini
+            tail = u.path[len("/api/director/"):]
+            if tail == "example":
+                return self._send(200, {"fu": qb_gemini.NOIR_BAR_FU})
+            if tail == "qc":
+                return self._send(200, qb_gemini.qc())
+            if tail == "scenegraph":
+                fu = body.get("fu") or body
+                return self._send(200, qb_gemini.build_scene_graph_from_fu(fu))
+            if tail == "prompts":
+                # Accept either a SceneGraph ('scene') or an FUGraph ('fu').
+                scene = body.get("scene") or (qb_gemini.build_scene_graph_from_fu(body.get("fu") or {})
+                                              if (body.get("fu") or body.get("entities")) else None)
+                if not scene and body.get("entities"):
+                    scene = qb_gemini.build_scene_graph_from_fu(body)
+                if not scene:
+                    return self._send(400, {"error": "provide 'fu' or 'scene'"})
+                return self._send(200, {"scene": scene,
+                    "validation": qb_gemini.validate_scene_graph(scene),
+                    "promptBundle": qb_gemini.generate_prompt_bundle(scene)})
+            if tail == "validate":
+                scene = body.get("scene") or qb_gemini.build_scene_graph_from_fu(body.get("fu") or body)
+                return self._send(200, qb_gemini.validate_scene_graph(scene))
+            if tail == "render":
+                fu = body.get("fu") or body
+                if not fu.get("entities"):
+                    return self._send(400, {"error": "provide 'fu' with entities"})
+                return self._send(200, qb_gemini.render_scene_from_fu(
+                    fu, base_media=body.get("base_media"),
+                    observed_per_iteration=body.get("observed_per_iteration"),
+                    model=body.get("model") or "veo-3.0-generate-preview"))
+            return self._send(404, {"error": "unknown director endpoint"})
         if u.path == "/api/language/teach":
             # One-click automation: start (or resume) the complete learner for a language —
             # vocabulary + pronunciation + translation — without the user wiring agents by hand.
@@ -705,6 +741,8 @@ class H(BaseHTTPRequestHandler):
             return self._send_html(self._asset_path("QB_MONITOR_HTML", "monitor.html"))
         if u.path in ("/voice", "/voice.html"):
             return self._send_html(self._asset_path("QB_VOICE_HTML", "voice.html"))
+        if u.path in ("/director", "/director.html", "/studio"):
+            return self._send_html(self._asset_path("QB_DIRECTOR_HTML", "director.html"))
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()
