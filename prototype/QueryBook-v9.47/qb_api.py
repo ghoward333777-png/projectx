@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.59"
+BUILD = "v9.60"
 BUILD_DATE = "2026-10-03"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
@@ -196,6 +196,94 @@ def _measure_per_fact():
         PERF["per_fact_create_us"] = round(t / n * 1e6, 2)
     except Exception:
         PERF["per_fact_create_us"] = None
+
+def _store_health_banner():
+    """At boot: show the ABSOLUTE store path and how many facts/languages are in it,
+    self-repair a stale fact counter from the index, and — if the store is empty —
+    shout about it and point at any non-empty store found next to this folder, so a
+    week of data is NEVER silently reported as 'gone' again."""
+    try:
+        import ufcs_store
+        abspath = os.path.abspath(DATA_DIR)
+        # Self-heal a stale/zero counter from the real index (never deletes anything).
+        rec = None
+        try:
+            rec = ufcs_store.reconcile_manifest(DATA_DIR)
+        except Exception:
+            rec = None
+        facts = 0
+        try:
+            with open(os.path.join(DATA_DIR, "manifest.json"), encoding="utf-8") as f:
+                facts = int(json.load(f).get("facts", 0))
+        except Exception:
+            facts = (rec or {}).get("now", 0) or 0
+        langs = ""
+        try:
+            lm = os.path.join(DATA_DIR, "language_model.json")
+            if os.path.isfile(lm):
+                with open(lm, encoding="utf-8") as f:
+                    m = json.load(f)
+                words = len(m.get("words") or {})
+                ingests = m.get("ingests", 0)
+                langs = f"language model present ({words:,} words, {ingests} ingest(s))"
+        except Exception:
+            langs = ""
+        print("  " + "-" * 56, flush=True)
+        print(f"  STORE: {abspath}", flush=True)
+        print(f"  DATA:  {facts:,} facts" + (f"  ·  languages: {langs}" if langs else ""), flush=True)
+        if rec and rec.get("was") != rec.get("now"):
+            print(f"  (repaired fact counter {rec['was']:,} → {rec['now']:,} from the on-disk index)", flush=True)
+        if facts == 0:
+            print("  " + "!" * 56, flush=True)
+            print("  WARNING: this store is EMPTY. Your data is NOT lost — it lives in", flush=True)
+            print("  the `mystore` folder of whichever QueryBook folder you ran before.", flush=True)
+            # Fast, shallow scan for a real store: look at this app folder, its parent,
+            # and the sibling version folders next to it (…/QueryBook-vX.YZ/mystore).
+            found = []
+            try:
+                appdir = os.path.dirname(abspath.rstrip(os.sep))     # …/QueryBook-vX.YZ
+                cands = []
+                for base in (appdir, os.path.dirname(appdir)):        # app folder + grandparent
+                    if not os.path.isdir(base):
+                        continue
+                    cands += [os.path.join(base, "mystore"), os.path.join(base, "store")]
+                    try:
+                        for name in os.listdir(base):
+                            p = os.path.join(base, name)
+                            if os.path.isdir(p):
+                                cands += [p, os.path.join(p, "mystore"), os.path.join(p, "store")]
+                    except OSError:
+                        pass
+                seen = set()
+                for c in cands:
+                    c = os.path.abspath(c)
+                    if c in seen or c == abspath:
+                        continue
+                    seen.add(c)
+                    if os.path.isdir(os.path.join(c, "blocks")):
+                        n = 0
+                        try:
+                            with open(os.path.join(c, "manifest.json"), encoding="utf-8") as f:
+                                n = int(json.load(f).get("facts", 0))
+                        except Exception:
+                            n = 0
+                        if n > 0:
+                            found.append((n, c))
+            except Exception:
+                pass
+            found.sort(reverse=True)
+            if found:
+                n, best = found[0]
+                print(f"  FOUND your data: {n:,} facts at  {best}", flush=True)
+                if os.name == "nt":
+                    print(f"  Start against it:   set QB_DATA_DIR={best}  &&  python qb_api.py", flush=True)
+                else:
+                    print(f"  Start against it:   QB_DATA_DIR='{best}' python3 qb_api.py", flush=True)
+            else:
+                print("  Find it with:   python3 qb_find_store.py", flush=True)
+            print("  " + "!" * 56, flush=True)
+    except Exception as e:
+        print(f"  (store health check skipped: {e})", flush=True)
 
 def harvest_meter():
     """Live throughput metering: elapsed, average/instant/peak facts-per-second, µs/fact."""
@@ -1416,7 +1504,8 @@ def main():
     print("=" * 60, flush=True)
     qb_log.log("info", "server", "QueryBook BUILD " + BUILD + " started on http://" + BIND)
     llm = "on" if qb_chat._have_llm() else "off (deterministic fallback)"
-    print(f"qb_api serving {DATA_DIR} on http://{BIND}", flush=True)
+    _store_health_banner()
+    print(f"qb_api serving {os.path.abspath(DATA_DIR)} on http://{BIND}", flush=True)
     # Full, ready-to-click monitor links for every address this machine has.
     print("  " + "-" * 56, flush=True)
     print("  OPEN THE MONITOR — click one of these (full links, no typing):", flush=True)
