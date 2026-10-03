@@ -16,7 +16,7 @@ ufcs_store.py. Meant to sit behind nginx (which handles TLS + auth). Binds to
        when ANTHROPIC_API_KEY is set; deterministic fallback otherwise.
 
 Env:
-  QB_DATA_DIR        path to the store directory (default ./mystore)
+  QB_DATA_DIR        path to the store directory (default: ~/.querybook/store, shared by all versions)
   QB_BIND            host:port to listen on (default 127.0.0.1:8099)
   ANTHROPIC_API_KEY  optional; enables the LLM plan/compose/check layer for /api/chat
 """
@@ -35,9 +35,98 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.60"
+BUILD = "v9.61"
 BUILD_DATE = "2026-10-03"
-DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
+
+# ----------------------------------------------------------------------------
+# Store location — DATA SAFETY.
+# The store used to default to "./mystore", i.e. INSIDE the app folder. Because
+# every new version unzips to a NEW folder, each upgrade started with its own
+# empty ./mystore and looked like it had wiped a week of data — when in fact the
+# real store was sitting untouched in the previous folder.
+#
+# Fix: keep data in ONE fixed, version-independent place (~/.querybook/store) and
+# never let an upgrade silently open an empty store when real data exists. The
+# resolver below:
+#   1. honours an explicit QB_DATA_DIR (always wins);
+#   2. otherwise uses the richest EXISTING store it can find among the stable
+#      home store, a legacy ./mystore, and sibling version folders' stores;
+#   3. otherwise creates the stable home store (so all future versions share it).
+# It only ever reads candidate stores and creates the chosen directory. It never
+# moves, overwrites, or deletes anything.
+# ----------------------------------------------------------------------------
+QB_HOME_STORE = os.path.join(os.path.expanduser("~"), ".querybook", "store")
+
+def _store_facts(d):
+    """Facts actually present in a candidate store (manifest first, then index)."""
+    try:
+        if not os.path.isdir(os.path.join(d, "blocks")):
+            return -1  # not a store at all
+        try:
+            with open(os.path.join(d, "manifest.json"), encoding="utf-8") as f:
+                n = int(json.load(f).get("facts", 0))
+            if n > 0:
+                return n
+        except Exception:
+            pass
+        idx = os.path.join(d, "index.sqlite")
+        if os.path.isfile(idx):
+            import sqlite3
+            con = sqlite3.connect("file:%s?mode=ro" % idx, uri=True, timeout=5)
+            try:
+                for tbl in ("fp", "nuc"):
+                    try:
+                        c = con.execute("SELECT COUNT(*) FROM %s" % tbl).fetchone()[0]
+                        if c:
+                            return int(c)
+                    except Exception:
+                        continue
+            finally:
+                con.close()
+        return 0
+    except Exception:
+        return -1
+
+def _resolve_data_dir():
+    env = os.environ.get("QB_DATA_DIR")
+    if env:
+        return os.path.abspath(env), "explicit QB_DATA_DIR"
+    # Gather candidate existing stores, newest-agnostic, with their fact counts.
+    cands = [QB_HOME_STORE, os.path.abspath("./mystore")]
+    try:
+        appdir = os.path.dirname(os.path.abspath(__file__))
+        for base in (appdir, os.path.dirname(appdir)):
+            if os.path.isdir(base):
+                for name in os.listdir(base):
+                    p = os.path.join(base, name)
+                    if os.path.isdir(p):
+                        cands.append(os.path.join(p, "mystore"))
+                        cands.append(os.path.join(p, "store"))
+    except Exception:
+        pass
+    best, best_n, seen = None, 0, set()
+    for c in cands:
+        c = os.path.abspath(c)
+        if c in seen:
+            continue
+        seen.add(c)
+        n = _store_facts(c)
+        if n > best_n:
+            best_n, best = n, c
+    if best and best_n > 0:
+        if os.path.abspath(best) == os.path.abspath("./mystore"):
+            return best, "legacy ./mystore (has data)"
+        if best == QB_HOME_STORE:
+            return best, "stable home store"
+        return best, "existing store with the most data"
+    # Nothing has data yet → adopt the stable home store so every version shares it.
+    try:
+        os.makedirs(QB_HOME_STORE, exist_ok=True)
+    except Exception:
+        return os.path.abspath("./mystore"), "fallback ./mystore (could not create home store)"
+    return QB_HOME_STORE, "new stable home store"
+
+DATA_DIR, DATA_DIR_WHY = _resolve_data_dir()
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
 START_TIME = time.time()   # server start, for the System Monitor uptime
@@ -230,6 +319,10 @@ def _store_health_banner():
             langs = ""
         print("  " + "-" * 56, flush=True)
         print(f"  STORE: {abspath}", flush=True)
+        try:
+            print(f"  (chosen because: {DATA_DIR_WHY})", flush=True)
+        except Exception:
+            pass
         print(f"  DATA:  {facts:,} facts" + (f"  ·  languages: {langs}" if langs else ""), flush=True)
         if rec and rec.get("was") != rec.get("now"):
             print(f"  (repaired fact counter {rec['was']:,} → {rec['now']:,} from the on-disk index)", flush=True)
