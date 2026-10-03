@@ -35,8 +35,8 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.58"
-BUILD_DATE = "2026-10-02"
+BUILD = "v9.59"
+BUILD_DATE = "2026-10-03"
 DATA_DIR = os.environ.get("QB_DATA_DIR", "./mystore")
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
@@ -957,6 +957,22 @@ class H(BaseHTTPRequestHandler):
             self.end_headers()
             try: self.wfile.write(data)
             except Exception: pass
+            return
+        if u.path == "/favicon.ico":
+            # Tiny inline SVG favicon — silences the browser's automatic /favicon.ico 404.
+            ico = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+                   b'<rect width="16" height="16" rx="3" fill="#0c7a5c"/>'
+                   b'<text x="8" y="12" font-size="11" font-family="Georgia,serif" '
+                   b'font-weight="700" fill="#fff" text-anchor="middle">Q</text></svg>')
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(ico)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            try:
+                self.wfile.write(ico)
+            except Exception:
+                pass
             return
         if u.path == "/qb-theme.css":
             return self._send_static("qb-theme.css", "text/css; charset=utf-8")

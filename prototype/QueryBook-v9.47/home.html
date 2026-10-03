@@ -13,7 +13,7 @@ a{color:var(--accent);text-decoration:none}
 .brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
 .badge{font:700 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px}
 .edpill{font:700 11px/1 var(--mono);background:#eef1ee;color:var(--muted);padding:5px 9px;border-radius:999px;cursor:default}
-.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:var(--accent);font-weight:700}
 .wrap{max-width:1080px;margin:0 auto;padding:24px 20px}
 .hero{text-align:center;margin:10px 0 6px}
 .hero h1{font-family:var(--serif);font-size:30px;margin:0 0 6px}
@@ -57,16 +57,20 @@ a{color:var(--accent);text-decoration:none}
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">v9.57</span>
+  <span class="badge">v9.59</span>
   <span class="edpill" id="edpill">edition…</span>
   <nav class="nav">
+    <a class="active" href="/">Home</a>
     <a href="/ingest">Ingestion</a>
     <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
     <a href="/director">Director</a>
     <a href="/reconstructor">Reconstructor</a>
     <a href="/learn">Learn</a>
     <a href="/educator">Educator</a>
     <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
     <a href="/admin">Admin</a>
     <a href="/guide">Guide</a>
   </nav>
@@ -120,6 +124,21 @@ a{color:var(--accent);text-decoration:none}
 <script>
 function $(id){return document.getElementById(id);}
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function arr(x){return Array.isArray(x)?x:[];}
+// Fetch JSON with a hard timeout so one slow/hung endpoint can never freeze the page.
+function getJSON(url,ms){
+  var ctl=('AbortController' in window)?new AbortController():null;
+  var t=ctl?setTimeout(function(){try{ctl.abort();}catch(e){}},ms||7000):0;
+  return fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).finally(function(){ if(t) clearTimeout(t); });
+}
+// Render one section; its own try/catch keeps a failure contained to that card.
+function section(fn,fallbackEl,label){
+  try{ fn(); }
+  catch(e){ if(fallbackEl) fallbackEl.innerHTML='<span class="note">'+esc(label||'unavailable')+'</span>'; }
+}
 var LINK={'query.chat':'/chat','query.language':'/language','query.voice':'/voice','query.director':'/director',
   'ingest.language':'/ingest','ingest.deterministic':'/ingest','ingest.history':'/ingest','ingest.news':'/ingest',
   'ingest.culture':'/ingest','ingest.art':'/ingest','ingest.web':'/ingest','ingest.qa':'/ingest'};
@@ -128,40 +147,56 @@ function feat(f){
   return '<div class="feat '+(f.enabled?'on':'off')+'"><span class="dot"></span><span class="lbl">'+esc(f.label)+'</span>'+
     (f.enabled?('<a class="go" href="'+href+'">open →</a>'):'<span class="go note">not in edition</span>')+'</div>';
 }
-(async function(){
-  try{
-    var s=await (await fetch('/api/system')).json();
-    $('edpill').textContent=(s.edition_name||s.edition)+' edition';
-    // systems
-    $('ingest-feats').innerHTML=(s.systems.ingestion.features||[]).map(feat).join('');
-    $('query-feats').innerHTML=(s.systems.query.features||[]).map(feat).join('');
-    // ladder
-    var str=s.systems.ingestion.strategy||{}; var lad=str.stages||[];
-    $('ladder').innerHTML=lad.map(function(st,i){
-      var active=(st.id===str.active_stage);
-      return (i?'<i>→</i>':'')+'<span style="'+(active?'background:#0c7a5c;color:#fff':'')+'">'+esc(st.name)+(st.status==='planned'?' ·plan':'')+'</span>';
-    }).join('');
-    // editions
-    var ed=await (await fetch('/api/edition')).json();
-    $('tiers').innerHTML=(ed.editions||[]).map(function(t){
+// Each data source renders independently: slow or failed calls degrade only their own card.
+function loadSystem(){
+  getJSON('/api/system').then(function(s){
+    s=s||{};
+    $('edpill').textContent=(s.edition_name||s.edition||'full')+' edition';
+    var sys=s.systems||{}, ing=sys.ingestion||{}, qry=sys.query||{};
+    section(function(){ $('ingest-feats').innerHTML=arr(ing.features).map(feat).join(''); },$('ingest-feats'));
+    section(function(){ $('query-feats').innerHTML=arr(qry.features).map(feat).join(''); },$('query-feats'));
+    section(function(){
+      var str=ing.strategy||{}, lad=arr(str.stages);
+      $('ladder').innerHTML=lad.length?lad.map(function(st,i){
+        var active=(st.id===str.active_stage);
+        return (i?'<i>→</i>':'')+'<span style="'+(active?'background:#0c7a5c;color:#fff':'')+'">'+esc(st.name)+(st.status==='planned'?' ·plan':'')+'</span>';
+      }).join(''):'<span class="note">ladder unavailable</span>';
+    },$('ladder'));
+  }).catch(function(){
+    $('edpill').textContent='offline';
+    $('ladder').innerHTML='<span class="note">status unavailable — is the server running?</span>';
+  });
+}
+function loadEditions(){
+  getJSON('/api/edition').then(function(ed){
+    ed=ed||{};
+    $('tiers').innerHTML=arr(ed.editions).map(function(t){
       return '<div class="tier '+(t.edition===ed.edition?'cur':'')+'"><div class="nm">'+esc(t.name)+
         (t.edition===ed.edition?' <span class="chip built">current</span>':'')+'</div>'+
-        '<div class="tg">'+esc(t.tagline)+'</div><div class="ct">'+t.feature_count+' features · '+esc(t.footprint)+'</div></div>';
-    }).join('');
-    // embodiments
-    var em=await (await fetch('/api/embodiments')).json();
-    function embList(arr){ return arr.map(function(e){
+        '<div class="tg">'+esc(t.tagline)+'</div><div class="ct">'+esc(t.feature_count)+' features · '+esc(t.footprint)+'</div></div>';
+    }).join('')||'<span class="note">editions unavailable</span>';
+  }).catch(function(){ $('tiers').innerHTML='<span class="note">editions unavailable</span>'; });
+}
+function loadEmbodiments(){
+  getJSON('/api/embodiments').then(function(em){
+    em=em||{}; var mx=em.matrix||{};
+    function embList(a){ return arr(a).map(function(e){
       return '<div class="feat on" style="background:#fff"><span class="lbl"><b>'+esc(e.name)+'</b> — '+esc(e.how)+'</span>'+
-        '<span class="chip '+(e.status==='built'?'built':'road')+'" style="margin-left:auto">'+e.status+'</span></div>';}).join(''); }
-    $('emb-conv').innerHTML=embList(em.matrix.conventional);
-    $('emb-ai').innerHTML=embList(em.matrix.ai);
-    $('emb-principle').textContent=em.principle;
-    // full capability catalog (all systems), live-checked
-    var fc=await (await fetch('/api/features')).json();
-    $('feat-count').textContent=fc.live+'/'+fc.count+' live';
+        '<span class="chip '+(e.status==='built'?'built':'road')+'" style="margin-left:auto">'+esc(e.status)+'</span></div>';}).join(''); }
+    $('emb-conv').innerHTML=embList(mx.conventional)||'<span class="note">—</span>';
+    $('emb-ai').innerHTML=embList(mx.ai)||'<span class="note">—</span>';
+    $('emb-principle').textContent=em.principle||'';
+  }).catch(function(){ $('emb-conv').innerHTML=$('emb-ai').innerHTML='<span class="note">unavailable</span>'; });
+}
+function loadCatalog(){
+  getJSON('/api/features').then(function(fc){
+    fc=fc||{};
+    $('feat-count').textContent=(fc.live!=null?fc.live:'?')+'/'+(fc.count!=null?fc.count:'?')+' live';
     var bySys={};
-    (fc.features||[]).forEach(function(f){ (bySys[f.system]=bySys[f.system]||[]).push(f); });
+    arr(fc.features).forEach(function(f){ (bySys[f.system]=bySys[f.system]||[]).push(f); });
     var order=['ingestion','query','language','identity','knowledge','integrity','reasoning','platform'];
+    // include any systems not in the preferred order, appended after it
+    Object.keys(bySys).forEach(function(k){ if(order.indexOf(k)<0) order.push(k); });
     $('catalog').innerHTML=order.filter(function(s){return bySys[s];}).map(function(s){
       return '<div style="margin-top:10px"><b style="text-transform:capitalize">'+esc(s)+'</b>'+
         bySys[s].map(function(f){
@@ -169,9 +204,11 @@ function feat(f){
             '<span class="lbl"><b>'+esc(f.title)+'</b> <span class="note">· '+esc(f.module)+' · Registry '+esc(f.registry)+'</span></span>'+
             (f.page?('<a class="go" href="'+f.page+'">open →</a>'):'<span class="go note">'+esc((f.endpoints||[])[0]||'')+'</span>')+'</div>';
         }).join('')+'</div>';
-    }).join('');
-  }catch(e){ $('edpill').textContent='offline'; }
-})();
+    }).join('')||'<span class="note">catalog unavailable</span>';
+  }).catch(function(){ $('catalog').innerHTML='<span class="note">catalog unavailable</span>'; });
+}
+// Kick off all four in parallel — no section can block another.
+loadSystem(); loadEditions(); loadEmbodiments(); loadCatalog();
 </script>
 </body>
 </html>

@@ -43,13 +43,20 @@ a{color:var(--accent);text-decoration:none}
 <body>
 <div class="top">
   <div class="brand">Query<b>Book</b></div>
-  <span class="badge">Ingestion · v9.57</span>
+  <span class="badge">Ingestion · v9.59</span>
   <nav class="nav">
     <a href="/">Home</a>
     <a class="active" href="/ingest">Ingestion</a>
-    <a href="/dashboard">Console</a>
-    <a href="/language">Language</a>
     <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
     <a href="/guide">Guide</a>
   </nav>
 </div>
@@ -81,6 +88,15 @@ a{color:var(--accent);text-decoration:none}
 function $(id){return document.getElementById(id);}
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function log(m){var l=$('log');l.style.display='';l.textContent+=m+'\n';l.scrollTop=l.scrollHeight;}
+// Fetch JSON with a hard timeout so a hung endpoint can never freeze the page.
+function getJSON(url,ms){
+  var ctl=('AbortController' in window)?new AbortController():null;
+  var t=ctl?setTimeout(function(){try{ctl.abort();}catch(e){}},ms||7000):0;
+  return fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).finally(function(){ if(t) clearTimeout(t); });
+}
 var STRATEGY=null;
 function pct(p){ if(p.unit==='%') return Math.max(0,Math.min(100,p.value));
   return p.value>=1000?100:(p.value>0?Math.min(95,Math.round(p.value/10)):0); }
@@ -102,16 +118,30 @@ function renderStage(st){
     '</div></div>';
 }
 async function load(){
-  var s=await (await fetch('/api/ingest/strategy')).json();
-  STRATEGY=s;
-  $('edchip').textContent=s.edition+' edition';
-  $('ladder').innerHTML=(s.stages||[]).map(renderStage).join('');
-  var r=s.recommended;
+  $('status').textContent='Loading…';
+  var s;
+  try{
+    s=await getJSON('/api/ingest/strategy');
+  }catch(e){
+    $('status').textContent='';
+    $('edchip').textContent='offline';
+    $('ladder').innerHTML='<p class="note">Could not load the stage ladder — is the server running? '+
+      '<a href="#" onclick="load();return false;">Retry</a></p>';
+    return;
+  }
+  STRATEGY=s||{};
+  $('edchip').textContent=(STRATEGY.edition||'full')+' edition';
+  var stages=Array.isArray(STRATEGY.stages)?STRATEGY.stages:[];
+  $('ladder').innerHTML=stages.length?stages.map(renderStage).join('')
+    :'<p class="note">No stages reported for this edition.</p>';
+  var r=STRATEGY.recommended;
   if(r){ $('rec').style.display='';
     $('rec').innerHTML='<b>Recommended next:</b> '+(r.action==='run_agents'
       ?('run the <b>'+esc(r.stage)+'</b> stage agents — '+(r.agents||[]).map(a=>'<span class="chip">'+esc(a)+'</span>').join(''))
       :('build the <b>'+esc(r.stage)+'</b> stage (roadmap)'))+'<br><span class="note">'+esc(r.note||'')+'</span>'; }
+  else { $('rec').style.display='none'; }
   document.querySelectorAll('.runstage').forEach(function(b){ b.onclick=function(){ runStage(b.dataset.id); }; });
+  $('status').textContent='';
 }
 async function startAgent(kind, target){
   var name=(target?(kind+':'+target):kind);
