@@ -103,8 +103,15 @@ def _envelope_tempo(s, rate):
 
 
 def features(data):
-    """Return a deterministic feature dict for a WAV (bytes or base64)."""
-    s, rate = _load_wav(data)
+    """Return a deterministic feature dict for a WAV (bytes or base64).
+    Never raises on missing/invalid audio — returns {"ok": False, ...} so callers
+    (PIL/LIL and their endpoints) degrade gracefully instead of dropping the request."""
+    if not data:
+        return {"ok": False, "error": "no audio provided"}
+    try:
+        s, rate = _load_wav(data)
+    except Exception as e:
+        return {"ok": False, "error": "could not decode audio: %s" % (type(e).__name__)}
     if not s:
         return {"ok": False, "error": "could not read 16-bit PCM WAV audio"}
     dur = round(len(s) / rate, 3)

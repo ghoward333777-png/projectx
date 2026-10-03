@@ -35,7 +35,7 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.61"
+BUILD = "v9.62"
 BUILD_DATE = "2026-10-03"
 
 # ----------------------------------------------------------------------------
@@ -449,6 +449,18 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass  # quiet; nginx logs
 
     def do_POST(self):
+        # Top-level guard: a bug in any one handler must return a clean 500, never
+        # silently drop the connection (which looks like a random "feature failure").
+        try:
+            return self._do_POST_impl()
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            try:
+                return self._send(500, {"error": "internal error", "detail": str(e)})
+            except Exception:
+                pass
+
+    def _do_POST_impl(self):
         u = urllib.parse.urlparse(self.path)
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
@@ -1120,6 +1132,18 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # Top-level guard: a bug in any one handler must return a clean 500, never
+        # silently drop the connection (which looks like a random "feature failure").
+        try:
+            return self._do_GET_impl()
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            try:
+                return self._send(500, {"error": "internal error", "detail": str(e)})
+            except Exception:
+                pass
+
+    def _do_GET_impl(self):
         u = urllib.parse.urlparse(self.path)
         # Shared design system (theme tokens + toggle) served to every page.
         if u.path == "/api/video/get":
