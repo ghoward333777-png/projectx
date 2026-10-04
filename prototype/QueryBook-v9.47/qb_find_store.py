@@ -137,7 +137,49 @@ def scan(roots, max_depth=4):
                     found[real] = True
                     yield cur
 
+def _best_only(extra_roots):
+    """Machine mode for launchers: print ONLY the richest store's absolute path
+    (or nothing). Used by START_QUERYBOOK.bat to auto-locate the data folder.
+    Fast and targeted — scans a small candidate set, not the whole disk."""
+    here = os.path.abspath(os.path.dirname(__file__) or ".")
+    roots = [here, os.path.dirname(here)] + [os.path.abspath(r) for r in extra_roots]
+    cands = [os.path.join(os.path.expanduser("~"), ".querybook", "store"),
+             os.path.abspath("./mystore")]
+    for base in roots:
+        if not os.path.isdir(base):
+            continue
+        cands += [os.path.join(base, "mystore"), os.path.join(base, "store"), base]
+        try:
+            for name in os.listdir(base):
+                p = os.path.join(base, name)
+                if os.path.isdir(p):
+                    cands += [os.path.join(p, "mystore"), os.path.join(p, "store"), p]
+        except OSError:
+            pass
+    best, best_n, seen = None, 0, set()
+    for c in cands:
+        c = os.path.abspath(c)
+        if c in seen:
+            continue
+        seen.add(c)
+        if not os.path.isdir(os.path.join(c, "blocks")):
+            continue
+        # Manifest first (instant). Only fall back to an index COUNT when the manifest
+        # is absent/zero, so a launcher never stalls on a huge index.
+        mf = _manifest_facts(c)
+        n = mf if mf else (_true_facts(c) or 0)
+        if n > best_n:
+            best_n, best = n, c
+    if best:
+        print(best)
+        return 0
+    return 1
+
 def main():
+    # --best <roots...> : quiet mode for the launcher (prints only the best path).
+    if "--best" in sys.argv:
+        i = sys.argv.index("--best")
+        return _best_only(sys.argv[i+1:])
     print("QueryBook store finder — READ-ONLY, nothing is changed.\n")
     roots = _roots()
     print("Searching:")

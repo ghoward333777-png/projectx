@@ -35,8 +35,8 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 
-BUILD = "v9.62"
-BUILD_DATE = "2026-10-03"
+BUILD = "v9.63"
+BUILD_DATE = "2026-10-04"
 
 # ----------------------------------------------------------------------------
 # Store location — DATA SAFETY.
@@ -327,11 +327,7 @@ def _store_health_banner():
         if rec and rec.get("was") != rec.get("now"):
             print(f"  (repaired fact counter {rec['was']:,} → {rec['now']:,} from the on-disk index)", flush=True)
         if facts == 0:
-            print("  " + "!" * 56, flush=True)
-            print("  WARNING: this store is EMPTY. Your data is NOT lost — it lives in", flush=True)
-            print("  the `mystore` folder of whichever QueryBook folder you ran before.", flush=True)
-            # Fast, shallow scan for a real store: look at this app folder, its parent,
-            # and the sibling version folders next to it (…/QueryBook-vX.YZ/mystore).
+            # Look for a non-empty store elsewhere (app folder, parent, sibling versions).
             found = []
             try:
                 appdir = os.path.dirname(abspath.rstrip(os.sep))     # …/QueryBook-vX.YZ
@@ -366,15 +362,22 @@ def _store_health_banner():
                 pass
             found.sort(reverse=True)
             if found:
+                # Real alert: data clearly exists elsewhere — the app is pointed at the wrong place.
                 n, best = found[0]
-                print(f"  FOUND your data: {n:,} facts at  {best}", flush=True)
+                print("  " + "!" * 56, flush=True)
+                print(f"  HEADS-UP: this library is empty, but {n:,} facts were found at:", flush=True)
+                print(f"      {best}", flush=True)
                 if os.name == "nt":
-                    print(f"  Start against it:   set QB_DATA_DIR={best}  &&  python qb_api.py", flush=True)
+                    print(f"  To use it:   set QB_DATA_DIR={best}   then   python qb_api.py", flush=True)
                 else:
-                    print(f"  Start against it:   QB_DATA_DIR='{best}' python3 qb_api.py", flush=True)
+                    print(f"  To use it:   QB_DATA_DIR='{best}' python3 qb_api.py", flush=True)
+                print("  (Your data is safe — nothing was deleted; the app was just looking here.)", flush=True)
+                print("  " + "!" * 56, flush=True)
             else:
-                print("  Find it with:   python3 qb_find_store.py", flush=True)
-            print("  " + "!" * 56, flush=True)
+                # Calm: genuine first run with no data anywhere. This is normal, not an error.
+                print("  This is a new, empty library (normal for a first run).", flush=True)
+                print("  Start the Ingestion stage to fill it. If you have data from a previous", flush=True)
+                print("  version, run  qb_find_store.py  to point the app at it.", flush=True)
     except Exception as e:
         print(f"  (store health check skipped: {e})", flush=True)
 
