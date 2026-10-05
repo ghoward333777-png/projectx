@@ -590,6 +590,14 @@ final class RtmpBridge
                     return;
                 }
                 $l = &$this->live[$sid];
+                $now = microtime(true);
+                if ($l['buf'] === '') {
+                    $l['edge_first'] = $now;
+                }
+                $l['edge_last'] = $now;
+                if ($type !== Flv::SCRIPT) {
+                    $l['media_ts'] = $ts;
+                }
                 $l['buf'] .= $flv;
                 $l['info'] = $info;
                 hash_update($l['hash'], $flv);
@@ -624,7 +632,9 @@ final class RtmpBridge
         $codec = Protocol::compressionCode((string) ($l['info']['video_codec'] ?? 'NONE'));
         $meta = ['stream_id' => $sid, 'protocol' => 'RTMP', 'container' => 'flv', 'live' => true, 'app' => $l['info']['app'] ?? '',
             'stream_key_sha256' => $l['info']['stream_key_sha256'] ?? '', 'audio_codec' => $l['info']['audio_codec'] ?? 'NONE',
-            'reliability' => 'must', 'latency_target_ms' => $this->flushMs * 2];
+            'reliability' => 'must', 'latency_target_ms' => $this->flushMs * 2,
+            // Live timing: when this chunk's first/last FLV tag reached the edge, and its last media timestamp.
+            'edge_first' => $l['edge_first'] ?? null, 'edge_last' => $l['edge_last'] ?? null, 'edge_flush' => microtime(true), 'media_ts_ms' => $l['media_ts'] ?? null];
         $flags = 0;
         if ($final) {
             $flags = Protocol::F_END_OF_STREAM;
@@ -656,6 +666,18 @@ final class RtmpBridge
      */
     public static function publishFile(Transport $transport, string $source, float $timeout = 120.0): array
     {
+        return self::publishWith($transport, ['-i', $source, '-c', 'copy'], $timeout);
+    }
+
+    /**
+     * As publishFile(), with the publisher's input and encoder arguments given
+     * (e.g. a live x264 zerolatency encode of a looped master).
+     *
+     * @param array<int, string> $ffmpegArgs everything between "ffmpeg -re" and "-f flv URL"
+     * @return array{publisher_rc:int, port:int, stream:array<string, mixed>, seconds:float}
+     */
+    public static function publishWith(Transport $transport, array $ffmpegArgs, float $timeout = 120.0, ?callable $tick = null): array
+    {
         $bridge = new self($transport);
         $server = new RtmpServer($bridge->callbacks(), fn (string $app, string $key) => $key === 'lab');
         $port = 0;
@@ -670,12 +692,15 @@ final class RtmpBridge
         if ($port === 0) {
             throw new RuntimeException('No free port for the RTMP server');
         }
-        $proc = proc_open([MediaCodec::ffmpeg(), '-hide_banner', '-loglevel', 'error', '-re', '-i', $source, '-c', 'copy', '-f', 'flv', 'rtmp://127.0.0.1:' . $port . '/live/lab'],
+        $proc = proc_open(array_merge([MediaCodec::ffmpeg(), '-hide_banner', '-loglevel', 'error', '-re'], $ffmpegArgs, ['-f', 'flv', 'rtmp://127.0.0.1:' . $port . '/live/lab']),
             [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
         $t0 = microtime(true);
         while (microtime(true) - $t0 < $timeout) {
             $server->tick(0.005);
             $bridge->tick();
+            if ($tick !== null) {
+                $tick();
+            }
             $transport->pump(0);
             if (!proc_get_status($proc)['running'] && $server->activeSessions() === 0 && $bridge->liveCount() === 0) {
                 break;

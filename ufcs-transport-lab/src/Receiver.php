@@ -28,6 +28,10 @@ final class Receiver
     private array $completed = [];
     /** @var array<string, array<string, mixed>> HLS/DASH packages being rebuilt or finished */
     private array $packages = [];
+    /** @var array<string, array<string, mixed>> per-class processing cost */
+    private array $cost = [];
+    /** @var array<int, array{0:float, 1:float}> message id => [arrival wall time, parse µs] for non-control frames */
+    private array $arrivalLog = [];
     private array $stats;
     private int $nextId = 1;
     private float $started;
@@ -156,7 +160,17 @@ final class Receiver
         $before = [$reader->corruptFrames, $reader->skippedBytes];
         $reader->push($data);
         $frames = [];
-        while (($f = $reader->next()) !== null) {
+        while (true) {
+            $t0 = hrtime(true);
+            $f = $reader->next(); // parse + CRC32 (+ Ed25519) verification
+            if ($f === null) {
+                break;
+            }
+            $f->arrivedAt = microtime(true);
+            $f->parseUs = (hrtime(true) - $t0) / 1000;
+            if ($f->msgType !== Protocol::CONTROL && count($this->arrivalLog) < 20000) {
+                $this->arrivalLog[$f->messageId] = [round($f->arrivedAt, 6), round($f->parseUs, 1)];
+            }
             $frames[] = $f;
         }
         $this->stats['corrupt_frames'] += $reader->corruptFrames - $before[0];
@@ -165,7 +179,9 @@ final class Receiver
         $acks = [];
         foreach ($frames as $f) {
             $this->clients[$id]['queue']--;
+            $t0 = hrtime(true);
             $this->handle($id, $f);
+            $this->recordCost($f, (hrtime(true) - $t0) / 1000);
             if ($f->flags & Protocol::F_ACK_REQUESTED) {
                 $acks[] = $f->messageId;
             }
@@ -279,11 +295,30 @@ final class Receiver
         }
     }
 
+    /** Per-frame cost on Node 2: parse+verify and handling time, per priority class. */
+    private function recordCost(Frame $f, float $handleUs): void
+    {
+        $role = Protocol::PRIORITIES[$f->priority()];
+        $c = &$this->cost[$role];
+        $c ??= ['frames' => 0, 'bytes' => 0, 'parse_us' => 0.0, 'handle_us' => 0.0, 'parse_samples' => []];
+        $c['frames']++;
+        $c['bytes'] += $f->wireLength();
+        $c['parse_us'] += (float) $f->parseUs;
+        $c['handle_us'] += $handleUs;
+        if (count($c['parse_samples']) < 20000) {
+            $c['parse_samples'][] = (float) $f->parseUs;
+        }
+    }
+
     private function handleChunk(Frame $f, array $meta): void
     {
         $sid = (string) ($meta['stream_id'] ?? 'unknown');
         $st = &$this->streams[$sid];
-        $st ??= ['bytes' => '', 'next' => 0, 'gaps' => 0, 'chunks' => 0, 'codec' => $f->compression, 'content' => $f->contentType, 'started' => hrtime(true) / 1e9];
+        $st ??= ['bytes' => '', 'next' => 0, 'gaps' => 0, 'chunks' => 0, 'codec' => $f->compression, 'content' => $f->contentType, 'started' => hrtime(true) / 1e9, 'arrivals' => []];
+        if (count($st['arrivals']) < 5000) {
+            $st['arrivals'][] = array_filter(['id' => $f->messageId, 'seq' => $f->sequence, 'at' => $f->arrivedAt, 'bytes' => strlen($f->payload), 'parse_us' => round((float) $f->parseUs, 1),
+                'media_ts_ms' => $meta['media_ts_ms'] ?? null, 'edge_first' => $meta['edge_first'] ?? null, 'edge_last' => $meta['edge_last'] ?? null, 'edge_flush' => $meta['edge_flush'] ?? null], fn ($v) => $v !== null);
+        }
         if ($f->sequence !== $st['next']) {
             $st['gaps']++;
         }
@@ -302,7 +337,7 @@ final class Receiver
             $summary = [
                 'stream_id' => $sid, 'codec' => Protocol::compressionName($st['codec']), 'content' => Protocol::CONTENT_TYPES[$st['content']],
                 'chunks' => $st['chunks'], 'bytes' => strlen($st['bytes']), 'gaps' => $st['gaps'], 'intact' => $intact,
-                'sha256' => hash('sha256', $st['bytes']), 'receive_seconds' => round($elapsed, 3),
+                'sha256' => hash('sha256', $st['bytes']), 'receive_seconds' => round($elapsed, 3), 'arrivals' => $st['arrivals'],
                 'sustained_kbps' => $elapsed > 0 ? round(strlen($st['bytes']) * 8 / 1000 / $elapsed, 1) : null,
             ];
             $ext = ($meta['container'] ?? '') === 'flv' ? '.flv' : MediaCodec::extensionFor($st['codec']);
@@ -379,14 +414,16 @@ final class Receiver
                     '-hls_segment_filename', $dir . '/seg%03d.ts', $dir . '/index.m3u8']
                 : [MediaCodec::ffmpeg(), '-hide_banner', '-loglevel', 'error', '-y', '-i', $flv, '-c', 'copy', '-f', 'dash', '-seg_duration', '2',
                     '-init_seg_name', 'init-$RepresentationID$.m4s', '-media_seg_name', 'chunk-$RepresentationID$-$Number%05d$.m4s', $dir . '/manifest.mpd'];
+            $t0 = hrtime(true);
             $r = MediaCodec::exec($args);
+            $ms = round((hrtime(true) - $t0) / 1e6, 1);
             if ($kind === 'hls' && $r['code'] === 0) {
                 $root = 'index.m3u8';
             }
             $check = $r['code'] === 0 ? Manifest::verify($dir, $root) : ['ok' => false, 'missing' => [trim($r['stderr'])], 'segments' => 0, 'variants' => 0, 'duration_s' => 0.0];
             $this->packages[$id . '-' . $kind] = ['package_id' => $id . '-' . $kind, 'protocol' => strtoupper($kind), 'root_manifest' => $root, 'complete' => true,
                 'source' => 'rtmp:' . $sid, 'dir' => $dir] + $check;
-            $out[$kind] = ['package_id' => $id . '-' . $kind, 'ok' => $check['ok'], 'segments' => $check['segments']];
+            $out[$kind] = ['package_id' => $id . '-' . $kind, 'ok' => $check['ok'], 'segments' => $check['segments'], 'repackage_ms' => $ms];
         }
         return $out;
     }
@@ -436,6 +473,8 @@ final class Receiver
                 $this->streams = [];
                 $this->completed = [];
                 $this->packages = [];
+                $this->cost = [];
+                $this->arrivalLog = [];
                 $this->resetStats();
                 return;
             case 'SHUTDOWN':
@@ -457,6 +496,9 @@ final class Receiver
             'connections' => array_values(array_map(fn ($c) => ['role' => $c['role'], 'peer' => $c['peer'], 'node' => $c['node']], $this->clients)),
             'uptime_s' => round(hrtime(true) / 1e9 - $this->started, 2),
             'cpu_s' => Benchmark::cpuSeconds(),
+            'arrival_log' => $this->arrivalLog,
+            'cost' => array_map(fn ($c) => ['frames' => $c['frames'], 'bytes' => $c['bytes'], 'parse_us_total' => round($c['parse_us'], 1), 'handle_us_total' => round($c['handle_us'], 1),
+                'parse_us' => Stats::summary($c['parse_samples']), 'verify_mb_s' => $c['parse_us'] > 0 ? round($c['bytes'] / $c['parse_us'], 1) : null], $this->cost),
         ];
     }
 

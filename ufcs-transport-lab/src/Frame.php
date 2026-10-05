@@ -31,6 +31,10 @@ final class Frame
     ) {
     }
 
+    /** Receiver-side annotations (not on the wire): wall-clock arrival and parse/verify cost. */
+    public ?float $arrivedAt = null;
+    public ?float $parseUs = null;
+
     /**
      * Convenience constructor: meta as an array, priority as a class number.
      *

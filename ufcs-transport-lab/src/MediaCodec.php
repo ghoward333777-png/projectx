@@ -109,6 +109,79 @@ final class MediaCodec
         return ['ok' => $r['code'] === 0 && trim($r['stderr']) === '', 'detail' => trim($r['stderr']) ?: 'decoded cleanly'];
     }
 
+    /**
+     * Objective quality of $distorted against $reference: PSNR (Y and average,
+     * dB) and SSIM (All), after scaling the distorted video back to the
+     * reference resolution. Optional loop/duration lets a looped live feed be
+     * compared with its master.
+     *
+     * @return array{psnr_y:?float, psnr_avg:?float, ssim:?float, frames:?int}
+     */
+    public static function quality(string $distorted, string $reference, int $w, int $h, ?float $seconds = null, bool $loopReference = false): array
+    {
+        self::requireFfmpeg();
+        $args = [self::ffmpeg(), '-hide_banner', '-nostats', '-i', $distorted];
+        if ($loopReference) {
+            $args = array_merge($args, ['-stream_loop', '-1']);
+        }
+        $args = array_merge($args, ['-i', $reference]);
+        if ($seconds !== null) {
+            $args = array_merge($args, ['-t', (string) $seconds]);
+        }
+        // Align by frame index (both sides are constant frame rate): container start offsets
+        // (MPEG-TS, FLV) would otherwise pair each frame with its neighbour.
+        $f = "[0:v]scale={$w}:{$h}:flags=bicubic,format=yuv420p,setpts=N/FRAME_RATE/TB,split[d1][d2];[1:v]format=yuv420p,setpts=N/FRAME_RATE/TB,split[r1][r2];[d1][r1]psnr;[d2][r2]ssim";
+        $args = array_merge($args, ['-lavfi', $f, '-f', 'null', '-']);
+        $e = self::run($args)['stderr'];
+        $out = ['psnr_y' => null, 'psnr_avg' => null, 'ssim' => null, 'frames' => null];
+        if (preg_match('/PSNR y:([\d.inf]+).*average:([\d.inf]+)/', $e, $m)) {
+            $out['psnr_y'] = is_numeric($m[1]) ? round((float) $m[1], 2) : null;
+            $out['psnr_avg'] = is_numeric($m[2]) ? round((float) $m[2], 2) : null;
+        }
+        if (preg_match('/SSIM .*All:([\d.]+)/', $e, $m)) {
+            $out['ssim'] = round((float) $m[1], 4);
+        }
+        if (preg_match_all('/frame=\s*(\d+)/', $e, $m)) {
+            $out['frames'] = (int) end($m[1]);
+        }
+        return $out;
+    }
+
+    /**
+     * Decode cost: ffmpeg -benchmark on one thread (cost per core) — wall
+     * time, CPU time, and how many times faster than real time.
+     *
+     * @return array{ok:bool, rtime_s:float, cpu_s:float, media_s:float, realtime_x:?float, cpu_per_media_s:?float}
+     */
+    public static function decodeCost(string $file, int $threads = 1): array
+    {
+        self::requireFfmpeg();
+        $info = self::probe($file);
+        $r = self::run([self::ffmpeg(), '-hide_banner', '-nostats', '-benchmark', '-threads', (string) $threads, '-i', $file, '-f', 'null', '-']);
+        $rt = $ut = $st = 0.0;
+        if (preg_match('/bench: utime=([\d.]+)s stime=([\d.]+)s rtime=([\d.]+)s/', $r['stderr'], $m)) {
+            [$ut, $st, $rt] = [(float) $m[1], (float) $m[2], (float) $m[3]];
+        }
+        $media = $info['duration_s'];
+        return ['ok' => $r['code'] === 0, 'rtime_s' => round($rt, 3), 'cpu_s' => round($ut + $st, 3), 'media_s' => round($media, 2),
+            'realtime_x' => $rt > 0 ? round($media / $rt, 1) : null, 'cpu_per_media_s' => $media > 0 ? round(($ut + $st) / $media, 3) : null];
+    }
+
+    /** Spatial / temporal information (ITU-T P.910) averages — how hard the content is to compress. */
+    public static function siti(string $file): array
+    {
+        self::requireFfmpeg();
+        $e = self::run([self::ffmpeg(), '-hide_banner', '-nostats', '-i', $file, '-vf', 'siti=print_summary=1', '-f', 'null', '-'])['stderr'];
+        $out = ['si' => null, 'ti' => null];
+        if (preg_match('/Spatial Information:\s*Average:\s*([\d.]+)/', $e, $m)) {
+            $out['si'] = round((float) $m[1], 1);
+        }
+        if (preg_match('/Temporal Information:\s*Average:\s*([\d.]+)/', $e, $m)) {
+            $out['ti'] = round((float) $m[1], 1);
+        }
+        return $out;
+    }
+
     /** PCM WAV, 48 kHz stereo s16 — speech-like formant tone with a slow tremolo. */
     public static function makeTestAudio(string $path, float $seconds): void
     {

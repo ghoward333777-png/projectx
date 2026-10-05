@@ -130,6 +130,8 @@ final class Transport
     private int $chunk;
     /** @var array<int, array<int, float>> ACK latency (ms) per frame priority class, any connection */
     private array $classLatency = [0 => [], 1 => [], 2 => []];
+    /** @var array<int, array<string, float|int>> per-frame wall-clock trace (opts trace=true): enq, first, last, ack */
+    public array $trace = [];
     /** @var array<int, int> wire bytes of fully written frames, per frame priority class */
     public array $classBytes = [0 => 0, 1 => 0, 2 => 0];
 
@@ -246,6 +248,12 @@ final class Transport
         return $f->messageId;
     }
 
+    /** Convert an hrtime-seconds stamp to wall-clock seconds (both nodes share the host clock). */
+    private function wall(float $hr): float
+    {
+        return microtime(true) - (hrtime(true) / 1e9 - $hr);
+    }
+
     /** Bytes queued for a priority's connection but not yet written (backlog + socket buffer). */
     public function queuedBytes(int $priority): int
     {
@@ -291,8 +299,9 @@ final class Transport
             while ($c->backlog && count($c->inflight) < $c->window) {
                 [$wire, $id, $enq, $p] = array_shift($c->backlog);
                 $c->out .= $wire;
+                $start = $c->queued;
                 $c->queued += strlen($wire);
-                $c->inflight[$id] = ['end' => $c->queued, 'enq' => $enq, 'wrote' => null, 'bytes' => strlen($wire), 'p' => $p];
+                $c->inflight[$id] = ['end' => $c->queued, 'start' => $start, 'enq' => $enq, 'wrote' => null, 'first' => null, 'bytes' => strlen($wire), 'p' => $p];
             }
         }
         $read = [];
@@ -353,8 +362,15 @@ final class Transport
             $c->outOff = 0;
         }
         $now = hrtime(true) / 1e9;
+        $wall = microtime(true);
         foreach ($c->inflight as $id => &$f) {
+            if ($f['first'] === null && $f['start'] < $c->written) {
+                $f['first'] = $wall;
+            }
             if ($f['wrote'] === null && $f['end'] <= $c->written) {
+                if (!empty($this->opts['trace'])) {
+                    $this->trace[$id] = ['p' => $f['p'], 'bytes' => $f['bytes'], 'enq' => $this->wall($f['enq']), 'first' => $f['first'], 'last' => $wall];
+                }
                 $f['wrote'] = $now;
                 $c->stats['frames_sent']++;
                 $this->classBytes[$f['p']] += $f['bytes'];
@@ -374,6 +390,7 @@ final class Transport
             }
             throw new RuntimeException('Node 2 closed the ' . $c->role . ' connection with ' . count($c->inflight) . ' frame(s) unacknowledged');
         }
+        $c->stats['bytes_received'] = ($c->stats['bytes_received'] ?? 0) + strlen($data);
         $c->reader->push($data);
         while (($f = $c->reader->next()) !== null) {
             $meta = $f->metaArray();
@@ -383,6 +400,9 @@ final class Transport
                 foreach ((array) ($meta['ack'] ?? []) as $id) {
                     if (isset($c->inflight[$id])) {
                         $ms = ($now - $c->inflight[$id]['enq']) * 1000;
+                        if (isset($this->trace[$id])) {
+                            $this->trace[$id]['ack'] = microtime(true);
+                        }
                         $c->latencies[] = $ms;
                         $this->classLatency[$c->inflight[$id]['p']][] = $ms;
                         unset($c->inflight[$id]);

@@ -45,6 +45,29 @@ php ufcs-transport-lab/tests/run.php
 
 For two machines, start the receiver with `--host=0.0.0.0` and open ports P, P+1 and P+2.
 
+## Video transit reports
+
+`bin/video-report.php` runs video-on-demand and live video feeds from Node 1 to
+Node 2 through emulated network paths (`bin/netem-proxy.php`: one-way delay and a
+capacity cap in both directions). It measures each transfer at three points:
+
+- **Before:** lossless FFV1 masters (studio graphics, and a high-motion Mandelbrot
+  zoom), with their raw rate and ITU-T P.910 SI/TI, then each encode (H.264,
+  H.265, AV1, HLS/DASH ladders, live x264 zerolatency).
+- **During:** a per-frame trace on both nodes. Each frame's time is split into
+  queue, serialisation, path and ACK return. The report also covers framing and
+  modelled TCP/IP overhead, goodput, utilisation, jitter, and the live feeds'
+  edge → Node 2 time and lag.
+- **After:** whether Node 2's copy is bit-exact, Node 2's per-frame parse and
+  verify cost, single-core media decode cost, PSNR/SSIM against the master, and
+  RTMP repackaging time.
+
+```bash
+php ufcs-transport-lab/bin/video-report.php --preset=standard   # ~5 min; quick ≈ 45 s
+# → reports/video-report.html (compression, transport efficiency,
+#   decompression overhead, propagation) and reports/video-report.json
+```
+
 ## The UFCS-FQL/1 frame
 
 All integers are big-endian. The header is exactly 32 bytes.
