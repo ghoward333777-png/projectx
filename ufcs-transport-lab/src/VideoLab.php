@@ -464,6 +464,12 @@ final class VideoLab
                 $drift[] = ($a['at'] - $a['edge_last']) * 1000;
             }
         }
+        // Lag is reported above its best (minimum) value: the first chunk includes encoder
+        // start-up, so measuring from it would show a spurious negative drift.
+        if ($drift) {
+            $floor = min($drift);
+            $drift = array_map(fn ($d) => $d - $floor, $drift);
+        }
         $series = array_map(fn ($a) => isset($a['edge_last']) ? round(($a['at'] - $a['edge_last']) * 1000, 1) : null, $arr);
         return ['chunks' => count($arr), 'edge_to_node2_ms' => Stats::summary($prop), 'edge_hold_ms' => Stats::summary($hold),
             'flush_wait_ms' => Stats::summary($wait), 'transport_transit_ms' => Stats::summary($transit),
@@ -515,10 +521,18 @@ final class VideoLab
         $vod = array_values(array_filter($r['vod'], fn ($v) => isset($v['after']['quality']['psnr_avg'])));
         if ($vod) {
             usort($vod, fn ($a, $b) => $b['before']['ratio_vs_raw'] <=> $a['before']['ratio_vs_raw']);
-            $held = count(array_filter($vod, fn ($v) => $v['before']['actual_kbps'] <= $v['before']['plan']['kbps'] * 1.1));
-            $f[] = sprintf('Compression: %d of %d encodes landed within 10%% of their %d kbps target, shrinking raw video %s–%s×. Quality at equal bitrate: %s.',
-                $held, count($vod), $vod[0]['before']['plan']['kbps'], min(array_map(fn ($v) => $v['before']['ratio_vs_raw'], $vod)), max(array_map(fn ($v) => $v['before']['ratio_vs_raw'], $vod)),
-                implode('; ', array_map(fn ($v) => $v['source'] . ' ' . $v['codec'] . ' ' . $v['after']['quality']['psnr_avg'] . ' dB / SSIM ' . $v['after']['quality']['ssim'], $vod)));
+            $over = array_filter($vod, fn ($v) => $v['before']['actual_kbps'] > $v['before']['plan']['kbps'] * 1.1);
+            $f[] = sprintf('Compression: %d of %d encodes landed within 10%% of their %d kbps target (container bitrate)%s. Raw video shrank %s–%s×.',
+                count($vod) - count($over), count($vod), $vod[0]['before']['plan']['kbps'],
+                $over ? '; over target: ' . implode(', ', array_map(fn ($v) => $v['source'] . ' ' . $v['codec'] . ' at ' . round($v['before']['actual_kbps']) . ' kbps', $over)) . ' (the VBV buffer starts full, which lets a short, complex clip run past the cap, plus about 4% MPEG-TS overhead)' : '',
+                min(array_map(fn ($v) => $v['before']['ratio_vs_raw'], $vod)), max(array_map(fn ($v) => $v['before']['ratio_vs_raw'], $vod)));
+            foreach (['studio', 'motion'] as $src) {
+                $q = array_filter($vod, fn ($v) => $v['source'] === $src);
+                if ($q) {
+                    $f[] = sprintf('Quality at the same target, %s source: %s. SVT-AV1 runs PSNR-tuned while x264/x265 tune for perceived quality, so compare SSIM across codecs and PSNR within one.',
+                        $src, implode('; ', array_map(fn ($v) => $v['codec'] . ' ' . $v['after']['quality']['psnr_avg'] . ' dB PSNR / ' . $v['after']['quality']['ssim'] . ' SSIM', $q)));
+                }
+            }
         }
         $eff = array_filter(array_merge($r['vod'], $r['packages'], $r['sweep']), fn ($v) => isset($v['during']['framing_efficiency_pct']));
         if ($eff) {
@@ -537,7 +551,7 @@ final class VideoLab
             $f[] = 'Decompression: on one CPU core, ' . implode('; ', array_map(fn ($v) => $v['source'] . ' ' . $v['codec'] . ' decodes ' . $v['after']['decode']['realtime_x'] . '× real time', $dec)) . '.';
         }
         foreach ($r['live'] as $l) {
-            $f[] = sprintf('%s over %s (%s): edge → Node 2 p50 %s ms / p95 %s ms; lag end %s ms (max %s ms); arrived %s.',
+            $f[] = sprintf('%s over %s (%s): edge → Node 2 p50 %s ms / p95 %s ms; lag above its best %s ms at the end (worst %s ms); arrived %s.',
                 $l['kind'], self::PATHS[$l['path']]['label'], $l['mode'] === 'single' ? 'one shared connection' : 'per-priority connections',
                 $l['during']['live']['edge_to_node2_ms']['p50'], $l['during']['live']['edge_to_node2_ms']['p95'], $l['during']['live']['lag_end_ms'], $l['during']['live']['lag_max_ms'],
                 $l['after']['intact'] ? 'intact' : 'NOT intact');

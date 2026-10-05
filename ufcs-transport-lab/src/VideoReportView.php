@@ -196,7 +196,7 @@ CSS;
     private static function compression(array $r): string
     {
         $rows = array_merge($r['vod'], $r['packages'], $r['sweep'], array_values(array_filter($r['live'], fn ($l) => $l['mode'] === 'multi' || $l['kind'] === 'RTMP live')));
-        $h = '<h2>1 · Compression</h2><p class="prose">What each encode did to the source (before) and how faithful the copy on Node 2 is (after). PSNR and SSIM compare Node 2\'s decoded copy with the lossless master, scaled back to the master\'s resolution.</p>';
+        $h = '<h2>1 · Compression</h2><p class="prose">What each encode did to the source (before) and how faithful the copy on Node 2 is (after). PSNR and SSIM compare Node 2\'s decoded copy with the lossless master, scaled back to the master\'s resolution. "Actual" is the container bitrate (MPEG-TS, Matroska or FLV), so it includes about 2–4% muxing overhead. SVT-AV1 runs PSNR-tuned while x264 and x265 tune for perceived quality, which lowers their PSNR. Compare SSIM across codecs and PSNR within one codec.</p>';
         $h .= '<div class="phase"><span class="tag before">Before</span><span class="tag after">After</span></div>';
         $h .= '<div class="card scroll"><table><tr><th>Transfer</th><th>Encode</th><th class="n">Output</th><th class="n">Target</th><th class="n">Actual</th><th class="n">vs raw</th><th class="n">vs lossless</th><th class="n">Bits / pixel</th><th class="n">Encode speed</th><th class="n">PSNR</th><th class="n">SSIM</th></tr>';
         foreach ($rows as $t) {
@@ -297,8 +297,8 @@ CSS;
                 . self::stacked($items, ['var(--s1)', 'var(--s2)', 'var(--s3)'], ['queue', 'serialisation', 'path']) . '</div>';
         }
         // Live
-        $h .= '<h3>Live feeds</h3><p class="prose">For live feeds the edge stamps each chunk: when its first and last bytes left the encoder, and when it was flushed onto the transport. <b>Edge → Node 2</b> is last byte at the edge until the chunk was on Node 2. <b>Lag</b> tracks whether Node 2 keeps pace with real time across the run; a flat lag means no backlog builds up.</p>';
-        $h .= '<div class="card scroll"><table><tr><th>Feed</th><th>Path</th><th>Connections</th><th class="n">Chunks</th><th class="n">Chunk build</th><th class="n">Flush wait</th><th class="n">Transit p50</th><th class="n">Edge → Node 2 p50</th><th class="n">p95</th><th class="n">Lag start → end</th><th class="n">Lag max</th><th>Arrived</th></tr>';
+        $h .= '<h3>Live feeds</h3><p class="prose">For live feeds the edge stamps each chunk: when its first and last bytes left the encoder, and when it was flushed onto the transport. <b>Edge → Node 2</b> is last byte at the edge until the chunk was on Node 2. <b>Lag above best</b> tracks whether Node 2 keeps pace with real time: each chunk\'s delay (for RTMP, against its media timestamp) minus the run\'s best chunk. A value that stays low means no backlog builds up.</p>';
+        $h .= '<div class="card scroll"><table><tr><th>Feed</th><th>Path</th><th>Connections</th><th class="n">Chunks</th><th class="n">Chunk build</th><th class="n">Flush wait</th><th class="n">Transit p50</th><th class="n">Edge → Node 2 p50</th><th class="n">p95</th><th class="n">Lag above best: start → end</th><th class="n">Worst</th><th>Arrived</th></tr>';
         foreach ($r['live'] as $l) {
             $v = $l['during']['live'];
             $h .= '<tr><td class="k">' . self::e($l['kind']) . '</td><td>' . self::e(explode(' · ', self::path($r, $l['path']))[0]) . '</td><td>' . ($l['mode'] === 'single' ? '1 shared' : '3 (per priority)')
