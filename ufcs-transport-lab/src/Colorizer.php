@@ -76,7 +76,9 @@ final class Colorizer
             mkdir($out, 0775, true);
         }
         $name = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) ($o['name'] ?? pathinfo($input, PATHINFO_FILENAME)));
-        $targets = array_values(array_intersect(array_keys(self::TARGETS), array_map('strtolower', (array) ($o['targets'] ?? ['1k', '4k']))));
+        // Targets: 1k / 4k / 16k, a scale factor ("2x"), or an explicit width ("w640").
+        $targets = array_values(array_filter(array_map('strtolower', (array) ($o['targets'] ?? ['1k', '4k'])),
+            fn ($t) => isset(self::TARGETS[$t]) || preg_match('/^(\d+(\.\d+)?x|w\d{2,5})$/', $t)));
 
         // 1 · ingest
         $ing = $this->agent('ingest', fn () => $this->ingest($input, $o));
@@ -633,7 +635,7 @@ final class Colorizer
     {
         $outputs = [];
         foreach ($targets as $t) {
-            $tw = self::TARGETS[$t];
+            $tw = self::targetWidth($t, $ing['w']);
             $th = (int) round($tw * $ing['h'] / $ing['w'] / 2) * 2;
             $up = $tw > $ing['w'];
             $luma = "[0:v]format=gray,scale={$tw}:{$th}:flags=lanczos" . ($up ? ',unsharp=5:5:0.5:3:3:0' : '') . ',setsar=1[y]';
@@ -670,6 +672,18 @@ final class Colorizer
                 'consistency_psnr_db' => $this->consistency($input, $file, $ing), 'sha256' => is_dir($file) ? hash('sha256', implode('', array_map('hash_file', array_fill(0, $frames, 'sha256'), glob($file . '/*.jpg') ?: []))) : hash_file('sha256', $file)];
         }
         return $outputs;
+    }
+
+    /** Output width for a target: a named size, a scale factor ("2x") or an explicit width ("w640"); always even. */
+    public static function targetWidth(string $t, int $sourceWidth): int
+    {
+        if (isset(self::TARGETS[$t])) {
+            return self::TARGETS[$t];
+        }
+        if (preg_match('/^(\d+(?:\.\d+)?)x$/', $t, $m)) {
+            return max(2, (int) round($sourceWidth * (float) $m[1] / 2) * 2);
+        }
+        return max(2, (int) round((int) substr($t, 1) / 2) * 2);
     }
 
     /**

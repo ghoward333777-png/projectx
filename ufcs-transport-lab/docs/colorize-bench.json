@@ -1,0 +1,339 @@
+{
+    "generated_at": "2026-10-05T19:52:56+00:00",
+    "host": {
+        "cpus": 4,
+        "php": "8.3.6",
+        "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    },
+    "part_a": [
+        {
+            "label": "portrait 256×144 → 2× and 640 px",
+            "input": {
+                "file": "portrait.mp4",
+                "kind": "video",
+                "width": 256,
+                "height": 144,
+                "fps": "30/1",
+                "frames": 210,
+                "seconds": 7,
+                "analysis": "256x144"
+            },
+            "outputs": {
+                "2x": {
+                    "target": "2X",
+                    "width": 512,
+                    "height": 288,
+                    "format": "MP4",
+                    "frames": 210,
+                    "bytes": 83434,
+                    "render_ms": 758.8,
+                    "scale_factor": 2,
+                    "consistency_psnr_db": 46.68
+                },
+                "w640": {
+                    "target": "W640",
+                    "width": 640,
+                    "height": 360,
+                    "format": "MP4",
+                    "frames": 210,
+                    "bytes": 145816,
+                    "render_ms": 1227.4,
+                    "scale_factor": 2.5,
+                    "consistency_psnr_db": 46.98
+                }
+            },
+            "wall_s": 10.2,
+            "cpu_s": 12.05,
+            "realtime_x": 0.686,
+            "cpu_s_per_video_min": 103.3,
+            "evaluation": {
+                "mean_delta_e_colorized": 6.23,
+                "mean_delta_e_gray": 29.85,
+                "improvement_pct": 79.1,
+                "colorfulness_colorized": 25.6,
+                "colorfulness_truth": 29.8,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 0.6,
+            "agents": {
+                "ingest": 413.1,
+                "knowledge": 2.1,
+                "lighting": 0.2,
+                "historical_prior": 0,
+                "material": 1418,
+                "colorist": 7261.5,
+                "upscale": 2262.9,
+                "marking": 0
+            }
+        },
+        {
+            "label": "game 256×150 → 2× and 640 px",
+            "input": {
+                "file": "game.mp4",
+                "kind": "video",
+                "width": 256,
+                "height": 150,
+                "fps": "30/1",
+                "frames": 162,
+                "seconds": 5.4,
+                "analysis": "256x150"
+            },
+            "outputs": {
+                "2x": {
+                    "target": "2X",
+                    "width": 512,
+                    "height": 300,
+                    "format": "MP4",
+                    "frames": 162,
+                    "bytes": 95419,
+                    "render_ms": 700.4,
+                    "scale_factor": 2,
+                    "consistency_psnr_db": 46.81
+                },
+                "w640": {
+                    "target": "W640",
+                    "width": 640,
+                    "height": 376,
+                    "format": "MP4",
+                    "frames": 162,
+                    "bytes": 161808,
+                    "render_ms": 995.2,
+                    "scale_factor": 2.5,
+                    "consistency_psnr_db": 47.92
+                }
+            },
+            "wall_s": 8.57,
+            "cpu_s": 10.19,
+            "realtime_x": 0.63,
+            "cpu_s_per_video_min": 113.2,
+            "evaluation": {
+                "mean_delta_e_colorized": 9.86,
+                "mean_delta_e_gray": 29.84,
+                "improvement_pct": 67,
+                "colorfulness_colorized": 23.6,
+                "colorfulness_truth": 29.8,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 9.7,
+            "agents": {
+                "ingest": 399.4,
+                "knowledge": 0.3,
+                "lighting": 0.1,
+                "historical_prior": 0,
+                "material": 1152.2,
+                "colorist": 5955.1,
+                "upscale": 1988.9,
+                "marking": 0
+            }
+        },
+        {
+            "label": "ai-clip 174×256 → 2× and 640 px",
+            "input": {
+                "file": "ai-clip.mp4",
+                "kind": "video",
+                "width": 174,
+                "height": 256,
+                "fps": "30/1",
+                "frames": 180,
+                "seconds": 6,
+                "analysis": "174x256"
+            },
+            "outputs": {
+                "2x": {
+                    "target": "2X",
+                    "width": 348,
+                    "height": 512,
+                    "format": "MP4",
+                    "frames": 180,
+                    "bytes": 117808,
+                    "render_ms": 795.9,
+                    "scale_factor": 2,
+                    "consistency_psnr_db": 48.04
+                },
+                "w640": {
+                    "target": "W640",
+                    "width": 640,
+                    "height": 942,
+                    "format": "MP4",
+                    "frames": 180,
+                    "bytes": 454600,
+                    "render_ms": 2334.3,
+                    "scale_factor": 3.68,
+                    "consistency_psnr_db": 49.15
+                }
+            },
+            "wall_s": 11.74,
+            "cpu_s": 15.76,
+            "realtime_x": 0.511,
+            "cpu_s_per_video_min": 157.6,
+            "evaluation": {
+                "mean_delta_e_colorized": 6.98,
+                "mean_delta_e_gray": 30.96,
+                "improvement_pct": 77.5,
+                "colorfulness_colorized": 26.5,
+                "colorfulness_truth": 30.9,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 0.9,
+            "agents": {
+                "ingest": 421.9,
+                "knowledge": 0.3,
+                "lighting": 0.1,
+                "historical_prior": 0,
+                "material": 1501.7,
+                "colorist": 7489.3,
+                "upscale": 3454.4,
+                "marking": 0
+            }
+        }
+    ],
+    "part_b": [
+        {
+            "label": "720p → 1K",
+            "input": {
+                "file": "hd.mp4",
+                "kind": "video",
+                "width": 1280,
+                "height": 720,
+                "fps": "30/1",
+                "frames": 150,
+                "seconds": 5,
+                "analysis": "320x180"
+            },
+            "outputs": {
+                "1k": {
+                    "target": "1K",
+                    "width": 1024,
+                    "height": 576,
+                    "format": "MP4",
+                    "frames": 150,
+                    "bytes": 1479760,
+                    "render_ms": 2176.8,
+                    "scale_factor": 0.8,
+                    "consistency_psnr_db": 44.14
+                }
+            },
+            "wall_s": 14.55,
+            "cpu_s": 18.8,
+            "realtime_x": 0.344,
+            "cpu_s_per_video_min": 225.6,
+            "evaluation": {
+                "mean_delta_e_colorized": 10.54,
+                "mean_delta_e_gray": 33.36,
+                "improvement_pct": 68.4,
+                "colorfulness_colorized": 25.9,
+                "colorfulness_truth": 33.3,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 4.3,
+            "agents": {
+                "ingest": 945.7,
+                "knowledge": 0.7,
+                "lighting": 0.1,
+                "historical_prior": 0,
+                "material": 4026.4,
+                "colorist": 10565.7,
+                "upscale": 2707.3,
+                "marking": 0
+            }
+        },
+        {
+            "label": "720p → 4K",
+            "input": {
+                "file": "hd.mp4",
+                "kind": "video",
+                "width": 1280,
+                "height": 720,
+                "fps": "30/1",
+                "frames": 150,
+                "seconds": 5,
+                "analysis": "320x180"
+            },
+            "outputs": {
+                "4k": {
+                    "target": "4K",
+                    "width": 3840,
+                    "height": 2160,
+                    "format": "MP4",
+                    "frames": 150,
+                    "bytes": 1537220,
+                    "render_ms": 19918.3,
+                    "scale_factor": 3,
+                    "consistency_psnr_db": 51.83
+                }
+            },
+            "wall_s": 32.92,
+            "cpu_s": 87.76,
+            "realtime_x": 0.152,
+            "cpu_s_per_video_min": 1053.1,
+            "evaluation": {
+                "mean_delta_e_colorized": 10.54,
+                "mean_delta_e_gray": 33.36,
+                "improvement_pct": 68.4,
+                "colorfulness_colorized": 25.9,
+                "colorfulness_truth": 33.3,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 4.3,
+            "agents": {
+                "ingest": 953.7,
+                "knowledge": 0.6,
+                "lighting": 0.1,
+                "historical_prior": 0,
+                "material": 4087.9,
+                "colorist": 10665.4,
+                "upscale": 20946.6,
+                "marking": 0
+            }
+        },
+        {
+            "label": "720p → 16K",
+            "input": {
+                "file": "hd.mp4",
+                "kind": "video",
+                "width": 1280,
+                "height": 720,
+                "fps": "30/1",
+                "frames": 150,
+                "seconds": 5,
+                "analysis": "320x180"
+            },
+            "outputs": {
+                "16k": {
+                    "target": "16K",
+                    "width": 15360,
+                    "height": 8640,
+                    "format": "JPEG frame sequence",
+                    "frames": 150,
+                    "bytes": 609784612,
+                    "render_ms": 103300.9,
+                    "scale_factor": 12,
+                    "consistency_psnr_db": 50.92
+                }
+            },
+            "wall_s": 118.66,
+            "cpu_s": 323.32,
+            "realtime_x": 0.042,
+            "cpu_s_per_video_min": 3879.8,
+            "evaluation": {
+                "mean_delta_e_colorized": 10.54,
+                "mean_delta_e_gray": 33.36,
+                "improvement_pct": 68.4,
+                "colorfulness_colorized": 25.9,
+                "colorfulness_truth": 33.3,
+                "note": "CIE76 ΔE in Lab against the colour original at analysis resolution; gray = the black-and-white input."
+            },
+            "withheld_pct": 4.3,
+            "agents": {
+                "ingest": 905.6,
+                "knowledge": 0.4,
+                "lighting": 0.4,
+                "historical_prior": 0,
+                "material": 4109.8,
+                "colorist": 10633.7,
+                "upscale": 106718.1,
+                "marking": 0
+            }
+        }
+    ]
+}

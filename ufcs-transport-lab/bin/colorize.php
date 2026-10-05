@@ -17,6 +17,7 @@ declare(strict_types=1);
  * <name>.colorization.json (the provenance manifest).
  */
 require __DIR__ . '/../src/bootstrap.php';
+ufcs_lab_ensure_jit();
 
 $o = [];
 foreach (array_slice($argv, 1) as $arg) {
