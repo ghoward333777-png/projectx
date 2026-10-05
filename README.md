@@ -5,6 +5,10 @@ It includes topic prospecting, competitive scanning, blueprint and table-of-cont
 media planning, probability modeling, deterministic manuscript drafting, editable chapter blocks,
 JSON endpoints, and an **Amazon Book Writer** that packages the manuscript for Amazon KDP.
 
+> A separate prototype lives in [`ufcs-transport-lab/`](ufcs-transport-lab/README.md): the
+> QueryBook/UFCS-FQL-TCP/IP Hybrid Video Compression Lab (UFCS/FQL frames over TCP with
+> content-aware compression, HLS, MPEG-DASH and RTMP).
+
 ## Requirements
 
 - PHP 8.1 or newer
