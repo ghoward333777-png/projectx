@@ -305,7 +305,7 @@ CSS;
                 . (isset($l['during']['competing_bulk_goodput_mbps']) ? '<span class="sub">+ bulk at ' . self::n($l['during']['competing_bulk_goodput_mbps'], 1) . ' Mbps</span>' : '') . '</td>'
                 . '<td class="n">' . $v['chunks'] . '</td><td class="n">' . self::n($v['edge_hold_ms']['p50']) . ' ms</td><td class="n">' . self::n($v['flush_wait_ms']['p50']) . ' ms</td><td class="n">' . self::n($v['transport_transit_ms']['p50']) . ' ms</td>'
                 . '<td class="n">' . self::n($v['edge_to_node2_ms']['p50']) . ' ms</td><td class="n">' . self::n($v['edge_to_node2_ms']['p95']) . ' ms</td><td class="n">' . self::n($v['lag_start_ms'], 0) . ' → ' . self::n($v['lag_end_ms'], 0) . ' ms</td>'
-                . '<td class="n">' . self::n($v['lag_max_ms'], 0) . ' ms</td><td>' . (($l['after']['intact'] ?? false) ? '<span class="ok">✔ bit-exact</span>' : '<span class="bad">✖ damaged</span>') . '</td></tr>';
+                . '<td class="n">' . self::n($v['lag_max_ms'], 0) . ' ms' . (isset($v['edge_lag_max_ms']) ? '<span class="sub">' . self::n($v['edge_lag_max_ms'], 0) . ' ms at the edge</span>' : '') . '</td><td>' . (($l['after']['intact'] ?? false) ? '<span class="ok">✔ bit-exact</span>' : '<span class="bad">✖ damaged</span>') . '</td></tr>';
         }
         $h .= '</table></div>';
         $series = [];

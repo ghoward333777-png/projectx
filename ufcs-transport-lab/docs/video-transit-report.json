@@ -1,0 +1,2254 @@
+{
+    "lab": "QueryBook/UFCS-FQL-TCP/IP Hybrid Video Compression Lab",
+    "title": "Video transit report",
+    "generated_at": "2026-10-05T18:35:49+00:00",
+    "config": {
+        "preset": "standard",
+        "keep": false,
+        "w": 1280,
+        "h": 720,
+        "seconds": 10,
+        "live_seconds": 15,
+        "codecs": [
+            "H264",
+            "H265",
+            "AV1"
+        ],
+        "sweep": [
+            "lan",
+            "regional",
+            "long_haul",
+            "mobile"
+        ],
+        "vod_path": "regional"
+    },
+    "paths": {
+        "lan": {
+            "delay_ms": 0.5,
+            "mbps": 1000,
+            "label": "LAN · 1 Gbps · 0.5 ms"
+        },
+        "regional": {
+            "delay_ms": 20,
+            "mbps": 50,
+            "label": "Regional · 50 Mbps · 20 ms"
+        },
+        "long_haul": {
+            "delay_ms": 80,
+            "mbps": 20,
+            "label": "Long-haul · 20 Mbps · 80 ms"
+        },
+        "mobile": {
+            "delay_ms": 40,
+            "mbps": 3,
+            "label": "Mobile · 3 Mbps · 40 ms"
+        }
+    },
+    "environment": {
+        "php": "8.3.6",
+        "cpus": 4,
+        "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    },
+    "sources": {
+        "studio": {
+            "key": "studio",
+            "label": "Studio graphics (testsrc2 + sensor noise)",
+            "resolution": "1280x720",
+            "fps": 30,
+            "seconds": 10,
+            "frames": 300,
+            "raw_bytes": 414720000,
+            "raw_mbps": 331.8,
+            "lossless_master_bytes": 144543144,
+            "lossless_ratio": 2.87,
+            "si": 54.6,
+            "ti": 16.4,
+            "render_s": 19.1
+        },
+        "motion": {
+            "key": "motion",
+            "label": "High motion (Mandelbrot zoom + sensor noise)",
+            "resolution": "1280x720",
+            "fps": 30,
+            "seconds": 10,
+            "frames": 300,
+            "raw_bytes": 414720000,
+            "raw_mbps": 331.8,
+            "lossless_master_bytes": 387699645,
+            "lossless_ratio": 1.07,
+            "si": 84,
+            "ti": 25.5,
+            "render_s": 25.9
+        }
+    },
+    "vod": [
+        {
+            "test": "vod:studio:H264:regional",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H264",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 4.65,
+                "encode_speed_x": 2.1,
+                "bytes": 3268568,
+                "actual_kbps": 2614.9,
+                "ratio_vs_raw": 126.9,
+                "ratio_vs_lossless": 44.2,
+                "bits_per_pixel": 0.0946,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 50,
+                "payload_bytes": 3268568,
+                "wire_bytes": 3280966,
+                "framing_efficiency_pct": 99.622,
+                "l2_bytes_modelled": 3484906,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8618,
+                "ack_overhead_pct": 0.263,
+                "transfer_s": 0.574,
+                "goodput_mbps": 45.57,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.5,
+                "rtt_ms": 41.13,
+                "bdp_bytes": 257063,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 50,
+                        "p50": 265.26,
+                        "p95": 518.78,
+                        "max": 529.7,
+                        "mean": 271.12
+                    },
+                    "serialisation_ms": {
+                        "count": 50,
+                        "p50": 11.06,
+                        "p95": 11.23,
+                        "max": 11.84,
+                        "mean": 10.65
+                    },
+                    "path_ms": {
+                        "count": 50,
+                        "p50": 25.93,
+                        "p95": 38.65,
+                        "max": 39.54,
+                        "mean": 27.33
+                    },
+                    "ack_return_ms": {
+                        "count": 50,
+                        "p50": 20.26,
+                        "p95": 20.87,
+                        "max": 51.85,
+                        "mean": 20.95
+                    },
+                    "delivery_ms": {
+                        "count": 50,
+                        "p50": 302.8,
+                        "p95": 550.03,
+                        "max": 561.04,
+                        "mean": 309.1
+                    },
+                    "jitter_ms": 0.4
+                },
+                "node2_parse_us": {
+                    "count": 50,
+                    "p50": 26,
+                    "p95": 67.2,
+                    "max": 90.1,
+                    "mean": 32.62
+                },
+                "node2_verify_mb_s": 2011.5,
+                "chunks": 50
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 50,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.67,
+                    "cpu_s": 0.677,
+                    "media_s": 10,
+                    "realtime_x": 14.9,
+                    "cpu_per_media_s": 0.068
+                },
+                "quality": {
+                    "psnr_y": 36.11,
+                    "psnr_avg": 34.84,
+                    "ssim": 0.9701,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "vod:studio:H265:regional",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H265",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 6.95,
+                "encode_speed_x": 1.4,
+                "bytes": 3306920,
+                "actual_kbps": 2645.5,
+                "ratio_vs_raw": 125.4,
+                "ratio_vs_lossless": 43.7,
+                "bits_per_pixel": 0.0957,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 51,
+                "payload_bytes": 3306920,
+                "wire_bytes": 3319564,
+                "framing_efficiency_pct": 99.619,
+                "l2_bytes_modelled": 3525934,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8767,
+                "ack_overhead_pct": 0.264,
+                "transfer_s": 0.58,
+                "goodput_mbps": 45.65,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.7,
+                "rtt_ms": 41.03,
+                "bdp_bytes": 256438,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 51,
+                        "p50": 275.81,
+                        "p95": 529.42,
+                        "max": 540.57,
+                        "mean": 276.12
+                    },
+                    "serialisation_ms": {
+                        "count": 51,
+                        "p50": 11.07,
+                        "p95": 11.2,
+                        "max": 11.2,
+                        "mean": 10.57
+                    },
+                    "path_ms": {
+                        "count": 51,
+                        "p50": 25.93,
+                        "p95": 38.6,
+                        "max": 39.58,
+                        "mean": 27.18
+                    },
+                    "ack_return_ms": {
+                        "count": 51,
+                        "p50": 20.24,
+                        "p95": 20.62,
+                        "max": 51.63,
+                        "mean": 20.9
+                    },
+                    "delivery_ms": {
+                        "count": 51,
+                        "p50": 312.79,
+                        "p95": 560.9,
+                        "max": 571.89,
+                        "mean": 313.87
+                    },
+                    "jitter_ms": 0.66
+                },
+                "node2_parse_us": {
+                    "count": 51,
+                    "p50": 26.4,
+                    "p95": 43.1,
+                    "max": 124.5,
+                    "mean": 29.19
+                },
+                "node2_verify_mb_s": 2229.8,
+                "chunks": 51
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 51,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 1.131,
+                    "cpu_s": 1.143,
+                    "media_s": 10,
+                    "realtime_x": 8.8,
+                    "cpu_per_media_s": 0.114
+                },
+                "quality": {
+                    "psnr_y": 36.09,
+                    "psnr_avg": 34.87,
+                    "ssim": 0.9696,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "vod:studio:AV1:regional",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "AV1",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "matroska",
+                "encode_s": 9.18,
+                "encode_speed_x": 1.1,
+                "bytes": 3307887,
+                "actual_kbps": 2646.3,
+                "ratio_vs_raw": 125.4,
+                "ratio_vs_lossless": 43.7,
+                "bits_per_pixel": 0.0957,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 51,
+                "payload_bytes": 3307887,
+                "wire_bytes": 3320531,
+                "framing_efficiency_pct": 99.619,
+                "l2_bytes_modelled": 3526991,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8775,
+                "ack_overhead_pct": 0.264,
+                "transfer_s": 0.583,
+                "goodput_mbps": 45.38,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.1,
+                "rtt_ms": 41.06,
+                "bdp_bytes": 256625,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 51,
+                        "p50": 279.03,
+                        "p95": 532.02,
+                        "max": 543.01,
+                        "mean": 279.09
+                    },
+                    "serialisation_ms": {
+                        "count": 51,
+                        "p50": 11.08,
+                        "p95": 11.19,
+                        "max": 11.2,
+                        "mean": 10.57
+                    },
+                    "path_ms": {
+                        "count": 51,
+                        "p50": 25.77,
+                        "p95": 37.94,
+                        "max": 39.09,
+                        "mean": 27.06
+                    },
+                    "ack_return_ms": {
+                        "count": 51,
+                        "p50": 20.26,
+                        "p95": 20.68,
+                        "max": 53.1,
+                        "mean": 20.95
+                    },
+                    "delivery_ms": {
+                        "count": 51,
+                        "p50": 315.78,
+                        "p95": 562.69,
+                        "max": 574.49,
+                        "mean": 316.72
+                    },
+                    "jitter_ms": 0.66
+                },
+                "node2_parse_us": {
+                    "count": 51,
+                    "p50": 27.4,
+                    "p95": 52.6,
+                    "max": 59.8,
+                    "mean": 29.98
+                },
+                "node2_verify_mb_s": 2171.7,
+                "chunks": 51
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 51,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.65,
+                    "cpu_s": 0.654,
+                    "media_s": 10,
+                    "realtime_x": 15.4,
+                    "cpu_per_media_s": 0.065
+                },
+                "quality": {
+                    "psnr_y": 42.19,
+                    "psnr_avg": 41.68,
+                    "ssim": 0.9752,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "vod:motion:H264:regional",
+            "kind": "VOD",
+            "source": "motion",
+            "codec": "H264",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 8.22,
+                "encode_speed_x": 1.2,
+                "bytes": 4056476,
+                "actual_kbps": 3245.2,
+                "ratio_vs_raw": 102.2,
+                "ratio_vs_lossless": 95.6,
+                "bits_per_pixel": 0.1174,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 62,
+                "payload_bytes": 4056476,
+                "wire_bytes": 4071826,
+                "framing_efficiency_pct": 99.623,
+                "l2_bytes_modelled": 4324996,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 10450,
+                "ack_overhead_pct": 0.257,
+                "transfer_s": 0.71,
+                "goodput_mbps": 45.68,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.7,
+                "rtt_ms": 41,
+                "bdp_bytes": 256250,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 62,
+                        "p50": 335.04,
+                        "p95": 643.89,
+                        "max": 665.99,
+                        "mean": 340.87
+                    },
+                    "serialisation_ms": {
+                        "count": 62,
+                        "p50": 11.08,
+                        "p95": 11.19,
+                        "max": 11.83,
+                        "mean": 10.74
+                    },
+                    "path_ms": {
+                        "count": 62,
+                        "p50": 23.1,
+                        "p95": 38.09,
+                        "max": 39.52,
+                        "mean": 25.97
+                    },
+                    "ack_return_ms": {
+                        "count": 62,
+                        "p50": 20.25,
+                        "p95": 20.62,
+                        "max": 58.56,
+                        "mean": 20.91
+                    },
+                    "delivery_ms": {
+                        "count": 62,
+                        "p50": 369.25,
+                        "p95": 675.14,
+                        "max": 697.37,
+                        "mean": 377.58
+                    },
+                    "jitter_ms": 0.27
+                },
+                "node2_parse_us": {
+                    "count": 62,
+                    "p50": 25.8,
+                    "p95": 33.9,
+                    "max": 52.7,
+                    "mean": 27.39
+                },
+                "node2_verify_mb_s": 2397.9,
+                "chunks": 62
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 62,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.971,
+                    "cpu_s": 0.979,
+                    "media_s": 10,
+                    "realtime_x": 10.3,
+                    "cpu_per_media_s": 0.098
+                },
+                "quality": {
+                    "psnr_y": 25.86,
+                    "psnr_avg": 25.84,
+                    "ssim": 0.8551,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "vod:motion:H265:regional",
+            "kind": "VOD",
+            "source": "motion",
+            "codec": "H265",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 12.1,
+                "encode_speed_x": 0.8,
+                "bytes": 4059108,
+                "actual_kbps": 3247.3,
+                "ratio_vs_raw": 102.2,
+                "ratio_vs_lossless": 95.5,
+                "bits_per_pixel": 0.1175,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 62,
+                "payload_bytes": 4059108,
+                "wire_bytes": 4074458,
+                "framing_efficiency_pct": 99.623,
+                "l2_bytes_modelled": 4327718,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 10427,
+                "ack_overhead_pct": 0.256,
+                "transfer_s": 0.712,
+                "goodput_mbps": 45.64,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.6,
+                "rtt_ms": 41.03,
+                "bdp_bytes": 256438,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 62,
+                        "p50": 335.56,
+                        "p95": 644.33,
+                        "max": 666.31,
+                        "mean": 341.27
+                    },
+                    "serialisation_ms": {
+                        "count": 62,
+                        "p50": 11.07,
+                        "p95": 11.18,
+                        "max": 11.72,
+                        "mean": 10.75
+                    },
+                    "path_ms": {
+                        "count": 62,
+                        "p50": 22.48,
+                        "p95": 37.46,
+                        "max": 39.11,
+                        "mean": 25.85
+                    },
+                    "ack_return_ms": {
+                        "count": 62,
+                        "p50": 20.26,
+                        "p95": 20.8,
+                        "max": 59.98,
+                        "mean": 20.94
+                    },
+                    "delivery_ms": {
+                        "count": 62,
+                        "p50": 369.66,
+                        "p95": 675.68,
+                        "max": 697.74,
+                        "mean": 377.87
+                    },
+                    "jitter_ms": 0.24
+                },
+                "node2_parse_us": {
+                    "count": 62,
+                    "p50": 25.1,
+                    "p95": 48.2,
+                    "max": 54.1,
+                    "mean": 27.81
+                },
+                "node2_verify_mb_s": 2363.4,
+                "chunks": 62
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 62,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 1.536,
+                    "cpu_s": 1.555,
+                    "media_s": 10,
+                    "realtime_x": 6.5,
+                    "cpu_per_media_s": 0.156
+                },
+                "quality": {
+                    "psnr_y": 28.37,
+                    "psnr_avg": 27.66,
+                    "ssim": 0.9127,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "vod:motion:AV1:regional",
+            "kind": "VOD",
+            "source": "motion",
+            "codec": "AV1",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "matroska",
+                "encode_s": 14.6,
+                "encode_speed_x": 0.7,
+                "bytes": 3156535,
+                "actual_kbps": 2525.2,
+                "ratio_vs_raw": 131.4,
+                "ratio_vs_lossless": 122.8,
+                "bits_per_pixel": 0.0913,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 49,
+                "payload_bytes": 3156535,
+                "wire_bytes": 3168687,
+                "framing_efficiency_pct": 99.616,
+                "l2_bytes_modelled": 3365697,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8460,
+                "ack_overhead_pct": 0.267,
+                "transfer_s": 0.557,
+                "goodput_mbps": 45.33,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91,
+                "rtt_ms": 40.96,
+                "bdp_bytes": 256000,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 49,
+                        "p50": 265.31,
+                        "p95": 507.83,
+                        "max": 518.87,
+                        "mean": 265.74
+                    },
+                    "serialisation_ms": {
+                        "count": 49,
+                        "p50": 11.07,
+                        "p95": 11.19,
+                        "max": 11.85,
+                        "mean": 10.48
+                    },
+                    "path_ms": {
+                        "count": 49,
+                        "p50": 26.41,
+                        "p95": 38,
+                        "max": 39.11,
+                        "mean": 27.37
+                    },
+                    "ack_return_ms": {
+                        "count": 49,
+                        "p50": 20.27,
+                        "p95": 21.72,
+                        "max": 55.93,
+                        "mean": 21.09
+                    },
+                    "delivery_ms": {
+                        "count": 49,
+                        "p50": 302.82,
+                        "p95": 538.1,
+                        "max": 550.12,
+                        "mean": 303.59
+                    },
+                    "jitter_ms": 0.82
+                },
+                "node2_parse_us": {
+                    "count": 49,
+                    "p50": 26.5,
+                    "p95": 39.1,
+                    "max": 52.5,
+                    "mean": 28.23
+                },
+                "node2_verify_mb_s": 2291,
+                "chunks": 49
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 49,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.929,
+                    "cpu_s": 0.933,
+                    "media_s": 10,
+                    "realtime_x": 10.8,
+                    "cpu_per_media_s": 0.093
+                },
+                "quality": {
+                    "psnr_y": 29.08,
+                    "psnr_avg": 27.86,
+                    "ssim": 0.9167,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        }
+    ],
+    "packages": [
+        {
+            "test": "package:hls:regional",
+            "kind": "HLS",
+            "source": "studio",
+            "codec": "H264+AAC",
+            "path": "regional",
+            "before": {
+                "ladder": [
+                    {
+                        "height": 720,
+                        "kbps": 2500
+                    },
+                    {
+                        "height": 540,
+                        "kbps": 1500
+                    }
+                ],
+                "files": 13,
+                "segments": 10,
+                "bytes": 5433614,
+                "encode_s": 5.7,
+                "encode_speed_x": 1.8,
+                "ratio_vs_raw": 76.3,
+                "actual_kbps": 4346.9,
+                "top_rung": "720p@2500k"
+            },
+            "during": {
+                "frames": 13,
+                "payload_bytes": 5433263,
+                "wire_bytes": 5438071,
+                "framing_efficiency_pct": 99.912,
+                "l2_bytes_modelled": 5776111,
+                "l2_efficiency_pct": 94.06,
+                "ack_bytes": 2560,
+                "ack_overhead_pct": 0.047,
+                "transfer_s": 0.978,
+                "goodput_mbps": 44.47,
+                "link_mbps": 50,
+                "link_utilisation_pct": 89,
+                "rtt_ms": 40.92,
+                "bdp_bytes": 255750,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 13,
+                        "p50": 361.38,
+                        "p95": 841.46,
+                        "max": 841.46,
+                        "mean": 373.92
+                    },
+                    "serialisation_ms": {
+                        "count": 13,
+                        "p50": 71.18,
+                        "p95": 115.08,
+                        "max": 115.08,
+                        "mean": 68.92
+                    },
+                    "path_ms": {
+                        "count": 13,
+                        "p50": 20.49,
+                        "p95": 35.42,
+                        "max": 35.42,
+                        "mean": 22.55
+                    },
+                    "ack_return_ms": {
+                        "count": 13,
+                        "p50": 23.64,
+                        "p95": 27.84,
+                        "max": 27.84,
+                        "mean": 24.16
+                    },
+                    "delivery_ms": {
+                        "count": 13,
+                        "p50": 496.07,
+                        "p95": 929.93,
+                        "max": 929.93,
+                        "mean": 465.39
+                    },
+                    "jitter_ms": 6.68
+                },
+                "node2_parse_us": {
+                    "count": 13,
+                    "p50": 137.7,
+                    "p95": 939.1,
+                    "max": 939.1,
+                    "mean": 244.75
+                },
+                "node2_verify_mb_s": 1709.1
+            },
+            "after": {
+                "intact": true,
+                "files": 13,
+                "segments": 10,
+                "variants": 2,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.783,
+                    "cpu_s": 0.794,
+                    "media_s": 10,
+                    "realtime_x": 12.8,
+                    "cpu_per_media_s": 0.079
+                },
+                "quality": {
+                    "psnr_y": 36.08,
+                    "psnr_avg": 34.82,
+                    "ssim": 0.9701,
+                    "frames": 300
+                }
+            }
+        },
+        {
+            "test": "package:dash:regional",
+            "kind": "DASH",
+            "source": "studio",
+            "codec": "H264+AAC",
+            "path": "regional",
+            "before": {
+                "ladder": [
+                    {
+                        "height": 720,
+                        "kbps": 2500
+                    },
+                    {
+                        "height": 540,
+                        "kbps": 1500
+                    }
+                ],
+                "files": 20,
+                "segments": 16,
+                "bytes": 5120636,
+                "encode_s": 5.54,
+                "encode_speed_x": 1.8,
+                "ratio_vs_raw": 81,
+                "actual_kbps": 4096.5,
+                "top_rung": "720p@2500k"
+            },
+            "during": {
+                "frames": 20,
+                "payload_bytes": 5119128,
+                "wire_bytes": 5126709,
+                "framing_efficiency_pct": 99.852,
+                "l2_bytes_modelled": 5445399,
+                "l2_efficiency_pct": 94.01,
+                "ack_bytes": 3688,
+                "ack_overhead_pct": 0.072,
+                "transfer_s": 0.917,
+                "goodput_mbps": 44.65,
+                "link_mbps": 50,
+                "link_utilisation_pct": 89.4,
+                "rtt_ms": 41.06,
+                "bdp_bytes": 256625,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 20,
+                        "p50": 710.66,
+                        "p95": 851.19,
+                        "max": 851.49,
+                        "mean": 602.09
+                    },
+                    "serialisation_ms": {
+                        "count": 20,
+                        "p50": 4.23,
+                        "p95": 106,
+                        "max": 107.01,
+                        "mean": 42.17
+                    },
+                    "path_ms": {
+                        "count": 20,
+                        "p50": 20.37,
+                        "p95": 29.84,
+                        "max": 35.18,
+                        "mean": 21.77
+                    },
+                    "ack_return_ms": {
+                        "count": 20,
+                        "p50": 22.07,
+                        "p95": 23.43,
+                        "max": 23.58,
+                        "mean": 21.78
+                    },
+                    "delivery_ms": {
+                        "count": 20,
+                        "p50": 794.99,
+                        "p95": 871.77,
+                        "max": 871.78,
+                        "mean": 666.03
+                    },
+                    "jitter_ms": 4.13
+                },
+                "node2_parse_us": {
+                    "count": 20,
+                    "p50": 31.8,
+                    "p95": 202.1,
+                    "max": 216.9,
+                    "mean": 88.83
+                },
+                "node2_verify_mb_s": 2885.7
+            },
+            "after": {
+                "intact": true,
+                "files": 20,
+                "segments": 16,
+                "variants": 3,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.732,
+                    "cpu_s": 0.741,
+                    "media_s": 10,
+                    "realtime_x": 13.7,
+                    "cpu_per_media_s": 0.074
+                },
+                "quality": {
+                    "psnr_y": 39.85,
+                    "psnr_avg": 39.28,
+                    "ssim": 0.9728,
+                    "frames": 300
+                }
+            }
+        }
+    ],
+    "sweep": [
+        {
+            "test": "sweep:studio:H264:lan",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H264",
+            "path": "lan",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 4.42,
+                "encode_speed_x": 2.3,
+                "bytes": 3267816,
+                "actual_kbps": 2614.3,
+                "ratio_vs_raw": 126.9,
+                "ratio_vs_lossless": 44.2,
+                "bits_per_pixel": 0.0946,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 50,
+                "payload_bytes": 3267816,
+                "wire_bytes": 3280214,
+                "framing_efficiency_pct": 99.622,
+                "l2_bytes_modelled": 3484154,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8314,
+                "ack_overhead_pct": 0.253,
+                "transfer_s": 0.047,
+                "goodput_mbps": 558.94,
+                "link_mbps": 1000,
+                "link_utilisation_pct": 56.1,
+                "rtt_ms": 1.61,
+                "bdp_bytes": 201250,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 50,
+                        "p50": 19.99,
+                        "p95": 27.41,
+                        "max": 28.22,
+                        "mean": 21.31
+                    },
+                    "serialisation_ms": {
+                        "count": 50,
+                        "p50": 0.05,
+                        "p95": 0.2,
+                        "max": 0.22,
+                        "mean": 0.07
+                    },
+                    "path_ms": {
+                        "count": 50,
+                        "p50": 12.49,
+                        "p95": 15.79,
+                        "max": 16.15,
+                        "mean": 11.2
+                    },
+                    "ack_return_ms": {
+                        "count": 50,
+                        "p50": 0.74,
+                        "p95": 1.98,
+                        "max": 33.58,
+                        "mean": 2.1
+                    },
+                    "delivery_ms": {
+                        "count": 50,
+                        "p50": 32.23,
+                        "p95": 43.22,
+                        "max": 44.14,
+                        "mean": 32.58
+                    },
+                    "jitter_ms": 0.23
+                },
+                "node2_parse_us": {
+                    "count": 50,
+                    "p50": 18.5,
+                    "p95": 35.6,
+                    "max": 37.3,
+                    "mean": 21.84
+                },
+                "node2_verify_mb_s": 3003.6,
+                "chunks": 50
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 50,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.683,
+                    "cpu_s": 0.69,
+                    "media_s": 10,
+                    "realtime_x": 14.6,
+                    "cpu_per_media_s": 0.069
+                },
+                "quality": {
+                    "psnr_y": 36.11,
+                    "psnr_avg": 34.84,
+                    "ssim": 0.9701,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "sweep:studio:H264:regional",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H264",
+            "path": "regional",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 4.34,
+                "encode_speed_x": 2.3,
+                "bytes": 3267816,
+                "actual_kbps": 2614.3,
+                "ratio_vs_raw": 126.9,
+                "ratio_vs_lossless": 44.2,
+                "bits_per_pixel": 0.0946,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 50,
+                "payload_bytes": 3267816,
+                "wire_bytes": 3280214,
+                "framing_efficiency_pct": 99.622,
+                "l2_bytes_modelled": 3484154,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8608,
+                "ack_overhead_pct": 0.262,
+                "transfer_s": 0.572,
+                "goodput_mbps": 45.68,
+                "link_mbps": 50,
+                "link_utilisation_pct": 91.7,
+                "rtt_ms": 41.01,
+                "bdp_bytes": 256313,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 50,
+                        "p50": 264.29,
+                        "p95": 517.88,
+                        "max": 528.84,
+                        "mean": 270.08
+                    },
+                    "serialisation_ms": {
+                        "count": 50,
+                        "p50": 11.07,
+                        "p95": 11.21,
+                        "max": 11.6,
+                        "mean": 10.65
+                    },
+                    "path_ms": {
+                        "count": 50,
+                        "p50": 25.72,
+                        "p95": 37.99,
+                        "max": 39.08,
+                        "mean": 27.12
+                    },
+                    "ack_return_ms": {
+                        "count": 50,
+                        "p50": 20.25,
+                        "p95": 20.88,
+                        "max": 51.37,
+                        "mean": 20.93
+                    },
+                    "delivery_ms": {
+                        "count": 50,
+                        "p50": 301.66,
+                        "p95": 549.14,
+                        "max": 560.34,
+                        "mean": 307.85
+                    },
+                    "jitter_ms": 0.46
+                },
+                "node2_parse_us": {
+                    "count": 50,
+                    "p50": 27.9,
+                    "p95": 38.2,
+                    "max": 60.7,
+                    "mean": 29.14
+                },
+                "node2_verify_mb_s": 2251,
+                "chunks": 50
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 50,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.67,
+                    "cpu_s": 0.678,
+                    "media_s": 10,
+                    "realtime_x": 14.9,
+                    "cpu_per_media_s": 0.068
+                },
+                "quality": {
+                    "psnr_y": 36.11,
+                    "psnr_avg": 34.84,
+                    "ssim": 0.9701,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "sweep:studio:H264:long_haul",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H264",
+            "path": "long_haul",
+            "before": {
+                "plan": {
+                    "height": 720,
+                    "kbps": 2500,
+                    "downscaled": false,
+                    "reason": "720p rung 2500 kbps fits link budget"
+                },
+                "encode_mode": "VBR 2500 kbps (cap 3000)",
+                "container": "mpegts",
+                "encode_s": 4.54,
+                "encode_speed_x": 2.2,
+                "bytes": 3266876,
+                "actual_kbps": 2613.5,
+                "ratio_vs_raw": 126.9,
+                "ratio_vs_lossless": 44.2,
+                "bits_per_pixel": 0.0945,
+                "output": "1280x720"
+            },
+            "during": {
+                "frames": 50,
+                "payload_bytes": 3266876,
+                "wire_bytes": 3279274,
+                "framing_efficiency_pct": 99.622,
+                "l2_bytes_modelled": 3483124,
+                "l2_efficiency_pct": 93.79,
+                "ack_bytes": 8610,
+                "ack_overhead_pct": 0.263,
+                "transfer_s": 1.462,
+                "goodput_mbps": 17.88,
+                "link_mbps": 20,
+                "link_utilisation_pct": 89.7,
+                "rtt_ms": 161.24,
+                "bdp_bytes": 403100,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 50,
+                        "p50": 663.97,
+                        "p95": 1299.54,
+                        "max": 1340.25,
+                        "mean": 677.93
+                    },
+                    "serialisation_ms": {
+                        "count": 50,
+                        "p50": 27.7,
+                        "p95": 27.88,
+                        "max": 27.96,
+                        "mean": 27.22
+                    },
+                    "path_ms": {
+                        "count": 50,
+                        "p50": 80.57,
+                        "p95": 96.15,
+                        "max": 98.93,
+                        "mean": 83.22
+                    },
+                    "ack_return_ms": {
+                        "count": 50,
+                        "p50": 80.38,
+                        "p95": 80.72,
+                        "max": 112.33,
+                        "mean": 81.07
+                    },
+                    "delivery_ms": {
+                        "count": 50,
+                        "p50": 772.21,
+                        "p95": 1407.95,
+                        "max": 1444.03,
+                        "mean": 788.36
+                    },
+                    "jitter_ms": 0.59
+                },
+                "node2_parse_us": {
+                    "count": 50,
+                    "p50": 32.7,
+                    "p95": 57.5,
+                    "max": 92.3,
+                    "mean": 35.63
+                },
+                "node2_verify_mb_s": 1840.8,
+                "chunks": 50
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 50,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.722,
+                    "cpu_s": 0.725,
+                    "media_s": 10,
+                    "realtime_x": 13.9,
+                    "cpu_per_media_s": 0.073
+                },
+                "quality": {
+                    "psnr_y": 36.11,
+                    "psnr_avg": 34.84,
+                    "ssim": 0.9702,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        },
+        {
+            "test": "sweep:studio:H264:mobile",
+            "kind": "VOD",
+            "source": "studio",
+            "codec": "H264",
+            "path": "mobile",
+            "before": {
+                "plan": {
+                    "height": 540,
+                    "kbps": 1500,
+                    "downscaled": true,
+                    "reason": "link budget 2368 kbps < 720p rung; downscaled"
+                },
+                "encode_mode": "VBR 1500 kbps (cap 1800)",
+                "container": "mpegts",
+                "encode_s": 4.13,
+                "encode_speed_x": 2.4,
+                "bytes": 1980956,
+                "actual_kbps": 1584.8,
+                "ratio_vs_raw": 209.4,
+                "ratio_vs_lossless": 73,
+                "bits_per_pixel": 0.1019,
+                "output": "960x540"
+            },
+            "during": {
+                "frames": 31,
+                "payload_bytes": 1980956,
+                "wire_bytes": 1988680,
+                "framing_efficiency_pct": 99.612,
+                "l2_bytes_modelled": 2112340,
+                "l2_efficiency_pct": 93.78,
+                "ack_bytes": 5756,
+                "ack_overhead_pct": 0.289,
+                "transfer_s": 5.59,
+                "goodput_mbps": 2.84,
+                "link_mbps": 3,
+                "link_utilisation_pct": 94.9,
+                "rtt_ms": 81.78,
+                "bdp_bytes": 30668,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 31,
+                        "p50": 2735.33,
+                        "p95": 5320.52,
+                        "max": 5495.85,
+                        "mean": 2736.61
+                    },
+                    "serialisation_ms": {
+                        "count": 31,
+                        "p50": 184.6,
+                        "p95": 186.07,
+                        "max": 186.14,
+                        "mean": 178.59
+                    },
+                    "path_ms": {
+                        "count": 31,
+                        "p50": 41.75,
+                        "p95": 67.86,
+                        "max": 77.11,
+                        "mean": 44.52
+                    },
+                    "ack_return_ms": {
+                        "count": 31,
+                        "p50": 40.76,
+                        "p95": 41.26,
+                        "max": 61.69,
+                        "mean": 41.45
+                    },
+                    "delivery_ms": {
+                        "count": 31,
+                        "p50": 2961.41,
+                        "p95": 5546.45,
+                        "max": 5579.42,
+                        "mean": 2959.72
+                    },
+                    "jitter_ms": 10.16
+                },
+                "node2_parse_us": {
+                    "count": 31,
+                    "p50": 39.4,
+                    "p95": 51.7,
+                    "max": 53,
+                    "mean": 40.35
+                },
+                "node2_verify_mb_s": 1589.7,
+                "chunks": 31
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 31,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.455,
+                    "cpu_s": 0.46,
+                    "media_s": 10,
+                    "realtime_x": 22,
+                    "cpu_per_media_s": 0.046
+                },
+                "quality": {
+                    "psnr_y": 34.12,
+                    "psnr_avg": 32.39,
+                    "ssim": 0.9537,
+                    "frames": 300,
+                    "window_s": 10
+                }
+            }
+        }
+    ],
+    "live": [
+        {
+            "test": "live:rtmp:regional",
+            "kind": "RTMP live",
+            "source": "studio (looped)",
+            "codec": "H264+AAC",
+            "path": "regional",
+            "mode": "multi",
+            "before": {
+                "encode_mode": "x264 veryfast zerolatency, 2500 kbps CBR-capped, GOP 1 s",
+                "seconds": 15,
+                "bytes": 4953467,
+                "actual_kbps": 2641.8,
+                "ratio_vs_raw": 125.6,
+                "publisher_rc": 0,
+                "flv_tags": 1159
+            },
+            "during": {
+                "frames": 81,
+                "payload_bytes": 4953467,
+                "wire_bytes": 4987019,
+                "framing_efficiency_pct": 99.327,
+                "l2_bytes_modelled": 5297069,
+                "l2_efficiency_pct": 93.51,
+                "ack_bytes": 15845,
+                "ack_overhead_pct": 0.318,
+                "transfer_s": 14.779,
+                "goodput_mbps": 2.68,
+                "link_mbps": 50,
+                "link_utilisation_pct": 5.4,
+                "rtt_ms": 40.92,
+                "bdp_bytes": 255750,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 81,
+                        "p50": 0.07,
+                        "p95": 0.11,
+                        "max": 0.16,
+                        "mean": 0.08
+                    },
+                    "serialisation_ms": {
+                        "count": 81,
+                        "p50": 15.57,
+                        "p95": 20.92,
+                        "max": 22.03,
+                        "mean": 13.42
+                    },
+                    "path_ms": {
+                        "count": 81,
+                        "p50": 22.51,
+                        "p95": 31.07,
+                        "max": 32.28,
+                        "mean": 23.16
+                    },
+                    "ack_return_ms": {
+                        "count": 81,
+                        "p50": 23.85,
+                        "p95": 25.92,
+                        "max": 261.1,
+                        "mean": 26.53
+                    },
+                    "delivery_ms": {
+                        "count": 81,
+                        "p50": 38.15,
+                        "p95": 42.64,
+                        "max": 44.5,
+                        "mean": 36.66
+                    },
+                    "jitter_ms": 3.75
+                },
+                "node2_parse_us": {
+                    "count": 81,
+                    "p50": 43.7,
+                    "p95": 63.6,
+                    "max": 92.7,
+                    "mean": 45.62
+                },
+                "node2_verify_mb_s": 1349.5,
+                "live": {
+                    "chunks": 81,
+                    "edge_to_node2_ms": {
+                        "count": 81,
+                        "p50": 49.39,
+                        "p95": 84.72,
+                        "max": 227.17,
+                        "mean": 56.88
+                    },
+                    "edge_hold_ms": {
+                        "count": 81,
+                        "p50": 97.27,
+                        "p95": 192.3,
+                        "max": 196.19,
+                        "mean": 115.72
+                    },
+                    "flush_wait_ms": {
+                        "count": 81,
+                        "p50": 11.04,
+                        "p95": 46.52,
+                        "max": 194.86,
+                        "mean": 20.13
+                    },
+                    "transport_transit_ms": {
+                        "count": 81,
+                        "p50": 38.24,
+                        "p95": 42.7,
+                        "max": 44.58,
+                        "mean": 36.75
+                    },
+                    "edge_lag_end_ms": 443,
+                    "edge_lag_max_ms": 674.4,
+                    "lag_start_ms": 519.6,
+                    "lag_end_ms": 289.6,
+                    "lag_max_ms": 519.6,
+                    "series_ms": [
+                        20.9,
+                        31.4,
+                        37.1,
+                        30.9,
+                        31.1,
+                        43.9,
+                        48.4,
+                        57.2,
+                        68.9,
+                        79.9,
+                        31.7,
+                        42.6,
+                        47.1,
+                        59.8,
+                        69.3,
+                        31.6,
+                        49.4,
+                        59.1,
+                        69.3,
+                        79.5,
+                        31.9,
+                        48.5,
+                        58.8,
+                        64.9,
+                        83,
+                        31.6,
+                        42.8,
+                        43,
+                        57,
+                        69.6,
+                        31.5,
+                        42.1,
+                        52,
+                        66.8,
+                        80,
+                        32.2,
+                        42.7,
+                        47.9,
+                        58.9,
+                        69.2,
+                        157.4,
+                        31.9,
+                        43.6,
+                        46.8,
+                        60.5,
+                        44.7,
+                        48.3,
+                        55,
+                        63.9,
+                        79.3,
+                        44,
+                        32.7,
+                        227.2,
+                        58.9,
+                        73.8,
+                        79.2,
+                        94.7,
+                        101.4,
+                        38.5,
+                        48.6,
+                        64.5,
+                        72.7,
+                        84.7,
+                        31.7,
+                        42.6,
+                        47.4,
+                        60.1,
+                        69.5,
+                        31.6,
+                        48.5,
+                        59.3,
+                        69.2,
+                        79.7,
+                        31.7,
+                        48.7,
+                        58.7,
+                        58.5,
+                        77.9,
+                        31.5,
+                        42.6,
+                        22.4
+                    ]
+                }
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 81,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.962,
+                    "cpu_s": 0.965,
+                    "media_s": 15,
+                    "realtime_x": 15.6,
+                    "cpu_per_media_s": 0.064
+                },
+                "quality": {
+                    "psnr_y": 39.54,
+                    "psnr_avg": 39.12,
+                    "ssim": 0.972,
+                    "frames": 297,
+                    "window_s": 9.9
+                },
+                "repackaged": {
+                    "hls": {
+                        "package_id": "rtmp-live-0d869064-hls",
+                        "ok": true,
+                        "segments": 8,
+                        "repackage_ms": 95
+                    },
+                    "dash": {
+                        "package_id": "rtmp-live-0d869064-dash",
+                        "ok": true,
+                        "segments": 14,
+                        "repackage_ms": 99.1
+                    }
+                }
+            }
+        },
+        {
+            "test": "live:direct:long_haul:multi",
+            "kind": "Direct live",
+            "source": "studio (looped)",
+            "codec": "H264+AAC",
+            "path": "long_haul",
+            "mode": "multi",
+            "before": {
+                "encode_mode": "x264 veryfast zerolatency, 2500 kbps, GOP 1 s, MPEG-TS on a pipe, 100 ms chunks",
+                "seconds": 15,
+                "bytes": 5234108,
+                "actual_kbps": 2791.5,
+                "encoder_rc": 0,
+                "ratio_vs_raw": 118.9,
+                "competing_bulk": "background backfill on the bulk class, kept 1 MiB deep"
+            },
+            "during": {
+                "frames": 145,
+                "payload_bytes": 5234108,
+                "wire_bytes": 5283467,
+                "framing_efficiency_pct": 99.066,
+                "l2_bytes_modelled": 5611877,
+                "l2_efficiency_pct": 93.27,
+                "ack_bytes": 94880,
+                "ack_overhead_pct": 1.796,
+                "transfer_s": 14.929,
+                "goodput_mbps": 2.8,
+                "link_mbps": 20,
+                "link_utilisation_pct": 14.2,
+                "rtt_ms": 161.24,
+                "bdp_bytes": 403100,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 145,
+                        "p50": 0.06,
+                        "p95": 0.15,
+                        "max": 1.61,
+                        "mean": 0.09
+                    },
+                    "serialisation_ms": {
+                        "count": 145,
+                        "p50": 13.1,
+                        "p95": 27.47,
+                        "max": 50.61,
+                        "mean": 14.51
+                    },
+                    "path_ms": {
+                        "count": 145,
+                        "p50": 81.74,
+                        "p95": 84.44,
+                        "max": 85.32,
+                        "mean": 81.98
+                    },
+                    "ack_return_ms": {
+                        "count": 145,
+                        "p50": 81.57,
+                        "p95": 83.61,
+                        "max": 130.73,
+                        "mean": 81.98
+                    },
+                    "delivery_ms": {
+                        "count": 145,
+                        "p50": 95.18,
+                        "p95": 109.56,
+                        "max": 131.67,
+                        "mean": 96.58
+                    },
+                    "jitter_ms": 5.02
+                },
+                "node2_parse_us": {
+                    "count": 145,
+                    "p50": 27,
+                    "p95": 38.8,
+                    "max": 88.7,
+                    "mean": 28.21
+                },
+                "node2_verify_mb_s": 1291.8,
+                "live": {
+                    "chunks": 145,
+                    "edge_to_node2_ms": {
+                        "count": 145,
+                        "p50": 138.72,
+                        "p95": 184.23,
+                        "max": 193.36,
+                        "mean": 140.78
+                    },
+                    "edge_hold_ms": {
+                        "count": 145,
+                        "p50": 1.14,
+                        "p95": 96.16,
+                        "max": 99.63,
+                        "mean": 8.89
+                    },
+                    "flush_wait_ms": {
+                        "count": 145,
+                        "p50": 43.76,
+                        "p95": 89.63,
+                        "max": 95.28,
+                        "mean": 44.15
+                    },
+                    "transport_transit_ms": {
+                        "count": 145,
+                        "p50": 95.25,
+                        "p95": 109.61,
+                        "max": 131.75,
+                        "mean": 96.63
+                    },
+                    "edge_lag_end_ms": null,
+                    "edge_lag_max_ms": null,
+                    "lag_start_ms": 0.1,
+                    "lag_end_ms": 34.9,
+                    "lag_max_ms": 107,
+                    "series_ms": [
+                        86.5,
+                        155.2,
+                        143.9,
+                        133.9,
+                        148.5,
+                        145.2,
+                        156.3,
+                        167.9,
+                        167.4,
+                        166.3,
+                        175.3,
+                        176.7,
+                        193.4,
+                        108.6,
+                        104,
+                        117,
+                        110.7,
+                        110.9,
+                        126.1,
+                        129.1,
+                        130.7,
+                        138.3,
+                        145.9,
+                        149.2,
+                        150.7,
+                        155,
+                        172.6,
+                        170.1,
+                        171.3,
+                        188.1,
+                        182.8,
+                        112.1,
+                        99.2,
+                        107,
+                        117.5,
+                        111.6,
+                        124.9,
+                        123.2,
+                        129.3,
+                        137.8,
+                        141.4,
+                        141.4,
+                        154,
+                        155.1,
+                        176.3,
+                        167.1,
+                        177.7,
+                        184.2,
+                        189.4,
+                        111.7,
+                        98.9,
+                        110,
+                        105.3,
+                        122.8,
+                        122,
+                        127.2,
+                        131.5,
+                        138,
+                        139.2,
+                        154.3,
+                        150.9,
+                        160.2,
+                        164.3,
+                        177.4,
+                        173.7,
+                        172.8,
+                        187.2,
+                        105.4,
+                        101,
+                        104.9,
+                        108.3,
+                        112.6,
+                        115.2,
+                        131.2,
+                        128.1,
+                        130.2,
+                        143.3,
+                        139.9,
+                        152.4,
+                        156.8,
+                        157.3,
+                        164.8,
+                        176.1,
+                        168.9,
+                        183.7,
+                        181.2,
+                        99.1,
+                        108,
+                        102.7,
+                        109.6,
+                        111.4,
+                        132,
+                        131.8,
+                        86.3,
+                        115.7,
+                        103.4,
+                        110.4,
+                        110.5,
+                        116.3,
+                        130.1,
+                        126.7,
+                        138.7,
+                        143.3,
+                        156,
+                        155.2,
+                        155.4,
+                        162.5,
+                        175.4,
+                        169.9,
+                        180.1,
+                        184.6,
+                        190.6,
+                        123,
+                        95.3,
+                        112,
+                        111.2,
+                        118,
+                        123,
+                        128,
+                        133.2,
+                        137,
+                        138.2,
+                        154.9,
+                        148.2,
+                        158.5,
+                        166.3,
+                        172.2,
+                        176.9,
+                        179.7,
+                        179.7,
+                        190.9,
+                        119.7,
+                        98.7,
+                        109.2,
+                        114.3,
+                        118.8,
+                        122.4,
+                        123.1,
+                        134.6,
+                        146.5,
+                        150.1,
+                        152.4,
+                        158,
+                        156.8,
+                        121.2
+                    ]
+                },
+                "competing_bulk_goodput_mbps": 16.19
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 145,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.96,
+                    "cpu_s": 0.969,
+                    "media_s": 15.04,
+                    "realtime_x": 15.7,
+                    "cpu_per_media_s": 0.064
+                },
+                "quality": {
+                    "psnr_y": 35.62,
+                    "psnr_avg": 34.39,
+                    "ssim": 0.9689,
+                    "frames": 297,
+                    "window_s": 9.9
+                }
+            }
+        },
+        {
+            "test": "live:direct:long_haul:single",
+            "kind": "Direct live",
+            "source": "studio (looped)",
+            "codec": "H264+AAC",
+            "path": "long_haul",
+            "mode": "single",
+            "before": {
+                "encode_mode": "x264 veryfast zerolatency, 2500 kbps, GOP 1 s, MPEG-TS on a pipe, 100 ms chunks",
+                "seconds": 15,
+                "bytes": 5234108,
+                "actual_kbps": 2791.5,
+                "encoder_rc": 0,
+                "ratio_vs_raw": 118.9,
+                "competing_bulk": "background backfill on the bulk class, kept 1 MiB deep"
+            },
+            "during": {
+                "frames": 146,
+                "payload_bytes": 5234108,
+                "wire_bytes": 5283785,
+                "framing_efficiency_pct": 99.06,
+                "l2_bytes_modelled": 5612285,
+                "l2_efficiency_pct": 93.26,
+                "ack_bytes": 95163,
+                "ack_overhead_pct": 1.801,
+                "transfer_s": 15.387,
+                "goodput_mbps": 2.72,
+                "link_mbps": 20,
+                "link_utilisation_pct": 13.7,
+                "rtt_ms": 161.18,
+                "bdp_bytes": 402950,
+                "propagation": {
+                    "queue_ms": {
+                        "count": 146,
+                        "p50": 451.62,
+                        "p95": 464,
+                        "max": 466.76,
+                        "mean": 451.98
+                    },
+                    "serialisation_ms": {
+                        "count": 146,
+                        "p50": 13.91,
+                        "p95": 26.95,
+                        "max": 43.96,
+                        "mean": 15.15
+                    },
+                    "path_ms": {
+                        "count": 146,
+                        "p50": 82.68,
+                        "p95": 85.22,
+                        "max": 96.88,
+                        "mean": 83.12
+                    },
+                    "ack_return_ms": {
+                        "count": 146,
+                        "p50": 81.42,
+                        "p95": 82.6,
+                        "max": 129.1,
+                        "mean": 81.8
+                    },
+                    "delivery_ms": {
+                        "count": 146,
+                        "p50": 550.19,
+                        "p95": 566.28,
+                        "max": 590.88,
+                        "mean": 550.25
+                    },
+                    "jitter_ms": 6.36
+                },
+                "node2_parse_us": {
+                    "count": 146,
+                    "p50": 28.7,
+                    "p95": 52.8,
+                    "max": 113.3,
+                    "mean": 30.8
+                },
+                "node2_verify_mb_s": 1175,
+                "live": {
+                    "chunks": 146,
+                    "edge_to_node2_ms": {
+                        "count": 146,
+                        "p50": 596.44,
+                        "p95": 642.66,
+                        "max": 654.02,
+                        "mean": 595.5
+                    },
+                    "edge_hold_ms": {
+                        "count": 146,
+                        "p50": 1.11,
+                        "p95": 96.48,
+                        "max": 99.9,
+                        "mean": 11.42
+                    },
+                    "flush_wait_ms": {
+                        "count": 146,
+                        "p50": 43.91,
+                        "p95": 91.45,
+                        "max": 97.66,
+                        "mean": 45.19
+                    },
+                    "transport_transit_ms": {
+                        "count": 146,
+                        "p50": 550.24,
+                        "p95": 566.33,
+                        "max": 590.95,
+                        "mean": 550.3
+                    },
+                    "edge_lag_end_ms": null,
+                    "edge_lag_max_ms": null,
+                    "lag_start_ms": 0,
+                    "lag_end_ms": 57.4,
+                    "lag_max_ms": 127,
+                    "series_ms": [
+                        527,
+                        587.3,
+                        571.6,
+                        571.9,
+                        605.5,
+                        604.9,
+                        605.7,
+                        615.9,
+                        614.2,
+                        614.4,
+                        617,
+                        640.3,
+                        644.9,
+                        555.3,
+                        560.8,
+                        570.3,
+                        567,
+                        566,
+                        574.9,
+                        577.7,
+                        573.8,
+                        602.3,
+                        601.6,
+                        602.2,
+                        602.4,
+                        599.5,
+                        612.3,
+                        614.4,
+                        609.8,
+                        642.6,
+                        639.5,
+                        641,
+                        643.4,
+                        562,
+                        570.7,
+                        567.9,
+                        572.8,
+                        572.2,
+                        570.9,
+                        571.8,
+                        600.8,
+                        594.7,
+                        600.5,
+                        600,
+                        610.9,
+                        605.9,
+                        607.6,
+                        635.1,
+                        634.1,
+                        631.7,
+                        636.4,
+                        550.7,
+                        552.6,
+                        559.6,
+                        559.9,
+                        564.1,
+                        559.7,
+                        594.1,
+                        588.7,
+                        597.2,
+                        591.2,
+                        593,
+                        621.1,
+                        628.4,
+                        602.6,
+                        626.1,
+                        631.7,
+                        633.7,
+                        633.9,
+                        631.2,
+                        577.4,
+                        549.9,
+                        549.3,
+                        590.9,
+                        564.5,
+                        588.3,
+                        592.8,
+                        589.7,
+                        590.5,
+                        592.6,
+                        615.8,
+                        619.2,
+                        628.9,
+                        623.7,
+                        628.1,
+                        625.9,
+                        654,
+                        653.5,
+                        565.4,
+                        548.3,
+                        570.9,
+                        581.5,
+                        595.3,
+                        646.3,
+                        531.8,
+                        577.5,
+                        551.2,
+                        573.8,
+                        570.5,
+                        576.1,
+                        582.2,
+                        576,
+                        579.3,
+                        606.5,
+                        612.7,
+                        616.9,
+                        612.7,
+                        612.4,
+                        616.5,
+                        614.1,
+                        641.1,
+                        642.7,
+                        647.6,
+                        570.4,
+                        530.1,
+                        575.4,
+                        572.6,
+                        571.9,
+                        573.2,
+                        575.4,
+                        576.2,
+                        577.3,
+                        600.7,
+                        614.1,
+                        610,
+                        612.4,
+                        613.1,
+                        613.9,
+                        614.8,
+                        646.7,
+                        642.6,
+                        551.1,
+                        574.2,
+                        541.9,
+                        570.8,
+                        571.8,
+                        570.4,
+                        572.2,
+                        565.5,
+                        596.4,
+                        602.1,
+                        602.7,
+                        603.3,
+                        604.6,
+                        612.9,
+                        584.4
+                    ]
+                },
+                "competing_bulk_goodput_mbps": 16.19
+            },
+            "after": {
+                "intact": true,
+                "gaps": 0,
+                "chunks": 146,
+                "sha256_match": true,
+                "decode": {
+                    "ok": true,
+                    "rtime_s": 0.931,
+                    "cpu_s": 0.942,
+                    "media_s": 15.04,
+                    "realtime_x": 16.2,
+                    "cpu_per_media_s": 0.063
+                },
+                "quality": {
+                    "psnr_y": 35.62,
+                    "psnr_avg": 34.39,
+                    "ssim": 0.9689,
+                    "frames": 297,
+                    "window_s": 9.9
+                }
+            }
+        }
+    ],
+    "envelope": [
+        {
+            "codec": "GZIP",
+            "ratio": 5,
+            "decode_ms": 21.36,
+            "mb_s": 264.6,
+            "note": "in-process"
+        },
+        {
+            "codec": "ZSTD",
+            "ratio": 6.58,
+            "decode_ms": 13.85,
+            "mb_s": 408.2,
+            "note": "includes spawning the zstd CLI per call"
+        },
+        {
+            "codec": "UFCS_DICT",
+            "ratio": 5.16,
+            "decode_ms": 20.11,
+            "mb_s": 281,
+            "note": "in-process"
+        },
+        {
+            "codec": "Frame parse + CRC32 (64 KiB chunk)",
+            "ratio": null,
+            "decode_ms": 0.009,
+            "mb_s": 7463.4,
+            "note": "per frame, in-process"
+        },
+        {
+            "codec": "Frame parse + CRC32 + Ed25519 (64 KiB chunk)",
+            "ratio": null,
+            "decode_ms": 0.236,
+            "mb_s": 278.3,
+            "note": "per frame, in-process"
+        }
+    ],
+    "elapsed_s": 281.7,
+    "findings": [
+        "Compression: 4 of 6 encodes landed within 10% of their 2500 kbps target (container bitrate); over target: motion H264 at 3245 kbps, motion H265 at 3247 kbps (the VBV buffer starts full, which lets a short, complex clip run past the cap, plus about 4% MPEG-TS overhead). Raw video shrank 102.2–131.4×.",
+        "Quality at the same target, studio source: H264 34.84 dB PSNR / 0.9701 SSIM; H265 34.87 dB PSNR / 0.9696 SSIM; AV1 41.68 dB PSNR / 0.9752 SSIM. SVT-AV1 runs PSNR-tuned while x264/x265 tune for perceived quality, so compare SSIM across codecs and PSNR within one.",
+        "Quality at the same target, motion source: AV1 27.86 dB PSNR / 0.9167 SSIM; H264 25.84 dB PSNR / 0.8551 SSIM; H265 27.66 dB PSNR / 0.9127 SSIM. SVT-AV1 runs PSNR-tuned while x264/x265 tune for perceived quality, so compare SSIM across codecs and PSNR within one.",
+        "Transport efficiency: UFCS-FQL framing kept 99.612–99.912% of bytes as payload; with modelled TCP/IP + Ethernet overhead 93.78–94.06%. ACK traffic back was 0.047–0.289% of the forward bytes.",
+        "Path LAN · 1 Gbps · 0.5 ms: 1280x720 at 2500 kbps, goodput 558.94 Mbps (56.1% of the link), chunk delivery p50 32.23 ms, path transit p50 12.49 ms.",
+        "Path Regional · 50 Mbps · 20 ms: 1280x720 at 2500 kbps, goodput 45.68 Mbps (91.7% of the link), chunk delivery p50 301.66 ms, path transit p50 25.72 ms.",
+        "Path Long-haul · 20 Mbps · 80 ms: 1280x720 at 2500 kbps, goodput 17.88 Mbps (89.7% of the link), chunk delivery p50 772.21 ms, path transit p50 80.57 ms.",
+        "Path Mobile · 3 Mbps · 40 ms: 960x540 at 1500 kbps, goodput 2.84 Mbps (94.9% of the link), chunk delivery p50 2961.41 ms, path transit p50 41.75 ms.",
+        "Decompression: on one CPU core, studio H264 decodes 14.9× real time; studio H265 decodes 8.8× real time; studio AV1 decodes 15.4× real time; motion H264 decodes 10.3× real time; motion H265 decodes 6.5× real time; motion AV1 decodes 10.8× real time.",
+        "RTMP live over Regional · 50 Mbps · 20 ms (per-priority connections): edge → Node 2 p50 49.39 ms / p95 84.72 ms; lag above its best 289.6 ms at the end (worst 519.6 ms). The edge, before any transport, already showed 443 ms at the end (worst 674.4 ms), so this lag comes from the live encoder falling behind real time; the transport added 0 ms; arrived intact.",
+        "Direct live over Long-haul · 20 Mbps · 80 ms (per-priority connections): edge → Node 2 p50 138.72 ms / p95 184.23 ms; lag above its best 34.9 ms at the end (worst 107 ms); arrived intact.",
+        "Direct live over Long-haul · 20 Mbps · 80 ms (one shared connection): edge → Node 2 p50 596.44 ms / p95 642.66 ms; lag above its best 57.4 ms at the end (worst 127 ms); arrived intact."
+    ]
+}

@@ -446,7 +446,8 @@ final class VideoLab
         $wait = [];
         $transit = [];
         $drift = [];
-        $a0 = $m0 = null;
+        $edgeDrift = [];
+        $a0 = $m0 = $e0 = null;
         foreach ($arr as $a) {
             if (isset($a['edge_last'])) {
                 $prop[] = ($a['at'] - $a['edge_last']) * 1000;
@@ -460,6 +461,10 @@ final class VideoLab
                 $a0 ??= $a['at'];
                 $m0 ??= $a['media_ts_ms'];
                 $drift[] = (($a['at'] - $a0) * 1000) - ($a['media_ts_ms'] - $m0);
+                if (isset($a['edge_last'])) {
+                    $e0 ??= $a['edge_last'];
+                    $edgeDrift[] = (($a['edge_last'] - $e0) * 1000) - ($a['media_ts_ms'] - $m0);
+                }
             } elseif (!$hasMediaTs && isset($a['edge_last'])) {
                 $drift[] = ($a['at'] - $a['edge_last']) * 1000;
             }
@@ -470,9 +475,15 @@ final class VideoLab
             $floor = min($drift);
             $drift = array_map(fn ($d) => $d - $floor, $drift);
         }
+        if ($edgeDrift) {
+            $floor = min($edgeDrift);
+            $edgeDrift = array_map(fn ($d) => $d - $floor, $edgeDrift);
+        }
         $series = array_map(fn ($a) => isset($a['edge_last']) ? round(($a['at'] - $a['edge_last']) * 1000, 1) : null, $arr);
         return ['chunks' => count($arr), 'edge_to_node2_ms' => Stats::summary($prop), 'edge_hold_ms' => Stats::summary($hold),
             'flush_wait_ms' => Stats::summary($wait), 'transport_transit_ms' => Stats::summary($transit),
+            // Same lag measured at the edge: what the encoder/publisher contributed before transport.
+            'edge_lag_end_ms' => $edgeDrift ? round(end($edgeDrift), 1) : null, 'edge_lag_max_ms' => $edgeDrift ? round(max($edgeDrift), 1) : null,
             'lag_start_ms' => $drift ? round($drift[0], 1) : null, 'lag_end_ms' => $drift ? round(end($drift), 1) : null, 'lag_max_ms' => $drift ? round(max($drift), 1) : null,
             'series_ms' => array_values(array_filter($series, fn ($v) => $v !== null))];
     }
@@ -551,9 +562,11 @@ final class VideoLab
             $f[] = 'Decompression: on one CPU core, ' . implode('; ', array_map(fn ($v) => $v['source'] . ' ' . $v['codec'] . ' decodes ' . $v['after']['decode']['realtime_x'] . '× real time', $dec)) . '.';
         }
         foreach ($r['live'] as $l) {
-            $f[] = sprintf('%s over %s (%s): edge → Node 2 p50 %s ms / p95 %s ms; lag above its best %s ms at the end (worst %s ms); arrived %s.',
+            $v = $l['during']['live'];
+            $f[] = sprintf('%s over %s (%s): edge → Node 2 p50 %s ms / p95 %s ms; lag above its best %s ms at the end (worst %s ms)%s; arrived %s.',
                 $l['kind'], self::PATHS[$l['path']]['label'], $l['mode'] === 'single' ? 'one shared connection' : 'per-priority connections',
-                $l['during']['live']['edge_to_node2_ms']['p50'], $l['during']['live']['edge_to_node2_ms']['p95'], $l['during']['live']['lag_end_ms'], $l['during']['live']['lag_max_ms'],
+                $v['edge_to_node2_ms']['p50'], $v['edge_to_node2_ms']['p95'], $v['lag_end_ms'], $v['lag_max_ms'],
+                $v['edge_lag_end_ms'] !== null ? sprintf('. The edge, before any transport, already showed %s ms at the end (worst %s ms), so this lag comes from the live encoder falling behind real time; the transport added %s ms', $v['edge_lag_end_ms'], $v['edge_lag_max_ms'], max(0, round($v['lag_end_ms'] - $v['edge_lag_end_ms'], 1))) : '',
                 $l['after']['intact'] ? 'intact' : 'NOT intact');
         }
         return $f;
