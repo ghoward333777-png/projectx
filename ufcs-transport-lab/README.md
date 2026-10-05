@@ -68,6 +68,59 @@ php ufcs-transport-lab/bin/video-report.php --preset=standard   # ~5 min; quick 
 #   decompression overhead, propagation) and reports/video-report.json
 ```
 
+## Colorization: black and white to 1K, 4K and 16K
+
+`bin/colorize.php` and the dashboard's **Colorization** tab implement the QueryBook
+Semantic Colorization Engine (VCUM, Registry F22/F75). It needs no transport.
+
+```bash
+php ufcs-transport-lab/bin/colorize.php --demo --targets=1k,4k,16k
+php ufcs-transport-lab/bin/colorize.php --in=old-photo.png --targets=1k,4k,16k \
+    --scene="setting=harbour;era=1940s;time=overcast" \
+    --fact="Old Mill|has_color|#B03A2E" --region="0.66,0.28,0.82,0.55=Old Mill"
+```
+
+What QueryBook/UFCS-FQL brings to it:
+
+- **Colour comes from knowledge.** Every colour is a UFCS Fact Unit resolved by FQL:
+  the material palette (`data/color_knowledge.jsonl`), scene priors, period film
+  grading, lighting, and any facts supplied with the job, such as a landmark's
+  known colour. The provenance manifest names the fact (fuid), source and trust
+  behind each painted region.
+- **Bounded confidence (F224).** A region's colour confidence is the lesser of the
+  material classification and the fact's trust.
+- **Withhold, don't fabricate (F182).** Below 0.35 confidence a region keeps its gray.
+  Skin is deliberately low-trust: grayscale carries no evidence of a person's skin
+  tone, so it stays gray unless the job supplies a fact.
+- **Marking (F225).** Luminance is observed and preserved; colour is marked as
+  reconstructed in file metadata and in `<name>.colorization.json`.
+- **Determinism (F22).** Identical inputs and facts give byte-identical outputs.
+- **Declared agents (F76).** The stages are ingest → knowledge → lighting →
+  historical prior → material → colorist → upscale → marking, and each is logged.
+
+Output sizes:
+
+| Target | Size (16:9) | Stills | Video |
+|---|---|---|---|
+| 1K | 1024 × 576 | PNG | H.264 MP4 |
+| 4K | 3840 × 2160 | PNG | H.265 MP4 |
+| 16K | 15360 × 8640 | JPEG (PNG optional, about 170 MB) | JPEG frame sequence, capped by `--max-16k-frames` |
+
+AV1 is the only common codec that allows 16K video, and SVT-AV1 marks 8K and above
+as experimental, so 16K video is a frame sequence.
+
+Upscaling resamples observed luminance (Lanczos plus mild sharpening). It does not
+invent detail. Each output is checked for consistency with the source: brought back to
+the source size, its luminance must match the source's (≥ 40 dB PSNR at a 1-pixel
+blur). On the synthetic demo landscape the engine is about 74% closer to the true
+colours than the gray input (CIE76 ΔE 8.7 vs 33.5).
+
+Limits: material recognition uses local brightness, texture, position and how far a
+brightness band runs across the frame. It is not a trained model, so ambiguous
+regions (a flat wall that matches the sky) need a region fact. The demo scenes are
+synthetic, built from the same materials the engine knows, so their score measures
+the pipeline, not real-world accuracy.
+
 ## The UFCS-FQL/1 frame
 
 All integers are big-endian. The header is exactly 32 bytes.

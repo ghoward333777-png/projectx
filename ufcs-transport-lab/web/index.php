@@ -11,7 +11,7 @@ require __DIR__ . '/../src/bootstrap.php';
 
 set_time_limit(600);
 $tab = (string) ($_GET['tab'] ?? 'overview');
-$tabs = ['overview' => 'Overview', 'inspector' => 'Frame Inspector', 'compress' => 'Compression Lab', 'transfer' => 'Live Transfer', 'streaming' => 'HLS · DASH · RTMP', 'bench' => 'Benchmark'];
+$tabs = ['overview' => 'Overview', 'inspector' => 'Frame Inspector', 'compress' => 'Compression Lab', 'transfer' => 'Live Transfer', 'streaming' => 'HLS · DASH · RTMP', 'color' => 'Colorization', 'bench' => 'Benchmark'];
 if (!isset($tabs[$tab])) {
     $tab = 'overview';
 }
@@ -105,6 +105,7 @@ if ($tab === 'overview') {
         <tr><td>F51</td><td>Multimodal Ingestion Pipeline</td><td>Content classifier picks TEXT / IMAGE / VIDEO / AUDIO / MIXED from magic bytes, then the codec policy.</td></tr>
         <tr><td>F182</td><td>Media interface — semantic compression with provenance</td><td>Every transcode reports codec, bitrate, resolution and sample rate; the frame meta keeps source node and region.</td></tr>
         <tr><td>UFCS</td><td>Record Field Layout (Prototype Test Kit)</td><td>Node 2 recomputes SHA-256(norm(s)|norm(p)|norm(o)|polarity) and refuses altered records; restatements merge as corroboration.</td></tr>
+        <tr><td>F22 / F75</td><td>VCUM Semantic Colorization Engine</td><td>Black and white to colour at 1K, 4K and 16K. Colour resolved from UFCS facts by FQL, confidence bounded by fact trust (F224), uncertain regions withheld (F182), colour marked as reconstructed (F225).</td></tr>
         <tr><td>Streaming</td><td>HLS · MPEG-DASH · RTMP</td><td>Ladders planned from link capacity; playlists and segments travel as frames and are rebuilt + hash-verified on Node 2; RTMP publishers are ingested live and repackaged.</td></tr>
         <tr><td>FQL</td><td>QBQL/FQL (QBF-C054/C058)</td><td>Declarative read-only queries travel as CONTROL frames; answers return as compressed FACT_BATCH frames.</td></tr>
     </table></div>
@@ -505,6 +506,89 @@ php bin/rtmp-ingest.php --port=9100 --rtmp-port=1935 --key=YOUR_KEY   # RTMP edg
 
 OBS → Settings → Stream: Service "Custom", Server rtmp://&lt;edge-host&gt;:1935/live, Stream Key YOUR_KEY</pre>
     <p class="note">Each finished stream appears in the table above as <code>…-hls</code> and <code>…-dash</code> packages. The stream key never leaves the edge; frames carry only its SHA-256 prefix.</p></div>
+    <?php
+}
+
+// ---------------------------------------------------------------- Colorization
+if ($tab === 'color') {
+    $colorRoot = __DIR__ . '/../colorized';
+    $err = null;
+    $man = null;
+    $job = null;
+    $in = [
+        'setting' => trim((string) ($_POST['setting'] ?? 'lake, beach')), 'contains' => trim((string) ($_POST['contains'] ?? '')),
+        'era' => (string) ($_POST['era'] ?? ''), 'time' => (string) ($_POST['time'] ?? 'midday'),
+        'facts' => (string) ($_POST['facts'] ?? ''), 'regions' => (string) ($_POST['regions'] ?? "0.66,0.28,0.82,0.55=stone"),
+        'targets' => $post ? (array) ($_POST['targets'] ?? []) : ['1k', '4k'], 'evaluate' => $post ? isset($_POST['evaluate']) : true,
+    ];
+    if ($post) {
+        try {
+            $job = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3));
+            $dir = $colorRoot . '/' . $job;
+            mkdir($dir, 0775, true);
+            if (!empty($_FILES['file']['tmp_name']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
+                $ext = preg_replace('/[^a-z0-9]/', '', strtolower(pathinfo((string) $_FILES['file']['name'], PATHINFO_EXTENSION))) ?: 'png';
+                $src = $dir . '/source.' . $ext;
+                move_uploaded_file($_FILES['file']['tmp_name'], $src);
+            } else {
+                $src = $dir . '/demo-landscape.png';
+                DemoScenes::landscape($src);
+            }
+            $scene = array_filter(['setting' => $in['setting'], 'contains' => $in['contains'], 'era' => $in['era'], 'time' => $in['time']]);
+            $man = (new Colorizer())->run($src, [
+                'scene' => $scene, 'facts' => array_filter(array_map('trim', explode("\n", $in['facts']))),
+                'regions' => array_filter(array_map('trim', explode("\n", $in['regions']))), 'targets' => $in['targets'] ?: ['1k'],
+                'out_dir' => $dir, 'name' => 'out', 'evaluate' => $in['evaluate'], 'max_seconds' => 5, 'max_16k_frames' => 10,
+            ]);
+        } catch (Throwable $ex) {
+            $err = $ex->getMessage();
+        }
+    }
+    $url = fn (string $file, bool $dl = false) => 'colorized.php?f=' . rawurlencode($job) . '/' . rawurlencode(basename($file)) . ($dl ? '&download=1' : '');
+    ?>
+    <p class="lede">Black and white to colour at <b>1K</b>, <b>4K</b> and <b>16K</b>. Every colour comes from a UFCS fact — material palette, scene, period and lighting — resolved by FQL and recorded with its source and trust. Luminance is kept exactly as observed; colour is marked as reconstructed, and regions the engine is unsure of stay gray rather than receive an invented colour.</p>
+    <form method="post" enctype="multipart/form-data" class="card form">
+        <label>Black-and-white still or clip <input type="file" name="file" title="leave empty to use the synthetic demo landscape"></label>
+        <label>Setting <input type="text" name="setting" value="<?= $e($in['setting']) ?>" placeholder="beach, city, forest…"></label>
+        <label>Contains <input type="text" name="contains" value="<?= $e($in['contains']) ?>" placeholder="people"></label>
+        <label>Era <select name="era"><option value="">unstated</option><?php foreach (['1920s', '1930s', '1940s', '1950s', '1960s', '1970s', '1980s', 'modern'] as $x): ?><option <?= $x === $in['era'] ? 'selected' : '' ?>><?= $x ?></option><?php endforeach; ?></select></label>
+        <label>Light <select name="time"><option value="">unstated</option><?php foreach (['midday', 'golden_hour', 'overcast', 'night', 'tungsten'] as $x): ?><option <?= $x === $in['time'] ? 'selected' : '' ?>><?= $x ?></option><?php endforeach; ?></select></label>
+        <label class="check"><input type="checkbox" name="targets[]" value="1k" <?= in_array('1k', $in['targets'], true) ? 'checked' : '' ?>> 1K</label>
+        <label class="check"><input type="checkbox" name="targets[]" value="4k" <?= in_array('4k', $in['targets'], true) ? 'checked' : '' ?>> 4K</label>
+        <label class="check"><input type="checkbox" name="targets[]" value="16k" <?= in_array('16k', $in['targets'], true) ? 'checked' : '' ?>> 16K</label>
+        <label class="check"><input type="checkbox" name="evaluate" <?= $in['evaluate'] ? 'checked' : '' ?>> Score against original colour</label>
+        <label class="wide">Known facts, one per line: <code>subject | predicate | object</code> <textarea name="facts" rows="2" placeholder="Golden Gate Bridge | has_color | #C0362C"><?= $e($in['facts']) ?></textarea></label>
+        <label class="wide">Region labels, one per line: <code>x0,y0,x1,y1=label</code> (fractions of the frame) <textarea name="regions" rows="2"><?= $e($in['regions']) ?></textarea></label>
+        <button>Colorize</button>
+    </form>
+    <?php if ($err): ?><div class="card fail">✖ <?= $e($err) ?></div><?php endif; ?>
+    <?php if ($man): ?>
+        <div class="kpis">
+            <div class="kpi"><b><?= count($man['outputs']) ?> × <?= $e(implode(' / ', array_map('strtoupper', array_keys($man['outputs'])))) ?></b><span><?= $e($man['input']['kind']) ?>, <?= (int) $man['input']['frames'] ?> frame(s), <?= $e($man['elapsed_s']) ?> s</span></div>
+            <?php if (isset($man['evaluation']['skipped'])): ?><div class="kpi"><b>No score</b><span><?= $e($man['evaluation']['skipped']) ?></span></div><?php endif; ?>
+            <?php if (isset($man['evaluation']['improvement_pct'])): ?><div class="kpi"><b><?= $e($man['evaluation']['improvement_pct']) ?>%</b><span>closer to the true colour than the gray input (ΔE <?= $e($man['evaluation']['mean_delta_e_colorized']) ?> vs <?= $e($man['evaluation']['mean_delta_e_gray']) ?>)</span></div><?php endif; ?>
+            <div class="kpi"><b><?= $e($man['withheld_pct']) ?>%</b><span>kept gray: confidence below <?= Colorizer::WITHHOLD_BELOW ?></span></div>
+            <div class="kpi"><b><?= $e(min(array_column($man['outputs'], 'consistency_psnr_db'))) ?> dB</b><span>lowest consistency with the source (luminance)</span></div>
+        </div>
+        <?php if ($man['preview']): ?><div class="card"><img src="<?= $e($url($man['preview'])) ?>" alt="Black-and-white source beside the colorized result" style="width:100%;border-radius:6px"><p class="note">Left: the black-and-white input. Right: colorized. <?= $e($man['marking']) ?></p></div><?php endif; ?>
+        <h2>Downloads</h2>
+        <?= ReportView::table(array_map(fn ($o) => ['target' => $o['target'], 'size' => $o['width'] . '×' . $o['height'], 'format' => $o['format'], 'frames' => $o['frames'], 'bytes' => $o['bytes'],
+            'psnr' => $o['consistency_psnr_db'], 'ms' => $o['render_ms'], 'link' => '⬇ ' . basename($o['file']) . (is_dir($o['file']) ? '.zip' : '')], $man['outputs']),
+            ['target' => 'Target', 'size' => 'Pixels', 'format' => 'Format', 'frames' => 'Frames', 'bytes' => 'Size', 'psnr' => 'Consistency dB', 'ms' => 'Render ms', 'link' => 'File']) ?>
+        <p class="note"><?php foreach ($man['outputs'] as $o): ?><a href="<?= $e($url($o['file'], true)) ?>">⬇ <?= $e(strtoupper($o['target'])) ?> <?= $e(basename($o['file'])) ?><?= is_dir($o['file']) ? '.zip' : '' ?></a> · <?php endforeach; ?><a href="<?= $e($url($man['manifest_file'], true)) ?>">⬇ provenance manifest (JSON)</a></p>
+        <h2>Where each colour came from</h2>
+        <div class="card"><table><tr><th>Region</th><th class="num">Share</th><th>Colour</th><th>Fact</th><th>Source</th><th class="num">Fact trust</th><th class="num">Confidence</th><th class="num">Kept gray</th></tr>
+        <?php foreach ($man['regions'] as $cls => $r): $p = $man['palette'][$cls] ?? []; ?>
+            <tr><td><?= $e($cls) ?></td><td class="num"><?= $e($r['share_pct']) ?>%</td>
+                <td><?php if (!empty($p['hex'])): ?><span style="display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;background:<?= $e($p['hex']) ?>;border:1px solid var(--line)"></span> <code><?= $e($p['hex']) ?></code><?php else: ?>—<?php endif; ?></td>
+                <td><code><?= $e(($p['subject'] ?? '') . ' · ' . substr((string) ($p['fuid'] ?? ''), 0, 10)) ?></code></td><td><?= $e($p['source'] ?? '') ?></td>
+                <td class="num"><?= $e($p['trust'] ?? '') ?></td><td class="num"><?= $e($r['mean_confidence']) ?></td><td class="num"><?= $e($r['withheld_pct']) ?>%</td></tr>
+        <?php endforeach; ?></table>
+        <p class="note">Confidence = the lesser of the material classification and the fact's trust (Registry F224). Grade: lighting <?= $e($man['grade']['lighting']) ?>, era <?= $e($man['grade']['era']) ?>, saturation ×<?= $e($man['grade']['saturation']) ?>, warmth <?= $e($man['grade']['warmth']) ?>.</p></div>
+        <h2>Agents and FQL</h2>
+        <?= ReportView::table(array_map(fn ($a) => ['agent' => $a['agent'], 'task' => $a['task'], 'ms' => $a['ms']], $man['agents']), ['agent' => 'Agent', 'task' => 'Declared task (F76)', 'ms' => 'ms']) ?>
+        <div class="card"><pre><?= $e(implode("\n", $man['fql'])) ?></pre></div>
+    <?php endif; ?>
     <?php
 }
 
