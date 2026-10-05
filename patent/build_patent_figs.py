@@ -539,6 +539,144 @@ s += box(200, 480, 320, 46, ["Answer: cited to the record, attributed,", "refuse
 s += '</svg>'
 FIGS.append((40, "Lecture Query — The Forever-Linked Lecture Record and Its Querying", s))
 
+# ===================== FIG. 41 — Deterministic Multilingual Acquisition (No Generative Model) =====================
+w, h = 720, 470
+s = svg_open(w, h)
+s += box(60, 20, 260, 40, ["Public-domain corpus (lawful)"], "4101")
+s += box(400, 20, 260, 40, ["Governed bilingual dictionary"], "4102")
+s += arrow(190, 60, 300, 110); s += arrow(530, 60, 420, 110)
+s += box(255, 110, 210, 46, ["Per-language learning agent", "(deterministic)"], "4110")
+s += label(360, 92, "NO large / generative language model in the grounding path", 11, "middle", True)
+s += arrow(360, 156, 360, 182)
+s += box(40, 182, 190, 44, ["Vocabulary"], "4111")
+s += box(265, 182, 190, 44, ["Phonology / IPA"], "4112")
+s += box(490, 182, 190, 44, ["Grammar regularities"], "4113")
+s += line(135,182,135,170); s += line(135,170,585,170); s += line(585,170,585,182)
+s += line(360,156,360,170)
+s += arrow(135, 226, 135, 258); s += arrow(360, 226, 360, 258); s += arrow(585, 226, 585, 258)
+s += box(255, 258, 210, 46, ["IPA verified against a", "reference phonemizer"], "4120")
+s += line(135,258,135,281); s += line(135,281,255,281)
+s += line(585,258,585,281); s += line(585,281,465,281)
+s += arrow(300, 304, 240, 338); s += arrow(420, 304, 480, 338)
+s += box(90, 338, 300, 44, ["Provenance-tracked lexical record", "(reproducible from same inputs)"], "4130")
+s += box(430, 338, 230, 44, ["Withheld (not asserted)", "on verification failure"], "4131", dashed=True)
+s += '</svg>'
+FIGS.append((41, "Deterministic Multilingual Acquisition Without a Generative Model", s))
+
+# ===================== FIG. 42 — Dialect Parameter Clusters (DPC) =====================
+w, h = 720, 430
+s = svg_open(w, h)
+s += box(250, 18, 220, 40, ["Dialect Parameter Cluster", "(declared, versioned)"], "4201")
+s += box(40, 96, 200, 40, ["Phonological parameters"], "4202")
+s += box(260, 96, 200, 40, ["Lexical parameters"], "4203")
+s += box(480, 96, 200, 40, ["Orthographic parameters"], "4204")
+s += line(360,58,360,76); s += line(140,76,580,76)
+s += arrow(140,76,140,96); s += arrow(360,76,360,96); s += arrow(580,76,580,96)
+s += box(60, 196, 220, 40, ["Input utterance"], "4205")
+s += arrow(280, 216, 330, 216)
+s += box(330, 188, 240, 56, ["Parameter-match scorer", "(deterministic attribution)"], "4210")
+s += arrow(450, 244, 450, 274)
+s += box(330, 274, 240, 40, ["Dialect attribution"], "4220")
+s += arrow(450, 314, 450, 344)
+s += box(300, 344, 300, 40, ["Modulates EXPRESSION only"], "4230")
+s += box(40, 300, 250, 84, ["Never alters admission,", "applicability scope, confidence,", "or governed vocabulary", "(declared, not inferred)"], "4231", dashed=True)
+s += '</svg>'
+FIGS.append((42, "Dialect Parameter Clusters (DPC) — Declared, Expression-Only Modulation", s))
+
+# ===================== FIG. 43 — Grounded Scene Compilation to an External Generative Media Engine =====================
+w, h = 720, 430
+s = svg_open(w, h)
+s += box(60, 24, 200, 40, ["Verified Fact Units"], "4301")
+s += arrow(160, 64, 160, 96)
+s += box(60, 96, 200, 46, ["Grounded scene", "representation"], "4310")
+s += arrow(260, 119, 300, 119)
+s += box(300, 92, 220, 56, ["Prompt-bundle compiler", "+ validator"], "4320")
+s += arrow(520, 119, 560, 119)
+s += box(540, 92, 160, 56, ["External generative", "video engine"], "4330", dashed=True)
+s += label(620, 84, "external", 10, "middle")
+s += arrow(620, 148, 620, 190)
+s += box(520, 190, 200, 44, ["Returned media"], "4340")
+s += arrow(620, 234, 620, 266)
+s += box(470, 266, 250, 44, ["Marked: derived artifact /", "reconstruction"], "4341")
+s += arrow(470, 288, 300, 288)
+s += box(60, 266, 230, 44, ["NEVER admitted as a", "grounding source"], "4342", dashed=True)
+s += label(360, 356, "Extends Derived-Artifact-Only Extraction + Reconstruction Marking", 11, "middle", True)
+s += '</svg>'
+FIGS.append((43, "Grounded Scene Compilation to an External Generative Media Engine", s))
+
+# ===================== FIG. 44 — Key-Safe External-Service Mediation =====================
+w, h = 720, 420
+s = svg_open(w, h)
+s += line(360, 20, 360, 400, dashed=True)
+s += label(360, 14, "query / presentation boundary", 11, "middle", True)
+s += box(60, 80, 230, 56, ["Requesting client", "(no credential ever)"], "4401")
+s += box(430, 60, 240, 56, ["Mediation server", "(query-side)"], "4410")
+s += box(445, 140, 210, 40, ["Credential vault (server-held)"], "4411")
+s += line(550,116,550,140)
+s += arrow(670, 88, 700, 88); s += box(560, 210, 150, 46, ["External service", "(video / speech)"], "4420", dashed=True)
+s += line(655,116,655,210); s += arrow(655,206,655,210)
+s += box(430, 300, 240, 44, ["Media cached by opaque id"], "4412")
+s += line(610,256,610,300); s += arrow(610,296,610,300)
+s += arrow(430, 322, 290, 322)
+s += box(60, 300, 230, 44, ["Client receives media", "by opaque id only"], "4413")
+s += label(360, 384, "credential never crosses the boundary", 11, "middle", True)
+s += '</svg>'
+FIGS.append((44, "Key-Safe External-Service Mediation", s))
+
+# ===================== FIG. 45 — Scene Reconstruction From Prose =====================
+w, h = 720, 410
+s = svg_open(w, h)
+s += box(260, 20, 200, 40, ["Prose source"], "4501")
+s += arrow(360, 60, 360, 92)
+s += box(255, 92, 210, 46, ["Deterministic", "reconstructor"], "4510")
+s += arrow(360, 138, 360, 164)
+s += box(40, 164, 200, 44, ["Shot sequence"], "4511")
+s += box(260, 164, 200, 44, ["Timed prompt sequence"], "4512")
+s += box(480, 164, 200, 44, ["Pacing / music cues"], "4513")
+s += line(140,164,140,152); s += line(140,152,580,152); s += line(580,152,580,164); s += line(360,138,360,152)
+s += arrow(260, 208, 360, 250); s += arrow(360,208,360,250); s += arrow(460,208,360,250)
+s += box(220, 250, 280, 44, ["Non-identified participant", "rendered as SILHOUETTE"], "4520")
+s += arrow(360, 294, 360, 320)
+s += box(240, 320, 240, 40, ["Marked as a reconstruction"], "4530")
+s += '</svg>'
+FIGS.append((45, "Scene Reconstruction From Prose — Bounded, Silhouette-Protected", s))
+
+# ===================== FIG. 46 — Modular Edition Packaging =====================
+w, h = 720, 410
+s = svg_open(w, h)
+s += box(270, 18, 180, 40, ["Edition selector", "(at launch)"], "4601")
+s += line(360,58,360,74); s += line(140,74,580,74)
+s += arrow(140,74,140,100); s += arrow(360,74,360,100); s += arrow(580,74,580,100)
+s += box(50, 100, 180, 44, ["Light edition"], "4610")
+s += box(270, 100, 180, 44, ["Medium edition"], "4620")
+s += box(490, 100, 180, 44, ["Full edition"], "4630")
+s += box(50, 156, 180, 40, ["declared subset A"], "4611", dashed=True)
+s += box(270, 156, 180, 40, ["declared subset B"], "4621", dashed=True)
+s += box(490, 156, 180, 40, ["declared subset C"], "4631", dashed=True)
+s += line(140,144,140,156); s += line(360,144,360,156); s += line(580,144,580,156)
+s += box(110, 280, 500, 70, ["Invariant base across EVERY edition:", "Prime Directive (Domain 0) + deterministic reasoning core"], "4640")
+s += arrow(140, 196, 300, 280); s += arrow(360, 196, 360, 280); s += arrow(580, 196, 420, 280)
+s += label(360, 372, "an edition changes which subsystems are present, never the governing constraints", 11, "middle", True)
+s += '</svg>'
+FIGS.append((46, "Modular Edition Packaging — Nested Capability Editions", s))
+
+# ===================== FIG. 47 — Version-Independent, Provenance-Continuous Store =====================
+w, h = 720, 410
+s = svg_open(w, h)
+s += box(250, 150, 220, 64, ["Canonical store location", "(version-independent)"], "4701")
+s += box(265, 230, 190, 34, ["Provenance-tracked records"], "4702")
+s += line(360,214,360,230)
+s += box(40, 40, 150, 40, ["Software v(n)"], "4710")
+s += box(285, 40, 150, 40, ["Software v(n+1)"], "4711")
+s += box(530, 40, 150, 40, ["Software v(n+2)"], "4712")
+s += arrow(115, 80, 300, 150); s += arrow(360, 80, 360, 150); s += arrow(605, 80, 420, 150)
+s += label(360, 110, "all versions bind to the SAME store", 11, "middle", True)
+s += box(150, 300, 420, 48, ["Refuse to substitute an empty store", "where a populated store exists"], "4720", dashed=True)
+s += arrow(360, 264, 360, 300)
+s += label(360, 372, "a version change never re-initializes or orphans the records", 11, "middle", True)
+s += '</svg>'
+FIGS.append((47, "Version-Independent, Provenance-Continuous Store", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -571,6 +709,13 @@ descr = {
  38: "is a flow diagram of the PIL human-query interpretation, in which a query is reduced to an Interpretation Frame, intent is disambiguated from context and perspective, an ambiguity gate asks one clarifying question when intent is materially uncertain, a register-and-ergonomic-mode selector sets the reply style and delivery from sourced culture/mores/ergonomics packs, and the existing retrieve-gate-compose pipeline answers from verified Fact Units in that register without altering the facts, per Section XI.",
  39: "is a block diagram of the Lecture Query mode ingestion pipeline, in which a live or recorded audio/video program is captured under consent, transcribed and diarized, analyzed by the paralinguistic layer over time and by the language layer for structure and claims, summarized deterministically, and ingested as a Lecture Record whose claims are stored as attributed utterance facts and which is forever-linked to the speaker, venue, event, organization, and date by immutable provenance-tracked, trust-gated identity links, per Section XII.",
  40: "is a data-flow diagram of the forever-linked Lecture Record in the Fact-Unit identity graph and its querying, showing the record bound to speaker, venue, event, and organization entities and to the transcript and paralinguistic track, its attributed claims gated as corroborated, contradicted, or open, and a query answered with citations to the record and attribution to the speaker, refused where unknown, per Section XII.",
+ 41: "is a data-flow diagram of deterministic multilingual acquisition without a generative model, in which a per-language learning agent acquires vocabulary, phonology (IPA), and grammatical regularities from a lawful public-domain corpus and a governed bilingual dictionary, an IPA transcription is verified against a reference phonemizer and withheld rather than asserted when verification fails, and each accepted item is written as a provenance-tracked lexical record reproducible from the same inputs, with no large or generative language model in the grounding path.",
+ 42: "is a block diagram of a Dialect Parameter Cluster (DPC), a declared and versioned cluster of phonological, lexical, and orthographic parameters by which an input utterance is attributed to a dialect by a deterministic parameter-match score, the cluster modulating expression only and never altering admission, applicability scope, confidence, or the governed vocabulary.",
+ 43: "is a data-flow diagram of grounded scene compilation to an external generative media engine, in which a grounded scene representation derived from verified Fact Units is compiled and validated into a prompt bundle for an external generative video engine and any returned media is admitted only as a derived artifact marked as a reconstruction and never as a grounding source.",
+ 44: "is a block diagram of key-safe external-service mediation, in which a credential for an external service is held on the server side of the query/presentation boundary and never transmitted to the client, the server performing the external call and serving the result to the client by an opaque cache identifier so that the credential never crosses the boundary.",
+ 45: "is a flow diagram of scene reconstruction from prose, in which a deterministic reconstructor derives a shot sequence, a timed prompt sequence, and pacing and music cues as a bounded reconstruction, renders a participant who is not an identified subject as a silhouette so that no unverified identity is fabricated, and marks the whole as a reconstruction.",
+ 46: "is a block diagram of modular edition packaging, in which the system is deployable as one of a plurality of nested capability editions selected at launch, each edition enabling a declared subset of subsystems while the Prime Directive and the deterministic reasoning core remain invariant across every edition.",
+ 47: "is a block diagram of the version-independent, provenance-continuous store, in which the knowledge store resides at a canonical location independent of the deployment software version so that successive software versions bind to the same provenance-tracked records, a version change never re-initializes the store, and the system refuses to substitute an empty store where a populated store exists.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
