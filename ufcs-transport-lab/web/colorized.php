@@ -21,6 +21,12 @@ if ($path === false || !str_starts_with($path, $root . '/')) {
     exit;
 }
 if (is_dir($path)) {
+    if (!class_exists('ZipArchive')) {
+        http_response_code(501);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "Downloading a folder needs PHP's zip extension. Run php bin/doctor.php for the install command.\n";
+        exit;
+    }
     $zip = sys_get_temp_dir() . '/colorized-' . md5($path) . '.zip';
     if (!is_file($zip) || filemtime($zip) < filemtime($path)) {
         $z = new ZipArchive();

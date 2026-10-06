@@ -3,11 +3,12 @@
 FROM php:8.3-cli-bookworm
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg zstd libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev \
+ && apt-get install -y --no-install-recommends ffmpeg zstd libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev libzip-dev \
  && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
- && docker-php-ext-install -j"$(nproc)" gd pcntl \
+ && docker-php-ext-install -j"$(nproc)" gd pcntl zip \
  && docker-php-ext-enable opcache \
- && apt-get purge -y libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev \
+ && apt-get purge -y libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev libzip-dev \
+ && apt-get install -y --no-install-recommends libzip4 \
  && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /lab

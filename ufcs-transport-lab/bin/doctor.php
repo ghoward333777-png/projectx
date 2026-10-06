@@ -33,11 +33,12 @@ $add = static function (string $name, bool $ok, bool $required, string $what, st
 };
 
 $add('PHP 8.1+', true, true, 'runs the lab', PHP_VERSION, '');
-foreach (['sodium' => 'signs and verifies frames', 'zlib' => 'GZIP and UFCS dictionary compression', 'json' => 'frame metadata', 'mbstring' => 'text handling'] as $ext => $what) {
+foreach (['sodium' => 'signs and verifies frames', 'zlib' => 'GZIP and UFCS dictionary compression', 'json' => 'frame metadata', 'mbstring' => 'text handling', 'simplexml' => 'reads MPEG-DASH manifests'] as $ext => $what) {
     $add('PHP ' . $ext, extension_loaded($ext), true, $what, extension_loaded($ext) ? 'loaded' : 'missing', doctor_fix('php-' . $ext, $pm));
 }
 $webp = function_exists('imagewebp');
 $add('PHP gd with WebP', $webp, false, 'image compression and colorization', $webp ? 'loaded' : (extension_loaded('gd') ? 'gd without WebP' : 'missing'), doctor_fix('php-gd', $pm));
+$add('PHP zip', class_exists('ZipArchive'), false, 'download colorized results as one .zip', class_exists('ZipArchive') ? 'loaded' : 'missing', doctor_fix('php-zip', $pm));
 $add('PHP pcntl + OPcache', function_exists('pcntl_exec') && extension_loaded('Zend OPcache'), false, 'about 2x faster colorization (JIT)', function_exists('pcntl_exec') ? 'loaded' : 'missing', doctor_fix('php-opcache', $pm));
 
 $ffmpeg = MediaCodec::ffmpeg();
@@ -100,11 +101,11 @@ function doctor_fix(string $need, string $pm): string
 {
     $v = PHP_MAJOR_VERSION . PHP_MINOR_VERSION;
     $names = [
-        'apt-get' => ['php-sodium' => 'php-cli', 'php-zlib' => 'php-cli', 'php-json' => 'php-cli', 'php-mbstring' => 'php-mbstring', 'php-gd' => 'php-gd', 'php-opcache' => 'php-cli', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'golang-go'],
-        'dnf' => ['php-sodium' => 'php-sodium', 'php-zlib' => 'php-cli', 'php-json' => 'php-cli', 'php-mbstring' => 'php-mbstring', 'php-gd' => 'php-gd', 'php-opcache' => 'php-opcache php-process', 'ffmpeg' => 'ffmpeg (enable RPM Fusion first)', 'zstd' => 'zstd', 'golang' => 'golang'],
-        'apk' => ['php-sodium' => "php{$v}-sodium", 'php-zlib' => "php{$v}-zlib", 'php-json' => "php{$v}-json", 'php-mbstring' => "php{$v}-mbstring", 'php-gd' => "php{$v}-gd", 'php-opcache' => "php{$v}-opcache php{$v}-pcntl", 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
-        'pacman' => ['php-sodium' => 'php-sodium', 'php-zlib' => 'php', 'php-json' => 'php', 'php-mbstring' => 'php', 'php-gd' => 'php-gd', 'php-opcache' => 'php', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
-        'brew' => ['php-sodium' => 'php', 'php-zlib' => 'php', 'php-json' => 'php', 'php-mbstring' => 'php', 'php-gd' => 'php', 'php-opcache' => 'php', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
+        'apt-get' => ['php-simplexml' => 'php-xml', 'php-zip' => 'php-zip', 'php-sodium' => 'php-cli', 'php-zlib' => 'php-cli', 'php-json' => 'php-cli', 'php-mbstring' => 'php-mbstring', 'php-gd' => 'php-gd', 'php-opcache' => 'php-cli', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'golang-go'],
+        'dnf' => ['php-simplexml' => 'php-xml', 'php-zip' => 'php-pecl-zip', 'php-sodium' => 'php-sodium', 'php-zlib' => 'php-cli', 'php-json' => 'php-cli', 'php-mbstring' => 'php-mbstring', 'php-gd' => 'php-gd', 'php-opcache' => 'php-opcache php-process', 'ffmpeg' => 'ffmpeg (enable RPM Fusion first)', 'zstd' => 'zstd', 'golang' => 'golang'],
+        'apk' => ['php-simplexml' => "php{$v}-simplexml", 'php-zip' => "php{$v}-zip", 'php-sodium' => "php{$v}-sodium", 'php-zlib' => "php{$v}-zlib", 'php-json' => "php{$v}-json", 'php-mbstring' => "php{$v}-mbstring", 'php-gd' => "php{$v}-gd", 'php-opcache' => "php{$v}-opcache php{$v}-pcntl", 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
+        'pacman' => ['php-simplexml' => 'php', 'php-zip' => 'php (enable extension=zip in php.ini)', 'php-sodium' => 'php-sodium', 'php-zlib' => 'php', 'php-json' => 'php', 'php-mbstring' => 'php', 'php-gd' => 'php-gd', 'php-opcache' => 'php', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
+        'brew' => ['php-simplexml' => 'php', 'php-zip' => 'php', 'php-sodium' => 'php', 'php-zlib' => 'php', 'php-json' => 'php', 'php-mbstring' => 'php', 'php-gd' => 'php', 'php-opcache' => 'php', 'ffmpeg' => 'ffmpeg', 'zstd' => 'zstd', 'golang' => 'go'],
     ];
     $prefix = ['apt-get' => 'sudo apt-get install -y ', 'dnf' => 'sudo dnf install -y ', 'yum' => 'sudo yum install -y ', 'apk' => 'sudo apk add ', 'pacman' => 'sudo pacman -S --needed ', 'zypper' => 'sudo zypper install ', 'brew' => 'brew install '];
     if ($pm === 'yum') {

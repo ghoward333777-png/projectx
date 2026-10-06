@@ -53,13 +53,13 @@ case "$PM" in
         run brew install $PKGS
         ;;
     apt)
-        PKGS="php-cli php-mbstring php-gd"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
+        PKGS="php-cli php-mbstring php-gd php-xml php-zip"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
         run $SUDO apt-get update
         # shellcheck disable=SC2086
         run $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y $PKGS
         ;;
     dnf|yum)
-        PKGS="php-cli php-mbstring php-gd php-sodium php-opcache php-process"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS zstd"
+        PKGS="php-cli php-mbstring php-gd php-xml php-sodium php-opcache php-process"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS zstd"
         # shellcheck disable=SC2086
         run $SUDO $PM install -y $PKGS
         if [ "$MINIMAL" -eq 0 ] && ! run $SUDO $PM install -y ffmpeg; then
@@ -68,7 +68,7 @@ case "$PM" in
         ;;
     apk)
         V="$(apk search -x php83 >/dev/null 2>&1 && echo 83 || echo 82)"
-        PKGS="php$V php$V-mbstring php$V-gd php$V-sodium php$V-opcache php$V-pcntl php$V-ctype"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
+        PKGS="php$V php$V-mbstring php$V-gd php$V-sodium php$V-opcache php$V-pcntl php$V-ctype php$V-simplexml php$V-zip"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
         # shellcheck disable=SC2086
         run $SUDO apk add $PKGS
         ;;
@@ -78,7 +78,7 @@ case "$PM" in
         run $SUDO pacman -S --needed --noconfirm $PKGS
         ;;
     zypper)
-        PKGS="php8 php8-mbstring php8-gd php8-sodium php8-opcache php8-pcntl"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
+        PKGS="php8 php8-mbstring php8-gd php8-sodium php8-opcache php8-pcntl php8-xmlreader php8-zip"; [ "$MINIMAL" -eq 1 ] || PKGS="$PKGS ffmpeg zstd"
         # shellcheck disable=SC2086
         run $SUDO zypper --non-interactive install $PKGS
         ;;
@@ -112,6 +112,8 @@ if php tests/run.php >/tmp/ufcs-lab-tests.log 2>&1; then
 else
     echo "    some tests failed; details in /tmp/ufcs-lab-tests.log"
     tail -n 15 /tmp/ufcs-lab-tests.log
+    echo "    Please send that file with your report. The dashboard may still start: ./start.sh"
+    exit 1
 fi
 
 chmod +x start.sh 2>/dev/null || true
