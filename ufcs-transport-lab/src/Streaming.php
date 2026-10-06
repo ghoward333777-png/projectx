@@ -140,7 +140,8 @@ final class StreamPackager
         $files = [];
         $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
         foreach ($it as $f) {
-            $files[] = substr($f->getPathname(), strlen($dir) + 1);
+            // Package paths always use '/', also on Windows where the iterator gives '\\'.
+            $files[] = str_replace('\\', '/', substr($f->getPathname(), strlen($dir) + 1));
         }
         sort($files);
         $check = Manifest::verify($dir, $manifest);
