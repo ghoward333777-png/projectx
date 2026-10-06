@@ -1,0 +1,12 @@
+# One command, nothing else to install:  docker compose up
+# Dashboard: http://127.0.0.1:8091
+services:
+  lab:
+    build: .
+    image: querybook-ufcs-lab
+    ports:
+      - "127.0.0.1:8091:8091"
+    volumes:
+      - ./reports:/lab/reports
+      - ./received:/lab/received
+      - ./colorized:/lab/colorized

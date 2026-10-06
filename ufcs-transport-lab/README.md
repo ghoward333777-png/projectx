@@ -18,11 +18,31 @@ UFCS/FQL encoder → classifier → compressor          stream reader (resync) �
                              ◀══ ACK (window, queue depth) on each connection
 ```
 
+## Install (one step)
+
+Pick one. Each ends with the dashboard at **http://127.0.0.1:8091**.
+
+| You have | Run this in the `ufcs-transport-lab` folder | Then |
+|---|---|---|
+| Docker (any OS) | `docker compose up` | open http://127.0.0.1:8091 |
+| Linux or macOS | `./install.sh` | `./start.sh` (opens the browser) |
+| Windows | install [PHP 8.3](https://windows.php.net/download) and, for video, `winget install Gyan.FFmpeg` | double-click `start.bat` |
+
+- `./install.sh` finds your package manager (apt, dnf, yum, apk, pacman, zypper or
+  Homebrew), installs PHP, ffmpeg and zstd, checks the result and runs the self-tests.
+  Use `--minimal` for PHP only, or `--dry-run` to see the commands first.
+- The Docker image includes PHP, ffmpeg and zstd. Reports, received files and colorized
+  output are saved in the `reports/`, `received/` and `colorized/` folders.
+- Something not working? Run `php bin/doctor.php`. It lists what is present and what is
+  missing, with the exact install command for your system. Only PHP 8.1+ is required.
+  ffmpeg, zstd, Go and Rust are optional extras that add video, Zstd and the reference
+  sender/receiver pairs.
+
 ## Run it
 
 ```bash
 # Dashboard: overview, frame inspector, compression lab, live transfer,
-# HLS · DASH · RTMP, benchmark
+# HLS · DASH · RTMP, benchmark (./start.sh runs this for you)
 php -d upload_max_filesize=256M -d post_max_size=256M -S 127.0.0.1:8091 -t ufcs-transport-lab/web
 
 # Two nodes from the command line
