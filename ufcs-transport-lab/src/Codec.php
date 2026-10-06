@@ -112,20 +112,7 @@ final class Codec
     public static function zstdBinary(): string
     {
         if (self::$zstdBinary === null) {
-            self::$zstdBinary = '';
-            $env = getenv('UFCS_LAB_ZSTD');
-            if ($env === 'off') {
-                return '';
-            }
-            foreach (array_filter([$env ?: null, '/usr/bin/zstd', '/usr/local/bin/zstd', '/opt/homebrew/bin/zstd']) as $candidate) {
-                if (is_file($candidate) && is_executable($candidate)) {
-                    return self::$zstdBinary = $candidate;
-                }
-            }
-            $found = trim((string) @shell_exec('command -v zstd 2>/dev/null'));
-            if ($found !== '' && is_executable($found)) {
-                self::$zstdBinary = $found;
-            }
+            self::$zstdBinary = ufcs_lab_find_tool('zstd', 'UFCS_LAB_ZSTD');
         }
         return self::$zstdBinary;
     }
@@ -140,17 +127,22 @@ final class Codec
         // Input via a temp file so a large payload can never deadlock the pipes.
         $tmp = tempnam(sys_get_temp_dir(), 'ufcs-zstd-');
         file_put_contents($tmp, $input);
-        $proc = proc_open(array_merge([$bin], $args, [$tmp]), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        // Output via temp files too: Windows pipes cannot be drained side by side.
+        $outFile = (string) tempnam(sys_get_temp_dir(), 'ufcs-zstd-out-');
+        $errFile = (string) tempnam(sys_get_temp_dir(), 'ufcs-zstd-err-');
+        $proc = proc_open(array_merge([$bin], $args, [$tmp]), [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['file', $outFile, 'w'], 2 => ['file', $errFile, 'w']], $pipes);
         if (!is_resource($proc)) {
             @unlink($tmp);
+            @unlink($outFile);
+            @unlink($errFile);
             throw new RuntimeException('Could not start zstd');
         }
-        $out = stream_get_contents($pipes[1]);
-        $err = stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
         $code = proc_close($proc);
+        $out = file_get_contents($outFile);
+        $err = file_get_contents($errFile);
         @unlink($tmp);
+        @unlink($outFile);
+        @unlink($errFile);
         if ($code !== 0) {
             throw new RuntimeException('zstd failed: ' . trim((string) $err));
         }

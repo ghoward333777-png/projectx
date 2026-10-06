@@ -184,8 +184,8 @@ final class Colorizer
 
     private static function fps(string $input): string
     {
-        $probe = dirname(MediaCodec::ffmpeg()) . '/ffprobe';
-        $r = MediaCodec::exec([is_executable($probe) ? $probe : 'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', $input]);
+        $probe = ufcs_lab_find_tool('ffprobe', 'UFCS_LAB_FFPROBE');
+        $r = MediaCodec::exec([$probe !== '' ? $probe : 'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', $input]);
         $f = trim($r['stdout']);
         return preg_match('#^\d+/\d+$#', $f) && !str_starts_with($f, '0/') ? $f : '30/1';
     }

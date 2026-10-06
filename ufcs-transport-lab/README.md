@@ -26,8 +26,15 @@ Pick one. Each ends with the dashboard at **http://127.0.0.1:8091**.
 |---|---|---|
 | Docker (any OS) | `docker compose up` | open http://127.0.0.1:8091 |
 | Linux or macOS | `./install.sh` | `./start.sh` (opens the browser) |
-| Windows | install [PHP 8.3](https://windows.php.net/download) and, for video, `winget install Gyan.FFmpeg` | double-click `start.bat` |
+| Windows (with Python) | double-click `START_LAB.bat` | the browser opens by itself |
 
+- `START_LAB.bat` works like the earlier QueryBook launcher. It needs only Python. On
+  the first run, `qb_lab.py` downloads a private copy of PHP 8.3 (windows.php.net),
+  ffmpeg (BtbN/FFmpeg-Builds) and zstd (GitHub) into `runtime\`, about 235 MB in all.
+  It checks each download against its published SHA-256 first, and nothing is
+  installed system-wide. If PHP needs Microsoft's Visual C++ runtime, Windows asks
+  once for permission to install it. `CHECK_LAB.bat` gives a plain-English health
+  check, and `READ_ME_FIRST.txt` has the three-step guide.
 - `./install.sh` finds your package manager (apt, dnf, yum, apk, pacman, zypper or
   Homebrew), installs PHP, ffmpeg and zstd, checks the result and runs the self-tests.
   Use `--minimal` for PHP only, or `--dry-run` to see the commands first.

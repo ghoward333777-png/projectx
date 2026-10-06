@@ -23,7 +23,7 @@ final class LocalNode
             $port = random_int(20000, 60000);
             $node = new self();
             $cmd = array_merge([PHP_BINARY, __DIR__ . '/../bin/receiver.php', '--port=' . $port], $args);
-            $node->proc = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $node->pipes);
+            $node->proc = proc_open($cmd, [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $node->pipes);
             $line = (string) fgets($node->pipes[1]);
             if (str_starts_with($line, 'READY')) {
                 $node->port = $port;

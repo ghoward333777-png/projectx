@@ -28,7 +28,7 @@ final class LiveFeed
             $args = array_merge($args, ['-vf', 'scale=-2:' . (int) $o['height']]);
         }
         $args = array_merge($args, ['-c:a', 'aac', '-b:a', '96k', '-f', 'mpegts', '-muxdelay', '0', '-flush_packets', '1', 'pipe:1']);
-        $proc = proc_open($args, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+        $proc = proc_open($args, [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['pipe', 'w'], 2 => ['file', ufcs_lab_devnull(), 'w']], $pipes);
         stream_set_blocking($pipes[1], false);
         $buf = '';
         $first = $last = null;
@@ -142,7 +142,7 @@ final class VideoLab
         $t0 = microtime(true);
         $this->node = LocalNode::start(['--window=32', '--out=' . $this->work . '/node2', '--repackage']);
         $r = ['lab' => 'QueryBook/UFCS-FQL-TCP/IP Hybrid Video Compression Lab', 'title' => 'Video transit report', 'generated_at' => gmdate('c'),
-            'config' => $this->cfg, 'paths' => self::PATHS, 'environment' => ['php' => PHP_VERSION, 'cpus' => (int) trim((string) shell_exec('nproc 2>/dev/null')) ?: null,
+            'config' => $this->cfg, 'paths' => self::PATHS, 'environment' => ['php' => PHP_VERSION, 'cpus' => (int) (getenv('NUMBER_OF_PROCESSORS') ?: trim((string) @shell_exec('nproc 2>/dev/null'))) ?: null,
                 'ffmpeg' => trim(explode("\n", (string) shell_exec(escapeshellarg(MediaCodec::ffmpeg()) . ' -version'))[0])]];
         try {
             $r['sources'] = $this->prepareSources();

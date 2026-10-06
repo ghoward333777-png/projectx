@@ -180,7 +180,7 @@ final class PathEmulator
             $port = random_int(20000, 60000);
             $self = new self();
             $self->proc = proc_open([PHP_BINARY, __DIR__ . '/../bin/netem-proxy.php', '--listen=' . $port, '--to=' . $node2Port, '--delay-ms=' . $delayMs, '--mbps=' . $mbps],
-                [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+                [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
             $line = (string) fgets($pipes[1]);
             if (str_starts_with($line, 'READY')) {
                 $self->port = $port;

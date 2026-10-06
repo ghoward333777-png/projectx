@@ -10,6 +10,37 @@ foreach (['Protocol', 'Frame', 'FrameReader', 'Codec', 'MediaCodec', 'Ufcs', 'Fq
     }
 }
 
+/** The null device for proc_open: NUL on Windows, /dev/null elsewhere. */
+function ufcs_lab_devnull(): string
+{
+    return PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
+}
+
+/**
+ * Find a command-line tool (ffmpeg, ffprobe, zstd): $envVar first (a full
+ * path, or "off"), then the lab's own runtime/bin folder (where the Windows
+ * launcher puts its downloads), the usual install folders, then the PATH.
+ */
+function ufcs_lab_find_tool(string $name, string $envVar = ''): string
+{
+    $env = $envVar !== '' ? getenv($envVar) : false;
+    if ($env === 'off') {
+        return '';
+    }
+    $win = PHP_OS_FAMILY === 'Windows';
+    $exe = $win ? $name . '.exe' : $name;
+    $runtime = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'runtime' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . $exe;
+    $candidates = array_filter([$env ?: null, $runtime, '/usr/bin/' . $name, '/usr/local/bin/' . $name, '/opt/homebrew/bin/' . $name]);
+    foreach ($candidates as $c) {
+        if (is_file($c) && ($win || is_executable($c))) {
+            return $c;
+        }
+    }
+    $found = trim((string) @shell_exec($win ? 'where ' . $exe . ' 2>NUL' : 'command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
+    $found = $found === '' ? '' : (string) strtok($found, "\r\n");
+    return $found !== '' && is_file($found) ? $found : '';
+}
+
 /**
  * Re-run the current CLI script with PHP's JIT compiler on, when it is
  * available and off. The colorist's pixel loops run about 2× faster with

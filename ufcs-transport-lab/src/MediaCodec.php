@@ -23,20 +23,7 @@ final class MediaCodec
     public static function ffmpeg(): string
     {
         if (self::$ffmpeg === null) {
-            self::$ffmpeg = '';
-            $env = getenv('UFCS_LAB_FFMPEG');
-            if ($env === 'off') {
-                return '';
-            }
-            foreach (array_filter([$env ?: null, '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg']) as $c) {
-                if (is_file($c) && is_executable($c)) {
-                    return self::$ffmpeg = $c;
-                }
-            }
-            $found = trim((string) @shell_exec('command -v ffmpeg 2>/dev/null'));
-            if ($found !== '' && is_executable($found)) {
-                self::$ffmpeg = $found;
-            }
+            self::$ffmpeg = ufcs_lab_find_tool('ffmpeg', 'UFCS_LAB_FFMPEG');
         }
         return self::$ffmpeg;
     }
@@ -453,7 +440,10 @@ final class MediaCodec
      */
     private static function run(array $args): array
     {
-        $proc = proc_open($args, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        if (PHP_OS_FAMILY === 'Windows') {
+            return self::runViaFiles($args);
+        }
+        $proc = proc_open($args, [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!is_resource($proc)) {
             return ['code' => -1, 'stdout' => '', 'stderr' => 'could not start ' . $args[0]];
         }
@@ -479,5 +469,30 @@ final class MediaCodec
         fclose($pipes[1]);
         fclose($pipes[2]);
         return ['code' => proc_close($proc), 'stdout' => $out, 'stderr' => $err];
+    }
+
+    /**
+     * Windows cannot stream_select() on process pipes, so a pipe nobody is
+     * reading would stall the tool. Send its output to temporary files instead.
+     *
+     * @param array<int, string> $args
+     * @return array{code:int, stdout:string, stderr:string}
+     */
+    private static function runViaFiles(array $args): array
+    {
+        $outFile = (string) tempnam(sys_get_temp_dir(), 'ufcs-out-');
+        $errFile = (string) tempnam(sys_get_temp_dir(), 'ufcs-err-');
+        $proc = proc_open($args, [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['file', $outFile, 'w'], 2 => ['file', $errFile, 'w']], $pipes);
+        if (!is_resource($proc)) {
+            @unlink($outFile);
+            @unlink($errFile);
+            return ['code' => -1, 'stdout' => '', 'stderr' => 'could not start ' . $args[0]];
+        }
+        $code = proc_close($proc);
+        $out = (string) @file_get_contents($outFile);
+        $err = (string) @file_get_contents($errFile);
+        @unlink($outFile);
+        @unlink($errFile);
+        return ['code' => $code, 'stdout' => $out, 'stderr' => $err];
     }
 }

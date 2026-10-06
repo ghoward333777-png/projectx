@@ -39,15 +39,17 @@ foreach (['sodium' => 'signs and verifies frames', 'zlib' => 'GZIP and UFCS dict
 $webp = function_exists('imagewebp');
 $add('PHP gd with WebP', $webp, false, 'image compression and colorization', $webp ? 'loaded' : (extension_loaded('gd') ? 'gd without WebP' : 'missing'), doctor_fix('php-gd', $pm));
 $add('PHP zip', class_exists('ZipArchive'), false, 'download colorized results as one .zip', class_exists('ZipArchive') ? 'loaded' : 'missing', doctor_fix('php-zip', $pm));
-$add('PHP pcntl + OPcache', function_exists('pcntl_exec') && extension_loaded('Zend OPcache'), false, 'about 2x faster colorization (JIT)', function_exists('pcntl_exec') ? 'loaded' : 'missing', doctor_fix('php-opcache', $pm));
+if (PHP_OS_FAMILY !== 'Windows') {
+    $add('PHP pcntl + OPcache', function_exists('pcntl_exec') && extension_loaded('Zend OPcache'), false, 'about 2x faster colorization (JIT)', function_exists('pcntl_exec') ? 'loaded' : 'missing', doctor_fix('php-opcache', $pm));
+}
 
 $ffmpeg = MediaCodec::ffmpeg();
 $add('ffmpeg', $ffmpeg !== '', false, 'video and audio codecs, HLS, DASH, RTMP repackaging, video reports', $ffmpeg ?: 'not found', doctor_fix('ffmpeg', $pm));
 if ($ffmpeg !== '') {
     $missing = array_keys(array_filter(MediaCodec::codecMatrix(), fn ($r) => !$r['available']));
-    $add('ffmpeg codecs', $missing === [], false, 'H.264, H.265, AV1, Opus, AAC', $missing === [] ? 'all present' : 'missing ' . implode(', ', $missing), 'install a full ffmpeg build (the distribution package usually has all of them)');
+    $add('ffmpeg codecs', $missing === [], false, 'H.264, H.265, AV1, Opus, AAC', $missing === [] ? 'all present' : 'missing ' . implode(', ', $missing), PHP_OS_FAMILY === 'Windows' ? 'delete the runtime\\bin folder and double-click START_LAB.bat to fetch the full build' : 'install a full ffmpeg build (the distribution package usually has all of them)');
 }
-$zstd = $which('zstd');
+$zstd = ufcs_lab_find_tool('zstd', 'UFCS_LAB_ZSTD');
 $add('zstd', $zstd !== '', false, 'Zstd compression (falls back to GZIP)', $zstd ?: 'not found', doctor_fix('zstd', $pm));
 $go = $which('go');
 $add('Go', $go !== '', false, 'only for the Go reference sender/receiver', $go ?: 'not found', doctor_fix('golang', $pm));
@@ -73,8 +75,8 @@ foreach ($checks as $c) {
     }
 }
 echo "\n", $ready
-    ? "Ready. Start the dashboard with ./start.sh (Windows: start.bat), then open http://127.0.0.1:8091\n"
-    : "Not ready: install the [NEED] items above, or run ./install.sh to do it for you.\n";
+    ? (PHP_OS_FAMILY === 'Windows' ? "Ready. Double-click START_LAB.bat, then open http://127.0.0.1:8091\n" : "Ready. Start the dashboard with ./start.sh, then open http://127.0.0.1:8091\n")
+    : (PHP_OS_FAMILY === 'Windows' ? "Not ready: double-click START_LAB.bat to set up the missing [NEED] items.\n" : "Not ready: install the [NEED] items above, or run ./install.sh to do it for you.\n");
 if ($ready && array_filter($checks, fn ($c) => !$c['ok'])) {
     echo "[opt] items are extras: the lab runs without them and says which features they unlock.\n";
 }
@@ -113,10 +115,9 @@ function doctor_fix(string $need, string $pm): string
     }
     if ($pm === 'windows') {
         return match ($need) {
-            'ffmpeg' => 'winget install Gyan.FFmpeg   (then reopen the terminal)',
-            'zstd' => 'download zstd from https://github.com/facebook/zstd/releases and add it to PATH',
+            'ffmpeg', 'zstd' => 'double-click START_LAB.bat: it downloads ' . $need . ' into the lab\'s runtime folder',
             'golang' => 'winget install GoLang.Go',
-            default => 'enable "extension=' . substr($need, 4) . '" in php.ini (it ships with PHP for Windows)',
+            default => 'double-click START_LAB.bat: its own PHP has every extension switched on',
         };
     }
     if (!isset($names[$pm], $prefix[$pm])) {

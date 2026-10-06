@@ -693,7 +693,7 @@ final class RtmpBridge
             throw new RuntimeException('No free port for the RTMP server');
         }
         $proc = proc_open(array_merge([MediaCodec::ffmpeg(), '-hide_banner', '-loglevel', 'error', '-re'], $ffmpegArgs, ['-f', 'flv', 'rtmp://127.0.0.1:' . $port . '/live/lab']),
-            [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+            [0 => ['file', ufcs_lab_devnull(), 'r'], 1 => ['file', ufcs_lab_devnull(), 'w'], 2 => ['file', ufcs_lab_devnull(), 'w']], $pipes);
         $t0 = microtime(true);
         while (microtime(true) - $t0 < $timeout) {
             $server->tick(0.005);
