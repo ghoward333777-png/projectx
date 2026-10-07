@@ -144,23 +144,26 @@ s += '</svg>'
 FIGS.append((3, "Developmental Learning Sequence and One-Way Transition Gate", s))
 
 # ===================== FIG. 4 — Multilingual Delta Acquisition =====================
-w, h = 720, 430
+w, h = 740, 440
 s = svg_open(w, h)
-s += box(250, 16, 220, 34, ["Delta Acquisition Model"], "400")
-s += box(40, 74, 250, 170, ["L1 foundation (reused)"], "410")
+s += box(260, 16, 220, 34, ["Delta Acquisition Model"], "400")
+s += box(40, 74, 250, 170, [], "410")
+s += label(165, 94, "L1 foundation (reused)", 12.5, "middle", True)
 for i, t in enumerate(["Phonemic discrimination", "Prosodic sensitivity", "Morphological awareness",
                        "Communicative understanding", "Grammatical meta-knowledge", "Semantic inventory"]):
-    s += label(56, 116 + i*20, "• " + t, 11)
+    s += label(56, 120 + i*20, "• " + t, 11)
 s += arrow(290, 159, 340, 159)
 s += box(340, 100, 200, 50, ["L2 delta detector", "(novel vs. shared)"], "420")
 s += arrow(440, 150, 440, 176)
 s += box(340, 176, 200, 54, ["Targeted training:", "novel phonemes / grammar /", "idioms / prosody"], "430")
 s += arrow(540, 125, 590, 125)
 s += box(560, 96, 140, 60, ["Multilingual", "semantic alignment", "(bridge L2→L1)"], "440")
-s += box(40, 300, 660, 90, ["Acceleration flywheel"], "450")
-s += label(60, 336, "Each further language generally needs a smaller delta (directional, not strictly monotonic).", 11)
-s += box(60, 348, 300, 28, ["Negative-transfer detection & retraining"], "451")
-s += line(360, 244, 360, 300)
+s += box(40, 300, 660, 100, [], "450")
+s += label(370, 320, "Acceleration flywheel", 12.5, "middle", True)
+s += box(60, 344, 300, 34, ["Negative-transfer detection & retraining"], "451")
+s += label(400, 362, "Each further language generally needs a smaller", 11)
+s += label(400, 378, "delta (directional, not strictly monotonic).", 11)
+s += line(440, 230, 440, 300)
 s += '</svg>'
 FIGS.append((4, "Multilingual Transfer — Delta Acquisition and Acceleration Flywheel", s))
 
@@ -186,7 +189,7 @@ s += '</svg>'
 FIGS.append((5, "Speech Output Pipeline (Seven Learned Stages)", s))
 
 # ===================== FIG. 6 — Co-grounded integration =====================
-w, h = 720, 360
+w, h = 740, 360
 s = svg_open(w, h)
 s += box(250, 16, 220, 34, ["Co-Grounded Integration"], "600")
 s += box(40, 80, 150, 50, ["Natural-language", "input (any language)"], "610")
@@ -209,29 +212,31 @@ s += '</svg>'
 FIGS.append((6, "Co-Grounded Integration with FQL and UFCS", s))
 
 # ===================== FIG. 7 — Reduced-to-practice prototype =====================
-w, h = 720, 500
+w, h = 740, 500
 s = svg_open(w, h)
-s += box(200, 14, 320, 40, ["PROTOTYPE EMBODIMENT (Section VII)", "QueryBook Language Lab — Phases One & Two"], "700")
+s += box(210, 14, 320, 40, ["PROTOTYPE EMBODIMENT (Section VII)", "QueryBook Language Lab — Phases One & Two"], "700")
 s += box(40, 78, 200, 60, ["Corpus source:", "bundled corpus / user", "text / fetched URL"], "710")
 s += arrow(240, 108, 276, 108)
 s += box(276, 78, 180, 60, ["Phase-One structural", "agent (scheduler,", "24×7)"], "720")
 s += arrow(456, 108, 492, 108)
-s += box(492, 70, 200, 150, ["Structural analyzer"], "730")
+s += box(492, 70, 200, 150, [], "730")
+s += label(592, 90, "Structural analyzer", 12.5, "middle", True)
 for i, (t, r) in enumerate([("Grapheme inventory", "731"), ("Rule-seeded G2P", "732"),
                             ("Syllabifier", "733"), ("Lexical stability", "734"),
                             ("Co-occurrence density", "735"), ("Prosody proxy", "736")]):
-    s += label(505, 104 + i*18, "• " + t + "  (" + r + ")", 10.5)
+    s += label(505, 112 + i*18, "• " + t + "  (" + r + ")", 10.5)
 s += arrow(392, 138, 392, 250)
 s += box(276, 250, 180, 56, ["Fact Unit store", "(content-addressed,", "deduped, provenance)"], "740")
 s += arrow(592, 220, 592, 250)
 s += box(492, 250, 200, 56, ["Transition Gate metrics", "(4) → one-way latch"], "750")
-s += numeral(505, 300, "751")
+s += numeral(468, 300, "751")
 s += line(492, 278, 456, 278); s += arrow(456, 278, 456, 278)
-s += box(40, 360, 660, 120, ["Phase agents on shared agent manager"], "760")
-s += box(60, 400, 150, 60, ["Phase 1", "structural", "IMPLEMENTED"], "761")
-s += box(230, 400, 150, 60, ["Phase 2 semantic", "grounding (dictionary", "+ store) IMPLEMENTED"], "762")
-s += box(400, 400, 150, 60, ["Phase 3 multilingual", "delta —", "declines (spec-only)"], "763")
-s += box(560, 400, 120, 60, ["Phase 4 speech", "— declines", "(spec-only)"], "764")
+s += box(40, 356, 660, 128, [], "760")
+s += label(370, 378, "Phase agents on shared agent manager", 12.5, "middle", True)
+s += box(60, 408, 150, 60, ["Phase 1", "structural", "IMPLEMENTED"], "761")
+s += box(230, 408, 150, 60, ["Phase 2 semantic", "grounding (dictionary", "+ store) IMPLEMENTED"], "762")
+s += box(400, 408, 150, 60, ["Phase 3 multilingual", "delta —", "declines (spec-only)"], "763")
+s += box(560, 408, 120, 60, ["Phase 4 speech", "— declines", "(spec-only)"], "764")
 s += '</svg>'
 FIGS.append((7, "Reduced-to-Practice Embodiment — Language Lab Phases One and Two Prototype", s))
 
@@ -267,7 +272,7 @@ s += '</svg>'
 FIGS.append((8, "Deterministic Phase-Two Semantic Grounding — Dictionary and Store (No LLM)", s))
 
 # ===================== FIG. 9 — Advanced multilingual pronunciation + self-contained speech =====================
-w, h = 720, 720
+w, h = 745, 720
 s = svg_open(w, h)
 s += box(120, 16, 480, 42, ["ADVANCED MULTILINGUAL PRONUNCIATION &",
                             "SELF-CONTAINED SPEECH (prototype — no LLM)"], "900")
@@ -430,13 +435,13 @@ for x in (120,285,445,605):
 s += box(220, 316, 280, 52, ["Assemble + sign under", "UIAS independent identity"], "1127")
 s += arrow(360, 368, 360, 394)
 s += box(210, 394, 300, 46, ["Signed Proof Package", "(reproducible · independently verifiable)"], "1128")
-s += box(150, 470, 420, 44, ["Factual determinations only — legal conclusions reserved to courts/regulators"], "1129", dashed=True)
+s += box(150, 470, 420, 44, ["Factual determinations only —", "legal conclusions reserved to courts / regulators"], "1129", dashed=True)
 s += arrow(360, 440, 360, 470)
 s += '</svg>'
 FIGS.append((36, "UIAS — Signed Proof Package Generation", s))
 
 # ===================== FIG. 37 — PIL paralinguistic + pragmatic interpretation of an ingested voice =====================
-w, h = 720, 700
+w, h = 740, 700
 s = svg_open(w, h)
 s += box(90, 16, 540, 42, ["PIL — PARALINGUISTIC & PRAGMATIC INTERPRETATION",
                            "OF AN INGESTED VOICE (estimates labeled · frames sourced)"], "1200")
@@ -584,7 +589,7 @@ s += '</svg>'
 FIGS.append((42, "Dialect Parameter Clusters (DPC) — Declared, Expression-Only Modulation", s))
 
 # ===================== FIG. 43 — Grounded Scene Compilation to an External Generative Media Engine =====================
-w, h = 720, 430
+w, h = 760, 430
 s = svg_open(w, h)
 s += box(60, 24, 200, 40, ["Verified Fact Units"], "4301")
 s += arrow(160, 64, 160, 96)
@@ -605,7 +610,7 @@ s += '</svg>'
 FIGS.append((43, "Grounded Scene Compilation to an External Generative Media Engine", s))
 
 # ===================== FIG. 44 — Key-Safe External-Service Mediation =====================
-w, h = 720, 420
+w, h = 760, 420
 s = svg_open(w, h)
 s += line(360, 20, 360, 400, dashed=True)
 s += label(360, 14, "query / presentation boundary", 11, "middle", True)
@@ -677,6 +682,53 @@ s += label(360, 372, "a version change never re-initializes or orphans the recor
 s += '</svg>'
 FIGS.append((47, "Version-Independent, Provenance-Continuous Store", s))
 
+# ===================== FIG. 48 — Cited Q&A / ChatBot application =====================
+w, h = 775, 560
+s = svg_open(w, h)
+s += box(255, 16, 230, 34, ["Cited Q&A / ChatBot application"], "4800")
+s += box(60, 80, 200, 46, ["User question", "(typed or spoken)"], "4801")
+s += arrow(260, 103, 300, 103)
+s += box(300, 78, 200, 50, ["Query interpretation", "(intent · register)"], "4810")
+s += arrow(500, 103, 540, 103)
+s += box(540, 80, 170, 46, ["FQL retrieval over", "verified Fact Units"], "4820")
+s += arrow(625, 126, 625, 158)
+s += box(255, 158, 230, 54, ["PRIME-DIRECTIVE GATE", "(evidence sufficient?)"], "4830")
+s += line(625, 158, 625, 140); s += line(625, 140, 485, 140); s += line(485, 140, 370, 158)
+s += arrow(255, 185, 110, 230); s += label(95, 224, "no / insufficient", 10)
+s += arrow(485, 185, 620, 230); s += label(600, 224, "yes · cited", 10)
+s += box(40, 230, 190, 56, ["Honest UNKNOWN", "(refuse — never guess)"], "4841")
+s += box(520, 230, 200, 56, ["Composed answer with", "per-fact citations"], "4840")
+s += line(135, 286, 135, 330); s += line(620, 286, 620, 330); s += line(135, 330, 620, 330)
+s += arrow(360, 330, 360, 360)
+s += box(235, 360, 270, 50, ["Delivered to ChatBot / assistant", "surface (same contract)"], "4850")
+s += box(120, 470, 500, 56, ["No LLM asserts a fact: every answer is a citation to a verified",
+                             "Fact Unit or an honest UNKNOWN — the covenant holds end to end"], "4860", dashed=True)
+s += arrow(360, 410, 360, 470)
+s += '</svg>'
+FIGS.append((48, "Cited Q&A / ChatBot Application — Citation-or-UNKNOWN End to End", s))
+
+# ===================== FIG. 49 — Application & deployment surfaces over the invariant core =====================
+w, h = 920, 470
+s = svg_open(w, h)
+s += box(320, 20, 280, 40, ["Invariant QueryBook core", "(Fact Units · UFCS · FQL · Prime Directive)"], "4900")
+# five evenly spaced surface boxes: x = 40, 212, 384, 556, 728 (width 150, gap ~22)
+xs = [40, 212, 384, 556, 728]
+centers = [x + 75 for x in xs]
+s += line(460, 60, 460, 92); s += line(centers[0], 92, centers[-1], 92)
+for cx in centers:
+    s += arrow(cx, 92, cx, 120)
+s += box(40,  120, 150, 74, ["On-device", "eBook / document", "Q&A (micro-", "encapsulated)"], "4910")
+s += box(212, 120, 150, 74, ["SaaS / API", "service"], "4920")
+s += box(384, 120, 150, 74, ["Fact-Unit", "compressed", "search engine"], "4930")
+s += box(556, 120, 150, 74, ["Deterministic", "LLM-hybrid adjunct", "(gated suggestor)"], "4940")
+s += box(728, 120, 150, 74, ["Private / offline", "analysis", "(air-gapped)"], "4950")
+s += label(460, 250, "every surface inherits the same citation-or-UNKNOWN contract and provenance", 11, "middle", True)
+s += box(240, 300, 440, 60, ["Each surface is a presentation of the SAME governed Fact Units;",
+                             "no surface can assert a fact the core would refuse"], "4960", dashed=True)
+s += arrow(460, 194, 460, 300)
+s += '</svg>'
+FIGS.append((49, "Application and Deployment Surfaces over the Invariant Core", s))
+
 # ---------------- assemble the DRAWINGS section ----------------
 draw = ['<h2 id="drawings">Drawings</h2>',
         '<p style="font-size:12px;color:#5a554b;font-family:Helvetica,Arial,sans-serif">Formal patent drawings — black line art. Each figure is on its own sheet and every element is identified by a reference numeral used consistently in the Brief Description of the Drawings, the Reference Numerals key, and the Detailed Description. Figures are draft; counsel/draftsperson to finalize to USPTO drawing standards (37 CFR 1.84) before filing.</p>']
@@ -716,6 +768,8 @@ descr = {
  45: "is a flow diagram of scene reconstruction from prose, in which a deterministic reconstructor derives a shot sequence, a timed prompt sequence, and pacing and music cues as a bounded reconstruction, renders a participant who is not an identified subject as a silhouette so that no unverified identity is fabricated, and marks the whole as a reconstruction.",
  46: "is a block diagram of modular edition packaging, in which the system is deployable as one of a plurality of nested capability editions selected at launch, each edition enabling a declared subset of subsystems while the Prime Directive and the deterministic reasoning core remain invariant across every edition.",
  47: "is a block diagram of the version-independent, provenance-continuous store, in which the knowledge store resides at a canonical location independent of the deployment software version so that successive software versions bind to the same provenance-tracked records, a version change never re-initializes the store, and the system refuses to substitute an empty store where a populated store exists.",
+ 48: "is a data-flow diagram of a cited question-and-answer (ChatBot) application embodiment, in which a user question is interpreted for intent and register, answered by Federated Query Language retrieval over verified Fact Units, passed through the Prime-Directive gate, and returned either as a composed answer carrying per-fact citations or, where the evidence is insufficient, as an honest UNKNOWN, the same citation-or-UNKNOWN contract holding when the embodiment is deployed as a ChatBot or assistant surface.",
+ 49: "is a block diagram of the application and deployment surfaces of the system over its invariant core, in which a single governed body of Fact Units is presented through an on-device micro-encapsulated eBook or document question-and-answer surface, a software-as-a-service or application-programming-interface service, a Fact-Unit compressed search engine, a deterministic large-language-model-hybrid adjunct, and a private or offline analysis deployment, each surface inheriting the same citation-or-UNKNOWN contract and provenance and none able to assert a fact the core would refuse.",
 }
 for num, _, _ in FIGS:
     bd.append(f'<p class="pp"><b>FIG. {num}</b> {esc(descr[num])}</p>')
@@ -828,6 +882,15 @@ REFS = [
  ("1315","organization + date"),("1316","transcript + diarization"),("1317","PIL track (tone/pacing over time)"),
  ("1318","attributed claims → corroborated/contradicted/open"),("1319","FQL / Q&A over the record"),
  ("1320","answer: cited, attributed, refused where unknown"),
+ ("4800","cited Q&A / ChatBot application"),("4801","user question (typed/spoken)"),
+ ("4810","query interpretation (intent/register)"),("4820","FQL retrieval over verified Fact Units"),
+ ("4830","Prime-Directive gate (evidence sufficiency)"),("4840","composed answer with per-fact citations"),
+ ("4841","honest UNKNOWN (refuse, never guess)"),("4850","ChatBot/assistant delivery surface"),
+ ("4860","citation-or-UNKNOWN covenant held end to end"),
+ ("4900","invariant QueryBook core"),("4910","on-device eBook/document Q&A (micro-encapsulated)"),
+ ("4920","SaaS / API service surface"),("4930","Fact-Unit compressed search engine"),
+ ("4940","deterministic LLM-hybrid adjunct (gated suggestor)"),("4950","private/offline analysis deployment"),
+ ("4960","all surfaces inherit the governed-fact contract"),
 ]
 rk = ['<h3>Reference Numerals</h3>',
       '<table><thead><tr><th>No.</th><th>Element</th><th>No.</th><th>Element</th></tr></thead><tbody>']
