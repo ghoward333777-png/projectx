@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Admin</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#5a3a8a;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#5a3a8a;font-weight:700}
+.wrap{max-width:980px;margin:0 auto;padding:20px}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:16px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:20px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text],select{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font-size:14px}
+.btn{background:#5a3a8a;color:#fff;border:none;border-radius:9px;padding:8px 13px;font-weight:600;cursor:pointer;font-size:14px}
+.btn.ghost{background:#fff;color:#5a3a8a;border:1.5px solid #5a3a8a}
+.ten{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:7px;cursor:pointer;background:#fbfcfb}
+.ten.sel{border-color:#5a3a8a;background:#f1ecf8}
+.ten .t{font-weight:600}.ten .m{font-size:12px;color:var(--muted)}
+.pill{display:inline-block;font:700 11px/1 var(--mono);padding:3px 8px;border-radius:999px;background:#ece4f7;color:#4a1d94;margin:2px}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+.kpi{background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+.kpi .n{font-family:var(--serif);font-size:22px;color:#5a3a8a;font-variant-numeric:tabular-nums}
+.kpi .k{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.note{color:var(--muted);font-size:12px}.feat{font:11px/1.5 var(--mono);color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Admin · v9.64</span>
+  <nav class="nav">
+    <a href="/">Home</a>
+    <a href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a class="active" href="/admin">Admin</a>
+    <a href="/openclaw">Open Claw</a>
+    <a href="/security">Security</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Tenants</h2>
+        <p class="sub">Multi-tenant registry. Plan → edition (starter=light, team=medium, enterprise=full).</p>
+        <input type="text" id="t-name" placeholder="organization name">
+        <div class="row" style="margin-top:6px">
+          <select id="t-plan"><option value="starter">starter</option><option value="team" selected>team</option><option value="enterprise">enterprise</option></select>
+          <button class="btn" id="add-ten">Create</button>
+        </div>
+        <div id="tenants" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card" id="detail" style="display:none">
+        <h2 id="d-name"></h2>
+        <p class="sub" id="d-plan"></p>
+        <div class="kpis" id="kpis"></div>
+        <h3 style="font-size:15px;margin:12px 0 2px">Users &amp; roles</h3>
+        <div class="row"><input type="text" id="u-email" placeholder="email" style="flex:1">
+          <select id="u-role"></select><button class="btn ghost" id="add-user">Add user</button></div>
+        <table id="users"></table>
+        <h3 style="font-size:15px;margin:12px 0 2px">Plan</h3>
+        <div class="row"><select id="p-plan"><option value="starter">starter (light)</option><option value="team">team (medium)</option><option value="enterprise">enterprise (full)</option></select><button class="btn ghost" id="set-plan">Change plan</button>
+          <button class="btn ghost" id="meter">+1 usage (lessons)</button></div>
+        <h3 style="font-size:15px;margin:12px 0 2px">Entitled features</h3>
+        <div id="features" class="feat"></div>
+        <p class="note" id="d-note" style="margin-top:8px"></p>
+      </div>
+      <div class="card" id="empty"><p class="note">Create or select a tenant to manage users, plan, usage, and entitlements.</p></div>
+    </div>
+  </div>
+</div>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function post(p,o){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(r=>r.json());}
+var SEL=null;
+async function loadTenants(){
+  var d=await post('/api/saas/tenants',{});
+  $('tenants').innerHTML=(d.tenants||[]).map(function(t){return '<div class="ten'+(SEL&&SEL.id===t.id?' sel':'')+'" data-id="'+t.id+'"><div class="t">'+esc(t.name)+'</div><div class="m">'+esc(t.plan)+' · '+esc(t.edition)+' · '+t.users+' users</div></div>';}).join('')||'<span class="note">no tenants yet</span>';
+  document.querySelectorAll('.ten').forEach(function(el){ el.onclick=function(){ openT(el.dataset.id); }; });
+}
+async function openT(id){
+  var s=await post('/api/saas/summary',{tenant_id:id});
+  if(!s.ok) return; SEL={id:id};
+  $('empty').style.display='none'; $('detail').style.display='';
+  $('d-name').textContent=s.tenant; $('d-plan').innerHTML='<span class="pill">'+esc(s.plan)+'</span> → edition <span class="pill">'+esc(s.edition)+'</span>';
+  $('kpis').innerHTML=[['Users',s.users.length],['Features',s.entitled_features.length],['Usage (lessons)',s.usage.lessons||0]].map(k=>'<div class="kpi"><div class="n">'+esc(k[1])+'</div><div class="k">'+k[0]+'</div></div>').join('');
+  $('u-role').innerHTML=(s.roles||[]).map(r=>'<option>'+esc(r)+'</option>').join('');
+  $('users').innerHTML='<tr><th>Email</th><th>Role</th></tr>'+(s.users||[]).map(u=>'<tr><td>'+esc(u.email)+'</td><td>'+esc(u.role)+'</td></tr>').join('');
+  $('features').innerHTML=(s.entitled_features||[]).map(esc).join(' · ');
+  $('d-note').textContent=s.note||''; loadTenants();
+}
+$('add-ten').onclick=async function(){ var n=($('t-name').value||'').trim(); if(!n) return; var r=await post('/api/saas/tenant',{name:n,plan:$('t-plan').value}); $('t-name').value=''; await loadTenants(); if(r.id) openT(r.id); };
+$('add-user').onclick=async function(){ if(!SEL) return; var e=($('u-email').value||'').trim(); if(!e) return; await post('/api/saas/user',{tenant_id:SEL.id,email:e,role:$('u-role').value}); $('u-email').value=''; openT(SEL.id); };
+$('set-plan').onclick=async function(){ if(!SEL) return; await post('/api/saas/plan',{tenant_id:SEL.id,plan:$('p-plan').value}); openT(SEL.id); };
+$('meter').onclick=async function(){ if(!SEL) return; await post('/api/saas/usage',{tenant_id:SEL.id,metric:'lessons',n:1}); openT(SEL.id); };
+loadTenants();
+</script>
+</body>
+</html>

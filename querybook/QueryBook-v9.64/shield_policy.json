@@ -1,0 +1,125 @@
+{
+  "_note": "Edit by hand and restart QueryBook. Allow-lists never expand through the API (spec A3).",
+  "roles": {
+    "operator": [
+      "integrity.seal",
+      "integrity.verify",
+      "nft.mint",
+      "nft.revoke",
+      "nft.status",
+      "nft.transfer",
+      "nft.verify",
+      "openclaw.ingest",
+      "openclaw.preview",
+      "security.log_verify",
+      "security.status",
+      "ufcs.query",
+      "ufcs.understand",
+      "ufcs.verify"
+    ],
+    "user": [
+      "ufcs.query",
+      "ufcs.verify",
+      "ufcs.understand",
+      "openclaw.preview",
+      "openclaw.ingest",
+      "integrity.seal",
+      "integrity.verify",
+      "nft.status",
+      "nft.verify",
+      "security.status",
+      "security.log_verify"
+    ],
+    "agent": [
+      "ufcs.query",
+      "ufcs.verify",
+      "ufcs.understand",
+      "openclaw.preview",
+      "openclaw.ingest",
+      "integrity.verify",
+      "nft.status",
+      "nft.verify",
+      "security.status"
+    ],
+    "guest": [
+      "ufcs.query",
+      "ufcs.verify",
+      "ufcs.understand"
+    ]
+  },
+  "agents": {
+    "qb.chat": {
+      "commands": [
+        "ufcs.query",
+        "ufcs.verify",
+        "ufcs.understand"
+      ]
+    },
+    "qb.openclaw": {
+      "commands": [
+        "ufcs.query",
+        "ufcs.verify",
+        "ufcs.understand",
+        "openclaw.preview",
+        "openclaw.ingest",
+        "integrity.verify",
+        "nft.status",
+        "nft.verify",
+        "security.status"
+      ]
+    },
+    "qb.provenance": {
+      "commands": [
+        "integrity.seal",
+        "integrity.verify",
+        "nft.status",
+        "nft.verify",
+        "nft.mint",
+        "nft.transfer",
+        "nft.revoke",
+        "security.log_verify"
+      ]
+    },
+    "qb.security": {
+      "commands": [
+        "security.status",
+        "security.log_verify"
+      ]
+    }
+  },
+  "callers": {
+    "local-operator": {
+      "role": "operator"
+    },
+    "openclaw": {
+      "role": "agent"
+    },
+    "mcp-client": {
+      "role": "agent"
+    }
+  },
+  "rate_limits": {
+    "operator": [
+      600,
+      120
+    ],
+    "user": [
+      240,
+      60
+    ],
+    "agent": [
+      120,
+      30
+    ],
+    "guest": [
+      30,
+      10
+    ]
+  },
+  "anomaly": {
+    "window_s": 60,
+    "distinct_commands": 8,
+    "rejections": 5,
+    "isolate_score": 6
+  }
+}

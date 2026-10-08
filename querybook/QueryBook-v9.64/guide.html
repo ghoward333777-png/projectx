@@ -1,0 +1,393 @@
+<!doctype html><html lang="en" data-theme="light"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QueryBook User Guide</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+  
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.14);--warn:#e0913f;
+    --warnbg:rgba(224,145,63,.13);--info:#6f9bff;--infobg:rgba(111,155,255,.12);color-scheme:dark}}
+  :root[data-theme="dark"]{
+    --bg:#0d110e;--panel:#161b16;--panel2:#121712;--ink:#eef2ea;--muted:#a3aa9d;--line:#28312a;
+    --accent:#48ccac;--gold:#e0b25a;--good:#43c98a;--goodbg:rgba(67,201,138,.14);--warn:#e0913f;
+    --warnbg:rgba(224,145,63,.13);--info:#6f9bff;--infobg:rgba(111,155,255,.12);color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6}
+  header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);
+    border-bottom:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .brand{font-weight:800;font-size:16px} .brand .q{color:var(--accent)}
+  nav.menu{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  nav.menu a{font-size:13px;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:7px}
+  nav.menu a:hover{background:var(--panel2);color:var(--ink)} nav.menu a.active{background:var(--accent);color:#fff}
+  .layout{max-width:1120px;margin:0 auto;padding:0 16px 60px;display:grid;grid-template-columns:230px 1fr;gap:28px}
+  @media (max-width:860px){.layout{grid-template-columns:1fr}}
+  aside{position:sticky;top:70px;align-self:start;font-size:13px;max-height:calc(100vh - 90px);overflow:auto}
+  @media (max-width:860px){aside{position:static;max-height:none;border-bottom:1px solid var(--line);padding-bottom:12px}}
+  aside .toc-h{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:800;margin:14px 0 6px}
+  aside a{display:block;color:var(--muted);text-decoration:none;padding:3px 0}
+  aside a:hover{color:var(--accent)}
+  main{min-width:0}
+  .hero{padding:26px 0 6px}
+  .eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  h1{font-family:var(--serif);font-size:clamp(26px,5vw,38px);line-height:1.1;margin:8px 0}
+  .lede{color:var(--muted);font-size:15px;max-width:74ch}
+  h2{font-family:var(--serif);font-size:23px;margin:34px 0 6px;padding-top:16px;border-top:2px solid var(--line);scroll-margin-top:74px}
+  h3{font-size:16px;margin:20px 0 4px}
+  p,li{font-size:14.5px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:4px 18px;margin:14px 0}
+  .callout{border-radius:10px;padding:12px 15px;margin:14px 0;font-size:13.5px;border:1px solid var(--line)}
+  .callout.warn{background:var(--warnbg);border-left:4px solid var(--warn)}
+  .callout.good{background:var(--goodbg);border-left:4px solid var(--good)}
+  .callout.info{background:var(--infobg);border-left:4px solid var(--info)}
+  .badge{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;vertical-align:middle}
+  .b-built{background:var(--goodbg);color:var(--good)} .b-road{background:var(--infobg);color:var(--info)}
+  .b-plan{background:var(--warnbg);color:var(--warn)}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:12px 0}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .steps{counter-reset:s;list-style:none;padding-left:0}
+  .steps li{counter-increment:s;position:relative;padding:6px 0 6px 40px;margin:0}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:6px;width:26px;height:26px;border-radius:50%;
+    background:var(--accent);color:#fff;font-weight:800;font-size:13px;display:grid;place-items:center}
+  kbd{font-family:var(--mono);font-size:.82em;background:var(--panel);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+  footer{margin-top:36px;border-top:2px solid var(--accent);padding-top:14px;color:var(--muted);font-size:12.5px}
+  a{color:var(--accent)}
+</style></head><body>
+<header class="top">
+  <span class="brand"><span class="q">Query</span>Book — User Guide</span>
+  <nav class="menu">
+    <a href="/">Home</a>
+    <a href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
+    <a class="active" href="/guide">Guide</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="toc-h">Getting started</div>
+    <a href="#what">What QueryBook is</a>
+    <a href="#install">Install &amp; run</a>
+    <a href="#tour">The four screens</a>
+    <div class="toc-h">Using it</div>
+    <a href="#harvest">Harvesting facts</a>
+    <a href="#domains">Domains &amp; the selector</a>
+    <a href="#create">Create a Fact Unit</a>
+    <a href="#verify">Verify &amp; query</a>
+    <a href="#chat">Grounded chat</a>
+    <a href="#language">Language Lab (learn, translate, speak)</a>
+    <a href="#agents">Agents &amp; roles</a>
+    <a href="#awake">24×7 keep-awake</a>
+    <a href="#llm">Connecting an LLM</a>
+    <div class="toc-h">Reference</div>
+    <a href="#api">HTTP API</a>
+    <a href="#built">Built vs. roadmap</a>
+    <a href="#trouble">Troubleshooting</a>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <div class="eyebrow">Grounded · cited · refuses on unknown</div>
+      <h1>QueryBook User Guide</h1>
+      <p class="lede">QueryBook is a fact-harvesting answer engine that <b>cannot state a fact it
+      did not retrieve and verify</b>. Every answer traces to a stored Fact Unit with a source, a
+      trust score, and a fingerprint; when nothing is verified, it refuses instead of guessing.
+      This guide covers everything the running app can do today, and flags clearly what is on the
+      roadmap.</p>
+    </div>
+
+    <div class="callout good"><b>Legend.</b>
+      <span class="badge b-built">Built</span> works in the app right now &nbsp;
+      <span class="badge b-road">Roadmap</span> specified, refuses rather than fabricate &nbsp;
+      <span class="badge b-plan">Planned</span> UI stub / illustrative</div>
+
+    <h2 id="what">What QueryBook is <span class="badge b-built">Built</span></h2>
+    <p>QueryBook stores knowledge as <b>Fact Units</b>: atomic records of
+    <code>subject — predicate — object</code> with a polarity, a content-addressed
+    <b>semantic fingerprint</b>, a <b>trust score</b>, and one or more <b>sources</b>. The store is
+    content-addressed and de-duplicated, so the same fact is never stored twice, and any answer can
+    be traced back to the exact records that support it.</p>
+    <p>The guarantee that sets it apart: the <b>Prime Directive</b> (the gate). A question is
+    answered only from retrieved, verified facts; if the store has nothing above the trust
+    threshold, QueryBook returns <b>UNKNOWN</b> and declines — the “Without-Information Rule.” It
+    cannot hallucinate a fact because it can only repeat what is stored and cited.</p>
+
+    <h2 id="install">Install &amp; run <span class="badge b-built">Built</span></h2>
+    <p>QueryBook is dependency-free Python (standard library only). You need Python 3.8+.</p>
+    <ol class="steps">
+      <li>Unzip the QueryBook package to a folder.</li>
+      <li>On Windows double-click <code>START-WINDOWS.bat</code>; on macOS run <code>START-MAC.command</code>. The launcher asks where to keep the store — <b>pick an external drive</b> if you plan to harvest at scale.</li>
+      <li>Your browser opens to the <b>Console</b>. If it doesn't, go to <code>http://127.0.0.1:8099/dashboard</code>.</li>
+    </ol>
+    <p>To run it by hand:</p>
+    <pre>QB_DATA_DIR=/Volumes/MyDrive/qbstore  python3 qb_api.py
+# then open http://127.0.0.1:8099/dashboard</pre>
+    <table>
+      <tr><th>Environment variable</th><th>What it does</th></tr>
+      <tr><td><code>QB_DATA_DIR</code></td><td>Where the fact store lives (default <code>./mystore</code>). Point it at an external drive for big harvests.</td></tr>
+      <tr><td><code>QB_BIND</code></td><td>Address to listen on (default <code>127.0.0.1:8099</code>).</td></tr>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Optional. Turns on the LLM language layer for chat prose. Never required; QueryBook works fully offline.</td></tr>
+    </table>
+
+    <h2 id="tour">The four screens <span class="badge b-built">Built</span></h2>
+    <table>
+      <tr><th>Screen</th><th>Route</th><th>For</th></tr>
+      <tr><td><b>Console</b></td><td><code>/dashboard</code></td><td>Harvest, watch the store grow, create/verify facts, run agents, keep-awake.</td></tr>
+      <tr><td><b>Chat</b></td><td><code>/</code></td><td>Ask questions; get cited, gated answers or an honest refusal.</td></tr>
+      <tr><td><b>Language Lab</b></td><td><code>/language</code></td><td>Teach any language in one click, translate (auto-detect), speak, and build English in four phases.</td></tr>
+      <tr><td><b>Pipeline demo</b></td><td><code>/console</code></td><td>Step-by-step view of plan → retrieve → gate → compose → check.</td></tr>
+    </table>
+
+    <h2 id="harvest">Harvesting facts <span class="badge b-built">Built</span></h2>
+    <p>On the Console, the top bar runs harvests. Pick a <b>domain</b>, set a count (or use
+    <b>Run 24×7</b> for continuous), and press <b>Start harvest</b>. Harvesting is
+    <b>resuming</b>: every run adds <i>new</i> facts — it never restarts from zero — and the tiles,
+    charts, and “Harvest Workspace” update live from what's actually on disk.</p>
+    <div class="callout info">Harvesting keeps the PC awake automatically while it runs, and
+    releases that hold when it finishes (see <a href="#awake">24×7 keep-awake</a>).</div>
+
+    <h2 id="domains">Domains &amp; the selector <span class="badge b-built">Built</span></h2>
+    <p>The <b>domain selector</b> next to <b>Start harvest</b> lists only the domains that have a
+    real generator behind them, read live from the engine (<code>/api/domain_logic</code>). Each
+    domain has its own harvest logic:</p>
+    <table>
+      <tr><th>Domain</th><th>What it generates</th></tr>
+      <tr><td><code>mathematics</code></td><td>Squares, cubes, factorials, sums, products — grows without bound.</td></tr>
+      <tr><td><code>geometry</code></td><td>Circle area/circumference, square area/perimeter by radius/side.</td></tr>
+      <tr><td><code>arithmetic</code></td><td>Times-tables (n × 1..12).</td></tr>
+    </table>
+    <p>The <b>Domain Navigator</b> on the left shows every domain in the value model; the ones with
+    a live engine (including the structural <b>Language</b> model) are marked live, the rest are
+    <span class="badge b-plan">Planned</span> roadmap verticals. Dollar and percent figures there are
+    <b>illustrative planning estimates</b>, not valuations.</p>
+    <div class="callout warn"><b>Parallel harvesting.</b> The “Parallel Domain Harvesting” card
+    starts one agent per domain so they grow at once. On a single machine the <i>total</i> rate is
+    shared across cores — running three domains doesn't triple throughput, it splits it.</div>
+
+    <h2 id="create">Create a Fact Unit <span class="badge b-built">Built</span></h2>
+    <p>The <b>Create Fact Unit</b> card adds your own fact. Fill subject, predicate, object, and a
+    source label; QueryBook fingerprints, timestamps, and provenance-tags it exactly like a
+    harvested fact (trust defaults to 0.9 for user entries). It's immediately queryable.</p>
+
+    <h2 id="verify">Verify &amp; query <span class="badge b-built">Built</span></h2>
+    <p>Type a subject (e.g. <code>144</code>, <code>circle radius 5</code>) into <b>Verify / Query</b>
+    to see exactly what is stored, with trust scores and fingerprints. This reads your real store —
+    nothing is generated on the fly.</p>
+
+    <h2 id="chat">Grounded chat <span class="badge b-built">Built</span></h2>
+    <p>The Chat screen runs the five-stage grounded pipeline:</p>
+    <ol class="steps">
+      <li><b>Plan</b> — the question becomes one or more FQL query plans (subject / predicate / trust).</li>
+      <li><b>Retrieve</b> — QueryBook runs FQL over your store and returns ranked Fact Units.</li>
+      <li><b>Gate</b> — the Prime Directive classifies the result: <b>VERIFIED</b>, <b>CONTRADICTED</b> (competing values shown side by side), or <b>UNKNOWN</b> (refuse).</li>
+      <li><b>Compose</b> — an answer is written using <i>only</i> the gated facts, each cited <code>[n]</code>.</li>
+      <li><b>Check</b> — every factual sentence must map to a cited fact; unsupported ones are flagged.</li>
+    </ol>
+    <p>Without an API key, a deterministic composer answers straight from the facts (plain, still
+    cited). With <code>ANTHROPIC_API_KEY</code> set, an LLM writes nicer prose — but is
+    <b>forbidden to add anything not in the facts</b>. The answer always carries a
+    <code>response_provenance_hash</code>.</p>
+
+    <h2 id="language">Language Lab — learn &amp; translate languages <span class="badge b-built">Built (deterministic)</span></h2>
+    <p>The Language Lab (<code>/language</code>) is organized around one idea: <b>English is the
+    foundation language</b>, learned in four phases; <b>every other language</b> is taught in one
+    click. A legend at the top of the page shows which language each phase targets.</p>
+
+    <h3>Teach QueryBook a language — one click</h3>
+    <p>Pick a language in the <b>“Teach QueryBook a language”</b> card and press the button. QueryBook
+    then does everything automatically — no agents to wire, nothing to run by hand:</p>
+    <ul>
+      <li><b>Vocabulary</b> — ~3,700–4,000 words per language from a bundled bilingual dictionary.</li>
+      <li><b>Pronunciation</b> — IPA, syllables, and stress for every word (works with no install).</li>
+      <li><b>Translation</b> — each word linked to its English meaning(s).</li>
+    </ul>
+    <p>A live progress bar shows words learned / total, pronounced, and translated. The
+    <b>“All languages — status at a glance”</b> table shows every language's readiness; press
+    <b>Teach</b> on any row to build it.</p>
+
+    <h3>Translate (auto-detects the source language)</h3>
+    <p>The <b>Translate</b> card translates between English and any supported language. Leave
+    <b>From</b> on <b>Auto-detect</b> and QueryBook senses the source language for you; pick the
+    <b>to</b> language and press Translate. It is <b>word-by-word from the dictionary — no LLM, no
+    guessing</b>: any word it doesn't know is left as-is and flagged, and it reports a coverage %.
+    Press <b>🔊 Speak result</b> to hear it. (Word-by-word means grammar isn't adjusted — e.g.
+    Spanish <i>el/la</i> agreement — which is the honest limit of a dictionary translator.)</p>
+
+    <h3>English — the four phases</h3>
+    <p>English is learned in four phases, all <b>built and deterministic</b> (no LLM). Press
+    <b>“Build English — run all 4 phases”</b> to run the whole pipeline automatically, or
+    <b>“Phase 1 only”</b> to run just the first:</p>
+    <ul>
+      <li><b>Phase 1 — Structural priming:</b> grapheme inventory, rule-seeded phonemes, syllables,
+      lexical stability, co-occurrence, pattern saturation; drives the one-way Transition Gate.</li>
+      <li><b>Phase 2 — Semantic grounding:</b> grounds words from a bundled public-domain dictionary
+      (Webster's 1913) and self-grounds against your verified store; every meaning carries a source.</li>
+      <li><b>Phase 3 — Multilingual delta / translation:</b> maps English to/from other languages from
+      the bundled bilingual dictionaries.</li>
+      <li><b>Phase 4 — Speech:</b> pronunciation analysis (G2P phonemes, syllables, stress) and spoken
+      audio through your computer's built-in voice.</li>
+    </ul>
+    <p>Everything learned is written to the store as cited Fact Units in the <code>language</code>
+    domain, so it's queryable like any other knowledge.</p>
+
+    <h3>Speech — what needs no install, and what does</h3>
+    <p><b>Pronunciation (IPA) always works</b>, for every language, with no install. <b>Spoken
+    audio</b> uses your computer's voices: <b>English is always available</b>; other languages speak
+    in Chrome/Edge only if your system has that voice. For guaranteed offline audio in <i>every</i>
+    language, install the free <b>espeak-ng</b> and QueryBook uses it automatically.</p>
+
+    <h3>Diagnostics — if anything looks wrong</h3>
+    <p>The <b>Diagnostics</b> card (and <code>python qb_api.py diag</code>) runs a full self-check:
+    the dictionary source, the store and its index, a live write-and-read test, and an
+    <b>all-languages matrix</b> (words, translation, pronunciation, speech per language). It lists any
+    problems in plain words — press <b>Copy report</b> and send it if you need help.</p>
+
+    <div class="callout warn"><b>Honest boundary.</b> This is the deterministic prototype of the
+    Language Expression Layer. Translation is <b>dictionary word-by-word</b> (demo bilingual data,
+    MUSE, CC BY-NC) — accurate per word, but not grammar-aware; the trained neural model and neural
+    vocoder remain the roadmap. The grapheme→phoneme map is rule-seeded; gate thresholds are the
+    prototype calibration.</div>
+
+    <h2 id="agents">Agents &amp; roles <span class="badge b-built">Built</span> <span class="badge b-road">+ roadmap roles</span></h2>
+    <p>Agents are saved jobs that run on their own schedule (24×7) as background threads and survive
+    restarts. Create one in the <b>AI Harvesting Agents</b> card by picking a <b>role</b>:</p>
+    <table>
+      <tr><th>Role</th><th>Does</th><th>Status</th></tr>
+      <tr><td>Domain harvester (<code>deterministic</code>)</td><td>Grows a domain each cycle.</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Web harvester (<code>web</code>)</td><td>Politely crawls seed URLs, extracts Fact Units.</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Grounded Q&amp;A (<code>grounded_qa</code>)</td><td>Answers a saved question each cycle; records verdict, citations; refuses on unknown.</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Watch (<code>watch</code>)</td><td>Re-answers a standing question and flags when the verdict/answer changes as facts arrive.</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Reasoning / Hypothesis / Planner</td><td>Gated reasoning, creative hypotheses, NLPL task planning.</td><td><span class="badge b-road">Roadmap</span></td></tr>
+    </table>
+    <p>For <b>Grounded Q&amp;A</b> and <b>Watch</b>, the “target” is the question. Roadmap roles are
+    honest stubs: they <b>refuse to run</b> and name the engine they need, rather than faking it.</p>
+
+    <h2 id="awake">24×7 keep-awake <span class="badge b-built">Built</span></h2>
+    <p>The <b>💤 24×7 Awake</b> button is a master switch that keeps the PC awake in <i>all</i>
+    modes — harvesting, paused, or idle — until you turn it off (it persists across restarts). A
+    watchdog writes a heartbeat to <code>keepawake.log</code>, so if the screen went black you can
+    tell whether the machine actually <b>slept</b> (a time gap in the log) or the display just
+    turned off (no gap). Harvests and agents also engage keep-awake automatically while they work.</p>
+
+    <h2 id="llm">Connecting an LLM (optional) <span class="badge b-built">Built</span></h2>
+    <p>QueryBook never needs an LLM, but you can attach one to write better chat prose or help a web
+    agent extract facts. In the <b>LLM Providers</b> card use <b>⚡ Quick add — Claude</b> and pick a
+    model (Haiku by default; switchable to Opus, Sonnet, Fable). The API key is read from the
+    <code>ANTHROPIC_API_KEY</code> environment variable only — QueryBook never stores your key.</p>
+    <div class="callout info">Base URL for Anthropic is <code>https://api.anthropic.com/v1</code>.
+    The provider preset fills this in for you.</div>
+
+    <h2 id="api">HTTP API <span class="badge b-built">Built</span></h2>
+    <table>
+      <tr><th>Method &amp; path</th><th>Purpose</th></tr>
+      <tr><td><code>GET /api/stats</code></td><td>Store totals (facts, blocks, disk, duplicates).</td></tr>
+      <tr><td><code>GET /api/fql?subject=&amp;predicate=&amp;trust_min=&amp;limit=</code></td><td>Query Fact Units; returns a response provenance hash.</td></tr>
+      <tr><td><code>GET /api/verify?subject=&amp;predicate=&amp;object=</code></td><td>VERIFIED / UNKNOWN for one exact fact.</td></tr>
+      <tr><td><code>POST /api/chat</code></td><td><code>{"question": "..."}</code> → gated, cited answer.</td></tr>
+      <tr><td><code>POST /api/harvest</code></td><td><code>{"count": N, "domain": "geometry"}</code>; <code>count ≤ 0</code> = 24×7.</td></tr>
+      <tr><td><code>GET /api/domain_logic</code></td><td>The live domains + their strategies (feeds the selector).</td></tr>
+      <tr><td><code>POST /api/language/ingest</code></td><td><code>{"text": "..."}</code> or <code>{"url": "..."}</code> → learn structure, store facts. Add <code>"preview": true</code> to analyze without storing.</td></tr>
+      <tr><td><code>GET /api/language/status</code></td><td>Current language model + Transition Gate.</td></tr>
+      <tr><td><code>POST /api/language/teach</code></td><td><code>{"lang":"es"}</code> → one-click: start the complete learner (vocabulary + pronunciation + translation).</td></tr>
+      <tr><td><code>POST /api/language/run_all</code></td><td>Start all four English phases automatically.</td></tr>
+      <tr><td><code>POST /api/language/translate</code></td><td><code>{"text":"…","src":"auto","dst":"en"}</code> → dictionary translation; <code>src:"auto"</code> auto-detects the source.</td></tr>
+      <tr><td><code>GET /api/language/detect?text=…</code></td><td>Auto-sense which language text is written in.</td></tr>
+      <tr><td><code>GET /api/language/readiness</code></td><td>Per-language status: words, translation, pronunciation, speech.</td></tr>
+      <tr><td><code>GET /api/language/diag?lang=es</code></td><td>Full diagnostics incl. all-languages matrix + live write/read test.</td></tr>
+      <tr><td><code>GET /api/agent_roles</code></td><td>The grounded agent-role catalog.</td></tr>
+    </table>
+
+    <h2 id="built">Built vs. roadmap — the honest map</h2>
+    <table>
+      <tr><th>Capability</th><th>Status</th></tr>
+      <tr><td>Fact Units, fingerprints, trust, provenance, dedupe</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Resuming per-domain harvest; 24×7; keep-awake</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>FQL query; verify; grounded chat (plan→gate→cite→check); refuse-on-unknown</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Agents: domain, web, grounded Q&amp;A, watch</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Language Lab: structural SLPL, Transition Gate, facts</td><td><span class="badge b-built">Built</span></td></tr>
+      <tr><td>Neural Language Expression Layer: word→meaning grounding, learned G2P, speech</td><td><span class="badge b-road">Roadmap</span></td></tr>
+      <tr><td>Gated reasoning, hypothesis/PROPOSED, NLPL planner agents</td><td><span class="badge b-road">Roadmap</span></td></tr>
+      <tr><td>Domain Navigator dollar/percent values; source &amp; strategy toggles</td><td><span class="badge b-plan">Illustrative</span></td></tr>
+    </table>
+
+    <h2 id="trouble">Troubleshooting</h2>
+    <h3>“store dir not found” / stats error</h3>
+    <p>You haven't harvested yet, or <code>QB_DATA_DIR</code> points somewhere empty. Start a harvest, or set the variable to your store.</p>
+    <h3>Chat says UNKNOWN for everything</h3>
+    <p>That's the Prime Directive working: your store has no verified fact for the question. Harvest the relevant domain or add facts, then ask again. UNKNOWN is honesty, not an error.</p>
+    <h3>The screen went black — did it sleep?</h3>
+    <p>Open <code>keepawake.log</code> in your store folder. A jump in the timestamps means a real sleep; steady heartbeats mean only the display turned off. Turn on <b>24×7 Awake</b> to prevent sleep entirely.</p>
+    <h3>A URL won't fetch in the Language Lab</h3>
+    <p>Some sites block automated requests or need a login. Try another source, or paste the text directly. QueryBook fetches one page you choose — it does not crawl.</p>
+
+    <footer>
+      QueryBook User Guide. QueryBook is a grounded answer engine: it cites its sources and refuses
+      when it doesn't know. Capabilities marked Roadmap are specified but not implemented; figures in
+      the Domain Navigator are illustrative planning estimates, not valuations. Regulated domains
+      require lawful, consented data sources.
+    </footer>
+  </main>
+</div>
+
+<script>
+// ---- Hover call-outs: a styled pop-up explaining any control with data-tip ----
+(function(){
+  // Auto-label the top navigation on every page (so menu items explain themselves).
+  var NAVTIPS={'/dashboard':'Console: start/stop harvesting facts, see totals, manage agents.',
+    '/':'Chat: ask questions and get cited answers (or an honest UNKNOWN).',
+    '/language':'Language Lab: teach languages, translate, and speak.',
+    '/guide':'Guide: the full user manual for every feature.',
+    '/monitor':'Monitor: live system health, store size, agents, and links to open from another device.',
+    '/voice':'Voice Lab: two-way voice, tone/volume, and voice matching.'};
+  function navKey(h){ if(!h) return ''; h=h.replace(/^\.?\//,'').replace(/\.html$/,'').toLowerCase();
+    var m={'':'/','chat':'/','dashboard':'/dashboard','live':'/dashboard','console':'/dashboard',
+      'language':'/language','lang':'/language','guide':'/guide','help':'/guide',
+      'monitor':'/monitor','status':'/monitor','voice':'/voice'}; return m[h]||('/'+h); }
+  try{ document.querySelectorAll('nav a[href]').forEach(function(a){
+    if(!a.getAttribute('data-tip')){ var k=navKey(a.getAttribute('href')); if(NAVTIPS[k]) a.setAttribute('data-tip',NAVTIPS[k]); }
+  }); }catch(e){}
+  let tip=null, hideT=null;
+  function ensure(){
+    if(tip) return tip;
+    tip=document.createElement('div');
+    tip.style.cssText='position:fixed;z-index:9999;max-width:280px;background:#11201b;color:#eaf4ef;'
+      +'border:1px solid #2e5c4e;border-radius:10px;padding:9px 12px;font:13px/1.45 system-ui,sans-serif;'
+      +'box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .12s;'
+      +'display:none';
+    document.body.appendChild(tip); return tip;
+  }
+  function show(el){
+    const t=el.getAttribute('data-tip'); if(!t) return;
+    const n=ensure(); n.textContent=t; n.style.display='block';
+    const r=el.getBoundingClientRect();
+    // position below the element, clamped to the viewport
+    n.style.left='-9999px'; n.style.top='0px'; n.style.opacity='0';
+    requestAnimationFrame(()=>{
+      const w=n.offsetWidth, h=n.offsetHeight;
+      let x=r.left+r.width/2-w/2; x=Math.max(8,Math.min(x,window.innerWidth-w-8));
+      let y=r.bottom+8; if(y+h>window.innerHeight-8) y=r.top-h-8;
+      n.style.left=x+'px'; n.style.top=Math.max(8,y)+'px'; n.style.opacity='1';
+    });
+  }
+  function hide(){ if(hideT)clearTimeout(hideT); hideT=setTimeout(()=>{ if(tip){tip.style.opacity='0';tip.style.display='none';} },60); }
+  document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip]'); if(el){ if(hideT)clearTimeout(hideT); show(el);} });
+  document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip]'); if(el) hide(); });
+  document.addEventListener('focusin',e=>{ const el=e.target.closest('[data-tip]'); if(el) show(el); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',hide);
+})();
+</script>
+<script src="/qb-ui.js"></script>
+</body></html>

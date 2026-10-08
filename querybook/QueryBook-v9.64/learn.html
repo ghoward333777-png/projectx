@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Learn</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#1e7f3c;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#1e7f3c;font-weight:700}
+.wrap{max-width:900px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input[type=text]{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff;color:var(--ink)}
+.btn{background:#1e7f3c;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:default}
+.q{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:10px;background:#fbfcfb}
+.q .qt{font-weight:600;margin-bottom:6px}
+.opt{display:block;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-top:5px;cursor:pointer}
+.opt.sel{border-color:#1e7f3c;background:#e6f5ec}
+.opt.correct{border-color:#1e7f3c;background:#d7f0e0}
+.opt.wrong{border-color:#c0392b;background:#f8d7d7}
+.bar{height:12px;background:#e7ece8;border-radius:6px;overflow:hidden;margin-top:4px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,#3fae8f,#1e7f3c)}
+.mastery div{margin-top:8px;font:13px/1.4 system-ui}
+.chip{display:inline-block;font:700 11px/1 var(--mono);padding:3px 7px;border-radius:999px;background:#eef1ee;color:var(--muted);margin:2px}
+.note{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Learn · v9.64</span>
+  <nav class="nav">
+    <a href="/">Home</a>
+    <a href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a class="active" href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
+    <a href="/openclaw">Open Claw</a>
+    <a href="/security">Security</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="card">
+    <h2>Learn — adaptive lessons from verified facts</h2>
+    <p class="sub">Pick a subject; QueryBook builds a lesson (concepts + quiz) from Fact Units, grades you,
+    and shows mastery, misconceptions, a study guide, and a concept map. Questions only quiz verified facts.</p>
+    <div class="row">
+      <label class="note">Name <input type="text" id="learner" value="you" style="width:120px"></label>
+      <label class="note">Subject
+        <select id="domain"><option>history</option><option>art</option><option>culture</option><option>mathematics</option></select></label>
+      <label class="note">Class <input type="text" id="class" placeholder="class-1" style="width:100px"></label>
+      <button class="btn" id="start">Start lesson</button>
+      <span id="status" class="note"></span>
+    </div>
+  </div>
+
+  <div class="card" id="lesson-card" style="display:none">
+    <h2 id="ltitle"></h2>
+    <p class="sub" id="lnote"></p>
+    <div id="concepts"></div>
+    <div id="questions"></div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="submit">Submit answers</button></div>
+  </div>
+
+  <div class="card" id="result-card" style="display:none">
+    <h2>Your result</h2>
+    <div id="score" style="font-family:var(--serif);font-size:30px;color:#1e7f3c"></div>
+    <div class="mastery" id="mastery"></div>
+    <div id="misc" style="margin-top:12px"></div>
+    <div id="guide" style="margin-top:12px"></div>
+  </div>
+</div>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function post(p,o){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(r=>r.json());}
+var LESSON=null, PICK={};
+$('start').onclick=async function(){
+  $('status').textContent='Building lesson…';
+  var r=await post('/api/edu/lesson',{domain:$('domain').value, count:5});
+  LESSON=r; PICK={};
+  $('lesson-card').style.display=''; $('result-card').style.display='none';
+  $('ltitle').textContent=r.title; $('lnote').textContent=r.note||'';
+  $('concepts').innerHTML='<b>Concepts:</b> '+(r.concepts||[]).map(c=>'<span class="chip">'+esc(c)+'</span>').join('');
+  $('questions').innerHTML=(r.items||[]).map(function(it,i){
+    return '<div class="q" data-i="'+i+'"><div class="qt">'+(i+1)+'. '+esc(it.question)+'</div>'+
+      (it.options||[]).map(function(o){return '<label class="opt" data-i="'+i+'" data-o="'+esc(o)+'">'+esc(o)+'</label>';}).join('')+'</div>';
+  }).join('');
+  document.querySelectorAll('.opt').forEach(function(el){ el.onclick=function(){
+    var i=el.dataset.i; PICK[i]=el.dataset.o;
+    el.parentNode.querySelectorAll('.opt').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); }; });
+  $('status').textContent='';
+};
+$('submit').onclick=async function(){
+  if(!LESSON) return;
+  var answers=(LESSON.items||[]).map(function(it,i){return {question:it.question, answer:PICK[i]||'', competency:it.competency, correct_answer:it.answer};});
+  var g=await post('/api/edu/grade',{learner:$('learner').value||'you', domain:LESSON.domain, answers:answers, class_id:($('class').value||null)});
+  // mark options
+  (LESSON.items||[]).forEach(function(it,i){
+    document.querySelectorAll('.opt[data-i="'+i+'"]').forEach(function(el){
+      if(el.dataset.o===it.answer) el.classList.add('correct');
+      else if(el.dataset.o===PICK[i]) el.classList.add('wrong');
+    });
+  });
+  $('result-card').style.display='';
+  $('score').textContent=g.score+'%  ('+g.correct+'/'+g.total+')';
+  $('mastery').innerHTML='<b>Mastery by concept</b>'+Object.keys(g.mastery).map(function(c){
+    return '<div>'+esc(c)+' — '+g.mastery[c]+'%<div class="bar"><span style="width:'+g.mastery[c]+'%"></span></div></div>';}).join('');
+  $('misc').innerHTML=(g.misconceptions||[]).length?('<b>Review these</b> '+g.misconceptions.map(m=>'<span class="chip">'+esc(m.competency)+': '+esc(m.correct)+'</span>').join('')):'<b>No misconceptions — nicely done.</b>';
+  var sg=await post('/api/edu/study_guide',{domain:LESSON.domain});
+  $('guide').innerHTML='<b>'+esc(sg.title)+'</b>'+(sg.sections||[]).map(function(s){return '<div style="margin-top:4px"><i>'+esc(s.competency)+'</i>: '+s.points.map(esc).join('; ')+'</div>';}).join('');
+  $('result-card').scrollIntoView({behavior:'smooth'});
+};
+$('start').click();
+</script>
+</body>
+</html>

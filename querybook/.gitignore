@@ -1,0 +1,17 @@
+# QueryBook runtime state and secrets: created on first run, never committed
+__pycache__/
+*.pyc
+QueryBook-v9.64/qb_ledger.json
+QueryBook-v9.64/qb_integrity_key
+QueryBook-v9.64/qb_nft_config.json
+QueryBook-v9.64/qb_nft_wallet.key
+QueryBook-v9.64/qb_nft_registry.json
+QueryBook-v9.64/qb_openclaw_history.json
+QueryBook-v9.64/qb_lil_store.json
+QueryBook-v9.64/qb_rights_store.json
+QueryBook-v9.64/qb_tts_keys.json
+QueryBook-v9.64/.env.production.bak
+QueryBook-v9.64/qb_admin_credentials.json.bak
+QueryBook-v9.64/mystore/
+*.qc
+*.zip

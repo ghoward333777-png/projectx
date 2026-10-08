@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Scene Director (Gemini Omni adapter)</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:var(--accent);font-weight:700}
+.wrap{max-width:1040px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--accent);border:1.5px solid var(--accent)}
+.btn:disabled{opacity:.55;cursor:default}
+textarea{width:100%;min-height:260px;border:1px solid var(--line);border-radius:10px;padding:12px;font:13px/1.5 var(--mono,ui-monospace,Menlo,Consolas,monospace);background:#fff;color:var(--ink)}
+.note{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.prompt{background:var(--soft,#f3f8f6);border:1px solid #bfe0d4;border-radius:10px;padding:12px 14px;margin-top:10px;white-space:pre-wrap;word-break:break-word;font:14px/1.6 system-ui}
+.prompt .lbl{display:inline-block;font:700 11px/1 var(--mono);background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;margin-bottom:8px;letter-spacing:.03em}
+.beat{background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px}
+.beat .bt{font:700 12px/1 var(--mono);color:var(--accent2,#0c5c4c)}
+pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:14px;overflow:auto;max-height:360px;font:12px/1.5 var(--mono,Consolas,monospace)}
+.pill{display:inline-block;font:700 12px/1 var(--mono);padding:5px 10px;border-radius:999px;background:#eef1ee;color:var(--muted);margin-left:6px}
+.ok{background:#d7f0e5;color:#0c5c4c}.warn{background:#fff0c8;color:#7a5a00}.err{background:#ffd9d9;color:#8a1111}
+.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font:12px/1 var(--mono);color:var(--muted);margin:6px 0 2px}
+.flow span{background:#eef1ee;border-radius:6px;padding:5px 8px}
+.flow i{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Scene Director · v9.64</span>
+  <nav class="nav">
+    <a href="/">Home</a>
+    <a href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a class="active" href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
+    <a href="/openclaw">Open Claw</a>
+    <a href="/security">Security</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Scene Director — QueryBook → Gemini Omni adapter</h2>
+    <p class="sub">QueryBook is the <b>director</b>: a structured scene graph. Gemini Omni is a prompt-driven
+    <b>renderer</b>. This adapter turns stage, lighting, camera, blocking and timeline into exact Gemini prompts —
+    <b>pure deterministic templating</b> (no model in the loop, so it is covenant-safe). Video rendering is
+    optional, gated on a Gemini key, and <b>never fabricated</b>.</p>
+    <div class="flow">
+      <span>FU graph</span><i>→</i><span>SceneGraph</span><i>→</i><span>PromptBundle</span><i>→</i>
+      <span>Gemini Omni</span><i>→</i><span>Compliance</span><i>→</i><span>Edit prompts</span><i>↻</i>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1 · FU graph (meaning)</h2>
+    <p class="sub">Edit the QueryBook FU graph, or load the worked example (a two-character noir dialogue in a small LA bar).</p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn ghost" id="load-example">Load noir LA bar example</button>
+      <button class="btn ghost" id="run-qc">Run director QC</button>
+      <span id="qc-out" class="note"></span>
+    </div>
+    <details id="keybox" style="margin:0 0 10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🔑 Gemini / Veo video key <span id="keystat" class="note"></span></summary>
+      <p class="sub" style="margin:6px 0">Paste your Google Gemini API key (with Veo access) to render real video. Stored only on this computer; never committed. Without it, Render returns a dry-run plan.</p>
+      <div class="row"><input type="password" id="gkey" placeholder="paste Gemini API key" autocomplete="off" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)">
+        <button class="btn ghost" id="savekey">Save key</button></div>
+    </details>
+    <textarea id="fu" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="gen">Generate prompts →</button>
+      <button class="btn ghost" id="render">Render (dry-run / Gemini)</button>
+      <span id="status" class="note"></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card" id="prompts-card" style="display:none">
+      <h2>2 · Gemini prompt bundle <span id="valid-pill" class="pill"></span></h2>
+      <p class="sub">The exact text the adapter would send to Gemini Omni.</p>
+      <div id="base"></div>
+      <div id="beats"></div>
+      <div id="edits"></div>
+    </div>
+    <div class="card" id="scene-card" style="display:none">
+      <h2>3 · Scene graph &amp; render trace</h2>
+      <p class="sub">The deterministic SceneGraph (and, on render, the Gemini payload / dry-run plan).</p>
+      <pre class="json" id="scene"></pre>
+      <video id="video" controls playsinline style="width:100%;border-radius:10px;background:#000;display:none;margin-top:8px"></video>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="note">⚖️ <b>Covenant:</b> prompt generation is deterministic templating — no LLM asserts anything.
+    Video generation is <i>rendering</i> (like text-to-speech), gated on your own Gemini/Veo key; with no key the
+    adapter returns a <b>dry-run plan</b> (the full payload) and never invents a video. Compliance analysis is
+    honest: QueryBook does not fabricate a verdict — supply observed-video metadata to drive the refinement loop.</p>
+  </div>
+</div>
+
+<script src="/qb-ui.js"></script>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+async function post(path, body){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  return r.json();
+}
+async function loadExample(){
+  const r=await post('/api/director/example',{});
+  $('fu').value=JSON.stringify(r.fu,null,2);
+}
+function getFU(){
+  try{ return JSON.parse($('fu').value); }
+  catch(e){ $('status').textContent='FU graph is not valid JSON: '+e; return null; }
+}
+function renderBundle(b, validation){
+  $('prompts-card').style.display='';
+  const vp=$('valid-pill');
+  if(validation){ const errs=(validation.issues||[]).filter(i=>i.severity==='error').length;
+    const warns=(validation.issues||[]).filter(i=>i.severity==='warning').length;
+    vp.className='pill '+(validation.ok?(warns?'warn':'ok'):'err');
+    vp.textContent=validation.ok?(warns?('valid · '+warns+' warning(s)'):'valid'):(errs+' error(s)'); }
+  $('base').innerHTML='<div class="prompt"><span class="lbl">BASE PROMPT</span><br>'+esc(b.basePrompt)+'</div>';
+  $('beats').innerHTML=(b.beatPrompts||[]).map(function(bp){
+    return '<div class="beat"><div class="bt">'+esc(bp.beatId)+'</div>'+esc(bp.prompt)+'</div>';}).join('');
+  $('edits').innerHTML=(b.editPrompts&&b.editPrompts.length)?('<h3 style="margin:14px 0 4px;font-size:15px">Edit prompts</h3>'+
+    b.editPrompts.map(function(e){return '<div class="beat"><div class="bt">'+esc(e.targetSegment)+'</div>'+esc(e.prompt)+'</div>';}).join('')):'';
+}
+$('load-example').onclick=loadExample;
+$('run-qc').onclick=async function(){
+  const r=await post('/api/director/qc',{});
+  $('qc-out').innerHTML='QC '+r.passed+'/'+r.total+' '+(r.ok?'<span class="pill ok">pass</span>':'<span class="pill err">fail</span>');
+};
+$('gen').onclick=async function(){
+  const fu=getFU(); if(!fu) return;
+  $('status').textContent='Generating…';
+  const r=await post('/api/director/prompts',{fu:fu});
+  if(r.error){ $('status').textContent=r.error; return; }
+  renderBundle(r.promptBundle, r.validation);
+  $('scene-card').style.display='';
+  $('scene').textContent=JSON.stringify(r.scene,null,2);
+  $('status').textContent='Prompt bundle ready.';
+};
+$('render').onclick=async function(){
+  const fu=getFU(); if(!fu) return;
+  $('status').textContent='Rendering…';
+  const r=await post('/api/director/render',{fu:fu});
+  if(r.error){ $('status').textContent=r.error; return; }
+  renderBundle(r.promptBundle, r.validation);
+  $('scene-card').style.display='';
+  $('scene').textContent=JSON.stringify({dry_run:r.dry_run, trace:r.trace, scene:r.scene},null,2);
+  var op=(r.trace&&r.trace[0]&&r.trace[0].result&&r.trace[0].result.operation)||null;
+  if(r.dry_run || !op){
+    $('status').innerHTML=r.dry_run
+      ? 'Dry-run plan ready <span class="pill warn">no Gemini key — video not generated</span>'
+      : 'Submitted <span class="pill">no operation</span>';
+  } else {
+    $('status').innerHTML='Rendering with Gemini/Veo… <span class="pill ok">operation started</span>';
+    pollVideo(op);
+  }
+};
+async function pollVideo(op){
+  var t0=Date.now(), v=$('video');
+  for(var i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r,8000));
+    var pr=await post('/api/video/poll',{operation:op});
+    if(pr.done){
+      if(pr.ready&&pr.url){ v.src=pr.url; v.style.display=''; v.play().catch(function(){});
+        $('status').innerHTML='✓ clip ready <span class="pill ok">'+Math.round((Date.now()-t0)/1000)+'s · '+Math.round(pr.bytes/1024)+' KB</span>'; }
+      else { $('status').textContent='render issue: '+(pr.error||'no video'); }
+      return;
+    }
+    $('status').textContent='rendering with Gemini/Veo… ('+Math.round((Date.now()-t0)/1000)+'s)';
+  }
+  $('status').textContent='still rendering — Veo can take a few minutes';
+}
+async function keyStatus(){
+  try{ var d=await (await fetch('/api/language/tts_providers')).json();
+    var on=d&&d.cloud&&d.cloud.google&&d.cloud.google.configured;
+    $('keystat').innerHTML=on?'<span style="color:#0c7a5c">✓ configured</span>':'<span style="color:#c0392b">— not set (dry-run only)</span>';
+    if(!on&&$('keybox')) $('keybox').open=true;
+  }catch(e){}
+}
+if($('savekey')) $('savekey').onclick=async function(){
+  var k=($('gkey').value||'').trim(); if(!k){ $('keystat').textContent='paste a key first'; return; }
+  var d=await post('/api/language/tts_key',{provider:'google',key:k});
+  $('gkey').value=''; $('keystat').textContent=d.ok?'saved ✓':'save failed'; keyStatus();
+};
+loadExample(); keyStatus();
+</script>
+</body>
+</html>

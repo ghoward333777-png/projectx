@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Ingestion Studio</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#0c7a5c;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#0c7a5c;font-weight:700}
+.wrap{max-width:1000px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 10px}
+.ladder{display:flex;gap:0;flex-wrap:wrap;align-items:stretch;margin-top:10px}
+.stage{flex:1;min-width:150px;border:1px solid var(--line);border-radius:12px;padding:14px;margin:4px;background:#fbfcfb;position:relative}
+.stage.active{border-color:#0c7a5c;box-shadow:0 0 0 2px rgba(12,122,92,.14)}
+.stage.planned{opacity:.78;border-style:dashed}
+.stage.disabled{opacity:.45}
+.stage .ord{font:700 11px/1 var(--mono);color:var(--muted)}
+.stage .nm{font-weight:700;font-size:16px;margin:2px 0}
+.stage .st{font:700 10px/1 var(--mono);padding:3px 6px;border-radius:999px;display:inline-block}
+.st.built{background:#d7f0e5;color:#0c5c4c}.st.planned{background:#fff0c8;color:#7a5a00}
+.bar{height:10px;background:#e7ece8;border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,#3fae8f,#0c5c4c);width:0}
+.stage .mv{font:700 12px/1 var(--mono);color:var(--accent2,#0c5c4c)}
+.stage .src{font-size:12px;color:var(--muted);margin-top:6px}
+.btn{background:#0c7a5c;color:#fff;border:none;border-radius:9px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer}
+.btn.ghost{background:#fff;color:#0c7a5c;border:1.5px solid #0c7a5c}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.rec{background:var(--soft,#eef4f1);border:1px solid #bfe0d4;border-radius:10px;padding:12px 14px;margin-top:10px}
+.note{color:var(--muted);font-size:13px}
+.chip{display:inline-block;font:700 11px/1 var(--mono);padding:3px 7px;border-radius:999px;background:#eef1ee;color:var(--muted);margin:2px}
+#log{white-space:pre-wrap;font:12px/1.5 var(--mono);background:#1e2430;color:#d6e2f0;border-radius:10px;padding:12px;max-height:200px;overflow:auto;margin-top:10px;display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Ingestion · v9.64</span>
+  <nav class="nav">
+    <a href="/">Home</a>
+    <a class="active" href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
+    <a href="/openclaw">Open Claw</a>
+    <a href="/security">Security</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Ingestion Studio — staged &amp; automated</h2>
+    <p class="sub">The knowledge base grows along a deliberate ladder: <b>Language → Deterministic → History → News → Culture → Art</b>.
+    QueryBook works the <b>active</b> stage first; later stages unlock as earlier ones mature. Everything stays deterministic and provenance-tracked.</p>
+    <div class="row">
+      <button class="btn" id="autopilot">▶ Run the active stage (autopilot)</button>
+      <button class="btn ghost" id="refresh">↻ Refresh status</button>
+      <span class="chip" id="edchip"></span>
+      <span class="note" id="status"></span>
+    </div>
+    <div class="rec" id="rec" style="display:none"></div>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <h2>Stage ladder</h2>
+    <div class="ladder" id="ladder"></div>
+  </div>
+
+</div>
+
+<script src="/qb-ui.js"></script>
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function log(m){var l=$('log');l.style.display='';l.textContent+=m+'\n';l.scrollTop=l.scrollHeight;}
+// Fetch JSON with a hard timeout so a hung endpoint can never freeze the page.
+function getJSON(url,ms){
+  var ctl=('AbortController' in window)?new AbortController():null;
+  var t=ctl?setTimeout(function(){try{ctl.abort();}catch(e){}},ms||7000):0;
+  return fetch(url,ctl?{signal:ctl.signal}:{}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).finally(function(){ if(t) clearTimeout(t); });
+}
+var STRATEGY=null;
+function pct(p){ if(p.unit==='%') return Math.max(0,Math.min(100,p.value));
+  return p.value>=1000?100:(p.value>0?Math.min(95,Math.round(p.value/10)):0); }
+function renderStage(st){
+  var cls='stage'+(st.id===STRATEGY.active_stage?' active':'')+(st.status==='planned'?' planned':'')+(st.enabled_in_edition?'':' disabled');
+  var p=st.progress||{}; var w=pct(p);
+  var canRun=(st.status==='built'&&st.enabled_in_edition);
+  return '<div class="'+cls+'">'+
+    '<div class="ord">STAGE '+st.order+'</div>'+
+    '<div class="nm">'+esc(st.name)+'</div>'+
+    '<span class="st '+(st.status==='built'?'built':'planned')+'">'+st.status+'</span>'+
+    (st.enabled_in_edition?'':' <span class="chip">off in edition</span>')+
+    '<div class="bar"><span style="width:'+w+'%"></span></div>'+
+    '<div class="mv">'+(p.value!=null?(p.value+' '+(p.unit||'')):'')+' · '+esc(p.state||'')+'</div>'+
+    '<div class="src">'+esc(st.source)+'</div>'+
+    '<div class="row" style="margin-top:8px">'+
+      (canRun?('<button class="btn ghost runstage" data-id="'+st.id+'">▶ Start</button>'):
+        (st.status==='planned'?'<span class="note">roadmap — next to build</span>':''))+
+    '</div></div>';
+}
+async function load(){
+  $('status').textContent='Loading…';
+  var s;
+  try{
+    s=await getJSON('/api/ingest/strategy');
+  }catch(e){
+    $('status').textContent='';
+    $('edchip').textContent='offline';
+    $('ladder').innerHTML='<p class="note">Could not load the stage ladder — is the server running? '+
+      '<a href="#" onclick="load();return false;">Retry</a></p>';
+    return;
+  }
+  STRATEGY=s||{};
+  $('edchip').textContent=(STRATEGY.edition||'full')+' edition';
+  var stages=Array.isArray(STRATEGY.stages)?STRATEGY.stages:[];
+  $('ladder').innerHTML=stages.length?stages.map(renderStage).join('')
+    :'<p class="note">No stages reported for this edition.</p>';
+  var r=STRATEGY.recommended;
+  if(r){ $('rec').style.display='';
+    $('rec').innerHTML='<b>Recommended next:</b> '+(r.action==='run_agents'
+      ?('run the <b>'+esc(r.stage)+'</b> stage agents — '+(r.agents||[]).map(a=>'<span class="chip">'+esc(a)+'</span>').join(''))
+      :('build the <b>'+esc(r.stage)+'</b> stage (roadmap)'))+'<br><span class="note">'+esc(r.note||'')+'</span>'; }
+  else { $('rec').style.display='none'; }
+  document.querySelectorAll('.runstage').forEach(function(b){ b.onclick=function(){ runStage(b.dataset.id); }; });
+  $('status').textContent='';
+}
+async function startAgent(kind, target){
+  var name=(target?(kind+':'+target):kind);
+  try{
+    var a=await (await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name,kind:kind,target:target||'',interval:10,chunk:50000})})).json();
+    if(a&&a.id){ await fetch('/api/agents/control',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:a.id,action:'start'})}); log('✓ started '+name+' (id '+a.id+')'); }
+    else log('× could not create '+name+': '+JSON.stringify(a));
+  }catch(e){ log('× '+name+' failed: '+e); }
+}
+async function runStage(id){
+  var st=(STRATEGY.stages||[]).find(s=>s.id===id); if(!st) return;
+  if(st.status!=='built'){ log('Stage "'+id+'" is on the roadmap — nothing to run yet.'); return; }
+  $('status').textContent='Starting '+id+' agents…';
+  if(id==='language'){ await startAgent('lang_pipeline',''); }
+  else if(id==='deterministic'){ for(const d of st.domains){ await startAgent('deterministic', d); } }
+  else { for(const k of st.agents){ await startAgent(k, (st.domains&&st.domains[0])||''); } }
+  $('status').textContent='Started. See the Console for live progress.';
+  setTimeout(load, 1200);
+}
+$('autopilot').onclick=function(){ if(STRATEGY&&STRATEGY.active_stage) runStage(STRATEGY.active_stage); };
+$('refresh').onclick=load;
+load();
+</script>
+</body>
+</html>

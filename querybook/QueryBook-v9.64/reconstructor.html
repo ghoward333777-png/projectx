@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook — Scene Reconstructor</title>
+<link rel="stylesheet" href="/qb-theme.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-family:var(--serif);font-weight:700;font-size:20px}.brand b{color:var(--accent)}
+.badge{font:700 11px/1 var(--mono);background:#6a2ad6;color:#fff;padding:4px 8px;border-radius:6px}
+.nav{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}.nav a{color:var(--muted);font-size:14px}.nav a:hover{color:var(--accent)}.nav a.active{color:#6a2ad6;font-weight:700}
+.wrap{max-width:1040px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:16px}
+.card h2{font-family:var(--serif);font-size:22px;margin:0 0 6px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:10px;padding:12px;font:14px/1.6 system-ui;background:#fff;color:var(--ink)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+label{font-size:13px;color:var(--muted)}
+select,input[type=text]{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:#fff;color:var(--ink)}
+.btn{background:#6a2ad6;color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:15px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:default}
+.styles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.stile{border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:#fbfcfb}
+.stile.sel{border-color:#6a2ad6;box-shadow:0 0 0 2px rgba(106,42,214,.15)}
+.stile .nm{font-weight:700;font-size:14px}.stile .cg{font-size:11px;color:var(--muted)}
+.prompt{background:var(--soft,#f3f0fa);border:1px solid #d9cdf0;border-radius:10px;padding:12px 14px;margin-top:10px;white-space:pre-wrap;word-break:break-word;font:14px/1.6 system-ui}
+.prompt .lbl{display:inline-block;font:700 11px/1 var(--mono);background:#6a2ad6;color:#fff;padding:4px 8px;border-radius:6px;margin-bottom:8px}
+.beat{background:#fbfcfb;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px}
+.beat .bt{font:700 12px/1 var(--mono);color:#6a2ad6}
+.cue{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font:12px/1.4 var(--mono);padding:6px 8px;border-bottom:1px dashed var(--line)}
+.chip{display:inline-block;font:700 11px/1 var(--mono);padding:3px 7px;border-radius:999px;background:#eee6fb;color:#4a1d94;margin:2px}
+pre.json{background:#1e2430;color:#d6e2f0;border-radius:10px;padding:12px;overflow:auto;max-height:300px;font:12px/1.5 var(--mono)}
+.note{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:860px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">Query<b>Book</b></div>
+  <span class="badge">Scene Reconstructor · v9.64</span>
+  <nav class="nav">
+    <a href="/">Home</a>
+    <a href="/ingest">Ingestion</a>
+    <a href="/chat">Query</a>
+    <a href="/language">Language</a>
+    <a href="/voice">Voice</a>
+    <a href="/director">Director</a>
+    <a class="active" href="/reconstructor">Reconstructor</a>
+    <a href="/learn">Learn</a>
+    <a href="/educator">Educator</a>
+    <a href="/collab">Collaborate</a>
+    <a href="/dashboard">Console</a>
+    <a href="/admin">Admin</a>
+    <a href="/openclaw">Open Claw</a>
+    <a href="/security">Security</a>
+    <a href="/guide">Guide</a>
+  </nav>
+</div>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Scene Reconstructor — prose → a director-controlled clip</h2>
+    <p class="sub">Paste a scene from a book, script, article, or synopsis. QueryBook extracts the scene
+    (characters, setting, mood, beats), applies a style + cultural context, handles extra characters as
+    silhouettes, and composes the exact Gemini prompts + a mood-matched music cue sheet. The clip is an
+    <b>interpretive visualization of the text, not an asserted fact</b>; prompt building is deterministic.</p>
+    <details id="keybox" style="margin:6px 0 10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+      <summary style="cursor:pointer;font-weight:600">🔑 Gemini / Veo video key <span id="keystat" class="note"></span></summary>
+      <p class="note" style="margin:6px 0">Paste your Google Gemini API key (with Veo access) to render real video. Stored <b>only on this computer</b> (local git-ignored file); never shown back or committed. Without it you get a dry-run prompt plan.</p>
+      <div class="row">
+        <input type="password" id="gkey" placeholder="paste Gemini API key" autocomplete="off" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:9px">
+        <button class="btn" style="background:#fff;color:#6a2ad6;border:1.5px solid #6a2ad6" id="savekey">Save key</button>
+      </div>
+    </details>
+    <textarea id="text" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" style="background:#fff;color:#6a2ad6;border:1.5px solid #6a2ad6" id="example">Load noir example</button>
+      <label>Duration
+        <select id="dur"><option>15</option><option selected>20</option><option>30</option></select></label>
+      <label>Perspective
+        <select id="pov"><option value="objective">objective</option><option value="first_person">first-person</option>
+          <option value="over_the_shoulder">over-the-shoulder</option><option value="omniscient">omniscient</option></select></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>Period <input type="text" id="period" placeholder="e.g. 1950s LA" style="width:140px"></label>
+      <label>Culture <input type="text" id="culture" placeholder="e.g. working-class bar" style="width:160px"></label>
+      <label>Social <input type="text" id="social" placeholder="e.g. post-war America" style="width:160px"></label>
+      <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="sil" checked> silhouette extras</label>
+      <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="music" checked> auto music</label>
+    </div>
+    <h3 style="margin:14px 0 2px;font-size:15px">Style</h3>
+    <div class="styles" id="styles"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="go">Reconstruct scene →</button>
+      <span id="status" class="note"></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card" id="prompt-card" style="display:none">
+      <h2>Gemini prompt bundle</h2>
+      <div id="base"></div>
+      <div id="beats"></div>
+    </div>
+    <div class="card" id="side-card" style="display:none">
+      <h2>Music &amp; scene</h2>
+      <div id="music"></div>
+      <h3 style="margin:12px 0 4px;font-size:15px">Scene graph</h3>
+      <pre class="json" id="scene"></pre>
+    </div>
+  </div>
+
+  <div class="card" id="video-card" style="display:none">
+    <h2>Generated clip <span id="video-status" class="note"></span></h2>
+    <video id="video" controls playsinline style="width:100%;max-width:720px;border-radius:10px;background:#000;display:none"></video>
+    <div id="video-plan" class="note"></div>
+  </div>
+
+  <div class="card">
+    <p class="note" id="prov"></p>
+  </div>
+</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function post(p,o){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(r=>r.json());}
+var STYLE='film_noir';
+async function loadStyles(){
+  var d=await post('/api/scene/styles',{});
+  $('styles').innerHTML=(d.styles||[]).map(function(s){
+    return '<div class="stile'+(s.id===STYLE?' sel':'')+'" data-id="'+s.id+'"><div class="nm">'+esc(s.name)+'</div><div class="cg">'+esc(s.color_grade)+'</div></div>';
+  }).join('');
+  document.querySelectorAll('.stile').forEach(function(el){ el.onclick=function(){ STYLE=el.dataset.id;
+    document.querySelectorAll('.stile').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); }; });
+}
+async function keyStatus(){
+  try{ var d=await (await fetch('/api/language/tts_providers')).json();
+    var on=d&&d.cloud&&d.cloud.google&&d.cloud.google.configured;
+    $('keystat').innerHTML=on?'<span style="color:#1e7f3c">✓ configured</span>':'<span style="color:#c0392b">— not set (dry-run only)</span>';
+    if(!on) $('keybox').open=true;
+  }catch(e){}
+}
+$('savekey').onclick=async function(){
+  var k=($('gkey').value||'').trim(); if(!k){ $('keystat').textContent='paste a key first'; return; }
+  var d=await post('/api/language/tts_key',{provider:'google',key:k});
+  $('gkey').value=''; $('keystat').textContent=d.ok?'saved ✓':'save failed';
+  keyStatus();
+};
+$('example').onclick=async function(){ var d=await post('/api/scene/example',{}); $('text').value=d.sourceText; };
+$('go').onclick=async function(){
+  var text=($('text').value||'').trim(); if(!text){ $('status').textContent='Paste some scene text first.'; return; }
+  $('status').textContent='Reconstructing…'; $('go').disabled=true;
+  try{
+    var r=await post('/api/scene/render',{sourceText:text, styleId:STYLE, durationSeconds:parseInt($('dur').value,10),
+      perspective:$('pov').value, periodHint:$('period').value||null, cultureHint:$('culture').value||null,
+      socialConditionsHint:$('social').value||null, enforceSilhouetteForExtras:$('sil').checked, music:$('music').checked});
+    if(r.error){ $('status').textContent=r.error; $('go').disabled=false; return; }
+    $('prompt-card').style.display=''; $('side-card').style.display='';
+    $('base').innerHTML='<div class="prompt"><span class="lbl">BASE PROMPT ('+esc(r.style.name)+')</span><br>'+esc(r.promptBundle.basePrompt)+'</div>';
+    $('beats').innerHTML=(r.promptBundle.beatPrompts||[]).map(function(b){return '<div class="beat"><div class="bt">'+esc(b.beatId)+'</div>'+esc(b.prompt)+'</div>';}).join('');
+    var mt=r.music&&r.music.track;
+    var cues=r.music?Object.keys(r.music.cueMap).map(function(k){var c=r.music.cueMap[k];return '<div class="cue"><b>'+esc(k)+'</b> '+c.startTime+'–'+c.endTime+'s · '+esc(c.intensity)+(c.motif?(' · <span class="chip">'+esc(c.motif)+'</span>'):'')+' · '+esc(c.transition)+'</div>';}).join(''):'';
+    $('music').innerHTML=mt?('<b>'+esc(mt.genre)+'</b> <span class="note">('+esc((mt.instrumentation||[]).join(', '))+')</span>'+cues+'<div class="note" style="margin-top:6px">'+esc(r.mix?r.mix.note:'')+'</div>'):'<span class="note">music off</span>';
+    $('scene').textContent=JSON.stringify(r.scene,null,2);
+    $('prov').innerHTML='⚖️ '+esc(r.covenant)+'<br><span class="note">Provenance: text hash '+esc((r.provenance.text_hash||'').slice(0,16))+'… '+(r.provenance.sealed?'(sealed)':'')+' · '+(r.dry_run?'dry-run plan (no Gemini key — video not generated)':'submitted to Gemini')+'</span>';
+    // Video: dry-run (no key) shows the plan; otherwise poll Veo until the clip is ready.
+    var gen=r.generation||{};
+    if(r.dry_run || !gen.operation){
+      $('video-card').style.display=''; $('video').style.display='none';
+      $('video-status').textContent=gen.error?('error: '+gen.error):'dry-run — add a Gemini/Veo key to render video';
+      $('video-plan').textContent='';
+    } else {
+      $('video-card').style.display=''; $('video').style.display='none';
+      $('video-status').textContent='rendering with Gemini/Veo…';
+      pollVideo(gen.operation);
+    }
+    $('status').textContent='Done.';
+  }catch(e){ $('status').textContent='Failed: '+e; }
+  $('go').disabled=false;
+};
+async function pollVideo(op){
+  var t0=Date.now();
+  for(var i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r,8000));
+    var pr=await post('/api/video/poll',{operation:op});
+    if(pr.done){
+      if(pr.ready && pr.url){
+        var v=$('video'); v.src=pr.url; v.style.display='';
+        $('video-status').textContent='✓ '+Math.round((Date.now()-t0)/1000)+'s · '+Math.round(pr.bytes/1024)+' KB';
+        v.play().catch(function(){});
+      } else { $('video-status').textContent='render issue: '+(pr.error||'no video'); }
+      return;
+    }
+    $('video-status').textContent='rendering with Gemini/Veo… ('+Math.round((Date.now()-t0)/1000)+'s)';
+  }
+  $('video-status').textContent='still rendering — check back shortly (Veo can take a few minutes)';
+}
+loadStyles(); keyStatus(); $('example').click();
+</script>
+</body>
+</html>
