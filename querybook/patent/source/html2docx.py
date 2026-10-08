@@ -60,8 +60,8 @@ def add_field(par, instr):
 fp = sec.footer.paragraphs[0]; fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 add_field(fp, "PAGE")
 hp = sec.header.paragraphs[0]; hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-hr = hp.add_run("DRAFT — NOT FILED — QueryBook Provisional Patent Application — rev. October 8, 2026"
-                + (" — additions highlighted" if HL else ""))
+hr = hp.add_run("DRAFT — NOT FILED — QueryBook Provisional Patent Application — rev. October 8, 2026 (B)"
+                + (" — new text highlighted" if HL else ""))
 hr.font.size = Pt(8); hr.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
 
 def classes(t): return t.get("class", []) if isinstance(t, Tag) else []
@@ -105,6 +105,8 @@ def emit_inline(par, node, fmt):
         if fmt.get("size"): r.font.size = Pt(fmt["size"])
         if fmt.get("color"): r.font.color.rgb = fmt["color"]
         if fmt.get("caps"): r.font.all_caps = True
+        if fmt.get("sub"): r.font.subscript = True
+        if fmt.get("sup"): r.font.superscript = True
         if HL and fmt.get("hl"): r.font.highlight_color = WD_COLOR_INDEX.YELLOW
         return
     if not isinstance(node, Tag): return
@@ -113,6 +115,8 @@ def emit_inline(par, node, fmt):
     c = classes(node)
     if node.name in ("b", "strong") or "n" in c or "cn" in c: f["b"] = True
     if node.name in ("i", "em"): f["i"] = True
+    if node.name == "sub": f["sub"] = True
+    if node.name == "sup": f["sup"] = True
     if "fix" in c: f.update(b=True, caps=True, size=8, color=RGBColor(0xA9, 0x79, 0x1C))
     if "add" in c or "addfig" in c: f["hl"] = True
     st = node.get("style", "")
@@ -219,7 +223,7 @@ def block(t):
             para_from(t)
 
 for ch in wrap.children: block(ch)
-doc.core_properties.title = "QueryBook Provisional Patent Application — rev. October 8, 2026"
+doc.core_properties.title = "QueryBook Provisional Patent Application — rev. October 8, 2026 (B)"
 doc.core_properties.author = "QueryBook Core Technology Group"
 z = doc.settings.element.find(qn("w:zoom"))
 if z is not None and z.get(qn("w:percent")) is None: z.set(qn("w:percent"), "100")
