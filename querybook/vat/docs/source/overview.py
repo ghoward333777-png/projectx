@@ -1,0 +1,36 @@
+import json, sys
+B = [{"t": "title", "text": "Verified Agent Transport (VAT)"},
+ {"t": "center", "text": "The QueryBook AI Agent Wrapper Service — Overview", "bold": True, "after": 60},
+ {"t": "center", "text": "October 9, 2026 · Status: specified, not yet built", "italic": True, "after": 240},
+ {"t": "h1", "text": "What it is"},
+ {"t": "p", "text": "VAT is a wrapper service that keeps AI agents honest about what they say and what they do. It sits beside an agent as a sidecar, carries all of the agent's traffic as UFCS-FQL frames inside the QueryBook + TCP/IP hybrid transport, and checks that traffic against certified Fact Units while it is in transit."},
+ {"t": "p", "text": "The agent itself is not modified. It keeps speaking MCP, agent-to-agent messages or HTTP; the sidecar translates."},
+ {"t": "h1", "text": "What it does"},
+ {"t": "table", "header": ["Function", "How"], "widths": [16, 52], "rows": [
+  ["Checks facts", "Each factual sentence becomes a Fact Unit with a fingerprint. The verifier looks it up among certified Fact Units, then runs an FQL query for conflicting values. Result: verified, contradicted or unknown."],
+  ["Signs verdicts", "Each verdict is signed and sent on a control lane that never waits behind bulk data. Policy decides: deliver, annotate, hold or block."],
+  ["Binds actions to intent", "The agent declares what it will do. Each action is checked against that plan, and each reported result against the tool's own record."],
+  ["Keeps a tamper-evident record", "Every claim, verdict, intent, action and result goes into a hash chain with Merkle checkpoints."],
+  ["Certifies each session", "A signed certificate gives verdict counts, coverage and the Merkle root. Anyone can recheck it against the ledger."],
+  ["Tracks reputation", "Verified and contradicted counts form an evidence pair. A low score can lead to restriction, but only on a recorded operator decision."],
+  ["Moves less data", "Peers swap have/want fingerprint lists, so data the receiver already holds is not resent."],
+  ["Protects privacy", "In fingerprint-only mode, message text never leaves the sidecar."]]},
+ {"t": "h1", "text": "How it is deployed"},
+ {"t": "bullets", "items": [
+  "**Sidecar beside each agent:** a local process, a container in the same Kubernetes pod, or a gateway serving several agents.",
+  "**Egress lock:** a firewall or NetworkPolicy rule lets the agent reach only its sidecar. Only traffic through the sidecar is covered.",
+  "**Transport:** three lanes (control, normal, bulk) as QUIC streams, falling back to TLS over TCP. The UFCS-FQL/1 header is unchanged; message types 16–27 are added.",
+  "**Shared services:** a read-only UFCS verification service, a ledger and certificate store, and a control plane that distributes signed policy bundles."]},
+ {"t": "h1", "text": "What the certificate means"},
+ {"t": "p", "text": "The certificate records what was checked and what the checks found. It does not claim that the agent is honest or that its content is true. Unknown is not false. Coverage is always reported, and unchecked content is never shown as verified."},
+ {"t": "h1", "text": "Documents in this set"},
+ {"t": "table", "header": ["Document", "Contents"], "widths": [26, 42], "rows": [
+  ["VAT_Overview", "This summary"],
+  ["VAT_Provisional_Patent_Application", "A standalone provisional: field, background, summary, detailed description, claims 1–11 and abstract. It cross-references the QueryBook application, where the same subject matter is FIG. 56–57 and claims 355–365"],
+  ["VAT_Drawings_FIG1-2", "FIG. 1 (deployment) and FIG. 2 (verification flow), reference numerals 100–295"],
+  ["VAT_Technical_Specification", "Engineering specification: wire format, message types, lanes, algorithms, certificate, configuration, APIs, implementation plan, limits"],
+  ["VAT_Feature_Registry", "18 features, 6 algorithms, reference-numeral key and claim-to-feature map"]]},
+ {"t": "h1", "text": "Status and next steps"},
+ {"t": "p", "text": "VAT is specified but not yet built, and no latency, bandwidth or accuracy figures are claimed for it. The technical specification sets out nine build steps, each with an acceptance test. The first three are the frame codec, the verification service and a TLS/TCP sidecar with the MCP adapter. Performance figures will be published only after measurement."}]
+json.dump({"title": "Verified Agent Transport — Overview", "font": "Calibri", "size": 11, "line": 264,
+           "header": "Verified Agent Transport — Overview", "blocks": B}, open(sys.argv[1], "w"), ensure_ascii=False)
