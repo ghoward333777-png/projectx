@@ -33,7 +33,7 @@ State: <store>/language_model.json holds the cumulative counters (the learned
 model). It is the source of truth for status; Fact Units are the provenance
 trail written into the store.
 """
-import json, os, re, math, time, sys, gzip
+import json, os, re, math, time, sys, gzip, threading, tempfile, shutil
 try:
     import qb_dialect                      # deterministic Dialect Parameter Clusters (DPCs)
 except Exception:
@@ -128,24 +128,154 @@ def _blank_model():
     }
 
 
+# ---------------------------------------------------------------------------
+# Durable, concurrency-safe persistence of the learned language model.
+#
+# Three defects could make "all learned words reset to zero":
+#   1. load_model() silently returned a BLANK model whenever language_model.json
+#      failed to parse (truncated / corrupt / locked). The next learn() then
+#      saved that blank over the good file — a permanent reset from one bad read.
+#   2. save_model() wrote to a FIXED shared temp path ("...json.tmp"). Under the
+#      ThreadingHTTPServer, two concurrent learns wrote the same temp file at
+#      once, producing a garbled file that was then renamed into place → corrupt
+#      → (1) → reset. The one-click "Teach ALL languages" pipeline fires many
+#      concurrent learns, which is exactly when this hit.
+#   3. No lock around load→modify→save, so concurrent learns also lost updates.
+#
+# Fixes: a process-wide re-entrant lock serialises read-modify-write; writes are
+# atomic with a UNIQUE temp file + fsync; every good save keeps a .bak; loads
+# recover from .bak and QUARANTINE (never delete) a corrupt primary; and a
+# monotonic guard refuses to replace a substantial model with a near-empty one
+# (the learned word set only ever grows, capped at _CAP_WORDS), writing the
+# rejected model aside and logging it instead. All protective actions are
+# recorded in <store>/data_events.log so a reset can be traced after the fact.
+# ---------------------------------------------------------------------------
+_MODEL_LOCK = threading.RLock()
+
+
+def _model_path(store_dir):
+    return os.path.join(store_dir, "language_model.json")
+
+
+def _model_words(m):
+    try:
+        return len(m.get("words") or {})
+    except Exception:
+        return 0
+
+
+def _read_model_file(p):
+    with open(p, encoding="utf-8") as f:
+        m = json.load(f)
+    if not isinstance(m, dict):
+        raise ValueError("language model is not a JSON object")
+    return m
+
+
+def _log_data_event(store_dir, kind, detail=""):
+    """Append-only, best-effort record of protective actions on the model file."""
+    try:
+        line = "%s\t%s\t%s\n" % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), kind, detail)
+        with open(os.path.join(store_dir, "data_events.log"), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
 def load_model(store_dir):
-    p = os.path.join(store_dir, "language_model.json")
-    if os.path.exists(p):
-        try:
-            with open(p, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return _blank_model()
+    """Load the learned language model, recovering from the backup and never
+    silently discarding a corrupt-but-present primary."""
+    p = _model_path(store_dir)
+    bak = p + ".bak"
+    with _MODEL_LOCK:
+        if os.path.exists(p):
+            try:
+                return _read_model_file(p)
+            except Exception as e:
+                # Primary is unreadable. Try the last good backup before anything else.
+                if os.path.exists(bak):
+                    try:
+                        m = _read_model_file(bak)
+                        try:
+                            shutil.copyfile(bak, p)   # restore primary from good backup
+                        except Exception:
+                            pass
+                        _log_data_event(store_dir, "load_recovered_from_bak", repr(str(e)))
+                        return m
+                    except Exception as e2:
+                        _log_data_event(store_dir, "bak_also_unreadable", repr(str(e2)))
+                # Neither readable. Quarantine the corrupt primary (never delete) so the
+                # evidence survives and a later save cannot bury it, then start fresh.
+                try:
+                    os.replace(p, p + ".corrupt-" + time.strftime("%Y%m%d%H%M%S"))
+                except Exception:
+                    pass
+                _log_data_event(store_dir, "load_failed_quarantined", repr(str(e)))
+                return _blank_model()
+        # No primary yet — a backup may still exist from a prior good save.
+        if os.path.exists(bak):
+            try:
+                m = _read_model_file(bak)
+                try:
+                    shutil.copyfile(bak, p)
+                except Exception:
+                    pass
+                _log_data_event(store_dir, "primary_missing_restored_from_bak", "")
+                return m
+            except Exception:
+                pass
+        return _blank_model()
 
 
 def save_model(store_dir, m):
+    """Atomically and safely persist the learned model.
+    Returns True if written, False if a destructive write was refused."""
     os.makedirs(store_dir, exist_ok=True)
-    p = os.path.join(store_dir, "language_model.json")
-    tmp = p + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(m, f)
-    os.replace(tmp, p)
+    p = _model_path(store_dir)
+    with _MODEL_LOCK:
+        new_words = _model_words(m)
+        # Monotonic safety guard + one-generation backup of the current good file.
+        try:
+            if os.path.exists(p):
+                cur = _read_model_file(p)
+                cur_words = _model_words(cur)
+                # The learned word set only grows (capped at _CAP_WORDS), so a save
+                # that would drop a substantial model to under half its size is a
+                # regression (e.g. an ingest that started from a blank base). Refuse
+                # it, keep the good file, and write the attempt aside for inspection.
+                if cur_words >= 100 and new_words * 2 < cur_words:
+                    try:
+                        with open(p + ".rejected-" + time.strftime("%Y%m%d%H%M%S"),
+                                  "w", encoding="utf-8") as f:
+                            json.dump(m, f)
+                    except Exception:
+                        pass
+                    _log_data_event(store_dir, "refused_shrinking_overwrite",
+                                    "on_disk_words=%d new_words=%d" % (cur_words, new_words))
+                    return False
+                try:
+                    shutil.copyfile(p, p + ".bak")   # keep last good generation
+                except Exception:
+                    pass
+        except Exception:
+            # Cannot verify the current file → proceed with the atomic write below,
+            # which is no worse than the previous behaviour.
+            pass
+        # Atomic write: UNIQUE temp (no cross-thread collision) + fsync + rename.
+        fd, tmp = tempfile.mkstemp(prefix="language_model-", suffix=".tmp", dir=store_dir)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(m, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, p)
+        finally:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
+        return True
 
 
 def _trim(d, cap):
@@ -350,45 +480,48 @@ def learn(store_dir, text=None, url=None, source=None):
     if not text:
         return {"error": "no text to learn from"}
     source = (source or "pasted text").strip()
-    m = load_model(store_dir)
-    _ingest_into_model(m, text, persist_source=source)
-    mx = metrics(m)
-    # Live feed: surface a few English words just seen (structure phase), so the activity
-    # stream shows motion during English Phases 1-2, not only during language learning.
-    try:
-        toks = [w.lower() for w in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
-        seen = set()
-        for w in toks:
-            if w in seen:
-                continue
-            seen.add(w)
-            ap = analyze_pronunciation(w, "en")
-            record_activity("en", w, ap.get("ipa"), None, kind="structure")
-            if len(seen) >= 8:
-                break
-    except Exception:
-        pass
-    # one-way gate: latch OPEN the first time structural readiness is met
-    if mx["gate"]["ready"] and not m.get("gate_opened"):
-        m["gate_opened"] = True
-        m["gate_opened_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # Serialise the whole read-modify-write so concurrent ingests (e.g. the
+    # "Teach ALL languages" pipeline) cannot lose updates or interleave writes.
+    with _MODEL_LOCK:
+        m = load_model(store_dir)
+        _ingest_into_model(m, text, persist_source=source)
         mx = metrics(m)
-    # append a gate-metric snapshot for the progress view (cap the history)
-    g = mx["gate"]["checks"]
-    m.setdefault("history", []).append({
-        "t": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "tokens": m["total_tokens"], "words": len(m["words"]),
-        "phon": g["phonemic_completeness"]["value"],
-        "stab": g["lexical_stability"]["value"],
-        "dens": g["cooccurrence_density"]["value"],
-        "novel": g["pattern_saturation"]["value"],
-        "ready": mx["gate"]["ready"], "opened": m.get("gate_opened", False),
-    })
-    m["history"] = m["history"][-200:]
-    # roll the top-word snapshot forward for the NEXT ingest's stability comparison
-    m["prev_top"] = [k for k, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:40]]
-    save_model(store_dir, m)
-    mx["history"] = m["history"]
+        # Live feed: surface a few English words just seen (structure phase), so the activity
+        # stream shows motion during English Phases 1-2, not only during language learning.
+        try:
+            toks = [w.lower() for w in re.findall(r"[^\W\d_]+", text, re.UNICODE)]
+            seen = set()
+            for w in toks:
+                if w in seen:
+                    continue
+                seen.add(w)
+                ap = analyze_pronunciation(w, "en")
+                record_activity("en", w, ap.get("ipa"), None, kind="structure")
+                if len(seen) >= 8:
+                    break
+        except Exception:
+            pass
+        # one-way gate: latch OPEN the first time structural readiness is met
+        if mx["gate"]["ready"] and not m.get("gate_opened"):
+            m["gate_opened"] = True
+            m["gate_opened_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            mx = metrics(m)
+        # append a gate-metric snapshot for the progress view (cap the history)
+        g = mx["gate"]["checks"]
+        m.setdefault("history", []).append({
+            "t": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "tokens": m["total_tokens"], "words": len(m["words"]),
+            "phon": g["phonemic_completeness"]["value"],
+            "stab": g["lexical_stability"]["value"],
+            "dens": g["cooccurrence_density"]["value"],
+            "novel": g["pattern_saturation"]["value"],
+            "ready": mx["gate"]["ready"], "opened": m.get("gate_opened", False),
+        })
+        m["history"] = m["history"][-200:]
+        # roll the top-word snapshot forward for the NEXT ingest's stability comparison
+        m["prev_top"] = [k for k, _ in sorted(m["words"].items(), key=lambda kv: -kv[1])[:40]]
+        save_model(store_dir, m)
+        mx["history"] = m["history"]
     added = _store_facts(store_dir, mx)
     mx["chars_ingested"] = len(text)
     mx["facts_written"] = added
