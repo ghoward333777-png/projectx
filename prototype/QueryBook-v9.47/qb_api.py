@@ -56,6 +56,12 @@ BUILD_DATE = "2026-10-04"
 # moves, overwrites, or deletes anything.
 # ----------------------------------------------------------------------------
 QB_HOME_STORE = os.path.join(os.path.expanduser("~"), ".querybook", "store")
+# Boot-time store configuration. The user can pin the store location once (e.g.
+# an external drive); the boot question is then skipped for the next
+# QB_ASK_EVERY_DEFAULT launches, re-asking only when that counter elapses or the
+# pinned location is missing. Config lives here and holds no secret.
+QB_CONFIG = os.path.join(os.path.expanduser("~"), ".querybook", "config.json")
+QB_ASK_EVERY_DEFAULT = 50
 
 def _store_facts(d):
     """Facts actually present in a candidate store (manifest first, then index)."""
@@ -87,10 +93,239 @@ def _store_facts(d):
     except Exception:
         return -1
 
+# ---- Boot-time store configuration (the 50-launch "where is my data?" prompt) ----
+def _load_config():
+    try:
+        with open(QB_CONFIG, encoding="utf-8") as f:
+            c = json.load(f)
+            return c if isinstance(c, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_config(c):
+    try:
+        os.makedirs(os.path.dirname(QB_CONFIG), exist_ok=True)
+        tmp = QB_CONFIG + ".tmp.%d" % os.getpid()
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(c, f, indent=2)
+        os.replace(tmp, QB_CONFIG)
+        return True
+    except Exception:
+        return False
+
+
+def _store_langwords(d):
+    """Learned-model word count for a candidate store (0 if none)."""
+    try:
+        with open(os.path.join(d, "language_model.json"), encoding="utf-8") as f:
+            return len(json.load(f).get("words") or {})
+    except Exception:
+        return 0
+
+
+def _is_server_launch():
+    """True when this process is starting the HTTP server, not a CLI subcommand."""
+    sub = sys.argv[1] if len(sys.argv) > 1 else ""
+    return sub not in ("discover", "find", "--discover", "diag", "diagnose",
+                       "--diag", "configure", "--configure", "-h", "--help")
+
+
+def _candidate_stores():
+    """Existing stores worth offering at boot — home store, ./mystore, sibling
+    version folders, and common external-drive locations. Bounded (no full walk)."""
+    cands = [QB_HOME_STORE, os.path.abspath("./mystore"), os.path.abspath("./store")]
+    try:
+        appdir = os.path.dirname(os.path.abspath(__file__))
+        for base in (appdir, os.path.dirname(appdir)):
+            if os.path.isdir(base):
+                for name in os.listdir(base):
+                    p = os.path.join(base, name)
+                    if os.path.isdir(p):
+                        cands += [os.path.join(p, "mystore"), os.path.join(p, "store")]
+    except Exception:
+        pass
+    # external / removable drives + common subfolders, shallow
+    roots = []
+    try:
+        if os.name == "nt":
+            import string
+            roots = ["%s:\\" % L for L in string.ascii_uppercase if os.path.exists("%s:\\" % L)]
+        else:
+            for mp in ("/Volumes", "/media", "/mnt"):
+                if os.path.isdir(mp):
+                    for e in os.listdir(mp):
+                        sub = os.path.join(mp, e)
+                        roots.append(sub)
+                        if os.path.isdir(sub):              # /media/<user>/<drive>
+                            try:
+                                roots += [os.path.join(sub, e2) for e2 in os.listdir(sub)]
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+    for r in roots:
+        for name in ("QB", "QueryBook", "mystore", "store",
+                     os.path.join("QB", "mystore"), os.path.join("QueryBook", "mystore")):
+            cands.append(os.path.join(r, name))
+        try:
+            for e in os.listdir(r):                          # <drive>/<anything>/mystore
+                cands.append(os.path.join(r, e, "mystore"))
+        except Exception:
+            pass
+    out, seen = [], set()
+    for c in cands:
+        try:
+            c = os.path.abspath(c)
+        except Exception:
+            continue
+        if c in seen:
+            continue
+        seen.add(c)
+        n = _store_facts(c)
+        if n > 0 or os.path.isdir(os.path.join(c, "blocks")):
+            out.append({"path": c, "facts": max(n, 0), "words": _store_langwords(c)})
+    out.sort(key=lambda r: (-r["facts"], -r["words"]))
+    return out
+
+
+def _prompt_for_store(cfg):
+    """Interactive boot question. Returns (abspath, why) or None to use auto."""
+    cands = _candidate_stores()
+    cur = cfg.get("data_dir")
+    print("", flush=True)
+    print("  " + "=" * 58, flush=True)
+    print("  QueryBook — WHERE IS YOUR DATA?", flush=True)
+    print("  Your facts & languages live in a store folder (blocks/, index.sqlite,", flush=True)
+    print("  language_model.json) — e.g. on your external drive. Nothing is moved", flush=True)
+    print("  or erased; QueryBook just reads/writes the one you pick.", flush=True)
+    if cur:
+        miss = "" if os.path.isdir(cur) else "   (NOT FOUND right now — drive unplugged?)"
+        print("  Currently pinned: %s%s" % (cur, miss), flush=True)
+    print("  " + "-" * 58, flush=True)
+    if cands:
+        print("  Stores found (most data first):", flush=True)
+        for i, c in enumerate(cands[:9], 1):
+            print("    [%d] %s" % (i, c["path"]), flush=True)
+            print("         %s facts  ·  language model %s words"
+                  % (format(c["facts"], ","), format(c["words"], ",")), flush=True)
+    else:
+        print("  (No existing stores detected in the usual places.)", flush=True)
+    print("  " + "-" * 58, flush=True)
+    print("  Enter a NUMBER to use that store, or type a FULL PATH to your store", flush=True)
+    print("  folder. Press ENTER for the default. Type 'scan' for a full-drive search.", flush=True)
+    default = cur if (cur and os.path.isdir(cur)) else (cands[0]["path"] if cands else QB_HOME_STORE)
+    for _ in range(6):
+        try:
+            ans = input("  Store [%s]: " % default).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("", flush=True)
+            return None
+        if ans == "":
+            chosen = default
+        elif ans.lower() == "scan":
+            try:
+                import qb_find_store
+                print("  Scanning all drives (read-only)…", flush=True)
+                found = []
+                for r in qb_find_store._roots():
+                    for dp, dns, _fns in os.walk(r):
+                        if dp.count(os.sep) - r.count(os.sep) > 4:
+                            dns[:] = []
+                            continue
+                        if qb_find_store._is_store(dp):
+                            found.append(os.path.abspath(dp))
+                            dns[:] = []
+                uniq, seen2 = [], set()
+                for p in found:
+                    if p not in seen2:
+                        seen2.add(p); uniq.append(p)
+                if uniq:
+                    cands = [{"path": p, "facts": max(_store_facts(p), 0),
+                              "words": _store_langwords(p)} for p in uniq]
+                    cands.sort(key=lambda r: (-r["facts"], -r["words"]))
+                    print("  Found:", flush=True)
+                    for i, c in enumerate(cands[:15], 1):
+                        print("    [%d] %s  (%s facts)" % (i, c["path"], format(c["facts"], ",")), flush=True)
+                    default = cands[0]["path"]
+                else:
+                    print("  No stores found on any drive.", flush=True)
+            except Exception as e:
+                print("  scan failed: %s" % e, flush=True)
+            continue
+        elif ans.isdigit() and 1 <= int(ans) <= len(cands):
+            chosen = cands[int(ans) - 1]["path"]
+        else:
+            chosen = os.path.expanduser(ans)
+        chosen = os.path.abspath(chosen)
+        if not os.path.isdir(chosen):
+            try:
+                yn = input("  '%s' doesn't exist. Create it as a NEW empty store? [y/N] " % chosen).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return None
+            if yn not in ("y", "yes"):
+                continue
+            try:
+                os.makedirs(chosen, exist_ok=True)
+            except Exception as e:
+                print("  could not create %s: %s" % (chosen, e), flush=True)
+                continue
+        cfg["data_dir"] = chosen
+        cfg["ask_every"] = int(cfg.get("ask_every") or QB_ASK_EVERY_DEFAULT)
+        cfg["boots_until_ask"] = cfg["ask_every"]
+        _save_config(cfg)
+        print("  Saved. QueryBook will use:  %s" % chosen, flush=True)
+        print("  I won't ask again for %d launches. To change it sooner, run:" % cfg["ask_every"], flush=True)
+        print("     python qb_api.py configure", flush=True)
+        print("  " + "=" * 58 + "\n", flush=True)
+        return chosen, "configured at boot"
+    return None
+
+
+def _boot_store():
+    """Config-aware store selection with the 50-launch boot question.
+    Returns (path, why) or None to fall back to the automatic resolver."""
+    cfg = _load_config()
+    cur = cfg.get("data_dir")
+    interactive = (__name__ == "__main__") and _is_server_launch() \
+        and bool(getattr(sys, "stdin", None)) and sys.stdin.isatty()
+    # Pinned location present and reachable.
+    if cur and os.path.isdir(cur):
+        n = int(cfg.get("boots_until_ask", 0) or 0)
+        if n > 0:
+            cfg["boots_until_ask"] = n - 1
+            _save_config(cfg)
+            return os.path.abspath(cur), "pinned store (boot question in %d launches)" % (n - 1)
+        if interactive:                     # counter elapsed → re-confirm
+            res = _prompt_for_store(cfg)
+            if res:
+                return res
+        cfg["boots_until_ask"] = int(cfg.get("ask_every") or QB_ASK_EVERY_DEFAULT)
+        _save_config(cfg)
+        return os.path.abspath(cur), "pinned store"
+    # Pinned but MISSING (external drive unplugged?) — never silently open blank.
+    if cur and not os.path.isdir(cur):
+        if interactive:
+            print("\n  *** Pinned store not found: %s  (is the drive plugged in?) ***" % cur, flush=True)
+            res = _prompt_for_store(cfg)
+            if res:
+                return res
+        return None                          # non-interactive → auto-resolver + its warning banner
+    # No config yet — first run.
+    if interactive:
+        res = _prompt_for_store(cfg)
+        if res:
+            return res
+    return None
+
+
 def _resolve_data_dir():
     env = os.environ.get("QB_DATA_DIR")
     if env:
         return os.path.abspath(env), "explicit QB_DATA_DIR"
+    booted = _boot_store()
+    if booted:
+        return booted
     # Gather candidate existing stores, newest-agnostic, with their fact counts.
     cands = [QB_HOME_STORE, os.path.abspath("./mystore")]
     try:
@@ -1695,5 +1930,11 @@ if __name__ == "__main__":
         _cli_discover()
     elif len(sys.argv) > 1 and sys.argv[1] in ("diag", "diagnose", "--diag"):
         _cli_diag()
+    elif len(sys.argv) > 1 and sys.argv[1] in ("configure", "--configure"):
+        # Force the "where is my data?" question now and re-pin the store.
+        cfg = _load_config()
+        cfg["boots_until_ask"] = 0
+        res = _prompt_for_store(cfg)
+        print("Pinned: " + res[0] if res else "No change made.", flush=True)
     else:
         main()
