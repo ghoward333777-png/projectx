@@ -48,17 +48,28 @@ for base, label in (("qb_bilingual.json", "bilingual dictionary"), ("qb_dict.jso
         bad("%s missing (%s or %s.gz) — translation/learning need it" % (label, base, base))
 
 # 4. Where is the data, and how much? ----------------------------------------
-store = None
+store = None; pinned = None; words = 0
 try:
-    import qb_find_store as F
-    # reuse the fast, targeted locator
-    import io, contextlib
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        F._best_only(["D:\\QB", os.path.expanduser("~")])
-    store = buf.getvalue().strip() or None
+    import qb_api as A
+    cfg = A._load_config()
+    pinned = cfg.get("data_dir")
+    if pinned and os.path.isdir(pinned):
+        store = pinned
+    else:
+        cands = A._candidate_stores()
+        if cands:
+            store = cands[0]["path"]
+    if store:
+        words = A._store_langwords(store)
 except Exception:
     store = None
+
+if pinned:
+    if os.path.isdir(pinned):
+        ok("data location is pinned to: %s" % pinned)
+    else:
+        bad("your data is pinned to %s but that folder isn't available now — plug the "
+            "drive in, or run  python qb_api.py configure  to re-point it" % pinned)
 
 def _facts(d):
     try:
@@ -74,9 +85,24 @@ if store and os.path.isdir(store):
         ok("found your data: %s facts at %s" % (format(n, ","), store))
     else:
         opt("a store exists at %s but has 0 facts yet (harvest to fill it)" % store)
+    if words > 0:
+        ok("learned language model: %s words" % format(words, ","))
+    else:
+        opt("no learned-language words yet (teach a language in the Language Lab)")
+    le = os.path.join(store, "data_events.log")
+    if os.path.isfile(le):
+        try:
+            evs = [l for l in open(le, encoding="utf-8").read().strip().splitlines() if l.strip()]
+            if evs:
+                last = evs[-1].split("\t")
+                opt("data-safety log: %d auto-recovery/guard event(s); last = %s"
+                    % (len(evs), last[1] if len(last) > 1 else evs[-1]))
+        except Exception:
+            pass
 else:
     opt("no data library found yet — a new empty one will be created on first run "
-        "(this is normal for a brand-new install)")
+        "(this is normal for a brand-new install). If your data is on an external "
+        "drive, start the app and pick it when asked, or run  python qb_api.py configure")
 
 # 5. Is the store folder writable? -------------------------------------------
 probe_dir = store or os.path.join(os.path.expanduser("~"), ".querybook", "store")

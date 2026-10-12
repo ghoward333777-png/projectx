@@ -1,49 +1,80 @@
-QUERYBOOK — HOW TO START (Windows)
-===================================
+QUERYBOOK — HOW TO START
+========================
 
-EASIEST WAY — just double-click:
+ONE CLICK. That's the whole thing:
 
-    START_QUERYBOOK.bat
+    Windows :  double-click   START_QUERYBOOK.bat
+    Mac     :  double-click   START-MAC.command
+               (first time: right-click -> Open -> Open to clear the prompt)
 
-That's it. It will:
-  • find your existing data automatically (including a library under D:\QB),
-  • start the app,
-  • open it in your browser at  http://127.0.0.1:8099/
+It will:
+  • find Python for you (and try to install it automatically if it's missing),
+  • run a quick self-check,
+  • start the app and open it in your browser at  http://127.0.0.1:8099/dashboard
 
-Leave the little black window open while you use QueryBook. Close it to stop.
+Leave the little window open while you use QueryBook. Close it to stop.
 
 
-IF SOMETHING LOOKS WRONG
-------------------------
-Double-click:
+THE FIRST TIME — WHERE IS YOUR DATA?
+------------------------------------
+On the very first launch QueryBook asks ONE question in that window:
 
-    CHECK_QUERYBOOK.bat
+    QueryBook — WHERE IS YOUR DATA?
+    Stores found (most data first):
+      [1] E:\QB\mystore        1,200,000 facts · language model 6,000 words
+      [2] C:\Users\you\.querybook\store     0 facts
+    Store [E:\QB\mystore]:
 
-It prints a plain-English report and marks each item as:
+  • Type the NUMBER of your store (e.g. the one on your external drive), or
+  • type the FULL PATH to the folder that holds  blocks\ , index.sqlite ,
+    language_model.json , or
+  • just press ENTER to accept the suggested one, or
+  • type  scan  to search every drive.
+
+Your facts and learned languages live in that folder. Nothing is moved or
+erased — QueryBook just reads and writes the one you pick.
+
+After you choose, IT WON'T ASK AGAIN FOR 50 LAUNCHES. It remembers your choice
+in  (your home folder)\.querybook\config.json .
+
+To change it any time:
+    Windows :  py qb_api.py configure        (or  python qb_api.py configure)
+    Mac     :  python3 qb_api.py configure
+
+If your external drive is unplugged, QueryBook will NOT quietly start blank —
+it tells you and asks again so your data is never lost.
+
+
+IF SOMETHING LOOKS WRONG — SELF-DIAGNOSTIC
+------------------------------------------
+The one-click starter runs a self-check for you every time. To run it on its own:
+
+    Windows :  double-click   CHECK_QUERYBOOK.bat
+    Mac     :  double-click   CHECK-QUERYBOOK.command
+
+It prints a plain-English report and marks each item:
     [OK]        working
     [OPTIONAL]  safe to ignore (e.g. offline speech not installed)
     [PROBLEM]   needs fixing — it tells you how
 
 Only [PROBLEM] items matter. [OPTIONAL] items never stop the app from running.
+It also shows where your data is, how many facts and learned words it holds,
+and whether any auto-recovery safeguards have fired.
 
 
-YOUR DATA NEVER MOVES
+YOUR DATA IS PROTECTED
+----------------------
+  • Your store is pinned to the folder you chose and used on every launch, so an
+    upgrade never opens a blank library by mistake.
+  • The learned-language model is written safely (atomic writes + a backup) and
+    can never be reset to zero by a crash, a full disk, or two things saving at
+    once — if a file is ever damaged it is recovered from the backup.
+  • Lost a store? Run  qb_find_store  (FIND-STATION-WINDOWS.bat /
+    FIND-STATION-MAC.command) — it scans every drive, read-only, and shows where
+    your data is.
+
+
+NEED PYTHON MANUALLY?
 ---------------------
-Your facts and learned languages are kept in ONE fixed folder and every
-version of QueryBook uses the same one, so upgrading never loses anything.
-
-  • If you kept data under D:\QB, the launcher finds and uses it automatically.
-  • Otherwise it uses:  C:\Users\<you>\.querybook\store
-  • To force a specific folder once (so every future version uses it), open a
-    Command Prompt in this folder and run, for example:
-
-        setx QB_DATA_DIR "D:\QB\mystore"
-
-    Then just double-click START_QUERYBOOK.bat as usual.
-
-
-NEED PYTHON?
-------------
-If the launcher says Python is missing: install it from
-https://www.python.org/downloads/ and TICK "Add Python to PATH" during setup.
-Then double-click START_QUERYBOOK.bat again.
+If auto-install didn't work: get Python from https://www.python.org/downloads/
+On Windows, TICK "Add Python to PATH" during setup. Then start QueryBook again.

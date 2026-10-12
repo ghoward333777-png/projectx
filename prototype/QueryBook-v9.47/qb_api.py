@@ -287,6 +287,20 @@ def _boot_store():
     Returns (path, why) or None to fall back to the automatic resolver."""
     cfg = _load_config()
     cur = cfg.get("data_dir")
+    # Migrate a choice made by the older launchers (querybook_store.txt) once.
+    if not cur:
+        try:
+            legacy = os.path.join(os.path.dirname(os.path.abspath(__file__)), "querybook_store.txt")
+            if os.path.isfile(legacy):
+                lp = open(legacy, encoding="utf-8").read().strip()
+                if lp and os.path.isdir(lp):
+                    cfg["data_dir"] = lp
+                    cfg["ask_every"] = int(cfg.get("ask_every") or QB_ASK_EVERY_DEFAULT)
+                    cfg["boots_until_ask"] = cfg["ask_every"]
+                    _save_config(cfg)
+                    cur = lp
+        except Exception:
+            pass
     interactive = (__name__ == "__main__") and _is_server_launch() \
         and bool(getattr(sys, "stdin", None)) and sys.stdin.isatty()
     # Pinned location present and reachable.
