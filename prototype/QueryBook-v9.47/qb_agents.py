@@ -347,9 +347,11 @@ class AgentManager:
                         a["cycles"] = a.get("cycles", 0) + 1
                         a["last_run"] = time.time(); a["error"] = None; a["retries"] = 0
                         a["phase"] = "Phase 1 COMPLETE — Transition Gate OPEN"
+                        a["percent"] = 100
                         a["status"] = "complete"
                         _ev("ok", "agent:" + a["name"], "Phase 1 COMPLETE — Transition Gate OPEN")
                         self._save(); break
+                    a["percent"] = round(g.get("progress") or 0)
                     a["phase"] = "Phase 1 — %.0f%% to gate" % (g.get("progress") or 0)
                 elif a["kind"] in ("grounded_qa", "watch"):
                     # GROUNDED roles: run the cite-or-refuse pipeline on a saved question.
@@ -396,6 +398,7 @@ class AgentManager:
                         a["status"] = "complete"
                         a["phase"] = ("Phase 2 complete — %d words defined (dictionary), %d store-links"
                                       % (cov["defined"], cov["store_links"]))
+                        a["percent"] = 100
                         _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                     res = L.ground_words(self.store_dir, batch, use_dictionary=True, use_store=True)
                     for w in batch:
@@ -403,6 +406,7 @@ class AgentManager:
                     a["_grounded"] = sorted(done)
                     a["facts"] = a.get("facts", 0) + res["facts_added"]
                     cov = L.grounding_status(self.store_dir)
+                    a["percent"] = round(100 * len(done) / max(1, len(vocab)))
                     a["phase"] = ("Phase 2 (dictionary + store) — %d/%d words grounded, %d defined"
                                   % (len(done), len(vocab), cov["defined"]))
                     a["last_grounded"] = [g["word"] for g in res["grounded"]][:12]
@@ -723,6 +727,7 @@ class AgentManager:
                         a["status"] = "complete"
                         a["phase"] = "Phase 3 complete — %s delta mapped (%d translation facts)" % (
                             L.LANG_NAMES.get(lang, lang), n)
+                        a["percent"] = 100
                         _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                     res = L.acquire_language(self.store_dir, lang, words=batch)
                     if res.get("error"):
@@ -732,6 +737,7 @@ class AgentManager:
                         done.add(w)
                     a["_mapped"] = sorted(done)
                     a["facts"] = a.get("facts", 0) + res["facts_added"]
+                    a["percent"] = round(100 * len(done) / max(1, len(vocab)))
                     a["phase"] = ("Phase 3 (%s delta) — %d/%d words mapped (+%d translation facts)"
                                   % (res["language"], len(done), len(vocab), res["facts_added"]))
                     a["last_mapped"] = res.get("sample", [])
@@ -814,6 +820,7 @@ class AgentManager:
                         a["status"] = "complete"
                         a["phase"] = ("Phase 4 complete — %d words analyzed; voice: %s" %
                                       (ss["analyzed"], (tts["engine"] if tts["available"] else "none (" + (tts["hint"] or "no engine") + ")")))
+                        a["percent"] = 100
                         _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                     res = L.speech_analyze(self.store_dir, words=batch)
                     for w in batch:
@@ -821,6 +828,7 @@ class AgentManager:
                     a["_analyzed"] = sorted(done)
                     a["facts"] = a.get("facts", 0) + res["analyzed"]
                     tts = L.tts_status()
+                    a["percent"] = round(100 * len(done) / max(1, len(vocab)))
                     a["phase"] = ("Phase 4 (analysis) — %d/%d words; voice engine: %s" %
                                   (len(done), len(vocab), tts["engine"] if tts["available"] else "none"))
                     a["last_speech"] = res.get("sample", [])
@@ -842,8 +850,10 @@ class AgentManager:
                         a["_plan"] = plan
                         a["_step"] = 0
                     plan = a["_plan"]; idx = a.get("_step", 0)
+                    a["percent"] = round(100 * min(idx, len(plan)) / max(1, len(plan)))
                     if idx >= len(plan):
                         a["status"] = "complete"
+                        a["percent"] = 100
                         a["phase"] = "All done — English Phases 1-4 and every language complete."
                         _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                     step = plan[idx]
@@ -885,11 +895,13 @@ class AgentManager:
                         a["phase"] = ("%s learned — %d words in vocabulary, %d pronounced%s"
                                       % (L.LANG_NAMES.get(lang, lang), stt["vocab_learned"], stt["pronounced"],
                                          "" if stt["phonemizer"] else " (install espeak-ng for pronunciation)"))
+                        a["percent"] = 100
                         _ev("ok", "agent:" + a["name"], a["phase"]); self._save(); break
                     res = L.learn_language(self.store_dir, lang, words=batch)
                     for w in batch:
                         done.add(w)
                     a["_learned"] = sorted(done)
+                    a["percent"] = round(100 * len(done) / max(1, len(allw)))
                     a["facts"] = a.get("facts", 0) + res["vocab_added"] + res["pron_added"] + res.get("trans_added", 0)
                     a["phase"] = ("Learning %s — %d/%d words%s"
                                   % (L.LANG_NAMES.get(lang, lang), len(done), len(allw),

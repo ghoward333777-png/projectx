@@ -2311,9 +2311,11 @@ def _scan_language_counts(st, prefix):
             s = n.get("subject", ""); p = n.get("predicate", "")
             if not s.startswith(prefix):
                 continue
-            if p == "attested_in":
-                subs.add(s)
-            elif p == "pronunciation":
+            # A word counts as LEARNED as soon as the engine knows anything about it
+            # (pronunciation, meaning, attestation, …). Requiring 'attested_in' only
+            # counted the non-English learner's words and left English (Phase 1) at 0.
+            subs.add(s)
+            if p == "pronunciation":
                 pron += 1
     except Exception:
         pass
@@ -2331,7 +2333,12 @@ def language_learning_status(store_dir, lang):
     try:
         if not st.no_fql:
             try:
-                vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                # Count a word as LEARNED once the engine stores anything about it
+                # (any predicate for that "<lang> word \"…\"" subject). The old query
+                # required predicate='attested_in', which the English Phase-1 pipeline
+                # never writes — so English learned-count was stuck at 0 and every
+                # progress bar read 0% even while words were pouring in.
+                vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE subject LIKE ?",
                                       (prefix + "%",)).fetchone()[0]
                 pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?",
                                      (prefix + "%",)).fetchone()[0]
@@ -2400,7 +2407,7 @@ def diagnostics(store_dir, lang="es"):
         idx_vocab = scan_vocab = scan_pron = 0
         if not st.no_fql:
             try:
-                idx_vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?",
+                idx_vocab = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE subject LIKE ?",
                                           (prefix + "%",)).fetchone()[0]
             except Exception as e:
                 out["problems"].append("SQL index present but query failed: %r" % e)
@@ -2496,16 +2503,17 @@ def language_readiness(store_dir):
     Lets the Language Lab show each language's true status so none looks mysteriously empty."""
     rows = []
     espeak = bool(_espeak_exe())
-    for lg in sorted(LANG_NAMES):
-        if lg == "en":
-            continue
+    # English FIRST — it is what the "English Phases" / "Learn all phases" button
+    # actually teaches, so leaving it out made that action's progress bar read 0%
+    # forever. Every language the engine can learn now appears here.
+    for lg in (["en"] + [x for x in sorted(LANG_NAMES) if x != "en"]):
         corpus = len(_corpus_words(lg))
         learned = language_learning_status(store_dir, lg).get("vocab_learned", 0)
         rows.append({"lang": lg, "language": LANG_NAMES.get(lg, lg),
                      "words_available": corpus, "words_learned": learned,
-                     "can_translate": bool(english_to_lang_map(lg)),
-                     "can_pronounce": (lg in G2P_RULES) or espeak,
-                     "offline_audio": espeak})
+                     "can_translate": (lg == "en") or bool(english_to_lang_map(lg)),
+                     "can_pronounce": (lg == "en") or (lg in G2P_RULES) or espeak,
+                     "offline_audio": espeak or (lg == "en")})
     return {"languages": rows, "offline_audio_engine": espeak}
 
 

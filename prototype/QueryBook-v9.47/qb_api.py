@@ -36,7 +36,7 @@ import qb_log
 import qb_help
 import qb_backup
 
-BUILD = "v9.64"
+BUILD = "v9.65"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
@@ -1558,7 +1558,7 @@ class H(BaseHTTPRequestHandler):
                     if not st.no_fql:
                         for lg, pref in prefmap.items():
                             try:
-                                voc = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE predicate='attested_in' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
+                                voc = st.db.execute("SELECT COUNT(DISTINCT subject) FROM nuc WHERE subject LIKE ?", (pref + "%",)).fetchone()[0]
                                 pron = st.db.execute("SELECT COUNT(*) FROM nuc WHERE predicate='pronunciation' AND subject LIKE ?", (pref + "%",)).fetchone()[0]
                                 indexed = True
                             except Exception:
@@ -1576,8 +1576,8 @@ class H(BaseHTTPRequestHandler):
                                 s = n.get("subject", ""); p = n.get("predicate", "")
                                 for lg, pref in prefmap.items():
                                     if s.startswith(pref):
-                                        if p == "attested_in": tally[lg]["subs"].add(s)
-                                        elif p == "pronunciation": tally[lg]["pron"] += 1
+                                        tally[lg]["subs"].add(s)          # any predicate = word known
+                                        if p == "pronunciation": tally[lg]["pron"] += 1
                                         break
                         except Exception:
                             pass

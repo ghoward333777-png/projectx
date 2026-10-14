@@ -45,6 +45,8 @@
   .meter{height:26px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden;position:relative}
   .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:99px;transition:width .5s}
   .meter span{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--ink)}
+  @keyframes sysIndet{0%{margin-left:-42%}100%{margin-left:102%}}
+  .sys-indet{animation:sysIndet 1.2s ease-in-out infinite}
   .done{background:var(--goodbg);border:1px solid var(--good);border-radius:10px;padding:12px 15px;color:var(--good);font-weight:700}
   /* phase rail */
   .phase{display:grid;grid-template-columns:52px 1fr;gap:14px;align-items:start}
@@ -132,6 +134,21 @@
     <h3 style="font-size:13px;margin:14px 0 4px">Live activity — what it's learning right now</h3>
     <div id="go-feed" style="height:180px;overflow:auto;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:12.5px/1.7 ui-monospace,Consolas,monospace">
       <span class="note">Press “Start — do it all” to begin. Words will stream here as they're learned.</span>
+    </div>
+  </div>
+
+  <!-- LIVE SYSTEMS: every running process, visible, with its own progress -->
+  <div class="card" id="systems-card">
+    <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <h2 style="margin:0">Running now — every system, live</h2>
+        <p class="sub" style="margin:4px 0 0">Each active process reports its own progress, updated every second.
+        If anything is stuck or blocked, you'll see exactly which one and why — no more guessing behind a “Running” label.</p>
+      </div>
+      <span id="systems-count" class="note"></span>
+    </div>
+    <div id="systems-list" style="margin-top:12px">
+      <div class="note">Nothing running yet. Press a Start/Teach button above and every process will appear here with a live progress bar.</div>
     </div>
   </div>
 
@@ -803,8 +820,15 @@ if($('run-all-english')) $('run-all-english').onclick=async()=>{
 };
 // Teach buttons in the readiness table
 document.addEventListener('click',e=>{
+  // English row: run the 4 English phases (no dropdown entry for English)
+  const en=e.target.closest('[data-run-english]');
+  if(en){ const rb=$('run-all-english'); if(rb){ rb.click(); }
+    else { fetch('api/language/run_all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }
+    try{ $('systems-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
+    return; }
   const t=e.target.closest('[data-teach]'); if(!t) return;
-  const lang=t.dataset.teach; const sel=$('teach-lang'); if(sel){ sel.value=lang; }
+  const lang=t.dataset.teach; if(lang==='en') return;
+  const sel=$('teach-lang'); if(sel){ sel.value=lang; }
   const go=$('teach-go'); if(go) go.click();
   try{ $('teach-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
 });
@@ -826,6 +850,64 @@ renderLegend();
 // Keep the overall progress bar live at all times — including background 24x7 learning.
 try{ updateOverall(); setInterval(updateOverall, 3000); }catch(e){}
 
+// ---- LIVE SYSTEMS panel: total transparency over every running process ------
+const _KINDLABEL={language:'English · Phase 1 (structure)',lang_semantic:'English · Phase 2 (meaning)',
+  lang_multilingual:'English · Phase 3 (translation)',lang_speech:'English · Phase 4 (speech)',
+  lang_learn:'Language learner',lang_pipeline:'Full pipeline (everything)',deterministic:'Fact harvester',
+  web:'Web harvester',grounded_qa:'Grounded Q&A',watch:'Watch',reasoning:'Reasoning',
+  hypothesis:'Hypothesis',simulation:'Simulation',planner:'Planner'};
+function _statusChip(s){
+  const map={running:['#0c7a5c','#fff','running'],complete:['#2e9e78','#fff','complete ✓'],
+    paused:['#8a6d00','#fff','paused'],blocked:['#b45309','#fff','blocked — needs attention'],
+    error:['#b23b3b','#fff','error'],stopped:['#64748b','#fff','stopped'],roadmap:['#64748b','#fff','roadmap']};
+  const m=map[s]||['#64748b','#fff',s||'—'];
+  return `<span style="background:${m[0]};color:${m[1]};font:800 10px/1 var(--mono);letter-spacing:.03em;text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap">${esc(m[2])}</span>`;
+}
+async function refreshSystems(){
+  let d; try{ d=await (await fetch('api/agents')).json(); }catch(e){ return; }
+  const all=(d.agents||[]);
+  // show anything that is doing (or has done / is stuck on) work; hide never-started idlers
+  const live=all.filter(a=>['running','paused','blocked','error','complete'].includes(a.status)
+                           || (a.facts||0)>0 || (a.cycles||0)>0);
+  const wrap=$('systems-list'); const cnt=$('systems-count');
+  const running=live.filter(a=>a.status==='running').length;
+  const blocked=live.filter(a=>a.status==='blocked'||a.status==='error').length;
+  if(cnt) cnt.innerHTML = live.length
+    ? `<b>${running}</b> running · <b>${live.filter(a=>a.status==='complete').length}</b> complete`
+      + (blocked?` · <b style="color:#b23b3b">${blocked} need attention</b>`:'')
+    : '';
+  if(!live.length){ wrap.innerHTML='<div class="note">Nothing running yet. Press a Start/Teach button above and every process will appear here with a live progress bar.</div>'; return; }
+  // determinate % when the process reports one; else indeterminate shimmer while running
+  wrap.innerHTML = live.map(a=>{
+    const label=_KINDLABEL[a.kind]||a.kind;
+    const hasPct=(typeof a.percent==='number');
+    const pct=Math.max(0,Math.min(100,Math.round(a.percent||0)));
+    const done=a.status==='complete';
+    const barColor=done?'#2e9e78':(a.status==='blocked'||a.status==='error'?'#b23b3b':'var(--accent)');
+    const fill = hasPct
+      ? `<i style="display:block;height:100%;width:${done?100:pct}%;background:${barColor};border-radius:inherit;transition:width .4s"></i>`
+      : (a.status==='running'
+          ? `<i class="sys-indet" style="display:block;height:100%;width:40%;background:${barColor};border-radius:inherit"></i>`
+          : `<i style="display:block;height:100%;width:${done?100:0}%;background:${barColor};border-radius:inherit"></i>`);
+    const pctLabel = hasPct?`${done?100:pct}%`:(done?'100%':(a.status==='running'?'working…':''));
+    const detail = esc(a.phase || a.error || '');
+    const meta = `${(a.facts||0).toLocaleString()} facts · ${a.cycles||0} cycles`;
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--panel2)">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="font-weight:700">${esc(label)}${a.target?` <span class="note">(${esc(a.target)})</span>`:''}</div>
+        ${_statusChip(a.status)}
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <div style="flex:1;height:12px;background:var(--line);border-radius:999px;overflow:hidden">${fill}</div>
+        <div style="font:800 12px var(--mono);min-width:64px;text-align:right">${pctLabel}</div>
+      </div>
+      <div class="note" style="margin-top:6px">${detail||'&nbsp;'}</div>
+      <div class="note" style="margin-top:2px;opacity:.8">${meta}</div>
+    </div>`;
+  }).join('');
+}
+try{ refreshSystems(); setInterval(refreshSystems, 1200); }catch(e){}
+
 // ---- THE button: do everything + live activity feed -----------------------
 const FLAGS={es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇵🇹',nl:'🇳🇱',sv:'🇸🇪',en:'🇬🇧'};
 let _goSince=0, _goTimer=null;
@@ -834,13 +916,18 @@ async function updateOverall(){
   try{
     const d=await (await fetch('api/language/readiness')).json();
     const rows=d.languages||[];
-    let learned=0, avail=0, started=0;
-    rows.forEach(r=>{ learned+=(r.words_learned||0); avail+=(r.words_available||0); if((r.words_learned||0)>0) started++; });
-    const pct=avail?Math.min(100,Math.round(100*learned/avail)):0;
+    let learned=0, avail=0, started=0, sumPct=0;
+    rows.forEach(r=>{ const l=(r.words_learned||0), a=(r.words_available||0);
+      learned+=l; avail+=a;
+      if(l>0){ started++; sumPct+=Math.min(100,100*l/(a||1)); } });
+    // Honest, intuitive measure: average completion across the languages actually
+    // being learned — so an English-only run shows ~100%, not 1% of every language
+    // on earth. Falls back to 0 until something starts.
+    const pct=started?Math.round(sumPct/started):0;
     const gf=$('go-fill'), gp=$('go-pct'), gd=$('go-detail');
     if(gf) gf.style.width=pct+'%'; if(gp) gp.textContent=pct+'%';
-    if(gd) gd.innerHTML=`<b>${learned.toLocaleString()}</b> of ${avail.toLocaleString()} words · <b>${started}</b>/${rows.length} languages started`
-      +(pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':(started?' · learning…':' · idle'));
+    if(gd) gd.innerHTML=`<b>${learned.toLocaleString()}</b> words learned · <b>${started}</b>/${rows.length} languages started`
+      +(started?(pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':' · learning…'):' · idle');
     return {learned,avail,started,total:rows.length,pct};
   }catch(e){ return null; }
 }
@@ -992,7 +1079,9 @@ async function loadReadiness(){
         +`<td>${(r.words_learned||0).toLocaleString()} / ${(r.words_available||0).toLocaleString()}</td>`
         +`<td>${yn(r.can_translate)}</td><td>${yn(r.can_pronounce)}</td>`
         +`<td>${audio?yn(true):'browser voice'}</td>`
-        +`<td><button class="btn" style="font-size:11px;padding:3px 9px" data-teach="${r.lang}">Teach</button></td></tr>`;
+        +(r.lang==='en'
+           ? `<td><button class="btn" style="font-size:11px;padding:3px 9px" data-run-english="1">Run phases</button></td></tr>`
+           : `<td><button class="btn" style="font-size:11px;padding:3px 9px" data-teach="${r.lang}">Teach</button></td></tr>`);
     }).join('');
     el.innerHTML=`<table><thead><tr><th>Language</th><th>Words learned / available</th><th>Translate</th><th>Pronounce</th><th>Speak audio</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
       +`<p class="note" style="margin-top:6px">Every language has a full dictionary (~3,700+ words). <b>Translate</b> and <b>pronounce</b> work with no install. <b>Speak audio</b>: ${audio?('offline via '+esc(audio)):'uses your browser voice (English always; other languages if your system has that voice). Install espeak-ng for offline audio in every language.'}</p>`;
