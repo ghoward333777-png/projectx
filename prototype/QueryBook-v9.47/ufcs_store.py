@@ -193,62 +193,111 @@ class UFCSStore:
             self.index_recovered = True
             return db
 
+    def _iter_block_records(self, bid):
+        """Yield records from one block, tolerating a truncated/garbage tail (a
+        'very corrupt' store may have partially-written blocks — recover every
+        intact record and skip the rest instead of aborting the whole rebuild)."""
+        p = self._block_path(bid)
+        if not os.path.exists(p):
+            return
+        try:
+            if self.pack:
+                with self._open(p, "rb") as f:
+                    for rec in iter_packed(f):
+                        yield rec
+            else:
+                with self._open(p, "rt", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            yield json.loads(line)
+                        except Exception:
+                            continue      # skip a corrupt line, keep the rest
+        except Exception:
+            return                        # truncated block: keep whatever we already yielded
+
     def reindex_from_blocks(self, progress=None, should_stop=None):
         """Rebuild the fp + nuc index entirely from the blocks (the source of truth).
-        Used to recover after a corrupt index was quarantined. Returns the number of
-        facts indexed. Safe to run on a live store; it fills the fresh index in place."""
+        FAST: drops the secondary index during load, inserts in big executemany
+        batches under bulk-load pragmas, then recreates the index — many times
+        faster than row-by-row. Reports progress per batch so it never looks frozen.
+        Returns the number of facts indexed."""
+        total_blocks = self.manifest.get("blocks", 0)
         n = 0
+        BATCH = 20000
         with WRITE_LOCK:
+            # bulk-load tuning: the rebuild owns the DB here (fresh/quarantined index)
+            try:
+                self.db.execute("PRAGMA synchronous=OFF")
+                self.db.execute("PRAGMA journal_mode=MEMORY")
+                self.db.execute("PRAGMA temp_store=MEMORY")
+                self.db.execute("PRAGMA cache_size=-200000")      # ~200 MB page cache
+            except Exception:
+                pass
+            # Insert WITHOUT the secondary (subject,predicate) index, then build it
+            # once at the end — the single biggest speedup for a large rebuild.
+            try:
+                self.db.execute("DROP INDEX IF EXISTS nuc_sp")
+            except Exception:
+                pass
             self.db.execute("BEGIN")
+        fp_batch, nuc_batch = [], []
+
+        def _flush():
+            nonlocal fp_batch, nuc_batch
+            if not fp_batch:
+                return
+            with WRITE_LOCK:
+                self.db.executemany("INSERT OR IGNORE INTO fp(fingerprint, block) VALUES(?,?)", fp_batch)
+                self.db.executemany(
+                    "INSERT OR IGNORE INTO nuc(fp, subject, predicate, object, trust, block) VALUES(?,?,?,?,?,?)",
+                    nuc_batch)
+                self.db.commit()
+                self.db.execute("BEGIN")
+            fp_batch, nuc_batch = [], []
+
         try:
-            for bid in range(self.manifest.get("blocks", 0)):
+            for bid in range(total_blocks):
                 if should_stop and should_stop():
                     break
-                p = self._block_path(bid)
-                if not os.path.exists(p):
-                    continue
-                recs = []
-                if self.pack:
-                    with self._open(p, "rb") as f:
-                        for rec in iter_packed(f):
-                            recs.append(rec)
-                else:
-                    with self._open(p, "rt", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if line:
-                                try:
-                                    recs.append(json.loads(line))
-                                except Exception:
-                                    continue
-                with WRITE_LOCK:
-                    for rec in recs:
-                        nuc = rec.get("nucleus") or {}
-                        fp = rec.get("semantic_fingerprint") or fingerprint(
-                            nuc.get("subject", ""), nuc.get("predicate", ""),
-                            nuc.get("object", ""), rec.get("polarity", "+"))
-                        trust = (rec.get("certification") or {}).get("trust_score",
-                                 (rec.get("confidence") or {}).get("trust_score", 0.0))
-                        try:
-                            self.db.execute("INSERT OR IGNORE INTO fp(fingerprint, block) VALUES(?,?)", (fp, bid))
-                            self.db.execute(
-                                "INSERT OR IGNORE INTO nuc(fp, subject, predicate, object, trust, block) VALUES(?,?,?,?,?,?)",
-                                (fp, _norm(nuc.get("subject", "")), _norm(nuc.get("predicate", "")),
-                                 str(nuc.get("object", "")), trust, bid))
-                            n += 1
-                        except Exception:
-                            continue
-                    self.db.commit()
-                    self.db.execute("BEGIN")
+                for rec in self._iter_block_records(bid):
+                    nuc = rec.get("nucleus") or {}
+                    fp = rec.get("semantic_fingerprint") or fingerprint(
+                        nuc.get("subject", ""), nuc.get("predicate", ""),
+                        nuc.get("object", ""), rec.get("polarity", "+"))
+                    trust = (rec.get("certification") or {}).get("trust_score",
+                             (rec.get("confidence") or {}).get("trust_score", 0.0))
+                    fp_batch.append((fp, bid))
+                    nuc_batch.append((fp, _norm(nuc.get("subject", "")),
+                                      _norm(nuc.get("predicate", "")), str(nuc.get("object", "")),
+                                      trust, bid))
+                    n += 1
+                    if len(fp_batch) >= BATCH:
+                        _flush()
+                        if progress:
+                            try: progress(bid, total_blocks, n)   # per-batch: always moving
+                            except Exception: pass
                 if progress:
-                    try:
-                        progress(bid + 1, self.manifest.get("blocks", 0), n)
-                    except Exception:
-                        pass
+                    try: progress(bid + 1, total_blocks, n)
+                    except Exception: pass
+            _flush()
         finally:
             with WRITE_LOCK:
                 try:
                     self.db.commit()
+                except Exception:
+                    pass
+                # rebuild the secondary index now that the rows are in
+                try:
+                    self.db.execute("CREATE INDEX IF NOT EXISTS nuc_sp ON nuc(subject, predicate)")
+                except Exception:
+                    pass
+                # restore safe durability settings for normal operation
+                try:
+                    self.db.execute("PRAGMA synchronous=NORMAL")
+                    self.db.execute("PRAGMA journal_mode=WAL")
                 except Exception:
                     pass
         return n

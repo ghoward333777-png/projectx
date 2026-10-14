@@ -37,7 +37,7 @@ import qb_help
 import qb_backup
 import qb_mailer
 
-BUILD = "v9.70"
+BUILD = "v9.71"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
