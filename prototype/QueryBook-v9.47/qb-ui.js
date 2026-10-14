@@ -77,3 +77,24 @@
   }
   fileGuard();
 })();
+
+/* Live version badge — always show the REAL running build, never a stale
+   hard-coded string. Updates any element tagged data-qb-build from /api/version,
+   so "which version am I running?" is answered by the server, not by old HTML. */
+(function(){
+  function paint(d){
+    if(!d||!d.build) return;
+    var els=document.querySelectorAll('[data-qb-build]');
+    for(var i=0;i<els.length;i++){
+      var t=els[i].textContent;
+      t=t.replace(/v9\.[0-9]+(\.[0-9]+)?/, d.build);
+      if(d.date) t=t.replace(/20[0-9]{2}-[0-9]{2}-[0-9]{2}/, d.date);
+      els[i].textContent=t;
+      els[i].title='Live build reported by the server';
+    }
+  }
+  function go(){
+    try{ fetch('/api/version').then(function(r){return r.json();}).then(paint).catch(function(){}); }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',go); else go();
+})();

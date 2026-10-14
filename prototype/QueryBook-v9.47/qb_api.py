@@ -37,7 +37,7 @@ import qb_help
 import qb_backup
 import qb_mailer
 
-BUILD = "v9.69"
+BUILD = "v9.70"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
@@ -1576,6 +1576,10 @@ class H(BaseHTTPRequestHandler):
             bst["mirror_dirs"] = _mirror_dirs(data_dir=DATA_DIR)
             bst["cloud_config"] = os.path.join(os.path.expanduser("~"), ".querybook", "cloud.json")
             return self._send(200, bst)
+        if u.path == "/api/version":
+            # Store-independent: the live build, so the UI badge always reflects the
+            # ACTUAL running version (never a stale hard-coded string) even at boot.
+            return self._send(200, {"build": BUILD, "date": BUILD_DATE})
         if u.path == "/api/reindex":
             # Index health + self-repair status (store-independent so it answers
             # even while the index is being rebuilt).
