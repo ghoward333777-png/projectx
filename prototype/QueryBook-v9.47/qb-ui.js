@@ -35,4 +35,32 @@
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", addToggle);
   else addToggle();
+
+  // --- file:// guard --------------------------------------------------------
+  // If a page is opened directly from disk (file://...) instead of through the
+  // running server, every /api call fails with "TypeError: Failed to fetch".
+  // Detect that and show a clear, clickable banner pointing at the server URL.
+  function fileGuard(){
+    try{
+      if(location.protocol!=="file:") return;
+      var name=(location.pathname.split("/").pop()||"").replace(/\.html?$/i,"");
+      var path=(!name||name==="home"||name==="index")?"/":("/"+name);
+      var port=(window.QB_PORT||"8099");
+      var url="http://127.0.0.1:"+port+path;
+      var bar=document.createElement("div");
+      bar.setAttribute("role","alert");
+      bar.style.cssText="position:fixed;left:0;right:0;top:0;z-index:2147483647;"+
+        "background:#8a1c1c;color:#fff;font:600 14px/1.5 system-ui,Segoe UI,Arial,sans-serif;"+
+        "padding:12px 16px;box-shadow:0 2px 10px rgba(0,0,0,.35);text-align:center";
+      bar.innerHTML="You opened this page as a FILE, so it can't reach QueryBook. "+
+        "Open it through the running server instead: "+
+        "<a href=\""+url+"\" style=\"color:#fff;text-decoration:underline\">"+url+"</a>"+
+        " &nbsp;(make sure the QueryBook window is running).";
+      function show(){ if(document.body){ document.body.appendChild(bar);
+        document.body.style.paddingTop="52px"; } }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",show);
+      else show();
+    }catch(e){}
+  }
+  fileGuard();
 })();
