@@ -35,8 +35,9 @@ MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
 import qb_backup
+import qb_mailer
 
-BUILD = "v9.66"
+BUILD = "v9.67"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
@@ -130,7 +131,8 @@ def _is_server_launch():
     sub = sys.argv[1] if len(sys.argv) > 1 else ""
     return sub not in ("discover", "find", "--discover", "diag", "diagnose",
                        "--diag", "configure", "--configure", "-h", "--help",
-                       "backup-config", "--backup-config", "backup", "backup-now")
+                       "backup-config", "--backup-config", "backup", "backup-now",
+                       "mail-config", "--mail-config", "mail-test", "mail-now", "mail")
 
 
 def _default_mirror(data_dir):
@@ -769,7 +771,8 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
                           "/api/language/custom_voice", "/api/language/dialects",
-                          "/api/language/dialect_detect", "/api/mirror", "/api/backup", "/api/help") \
+                          "/api/language/dialect_detect", "/api/mirror", "/api/backup",
+                          "/api/mail", "/api/help") \
                 and not u.path.startswith("/api/director/") \
                 and not u.path.startswith("/api/scene/") \
                 and not u.path.startswith("/api/lil/") \
@@ -885,6 +888,41 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": True, "mirror_dirs": mirrors})
             except Exception as e:
                 return self._send(500, {"error": "could not start backup: " + str(e)})
+        if u.path == "/api/mail":
+            # Configure / test the hourly health email. Secrets are written to the
+            # local git-ignored mail.json; never echoed back.
+            try:
+                cfg = qb_mailer.load_cfg()
+                action = (body.get("action") or "").strip().lower()
+                # settings fields that may be updated from the dashboard
+                for k in ("to", "from", "smtp_host", "username", "password",
+                          "subject_prefix"):
+                    if k in body and body[k] is not None:
+                        cfg[k] = str(body[k])
+                if "smtp_port" in body:
+                    cfg["smtp_port"] = int(body.get("smtp_port") or 587)
+                if "interval_minutes" in body:
+                    cfg["interval_minutes"] = max(5, int(body.get("interval_minutes") or 60))
+                if "use_tls" in body:
+                    cfg["use_tls"] = bool(body["use_tls"])
+                if "only_when_problems" in body:
+                    cfg["only_when_problems"] = bool(body["only_when_problems"])
+                if action in ("enable", "on"):
+                    cfg["enabled"] = True
+                elif action in ("disable", "off"):
+                    cfg["enabled"] = False
+                elif "enabled" in body:
+                    cfg["enabled"] = bool(body["enabled"])
+                qb_mailer.save_cfg(cfg)
+                qb_mailer.start_scheduler(_collect_mail_report)   # ensure the loop is live
+                if action in ("test", "send", "send_now", "now"):
+                    res = qb_mailer.send_report(_collect_mail_report(), cfg)
+                    code = 200 if res.get("ok") else 502
+                    return self._send(code, res)
+                return self._send(200, {"ok": True, "enabled": cfg["enabled"],
+                                        "to": cfg.get("to"), "saved": True})
+            except Exception as e:
+                return self._send(500, {"error": "mail config failed: " + str(e)})
         if u.path == "/api/mirror":
             if body.get("on") is False or body.get("stop"):
                 return self._send(200, MIRROR.stop_mirror())
@@ -1530,6 +1568,18 @@ class H(BaseHTTPRequestHandler):
             bst["mirror_dirs"] = _mirror_dirs(data_dir=DATA_DIR)
             bst["cloud_config"] = os.path.join(os.path.expanduser("~"), ".querybook", "cloud.json")
             return self._send(200, bst)
+        if u.path == "/api/mail":
+            # Email-alerts status (redacted — never returns the password).
+            cfg = qb_mailer.load_cfg()
+            mst = qb_mailer.status()
+            mst.update({"enabled": bool(cfg.get("enabled")), "to": cfg.get("to", ""),
+                        "smtp_host": cfg.get("smtp_host", ""), "smtp_port": cfg.get("smtp_port"),
+                        "username": cfg.get("username", ""),
+                        "has_password": bool(cfg.get("password")),
+                        "interval_minutes": cfg.get("interval_minutes", 60),
+                        "only_when_problems": bool(cfg.get("only_when_problems")),
+                        "config_file": qb_mailer._cfg_path()})
+            return self._send(200, mst)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()
@@ -1883,6 +1933,60 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self._send(500, {"error": str(e)})
 
+_MAIL_SINCE = {"seq": 0}
+
+def _collect_mail_report():
+    """Build the health digest the hourly mailer sends: self-test result, fail
+    alerts, error codes (new error/blocked/warn log entries since last send),
+    recent application log, backup status and the store's data_events.log tail."""
+    import platform as _pf
+    rep = {"host": _pf.node() or "this machine", "store": os.path.abspath(DATA_DIR),
+           "build": BUILD}
+    # self-test
+    rep["selftest"] = LAST_SELFTEST or {"all_ok": None, "passed": None, "total": None}
+    # fail alerts: failing checks + blocked/errored agents + backup error
+    alerts = []
+    for c in (rep["selftest"].get("checks") or []):
+        if not c.get("ok"):
+            alerts.append("self-test FAILED: %s — %s" % (c.get("name", "?"), c.get("detail", "")))
+    try:
+        for a in AGENTS.snapshot().get("agents", []):
+            if a.get("status") in ("error", "blocked"):
+                alerts.append("agent '%s' %s: %s" % (a.get("name", "?"), a.get("status"),
+                                                     a.get("error") or a.get("phase") or ""))
+    except Exception:
+        pass
+    try:
+        bk = qb_backup.status()
+    except Exception:
+        bk = {}
+    if bk.get("error"):
+        alerts.append("backup error: %s" % bk["error"])
+    rep["backup"] = bk
+    rep["alerts"] = alerts
+    # error codes: error/blocked/warn log entries NEW since the last send
+    try:
+        since = _MAIL_SINCE["seq"]
+        allrecent = qb_log.entries(limit=600, since_seq=since)
+        errs = [e for e in allrecent if e.get("level") in ("error", "blocked", "warn")]
+        errs.reverse()                         # oldest first for reading
+        rep["errors"] = errs
+        if allrecent:
+            _MAIL_SINCE["seq"] = max(e.get("seq", 0) for e in allrecent)
+    except Exception:
+        rep["errors"] = []
+    # application log tail (newest first -> oldest first)
+    try:
+        logs = qb_log.entries(limit=300)
+        logs.reverse()
+        rep["logs"] = logs
+    except Exception:
+        rep["logs"] = []
+    # durable store data-events log tail
+    rep["data_events"] = qb_mailer._tail_file(os.path.join(DATA_DIR, "data_events.log"), 120)
+    return rep
+
+
 def main():
     global BIND
     host, port = BIND.split(":")
@@ -2025,6 +2129,18 @@ def main():
                 pass
     threading.Thread(target=_selftest_loop, daemon=True).start()
     print("  SELF-TEST: re-running automatically every 15 min (24x7)", flush=True)
+    # Hourly health email to the sys admin (fail alerts + error codes + logs).
+    # Off until configured in ~/.querybook/mail.json (python qb_api.py mail-config).
+    try:
+        mcfg = qb_mailer.load_cfg()
+        qb_mailer.start_scheduler(_collect_mail_report)
+        if mcfg.get("enabled"):
+            print(f"  EMAIL ALERTS: ON — digest every {mcfg.get('interval_minutes', 60)} min "
+                  f"to {mcfg.get('to')}", flush=True)
+        else:
+            print("  EMAIL ALERTS: off — turn on with  python qb_api.py mail-config", flush=True)
+    except Exception as e:
+        print(f"  EMAIL ALERTS could not start: {e}", flush=True)
     srv.serve_forever()
 
 def _cli_discover():
@@ -2148,6 +2264,77 @@ def _cli_backup_now():
     print(json.dumps(r, indent=2), flush=True)
 
 
+def _cli_mail_config():
+    """Set up the hourly health email. Writes the LOCAL, git-ignored mail.json.
+    Flags (non-interactive): --to --user --password --host --port --interval --on/--off
+    Secrets are stored in the file, not kept in your shell history where possible."""
+    cfg = qb_mailer.load_cfg()
+    qb_mailer.ensure_template()
+    flag = _arg
+    for k, fl in (("to", "--to"), ("username", "--user"), ("password", "--password"),
+                  ("smtp_host", "--host"), ("subject_prefix", "--prefix"), ("from", "--from")):
+        v = flag(fl)
+        if v is not None:
+            cfg[k] = v
+    if _arg("--port") is not None:
+        cfg["smtp_port"] = int(_arg("--port") or 587)
+    if _arg("--interval") is not None:
+        cfg["interval_minutes"] = max(5, int(_arg("--interval") or 60))
+    if "--on" in sys.argv:
+        cfg["enabled"] = True
+    if "--off" in sys.argv:
+        cfg["enabled"] = False
+    interactive = (not any(a.startswith("--") for a in sys.argv[2:])) \
+        and bool(getattr(sys, "stdin", None)) and sys.stdin.isatty()
+    if interactive:
+        print("=" * 60, flush=True)
+        print("  QueryBook — hourly health email setup", flush=True)
+        print("=" * 60, flush=True)
+        def ask(label, cur):
+            a = input("  %s [%s]: " % (label, cur if cur else "")).strip()
+            return a or cur
+        cfg["to"] = ask("Send alerts TO (sys admin email)", cfg.get("to"))
+        cfg["smtp_host"] = ask("SMTP host", cfg.get("smtp_host"))
+        cfg["smtp_port"] = int(ask("SMTP port (587 STARTTLS / 465 SSL)", cfg.get("smtp_port")) or 587)
+        cfg["username"] = ask("SMTP username (the sending email)", cfg.get("username"))
+        print("  SMTP password / Gmail APP PASSWORD (input hidden):", flush=True)
+        try:
+            import getpass
+            pw = getpass.getpass("    > ")
+            if pw:
+                cfg["password"] = pw
+        except Exception:
+            pass
+        cfg["interval_minutes"] = int(ask("Send every N minutes", cfg.get("interval_minutes")) or 60)
+        yn = input("  Turn email alerts ON now? [Y/n] ").strip().lower()
+        cfg["enabled"] = yn in ("", "y", "yes")
+    qb_mailer.save_cfg(cfg)
+    print("  Saved: %s" % qb_mailer._cfg_path(), flush=True)
+    print("  TO=%s  via %s:%s  user=%s  every %s min  enabled=%s"
+          % (cfg.get("to"), cfg.get("smtp_host"), cfg.get("smtp_port"),
+             cfg.get("username") or "(unset)", cfg.get("interval_minutes"), cfg.get("enabled")),
+          flush=True)
+    if not (cfg.get("username") and cfg.get("password")):
+        print("  NOTE: set the SMTP username + app password before it can send.", flush=True)
+    print("  Test it now:  python qb_api.py mail-test", flush=True)
+
+
+def _cli_mail_test():
+    """Send ONE health email right now, using mail.json, and print the result."""
+    cfg = qb_mailer.load_cfg()
+    print("Sending a test health email to %s via %s:%s…"
+          % (cfg.get("to"), cfg.get("smtp_host"), cfg.get("smtp_port")), flush=True)
+    try:
+        rep = _collect_mail_report()
+    except Exception as e:
+        rep = {"host": "cli", "build": BUILD, "alerts": ["(report build failed: %s)" % e],
+               "errors": [], "logs": [], "selftest": {}, "backup": {}, "data_events": ""}
+    res = qb_mailer.send_report(rep, cfg)
+    print(json.dumps(res, indent=2), flush=True)
+    if not res.get("ok"):
+        print("  Check mail.json: SMTP host/port, username, and (Gmail) an APP PASSWORD.", flush=True)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
@@ -2164,5 +2351,9 @@ if __name__ == "__main__":
         _cli_backup_config()
     elif len(sys.argv) > 1 and sys.argv[1] in ("backup", "backup-now"):
         _cli_backup_now()
+    elif len(sys.argv) > 1 and sys.argv[1] in ("mail-config", "--mail-config", "mail"):
+        _cli_mail_config()
+    elif len(sys.argv) > 1 and sys.argv[1] in ("mail-test", "mail-now"):
+        _cli_mail_test()
     else:
         main()

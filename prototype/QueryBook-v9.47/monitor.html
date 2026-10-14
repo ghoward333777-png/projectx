@@ -101,6 +101,29 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
     </div>
   </div>
 
+  <div class="card" id="mail-card"><h2>Email alerts to the sys admin</h2>
+    <p class="sub">Emails a digest — <b>fail alerts</b>, <b>error codes</b>, and <b>application logs</b> —
+    on a schedule (hourly by default). Credentials are stored only in a local, private file and are never shared.
+    Gmail: use an <b>App Password</b> (Google Account → Security → App passwords) with host <code>smtp.gmail.com</code> port <code>587</code>.</p>
+    <div id="mail-status" class="sub" style="margin:4px 0 10px"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+      <label class="kv">Send alerts to<input id="m-to" type="email" placeholder="ghowardbiz777@gmail.com" style="width:100%"></label>
+      <label class="kv">SMTP host<input id="m-host" placeholder="smtp.gmail.com" style="width:100%"></label>
+      <label class="kv">Port<input id="m-port" type="number" placeholder="587" style="width:100%"></label>
+      <label class="kv">SMTP username (sending email)<input id="m-user" placeholder="you@gmail.com" style="width:100%"></label>
+      <label class="kv">App password<input id="m-pass" type="password" placeholder="(leave blank to keep current)" style="width:100%"></label>
+      <label class="kv">Every N minutes<input id="m-interval" type="number" placeholder="60" style="width:100%"></label>
+    </div>
+    <label class="kv" style="margin-top:8px"><input id="m-onlyprob" type="checkbox"> Only email when something is failing</label>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn" id="m-save">Save</button>
+      <button class="btn" id="m-enable">Turn ON</button>
+      <button class="btn" id="m-disable">Turn OFF</button>
+      <button class="btn" id="m-test">Send test email now</button>
+      <span id="m-msg" class="sub" style="margin-left:6px"></span>
+    </div>
+  </div>
+
   <div class="card"><h2>Agents</h2>
     <p class="sub">Every harvesting, language, and reasoning agent and its live state.</p>
     <div style="overflow-x:auto"><table><thead><tr>
@@ -244,6 +267,52 @@ async function refreshBackup(){
   };
 })();
 refreshBackup(); setInterval(refreshBackup,5000);
+
+// ---- Email alerts ---------------------------------------------------------
+let _mailLoaded=false;
+async function refreshMail(){
+  let m; try{ m=await (await fetch('api/mail')).json(); }catch(e){ return; }
+  const dot=ok=>`<span class="dot" style="background:${ok?'var(--ok)':'var(--muted)'}"></span>`;
+  const bits=[];
+  bits.push(dot(m.enabled)+(m.enabled?('ON — every '+(m.interval_minutes||60)+' min'):'OFF'));
+  if(m.to) bits.push('to <b>'+esc(m.to)+'</b>');
+  if(m.last_ok) bits.push('last sent '+esc(m.last_ok));
+  if(m.last_error) bits.push('<span style="color:var(--bad)">last error: '+esc(m.last_error)+'</span>');
+  if(!m.has_password) bits.push('<span style="color:var(--bad)">no password set</span>');
+  $('mail-status').innerHTML=bits.join(' · ');
+  if(!_mailLoaded){   // fill the form once so typing isn't overwritten each poll
+    if($('m-to')) $('m-to').value=m.to||'';
+    if($('m-host')) $('m-host').value=m.smtp_host||'';
+    if($('m-port')) $('m-port').value=m.smtp_port||587;
+    if($('m-user')) $('m-user').value=m.username||'';
+    if($('m-interval')) $('m-interval').value=m.interval_minutes||60;
+    if($('m-onlyprob')) $('m-onlyprob').checked=!!m.only_when_problems;
+    _mailLoaded=true;
+  }
+}
+function _mailBody(extra){
+  const b={to:$('m-to').value.trim(),smtp_host:$('m-host').value.trim(),
+    smtp_port:parseInt($('m-port').value||'587',10),username:$('m-user').value.trim(),
+    interval_minutes:parseInt($('m-interval').value||'60',10),
+    only_when_problems:$('m-onlyprob').checked};
+  const pw=$('m-pass').value; if(pw) b.password=pw;   // blank = keep existing
+  return Object.assign(b, extra||{});
+}
+async function _mailPost(extra,msg){
+  $('m-msg').textContent=msg||'Saving…';
+  try{
+    const r=await (await fetch('api/mail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_mailBody(extra))})).json();
+    if(r.ok){ $('m-msg').textContent=extra&&extra.action==='test'?('✓ Test email sent to '+(r.to||'')):'✓ Saved';
+      $('m-pass').value=''; }
+    else $('m-msg').textContent='Error: '+(r.error||'failed');
+  }catch(e){ $('m-msg').textContent='Error: '+e; }
+  refreshMail();
+}
+if($('m-save')) $('m-save').onclick=()=>_mailPost({},'Saving…');
+if($('m-enable')) $('m-enable').onclick=()=>_mailPost({action:'enable'},'Turning on…');
+if($('m-disable')) $('m-disable').onclick=()=>_mailPost({action:'disable'},'Turning off…');
+if($('m-test')) $('m-test').onclick=()=>_mailPost({action:'test'},'Sending test email…');
+refreshMail(); setInterval(refreshMail,7000);
 
 const SAMPLES=['How do I teach it German?','How do I connect an API key?','What does Phase 1 do?',
   'Why is a language silent?','How do I collect facts?'];

@@ -108,6 +108,29 @@ The System Monitor page shows every backup location, the last sync time, and a
 "Back up now" button.
 
 
+HOURLY EMAIL ALERTS TO A SYS ADMIN
+----------------------------------
+QueryBook can email a health digest on a schedule (hourly by default):
+FAIL ALERTS (self-test failures, blocked/errored agents, backup errors),
+ERROR CODES (error/warning log entries), and the APPLICATION LOG.
+
+Set it up (one time):
+    Windows :  py qb_api.py mail-config
+    Mac     :  python3 qb_api.py mail-config
+
+It asks for the recipient (default ghowardbiz777@gmail.com), the SMTP server,
+the sending account, and a password. For Gmail, create an APP PASSWORD at
+Google Account -> Security -> App passwords and use host smtp.gmail.com port 587.
+Credentials are saved in a LOCAL, private file  (home)\.querybook\mail.json
+(never shared, never committed). Then restart QueryBook.
+
+Send a test immediately:
+    py qb_api.py mail-test        (Mac: python3 qb_api.py mail-test)
+
+You can also turn it on/off and send a test from the System Monitor page
+("Email alerts to the sys admin" card).
+
+
 NEED PYTHON MANUALLY?
 ---------------------
 If auto-install didn't work: get Python from https://www.python.org/downloads/

@@ -19,6 +19,8 @@ qb_tts_keys.json
 
 # Cloud backup credentials (Bunny.net / OVH) — LOCAL secrets, never commit
 cloud.json
+# Email-alert SMTP credentials — LOCAL secrets, never commit
+mail.json
 .querybook/
 # Backup snapshots + superseded-copy safety files (local runtime data)
 _snapshots/
