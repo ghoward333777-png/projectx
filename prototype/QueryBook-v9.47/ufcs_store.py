@@ -111,14 +111,9 @@ class UFCSStore:
         # (BEGIN/COMMIT) inside WRITE_LOCK; this stops the CREATE TABLE/PRAGMA below from
         # opening an implicit transaction that lingers for the life of the connection and
         # blocks every other agent ("database is locked"). This is the core concurrency fix.
+        self.index_recovered = False   # set True if a malformed index was quarantined + rebuilt
         with WRITE_LOCK:
-            self.db = sqlite3.connect(self.index_path, timeout=60, isolation_level=None)
-            self.db.execute("PRAGMA journal_mode=WAL")
-            self.db.execute("PRAGMA busy_timeout=60000")   # concurrent domain agents wait, never crash
-            self.db.execute("PRAGMA synchronous=NORMAL")
-            self.db.execute("CREATE TABLE IF NOT EXISTS fp (fingerprint TEXT PRIMARY KEY, block INTEGER)")
-            self.db.execute("CREATE TABLE IF NOT EXISTS nuc (fp TEXT PRIMARY KEY, subject TEXT, predicate TEXT, object TEXT, trust REAL, block INTEGER)")
-            self.db.execute("CREATE INDEX IF NOT EXISTS nuc_sp ON nuc(subject, predicate)")
+            self.db = self._open_index_resilient()
         self.manifest = self._load_manifest()
         # Concurrency: many store instances share manifest.json. Each tracks its OWN
         # deltas for the additive counters and a set of keys it wants to force, and
@@ -138,6 +133,132 @@ class UFCSStore:
         self._mode_w = "ab" if self.pack else "at"
         self._blk = None            # open block handle
         self._blk_id = self.manifest["blocks"] - 1 if self.manifest["blocks"] else -1
+
+    def _connect_index(self):
+        """Open the index, set pragmas, ensure schema, and PROBE it so a corrupt
+        file surfaces here (a bare connect/SELECT 1 does not touch a data page and
+        silently passes a 'database disk image is malformed' file)."""
+        db = sqlite3.connect(self.index_path, timeout=60, isolation_level=None)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA busy_timeout=60000")        # concurrent agents wait, never crash
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("CREATE TABLE IF NOT EXISTS fp (fingerprint TEXT PRIMARY KEY, block INTEGER)")
+        db.execute("CREATE TABLE IF NOT EXISTS nuc (fp TEXT PRIMARY KEY, subject TEXT, predicate TEXT, object TEXT, trust REAL, block INTEGER)")
+        db.execute("CREATE INDEX IF NOT EXISTS nuc_sp ON nuc(subject, predicate)")
+        # Force real page reads so corruption cannot hide behind lazy evaluation.
+        db.execute("SELECT count(*) FROM fp").fetchone()
+        db.execute("SELECT count(*) FROM nuc").fetchone()
+        return db
+
+    def _quarantine_corrupt_index(self):
+        """Move a malformed index (and its WAL/SHM siblings) aside so a FRESH one
+        can be built. Never deletes — the corrupt file is kept for forensics. The
+        facts themselves live in the blocks (source of truth) and are untouched."""
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        for suff in ("", "-wal", "-shm"):
+            p = self.index_path + suff
+            if os.path.exists(p):
+                try:
+                    os.replace(p, self.index_path + ".corrupt-" + ts + suff)
+                except OSError:
+                    try:
+                        os.remove(p)      # last resort so a fresh index can be created
+                    except OSError:
+                        pass
+        try:
+            with open(os.path.join(self.path, "data_events.log"), "a", encoding="utf-8") as f:
+                f.write("%s\tindex_malformed_quarantined\tindex.sqlite.corrupt-%s\n"
+                        % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ts))
+        except Exception:
+            pass
+
+    def _open_index_resilient(self):
+        """Open the index; on a malformed/corrupt file, quarantine it and build a
+        fresh one. The caller/app then re-indexes from the blocks (reindex_from_blocks).
+        This turns 'database disk image is malformed' from an app-wide outage (every
+        endpoint 500s) into an automatic, logged recovery."""
+        try:
+            return self._connect_index()
+        except sqlite3.DatabaseError as e:
+            try:
+                print("  STORE: index.sqlite is corrupt (%s) — quarantining and rebuilding" % e, flush=True)
+            except Exception:
+                pass
+            try:
+                self.db.close()
+            except Exception:
+                pass
+            self._quarantine_corrupt_index()
+            db = self._connect_index()        # fresh, empty index
+            self.index_recovered = True
+            return db
+
+    def reindex_from_blocks(self, progress=None, should_stop=None):
+        """Rebuild the fp + nuc index entirely from the blocks (the source of truth).
+        Used to recover after a corrupt index was quarantined. Returns the number of
+        facts indexed. Safe to run on a live store; it fills the fresh index in place."""
+        n = 0
+        with WRITE_LOCK:
+            self.db.execute("BEGIN")
+        try:
+            for bid in range(self.manifest.get("blocks", 0)):
+                if should_stop and should_stop():
+                    break
+                p = self._block_path(bid)
+                if not os.path.exists(p):
+                    continue
+                recs = []
+                if self.pack:
+                    with self._open(p, "rb") as f:
+                        for rec in iter_packed(f):
+                            recs.append(rec)
+                else:
+                    with self._open(p, "rt", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    recs.append(json.loads(line))
+                                except Exception:
+                                    continue
+                with WRITE_LOCK:
+                    for rec in recs:
+                        nuc = rec.get("nucleus") or {}
+                        fp = rec.get("semantic_fingerprint") or fingerprint(
+                            nuc.get("subject", ""), nuc.get("predicate", ""),
+                            nuc.get("object", ""), rec.get("polarity", "+"))
+                        trust = (rec.get("certification") or {}).get("trust_score",
+                                 (rec.get("confidence") or {}).get("trust_score", 0.0))
+                        try:
+                            self.db.execute("INSERT OR IGNORE INTO fp(fingerprint, block) VALUES(?,?)", (fp, bid))
+                            self.db.execute(
+                                "INSERT OR IGNORE INTO nuc(fp, subject, predicate, object, trust, block) VALUES(?,?,?,?,?,?)",
+                                (fp, _norm(nuc.get("subject", "")), _norm(nuc.get("predicate", "")),
+                                 str(nuc.get("object", "")), trust, bid))
+                            n += 1
+                        except Exception:
+                            continue
+                    self.db.commit()
+                    self.db.execute("BEGIN")
+                if progress:
+                    try:
+                        progress(bid + 1, self.manifest.get("blocks", 0), n)
+                    except Exception:
+                        pass
+        finally:
+            with WRITE_LOCK:
+                try:
+                    self.db.commit()
+                except Exception:
+                    pass
+        return n
+
+    def index_count(self):
+        """Rows in the nuc index (0 if empty/just-rebuilt). Cheap health signal."""
+        try:
+            return int(self.db.execute("SELECT count(*) FROM nuc").fetchone()[0])
+        except Exception:
+            return 0
 
     def _default_manifest(self):
         return {"blocks": 0, "facts": 0, "duplicates": 0, "raw_bytes": 0,
@@ -593,6 +714,52 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
     return total
 
 
+def index_health(store_path):
+    """Read-only health probe of a store's SQLite index — safe to call while the
+    server holds the store open (no write lock, opens the index read-only). Returns
+    {status, facts, index_rows, blocks, detail}. status ∈
+    ok | missing | empty | malformed | unreadable. This is what the 24×7 self-test
+    uses to CATCH a corrupt index instead of silently passing a bare 'SELECT 1'."""
+    out = {"status": "unknown", "facts": 0, "index_rows": 0, "blocks": 0, "detail": ""}
+    try:
+        with open(os.path.join(store_path, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        out["facts"] = int(m.get("facts", 0)); out["blocks"] = int(m.get("blocks", 0))
+    except Exception:
+        pass
+    idx = os.path.join(store_path, "index.sqlite")
+    if not os.path.isfile(idx):
+        out["status"] = "missing"
+        out["detail"] = "no index.sqlite yet" + (" but %d blocks exist — needs rebuild" % out["blocks"] if out["blocks"] else "")
+        return out
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % idx, uri=True, timeout=5)
+    except Exception as e:
+        out["status"] = "unreadable"; out["detail"] = str(e); return out
+    try:
+        # quick_check reads real pages — this is what exposes 'disk image is malformed'
+        qc = con.execute("PRAGMA quick_check(1)").fetchone()
+        if qc and str(qc[0]).lower() != "ok":
+            out["status"] = "malformed"; out["detail"] = "quick_check: %s" % qc[0]; return out
+        try:
+            out["index_rows"] = int(con.execute("SELECT count(*) FROM nuc").fetchone()[0])
+        except Exception:
+            out["index_rows"] = int(con.execute("SELECT count(*) FROM fp").fetchone()[0])
+        if out["index_rows"] == 0 and out["blocks"] > 0:
+            out["status"] = "empty"
+            out["detail"] = "index empty but %d blocks hold data — needs rebuild" % out["blocks"]
+        else:
+            out["status"] = "ok"
+            out["detail"] = "%d index rows; quick_check ok" % out["index_rows"]
+        return out
+    except sqlite3.DatabaseError as e:
+        out["status"] = "malformed"; out["detail"] = str(e); return out
+    except Exception as e:
+        out["status"] = "unreadable"; out["detail"] = str(e); return out
+    finally:
+        con.close()
+
+
 def reconcile_manifest(store_path):
     """One-time truth pass: set the manifest's fact/duplicate counters to what is
     ACTUALLY in the index. Repairs counters left wrong by the old concurrency race
@@ -604,6 +771,13 @@ def reconcile_manifest(store_path):
     try:
         true_facts = st.db.execute("SELECT COUNT(*) FROM fp").fetchone()[0]
         before = int(st.manifest.get("facts", 0))
+        blocks = int(st.manifest.get("blocks", 0))
+        # NEVER clobber the real count with 0 when the index is empty but blocks
+        # hold data — that happens right after a corrupt index is quarantined and
+        # a fresh one created. The blocks are the source of truth; the reindex
+        # (reindex_from_blocks) refills the index, then this reconciles correctly.
+        if getattr(st, "index_recovered", False) or (true_facts == 0 and blocks > 0):
+            return {"was": before, "now": before, "skipped": "index rebuilding; count preserved"}
         if true_facts != before:
             st._set_key("facts", true_facts)
             st.flush()

@@ -90,6 +90,17 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
     <div class="card"><h2>Data collection</h2><div id="collection"></div></div>
   </div>
 
+  <div class="card" id="dbhealth-card"><h2>Database health &amp; self-repair</h2>
+    <p class="sub">The knowledge index is checked continuously. A corrupt (“malformed”) index
+    no longer breaks the menus — QueryBook quarantines it and rebuilds from your blocks (the
+    source of truth) automatically. You can also force a rebuild here.</p>
+    <div id="dbhealth"></div>
+    <div style="margin-top:12px">
+      <button class="btn" id="db-repair">Repair database now</button>
+      <span id="db-msg" class="sub" style="margin-left:10px"></span>
+    </div>
+  </div>
+
   <div class="card" id="backup-card"><h2>Data preservation &amp; backup</h2>
     <p class="sub">Your knowledge is copied to a second folder on your drive at every launch, and
     any differing copy is snapshotted aside before it is refreshed — so data is never lost.
@@ -267,6 +278,34 @@ async function refreshBackup(){
   };
 })();
 refreshBackup(); setInterval(refreshBackup,5000);
+
+// ---- Database health & self-repair ----------------------------------------
+async function refreshDbHealth(){
+  let d; try{ d=await (await fetch('api/reindex')).json(); }catch(e){ return; }
+  const h=d.health||{}, r=d.repair||{};
+  const dot=c=>`<span class="dot" style="background:${c}"></span>`;
+  const map={ok:'var(--ok)',missing:'var(--muted)',empty:'#b45309',malformed:'var(--bad)',unreadable:'var(--bad)'};
+  let html=kv('Index status', dot(map[h.status]||'var(--muted)')+'<b>'+esc((h.status||'?').toUpperCase())+'</b> — '+esc(h.detail||''));
+  html+=kv('Indexed rows',(h.index_rows||0).toLocaleString())+kv('Facts (manifest)',(h.facts||0).toLocaleString())+kv('Blocks',(h.blocks||0).toLocaleString());
+  if(r.status==='repairing'||r.running){
+    const pct=r.total_blocks?Math.round(100*r.done_blocks/r.total_blocks):0;
+    html+=kv('Rebuild', `rebuilding from blocks — block ${r.done_blocks}/${r.total_blocks} (${pct}%), ${(r.indexed||0).toLocaleString()} facts re-indexed`);
+  } else if(r.status==='ok' && r.finished){
+    html+=kv('Last repair', 'rebuilt '+(r.indexed||0).toLocaleString()+' facts · '+esc(r.finished));
+  } else if(r.status==='error'){
+    html+=kv('Last repair', '<span style="color:var(--bad)">failed: '+esc(r.detail||'')+'</span>');
+  }
+  $('dbhealth').innerHTML=html;
+  const btn=$('db-repair'); if(btn) btn.disabled=!!(r.running||r.status==='repairing');
+}
+if($('db-repair')) $('db-repair').onclick=async()=>{
+  const b=$('db-repair'); b.disabled=true; $('db-msg').textContent='Starting rebuild from blocks…';
+  try{ await fetch('api/reindex',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    $('db-msg').textContent='Rebuild running — progress shows above.'; }
+  catch(e){ $('db-msg').textContent='Error: '+e; }
+  setTimeout(refreshDbHealth,1000);
+};
+refreshDbHealth(); setInterval(refreshDbHealth,4000);
 
 // ---- Email alerts ---------------------------------------------------------
 let _mailLoaded=false;

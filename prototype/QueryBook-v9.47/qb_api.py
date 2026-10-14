@@ -37,7 +37,7 @@ import qb_help
 import qb_backup
 import qb_mailer
 
-BUILD = "v9.67"
+BUILD = "v9.68"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
@@ -772,7 +772,7 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
                           "/api/language/custom_voice", "/api/language/dialects",
                           "/api/language/dialect_detect", "/api/mirror", "/api/backup",
-                          "/api/mail", "/api/help") \
+                          "/api/mail", "/api/reindex", "/api/help") \
                 and not u.path.startswith("/api/director/") \
                 and not u.path.startswith("/api/scene/") \
                 and not u.path.startswith("/api/lil/") \
@@ -888,6 +888,13 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": True, "mirror_dirs": mirrors})
             except Exception as e:
                 return self._send(500, {"error": "could not start backup: " + str(e)})
+        if u.path == "/api/reindex":
+            # Force an index rebuild from the blocks (manual "repair database" button).
+            try:
+                started = _reindex_if_needed(DATA_DIR, force=True)
+                return self._send(200, {"ok": True, "started": started, "repair": REINDEX})
+            except Exception as e:
+                return self._send(500, {"error": "could not start reindex: " + str(e)})
         if u.path == "/api/mail":
             # Configure / test the hourly health email. Secrets are written to the
             # local git-ignored mail.json; never echoed back.
@@ -1568,6 +1575,14 @@ class H(BaseHTTPRequestHandler):
             bst["mirror_dirs"] = _mirror_dirs(data_dir=DATA_DIR)
             bst["cloud_config"] = os.path.join(os.path.expanduser("~"), ".querybook", "cloud.json")
             return self._send(200, bst)
+        if u.path == "/api/reindex":
+            # Index health + self-repair status (store-independent so it answers
+            # even while the index is being rebuilt).
+            try:
+                hp = store.index_health(DATA_DIR)
+            except Exception as e:
+                hp = {"status": "unreadable", "detail": str(e)}
+            return self._send(200, {"health": hp, "repair": REINDEX})
         if u.path == "/api/mail":
             # Email-alerts status (redacted — never returns the password).
             cfg = qb_mailer.load_cfg()
@@ -1935,6 +1950,53 @@ class H(BaseHTTPRequestHandler):
 
 _MAIL_SINCE = {"seq": 0}
 
+# Index self-repair state (surfaced at /api/health and /api/backup-independent /api/reindex)
+REINDEX = {"running": False, "done_blocks": 0, "total_blocks": 0, "indexed": 0,
+           "started": None, "finished": None, "status": "idle", "detail": ""}
+
+
+def _reindex_if_needed(data_dir, force=False):
+    """If the SQLite index is malformed or empty while blocks hold data, rebuild it
+    from the blocks (the source of truth) in the background, with live progress.
+    A corrupt index that used to 500 every menu now self-heals, visibly."""
+    try:
+        probe = store.index_health(data_dir)
+    except Exception as e:
+        probe = {"status": "unreadable", "detail": str(e), "blocks": 0}
+    REINDEX["detail"] = "%s — %s" % (probe.get("status"), probe.get("detail", ""))
+    need = force or (probe.get("status") in ("malformed", "empty") and probe.get("blocks", 0) > 0)
+    if not need:
+        REINDEX["status"] = probe.get("status", "ok")
+        return False
+    if REINDEX["running"]:
+        return True
+
+    def _work():
+        REINDEX.update(running=True, status="repairing", done_blocks=0, indexed=0,
+                       started=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), finished=None)
+        try:
+            qb_log.log("warn", "store", "index needs rebuild (%s) — rebuilding from blocks" % probe.get("status"))
+            st = store.UFCSStore(data_dir)   # a malformed index is quarantined here, fresh one created
+            REINDEX["total_blocks"] = int(st.manifest.get("blocks", 0))
+            if getattr(st, "index_recovered", False):
+                qb_log.log("warn", "store", "corrupt index.sqlite quarantined; fresh index created")
+
+            def prog(done, total, indexed):
+                REINDEX.update(done_blocks=done, total_blocks=total, indexed=indexed)
+            n = st.reindex_from_blocks(progress=prog)
+            st.flush(); st.close()
+            rc = store.reconcile_manifest(data_dir)   # now safe: index is full again
+            REINDEX.update(running=False, status="ok", indexed=n,
+                           finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                           detail="rebuilt %s facts into the index" % format(n, ","))
+            qb_log.log("ok", "store", "index rebuild complete — %s facts re-indexed" % format(n, ","))
+        except Exception as e:
+            REINDEX.update(running=False, status="error", detail=str(e))
+            qb_log.log("error", "store", "index rebuild failed: %s" % e)
+
+    threading.Thread(target=_work, daemon=True).start()
+    return True
+
 def _collect_mail_report():
     """Build the health digest the hourly mailer sends: self-test result, fail
     alerts, error codes (new error/blocked/warn log entries since last send),
@@ -2014,6 +2076,20 @@ def main():
             print(f"      [{tag}] {t.get('dir')}  ({t.get('facts',0):,} facts)", flush=True)
     except Exception as e:
         print(f"  DATA SAFETY: boot backup skipped: {e}", flush=True)
+    # INDEX SELF-REPAIR: a corrupt/malformed index.sqlite used to make EVERY menu
+    # item fail ("can't connect to the database / malformed") while the dashboard
+    # still loaded. Detect it here and rebuild the index from the blocks (source of
+    # truth), in the background with live progress — the app stays up and self-heals.
+    try:
+        hp = store.index_health(DATA_DIR)
+        if hp.get("status") == "ok":
+            print(f"  INDEX: healthy ({hp.get('index_rows',0):,} rows)", flush=True)
+        else:
+            print(f"  INDEX: {hp.get('status','?')} — {hp.get('detail','')}", flush=True)
+            if _reindex_if_needed(DATA_DIR):
+                print(f"  INDEX: self-repair started — rebuilding from blocks in the background", flush=True)
+    except Exception as e:
+        print(f"  INDEX health check skipped: {e}", flush=True)
     # One-time repair: make the on-disk fact counter match what's actually in the index,
     # fixing counters corrupted by the earlier concurrency race in existing stores.
     try:
@@ -2116,19 +2192,32 @@ def main():
         global LAST_SELFTEST
         while True:
             try:
-                time.sleep(900)  # every 15 minutes
+                time.sleep(300)  # every 5 minutes (24x7 comprehensive battery)
                 LAST_SELFTEST = qb_selftest.run_all(DATA_DIR)
+                # Continuous AUTO-HEAL: if the periodic check finds a corrupt/empty
+                # index, kick off a rebuild from blocks without waiting for a restart.
+                try:
+                    hp = store.index_health(DATA_DIR)
+                    if hp.get("status") in ("malformed", "empty") and hp.get("blocks", 0) > 0 \
+                            and not REINDEX["running"]:
+                        qb_log.log("error", "selftest",
+                                   "index %s detected — starting auto-repair" % hp.get("status"))
+                        _reindex_if_needed(DATA_DIR)
+                except Exception:
+                    pass
                 if not LAST_SELFTEST.get("all_ok"):
                     try:
+                        failed = [c["name"] for c in LAST_SELFTEST.get("checks", []) if not c.get("ok")]
                         qb_log.log("warn", "selftest",
-                                   "periodic self-test %d/%d passed" %
-                                   (LAST_SELFTEST.get("passed", 0), LAST_SELFTEST.get("total", 0)))
+                                   "periodic self-test %d/%d passed; failing: %s" %
+                                   (LAST_SELFTEST.get("passed", 0), LAST_SELFTEST.get("total", 0),
+                                    ", ".join(failed) or "—"))
                     except Exception:
                         pass
             except Exception:
                 pass
     threading.Thread(target=_selftest_loop, daemon=True).start()
-    print("  SELF-TEST: re-running automatically every 15 min (24x7)", flush=True)
+    print("  SELF-TEST: comprehensive battery re-running automatically every 5 min (24x7, auto-heal on)", flush=True)
     # Hourly health email to the sys admin (fail alerts + error codes + logs).
     # Off until configured in ~/.querybook/mail.json (python qb_api.py mail-config).
     try:

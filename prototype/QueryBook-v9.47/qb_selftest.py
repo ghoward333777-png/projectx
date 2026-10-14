@@ -87,30 +87,95 @@ def run_all(store_dir=None):
     checks.append(_check("Unknown-fact honesty", c_verify_unknown))
 
     if store_dir and os.path.isdir(store_dir):
-        def c_live():
-            # Read-only probe: the running server already holds this store's
-            # index.sqlite open, so opening a SECOND read/write UFCSStore here can
-            # fail on a lock (especially on an external drive) even though the data
-            # is perfectly readable. Read the manifest (no lock) and open the index
-            # read-only (coexists with the live writer) to confirm it is queryable.
-            import json, sqlite3
-            facts = 0
+        # ---- DATABASE INTEGRITY: the check that catches "database malformed" ----
+        def c_index_integrity():
+            h = s.index_health(store_dir)
+            st = h.get("status")
+            if st == "malformed":
+                return (False, "index.sqlite is CORRUPT (%s) — the app self-repairs by "
+                               "rebuilding from blocks; until then menu items that query "
+                               "the index fail" % h.get("detail", ""))
+            if st == "unreadable":
+                return (False, "index.sqlite cannot be opened: %s" % h.get("detail", ""))
+            if st == "empty":
+                return (False, "index is empty but %d blocks hold data — rebuild needed/underway"
+                        % h.get("blocks", 0))
+            if st == "missing":
+                return (True, "no index yet (new store) — created on first write")
+            return (True, "index OK — %s rows, integrity check passed" % format(h.get("index_rows", 0), ","))
+        checks.append(_check("Database index integrity (malformed check)", c_index_integrity))
+
+        # ---- LIVE QUERY: prove a real table query works (not just connect) -------
+        def c_live_query():
+            import sqlite3
+            idx = os.path.join(store_dir, "index.sqlite")
+            if not os.path.isfile(idx):
+                return (True, "no index yet — nothing to query")
+            con = sqlite3.connect("file:%s?mode=ro" % idx, uri=True, timeout=5)
+            try:
+                n = con.execute("SELECT count(*) FROM nuc").fetchone()[0]
+                con.execute("SELECT subject,predicate,object FROM nuc LIMIT 1").fetchall()
+                return (True, "live FQL query works (%s indexed rows)" % format(int(n), ","))
+            finally:
+                con.close()
+        checks.append(_check("Live query (FQL path) works", c_live_query))
+
+        # ---- BLOCKS: the source of truth is present and readable ----------------
+        def c_blocks():
+            import json
             try:
                 with open(os.path.join(store_dir, "manifest.json"), encoding="utf-8") as f:
-                    facts = int(json.load(f).get("facts", 0))
-            except Exception:
-                facts = 0
-            idx = os.path.join(store_dir, "index.sqlite")
-            if os.path.isfile(idx):
-                con = sqlite3.connect("file:%s?mode=ro" % idx, uri=True, timeout=5)
+                    m = json.load(f)
+            except Exception as e:
+                return (False, "manifest.json unreadable: %s" % e)
+            blocks = int(m.get("blocks", 0))
+            bd = os.path.join(store_dir, "blocks")
+            files = [x for x in os.listdir(bd)] if os.path.isdir(bd) else []
+            if blocks == 0:
+                return (True, "new/empty store (0 blocks) — fine")
+            if not files:
+                return (False, "manifest says %d blocks but blocks/ is empty — DATA MISSING" % blocks)
+            # read one record from the first present block
+            try:
+                st = s.UFCSStore(store_dir)
                 try:
-                    con.execute("SELECT 1").fetchone()
+                    rec = next(st.iter_all(), None)
                 finally:
-                    con.close()
-                return (True, f"{facts:,} facts; live store index is readable (read-only check)")
-            # No index yet (brand-new store) is fine — not a failure.
-            return (True, f"{facts:,} facts; store present (index not created yet)")
-        checks.append(_check("Live store readable", c_live))
+                    st.close()
+                ok = bool(rec and rec.get("nucleus"))
+                return (ok, "%d blocks present; a stored fact reads back" % blocks if ok
+                        else "blocks present but no readable record found")
+            except Exception as e:
+                return (False, "blocks unreadable: %s" % e)
+        checks.append(_check("Fact blocks present & readable", c_blocks))
+
+        # ---- SUBSYSTEMS behind the menus (lazy imports; each is a menu target) --
+        def c_language():
+            import qb_language as L
+            r = L.language_readiness(store_dir)
+            langs = r.get("languages", [])
+            return (isinstance(langs, list) and len(langs) > 0,
+                    "language readiness OK (%d languages reported)" % len(langs))
+        checks.append(_check("Language Lab subsystem", c_language))
+
+        def c_backup():
+            import qb_backup
+            st = qb_backup.status()
+            return (isinstance(st, dict), "backup subsystem responds (last run %s)"
+                    % (st.get("last_run") or "—"))
+        checks.append(_check("Backup subsystem", c_backup))
+
+        def c_domains():
+            # the dashboard + several menus read domain rollups from the manifest
+            import json
+            try:
+                with open(os.path.join(store_dir, "manifest.json"), encoding="utf-8") as f:
+                    m = json.load(f)
+                doms = {k: v for k, v in m.items() if k.startswith("facts_dom_")}
+                return (True, "%d domain tallies present" % len(doms))
+            except Exception as e:
+                return (False, "manifest domain rollups unreadable: %s" % e)
+        checks.append(_check("Domain rollups readable", c_domains))
 
     passed = sum(1 for c in checks if c["ok"])
     return {"passed": passed, "total": len(checks), "all_ok": passed == len(checks),
