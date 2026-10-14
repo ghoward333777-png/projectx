@@ -90,6 +90,17 @@ th{font:700 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;col
     <div class="card"><h2>Data collection</h2><div id="collection"></div></div>
   </div>
 
+  <div class="card" id="backup-card"><h2>Data preservation &amp; backup</h2>
+    <p class="sub">Your knowledge is copied to a second folder on your drive at every launch, and
+    any differing copy is snapshotted aside before it is refreshed — so data is never lost.
+    Optional off-site copies go to Google&nbsp;Drive, Bunny.net and OVH Cloud.</p>
+    <div id="backup"></div>
+    <div style="margin-top:12px">
+      <button class="btn" id="backup-now">Back up now</button>
+      <span id="backup-msg" class="sub" style="margin-left:10px"></span>
+    </div>
+  </div>
+
   <div class="card"><h2>Agents</h2>
     <p class="sub">Every harvesting, language, and reasoning agent and its live state.</p>
     <div style="overflow-x:auto"><table><thead><tr>
@@ -192,6 +203,47 @@ async function refresh(){
     <td class="mono">${lg[k].vocab||0}</td><td class="mono">${lg[k].pronounced||0}</td></tr>`).join('')
     :'<tr><td colspan="3" class="muted">none yet — use "Learn another language" in the Language Lab</td></tr>';
 }
+
+async function refreshBackup(){
+  let b; try{ b=await (await fetch('api/backup')).json(); }catch(e){ return; }
+  const dotc=ok=>`<span class="dot" style="background:${ok?'var(--ok)':'var(--muted)'}"></span>`;
+  const tg=b.local_targets||[];
+  let html = kv('Authoritative copy', b.authoritative?`<span class="mono">${esc(b.authoritative)}</span> · ${(b.authoritative_facts||0).toLocaleString()} facts`:'—')
+    + kv('Last sync', b.last_run?esc(b.last_run)+' UTC':'—')
+    + kv('Status', b.running?statusPill('syncing'):statusPill('idle'));
+  if(tg.length){
+    html += '<h2 style="font-size:15px;margin-top:14px">Local copies</h2>';
+    html += tg.map(t=>kv(`<span class="mono">${esc(t.dir)}</span>`,
+        dotc(t.ok)+(t.ok?((t.facts||0).toLocaleString()+' facts ✓'):('not done'+(t.note?(' ('+esc(t.note)+')'):''))))).join('');
+  }
+  const cl=b.cloud||[];
+  html += '<h2 style="font-size:15px;margin-top:14px">Off-site copies</h2>';
+  if(cl.length){
+    html += cl.map(c=>kv(esc(c.provider),dotc(c.ok)+(c.ok?'uploaded ✓':('failed'+(c.note?(' ('+esc(c.note)+')'):''))))).join('');
+  } else {
+    html += '<div class="sub">None configured yet. Add a Google&nbsp;Drive folder, or edit '
+      + `<span class="mono">${esc(b.cloud_config||'~/.querybook/cloud.json')}</span> `
+      + 'to turn on Bunny.net / OVH, then run <span class="mono">python qb_api.py backup-config</span>.</div>';
+  }
+  if(b.events&&b.events.length){
+    html += '<h2 style="font-size:15px;margin-top:14px">Recent backup log</h2>';
+    html += '<div style="max-height:140px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px" class="muted">'
+      + b.events.slice(-12).map(e=>esc(e)).join('<br>') + '</div>';
+  }
+  $('backup').innerHTML = html;
+}
+(function(){
+  const b=$('backup-now'); if(!b) return;
+  b.onclick=async()=>{
+    b.disabled=true; $('backup-msg').textContent='Starting a safe backup…';
+    try{
+      await fetch('api/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      $('backup-msg').textContent='Backup running — copies and off-site uploads in progress.';
+    }catch(e){ $('backup-msg').textContent='Could not start backup: '+e; }
+    setTimeout(()=>{refreshBackup();b.disabled=false;},1500);
+  };
+})();
+refreshBackup(); setInterval(refreshBackup,5000);
 
 const SAMPLES=['How do I teach it German?','How do I connect an API key?','What does Phase 1 do?',
   'Why is a language silent?','How do I collect facts?'];

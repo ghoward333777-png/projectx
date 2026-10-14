@@ -34,9 +34,10 @@ import qb_mirror
 MIRROR = qb_mirror.MIRROR
 import qb_log
 import qb_help
+import qb_backup
 
-BUILD = "v9.63"
-BUILD_DATE = "2026-10-04"
+BUILD = "v9.64"
+BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
 # Store location — DATA SAFETY.
@@ -128,7 +129,50 @@ def _is_server_launch():
     """True when this process is starting the HTTP server, not a CLI subcommand."""
     sub = sys.argv[1] if len(sys.argv) > 1 else ""
     return sub not in ("discover", "find", "--discover", "diag", "diagnose",
-                       "--diag", "configure", "--configure", "-h", "--help")
+                       "--diag", "configure", "--configure", "-h", "--help",
+                       "backup-config", "--backup-config", "backup", "backup-now")
+
+
+def _default_mirror(data_dir):
+    """A SECOND copy on the SAME drive as the store, e.g. D:\\QB -> D:\\QB_backup2.
+    Falls back to a sibling of the store folder so it rides the external drive too."""
+    try:
+        data_dir = os.path.abspath(data_dir)
+        parent = os.path.dirname(data_dir.rstrip("/\\")) or data_dir
+        base = os.path.basename(data_dir.rstrip("/\\")) or "store"
+        return os.path.join(parent, base + "_backup2")
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(data_dir)), "QB_backup2")
+
+
+def _mirror_dirs(cfg=None, data_dir=None):
+    """Resolve the local mirror targets for the boot sync. Priority:
+       env QB_MIRROR_DIRS (os.pathsep list) > config 'mirror_dirs' > a default
+       second folder on the same drive. A configured Google-Drive sync folder
+       ('gdrive_dir') is always added so the Drive client uploads it (no API keys)."""
+    cfg = cfg if cfg is not None else _load_config()
+    data_dir = data_dir or DATA_DIR
+    dirs = []
+    env = os.environ.get("QB_MIRROR_DIRS")
+    if env:
+        dirs += [d for d in env.split(os.pathsep) if d.strip()]
+    md = cfg.get("mirror_dirs")
+    if isinstance(md, str):
+        md = [md]
+    if md:
+        dirs += [d for d in md if d]
+    if not dirs:
+        dirs = [_default_mirror(data_dir)]        # guarantee a 2nd on-drive copy
+    g = cfg.get("gdrive_dir")
+    if g and g not in dirs:
+        dirs.append(g)                            # Google Drive (local sync folder)
+    # de-dup, drop any that equal the primary store
+    out, seen = [], {os.path.abspath(data_dir)}
+    for d in dirs:
+        ad = os.path.abspath(os.path.expanduser(d))
+        if ad not in seen:
+            out.append(ad); seen.add(ad)
+    return out
 
 
 def _candidate_stores():
@@ -725,7 +769,7 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/teach", "/api/language/teach_all", "/api/language/run_all",
                           "/api/language/go", "/api/language/tts_key", "/api/language/voices",
                           "/api/language/custom_voice", "/api/language/dialects",
-                          "/api/language/dialect_detect", "/api/mirror", "/api/help") \
+                          "/api/language/dialect_detect", "/api/mirror", "/api/backup", "/api/help") \
                 and not u.path.startswith("/api/director/") \
                 and not u.path.startswith("/api/scene/") \
                 and not u.path.startswith("/api/lil/") \
@@ -827,6 +871,20 @@ class H(BaseHTTPRequestHandler):
             else:
                 st = qb_keepawake.status()
             return self._send(200, st)
+        if u.path == "/api/backup":
+            # Run a full safe backup now (dual local sync + cloud snapshot), in the
+            # background so the request returns at once. Preserves data; never destroys.
+            try:
+                mirrors = _mirror_dirs(data_dir=DATA_DIR)
+                do_cloud = body.get("cloud", True) is not False
+                threading.Thread(
+                    target=lambda: qb_backup.run_boot_backup(
+                        DATA_DIR, mirrors, do_cloud=do_cloud, background_cloud=False),
+                    daemon=True).start()
+                qb_log.log("info", "backup", "manual backup started (%d targets)" % len(mirrors))
+                return self._send(200, {"ok": True, "started": True, "mirror_dirs": mirrors})
+            except Exception as e:
+                return self._send(500, {"error": "could not start backup: " + str(e)})
         if u.path == "/api/mirror":
             if body.get("on") is False or body.get("stop"):
                 return self._send(200, MIRROR.stop_mirror())
@@ -1465,6 +1523,13 @@ class H(BaseHTTPRequestHandler):
             return self._send_html(self._asset_path("QB_COLLAB_HTML", "collab.html"))
         if u.path in ("/admin", "/admin.html", "/tenants"):
             return self._send_html(self._asset_path("QB_ADMIN_HTML", "admin.html"))
+        if u.path == "/api/backup":
+            # Backup/data-preservation status — independent of store health, so it
+            # answers even if the store is mid-repair or briefly unreadable.
+            bst = qb_backup.status()
+            bst["mirror_dirs"] = _mirror_dirs(data_dir=DATA_DIR)
+            bst["cloud_config"] = os.path.join(os.path.expanduser("~"), ".querybook", "cloud.json")
+            return self._send(200, bst)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             st = open_store()
@@ -1823,6 +1888,28 @@ def main():
     host, port = BIND.split(":")
     if not os.path.isdir(DATA_DIR):
         print(f"WARNING: store dir {DATA_DIR} not found; /api/stats will error until you harvest.", flush=True)
+    # DATA PRESERVATION (top priority): at EVERY boot, make a safe second on-drive
+    # copy and sync all mirrors. If the primary store was ever reset/blanked, it is
+    # RESTORED from the richest mirror here, BEFORE the server opens. Nothing is ever
+    # destroyed (differing populated copies are snapshotted aside first). Compressed
+    # off-box snapshots (Google Drive folder + Bunny.net + OVH) upload in the
+    # background. All best-effort — a full/unplugged drive never blocks startup.
+    try:
+        mirrors = _mirror_dirs(data_dir=DATA_DIR)
+        print(f"  DATA SAFETY: syncing {len(mirrors)} backup location(s) at boot "
+              f"(no data loss, ever)…", flush=True)
+        for d in mirrors:
+            print(f"      copy -> {d}", flush=True)
+        bk = qb_backup.run_boot_backup(DATA_DIR, mirrors, do_cloud=True, background_cloud=True)
+        auth = bk.get("authoritative")
+        if auth and os.path.abspath(auth) != os.path.abspath(DATA_DIR):
+            print(f"  DATA SAFETY: primary was behind — RESTORED from richest copy "
+                  f"({bk.get('authoritative_facts',0):,} facts)", flush=True)
+        for t in bk.get("local_targets", []):
+            tag = "OK" if t.get("ok") else ("SKIP (" + str(t.get("note", "?")) + ")")
+            print(f"      [{tag}] {t.get('dir')}  ({t.get('facts',0):,} facts)", flush=True)
+    except Exception as e:
+        print(f"  DATA SAFETY: boot backup skipped: {e}", flush=True)
     # One-time repair: make the on-disk fact counter match what's actually in the index,
     # fixing counters corrupted by the earlier concurrency race in existing stores.
     try:
@@ -1980,6 +2067,87 @@ def _cli_diag():
     print("\n(Copy everything above and send it back.)", flush=True)
 
 
+def _arg(name):
+    """Tiny flag reader: --name value  (returns None if absent)."""
+    try:
+        i = sys.argv.index(name)
+        return sys.argv[i + 1] if i + 1 < len(sys.argv) else ""
+    except ValueError:
+        return None
+
+
+def _cli_backup_config():
+    """Set WHERE copies go (second on-drive folder + optional Google Drive folder)
+    and create the git-ignored cloud credentials template for Bunny.net / OVH.
+    Flags (non-interactive):  --mirror <dir>  --gdrive <dir>
+    Secrets are NEVER passed on the command line — you fill them into cloud.json."""
+    cfg = _load_config()
+    data_dir = DATA_DIR
+    suggested = _default_mirror(data_dir)
+    print("=" * 60, flush=True)
+    print("  QueryBook backup configuration — data preservation", flush=True)
+    print("=" * 60, flush=True)
+    print("  Your main store:    %s" % data_dir, flush=True)
+
+    flag_mirror, flag_gdrive = _arg("--mirror"), _arg("--gdrive")
+    interactive = (flag_mirror is None and flag_gdrive is None) \
+        and bool(getattr(sys, "stdin", None)) and sys.stdin.isatty()
+
+    # 1) second local copy (same external drive by default)
+    mirror = flag_mirror
+    if mirror is None and interactive:
+        a = input("  Second copy folder [Enter = %s]: " % suggested).strip()
+        mirror = a or suggested
+    mirror = mirror or suggested
+    cfg["mirror_dirs"] = [os.path.abspath(os.path.expanduser(mirror))]
+
+    # 2) optional Google Drive local sync folder (the Drive app then uploads it)
+    gdrive = flag_gdrive
+    if gdrive is None and interactive:
+        a = input("  Google Drive folder to copy into (Enter to skip): ").strip()
+        gdrive = a
+    if gdrive:
+        cfg["gdrive_dir"] = os.path.abspath(os.path.expanduser(gdrive))
+    elif flag_gdrive == "":
+        cfg.pop("gdrive_dir", None)
+    _save_config(cfg)
+
+    # 3) cloud credentials template (git-ignored) for Bunny.net + OVH
+    cloud_cfg = os.path.join(os.path.expanduser("~"), ".querybook", "cloud.json")
+    if not os.path.isfile(cloud_cfg):
+        tmpl = {
+            "_README": ("Fill in and save. This file is LOCAL and git-ignored — "
+                        "never commit it. Delete a provider block to disable it."),
+            "bunny": {"enabled": False, "storage_zone": "", "access_key": "",
+                      "region": "", "folder": "querybook"},
+            "ovh": {"enabled": False, "endpoint": "https://s3.gra.io.cloud.ovh.net",
+                    "region": "gra", "bucket": "", "access_key": "", "secret_key": "",
+                    "folder": "querybook"},
+        }
+        try:
+            os.makedirs(os.path.dirname(cloud_cfg), exist_ok=True)
+            with open(cloud_cfg, "w", encoding="utf-8") as f:
+                json.dump(tmpl, f, indent=2)
+        except Exception as e:
+            print("  (could not write cloud template: %s)" % e, flush=True)
+
+    print("  " + "-" * 56, flush=True)
+    for d in _mirror_dirs(cfg, data_dir):
+        print("  Will copy to:       %s" % d, flush=True)
+    print("  Cloud credentials:  %s" % cloud_cfg, flush=True)
+    print("    (edit it to turn on Bunny.net / OVH — set \"enabled\": true)", flush=True)
+    print("  Copies run automatically every time QueryBook starts.", flush=True)
+    print("=" * 60, flush=True)
+
+
+def _cli_backup_now():
+    """Run one full safe backup right now (dual local sync + cloud snapshot)."""
+    mirrors = _mirror_dirs(data_dir=DATA_DIR)
+    print("Backing up %s to %d location(s)…" % (DATA_DIR, len(mirrors)), flush=True)
+    r = qb_backup.run_boot_backup(DATA_DIR, mirrors, do_cloud=True, background_cloud=False)
+    print(json.dumps(r, indent=2), flush=True)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
@@ -1992,5 +2160,9 @@ if __name__ == "__main__":
         cfg["boots_until_ask"] = 0
         res = _prompt_for_store(cfg)
         print("Pinned: " + res[0] if res else "No change made.", flush=True)
+    elif len(sys.argv) > 1 and sys.argv[1] in ("backup-config", "--backup-config"):
+        _cli_backup_config()
+    elif len(sys.argv) > 1 and sys.argv[1] in ("backup", "backup-now"):
+        _cli_backup_now()
     else:
         main()

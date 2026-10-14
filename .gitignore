@@ -17,6 +17,14 @@ rust/target/
 # Cloud TTS provider API keys (local secrets — never commit)
 qb_tts_keys.json
 
+# Cloud backup credentials (Bunny.net / OVH) — LOCAL secrets, never commit
+cloud.json
+.querybook/
+# Backup snapshots + superseded-copy safety files (local runtime data)
+_snapshots/
+*.superseded-*
+*.tar.gz.part
+
 # Wave 1-4 local state / secrets (never commit)
 prototype/QueryBook-v9.47/qb_lil_store.json
 prototype/QueryBook-v9.47/qb_rights_store.json

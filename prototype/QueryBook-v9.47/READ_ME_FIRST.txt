@@ -74,6 +74,40 @@ YOUR DATA IS PROTECTED
     your data is.
 
 
+AUTOMATIC BACKUPS — NO DATA LOSS, EVER
+--------------------------------------
+Every time QueryBook starts it makes a SECOND copy of your whole library in
+another folder on your drive, and syncs any other backup locations you add.
+It is safe by design:
+
+  • If your main store is ever behind a backup (for example it got reset), the
+    main store is RESTORED from the richest copy BEFORE the app opens.
+  • A copy that already has data is never overwritten blindly — its current
+    state is snapshotted aside first, so nothing is ever erased.
+  • The SQLite index is copied with the live-safe online-backup method, so the
+    copy is consistent even while QueryBook is running.
+
+By default the second copy goes to  <your store>_backup2  on the same drive.
+To choose where copies go — a different folder, and/or a Google Drive folder
+that your Drive app then uploads for you (no API keys needed):
+
+    Windows :  py qb_api.py backup-config
+    Mac     :  python3 qb_api.py backup-config
+
+Off-site cloud copies to Bunny.net and OVH Cloud are also supported. Turn them
+on by editing the LOCAL, private file  (home)\.querybook\cloud.json  (created by
+backup-config) and setting  "enabled": true  with your storage keys. That file
+stays on your machine and is never shared or committed.
+
+Run a full backup on demand any time:
+
+    Windows :  py qb_api.py backup
+    Mac     :  python3 qb_api.py backup
+
+The System Monitor page shows every backup location, the last sync time, and a
+"Back up now" button.
+
+
 NEED PYTHON MANUALLY?
 ---------------------
 If auto-install didn't work: get Python from https://www.python.org/downloads/
