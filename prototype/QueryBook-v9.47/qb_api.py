@@ -36,7 +36,7 @@ import qb_log
 import qb_help
 import qb_backup
 
-BUILD = "v9.65"
+BUILD = "v9.66"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
