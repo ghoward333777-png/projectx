@@ -43,8 +43,7 @@ if [ -n "$STALE" ]; then
   lsof -ti tcp:8099 2>/dev/null | xargs kill -9 2>/dev/null; sleep 1
 fi
 
-# --- 4. Open the browser shortly after start --------------------------------
-( sleep 4; open "http://127.0.0.1:8099/dashboard" >/dev/null 2>&1 ) &
+# --- 4. (The server opens your browser itself, at the correct address.) -----
 
 echo "------------------------------------------------------------"
 echo " Starting QueryBook."

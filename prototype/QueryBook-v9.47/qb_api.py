@@ -1819,6 +1819,7 @@ class H(BaseHTTPRequestHandler):
             self._send(500, {"error": str(e)})
 
 def main():
+    global BIND
     host, port = BIND.split(":")
     if not os.path.isdir(DATA_DIR):
         print(f"WARNING: store dir {DATA_DIR} not found; /api/stats will error until you harvest.", flush=True)
@@ -1848,7 +1849,29 @@ def main():
             print(f"  OFFLOAD: mirroring store → {md} (parallel)", flush=True)
     except Exception as e:
         print(f"  offload could not start: {e}", flush=True)
-    srv = ThreadingHTTPServer((host, int(port)), H)
+    # Bind the server, auto-selecting a free port if the preferred one is busy
+    # (a stale or unrelated process never blocks startup now).
+    want = int(port); srv = None; chosen = want
+    for cand in [want] + [want + i for i in range(1, 11)]:
+        try:
+            srv = ThreadingHTTPServer((host, cand), H); chosen = cand; break
+        except OSError:
+            continue
+    if srv is None:                      # last resort: let the OS pick any free port
+        srv = ThreadingHTTPServer((host, 0), H); chosen = srv.server_address[1]
+    if chosen != want:
+        print(f"  PORT: {want} was busy — automatically using {chosen} instead", flush=True)
+    BIND = f"{host}:{chosen}"; port = str(chosen)
+    # Self-open: launch the browser at the CORRECT url so the user never types it
+    # or opens a file by hand. Best-effort; disable with QB_NO_BROWSER=1.
+    if os.environ.get("QB_NO_BROWSER", "").strip().lower() not in ("1", "true", "yes"):
+        try:
+            import webbrowser
+            _url = f"http://{host}:{chosen}/dashboard"
+            threading.Timer(1.2, lambda: webbrowser.open(_url)).start()
+            print(f"  OPENING YOUR BROWSER: {_url}", flush=True)
+        except Exception as e:
+            print(f"  (could not auto-open browser: {e})", flush=True)
     # Watchdog + keep-awake: heartbeat to <store>/keepawake.log so we can PROVE
     # whether a black screen was a real sleep (time gap) or just display-off.
     # Restores the 24x7 master switch if it was left on last session.

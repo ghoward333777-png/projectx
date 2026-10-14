@@ -47,8 +47,7 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8099" ^| findstr LISTENING'
   taskkill /F /PID %%P >nul 2>&1
 )
 
-REM --- 4. Open the browser shortly after start --------------------------------
-start "" cmd /c "timeout /t 4 >nul & start "" http://127.0.0.1:8099/dashboard"
+REM --- 4. (The server opens your browser itself, at the correct address.) -----
 
 echo ------------------------------------------------------------
 echo  Starting QueryBook.
