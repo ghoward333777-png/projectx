@@ -35,6 +35,13 @@ if not defined PY (
 )
 if not exist "qb_api.py" ( echo [PROBLEM] qb_api.py is missing from this folder. & pause & exit /b 1 )
 
+REM --- 1b. Show WHICH VERSION this folder is, so you never run an old copy ----
+echo ------------------------------------------------------------
+for /f "delims=" %%V in ('%PY% qb_api.py version 2^>nul') do echo   %%V
+echo   Folder: %~dp0
+echo ------------------------------------------------------------
+echo.
+
 REM --- 2. Self-diagnostic (plain-English; changes nothing) --------------------
 echo Running a quick self-check...
 echo.

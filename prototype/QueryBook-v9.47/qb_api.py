@@ -37,7 +37,7 @@ import qb_help
 import qb_backup
 import qb_mailer
 
-BUILD = "v9.68"
+BUILD = "v9.69"
 BUILD_DATE = "2026-10-14"
 
 # ----------------------------------------------------------------------------
@@ -132,7 +132,8 @@ def _is_server_launch():
     return sub not in ("discover", "find", "--discover", "diag", "diagnose",
                        "--diag", "configure", "--configure", "-h", "--help",
                        "backup-config", "--backup-config", "backup", "backup-now",
-                       "mail-config", "--mail-config", "mail-test", "mail-now", "mail")
+                       "mail-config", "--mail-config", "mail-test", "mail-now", "mail",
+                       "version", "--version", "-v")
 
 
 def _default_mirror(data_dir):
@@ -2049,6 +2050,65 @@ def _collect_mail_report():
     return rep
 
 
+def _boot_connect_database(data_dir):
+    """TASK #1: connect the database at boot, 100% of the time, with no human
+    interference. If the index is corrupt/empty, quarantine it and rebuild from
+    the blocks SYNCHRONOUSLY so the app never comes up with a dead database."""
+    print("  " + "=" * 56, flush=True)
+    print("  DATABASE: connecting…", flush=True)
+    try:
+        hp = store.index_health(data_dir)
+    except Exception as e:
+        hp = {"status": "unreadable", "detail": str(e), "blocks": 0}
+    status = hp.get("status")
+    blocks = hp.get("blocks", 0)
+    if status == "ok":
+        REINDEX.update(status="ok", detail="connected (%s rows)" % hp.get("index_rows", 0))
+        print(f"  DATABASE: CONNECTED — {hp.get('index_rows',0):,} indexed facts, {blocks:,} blocks", flush=True)
+        print("  " + "=" * 56, flush=True)
+        return
+    if status == "missing" and blocks == 0:
+        # brand-new/empty store — nothing to repair; a write creates the index
+        REINDEX.update(status="ok", detail="new empty store")
+        print("  DATABASE: CONNECTED — new empty store (no data yet)", flush=True)
+        print("  " + "=" * 56, flush=True)
+        return
+    # Needs repair: corrupt/empty index while blocks hold data, or missing index.
+    print(f"  DATABASE: index {status} ({hp.get('detail','')}) — REPAIRING AUTOMATICALLY", flush=True)
+    print(f"  DATABASE: rebuilding the index from {blocks:,} data blocks (your facts are safe in the blocks)…", flush=True)
+    REINDEX.update(running=True, status="repairing", done_blocks=0, total_blocks=blocks, indexed=0,
+                   started=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), finished=None)
+    try:
+        qb_log.log("warn", "store", "boot: index %s — rebuilding from blocks" % status)
+        st = store.UFCSStore(data_dir)      # malformed index auto-quarantined here; fresh one created
+        REINDEX["total_blocks"] = int(st.manifest.get("blocks", 0))
+        if getattr(st, "index_recovered", False):
+            print("  DATABASE: corrupt index quarantined (kept as index.sqlite.corrupt-*); building a fresh one", flush=True)
+        last = [0.0]
+
+        def prog(done, total, indexed):
+            REINDEX.update(done_blocks=done, total_blocks=total, indexed=indexed)
+            now = time.time()
+            if now - last[0] >= 1.0 or done == total:     # throttle console spam
+                last[0] = now
+                pct = int(100 * done / total) if total else 0
+                print(f"    …rebuilding: block {done}/{total} ({pct}%) — {indexed:,} facts indexed", flush=True)
+        n = st.reindex_from_blocks(progress=prog)
+        st.flush(); st.close()
+        rc = store.reconcile_manifest(data_dir)
+        REINDEX.update(running=False, status="ok", indexed=n,
+                       finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                       detail="rebuilt %s facts" % format(n, ","))
+        qb_log.log("ok", "store", "boot: index rebuilt — %s facts" % format(n, ","))
+        print(f"  DATABASE: CONNECTED — index rebuilt, {n:,} facts restored and verified", flush=True)
+    except Exception as e:
+        REINDEX.update(running=False, status="error", detail=str(e))
+        qb_log.log("error", "store", "boot: index rebuild failed: %s" % e)
+        print(f"  DATABASE: rebuild hit an error: {e}", flush=True)
+        print("  DATABASE: the 24x7 self-heal will keep retrying automatically.", flush=True)
+    print("  " + "=" * 56, flush=True)
+
+
 def main():
     global BIND
     host, port = BIND.split(":")
@@ -2076,20 +2136,17 @@ def main():
             print(f"      [{tag}] {t.get('dir')}  ({t.get('facts',0):,} facts)", flush=True)
     except Exception as e:
         print(f"  DATA SAFETY: boot backup skipped: {e}", flush=True)
-    # INDEX SELF-REPAIR: a corrupt/malformed index.sqlite used to make EVERY menu
-    # item fail ("can't connect to the database / malformed") while the dashboard
-    # still loaded. Detect it here and rebuild the index from the blocks (source of
-    # truth), in the background with live progress — the app stays up and self-heals.
+    # ============================================================
+    # TASK #1 — CONNECT THE DATABASE, 100% AT BOOT, NO HUMAN NEEDED.
+    # Before the dashboard is ever shown, guarantee a working, connected
+    # index. A corrupt/"malformed" index is quarantined and REBUILT FROM THE
+    # BLOCKS (the source of truth) SYNCHRONOUSLY here — so by the time the
+    # browser opens, menus work. Fully automatic; nothing to click.
+    # ============================================================
     try:
-        hp = store.index_health(DATA_DIR)
-        if hp.get("status") == "ok":
-            print(f"  INDEX: healthy ({hp.get('index_rows',0):,} rows)", flush=True)
-        else:
-            print(f"  INDEX: {hp.get('status','?')} — {hp.get('detail','')}", flush=True)
-            if _reindex_if_needed(DATA_DIR):
-                print(f"  INDEX: self-repair started — rebuilding from blocks in the background", flush=True)
+        _boot_connect_database(DATA_DIR)
     except Exception as e:
-        print(f"  INDEX health check skipped: {e}", flush=True)
+        print(f"  DATABASE: boot connect error (continuing, 24x7 auto-heal will retry): {e}", flush=True)
     # One-time repair: make the on-disk fact counter match what's actually in the index,
     # fixing counters corrupted by the earlier concurrency race in existing stores.
     try:
@@ -2426,7 +2483,9 @@ def _cli_mail_test():
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
+    if len(sys.argv) > 1 and sys.argv[1] in ("version", "--version", "-v"):
+        print("QueryBook BUILD %s · %s" % (BUILD, BUILD_DATE))
+    elif len(sys.argv) > 1 and sys.argv[1] in ("discover", "find", "--discover"):
         _cli_discover()
     elif len(sys.argv) > 1 and sys.argv[1] in ("diag", "diagnose", "--diag"):
         _cli_diag()

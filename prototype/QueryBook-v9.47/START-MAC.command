@@ -30,6 +30,13 @@ if ! command -v "$PY" >/dev/null 2>&1; then
 fi
 if [ ! -f qb_api.py ]; then echo "[PROBLEM] qb_api.py is missing from this folder."; read -n 1 -s -r; exit 1; fi
 
+# --- 1b. Show WHICH VERSION this folder is, so you never run an old copy ----
+echo "------------------------------------------------------------"
+echo "  $("$PY" qb_api.py version 2>/dev/null)"
+echo "  Folder: $(pwd)"
+echo "------------------------------------------------------------"
+echo
+
 # --- 2. Self-diagnostic (plain-English; changes nothing) --------------------
 echo "Running a quick self-check..."; echo
 "$PY" qb_doctor.py
