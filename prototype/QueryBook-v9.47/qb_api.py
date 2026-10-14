@@ -1919,6 +1919,25 @@ def main():
             print(("    [PASS] " if c["ok"] else "    [FAIL] ") + c["name"], flush=True)
     except Exception as e:
         print(f"  SELF-TEST could not run: {e}", flush=True)
+    # 24x7 self-testing: re-run the battery periodically so /api/health and the
+    # monitor always reflect LIVE health, not just the state at launch.
+    def _selftest_loop():
+        global LAST_SELFTEST
+        while True:
+            try:
+                time.sleep(900)  # every 15 minutes
+                LAST_SELFTEST = qb_selftest.run_all(DATA_DIR)
+                if not LAST_SELFTEST.get("all_ok"):
+                    try:
+                        qb_log.log("warn", "selftest",
+                                   "periodic self-test %d/%d passed" %
+                                   (LAST_SELFTEST.get("passed", 0), LAST_SELFTEST.get("total", 0)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    threading.Thread(target=_selftest_loop, daemon=True).start()
+    print("  SELF-TEST: re-running automatically every 15 min (24x7)", flush=True)
     srv.serve_forever()
 
 def _cli_discover():

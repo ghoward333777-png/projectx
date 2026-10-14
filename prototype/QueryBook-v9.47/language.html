@@ -127,6 +127,8 @@
       <div><span id="go-rate" style="font:800 22px var(--mono)">0</span> <span class="note">words/sec</span></div>
       <div><span id="go-step" class="note"></span></div>
     </div>
+    <div class="meter" style="margin-top:12px"><i id="go-fill" style="width:0%"></i><span id="go-pct">0%</span></div>
+    <div id="go-detail" class="note" style="margin-top:6px">Overall progress across all languages.</div>
     <h3 style="font-size:13px;margin:14px 0 4px">Live activity — what it's learning right now</h3>
     <div id="go-feed" style="height:180px;overflow:auto;background:#0e1310;color:#cfe8dd;border:1px solid var(--line);border-radius:10px;padding:10px;font:12.5px/1.7 ui-monospace,Consolas,monospace">
       <span class="note">Press “Start — do it all” to begin. Words will stream here as they're learned.</span>
@@ -821,14 +823,32 @@ function renderLegend(){
     <div class="note">${it[2]}</div></div>`).join('');
 }
 renderLegend();
+// Keep the overall progress bar live at all times — including background 24x7 learning.
+try{ updateOverall(); setInterval(updateOverall, 3000); }catch(e){}
 
 // ---- THE button: do everything + live activity feed -----------------------
 const FLAGS={es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇵🇹',nl:'🇳🇱',sv:'🇸🇪',en:'🇬🇧'};
 let _goSince=0, _goTimer=null;
+// Shared, honest overall progress: total words learned / total available across all languages.
+async function updateOverall(){
+  try{
+    const d=await (await fetch('api/language/readiness')).json();
+    const rows=d.languages||[];
+    let learned=0, avail=0, started=0;
+    rows.forEach(r=>{ learned+=(r.words_learned||0); avail+=(r.words_available||0); if((r.words_learned||0)>0) started++; });
+    const pct=avail?Math.min(100,Math.round(100*learned/avail)):0;
+    const gf=$('go-fill'), gp=$('go-pct'), gd=$('go-detail');
+    if(gf) gf.style.width=pct+'%'; if(gp) gp.textContent=pct+'%';
+    if(gd) gd.innerHTML=`<b>${learned.toLocaleString()}</b> of ${avail.toLocaleString()} words · <b>${started}</b>/${rows.length} languages started`
+      +(pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':(started?' · learning…':' · idle'));
+    return {learned,avail,started,total:rows.length,pct};
+  }catch(e){ return null; }
+}
 async function goPoll(){
   try{
     const d=await (await fetch('api/language/activity?since='+_goSince+'&limit=40')).json();
     $('go-rate').textContent=d.rate_per_s||0;
+    updateOverall();
     if(d.pipeline){ $('go-step').innerHTML='<b>'+esc(d.pipeline.phase||'')+'</b>'
       +(d.pipeline.status==='complete'?' · <span style="color:#2e9e78">ALL DONE ✓</span>':''); }
     const feed=$('go-feed');
@@ -869,6 +889,13 @@ if($('go-btn')) $('go-btn').onclick=async()=>{
 let _teachLang=null, _teachTotal=0, _teachTimer=null;
 async function teachPoll(){
   if(!_teachLang) return;
+  if(_teachLang==='__ALL__'){
+    const o=await updateOverall();
+    if(o){ $('teach-fill').style.width=o.pct+'%'; $('teach-pct').textContent=o.pct+'%';
+      $('teach-detail').innerHTML=`<b>${o.learned.toLocaleString()}</b> of ${o.avail.toLocaleString()} words · <b>${o.started}</b>/${o.total} languages`
+        +(o.pct>=100?' · <b style="color:#2e9e78">complete ✓</b>':' · learning…'); }
+    return;
+  }
   try{
     const d=await (await fetch('api/language/words?lang='+encodeURIComponent(_teachLang))).json();
     const learned=d.count||0, pron=d.pronounced||0;
@@ -904,10 +931,10 @@ if($('teach-all')) $('teach-all').onclick=async()=>{
     if(r.error){ $('teach-status').textContent='Error: '+esc(r.error); }
     else {
       const n=(r.started||[]).length;
-      $('teach-status').innerHTML='Teaching <b>all '+n+' languages</b> automatically — watch the table below fill in.';
-      // point the progress bar at the first one so there's a live bar too
-      if(r.started&&r.started[0]){ _teachLang=r.started[0].lang; _teachTotal=r.started[0].words_to_learn||0;
-        if(_teachTimer) clearInterval(_teachTimer); _teachTimer=setInterval(teachPoll,1500); teachPoll(); }
+      $('teach-status').innerHTML='Teaching <b>all '+n+' languages</b> automatically — progress bar below shows the total.';
+      // drive the bar from the TOTAL across every language, not just the first
+      _teachLang='__ALL__'; _teachTotal=0;
+      if(_teachTimer) clearInterval(_teachTimer); _teachTimer=setInterval(teachPoll,1500); teachPoll();
       try{ $('readiness-card').scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){}
     }
     b.textContent='✓ All languages learning'; setTimeout(()=>{b.textContent=old;b.disabled=false;},2600);
