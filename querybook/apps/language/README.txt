@@ -1,7 +1,10 @@
 QUERYBOOK LANGUAGE & SPEECH
 ===========================
 
-Learn words in Spanish, French, German, Italian, Portuguese, Dutch and Swedish.
+Learn words in 17 languages: English first, then Spanish, French, German, Italian, Portuguese,
+Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan.
+  - Choose "I speak" (your own language) and the language to learn. English can be learned
+    from any of the others; other pairs are linked through English.
   - New words arrive a few each day, most common first (your own words first of all).
   - Words come back for review after 1, 2, 4, 8, 16, 32 and 64 days; a miss brings a word back today.
   - Practise with flashcards, multiple choice, typing, listening (write what you hear) and speaking.

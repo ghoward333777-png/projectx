@@ -53,6 +53,9 @@
 </nav>
 <main>
   <div class="card">
+    <div class="row" style="margin-bottom:10px"><label for="native"><b>I speak</b></label>
+      <select id="native" style="width:auto" aria-label="The language you speak"></select>
+      <span class="small muted">Choose the language to learn:</span></div>
     <div class="langs" id="langs"></div>
   </div>
 
@@ -93,7 +96,7 @@
   <section class="panel" id="dict">
     <div class="card">
       <div class="row">
-        <input id="dq" class="grow" type="text" placeholder="Look up an English word, or a word in any of the seven languages" aria-label="Look up">
+        <input id="dq" class="grow" type="text" placeholder="Look up an English word, or a word in any of the other 16 languages" aria-label="Look up">
         <button class="btn" id="dgo">Look up</button>
       </div>
       <div id="dout" style="margin-top:12px"></div>
@@ -105,8 +108,8 @@
       <h2>My words</h2>
       <p class="small muted">Add words or phrases you want to learn. They are taught before the built-in list, in the language selected above.</p>
       <div class="row">
-        <input id="me" type="text" placeholder="English" class="grow" aria-label="English">
-        <input id="mf" type="text" placeholder="Translation" class="grow" aria-label="Translation">
+        <input id="me" type="text" placeholder="Word to learn" class="grow" aria-label="Word to learn">
+        <input id="mf" type="text" placeholder="Meaning" class="grow" aria-label="Meaning">
         <input id="mn" type="text" placeholder="Note (optional)" class="grow" aria-label="Note">
         <button class="btn" id="madd">Add</button>
       </div>
@@ -149,6 +152,7 @@
     <div class="card">
       <h2>How learning works</h2>
       <ul>
+        <li><b>Languages:</b> choose <b>I speak</b> (your own language) and the language to learn. English can be learned from any of the 16 others; any other pair is linked through English, so meanings are the common ones.</li>
         <li><b>New words</b> arrive a few each day (you choose how many), most common words first, your own words before those.</li>
         <li><b>Reviews</b> follow a fixed schedule. Each correct answer moves a word up a box: you see it again after 1, 2, 4, 8, 16, 32, then 64 days. A miss brings it back today. A word is <b>mastered</b> once you answer it correctly at the 32-day step.</li>
         <li><b>Practice modes:</b> flashcards (you judge yourself), multiple choice, typing, listening (write what you hear) and speaking.</li>

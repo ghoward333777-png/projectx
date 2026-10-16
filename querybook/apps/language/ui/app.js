@@ -1,9 +1,10 @@
 "use strict";
-let LANGS = [], LANG = "es", MODE = "cards", SESSION = null, QUEUE = [], POS = 0, STATS = { right: 0, wrong: 0 };
+let LANGS = [], NATIVE = "en", LANG = "es", MODE = "cards", SESSION = null, QUEUE = [], POS = 0, STATS = { right: 0, wrong: 0 };
 const fmt = n => Number(n || 0).toLocaleString();
 const stat = (v, k) => '<div class="stat"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + "</div></div>";
 const langName = code => (LANGS.find(l => l.code === code) || {}).name || code;
-const SPEECH = { es: "es-ES", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", nl: "nl-NL", sv: "sv-SE", en: "en-US" };
+const SPEECH = { en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", nl: "nl-NL", sv: "sv-SE", da: "da-DK", no: "nb-NO",
+  fi: "fi-FI", pl: "pl-PL", cs: "cs-CZ", el: "el-GR", ro: "ro-RO", hu: "hu-HU", ca: "ca-ES" };
 
 // ---------------------------------------------------------------- speech
 function voiceFor(code) {
@@ -42,9 +43,11 @@ const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 // ---------------------------------------------------------------- languages
 async function loadLangs() {
   const r = await api("/api/languages");
-  LANGS = r.languages;
+  LANGS = r.languages; NATIVE = r.native;
   try { const s = localStorage.getItem("qb-lang"); if (s && LANGS.find(l => l.code === s)) LANG = s; } catch (e) { /* ignore */ }
-  $("#langs").innerHTML = LANGS.map(l => '<button class="lang" data-lang="' + l.code + '" aria-pressed="' + (l.code === LANG) + '"><div class="n">' + esc(l.name) +
+  if (LANG === NATIVE) LANG = (LANGS.find(l => !l.is_native) || {}).code;
+  $("#native").innerHTML = LANGS.map(l => '<option value="' + l.code + '"' + (l.is_native ? " selected" : "") + ">" + esc(l.name) + " — " + esc(l.native) + "</option>").join("");
+  $("#langs").innerHTML = LANGS.filter(l => !l.is_native).map(l => '<button class="lang" data-lang="' + l.code + '" aria-pressed="' + (l.code === LANG) + '"><div class="n">' + esc(l.name) +
     ' <span class="muted small">' + esc(l.native) + '</span></div><div class="s">' + fmt(l.learning) + " learning · " + fmt(l.mastered) + " mastered · <b>" + fmt(l.due) + "</b> due</div></button>").join("");
   $$("[data-lang]").forEach(b => b.onclick = () => { LANG = b.dataset.lang; try { localStorage.setItem("qb-lang", LANG); } catch (e) { /* ignore */ }
     $$("[data-lang]").forEach(x => x.setAttribute("aria-pressed", x.dataset.lang === LANG)); refreshTab(); });
@@ -54,7 +57,8 @@ async function loadLangs() {
 async function loadSetup() {
   const s = await api("/api/settings?lang=" + LANG);
   const n = langName(LANG);
-  $("#dir").innerHTML = '<option value="from_english">English → ' + esc(n) + '</option><option value="to_english">' + esc(n) + " → English</option>";
+  const nn = langName(NATIVE);
+  $("#dir").innerHTML = '<option value="from_native">' + esc(nn) + " → " + esc(n) + '</option><option value="to_native">' + esc(n) + " → " + esc(nn) + "</option>";
   $("#dir").value = s.direction;
   $("#npd").value = s.new_per_day;
   $$("#modes [data-mode]").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === MODE));
@@ -89,8 +93,8 @@ function header() {
 function show() {
   if (POS >= QUEUE.length) return finish();
   const it = QUEUE[POS], code = LANG, foreignCode = code;
-  const toEn = it.direction === "to_english";
-  const promptCode = toEn ? foreignCode : "en";
+  const toEn = it.direction === "to_native";
+  const promptCode = toEn ? foreignCode : NATIVE;
   let h = header() + (it.new ? '<div class="hint small"><span class="badge warn">new word</span></div>' : "");
   if (MODE === "listen") {
     h += '<div class="prompt">' + speakBtn(it.foreign, code) + '</div><div class="hint">Write the ' + esc(SESSION.language) + " word you hear</div>" +
@@ -100,8 +104,8 @@ function show() {
       '<button class="btn mic" id="mic" aria-label="Start speaking">🎤</button><div class="hint small" id="heard"></div><div class="row" style="justify-content:center"><button class="btn quiet" id="skip">Skip</button></div>';
   } else {
     h += '<div class="prompt">' + esc(it.prompt) + " " + speakBtn(it.prompt, promptCode) + "</div>" +
-      '<div class="hint">' + (toEn ? "What is this in English?" : "How do you say this in " + esc(SESSION.language) + "?") + "</div>" +
-      (!toEn && it.definition ? '<div class="hint small" style="margin-top:4px">' + esc(it.definition.slice(0, 160)) + (it.definition.length > 160 ? "…" : "") + "</div>" : "");
+      '<div class="hint">' + (toEn ? "What does this mean in " + esc(SESSION.native_name) + "?" : "How do you say this in " + esc(SESSION.language) + "?") + "</div>" +
+      (!toEn && it.definition && NATIVE === "en" ? '<div class="hint small" style="margin-top:4px">' + esc(it.definition.slice(0, 160)) + (it.definition.length > 160 ? "…" : "") + "</div>" : "");
     if (MODE === "cards") {
       h += '<div class="row" style="justify-content:center;margin-top:16px"><button class="btn" id="reveal">Show the answer</button></div><div id="back"></div>';
     } else if (MODE === "choice") {
@@ -120,7 +124,7 @@ function show() {
   if ($("#check")) $("#check").onclick = () => submit({ given: $("#ans").value });
   if ($("#skip")) $("#skip").onclick = () => submit({ given: "", knew: false });
   if ($("#reveal")) $("#reveal").onclick = () => {
-    $("#back").innerHTML = '<div class="answer" style="text-align:center">' + esc(it.accepted.join(", ")) + " " + speakBtn(it.accepted[0], toEn ? "en" : code) + "</div>" +
+    $("#back").innerHTML = '<div class="answer" style="text-align:center">' + esc(it.accepted.join(", ")) + " " + speakBtn(it.accepted[0], toEn ? NATIVE : code) + "</div>" +
       '<div class="row" style="justify-content:center"><button class="btn" id="knew">I knew it</button><button class="btn secondary" id="didnt">I didn\'t</button></div>';
     wireSay($("#back"));
     $("#reveal").style.display = "none";
@@ -160,7 +164,8 @@ async function submit(body, btn) {
     MODE === "speak" ? (r.correct ? "Good — " + r.similarity + "% match." : "Not quite (" + (r.similarity || 0) + "% match). It's ") : "It's ";
   const showAns = r.result !== "correct" || MODE === "speak";
   $("#fb").innerHTML = '<div class="feedback ' + cls + '">' + esc(msg) + (showAns && !(MODE === "speak" && r.correct) ? "<b>" + esc(r.all_answers.join(", ")) + "</b>" : "") +
-    (it.direction === "from_english" || MODE === "listen" || MODE === "speak" ? " " + speakBtn(it.foreign, LANG) : "") +
+    (it.direction === "from_native" || MODE === "listen" || MODE === "speak" ? " " + speakBtn(it.foreign, LANG) : "") +
+    (LANG === "en" && it.definition ? '<div class="small" style="margin-top:4px">' + esc(it.foreign) + ": " + esc(it.definition) + "</div>" : "") +
     '<div class="small" style="margin-top:4px">' + (r.correct ? "Next review: " + esc(r.next_review) : "You'll see it again in this session and today.") + "</div></div>" +
     '<div class="row" style="justify-content:center;margin-top:12px"><button class="btn" id="next">Next</button></div>';
   wireSay($("#fb"));
@@ -184,8 +189,8 @@ async function loadWords() {
   const r = await api("/api/words?" + new URLSearchParams({ lang: LANG, which: $("#wwhich").value, q: $("#wq").value, limit: 200 }));
   const boxName = b => b === null || b === undefined ? "" : b >= 6 ? "mastered" : "box " + b;
   $("#wlist").innerHTML = '<p class="small muted">' + fmt(r.total) + " word(s)" + (r.total > 200 ? " — first 200 shown" : "") + "</p>" +
-    '<table class="t"><tr><th>English</th><th>' + esc(langName(LANG)) + "</th><th>Box</th><th>Next review</th><th></th></tr>" + r.words.map(w =>
-      "<tr><td>" + esc(w.word) + " " + speakBtn(w.word, "en") + "</td><td>" + esc(w.foreign) + " " + (w.foreign ? speakBtn(w.foreign.split(",")[0], LANG) : "") + "</td><td>" + esc(boxName(w.box)) +
+    '<table class="t"><tr><th>' + esc(langName(LANG)) + "</th><th>" + esc(langName(NATIVE)) + "</th><th>Box</th><th>Next review</th><th></th></tr>" + r.words.map(w =>
+      "<tr><td>" + esc(w.foreign) + " " + (w.foreign ? speakBtn(w.foreign.split(",")[0], LANG) : "") + "</td><td>" + esc(w.meaning) + " " + (w.meaning ? speakBtn(w.meaning.split(",")[0], NATIVE) : "") + "</td><td>" + esc(boxName(w.box)) +
       "</td><td>" + esc(w.due || "") + "</td><td>" + (w.box !== null && w.box !== undefined ? '<button class="btn quiet" data-reset="' + esc(w.word) + '" style="padding:2px 8px;font-size:13px">Start over</button>' : "") + "</td></tr>").join("") + "</table>";
   wireSay($("#wlist"));
   $$("[data-reset]").forEach(b => b.onclick = async () => { if (confirm("Start this word over from the beginning?")) { await api("/api/words/reset", { lang: LANG, word: b.dataset.reset }); loadWords(); } });
@@ -209,8 +214,9 @@ async function lookup() {
 
 async function loadMine() {
   const r = await api("/api/custom?lang=" + LANG);
-  $("#mlist").innerHTML = r.words.length ? '<table class="t"><tr><th>English</th><th>' + esc(langName(LANG)) + "</th><th>Note</th><th></th></tr>" + r.words.map(w =>
-    "<tr><td>" + esc(w.english) + "</td><td>" + esc(w.foreign_word) + " " + speakBtn(w.foreign_word, LANG) + '</td><td class="small">' + esc(w.note || "") +
+  $("#me").placeholder = "Word in " + langName(LANG); $("#mf").placeholder = "Meaning in " + langName(NATIVE);
+  $("#mlist").innerHTML = r.words.length ? '<table class="t"><tr><th>' + esc(langName(LANG)) + "</th><th>" + esc(langName(NATIVE)) + "</th><th>Note</th><th></th></tr>" + r.words.map(w =>
+    "<tr><td>" + esc(w.target_word) + " " + speakBtn(w.target_word, LANG) + "</td><td>" + esc(w.native_word) + '</td><td class="small">' + esc(w.note || "") +
     '</td><td><button class="btn quiet" data-del="' + w.id + '" style="padding:2px 8px;font-size:13px">Remove</button></td></tr>').join("") + "</table>" : '<p class="muted">No words of your own yet for ' + esc(langName(LANG)) + ".</p>";
   wireSay($("#mlist"));
   $$("[data-del]").forEach(b => b.onclick = async () => { await api("/api/custom/delete", { id: Number(b.dataset.del) }); loadMine(); });
@@ -226,8 +232,8 @@ async function loadProgress() {
     '</div><div class="barlabels"><span>' + esc(p.series[0].day) + "</span><span>today</span></div>";
   $("#pboxes").innerHTML = '<table class="t"><tr><th>Box</th><th>Seen again after</th><th>Words</th></tr>' + p.boxes.map((n, b) =>
     "<tr><td>" + (b === 0 ? "new / missed" : "box " + b) + "</td><td>" + (b === 0 ? "same day" : p.intervals[b] + " day" + (p.intervals[b] === 1 ? "" : "s")) + "</td><td>" + fmt(n) + "</td></tr>").join("") + "</table>";
-  $("#phard").innerHTML = p.hardest.length ? '<table class="t"><tr><th>English</th><th>' + esc(langName(LANG)) + "</th><th>Right</th><th>Missed</th></tr>" + p.hardest.map(h =>
-    "<tr><td>" + esc(h.word) + "</td><td>" + esc(h.foreign) + " " + speakBtn(h.foreign, LANG) + "</td><td>" + h.correct + "</td><td>" + h.wrong + "</td></tr>").join("") + "</table>" : '<p class="muted">No missed words yet.</p>';
+  $("#phard").innerHTML = p.hardest.length ? '<table class="t"><tr><th>' + esc(langName(LANG)) + "</th><th>" + esc(langName(NATIVE)) + "</th><th>Right</th><th>Missed</th></tr>" + p.hardest.map(h =>
+    "<tr><td>" + esc(h.foreign) + " " + speakBtn(h.foreign, LANG) + "</td><td>" + esc(h.meaning || "") + "</td><td>" + h.correct + "</td><td>" + h.wrong + "</td></tr>").join("") + "</table>" : '<p class="muted">No missed words yet.</p>';
   wireSay($("#phard"));
 }
 
@@ -259,9 +265,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#dir").onchange = () => api("/api/settings", { lang: LANG, direction: $("#dir").value });
   $("#npd").onchange = async () => { await api("/api/settings", { lang: LANG, new_per_day: Number($("#npd").value) }); loadSetup(); };
   $("#start").onclick = start;
+  $("#native").onchange = async () => { await api("/api/native", { native: $("#native").value }); await loadLangs(); refreshTab(); };
   $("#wgo").onclick = loadWords; $("#wwhich").onchange = loadWords; onEnter($("#wq"), loadWords);
   $("#dgo").onclick = lookup; onEnter($("#dq"), lookup);
-  $("#madd").onclick = async () => { await api("/api/custom/add", { lang: LANG, english: $("#me").value, foreign: $("#mf").value, note: $("#mn").value });
+  $("#madd").onclick = async () => { await api("/api/custom/add", { lang: LANG, target_word: $("#me").value, native_word: $("#mf").value, note: $("#mn").value });
     $("#me").value = $("#mf").value = $("#mn").value = ""; loadMine(); };
   api("/api/old-store-hint").then(h => { if (h.folder && !$("#oldf").value) $("#oldf").value = h.folder; });
   $("#oldcheck").onclick = async () => { const r = await api("/api/old-store?folder=" + encodeURIComponent($("#oldf").value));

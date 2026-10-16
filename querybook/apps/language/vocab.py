@@ -1,7 +1,7 @@
 """Vocabulary, dictionary and answer checking for the language application.
 
 Data (bundled, read-only):
-  data/bilingual.json.gz          English -> translations for es, fr, de, it, pt, nl, sv.
+  data/bilingual.json.gz          English -> translations for 16 European languages (built by tools/build_wordlists.py).
                                   MUSE bilingual dictionaries (Facebook AI Research), CC BY-NC 4.0 —
                                   demonstration data for non-commercial use; replace before selling.
   data/english_dictionary.json.gz English definitions from Webster's Unabridged Dictionary (1913),
@@ -15,7 +15,8 @@ import gzip, json, os, unicodedata
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 
-LANGUAGES = {
+LANGUAGES = {        # English first; every other language is paired with English in the bundled dictionaries
+    "en": {"name": "English", "native": "English", "speech": "en-US", "espeak": "en-us"},
     "es": {"name": "Spanish", "native": "Español", "speech": "es-ES", "espeak": "es"},
     "fr": {"name": "French", "native": "Français", "speech": "fr-FR", "espeak": "fr"},
     "de": {"name": "German", "native": "Deutsch", "speech": "de-DE", "espeak": "de"},
@@ -23,8 +24,18 @@ LANGUAGES = {
     "pt": {"name": "Portuguese", "native": "Português", "speech": "pt-PT", "espeak": "pt"},
     "nl": {"name": "Dutch", "native": "Nederlands", "speech": "nl-NL", "espeak": "nl"},
     "sv": {"name": "Swedish", "native": "Svenska", "speech": "sv-SE", "espeak": "sv"},
+    "da": {"name": "Danish", "native": "Dansk", "speech": "da-DK", "espeak": "da"},
+    "no": {"name": "Norwegian", "native": "Norsk", "speech": "nb-NO", "espeak": "nb"},
+    "fi": {"name": "Finnish", "native": "Suomi", "speech": "fi-FI", "espeak": "fi"},
+    "pl": {"name": "Polish", "native": "Polski", "speech": "pl-PL", "espeak": "pl"},
+    "cs": {"name": "Czech", "native": "Čeština", "speech": "cs-CZ", "espeak": "cs"},
+    "el": {"name": "Greek", "native": "Ελληνικά", "speech": "el-GR", "espeak": "el"},
+    "ro": {"name": "Romanian", "native": "Română", "speech": "ro-RO", "espeak": "ro"},
+    "hu": {"name": "Hungarian", "native": "Magyar", "speech": "hu-HU", "espeak": "hu"},
+    "ca": {"name": "Catalan", "native": "Català", "speech": "ca-ES", "espeak": "ca"},
 }
-ENGLISH = {"name": "English", "speech": "en-US", "espeak": "en-us"}
+OTHERS = [c for c in LANGUAGES if c != "en"]
+ENGLISH = LANGUAGES["en"]
 SOURCES = {
     "bilingual": "MUSE bilingual dictionaries (Facebook AI Research), CC BY-NC 4.0 — demonstration data, non-commercial use",
     "dictionary": "Webster's Unabridged Dictionary (1913), public domain",
@@ -55,18 +66,18 @@ def deck(lang):
     key = "deck:" + lang
     if key in _cache:
         return _cache[key]
-    if lang not in LANGUAGES:
+    if lang not in OTHERS:
         raise KeyError(lang)
     raw = _load("bilingual.json.gz").get(lang, {})
     r = rank()
     out = []
     for en, forms in raw.items():
-        if not en.isalpha() or len(en) < 2:
+        if not en.isalpha() or (len(en) < 2 and en not in ("a", "i")):
             continue
         tr = []
         for f in forms if isinstance(forms, list) else [forms]:
             f = str(f).strip()
-            if f and f.lower() != en.lower() and f not in tr and all(ch.isalpha() or ch in " -'" for ch in f):
+            if f and f.lower() != en.lower() and f not in tr and all(ch.isalpha() or ch in " -'’" for ch in f):
                 tr.append(f)
         if tr:
             out.append({"en": en, "tr": tr, "rank": r.get(en, 100000 + len(out))})
@@ -79,6 +90,38 @@ def deck(lang):
 def word(lang, en):
     deck(lang)
     return _cache["index:" + lang].get(en)
+
+
+def forms(lang, en):
+    """How the English word `en` is said in `lang` (English: the word itself)."""
+    if lang == "en":
+        return [en] if en in rank() else []
+    w = word(lang, en)
+    return list(w["tr"]) if w else []
+
+
+def pair_deck(target, native):
+    """Words to learn in `target` for someone who speaks `native`, most common first:
+    [{"en", "target": [...], "native": [...], "rank"}]. Languages other than English are linked through English."""
+    key = "pair:%s:%s" % (target, native)
+    if key in _cache:
+        return _cache[key]
+    if target == native or target not in LANGUAGES or native not in LANGUAGES:
+        raise KeyError((target, native))
+    base = deck(native) if target == "en" else deck(target)
+    out = []
+    for w in base:
+        t, n = forms(target, w["en"]), forms(native, w["en"])
+        if t and n:
+            out.append({"en": w["en"], "target": t, "native": n, "rank": w["rank"]})
+    _cache[key] = out
+    _cache["pairindex:%s:%s" % (target, native)] = {w["en"]: w for w in out}
+    return out
+
+
+def pair_word(target, native, en):
+    pair_deck(target, native)
+    return _cache["pairindex:%s:%s" % (target, native)].get(en)
 
 
 def reverse_index(lang):
@@ -154,7 +197,7 @@ def lookup(text, langs=None):
     q = clean(text)
     if not q:
         return {"query": text, "english": None, "foreign": []}
-    langs = langs or list(LANGUAGES)
+    langs = langs or list(OTHERS)
     out = {"query": text, "english": None, "foreign": []}
     defs = definitions()
     if q in defs or any(word(l, q) for l in langs):

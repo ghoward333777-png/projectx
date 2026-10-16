@@ -7,7 +7,7 @@ them depends on another, and none of them changes the old QueryBook store.
 
 | Application | Folder | Opens at | What it does |
 |---|---|---|---|
-| **Language & Speech** | `language/` | http://127.0.0.1:8101/ | Vocabulary in Spanish, French, German, Italian, Portuguese, Dutch and Swedish; spaced-repetition review; flashcards, multiple choice, typing, listening and speaking; dictionary; progress |
+| **Language & Speech** | `language/` | http://127.0.0.1:8101/ | 17 languages, English first (plus Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan); learn any of them from any other; spaced-repetition review; flashcards, multiple choice, typing, listening and speaking; dictionary; progress |
 | **Math, Science & Engineering** | `stem/` | http://127.0.0.1:8102/ | Exact calculation, unit conversion with dimension checks, 35 solvable formulas, CODATA constants, the periodic table and molar masses; every saved answer can be recomputed |
 | **History & News** | `facts/` | http://127.0.0.1:8103/ | Facts with their sources (books, newspapers, records — never AI services); disputes shown side by side; timeline; news feeds kept as "reported by" until you add them |
 
@@ -89,7 +89,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 37 checks
+python language/app.py --selftest     # 58 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks
 python tools/run_all_tests.py         # all of the above

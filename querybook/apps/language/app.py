@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """QueryBook Language & Speech — a dedicated application for learning vocabulary, listening and speaking.
 
-Seven languages taught from English (Spanish, French, German, Italian, Portuguese, Dutch, Swedish).
+17 languages — English, Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian and Catalan. Choose the language you speak and the one to learn;
+English can be learned from any of the others, and any two are linked through English.
 New words arrive a few at a time, most common first, and come back for review on a fixed
 spaced-repetition schedule (1, 2, 4, 8, 16, 32, 64 days). Practise with flashcards, multiple
 choice, typing, listening and speaking. Answers are checked by rule, never by an AI model.
@@ -10,7 +11,7 @@ Start:      python app.py            (opens http://127.0.0.1:8101/)
 Self-test:  python app.py --selftest
 More:       python app.py --help
 """
-import datetime, hashlib, json, os, sys, tempfile
+import datetime, hashlib, json, os, sys, tempfile, threading
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language & Speech"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PORT = 8101
 program_dir = HERE
 
@@ -49,11 +50,23 @@ CREATE TABLE custom_words (
 );
 CREATE TABLE settings (lang TEXT PRIMARY KEY, new_per_day INTEGER NOT NULL DEFAULT 10, direction TEXT NOT NULL DEFAULT 'from_english');
 CREATE TABLE old_words (lang TEXT NOT NULL, word TEXT NOT NULL, seen INTEGER NOT NULL, origin TEXT, PRIMARY KEY (lang, word))
+""", """
+CREATE TABLE custom_pairs (
+  id INTEGER PRIMARY KEY, lang TEXT NOT NULL, native TEXT NOT NULL, target_word TEXT NOT NULL, native_word TEXT NOT NULL,
+  note TEXT, created TEXT NOT NULL, UNIQUE (lang, native, target_word, native_word)
+);
+INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
+  SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
 """]
 
 
 def today():
     return datetime.date.today().isoformat()
+
+
+def _direction(d):
+    """Directions are relative to the language you speak (older settings said 'english')."""
+    return {"from_native": "from_native", "to_english": "to_native"}.get(d, d)
 
 
 def add_days(day, n):
@@ -78,54 +91,85 @@ class App:
             self.store.backup("startup")
         except Exception as e:
             self.log("startup backup failed:", e)
+        threading.Thread(target=self._warm, daemon=True).start()
+
+    def _warm(self):
+        """Prepare the word lists in the background so the first page opens at once."""
+        try:
+            nat = self.native()
+            for code in vocab.LANGUAGES:
+                if code != nat:
+                    vocab.pair_deck(code, nat)
+            for code in vocab.OTHERS:
+                vocab.reverse_index(code)
+        except Exception as e:
+            self.log("ERROR", "preparing word lists:", repr(e))
 
     # ------------------------------------------------------------------ words
+    def native(self):
+        n = self.store.meta_get("native", "en")
+        return n if n in vocab.LANGUAGES else "en"
+
+    def set_native(self, code):
+        if code not in vocab.LANGUAGES:
+            raise core.UserError("Unknown language.")
+        self.store.meta_set("native", code)
+        return {"native": code}
+
     def _lang(self, lang):
         if lang not in vocab.LANGUAGES:
             raise core.UserError("Choose one of: " + ", ".join(v["name"] for v in vocab.LANGUAGES.values()))
+        if lang == self.native():
+            raise core.UserError("You speak %s already — choose another language to learn, or change “I speak”." % vocab.LANGUAGES[lang]["name"])
         return lang
 
     def custom(self, lang):
+        """Your own words for this language, for the language you speak: {"custom:<id>": {...}}."""
         out = {}
-        for r in self.store.query("SELECT english, foreign_word FROM custom_words WHERE lang = ? ORDER BY id", (lang,)):
-            out.setdefault(r["english"].lower(), []).append(r["foreign_word"])
+        for r in self.store.query("SELECT id, target_word, native_word FROM custom_pairs WHERE lang = ? AND native = ? ORDER BY id",
+                                  (lang, self.native())):
+            out["custom:%d" % r["id"]] = {"tr": [r["target_word"]], "nat": [r["native_word"]]}
         return out
 
-    def get_word(self, lang, en, custom=None):
-        custom = self.custom(lang) if custom is None else custom
-        w = vocab.word(lang, en)
-        tr = list(custom.get(en, [])) + [t for t in (w["tr"] if w else []) if t not in custom.get(en, [])]
-        if not tr:
+    def get_word(self, lang, key, custom=None):
+        """A word to learn: {"en": key, "tr": forms in the language learned, "nat": forms in the language spoken}."""
+        if str(key).startswith("custom:"):
+            custom = self.custom(lang) if custom is None else custom
+            c = custom.get(key)
+            return {"en": key, "tr": c["tr"], "nat": c["nat"], "rank": None, "custom": True} if c else None
+        w = vocab.pair_word(lang, self.native(), key)
+        if not w:
             return None
-        return {"en": en, "tr": tr, "rank": w["rank"] if w else None, "custom": en in custom}
+        return {"en": key, "tr": w["target"], "nat": w["native"], "rank": w["rank"], "custom": False}
 
     def settings(self, lang):
         r = self.store.one("SELECT new_per_day, direction FROM settings WHERE lang = ?", (lang,))
-        return r or {"new_per_day": 10, "direction": "from_english"}
+        r = r or {"new_per_day": 10, "direction": "from_native"}
+        r["direction"] = _direction(r["direction"])
+        return r
 
     def set_settings(self, lang, new_per_day=None, direction=None):
         s = self.settings(lang)
         n = s["new_per_day"] if new_per_day in (None, "") else int(new_per_day)
-        d = direction or s["direction"]
+        d = _direction(direction or s["direction"])
         if not 0 <= n <= 100:
             raise core.UserError("New words per day must be between 0 and 100.")
-        if d not in ("from_english", "to_english"):
+        if d not in ("from_native", "to_native"):
             raise core.UserError("Unknown direction.")
         with self.store.write() as db:
             db.execute("INSERT OR REPLACE INTO settings(lang, new_per_day, direction) VALUES(?,?,?)", (lang, n, d))
         return {"new_per_day": n, "direction": d}
 
     def new_words(self, lang, n):
-        """The next n words not yet introduced: your own words first, then the most common English words."""
+        """The next n words not yet introduced: your own words first, then the most common words."""
         if n <= 0:
             return []
         known = {r["word"] for r in self.store.query("SELECT word FROM cards WHERE lang = ?", (lang,))}
-        custom = self.custom(lang)
-        out = [en for en in custom if en not in known][:n]
-        for w in vocab.deck(lang):
+        out = [k for k in self.custom(lang) if k not in known][:n]
+        for w in vocab.pair_deck(lang, self.native()):
             if len(out) >= n:
                 break
-            if w["en"] not in known and w["en"] not in out:
+            if w["en"] not in known:
                 out.append(w["en"])
         return out
 
@@ -135,7 +179,7 @@ class App:
         if mode not in MODES:
             raise core.UserError("Unknown practice mode.")
         st = self.settings(lang)
-        direction = direction or st["direction"]
+        direction = _direction(direction or st["direction"])
         day = self.today()
         due = [r["word"] for r in self.store.query("SELECT word FROM cards WHERE lang = ? AND due <= ? ORDER BY due, box, word LIMIT ?",
                                                      (lang, day, size))]
@@ -144,47 +188,54 @@ class App:
         new = self.new_words(lang, min(allowance, max(0, size - len(due))))
         custom = self.custom(lang)
         items = []
-        for en, is_new in [(w, False) for w in due] + [(w, True) for w in new]:
-            w = self.get_word(lang, en, custom)
-            if not w:
-                continue
-            items.append(self._item(lang, w, mode, direction, is_new, day))
-        return {"lang": lang, "language": vocab.LANGUAGES[lang]["name"], "speech": vocab.LANGUAGES[lang]["speech"], "mode": mode,
-                "direction": direction, "items": items, "due": len(due), "new": len(new),
+        for key, is_new in [(w, False) for w in due] + [(w, True) for w in new]:
+            w = self.get_word(lang, key, custom)
+            if w:
+                items.append(self._item(lang, w, mode, direction, is_new, day))
+        nat = self.native()
+        return {"lang": lang, "language": vocab.LANGUAGES[lang]["name"], "speech": vocab.LANGUAGES[lang]["speech"],
+                "native": nat, "native_name": vocab.LANGUAGES[nat]["name"], "native_speech": vocab.LANGUAGES[nat]["speech"],
+                "mode": mode, "direction": direction, "items": items, "due": len(due), "new": len(new),
                 "new_left_today": max(0, allowance - len(new)), "settings": st}
 
     def _item(self, lang, w, mode, direction, is_new, day):
-        defs = vocab.definitions()
+        nat = self.native()
         foreign = w["tr"][0]
+        direction = _direction(direction)
         if mode in ("listen", "speak"):
-            direction = "from_english"
-        if direction == "to_english":
-            prompt, accepted = foreign, sorted(set([w["en"]] + vocab.reverse_index(lang).get(vocab.fold(foreign), [])), key=lambda x: x != w["en"])
+            direction = "from_native"
+        if direction == "to_native":
+            extra = vocab.reverse_index(lang).get(vocab.fold(foreign), []) if nat == "en" and not w["custom"] and lang != "en" else []
+            prompt, accepted = foreign, list(dict.fromkeys(w["nat"] + extra))
         else:
-            prompt, accepted = w["en"], w["tr"]
-        item = {"en": w["en"], "foreign": foreign, "all_foreign": w["tr"], "prompt": prompt, "accepted": accepted, "new": is_new,
-                "definition": (defs.get(w["en"]) or "")[:300], "custom": w["custom"], "direction": direction}
+            prompt, accepted = w["nat"][0], w["tr"]
+        definition = ""
+        if not w["custom"] and "en" in (lang, nat):
+            definition = (vocab.definitions().get(w["en"]) or "")[:300]
+        item = {"en": w["en"], "foreign": foreign, "all_foreign": w["tr"], "meaning": w["nat"][0], "prompt": prompt, "accepted": accepted,
+                "new": is_new, "definition": definition, "custom": w["custom"], "direction": direction}
         if mode == "choice":
             item["choices"] = self._choices(lang, w, direction, day)
         if mode == "listen":
-            item["prompt"] = None              # the page plays the foreign word; the learner types what they hear
+            item["prompt"] = None              # the page plays the word; the learner writes what they hear
             item["accepted"] = w["tr"]
         return item
 
     def _choices(self, lang, w, direction, day):
         """Four options: the answer plus three nearby words, chosen the same way every time for this word and day."""
-        d = vocab.deck(lang)
+        d = vocab.pair_deck(lang, self.native())
         pos = next((i for i, x in enumerate(d) if x["en"] == w["en"]), 0)
         seed = int(hashlib.sha256((lang + w["en"] + day).encode()).hexdigest(), 16)
         pool = [x for x in d[max(0, pos - 60): pos + 60] if x["en"] != w["en"]]
+        side = "native" if direction == "to_native" else "target"
+        right = w["nat"][0] if direction == "to_native" else w["tr"][0]
         picks = []
         while pool and len(picks) < 3:
             x = pool.pop(seed % len(pool))
             seed //= 7
-            opt = x["en"] if direction == "to_english" else x["tr"][0]
-            if vocab.fold(opt) not in {vocab.fold(p) for p in picks} and vocab.fold(opt) != vocab.fold(w["en"] if direction == "to_english" else w["tr"][0]):
+            opt = x[side][0]
+            if vocab.fold(opt) not in {vocab.fold(p) for p in picks} and vocab.fold(opt) != vocab.fold(right):
                 picks.append(opt)
-        right = w["en"] if direction == "to_english" else w["tr"][0]
         opts = picks + [right]
         k = int(hashlib.sha256((w["en"] + day + "order").encode()).hexdigest(), 16) % len(opts)
         opts.insert(k, opts.pop())
@@ -198,7 +249,7 @@ class App:
         w = self.get_word(lang, en)
         if not w:
             raise core.UserError("That word is not in the %s word list." % vocab.LANGUAGES[lang]["name"])
-        item = self._item(lang, w, mode, direction or "from_english", False, self.today())
+        item = self._item(lang, w, mode, direction or self.settings(lang)["direction"], False, self.today())
         if mode == "cards":
             if knew is None:
                 raise core.UserError("Say whether you knew it.")
@@ -238,9 +289,11 @@ class App:
         rows = {r["lang"]: r for r in self.store.query("""SELECT lang, count(*) AS learning, sum(box >= ?) AS mastered, sum(due <= ?) AS due
                                                            FROM cards GROUP BY lang""", (MASTERED_BOX, day))}
         out = []
+        nat = self.native()
         for code, info in vocab.LANGUAGES.items():
             r = rows.get(code, {})
-            out.append({"code": code, "name": info["name"], "native": info["native"], "words_available": len(vocab.deck(code)),
+            out.append({"code": code, "name": info["name"], "native": info["native"], "is_native": code == nat,
+                        "words_available": 0 if code == nat else len(vocab.pair_deck(code, nat)),
                         "learning": r.get("learning") or 0, "mastered": r.get("mastered") or 0, "due": r.get("due") or 0})
         return out
 
@@ -269,6 +322,7 @@ class App:
         for h in hard:
             w = self.get_word(lang, h["word"])
             h["foreign"] = w["tr"][0] if w else ""
+            h["meaning"] = w["nat"][0] if w else ""
         upcoming = self.store.query("SELECT due, count(*) n FROM cards WHERE lang = ? AND due > ? GROUP BY due ORDER BY due LIMIT 14", (lang, day))
         return {"lang": lang, "series": series, "streak": streak, "boxes": [boxes.get(b, 0) for b in range(len(INTERVALS))],
                 "intervals": INTERVALS, "week_reviews": week["n"] or 0, "week_accuracy": round(100 * (week["c"] or 0) / week["n"]) if week["n"] else None,
@@ -280,16 +334,20 @@ class App:
         q = vocab.clean(q)
         if which == "new":
             known = {r["word"] for r in self.store.query("SELECT word FROM cards WHERE lang = ?", (lang,))}
-            rows = [w for w in vocab.deck(lang) if w["en"] not in known and (not q or q in w["en"] or any(q in vocab.fold(t) for t in w["tr"]))]
-            return {"total": len(rows), "words": [{"word": w["en"], "foreign": ", ".join(w["tr"]), "box": None, "due": None} for w in rows[offset:offset + limit]]}
+            rows = [w for w in vocab.pair_deck(lang, self.native()) if w["en"] not in known and
+                    (not q or any(q in vocab.fold(t) for t in w["target"] + w["native"]))]
+            return {"total": len(rows), "words": [{"word": w["en"], "foreign": ", ".join(w["target"]), "meaning": ", ".join(w["native"]),
+                                                   "box": None, "due": None} for w in rows[offset:offset + limit]]}
         where = {"learning": "", "mastered": " AND box >= %d" % MASTERED_BOX, "due": " AND due <= '%s'" % day}.get(which, "")
         rows = self.store.query("SELECT word, box, due, correct, wrong FROM cards WHERE lang = ?%s ORDER BY word" % where, (lang,))
         custom = self.custom(lang)
         out = []
         for r in rows:
             w = self.get_word(lang, r["word"], custom)
-            r["foreign"] = ", ".join(w["tr"]) if w else ""
-            if not q or q in r["word"] or q in vocab.fold(r["foreign"]):
+            if not w:
+                continue                         # e.g. your own word made for another "I speak" language
+            r["foreign"], r["meaning"] = ", ".join(w["tr"]), ", ".join(w["nat"])
+            if not q or q in vocab.fold(r["foreign"]) or q in vocab.fold(r["meaning"]):
                 out.append(r)
         return {"total": len(out), "words": out[offset:offset + limit]}
 
@@ -329,7 +387,7 @@ class App:
         day = self.today()
         rows = self.store.query("SELECT word FROM old_words WHERE lang = 'en' ORDER BY seen DESC LIMIT 5000")
         known = {r["word"] for r in self.store.query("SELECT word FROM cards WHERE lang = ?", (lang,))}
-        picked = [r["word"] for r in rows if r["word"] not in known and vocab.word(lang, r["word"])][:limit]
+        picked = [r["word"] for r in rows if r["word"] not in known and vocab.pair_word(lang, self.native(), r["word"])][:limit]
         with self.store.write() as db:
             db.executemany("INSERT OR IGNORE INTO cards(lang, word, box, due, introduced) VALUES(?,?,0,?,?)", [(lang, w, day, day) for w in picked])
         return {"added": len(picked), "words": picked}
@@ -337,7 +395,7 @@ class App:
     # ------------------------------------------------------------------ diagnostics
     def _health(self):
         C = core._check
-        sizes = {code: len(vocab.deck(code)) for code in vocab.LANGUAGES}
+        sizes = {code: len(vocab.deck(code)) for code in vocab.OTHERS}
         small = [vocab.LANGUAGES[c]["name"] for c, n in sizes.items() if n < 1500]
         out = [C("wordlists", "Word lists", "fail" if small else "ok", ("too few words: " + ", ".join(small)) if small else "%d languages, %d–%d words each" % (len(sizes), min(sizes.values()), max(sizes.values())))]
         okd = len(vocab.definitions()) > 5000
@@ -360,7 +418,7 @@ class App:
 
         @a.get("/api/languages")
         def languages(p):
-            return {"languages": self.language_summary(), "modes": MODES, "intervals": INTERVALS}
+            return {"languages": self.language_summary(), "native": self.native(), "modes": MODES, "intervals": INTERVALS}
 
         @a.get("/api/settings")
         def get_settings(p):
@@ -394,26 +452,37 @@ class App:
 
         @a.get("/api/custom")
         def custom_list(p):
-            return {"words": self.store.query("SELECT * FROM custom_words WHERE lang = ? ORDER BY id DESC", (self._lang(p.get("lang")),))}
+            return {"words": self.store.query("SELECT * FROM custom_pairs WHERE lang = ? AND native = ? ORDER BY id DESC",
+                                              (self._lang(p.get("lang")), self.native()))}
 
         @a.post("/api/custom/add")
         def custom_add(p):
             lang = self._lang(p.get("lang"))
-            en, fw = vocab.clean(p.get("english")), " ".join(str(p.get("foreign") or "").split())
-            if not en or not fw:
-                raise core.UserError("Enter the English word and its translation.")
-            if len(en) > 80 or len(fw) > 80:
+            tw = " ".join(str(p.get("target_word") or "").split())
+            nw = " ".join(str(p.get("native_word") or "").split())
+            if not tw or not nw:
+                raise core.UserError("Enter the word in both languages.")
+            if len(tw) > 80 or len(nw) > 80:
                 raise core.UserError("Keep each word or phrase under 80 characters.")
             with self.store.write() as db:
-                db.execute("INSERT OR IGNORE INTO custom_words(lang, english, foreign_word, note, created) VALUES(?,?,?,?,?)",
-                           (lang, en, fw, (p.get("note") or "").strip() or None, core.now_iso()))
+                db.execute("INSERT OR IGNORE INTO custom_pairs(lang, native, target_word, native_word, note, created) VALUES(?,?,?,?,?,?)",
+                           (lang, self.native(), tw, nw, (p.get("note") or "").strip() or None, core.now_iso()))
             return {"ok": True}
 
         @a.post("/api/custom/delete")
         def custom_delete(p):
             with self.store.write() as db:
-                db.execute("DELETE FROM custom_words WHERE id = ?", (int(p.get("id")),))
+                db.execute("DELETE FROM custom_pairs WHERE id = ?", (int(p.get("id")),))
+                db.execute("DELETE FROM cards WHERE word = ?", ("custom:%d" % int(p.get("id")),))
             return {"ok": True}
+
+        @a.get("/api/native")
+        def get_native(p):
+            return {"native": self.native()}
+
+        @a.post("/api/native")
+        def post_native(p):
+            return self.set_native(p.get("native"))
 
         @a.get("/api/lookup")
         def lookup(p):
@@ -488,7 +557,8 @@ def open_app(folder=None):
 def selftest():
     c = core.Checks()
     c.check("shared core matches the master copy", core.core_matches_master(HERE))
-    for code in vocab.LANGUAGES:
+    c.check("17 languages, English first", list(vocab.LANGUAGES)[0] == "en" and len(vocab.LANGUAGES) == 17)
+    for code in vocab.OTHERS:
         d = vocab.deck(code)
         c.check("%s word list loaded (%d words)" % (vocab.LANGUAGES[code]["name"], len(d)), len(d) > 1500 and all(w["tr"] for w in d[:50]))
     c.check("most common words come first", vocab.deck("es")[0]["rank"] <= vocab.deck("es")[50]["rank"])
@@ -502,7 +572,7 @@ def selftest():
     c.check("typed answer: wrong", ck("perro", ["gato"])["result"] == "wrong")
     c.check("speaking similarity", vocab.similarity("buenos días", "buenos dias") == 100 and vocab.similarity("gato", "perro") < 50)
     lk = vocab.lookup("ability")
-    c.check("dictionary lookup English", lk["english"] and lk["english"]["translations"]["es"] and lk["english"]["definition"])
+    c.check("dictionary lookup English", lk["english"] and lk["english"]["translations"]["es"] and lk["english"]["translations"]["pl"] and lk["english"]["definition"])
     c.check("dictionary lookup foreign", any(f["lang"] == "es" and "ability" in f["english"] for f in vocab.lookup("capacidad")["foreign"]))
     with tempfile.TemporaryDirectory() as tmp:
         clock = {"d": "2026-10-16"}
@@ -511,12 +581,12 @@ def selftest():
         s = app.session("es", "type")
         c.check("first session offers 5 new words", s["new"] == 5 and s["due"] == 0 and len(s["items"]) == 5, s["new"])
         first = s["items"][0]
-        r = app.answer("es", first["en"], "type", "from_english", first["accepted"][0])
+        r = app.answer("es", first["en"], "type", "from_native", first["accepted"][0])
         c.check("correct answer moves the word to box 1, due tomorrow", r["correct"] and r["box"] == 1 and r["next_review"] == "2026-10-17", r)
-        r2 = app.answer("es", s["items"][1]["en"], "type", "from_english", "zzz")
+        r2 = app.answer("es", s["items"][1]["en"], "type", "from_native", "zzz")
         c.check("wrong answer stays due today", not r2["correct"] and r2["next_review"] == "2026-10-16")
         for it in s["items"][2:]:
-            app.answer("es", it["en"], "cards", "from_english", knew=True)
+            app.answer("es", it["en"], "cards", "from_native", knew=True)
         s2 = app.session("es", "type")
         c.check("same day: the missed word comes back, no new words beyond the daily limit", s2["due"] == 1 and s2["new"] == 0, (s2["due"], s2["new"]))
         clock["d"] = "2026-10-17"
@@ -526,17 +596,45 @@ def selftest():
         c.check("multiple choice has 4 different options including the answer",
                 len(ch) == 4 and len({vocab.fold(x) for x in ch}) == 4 and s3["items"][0]["accepted"][0] in ch, ch)
         c.check("choices are the same every time for the same day", app.session("es", "choice")["items"][0]["choices"] == ch)
-        sp = app.answer("es", first["en"], "speak", "from_english", first["all_foreign"][0].upper() + "!")
+        sp = app.answer("es", first["en"], "speak", "from_native", first["all_foreign"][0].upper() + "!")
         c.check("speaking: recognised text close enough counts", sp["correct"] and sp["similarity"] >= SPEAK_PASS, sp)
         for _ in range(7):
-            app.answer("es", first["en"], "cards", "from_english", knew=True)
+            app.answer("es", first["en"], "cards", "from_native", knew=True)
         c.check("box never goes beyond the last interval", app.store.scalar("SELECT box FROM cards WHERE word = ?", (first["en"],)) == len(INTERVALS) - 1)
-        app.answer("es", first["en"], "type", "from_english", "wrong answer")
+        app.answer("es", first["en"], "type", "from_native", "wrong answer")
         row = app.store.one("SELECT box, lapses FROM cards WHERE word = ?", (first["en"],))
         c.check("forgetting a mastered word sends it back to box 1 and counts a lapse", row["box"] == 1 and row["lapses"] == 1, row)
-        app.api.routes[("POST", "/api/custom/add")]({"lang": "es", "english": "grandmother", "foreign": "abuela"})
+        app.api.routes[("POST", "/api/custom/add")]({"lang": "es", "target_word": "abuela", "native_word": "grandmother"})
+        app.set_settings("es", 10)
         s4 = app.session("es", "type")
-        c.check("your own words are taught first", any(i["en"] == "grandmother" and i["new"] for i in s4["items"]) or s4["new"] == 0)
+        c.check("your own words are taught first", s4["items"] and any(i["custom"] and i["foreign"] == "abuela" and i["new"] for i in s4["items"]),
+                [(i["en"], i["new"]) for i in s4["items"]][:3])
+        # English as the language learned, by a Spanish speaker
+        try:
+            app.session("en")
+            c.check("English cannot be 'learned' while you speak English", False)
+        except core.UserError:
+            c.check("English cannot be 'learned' while you speak English", True)
+        app.set_native("es")
+        e = app.session("en", "type")
+        it = e["items"][0]
+        c.check("learning English from Spanish: Spanish prompt, English answer", it["prompt"] in vocab.forms("es", it["en"]) and it["accepted"] == [it["en"]], it)
+        r = app.answer("en", it["en"], "type", None, it["en"])
+        c.check("learning English: correct answer scheduled", r["correct"] and r["next_review"] == add_days(clock["d"], 1))
+        e2 = app.session("en", "type", "to_native")
+        c.check("learning English: reverse direction asks for the Spanish meaning", e2["items"][0]["prompt"] == e2["items"][0]["en"]
+                and e2["items"][0]["accepted"] == vocab.forms("es", e2["items"][0]["en"]))
+        c.check("English learner sees the English definition", bool(e["items"][0]["definition"]))
+        ch = app.session("en", "choice")["items"][0]["choices"]
+        c.check("learning English: multiple choice offers English words", len(ch) == 4 and all(x in vocab.rank() for x in ch), ch)
+        c.check("Spanish speaker's own English-Spanish words are kept apart", not any(i["custom"] for i in e["items"]))
+        app.set_native("de")
+        g = app.session("el", "type")
+        c.check("Greek for a German speaker (linked through English)", g["items"] and g["items"][0]["accepted"] == vocab.forms("el", g["items"][0]["en"])
+                and g["items"][0]["prompt"] in vocab.forms("de", g["items"][0]["en"]))
+        langs = app.language_summary()
+        c.check("summary lists English first and marks the spoken language", langs[0]["code"] == "en" and [l["code"] for l in langs if l["is_native"]] == ["de"])
+        app.set_native("en")
         c.check("progress report", app.progress("es")["streak"] == 2 and sum(app.progress("es")["boxes"]) >= 5)
         old = os.path.join(tmp, "old")
         os.makedirs(old)
@@ -552,6 +650,19 @@ def selftest():
         c.check("old store's most-seen words with a translation join the lessons", added["added"] >= 1, added)
         c.check("database integrity", app.store.scalar("PRAGMA integrity_check") == "ok")
         c.check("user interface present", os.path.exists(os.path.join(HERE, "ui", "index.html")))
+        # a database from version 1.0/1.1 is upgraded in place, keeping your own words
+        import sqlite3
+        v1 = os.path.join(tmp, "v1")
+        os.makedirs(v1)
+        db = sqlite3.connect(os.path.join(v1, APP_ID + ".sqlite"))
+        db.executescript(SCHEMA[0] + ";CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);INSERT INTO meta VALUES('schema_version','1');"
+                         "INSERT INTO custom_words(lang, english, foreign_word, note, created) VALUES('fr','grandmother','grand-mère',NULL,'x');"
+                         "INSERT INTO settings VALUES('fr', 7, 'to_english');")
+        db.close()
+        up = App(v1, clock=lambda: clock["d"])
+        c.check("older database upgraded: your own words kept", up.store.meta_get("schema_version") == str(len(SCHEMA)) and
+                up.store.scalar("SELECT count(*) FROM custom_pairs WHERE target_word = 'grand-mère' AND native = 'en'") == 1)
+        c.check("older settings understood", up.settings("fr") == {"new_per_day": 7, "direction": "to_native"})
     st = speech.status()
     c.check("offline voice (espeak-ng): %s" % ("found" if st["espeak"] else "not installed — browser voices are used"), True)
     return c.report(APP_NAME)
