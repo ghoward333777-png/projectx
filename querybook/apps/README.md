@@ -44,6 +44,31 @@ touches the data.
 * `python app.py restore` lists the backups; `python app.py restore 1` restores the newest. The
   damaged file is set aside, not deleted.
 
+## Diagnostics and the monitoring connection
+
+Each application checks itself when it starts and every hour, and shows the results on its
+**Diagnostics** page (also `python app.py diagnose`): Python version, program files, data folder,
+free disk space, database check and layout version, database and journal size, backups (the newest
+is opened and checked), errors in the last 24 hours, background work, and checks of the application's
+own logic (known calculations, date and source rules, word lists and answer checking). **Run full
+self-test** runs the complete self-test from the page.
+
+The **monitoring connection** sends these health reports to this development repository on GitHub,
+as comments on one issue per application and computer
+(`[QueryBook monitor] <application> · <computer name>`), so problems can be seen and fixed from the
+development side:
+
+* **When:** at once when a check fails or an error is logged (the same problem is repeated at most
+  every 6 hours), plus a daily check-in. Can be changed to problems only, or hourly.
+* **What:** check results, versions, operating system, and the first line of recent error messages.
+  Never facts, words, answers, file names, the user's name or folders (the home folder is replaced
+  by `~`), and never the token. **Preview a report** shows exactly what would be sent.
+* **Setting up (once per computer):** create a fine-grained GitHub token limited to this repository
+  with **Issues: Read and write** and nothing else; paste it on any application's Diagnostics page,
+  tick *Monitoring connection on*, Save, and *Send a test report*. The token stays in that
+  application's data folder (`monitor.json`, readable only by the user) and is only sent to GitHub.
+* If GitHub cannot be reached, reports wait (up to 20) and are delivered with the next one.
+
 ## Bringing in the old QueryBook store
 
 Each application has **Data & backups → Bring in … from the old QueryBook**. Point it at the old
@@ -63,7 +88,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 ## Checks
 
 ```
-python tools/test_core.py            # data safety: concurrency, rollback, damage detection, restore
+python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
 python language/app.py --selftest     # 37 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks

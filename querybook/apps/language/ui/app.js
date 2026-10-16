@@ -249,7 +249,7 @@ async function loadData() {
 
 let CURRENT = "learn";
 function refreshTab() {
-  ({ learn: loadSetup, words: loadWords, dict: () => {}, mine: loadMine, progress: loadProgress, data: loadData, help: () => {} })[CURRENT]();
+  ({ learn: loadSetup, words: loadWords, dict: () => {}, mine: loadMine, progress: loadProgress, data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

@@ -18,10 +18,10 @@ Design rules (they exist because the full-featured prototype lost data):
   * Standard library only. No pip installs.
 """
 import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, socket, sqlite3, struct
-import sys, threading, time, traceback, urllib.parse, webbrowser
+import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.0.0"
+CORE_VERSION = "1.1.0"
 BACKUPS_KEPT = 10
 
 
@@ -93,6 +93,7 @@ class Store:
         self.damage = None
         os.makedirs(self.backup_dir, exist_ok=True)
         self._check()
+        self.schema_len = len(schema)
         if not self.read_only:
             self._migrate(schema)
 
@@ -276,7 +277,18 @@ def make_logger(folder, app_id):
                     f.write(line)
             except OSError:
                 pass
+        if parts and str(parts[0]) in ERROR_MARKS:
+            for hook in list(log.hooks):
+                try:
+                    hook(line)
+                except Exception:
+                    pass
+    log.path = path
+    log.hooks = []
     return log
+
+
+ERROR_MARKS = ("ERROR", "JOB FAILED")
 
 
 # ----------------------------------------------------------------------------- old QueryBook store (read-only)
@@ -502,6 +514,11 @@ def make_handler(api, ui_dir, log, app_name):
                 return self._send(200, out if out is not None else {"ok": True})
             except (UserError, DatabaseDamaged) as e:
                 return self._send(400, {"error": str(e)})
+            except ValueError as e:
+                if str(e).startswith(("invalid literal for int()", "could not convert string to float")):
+                    return self._send(400, {"error": "A number was expected."})
+                log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))
+                return self._send(500, {"error": "Something went wrong: %s" % e})
             except Exception as e:
                 log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))
                 return self._send(500, {"error": "Something went wrong: %s" % e})
@@ -602,6 +619,473 @@ class Jobs:
         return self.current or {"state": "idle"}
 
 
+# ----------------------------------------------------------------------------- internal diagnostics
+REQUIRED_FILES = ("app.py", "qbcore.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+                  os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
+
+
+def redact(text):
+    """Remove the home folder, user names and tokens from text that may leave this computer."""
+    t = str(text or "")
+    home = os.path.expanduser("~")
+    for h in {home, home.replace("\\", "/"), home.replace("/", "\\")}:
+        if h and len(h) > 2:
+            t = t.replace(h, "~")
+    t = re.sub(r"(?i)([a-z]:\\users\\|/home/|/users/)[^\\/\s'\"]+", r"\1<user>", t)
+    t = re.sub(r"(?i)(gh[pousr]_|github_pat_)[A-Za-z0-9_]{10,}", "<token>", t)
+    return t
+
+
+def _check(cid, name, status, detail="", value=None):
+    return {"id": cid, "name": name, "status": status, "detail": detail, "value": value}
+
+
+class Diagnostics:
+    """Checks the application's own health. Never reads or reports the user's content."""
+
+    def __init__(self, app_id, app_name, version, program_dir, store, log, jobs=None, extra=None):
+        self.app_id, self.app_name, self.version = app_id, app_name, version
+        self.program_dir, self.store, self.log, self.jobs = program_dir, store, log, jobs
+        self.extra = extra
+        self.started = time.time()
+        self.last = None
+        self._lock = threading.Lock()
+
+    def errors_since(self, hours=24, limit=10):
+        """Error lines from the application's log in the last `hours` (newest last), first line only, redacted."""
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+        out = []
+        p = getattr(self.log, "path", None)
+        lines = []
+        if p and os.path.exists(p):
+            try:
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()[-5000:]
+            except OSError:
+                lines = []
+        for line in lines:
+            parts = line.split("  ", 1)
+            if len(parts) < 2 or not parts[1].startswith(ERROR_MARKS + ("DATABASE CHECK FAILED", "startup backup failed")):
+                continue
+            try:
+                when = datetime.datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+            except ValueError:
+                continue
+            if when >= cutoff:
+                msg = parts[1].split(" | ")[0].split(" Traceback (most recent call last)")[0].strip()   # no traceback
+                out.append({"time": parts[0], "message": redact(msg)[:300]})
+        return out[-limit:], len(out)
+
+    def run(self):
+        with self._lock:
+            checks = []
+            v = sys.version_info
+            checks.append(_check("python", "Python version", "ok" if v >= (3, 8) else "fail", "%d.%d.%d" % v[:3]))
+            missing = [f for f in REQUIRED_FILES if not os.path.isfile(os.path.join(self.program_dir, f))]
+            checks.append(_check("files", "Program files present", "fail" if missing else "ok",
+                                 ", ".join(missing) if missing else "%d files" % len(REQUIRED_FILES)))
+            folder = self.store.folder
+            try:
+                probe = os.path.join(folder, ".write-test-%d" % os.getpid())
+                with open(probe, "w") as f:
+                    f.write("ok")
+                os.remove(probe)
+                checks.append(_check("writable", "Data folder can be written", "ok"))
+            except OSError as e:
+                checks.append(_check("writable", "Data folder can be written", "fail", redact(e)))
+            try:
+                free = shutil.disk_usage(folder).free
+                st = "fail" if free < 200 * 2**20 else "warn" if free < 2**30 else "ok"
+                checks.append(_check("disk", "Free disk space", st, "%.1f GB free" % (free / 2**30), round(free / 2**30, 2)))
+            except OSError as e:
+                checks.append(_check("disk", "Free disk space", "warn", redact(e)))
+            if self.store.read_only:
+                checks.append(_check("database", "Database check", "fail",
+                                     "damaged at start-up (%s): writes are refused; restore a backup" % self.store.damage))
+            else:
+                try:
+                    db = sqlite3.connect(self.store.path, timeout=30)
+                    r = db.execute("PRAGMA quick_check").fetchone()[0]
+                    db.close()
+                    checks.append(_check("database", "Database check", "ok" if r == "ok" else "fail", "quick_check: %s" % r))
+                except sqlite3.DatabaseError as e:
+                    checks.append(_check("database", "Database check", "fail", redact(e)))
+            try:
+                sv = int(self.store.meta_get("schema_version") or 0)
+                want = getattr(self.store, "schema_len", None)
+                ok = want is None or sv == want
+                checks.append(_check("schema", "Database layout version", "ok" if ok else "fail",
+                                     "version %d%s" % (sv, "" if ok else " (expected %d)" % want)))
+            except Exception as e:
+                checks.append(_check("schema", "Database layout version", "fail", redact(e)))
+            size = os.path.getsize(self.store.path) if os.path.exists(self.store.path) else 0
+            wal = self.store.path + "-wal"
+            walsize = os.path.getsize(wal) if os.path.exists(wal) else 0
+            checks.append(_check("size", "Database size", "warn" if walsize > 200 * 2**20 else "ok",
+                                 "%.1f MB (journal %.1f MB)" % (size / 2**20, walsize / 2**20), round(size / 2**20, 2)))
+            b = self.store.backups()
+            if not b:
+                checks.append(_check("backup", "Backups", "warn", "no backup yet"))
+            else:
+                age_h = (time.time() - os.path.getmtime(b[0]["path"])) / 3600
+                try:
+                    bdb = sqlite3.connect(b[0]["path"])
+                    bok = bdb.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+                    bdb.close()
+                except sqlite3.DatabaseError:
+                    bok = False
+                st = "fail" if not bok else "warn" if age_h > 24 * 14 else "ok"
+                checks.append(_check("backup", "Backups", st, "%d kept; newest %s old%s"
+                                     % (len(b), _age(age_h), "" if bok else "; NEWEST BACKUP FAILED ITS CHECK"), len(b)))
+            errs, n = self.errors_since(24)
+            checks.append(_check("errors", "Errors in the last 24 hours", "ok" if n == 0 else "fail" if n >= 20 else "warn", "%d" % n, n))
+            if self.jobs is not None:
+                j = self.jobs.status()
+                last = self.jobs.last or {}
+                st = "warn" if last.get("state") == "failed" else "ok"
+                detail = ("running: %s" % j.get("name")) if j.get("state") == "running" else \
+                    ("last job failed: %s" % redact(last.get("message"))[:200] if st == "warn" else "idle")
+                checks.append(_check("jobs", "Background work", st, detail))
+            if self.extra:
+                try:
+                    checks += self.extra()
+                except Exception as e:
+                    checks.append(_check("app", "Application checks", "fail", redact(repr(e))[:300]))
+            order = {"fail": 2, "warn": 1, "ok": 0}
+            overall = max((c["status"] for c in checks), key=lambda x: order[x]) if checks else "ok"
+            self.last = {"app": self.app_name, "app_id": self.app_id, "version": self.version, "core": CORE_VERSION, "time": now_iso(),
+                         "overall": overall, "checks": checks, "errors": errs, "error_count": n,
+                         "uptime": _age((time.time() - self.started) / 3600),
+                         "environment": {"python": "%d.%d.%d" % v[:3], "os": platform.system() + " " + platform.release(),
+                                         "machine": platform.machine(), "sqlite": sqlite3.sqlite_version}}
+            return self.last
+
+    def text(self, report=None):
+        r = report or self.last or self.run()
+        lines = ["%s %s - diagnostics %s" % (r["app"], r["version"], r["time"]), "Overall: %s" % r["overall"].upper(), ""]
+        for c in r["checks"]:
+            lines.append("[%-4s] %s%s" % (c["status"].upper(), c["name"], (" - " + str(c["detail"])) if c["detail"] else ""))
+        lines += ["", "Environment: Python %(python)s, %(os)s, %(machine)s, SQLite %(sqlite)s" % r["environment"], "Up for: " + r["uptime"]]
+        if r["errors"]:
+            lines += ["", "Recent errors:"] + ["  %s  %s" % (e["time"], e["message"]) for e in r["errors"]]
+        return redact("\n".join(lines)) + "\n"
+
+
+def _age(hours):
+    if hours < 1:
+        return "%d min" % max(0, round(hours * 60))
+    if hours < 48:
+        return "%.0f h" % hours
+    return "%.0f days" % (hours / 24)
+
+
+# ----------------------------------------------------------------------------- monitoring connection (GitHub)
+class MonitorError(Exception):
+    pass
+
+
+FREQUENCIES = {"problems_daily": "problems at once, plus a daily check-in", "problems": "problems only",
+               "hourly": "problems at once, plus an hourly check-in"}
+DEFAULT_REPO = "ghoward333777-png/projectx"
+FENCE = "`" * 3
+
+
+class Monitor:
+    """Sends health reports to the development repository on GitHub, as comments on one issue per
+    application and computer. Reports contain health data only - never facts, words or answers.
+    Needs a fine-grained GitHub token limited to that one repository, with Issues: Read and write."""
+
+    def __init__(self, folder, app_id, app_name, version, log):
+        self.path = os.path.join(folder, "monitor.json")
+        self.app_id, self.app_name, self.version, self.log = app_id, app_name, version, log
+        self.api_base = os.environ.get("QB_GITHUB_API", "https://api.github.com").rstrip("/")
+        self._lock = threading.RLock()
+        self._wake = threading.Event()
+        self._thread = None
+        self.cfg = self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                c = json.load(f)
+            if not isinstance(c, dict):
+                c = {}
+        except (OSError, ValueError):
+            c = {}
+        c.setdefault("enabled", False)
+        c.setdefault("repo", DEFAULT_REPO)
+        c.setdefault("token", "")
+        c.setdefault("label", "")
+        c.setdefault("frequency", "problems_daily")
+        c.setdefault("install_id", uuid.uuid4().hex[:8])
+        c.setdefault("sent", {})
+        c.setdefault("outbox", [])
+        return c
+
+    def _save(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.cfg, f, indent=2)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, self.path)
+
+    def public(self):
+        c = self.cfg
+        t = c.get("token") or ""
+        return {"enabled": c["enabled"], "repo": c["repo"], "label": c["label"], "frequency": c["frequency"], "frequencies": FREQUENCIES,
+                "token_set": bool(t), "token_hint": ("..." + t[-4:]) if len(t) > 8 else "", "install_id": c["install_id"],
+                "issue_number": c.get("issue_number"), "issue_url": c.get("issue_url"), "last_sent": c.get("last_sent"),
+                "last_status": c.get("last_status"), "last_heartbeat": c.get("last_heartbeat"), "waiting": len(c["outbox"]),
+                "title": self.title()}
+
+    def configure(self, enabled=None, repo=None, token=None, label=None, frequency=None):
+        with self._lock:
+            if repo is not None:
+                repo = re.sub(r"^https?://github\.com/", "", repo.strip()).strip("/")
+                if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", repo):
+                    raise UserError("Repository must look like owner/name, for example %s" % DEFAULT_REPO)
+                if repo != self.cfg["repo"]:
+                    self.cfg.pop("issue_number", None)
+                    self.cfg.pop("issue_url", None)
+                self.cfg["repo"] = repo
+            if token:
+                token = token.strip()
+                if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):
+                    raise UserError("That does not look like a GitHub token.")
+                self.cfg["token"] = token
+            if label is not None:
+                new = re.sub(r"[^\w .-]", "", label)[:40].strip()
+                if new != self.cfg["label"]:
+                    self.cfg.pop("issue_number", None)
+                    self.cfg.pop("issue_url", None)
+                self.cfg["label"] = new
+            if frequency is not None:
+                if frequency not in FREQUENCIES:
+                    raise UserError("Unknown frequency.")
+                self.cfg["frequency"] = frequency
+            if enabled is not None:
+                if enabled and not self.cfg.get("token"):
+                    raise UserError("Paste a GitHub token first.")
+                self.cfg["enabled"] = bool(enabled)
+            self._save()
+        self._wake.set()
+        return self.public()
+
+    def disconnect(self):
+        with self._lock:
+            self.cfg.update(enabled=False, token="")
+            self._save()
+        return self.public()
+
+    def title(self):
+        return "[QueryBook monitor] %s · %s" % (self.app_name, self.cfg.get("label") or "install " + self.cfg["install_id"])
+
+    def _req(self, method, path, body=None):
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        req = urllib.request.Request(self.api_base + path, data=data, method=method, headers={
+            "Authorization": "Bearer " + self.cfg.get("token", ""), "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "QueryBook-%s/%s" % (self.app_id, self.version),
+            "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                raw = r.read()
+                return json.loads(raw.decode("utf-8")) if raw else {}
+        except urllib.error.HTTPError as e:
+            msg = {401: "GitHub refused the token (it may be wrong or expired).",
+                   403: "The token is not allowed to do this - it needs Issues: Read and write on %s." % self.cfg["repo"],
+                   404: "Repository %s not found, or the token cannot see it." % self.cfg["repo"],
+                   410: "Issues are turned off for %s." % self.cfg["repo"]}.get(e.code, "GitHub answered %d." % e.code)
+            raise MonitorError(msg)
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            raise MonitorError("Could not reach GitHub: %s" % redact(getattr(e, "reason", e)))
+
+    def _ensure_issue(self):
+        repo = self.cfg["repo"]
+        num = self.cfg.get("issue_number")
+        if num:
+            try:
+                if self._req("GET", "/repos/%s/issues/%d" % (repo, num)).get("state") == "open":
+                    return num
+            except MonitorError:
+                pass
+        for page in (1, 2, 3):
+            items = self._req("GET", "/repos/%s/issues?state=open&per_page=100&page=%d" % (repo, page))
+            for it in items:
+                if it.get("title") == self.title() and "pull_request" not in it:
+                    self.cfg["issue_number"], self.cfg["issue_url"] = it["number"], it.get("html_url")
+                    return it["number"]
+            if len(items) < 100:
+                break
+        body = ("Health reports from **%s** on one computer (install `%s`).\n\n"
+                "Each comment is one report: the result of the application's built-in checks, its version and its environment. "
+                "Reports never contain the user's facts, words, answers or file names.\n\n"
+                "Close this issue to start a fresh one with the next report.") % (self.app_name, self.cfg["install_id"])
+        it = self._req("POST", "/repos/%s/issues" % repo, {"title": self.title(), "body": body})
+        self.cfg["issue_number"], self.cfg["issue_url"] = it["number"], it.get("html_url")
+        return it["number"]
+
+    def compose(self, kind, report):
+        icon = {"ok": "🟢", "warn": "🟡", "fail": "🔴"}[report["overall"]]
+        brief = kind == "Check-in" and report["overall"] == "ok"
+        rows = [c for c in report["checks"] if c["id"] in ("database", "backup", "errors", "disk")] if brief else report["checks"]
+        lines = ["### %s %s - %s" % (icon, kind, report["overall"].upper()), "",
+                 "**%s %s** (core %s) · install `%s`%s · %s · up %s" % (
+                     report["app"], report["version"], report["core"], self.cfg["install_id"],
+                     " (%s)" % self.cfg["label"] if self.cfg.get("label") else "", report["time"], report["uptime"]),
+                 "", "| Check | Result | Detail |", "|---|---|---|"]
+        for c in rows:
+            lines.append("| %s | %s | %s |" % (c["name"], c["status"].upper(), str(c["detail"]).replace("|", "/")))
+        env = report["environment"]
+        lines += ["", "Python %s · %s · %s · SQLite %s" % (env["python"], env["os"], env["machine"], env["sqlite"])]
+        if report["errors"]:
+            lines += ["", "<details><summary>%d error(s) in the last 24 hours</summary>" % report["error_count"], "", FENCE]
+            lines += ["%s  %s" % (e["time"], e["message"].replace(FENCE, "'''")) for e in report["errors"]]
+            lines += [FENCE, "</details>"]
+        lines += ["", "<sub>Sent automatically by the application's monitoring connection. Health data only.</sub>"]
+        return redact("\n".join(lines))
+
+    def send(self, kind, report):
+        """Post one report now and return the comment's address. A failed report waits in the outbox."""
+        body = self.compose(kind, report)
+        with self._lock:
+            if not self.cfg.get("token"):
+                raise MonitorError("No GitHub token is set.")
+            try:
+                num = self._ensure_issue()
+                for queued in list(self.cfg["outbox"]):
+                    self._req("POST", "/repos/%s/issues/%d/comments" % (self.cfg["repo"], num), {"body": queued})
+                    self.cfg["outbox"].remove(queued)
+                c = self._req("POST", "/repos/%s/issues/%d/comments" % (self.cfg["repo"], num), {"body": body})
+                self.cfg["last_sent"], self.cfg["last_status"] = now_iso(), "sent: %s" % kind.lower()
+                if kind in ("Test", "Check-in"):        # a test report counts as the day's check-in
+                    self.cfg["last_heartbeat_ts"], self.cfg["last_heartbeat"] = time.time(), now_iso()
+                self._save()
+                return c.get("html_url") or self.cfg.get("issue_url")
+            except MonitorError as e:
+                if kind != "Test":
+                    self.cfg["outbox"] = (self.cfg["outbox"] + [body])[-20:]
+                self.cfg["last_status"] = "not sent: %s" % e
+                self._save()
+                raise
+
+    def due(self, report, now=None):
+        """('Problem', signature), ('Check-in', None) or None."""
+        if not self.cfg["enabled"] or not self.cfg.get("token"):
+            return None
+        now = now or time.time()
+        if report["overall"] != "ok":
+            sig = "%s:%s:%d" % (report["overall"], ",".join(sorted(c["id"] for c in report["checks"] if c["status"] != "ok")),
+                                min(report["error_count"], 99))
+            if now - self.cfg["sent"].get(sig, 0) > 6 * 3600:
+                return "Problem", sig
+        if self.cfg["frequency"] == "problems":
+            return None
+        gap = 3600 if self.cfg["frequency"] == "hourly" else 24 * 3600
+        if now - self.cfg.get("last_heartbeat_ts", 0) >= gap - 60:
+            return "Check-in", None
+        return None
+
+    def tick(self, diagnostics, now=None):
+        report = diagnostics.run()
+        d = self.due(report, now)
+        if not d:
+            return None
+        kind, sig = d
+        try:
+            url = self.send(kind, report)
+        except MonitorError as e:
+            self.log("monitor: report not sent:", e)
+            return None
+        t = now or time.time()
+        with self._lock:
+            if sig:
+                self.cfg["sent"] = {k: v for k, v in self.cfg["sent"].items() if t - v < 7 * 86400}
+                self.cfg["sent"][sig] = t
+            # any report proves the connection; a problem report also counts as the day's check-in
+            self.cfg["last_heartbeat_ts"] = t
+            self.cfg["last_heartbeat"] = now_iso()
+            self._save()
+        return url
+
+    def on_error(self, line):
+        self._wake.set()
+
+    def start(self, diagnostics):
+        if self._thread:
+            return
+
+        def loop():
+            time.sleep(20)
+            while True:
+                try:
+                    self.tick(diagnostics)
+                except Exception as e:
+                    self.log("monitor: check failed:", repr(e))
+                woke = self._wake.wait(3600)
+                self._wake.clear()
+                if woke:
+                    time.sleep(60)          # let a burst of errors finish, then report it once
+        self._thread = threading.Thread(target=loop, daemon=True, name="monitor")
+        self._thread.start()
+
+
+def add_diagnostics(api, diag, monitor, program_dir):
+    """Register the diagnostics and monitoring routes every application shares."""
+
+    @api.get("/api/diagnostics")
+    def diagnostics(p):
+        return diag.last or diag.run()
+
+    @api.post("/api/diagnostics/run")
+    def diagnostics_run(p):
+        return diag.run()
+
+    @api.get("/api/diagnostics/report.txt")
+    def diagnostics_text(p):
+        return diag.text(diag.run()).encode("utf-8"), "text/plain; charset=utf-8"
+
+    @api.post("/api/selftest")
+    def selftest(p):
+        import subprocess
+        kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
+        try:
+            r = subprocess.run([sys.executable, "-B", os.path.join(program_dir, "app.py"), "--selftest"], cwd=program_dir,
+                               capture_output=True, text=True, timeout=600, **kw)
+        except subprocess.TimeoutExpired:
+            raise UserError("The self-test took longer than 10 minutes and was stopped.")
+        out = (r.stdout or "") + (r.stderr or "")
+        if r.returncode != 0:
+            diag.log("ERROR", "self-test failed:", " / ".join(l.strip() for l in out.splitlines() if "[FAIL]" in l)[:500])
+        return {"passed": r.returncode == 0, "output": redact(out)[-20000:]}
+
+    @api.get("/api/monitor")
+    def monitor_get(p):
+        return monitor.public()
+
+    @api.post("/api/monitor")
+    def monitor_set(p):
+        return monitor.configure(p.get("enabled"), p.get("repo"), p.get("token"), p.get("label"), p.get("frequency"))
+
+    @api.post("/api/monitor/disconnect")
+    def monitor_disconnect(p):
+        return monitor.disconnect()
+
+    @api.get("/api/monitor/preview")
+    def monitor_preview(p):
+        return {"title": monitor.title(), "body": monitor.compose("Check-in", diag.run())}
+
+    @api.post("/api/monitor/test")
+    def monitor_test(p):
+        try:
+            url = monitor.send("Test", diag.run())
+        except MonitorError as e:
+            raise UserError(str(e))
+        return {"sent": True, "url": url, "monitor": monitor.public()}
+
+
 # ----------------------------------------------------------------------------- self-test helpers
 class Checks:
     def __init__(self):
@@ -642,6 +1126,7 @@ def run_cli(app):
     python app.py backup          take a backup now
     python app.py restore [N]     list backups, or restore backup number N
     python app.py import-old DIR  import from an old QueryBook store (read-only)
+    python app.py diagnose        run the internal diagnostics and print the report
     """
     args = sys.argv[1:]
     if args and args[0] in ("-h", "--help", "help"):
@@ -673,6 +1158,10 @@ def run_cli(app):
         k = int(args[1]) - 1
         print("Restored:", inst.store.restore(b[k]["path"]))
         return 0
+    if args and args[0] == "diagnose":
+        r = inst.diag.run()
+        print(inst.diag.text(r))
+        return 0 if r["overall"] != "fail" else 1
     if args and args[0] == "import-old":
         if len(args) < 2:
             print("usage: python app.py import-old FOLDER")
@@ -680,6 +1169,8 @@ def run_cli(app):
         res = inst.import_old(args[1], lambda d, t=None, m="": print("\r  %s %s" % (d, m), end=""), lambda: False)
         print("\n", json.dumps(res, indent=2))
         return 0
+    if getattr(inst, "monitor", None):
+        inst.monitor.start(inst.diag)
     serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
           open_browser="--no-browser" not in args)
     return 0

@@ -22,7 +22,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language & Speech"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8101
 program_dir = HERE
 
@@ -69,6 +69,10 @@ class App:
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.jobs = core.Jobs(self.log)
         self.api = core.Api()
+        self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
+        self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
+        self.log.hooks.append(self.monitor.on_error)
+        core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         try:
             self.store.backup("startup")
@@ -330,13 +334,27 @@ class App:
             db.executemany("INSERT OR IGNORE INTO cards(lang, word, box, due, introduced) VALUES(?,?,0,?,?)", [(lang, w, day, day) for w in picked])
         return {"added": len(picked), "words": picked}
 
+    # ------------------------------------------------------------------ diagnostics
+    def _health(self):
+        C = core._check
+        sizes = {code: len(vocab.deck(code)) for code in vocab.LANGUAGES}
+        small = [vocab.LANGUAGES[c]["name"] for c, n in sizes.items() if n < 1500]
+        out = [C("wordlists", "Word lists", "fail" if small else "ok", ("too few words: " + ", ".join(small)) if small else "%d languages, %d–%d words each" % (len(sizes), min(sizes.values()), max(sizes.values())))]
+        okd = len(vocab.definitions()) > 5000
+        out.append(C("dictionary", "English dictionary", "ok" if okd else "fail", "%d entries" % len(vocab.definitions())))
+        okc = vocab.check_answer("etre", ["être"])["result"] == "accent" and vocab.check_answer("gato", ["perro"])["result"] == "wrong"
+        out.append(C("checker", "Answer checking", "ok" if okc else "fail"))
+        sp = speech.status()
+        out.append(C("voice", "Offline voice (espeak-ng)", "ok", "installed" if sp["espeak"] else "not installed — the browser's voices are used"))
+        return out
+
     # ------------------------------------------------------------------ routes
     def _routes(self):
         a = self.api
 
         @a.get("/api/status")
         def status(p):
-            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "speech": speech.status(),
+            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "health": (self.diag.last or {}).get("overall"), "speech": speech.status(),
                     "reviews": self.store.scalar("SELECT count(*) FROM reviews", default=0),
                     "cards": self.store.scalar("SELECT count(*) FROM cards", default=0), "sources": vocab.SOURCES, "job": self.jobs.status()["state"]}
 

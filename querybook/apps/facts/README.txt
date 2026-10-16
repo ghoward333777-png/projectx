@@ -35,5 +35,13 @@ SAFETY
                            python app.py restore 1    (restores the newest)
   - Importing from the old QueryBook only READS the old store. It never changes it.
 
+DIAGNOSTICS AND MONITORING
+  The Diagnostics page shows the application's own health checks (run when it starts and every
+  hour) and can run the full self-test. From the command line: python app.py diagnose
+  The monitoring connection sends these health reports to the developers' GitHub repository,
+  so problems can be fixed from there: at once when something fails, plus a daily check-in.
+  Reports never contain your facts, words, answers, your name or your folders. To switch it on,
+  follow "How to make the token" on the Diagnostics page (a GitHub token with Issues access only).
+
 CHECK THAT EVERYTHING WORKS
       python app.py --selftest

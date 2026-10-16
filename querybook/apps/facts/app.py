@@ -22,7 +22,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8103
 program_dir = HERE
 
@@ -79,6 +79,10 @@ class App:
         self.fts = self._setup_fts()
         self.jobs = core.Jobs(self.log)
         self.api = core.Api()
+        self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
+        self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
+        self.log.hooks.append(self.monitor.on_error)
+        core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         try:
             self.store.backup("startup")
@@ -411,6 +415,17 @@ class App:
         self.store.backup("after-import", force=True)
         return {"old_store": store, "records_read": read, "added": added, "already_present": merged, "skipped": skipped, "note": note}
 
+    # ------------------------------------------------------------------ diagnostics
+    def _health(self):
+        C = core._check
+        out = [C("search", "Full-text search", "ok" if self.fts else "warn", "available" if self.fts else "not available in this Python; simple search is used")]
+        ok = dates.parse("15 March 44 BC")["sort"] < dates.parse("AD 1")["sort"] and S.is_ai_url("https://chatgpt.com/x")
+        out.append(C("rules", "Date reading and source rules", "ok" if ok else "fail"))
+        if not self.store.read_only:
+            bad = self.store.query("SELECT name FROM feeds WHERE last_status IS NOT NULL AND last_status NOT LIKE 'ok%'")
+            out.append(C("feeds", "News feeds", "warn" if bad else "ok", ("last fetch failed for %d feed(s)" % len(bad)) if bad else "no fetch problems"))
+        return out
+
     # ------------------------------------------------------------------ routes
     def _routes(self):
         a = self.api
@@ -418,7 +433,7 @@ class App:
         @a.get("/api/status")
         def status(p):
             st = {r["status"]: r["n"] for r in self.store.query("SELECT status, count(*) n FROM (SELECT %s AS status FROM facts f) GROUP BY status" % STATUS_SQL)}
-            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "facts": st, "facts_total": sum(st.values()),
+            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "health": (self.diag.last or {}).get("overall"), "facts": st, "facts_total": sum(st.values()),
                     "disputed": self.store.scalar("SELECT count(*) FROM facts WHERE disputed = 1", default=0),
                     "sources": self.store.scalar("SELECT count(*) FROM sources", default=0), "full_text_search": self.fts,
                     "job": self.jobs.status()["state"]}

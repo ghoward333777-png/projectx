@@ -23,7 +23,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8102
 program_dir = HERE
 
@@ -61,6 +61,10 @@ class App:
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.jobs = core.Jobs(self.log)
         self.api = core.Api()
+        self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
+        self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
+        self.log.hooks.append(self.monitor.on_error)
+        core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         try:
             self.store.backup("startup")
@@ -207,6 +211,21 @@ class App:
         return {"old_store": store, "records_read": read, "imported_verified": imported, "already_present": present,
                 "failed_recomputation": mism, "left_for_other_apps": other, "note": note}
 
+    # ------------------------------------------------------------------ diagnostics
+    def _health(self):
+        C = core._check
+        samples = [("12 × 7", "84"), ("0.1 + 0.2", "3/10"), ("2^64", "18446744073709551616"), ("sqrt(144)", "12"), ("factor(360)", "2³ × 3² × 5")]
+        bad = [q for q, want in samples if engine.evaluate(q)["value"] != want]
+        if units.convert("60 mph to km/h")["result"] != "96.56064":
+            bad.append("60 mph to km/h")
+        if science.molar_mass("H2O")["molar_mass"] != "18.015":
+            bad.append("molar mass of H2O")
+        out = [C("engine", "Calculation engine gives known answers", "fail" if bad else "ok", ("wrong: " + ", ".join(bad)) if bad else "%d samples" % (len(samples) + 2))]
+        if not self.store.read_only:
+            n = self.store.scalar("SELECT count(*) FROM facts WHERE status <> 'verified'", default=0)
+            out.append(C("recheck", "Saved answers that do not recompute", "warn" if n else "ok", "%d" % n, n))
+        return out
+
     # ------------------------------------------------------------------ routes
     def _routes(self):
         a = self.api
@@ -214,7 +233,7 @@ class App:
         @a.get("/api/status")
         def status(p):
             counts = {r["status"]: r["n"] for r in self.store.query("SELECT status, count(*) n FROM facts GROUP BY status")}
-            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "facts": counts,
+            return {"app": APP_NAME, "version": VERSION, "store": self.store.status(), "health": (self.diag.last or {}).get("overall"), "facts": counts,
                     "facts_total": sum(counts.values()), "job": self.jobs.status()["state"]}
 
         @a.post("/api/ask")

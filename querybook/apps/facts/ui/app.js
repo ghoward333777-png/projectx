@@ -188,6 +188,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (id === "news") loadNews();
     if (id === "sources") loadSources();
     if (id === "data") loadData();
+    if (id === "diag") renderDiagnostics($("#diag"));
   });
   $("#go").onclick = () => { page = 0; search(); };
   onEnter($("#q"), () => { page = 0; search(); });
