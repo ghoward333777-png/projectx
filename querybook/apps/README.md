@@ -7,7 +7,7 @@ them depends on another, and none of them changes the old QueryBook store.
 
 | Application | Folder | Opens at | What it does |
 |---|---|---|---|
-| **Language & Speech** | `language/` | http://127.0.0.1:8101/ | 17 languages, English first (plus Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan); learn any of them from any other; spaced-repetition review; flashcards, multiple choice, typing, listening and speaking; dictionary; progress |
+| **Language Builder** | `language/` | http://127.0.0.1:8101/ | Builds English first, then Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian and Catalan — automatically, without any AI model; verifiable from scratch; word look-up |
 | **Math, Science & Engineering** | `stem/` | http://127.0.0.1:8102/ | Exact calculation, unit conversion with dimension checks, 35 solvable formulas, CODATA constants, the periodic table and molar masses; every saved answer can be recomputed |
 | **History & News** | `facts/` | http://127.0.0.1:8103/ | Facts with their sources (books, newspapers, records — never AI services); disputes shown side by side; timeline; news feeds kept as "reported by" until you add them |
 
@@ -19,15 +19,26 @@ them depends on another, and none of them changes the old QueryBook store.
 
 Nothing to install: standard Python only. Leave the window open while you use the application.
 
-## Self-learning (Language & Speech → Self-learning)
+## Language Builder (automatic) and its proof
 
-The Language Lab learns English **by itself, without any AI model**, using the logic of the last
-tested prototype (v9.50): first the **sub-language** — letters, sounds by phonics rules, syllables,
-rhythm, which words recur and which go together, with meanings switched off. When the one-way
-**Transition Gate** opens (sounds found ≥ 0.80, common words settled ≥ 0.70, word pairs ≥ 1.5 per
-word, new patterns < 0.20) it attaches meanings (Webster 1913), translations into the other 16
-languages, pronunciation, and then learns each other language. **Learn by itself** runs all phases
-(about 2 minutes); you can also feed it text or web pages for Phase 1. Every fact keeps its source.
+The Language & Speech application is now the **Language Builder**, an administrator's tool that
+builds QueryBook's languages before anyone runs queries. It is **automatic**: the first time it
+starts it builds all 17 languages by itself (about 2 minutes); **Build all languages** runs it again.
+It follows the last tested prototype (v9.50): English sub-language first (letters, phonics sounds,
+syllables, rhythm, recurring words and word pairs, meanings switched off) until the one-way
+**Transition Gate** opens, then meanings (Webster 1913), links into the 16 other languages,
+pronunciation, then each other language — 20 steps, always in that order. The Build page shows a
+status banner (what is happening and whether you need to do anything — normally nothing), the
+whole-build bar with time left, the current step, every step with its start time, time taken and
+result, every language, and a build log. `python app.py build` does the same in the window.
+
+**Verify (proof)** shows third parties that it learns from scratch: it rebuilds everything in a
+sealed, empty temporary database with all network connections blocked, checks that meanings are
+refused before the sub-language is learned, records the learning curve from the first reading,
+lists every input file with its SHA-256, checks that the code imports only the Python standard
+library, and reduces everything learned to one SHA-256 **fingerprint** that must equal the
+computer's own build. Anyone can run `python app.py verify` on their own computer and must get the
+same fingerprint. Reports are kept in the data folder (`verification/`) and can be downloaded.
 
 ## Transparency
 
@@ -109,7 +120,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 66 checks
+python language/app.py --selftest     # 69 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks
 python tools/run_all_tests.py         # all of the above

@@ -3,187 +3,202 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QueryBook Language &amp; Speech</title>
+<title>QueryBook Language Builder</title>
 <link rel="stylesheet" href="qb.css">
 <style>
   :root { --accent: #5b3c9e; }
   @media (prefers-color-scheme: dark) { :root { --accent: #7d5cc4; } }
-  .langs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-  .lang { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--panel); text-align: left; font: inherit; color: var(--ink); }
-  .lang[aria-pressed="true"] { border-color: var(--accent); }
-  .lang .n { font-weight: 700; }
-  .lang .s { font-size: 13px; color: var(--muted); }
-  .modes { display: flex; gap: 6px; flex-wrap: wrap; }
-  .modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .prompt { font-size: 40px; font-weight: 700; text-align: center; margin: 18px 0 6px; word-break: break-word; }
-  .hint { text-align: center; color: var(--muted); }
-  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-  .choices button { font-size: 20px; padding: 16px; }
-  .choices button.right { background: var(--good-bg); border-color: var(--good); color: var(--good); }
-  .choices button.wrongpick { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
-  .bigin { font-size: 22px; text-align: center; }
-  .speakbtn { font-size: 20px; padding: 6px 14px; }
-  .feedback { margin-top: 14px; padding: 12px 14px; border-radius: 8px; }
-  .feedback.good { background: var(--good-bg); color: var(--good); }
-  .feedback.bad { background: var(--bad-bg); color: var(--bad); }
-  .feedback.warn { background: var(--warn-bg); color: var(--warn); }
-  .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; border-bottom: 1px solid var(--line); }
-  .bars div { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
-  .barlabels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-  .gate { display: grid; grid-template-columns: 200px 1fr 150px; gap: 8px 12px; align-items: center; }
-  .phase { border-left: 4px solid var(--line); padding: 6px 10px; margin: 8px 0; }
-  .phase.done { border-color: var(--good); }
-  .phase.now { border-color: var(--accent); }
-  .lrow { display: grid; grid-template-columns: 110px 1fr 230px; gap: 6px 10px; align-items: center; font-size: 13px; }
-  .spark { display: flex; align-items: flex-end; gap: 1px; height: 50px; border-bottom: 1px solid var(--line); }
+  .banner { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; border-radius: var(--radius); padding: 22px 24px; margin: 0 0 16px;
+    border: 2px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+  .banner .bicon { font-size: 44px; line-height: 1; width: 56px; text-align: center; }
+  .banner .btext { flex: 1 1 360px; }
+  .banner .btitle { font-size: 30px; font-weight: 800; line-height: 1.15; }
+  .banner .bwhat { font-size: 17px; margin-top: 6px; }
+  .banner .bbtns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .banner.run { border-color: var(--accent); }
+  .banner.run .btitle { color: var(--accent); }
+  .banner.ok { border-color: var(--good); background: var(--good-bg); }
+  .banner.ok .btitle { color: var(--good); }
+  .banner.bad { border-color: var(--bad); background: var(--bad-bg); }
+  .banner.bad .btitle { color: var(--bad); }
+  .banner.warn { border-color: var(--warn); background: var(--warn-bg); }
+  .banner.warn .btitle { color: var(--warn); }
+  .lbl { display: flex; justify-content: space-between; font-weight: 700; font-size: 17px; }
+  .nowcard { border: 2px solid var(--accent); }
+  .nowstep { font-size: 20px; }
+  table.steps td, table.steps th { padding: 7px 8px; font-size: 14px; }
+  table.steps tr.now td { background: var(--chip); font-weight: 650; }
+  .fp { font-size: 15px; word-break: break-all; background: var(--chip); padding: 10px 12px; border-radius: 8px; }
+  .chk { list-style: none; padding: 0; margin: 0; }
+  .chk li { padding: 8px 0 8px 34px; position: relative; border-bottom: 1px solid var(--line); }
+  .chk li::before { position: absolute; left: 4px; top: 6px; font-size: 18px; }
+  .chk li.y::before { content: "✅"; } .chk li.n::before { content: "❌"; }
+  svg.curve { width: 100%; height: 220px; }
+  ul.log { list-style: none; margin: 0; padding: 10px 12px; max-height: 300px; overflow: auto; background: var(--chip); border-radius: 8px; font-size: 13px; }
+  ul.log li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  ul.log li:last-child { border-bottom: 0; }
+  .bigbtn { font-size: 18px !important; padding: 14px 26px !important; }
+  .meter.tall { height: 26px; border-radius: 13px; margin: 10px 0 8px; }
+  .meter.tall > i { transition: width .6s ease; }
+  .facts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; color: var(--muted); }
+  .facts b { color: var(--ink); }
+  table.langs td, table.langs th { padding: 7px 8px; }
+  table.langs td.bar { width: 34%; }
+  .st { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .st.ok { color: var(--good); } .st.run { color: var(--accent); } .st.wait { color: var(--muted); } .st.warn { color: var(--warn); }
+  .gate { display: grid; grid-template-columns: 220px 1fr 150px; gap: 8px 12px; align-items: center; font-size: 14px; }
+  .spark { display: flex; align-items: flex-end; gap: 1px; height: 46px; border-bottom: 1px solid var(--line); margin-top: 6px; }
   .spark div { flex: 1; background: var(--accent); min-height: 1px; }
   .spark div.open { background: var(--good); }
-  @media (max-width: 600px) { .gate, .lrow { grid-template-columns: 1fr; } }
-  .mic { width: 84px; height: 84px; border-radius: 50%; font-size: 34px; display: block; margin: 14px auto; }
-  .mic.on { animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: .55; } }
-  @media (max-width: 600px) { .prompt { font-size: 30px; } .choices { grid-template-columns: 1fr; } }
+  details.card > summary { cursor: pointer; font-weight: 650; font-size: 17px; }
+  details.card[open] > summary { margin-bottom: 12px; }
+  .speakbtn { padding: 2px 8px !important; }
+  @media (max-width: 640px) { .banner .btitle { font-size: 24px; } table.steps .hide-s { display: none; } .gate { grid-template-columns: 1fr; } table.langs .hide-s { display: none; } .hero .big { font-size: 22px; } }
 </style>
 </head>
 <body>
 <header class="top">
-  <h1>QueryBook Language &amp; Speech</h1>
-  <span class="tag">Learn words, hear them, say them — checked by rule, scheduled to stick</span>
+  <h1>QueryBook Language Builder</h1>
+  <span class="tag">Builds English and 16 European languages by itself — phonics first, no AI model</span>
 </header>
 <nav class="tabs" aria-label="Sections">
-  <button data-tab="learn">Learn</button>
-  <button data-tab="words">Words</button>
-  <button data-tab="dict">Dictionary</button>
-  <button data-tab="mine">My words</button>
-  <button data-tab="progress">Progress</button>
-  <button data-tab="lab">Self-learning</button>
+  <button data-tab="build">Build</button>
+  <button data-tab="verify">Verify (proof)</button>
+  <button data-tab="lookup">Look up</button>
   <button data-tab="data">Data &amp; backups</button>
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="help">Help</button>
 </nav>
 <main>
-  <div class="card">
-    <div class="row" style="margin-bottom:10px"><label for="native"><b>I speak</b></label>
-      <select id="native" style="width:auto" aria-label="The language you speak"></select>
-      <span class="small muted">Choose the language to learn:</span></div>
-    <div class="langs" id="langs"></div>
-  </div>
-
-  <section class="panel" id="learn">
-    <div class="card" id="setup">
-      <div class="row" style="justify-content:space-between">
-        <div class="modes" id="modes">
-          <button class="btn quiet" data-mode="cards">Flashcards</button>
-          <button class="btn quiet" data-mode="choice">Multiple choice</button>
-          <button class="btn quiet" data-mode="type">Type the answer</button>
-          <button class="btn quiet" data-mode="listen">Listen &amp; write</button>
-          <button class="btn quiet" data-mode="speak">Speak</button>
-        </div>
-        <div class="row small">
-          <select id="dir" style="width:auto" aria-label="Direction"></select>
-          <label>New words a day <input id="npd" type="number" min="0" max="100" style="width:72px"></label>
-        </div>
+  <section class="panel" id="build">
+    <div class="banner" id="banner" aria-live="polite">
+      <div class="bicon" id="bicon">…</div>
+      <div class="btext">
+        <div class="btitle" id="bhead">Checking the build…</div>
+        <div class="bwhat" id="bsub"></div>
       </div>
-      <div id="sinfo" class="small muted" style="margin-top:10px"></div>
-      <button class="btn" id="start" style="margin-top:10px">Start</button>
-    </div>
-    <div class="card" id="run" style="display:none" aria-live="polite"></div>
-  </section>
-
-  <section class="panel" id="words">
-    <div class="card">
-      <div class="row">
-        <select id="wwhich" style="width:auto" aria-label="Which words">
-          <option value="learning">Learning</option><option value="due">Due today</option><option value="mastered">Mastered</option><option value="new">Not started</option>
-        </select>
-        <input id="wq" class="grow" type="text" placeholder="Find a word" aria-label="Find a word">
-        <button class="btn quiet" id="wgo">Show</button>
+      <div class="bbtns">
+        <button class="btn bigbtn" id="bgo">Build all languages</button>
+        <button class="btn quiet bigbtn" id="bstop" style="display:none">Stop</button>
       </div>
-      <div id="wlist" style="margin-top:10px"></div>
     </div>
-  </section>
 
-  <section class="panel" id="dict">
     <div class="card">
-      <div class="row">
-        <input id="dq" class="grow" type="text" placeholder="Look up an English word, or a word in any of the other 16 languages" aria-label="Look up">
-        <button class="btn" id="dgo">Look up</button>
-      </div>
-      <div id="dout" style="margin-top:12px"></div>
+      <div class="lbl"><span>Whole build</span><span id="ballpct"></span></div>
+      <div class="meter tall"><i id="bbar" style="width:0"></i></div>
+      <div class="facts" id="bfacts"></div>
     </div>
-  </section>
 
-  <section class="panel" id="mine">
-    <div class="card">
-      <h2>My words</h2>
-      <p class="small muted">Add words or phrases you want to learn. They are taught before the built-in list, in the language selected above.</p>
-      <div class="row">
-        <input id="me" type="text" placeholder="Word to learn" class="grow" aria-label="Word to learn">
-        <input id="mf" type="text" placeholder="Meaning" class="grow" aria-label="Meaning">
-        <input id="mn" type="text" placeholder="Note (optional)" class="grow" aria-label="Note">
-        <button class="btn" id="madd">Add</button>
-      </div>
-      <div id="mlist" style="margin-top:10px"></div>
+    <div class="card nowcard" id="nowcard" style="display:none">
+      <h2>Doing now</h2>
+      <div class="nowstep" id="nowstep"></div>
+      <div class="meter tall"><i id="nowbar" style="width:0"></i></div>
+      <div class="facts" id="nowfacts"></div>
     </div>
-  </section>
 
-  <section class="panel" id="progress">
-    <div class="card"><div id="pstats"></div></div>
-    <div class="card"><h2>Reviews in the last 30 days</h2><div id="pchart"></div></div>
-    <div class="card"><h2>Where your words are</h2><p class="small muted">Each correct answer moves a word to the next box; the box sets when you see it again.</p><div id="pboxes"></div></div>
-    <div class="card"><h2>Words to watch</h2><div id="phard"></div></div>
-  </section>
-
-  <section class="panel" id="lab">
     <div class="card">
-      <h2>Self-learning — the Language Lab</h2>
-      <p class="small">The application learns English <b>by itself</b>, the way the last tested prototype did: first the <b>sub-language</b> (letters, sounds by phonics rules, syllables, rhythm, which words recur and which go together) with meanings switched off; only when the one-way <b>Transition Gate</b> opens does it attach meanings (Webster 1913, public domain), then translations into the other 16 languages, then pronunciation, then each other language. No AI model is used.</p>
-      <div class="row">
-        <button class="btn" id="labrun">Learn by itself (all phases)</button>
-        <button class="btn quiet" id="labstop">Stop</button>
-        <button class="btn quiet" id="labrefresh">Refresh</button>
-      </div>
-      <div id="labjob" style="margin-top:10px"></div>
+      <h2>Build steps <span class="small muted" id="stepcount"></span></h2>
+      <p class="small muted">The build always runs these 20 steps in this order. English comes first — its sub-language (sounds, syllables, word patterns) before any meaning — and every other language is built on English.</p>
+      <table class="t steps">
+        <thead><tr><th>#</th><th>Step</th><th>Status</th><th class="hide-s">Started</th><th>Time taken</th><th class="hide-s">Last result</th></tr></thead>
+        <tbody id="bsteps"></tbody>
+      </table>
     </div>
-    <div class="card"><h2>Transition Gate (sub-language → language)</h2><div id="labgate"></div></div>
-    <div class="card"><h2>Phases</h2><div id="labphases"></div></div>
-    <div class="card"><h2>Other languages</h2><div id="lablangs"></div></div>
+
     <div class="card">
-      <h2>Give it more to read (Phase 1)</h2>
-      <p class="small muted">Paste English text or give a web address. It is read for structure only.</p>
+      <h2>Languages <span class="small muted" id="langcount"></span></h2>
+      <p class="small muted"><b>Words learned</b>: words of that language the builder now knows. <b>Pronunciations</b>: words with a worked-out sound (phonics rules / espeak-ng). <b>Links to English</b>: learned English words connected to that language.</p>
+      <table class="t langs">
+        <thead><tr><th>Language</th><th>Status</th><th>Progress</th><th>Words learned</th><th class="hide-s">Pronunciations</th><th class="hide-s">Links to English</th></tr></thead>
+        <tbody id="blangs"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Build log</h2>
+      <p class="small muted">Newest first. Every build is also recorded in Diagnostics → Activity log.</p>
+      <ul class="log mono" id="blog"></ul>
+    </div>
+
+    <details class="card">
+      <summary>How English was learned — the Transition Gate</summary>
+      <div id="bgate"></div>
+    </details>
+
+    <details class="card">
+      <summary>Give it more English to read (optional)</summary>
+      <p class="small muted">Not needed — the build includes its own starter text. Extra text or a web page is read for structure only (Phase 1).</p>
       <textarea id="labtext" rows="4" placeholder="English text" aria-label="English text"></textarea>
       <div class="row" style="margin-top:6px"><input id="laburl" class="grow" type="text" placeholder="or https://… (a web page)" aria-label="Web address">
-        <button class="btn" id="labfeed">Read it</button></div>
-      <details style="margin-top:8px"><summary class="small">Suggested public sources</summary><ul class="small" id="labsrc"></ul></details>
+        <button class="btn quiet" id="labfeed">Read it</button></div>
+      <ul class="small" id="labsrc" style="margin-top:8px"></ul>
+    </details>
+  </section>
+
+  <section class="panel" id="verify">
+    <div class="banner" id="vbanner">
+      <div class="bicon" id="vicon">🔍</div>
+      <div class="btext">
+        <div class="btitle" id="vhead">Proof that it learns from scratch</div>
+        <div class="bwhat" id="vsub">Rebuilds every language in a sealed, empty database with the network switched off, and checks the result.</div>
+      </div>
+      <div class="bbtns"><button class="btn bigbtn" id="vgo">Verify from scratch</button></div>
     </div>
+    <div class="card" id="vjobcard" style="display:none"><h2>Verifying now</h2><div id="vjob"></div></div>
     <div class="card">
-      <h2>What it knows about a word</h2>
-      <div class="row"><input id="labw" class="grow" type="text" placeholder="e.g. house" aria-label="Word"><button class="btn quiet" id="labwgo">Show</button></div>
-      <div id="labwout" style="margin-top:10px"></div>
+      <h2>What the verification proves</h2>
+      <ol class="small">
+        <li><b>It starts from nothing</b> — a brand-new empty database: 0 facts, 0 words read.</li>
+        <li><b>Nothing comes from outside</b> — every network connection is blocked for the whole run; the code may import only the Python standard library (checked line by line).</li>
+        <li><b>Sub-language before language</b> — asking for meanings before Phase 1 must be refused.</li>
+        <li><b>It learns step by step</b> — the learning curve is recorded after every reading, from the first word.</li>
+        <li><b>Same inputs, same result</b> — everything learned is reduced to one SHA-256 fingerprint. It must equal this computer's own build, and anyone who runs the same program gets the same fingerprint.</li>
+      </ol>
+      <p class="small muted"><b>Limits, stated plainly:</b> English structure (Phase 1) is learned from raw text alone. Meanings and the other 16 languages are taken from the declared reference files — Webster's 1913 dictionary and the MUSE bilingual word lists (published by Meta AI researchers) — so the proof shows that everything is computed only from those files, not who compiled them. Their hashes are listed below so anyone can obtain and compare the same files.</p>
     </div>
-    <div class="card"><h2>Recently learned</h2><div id="labrecent"></div></div>
-    <div class="card"><h2>Start over</h2><p class="small muted">Forgets everything the lab learned (your lessons are not touched). A backup is taken first.</p><button class="btn quiet" id="labforget">Forget and start over</button></div>
+    <div id="vresult"></div>
+    <div class="card">
+      <h2>How a third party checks it</h2>
+      <ol class="small">
+        <li>Give them the program zip (or this repository) and the report (<b>Download report</b> above).</li>
+        <li>They check the SHA-256 of each input file against the report's <i>Inputs</i> table.</li>
+        <li>They run <span class="mono">python app.py verify</span> on their own computer (Python 3.8+, nothing to install, can be fully offline).</li>
+        <li>Their fingerprint must be identical to yours. Any change to the code, the starter text or the word lists changes it.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="panel" id="lookup">
+    <div class="card">
+      <div class="row">
+        <input id="q" class="grow" type="text" placeholder="Any word, in English or any of the 16 other languages" aria-label="Word">
+        <button class="btn" id="qgo">Look up</button>
+      </div>
+      <div id="qout" style="margin-top:12px"></div>
+    </div>
   </section>
 
   <section class="panel" id="data">
     <div class="card"><h2>Your data</h2><div id="dstatus"></div></div>
     <div class="card">
-      <h2>Bring in words from the old QueryBook</h2>
-      <p class="small">Point to the old store folder (the one with <span class="mono">language_model.json</span>). It is only <b>read</b>. The old QueryBook counted the English words it read; those counts are kept here, and you can put its most-seen words into your lessons.</p>
-      <div class="row">
-        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
-        <button class="btn quiet" id="oldcheck">Check folder</button>
-        <button class="btn" id="oldgo">Import</button>
-      </div>
-      <div id="oldinfo" class="small" style="margin-top:8px"></div>
-      <div id="ijob" style="margin-top:10px"></div>
-      <div id="oldwords" style="margin-top:10px"></div>
-    </div>
-    <div class="card">
       <h2>Backups</h2>
-      <p class="small muted">A checked backup is taken when the application starts (if anything changed) and before and after every import. The newest 10 are kept.</p>
+      <p class="small muted">A checked backup is taken at start-up (if anything changed) and before a rebuild from scratch. The newest 10 are kept.</p>
       <button class="btn quiet" id="bnow">Back up now</button>
       <div id="blist" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Bring in the old QueryBook language model</h2>
+      <p class="small">Point to the old store folder (the one with <span class="mono">language_model.json</span>). It is only <b>read</b>, and only used when nothing has been built yet.</p>
+      <div class="row">
+        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
+        <button class="btn quiet" id="oldgo">Import</button>
+      </div>
+      <div id="ijob" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Rebuild from scratch</h2>
+      <p class="small muted">Forgets everything that was built and builds all languages again. A backup is taken first.</p>
+      <button class="btn quiet" id="forget">Forget and rebuild</button>
     </div>
   </section>
 
@@ -191,28 +206,28 @@
 
   <section class="panel" id="help">
     <div class="card">
-      <h2>How learning works</h2>
+      <h2>What this does</h2>
+      <p>This is the administrator's tool that builds QueryBook's languages before anyone runs queries. It is <b>automatic</b>: the first time it starts, it builds every language by itself. <b>Build all languages</b> runs the whole build again; nothing has to be chosen.</p>
+      <h2>How the languages are learned</h2>
+      <ol>
+        <li><b>English sub-language (Phase 1).</b> It reads English for structure only — letters, sounds by phonics rules, syllables, rhythm, which words recur and which go together — with meanings switched off.</li>
+        <li><b>Transition Gate.</b> A one-way gate opens only when sounds found ≥ 0.80, common words settled ≥ 0.70, word pairs ≥ 1.5 per word and new patterns &lt; 0.20.</li>
+        <li><b>Meanings (Phase 2)</b> from Webster's Unabridged Dictionary (1913, public domain).</li>
+        <li><b>Links (Phase 3)</b> from each learned English word into the 16 other languages.</li>
+        <li><b>Pronunciation (Phase 4)</b> by phonics rules (and espeak-ng when installed).</li>
+        <li><b>Each other language</b> — Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan — its words, sounds and links.</li>
+      </ol>
+      <p class="small">No AI model is used. Every learned fact keeps its source. The same inputs always give the same result.</p>
+      <h2>Transparency</h2>
       <ul>
-        <li><b>Languages:</b> choose <b>I speak</b> (your own language) and the language to learn. English can be learned from any of the 16 others; any other pair is linked through English, so meanings are the common ones.</li>
-        <li><b>New words</b> arrive a few each day (you choose how many), most common words first, your own words before those.</li>
-        <li><b>Reviews</b> follow a fixed schedule. Each correct answer moves a word up a box: you see it again after 1, 2, 4, 8, 16, 32, then 64 days. A miss brings it back today. A word is <b>mastered</b> once you answer it correctly at the 32-day step.</li>
-        <li><b>Practice modes:</b> flashcards (you judge yourself), multiple choice, typing, listening (write what you hear) and speaking.</li>
-        <li><b>Checking is by rule.</b> Case and spaces don't matter. A missing accent counts as right with a reminder; one wrong letter is shown as nearly right but counts as a miss.</li>
+        <li>The build shows one progress bar for the whole job, the current step, speed and time left.</li>
+        <li>Every button shows a working bar at the top and how long it took.</li>
+        <li>Every major task is written to <b>Diagnostics → Activity log</b> with its result and duration.</li>
       </ul>
-      <h2>Speech</h2>
-      <ul>
-        <li><b>Listening</b> uses your computer's voices through the browser. If there is no voice for a language, the app uses espeak-ng when it is installed; otherwise it tells you how to add one (Windows: Settings → Time &amp; language → Speech; macOS: System Settings → Accessibility → Spoken Content).</li>
-        <li><b>Speaking</b> uses your browser's speech recognition (Chrome, Edge, Safari). In Chrome and Edge the recording is processed online by the browser maker; nothing is sent by this application itself. Your answer counts when what was heard is at least 80% the same as the word.</li>
-      </ul>
-      <h2>Self-learning and transparency</h2>
-      <ul>
-        <li><b>Self-learning</b> follows the last tested prototype: sub-language first (Phase 1), the one-way gate, then meanings (2), translations (3), pronunciation (4) and each other language. Every step shows progress, speed and time left.</li>
-        <li><b>Every button</b> shows a working bar at the top with how long it took; long work runs in the background with a progress bar, speed and time left.</li>
-        <li><b>Every major task is logged</b> — start-up, imports, backups, lab runs, diagnostics, monitoring — on Diagnostics → Activity log, with how long it took.</li>
-      </ul>
+      <h2>Command line</h2>
+      <p class="small"><span class="mono">python app.py build</span> builds everything in the window with progress; <span class="mono">python app.py build --again</span> rebuilds.</p>
       <h2>Word lists</h2>
       <p class="small" id="srcs"></p>
-      <p class="small muted">Known limits of the bundled lists: translations are in lower case (German nouns are normally capitalized), some are inflected forms, and the 1913 definitions use old wording. Add corrections as your own words.</p>
     </div>
   </section>
 </main>

@@ -310,12 +310,57 @@ class Lab:
         return self.store.query("SELECT subject, predicate, object, source FROM lab_facts WHERE subject LIKE '% word %' ORDER BY added DESC, subject LIMIT ?", (n,))
 
     # ------------------------------------------------------------------ the one-button run (the prototype's lang_pipeline agent)
-    def run_pipeline(self, progress, stop, extra_text=None):
+    def build_stages(self):
+        """The whole build, in order: English phases 1-4, then each other language."""
+        st = [("en1", "English — sub-language (Phase 1, up to the Transition Gate)"), ("en2", "English — meanings (Phase 2)"),
+              ("en3", "English — links to the other %d languages (Phase 3)" % len(vocab.OTHERS)), ("en4", "English — pronunciation (Phase 4)")]
+        return st + [("lang_" + c, vocab.LANGUAGES[c]["name"]) for c in vocab.OTHERS]
+
+    def _save_stage_log(self, log, started=None):
+        rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in log]
+        with self.store.write() as db:
+            db.execute("INSERT OR REPLACE INTO lab_state(key, value) VALUES('stage_log', ?)", (json.dumps(rows),))
+            if started:
+                db.execute("INSERT OR REPLACE INTO lab_state(key, value) VALUES('build_started', ?)", (started,))
+
+    def stage_log(self):
+        try:
+            return json.loads(self.store.scalar("SELECT value FROM lab_state WHERE key = 'stage_log'", default="[]"))
+        except ValueError:
+            return []
+
+    def built_at(self):
+        return self.store.scalar("SELECT value FROM lab_state WHERE key = 'built_at'", default=None)
+
+    def run_pipeline(self, progress, stop, extra_text=None, weights=None):
         report = {}
-        # Phase 1 — cycle through the starter text (plus anything you fed it) until the gate opens
+        stages = self.build_stages()
+        N = len(stages)
+        # How much of the whole build each step is: its time in the previous build (equal shares when unknown),
+        # so "% done" and "time left" track real time instead of step counts.
+        prev = weights or {r["key"]: r.get("seconds") for r in self.stage_log() if r.get("seconds")}
+        w = [max(0.2, float(prev.get(k) or 0)) if len(prev) >= N // 2 else 1.0 for k, _ in stages]
+        before = [sum(w[:i]) for i in range(N)]
+        W = sum(w)
+
+        log = []                                   # one row per step: when it started and finished, how long, what it did
+        self._save_stage_log(log, now())
+
+        def step(no, done, total, msg):
+            frac = (done / total) if total else 0
+            if not log or log[-1]["no"] != no:
+                t = time.time()
+                if log:
+                    log[-1].update(finished=now(), seconds=round(t - log[-1]["_t"], 1), state="done")
+                log.append({"no": no, "key": stages[no - 1][0], "name": stages[no - 1][1], "started": now(), "_t": t, "state": "running", "detail": ""})
+                self._save_stage_log(log)
+            log[-1]["detail"] = msg
+            progress(done, total, msg, overall=round((before[no - 1] + w[no - 1] * min(1.0, frac)) / W, 4), stage_no=no, stages=N, stage=stages[no - 1][1])
+        # Phase 1 — cycle through the starter text (plus anything fed to it) until the gate opens
         cycles = 0
         if extra_text:
             self.learn(extra_text, "your text")
+        step(1, int(self.status()["gate"]["progress"]), 100, "reading for structure")
         while not self.gate_open() and not stop():
             if cycles >= MAX_PHASE1_CYCLES:
                 report["phase1"] = "stopped after %d cycles without opening the gate — feed more English text" % cycles
@@ -325,44 +370,54 @@ class Lab:
             with self.store.write() as db:
                 db.execute("INSERT OR REPLACE INTO lab_state(key, value) VALUES('chunk', ?)", (str(idx + 1),))
             cycles += 1
-            progress(int(mx["gate"]["progress"]), 100, "Phase 1 (sub-language) — %.0f%% to the Transition Gate" % mx["gate"]["progress"])
+            step(1, int(mx["gate"]["progress"]), 100, "reading %d — %.0f%% of the way to the Transition Gate" % (cycles, mx["gate"]["progress"]))
         if stop():
             return report
-        report["phase1"] = "Transition Gate OPEN (%d cycles this run)" % cycles
+        report["phase1"] = "Transition Gate open (%d readings this run)" % cycles
         words = self.learned_words(400)
         # Phase 2 — meaning, 40 words at a time
         for i in range(0, len(words), 40):
             if stop():
                 return report
             self.ground_words(words[i:i + 40])
-            progress(i + 40, len(words), "Phase 2 (meaning) — %d of %d words grounded" % (min(i + 40, len(words)), len(words)))
+            step(2, min(i + 40, len(words)), len(words), "%d of %d words looked up" % (min(i + 40, len(words)), len(words)))
         report["phase2"] = "%d words defined" % self.store.scalar("SELECT count(*) FROM lab_facts WHERE predicate = 'means' AND subject LIKE 'english word %'", default=0)
         # Phase 3 — translations of the learned English words into every other language
         for k, code in enumerate(vocab.OTHERS):
             if stop():
                 return report
             self.acquire_language(code, words)
-            progress(k + 1, len(vocab.OTHERS), "Phase 3 (other languages) — %s" % vocab.LANGUAGES[code]["name"])
-        report["phase3"] = "%d languages mapped" % len(vocab.OTHERS)
+            step(3, k + 1, len(vocab.OTHERS), "%s linked" % vocab.LANGUAGES[code]["name"])
+        report["phase3"] = "%d languages linked" % len(vocab.OTHERS)
         # Phase 4 — speech analysis of the learned English words
         for i in range(0, len(words), 40):
             if stop():
                 return report
             self.speech_analyze(words[i:i + 40], "en")
-            progress(i + 40, len(words), "Phase 4 (speech) — %d of %d words" % (min(i + 40, len(words)), len(words)))
+            step(4, min(i + 40, len(words)), len(words), "%d of %d words" % (min(i + 40, len(words)), len(words)))
         report["phase4"] = "pronunciation for %d English words" % len(words)
         # Then each other language, learned the way English was
-        for code in vocab.OTHERS:
+        learned = {l["code"]: l["vocabulary"] for l in self.phase_status()["languages"]}
+        for k, code in enumerate(vocab.OTHERS):
             allw = self.corpus_words(code)
             done = 0
+            if allw and learned.get(code, 0) >= len(allw):         # already finished in an earlier run: keep it
+                step(5 + k, len(allw), len(allw), "already built — %d words kept" % len(allw))
+                report["learn_" + code] = "%d words (kept)" % len(allw)
+                continue
             for i in range(0, len(allw), 400):
                 if stop():
                     return report
                 self.learn_language(code, allw[i:i + 400])
                 done = min(i + 400, len(allw))
-                progress(done, len(allw), "Learning %s — %d of %d words" % (vocab.LANGUAGES[code]["name"], done, len(allw)))
+                step(5 + k, done, len(allw), "%d of %d words" % (done, len(allw)))
             report["learn_" + code] = "%d words" % done
-        report["result"] = "All done — English Phases 1-4 and every language complete."
+        if log:
+            log[-1].update(finished=now(), seconds=round(time.time() - log[-1]["_t"], 1), state="done")
+        self._save_stage_log(log)
+        with self.store.write() as db:
+            db.execute("INSERT OR REPLACE INTO lab_state(key, value) VALUES('built_at', ?)", (now(),))
+        report["result"] = "All %d languages built." % (len(vocab.OTHERS) + 1)
         return report
 
     def adopt_old_model(self, model, name):

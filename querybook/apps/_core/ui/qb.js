@@ -49,7 +49,7 @@ async function api(path, body) {
   const label = actionLabel(path);
   const btn = (Date.now() - lastPress.at < 400) ? lastPress.el : null;
   if (btn) { btn.classList.add("busy"); btn.setAttribute("aria-busy", "true"); }
-  const quiet = body === undefined && /\/api\/(job|status)$/.test(path.split("?")[0]);
+  const quiet = body === undefined && /\/api\/(job|status|build)$/.test(path.split("?")[0]);
   if (!quiet) busyStart(label);
   let res, ok = false, data = {};
   try {

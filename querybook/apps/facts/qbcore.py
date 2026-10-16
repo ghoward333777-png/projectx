@@ -519,8 +519,11 @@ def make_handler(api, ui_dir, log, app_name, store=None):
             self.send_header("X-Content-Type-Options", "nosniff")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass                                   # the page was closed or reloaded before the answer arrived
 
         def _dispatch(self, method):
             if not self._host_ok():
@@ -653,8 +656,10 @@ class Jobs:
         if self.store:
             self.store.activity(name, "started")
 
-        def progress(done, total=None, message=""):
+        def progress(done, total=None, message="", **extra):
+            # extra: optional whole-job fields such as overall (0..1), stage, stage_no, stages
             job["done"], job["total"], job["message"] = done, total, message
+            job.update(extra)
             job["steps"] += 1
 
         def run():
@@ -690,6 +695,9 @@ class Jobs:
             rate = j["done"] / max(el, 0.001)
             out["rate"] = round(rate, 1)
             out["eta_s"] = round(max(0, (j["total"] - j["done"]) / rate), 1) if rate > 0 else None
+        if j["state"] == "running" and j.get("overall"):
+            # time left for the whole job, from its overall fraction
+            out["overall_eta_s"] = round(el * (1 - j["overall"]) / j["overall"], 1)
         return out
 
 
@@ -1254,8 +1262,12 @@ def run_cli(app):
         res = inst.import_old(args[1], lambda d, t=None, m="": print("\r  %s %s" % (d, m), end=""), lambda: False)
         print("\n", json.dumps(res, indent=2))
         return 0
+    if args and args[0] in getattr(inst, "CLI_COMMANDS", {}):
+        return inst.CLI_COMMANDS[args[0]](args[1:])
     if getattr(inst, "monitor", None):
         inst.monitor.start(inst.diag)
+    if hasattr(inst, "autostart"):
+        inst.autostart()
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
     serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
           open_browser="--no-browser" not in args, store=inst.store)

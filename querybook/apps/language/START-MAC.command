@@ -1,5 +1,5 @@
 #!/bin/bash
-# QueryBook Language & Speech — double-click to start (first time: right-click -> Open -> Open). Leave the window open while you use it.
+# QueryBook Language Builder — double-click to start (first time: right-click -> Open -> Open). Leave the window open while you use it.
 cd "$(dirname "$0")"
 if command -v python3 >/dev/null 2>&1; then
   python3 app.py "$@"

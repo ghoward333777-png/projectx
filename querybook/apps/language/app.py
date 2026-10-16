@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QueryBook Language & Speech — a dedicated application for learning vocabulary, listening and speaking.
+"""QueryBook Language Builder — a dedicated application for learning vocabulary, listening and speaking.
 
 17 languages — English, Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian and Catalan. Choose the language you speak and the one to learn;
 English can be learned from any of the others, and any two are linked through English.
@@ -11,7 +11,7 @@ Start:      python app.py            (opens http://127.0.0.1:8101/)
 Self-test:  python app.py --selftest
 More:       python app.py --help
 """
-import datetime, hashlib, json, os, sys, tempfile, threading
+import datetime, hashlib, json, os, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,11 +20,12 @@ sys.path.insert(0, HERE)
 import qbcore as core
 import lab
 import speech
+import verify
 import vocab
 
 APP_ID = "language"
-APP_NAME = "QueryBook Language & Speech"
-VERSION = "1.3.0"
+APP_NAME = "QueryBook Language Builder"
+VERSION = "1.4.0"
 PORT = 8101
 program_dir = HERE
 
@@ -83,6 +84,7 @@ class App:
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.jobs = core.Jobs(self.log, self.store)
         self.lab = lab.Lab(self.store, self.log)
+        self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify}
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -94,6 +96,104 @@ class App:
         except Exception as e:
             self.log("startup backup failed:", e)
         threading.Thread(target=self._warm, daemon=True).start()
+
+    # ------------------------------------------------------------------ building the languages (admin, automatic)
+    BUILD_JOB = "Build all languages"
+
+    def start_build(self, weights=None):
+        return self.jobs.start(self.BUILD_JOB, lambda prog, stop: self.lab.run_pipeline(prog, stop, weights=weights))
+
+    def autostart(self):
+        """When the application is served and the languages are not built yet, build them without being asked."""
+        if not self.store.read_only and not self.lab.built_at():
+            try:
+                self.start_build()
+                self.store.activity(self.BUILD_JOB, "auto", "started automatically at launch (languages not built yet)")
+            except core.UserError:
+                pass
+
+    def _cli_build(self, args):
+        """python app.py build [--again]: build every language in this window, with progress."""
+        if self.lab.built_at() and "--again" not in args:
+            print("Languages already built at %s. Use: python app.py build --again" % self.lab.built_at())
+            return 0
+        t0 = time.time()
+        self.store.activity(self.BUILD_JOB, "started", "command line")
+        def prog(done, total=None, msg="", **x):
+            print("\r  step %s/%s %-52s %3d%%  %s" % (x.get("stage_no", "?"), x.get("stages", "?"), (x.get("stage") or "")[:52],
+                                                   int(100 * x.get("overall", 0)), msg[:40]), end="", flush=True)
+        r = self.lab.run_pipeline(prog, lambda: False)
+        ms = int((time.time() - t0) * 1000)
+        self.store.activity(self.BUILD_JOB, "finished", core._summary(r), ms)
+        print("\n  %s  (%.1f s)" % (r.get("result", r), ms / 1000))
+        return 0
+
+    # ------------------------------------------------------------------ verification from scratch (for third parties)
+    VERIFY_JOB = "Verify from scratch"
+
+    def _verify_dir(self):
+        d = os.path.join(self.store.folder, "verification")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _save_verification(self, rep):
+        stamp = rep["finished"].replace(":", "").replace("-", "")
+        base = os.path.join(self._verify_dir(), "verify-" + stamp)
+        with open(base + ".json", "w", encoding="utf-8") as f:
+            json.dump(rep, f, indent=1, ensure_ascii=False)
+        with open(base + ".txt", "w", encoding="utf-8") as f:
+            f.write(verify.text(rep))
+        self.store.activity(self.VERIFY_JOB, "ok" if rep["verdict"] == "PASS" else "failed",
+                            "%s · fingerprint %s" % (rep["verdict"], rep.get("fingerprint", {}).get("sha256", "")[:16]), int(rep["seconds"] * 1000))
+        return base
+
+    def run_verification(self, progress, stop):
+        own = self.store if self.lab.built_at() else None
+        rep = verify.run(progress, stop, own_store=own, schema=SCHEMA, app_id=APP_ID)
+        if rep.get("stopped"):
+            return {"result": "stopped"}
+        self._save_verification(rep)
+        return {"verdict": rep["verdict"], "fingerprint": rep["fingerprint"]["sha256"], "seconds": rep["seconds"]}
+
+    def last_verification(self):
+        d = self._verify_dir()
+        names = sorted(n for n in os.listdir(d) if n.endswith(".json"))
+        if not names:
+            return None
+        with open(os.path.join(d, names[-1]), encoding="utf-8") as f:
+            rep = json.load(f)
+        rep["file"] = names[-1]
+        rep["all_reports"] = len(names)
+        return rep
+
+    def _cli_verify(self, args):
+        print("Verifying from scratch: sealed empty store, network blocked, full build, fingerprint…")
+        def prog(done, total=None, msg="", **x):
+            print("\r  %3d%%  %-70s" % (int(100 * x.get("overall", 0)), (x.get("stage") or "")[:70]), end="", flush=True)
+        rep = verify.run(prog, lambda: False, own_store=self.store if self.lab.built_at() else None, schema=SCHEMA, app_id=APP_ID)
+        base = self._save_verification(rep)
+        print("\n\n" + verify.text(rep))
+        print("\nSaved: %s.txt and .json" % base)
+        return 0 if rep["verdict"] == "PASS" else 1
+
+    def build_status(self):
+        ps = self.lab.phase_status()
+        st = self.lab.status()
+        stages = self.lab.build_stages()
+        done = {"en1": st["gate"]["opened"], "en2": ps["defined"] > 0,
+                "en3": all(l["translations"] > 0 for l in ps["languages"]), "en4": ps["pronounced_en"] > 0}
+        for l in ps["languages"]:
+            done["lang_" + l["code"]] = l["corpus"] > 0 and l["vocabulary"] >= l["corpus"]
+        langs = [{"code": "en", "name": "English", "words": ps["vocabulary"], "of": None, "meanings": ps["defined"],
+                  "sounds": ps["pronounced_en"], "links": sum(l["translations"] for l in ps["languages"]),
+                  "built": all(done[k] for k in ("en1", "en2", "en3", "en4"))}]
+        langs += [{"code": l["code"], "name": l["name"], "words": l["vocabulary"], "of": l["corpus"], "meanings": None,
+                   "sounds": l["pronounced"], "links": l["translations"], "built": done["lang_" + l["code"]]} for l in ps["languages"]]
+        return {"built_at": self.lab.built_at(), "stages": [{"key": k, "name": n, "done": bool(done.get(k))} for k, n in stages],
+                "languages": langs, "facts": ps["facts"], "gate": st["gate"], "metrics": {k: st[k] for k in (
+                    "total_tokens", "distinct_words", "distinct_phonemes", "phoneme_target", "distinct_bigrams", "avg_syllables_per_word", "ingests")},
+                "history": st.get("history", [])[-60:], "phases": ps["phases"], "stage_log": self.lab.stage_log(),
+                "build_started": self.store.scalar("SELECT value FROM lab_state WHERE key = 'build_started'", default=None)}
 
     def _warm(self):
         """Prepare the word lists in the background so the first page opens at once."""
@@ -518,7 +618,41 @@ class App:
 
         @a.post("/api/lab/run")
         def lab_run(p):
-            return self.jobs.start("Language Lab: learn by itself (all phases)", lambda prog, stop: self.lab.run_pipeline(prog, stop))
+            if p.get("fresh"):                     # rebuild everything from nothing (backup first)
+                if self.jobs.status().get("state") == "running":
+                    raise core.UserError("Something is still running. Wait for it or stop it first.")
+                self.store.backup("before-rebuild", force=True)
+                times = {r["key"]: r.get("seconds") for r in self.lab.stage_log() if r.get("seconds")}
+                self.lab.forget()
+                self.store.activity("Rebuild from scratch", "ok", "previous build forgotten after a backup")
+                return self.start_build(times or None)
+            return self.start_build()
+
+        @a.post("/api/verify")
+        def verify_run(p):
+            return self.jobs.start(self.VERIFY_JOB, self.run_verification)
+
+        @a.get("/api/verify/last")
+        def verify_last(p):
+            return {"report": self.last_verification()}
+
+        @a.get("/api/verify/report.txt")
+        def verify_txt(p):
+            rep = self.last_verification()
+            if not rep:
+                raise core.UserError("No verification has been run yet.")
+            return verify.text(rep).encode("utf-8"), "text/plain; charset=utf-8"
+
+        @a.get("/api/verify/report.json")
+        def verify_json(p):
+            rep = self.last_verification()
+            if not rep:
+                raise core.UserError("No verification has been run yet.")
+            return json.dumps(rep, indent=1, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8"
+
+        @a.get("/api/build")
+        def build(p):
+            return self.build_status()
 
         @a.post("/api/lab/feed")
         def lab_feed(p):
@@ -537,7 +671,7 @@ class App:
                 prog(2, 2, "gate %.0f%%" % mx["gate"]["progress"])
                 return {"characters": len(body), "words_now": mx["distinct_words"], "gate_progress": mx["gate"]["progress"],
                         "gate_open": mx["gate"]["opened"]}
-            return self.jobs.start("Language Lab: Phase 1 reading", run)
+            return self.jobs.start("Read more English (Phase 1)", run)
 
         @a.get("/api/lab/word")
         def lab_word(p):
@@ -631,6 +765,16 @@ def open_app(folder=None):
 def selftest():
     c = core.Checks()
     c.check("shared core matches the master copy", core.core_matches_master(HERE))
+    c.check("verification: code imports only the standard library and its own modules", verify.import_audit()["ok"])
+    c.check("verification: every input is declared with a SHA-256", len(verify.inputs_manifest()) >= 7 and all(len(f["sha256"]) == 64 for f in verify.inputs_manifest()))
+    import socket as _s
+    with verify._NoNetwork() as _net:
+        try:
+            _s.create_connection(("127.0.0.1", 9), 1)
+            blocked = False
+        except OSError:
+            blocked = True
+    c.check("verification: the network block refuses connections", blocked and len(_net.attempts) == 1)
     c.check("17 languages, English first", list(vocab.LANGUAGES)[0] == "en" and len(vocab.LANGUAGES) == 17)
     for code in vocab.OTHERS:
         d = vocab.deck(code)

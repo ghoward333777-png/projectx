@@ -1,3 +1,15 @@
+QueryBook Language Builder
+==========================
+Builds English first, then 16 other European languages, by itself - phonics and sub-language
+first, no AI model. Start it (START-WINDOWS.bat / START-MAC.command / python app.py): the first
+time, the build starts automatically (about 2 minutes) and the Build page shows every step.
+
+  python app.py build      build in this window (build --again to rebuild)
+  python app.py verify     proof for third parties: rebuild from nothing in a sealed store with the
+                           network blocked; prints a SHA-256 fingerprint anyone can reproduce
+
+Previous notes
+--------------
 QUERYBOOK LANGUAGE & SPEECH
 ===========================
 
