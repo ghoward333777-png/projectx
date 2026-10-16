@@ -1,0 +1,51 @@
+QUERYBOOK LANGUAGE & SPEECH
+===========================
+
+Learn words in Spanish, French, German, Italian, Portuguese, Dutch and Swedish.
+  - New words arrive a few each day, most common first (your own words first of all).
+  - Words come back for review after 1, 2, 4, 8, 16, 32 and 64 days; a miss brings a word back today.
+  - Practise with flashcards, multiple choice, typing, listening (write what you hear) and speaking.
+  - Look words up in both directions; English definitions from Webster's 1913 dictionary.
+  - Answers are checked by rule (accents forgiven with a reminder), never by an AI model.
+
+SPEECH
+  Listening uses your computer's own voices through the browser. To add a voice:
+    Windows: Settings -> Time & language -> Speech -> Add voices
+    Mac: System Settings -> Accessibility -> Spoken Content -> System voice -> Manage voices
+  If a language has no voice, the application can use espeak-ng instead: install it, or copy
+  the "espeak" folder from the old QueryBook into this folder.
+  Speaking practice uses your browser's speech recognition (Chrome, Edge or Safari). In Chrome
+  and Edge the recording is processed online by the browser maker.
+
+WORD LISTS
+  Translations: MUSE bilingual dictionaries (Facebook AI Research), CC BY-NC 4.0 - demonstration
+  data for non-commercial use; replace before any commercial release.
+  Definitions and word order: Webster's Unabridged Dictionary (1913), public domain.
+  Translations are lower case (German nouns are normally capitalized). Add corrections under
+  "My words".
+
+HOW TO START
+  Windows : double-click START-WINDOWS.bat
+  Mac     : double-click START-MAC.command (first time: right-click -> Open -> Open)
+  Other   : python3 app.py
+It opens in your web browser at http://127.0.0.1:8101/
+Leave the small window open while you use it. Close it to stop.
+You need Python 3.8 or newer (free from https://www.python.org/downloads/). Nothing else.
+
+WHERE YOUR DATA IS
+  ~/QueryBook-Data/language   (on Windows: C:\Users\<you>\QueryBook-Data\language)
+  (one database file plus a "backups" folder). It is outside this program folder, so replacing
+  or updating the program never touches it. To keep the data somewhere else, e.g. a USB drive:
+      python app.py set-data E:\QB-Data\language
+
+SAFETY
+  - Every change is saved completely or not at all, even if the computer crashes.
+  - The database is checked each time the application starts. If it is ever damaged, the
+    application will not write to it and shows a red notice.
+  - Backups are made automatically (the newest 10 are kept). To restore one, close the
+    application and run:   python app.py restore      (lists them)
+                           python app.py restore 1    (restores the newest)
+  - Importing from the old QueryBook only READS the old store. It never changes it.
+
+CHECK THAT EVERYTHING WORKS
+      python app.py --selftest

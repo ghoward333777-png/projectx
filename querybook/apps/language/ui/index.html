@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Language &amp; Speech</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #5b3c9e; }
+  @media (prefers-color-scheme: dark) { :root { --accent: #7d5cc4; } }
+  .langs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .lang { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--panel); text-align: left; font: inherit; color: var(--ink); }
+  .lang[aria-pressed="true"] { border-color: var(--accent); }
+  .lang .n { font-weight: 700; }
+  .lang .s { font-size: 13px; color: var(--muted); }
+  .modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .prompt { font-size: 40px; font-weight: 700; text-align: center; margin: 18px 0 6px; word-break: break-word; }
+  .hint { text-align: center; color: var(--muted); }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .choices button { font-size: 20px; padding: 16px; }
+  .choices button.right { background: var(--good-bg); border-color: var(--good); color: var(--good); }
+  .choices button.wrongpick { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+  .bigin { font-size: 22px; text-align: center; }
+  .speakbtn { font-size: 20px; padding: 6px 14px; }
+  .feedback { margin-top: 14px; padding: 12px 14px; border-radius: 8px; }
+  .feedback.good { background: var(--good-bg); color: var(--good); }
+  .feedback.bad { background: var(--bad-bg); color: var(--bad); }
+  .feedback.warn { background: var(--warn-bg); color: var(--warn); }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; border-bottom: 1px solid var(--line); }
+  .bars div { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+  .barlabels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .mic { width: 84px; height: 84px; border-radius: 50%; font-size: 34px; display: block; margin: 14px auto; }
+  .mic.on { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  @media (max-width: 600px) { .prompt { font-size: 30px; } .choices { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Language &amp; Speech</h1>
+  <span class="tag">Learn words, hear them, say them — checked by rule, scheduled to stick</span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="learn">Learn</button>
+  <button data-tab="words">Words</button>
+  <button data-tab="dict">Dictionary</button>
+  <button data-tab="mine">My words</button>
+  <button data-tab="progress">Progress</button>
+  <button data-tab="data">Data &amp; backups</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+  <div class="card">
+    <div class="langs" id="langs"></div>
+  </div>
+
+  <section class="panel" id="learn">
+    <div class="card" id="setup">
+      <div class="row" style="justify-content:space-between">
+        <div class="modes" id="modes">
+          <button class="btn quiet" data-mode="cards">Flashcards</button>
+          <button class="btn quiet" data-mode="choice">Multiple choice</button>
+          <button class="btn quiet" data-mode="type">Type the answer</button>
+          <button class="btn quiet" data-mode="listen">Listen &amp; write</button>
+          <button class="btn quiet" data-mode="speak">Speak</button>
+        </div>
+        <div class="row small">
+          <select id="dir" style="width:auto" aria-label="Direction"></select>
+          <label>New words a day <input id="npd" type="number" min="0" max="100" style="width:72px"></label>
+        </div>
+      </div>
+      <div id="sinfo" class="small muted" style="margin-top:10px"></div>
+      <button class="btn" id="start" style="margin-top:10px">Start</button>
+    </div>
+    <div class="card" id="run" style="display:none" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" id="words">
+    <div class="card">
+      <div class="row">
+        <select id="wwhich" style="width:auto" aria-label="Which words">
+          <option value="learning">Learning</option><option value="due">Due today</option><option value="mastered">Mastered</option><option value="new">Not started</option>
+        </select>
+        <input id="wq" class="grow" type="text" placeholder="Find a word" aria-label="Find a word">
+        <button class="btn quiet" id="wgo">Show</button>
+      </div>
+      <div id="wlist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="dict">
+    <div class="card">
+      <div class="row">
+        <input id="dq" class="grow" type="text" placeholder="Look up an English word, or a word in any of the seven languages" aria-label="Look up">
+        <button class="btn" id="dgo">Look up</button>
+      </div>
+      <div id="dout" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="mine">
+    <div class="card">
+      <h2>My words</h2>
+      <p class="small muted">Add words or phrases you want to learn. They are taught before the built-in list, in the language selected above.</p>
+      <div class="row">
+        <input id="me" type="text" placeholder="English" class="grow" aria-label="English">
+        <input id="mf" type="text" placeholder="Translation" class="grow" aria-label="Translation">
+        <input id="mn" type="text" placeholder="Note (optional)" class="grow" aria-label="Note">
+        <button class="btn" id="madd">Add</button>
+      </div>
+      <div id="mlist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="progress">
+    <div class="card"><div id="pstats"></div></div>
+    <div class="card"><h2>Reviews in the last 30 days</h2><div id="pchart"></div></div>
+    <div class="card"><h2>Where your words are</h2><p class="small muted">Each correct answer moves a word to the next box; the box sets when you see it again.</p><div id="pboxes"></div></div>
+    <div class="card"><h2>Words to watch</h2><div id="phard"></div></div>
+  </section>
+
+  <section class="panel" id="data">
+    <div class="card"><h2>Your data</h2><div id="dstatus"></div></div>
+    <div class="card">
+      <h2>Bring in words from the old QueryBook</h2>
+      <p class="small">Point to the old store folder (the one with <span class="mono">language_model.json</span>). It is only <b>read</b>. The old QueryBook counted the English words it read; those counts are kept here, and you can put its most-seen words into your lessons.</p>
+      <div class="row">
+        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
+        <button class="btn quiet" id="oldcheck">Check folder</button>
+        <button class="btn" id="oldgo">Import</button>
+      </div>
+      <div id="oldinfo" class="small" style="margin-top:8px"></div>
+      <div id="ijob" style="margin-top:10px"></div>
+      <div id="oldwords" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Backups</h2>
+      <p class="small muted">A checked backup is taken when the application starts (if anything changed) and before and after every import. The newest 10 are kept.</p>
+      <button class="btn quiet" id="bnow">Back up now</button>
+      <div id="blist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>How learning works</h2>
+      <ul>
+        <li><b>New words</b> arrive a few each day (you choose how many), most common words first, your own words before those.</li>
+        <li><b>Reviews</b> follow a fixed schedule. Each correct answer moves a word up a box: you see it again after 1, 2, 4, 8, 16, 32, then 64 days. A miss brings it back today. A word is <b>mastered</b> once you answer it correctly at the 32-day step.</li>
+        <li><b>Practice modes:</b> flashcards (you judge yourself), multiple choice, typing, listening (write what you hear) and speaking.</li>
+        <li><b>Checking is by rule.</b> Case and spaces don't matter. A missing accent counts as right with a reminder; one wrong letter is shown as nearly right but counts as a miss.</li>
+      </ul>
+      <h2>Speech</h2>
+      <ul>
+        <li><b>Listening</b> uses your computer's voices through the browser. If there is no voice for a language, the app uses espeak-ng when it is installed; otherwise it tells you how to add one (Windows: Settings → Time &amp; language → Speech; macOS: System Settings → Accessibility → Spoken Content).</li>
+        <li><b>Speaking</b> uses your browser's speech recognition (Chrome, Edge, Safari). In Chrome and Edge the recording is processed online by the browser maker; nothing is sent by this application itself. Your answer counts when what was heard is at least 80% the same as the word.</li>
+      </ul>
+      <h2>Word lists</h2>
+      <p class="small" id="srcs"></p>
+      <p class="small muted">Known limits of the bundled lists: translations are in lower case (German nouns are normally capitalized), some are inflected forms, and the 1913 definitions use old wording. Add corrections as your own words.</p>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<footer class="status"></footer>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

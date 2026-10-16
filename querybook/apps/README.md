@@ -1,0 +1,79 @@
+# QueryBook — three dedicated applications
+
+The full-featured QueryBook prototype grew too large: its interface kept changing and its store was
+damaged. These three applications replace it with one small, separate program for each kind of
+knowledge. Each has its own folder, its own database, its own port and its own launcher. None of
+them depends on another, and none of them changes the old QueryBook store.
+
+| Application | Folder | Opens at | What it does |
+|---|---|---|---|
+| **Language & Speech** | `language/` | http://127.0.0.1:8101/ | Vocabulary in Spanish, French, German, Italian, Portuguese, Dutch and Swedish; spaced-repetition review; flashcards, multiple choice, typing, listening and speaking; dictionary; progress |
+| **Math, Science & Engineering** | `stem/` | http://127.0.0.1:8102/ | Exact calculation, unit conversion with dimension checks, 35 solvable formulas, CODATA constants, the periodic table and molar masses; every saved answer can be recomputed |
+| **History & News** | `facts/` | http://127.0.0.1:8103/ | Facts with their sources (books, newspapers, records — never AI services); disputes shown side by side; timeline; news feeds kept as "reported by" until you add them |
+
+## Start
+
+* **Windows:** double-click `START-WINDOWS.bat` in the application's folder.
+* **Mac:** double-click `START-MAC.command` (first time: right-click → Open → Open).
+* **Any computer with Python 3.8+:** `python app.py` in the application's folder.
+
+Nothing to install: standard Python only. Leave the window open while you use the application.
+
+## Your data
+
+Each application keeps one SQLite database in a data folder **outside** the program folder:
+
+| Application | Default data folder |
+|---|---|
+| Language & Speech | `~/QueryBook-Data/language/` |
+| Math, Science & Engineering | `~/QueryBook-Data/stem/` |
+| History & News | `~/QueryBook-Data/facts/` |
+
+(`~` is your home folder, e.g. `C:\Users\you`.) To use another folder — for example an external
+drive — run `python app.py set-data E:\QB-Data\facts` once. Replacing or upgrading the program never
+touches the data.
+
+### Why the data stays safe
+
+* Every change is one transaction under one lock (SQLite, WAL journal, full sync). A crash or power
+  cut leaves the database as it was before or after a change — never half-written.
+* The database is checked every time the application starts. If the check fails, the application
+  **will not write** to it, shows a red notice and tells you to restore a backup.
+* A checked backup is taken at start-up (when something changed) and before and after every import.
+  The newest 10 are kept in `backups/` inside the data folder.
+* `python app.py restore` lists the backups; `python app.py restore 1` restores the newest. The
+  damaged file is set aside, not deleted.
+
+## Bringing in the old QueryBook store
+
+Each application has **Data & backups → Bring in … from the old QueryBook**. Point it at the old
+store folder (the one with `blocks\`, `manifest.json` and `language_model.json`); the folder the old
+QueryBook remembered is filled in for you when it can be found. Imports only **read** the old store —
+they never write to it, index it or repair it. Each application takes only what belongs to it:
+
+* **Math, Science & Engineering** takes the mathematical, geometric and calendar facts and **computes
+  each one again**; only facts that come out the same are kept. Mismatches are listed.
+* **History & News** takes history, culture, art and other facts, marked *needs checking* because the
+  old store did not keep proper citations. The old prototype's bundled *example* headlines are skipped.
+* **Language & Speech** takes the word counts from `language_model.json`, so the words the old
+  QueryBook saw most can be put into your lessons.
+
+The same import is available on the command line: `python app.py import-old E:\QB\mystore`.
+
+## Checks
+
+```
+python tools/test_core.py            # data safety: concurrency, rollback, damage detection, restore
+python language/app.py --selftest     # 37 checks
+python stem/app.py --selftest         # 85 checks
+python facts/app.py --selftest        # 36 checks
+python tools/run_all_tests.py         # all of the above
+```
+
+## For developers
+
+* `_core/qbcore.py` (database, backups, web server, old-store reader) and `_core/ui/qb.css`, `qb.js`
+  are shared. Each application carries its **own copy** so it can be shipped alone; after editing
+  `_core/`, run `python tools/sync_core.py`. The self-tests fail if a copy differs from the master.
+* `python tools/package.py` builds one zip per application in `dist/`.
+* The web servers listen on 127.0.0.1 only and refuse requests from other sites.

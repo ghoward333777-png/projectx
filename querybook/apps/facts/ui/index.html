@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook History &amp; News</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #8a3b22; }
+  .fact { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .fact:last-child { border-bottom: 0; }
+  .fact:hover .st { text-decoration: underline; }
+  .fact .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .yearhead { font-weight: 700; font-size: 15px; margin: 18px 0 4px; color: var(--accent); }
+  .srcbox { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+  @media (prefers-color-scheme: dark) { :root { --accent: #b9583a; } .yearhead { color: #f0a080; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook History &amp; News</h1>
+  <span class="tag">Facts from sources written by people — every fact shows where it came from</span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="search">Search</button>
+  <button data-tab="add">Add a fact</button>
+  <button data-tab="timeline">Timeline</button>
+  <button data-tab="news">News</button>
+  <button data-tab="sources">Sources</button>
+  <button data-tab="data">Data &amp; backups</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+  <section class="panel" id="search">
+    <div class="card">
+      <div class="row">
+        <input id="q" class="grow" type="text" placeholder="Search facts — a person, a place, an event, a word" aria-label="Search">
+        <button class="btn" id="go">Search</button>
+      </div>
+      <div class="row small" style="margin-top:10px">
+        <select id="cat" aria-label="Category" style="width:auto"></select>
+        <select id="stat" aria-label="Status" style="width:auto">
+          <option value="">Any status</option><option value="sourced">Sourced</option><option value="needs checking">Needs checking</option><option value="needs source">Needs a source</option>
+        </select>
+        <label><input type="checkbox" id="disp"> Disputed only</label>
+        <button class="btn quiet" id="today">On this day</button>
+      </div>
+      <div id="results" style="margin-top:12px"></div>
+    </div>
+    <div class="card" id="detail" style="display:none"></div>
+  </section>
+
+  <section class="panel" id="add">
+    <div class="card">
+      <h2>Add a fact</h2>
+      <p class="small muted">Write the fact in your own words and say where it comes from. A fact needs at least one source written by people to count as <b>sourced</b>.</p>
+      <label class="f" for="a-statement">The fact, as a sentence *</label>
+      <textarea id="a-statement" placeholder="The Magna Carta was sealed by King John at Runnymede in June 1215."></textarea>
+      <div class="grid2">
+        <div><label class="f" for="a-subject">About (subject) *</label><input id="a-subject" type="text" placeholder="Magna Carta"></div>
+        <div><label class="f" for="a-category">Category</label><select id="a-category"></select></div>
+        <div><label class="f" for="a-predicate">Relation (optional)</label><input id="a-predicate" type="text" list="preds" placeholder="sealed on, born in, capital …"></div>
+        <div><label class="f" for="a-object">Value (optional)</label><input id="a-object" type="text" placeholder="15 June 1215"></div>
+        <div><label class="f" for="a-date">Date</label><input id="a-date" type="text" placeholder="15 June 1215 · 44 BC · 1990s · c. 1200"></div>
+        <div><label class="f" for="a-end">End date (for periods)</label><input id="a-end" type="text"></div>
+        <div><label class="f" for="a-place">Place</label><input id="a-place" type="text" placeholder="Runnymede, England"></div>
+      </div>
+      <datalist id="preds"></datalist>
+      <p class="small muted">When the relation is one that has a single answer (such as <i>born on</i> or <i>capital</i>), facts that give different values are both kept and marked <b>disputed</b>.</p>
+      <h3>Sources</h3>
+      <div id="srcs"></div>
+      <button class="btn quiet" id="moresrc">Add another source</button>
+      <div style="margin-top:16px"><button class="btn" id="save">Save fact</button></div>
+    </div>
+  </section>
+
+  <section class="panel" id="timeline">
+    <div class="card">
+      <div class="row">
+        <input id="tfrom" type="text" placeholder="From (e.g. 1000 or 500 BC)" style="max-width:220px" aria-label="From">
+        <input id="tto" type="text" placeholder="To (e.g. 1500)" style="max-width:220px" aria-label="To">
+        <select id="tcat" style="width:auto" aria-label="Category"></select>
+        <button class="btn" id="tgo">Show</button>
+      </div>
+      <div id="tl" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="news">
+    <div class="card">
+      <h2>News feeds</h2>
+      <p class="small">Headlines are what an outlet <b>reported</b>. They are kept apart from your facts until you choose <b>Add as fact</b>, which records the outlet as the source.
+        Feeds are only fetched when you press <b>Fetch</b>.</p>
+      <div id="feeds"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="fname" type="text" placeholder="Name (e.g. BBC News — World)" style="max-width:260px" aria-label="Feed name">
+        <input id="furl" class="grow" type="url" placeholder="Feed address (RSS or Atom), https://…" aria-label="Feed address">
+        <button class="btn quiet" id="fadd">Add feed</button>
+      </div>
+      <div id="fsugg" class="small" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h2>Headlines</h2>
+      <div id="heads"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="sources">
+    <div class="card">
+      <h2>Sources</h2>
+      <div id="slist"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="data">
+    <div class="card"><h2>Your data</h2><div id="dstatus"></div>
+      <a class="btn quiet" href="/api/export.csv" download="history-news-facts.csv" style="text-decoration:none;display:inline-block;margin-top:8px">Export all facts (CSV)</a>
+    </div>
+    <div class="card">
+      <h2>Import facts from a spreadsheet (CSV)</h2>
+      <p class="small">Columns: <span class="mono">statement, subject, predicate, object, date, end_date, place, category, source_name, source_kind, source_url, source_author, source_published, quote, page</span>.
+        Every line is checked first; if any line has a problem, nothing is added and the lines are listed.</p>
+      <input type="file" id="csvfile" accept=".csv,text/csv">
+      <div id="csvout" class="small" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h2>Bring in facts from the old QueryBook</h2>
+      <p class="small">Point to the old store folder (with <span class="mono">blocks</span> and <span class="mono">manifest.json</span>). The old store is only <b>read</b>.
+        History, culture, art and other facts are brought in marked <b>needs checking</b>, because the old store did not keep proper citations. Mathematical and calendar facts belong to the Math, Science &amp; Engineering application; the old prototype's bundled <i>example</i> headlines are skipped.</p>
+      <div class="row">
+        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
+        <button class="btn quiet" id="oldcheck">Check folder</button>
+        <button class="btn" id="oldgo">Import</button>
+        <button class="btn secondary" id="jobstop">Stop</button>
+      </div>
+      <div id="oldinfo" class="small" style="margin-top:8px"></div>
+      <div id="ijob" style="margin-top:10px"></div>
+      <div id="ihist" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Backups</h2>
+      <p class="small muted">A checked backup is taken when the application starts (if anything changed) and before and after every import. The newest 10 are kept.</p>
+      <button class="btn quiet" id="bnow">Back up now</button>
+      <div id="blist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>How this application treats facts</h2>
+      <ul>
+        <li><b>Sources written by people only.</b> Books, encyclopedias, newspapers, news agencies, government records, archives, museums. Web addresses of AI chat and AI-writing services are refused.</li>
+        <li><b>Status.</b> <span class="badge good">sourced</span> has at least one proper source; <span class="badge warn">needs checking</span> came from the old QueryBook without a citation; <span class="badge bad">needs source</span> has none yet.</li>
+        <li><b>Disagreements are shown, not settled.</b> If two facts give different values for something that has one answer (a birth date, a capital), both are kept and marked <span class="badge bad">disputed</span>, each with its own sources.</li>
+        <li><b>The same fact twice</b> is stored once, with all of its sources — more independent sources means better support.</li>
+        <li><b>Dates</b> can be written as 1215, 15 June 1215, June 1215, 44 BC, c. 1200, 1990s or 12th century.</li>
+        <li><b>News</b> headlines stay separate until you add them, and are then recorded as reported by their outlet.</li>
+        <li>No AI model is used, and nothing is sent anywhere except when you fetch a news feed you added.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<footer class="status"></footer>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

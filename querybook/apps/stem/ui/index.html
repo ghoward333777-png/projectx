@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Math, Science &amp; Engineering</title>
+<link rel="stylesheet" href="qb.css">
+<style>:root { --accent: #1d6b86; }</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Math, Science &amp; Engineering</h1>
+  <span class="tag">Computed answers only — exact where possible, never guessed</span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="ask">Calculate</button>
+  <button data-tab="formulas">Formulas</button>
+  <button data-tab="constants">Constants</button>
+  <button data-tab="elements">Elements</button>
+  <button data-tab="saved">Saved answers</button>
+  <button data-tab="data">Data &amp; backups</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+  <section class="panel" id="ask">
+    <div class="card">
+      <h2>Ask</h2>
+      <div class="row">
+        <input id="q" class="grow" type="text" placeholder="12 × 7 · sqrt(2) · 25! · 60 mph to km/h · 100 degF to degC · molar mass of H2O · Fe" autocomplete="off" aria-label="Question">
+        <button class="btn" id="go">Answer</button>
+      </div>
+      <div id="out" aria-live="polite"></div>
+    </div>
+    <div class="card">
+      <h2>Try</h2>
+      <div id="examples"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="formulas">
+    <div class="card">
+      <h2>Formulas</h2>
+      <p class="muted small">Choose a formula and the quantity you want. Enter the others with or without units — <span class="mono">60 mph</span>, <span class="mono">1 atm</span>, <span class="mono">20 degC</span>. Plain numbers are taken as SI units.</p>
+      <div class="row">
+        <select id="fsel" class="grow" aria-label="Formula"></select>
+        <select id="funk" aria-label="Solve for"></select>
+      </div>
+      <div id="feq" class="answer mono"></div>
+      <div id="finputs"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="fout" type="text" placeholder="answer in unit (optional, e.g. km/h)" style="max-width:260px" aria-label="Answer unit">
+        <button class="btn" id="fsolve">Solve</button>
+      </div>
+      <div id="fres" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="constants">
+    <div class="card">
+      <h2>Physical constants</h2>
+      <p class="muted small" id="csrc"></p>
+      <table class="t" id="ctab"></table>
+    </div>
+  </section>
+
+  <section class="panel" id="elements">
+    <div class="card">
+      <h2>Molar mass</h2>
+      <div class="row">
+        <input id="mf" class="grow" type="text" placeholder="H2O · Ca(OH)2 · CuSO4·5H2O" aria-label="Chemical formula">
+        <button class="btn" id="mgo">Calculate</button>
+      </div>
+      <div id="mout" aria-live="polite"></div>
+    </div>
+    <div class="card">
+      <h2>Elements</h2>
+      <p class="muted small" id="esrc"></p>
+      <input id="efilter" type="text" placeholder="Filter by name, symbol or number" aria-label="Filter elements">
+      <table class="t" id="etab" style="margin-top:10px"></table>
+    </div>
+  </section>
+
+  <section class="panel" id="saved">
+    <div class="card">
+      <h2>Saved answers</h2>
+      <p class="muted small">Every saved answer is computed again when it is saved and whenever you press <b>Re-check all</b>. Anything that no longer comes out the same is marked.</p>
+      <div class="row">
+        <input id="sq" class="grow" type="text" placeholder="Search saved answers" aria-label="Search saved answers">
+        <select id="sst" aria-label="Status"><option value="">All</option><option value="verified">Verified</option><option value="mismatch">Mismatch</option><option value="unverifiable">Unverifiable</option></select>
+        <button class="btn quiet" id="sfind">Search</button>
+        <button class="btn secondary" id="sverify">Re-check all</button>
+        <a class="btn quiet" href="/api/export.csv" download="stem-answers.csv" style="text-decoration:none;padding:9px 16px;border-radius:8px">Export CSV</a>
+      </div>
+      <div id="sjob" style="margin-top:10px"></div>
+      <div id="slist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="data">
+    <div class="card">
+      <h2>Your data</h2>
+      <div id="dstatus"></div>
+    </div>
+    <div class="card">
+      <h2>Bring in facts from the old QueryBook</h2>
+      <p class="small">Point to the old store folder (the one with <span class="mono">blocks</span> and <span class="mono">manifest.json</span>). The old store is only <b>read</b> — nothing in it is changed.
+        Each mathematical, geometric and calendar fact is <b>computed again</b>; only facts that come out the same are kept. History, news and other facts are left for the History &amp; News application.</p>
+      <div class="row">
+        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
+        <button class="btn quiet" id="oldcheck">Check folder</button>
+        <button class="btn" id="oldgo">Import</button>
+        <button class="btn secondary" id="jobstop">Stop</button>
+      </div>
+      <div id="oldinfo" class="small" style="margin-top:8px"></div>
+      <div id="ijob" style="margin-top:10px"></div>
+      <div id="ihist" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Backups</h2>
+      <p class="small muted">A checked backup is taken when the application starts (if anything changed) and before and after every import. The newest 10 are kept.</p>
+      <button class="btn quiet" id="bnow">Back up now</button>
+      <div id="blist" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>What you can type</h2>
+      <table class="t" id="htab"></table>
+    </div>
+    <div class="card">
+      <h2>How answers are made</h2>
+      <ul>
+        <li>Whole numbers and fractions are exact: <span class="mono">0.1 + 0.2</span> is exactly <span class="mono">3/10</span>.</li>
+        <li>Answers that cannot be exact (most square roots, sines, logarithms) are marked with <b>≈</b> and shown to 12 significant figures.</li>
+        <li>Unit conversions use the legal definitions (an inch is exactly 2.54 cm). Units of different kinds are refused, never forced.</li>
+        <li>Constants come from CODATA 2018; atomic weights from IUPAC. Each table names its source.</li>
+        <li>Nothing is sent to the internet and no AI model is used.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<footer class="status"></footer>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
