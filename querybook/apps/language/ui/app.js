@@ -255,7 +255,7 @@ async function loadData() {
 
 let CURRENT = "learn";
 function refreshTab() {
-  ({ learn: loadSetup, words: loadWords, dict: () => {}, mine: loadMine, progress: loadProgress, data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
+  ({ learn: loadSetup, words: loadWords, dict: () => {}, mine: loadMine, progress: loadProgress, lab: loadLab, data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -278,4 +278,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   const s = await api("/api/status");
   $("#srcs").innerHTML = "Translations: " + esc(s.sources.bilingual) + ".<br>Definitions and word order: " + esc(s.sources.dictionary) + ".";
   refreshFooter();
+});
+
+// ---- Self-learning (Language Lab)
+const GATE_NAMES = { phonemic_completeness: "Sounds found (phonics)", lexical_stability: "Common words settled", cooccurrence_density: "Words that go together", pattern_saturation: "New patterns still appearing" };
+const meter = (frac, pass, mark) => '<div class="meter' + (pass ? " pass" : "") + '"><i style="width:' + Math.max(0, Math.min(100, 100 * frac)).toFixed(1) + '%"></i>' +
+  (mark !== undefined ? '<b style="left:' + Math.min(100, 100 * mark).toFixed(1) + '%"></b>' : "") + "</div>";
+
+async function loadLab() {
+  const s = await api("/api/lab/status"), g = s.gate, ps = s.phase_status;
+  const rows = Object.entries(g.checks).map(([k, c]) => {
+    const low = k === "pattern_saturation", scale = low ? 1 : Math.max(c.threshold * 1.25, c.value);
+    return "<div><b>" + esc(GATE_NAMES[k] || k) + '</b><div class="small muted mono">' + esc(k) + "</div></div>" +
+      meter(c.value / scale, c.pass, c.threshold / scale) +
+      '<div class="small">' + c.value + (low ? " (needs below " : " (needs ") + c.threshold + ") " + (c.pass ? "✔" : "…") + "</div>";
+  }).join("");
+  const h = s.history || [];
+  $("#labgate").innerHTML = '<div class="note ' + (g.opened ? "good" : "") + '">Gate ' + (g.opened ? "<b>open</b> since " + esc(g.opened_at || "") : "<b>closed</b> — " + g.progress + "% of the way") +
+    "</div>" + meter(g.progress / 100, g.opened) + '<div class="gate" style="margin-top:10px">' + rows + "</div>" +
+    '<div class="stats" style="margin-top:10px">' + stat(fmt(s.total_tokens), "words read") + stat(fmt(s.distinct_words), "different words") +
+    stat(s.distinct_phonemes + " / " + s.phoneme_target, "sounds found") + stat(fmt(s.distinct_bigrams), "word pairs") + stat(s.avg_syllables_per_word, "syllables per word") + stat(fmt(s.ingests), "readings") + "</div>" +
+    (h.length ? '<p class="small muted" style="margin-top:10px">Gate progress over the last ' + h.length + " readings (green = gate open):</p>" + '<div class="spark">' +
+      h.map(x => { const f = (Math.min(1, x.phon / .8) + Math.min(1, x.stab / .7) + Math.min(1, x.dens / 1.5) + (x.novel > 0 ? Math.min(1, .2 / x.novel) : 1)) / 4;
+        return '<div class="' + (x.opened ? "open" : "") + '" style="height:' + (100 * f).toFixed(0) + '%" title="' + esc(x.t) + " · " + x.words + ' words"></div>'; }).join("") + "</div>" : "");
+  const done = n => n === 1 ? g.opened : n === 2 ? ps.defined > 0 : n === 3 ? ps.languages.some(l => l.translations > 0) : n === 4 ? ps.pronounced_en > 0 : ps.languages.some(l => l.vocabulary > 0);
+  const counts = { 1: fmt(s.distinct_words) + " words seen", 2: fmt(ps.defined) + " of " + fmt(ps.vocabulary) + " words given meanings", 3: ps.languages.filter(l => l.translations).length + " of " + ps.languages.length + " languages linked",
+    4: fmt(ps.pronounced_en) + " English words pronounced" };
+  let nowSet = false;
+  $("#labphases").innerHTML = ps.phases.map(p => { const d = done(p.n), cls = d ? "done" : (!nowSet ? (nowSet = true, "now") : "");
+    return '<div class="phase ' + cls + '"><b>' + (d ? "✔ " : "") + esc(p.name) + '</b> <span class="small muted">' + esc(counts[p.n] || "") + '</span><div class="small muted">' + esc(p.desc) + "</div></div>"; }).join("") +
+    '<p class="small muted">' + fmt(ps.facts) + " facts learned in total, each with its source.</p>";
+  const maxv = Math.max(1, ...ps.languages.map(l => l.corpus || l.vocabulary));
+  $("#lablangs").innerHTML = '<div class="lrow"><b>Language</b><b>Words learned</b><b>Detail</b></div>' + ps.languages.map(l =>
+    '<div class="lrow"><span>' + esc(l.name) + "</span>" + meter(l.vocabulary / Math.max(1, l.corpus || maxv), l.vocabulary > 0 && l.vocabulary >= l.corpus) +
+    '<span class="muted">' + fmt(l.vocabulary) + (l.corpus ? " of " + fmt(l.corpus) : "") + " words · " + fmt(l.translations) + " links · " + fmt(l.pronounced) + " sounds</span></div>").join("");
+  const r = await api("/api/lab/recent");
+  $("#labrecent").innerHTML = r.facts.length ? '<table class="small"><tr><th>About</th><th>Learned</th><th>Value</th><th>From</th></tr>' + r.facts.slice(0, 30).map(f =>
+    "<tr><td>" + esc(f.subject) + "</td><td>" + esc(f.predicate.replace(/_/g, " ")) + "</td><td>" + esc(f.object) + '</td><td class="muted">' + esc(f.source) + "</td></tr>").join("") + "</table>"
+    : '<p class="muted">Nothing yet — press <b>Learn by itself</b>.</p>';
+  pollJob($("#labjob"), () => loadLab());
+}
+
+async function labWord() {
+  const w = $("#labw").value.trim(); if (!w) return;
+  const c = await api("/api/lab/word?w=" + encodeURIComponent(w)), p = c.pronunciation_now;
+  $("#labwout").innerHTML = "<p><b>" + esc(c.word) + "</b> " + speakBtn(c.word, "en") + " — seen " + fmt(c.seen_in_phase1) + " times while reading" +
+    (p && p.ipa ? " · sounds <span class=\"mono\">" + esc(p.ipa) + "</span>, " + p.syllables + " syllable(s), stress on " + p.stress_syllable + " (" + esc(p.source) + ")" : "") + "</p>" +
+    (c.facts.length ? '<table class="small"><tr><th>About</th><th>Learned</th><th>Value</th><th>From</th></tr>' + c.facts.slice(0, 80).map(f =>
+      "<tr><td>" + esc(f.subject) + "</td><td>" + esc(f.predicate.replace(/_/g, " ")) + "</td><td>" + esc(f.object) + '</td><td class="muted">' + esc(f.source) + "</td></tr>").join("") + "</table>"
+      : '<p class="muted">No facts about this word yet.</p>');
+  wireSay($("#labwout"));
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("#labrun").onclick = async () => { await api("/api/lab/run", {}); pollJob($("#labjob"), () => loadLab()); };
+  $("#labstop").onclick = async () => { await api("/api/job/stop", {}); toast("Stopping after the current step…"); };
+  $("#labrefresh").onclick = loadLab;
+  $("#labfeed").onclick = async () => { await api("/api/lab/feed", { text: $("#labtext").value, url: $("#laburl").value }); $("#labtext").value = ""; pollJob($("#labjob"), () => loadLab()); };
+  $("#labwgo").onclick = labWord; onEnter($("#labw"), labWord);
+  $("#labforget").onclick = async () => { if (!confirm("Forget everything the lab learned? A backup is taken first.")) return; await api("/api/lab/forget", {}); toast("The lab starts over."); loadLab(); };
+  api("/api/lab/sources").then(s => { $("#labsrc").innerHTML = s.sources.map(u => '<li><a href="#" data-u="' + esc(u.url) + '">' + esc(u.name) + "</a> — " + esc(u.note || "") + "</li>").join("");
+    $$("#labsrc [data-u]").forEach(a => a.onclick = e => { e.preventDefault(); $("#laburl").value = a.dataset.u; }); });
 });

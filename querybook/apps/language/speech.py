@@ -59,3 +59,31 @@ def ipa(text, voice):
 def status():
     exe = find_espeak()
     return {"espeak": bool(exe), "path": exe}
+
+
+def ipa_many(words, voice, chunk=400):
+    """Phonetic spellings for many words with one espeak-ng call per chunk (one output line per word).
+    Returns a list aligned with `words` (None where unavailable). Falls back to one call per word if lines do not line up."""
+    exe = find_espeak()
+    words = [" ".join(str(w).split()) for w in words]
+    if not exe or not words:
+        return [None] * len(words)
+    out = []
+    for i in range(0, len(words), chunk):
+        part = words[i:i + chunk]
+        env = dict(os.environ)
+        data = os.path.join(os.path.dirname(exe), "espeak-ng-data")
+        if os.path.isdir(data):
+            env["ESPEAK_DATA_PATH"] = os.path.dirname(exe)
+        kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
+        try:
+            p = subprocess.run([exe, "-q", "--ipa", "-v", voice], input="\n".join(part), capture_output=True, text=True,
+                               timeout=60, env=env, encoding="utf-8", **kw)
+            lines = [l.strip() for l in p.stdout.splitlines() if l.strip()]
+        except (OSError, subprocess.TimeoutExpired):
+            lines = []
+        if len(lines) == len(part):
+            out += lines
+        else:
+            out += [ipa(w, voice) for w in part]
+    return out

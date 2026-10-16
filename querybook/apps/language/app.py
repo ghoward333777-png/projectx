@@ -18,12 +18,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import qbcore as core
+import lab
 import speech
 import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language & Speech"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PORT = 8101
 program_dir = HERE
 
@@ -57,7 +58,7 @@ CREATE TABLE custom_pairs (
 );
 INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
   SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
-"""]
+""", lab.SCHEMA]
 
 
 def today():
@@ -80,7 +81,8 @@ class App:
         self.today = clock
         self.log = core.make_logger(folder, APP_ID)
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
-        self.jobs = core.Jobs(self.log)
+        self.jobs = core.Jobs(self.log, self.store)
+        self.lab = lab.Lab(self.store, self.log)
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -366,6 +368,10 @@ class App:
             for code in list(vocab.LANGUAGES) + ["en"]:
                 if name.startswith("language_model_%s" % code) or name.startswith("language_model-%s" % code):
                     lang = code
+            if lang == "en" and name == "language_model.json":
+                adopted = self.lab.adopt_old_model(model, name)
+                self.store.activity("Language Lab: continue from old English model", "ok" if adopted.get("adopted") else "skipped",
+                                    json.dumps(adopted)[:300])
             words = model.get("words") or {}
             if isinstance(words, list):
                 words = {w: 1 for w in words}
@@ -503,6 +509,54 @@ class App:
             voice = vocab.LANGUAGES[lang]["espeak"] if lang in vocab.LANGUAGES else vocab.ENGLISH["espeak"]
             return {"ipa": speech.ipa(p.get("text", ""), voice)}
 
+        # ---- Language Lab (learns English, then the other languages, by itself)
+        @a.get("/api/lab/status")
+        def lab_status(p):
+            st = self.lab.status()
+            st["phase_status"] = self.lab.phase_status()
+            return st
+
+        @a.post("/api/lab/run")
+        def lab_run(p):
+            return self.jobs.start("Language Lab: learn by itself (all phases)", lambda prog, stop: self.lab.run_pipeline(prog, stop))
+
+        @a.post("/api/lab/feed")
+        def lab_feed(p):
+            text, url = (p.get("text") or "").strip(), (p.get("url") or "").strip()
+            if not text and not url:
+                raise core.UserError("Paste English text or give a web address.")
+            def run(prog, stop):
+                prog(0, 2, "fetching %s" % url if url else "reading your text")
+                body = text
+                if url:
+                    if not url.startswith(("http://", "https://")):
+                        raise core.UserError("The address must start with http:// or https://")
+                    body = _fetch_text(url)
+                prog(1, 2, "Phase 1: learning structure from %d characters" % len(body))
+                mx = self.lab.learn(body, ("Phase 1 · " + url) if url else "Phase 1 · your text")
+                prog(2, 2, "gate %.0f%%" % mx["gate"]["progress"])
+                return {"characters": len(body), "words_now": mx["distinct_words"], "gate_progress": mx["gate"]["progress"],
+                        "gate_open": mx["gate"]["opened"]}
+            return self.jobs.start("Language Lab: Phase 1 reading", run)
+
+        @a.get("/api/lab/word")
+        def lab_word(p):
+            return self.lab.word_card(p.get("w", ""))
+
+        @a.get("/api/lab/recent")
+        def lab_recent(p):
+            return {"facts": self.lab.recent_facts(60)}
+
+        @a.get("/api/lab/sources")
+        def lab_sources(p):
+            return {"sources": lab.C.SEED_SOURCES, "phases": lab.C.LANGUAGE_PHASES, "gate": lab.C.GATE, "starter_chunks": len(lab.C.STARTER_CORPUS)}
+
+        @a.post("/api/lab/forget")
+        def lab_forget(p):
+            self.store.backup("before-lab-reset", force=True)
+            self.lab.forget()
+            return {"ok": True}
+
         @a.get("/api/old-store-hint")
         def old_store_hint(p):
             hints = core.old_store_hints()
@@ -547,6 +601,26 @@ class App:
         @a.get("/api/backups")
         def backups(p):
             return {"backups": [{"name": b["name"], "kb": b["bytes"] // 1024} for b in self.store.backups()], "folder": self.store.backup_dir}
+
+
+def _fetch_text(url):
+    """One user-chosen page, as text (same polite single fetch as the prototype)."""
+    import re, urllib.request, html as _h
+    req = urllib.request.Request(url, headers={"User-Agent": "QueryBook-LanguageLab/1.3 (+structural language learning; single manual fetch)"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read(3_000_000)
+            ctype = r.headers.get("Content-Type", "")
+    except Exception as e:
+        raise core.UserError("Could not fetch %s: %s" % (url, e))
+    m = re.search(r"charset=([\w-]+)", ctype)
+    text = raw.decode(m.group(1) if m else "utf-8", "replace")
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
+    text = _h.unescape(re.sub(r"<[^>]+>", " ", text))
+    return " ".join(text.split())
+
+
+_fetch = _fetch_text
 
 
 def open_app(folder=None):
@@ -663,6 +737,33 @@ def selftest():
         c.check("older database upgraded: your own words kept", up.store.meta_get("schema_version") == str(len(SCHEMA)) and
                 up.store.scalar("SELECT count(*) FROM custom_pairs WHERE target_word = 'grand-mère' AND native = 'en'") == 1)
         c.check("older settings understood", up.settings("fr") == {"new_per_day": 7, "direction": "to_native"})
+    # Language Lab: same logic as prototype v9.50 — sub-language first, gate, then meaning
+    with tempfile.TemporaryDirectory() as tmp:
+        app = App(os.path.join(tmp, "data"))
+        L = app.lab
+        try:
+            L.ground_words(["water"])
+            c.check("Lab: meaning is refused before the Transition Gate opens", False)
+        except lab.GateClosed:
+            c.check("Lab: meaning is refused before the Transition Gate opens", True)
+        cycles = 0
+        while not L.gate_open() and cycles < 200:
+            L.learn(lab.C.corpus_chunk(cycles), "test")
+            cycles += 1
+        stt = L.status()
+        c.check("Lab: starter text opens the gate the same way as the prototype (36 cycles)", cycles == 36 and all(v["pass"] for v in stt["gate"]["checks"].values()), cycles)
+        g = L.ground_words(L.learned_words(400))
+        c.check("Lab: Phase 2 grounds learned words in the 1913 dictionary", g["words_grounded"] > 50 and L.word_card("water")["facts"])
+        a3 = L.acquire_language("es", L.learned_words(400))
+        c.check("Lab: Phase 3 maps learned words to another language", a3["mapped"] > 50)
+        sp = L.speech_analyze(L.learned_words(50), "en")
+        c.check("Lab: Phase 4 pronunciation of learned words", sp["analyzed"] > 20 and L.analyze_pronunciation("phonics")["ipa"] == "/fɒnɪks/")
+        ll = L.learn_language("es", L.corpus_words("es")[:120])
+        c.check("Lab: learns another language's words with meanings and pronunciation", ll["vocab_added"] > 100 and ll["pron_added"] > 100)
+        old = {"words": {"the": 10, "cat": 2}, "total_tokens": 12, "gate_opened": False}
+        c.check("Lab: an old model is not merged over learning already done", not L.adopt_old_model(old, "x")["adopted"])
+        L.forget()
+        c.check("Lab: continues from the old prototype's English model when starting fresh", L.adopt_old_model(old, "x")["adopted"] and L.load_model()["total_tokens"] == 12)
     st = speech.status()
     c.check("offline voice (espeak-ng): %s" % ("found" if st["espeak"] else "not installed — browser voices are used"), True)
     return c.report(APP_NAME)

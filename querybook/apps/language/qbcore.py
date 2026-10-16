@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.1.0"
+CORE_VERSION = "1.2.0"
 BACKUPS_KEPT = 10
 
 
@@ -131,6 +131,8 @@ class Store:
     def _migrate(self, schema):
         with self.write() as db:
             db.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+            db.execute("""CREATE TABLE IF NOT EXISTS qb_activity (id INTEGER PRIMARY KEY, at TEXT NOT NULL, task TEXT NOT NULL,
+                          status TEXT NOT NULL, detail TEXT, ms INTEGER, items INTEGER)""")
             row = db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             v = int(row[0]) if row else 0
             for i in range(v, len(schema)):
@@ -179,6 +181,26 @@ class Store:
             with self.write() as d:
                 d.execute(sql, args)
 
+    # -- activity log: every major task, with outcome and duration
+    def activity(self, task, status="ok", detail="", ms=None, items=None):
+        self.log("ACTIVITY", task, status, detail, "%sms" % ms if ms is not None else "")
+        if self.read_only:
+            return
+        try:
+            with self.write() as db:
+                db.execute("INSERT INTO qb_activity(at, task, status, detail, ms, items) VALUES(?,?,?,?,?,?)",
+                           (now_iso(), str(task)[:200], status, str(detail or "")[:1000], ms, items))
+                n = db.execute("SELECT max(id) FROM qb_activity").fetchone()[0] or 0
+                if n % 500 == 0:
+                    db.execute("DELETE FROM qb_activity WHERE id <= ?", (n - 20000,))     # keep the newest 20,000
+        except Exception as e:
+            self.log("activity log write failed:", repr(e))
+
+    def activities(self, limit=200, task=None):
+        if task:
+            return self.query("SELECT * FROM qb_activity WHERE task LIKE ? ORDER BY id DESC LIMIT ?", ("%" + task + "%", limit))
+        return self.query("SELECT * FROM qb_activity ORDER BY id DESC LIMIT ?", (limit,))
+
     # -- backups
     def data_version(self):
         """Changes whenever committed data changes (used to skip redundant backups)."""
@@ -212,6 +234,7 @@ class Store:
             prev = {}
         if not force and last and prev.get("version") == ver:
             return last[0]["path"]
+        t0 = time.time()
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         dest = os.path.join(self.backup_dir, "%s-%s-%s.sqlite" % (self.app_id, stamp, re.sub(r"\W+", "", reason)[:20]))
         with self._lock:
@@ -230,6 +253,7 @@ class Store:
         for old in self.backups()[BACKUPS_KEPT:]:
             os.remove(old["path"])
         self.log("backup written: %s" % os.path.basename(dest))
+        self.activity("Backup (%s)" % reason, "ok", os.path.basename(dest), int((time.time() - t0) * 1000))
         return dest
 
     def restore(self, backup_path):
@@ -455,7 +479,23 @@ _TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8"
           ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".wav": "audio/wav", ".json": "application/json"}
 
 
-def make_handler(api, ui_dir, log, app_name):
+ACTION_NAMES = {}          # path -> readable task name for the activity log (apps may add their own)
+
+
+def _summary(out):
+    """A short, content-free description of an action's result for the activity log."""
+    if not isinstance(out, dict):
+        return ""
+    keep = []
+    for k, v in out.items():
+        if isinstance(v, bool) or (isinstance(v, (int, float)) and not isinstance(v, bool)):
+            keep.append("%s=%s" % (k, v))
+        elif k in ("state", "status", "name", "kind", "backup", "result") and isinstance(v, str):
+            keep.append("%s=%s" % (k, v[:60]))
+    return ", ".join(keep[:8])
+
+
+def make_handler(api, ui_dir, log, app_name, store=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = app_name.replace(" ", "")
         protocol_version = "HTTP/1.1"
@@ -507,19 +547,32 @@ def make_handler(api, ui_dir, log, app_name):
                 if method == "GET":
                     return self._static(url.path)
                 return self._send(404, {"error": "No such action."})
+            t0 = time.time()
+            logged = method == "POST" or url.path.endswith((".csv", ".txt"))
+            task = ACTION_NAMES.get(url.path, url.path)
+
+            def note(status, detail=""):
+                if logged and store is not None:
+                    store.activity(task, status, detail, int((time.time() - t0) * 1000))
             try:
                 out = fn(params)
                 if isinstance(out, tuple) and len(out) == 2 and isinstance(out[0], (bytes, bytearray)):
+                    note("ok", "%d bytes" % len(out[0]))
                     return self._send(200, bytes(out[0]), out[1])
-                return self._send(200, out if out is not None else {"ok": True})
+                note("ok", _summary(out))
+                return self._send(200, out if out is not None else {"ok": True}, extra={"X-QB-Ms": str(int((time.time() - t0) * 1000))})
             except (UserError, DatabaseDamaged) as e:
+                note("refused", str(e))
                 return self._send(400, {"error": str(e)})
             except ValueError as e:
                 if str(e).startswith(("invalid literal for int()", "could not convert string to float")):
+                    note("refused", "a number was expected")
                     return self._send(400, {"error": "A number was expected."})
+                note("error", repr(e))
                 log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))
                 return self._send(500, {"error": "Something went wrong: %s" % e})
             except Exception as e:
+                note("error", repr(e))
                 log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))
                 return self._send(500, {"error": "Something went wrong: %s" % e})
 
@@ -556,9 +609,9 @@ def free_port(preferred):
     raise RuntimeError("no free port near %d" % preferred)
 
 
-def serve(app_name, api, ui_dir, port, log, open_browser=True, on_start=None):
+def serve(app_name, api, ui_dir, port, log, open_browser=True, on_start=None, store=None):
     port = free_port(port)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(api, ui_dir, log, app_name))
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(api, ui_dir, log, app_name, store))
     httpd.daemon_threads = True
     url = "http://127.0.0.1:%d/" % port
     print("\n  %s is running at %s" % (app_name, url))
@@ -581,8 +634,9 @@ def serve(app_name, api, ui_dir, port, log, open_browser=True, on_start=None):
 class Jobs:
     """One background job at a time (imports, bulk work), with progress the UI can poll."""
 
-    def __init__(self, log):
+    def __init__(self, log, store=None):
         self.log = log
+        self.store = store
         self.lock = threading.Lock()
         self.current = None
         self.last = None
@@ -593,11 +647,15 @@ class Jobs:
             if self.current and self.current["state"] == "running":
                 raise UserError("'%s' is still running. Wait for it to finish or stop it." % self.current["name"])
             self._stop.clear()
-            job = {"name": name, "state": "running", "done": 0, "total": None, "message": "", "started": now_iso(), "result": None}
+            job = {"name": name, "state": "running", "done": 0, "total": None, "message": "", "started": now_iso(), "result": None,
+                   "_t0": time.time(), "_seen": 0, "steps": 0}
             self.current = job
+        if self.store:
+            self.store.activity(name, "started")
 
         def progress(done, total=None, message=""):
             job["done"], job["total"], job["message"] = done, total, message
+            job["steps"] += 1
 
         def run():
             try:
@@ -608,7 +666,11 @@ class Jobs:
                 job["message"] = str(e)
                 self.log("JOB FAILED", name, repr(e), traceback.format_exc().replace("\n", " | "))
             job["ended"] = now_iso()
+            job["elapsed"] = round(time.time() - job["_t0"], 1)
             self.last = job
+            if self.store:
+                self.store.activity(name, job["state"], (job["message"] if job["state"] == "failed" else _summary(job["result"])),
+                                    int(job["elapsed"] * 1000), job["steps"])
         threading.Thread(target=run, daemon=True).start()
         return job
 
@@ -616,7 +678,19 @@ class Jobs:
         self._stop.set()
 
     def status(self):
-        return self.current or {"state": "idle"}
+        j = self.current
+        if not j:
+            return {"state": "idle"}
+        out = {k: v for k, v in j.items() if not k.startswith("_")}
+        el = (time.time() - j["_t0"]) if j["state"] == "running" else j.get("elapsed", 0)
+        out["elapsed"] = round(el, 1)
+        out["updates_per_s"] = round(j["steps"] / el, 2) if el > 0 else None
+        if j["state"] == "running" and j.get("total") and j["done"]:
+            # speed and time left from the current stage's own counter
+            rate = j["done"] / max(el, 0.001)
+            out["rate"] = round(rate, 1)
+            out["eta_s"] = round(max(0, (j["total"] - j["done"]) / rate), 1) if rate > 0 else None
+        return out
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
@@ -753,6 +827,8 @@ class Diagnostics:
                     checks.append(_check("app", "Application checks", "fail", redact(repr(e))[:300]))
             order = {"fail": 2, "warn": 1, "ok": 0}
             overall = max((c["status"] for c in checks), key=lambda x: order[x]) if checks else "ok"
+            bad = [c["name"] for c in checks if c["status"] != "ok"]
+            self.store.activity("Diagnostics", overall, ("; ".join(bad) if bad else "all %d checks OK" % len(checks)))
             self.last = {"app": self.app_name, "app_id": self.app_id, "version": self.version, "core": CORE_VERSION, "time": now_iso(),
                          "overall": overall, "checks": checks, "errors": errs, "error_count": n,
                          "uptime": _age((time.time() - self.started) / 3600),
@@ -959,12 +1035,16 @@ class Monitor:
                     self._req("POST", "/repos/%s/issues/%d/comments" % (self.cfg["repo"], num), {"body": queued})
                     self.cfg["outbox"].remove(queued)
                 c = self._req("POST", "/repos/%s/issues/%d/comments" % (self.cfg["repo"], num), {"body": body})
+                if getattr(self, "store", None):
+                    self.store.activity("Monitoring report sent (%s)" % kind, "ok", self.cfg["repo"])
                 self.cfg["last_sent"], self.cfg["last_status"] = now_iso(), "sent: %s" % kind.lower()
                 if kind in ("Test", "Check-in"):        # a test report counts as the day's check-in
                     self.cfg["last_heartbeat_ts"], self.cfg["last_heartbeat"] = time.time(), now_iso()
                 self._save()
                 return c.get("html_url") or self.cfg.get("issue_url")
             except MonitorError as e:
+                if getattr(self, "store", None):
+                    self.store.activity("Monitoring report (%s)" % kind, "failed", str(e))
                 if kind != "Test":
                     self.cfg["outbox"] = (self.cfg["outbox"] + [body])[-20:]
                 self.cfg["last_status"] = "not sent: %s" % e
@@ -1034,6 +1114,7 @@ class Monitor:
 
 def add_diagnostics(api, diag, monitor, program_dir):
     """Register the diagnostics and monitoring routes every application shares."""
+    monitor.store = diag.store
 
     @api.get("/api/diagnostics")
     def diagnostics(p):
@@ -1060,6 +1141,10 @@ def add_diagnostics(api, diag, monitor, program_dir):
         if r.returncode != 0:
             diag.log("ERROR", "self-test failed:", " / ".join(l.strip() for l in out.splitlines() if "[FAIL]" in l)[:500])
         return {"passed": r.returncode == 0, "output": redact(out)[-20000:]}
+
+    @api.get("/api/activity")
+    def activity(p):
+        return {"activity": diag.store.activities(min(1000, int(p.get("limit") or 200)), p.get("task") or None)}
 
     @api.get("/api/monitor")
     def monitor_get(p):
@@ -1171,6 +1256,8 @@ def run_cli(app):
         return 0
     if getattr(inst, "monitor", None):
         inst.monitor.start(inst.diag)
+    inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
     serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
-          open_browser="--no-browser" not in args)
+          open_browser="--no-browser" not in args, store=inst.store)
+    inst.store.activity("Application stopped", "ok")
     return 0

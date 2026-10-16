@@ -30,6 +30,15 @@
   .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; border-bottom: 1px solid var(--line); }
   .bars div { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
   .barlabels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .gate { display: grid; grid-template-columns: 200px 1fr 150px; gap: 8px 12px; align-items: center; }
+  .phase { border-left: 4px solid var(--line); padding: 6px 10px; margin: 8px 0; }
+  .phase.done { border-color: var(--good); }
+  .phase.now { border-color: var(--accent); }
+  .lrow { display: grid; grid-template-columns: 110px 1fr 230px; gap: 6px 10px; align-items: center; font-size: 13px; }
+  .spark { display: flex; align-items: flex-end; gap: 1px; height: 50px; border-bottom: 1px solid var(--line); }
+  .spark div { flex: 1; background: var(--accent); min-height: 1px; }
+  .spark div.open { background: var(--good); }
+  @media (max-width: 600px) { .gate, .lrow { grid-template-columns: 1fr; } }
   .mic { width: 84px; height: 84px; border-radius: 50%; font-size: 34px; display: block; margin: 14px auto; }
   .mic.on { animation: pulse 1s infinite; }
   @keyframes pulse { 50% { opacity: .55; } }
@@ -47,6 +56,7 @@
   <button data-tab="dict">Dictionary</button>
   <button data-tab="mine">My words</button>
   <button data-tab="progress">Progress</button>
+  <button data-tab="lab">Self-learning</button>
   <button data-tab="data">Data &amp; backups</button>
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="help">Help</button>
@@ -124,6 +134,37 @@
     <div class="card"><h2>Words to watch</h2><div id="phard"></div></div>
   </section>
 
+  <section class="panel" id="lab">
+    <div class="card">
+      <h2>Self-learning — the Language Lab</h2>
+      <p class="small">The application learns English <b>by itself</b>, the way the last tested prototype did: first the <b>sub-language</b> (letters, sounds by phonics rules, syllables, rhythm, which words recur and which go together) with meanings switched off; only when the one-way <b>Transition Gate</b> opens does it attach meanings (Webster 1913, public domain), then translations into the other 16 languages, then pronunciation, then each other language. No AI model is used.</p>
+      <div class="row">
+        <button class="btn" id="labrun">Learn by itself (all phases)</button>
+        <button class="btn quiet" id="labstop">Stop</button>
+        <button class="btn quiet" id="labrefresh">Refresh</button>
+      </div>
+      <div id="labjob" style="margin-top:10px"></div>
+    </div>
+    <div class="card"><h2>Transition Gate (sub-language → language)</h2><div id="labgate"></div></div>
+    <div class="card"><h2>Phases</h2><div id="labphases"></div></div>
+    <div class="card"><h2>Other languages</h2><div id="lablangs"></div></div>
+    <div class="card">
+      <h2>Give it more to read (Phase 1)</h2>
+      <p class="small muted">Paste English text or give a web address. It is read for structure only.</p>
+      <textarea id="labtext" rows="4" placeholder="English text" aria-label="English text"></textarea>
+      <div class="row" style="margin-top:6px"><input id="laburl" class="grow" type="text" placeholder="or https://… (a web page)" aria-label="Web address">
+        <button class="btn" id="labfeed">Read it</button></div>
+      <details style="margin-top:8px"><summary class="small">Suggested public sources</summary><ul class="small" id="labsrc"></ul></details>
+    </div>
+    <div class="card">
+      <h2>What it knows about a word</h2>
+      <div class="row"><input id="labw" class="grow" type="text" placeholder="e.g. house" aria-label="Word"><button class="btn quiet" id="labwgo">Show</button></div>
+      <div id="labwout" style="margin-top:10px"></div>
+    </div>
+    <div class="card"><h2>Recently learned</h2><div id="labrecent"></div></div>
+    <div class="card"><h2>Start over</h2><p class="small muted">Forgets everything the lab learned (your lessons are not touched). A backup is taken first.</p><button class="btn quiet" id="labforget">Forget and start over</button></div>
+  </section>
+
   <section class="panel" id="data">
     <div class="card"><h2>Your data</h2><div id="dstatus"></div></div>
     <div class="card">
@@ -162,6 +203,12 @@
       <ul>
         <li><b>Listening</b> uses your computer's voices through the browser. If there is no voice for a language, the app uses espeak-ng when it is installed; otherwise it tells you how to add one (Windows: Settings → Time &amp; language → Speech; macOS: System Settings → Accessibility → Spoken Content).</li>
         <li><b>Speaking</b> uses your browser's speech recognition (Chrome, Edge, Safari). In Chrome and Edge the recording is processed online by the browser maker; nothing is sent by this application itself. Your answer counts when what was heard is at least 80% the same as the word.</li>
+      </ul>
+      <h2>Self-learning and transparency</h2>
+      <ul>
+        <li><b>Self-learning</b> follows the last tested prototype: sub-language first (Phase 1), the one-way gate, then meanings (2), translations (3), pronunciation (4) and each other language. Every step shows progress, speed and time left.</li>
+        <li><b>Every button</b> shows a working bar at the top with how long it took; long work runs in the background with a progress bar, speed and time left.</li>
+        <li><b>Every major task is logged</b> — start-up, imports, backups, lab runs, diagnostics, monitoring — on Diagnostics → Activity log, with how long it took.</li>
       </ul>
       <h2>Word lists</h2>
       <p class="small" id="srcs"></p>

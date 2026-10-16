@@ -19,6 +19,26 @@ them depends on another, and none of them changes the old QueryBook store.
 
 Nothing to install: standard Python only. Leave the window open while you use the application.
 
+## Self-learning (Language & Speech → Self-learning)
+
+The Language Lab learns English **by itself, without any AI model**, using the logic of the last
+tested prototype (v9.50): first the **sub-language** — letters, sounds by phonics rules, syllables,
+rhythm, which words recur and which go together, with meanings switched off. When the one-way
+**Transition Gate** opens (sounds found ≥ 0.80, common words settled ≥ 0.70, word pairs ≥ 1.5 per
+word, new patterns < 0.20) it attaches meanings (Webster 1913), translations into the other 16
+languages, pronunciation, and then learns each other language. **Learn by itself** runs all phases
+(about 2 minutes); you can also feed it text or web pages for Phase 1. Every fact keeps its source.
+
+## Transparency
+
+* Every button shows a working bar at the top of the page and how long the action took (with the
+  server's own time).
+* Long work runs in the background with a progress bar, percent, speed, time left and elapsed time,
+  and can be stopped.
+* Every major task — start and stop, every change, imports, backups, lab runs, diagnostics,
+  monitoring reports — is written to the **Activity log** (Diagnostics page) with its result and
+  duration. The newest 20,000 entries are kept.
+
 ## Your data
 
 Each application keeps one SQLite database in a data folder **outside** the program folder:
@@ -89,7 +109,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 58 checks
+python language/app.py --selftest     # 66 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks
 python tools/run_all_tests.py         # all of the above

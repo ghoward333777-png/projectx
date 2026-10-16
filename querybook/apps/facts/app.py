@@ -77,7 +77,7 @@ class App:
         self.log = core.make_logger(folder, APP_ID)
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.fts = self._setup_fts()
-        self.jobs = core.Jobs(self.log)
+        self.jobs = core.Jobs(self.log, self.store)
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
