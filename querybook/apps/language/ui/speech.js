@@ -102,6 +102,32 @@ function stagesTable(stages, total) {
     (total !== undefined ? "<tr><td><b>Total</b></td><td></td><td><b>" + Number(total).toFixed(2) + "</b></td><td></td></tr>" : "") + "</table>";
 }
 
+// Talking face card: lip-sync track from the server, drawn in 2D (SVG) or 3D (three.js, with Enter VR), synced to the audio.
+async function faceCard(host, audioName, text, lang) {
+  const box = document.createElement("div"); box.className = "card face-card";
+  box.innerHTML = '<h3>Talking face <span class="small muted">mouth shapes timed to this audio</span></h3>' +
+    '<div class="row"><button class="btn small" data-fm="2d">2D face</button><button class="btn small" data-fm="3d">3D / VR face</button>' +
+    '<label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
+    '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
+    '<div class="face-stage" style="max-width:360px"></div><p class="small muted" data-finfo>Working out the mouth shapes…</p>';
+  host.appendChild(box);
+  const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
+  box.querySelectorAll("[data-fx]").forEach(a => { a.href = "/api/speech/lipsync.export?audio=" + encodeURIComponent(audioName) + "&text=" + encodeURIComponent(text) + "&lang=" + encodeURIComponent(lang) + "&format=" + a.dataset.fx; a.setAttribute("download", ""); });
+  const face = new TalkingFace(stage);
+  const load = async exact => {
+    const t0 = performance.now();
+    const tr = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
+    face.attach(audio, tr);
+    info.textContent = tr.words.length + " words, " + tr.visemes.length + " mouth shapes, " + tr.duration.toFixed(2) + " s of audio — timing: " + tr.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
+    return tr;
+  };
+  await face.setMode("2d");
+  box.querySelectorAll("[data-fm]").forEach(b => b.onclick = () => face.setMode(b.dataset.fm).catch(e => { info.textContent = "3D could not start here: " + e.message; face.setMode("2d"); }));
+  box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
+  try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
+  return face;
+}
+
 function audioEl(name) { return '<audio controls preload="auto" src="/api/speech/audio?name=' + encodeURIComponent(name) + '"></audio>'; }
 
 async function generate() {
@@ -115,6 +141,7 @@ async function generate() {
       stat(m.duration_s + " s", "length") : "") + "</div>" +
     (s.effects && s.effects.length ? '<p class="small"><b>Added after the engine:</b> ' + esc(s.effects.join("; ")) + "</p>" : "") +
     "<details><summary class=\"small\">Timing of every stage (to 0.01 s)</summary>" + stagesTable(r.stages.stages, r.stages.seconds) + "</details>";
+  if (window.TalkingFace) faceCard($("#sp-out"), r.audio, $("#sp-text").value, SP.profile.lang);
 }
 
 // ---------------------------------------------------------------- match
@@ -283,6 +310,7 @@ async function ask(audio) {
       esc(r.voice_used.emotion) + (r.voice_used.whisper ? ", whispering" : "") + ".</p>" : "") +
     '<p class="small"><b>Words understood:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>";
   const a = $("#ak-out audio"); if (a) a.play().catch(() => {});
+  if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang);
 }
 
 // ---------------------------------------------------------------- providers

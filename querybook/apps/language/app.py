@@ -22,12 +22,13 @@ import lab
 import speech
 import speechlab
 import tts
+import visemes
 import verify
 import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.7.4"
+VERSION = "1.8.0"
 PORT = 8101
 program_dir = HERE
 
@@ -534,6 +535,9 @@ class App:
         vr = self.last_verification()
         out.append(C("proof", "Proof of learning from scratch", "ok" if vr and vr["verdict"] == "PASS" else "fail" if vr else "warn",
                      ("%s %s, fingerprint %s…" % (vr["verdict"], vr["finished"], vr.get("fingerprint", {}).get("sha256", "")[:16])) if vr else "not run yet (Verify tab)"))
+        vm = vendor_missing()
+        out.append(C("face_video", "Face & video (3D/VR face, face tracker)", "fail" if vm else "ok",
+                     ("missing: " + ", ".join(vm)) if vm else "three.js r160 and MediaPipe Face Landmarker 0.10.14 present (%d files)" % len(VENDOR)))
         out.append(C("voice_bundle", "Bundled espeak-ng files", "fail" if miss else "ok", ("missing: " + ", ".join(miss[:6])) if miss else "program, runtime and 17 languages present"))
         return out
 
@@ -756,6 +760,51 @@ class App:
             self.speech._record("custom-voice", "custom voice '%s' built (with consent)" % r["name"], "google_cloud", "ok", clk)
             return r
 
+        @a.post("/api/speech/lipsync")
+        def sp_lipsync(p):
+            try:
+                return self.speech.lipsync(p.get("audio") or "", p.get("text") or "", p.get("lang") or "en", p.get("exact") in (True, "true"))
+            except FileNotFoundError:
+                raise core.UserError("That audio is not kept here.")
+
+        @a.get("/api/speech/lipsync.export")
+        def sp_lipsync_export(p):
+            tr = self.speech.lipsync(p.get("audio") or "", p.get("text") or "", p.get("lang") or "en", False)
+            fmt = p.get("format") or "json"
+            if fmt == "csv":
+                return visemes.csv_text(tr).encode("utf-8"), "text/csv; charset=utf-8"
+            if fmt == "tsv":
+                return visemes.rhubarb_tsv(tr).encode("utf-8"), "text/tab-separated-values; charset=utf-8"
+            return json.dumps(tr, indent=1, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8"
+
+        @a.post("/api/video/analyse")
+        def video_analyse(p):
+            return self.speech.video_analysis(p)
+
+        @a.post("/api/video/event")
+        def video_event(p):
+            # capture steps that happen in the browser (camera on, recording, export) go into the same speech log
+            clk = speechlab.Clock()
+            clk.t0 -= max(0.0, min(86400.0, float(p.get("seconds") or 0)))
+            clk(str(p.get("what") or "event")[:80])
+            clk._cur["_t"], clk._cur["at_s"] = clk.t0, 0.0
+            self.speech._record("capture", "%s — %s" % (str(p.get("what") or "")[:80], str(p.get("detail") or "")[:200]), "browser",
+                                "failed" if p.get("status") == "failed" else "ok", clk)
+            return {"ok": True}
+
+        @a.get("/api/video/guide")
+        def video_guide(p):
+            import lipread
+            return {"guide": lipread.GUIDE, "classes": lipread.CLASSES}
+
+        @a.post("/api/video/overdub")
+        def video_overdub(p):
+            try:
+                wav = _audio(p) or b""
+                return self.speech.overdub(wav, p.get("text") or "", consent=p.get("consent") in (True, "true"), lang=(p.get("profile") or {}).get("lang"), **_gen_args(p))
+            except (ValueError, RuntimeError) as e:
+                raise core.UserError(str(e))
+
         @a.get("/api/speech/log")
         def sp_log(p):
             return {"log": self.speech.history(min(1000, int(p.get("limit") or 100)), p.get("process") or None), "stats": self.speech.stats()}
@@ -906,6 +955,16 @@ def _fetch_text(url):
 
 
 _fetch = _fetch_text
+
+
+VENDOR = ["three/three.module.min.js", "three/VRButton.js", "three/LICENSE", "mediapipe/vision_bundle.mjs", "mediapipe/wasm/vision_wasm_internal.js",
+          "mediapipe/wasm/vision_wasm_internal.wasm", "mediapipe/face_landmarker.task", "mediapipe/LICENSE"]
+
+
+def vendor_missing():
+    """Bundled browser libraries (3D face, face tracker) that are missing or empty."""
+    d = os.path.join(HERE, "ui", "vendor")
+    return [f for f in VENDOR if not os.path.isfile(os.path.join(d, f)) or os.path.getsize(os.path.join(d, f)) < 100]
 
 
 def bundle_missing():
@@ -1090,7 +1149,56 @@ def selftest():
         except RuntimeError:
             c.check("Default voice: audio damaged by Windows text mode is refused, never played", True)
     _speech_selftest(c)
+    _viseme_selftest(c)
     return c.report(APP_NAME)
+
+
+def _viseme_selftest(c):
+    """Lip-sync: sounds map to the right mouth shapes, the track is ordered and covers the audio, exports are well formed."""
+    import voicedsp as V
+    vs = [v for _, v, _ in visemes.phonemes("pʌtʃ fɪʃ θɪŋk")]
+    c.check("Lip-sync: p → lips pressed, tʃ → CH, f → FF, θ → TH", vs[0] == "PP" and "CH" in vs and "FF" in vs and "TH" in vs, vs)
+    text = "Hello there. Welcome to the talking face."
+    wav = speech.speak_wav(text, "en-us") if speech.find_espeak() else V.tone_wav(f0=140, seconds=3, gaps=((1.2, 1.5),))
+    tr = visemes.align(text, wav, "en")
+    seq = tr["visemes"]
+    c.check("Lip-sync: every word timed, in order", len(tr["words"]) == 7 and all(a["end"] <= b["start"] + 1e-6 for a, b in zip(tr["words"], tr["words"][1:])))
+    c.check("Lip-sync: mouth shapes in order, inside the audio", seq and all(v["start"] <= v["end"] for v in seq) and
+            all(a["start"] <= b["start"] for a, b in zip(seq, seq[1:])) and seq[-1]["end"] <= tr["duration"] + 0.01)
+    c.check("Lip-sync: jaw curve at 100 per second covers the audio", abs(len(tr["jaw"]) - tr["duration"] * 100) <= 2 and max(tr["jaw"]) <= 1)
+    rh = visemes.rhubarb_tsv(tr).strip().split("\n")
+    c.check("Lip-sync: Rhubarb export ends at rest (X)", rh[-1].endswith("\tX") and all(len(r.split("\t")) == 2 for r in rh))
+    cs = visemes.csv_text(tr).strip().split("\n")
+    c.check("Lip-sync: CSV export has a header and one row per sound", cs[0].startswith("start_s,") and len(cs) - 1 == len(tr["phonemes"]))
+    c.check("Face & video: bundled 3D library and face tracker present", not vendor_missing(), ", ".join(vendor_missing()))
+    # lip-reading and sync on frames made from a known track
+    import lipread as LR
+    BS = {"P": (0.0, {"mouthClose": 0.4}), "F": (0.02, {"mouthRollLower": 0.5}), "W": (0.15, {"mouthPucker": 0.6}), "A": (0.45, {"jawOpen": 0.6}),
+          "E": (0.12, {"mouthStretchLeft": 0.4, "mouthStretchRight": 0.4}), "T": (0.1, {}), "-": (0.0, {"mouthClose": 0.3})}
+    c.check("Lip-reading: each mouth shape is read from the face's blendshapes",
+            all(LR.frame_class({"gap": g, "bs": b}) == (k if k != "-" else "P") for k, (g, b) in BS.items()))
+    said = "hello my friend thank you very much"
+    w2 = speech.speak_wav(said, "en-us") if speech.find_espeak() else V.tone_wav(f0=140, seconds=3)
+    t2 = visemes.align(said, w2, "en")
+    frames = []
+    for i in range(int(t2["duration"] * 30)):
+        v = next((x["v"] for x in t2["visemes"] if x["start"] <= i / 30 < x["end"]), "sil")
+        g, b = BS[LR.FROM_VISEME[v]]
+        frames.append({"t": i / 30, "face": True, "gap": g, "bs": b, "mouth_px": 170, "face_h": 0.5, "yaw": 3, "pitch": 2, "light": 0.5})
+    good = LR.analyse(frames, {"width": 1920, "height": 1080, "fps": 60}, t2["jaw"], 100, script=said, read_lips=False)
+    bad = LR.analyse(frames, {}, None, script="please send me the report by friday", read_lips=False)
+    c.check("Lip-reading: the right script agrees with the lips, a wrong one does not",
+            good["script"]["agreement"] >= 40 and bad["script"]["agreement"] < 25, "%d vs %d" % (good["script"]["agreement"], bad["script"]["agreement"]))
+    c.check("Capture check: a well-framed 1080p 60 fps face scores 100", good["quality"]["score"] == 100, good["quality"]["score"])
+    poor = LR.quality({"width": 640, "height": 360, "fps": 15}, [dict(f, face_h=0.15, mouth_px=40) for f in frames])
+    c.check("Capture check: a small, low-resolution, 15 fps face is flagged item by item", poor["score"] < 50 and
+            {i["item"] for i in poor["items"] if i["status"] == "bad"} >= {"framing", "mouth size", "resolution", "frame rate"})
+    env = t2["jaw"]
+    late = LR.av_sync([0.0] * 8 + env[:-8], env)                 # lips 80 ms after the sound
+    c.check("Sync check: sound 80 ms ahead of the lips is measured as -80 ms and flagged", late["offset_ms"] == -80 and "EARLY" in late["verdict"], late)
+    c.check("Sync check: matching sound and lips read as in sync", LR.av_sync(env, env)["offset_ms"] == 0)
+    rd = LR.analyse(frames, {}, env, 100, read_lips=True)["lipread"]
+    c.check("Lip-reading: free reading gives words, each with the words that look the same", rd["segments"] and all("same_on_lips" in w for s in rd["segments"] for w in s["words"]))
 
 
 def _speech_selftest(c):
@@ -1116,6 +1224,21 @@ def _speech_selftest(c):
         if speech.find_espeak():
             m = S.match("The quick brown fox jumps over the lazy dog.", {"pitch_hz": 160, "volume_dbfs": -24}, {}, "espeak")
             c.check("Speech: generate → measure → adjust reaches a pitch and loudness target", m["matched"], "%d rounds" % len(m["rounds"]))
+        if speech.find_espeak():
+            orig = speech.speak_wav("Good morning. I would like to talk about the weather today.", "en-us+m3")
+            try:
+                S.overdub(orig, "Hello", consent=False)
+                c.check("Overdub: refused without consent", False)
+            except ValueError:
+                c.check("Overdub: refused without consent", True)
+            od = S.overdub(orig, "Good evening. Let us discuss the football match.", {}, "espeak", consent=True)
+            mo, md = V.measure(orig), V.measure(open(S.audio_path(od["audio"]), "rb").read())
+            mv = V.measure(open(S.audio_path(od["voice_audio"]), "rb").read())
+            c.check("Overdub: the new words fill the original's speaking time (within 0.3 s)",
+                    abs(md["duration_s"] - mo["duration_s"]) < 0.3 and od["phrases"] and all(0.6 <= p["stretch"] <= 1.6 for p in od["phrases"]), od["mode"])
+            c.check("Overdub: stretching keeps the voice's pitch (within 5%)", abs(md["pitch"]["mean_hz"] - mv["pitch"]["mean_hz"]) < 0.05 * mv["pitch"]["mean_hz"],
+                    "%s vs %s Hz" % (md["pitch"]["mean_hz"], mv["pitch"]["mean_hz"]))
+            c.check("Overdub: labelled synthetic and logged", "SYNTHETIC" in od["label"] and S.history(1, "overdub"))
         g = S.generate("Fail over", {}, "elevenlabs")                      # no key → next voice in the chain
         c.check("Speech: when a voice cannot be used the next one speaks, and every attempt is recorded",
                 g["summary"]["engine_used"] in ("espeak", "sapi", "say", "formant") and g["summary"]["attempts"][0]["result"] == "skipped")

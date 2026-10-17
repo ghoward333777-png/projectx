@@ -6,6 +6,23 @@
 <title>QueryBook Language Builder</title>
 <link rel="stylesheet" href="qb.css">
 <style>
+.vd-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 10px; }
+@media (max-width: 800px) { .vd-grid { grid-template-columns: 1fr; } }
+.vd-wrap { position: relative; background: #0f172a; border-radius: 10px; min-height: 200px; overflow: hidden; align-self: start; }
+.vd-wrap video { display: block; width: 100%; height: auto; }
+.vd-wrap canvas { position: absolute; left: 0; top: 0; width: 100%; height: auto; pointer-events: none; }
+#vd-empty[hidden] { display: none; }
+#vd-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #cbd5e1; padding: 16px; text-align: center; }
+.vd-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vd-chip { padding: 4px 9px; border-radius: 999px; font-size: 13px; background: #e2e8f0; color: #0f172a; }
+.vd-chip.ok, .vd-word.ok { background: #dcfce7; color: #14532d; } .vd-chip.warn, .vd-word.warn { background: #fef3c7; color: #78350f; } .vd-chip.bad, .vd-word.bad { background: #fee2e2; color: #7f1d1d; }
+.vd-word { display: inline-block; padding: 3px 8px; border-radius: 6px; margin: 2px; }
+.vd-strip { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: 6px 0; }
+.vd-strip i { display: block; min-width: 1px; }
+.vd-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309; } tr.bad td:first-child { color: #b91c1c; }
+.vd-guide { margin: 10px 0 4px; }
+
   :root { --accent: #5b3c9e; }
   @media (prefers-color-scheme: dark) { :root { --accent: #7d5cc4; } }
   .banner { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; border-radius: var(--radius); padding: 22px 24px; margin: 0 0 16px;
@@ -174,6 +191,7 @@
       <button data-sp="match">🎯 Match a target</button>
       <button data-sp="listen">🎙 Listen &amp; analyse</button>
       <button data-sp="ask">💬 Ask by voice</button>
+      <button data-sp="video">🎥 Face &amp; video</button>
       <button data-sp="providers">🔑 Voice providers</button>
       <button data-sp="log">⏱ Speech log</button>
     </nav>
@@ -296,6 +314,54 @@
       </div>
     </div>
 
+    <div class="sp" id="sp-video" hidden>
+      <div class="card">
+        <h2>1 · Capture a speaking face</h2>
+        <p class="small">Use the camera, share a screen or browser tab that is playing a video, or open a video file. The face is tracked on this computer (MediaPipe Face Landmarker, bundled — nothing is uploaded).</p>
+        <div class="row">
+          <button class="btn" id="vd-cam">📷 Camera</button>
+          <button class="btn" id="vd-screen">🖥 Screen or tab</button>
+          <label class="btn quiet" style="cursor:pointer">📁 Video file<input type="file" id="vd-file" accept="video/*" hidden></label>
+          <label class="small">Camera size <select id="vd-res" style="width:auto"><option value="1080" selected>1080p (best)</option><option value="720">720p</option><option value="2160">4K (not needed)</option></select></label>
+          <label class="small">Frames <select id="vd-fps" style="width:auto"><option value="60" selected>60 per second (best)</option><option value="30">30 per second (minimum)</option></select></label>
+        </div>
+        <details class="vd-guide" open><summary><b>Best way to film for lip-sync and lip-reading</b></summary><ul id="vd-guide" class="small"></ul></details>
+        <div class="vd-grid">
+          <div class="vd-wrap"><video id="vd-video" playsinline muted></video><canvas id="vd-overlay"></canvas><div id="vd-empty" class="muted small">No picture yet — choose Camera, Screen or a Video file.</div></div>
+          <div>
+            <div id="vd-live" class="vd-chips"></div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn" id="vd-rec" disabled>⏺ Record</button>
+              <button class="btn quiet" id="vd-stop" disabled>⏹ Stop camera / sharing</button>
+              <span id="vd-state" class="small"></span>
+            </div>
+            <label class="small" style="display:block;margin-top:8px"><input type="checkbox" id="vd-mirror"> Avatar copies the mouth live (2D, or 3D with Enter VR)</label>
+            <div id="vd-avatar" class="face-stage" style="max-width:300px" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>2 · Analyse: sync check and lip-reading</h2>
+        <p class="small">Plays the recording or file once through the face tracker, then checks the picture against the recommended set-up, measures whether sound and lips are in sync, and reads the lips. A script makes the check far more reliable: lips show only about a third of speech.</p>
+        <textarea id="vd-script" rows="2" placeholder="What is said (optional — the app checks the lips against it; a mismatch suggests dubbing or a different speaker)"></textarea>
+        <div class="row" style="margin-top:6px">
+          <input id="vd-words" class="grow" type="text" placeholder="Expected words for lip-reading (optional, e.g. yes, no, stop, start)">
+          <label class="small"><input type="checkbox" id="vd-read" checked> read the lips</label>
+          <button class="btn bigbtn" id="vd-go" disabled>🔬 Analyse video</button>
+        </div>
+        <div class="meter" style="margin-top:8px"><i id="vd-prog" style="width:0"></i></div>
+        <div id="vd-out"></div>
+      </div>
+      <div class="card">
+        <h2>3 · Overdub: new words in the speaker's timing</h2>
+        <p class="small">Speaks new words with the voice chosen on the <b>Speak</b> tab and fits them into the speaking time of the video, phrase by phrase, without changing the pitch. Every result is labelled <b>SYNTHETIC VOICE</b>.</p>
+        <textarea id="vd-dub-text" rows="2" placeholder="The new words"></textarea>
+        <label class="small" style="display:block;margin:6px 0"><input type="checkbox" id="vd-consent"> I am the person in this video, or I have their permission, and the result will be shown as altered.</label>
+        <div class="row"><button class="btn bigbtn" id="vd-dub" disabled>🎬 Overdub</button></div>
+        <div id="vd-dub-out"></div>
+      </div>
+    </div>
+
     <div class="sp" id="sp-providers" hidden>
       <div class="card">
         <h2>Keys from the old QueryBook</h2>
@@ -412,8 +478,22 @@
         <li><b>Match a target</b> — give the output you need (pitch, speed, loudness, pauses, tremble, breath). The app generates, measures the result, adjusts and repeats until it matches.</li>
         <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
         <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
+        <li><b>Talking face</b> — after <b>Speak</b> or <b>Ask</b>, a face (2D, or 3D with <b>Enter VR</b> on a headset) moves its mouth in time with the voice. The mouth shapes are the 15 standard visemes, timed from the measured audio (or exactly, from Google Speech-to-Text word times). Export as JSON, CSV or Rhubarb TSV for animation tools.</li>
+        <li><b>Face &amp; video</b> — camera, screen or video file. Live face tracking with a quality check, a sync check (how many milliseconds sound and lips are apart), lip-reading with look-alike words, checking the lips against a script, an avatar that copies the mouth, and overdubbing (with consent; always labelled synthetic).</li>
         <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>
         <li><b>Honest limits:</b> cloud engines need your own keys; their requests follow each provider's published format and are tested against a stand-in server, not against the live services. The vocal-mode rules are tested on real normal speech and on synthetic whispering, laughing, sobbing and singing; real crying and laughing recordings vary, so close calls are marked “uncertain”.</li>
+      </ul>
+      <h2>Filming for lip-sync and lip-reading</h2>
+      <ul class="small">
+        <li><b>What to capture:</b> the whole face, forehead to chin, filling 40–60% of the picture's height — not just the mouth. The jaw, cheeks and chin carry speech too, and the tracker needs the whole face to find the lips.</li>
+        <li><b>Mouth size:</b> at least 150 pixels wide in the picture.</li>
+        <li><b>HD or 4K?</b> 1080p is best; 720p works. 4K adds file size, not accuracy (the tracker works on a small copy of each frame).</li>
+        <li><b>Frame rate:</b> 60 per second is best — lips move in 50–100 ms; 30 is the minimum.</li>
+        <li><b>Angle:</b> face the camera, within about 20° left/right and 15° up/down.</li>
+        <li><b>Light:</b> even, from the front (window or lamp behind the camera); nothing bright behind the head.</li>
+        <li><b>Nothing over the mouth:</b> no hand, microphone or mask.</li>
+        <li><b>Screen capture:</b> play the video full size at normal speed and share the tab with its audio.</li>
+        <li><b>Sound:</b> microphone 20–30 cm away in a quiet room.</li>
       </ul>
       <h2>Transparency</h2>
       <ul>
@@ -432,6 +512,8 @@
 <footer class="status"></footer>
 <script src="qb.js"></script>
 <script src="app.js"></script>
+<script src="face.js"></script>
 <script src="speech.js"></script>
+<script src="video.js"></script>
 </body>
 </html>

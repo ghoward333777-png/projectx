@@ -66,6 +66,34 @@ class FakeGitHub:
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
 
+def range_tests(c):
+    """Audio and video answers honour byte ranges, so players can seek inside them."""
+    import urllib.request as _u
+    api = core.Api()
+    blob = bytes(range(256)) * 40
+    api.get("/api/clip")(lambda p: (blob, "audio/wav"))
+    with tempfile.TemporaryDirectory() as ui:
+        httpd = core.ThreadingHTTPServer(("127.0.0.1", 0), core.make_handler(api, ui, lambda *a: None, "T"))
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        url = "http://127.0.0.1:%d/api/clip" % httpd.server_address[1]
+        def get(rng=None):
+            rq = _u.Request(url, headers={"Range": rng} if rng else {})
+            try:
+                with _u.urlopen(rq, timeout=5) as r:
+                    return r.status, r.headers, r.read()
+            except _u.HTTPError as e:
+                return e.code, e.headers, e.read()
+        st, h, b = get()
+        c.check("audio answers say they can be sought (Accept-Ranges)", st == 200 and h.get("Accept-Ranges") == "bytes" and b == blob)
+        st, h, b = get("bytes=100-199")
+        c.check("a byte range returns exactly that part (206)", st == 206 and b == blob[100:200] and h.get("Content-Range") == "bytes 100-199/%d" % len(blob))
+        st, h, b = get("bytes=-10")
+        c.check("a suffix range returns the last bytes", st == 206 and b == blob[-10:])
+        st, h, b = get("bytes=999999-")
+        c.check("a range past the end is refused (416)", st == 416)
+        httpd.shutdown()
+
+
 def monitoring_tests(c):
     gh = FakeGitHub()
     os.environ["QB_GITHUB_API"] = gh.url
@@ -556,6 +584,7 @@ def main():
                 c.check("a mirror inside the data folder is refused", True)
             st4.set_mirror("off")
             c.check("the mirror can be switched off", st4.mirror_dir() is None)
+    range_tests(c)
     monitoring_tests(c)
     google_tests(c)
     setup_script_tests(c)

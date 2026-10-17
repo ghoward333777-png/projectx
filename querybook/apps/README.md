@@ -62,6 +62,26 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
 * **Speech log:** every process with UTC timestamps and per-stage times to 0.01 s, statistics, CSV.
   Provider keys stay in the data folder (`speech_keys.json`, owner-only) and are never shown or logged.
 
+## Talking face, camera and lip-reading (Language Builder → Speech)
+
+* **Talking face:** after Speak or Ask, a face moves its mouth in time with the voice — 2D (SVG) or 3D
+  (three.js, bundled) with **Enter VR** for WebXR headsets. Mouth shapes are the 15 standard visemes
+  (Oculus/Meta set), timed from the measured audio, or exactly from Google Speech-to-Text word times.
+  Export JSON, CSV or Rhubarb TSV for animation tools.
+* **Face & video:** camera, screen/tab capture or a video file. The face is tracked on this computer
+  (MediaPipe Face Landmarker 0.10.14, bundled; nothing is uploaded) with live checks against the
+  recommended set-up, recording to WebM, and an avatar that copies the mouth (2D/3D/VR).
+* **Sync check:** cross-correlates lip opening with loudness and reports the offset in milliseconds
+  (ITU-R BT.1359 limits: sound more than 45 ms early or 125 ms late is noticeable).
+* **Lip-reading v1:** each frame is read as one of seven mouth classes; words are matched by dynamic
+  time warping and every guess lists the words that look identical on the lips. With a script, the app
+  scores how well the lips agree with it against chance — a mismatch suggests dubbing or another speaker.
+* **Overdub:** new words in any voice, fitted phrase by phrase into the original speaking time without
+  changing pitch, exported as a new video. Needs the consent box; always labelled **SYNTHETIC VOICE**.
+* **Best capture:** whole face, forehead to chin, 40–60% of the picture's height (not just the mouth);
+  mouth ≥ 150 px wide; 1080p (720p works, 4K adds nothing); 60 fps best, 30 minimum; face the camera
+  within 20°; even front light; nothing over the mouth; mic 20–30 cm away.
+
 ## Transparency
 
 * Every button shows a working bar at the top of the page and how long the action took (with the

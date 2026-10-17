@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.4.0"
+CORE_VERSION = "1.4.1"
 BACKUPS_KEPT = 10
 
 
@@ -562,7 +562,9 @@ class UserError(Exception):
 
 
 _TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8",
-          ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".wav": "audio/wav", ".json": "application/json"}
+          ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".wav": "audio/wav", ".json": "application/json",
+          ".mjs": "application/javascript; charset=utf-8", ".wasm": "application/wasm", ".task": "application/octet-stream",
+          ".webm": "video/webm", ".mp4": "video/mp4"}
 
 
 ACTION_NAMES = {}          # path -> readable task name for the activity log (apps may add their own)
@@ -598,10 +600,27 @@ def make_handler(api, ui_dir, log, app_name, store=None):
                 body = json.dumps(body, ensure_ascii=False).encode("utf-8")
             elif isinstance(body, str):
                 body = body.encode("utf-8")
+            extra = dict(extra or {})
+            if code == 200 and ctype.split(";")[0].split("/")[0] in ("audio", "video"):
+                extra["Accept-Ranges"] = "bytes"           # lets players seek (and lip-sync scrub) inside recordings
+                rng = re.match(r"bytes=(\d*)-(\d*)$", (self.headers.get("Range") or "").strip())
+                if rng and (rng.group(1) or rng.group(2)):
+                    n = len(body)
+                    if rng.group(1):
+                        a, b = int(rng.group(1)), min(n - 1, int(rng.group(2) or n - 1))
+                    else:
+                        a, b = max(0, n - int(rng.group(2))), n - 1
+                    if a >= n or a > b:
+                        extra["Content-Range"] = "bytes */%d" % n
+                        code, body = 416, b""
+                    else:
+                        extra["Content-Range"] = "bytes %d-%d/%d" % (a, b, n)
+                        code, body = 206, body[a:b + 1]
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            if "Cache-Control" not in (extra or {}):
+                self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
@@ -676,7 +695,9 @@ def make_handler(api, ui_dir, log, app_name, store=None):
                 return self._send(404, {"error": "Not found."})
             with open(p, "rb") as f:
                 data = f.read()
-            self._send(200, data, _TYPES.get(os.path.splitext(p)[1], "application/octet-stream"))
+            # bundled libraries and models do not change between versions of a file name: let the browser keep them
+            cache = {"Cache-Control": "max-age=604800"} if rel.replace("\\", "/").startswith("vendor/") else None
+            self._send(200, data, _TYPES.get(os.path.splitext(p)[1], "application/octet-stream"), extra=cache)
 
         def do_GET(self):
             self._dispatch("GET")

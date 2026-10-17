@@ -1,0 +1,5 @@
+MediaPipe Tasks Vision 0.10.14 (vision_bundle.mjs, wasm/) and the Face Landmarker model (face_landmarker.task, float16 v1)
+Copyright The MediaPipe Authors (Google LLC). Licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+Sources: https://www.npmjs.com/package/@mediapipe/tasks-vision  and  https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker
+The model runs entirely on this computer; no image leaves it.

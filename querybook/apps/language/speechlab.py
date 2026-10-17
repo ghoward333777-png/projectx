@@ -24,6 +24,7 @@ import function_words
 import gcloud
 import speech
 import tts
+import visemes
 import vocab
 import voicedsp
 
@@ -332,9 +333,126 @@ class SpeechLab:
             summary.update({"duration_s": meas["duration_s"], "pitch_hz": meas["pitch"].get("mean_hz"), "rate_syl_s": meas["rate"]["articulation_rate_syl_s"],
                             "volume_dbfs": meas["volume"]["mean_dbfs"], "vocal_mode": meas["vocal_mode"]["label"]})
         rid = self._record("generate", (quiet_label or "") + "“%s” — %s" % (text[:80], tts.BY_ID[used].name), used, "ok" if not err else "fallback",
-                           clk, {"plan": pl["request"], "profile": pl["profile"], "advanced": pl["advanced"], "post_processing": fx}, summary, name, parent)
+                           clk, {"plan": pl["request"], "profile": pl["profile"], "advanced": pl["advanced"], "post_processing": fx, "text": text}, summary, name, parent)
         return {"log_id": rid, "audio": name, "plan": pl, "effects": fxrep, "measure": _slim(meas) if meas else None,
                 "summary": summary, "stages": self.store.query("SELECT stages, seconds FROM speech_log WHERE id = ?", (rid,))[0] if rid else None}
+
+    # ---------------------------------------------------------------- lip-sync: timed mouth shapes for a spoken clip
+    def lipsync(self, audio_name, text, lang="en", exact=False):
+        """Viseme track for a clip this app produced or received. exact=True asks Google Speech-to-Text for word
+        times first (needs the API key); otherwise the words are fitted to the measured speech."""
+        clk = Clock()
+        clk("read audio")
+        with open(self.audio_path(audio_name), "rb") as f:
+            wav = f.read()
+        wt = None
+        if exact and self.stt_ready():
+            clk("word times (Google Speech-to-Text)")
+            r = self.transcribe(wav, lang)
+            if r and r.get("words"):
+                wt = r["words"]
+        clk("align mouth shapes")
+        tr = visemes.align(text, wav, lang, self.lab, wt)
+        self._record("lipsync", "%d mouth shapes for “%s” (%s)" % (len(tr["visemes"]), (text or "")[:60], tr["method"][:60]), "visemes", "ok", clk,
+                     {"audio": audio_name, "lang": lang, "exact": bool(wt)}, {"visemes": len(tr["visemes"]), "duration": tr["duration"]}, audio_name)
+        tr["audio"] = audio_name
+        return tr
+
+    # ---------------------------------------------------------------- overdub: new words in the timing of the old ones
+    def overdub(self, original_wav, text, prof=None, engine="espeak", voice="", model="", adv=None, consent=False, lang=None):
+        """Speak `text` with the chosen voice and fit it into the speaking time of `original_wav` (the soundtrack
+        of a video): phrase by phrase when both have the same number of phrases, otherwise as one block.
+        Stretching keeps the pitch (WSOLA). The result is labelled synthetic."""
+        if not consent:
+            raise ValueError("Overdubbing replaces a person's voice. Tick the box to confirm you are that person or have their permission, "
+                             "and that the result will be labelled as altered.")
+        if not voicedsp.is_wav(original_wav):
+            raise ValueError("The original soundtrack must be WAV audio.")
+        clk = Clock()
+        clk("measure the original")
+        orig_name = self._save_audio(original_wav, "orig")
+        mo = voicedsp.measure(original_wav)
+        o_spans = visemes._speech_spans(mo)
+        clk("speak the new words")
+        g = self.generate(text, prof or {}, engine, voice, model, adv, measure=False, parent=None, quiet_label="overdub: ")
+        with open(self.audio_path(g["audio"]), "rb") as f:
+            new_wav = f.read()
+        x, sr = voicedsp.read_wav(new_wav)
+        mn = voicedsp.measure(new_wav)
+        n_spans = visemes._speech_spans(mn)
+        clk("fit phrase by phrase")
+
+        def phrases(spans, gap=0.25):
+            out = [list(spans[0])]
+            for a, b in spans[1:]:
+                if a - out[-1][1] >= gap:
+                    out.append([a, b])
+                else:
+                    out[-1][1] = b
+            return out
+        po, pn = phrases(o_spans), phrases(n_spans)
+        if len(po) != len(pn):
+            po, pn, mode = [[po[0][0], po[-1][1]]], [[pn[0][0], pn[-1][1]]], "one block (%d phrases in the original, %d in the new words)" % (len(po), len(pn))
+        else:
+            mode = "phrase by phrase (%d phrases)" % len(po)
+        total = max(mo["duration_s"], po[-1][1])
+        y = [0.0] * int(total * sr + sr * 0.05)
+        fits, warnings = [], []
+        for (oa, ob), (na, nb) in zip(po, pn):
+            seg = x[int(na * sr):int(nb * sr)]
+            want = max(0.05, ob - oa)
+            k = want / max(0.05, nb - na)
+            kk = max(0.6, min(1.6, k))
+            if kk != k:
+                warnings.append("The phrase at %.2f s needed %.2f× time; limited to %.2f× so it stays natural — reword it %s." %
+                                (oa, k, kk, "longer" if k > 1 else "shorter"))
+            elif k < 0.8 or k > 1.25:
+                warnings.append("The phrase at %.2f s was stretched %.2f× (noticeable). Rewording it to fit will sound better." % (oa, k))
+            st = voicedsp.wsola(seg, sr, kk)
+            p0 = int(oa * sr)
+            for i, v in enumerate(st):
+                if p0 + i < len(y):
+                    y[p0 + i] += v
+            fits.append({"original_from_s": round(oa, 2), "original_to_s": round(ob, 2), "new_seconds": round(nb - na, 2), "stretch": round(kk, 3)})
+        peak = max((abs(v) for v in y), default=0.0)
+        if peak > 0.99:
+            y = [v * 0.99 / peak for v in y]
+        data = voicedsp.write_wav(y, sr)
+        clk("save")
+        name = self._save_audio(data, "dub")
+        clk("mouth shapes for the new words")
+        track = visemes.align(text, data, lang or (prof or {}).get("lang") or "en", self.lab)
+        res = {"audio": name, "original_audio": orig_name, "voice_audio": g["audio"], "engine_used": g["summary"]["engine_used"],
+               "mode": mode, "phrases": fits, "warnings": warnings, "duration_s": round(len(y) / sr, 2), "track": track,
+               "label": "SYNTHETIC VOICE — overdubbed with QueryBook"}
+        rid = self._record("overdub", "“%s” fitted %s over %.2f s" % (text[:60], mode, total), g["summary"]["engine_used"], "ok", clk,
+                           {"text": text, "engine": engine, "voice": voice, "consent": True, "original": orig_name},
+                           {k: res[k] for k in ("mode", "phrases", "warnings", "duration_s")}, name)
+        res["log_id"] = rid
+        res["stages"] = self.store.query("SELECT stages, seconds FROM speech_log WHERE id = ?", (rid,))[0] if rid else None
+        return res
+
+    def video_analysis(self, p):
+        """Log and return lipread.analyse() for frames sent by the browser tracker."""
+        import lipread
+        clk = Clock()
+        clk("analyse %d frames" % len(p.get("frames") or []))
+        r = lipread.analyse(p.get("frames") or [], p.get("info") or {}, p.get("env") or None, int(p.get("env_fps") or 100),
+                            p.get("script") or "", p.get("lang") or "en", [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w],
+                            self.lab, p.get("read_lips", True) not in (False, "false"))
+        bits = ["capture quality %d/100" % r["quality"]["score"]]
+        if r.get("sync"):
+            bits.append("sync: " + r["sync"].get("verdict", r["sync"].get("reason", "")))
+        if r.get("script"):
+            bits.append("script agreement %d%%" % r["script"]["agreement"])
+        if r.get("lipread"):
+            bits.append("read: “%s”" % r["lipread"]["text"][:60])
+        rid = self._record("video", "; ".join(bits), (p.get("info") or {}).get("source", "camera"), "ok" if not r.get("error") else "failed", clk,
+                           {"info": p.get("info"), "frames": len(p.get("frames") or []), "script": p.get("script") or ""},
+                           {k: r.get(k) for k in ("quality", "sync", "script")})
+        r["log_id"] = rid
+        r["stages"] = self.store.query("SELECT stages, seconds FROM speech_log WHERE id = ?", (rid,))[0] if rid else None
+        return r
 
     # ---------------------------------------------------------------- match a target specification
     TARGET_KEYS = {"pitch_hz": "mean pitch (Hz)", "rate_syl_s": "articulation rate (syllables/s)", "volume_dbfs": "loudness (dBFS)",
