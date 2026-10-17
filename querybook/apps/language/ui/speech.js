@@ -375,6 +375,14 @@ async function loadSpeech() {
     const r = await api("/api/speech/custom-voice", { name: $("#cv-name").value, language: $("#cv-lang").value, consent: $("#cv-consent").checked, audio_b64: await blobB64(f) });
     $("#cv-out").textContent = "Custom voice '" + r.name + "' built. Choose it in the Google Cloud voice list."; loadProviders();
   };
+  $("#ik-go").onclick = async () => {
+    const r = await api("/api/speech/keys/import-prototype", { folder: $("#ik-f").value });
+    $("#ik-out").innerHTML = r.imported.length ? '<div class="note good">✔ Imported from <span class="mono">' + esc(r.found) + "</span>: " + r.imported.map(esc).join(", ") +
+      (r.defaults && r.defaults.google_voice ? ". The prototype used Google voice <b>" + esc(r.defaults.google_voice) + "</b>" + (r.defaults.google_model ? " (" + esc(r.defaults.google_model) + ")" : "") : "") +
+      ". Press <b>Test</b> below to check each provider.</div>"
+      : '<div class="note bad">No old QueryBook key file found (' + r.searched + " found in the usual places). Type the old QueryBook folder above — the one with <span class=\"mono\">qb_language.py</span> — and try again.</div>";
+    await loadProviders(); await refreshEngines();
+  };
   $$("#sptabs button").forEach(b => b.onclick = () => showSub(b.dataset.sp));
   renderTargets();
   profileUI();

@@ -187,6 +187,80 @@ class Keys:
             pass
         os.replace(tmp, self.path)
 
+    # ---- the prototype kept its keys in qb_tts_keys.json next to its program (never committed)
+    PROTO_FILE = "qb_tts_keys.json"
+
+    @staticmethod
+    def prototype_candidates(extra=None):
+        """Where the old QueryBook's key file may be on this computer (searched a few levels deep, quickly)."""
+        import glob
+        home = os.path.expanduser("~")
+        roots = [extra] if extra else []
+        roots += [home, os.path.join(home, "Desktop"), os.path.join(home, "Downloads"), os.path.join(home, "Documents"),
+                  os.path.join(home, "OneDrive"), os.path.join(home, "OneDrive", "Desktop"), os.path.join(home, "OneDrive", "Documents")]
+        if os.name == "nt":
+            roots += ["%s:\\" % d for d in "CDEFG"]
+        found, seen = [], set()
+        for r in roots:
+            if not r or not os.path.isdir(r):
+                continue
+            depth = (1, 2) if (len(r) <= 3 and r.endswith(("\\", "/"))) else (1, 2, 3)      # drive roots: 2 levels; user folders: 3
+            pats = [os.path.join(r, Keys.PROTO_FILE)] + [os.path.join(r, *(["*"] * k), Keys.PROTO_FILE) for k in depth]
+            for pat in pats:
+                for f in glob.glob(pat):
+                    a = os.path.abspath(f)
+                    if a not in seen and os.path.isfile(a):
+                        seen.add(a)
+                        found.append(a)
+            if len(found) > 20:
+                break
+        return sorted(found, key=lambda f: -os.path.getmtime(f))
+
+    def import_prototype(self, folder=None):
+        """Copy the old QueryBook's Google / ElevenLabs keys (and Google custom voices) into this app. Returns what
+        was found — never the keys themselves."""
+        if folder and os.path.isfile(folder):
+            files = [os.path.abspath(folder)]
+        elif folder and os.path.isfile(os.path.join(folder, self.PROTO_FILE)):
+            files = [os.path.join(os.path.abspath(folder), self.PROTO_FILE)]
+        else:
+            files = self.prototype_candidates(folder)
+        env = {"google": os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_TTS_API_KEY"), "elevenlabs": os.environ.get("ELEVENLABS_API_KEY")}
+        imported, used = [], None
+        for f in files:
+            try:
+                with open(f, encoding="utf-8") as fh:
+                    old = json.load(fh) or {}
+            except (OSError, ValueError):
+                continue
+            g, e = old.get("google") or {}, old.get("elevenlabs") or {}
+            if not (g.get("key") or e.get("key") or g.get("custom_voices")):
+                continue
+            used = f
+            if g.get("key"):
+                # the prototype used one Google key for Gemini TTS and for Cloud Text-to-Speech custom voices
+                self.save("google_gemini", {"api_key": g["key"]})
+                self.save("google_cloud", {"api_key": g["key"]})
+                imported += ["Google Gemini TTS", "Google Cloud Text-to-Speech (same key)"]
+            for name, cv in (g.get("custom_voices") or {}).items():
+                if cv.get("cloning_key"):
+                    self.save_custom_voice(name, cv["cloning_key"], cv.get("language", "en-US"))
+                    imported.append("Google custom voice '%s'" % name)
+            if e.get("key"):
+                self.save("elevenlabs", {"api_key": e["key"]})
+                imported.append("ElevenLabs")
+            break
+        if not used and (env["google"] or env["elevenlabs"]):
+            if env["google"]:
+                self.save("google_gemini", {"api_key": env["google"]}); self.save("google_cloud", {"api_key": env["google"]})
+                imported += ["Google (from the environment)"]
+            if env["elevenlabs"]:
+                self.save("elevenlabs", {"api_key": env["elevenlabs"]}); imported.append("ElevenLabs (from the environment)")
+            used = "environment variables"
+        return {"found": used, "searched": len(files), "imported": imported,
+                "defaults_noted": ({"google_voice": g.get("voice"), "google_model": g.get("model"), "elevenlabs_voice": e.get("voice"),
+                                    "elevenlabs_model": e.get("model")} if used and used != "environment variables" else None)}
+
     def public(self):
         out = {}
         for prov, fields in KEY_FIELDS.items():

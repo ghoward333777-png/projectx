@@ -285,6 +285,12 @@
     </div>
 
     <div class="sp" id="sp-providers" hidden>
+      <div class="card">
+        <h2>Keys from the old QueryBook</h2>
+        <p class="small">The prototype kept its Google and ElevenLabs keys in <span class="mono">qb_tts_keys.json</span> next to its program. This finds that file on this computer and copies the keys (and any Google custom voices) into this app. The keys are never shown.</p>
+        <div class="row"><input id="ik-f" class="grow" type="text" placeholder="Old QueryBook folder (optional — leave empty to search this computer)"><button class="btn" id="ik-go">🔑 Find and import keys</button></div>
+        <div id="ik-out" class="small" style="margin-top:8px"></div>
+      </div>
       <div id="pv-list"></div>
       <div class="card">
         <h2>Google custom voice (voice cloning)</h2>

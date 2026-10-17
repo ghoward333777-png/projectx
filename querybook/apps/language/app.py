@@ -27,7 +27,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 PORT = 8101
 program_dir = HERE
 
@@ -86,7 +86,7 @@ class App:
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.jobs = core.Jobs(self.log, self.store)
         self.lab = lab.Lab(self.store, self.log)
-        self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify}
+        self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify, "import-keys": self._cli_import_keys}
         self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
@@ -168,6 +168,16 @@ class App:
         rep["file"] = names[-1]
         rep["all_reports"] = len(names)
         return rep
+
+    def _cli_import_keys(self, args):
+        """python app.py import-keys [FOLDER]: copy the old QueryBook's voice keys (never printed)."""
+        r = self.speech.keys.import_prototype(args[0] if args else None)
+        if r["imported"]:
+            print("Imported from %s:\n  %s" % (core.redact(r["found"]), "\n  ".join(r["imported"])))
+        else:
+            print("No old QueryBook key file (qb_tts_keys.json) found in %d places. Give the old QueryBook folder: python app.py import-keys \"C:\\path\\to\\QueryBook\"" % r["searched"])
+        self.store.activity("Speech: import old QueryBook keys", "ok" if r["imported"] else "not found", ", ".join(r["imported"]))
+        return 0 if r["imported"] else 1
 
     def _cli_verify(self, args):
         print("Verifying from scratch: sealed empty store, network blocked, full build, fingerprint…")
@@ -718,6 +728,15 @@ class App:
             self.store.activity("Speech: provider settings saved", "ok", p.get("provider"))
             return self.speech.keys.public()
 
+        @a.post("/api/speech/keys/import-prototype")
+        def sp_keys_import(p):
+            clk = speechlab.Clock(); clk("search and import")
+            r = self.speech.keys.import_prototype((p.get("folder") or "").strip() or None)
+            where = core.redact(r["found"]) if r["found"] else None
+            self.speech._record("keys-import", "old QueryBook keys: %s" % (", ".join(r["imported"]) if r["imported"] else "none found (%d places searched)" % r["searched"]),
+                                "", "ok" if r["imported"] else "not found", clk, {"folder": core.redact(p.get("folder") or "")}, {"found": where, "imported": r["imported"]})
+            return {"found": where, "searched": r["searched"], "imported": r["imported"], "defaults": r["defaults_noted"], "keys": self.speech.keys.public()}
+
         @a.post("/api/speech/keys/forget")
         def sp_keys_forget(p):
             self.speech.keys.forget(p.get("provider"))
@@ -1160,6 +1179,22 @@ def _speech_selftest(c):
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
+        with tempfile.TemporaryDirectory() as old:
+            with open(os.path.join(old, "qb_tts_keys.json"), "w") as f:
+                json.dump({"google": {"key": "OLDGOOGLE-KEY-777777", "voice": "Kore", "custom_voices": {"Me": {"cloning_key": "CLONE-KEY-888888", "language": "en-US"}}},
+                           "elevenlabs": {"key": "OLDELEVEN-KEY-999999"}}, f)
+            for prov in ("google_gemini", "google_cloud", "elevenlabs"):
+                S.keys.forget(prov)
+            r = S.keys.import_prototype(old)
+            k = S.keys
+            c.check("Speech: the old QueryBook's Google and ElevenLabs keys (and custom voices) are imported",
+                    k.get("google_gemini")["api_key"] == "OLDGOOGLE-KEY-777777" and k.get("google_cloud")["api_key"] == "OLDGOOGLE-KEY-777777"
+                    and k.get("elevenlabs")["api_key"] == "OLDELEVEN-KEY-999999" and "Me" in k.get("google_cloud")["custom_voices"], r["imported"])
+            pub = json.dumps(k.public()) + json.dumps(r)
+            c.check("Speech: imported keys are never shown", "OLDGOOGLE" not in pub and "OLDELEVEN" not in pub and "CLONE-KEY" not in pub)
+            with tempfile.TemporaryDirectory() as empty:
+                c.check("Speech: a folder without the old key file is reported as not found", not S.keys.import_prototype(empty)["imported"]
+                        or bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("ELEVENLABS_API_KEY")))
         rows = S.history(500)
         c.check("Speech: every process is logged with timestamps to 0.01 s and timed stages",
                 rows and all(re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d\dZ$", r["started"]) and r["stages"] is not None for r in rows))
