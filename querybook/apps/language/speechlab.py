@@ -271,6 +271,9 @@ class SpeechLab:
         pl, run, fx = tts.plan(text, prof, engine, voice, model, self.keys, adv)
         # redundancy: the chosen engine first, then every offline voice in turn, ending with the pure-Python voice
         chain = [engine] + ([e for e in FAILOVER if e != engine] if fallback else [])
+        if engine == "google_gemini":
+            # the same 30 Google AI voices are offered by Cloud Text-to-Speech as "Chirp 3 HD" voices: use those first
+            chain.insert(1, "google_cloud")
         attempts, data, used, err, fx_used = [], None, None, None, fx
         for eid in chain:
             ok, why = tts.BY_ID[eid].available(self.keys)
@@ -283,9 +286,12 @@ class SpeechLab:
                 if eid == engine:
                     data, fx_used = run(), fx
                 else:
-                    pl2, run2, fx_used = tts.plan(text, prof, eid, "", "", self.keys, None)
+                    alt_voice = ""
+                    if engine == "google_gemini" and eid == "google_cloud":
+                        alt_voice = "%s-Chirp3-HD-%s" % (tts.locale(tts.profile(prof)), voice or "Kore")
+                    pl2, run2, fx_used = tts.plan(text, prof, eid, alt_voice, "", self.keys, None)
                     data = run2()
-                    pl.setdefault("fallback", {"engine": eid, "request": pl2["request"]})
+                    pl.setdefault("fallback", {"engine": eid, "voice": alt_voice, "request": pl2["request"]})
                 if not voicedsp.is_wav(data):
                     raise RuntimeError("the engine returned audio that is not WAV")
                 attempts.append({"engine": eid, "result": "ok", "seconds": round(time.time() - t_try, 2)})

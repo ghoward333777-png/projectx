@@ -308,7 +308,14 @@ def _http(url, body, headers, method="POST", timeout=60):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.read(), r.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
-        raise RuntimeError("HTTP %s: %s" % (e.code, e.read().decode("utf-8", "replace")[:300]))
+        txt = e.read().decode("utf-8", "replace")
+        m = re.search(r"Requests to this API (\S+) .*are blocked", txt)
+        if e.code == 403 and m:
+            raise RuntimeError("your Google API key is not allowed to use %s (add it under the key's API restrictions)" % m.group(1))
+        m = re.search(r"(\S+\.googleapis\.com|[A-Z][\w ]+ API) has not been used in project \d+ before or it is disabled", txt)
+        if e.code == 403 and m:
+            raise RuntimeError("%s is not switched on in your Google project (APIs & Services → Library → Enable)" % m.group(1))
+        raise RuntimeError("HTTP %s: %s" % (e.code, txt[:300]))
 
 
 SPEECH_LANG = {"en": "en-US", "es": "es-ES", "fr": "fr-FR", "de": "de-DE", "it": "it-IT", "pt": "pt-PT", "nl": "nl-NL", "sv": "sv-SE",

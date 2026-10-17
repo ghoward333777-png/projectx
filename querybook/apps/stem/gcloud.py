@@ -28,6 +28,10 @@ class GoogleError(Exception):
     pass
 
 
+API_NAMES = {"youtube": "YouTube Data API v3", "youtube.googleapis.com": "YouTube Data API v3", "generativelanguage.googleapis.com": "Generative Language API",
+             "texttospeech.googleapis.com": "Cloud Text-to-Speech API", "speech.googleapis.com": "Cloud Speech-to-Text API"}
+
+
 def base(svc):
     return (os.environ.get("QB_GCP_BASE_" + svc.upper()) or DEFAULTS[svc] or "").rstrip("/")
 
@@ -202,6 +206,10 @@ class Google:
                 pass
             if e.code == 308:                               # resumable upload: "resume incomplete"
                 return 308, b"", dict(e.headers)
+            m = re.search(r"Requests to this API (\S+) .*are blocked", str(txt))
+            if e.code == 403 and m:
+                raise GoogleError("your Google API key is not allowed to use %s. In Google Cloud → APIs & Services → Credentials → "
+                                  "your key → API restrictions, tick %s and save (takes about 5 minutes)." % (m.group(1), API_NAMES.get(m.group(1), m.group(1))))
             raise GoogleError("HTTP %s: %s" % (e.code, self.s.scrub(txt)[:300]))
         except (urllib.error.URLError, socket.timeout, OSError) as e:
             raise GoogleError("cannot reach Google: %s" % self.s.scrub(getattr(e, "reason", e)))
