@@ -51,7 +51,7 @@ function measureFrame(res, video, t) {
   f.pitch = Math.round(Math.asin(Math.max(-1, Math.min(1, (q - 0.58) * 2.5))) * 180 / Math.PI);
   f.bs = {};
   const cats = res.faceBlendshapes && res.faceBlendshapes[0] ? res.faceBlendshapes[0].categories : [];
-  cats.forEach(c => { if (/^(mouth|jaw)/.test(c.categoryName)) f.bs[c.categoryName] = Math.round(c.score * 1000) / 1000; });
+  cats.forEach(c => { if (/^(mouth|jaw|brow|cheek|noseSneer|eyeSquint|eyeWide)/.test(c.categoryName)) f.bs[c.categoryName] = Math.round(c.score * 1000) / 1000; });
   f.light = VD.lastLight;
   f._L = L;
   return f;
@@ -282,6 +282,8 @@ async function vdAnalyse() {
     const r = await api("/api/video/analyse", { frames, env, env_fps: 100, script: $("#vd-script").value, words: $("#vd-words").value,
       read_lips: $("#vd-read").checked, lang: (window.SP && SP.profile && SP.profile.lang) || "en",
       info: { width: v.videoWidth, height: v.videoHeight, fps: Math.round(Math.max(fps, tracked) * 10) / 10, tracked_fps: Math.round(tracked * 10) / 10, source: VD.kind || "file", seconds: Math.round(span * 100) / 100 } });
+    VD.analysed = { frames, env, info: { width: v.videoWidth, height: v.videoHeight, fps: Math.round(Math.max(fps, tracked) * 10) / 10, source: VD.kind || "file" } };
+    $("#vd-ingest").disabled = false;
     vdShow(r, note);
     ok = true;
   } catch (e) {
@@ -410,6 +412,7 @@ async function vdSetup() {
   $("#vd-stop").onclick = vdStop;
   $("#vd-go").onclick = vdAnalyse;
   $("#vd-dub").onclick = vdOverdub;
+  $("#vd-ingest").onclick = vdIngest;
   $("#vd-mirror").onchange = async e => {
     const el = $("#vd-avatar");
     el.hidden = !e.target.checked;
@@ -420,6 +423,81 @@ async function vdSetup() {
       el.querySelectorAll("[data-am]").forEach(b => b.onclick = () => VD.avatar.setMode(b.dataset.am));
     } else { VD.avatar = null; el.innerHTML = ""; }
   };
+}
+
+// ---------------------------------------------------------------- QueryBook ingestion of a video: sound + face together
+async function vdIngest() {
+  if (!VD.blob || !VD.analysed) { toast("Analyse the video first (step 2).", true); return; }
+  let audio;
+  try { audio = await decodeTrack(VD.blob); } catch (e) { toast("This video's sound could not be read here.", true); return; }
+  const r = await api("/api/speech/ingest", { audio_b64: await wavB64(audio, 16000), transcript: $("#vd-script").value, label: "video", recognizer: "auto",
+    lang: (window.SP && SP.profile && SP.profile.lang) || "en", video: { frames: VD.analysed.frames, env: VD.analysed.env, info: VD.analysed.info } });
+  const m = r.measure;
+  $("#vd-ingest-out").innerHTML = '<div class="note good">Ingested: <b>' + esc(r.transcript || "(no words)") + "</b> — heard by " + esc(r.heard_by) + "</div>" +
+    faceEvidenceHtml(r.face, m.vocal_mode) +
+    (r.semantics ? '<p class="small"><b>Words:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>" : "");
+}
+
+// ---------------------------------------------------------------- the camera alongside a voice recording (Ask, Listen)
+const CAMSIDE = { on: false, stream: null, frames: [], t0: 0, info: null };
+async function camSideStart(host, t0) {
+  CAMSIDE.frames = []; CAMSIDE.t0 = t0;
+  try {
+    CAMSIDE.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 }, facingMode: "user" } });
+  } catch (e) { toast("The camera could not be opened — the sound alone will be used: " + e.message, true); return false; }
+  host.hidden = false;
+  host.innerHTML = '<video playsinline muted style="width:220px;border-radius:8px;transform:scaleX(-1)"></video><div class="small muted"></div>';
+  const v = host.querySelector("video"), note = host.querySelector("div");
+  v.srcObject = CAMSIDE.stream; await v.play().catch(() => {});
+  CAMSIDE.on = true;
+  let lm;
+  try { lm = await tracker(); } catch (e) { note.textContent = "Face tracker unavailable — the sound alone will be used."; return false; }
+  let n = 0;
+  const step = () => {
+    if (!CAMSIDE.on) return;
+    if (v.readyState >= 2) {
+      const now = performance.now();
+      const f = measureFrame(lm.detectForVideo(v, now), v, (now - CAMSIDE.t0) / 1000);
+      if (f.face && n % 6 === 0) sampleLight(v, f._L);
+      delete f._L; CAMSIDE.frames.push(f); n++;
+      if (n % 10 === 0) note.textContent = f.face ? "face tracked · lips open " + Math.round(100 * f.gap) + "%" : "no face — look at the camera";
+    }
+    if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(step); else requestAnimationFrame(step);
+  };
+  step();
+  CAMSIDE.info = () => { const fr = CAMSIDE.frames, span = fr.length > 1 ? fr[fr.length - 1].t - fr[0].t : 0;
+    return { width: v.videoWidth, height: v.videoHeight, fps: span > 0 ? Math.round(10 * (fr.length - 1) / span) / 10 : 0, source: "camera" }; };
+  return true;
+}
+function camSideStop(host) {
+  if (!CAMSIDE.on && !CAMSIDE.stream) return null;
+  CAMSIDE.on = false;
+  const info = CAMSIDE.info ? CAMSIDE.info() : {};
+  if (CAMSIDE.stream) CAMSIDE.stream.getTracks().forEach(t => t.stop());
+  CAMSIDE.stream = null;
+  if (host) host.hidden = true;
+  const frames = CAMSIDE.frames; CAMSIDE.frames = [];
+  vdLog("camera with voice", frames.filter(f => f.face).length + " of " + frames.length + " frames with a face");
+  return frames.length ? { frames, info } : null;
+}
+
+// What the camera added to a spoken input, in plain words.
+function faceEvidenceHtml(face, heard) {
+  if (!face) return "";
+  if (!face.face_seen) return '<div class="note bad">Camera: ' + esc(face.note || "no face seen") + "</div>";
+  const m = face.mode, ex = face.expression || {}, sc = face.speaker_check || {}, tr = face.transcript;
+  let h = '<div class="card face-evidence"><h3>What the camera added</h3><div class="stats">' +
+    stat(m.label, "vocal mode (sound + face)") + stat(m.confidence, "how sure") + stat(ex.label || "—", "face shows") +
+    stat(face.sync && face.sync.ok ? face.sync.offset_ms + " ms" : "—", "sound vs lips") + stat(sc.trust || "—", "voice belongs to this face") + "</div>" +
+    '<p class="small">' + m.reasons.map(esc).join(" · ") + (ex.reasons ? " · face: " + ex.reasons.map(esc).join("; ") : "") + "</p>" +
+    '<div class="note ' + (sc.trust === "high" ? "good" : sc.trust === "low" ? "bad" : "") + '"><b>Speaker check:</b> ' + esc(sc.verdict || "") +
+    (sc.flags && sc.flags.length ? " — " + sc.flags.map(esc).join("; ") : "") + (sc.ok && sc.ok.length ? ' <span class="muted">(' + sc.ok.map(esc).join("; ") + ")</span>" : "") + "</div>";
+  if (tr && tr.candidates && tr.candidates.length > 1)
+    h += '<h3>Which words were said' + (tr.changed_by_lips ? ' — <span class="good-t">corrected by the lips</span>' : "") + '</h3><table class="tbl small"><tr><th></th><th>Possible words</th><th>From</th><th>Sound</th><th>Lips</th><th>Together</th></tr>' +
+      tr.candidates.map(c => "<tr><td>" + (c.chosen ? "✔" : "") + "</td><td>" + (c.chosen ? "<b>" + esc(c.text) + "</b>" : esc(c.text)) + "</td><td>" + esc(c.source) + "</td><td>" +
+        Math.round(100 * c.audio_confidence) + "%</td><td>" + Math.round(100 * c.lip_agreement) + "%</td><td>" + Math.round(100 * c.score) + "%</td></tr>").join("") +
+      '</table><p class="small muted">The lips count for ' + Math.round(100 * tr.lip_weight) + "% here (more when the picture is good: capture quality " + face.quality.score + "/100).</p>";
+  return h + "</div>";
 }
 
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="video"]'); if (b) vdSetup(); });

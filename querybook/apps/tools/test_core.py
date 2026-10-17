@@ -284,9 +284,12 @@ def google_tests(c):
                     return self.send(403, {"error": {"message": "bad key"}})
                 cfg = json.loads(body)["config"]
                 seen["speech_cfg"] = cfg
-                return self.send(200, {"results": [{"alternatives": [{"transcript": "hello there", "confidence": 0.93,
-                                     "words": [{"word": "hello", "startTime": "0.100s", "endTime": "0.450s", "confidence": 0.95},
-                                               {"word": "there", "startTime": "0.500s", "endTime": "0.900s", "confidence": 0.91}]}], "languageCode": "en-us"}]})
+                alts = [{"transcript": "hello there", "confidence": 0.93,
+                         "words": [{"word": "hello", "startTime": "0.100s", "endTime": "0.450s", "confidence": 0.95},
+                                   {"word": "there", "startTime": "0.500s", "endTime": "0.900s", "confidence": 0.91}]}]
+                if cfg.get("maxAlternatives", 1) > 1:
+                    alts.append({"transcript": "yellow there", "confidence": 0.41})
+                return self.send(200, {"results": [{"alternatives": alts, "languageCode": "en-us"}]})
             return self.send(404, {"error": {"message": "no route"}})
 
         def do_PUT(self):
@@ -381,6 +384,10 @@ def google_tests(c):
             r = G_.recognize(b.getvalue(), "en-US")
             c.check("google: Speech-to-Text returns words with timings and confidence",
                     r["transcript"] == "hello there" and r["words"][1]["start_s"] == 0.5 and seen["speech_cfg"]["enableWordTimeOffsets"] and seen["speech_cfg"]["sampleRateHertz"] == 16000)
+            r2 = G_.recognize(b.getvalue(), "en-US", alternatives=5)
+            c.check("google: Speech-to-Text alternatives for the whole clip (the camera chooses between them)",
+                    seen["speech_cfg"]["maxAlternatives"] == 5 and [a["transcript"] for a in r2["alternatives"]] == ["hello there", "yellow there"]
+                    and "maxAlternatives" not in json.dumps(seen.get("first_cfg", {})))
             v = G_.youtube_search("talk", 3)
             c.check("google: YouTube search returns video, channel, date and link", v and v[0]["channel"] == "A Channel" and v[0]["url"].endswith("dQw4w9WgXcQ"))
             c.check("google: video ids are read from any YouTube link form", gcloud.youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"

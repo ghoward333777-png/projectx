@@ -103,7 +103,7 @@ function stagesTable(stages, total) {
 }
 
 // Talking face card: lip-sync track from the server, drawn in 2D (SVG) or 3D (three.js, with Enter VR), synced to the audio.
-async function faceCard(host, audioName, text, lang) {
+async function faceCard(host, audioName, text, lang, emotion) {
   const box = document.createElement("div"); box.className = "card face-card";
   box.innerHTML = '<h3>Talking face <span class="small muted">mouth shapes timed to this audio</span></h3>' +
     '<div class="row"><button class="btn small" data-fm="2d">2D face</button><button class="btn small" data-fm="3d">3D / VR face</button>' +
@@ -114,6 +114,7 @@ async function faceCard(host, audioName, text, lang) {
   const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
   box.querySelectorAll("[data-fx]").forEach(a => { a.href = "/api/speech/lipsync.export?audio=" + encodeURIComponent(audioName) + "&text=" + encodeURIComponent(text) + "&lang=" + encodeURIComponent(lang) + "&format=" + a.dataset.fx; a.setAttribute("download", ""); });
   const face = new TalkingFace(stage);
+  face.setEmotion(emotion || "neutral");
   const load = async exact => {
     const t0 = performance.now();
     const tr = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
@@ -141,7 +142,7 @@ async function generate() {
       stat(m.duration_s + " s", "length") : "") + "</div>" +
     (s.effects && s.effects.length ? '<p class="small"><b>Added after the engine:</b> ' + esc(s.effects.join("; ")) + "</p>" : "") +
     "<details><summary class=\"small\">Timing of every stage (to 0.01 s)</summary>" + stagesTable(r.stages.stages, r.stages.seconds) + "</details>";
-  if (window.TalkingFace) faceCard($("#sp-out"), r.audio, $("#sp-text").value, SP.profile.lang);
+  if (window.TalkingFace) faceCard($("#sp-out"), r.audio, $("#sp-text").value, SP.profile.lang, SP.profile.emotion);
 }
 
 // ---------------------------------------------------------------- match
@@ -209,8 +210,14 @@ const Recog = window.SpeechRecognition || window.webkitSpeechRecognition;
 function listenWords(lang, onText) {
   if (!Recog) return null;
   const r = new Recog(); r.lang = { en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", nl: "nl-NL", sv: "sv-SE" }[lang] || "en-US";
-  r.interimResults = true; r.continuous = true;
-  r.onresult = e => { let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; onText(t); };
+  r.interimResults = true; r.continuous = true; r.maxAlternatives = 5; r._alts = [];
+  r.onresult = e => {
+    let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; onText(t);
+    // other readings of the whole utterance: the best reading with one stretch swapped (the camera can choose between them)
+    const tops = Array.from(e.results).map(x => x[0].transcript), alts = [{ text: t.trim(), confidence: e.results[0] && e.results[0][0].confidence || null }];
+    Array.from(e.results).forEach((x, i) => { for (let j = 1; j < x.length; j++) { const v = tops.slice(); v[i] = x[j].transcript; alts.push({ text: v.join("").trim(), confidence: x[j].confidence || null }); } });
+    r._alts = alts.slice(0, 8);
+  };
   r.onerror = () => {}; try { r.start(); } catch (e) { return null; }
   return r;
 }
@@ -220,9 +227,14 @@ async function lsRecord() {
   if (!REC.on) {
     try { await recStart($("#ls-level"), $("#ls-recstate")); } catch (e) { toast("The microphone could not be opened: " + e.message, true); return; }
     $("#ls-rec").textContent = "⏹ Stop";
+    SP.video = null;
     if ($("#ls-kind").value === "speech") LS_RECOG = listenWords(SP.profile.lang, t => $("#ls-transcript").value = t);
+    if ($("#ls-cam").checked) camSideStart($("#ls-cam-view"), REC.t0);
   } else {
-    const blob = recStop(); if (LS_RECOG) { try { LS_RECOG.stop(); } catch (e) { /* ignore */ } LS_RECOG = null; }
+    const blob = recStop();
+    const cam = camSideStop($("#ls-cam-view"));
+    SP.video = cam ? Object.assign(cam, { alternatives: (LS_RECOG && LS_RECOG._alts) || [] }) : null;
+    if (LS_RECOG) { try { LS_RECOG.stop(); } catch (e) { /* ignore */ } LS_RECOG = null; }
     $("#ls-rec").textContent = "🎙 Record"; $("#ls-level").style.width = "0";
     $("#ls-recstate").textContent = "recorded " + ((performance.now() - REC.t0) / 1000).toFixed(2) + " s";
     SP.wav = await blobB64(blob); SP.wavName = "recording";
@@ -253,13 +265,13 @@ function contourSvg(c, segs) {
 async function lsAnalyse() {
   const rec = $("#ls-recog").value;
   const r = await api("/api/speech/ingest", { audio_b64: SP.wav, transcript: rec === "google" ? "" : $("#ls-transcript").value, expected: $("#ls-expected").value,
-    label: SP.wavName, recognizer: rec, lang: SP.profile.lang });
+    label: SP.wavName, recognizer: rec, lang: SP.profile.lang, video: SP.video || null });
   if (r.transcript && !$("#ls-transcript").value) $("#ls-transcript").value = r.transcript;
   const m = r.measure, I = m.indicators, vm = m.vocal_mode, q = m.quality, p = m.pitch;
   const card = (title, o, extra) => '<div class="stat"><div class="k">' + esc(title) + '</div><div class="v">' + esc(o.label) + (o.level !== undefined && o.level !== null ? " · " + o.level + "/100" : "") + "</div>" +
     (o.reasons ? '<div class="small muted">' + o.reasons.map(esc).join("; ") + "</div>" : "") + (extra || "") + "</div>";
-  $("#ls-out").innerHTML =
-    '<div class="card"><h2>Vocal mode</h2><div class="modebig">' + esc(vm.label) + ' <span class="small muted">(' + esc(vm.confidence || "") + ")</span></div>" +
+  $("#ls-out").innerHTML = (r.face ? faceEvidenceHtml(r.face) : "") +
+    '<div class="card"><h2>Vocal mode' + (r.face ? " heard (sound only)" : "") + '</h2><div class="modebig">' + esc(vm.label) + ' <span class="small muted">(' + esc(vm.confidence || "") + ")</span></div>" +
       (vm.scores || []).map(s => '<div class="scorebar"><span>' + esc(s.mode) + '</span><div class="meter"><i style="width:' + s.score + '%"></i></div><b>' + s.score + '</b></div><div class="small muted" style="margin:-2px 0 6px 118px">' + s.reasons.map(esc).join("; ") + "</div>").join("") +
       '<p class="small muted">' + esc(vm.note || "") + "</p></div>" +
     '<div class="card"><h2>How it was said</h2><div class="ind">' + card("Emotion (estimate)", I.emotion) + card("Tone", I.tone) + card("Volume", I.volume, '<div class="small">' + m.volume.mean_dbfs + " dBFS mean, peak " + m.volume.peak_dbfs + ", range " + m.volume.range_db + " dB</div>") +
@@ -296,21 +308,25 @@ async function akRecord() {
     $("#ak-rec").textContent = "⏹ Stop and answer";
     AK = listenWords(SP.profile.lang, t => $("#ak-text").value = t);
     if (!AK) $("#ak-state").textContent += " (this browser has no speech recognition — type the question too)";
+    if ($("#ak-cam").checked) camSideStart($("#ak-cam-view"), REC.t0);
   } else {
     const blob = recStop(); if (AK) { try { AK.stop(); } catch (e) { /* ignore */ } }
+    const cam = camSideStop($("#ak-cam-view"));
     $("#ak-rec").textContent = "🎙 Ask";
     await new Promise(r => setTimeout(r, 400));
-    ask(await blobB64(blob));
+    ask(await blobB64(blob), cam ? Object.assign(cam, { alternatives: (AK && AK._alts) || [] }) : null);
   }
 }
-async function ask(audio) {
-  const r = await api("/api/speech/query", genBody({ transcript: $("#ak-text").value, audio_b64: audio || null, respond_to_mood: $("#ak-mood").checked }));
+async function ask(audio, video) {
+  const r = await api("/api/speech/query", genBody({ transcript: $("#ak-text").value, audio_b64: audio || null, respond_to_mood: $("#ak-mood").checked, video: video || null }));
+  if (r.question && r.question !== $("#ak-text").value) $("#ak-text").value = r.question;
   $("#ak-out").innerHTML = '<div class="note good"><b>Answer:</b> ' + esc(r.answer) + "</div>" + audioEl(r.audio) +
     (r.how_said ? '<p class="small"><b>How you asked:</b> ' + esc(r.how_said.vocal_mode) + " (" + esc(r.how_said.confidence) + "), " + esc(r.how_said.emotion) + ", " + esc(r.how_said.volume) + "; answered with emotion " +
       esc(r.voice_used.emotion) + (r.voice_used.whisper ? ", whispering" : "") + ".</p>" : "") +
-    '<p class="small"><b>Words understood:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>";
+    '<p class="small"><b>Words understood:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>" +
+    (window.faceEvidenceHtml ? faceEvidenceHtml(r.face) : "");
   const a = $("#ak-out audio"); if (a) a.play().catch(() => {});
-  if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang);
+  if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang, r.voice_used.emotion);
 }
 
 // ---------------------------------------------------------------- providers
@@ -419,7 +435,7 @@ async function loadSpeech() {
   $("#sp-go").onclick = generate;
   $("#mt-go").onclick = match;
   $("#ls-rec").onclick = lsRecord;
-  $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.wav = await blobB64(f); SP.wavName = f.name; $("#ls-audio").src = URL.createObjectURL(f); $("#ls-audio").hidden = false; $("#ls-go").disabled = false; $("#ls-recstate").textContent = f.name; };
+  $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.video = null; SP.wav = await blobB64(f); SP.wavName = f.name; $("#ls-audio").src = URL.createObjectURL(f); $("#ls-audio").hidden = false; $("#ls-go").disabled = false; $("#ls-recstate").textContent = f.name; };
   $("#ls-go").onclick = lsAnalyse;
   $("#ak-rec").onclick = akRecord; $("#ak-go").onclick = () => ask(null); onEnter($("#ak-text"), () => ask(null));
   $("#lg-go").onclick = loadLog; $("#lg-proc").onchange = loadLog;

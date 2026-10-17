@@ -78,6 +78,14 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   scores how well the lips agree with it against chance — a mismatch suggests dubbing or another speaker.
 * **Overdub:** new words in any voice, fitted phrase by phrase into the original speaking time without
   changing pitch, exported as a new video. Needs the consent box; always labelled **SYNTHETIC VOICE**.
+* **Camera with the voice (ingestion, queries, answers):** tick the camera box in Ask by voice or
+  Listen & analyse, or use step 4 of Face & video. The recognizer's possible readings (browser
+  alternatives, Google Speech-to-Text alternatives, typed text) are scored by sound confidence and by
+  how well the lips agree — the lips count for more when the picture is good — so a misheard
+  "mouse in Finnish" becomes the "house in Spanish" the lips said. The face's expression is fused with
+  the vocal mode (crying and laughing sound alike but look opposite), the answer's voice and the
+  talking face's expression follow the asker's mood, and a speaker check says whether the voice
+  belongs to the face (lips moving, lips matching the words, sync). Every result is in the speech log.
 * **Best capture:** whole face, forehead to chin, 40–60% of the picture's height (not just the mouth);
   mouth ≥ 150 px wide; 1080p (720p works, 4K adds nothing); 60 fps best, 30 minimum; face the camera
   within 20°; even front light; nothing over the mouth; mic 20–30 cm away.

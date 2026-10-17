@@ -368,8 +368,9 @@ class Google:
         return json.loads(raw)
 
     # ------------------------------------------------------------------ Speech-to-Text (API key)
-    def recognize(self, wav, lang="en-US", alt_langs=None):
-        """Transcribe up to ~55 s of WAV audio. Returns {transcript, confidence, words:[{word, start_s, end_s, confidence}]}."""
+    def recognize(self, wav, lang="en-US", alt_langs=None, alternatives=1):
+        """Transcribe up to ~55 s of WAV audio. Returns {transcript, confidence, words:[{word, start_s, end_s, confidence}],
+        alternatives:[{transcript, confidence}]} — other possible readings of the whole clip when `alternatives` > 1."""
         key = self.s.api_key()
         if not key:
             raise GoogleError("no Google API key")
@@ -383,6 +384,8 @@ class Google:
                "enableWordTimeOffsets": True, "enableWordConfidence": True, "enableAutomaticPunctuation": True, "model": "latest_long"}
         if alt_langs:
             cfg["alternativeLanguageCodes"] = alt_langs[:3]
+        if alternatives > 1:
+            cfg["maxAlternatives"] = min(10, int(alternatives))
         t0 = time.time()
         try:
             st, raw, _ = self.http("POST", base("speech") + "/v1/speech:recognize", json.dumps({"config": cfg, "audio": {"content": base64.b64encode(pcm).decode()}}).encode(),
@@ -399,6 +402,14 @@ class Google:
                                   "end_s": float(str(w.get("endTime", "0s")).rstrip("s") or 0), "confidence": w.get("confidence")})
             out = {"transcript": " ".join(t for t in text if t), "confidence": round(sum(confs) / len(confs), 3) if confs else None,
                    "words": words, "language": (res[0].get("languageCode") if res else lang), "seconds": round(time.time() - t0, 2)}
+            # whole-clip alternatives: the best reading with one stretch swapped for its next-best reading
+            alts = [{"transcript": out["transcript"], "confidence": out["confidence"]}]
+            for i, r in enumerate(res):
+                for a in (r.get("alternatives") or [])[1:]:
+                    t = list(text)
+                    t[i] = a.get("transcript", "").strip()
+                    alts.append({"transcript": " ".join(x for x in t if x), "confidence": a.get("confidence")})
+            out["alternatives"] = alts[:max(1, int(alternatives))]
             self._note("speech", True, t0, "%d words" % len(words))
             return out
         except Exception as e:

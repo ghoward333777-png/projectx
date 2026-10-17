@@ -93,7 +93,7 @@ class SpeechLab:
         pub = self.google.s.public()
         return pub["api_key_set"] and pub["stt_on"] is not False
 
-    def transcribe(self, audio, lang="en", parent=None):
+    def transcribe(self, audio, lang="en", parent=None, alternatives=1):
         """Google Speech-to-Text with word timings; logged as its own process. Returns None when not available or failed."""
         if not self.stt_ready():
             return None
@@ -101,7 +101,7 @@ class SpeechLab:
         clk("Google Speech-to-Text")
         code = tts.SPEECH_LANG.get(lang, lang if "-" in str(lang) else "en-US")
         try:
-            r = self.google.recognize(audio, code)
+            r = self.google.recognize(audio, code, alternatives=alternatives)
             self._record("transcribe", "Google Speech-to-Text: %d words, confidence %s" % (len(r["words"]), r["confidence"]), "google_stt", "ok", clk,
                          {"language": code}, {"transcript": r["transcript"][:500], "confidence": r["confidence"], "words": len(r["words"])}, None, parent)
             return r
@@ -218,7 +218,31 @@ class SpeechLab:
                 "accent_cues": dialect.detect_dialect(text or "", None)[:3] if text else []}
 
     # ---------------------------------------------------------------- ingestion
-    def ingest(self, audio, transcript="", expected="", label="", recognizer="auto", lang="en"):
+    def _candidates(self, transcript, video, stt, typed_source="browser / typed"):
+        """Every reading of the words: what the browser or person gave (with the browser's alternatives) and
+        Google's alternatives — the camera chooses between them."""
+        c = []
+        if transcript:
+            c.append({"text": transcript, "confidence": None, "source": typed_source})
+        for a in (video or {}).get("alternatives") or []:
+            if isinstance(a, dict) and a.get("text"):
+                c.append({"text": str(a["text"])[:500], "confidence": a.get("confidence"), "source": "browser alternative"})
+        for i, a in enumerate((stt or {}).get("alternatives") or []):
+            if a.get("transcript"):
+                c.append({"text": a["transcript"], "confidence": a.get("confidence"), "source": "Google Speech-to-Text" + (" alternative %d" % i if i else "")})
+        if c and c[0]["confidence"] is None and len(c) > 1:
+            c[0]["confidence"] = max([x["confidence"] for x in c[1:] if x["confidence"] is not None] or [0.6])
+        return c
+
+    def _face(self, video, m, transcript, stt, lang, clk):
+        """Camera evidence for one spoken input (lipread.fuse), with the soundtrack's loudness for the sync check."""
+        import lipread
+        clk("face: lips, expression, sync")
+        env = video.get("env") or _envelope(m)
+        cands = self._candidates(transcript, video, stt)
+        return lipread.fuse(video.get("frames") or [], m["vocal_mode"], env, cands, video.get("info") or {}, lang, self.lab)
+
+    def ingest(self, audio, transcript="", expected="", label="", recognizer="auto", lang="en", video=None):
         clk = Clock()
         clk("receive")
         if not voicedsp.is_wav(audio):
@@ -226,14 +250,21 @@ class SpeechLab:
         name = self._save_audio(audio, "in")
         try:
             stt, heard_by = None, ("browser / typed" if transcript else "none")
-            if recognizer == "google" or (recognizer == "auto" and not transcript):
+            if recognizer == "google" or (recognizer == "auto" and (not transcript or video)):
                 clk("transcribe (Google Speech-to-Text)")
-                stt = self.transcribe(audio, lang)
-                if stt and stt.get("transcript"):
+                stt = self.transcribe(audio, lang, alternatives=5 if video else 1)
+                if stt and stt.get("transcript") and (recognizer == "google" or not transcript):
                     transcript, heard_by = stt["transcript"], "Google Speech-to-Text"
                 elif stt and stt.get("error"):
                     heard_by = ("browser / typed" if transcript else "none") + " (Google Speech-to-Text failed: %s)" % stt["error"][:120]
             m = voicedsp.measure(audio, clk)
+            face = None
+            if video:
+                face = self._face(video, m, transcript, stt, lang, clk)
+                tr = face.get("transcript") or {}
+                if tr.get("chosen") and tr["chosen"] != transcript:
+                    transcript = tr["chosen"]
+                    heard_by = next((r["source"] for r in tr["candidates"] if r["chosen"]), heard_by) + (" — chosen by the lips" if tr.get("changed_by_lips") else "")
             clk("semantics")
             sem = self.semantics(transcript or expected) if (transcript or expected) else None
             if sem and m["rate"]["syllables"]:
@@ -251,9 +282,16 @@ class SpeechLab:
                             break
             res = {"measure": _slim(m), "semantics": sem, "transcript": transcript, "expected": expected, "heard_by": heard_by,
                    "stt": {k: stt[k] for k in ("confidence", "language", "seconds") if k in stt} if stt and not stt.get("error") else None}
-            rid = self._record("ingest", "%s%.2f s of audio — %s, %s" % ((label + ": ") if label else "", m["duration_s"], m["vocal_mode"]["label"],
-                               m["indicators"]["emotion"]["label"]), "voicedsp", "ok", clk, {"transcript": transcript, "expected": expected, "label": label},
-                               {"vocal_mode": m["vocal_mode"]["label"], "emotion": m["indicators"]["emotion"]["label"]}, name)
+            mode = m["vocal_mode"]["label"]
+            if face:
+                res["face"] = face
+                mode = "%s (%s)" % (face["mode"]["label"], face["mode"]["confidence"])
+            rid = self._record("ingest", "%s%.2f s of %s — %s, %s%s" % ((label + ": ") if label else "", m["duration_s"], "video" if video else "audio", mode,
+                               m["indicators"]["emotion"]["label"], ("; speaker check: " + face["speaker_check"]["trust"]) if face else ""),
+                               "voicedsp+face" if video else "voicedsp", "ok", clk, {"transcript": transcript, "expected": expected, "label": label,
+                               "frames": len((video or {}).get("frames") or [])},
+                               {"vocal_mode": m["vocal_mode"]["label"], "final_mode": face["mode"] if face else None, "emotion": m["indicators"]["emotion"]["label"],
+                                "transcript_choice": (face or {}).get("transcript"), "speaker_check": (face or {}).get("speaker_check")}, name)
             res.update({"log_id": rid, "audio": name, "contour": m["contour"], "segments": m["segments"]})
             return res
         except Exception as e:
@@ -538,39 +576,56 @@ class SpeechLab:
         return res
 
     # ---------------------------------------------------------------- spoken queries
-    def query(self, transcript, audio=None, prof=None, engine="espeak", voice="", model="", adv=None, respond_to_mood=True):
+    def query(self, transcript, audio=None, prof=None, engine="espeak", voice="", model="", adv=None, respond_to_mood=True, video=None):
         clk = Clock()
         clk("understand words")
+        lang = (prof or {}).get("lang") or "en"
         text = " ".join(str(transcript or "").split())
-        if not text and audio:
+        stt = None
+        if audio and (not text or video):
             clk("transcribe (Google Speech-to-Text)")
-            r = self.transcribe(audio, (prof or {}).get("lang") or "en")
-            text = (r or {}).get("transcript") or ""
-        if not text:
-            raise ValueError("No words were heard. Speak again or type the question.")
-        sem = self.semantics(text)
-        how = None
+            stt = self.transcribe(audio, lang, alternatives=5 if video else 1)
+            if not text:
+                text = (stt or {}).get("transcript") or ""
+        how, face, m = None, None, None
         if audio:
             clk("how it was said")
             m = voicedsp.measure(audio)
             how = {"vocal_mode": m["vocal_mode"]["label"], "confidence": m["vocal_mode"].get("confidence"),
                    "emotion": m["indicators"]["emotion"]["label"], "volume": m["indicators"]["volume"]["label"], "tone": m["indicators"]["tone"]["label"]}
+        if video and m:
+            face = self._face(video, m, text, stt, lang, clk)
+            tr = face.get("transcript") or {}
+            if tr.get("chosen"):
+                text = tr["chosen"]
+            how["vocal_mode_heard"] = how["vocal_mode"]
+            how["vocal_mode"] = face["mode"]["label"].split(",")[0]
+            how["confidence"] = face["mode"]["confidence"]
+            how["face"] = (face.get("expression") or {}).get("label")
+        if not text:
+            raise ValueError("No words were heard. Speak again or type the question.")
+        clk("understand words")
+        sem = self.semantics(text)
         clk("answer")
         answer = self._answer(text, sem)
         p = tts.profile(prof)
         if respond_to_mood and how:
+            seen = how.get("face") or ""
             if how["vocal_mode"] == "whispering":
                 p["whisper"], p["volume_db"] = True, min(p["volume_db"], -6.0)
-            elif how["vocal_mode"] == "crying" or how["emotion"].startswith("sad"):
+            elif how["vocal_mode"] == "crying" or how["emotion"].startswith("sad") or seen == "sad / tearful":
                 p["emotion"], p["intensity"], p["rate"] = "tender", 0.7, min(p["rate"], 0.9)
-            elif how["vocal_mode"] == "shouting" or how["emotion"].startswith("angry"):
+            elif how["vocal_mode"] == "shouting" or how["emotion"].startswith("angry") or seen == "angry / tense":
                 p["emotion"], p["intensity"] = "calm", 0.8
+            elif how["vocal_mode"] == "laughing" or seen == "smiling / laughing":
+                p["emotion"], p["intensity"] = "happy", 0.6
         clk("speak the answer")
         g = self.generate(answer, p, engine, voice, model, adv, measure=False, quiet_label="answer: ")
-        rid = self._record("query", "“%s” → “%s”" % (text[:80], answer[:80]), g["summary"]["engine_used"], "ok", clk,
-                           {"transcript": text, "respond_to_mood": respond_to_mood}, {"answer": answer, "how_said": how}, g["audio"])
-        return {"log_id": rid, "answer": answer, "semantics": sem, "how_said": how, "voice_used": {k: p[k] for k in ("emotion", "whisper", "rate", "volume_db")},
-                "audio": g["audio"]}
+        rid = self._record("query", "“%s” → “%s”%s" % (text[:80], answer[:80], " (camera used)" if face else ""), g["summary"]["engine_used"], "ok", clk,
+                           {"transcript": text, "respond_to_mood": respond_to_mood, "frames": len((video or {}).get("frames") or [])},
+                           {"answer": answer, "how_said": how, "transcript_choice": (face or {}).get("transcript"), "speaker_check": (face or {}).get("speaker_check")}, g["audio"])
+        return {"log_id": rid, "answer": answer, "question": text, "semantics": sem, "how_said": how, "face": face,
+                "voice_used": {k: p[k] for k in ("emotion", "whisper", "rate", "volume_db")}, "audio": g["audio"]}
 
     def _answer(self, text, sem):
         """Deterministic answers from the builder's knowledge (no AI)."""
@@ -602,6 +657,20 @@ class SpeechLab:
         known = sum(1 for w in sem["words"] if w["known_to_builder"])
         return "I heard %d words in %s; I know %d of them. Ask me what a word means, or how to say a word in another language." % (
             len(sem["words"]), sem["language_name"], known)
+
+
+def _envelope(m):
+    """Loudness at 100 per second, 0 (quiet) … 1 (loudest), from a measurement's contour (same scale as the page uses)."""
+    c = m.get("contour") or {}
+    db, hop = c.get("db") or [], c.get("hop_s") or 0.01
+    if not db:
+        return []
+    top = max(db)
+    out = []
+    for i in range(int(len(db) * hop * 100)):
+        v = db[min(len(db) - 1, int(i / 100.0 / hop))]
+        out.append(round(max(0.0, (v - (top - 50)) / 50.0), 3))
+    return out
 
 
 def _slim(m):

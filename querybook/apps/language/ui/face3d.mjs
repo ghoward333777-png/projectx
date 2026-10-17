@@ -28,7 +28,7 @@ export class Face3D {
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.103, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.34),
       new THREE.MeshStandardMaterial({ color: 0x4a3122, roughness: 0.9 })); hair.scale.set(0.84, 1.1, 0.93); hair.position.y = 0.006; head.add(hair);
     const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }), iris = new THREE.MeshStandardMaterial({ color: 0x3b2a1f });
-    this.lids = [];
+    this.lids = []; this.brows = [];
     [-0.032, 0.032].forEach(x => {
       const e = new THREE.Mesh(new THREE.SphereGeometry(0.012, 24, 16), white); e.position.set(x, 0.022, 0.078); head.add(e);
       const i = new THREE.Mesh(new THREE.SphereGeometry(0.006, 16, 12), iris); i.position.set(x, 0.022, 0.089); head.add(i);
@@ -36,6 +36,7 @@ export class Face3D {
       this.lids.push(lid);
       const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.0025, 0.02, 4, 8), new THREE.MeshStandardMaterial({ color: 0x4a3122 }));
       brow.rotation.z = Math.PI / 2 + (x < 0 ? 0.12 : -0.12); brow.position.set(x, 0.042, 0.083); head.add(brow);
+      this.brows.push([brow, x < 0 ? -1 : 1]);
     });
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.034, 16), skin); nose.rotation.x = Math.PI / 2.4; nose.position.set(0, -0.005, 0.094); head.add(nose);
     this.cavity = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial({ color: 0x4a1515 }));
@@ -61,9 +62,10 @@ export class Face3D {
   }
   _apply(m, t) {
     const W = 0.022 + 0.022 * m.width * (1 - 0.35 * m.round), H = 0.002 + 0.024 * m.open, R = m.round, y0 = -0.048, z = 0.086 + 0.006 * R;
-    const top = y0 + H * 0.35, bot = y0 - H * 0.65, lift = R * H * 0.25;
-    const up = [[-W, y0, z - 0.006], [-W * 0.5, top + lift, z], [0, top + 0.001, z + 0.001], [W * 0.5, top + lift, z], [W, y0, z - 0.006]];
-    const lo = [[-W, y0, z - 0.006], [-W * 0.5, bot - lift, z], [0, bot - 0.001, z + 0.001], [W * 0.5, bot - lift, z], [W, y0, z - 0.006]];
+    const top = y0 + H * 0.35, bot = y0 - H * 0.65, lift = R * H * 0.25, yc = y0 + 0.005 * (m.smile || 0);   // corners rise with a smile
+    this.brows.forEach(([b, side]) => { const br = m.brow || 0; b.rotation.z = Math.PI / 2 - side * (0.12 + 0.22 * br); b.position.y = 0.042 + 0.003 * Math.abs(br); });
+    const up = [[-W, yc, z - 0.006], [-W * 0.5, top + lift, z], [0, top + 0.001, z + 0.001], [W * 0.5, top + lift, z], [W, yc, z - 0.006]];
+    const lo = [[-W, yc, z - 0.006], [-W * 0.5, bot - lift, z], [0, bot - 0.001, z + 0.001], [W * 0.5, bot - lift, z], [W, yc, z - 0.006]];
     [["upper", up], ["lower", lo]].forEach(([k, pts]) => {
       if (this[k]) { this.head.remove(this[k]); this[k].geometry.dispose(); }
       this[k] = new THREE.Mesh(this._lip(pts), this.lipMat); this.head.add(this[k]);

@@ -28,7 +28,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 PORT = 8101
 program_dir = HERE
 
@@ -713,14 +713,15 @@ class App:
         def sp_ingest(p):
             try:
                 return self.speech.ingest(_audio(p), p.get("transcript") or "", p.get("expected") or "", p.get("label") or "",
-                                          p.get("recognizer") or "auto", p.get("lang") or "en")
+                                          p.get("recognizer") or "auto", p.get("lang") or "en", p.get("video") or None)
             except ValueError as e:
                 raise core.UserError(str(e))
 
         @a.post("/api/speech/query")
         def sp_query(p):
             try:
-                return self.speech.query(p.get("transcript"), _audio(p), respond_to_mood=p.get("respond_to_mood", True) not in (False, "false"), **_gen_args(p))
+                return self.speech.query(p.get("transcript"), _audio(p), respond_to_mood=p.get("respond_to_mood", True) not in (False, "false"),
+                                         video=p.get("video") or None, **_gen_args(p))
             except (ValueError, RuntimeError) as e:
                 raise core.UserError(str(e))
 
@@ -1197,6 +1198,23 @@ def _viseme_selftest(c):
     late = LR.av_sync([0.0] * 8 + env[:-8], env)                 # lips 80 ms after the sound
     c.check("Sync check: sound 80 ms ahead of the lips is measured as -80 ms and flagged", late["offset_ms"] == -80 and "EARLY" in late["verdict"], late)
     c.check("Sync check: matching sound and lips read as in sync", LR.av_sync(env, env)["offset_ms"] == 0)
+    # camera + sound together: the lips choose the right reading, the face settles crying vs laughing, the speaker check
+    cls, gaps = LR.classes_of(frames)
+    rk = LR.rank_candidates(cls, [{"text": "hello my friend thank you very much", "confidence": 0.6, "source": "b"},
+                                  {"text": "jello by trend tank ewe berry mud", "confidence": 0.8, "source": "a"}][::-1], 100)
+    c.check("Camera + sound: the lips pick the right reading over a more confident wrong one", rk["chosen"] == said and rk["changed_by_lips"], rk["candidates"])
+    happy = [dict(f, bs=dict(f["bs"], mouthSmileLeft=0.6, mouthSmileRight=0.6, cheekSquintLeft=0.4, cheekSquintRight=0.4)) for f in frames]
+    sad = [dict(f, bs=dict(f["bs"], browInnerUp=0.6, mouthFrownLeft=0.4, mouthFrownRight=0.4)) for f in frames]
+    c.check("Camera + sound: expressions read from the face (smiling, sad, neutral)",
+            LR.expression(happy)["label"] == "smiling / laughing" and LR.expression(sad)["label"] == "sad / tearful" and LR.expression(frames)["label"] == "neutral")
+    vc = {"label": "crying", "confidence": "uncertain", "scores": [{"mode": "crying", "score": 60}, {"mode": "laughing", "score": 50}]}
+    c.check("Camera + sound: 'crying' heard with a laughing face is corrected to laughing; with a sad face it is confirmed",
+            LR.fuse_mode(vc, LR.expression(happy))["label"] == "laughing" and LR.fuse_mode(vc, LR.expression(sad))["confidence"] == "confirmed by the face")
+    still = [dict(f, gap=0.05, bs={}) for f in frames]
+    ok_ = LR.fuse(frames, {"label": "speaking"}, None, [{"text": said, "confidence": 0.9}], {"width": 1920, "height": 1080, "fps": 60})["speaker_check"]["trust"]
+    dub = LR.fuse(frames, {"label": "speaking"}, None, [{"text": "please send me the report by friday", "confidence": 0.9}], {"width": 1920, "height": 1080, "fps": 60})["speaker_check"]["trust"]
+    mute = LR.fuse(still, {"label": "speaking"}, None, [{"text": said, "confidence": 0.9}], {"width": 1920, "height": 1080, "fps": 60})["speaker_check"]["trust"]
+    c.check("Speaker check: own voice trusted; other words or still lips flagged as not this face", (ok_, dub, mute) == ("high", "low", "low"), (ok_, dub, mute))
     rd = LR.analyse(frames, {}, env, 100, read_lips=True)["lipread"]
     c.check("Lip-reading: free reading gives words, each with the words that look the same", rd["segments"] and all("same_on_lips" in w for s in rd["segments"] for w in s["words"]))
 
@@ -1239,6 +1257,24 @@ def _speech_selftest(c):
             c.check("Overdub: stretching keeps the voice's pitch (within 5%)", abs(md["pitch"]["mean_hz"] - mv["pitch"]["mean_hz"]) < 0.05 * mv["pitch"]["mean_hz"],
                     "%s vs %s Hz" % (md["pitch"]["mean_hz"], mv["pitch"]["mean_hz"]))
             c.check("Overdub: labelled synthetic and logged", "SYNTHETIC" in od["label"] and S.history(1, "overdub"))
+        if speech.find_espeak():
+            q_said = "how do you say house in spanish"
+            qw = speech.speak_wav(q_said, "en-us")
+            qt = visemes.align(q_said, qw, "en")
+            qf = []
+            for i in range(int(qt["duration"] * 30)):
+                v = next((x["v"] for x in qt["visemes"] if x["start"] <= i / 30 < x["end"]), "sil")
+                g_, b_ = {"P": (0.0, {"mouthClose": 0.4}), "F": (0.02, {"mouthRollLower": 0.5}), "W": (0.15, {"mouthPucker": 0.6}), "A": (0.45, {"jawOpen": 0.6}),
+                          "E": (0.12, {"mouthStretchLeft": 0.4, "mouthStretchRight": 0.4}), "T": (0.1, {}), "-": (0.0, {"mouthClose": 0.3})}[__import__("lipread").FROM_VISEME[v]]
+                qf.append({"t": i / 30, "face": True, "gap": g_, "bs": b_, "mouth_px": 170, "face_h": 0.5, "yaw": 3, "pitch": 2, "light": 0.5})
+            vid = {"frames": qf, "info": {"width": 1920, "height": 1080, "fps": 60}, "alternatives": [{"text": q_said, "confidence": 0.7}]}
+            qa = S.query("how do you say mouse in finnish", qw, {"lang": "en"}, video=vid)
+            c.check("Query with the camera: a misheard question is corrected by the lips and answered right",
+                    qa["question"] == q_said and "casa" in qa["answer"], qa["answer"])
+            ig = S.ingest(qw, "how do you say mouse in finnish", lang="en", video=vid)
+            c.check("Ingestion with the camera: transcript chosen by the lips, fused vocal mode, sync and speaker check recorded",
+                    ig["transcript"] == q_said and "lips" in ig["heard_by"] and ig["face"]["speaker_check"]["trust"] == "high" and ig["face"]["sync"]["ok"]
+                    and S.history(1, "ingest")[0]["result"]["speaker_check"])
         g = S.generate("Fail over", {}, "elevenlabs")                      # no key → next voice in the chain
         c.check("Speech: when a voice cannot be used the next one speaks, and every attempt is recorded",
                 g["summary"]["engine_used"] in ("espeak", "sapi", "say", "formant") and g["summary"]["attempts"][0]["result"] == "skipped")
