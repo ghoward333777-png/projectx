@@ -67,3 +67,8 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+- `key-manager/` is a separate, local-only app (Cloud Key Manager: Google API key
+  management + encrypted key vault). It deliberately stays **out** of
+  `SitePackageExporter::FILES` so a secrets vault never ships to shared hosting.
+  Never commit API keys, tokens or vault files; run
+  `php key-manager/tests/key-manager-contract.php` alongside the `tests/` suite.
