@@ -40,6 +40,28 @@ library, and reduces everything learned to one SHA-256 **fingerprint** that must
 computer's own build. Anyone can run `python app.py verify` on their own computer and must get the
 same fingerprint. Reports are kept in the data folder (`verification/`) and can be downloaded.
 
+## Speech (Language Builder → Speech)
+
+* **Speak:** one voice profile — emotion and its strength, tone, accent (the prototype's dialect rules),
+  speed, pitch, volume, pauses, articulation, tremble, hoarseness, breathiness, whisper, voice age —
+  sent to any of ten engines: espeak-ng, the prototype's formant voice, Windows and macOS voices
+  (offline); Google Gemini TTS (30 voices, model, direction, temperature, two-speaker dialogue), Google
+  Cloud Text-to-Speech (SSML, speaking rate, pitch, volume gain, sample rate, device profile, custom
+  voices behind the consent gate), ElevenLabs (all models, stability, similarity, style, speaker boost,
+  speed, seed, output format, v3 audio tags), OpenAI, Microsoft Azure (styles, style degree, age roles)
+  and Amazon Polly (all engines, SSML effects). Every engine returns uncompressed audio; controls an
+  engine lacks (tremble, hoarseness, breath, age, volume, pauses, pitch, speed) are added afterwards.
+  The page shows, per control, whether it is native, added or unavailable, and the exact request.
+* **Match a target:** generate → measure → adjust → repeat until pitch, speed, loudness, pauses,
+  tremble and breathiness are within tolerance.
+* **Listen & analyse:** volume, pauses, speaking and articulation rate, pitch and intonation, jitter,
+  shimmer, harmonics-to-noise, tremor, breathiness; the **vocal mode** (whispering, crying, laughing,
+  shouting, singing, speaking) with reasons; emotion, voice-age and hoarseness indicators; the words'
+  language, meaning, pronunciation and stress from what the builder learned.
+* **Ask by voice:** spoken questions answered out loud, responding to how they were asked.
+* **Speech log:** every process with UTC timestamps and per-stage times to 0.01 s, statistics, CSV.
+  Provider keys stay in the data folder (`speech_keys.json`, owner-only) and are never shown or logged.
+
 ## Transparency
 
 * Every button shows a working bar at the top of the page and how long the action took (with the
@@ -120,7 +142,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 69 checks
+python language/app.py --selftest     # 86 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks
 python tools/run_all_tests.py         # all of the above

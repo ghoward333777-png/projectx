@@ -30,6 +30,12 @@ def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def now_cs():
+    """UTC time to the hundredth of a second (activity log)."""
+    d = datetime.datetime.now(datetime.timezone.utc)
+    return d.strftime("%Y-%m-%dT%H:%M:%S.") + "%02dZ" % (d.microsecond // 10000)
+
+
 def norm(s):
     """Lower-case, single-spaced text used for matching and fingerprints."""
     return " ".join(str(s or "").strip().lower().split())
@@ -189,7 +195,7 @@ class Store:
         try:
             with self.write() as db:
                 db.execute("INSERT INTO qb_activity(at, task, status, detail, ms, items) VALUES(?,?,?,?,?,?)",
-                           (now_iso(), str(task)[:200], status, str(detail or "")[:1000], ms, items))
+                           (now_cs(), str(task)[:200], status, str(detail or "")[:1000], ms, items))
                 n = db.execute("SELECT max(id) FROM qb_activity").fetchone()[0] or 0
                 if n % 500 == 0:
                     db.execute("DELETE FROM qb_activity WHERE id <= ?", (n - 20000,))     # keep the newest 20,000
@@ -650,7 +656,7 @@ class Jobs:
             if self.current and self.current["state"] == "running":
                 raise UserError("'%s' is still running. Wait for it to finish or stop it." % self.current["name"])
             self._stop.clear()
-            job = {"name": name, "state": "running", "done": 0, "total": None, "message": "", "started": now_iso(), "result": None,
+            job = {"name": name, "state": "running", "done": 0, "total": None, "message": "", "started": now_cs(), "result": None,
                    "_t0": time.time(), "_seen": 0, "steps": 0}
             self.current = job
         if self.store:
@@ -670,8 +676,8 @@ class Jobs:
                 job["state"] = "failed"
                 job["message"] = str(e)
                 self.log("JOB FAILED", name, repr(e), traceback.format_exc().replace("\n", " | "))
-            job["ended"] = now_iso()
-            job["elapsed"] = round(time.time() - job["_t0"], 1)
+            job["ended"] = now_cs()
+            job["elapsed"] = round(time.time() - job["_t0"], 2)
             self.last = job
             if self.store:
                 self.store.activity(name, job["state"], (job["message"] if job["state"] == "failed" else _summary(job["result"])),
@@ -688,7 +694,7 @@ class Jobs:
             return {"state": "idle"}
         out = {k: v for k, v in j.items() if not k.startswith("_")}
         el = (time.time() - j["_t0"]) if j["state"] == "running" else j.get("elapsed", 0)
-        out["elapsed"] = round(el, 1)
+        out["elapsed"] = round(el, 2)
         out["updates_per_s"] = round(j["steps"] / el, 2) if el > 0 else None
         if j["state"] == "running" and j.get("total") and j["done"]:
             # speed and time left from the current stage's own counter

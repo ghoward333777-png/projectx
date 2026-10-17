@@ -11,7 +11,7 @@ Start:      python app.py            (opens http://127.0.0.1:8101/)
 Self-test:  python app.py --selftest
 More:       python app.py --help
 """
-import datetime, hashlib, json, os, sys, tempfile, threading, time
+import datetime, hashlib, json, os, re, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,12 +20,14 @@ sys.path.insert(0, HERE)
 import qbcore as core
 import lab
 import speech
+import speechlab
+import tts
 import verify
 import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 PORT = 8101
 program_dir = HERE
 
@@ -59,7 +61,7 @@ CREATE TABLE custom_pairs (
 );
 INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
   SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
-""", lab.SCHEMA]
+""", lab.SCHEMA, speechlab.SCHEMA]
 
 
 def today():
@@ -85,6 +87,7 @@ class App:
         self.jobs = core.Jobs(self.log, self.store)
         self.lab = lab.Lab(self.store, self.log)
         self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify}
+        self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -628,6 +631,122 @@ class App:
                 return self.start_build(times or None)
             return self.start_build()
 
+        # ---- Speech Lab: ingestion, generation, matching, spoken queries, providers, log
+        import base64 as _b64
+
+        def _audio(p, key="audio_b64"):
+            v = p.get(key)
+            if not v:
+                return None
+            if "," in v[:80]:
+                v = v.split(",", 1)[1]
+            try:
+                return _b64.b64decode(v)
+            except ValueError:
+                raise core.UserError("The audio could not be read.")
+
+        def _gen_args(p):
+            return dict(prof=p.get("profile") or {}, engine=p.get("engine") or "espeak", voice=p.get("voice") or "",
+                        model=p.get("model") or "", adv=p.get("advanced") or {})
+
+        @a.get("/api/speech/engines")
+        def sp_engines(p):
+            return {"engines": tts.engines_public(self.speech.keys), "keys": self.speech.keys.public(), "controls": tts.CONTROLS,
+                    "profile_default": tts.PROFILE_DEFAULT, "emotions": tts.EMOTIONS, "tones": tts.TONES, "articulation": tts.ARTICULATION,
+                    "dialects": speechlab.dialect.list_dialects(), "languages": [{"code": c, "name": v["name"]} for c, v in vocab.LANGUAGES.items()],
+                    "targets": self.speech.TARGET_KEYS}
+
+        @a.get("/api/speech/voices")
+        def sp_voices(p):
+            e = tts.BY_ID.get(p.get("engine") or "espeak")
+            if not e:
+                raise core.UserError("Unknown engine.")
+            return {"voices": e.voices(self.speech.keys, p.get("lang") or "en"), "models": e.models}
+
+        @a.post("/api/speech/plan")
+        def sp_plan(p):
+            g = _gen_args(p)
+            pl, _run, _fx = tts.plan(p.get("text") or "", g["prof"], g["engine"], g["voice"], g["model"], self.speech.keys, g["adv"])
+            return pl
+
+        @a.post("/api/speech/generate")
+        def sp_generate(p):
+            try:
+                return self.speech.generate(p.get("text"), fallback=p.get("fallback", True) not in (False, "false"), **_gen_args(p))
+            except (ValueError, RuntimeError) as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/speech/match")
+        def sp_match(p):
+            g = _gen_args(p)
+            text, target, rounds = p.get("text"), p.get("target") or {}, int(p.get("rounds") or 5)
+            return self.jobs.start("Speech: match the target", lambda prog, stop: self.speech.match(text, target, g["prof"], g["engine"], g["voice"],
+                                                                                                  g["model"], g["adv"], rounds, prog, stop))
+
+        @a.post("/api/speech/ingest")
+        def sp_ingest(p):
+            try:
+                return self.speech.ingest(_audio(p), p.get("transcript") or "", p.get("expected") or "", p.get("label") or "")
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/speech/query")
+        def sp_query(p):
+            try:
+                return self.speech.query(p.get("transcript"), _audio(p), respond_to_mood=p.get("respond_to_mood", True) not in (False, "false"), **_gen_args(p))
+            except (ValueError, RuntimeError) as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/speech/keys")
+        def sp_keys(p):
+            try:
+                self.speech.keys.save(p.get("provider"), p.get("values") or {})
+            except ValueError as e:
+                raise core.UserError(str(e))
+            self.store.activity("Speech: provider settings saved", "ok", p.get("provider"))
+            return self.speech.keys.public()
+
+        @a.post("/api/speech/keys/forget")
+        def sp_keys_forget(p):
+            self.speech.keys.forget(p.get("provider"))
+            self.store.activity("Speech: provider settings removed", "ok", p.get("provider"))
+            return self.speech.keys.public()
+
+        @a.post("/api/speech/custom-voice")
+        def sp_custom(p):
+            clk = speechlab.Clock(); clk("build custom voice")
+            try:
+                r = tts.BY_ID["google_cloud"].build_custom_voice(self.speech.keys, (p.get("name") or "").strip(), _audio(p),
+                                                                p.get("consent") in (True, "true"), p.get("language") or "en-US")
+            except Exception as e:
+                self.speech._record("custom-voice", "failed: %s" % tts.scrub(e, self.speech.keys), "google_cloud", "failed", clk)
+                raise core.UserError(tts.scrub(e, self.speech.keys))
+            self.speech._record("custom-voice", "custom voice '%s' built (with consent)" % r["name"], "google_cloud", "ok", clk)
+            return r
+
+        @a.get("/api/speech/log")
+        def sp_log(p):
+            return {"log": self.speech.history(min(1000, int(p.get("limit") or 100)), p.get("process") or None), "stats": self.speech.stats()}
+
+        @a.get("/api/speech/log.csv")
+        def sp_log_csv(p):
+            import csv, io as _io
+            buf = _io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["id", "started_utc", "ended_utc", "seconds", "process", "engine", "status", "description", "stages (stage@start s: seconds)", "audio"])
+            for r in self.speech.history(100000):
+                w.writerow([r["id"], r["started"], r["ended"], "%.2f" % (r["seconds"] or 0), r["process"], r["engine"], r["status"], r["description"],
+                            "; ".join("%s@%.2f: %.2f" % (x["stage"], x.get("at_s") or 0, x.get("seconds") or 0) for x in (r["stages"] or [])), r["audio"] or ""])
+            return buf.getvalue().encode("utf-8"), "text/csv; charset=utf-8"
+
+        @a.get("/api/speech/audio")
+        def sp_audio(p):
+            try:
+                with open(self.speech.audio_path(p.get("name") or ""), "rb") as f:
+                    return f.read(), "audio/wav"
+            except FileNotFoundError:
+                raise core.UserError("That audio file is not kept here.")
+
         @a.post("/api/verify")
         def verify_run(p):
             return self.jobs.start(self.VERIFY_JOB, self.run_verification)
@@ -910,7 +1029,98 @@ def selftest():
         c.check("Lab: continues from the old prototype's English model when starting fresh", L.adopt_old_model(old, "x")["adopted"] and L.load_model()["total_tokens"] == 12)
     st = speech.status()
     c.check("offline voice (espeak-ng): %s" % ("found" if st["espeak"] else "not installed — browser voices are used"), True)
+    _speech_selftest(c)
     return c.report(APP_NAME)
+
+
+def _speech_selftest(c):
+    """Speech Lab: measurement finds what was put in; effects and matching work; every cloud provider's
+    request is checked against a stand-in server; keys never reach the log."""
+    import http.server, threading as _th, voicedsp as V, base64 as _b
+    c.check("Speech: pitch measured exactly (150 Hz test voice)", abs(V.measure(V.tone_wav(f0=150, seconds=2))["pitch"]["mean_hz"] - 150) < 2)
+    tr = V.measure(V.tone_wav(f0=150, seconds=3, vibrato_hz=6, vibrato_st=0.6))["quality"]["tremor_pitch"]
+    c.check("Speech: a 6 Hz tremble is found at 6 Hz", tr["detected"] and abs(tr["freq_hz"] - 6) < 0.7, tr.get("freq_hz"))
+    cl = V.measure(V.tone_wav(f0=150, seconds=3))["indicators"]["hoarseness"]["level"]
+    no = V.measure(V.tone_wav(f0=150, seconds=3, noise=0.1))["indicators"]["hoarseness"]["level"]
+    c.check("Speech: a noisy voice reads hoarser than a clean one", no > cl + 20, "%s vs %s" % (no, cl))
+    ps = V.measure(V.tone_wav(f0=150, seconds=3, gaps=((1.0, 1.5), (2.0, 2.3))))["pauses"]
+    c.check("Speech: pauses found where they are (2 pauses, ~0.8 s)", ps["count"] == 2 and abs(ps["total_s"] - 0.8) < 0.15, ps["total_s"])
+    if speech.find_espeak():
+        w = speech.speak_wav("Hello there. This is a short test of the voice.", "en-us+whisper")
+        c.check("Speech: a whisper is recognised as whispering", V.measure(w)["vocal_mode"]["label"] == "whispering")
+        w = speech.speak_wav("Hello there. This is a short test of the voice.", "en-us")
+        c.check("Speech: ordinary speech is recognised as speaking", V.measure(w)["vocal_mode"]["label"] == "speaking")
+    with tempfile.TemporaryDirectory() as d:
+        inst = App(d)
+        S = inst.speech
+        if speech.find_espeak():
+            m = S.match("The quick brown fox jumps over the lazy dog.", {"pitch_hz": 160, "volume_dbfs": -24}, {}, "espeak")
+            c.check("Speech: generate → measure → adjust reaches a pitch and loudness target", m["matched"], "%d rounds" % len(m["rounds"]))
+        g = S.generate("Testing the formant voice", {"tremble": 0.5}, "formant")
+        c.check("Speech: the no-install formant voice speaks, with tremble added", g["summary"]["bytes"] > 1000 and any("tremble" in x for x in g["effects"]["applied"]))
+        # stand-in cloud: answers like each provider and records what it was sent
+        seen = []
+        pcm = b"".join(int(8000 * __import__("math").sin(i / 8.0)).to_bytes(2, "little", signed=True) for i in range(24000))
+        wav = V.pcm16_to_wav(pcm, 24000)
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                seen.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+                if "generateContent" in self.path:
+                    out, ct = json.dumps({"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/L16;rate=24000", "data": _b.b64encode(pcm).decode()}}]}}]}).encode(), "application/json"
+                elif "text:synthesize" in self.path:
+                    out, ct = json.dumps({"audioContent": _b.b64encode(wav).decode()}).encode(), "application/json"
+                elif "text-to-speech" in self.path or "/v1/speech" in self.path:
+                    out, ct = pcm, "application/octet-stream"
+                else:
+                    out, ct = wav, "audio/wav"
+                self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(out))); self.end_headers()
+                self.wfile.write(out)
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d" % srv.server_address[1]
+        saved = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy")}
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost"
+        secrets = {"google_gemini": {"api_key": "gem-SECRET-123456"}, "google_cloud": {"api_key": "gcp-SECRET-123456"},
+                   "elevenlabs": {"api_key": "el-SECRET-123456"}, "openai": {"api_key": "oa-SECRET-123456"},
+                   "azure": {"api_key": "az-SECRET-123456", "region": "westeurope"},
+                   "polly": {"access_key_id": "AKIDSECRET123456", "secret_access_key": "aws-SECRET-123456", "region": "eu-west-1"}}
+        prof = {"emotion": "sad", "intensity": 0.8, "age": 0.7, "tremble": 0.3, "pause_scale": 1.5}
+        try:
+            for prov, vals in secrets.items():
+                os.environ["QB_TTS_BASE_" + prov.upper()] = base
+                S.keys.save(prov, vals)
+                n0 = len(seen)
+                r = S.generate("I am so sorry, this is hard to say.", prof, prov, fallback=False, measure=False)
+                req = seen[n0] if len(seen) > n0 else {"headers": {}, "body": b""}
+                body = req["body"].decode("utf-8", "replace")
+                checks = {"google_gemini": lambda: "sad" in body.lower() and "elderly" in body and req["headers"].get("x-goog-api-key") == vals["api_key"],
+                          "google_cloud": lambda: "<prosody" in body and "volumeGainDb" in body and req["headers"].get("x-goog-api-key") == vals["api_key"],
+                          "elevenlabs": lambda: '"stability"' in body and '"style"' in body and "output_format=pcm_24000" in req["path"] and req["headers"].get("xi-api-key") == vals["api_key"],
+                          "openai": lambda: '"instructions"' in body and "sad" in body.lower() and req["headers"].get("authorization") == "Bearer " + vals["api_key"],
+                          "azure": lambda: "style='sad'" in body and "OlderAdult" in body and req["headers"].get("ocp-apim-subscription-key") == vals["api_key"],
+                          "polly": lambda: '"TextType": "ssml"' in body and "AWS4-HMAC-SHA256 Credential=AKIDSECRET123456/" in req["headers"].get("authorization", "")}
+                c.check("Speech: %s request carries the voice profile and its key, audio comes back" % prov, r["summary"]["engine_used"] == prov and checks[prov]())
+            logged = json.dumps(S.history(200)) + json.dumps(inst.store.activities(500))
+            c.check("Speech: no provider key appears in the speech log or activity log",
+                    not any(v in logged for vals in secrets.values() for v in vals.values() if "SECRET" in v))
+            c.check("Speech: provider settings are reported without their keys", "SECRET" not in json.dumps(S.keys.public()))
+        finally:
+            srv.shutdown()
+            for prov in secrets:
+                os.environ.pop("QB_TTS_BASE_" + prov.upper(), None)
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        rows = S.history(500)
+        c.check("Speech: every process is logged with timestamps to 0.01 s and timed stages",
+                rows and all(re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d\dZ$", r["started"]) and r["stages"] is not None for r in rows))
 
 
 if __name__ == "__main__":

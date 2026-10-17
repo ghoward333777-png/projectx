@@ -45,7 +45,8 @@ class GateClosed(Exception):
 
 
 def now():
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    t = time.time()
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)) + ".%02dZ" % int((t % 1) * 100)
 
 
 class Lab:
@@ -351,7 +352,7 @@ class Lab:
             if not log or log[-1]["no"] != no:
                 t = time.time()
                 if log:
-                    log[-1].update(finished=now(), seconds=round(t - log[-1]["_t"], 1), state="done")
+                    log[-1].update(finished=now(), seconds=round(t - log[-1]["_t"], 2), state="done")
                 log.append({"no": no, "key": stages[no - 1][0], "name": stages[no - 1][1], "started": now(), "_t": t, "state": "running", "detail": ""})
                 self._save_stage_log(log)
             log[-1]["detail"] = msg
@@ -413,7 +414,7 @@ class Lab:
                 step(5 + k, done, len(allw), "%d of %d words" % (done, len(allw)))
             report["learn_" + code] = "%d words" % done
         if log:
-            log[-1].update(finished=now(), seconds=round(time.time() - log[-1]["_t"], 1), state="done")
+            log[-1].update(finished=now(), seconds=round(time.time() - log[-1]["_t"], 2), state="done")
         self._save_stage_log(log)
         with self.store.write() as db:
             db.execute("INSERT OR REPLACE INTO lab_state(key, value) VALUES('built_at', ?)", (now(),))

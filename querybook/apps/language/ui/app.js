@@ -276,7 +276,7 @@ async function loadData() {
 let CURRENT = "build";
 function refreshTab() {
   clearTimeout(POLL);
-  ({ build: refreshBuild, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
+  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

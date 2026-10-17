@@ -34,6 +34,33 @@
   .chk li::before { position: absolute; left: 4px; top: 6px; font-size: 18px; }
   .chk li.y::before { content: "✅"; } .chk li.n::before { content: "❌"; }
   svg.curve { width: 100%; height: 220px; }
+  .subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .subtabs button { font: inherit; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .subtabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+  .ctlgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .ctlgrid fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 12px; margin: 0; }
+  .ctlgrid legend { font-weight: 700; padding: 0 6px; }
+  .ctlgrid input[type=range] { width: 100%; accent-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chips button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .presets button { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px dashed var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margin-top: 8px; }
+  details.adv { margin-top: 12px; } details.adv > summary { cursor: pointer; font-weight: 650; }
+  .advgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .advgrid textarea { min-height: 70px; }
+  pre.req { background: var(--chip); padding: 10px; border-radius: 8px; overflow: auto; max-height: 280px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 14px; }
+  .tgrid label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .tgrid input[type=number] { width: 100px; }
+  .scorebar { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font-size: 14px; margin: 4px 0; }
+  .ind { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .ind .stat .v { font-size: 19px; }
+  .modebig { font-size: 30px; font-weight: 800; }
+  svg.chart { width: 100%; height: 190px; background: var(--chip); border-radius: 8px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
   ul.log { list-style: none; margin: 0; padding: 10px 12px; max-height: 300px; overflow: auto; background: var(--chip); border-radius: 8px; font-size: 13px; }
   ul.log li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
   ul.log li:last-child { border-bottom: 0; }
@@ -59,10 +86,11 @@
 <body>
 <header class="top">
   <h1>QueryBook Language Builder</h1>
-  <span class="tag">Builds English and 16 European languages by itself — phonics first, no AI model</span>
+  <span class="tag">Builds 17 languages by itself — and speaks, listens and measures speech</span>
 </header>
 <nav class="tabs" aria-label="Sections">
   <button data-tab="build">Build</button>
+  <button data-tab="speech">Speech</button>
   <button data-tab="verify">Verify (proof)</button>
   <button data-tab="lookup">Look up</button>
   <button data-tab="data">Data &amp; backups</button>
@@ -133,6 +161,148 @@
         <button class="btn quiet" id="labfeed">Read it</button></div>
       <ul class="small" id="labsrc" style="margin-top:8px"></ul>
     </details>
+  </section>
+
+  <section class="panel" id="speech">
+    <nav class="subtabs" id="sptabs" aria-label="Speech sections">
+      <button data-sp="speak" aria-pressed="true">🔊 Speak</button>
+      <button data-sp="match">🎯 Match a target</button>
+      <button data-sp="listen">🎙 Listen &amp; analyse</button>
+      <button data-sp="ask">💬 Ask by voice</button>
+      <button data-sp="providers">🔑 Voice providers</button>
+      <button data-sp="log">⏱ Speech log</button>
+    </nav>
+
+    <!-- shared: text, engine and the voice profile -->
+    <div id="sp-shared">
+      <div class="card">
+        <div class="grid2">
+          <div>
+            <label class="f" for="sp-text">Text to speak</label>
+            <textarea id="sp-text" rows="3">Good morning. I have something important to tell you, so please listen carefully.</textarea>
+          </div>
+          <div>
+            <label class="f" for="sp-engine">Voice engine</label>
+            <select id="sp-engine"></select>
+            <div class="small muted" id="sp-engine-note" style="margin-top:4px"></div>
+            <div class="row" style="margin-top:6px">
+              <div class="grow"><label class="f" for="sp-voice">Voice</label><select id="sp-voice"></select></div>
+              <div class="grow"><label class="f" for="sp-model">Model / engine type</label><select id="sp-model"></select></div>
+            </div>
+          </div>
+        </div>
+        <div class="presets" id="sp-presets"></div>
+      </div>
+
+      <div class="card">
+        <h2>Voice profile <span class="small muted">— every engine receives these; see “How each control is handled” below</span></h2>
+        <div class="ctlgrid">
+          <fieldset><legend>Feeling</legend>
+            <label class="f">Emotion</label><div class="chips" id="pf-emotion"></div>
+            <label class="f" for="pf-intensity">Emotion strength <b id="pf-intensity-v"></b></label><input type="range" id="pf-intensity" min="0" max="1" step="0.05">
+            <label class="f" for="pf-tone">Tone</label><select id="pf-tone"></select>
+          </fieldset>
+          <fieldset><legend>Delivery</legend>
+            <label class="f" for="pf-rate">Speed <b id="pf-rate-v"></b></label><input type="range" id="pf-rate" min="0.5" max="2" step="0.05">
+            <label class="f" for="pf-pitch_st">Pitch <b id="pf-pitch_st-v"></b></label><input type="range" id="pf-pitch_st" min="-12" max="12" step="0.5">
+            <label class="f" for="pf-volume_db">Volume <b id="pf-volume_db-v"></b></label><input type="range" id="pf-volume_db" min="-30" max="12" step="0.5">
+            <label class="f" for="pf-pause_scale">Pauses <b id="pf-pause_scale-v"></b></label><input type="range" id="pf-pause_scale" min="0.25" max="4" step="0.05">
+            <label class="f">Articulation</label><div class="chips" id="pf-articulation"></div>
+          </fieldset>
+          <fieldset><legend>Voice condition</legend>
+            <label class="f" for="pf-tremble">Tremble <b id="pf-tremble-v"></b></label><input type="range" id="pf-tremble" min="0" max="1" step="0.05">
+            <label class="f" for="pf-hoarse">Hoarseness <b id="pf-hoarse-v"></b></label><input type="range" id="pf-hoarse" min="0" max="1" step="0.05">
+            <label class="f" for="pf-breath">Breathiness <b id="pf-breath-v"></b></label><input type="range" id="pf-breath" min="0" max="1" step="0.05">
+            <label class="f" for="pf-age">Voice age <b id="pf-age-v"></b></label><input type="range" id="pf-age" min="0" max="1" step="0.05">
+            <label class="chk"><input type="checkbox" id="pf-whisper"> Whisper</label>
+          </fieldset>
+          <fieldset><legend>Language &amp; accent</legend>
+            <label class="f" for="pf-lang">Language</label><select id="pf-lang"></select>
+            <label class="f" for="pf-accent">Accent (dialect)</label><select id="pf-accent"></select>
+            <div class="small muted" id="pf-accent-note"></div>
+            <label class="f" for="pf-gender">Voice</label><select id="pf-gender"><option value="any">any</option><option value="female">female</option><option value="male">male</option></select>
+          </fieldset>
+        </div>
+        <details class="adv" id="sp-adv-box"><summary id="sp-adv-title">Advanced engine parameters</summary>
+          <p class="small muted">Leave a field blank to use the value the voice profile gives. A value here is sent exactly as typed.</p>
+          <div class="advgrid" id="sp-adv"></div></details>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-speak">
+      <div class="card">
+        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Generate speech</button>
+          <label class="chk"><input type="checkbox" id="sp-fallback" checked> If the engine fails, use the offline voice</label></div>
+        <div id="sp-out" style="margin-top:12px"></div>
+      </div>
+      <div class="card"><h2>How each control is handled by <span id="sp-cov-engine"></span></h2>
+        <table class="t small"><thead><tr><th>Control</th><th>Value</th><th>How</th></tr></thead><tbody id="sp-cov"></tbody></table>
+        <h3>Exact request <span class="small muted">(keys removed)</span></h3><pre class="req" id="sp-req"></pre>
+        <div id="sp-direction" class="small"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-match" hidden>
+      <div class="card">
+        <h2>Match a required output</h2>
+        <p class="small">Set the output you need. The app generates the speech, <b>measures</b> what actually came out, adjusts the engine’s parameters and tries again — until the measurements are within tolerance or the rounds run out. Each round with a cloud engine is one paid request.</p>
+        <div class="tgrid" id="mt-targets"></div>
+        <div class="row" style="margin-top:10px"><label>Rounds at most <input type="number" id="mt-rounds" value="5" min="1" max="10" style="width:70px"></label>
+          <button class="btn bigbtn" id="mt-go">🎯 Match</button></div>
+        <div id="mt-job" style="margin-top:10px"></div>
+        <div id="mt-out"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-listen" hidden>
+      <div class="card">
+        <h2>Listen &amp; analyse</h2>
+        <p class="small">Record or upload speech. The app measures how it was said — volume, pauses, speed, pitch and tone, tremble, hoarseness, breath — recognises the <b>vocal mode</b> (whispering, crying, laughing, shouting, singing or speaking) and links the words to what the builder has learned.</p>
+        <div class="row">
+          <select id="ls-kind" style="width:auto"><option value="speech">Connected speech (a sentence or more)</option><option value="vowel">Voice-condition test: say “aaah” for 3 seconds</option></select>
+          <button class="btn" id="ls-rec">🎙 Record</button><span id="ls-recstate" class="small"></span>
+          <label class="btn quiet" style="cursor:pointer">📁 Upload WAV<input type="file" id="ls-file" accept=".wav,audio/wav" hidden></label>
+        </div>
+        <div class="meter" style="margin-top:8px"><i id="ls-level" style="width:0"></i></div>
+        <div class="row" style="margin-top:8px">
+          <input id="ls-transcript" class="grow" type="text" placeholder="What was said (filled in by the browser's speech recognition when it can; or type it)">
+          <input id="ls-expected" class="grow" type="text" placeholder="Expected text (optional — for pronunciation practice)">
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="ls-go" disabled>🔬 Analyse</button><audio id="ls-audio" controls hidden></audio></div>
+      </div>
+      <div id="ls-out"></div>
+    </div>
+
+    <div class="sp" id="sp-ask" hidden>
+      <div class="card">
+        <h2>Ask by voice</h2>
+        <p class="small">Ask a question out loud (or type it) — for example “how do you say house in Spanish”, “what does tree mean”, “translate good morning to French”. The app understands the words <b>and how you said them</b>, answers from what the builder learned, and speaks the answer with the voice profile above. With “respond to the mood” on, a whispered question is answered in a whisper and a tearful one gently.</p>
+        <div class="row"><button class="btn bigbtn" id="ak-rec">🎙 Ask</button><span id="ak-state" class="small"></span></div>
+        <div class="row" style="margin-top:8px"><input id="ak-text" class="grow" type="text" placeholder="…or type the question"><button class="btn" id="ak-go">Answer</button>
+          <label class="chk"><input type="checkbox" id="ak-mood" checked> Respond to the mood</label></div>
+        <div id="ak-out" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-providers" hidden>
+      <div id="pv-list"></div>
+      <div class="card">
+        <h2>Google custom voice (voice cloning)</h2>
+        <p class="small">Builds a Google Cloud custom voice from a voice sample. <b>Only with the speaker’s explicit consent.</b> The speaker must read: <i>“I am the owner of this voice and I consent to Google using this sample to create a synthetic version of my voice.”</i></p>
+        <div class="row"><input id="cv-name" type="text" placeholder="Name for the voice" class="grow"><input id="cv-lang" type="text" value="en-US" style="width:100px">
+          <label class="btn quiet" style="cursor:pointer">📁 Voice sample (WAV)<input type="file" id="cv-file" accept=".wav,audio/wav" hidden></label></div>
+        <label class="chk"><input type="checkbox" id="cv-consent"> The speaker has given explicit consent and read the consent sentence in the sample</label>
+        <button class="btn" id="cv-go" style="margin-top:8px">Build custom voice</button><div id="cv-out" class="small"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-log" hidden>
+      <div class="card"><h2>Time statistics <span class="small muted">(seconds, to 0.01 s)</span></h2><div id="lg-stats"></div></div>
+      <div class="card"><h2>Every speech process</h2>
+        <div class="row"><select id="lg-proc" style="width:auto"><option value="">All processes</option><option>generate</option><option>match</option><option>ingest</option><option>query</option><option>custom-voice</option></select>
+          <button class="btn quiet" id="lg-go">Refresh</button><a class="btn quiet" style="text-decoration:none" href="/api/speech/log.csv" download>Download CSV</a></div>
+        <div id="lg-out" style="margin-top:10px"></div></div>
+    </div>
   </section>
 
   <section class="panel" id="verify">
@@ -218,6 +388,15 @@
         <li><b>Each other language</b> — Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan — its words, sounds and links.</li>
       </ol>
       <p class="small">No AI model is used. Every learned fact keeps its source. The same inputs always give the same result.</p>
+      <h2>Speech</h2>
+      <ul>
+        <li><b>Speak</b> — one voice profile (emotion and strength, tone, accent, speed, pitch, volume, pauses, articulation, tremble, hoarseness, breathiness, whisper, voice age) is sent to any engine: espeak-ng, the prototype's formant voice, Windows or macOS voices (all offline), Google Gemini TTS, Google Cloud Text-to-Speech, ElevenLabs, OpenAI, Microsoft Azure or Amazon Polly. <b>Advanced</b> shows every parameter of the chosen engine. The table “How each control is handled” says, for each control, whether the engine does it natively, QueryBook adds it afterwards, or it is not available; the exact request is shown with keys removed.</li>
+        <li><b>Match a target</b> — give the output you need (pitch, speed, loudness, pauses, tremble, breath). The app generates, measures the result, adjusts and repeats until it matches.</li>
+        <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
+        <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
+        <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>
+        <li><b>Honest limits:</b> cloud engines need your own keys; their requests follow each provider's published format and are tested against a stand-in server, not against the live services. The vocal-mode rules are tested on real normal speech and on synthetic whispering, laughing, sobbing and singing; real crying and laughing recordings vary, so close calls are marked “uncertain”.</li>
+      </ul>
       <h2>Transparency</h2>
       <ul>
         <li>The build shows one progress bar for the whole job, the current step, speed and time left.</li>
@@ -235,5 +414,6 @@
 <footer class="status"></footer>
 <script src="qb.js"></script>
 <script src="app.js"></script>
+<script src="speech.js"></script>
 </body>
 </html>

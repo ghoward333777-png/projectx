@@ -5,6 +5,11 @@ first, no AI model. Start it (START-WINDOWS.bat / START-MAC.command / python app
 time, the build starts automatically (about 2 minutes) and the Build page shows every step.
 
   python app.py build      build in this window (build --again to rebuild)
+Speech tab: speak with any of 10 engines (offline voices, Google Gemini / Cloud TTS, ElevenLabs,
+OpenAI, Azure, Polly) under one voice profile; match a measured target; analyse recordings
+(whisper / crying / laughing / shouting / singing / speech, emotion, tremble, hoarseness, age);
+ask by voice; every process logged to 0.01 s.
+
   python app.py verify     proof for third parties: rebuild from nothing in a sealed store with the
                            network blocked; prints a SHA-256 fingerprint anyone can reproduce
 
