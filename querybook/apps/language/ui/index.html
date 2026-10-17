@@ -268,6 +268,9 @@
           <input id="ls-transcript" class="grow" type="text" placeholder="What was said (filled in by the browser's speech recognition when it can; or type it)">
           <input id="ls-expected" class="grow" type="text" placeholder="Expected text (optional — for pronunciation practice)">
         </div>
+        <div class="row" style="margin-top:8px"><label class="small">Words recognised by
+          <select id="ls-recog" style="width:auto"><option value="auto">automatic — the browser, else Google Speech-to-Text</option><option value="google">Google Speech-to-Text (word timings and confidence)</option><option value="browser">the browser only</option></select></label>
+          <span class="small muted" id="ls-recog-note"></span></div>
         <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="ls-go" disabled>🔬 Analyse</button><audio id="ls-audio" controls hidden></audio></div>
       </div>
       <div id="ls-out"></div>

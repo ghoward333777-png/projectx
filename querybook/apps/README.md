@@ -97,6 +97,28 @@ touches the data.
 * `python app.py restore` lists the backups; `python app.py restore 1` restores the newest. The
   damaged file is set aside, not deleted.
 
+## Google Cloud (optional, all three applications)
+
+Diagnostics → **Google Cloud** connects an application to your Google Cloud project. Nothing to install;
+credentials stay in the data folder (`google.json`, owner-only), are sent only to Google and are never
+shown or logged. **Copy settings from …** reuses what another QueryBook application already has.
+
+| Service | Needs | What it does |
+|---|---|---|
+| Cloud Storage | service account + bucket | every verified backup is also uploaded (resumable, MD5-checked) to `querybook/<app>/<computer>/`; the newest N are kept; any copy can be downloaded and restored |
+| Cloud Monitoring | service account | health, failed and warned checks, errors and uptime written after every diagnostics run; **Create alert** adds a policy for "silent for 3 hours or a check failed" |
+| Speech-to-Text | API key | Language Builder: words with timings and confidence for recordings and spoken questions; falls back to the browser's recognizer |
+| Text-to-Speech / Gemini TTS | API key | Language Builder voices use the same key |
+| YouTube Data API v3 | API key | History & News: search YouTube or add a video by link; videos are "reported by" a channel until promoted to a fact (source kind "video channel") |
+
+* **API key:** https://aistudio.google.com/apikey (or Cloud console → APIs & Services → Credentials).
+* **Service account:** Cloud console → IAM → Service accounts → create, give it *Storage Object Admin* and
+  *Monitoring Editor*, then Keys → Add key → JSON, and choose that file on the Diagnostics page. Requests are
+  signed with RS256 implemented in the standard library (checked byte-for-byte against OpenSSL).
+* **Test all Google services** tries each one and shows the result and time; diagnostics check sign-in, the
+  newest cloud backup and the last Monitoring report every hour. Gemini assistants and agents are deliberately
+  not connected: History & News uses human sources and Math & Science exact computation.
+
 ## Redundancy
 
 * **Backup mirror:** every checked backup can also be copied to a second folder — best on another drive.
@@ -156,9 +178,9 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 91 checks
+python language/app.py --selftest     # 97 checks
 python stem/app.py --selftest         # 85 checks
-python facts/app.py --selftest        # 36 checks
+python facts/app.py --selftest        # 43 checks
 python tools/run_all_tests.py         # all of the above
 ```
 

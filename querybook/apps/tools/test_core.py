@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests of the shared core's data safety: concurrent writers, crash-safe transactions,
 damage detection (the app refuses to write to a damaged database), backups and restore."""
-import json, os, sys, tempfile, threading
+import json, os, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "_core"))
@@ -150,6 +150,250 @@ def monitoring_tests(c):
     gh.httpd.shutdown()
 
 
+# ---------------------------------------------------------------------------- Google Cloud against a stand-in server
+def _rsa_test_key(bits=1024):
+    """A real RSA key made here (test only), returned as a PKCS#8 PEM plus its public numbers."""
+    import random
+    rnd = random.Random(20261017)
+
+    def prime(b):
+        while True:
+            n = rnd.getrandbits(b) | (1 << (b - 1)) | 1
+            if all(n % q for q in (3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37)) and all(pow(a, n - 1, n) == 1 for a in (2, 3, 5, 7, 11)):
+                d, r = n - 1, 0
+                while d % 2 == 0:
+                    d //= 2; r += 1
+                ok = True
+                for a in (2, 3, 5, 7, 11, 13, 17, 19, 23):
+                    x = pow(a, d, n)
+                    if x in (1, n - 1):
+                        continue
+                    for _ in range(r - 1):
+                        x = pow(x, 2, n)
+                        if x == n - 1:
+                            break
+                    else:
+                        ok = False; break
+                if ok:
+                    return n
+    e = 65537
+    while True:
+        p, q = prime(bits // 2), prime(bits // 2)
+        phi = (p - 1) * (q - 1)
+        if p != q and phi % e:
+            break
+    n, d = p * q, pow(e, -1, phi)
+
+    def tlv(tag, body):
+        ln = len(body)
+        L = bytes([ln]) if ln < 128 else bytes([0x80 | ((ln.bit_length() + 7) // 8)]) + ln.to_bytes((ln.bit_length() + 7) // 8, "big")
+        return bytes([tag]) + L + body
+
+    def INT(v):
+        b = v.to_bytes((v.bit_length() + 8) // 8, "big")
+        return tlv(0x02, b)
+    rsa = tlv(0x30, b"".join(INT(v) for v in (0, n, e, d, p, q, d % (p - 1), d % (q - 1), pow(q, -1, p))))
+    alg = tlv(0x30, tlv(0x06, bytes.fromhex("2a864886f70d010101")) + b"\x05\x00")
+    der = tlv(0x30, INT(0) + alg + tlv(0x04, rsa))
+    import base64 as _b
+    pem = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(_b.b64encode(der).decode()[i:i + 64] for i in range(0, len(_b.b64encode(der)), 64)) + "\n-----END PRIVATE KEY-----\n"
+    return pem, n, e
+
+
+def google_tests(c):
+    import http.server, base64, hashlib, gcloud, urllib.parse
+    pem, n, e = _rsa_test_key()
+    seen = {"tokens": 0, "bad_sig": 0, "objects": {}, "sessions": {}, "metrics": [], "alerts": 0, "speech": 0, "yt": 0}
+
+    def verify_jwt(jwt):
+        h, cl, sig = jwt.split(".")
+        pad = lambda x: x + "=" * (-len(x) % 4)
+        s_int = int.from_bytes(base64.urlsafe_b64decode(pad(sig)), "big")
+        em = pow(s_int, e, n).to_bytes((n.bit_length() + 7) // 8, "big")
+        want = bytes.fromhex("3031300d060960864801650304020105000420") + hashlib.sha256((h + "." + cl).encode()).digest()
+        return em.endswith(want) and em.startswith(b"\x00\x01\xff"), json.loads(base64.urlsafe_b64decode(pad(cl)))
+
+    class G(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def send(self, code, body=b"", ctype="application/json", extra=None):
+            if isinstance(body, (dict, list)):
+                body = json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(body)))
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers(); self.wfile.write(body)
+
+        def authed(self):
+            return self.headers.get("Authorization") == "Bearer ya29.test-token"
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            u = urllib.parse.urlparse(self.path); q = dict(urllib.parse.parse_qsl(u.query))
+            if u.path == "/token":
+                f = dict(urllib.parse.parse_qsl(body.decode()))
+                ok, claims = verify_jwt(f["assertion"])
+                if not ok:
+                    seen["bad_sig"] += 1
+                    return self.send(400, {"error": "invalid_grant"})
+                seen["tokens"] += 1; seen["claims"] = claims
+                return self.send(200, {"access_token": "ya29.test-token", "expires_in": 3600})
+            if not self.authed() and "speech" not in u.path:
+                return self.send(401, {"error": {"message": "no token"}})
+            if u.path.startswith("/upload/storage/v1/b/"):
+                sid = "s%d" % len(seen["sessions"])
+                seen["sessions"][sid] = {"name": q["name"], "data": b""}
+                return self.send(200, b"", extra={"Location": "http://%s/session/%s" % (self.headers["Host"], sid)})
+            if u.path.endswith("/timeSeries"):
+                seen["metrics"].append(json.loads(body)); return self.send(200, {})
+            if u.path.endswith("/alertPolicies"):
+                seen["alerts"] += 1; b = json.loads(body); b["name"] = "projects/p/alertPolicies/1"; return self.send(200, b)
+            if u.path == "/v1/speech:recognize":
+                seen["speech"] += 1
+                if self.headers.get("X-Goog-Api-Key") != "AIzaTESTKEY0000000000000000000000000000":
+                    return self.send(403, {"error": {"message": "bad key"}})
+                cfg = json.loads(body)["config"]
+                seen["speech_cfg"] = cfg
+                return self.send(200, {"results": [{"alternatives": [{"transcript": "hello there", "confidence": 0.93,
+                                     "words": [{"word": "hello", "startTime": "0.100s", "endTime": "0.450s", "confidence": 0.95},
+                                               {"word": "there", "startTime": "0.500s", "endTime": "0.900s", "confidence": 0.91}]}], "languageCode": "en-us"}]})
+            return self.send(404, {"error": {"message": "no route"}})
+
+        def do_PUT(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            sid = self.path.rsplit("/", 1)[1]
+            s = seen["sessions"][sid]
+            s["data"] += body
+            total = int(self.headers["Content-Range"].split("/")[1])
+            if len(s["data"]) < total:
+                return self.send(308, b"", extra={"Range": "bytes=0-%d" % (len(s["data"]) - 1)})
+            md5 = base64.b64encode(hashlib.md5(s["data"]).digest()).decode()
+            seen["objects"][s["name"]] = s["data"]
+            seen["chunks"] = seen.get("chunks", 0) + 1
+            return self.send(200, {"name": s["name"], "size": str(total), "md5Hash": md5})
+
+        def do_GET(self):
+            u = urllib.parse.urlparse(self.path); q = dict(urllib.parse.parse_qsl(u.query))
+            if u.path.startswith("/youtube/v3/"):
+                seen["yt"] += 1
+                if u.path.endswith("/search"):
+                    return self.send(200, {"items": [{"id": {"videoId": "dQw4w9WgXcQ"}}]})
+                return self.send(200, {"items": [{"id": "dQw4w9WgXcQ", "snippet": {"title": "A talk", "channelTitle": "A Channel", "channelId": "C1",
+                                                  "publishedAt": "2009-10-25T06:57:33Z", "description": "d"},
+                                                  "contentDetails": {"duration": "PT3M33S", "caption": "true"}, "statistics": {"viewCount": "5"}}]})
+            if not self.authed():
+                return self.send(401, {"error": {"message": "no token"}})
+            parts = u.path.split("/")
+            if u.path.startswith("/storage/v1/b/") and len(parts) == 5:
+                return self.send(200, {"name": parts[4], "location": "EU"})
+            if u.path.endswith("/o"):
+                items = [{"name": k, "size": str(len(v)), "updated": "2026-10-17T00:00:00Z", "md5Hash": base64.b64encode(hashlib.md5(v).digest()).decode()}
+                         for k, v in seen["objects"].items() if k.startswith(q.get("prefix", ""))]
+                return self.send(200, {"items": items})
+            if "/o/" in u.path and q.get("alt") == "media":
+                name = urllib.parse.unquote(u.path.split("/o/", 1)[1])
+                return self.send(200, seen["objects"][name], "application/octet-stream")
+            return self.send(404, {"error": {"message": "no route"}})
+
+        def do_DELETE(self):
+            name = urllib.parse.unquote(self.path.split("/o/", 1)[1])
+            seen["objects"].pop(name, None)
+            self.send(204)
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), G)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_url = "http://127.0.0.1:%d" % srv.server_address[1]
+    saved = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy")}
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost"
+    for svc in ("storage", "monitoring", "speech", "youtube", "token"):
+        os.environ["QB_GCP_BASE_" + svc.upper()] = base_url
+    SA = {"type": "service_account", "project_id": "qb-test", "private_key_id": "kid123", "private_key": pem,
+          "client_email": "querybook@qb-test.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token"}
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            S = gcloud.Settings(tmp)
+            try:
+                S.save({"service_account_json": json.dumps({"type": "service_account", "client_email": "x", "private_key": "nope"})})
+                c.check("google: a broken service account file is refused", False)
+            except Exception:
+                c.check("google: a broken service account file is refused", True)
+            S.save({"api_key": "AIzaTESTKEY0000000000000000000000000000", "service_account_json": json.dumps(SA), "bucket": "gs://qb-backups/",
+                    "storage_on": True, "monitoring_on": True, "keep": 2})
+            pub = json.dumps(S.public())
+            c.check("google: settings saved privately and reported without secrets", "AIzaTEST" not in pub and "PRIVATE KEY" not in pub
+                    and S.public()["bucket"] == "qb-backups" and S.public()["project_id"] == "qb-test")
+            if os.name != "nt":
+                c.check("google: settings file is readable by the owner only", os.stat(S.path).st_mode & 0o077 == 0)
+            G_ = gcloud.Google(S)
+            tok = G_.token()
+            c.check("google: service-account sign-in — the RS256 signature made here verifies with the public key",
+                    tok == "ya29.test-token" and seen["tokens"] == 1 and seen["bad_sig"] == 0 and seen["claims"]["iss"] == SA["client_email"])
+            G_.token()
+            c.check("google: the access token is reused until it expires", seen["tokens"] == 1)
+            big = os.path.join(tmp, "big.sqlite")
+            with open(big, "wb") as f:
+                f.write(os.urandom(5 * 1024 * 1024 + 123))
+            meta = G_.upload(big, "querybook/t/h/big.sqlite")
+            c.check("google: resumable upload in 2 MiB chunks, MD5 checked against the file", meta["md5Hash"] and seen["objects"]["querybook/t/h/big.sqlite"] == open(big, "rb").read())
+            G_.download("querybook/t/h/big.sqlite", os.path.join(tmp, "back.sqlite"))
+            c.check("google: download from Cloud Storage is MD5-checked", open(os.path.join(tmp, "back.sqlite"), "rb").read() == open(big, "rb").read())
+            G_.write_metrics("t", "h", {"health": 0, "uptime_hours": 1.5})
+            ts = seen["metrics"][-1]["timeSeries"]
+            c.check("google: Cloud Monitoring metrics written with app and host labels",
+                    {t["metric"]["type"] for t in ts} == {"custom.googleapis.com/querybook/health", "custom.googleapis.com/querybook/uptime_hours"}
+                    and ts[0]["metric"]["labels"] == {"app": "t", "host": "h"} and ts[0]["resource"]["labels"]["project_id"] == "qb-test")
+            al = G_.create_alert("t", "Test")
+            c.check("google: alert policy for a silent or failing application", seen["alerts"] == 1 and len(al["conditions"]) == 2)
+            import io, wave as _w
+            b = io.BytesIO()
+            with _w.open(b, "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b"\x00\x00" * 16000)
+            r = G_.recognize(b.getvalue(), "en-US")
+            c.check("google: Speech-to-Text returns words with timings and confidence",
+                    r["transcript"] == "hello there" and r["words"][1]["start_s"] == 0.5 and seen["speech_cfg"]["enableWordTimeOffsets"] and seen["speech_cfg"]["sampleRateHertz"] == 16000)
+            v = G_.youtube_search("talk", 3)
+            c.check("google: YouTube search returns video, channel, date and link", v and v[0]["channel"] == "A Channel" and v[0]["url"].endswith("dQw4w9WgXcQ"))
+            c.check("google: video ids are read from any YouTube link form", gcloud.youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+                    and gcloud.youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3") == "dQw4w9WgXcQ")
+            # the application path: every backup goes to the bucket, newest N kept, diagnostics see it
+            st = core.Store(tmp, "t", SCHEMA)
+            link = core.CloudLink(st, "t", "Test", lambda *a: None)
+            link.settings, link.g = S, G_
+            st.cloud = link
+            for i in range(3):
+                with st.write() as db:
+                    db.execute("INSERT INTO t(k, v) VALUES(?, 1)", ("cloud-%d" % i,))
+                st.backup("c%d" % i, force=True)
+                for _ in range(100):
+                    if not link._busy:
+                        break
+                    time.sleep(0.05)
+            names = [x["name"] for x in G_.list(link.prefix())]
+            c.check("google: every backup is uploaded in the background and only the newest 2 are kept in the bucket",
+                    len(names) == 2 and names[0].endswith(os.path.basename(st.backups()[0]["path"])), names)
+            ck = {x["id"]: x for x in link.checks()}
+            c.check("google: diagnostics confirm sign-in and that the newest backup is in Cloud Storage",
+                    ck["google_auth"]["status"] == "ok" and ck["cloud_backup"]["status"] == "ok", ck.get("cloud_backup"))
+            logged = json.dumps(st.activities(500))
+            c.check("google: no key, private key or token appears in the activity log", "AIzaTEST" not in logged and "PRIVATE KEY" not in logged and "ya29" not in logged)
+            S.save({"bucket": "missing-bucket"})
+            os.environ["QB_GCP_BASE_STORAGE"] = "http://127.0.0.1:9"          # unreachable
+            link.upload_backup(st.backups()[0]["path"])
+            ck = {x["id"]: x for x in link.checks()}
+            c.check("google: a failed upload is reported by diagnostics", ck["cloud_backup"]["status"] == "fail")
+    finally:
+        srv.shutdown()
+        for svc in ("storage", "monitoring", "speech", "youtube", "token"):
+            os.environ.pop("QB_GCP_BASE_" + svc.upper(), None)
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def main():
     c = core.Checks()
     with tempfile.TemporaryDirectory() as tmp:
@@ -229,8 +473,10 @@ def main():
             st4.set_mirror("off")
             c.check("the mirror can be switched off", st4.mirror_dir() is None)
     monitoring_tests(c)
+    google_tests(c)
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))
+        c.check("%s carries the current Google module" % app, open(os.path.join(ROOT, app, "gcloud.py"), "rb").read() == open(os.path.join(ROOT, "_core", "gcloud.py"), "rb").read())
     return c.report("Shared core")
 
 

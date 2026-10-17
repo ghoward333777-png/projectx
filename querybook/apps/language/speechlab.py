@@ -21,6 +21,7 @@ import datetime, hashlib, json, math, os, re, shutil, time
 
 import dialect
 import function_words
+import gcloud
 import speech
 import tts
 import vocab
@@ -84,6 +85,28 @@ class SpeechLab:
         os.makedirs(self.audio_dir, exist_ok=True)
         tts.Formant.lab = lab
         tts.BY_ID["formant"].lab = lab
+        self.google = gcloud.Google(gcloud.Settings(folder), log)
+
+    # ---------------------------------------------------------------- Google Speech-to-Text (optional recognizer)
+    def stt_ready(self):
+        pub = self.google.s.public()
+        return pub["api_key_set"] and pub["stt_on"] is not False
+
+    def transcribe(self, audio, lang="en", parent=None):
+        """Google Speech-to-Text with word timings; logged as its own process. Returns None when not available or failed."""
+        if not self.stt_ready():
+            return None
+        clk = Clock()
+        clk("Google Speech-to-Text")
+        code = tts.SPEECH_LANG.get(lang, lang if "-" in str(lang) else "en-US")
+        try:
+            r = self.google.recognize(audio, code)
+            self._record("transcribe", "Google Speech-to-Text: %d words, confidence %s" % (len(r["words"]), r["confidence"]), "google_stt", "ok", clk,
+                         {"language": code}, {"transcript": r["transcript"][:500], "confidence": r["confidence"], "words": len(r["words"])}, None, parent)
+            return r
+        except Exception as e:
+            self._record("transcribe", "Google Speech-to-Text failed: %s" % self.google.s.scrub(e), "google_stt", "failed", clk, {"language": code}, None, None, parent)
+            return {"error": self.google.s.scrub(e)}
 
     # ---------------------------------------------------------------- logging
     def _record(self, process, description, engine, status, clock, request=None, result=None, audio=None, parent=None, started=None):
@@ -194,13 +217,21 @@ class SpeechLab:
                 "accent_cues": dialect.detect_dialect(text or "", None)[:3] if text else []}
 
     # ---------------------------------------------------------------- ingestion
-    def ingest(self, audio, transcript="", expected="", label=""):
+    def ingest(self, audio, transcript="", expected="", label="", recognizer="auto", lang="en"):
         clk = Clock()
         clk("receive")
         if not voicedsp.is_wav(audio):
             raise ValueError("Please send WAV audio (the page records WAV).")
         name = self._save_audio(audio, "in")
         try:
+            stt, heard_by = None, ("browser / typed" if transcript else "none")
+            if recognizer == "google" or (recognizer == "auto" and not transcript):
+                clk("transcribe (Google Speech-to-Text)")
+                stt = self.transcribe(audio, lang)
+                if stt and stt.get("transcript"):
+                    transcript, heard_by = stt["transcript"], "Google Speech-to-Text"
+                elif stt and stt.get("error"):
+                    heard_by = ("browser / typed" if transcript else "none") + " (Google Speech-to-Text failed: %s)" % stt["error"][:120]
             m = voicedsp.measure(audio, clk)
             clk("semantics")
             sem = self.semantics(transcript or expected) if (transcript or expected) else None
@@ -208,7 +239,17 @@ class SpeechLab:
                 sem["syllables_heard"] = m["rate"]["syllables"]
             if expected and transcript:
                 sem["match_to_expected"] = vocab.similarity(transcript, expected)
-            res = {"measure": _slim(m), "semantics": sem, "transcript": transcript, "expected": expected}
+            if sem and stt and stt.get("words"):
+                # attach Google's timing and confidence to each word, in order
+                pool = [dict(w) for w in stt["words"]]
+                for w in sem["words"]:
+                    for k, g in enumerate(pool):
+                        if vocab.fold(g["word"].strip(".,!?;:").lower()) == vocab.fold(w["word"].lower()):
+                            w.update({"start_s": g["start_s"], "end_s": g["end_s"], "stt_confidence": g["confidence"]})
+                            pool = pool[k + 1:]
+                            break
+            res = {"measure": _slim(m), "semantics": sem, "transcript": transcript, "expected": expected, "heard_by": heard_by,
+                   "stt": {k: stt[k] for k in ("confidence", "language", "seconds") if k in stt} if stt and not stt.get("error") else None}
             rid = self._record("ingest", "%s%.2f s of audio — %s, %s" % ((label + ": ") if label else "", m["duration_s"], m["vocal_mode"]["label"],
                                m["indicators"]["emotion"]["label"]), "voicedsp", "ok", clk, {"transcript": transcript, "expected": expected, "label": label},
                                {"vocal_mode": m["vocal_mode"]["label"], "emotion": m["indicators"]["emotion"]["label"]}, name)
@@ -373,6 +414,10 @@ class SpeechLab:
         clk = Clock()
         clk("understand words")
         text = " ".join(str(transcript or "").split())
+        if not text and audio:
+            clk("transcribe (Google Speech-to-Text)")
+            r = self.transcribe(audio, (prof or {}).get("lang") or "en")
+            text = (r or {}).get("transcript") or ""
         if not text:
             raise ValueError("No words were heard. Speak again or type the question.")
         sem = self.semantics(text)
@@ -501,6 +546,12 @@ def diagnostics(sl, C):
         else:
             out.append(C("sp_" + prov, name, "warn" if last[0]["status"] == "failed" else "ok",
                          "last use %s: %s; failures in 24 h: %d" % (last[0]["started"], last[0]["status"], fails)))
+    if sl.stt_ready():
+        last = sl.store.query("SELECT status, started FROM speech_log WHERE process = 'transcribe' ORDER BY id DESC LIMIT 1")
+        out.append(C("sp_stt", "Google Speech-to-Text", "warn" if last and last[0]["status"] == "failed" else "ok",
+                     ("last use %s: %s" % (last[0]["started"], last[0]["status"])) if last else "key set; not used yet"))
+    else:
+        out.append(C("sp_stt", "Google Speech-to-Text", "ok", "not set up (optional) — the browser's recognizer is used"))
     n = sl.store.scalar("SELECT count(*) FROM speech_log", default=0)
     lastlog = sl.store.scalar("SELECT max(started) FROM speech_log", default=None)
     out.append(C("sp_log", "Speech log", "ok", "%d processes logged; newest %s" % (n, lastlog or "—")))

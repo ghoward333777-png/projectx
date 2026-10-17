@@ -142,8 +142,14 @@ class Keys:
         out = {}
         for field, env in KEY_FIELDS.get(provider, []):
             out[field] = cfg.get(field) or os.environ.get(env) or ""      # settings saved in the app win over the environment
-        if provider == "google_cloud" and not out.get("api_key"):
-            out["api_key"] = os.environ.get("GOOGLE_API_KEY") or ""
+        if provider in ("google_cloud", "google_gemini") and not out.get("api_key"):
+            # one Google key for everything: the key saved under Diagnostics → Google Cloud
+            try:
+                with open(os.path.join(os.path.dirname(self.path), "google.json"), encoding="utf-8") as f:
+                    out["api_key"] = (json.load(f) or {}).get("api_key") or ""
+            except (OSError, ValueError):
+                pass
+            out["api_key"] = out["api_key"] or os.environ.get("GOOGLE_API_KEY") or ""
         out["custom_voices"] = cfg.get("custom_voices") or {}
         return out
 

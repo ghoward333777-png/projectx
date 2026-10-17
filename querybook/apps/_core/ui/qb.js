@@ -164,6 +164,20 @@ async function renderDiagnostics(el, rerun) {
       '<div class="row"><button class="btn" id="dg-run">Run checks now</button><button class="btn quiet" id="dg-self">Run full self-test</button>' +
       '<a class="btn quiet" href="/api/diagnostics/report.txt" download="diagnostics.txt" style="text-decoration:none">Download report</a></div>' +
       '<div id="dg-out" style="margin-top:12px"></div><pre id="dg-selfout" class="small mono" style="display:none;white-space:pre-wrap;max-height:320px;overflow:auto;background:var(--chip);padding:10px;border-radius:8px"></pre></div>' +
+      '<div class="card" id="gc-card"><h2>Google Cloud</h2><p class="small muted">Optional. Connects this application to your Google Cloud project: an off-site copy of every backup in Cloud Storage, health reports in Cloud Monitoring (with an alert if the application fails or goes silent), and — with the API key — Speech-to-Text, Text-to-Speech and YouTube. Keys are kept in this application\'s data folder (owner-only) and sent only to Google; they are never shown or logged.</p>' +
+      '<div id="gc-status" class="small"></div>' +
+      '<div class="grid-gc">' +
+      '<label class="f">API key (Speech-to-Text, Text-to-Speech, YouTube) — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">get one</a></label><input id="gc-key" type="password" autocomplete="off" placeholder="AIza…">' +
+      '<label class="f">Service account key file (Cloud Storage, Monitoring) — <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">create one</a> with roles Storage Object Admin + Monitoring Editor, then Keys → Add key → JSON</label>' +
+      '<label class="btn quiet" style="cursor:pointer;display:inline-block">📁 Choose the JSON key file<input id="gc-sa" type="file" accept=".json,application/json" hidden></label> <span id="gc-sa-name" class="small muted"></span>' +
+      '<label class="f">Cloud Storage bucket — <a href="https://console.cloud.google.com/storage/create-bucket" target="_blank" rel="noopener">create one</a></label><input id="gc-bucket" type="text" placeholder="my-querybook-backups">' +
+      '<label class="f">Keep this many backups in the bucket</label><input id="gc-keep" type="number" min="1" max="100" style="width:90px">' +
+      '<label class="chk"><input type="checkbox" id="gc-storage"> Copy every backup to Cloud Storage</label>' +
+      '<label class="chk"><input type="checkbox" id="gc-mon"> Send health reports to Cloud Monitoring</label></div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn" id="gc-save">Save</button><button class="btn quiet" id="gc-test">Test all Google services</button>' +
+      '<button class="btn quiet" id="gc-up">Back up to Cloud now</button><button class="btn quiet" id="gc-list">Cloud backups</button><button class="btn quiet" id="gc-alert">Create alert</button>' +
+      '<span id="gc-copy"></span><button class="btn quiet" id="gc-forget">Disconnect</button></div>' +
+      '<div id="gc-job" style="margin-top:10px"></div><div id="gc-out" style="margin-top:10px"></div></div>' +
       '<div class="card"><h2>Backup mirror (redundancy)</h2><p class="small muted">A second, verified copy of every backup in another folder — best on another drive (USB disk, NAS, synced folder). Each copy is checked: same SHA-256 as the backup and a passing database check. Restoring can use either copy.</p>' +
       '<div class="row"><input id="mr-f" class="grow" type="text" placeholder="Folder on another drive, e.g. E:\\QB-Mirror" aria-label="Mirror folder"><button class="btn" id="mr-set">Set mirror</button><button class="btn quiet" id="mr-off">Switch off</button></div><div id="mr-out" class="small" style="margin-top:8px"></div></div>' +
       '<div class="card"><h2>Activity log</h2><p class="small muted">Every action that changes something, every background task, backup, import, diagnostics run and monitoring report — with its result and how long it took. Kept in this application\'s database (newest 20,000).</p>' +
@@ -188,6 +202,41 @@ async function renderDiagnostics(el, rerun) {
       "<li>Generate, copy the token, paste it here, tick <b>Monitoring connection on</b>, press <b>Save</b>, then <b>Send a test report</b>.</li>" +
       "</ol><p class=\"small muted\">The token is kept only in this application's data folder (monitor.json) and is only ever sent to GitHub. One token can be used by all three applications.</p></details></div>";
     $("#dg-run", el).onclick = () => renderDiagnostics(el, true);
+    let gcSA = null;
+    const gcShow = async () => {
+      const g = await api("/api/gcloud"), c = g.settings, st = g.state || {};
+      $("#gc-status").innerHTML = '<div class="stats" style="margin-bottom:8px">' +
+        '<div class="stat"><div class="k">API key</div><div class="v" style="font-size:16px">' + (c.api_key_set ? "✔ set" + (c.api_key_from_environment ? " (environment)" : "") : "— not set") + "</div></div>" +
+        '<div class="stat"><div class="k">Service account</div><div class="v" style="font-size:14px">' + (c.service_account ? "✔ " + esc(c.service_account.client_email) : "— not set") + "</div></div>" +
+        '<div class="stat"><div class="k">Cloud Storage</div><div class="v" style="font-size:14px">' + (c.storage_on ? "on → " + esc(c.bucket || "(no bucket)") : "off") + (st.last_upload ? '<div class="small muted">last copy ' + esc(st.last_upload) + "</div>" : "") + (st.last_error ? '<div class="small" style="color:var(--bad)">' + esc(st.last_error) + "</div>" : "") + "</div></div>" +
+        '<div class="stat"><div class="k">Cloud Monitoring</div><div class="v" style="font-size:14px">' + (c.monitoring_on ? "on (project " + esc(c.project_id || "?") + ")" : "off") + (st.last_metrics ? '<div class="small muted">last report ' + esc(st.last_metrics) + "</div>" : "") + "</div></div></div>" +
+        '<div class="small muted">Objects are stored under <span class="mono">' + esc(g.prefix) + "</span></div>";
+      $("#gc-bucket").value = c.bucket || ""; $("#gc-keep").value = c.keep || 10; $("#gc-storage").checked = c.storage_on; $("#gc-mon").checked = c.monitoring_on;
+      $("#gc-copy").innerHTML = (g.siblings || []).map(x => '<button class="btn quiet" data-gccopy="' + esc(x.app) + '">Copy settings from ' + esc({ language: "Language Builder", stem: "Math & Science", facts: "History & News" }[x.app] || x.app) + "</button>").join("");
+      $$("[data-gccopy]").forEach(b => b.onclick = async () => { await api("/api/gcloud/copy-from", { app: b.dataset.gccopy }); toast("Google settings copied."); gcShow(); });
+    };
+    $("#gc-sa").onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { gcSA = r.result; $("#gc-sa-name").textContent = f.name + " — press Save"; }; r.readAsText(f); };
+    $("#gc-save").onclick = async () => {
+      const body = { bucket: $("#gc-bucket").value, keep: Number($("#gc-keep").value) || 10, storage_on: $("#gc-storage").checked, monitoring_on: $("#gc-mon").checked };
+      if ($("#gc-key").value) body.api_key = $("#gc-key").value;
+      if (gcSA) body.service_account_json = gcSA;
+      await api("/api/gcloud", body); $("#gc-key").value = ""; gcSA = null; $("#gc-sa-name").textContent = ""; toast("Google Cloud settings saved."); gcShow();
+    };
+    $("#gc-test").onclick = async () => {
+      const r = await api("/api/gcloud/test", {});
+      $("#gc-out").innerHTML = '<table class="t small"><tr><th>Service</th><th>Result</th><th>Seconds</th><th>Detail</th></tr>' + r.results.map(x => "<tr><td>" + esc(x.service) + "</td><td>" +
+        (x.ok ? '<span class="badge good">✔ works</span>' : '<span class="badge bad">✖ failed</span>') + "</td><td>" + Number(x.seconds).toFixed(2) + "</td><td>" + esc(x.detail) + "</td></tr>").join("") + "</table>";
+    };
+    $("#gc-up").onclick = async () => { await api("/api/gcloud/backup-now", {}); pollJob($("#gc-job"), () => gcShow()); };
+    $("#gc-list").onclick = async () => {
+      const r = await api("/api/gcloud/backups");
+      $("#gc-out").innerHTML = r.backups.length ? '<table class="t small"><tr><th>Cloud backup</th><th>Size</th><th>Stored</th><th></th></tr>' + r.backups.map(x => '<tr><td class="mono">' + esc(x.name.split("/").pop()) +
+        "</td><td>" + (x.bytes / 1048576).toFixed(2) + " MB</td><td>" + esc(x.updated || "") + '</td><td><button class="btn quiet" data-gcfetch="' + esc(x.name) + '">Download to this computer</button></td></tr>').join("") + "</table>" : '<p class="muted">No backups in the bucket yet.</p>';
+      $$("[data-gcfetch]").forEach(b => b.onclick = async () => { const r2 = await api("/api/gcloud/fetch", { name: b.dataset.gcfetch }); toast(r2.saved + " saved. " + r2.note); });
+    };
+    $("#gc-alert").onclick = async () => { const r = await api("/api/gcloud/alert", {}); toast("Alert created: " + r.display_name + ". Add your e-mail as a notification channel in Cloud Monitoring → Alerting."); };
+    $("#gc-forget").onclick = async () => { if (!confirm("Disconnect Google Cloud from this application? Keys are removed from this computer; nothing in your bucket is deleted.")) return; await api("/api/gcloud/forget", {}); gcShow(); };
+    gcShow();
     const mirrorShow = async () => { const m = await api("/api/mirror"); $("#mr-out").innerHTML = m.folder ? "Mirror: <span class=\"mono\">" + esc(m.folder) + "</span> — " + m.copies.length + " verified cop" + (m.copies.length === 1 ? "y" : "ies") + (m.copies[0] ? "; newest " + esc(m.copies[0].name) : "") : "<span class=\"badge warn\">no mirror</span> Backups exist in one place only."; if (m.folder && !$("#mr-f").value) $("#mr-f").value = m.folder; };
     $("#mr-set").onclick = async () => { await api("/api/mirror", { folder: $("#mr-f").value }); toast("Mirror set; the newest backup was copied and verified."); mirrorShow(); };
     $("#mr-off").onclick = async () => { await api("/api/mirror", { folder: "off" }); $("#mr-f").value = ""; mirrorShow(); };

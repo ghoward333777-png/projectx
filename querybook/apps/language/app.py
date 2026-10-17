@@ -27,7 +27,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 PORT = 8101
 program_dir = HERE
 
@@ -708,7 +708,8 @@ class App:
         @a.post("/api/speech/ingest")
         def sp_ingest(p):
             try:
-                return self.speech.ingest(_audio(p), p.get("transcript") or "", p.get("expected") or "", p.get("label") or "")
+                return self.speech.ingest(_audio(p), p.get("transcript") or "", p.get("expected") or "", p.get("label") or "",
+                                          p.get("recognizer") or "auto", p.get("lang") or "en")
             except ValueError as e:
                 raise core.UserError(str(e))
 
@@ -1131,7 +1132,11 @@ def _speech_selftest(c):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 seen.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
-                if "generateContent" in self.path:
+                if self.path.startswith("/v1/speech:recognize"):
+                    out, ct = json.dumps({"results": [{"alternatives": [{"transcript": "good morning", "confidence": 0.9, "words": [
+                        {"word": "good", "startTime": "0.20s", "endTime": "0.50s", "confidence": 0.92}, {"word": "morning", "startTime": "0.55s", "endTime": "1.10s", "confidence": 0.88}]}],
+                        "languageCode": "en-us"}]}).encode(), "application/json"
+                elif "generateContent" in self.path:
                     out, ct = json.dumps({"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/L16;rate=24000", "data": _b.b64encode(pcm).decode()}}]}}]}).encode(), "application/json"
                 elif "text:synthesize" in self.path:
                     out, ct = json.dumps({"audioContent": _b.b64encode(wav).decode()}).encode(), "application/json"
@@ -1166,9 +1171,21 @@ def _speech_selftest(c):
                           "azure": lambda: "style='sad'" in body and "OlderAdult" in body and req["headers"].get("ocp-apim-subscription-key") == vals["api_key"],
                           "polly": lambda: '"TextType": "ssml"' in body and "AWS4-HMAC-SHA256 Credential=AKIDSECRET123456/" in req["headers"].get("authorization", "")}
                 c.check("Speech: %s request carries the voice profile and its key, audio comes back" % prov, r["summary"]["engine_used"] == prov and checks[prov]())
+            os.environ["QB_GCP_BASE_SPEECH"] = base
+            S.google.s.save({"api_key": "AIzaSTTSECRET-123456"})
+            w = V.tone_wav(f0=150, seconds=1.5)
+            r = S.ingest(w, "", "", "stt test", "auto", "en")
+            c.check("Speech: with no browser transcript, Google Speech-to-Text supplies the words, with timings and confidence",
+                    r["heard_by"] == "Google Speech-to-Text" and r["transcript"] == "good morning" and r["semantics"]["words"][1].get("start_s") == 0.55)
+            r = S.ingest(w, "typed words", "", "stt test", "browser", "en")
+            c.check("Speech: 'browser only' never calls Google", r["heard_by"] == "browser / typed")
+            os.environ["QB_GCP_BASE_SPEECH"] = "http://127.0.0.1:9"
+            r = S.ingest(w, "", "", "stt test", "auto", "en")
+            c.check("Speech: when Google Speech-to-Text fails, analysis still completes and says why", "failed" in r["heard_by"] and r["measure"]["pitch"])
+            os.environ.pop("QB_GCP_BASE_SPEECH", None)
             logged = json.dumps(S.history(200)) + json.dumps(inst.store.activities(500))
             c.check("Speech: no provider key appears in the speech log or activity log",
-                    not any(v in logged for vals in secrets.values() for v in vals.values() if "SECRET" in v))
+                    not any(v in logged for vals in secrets.values() for v in vals.values() if "SECRET" in v) and "AIzaSTTSECRET" not in logged)
             c.check("Speech: provider settings are reported without their keys", "SECRET" not in json.dumps(S.keys.public()))
         finally:
             srv.shutdown()

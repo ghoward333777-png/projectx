@@ -223,7 +223,10 @@ function contourSvg(c, segs) {
 }
 
 async function lsAnalyse() {
-  const r = await api("/api/speech/ingest", { audio_b64: SP.wav, transcript: $("#ls-transcript").value, expected: $("#ls-expected").value, label: SP.wavName });
+  const rec = $("#ls-recog").value;
+  const r = await api("/api/speech/ingest", { audio_b64: SP.wav, transcript: rec === "google" ? "" : $("#ls-transcript").value, expected: $("#ls-expected").value,
+    label: SP.wavName, recognizer: rec, lang: SP.profile.lang });
+  if (r.transcript && !$("#ls-transcript").value) $("#ls-transcript").value = r.transcript;
   const m = r.measure, I = m.indicators, vm = m.vocal_mode, q = m.quality, p = m.pitch;
   const card = (title, o, extra) => '<div class="stat"><div class="k">' + esc(title) + '</div><div class="v">' + esc(o.label) + (o.level !== undefined && o.level !== null ? " · " + o.level + "/100" : "") + "</div>" +
     (o.reasons ? '<div class="small muted">' + o.reasons.map(esc).join("; ") + "</div>" : "") + (extra || "") + "</div>";
@@ -247,7 +250,10 @@ async function lsAnalyse() {
     (r.semantics ? '<div class="card"><h2>The words — meaning and pronunciation</h2><p class="small">Language: <b>' + esc(r.semantics.language_name) + "</b> · syllables expected " + r.semantics.syllables_expected +
       (r.semantics.syllables_heard ? ", heard " + r.semantics.syllables_heard : "") + (r.semantics.match_to_expected !== undefined ? " · matches the expected text " + r.semantics.match_to_expected + "%" : "") +
       (r.semantics.accent_cues && r.semantics.accent_cues.length ? " · accent cues: " + r.semantics.accent_cues.map(a => esc(a.name) + " (" + a.score + ")").join(", ") : "") + "</p>" +
-      '<table class="t small"><tr><th>Word</th><th>Language</th><th>Pronunciation</th><th>Syllables / stress</th><th>Meaning</th><th>Learned</th></tr>' + r.semantics.words.map(w => "<tr><td><b>" + esc(w.word) + "</b></td><td>" + esc(w.lang) + "</td><td class=\"mono\" title=\"" + esc(w.ipa_source || "") + "\">" + esc(w.ipa || "—") + "</td><td>" + (w.syllables || "") + " / " + (w.stress_syllable || "") +
+      '<p class="small">Words heard by: <b>' + esc(r.heard_by) + "</b>" + (r.stt ? " · Google confidence " + (r.stt.confidence !== null ? Math.round(100 * r.stt.confidence) + "%" : "—") + " · " + Number(r.stt.seconds).toFixed(2) + " s" : "") + "</p>" +
+      '<table class="t small"><tr><th>Word</th><th>Heard at</th><th>Language</th><th>Pronunciation</th><th>Syllables / stress</th><th>Meaning</th><th>Learned</th></tr>' + r.semantics.words.map(w => "<tr><td><b>" + esc(w.word) + "</b>" +
+        (w.stt_confidence !== undefined && w.stt_confidence !== null ? ' <span class="small muted">' + Math.round(100 * w.stt_confidence) + "%</span>" : "") + "</td><td class=\"mono\">" +
+        (w.start_s !== undefined ? Number(w.start_s).toFixed(2) + "–" + Number(w.end_s).toFixed(2) + " s" : "") + "</td><td>" + esc(w.lang) + "</td><td class=\"mono\" title=\"" + esc(w.ipa_source || "") + "\">" + esc(w.ipa || "—") + "</td><td>" + (w.syllables || "") + " / " + (w.stress_syllable || "") +
         "</td><td>" + esc(w.meaning || "") + "</td><td>" + (w.known_to_builder ? "✔" : "") + "</td></tr>").join("") + "</table></div>" : "") +
     '<div class="card"><details><summary>Timing of every stage (to 0.01 s) — log entry #' + r.log_id + "</summary><div id=\"ls-stages\"></div></details></div>";
   const lg = await api("/api/speech/log?limit=1&process=ingest");

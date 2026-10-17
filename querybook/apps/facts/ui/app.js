@@ -148,7 +148,7 @@ async function loadNews() {
   $$("[data-surl]").forEach(a => a.onclick = e => { e.preventDefault(); $("#fname").value = a.dataset.sname; $("#furl").value = a.dataset.surl; });
   const h = await api("/api/headlines");
   $("#heads").innerHTML = h.headlines.length ? '<ul class="list-plain">' + h.headlines.map(x =>
-    "<li><b>" + esc(x.title) + '</b><div class="small muted">' + esc(x.feed_name) + " reported · " + esc(x.published || "") +
+    "<li><b>" + esc(x.title) + '</b><div class="small muted">' + esc(x.author || x.feed_name) + (x.author ? " (YouTube channel)" : "") + " reported · " + esc(x.published || "") +
     (x.link ? ' · <a href="' + esc(x.link) + '" target="_blank" rel="noopener noreferrer">open</a>' : "") + "</div>" +
     (x.summary ? '<div class="small">' + esc(x.summary) + "</div>" : "") +
     (x.fact_id ? '<span class="badge good">added as a fact</span>' : '<button class="btn quiet" data-promote="' + x.id + '" style="margin-top:4px">Add as fact</button>') + "</li>").join("") + "</ul>"
@@ -218,4 +218,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#jobstop").onclick = () => api("/api/job/stop", {});
   $("#bnow").onclick = async () => { const r = await api("/api/backup", {}); toast("Backup written: " + r.backup); loadData(); };
   refreshFooter();
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  const ytSearch = async () => { const r = await api("/api/youtube/search", { q: $("#ytq").value }); toast(r.new_headlines + " new video(s) — " + r.status); loadNews(); };
+  $("#ytgo").onclick = ytSearch; onEnter($("#ytq"), ytSearch);
+  $("#ytadd").onclick = async () => { const r = await api("/api/youtube/add", { url: $("#yturl").value }); $("#yturl").value = ""; toast("Added: " + r.video.title + " — " + r.video.channel); loadNews(); };
 });

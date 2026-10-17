@@ -12,6 +12,7 @@ HUMAN_KINDS = {
     "book": 0.85, "encyclopedia": 0.85, "reference work": 0.85, "academic journal": 0.9, "government record": 0.9,
     "archive or primary document": 0.95, "museum or library": 0.85, "news agency": 0.75, "newspaper": 0.7,
     "magazine": 0.6, "broadcaster": 0.7, "website (written by people)": 0.5, "eyewitness or interview": 0.6,
+    "video channel": 0.45,
     "old QueryBook store (needs checking)": 0.3,
 }
 KIND_ORDER = list(HUMAN_KINDS)

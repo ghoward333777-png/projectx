@@ -10,19 +10,20 @@ Start:      python app.py            (opens http://127.0.0.1:8103/)
 Self-test:  python app.py --selftest
 More:       python app.py --help
 """
-import csv, io, json, os, re, sqlite3, sys, tempfile
+import csv, io, json, os, re, sqlite3, sys, tempfile, urllib.parse
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import qbcore as core
+import gcloud
 import dates
 import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PORT = 8103
 program_dir = HERE
 
@@ -62,7 +63,11 @@ CREATE TABLE headlines (
 CREATE INDEX headlines_feed ON headlines(feed_id);
 CREATE TABLE imports (id INTEGER PRIMARY KEY, kind TEXT, origin TEXT, started TEXT, finished TEXT, read INTEGER, added INTEGER,
   merged INTEGER, skipped INTEGER, note TEXT)
+""", """
+ALTER TABLE headlines ADD COLUMN author TEXT;
 """]
+YT_SEARCH = "https://www.youtube.com/results?search_query="
+YT_SINGLE = "https://www.youtube.com/#videos-added-by-link"
 
 STATUS_SQL = """CASE
   WHEN NOT EXISTS (SELECT 1 FROM fact_sources fs WHERE fs.fact_id = f.id) THEN 'needs source'
@@ -76,6 +81,7 @@ class App:
         self.folder = folder
         self.log = core.make_logger(folder, APP_ID)
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
+        self.google = gcloud.Google(gcloud.Settings(folder), self.log)
         self.fts = self._setup_fts()
         self.jobs = core.Jobs(self.log, self.store)
         self.api = core.Api()
@@ -286,10 +292,60 @@ class App:
             db.execute("INSERT OR IGNORE INTO feeds(name, url, created) VALUES(?,?,?)", ((name or u).strip(), u, core.now_iso()))
         return {"ok": True}
 
+    # ------------------------------------------------------------------ YouTube (Google YouTube Data API v3): videos as "reported by" items
+    def _yt_items(self, videos):
+        return [{"title": v["title"], "link": v["url"], "published": v["published"], "author": v["channel"],
+                 "summary": "Video by %s · %s · %s views%s%s" % (v["channel"], (v["duration"] or "").replace("PT", "").lower(), "{:,}".format(v["views"]),
+                                                                " · captions" if v["captions"] else "", (" — " + v["description"][:240]) if v["description"] else "")}
+                for v in videos]
+
+    def _yt_call(self, fn):
+        if not self.google.s.api_key():
+            raise core.UserError("Add your Google API key first (Diagnostics → Google Cloud), with the YouTube Data API v3 enabled.")
+        try:
+            return fn()
+        except gcloud.GoogleError as e:
+            raise core.UserError("YouTube: %s" % e)
+
+    def youtube_search_feed(self, q):
+        q = " ".join(str(q or "").split())
+        if not q:
+            raise core.UserError("Type what to search YouTube for.")
+        url = YT_SEARCH + urllib.parse.quote_plus(q)
+        with self.store.write() as db:
+            db.execute("INSERT OR IGNORE INTO feeds(name, url, created) VALUES(?,?,?)", ("YouTube: " + q, url, core.now_iso()))
+        fid = self.store.one("SELECT id FROM feeds WHERE url = ?", (url,))["id"]
+        return self.fetch_feed(fid)
+
+    def youtube_add_video(self, link):
+        vid = gcloud.youtube_id(link)
+        if not vid:
+            raise core.UserError("That is not a YouTube video link.")
+        videos = self._yt_call(lambda: self.google.youtube_videos([vid]))
+        if not videos:
+            raise core.UserError("YouTube has no public video with that link.")
+        with self.store.write() as db:
+            db.execute("INSERT OR IGNORE INTO feeds(name, url, created) VALUES(?,?,?)", ("YouTube: videos added by link", YT_SINGLE, core.now_iso()))
+        fid = self.store.one("SELECT id FROM feeds WHERE url = ?", (YT_SINGLE,))["id"]
+        r = self._store_headlines(fid, self._yt_items(videos), "ok: video added")
+        self.store.activity("YouTube video added", "ok", videos[0]["title"][:120])
+        return dict(r, video=videos[0])
+
     def fetch_feed(self, feed_id):
         feed = self.store.one("SELECT * FROM feeds WHERE id = ?", (feed_id,))
         if not feed:
             raise core.UserError("No such feed.")
+        if feed["url"].startswith(YT_SEARCH):
+            q = urllib.parse.unquote_plus(feed["url"][len(YT_SEARCH):])
+            try:
+                videos = self._yt_call(lambda: self.google.youtube_search(q, 25))
+            except core.UserError as e:
+                with self.store.write() as db:
+                    db.execute("UPDATE feeds SET last_fetched = ?, last_status = ? WHERE id = ?", (core.now_iso(), str(e), feed_id))
+                raise
+            return self._store_headlines(feed_id, self._yt_items(videos), "ok: %d videos" % len(videos))
+        if feed["url"] == YT_SINGLE:
+            return {"new_headlines": 0, "status": "videos are added one by one by link"}
         try:
             title, items = S.fetch_feed(feed["url"])
             status = "ok: %d items" % len(items)
@@ -304,21 +360,25 @@ class App:
         with self.store.write() as db:
             for it in items:
                 fp = core.fingerprint(it["link"] or it["title"])
-                cur = db.execute("""INSERT OR IGNORE INTO headlines(feed_id, title, link, published, summary, fetched, fingerprint)
-                                    VALUES(?,?,?,?,?,?,?)""", (feed_id, it["title"], it["link"], it["published"], it["summary"], core.now_iso(), fp))
+                cur = db.execute("""INSERT OR IGNORE INTO headlines(feed_id, title, link, published, summary, fetched, fingerprint, author)
+                                    VALUES(?,?,?,?,?,?,?,?)""", (feed_id, it["title"], it["link"], it["published"], it["summary"], core.now_iso(), fp, it.get("author")))
                 added += cur.rowcount
             db.execute("UPDATE feeds SET last_fetched = ?, last_status = ? WHERE id = ?", (core.now_iso(), status, feed_id))
         return {"new_headlines": added, "status": status}
 
     def promote(self, hid, p):
-        h = self.store.one("SELECT h.*, f.name AS feed_name FROM headlines h JOIN feeds f ON f.id = h.feed_id WHERE h.id = ?", (hid,))
+        h = self.store.one("SELECT h.*, f.name AS feed_name, f.url AS feed_url FROM headlines h JOIN feeds f ON f.id = h.feed_id WHERE h.id = ?", (hid,))
         if not h:
             raise core.UserError("No such headline.")
         when = p.get("date") or _feed_date(h["published"])
         fact = {"statement": p.get("statement") or h["title"], "subject": p.get("subject") or h["title"][:120], "category": p.get("category") or "News",
                 "date": when, "place": p.get("place")}
-        src = {"name": p.get("source_name") or h["feed_name"], "kind": p.get("source_kind") or "newspaper", "url": h["link"],
+        yt = h["feed_url"].startswith(YT_SEARCH) or h["feed_url"] == YT_SINGLE
+        src = {"name": p.get("source_name") or (h["author"] if yt and h["author"] else h["feed_name"]),
+               "kind": p.get("source_kind") or ("video channel" if yt else "newspaper"), "url": h["link"],
                "published": h["published"], "quote": h["title"]}
+        if yt and not p.get("category"):
+            fact["category"] = "News"
         with self.store.write() as db:
             fid, merged = self.add_fact(fact, [src], "news feed", db=db)
             db.execute("UPDATE headlines SET fact_id = ? WHERE id = ?", (fid, hid))
@@ -424,6 +484,12 @@ class App:
         if not self.store.read_only:
             bad = self.store.query("SELECT name FROM feeds WHERE last_status IS NOT NULL AND last_status NOT LIKE 'ok%'")
             out.append(C("feeds", "News feeds", "warn" if bad else "ok", ("last fetch failed for %d feed(s)" % len(bad)) if bad else "no fetch problems"))
+        yl = self.google.last.get("youtube")
+        if not self.google.s.api_key():
+            out.append(C("youtube", "YouTube (Google)", "ok", "not set up (optional) — add the Google API key on this page"))
+        else:
+            out.append(C("youtube", "YouTube (Google)", "ok" if not yl or yl["ok"] else "warn",
+                         ("last search %s: %s (%.2f s)" % (yl["at"], "ok" if yl["ok"] else yl["detail"], yl["seconds"])) if yl else "key set; not used yet"))
         return out
 
     # ------------------------------------------------------------------ routes
@@ -504,6 +570,14 @@ class App:
         @a.post("/api/feeds/fetch")
         def feed_fetch(p):
             return self.fetch_feed(int(p.get("id")))
+
+        @a.post("/api/youtube/search")
+        def yt_search(p):
+            return self.youtube_search_feed(p.get("q"))
+
+        @a.post("/api/youtube/add")
+        def yt_add(p):
+            return self.youtube_add_video(p.get("url"))
 
         @a.get("/api/headlines")
         def headlines(p):
@@ -692,7 +766,66 @@ def selftest():
         c.check("backups written", len(app.store.backups()) >= 2)
         c.check("user interface present", os.path.exists(os.path.join(HERE, "ui", "index.html")))
         c.check("full-text search active", app.fts)
+    _youtube_selftest(c)
     return c.report(APP_NAME)
+
+
+def _youtube_selftest(c):
+    """YouTube as a source, against a stand-in for the YouTube Data API."""
+    import http.server, threading as _th
+    calls = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            calls.append((self.path, self.headers.get("X-Goog-Api-Key")))
+            if self.path.startswith("/youtube/v3/search"):
+                body = {"items": [{"id": {"videoId": "AAAAAAAAAAA"}}, {"id": {"videoId": "BBBBBBBBBBB"}}]}
+            else:
+                ids = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query))["id"].split(",")
+                body = {"items": [{"id": i, "snippet": {"title": "Apollo 11 footage %s" % i[0], "channelTitle": "NASA", "channelId": "UC1",
+                                                        "publishedAt": "2019-07-16T12:00:00Z", "description": "Archive film."},
+                                   "contentDetails": {"duration": "PT12M5S", "caption": "true"}, "statistics": {"viewCount": "1234"}} for i in ids]}
+            out = json.dumps(body).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(out))); self.end_headers()
+            self.wfile.write(out)
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    _th.Thread(target=srv.serve_forever, daemon=True).start()
+    saved = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy", "QB_GCP_BASE_YOUTUBE", "GOOGLE_API_KEY", "GEMINI_API_KEY")}
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost"
+    os.environ["QB_GCP_BASE_YOUTUBE"] = "http://127.0.0.1:%d" % srv.server_address[1]
+    os.environ.pop("GOOGLE_API_KEY", None); os.environ.pop("GEMINI_API_KEY", None)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            a = App(tmp)
+            try:
+                a.youtube_search_feed("apollo 11")
+                c.check("YouTube: without a Google key the app says what to do", False)
+            except core.UserError as e:
+                c.check("YouTube: without a Google key the app says what to do", "Google API key" in str(e))
+            a.google.s.save({"api_key": "AIzaYTSECRET-0000000000"})
+            r = a.youtube_search_feed("apollo 11")
+            hs = a.store.query("SELECT * FROM headlines ORDER BY id")
+            c.check("YouTube: a search becomes a feed of 'reported by' videos with channel, date and link",
+                    r["new_headlines"] == 2 and hs[0]["author"] == "NASA" and hs[0]["link"].endswith("AAAAAAAAAAA") and hs[0]["fact_id"] is None)
+            c.check("YouTube: the key goes to Google only in the request header", all(k == "AIzaYTSECRET-0000000000" for _, k in calls) and not any("AIzaYT" in p for p, _ in calls))
+            pr = a.promote(hs[0]["id"], {})
+            src = a.store.query("SELECT s.* FROM sources s JOIN fact_sources fs ON fs.source_id = s.id WHERE fs.fact_id = ?", (pr["fact_id"],))
+            c.check("YouTube: 'Add as fact' records the channel as a 'video channel' source", src and src[0]["name"] == "NASA" and src[0]["kind"] == "video channel")
+            v = a.youtube_add_video("https://youtu.be/CCCCCCCCCCC")
+            c.check("YouTube: a single video can be added by its link", v["video"]["id"] == "CCCCCCCCCCC" and a.store.scalar("SELECT count(*) FROM headlines") == 3)
+            dg = {x["id"]: x for x in a._health()}
+            c.check("YouTube: diagnostics report the last search", dg["youtube"]["status"] == "ok" and "last search" in dg["youtube"]["detail"])
+            c.check("YouTube: the key never appears in the activity log", "AIzaYT" not in json.dumps(a.store.activities(200)))
+    finally:
+        srv.shutdown()
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 if __name__ == "__main__":

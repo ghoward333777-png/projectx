@@ -120,3 +120,7 @@ progress::-webkit-progress-value { background: linear-gradient(90deg, var(--acce
 progress::-moz-progress-bar { background: linear-gradient(90deg, var(--accent), #a78bfa); border-radius: 999px; }
 @media (prefers-reduced-motion: reduce) { button.busy, .meter > i::after, .meter.live > i, #qb-busy.working .qb-busy-fill, .qb-spin { animation: none; } }
 .meter > b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .6; }
+
+/* Google Cloud card */
+.grid-gc { display: grid; grid-template-columns: 1fr; gap: 4px 12px; max-width: 760px; }
+label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margin-top: 8px; }

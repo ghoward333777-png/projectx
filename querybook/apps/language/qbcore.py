@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.3.0"
+CORE_VERSION = "1.4.0"
 BACKUPS_KEPT = 10
 
 
@@ -105,6 +105,7 @@ class Store:
         self._local = threading.local()
         self.read_only = False
         self.damage = None
+        self.cloud = None                 # CloudLink, when Google Cloud is configured (off-site copy of every backup)
         os.makedirs(self.backup_dir, exist_ok=True)
         self._check()
         self.schema_len = len(schema)
@@ -337,6 +338,8 @@ class Store:
         self.log("backup written: %s" % os.path.basename(dest))
         self.activity("Backup (%s)" % reason, "ok", os.path.basename(dest), int((time.time() - t0) * 1000))
         self._mirror(dest)
+        if self.cloud:
+            self.cloud.enqueue(dest)
         return dest
 
     def restore(self, backup_path):
@@ -785,7 +788,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -922,6 +925,12 @@ class Diagnostics:
                 detail = ("running: %s" % j.get("name")) if j.get("state") == "running" else \
                     ("last job failed: %s" % redact(last.get("message"))[:200] if st == "warn" else "idle")
                 checks.append(_check("jobs", "Background work", st, detail))
+            cl = getattr(self, "cloud", None)
+            if cl:
+                try:
+                    checks += cl.checks()
+                except Exception as e:
+                    checks.append(_check("google", "Google Cloud", "warn", redact(repr(e))[:300]))
             if self.extra:
                 try:
                     checks += self.extra()
@@ -936,6 +945,8 @@ class Diagnostics:
                          "uptime": _age((time.time() - self.started) / 3600),
                          "environment": {"python": "%d.%d.%d" % v[:3], "os": platform.system() + " " + platform.release(),
                                          "machine": platform.machine(), "sqlite": sqlite3.sqlite_version}}
+            if cl:
+                cl.send_metrics(self.last)
             return self.last
 
     def text(self, report=None):
@@ -1214,9 +1225,272 @@ class Monitor:
         self._thread.start()
 
 
+# ----------------------------------------------------------------------------- Google Cloud link (optional)
+class CloudLink:
+    """Off-site backups to Cloud Storage and health metrics to Cloud Monitoring, in the background.
+    Nothing here blocks the application; every attempt is in the activity log with its time to 0.01 s."""
+
+    def __init__(self, store, app_id, app_name, log):
+        import gcloud
+        self.gc_mod = gcloud
+        self.store, self.app_id, self.app_name, self.log = store, app_id, app_name, log
+        self.settings = gcloud.Settings(store.folder)
+        self.g = gcloud.Google(self.settings, log)
+        self.state_path = os.path.join(store.folder, "cloud-state.json")
+        self._q, self._busy = [], False
+        self._lock = threading.Lock()
+        self.host = re.sub(r"[^A-Za-z0-9_\-]", "-", socket.gethostname())[:60] or "computer"
+
+    def state(self):
+        try:
+            with open(self.state_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def _set_state(self, **kw):
+        st = self.state(); st.update(kw)
+        with open(self.state_path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(self.state_path + ".tmp", self.state_path)
+
+    def prefix(self):
+        return "querybook/%s/%s/" % (self.app_id, self.host)
+
+    def storage_ready(self):
+        c = self.settings.public()
+        return c["storage_on"] and c["bucket"] and c["service_account"]
+
+    def enqueue(self, path):
+        if not self.storage_ready():
+            return
+        with self._lock:
+            self._q.append(path)
+            if self._busy:
+                return
+            self._busy = True
+        threading.Thread(target=self._drain, daemon=True).start()
+
+    def _drain(self):
+        while True:
+            with self._lock:
+                if not self._q:
+                    self._busy = False
+                    return
+                path = self._q.pop()                     # newest first; older queued copies are superseded
+                self._q.clear()
+            self.upload_backup(path)
+
+    def upload_backup(self, path, progress=None):
+        t0 = time.time()
+        name = self.prefix() + os.path.basename(path)
+        try:
+            meta = self.g.upload(path, name, progress)
+            self._set_state(last_upload=now_cs(), last_object=name, last_md5=meta.get("md5Hash"), last_bytes=int(meta.get("size", 0)),
+                            last_error=None, last_seconds=round(time.time() - t0, 2))
+            keep = self.settings.public()["keep"]
+            for old in self.g.list(self.prefix())[keep:]:
+                self.g.delete(old["name"])
+            self.store.activity("Cloud backup uploaded", "ok", "%s (MD5 matched)" % name, int((time.time() - t0) * 1000))
+            return meta
+        except Exception as e:
+            msg = self.settings.scrub(e)
+            self._set_state(last_error=msg, last_error_at=now_cs())
+            self.store.activity("Cloud backup uploaded", "failed", msg, int((time.time() - t0) * 1000))
+            self.log("ERROR", "cloud backup failed:", msg)
+            return None
+
+    def send_metrics(self, report):
+        c = self.settings.public()
+        if not (c["monitoring_on"] and c["service_account"] and c["project_id"]):
+            return
+        order = {"ok": 0, "warn": 1, "fail": 2}
+        vals = {"health": order.get(report["overall"], 2), "checks_failed": sum(1 for x in report["checks"] if x["status"] == "fail"),
+                "checks_warned": sum(1 for x in report["checks"] if x["status"] == "warn"), "error_count": int(report.get("error_count") or 0),
+                "uptime_hours": round((time.time() - getattr(self, "started", time.time())) / 3600, 2)}
+
+        def go():
+            t0 = time.time()
+            try:
+                self.g.write_metrics(self.app_id, self.host, vals)
+                self._set_state(last_metrics=now_cs(), metrics_error=None)
+                self.store.activity("Cloud Monitoring report", "ok", "health=%s" % report["overall"], int((time.time() - t0) * 1000))
+            except Exception as e:
+                self._set_state(metrics_error=self.settings.scrub(e), metrics_error_at=now_cs())
+                self.store.activity("Cloud Monitoring report", "failed", self.settings.scrub(e), int((time.time() - t0) * 1000))
+        threading.Thread(target=go, daemon=True).start()
+
+    def checks(self):
+        C = _check
+        c = self.settings.public()
+        if not (c["api_key_set"] or c["service_account"]):
+            return [C("google", "Google Cloud", "ok", "not connected (optional) — connect on the Diagnostics page")]
+        out = [C("google", "Google Cloud", "ok", "API key %s; service account %s" % ("set" if c["api_key_set"] else "not set",
+                                                                                   c["service_account"]["client_email"] if c["service_account"] else "not set"))]
+        st = self.state()
+        if c["service_account"]:
+            t0 = time.time()
+            try:
+                self.g.token()
+                out.append(C("google_auth", "Google sign-in (service account)", "ok", "token in %.2f s" % (time.time() - t0)))
+            except Exception as e:
+                out.append(C("google_auth", "Google sign-in (service account)", "fail", self.settings.scrub(e)[:200]))
+        if c["storage_on"]:
+            b = self.store.backups()
+            if st.get("last_error") and (st.get("last_error_at") or "") > (st.get("last_upload") or ""):
+                out.append(C("cloud_backup", "Cloud Storage backup", "fail", "last upload failed: %s" % st["last_error"][:200]))
+            elif not st.get("last_upload"):
+                out.append(C("cloud_backup", "Cloud Storage backup", "warn", "no upload yet — press 'Back up to Cloud now'"))
+            else:
+                same = b and st.get("last_object", "").endswith(b[0]["name"])
+                out.append(C("cloud_backup", "Cloud Storage backup", "ok" if same else "warn",
+                             "newest upload %s, %s, MD5 matched; %s" % (st["last_upload"], _kb(st.get("last_bytes", 0)),
+                                                                      "same as the newest local backup" if same else "a newer local backup is waiting")))
+        if c["monitoring_on"]:
+            if st.get("metrics_error") and (st.get("metrics_error_at") or "") > (st.get("last_metrics") or ""):
+                out.append(C("cloud_monitoring", "Cloud Monitoring", "warn", "last report failed: %s" % st["metrics_error"][:200]))
+            else:
+                out.append(C("cloud_monitoring", "Cloud Monitoring", "ok", "last report %s" % (st.get("last_metrics") or "not yet (sent after this check)")))
+        return out
+
+
+def _google_siblings(app_id):
+    """Other QueryBook applications on this computer that already hold Google settings (to copy them)."""
+    out = []
+    for other in ("language", "stem", "facts"):
+        if other == app_id:
+            continue
+        f = os.path.join(data_folder(other, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", other)), "google.json")
+        if os.path.isfile(f):
+            out.append({"app": other, "path": f})
+    return out
+
+
+def _kb(n):
+    return "%.1f MB" % (n / 2**20) if n >= 2**20 else "%d KB" % (n // 1024)
+
+
 def add_diagnostics(api, diag, monitor, program_dir):
     """Register the diagnostics and monitoring routes every application shares."""
     monitor.store = diag.store
+    cloud = CloudLink(diag.store, diag.app_id, diag.app_name, diag.log)
+    cloud.started = diag.started
+    diag.store.cloud = cloud
+    diag.cloud = cloud
+
+    @api.get("/api/gcloud")
+    def gcloud_get(p):
+        return {"settings": cloud.settings.public(), "state": cloud.state(), "prefix": cloud.prefix(), "last": cloud.g.last,
+                "siblings": _google_siblings(diag.app_id)}
+
+    @api.post("/api/gcloud")
+    def gcloud_set(p):
+        try:
+            cloud.settings.save(p)
+        except ValueError as e:
+            raise UserError(str(e))
+        cloud.g._tok = None
+        diag.store.activity("Google Cloud settings saved", "ok", ", ".join(k for k in ("api_key", "service_account_json", "bucket", "storage_on", "monitoring_on") if k in p))
+        return gcloud_get(p)
+
+    @api.post("/api/gcloud/forget")
+    def gcloud_forget(p):
+        cloud.settings.forget(); cloud.g._tok = None
+        diag.store.activity("Google Cloud disconnected", "ok")
+        return gcloud_get(p)
+
+    @api.post("/api/gcloud/copy-from")
+    def gcloud_copy(p):
+        src = dict((s["app"], s["path"]) for s in _google_siblings(diag.app_id)).get(p.get("app"))
+        if not src:
+            raise UserError("No Google settings found for that application.")
+        with open(src, encoding="utf-8") as f:
+            cfg = json.load(f)
+        cloud.settings._write(cfg); cloud.g._tok = None
+        diag.store.activity("Google Cloud settings copied", "ok", "from " + p.get("app"))
+        return gcloud_get(p)
+
+    @api.post("/api/gcloud/test")
+    def gcloud_test(p):
+        """Try every connected Google service now and report each result with its time."""
+        out, c = [], cloud.settings.public()
+
+        def step(name, fn):
+            t0 = time.time()
+            try:
+                detail = fn()
+                out.append({"service": name, "ok": True, "seconds": round(time.time() - t0, 2), "detail": detail})
+            except Exception as e:
+                out.append({"service": name, "ok": False, "seconds": round(time.time() - t0, 2), "detail": cloud.settings.scrub(e)[:300]})
+        if c["service_account"]:
+            step("Sign-in (service account)", lambda: (cloud.g.token(), "token received")[1])
+            if c["bucket"]:
+                step("Cloud Storage bucket", lambda: "bucket %s in %s" % ((lambda i: (i.get("name"), i.get("location")))(cloud.g.bucket_info())))
+            if c["project_id"]:
+                step("Cloud Monitoring", lambda: (cloud.g.write_metrics(diag.app_id, cloud.host, {"test": 1}), "test metric written")[1])
+        else:
+            out.append({"service": "Service account", "ok": False, "seconds": 0, "detail": "not added — needed for Cloud Storage and Monitoring"})
+        if c["api_key_set"]:
+            step("API key (YouTube Data API)", lambda: "%d result(s)" % len(cloud.g.youtube_search("QueryBook test", 1)))
+            if diag.app_id == "language":
+                import io, math, struct, wave
+                b = io.BytesIO()
+                with wave.open(b, "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+                    w.writeframes(b"".join(struct.pack("<h", int(3000 * math.sin(i / 8.0))) for i in range(8000)))
+                step("Speech-to-Text", lambda: "answered (%s)" % (cloud.g.recognize(b.getvalue())["transcript"] or "no words in a test tone, as expected"))
+        else:
+            out.append({"service": "API key", "ok": False, "seconds": 0, "detail": "not added — needed for Speech-to-Text, Text-to-Speech and YouTube"})
+        diag.store.activity("Google Cloud test", "ok" if all(x["ok"] for x in out) else "failed",
+                            "; ".join("%s: %s" % (x["service"], "ok" if x["ok"] else "failed") for x in out))
+        return {"results": out}
+
+    @api.post("/api/gcloud/backup-now")
+    def gcloud_backup_now(p):
+        if not cloud.storage_ready():
+            raise UserError("Add a service account and a bucket, and switch on Cloud Storage backups first.")
+
+        def run(prog, stop):
+            path = diag.store.backup("cloud", force=True) or diag.store.backups()[0]["path"]
+            with cloud._lock:
+                cloud._q.clear()
+            meta = cloud.upload_backup(path, lambda d, t: prog(d, t, "uploading %s of %s" % (_kb(d), _kb(t))))
+            if not meta:
+                raise RuntimeError(cloud.state().get("last_error") or "upload failed")
+            return {"object": meta.get("name"), "bytes": int(meta.get("size", 0)), "md5_matched": True}
+        return diag.jobs.start("Back up to Cloud Storage", run) if diag.jobs else run(lambda *a: None, lambda: False)
+
+    @api.get("/api/gcloud/backups")
+    def gcloud_backups(p):
+        try:
+            return {"backups": cloud.g.list(cloud.prefix())}
+        except Exception as e:
+            raise UserError(cloud.settings.scrub(e))
+
+    @api.post("/api/gcloud/fetch")
+    def gcloud_fetch(p):
+        name = p.get("name") or ""
+        if not name.startswith(cloud.prefix()) or "/" in name[len(cloud.prefix()):]:
+            raise UserError("That is not one of this application's cloud backups.")
+        dest = os.path.join(diag.store.backup_dir, os.path.basename(name))
+        cloud.g.download(name, dest)
+        c = sqlite3.connect(dest)
+        ok = c.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        c.close()
+        if not ok:
+            os.remove(dest)
+            raise UserError("The downloaded copy failed its database check and was discarded.")
+        diag.store.activity("Cloud backup downloaded", "ok", os.path.basename(name))
+        return {"saved": os.path.basename(dest), "note": "Saved with the local backups. To restore: close the app, run python app.py restore, choose it."}
+
+    @api.post("/api/gcloud/alert")
+    def gcloud_alert(p):
+        try:
+            r = cloud.g.create_alert(diag.app_id, diag.app_name)
+        except Exception as e:
+            raise UserError(cloud.settings.scrub(e))
+        diag.store.activity("Cloud Monitoring alert created", "ok", r.get("name", ""))
+        return {"policy": r.get("name"), "display_name": r.get("displayName")}
 
     @api.get("/api/diagnostics")
     def diagnostics(p):
