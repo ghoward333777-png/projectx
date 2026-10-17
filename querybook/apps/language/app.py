@@ -27,7 +27,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.7.1"
+VERSION = "1.7.2"
 PORT = 8101
 program_dir = HERE
 
@@ -1078,6 +1078,17 @@ def selftest():
             r = _sp.run([speech.find_espeak(), "--path=" + speech.BUNDLED, "-q", "--ipa", "-v", v["espeak"], "test"], capture_output=True, timeout=20)
             okl.append(r.returncode == 0 and r.stdout.strip() and not r.stderr.strip())
         c.check("Default voice: the bundled data speaks all 17 languages (checked with this computer's espeak-ng)", all(okl), sum(okl))
+    if speech.find_espeak():
+        import struct as _st
+        w = speech.speak_wav("Testing the default voice.", "en-us")
+        c.check("Default voice: audio is written through a file (whole 16-bit samples, true length in the header)",
+                w and (len(w) - 44) % 2 == 0 and _st.unpack("<I", w[40:44])[0] == len(w) - 44)
+        damaged = w[:44] + w[44:].replace(b"\n", b"\r\n")             # what Windows text mode did to stdout audio
+        try:
+            speech.check_wav(damaged)
+            c.check("Default voice: audio damaged by Windows text mode is refused, never played", False)
+        except RuntimeError:
+            c.check("Default voice: audio damaged by Windows text mode is refused, never played", True)
     _speech_selftest(c)
     return c.report(APP_NAME)
 

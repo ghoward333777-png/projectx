@@ -427,13 +427,10 @@ class Espeak(Engine):
 
     def request(self, text, p, voice, model, keys, adv=None):
         a, e = self.args(p, voice, adv)
-        desc = {"command": "espeak-ng " + " ".join(a) + " --stdout <text>", "arguments": a}
+        desc = {"command": "espeak-ng " + " ".join(a) + " -w <file.wav> <text>", "arguments": a}
 
         def run():
-            out = subprocess.run(speech.cmd(a + ["--stdout", "--", text]), capture_output=True, timeout=60, **speech._kw())
-            if out.returncode or not out.stdout:
-                raise RuntimeError("espeak-ng failed: %s" % out.stderr.decode("utf-8", "replace")[:200])
-            return out.stdout
+            return speech.synth(a, text, 60)          # through a file, never stdout (Windows text mode damages audio)
         return desc, run, {"volume_db": 0.0, "pause_scale": 1.0}   # volume and pauses handled natively
 
 

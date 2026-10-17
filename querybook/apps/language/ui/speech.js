@@ -108,6 +108,7 @@ async function generate() {
   const r = await api("/api/speech/generate", genBody({ fallback: $("#sp-fallback").checked }));
   const s = r.summary, m = r.measure;
   $("#sp-out").innerHTML = '<div class="row">' + audioEl(r.audio) + '<a class="small" href="/api/speech/audio?name=' + encodeURIComponent(r.audio) + '" download>download WAV</a></div>' +
+    (s.warning ? '<div class="note bad">⚠ ' + esc(s.warning) + "</div>" : "") +
     (s.fallback_reason ? '<div class="note bad">The chosen engine could not be used (' + esc(s.fallback_reason) + "); the offline voice spoke instead.</div>" : "") +
     '<div class="stats" style="margin-top:10px">' + stat(s.engine_used, "engine used") + (m ? stat(m.pitch.mean_hz ? m.pitch.mean_hz + " Hz" : "—", "measured pitch") +
       stat(m.rate.articulation_rate_syl_s + "/s", "syllables per second") + stat(m.volume.mean_dbfs + " dBFS", "loudness") + stat(m.vocal_mode.label, "vocal mode heard") +
@@ -316,8 +317,26 @@ async function loadProviders() {
     } catch (e) { out.innerHTML = '<span class="badge bad">failed</span> ' + esc(e.message); }
   });
 }
+const QUICK = [["espeak", "🗣 Built-in voice", "espeak-ng · offline · default"], ["google_gemini", "✨ Google AI voice", "Gemini TTS · 30 voices · emotion"],
+  ["google_cloud", "🔊 Google Cloud voices", "Studio / Neural2 / Chirp · SSML"], ["elevenlabs", "🎙 ElevenLabs", "cloud · very natural"],
+  ["openai", "💬 OpenAI voice", "cloud · instructions"], ["azure", "🪟 Microsoft Azure", "cloud · styles and roles"]];
+function renderQuick() {
+  $("#sp-quick").innerHTML = QUICK.map(([id, name, sub]) => {
+    const e = SP.meta.engines.find(x => x.id === id) || {};
+    return '<button data-quick="' + id + '" aria-pressed="' + (SP.engine === id) + '"><span class="vn">' + name + '</span><span class="vs">' + sub + "</span><br>" +
+      (e.available ? '<span class="badge good">ready</span>' : '<span class="badge warn">' + esc(e.needs_key ? "needs a key" : (e.why_not || "unavailable")) + "</span>") + "</button>";
+  }).join("");
+  $$("[data-quick]").forEach(b => b.onclick = async () => {
+    const e = SP.meta.engines.find(x => x.id === b.dataset.quick);
+    if (e && !e.available && e.needs_key) {
+      toast(e.name + " needs your key: Diagnostics → Google Cloud (one paste sets up Google), or Speech → Voice providers.", true);
+    }
+    $("#sp-engine").value = b.dataset.quick; await selectEngine(b.dataset.quick); renderQuick();
+  });
+}
 async function refreshEngines() {
   const r = await api("/api/speech/engines"); SP.meta.engines = r.engines;
+  setTimeout(renderQuick, 0);
   $("#sp-engine").innerHTML = r.engines.map(e => '<option value="' + e.id + '"' + (e.id === SP.engine ? " selected" : "") + ">" + (e.available ? "● " : "○ ") + esc(e.name) + (e.available ? "" : " — " + esc(e.why_not)) + "</option>").join("");
   await selectEngine(SP.engine);
 }
@@ -367,7 +386,7 @@ async function loadSpeech() {
     SP.adv = JSON.parse(JSON.stringify(adv));
     profileUI(); renderAdv(); schedulePlan(); toast("Preset: " + name);
   });
-  $("#sp-engine").onchange = e => selectEngine(e.target.value);
+  $("#sp-engine").onchange = async e => { await selectEngine(e.target.value); renderQuick(); };
   $("#sp-voice").onchange = schedulePlan; $("#sp-model").onchange = schedulePlan; $("#sp-text").oninput = schedulePlan;
   $("#sp-go").onclick = generate;
   $("#mt-go").onclick = match;

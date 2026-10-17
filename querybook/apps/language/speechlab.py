@@ -318,6 +318,10 @@ class SpeechLab:
         clk("save")
         name = self._save_audio(data, "out")
         summary = {"engine_used": used, "fallback_reason": err, "effects": fxrep.get("applied"), "bytes": len(data), "attempts": attempts}
+        p_ = tts.profile(prof)
+        if meas and not p_["whisper"] and meas["vocal"]["voiced_ratio"] < 0.25 and meas["duration_s"] > 0.5:
+            summary["warning"] = ("The result does not sound like speech (only %.0f%% voiced). If you hear noise, run Diagnostics."
+                                  % (100 * meas["vocal"]["voiced_ratio"]))
         if meas:
             summary.update({"duration_s": meas["duration_s"], "pitch_hz": meas["pitch"].get("mean_hz"), "rate_syl_s": meas["rate"]["articulation_rate_syl_s"],
                             "volume_dbfs": meas["volume"]["mean_dbfs"], "vocal_mode": meas["vocal_mode"]["label"]})
@@ -489,10 +493,13 @@ def diagnostics(sl, C):
     t = time.time()
     st = speech.status()
     if st["espeak"]:
-        w = speech.speak_wav("diagnostic test", "en-us")
+        w = speech.speak_wav("This is a diagnostic test of the default voice.", "en-us")
         ok = bool(w) and voicedsp.is_wav(w) and len(w) > 2000
-        out.append(C("sp_default", "Default voice speaks (espeak-ng, %s)" % ("bundled" if st["bundled"] else "system"), "ok" if ok else "fail",
-                     "%.2f s, %d bytes" % (time.time() - t, len(w or b""))))
+        heard = voicedsp.measure(w) if ok else None
+        clear = bool(heard) and heard["vocal_mode"]["label"] == "speaking" and heard["vocal"]["voiced_ratio"] > 0.5
+        out.append(C("sp_default", "Default voice speaks clearly (espeak-ng, %s)" % ("bundled" if st["bundled"] else "system"), "ok" if clear else "fail",
+                     ("%.2f s; listened back: %s, %.0f%% voiced, %s Hz" % (time.time() - t, heard["vocal_mode"]["label"], 100 * heard["vocal"]["voiced_ratio"], heard["pitch"].get("mean_hz")))
+                     if heard else "no audio came back"))
         t = time.time()
         bad = [c for c, v in vocab.LANGUAGES.items() if not speech.ipa("test", v["espeak"])]
         out.append(C("sp_langs", "Default voice: all 17 languages", "fail" if bad else "ok",

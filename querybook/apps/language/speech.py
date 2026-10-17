@@ -65,12 +65,52 @@ def version():
     return out.decode("utf-8", "replace").strip().splitlines()[0][:120] if out else None
 
 
+def synth(args, text, timeout=60):
+    """Run espeak-ng with `args` and return the WAV bytes it wrote.
+
+    Always through a temporary FILE (-w), never through stdout: on Windows a program's stdout is in
+    text mode, which inserts a carriage-return byte before every line-feed byte of the audio and
+    turns speech into noise. A file is written in binary on every system (as the prototype did)."""
+    if not find_espeak():
+        return None
+    import tempfile
+    fd, path = tempfile.mkstemp(prefix="qb-voice-", suffix=".wav")
+    os.close(fd)
+    try:
+        p = subprocess.run(cmd(list(args) + ["-w", path, "--", text]), capture_output=True, timeout=timeout, **_kw())
+        if p.returncode != 0:
+            raise RuntimeError("espeak-ng failed: %s" % p.stderr.decode("utf-8", "replace")[:200])
+        with open(path, "rb") as f:
+            data = f.read()
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return check_wav(data)
+
+
+def check_wav(data):
+    """Refuse audio damaged by a text-mode conversion (the 'scratchy noise' fault) instead of playing it."""
+    if not data or data[:4] != b"RIFF":
+        raise RuntimeError("espeak-ng returned no audio")
+    i = data.find(b"data")
+    body = data[i + 8:] if i > 0 else data[44:]
+    lf = body.count(b"\n")
+    if lf > 50 and body.count(b"\r\n") == lf:
+        raise RuntimeError("the audio was damaged by a text-mode conversion (every line-feed byte has a carriage return before it)")
+    return data
+
+
 def speak_wav(text, voice, rate=150):
     """WAV bytes for `text`, or None when espeak-ng is not available."""
     text = " ".join(str(text or "").split())[:300]
     if not text:
         return None
-    return _run(["-v", voice, "-s", str(int(rate)), "--stdout", "--", text])
+    try:
+        return synth(["-v", voice, "-s", str(int(rate))], text, 15)
+    except (RuntimeError, OSError, subprocess.TimeoutExpired):
+        return None
 
 
 def ipa(text, voice):
