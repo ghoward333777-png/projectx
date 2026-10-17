@@ -454,6 +454,30 @@ exit 0
         c.check("setup code: a damaged code is refused with a clear message", "copy the whole line" in str(e))
 
 
+def first_run_tests(c):
+    """A personalised copy's google-setup.json is moved into the private settings and deleted."""
+    import types, gcloud
+    with tempfile.TemporaryDirectory() as tmp:
+        prog = os.path.join(tmp, "prog", "language"); os.makedirs(prog)
+        data = os.path.join(tmp, "data"); os.makedirs(data)
+        with open(os.path.join(prog, "google-setup.json"), "w") as f:
+            json.dump({"api_key": "AIzaFIRSTRUNTEST000000000000000000000000"}, f)
+        st = core.Store(data, "t", SCHEMA)
+        diag = types.SimpleNamespace(store=st, app_id="language", app_name="Test", log=lambda *a: None, started=time.time())
+        link = core.CloudLink(st, "language", "Test", lambda *a: None)
+        saved = {k: os.environ.get(k) for k in ("QB_STEM_DATA", "QB_FACTS_DATA")}
+        os.environ["QB_STEM_DATA"], os.environ["QB_FACTS_DATA"] = os.path.join(tmp, "stem"), os.path.join(tmp, "facts")
+        try:
+            core._first_run_google(link, diag, prog)
+        finally:
+            for k, v in saved.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        c.check("first run: a key shipped with a personal copy is installed for all three apps and the file is deleted",
+                not os.path.exists(os.path.join(prog, "google-setup.json")) and gcloud.Settings(data).api_key().startswith("AIzaFIRSTRUN")
+                and gcloud.Settings(os.path.join(tmp, "facts")).api_key().startswith("AIzaFIRSTRUN"))
+        c.check("first run: the key is not written to the activity log", "AIzaFIRSTRUN" not in json.dumps(st.activities(50)))
+
+
 def main():
     c = core.Checks()
     with tempfile.TemporaryDirectory() as tmp:
@@ -535,6 +559,7 @@ def main():
     monitoring_tests(c)
     google_tests(c)
     setup_script_tests(c)
+    first_run_tests(c)
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))
         c.check("%s carries the current Google module" % app, open(os.path.join(ROOT, app, "gcloud.py"), "rb").read() == open(os.path.join(ROOT, "_core", "gcloud.py"), "rb").read())
