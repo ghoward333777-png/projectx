@@ -27,7 +27,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 PORT = 8101
 program_dir = HERE
 
@@ -512,7 +512,19 @@ class App:
         okc = vocab.check_answer("etre", ["être"])["result"] == "accent" and vocab.check_answer("gato", ["perro"])["result"] == "wrong"
         out.append(C("checker", "Answer checking", "ok" if okc else "fail"))
         sp = speech.status()
-        out.append(C("voice", "Offline voice (espeak-ng)", "ok", "installed" if sp["espeak"] else "not installed — the browser's voices are used"))
+        miss = bundle_missing()
+        if sp["espeak"]:
+            out.append(C("voice", "Default voice (espeak-ng)", "ok", "%s — %s" % ("bundled" if sp["bundled"] else "system", sp["version"] or sp["path"])))
+        else:
+            out.append(C("voice", "Default voice (espeak-ng)", "warn", sp["hint"]))
+        out += speechlab.diagnostics(self.speech, C) if hasattr(self, "speech") else []
+        b = self.lab.built_at()
+        sl = self.lab.stage_log()
+        out.append(C("build", "Language build", "ok" if b else "warn", ("all 20 steps done %s" % b) if b else "not built yet — it starts automatically"))
+        vr = self.last_verification()
+        out.append(C("proof", "Proof of learning from scratch", "ok" if vr and vr["verdict"] == "PASS" else "fail" if vr else "warn",
+                     ("%s %s, fingerprint %s…" % (vr["verdict"], vr["finished"], vr.get("fingerprint", {}).get("sha256", "")[:16])) if vr else "not run yet (Verify tab)"))
+        out.append(C("voice_bundle", "Bundled espeak-ng files", "fail" if miss else "ok", ("missing: " + ", ".join(miss[:6])) if miss else "program, runtime and 17 languages present"))
         return out
 
     # ------------------------------------------------------------------ routes
@@ -876,6 +888,15 @@ def _fetch_text(url):
 _fetch = _fetch_text
 
 
+def bundle_missing():
+    """Files of the bundled Windows espeak-ng that are not where they should be."""
+    need = ["espeak-ng.exe", "libespeak-ng.dll", "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"] + [
+        "espeak-ng-data/" + f for f in ("phontab", "phonindex", "phondata", "intonations")] + [
+        "espeak-ng-data/%s_dict" % c for c in ("en", "es", "fr", "de", "it", "pt", "nl", "sv", "da", "no", "fi", "pl", "cs", "el", "ro", "hu", "ca")] + [
+        "espeak-ng-data/voices/!v/whisper", "espeak-ng-data/voices/!v/croak", "espeak-ng-data/voices/!v/grandpa"]
+    return [f for f in need if not os.path.isfile(os.path.join(speech.BUNDLED, f))]
+
+
 def open_app(folder=None):
     return App(folder or core.data_folder(APP_ID, HERE))
 
@@ -1029,6 +1050,14 @@ def selftest():
         c.check("Lab: continues from the old prototype's English model when starting fresh", L.adopt_old_model(old, "x")["adopted"] and L.load_model()["total_tokens"] == 12)
     st = speech.status()
     c.check("offline voice (espeak-ng): %s" % ("found" if st["espeak"] else "not installed — browser voices are used"), True)
+    c.check("Default voice: the bundled espeak-ng 1.51 (Windows) is complete — program, runtime, 17 languages, variants", not bundle_missing(), ", ".join(bundle_missing()[:5]))
+    if speech.find_espeak() and not speech.bundled_in_use():
+        import subprocess as _sp
+        okl = []
+        for code, v in vocab.LANGUAGES.items():
+            r = _sp.run([speech.find_espeak(), "--path=" + speech.BUNDLED, "-q", "--ipa", "-v", v["espeak"], "test"], capture_output=True, timeout=20)
+            okl.append(r.returncode == 0 and r.stdout.strip() and not r.stderr.strip())
+        c.check("Default voice: the bundled data speaks all 17 languages (checked with this computer's espeak-ng)", all(okl), sum(okl))
     _speech_selftest(c)
     return c.report(APP_NAME)
 
@@ -1056,6 +1085,19 @@ def _speech_selftest(c):
         if speech.find_espeak():
             m = S.match("The quick brown fox jumps over the lazy dog.", {"pitch_hz": 160, "volume_dbfs": -24}, {}, "espeak")
             c.check("Speech: generate → measure → adjust reaches a pitch and loudness target", m["matched"], "%d rounds" % len(m["rounds"]))
+        g = S.generate("Fail over", {}, "elevenlabs")                      # no key → next voice in the chain
+        c.check("Speech: when a voice cannot be used the next one speaks, and every attempt is recorded",
+                g["summary"]["engine_used"] in ("espeak", "sapi", "say", "formant") and g["summary"]["attempts"][0]["result"] == "skipped")
+        saved_found = speech._found
+        speech._found = ""                                                    # espeak missing → the built-in voice still speaks
+        try:
+            g = S.generate("Fail over", {}, "espeak")
+            c.check("Speech: with espeak-ng missing the built-in voice still speaks", g["summary"]["engine_used"] in ("sapi", "say", "formant"))
+        finally:
+            speech._found = saved_found
+        dg = {x["id"]: x for x in inst._health()}
+        c.check("Diagnostics: speech checks cover voice, languages, failover, measurement, audio I/O, providers and log",
+                all(k in dg for k in ("sp_failover", "sp_measure", "sp_audio", "sp_log", "sp_elevenlabs", "build", "proof", "voice_bundle")))
         g = S.generate("Testing the formant voice", {"tremble": 0.5}, "formant")
         c.check("Speech: the no-install formant voice speaks, with tremble added", g["summary"]["bytes"] > 1000 and any("tremble" in x for x in g["effects"]["applied"]))
         # stand-in cloud: answers like each provider and records what it was sent

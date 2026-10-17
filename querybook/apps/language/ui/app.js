@@ -6,7 +6,7 @@ const NAMES = { en: "English", es: "Spanish", fr: "French", de: "German", it: "I
   no: "Norwegian", fi: "Finnish", pl: "Polish", cs: "Czech", el: "Greek", ro: "Romanian", hu: "Hungarian", ca: "Catalan" };
 const SPEECH = { en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE", it: "it-IT", pt: "pt-PT", nl: "nl-NL", sv: "sv-SE", da: "da-DK", no: "nb-NO",
   fi: "fi-FI", pl: "pl-PL", cs: "cs-CZ", el: "el-GR", ro: "ro-RO", hu: "hu-HU", ca: "ca-ES" };
-const secs = s => s === null || s === undefined ? "" : s < 60 ? Math.round(s) + " s" : Math.floor(s / 60) + " min " + Math.round(s % 60) + " s";
+const secs = s => s === null || s === undefined ? "" : s < 60 ? Number(s).toFixed(2) + " s" : Math.floor(s / 60) + " min " + (s % 60).toFixed(2) + " s";
 const meter = (frac, pass, mark) => '<div class="meter' + (pass ? " pass" : "") + '"><i style="width:' + Math.max(0, Math.min(100, 100 * frac)).toFixed(1) + '%"></i>' +
   (mark !== undefined ? '<b style="left:' + Math.min(100, 100 * mark).toFixed(1) + '%"></b>' : "") + "</div>";
 
@@ -17,10 +17,13 @@ function voiceFor(code) {
   return vs.find(v => v.lang === want) || vs.find(v => v.lang && v.lang.toLowerCase().startsWith(code)) || null;
 }
 async function say(text, code) {
-  const v = voiceFor(code);
-  if (v) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.voice = v; u.lang = v.lang; u.rate = 0.9; speechSynthesis.speak(u); return; }
+  // espeak-ng (bundled) is the default voice; the browser's own voice is only a fallback
   const res = await fetch("/api/speak?" + new URLSearchParams({ text, lang: code }));
-  if (!res.ok) { let m = "No voice for " + (NAMES[code] || code) + " on this computer."; try { m = (await res.json()).error || m; } catch (e) { /* ignore */ } toast(m, true); return; }
+  if (!res.ok) {
+    const v = voiceFor(code);
+    if (v) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.voice = v; u.lang = v.lang; u.rate = 0.9; speechSynthesis.speak(u); return; }
+    let m = "No voice for " + (NAMES[code] || code) + " on this computer."; try { m = (await res.json()).error || m; } catch (e) { /* ignore */ } toast(m, true); return;
+  }
   const url = URL.createObjectURL(await res.blob()), a = new Audio(url);
   a.onended = () => URL.revokeObjectURL(url); a.play();
 }
@@ -82,6 +85,8 @@ function renderJob(j, b) {
   $("#ballpct").textContent = Math.floor(100 * frac) + "%";
   $("#bbar").style.width = (100 * frac).toFixed(1) + "%";
   $("#bbar").parentElement.classList.toggle("pass", frac >= 1 && !running);
+  $("#bbar").parentElement.classList.toggle("live", running);
+  $("#nowbar").parentElement.classList.add("live");
   $("#bfacts").innerHTML = [
     "<span><b>" + (running ? (j.stage_no - 1) : nDone) + "</b> of " + N + " steps finished</span>",
     "<span><b>" + nLang + "</b> of " + L + " languages built</span>",

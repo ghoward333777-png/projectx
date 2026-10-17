@@ -210,6 +210,24 @@ def main():
             db.execute("INSERT INTO t(k, v) VALUES('after-restore', 1)")
         c.check("writes work again after restore", st3.scalar("SELECT count(*) FROM t WHERE k = 'after-restore'") == 1)
         c.check("schema version recorded", st3.meta_get("schema_version") == "1")
+        # redundancy: the backup mirror
+        with tempfile.TemporaryDirectory() as mdir:
+            st3.set_mirror(mdir)
+            bm = st3.backup("mirror-test", force=True)
+            mb = st3.mirror_backups()
+            c.check("every backup gets a verified copy in the mirror", mb and mb[0]["name"] == os.path.basename(bm) and core._sha256(mb[0]["path"]) == core._sha256(bm))
+            os.remove(bm)
+            st3.conn().close(); st3._local.db = None
+            st3.restore(mb[0]["path"])
+            st4 = core.Store(tmp, "t", SCHEMA)
+            c.check("a mirror copy restores the database when the primary backup is gone", not st4.read_only and st4.scalar("SELECT count(*) FROM t WHERE k = 'after-restore'") == 1)
+            try:
+                st4.set_mirror(os.path.join(tmp, "inside"))
+                c.check("a mirror inside the data folder is refused", False)
+            except core.UserError:
+                c.check("a mirror inside the data folder is refused", True)
+            st4.set_mirror("off")
+            c.check("the mirror can be switched off", st4.mirror_dir() is None)
     monitoring_tests(c)
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))

@@ -17,7 +17,7 @@ it used, what it produced and where the audio is kept. Nothing about API keys is
     query(transcript, audio)    understand a spoken question (words + how it was said) and answer
                                 it out loud from the builder's knowledge
 """
-import datetime, hashlib, json, math, os, re, time
+import datetime, hashlib, json, math, os, re, shutil, time
 
 import dialect
 import function_words
@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS speech_log (
 );
 CREATE INDEX IF NOT EXISTS speech_log_started ON speech_log(started);
 """
+
+
+FAILOVER = ["espeak", "sapi", "say", "formant"]       # offline voices, in order; the formant voice needs nothing installed
 
 
 def stamp(t=None):
@@ -225,23 +228,42 @@ class SpeechLab:
         clk = Clock()
         clk("plan")
         pl, run, fx = tts.plan(text, prof, engine, voice, model, self.keys, adv)
-        ok, why = tts.BY_ID[engine].available(self.keys)
-        used, err = engine, None
-        try:
+        # redundancy: the chosen engine first, then every offline voice in turn, ending with the pure-Python voice
+        chain = [engine] + ([e for e in FAILOVER if e != engine] if fallback else [])
+        attempts, data, used, err, fx_used = [], None, None, None, fx
+        for eid in chain:
+            ok, why = tts.BY_ID[eid].available(self.keys)
             if not ok:
-                raise RuntimeError(why)
-            clk("synthesize (%s)" % engine)
-            data = run()
-        except Exception as e:
-            err = tts.scrub(e, self.keys)
-            if not fallback:
-                self._record("generate", "%s failed: %s" % (engine, err), engine, "failed", clk, pl["request"], None, None, parent)
-                raise RuntimeError(err)
-            used = "espeak" if tts.BY_ID["espeak"].available(self.keys)[0] else "formant"
-            clk("fallback to %s" % used)
-            pl2, run2, fx = tts.plan(text, prof, used, "", "", self.keys, None)
-            data = run2()
-            pl["fallback"] = {"engine": used, "reason": err, "request": pl2["request"]}
+                attempts.append({"engine": eid, "result": "skipped", "reason": why})
+                continue
+            t_try = time.time()
+            clk("synthesize (%s)" % eid)
+            try:
+                if eid == engine:
+                    data, fx_used = run(), fx
+                else:
+                    pl2, run2, fx_used = tts.plan(text, prof, eid, "", "", self.keys, None)
+                    data = run2()
+                    pl.setdefault("fallback", {"engine": eid, "request": pl2["request"]})
+                if not voicedsp.is_wav(data):
+                    raise RuntimeError("the engine returned audio that is not WAV")
+                attempts.append({"engine": eid, "result": "ok", "seconds": round(time.time() - t_try, 2)})
+                used = eid
+                break
+            except Exception as e:
+                reason = tts.scrub(e, self.keys)
+                attempts.append({"engine": eid, "result": "failed", "reason": reason, "seconds": round(time.time() - t_try, 2)})
+                data = None
+        fx = fx_used
+        if used != engine:
+            err = next((a.get("reason") for a in attempts if a["engine"] == engine), None) or "not available"
+        pl["attempts"] = attempts
+        if not used:
+            self._record("generate", "every voice failed: %s" % "; ".join("%s: %s" % (a["engine"], a.get("reason", "")) for a in attempts),
+                         engine, "failed", clk, {"plan": pl["request"], "attempts": attempts}, None, None, parent)
+            raise RuntimeError("No voice could speak: " + "; ".join("%s — %s" % (a["engine"], a.get("reason", a["result"])) for a in attempts))
+        if used != engine and not fallback:
+            raise RuntimeError(err)
         if not voicedsp.is_wav(data):
             raise RuntimeError("the engine returned audio that is not WAV")
         if extra_fx:                                        # corrections from the match loop
@@ -254,7 +276,7 @@ class SpeechLab:
             meas = voicedsp.measure(data, lambda s: clk("measure: " + s))
         clk("save")
         name = self._save_audio(data, "out")
-        summary = {"engine_used": used, "fallback_reason": err, "effects": fxrep.get("applied"), "bytes": len(data)}
+        summary = {"engine_used": used, "fallback_reason": err, "effects": fxrep.get("applied"), "bytes": len(data), "attempts": attempts}
         if meas:
             summary.update({"duration_s": meas["duration_s"], "pitch_hz": meas["pitch"].get("mean_hz"), "rate_syl_s": meas["rate"]["articulation_rate_syl_s"],
                             "volume_dbfs": meas["volume"]["mean_dbfs"], "vocal_mode": meas["vocal_mode"]["label"]})
@@ -414,3 +436,72 @@ def _slim(m):
     if not m:
         return m
     return {k: v for k, v in m.items() if k not in ("contour", "segments")}
+
+
+def diagnostics(sl, C):
+    """Speech checks for the Diagnostics page: every voice path, the measurement chain, audio I/O, keys, providers, log."""
+    out = []
+    t = time.time()
+    st = speech.status()
+    if st["espeak"]:
+        w = speech.speak_wav("diagnostic test", "en-us")
+        ok = bool(w) and voicedsp.is_wav(w) and len(w) > 2000
+        out.append(C("sp_default", "Default voice speaks (espeak-ng, %s)" % ("bundled" if st["bundled"] else "system"), "ok" if ok else "fail",
+                     "%.2f s, %d bytes" % (time.time() - t, len(w or b""))))
+        t = time.time()
+        bad = [c for c, v in vocab.LANGUAGES.items() if not speech.ipa("test", v["espeak"])]
+        out.append(C("sp_langs", "Default voice: all 17 languages", "fail" if bad else "ok",
+                     ("no voice for: " + ", ".join(bad)) if bad else "17 of 17 in %.2f s" % (time.time() - t)))
+    else:
+        out.append(C("sp_default", "Default voice speaks (espeak-ng)", "warn", st["hint"]))
+    t = time.time()
+    try:
+        fw = voicedsp.formant_wav(["/tɛst/"])
+        out.append(C("sp_failover", "Last-resort voice (built-in, no install)", "ok" if voicedsp.is_wav(fw) else "fail", "%.2f s" % (time.time() - t)))
+    except Exception as e:
+        out.append(C("sp_failover", "Last-resort voice (built-in, no install)", "fail", repr(e)[:200]))
+    t = time.time()
+    try:
+        m = voicedsp.measure(voicedsp.tone_wav(f0=150, seconds=1.5))
+        tr = voicedsp.measure(voicedsp.apply_effects(voicedsp.tone_wav(f0=150, seconds=2.5), {"tremble": 0.8})[0])
+        okm = abs((m["pitch"].get("mean_hz") or 0) - 150) < 2
+        out.append(C("sp_measure", "Speech measurement (known 150 Hz test voice)", "ok" if okm else "fail",
+                     "measured %s Hz; effects → tremble %s; %.2f s" % (m["pitch"].get("mean_hz"), "found" if tr["quality"]["tremor_pitch"].get("detected") else "NOT found", time.time() - t)))
+    except Exception as e:
+        out.append(C("sp_measure", "Speech measurement", "fail", repr(e)[:200]))
+    t = time.time()
+    try:
+        probe = os.path.join(sl.audio_dir, ".io-probe.wav")
+        data = voicedsp.tone_wav(seconds=0.2)
+        with open(probe, "wb") as f:
+            f.write(data)
+        with open(probe, "rb") as f:
+            back = f.read()
+        os.remove(probe)
+        free = shutil.disk_usage(sl.audio_dir).free
+        n = sum(len(fs) for _, _, fs in os.walk(sl.audio_dir))
+        out.append(C("sp_audio", "Speech audio folder (write, read back, compare)", "ok" if back == data else "fail",
+                     "%d files kept; %.1f GB free; %.2f s" % (n, free / 2**30, time.time() - t)))
+    except Exception as e:
+        out.append(C("sp_audio", "Speech audio folder", "fail", repr(e)[:200]))
+    kp = sl.keys.path
+    if os.path.exists(kp) and os.name != "nt":
+        mode = os.stat(kp).st_mode & 0o077
+        out.append(C("sp_keys", "Provider keys file is private", "ok" if not mode else "warn", "owner-only" if not mode else "readable by others — run: chmod 600 speech_keys.json"))
+    pub = sl.keys.public()
+    for prov in tts.KEY_FIELDS:
+        name = tts.BY_ID[prov].name
+        if not pub[prov]["configured"]:
+            out.append(C("sp_" + prov, name, "ok", "not set up (optional)"))
+            continue
+        last = sl.store.query("SELECT status, started, description FROM speech_log WHERE engine = ? AND process IN ('generate', 'query') ORDER BY id DESC LIMIT 1", (prov,))
+        fails = sl.store.scalar("SELECT count(*) FROM speech_log WHERE engine = ? AND status = 'failed' AND started > ?", (prov, stamp(time.time() - 86400)), 0)
+        if not last:
+            out.append(C("sp_" + prov, name, "ok", "key set; not used yet — press Test on Voice providers"))
+        else:
+            out.append(C("sp_" + prov, name, "warn" if last[0]["status"] == "failed" else "ok",
+                         "last use %s: %s; failures in 24 h: %d" % (last[0]["started"], last[0]["status"], fails)))
+    n = sl.store.scalar("SELECT count(*) FROM speech_log", default=0)
+    lastlog = sl.store.scalar("SELECT max(started) FROM speech_log", default=None)
+    out.append(C("sp_log", "Speech log", "ok", "%d processes logged; newest %s" % (n, lastlog or "—")))
+    return out

@@ -97,13 +97,27 @@ touches the data.
 * `python app.py restore` lists the backups; `python app.py restore 1` restores the newest. The
   damaged file is set aside, not deleted.
 
+## Redundancy
+
+* **Backup mirror:** every checked backup can also be copied to a second folder — best on another drive.
+  Each copy is proven identical (SHA-256) and passes a database check; restore lists both copies.
+  Set it on the Diagnostics page or with `python app.py set-mirror E:\QB-Mirror` (`set-mirror off` stops it).
+* **Voice failover (Language Builder):** the chosen voice, then espeak-ng, then the Windows or macOS voice,
+  then QueryBook's own built-in voice, which needs nothing installed. Every attempt is logged.
+* **Default voice bundled:** the official espeak-ng 1.51 Windows build (program, Microsoft runtime, the 17
+  languages and all voice variants) ships in `language/espeak/` — Windows needs no installation, as in the
+  prototype. macOS: `GET-VOICES-MAC.command`; Linux: `sudo apt install espeak-ng`.
+
 ## Diagnostics and the monitoring connection
 
 Each application checks itself when it starts and every hour, and shows the results on its
 **Diagnostics** page (also `python app.py diagnose`): Python version, program files, data folder,
 free disk space, database check and layout version, database and journal size, backups (the newest
 is opened and checked), errors in the last 24 hours, background work, and checks of the application's
-own logic (known calculations, date and source rules, word lists and answer checking). **Run full
+own logic (known calculations, date and source rules, word lists and answer checking), the backup
+mirror, and in the Language Builder every speech path: the default voice in all 17 languages, the
+last-resort voice, the measurement chain against a known test voice, audio write/read-back, provider
+keys and each provider's last result, the speech log, the language build and its proof. **Run full
 self-test** runs the complete self-test from the page.
 
 The **monitoring connection** sends these health reports to this development repository on GitHub,
@@ -142,7 +156,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 86 checks
+python language/app.py --selftest     # 91 checks
 python stem/app.py --selftest         # 85 checks
 python facts/app.py --selftest        # 36 checks
 python tools/run_all_tests.py         # all of the above

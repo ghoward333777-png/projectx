@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.2.0"
+CORE_VERSION = "1.3.0"
 BACKUPS_KEPT = 10
 
 
@@ -66,6 +66,14 @@ def data_folder(app_id, program_dir):
     except (OSError, ValueError):
         pass
     return os.path.join(os.path.expanduser("~"), "QueryBook-Data", app_id)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def set_data_folder(program_dir, folder):
@@ -218,6 +226,74 @@ class Store:
         except OSError:
             return ""
 
+    # -- redundancy: a verified second copy of every backup in another folder (e.g. an external drive)
+    def mirror_dir(self):
+        env = os.environ.get("QB_%s_MIRROR" % self.app_id.upper())
+        if env:
+            return os.path.abspath(os.path.expanduser(env))
+        try:
+            with open(os.path.join(self.folder, "mirror.json"), encoding="utf-8") as f:
+                d = json.load(f).get("folder")
+            return os.path.abspath(os.path.expanduser(d)) if d else None
+        except (OSError, ValueError):
+            return None
+
+    def set_mirror(self, folder):
+        p = os.path.join(self.folder, "mirror.json")
+        if not folder or str(folder).lower() in ("off", "none", ""):
+            if os.path.exists(p):
+                os.remove(p)
+            self.activity("Backup mirror switched off", "ok")
+            return None
+        d = os.path.abspath(os.path.expanduser(folder))
+        if os.path.normcase(d).startswith(os.path.normcase(os.path.abspath(self.folder))):
+            raise UserError("The mirror must be in another folder (better: another drive), not inside the data folder.")
+        os.makedirs(os.path.join(d, self.app_id), exist_ok=True)
+        with open(p + ".tmp", "w", encoding="utf-8") as f:
+            json.dump({"folder": d}, f)
+        os.replace(p + ".tmp", p)
+        self.activity("Backup mirror set", "ok", redact(d))
+        b = self.backups()
+        if b:
+            self._mirror(b[0]["path"])
+        return d
+
+    def mirror_backups(self):
+        d = self.mirror_dir()
+        if not d or not os.path.isdir(os.path.join(d, self.app_id)):
+            return []
+        m = os.path.join(d, self.app_id)
+        return [{"name": n, "path": os.path.join(m, n), "bytes": os.path.getsize(os.path.join(m, n)), "mirror": True}
+                for n in sorted(os.listdir(m), reverse=True) if n.endswith(".sqlite")]
+
+    def _mirror(self, src):
+        """Copy one backup to the mirror and prove the copy: same SHA-256 and a passing database check."""
+        d = self.mirror_dir()
+        if not d:
+            return None
+        t0 = time.time()
+        try:
+            m = os.path.join(d, self.app_id)
+            os.makedirs(m, exist_ok=True)
+            dest = os.path.join(m, os.path.basename(src))
+            shutil.copy2(src, dest + ".part")
+            os.replace(dest + ".part", dest)
+            same = _sha256(src) == _sha256(dest)
+            c = sqlite3.connect(dest)
+            ok = same and c.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+            c.close()
+            if not ok:
+                os.remove(dest)
+                raise RuntimeError("mirror copy did not match the backup")
+            for old in self.mirror_backups()[BACKUPS_KEPT:]:
+                os.remove(old["path"])
+            self.activity("Backup mirrored", "ok", os.path.basename(dest), int((time.time() - t0) * 1000))
+            return dest
+        except Exception as e:
+            self.log("ERROR", "backup mirror failed:", repr(e))
+            self.activity("Backup mirrored", "failed", redact(e), int((time.time() - t0) * 1000))
+            return None
+
     def backups(self):
         out = []
         for name in sorted(os.listdir(self.backup_dir), reverse=True):
@@ -260,6 +336,7 @@ class Store:
             os.remove(old["path"])
         self.log("backup written: %s" % os.path.basename(dest))
         self.activity("Backup (%s)" % reason, "ok", os.path.basename(dest), int((time.time() - t0) * 1000))
+        self._mirror(dest)
         return dest
 
     def restore(self, backup_path):
@@ -825,6 +902,17 @@ class Diagnostics:
                 st = "fail" if not bok else "warn" if age_h > 24 * 14 else "ok"
                 checks.append(_check("backup", "Backups", st, "%d kept; newest %s old%s"
                                      % (len(b), _age(age_h), "" if bok else "; NEWEST BACKUP FAILED ITS CHECK"), len(b)))
+            md = self.store.mirror_dir()
+            if not md:
+                checks.append(_check("mirror", "Backup mirror (second copy)", "ok", "not set — recommended: a folder on another drive (Diagnostics page, or python app.py set-mirror E:\\QB-Mirror)"))
+            else:
+                mb = self.store.mirror_backups()
+                if not mb:
+                    checks.append(_check("mirror", "Backup mirror (second copy)", "fail" if b else "warn", "no copy in the mirror yet"))
+                else:
+                    same = bool(b) and mb[0]["name"] == b[0]["name"] and _sha256(mb[0]["path"]) == _sha256(b[0]["path"])
+                    checks.append(_check("mirror", "Backup mirror (second copy)", "ok" if same else "warn",
+                                         "%d copies; newest %s" % (len(mb), "matches the newest backup" if same else "is older than the newest backup")))
             errs, n = self.errors_since(24)
             checks.append(_check("errors", "Errors in the last 24 hours", "ok" if n == 0 else "fail" if n >= 20 else "warn", "%d" % n, n))
             if self.jobs is not None:
@@ -1138,6 +1226,16 @@ def add_diagnostics(api, diag, monitor, program_dir):
     def diagnostics_run(p):
         return diag.run()
 
+    @api.get("/api/mirror")
+    def mirror_get(p):
+        st = diag.store
+        return {"folder": st.mirror_dir(), "copies": [{"name": x["name"], "kb": x["bytes"] // 1024} for x in st.mirror_backups()[:10]]}
+
+    @api.post("/api/mirror")
+    def mirror_set(p):
+        d = diag.store.set_mirror(p.get("folder") or "off")
+        return {"folder": d, "copies": len(diag.store.mirror_backups())}
+
     @api.get("/api/diagnostics/report.txt")
     def diagnostics_text(p):
         return diag.text(diag.run()).encode("utf-8"), "text/plain; charset=utf-8"
@@ -1223,7 +1321,8 @@ def run_cli(app):
     python app.py where           show the data folder
     python app.py set-data DIR    use DIR as the data folder from now on
     python app.py backup          take a backup now
-    python app.py restore [N]     list backups, or restore backup number N
+    python app.py restore [N]     list backups (and mirror copies), or restore number N
+    python app.py set-mirror DIR  keep a verified second copy of every backup in DIR (off to stop)
     python app.py import-old DIR  import from an old QueryBook store (read-only)
     python app.py diagnose        run the internal diagnostics and print the report
     """
@@ -1247,11 +1346,18 @@ def run_cli(app):
     if args and args[0] == "backup":
         print("Backup written:", inst.store.backup("manual", force=True))
         return 0
+    if args and args[0] == "set-mirror":
+        if len(args) < 2:
+            print("usage: python app.py set-mirror FOLDER   (or: set-mirror off)")
+            return 2
+        d = inst.store.set_mirror(args[1])
+        print("Backup mirror:", d or "off")
+        return 0
     if args and args[0] == "restore":
-        b = inst.store.backups()
+        b = inst.store.backups() + inst.store.mirror_backups()
         if len(args) < 2:
             for i, x in enumerate(b, 1):
-                print("  [%d] %s  (%d KB)" % (i, x["name"], x["bytes"] // 1024))
+                print("  [%d] %s  (%d KB)%s" % (i, x["name"], x["bytes"] // 1024, "  [mirror]" if x.get("mirror") else ""))
             print("\nTo restore one: python app.py restore NUMBER   (close the app first)")
             return 0
         k = int(args[1]) - 1

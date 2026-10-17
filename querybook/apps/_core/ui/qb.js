@@ -31,8 +31,8 @@ function busyStart(label) {
   BUSY.n++; BUSY.label = label;
   clearTimeout(BUSY.hide);
   el.className = "show working";
-  const tick = () => { el.querySelector(".qb-busy-text").textContent = "Working: " + BUSY.label + " · " + ((performance.now() - BUSY.t0) / 1000).toFixed(1) + " s"; };
-  tick(); clearInterval(BUSY.timer); BUSY.timer = setInterval(tick, 100);
+  const tick = () => { el.querySelector(".qb-busy-text").textContent = "⏳ " + BUSY.label + " · " + ((performance.now() - BUSY.t0) / 1000).toFixed(2) + " s"; };
+  tick(); clearInterval(BUSY.timer); BUSY.timer = setInterval(tick, 50);
 }
 function busyEnd(label, ok, serverMs) {
   BUSY.n = Math.max(0, BUSY.n - 1);
@@ -40,15 +40,34 @@ function busyEnd(label, ok, serverMs) {
   clearInterval(BUSY.timer);
   const el = busyBar(), secs = ((performance.now() - BUSY.t0) / 1000).toFixed(2);
   el.className = "show " + (ok ? "done" : "failed");
-  el.querySelector(".qb-busy-text").textContent = (ok ? "Done: " : "Failed: ") + label + " · " + secs + " s" + (serverMs ? " (server " + serverMs + " ms)" : "");
+  el.querySelector(".qb-busy-text").textContent = (ok ? "✔ " : "✖ Failed: ") + label + " · " + secs + " s" + (serverMs ? " (server " + (serverMs / 1000).toFixed(2) + " s)" : "");
   BUSY.hide = setTimeout(() => { el.className = ""; }, ok ? 2500 : 6000);
+}
+
+// A pressed button shows that it is working (pulsing, live time to 0.01 s), then flashes the outcome.
+function buttonStart(btn) {
+  if (btn._qb) { clearTimeout(btn._qb.restore); btn.innerHTML = btn._qb.html; }
+  const st = { html: btn.innerHTML, t0: performance.now(), timer: null, restore: null };
+  btn._qb = st;
+  btn.classList.remove("flash-ok", "flash-bad"); btn.classList.add("busy"); btn.setAttribute("aria-busy", "true");
+  const tick = () => { btn.innerHTML = '<span class="qb-spin" aria-hidden="true"></span>' + st.html + ' <span class="qb-t">' + ((performance.now() - st.t0) / 1000).toFixed(2) + " s</span>"; };
+  tick(); st.timer = setInterval(tick, 50);
+}
+function buttonEnd(btn, ok) {
+  const st = btn._qb; if (!st) return;
+  clearInterval(st.timer);
+  const secs = ((performance.now() - st.t0) / 1000).toFixed(2);
+  btn.classList.remove("busy"); btn.removeAttribute("aria-busy");
+  btn.classList.add(ok ? "flash-ok" : "flash-bad");
+  btn.innerHTML = (ok ? "✔ " : "✖ ") + st.html + ' <span class="qb-t">' + secs + " s</span>";
+  st.restore = setTimeout(() => { btn.classList.remove("flash-ok", "flash-bad"); if (btn._qb === st) { btn.innerHTML = st.html; btn._qb = null; } }, ok ? 1800 : 4000);
 }
 
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const label = actionLabel(path);
   const btn = (Date.now() - lastPress.at < 400) ? lastPress.el : null;
-  if (btn) { btn.classList.add("busy"); btn.setAttribute("aria-busy", "true"); }
+  if (btn && !btn.closest("nav.tabs, .subtabs")) buttonStart(btn);
   const quiet = body === undefined && /\/api\/(job|status|build)$/.test(path.split("?")[0]);
   if (!quiet) busyStart(label);
   let res, ok = false, data = {};
@@ -61,7 +80,7 @@ async function api(path, body) {
     return data;
   } finally {
     if (!quiet) busyEnd(label, ok, res && res.headers.get("X-QB-Ms"));
-    if (btn) { btn.classList.remove("busy"); btn.removeAttribute("aria-busy"); }
+    if (btn && btn._qb) buttonEnd(btn, ok);
   }
 }
 
@@ -113,10 +132,10 @@ async function pollJob(el, onDone) {
   const j = await api("/api/job");
   if (j.state === "idle") { el.innerHTML = ""; return; }
   const pct = j.total ? Math.min(100, Math.round(100 * j.done / j.total)) : null;
-  const fmtS = s => s === null || s === undefined ? "" : s < 60 ? Math.round(s) + " s" : Math.floor(s / 60) + " min " + Math.round(s % 60) + " s";
+  const fmtS = s => s === null || s === undefined ? "" : s < 60 ? Number(s).toFixed(2) + " s" : Math.floor(s / 60) + " min " + (s % 60).toFixed(2) + " s";
   el.innerHTML = '<div class="small"><b>' + esc(j.name) + "</b> — " + esc(j.state) + (j.message ? " — " + esc(j.message) : "") +
     " (" + Number(j.done || 0).toLocaleString() + (j.total ? " of " + Number(j.total).toLocaleString() : "") + ")</div>" +
-    (pct !== null ? '<progress max="100" value="' + pct + '"></progress>' : (j.state === "running" ? "<progress></progress>" : "")) +
+    (j.state === "running" ? '<div class="meter tall live"><i style="width:' + (pct !== null ? pct : 100) + '%"></i></div>' : "") +
     '<div class="small muted">' + [pct !== null ? pct + "%" : "", "elapsed " + fmtS(j.elapsed), j.rate ? "speed " + Number(j.rate).toLocaleString() + " per second" : "",
       j.eta_s !== undefined && j.eta_s !== null ? "about " + fmtS(j.eta_s) + " left in this step" : "", j.updates_per_s ? j.updates_per_s + " updates/s" : ""].filter(Boolean).join(" · ") + "</div>";
   if (j.state !== "running" && j.result && typeof j.result === "object") {
@@ -145,6 +164,8 @@ async function renderDiagnostics(el, rerun) {
       '<div class="row"><button class="btn" id="dg-run">Run checks now</button><button class="btn quiet" id="dg-self">Run full self-test</button>' +
       '<a class="btn quiet" href="/api/diagnostics/report.txt" download="diagnostics.txt" style="text-decoration:none">Download report</a></div>' +
       '<div id="dg-out" style="margin-top:12px"></div><pre id="dg-selfout" class="small mono" style="display:none;white-space:pre-wrap;max-height:320px;overflow:auto;background:var(--chip);padding:10px;border-radius:8px"></pre></div>' +
+      '<div class="card"><h2>Backup mirror (redundancy)</h2><p class="small muted">A second, verified copy of every backup in another folder — best on another drive (USB disk, NAS, synced folder). Each copy is checked: same SHA-256 as the backup and a passing database check. Restoring can use either copy.</p>' +
+      '<div class="row"><input id="mr-f" class="grow" type="text" placeholder="Folder on another drive, e.g. E:\\QB-Mirror" aria-label="Mirror folder"><button class="btn" id="mr-set">Set mirror</button><button class="btn quiet" id="mr-off">Switch off</button></div><div id="mr-out" class="small" style="margin-top:8px"></div></div>' +
       '<div class="card"><h2>Activity log</h2><p class="small muted">Every action that changes something, every background task, backup, import, diagnostics run and monitoring report — with its result and how long it took. Kept in this application\'s database (newest 20,000).</p>' +
       '<div class="row"><input id="act-q" type="text" placeholder="Filter by task" style="max-width:260px" aria-label="Filter activity"><button class="btn quiet" id="act-go">Refresh</button></div><div id="act-out" style="margin-top:10px;max-height:420px;overflow:auto"></div></div>' +
       '<div class="card"><h2>Monitoring connection</h2>' +
@@ -167,6 +188,10 @@ async function renderDiagnostics(el, rerun) {
       "<li>Generate, copy the token, paste it here, tick <b>Monitoring connection on</b>, press <b>Save</b>, then <b>Send a test report</b>.</li>" +
       "</ol><p class=\"small muted\">The token is kept only in this application's data folder (monitor.json) and is only ever sent to GitHub. One token can be used by all three applications.</p></details></div>";
     $("#dg-run", el).onclick = () => renderDiagnostics(el, true);
+    const mirrorShow = async () => { const m = await api("/api/mirror"); $("#mr-out").innerHTML = m.folder ? "Mirror: <span class=\"mono\">" + esc(m.folder) + "</span> — " + m.copies.length + " verified cop" + (m.copies.length === 1 ? "y" : "ies") + (m.copies[0] ? "; newest " + esc(m.copies[0].name) : "") : "<span class=\"badge warn\">no mirror</span> Backups exist in one place only."; if (m.folder && !$("#mr-f").value) $("#mr-f").value = m.folder; };
+    $("#mr-set").onclick = async () => { await api("/api/mirror", { folder: $("#mr-f").value }); toast("Mirror set; the newest backup was copied and verified."); mirrorShow(); };
+    $("#mr-off").onclick = async () => { await api("/api/mirror", { folder: "off" }); $("#mr-f").value = ""; mirrorShow(); };
+    mirrorShow();
     $("#act-go", el).onclick = () => showActivity(el);
     onEnter($("#act-q", el), () => showActivity(el));
     $("#dg-self", el).onclick = async () => {
@@ -208,7 +233,7 @@ async function showActivity(el) {
     (s === "warn" || s === "refused" || s === "stopped") ? '<span class="badge warn">' + esc(s) + "</span>" : '<span class="badge bad">' + esc(s) + "</span>";
   $("#act-out", el).innerHTML = r.activity.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Task</th><th>Result</th><th>Time</th><th>Detail</th></tr>' + r.activity.map(a =>
     '<tr><td class="mono">' + esc(a.at.replace("T", " ").replace("Z", "")) + "</td><td>" + esc(a.task) + "</td><td>" + badge(a.status) + '</td><td class="mono">' +
-    (a.ms === null ? "" : a.ms < 1000 ? a.ms + " ms" : (a.ms / 1000).toFixed(1) + " s") + "</td><td>" + esc(a.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
+    (a.ms === null ? "" : (a.ms / 1000).toFixed(2) + " s") + "</td><td>" + esc(a.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
 }
 
 function showMonitor(el, m) {

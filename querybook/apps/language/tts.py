@@ -301,7 +301,7 @@ def coverage(engine, p):
 
 # ---- offline: espeak-ng
 class Espeak(Engine):
-    id, name, kind = "espeak", "espeak-ng (offline, every OS)", "offline"
+    id, name, kind = "espeak", "espeak-ng — synthetic voice (default, offline, bundled on Windows)", "offline"
     native = {"lang", "rate", "pitch_st", "volume_db", "pause_scale", "accent", "whisper", "articulation", "gender"}
     notes = "Free, offline, 100+ languages. Accents through dialect voices; variants for whisper, croak (hoarse) and grandpa (age)."
     params = [P("speed_wpm", "Speed (words per minute)", "number", None, 80, 450, 5), P("pitch", "Pitch (0–99)", "number", None, 0, 99, 1),
@@ -309,7 +309,7 @@ class Espeak(Engine):
               P("voice_name", "espeak voice (e.g. en-gb, en-us+f3)", "text", None, help="overrides language + variant")]
 
     def available(self, keys):
-        return (bool(speech.find_espeak()), "" if speech.find_espeak() else "espeak-ng is not installed")
+        return (bool(speech.find_espeak()), "" if speech.find_espeak() else "espeak-ng not found — " + speech.status()["hint"])
 
     def voices(self, keys, lang="en"):
         return [{"id": "", "name": "Language default"}] + [{"id": v, "name": v} for v in
@@ -350,8 +350,7 @@ class Espeak(Engine):
         desc = {"command": "espeak-ng " + " ".join(a) + " --stdout <text>", "arguments": a}
 
         def run():
-            exe = speech.find_espeak()
-            out = subprocess.run([exe] + a + ["--stdout", "--", text], capture_output=True, timeout=60)
+            out = subprocess.run(speech.cmd(a + ["--stdout", "--", text]), capture_output=True, timeout=60, **speech._kw())
             if out.returncode or not out.stdout:
                 raise RuntimeError("espeak-ng failed: %s" % out.stderr.decode("utf-8", "replace")[:200])
             return out.stdout
