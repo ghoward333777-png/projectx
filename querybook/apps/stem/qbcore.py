@@ -1393,6 +1393,36 @@ def add_diagnostics(api, diag, monitor, program_dir):
         diag.store.activity("Google Cloud settings saved", "ok", ", ".join(k for k in ("api_key", "service_account_json", "bucket", "storage_on", "monitoring_on") if k in p))
         return gcloud_get(p)
 
+    @api.get("/api/gcloud/setup-script")
+    def gcloud_setup_script(p):
+        return {"script": cloud.gc_mod.SETUP_SCRIPT}
+
+    @api.post("/api/gcloud/setup-code")
+    def gcloud_setup_code(p):
+        """Apply the one-paste setup code — to this application and (by default) every QueryBook application on this computer."""
+        try:
+            vals = cloud.gc_mod.decode_setup_code(p.get("code"))
+            cloud.settings.save(vals)
+        except ValueError as e:
+            raise UserError(str(e))
+        cloud.g._tok = None
+        applied = [diag.app_id]
+        if p.get("all_apps", True) not in (False, "false"):
+            for other in ("language", "stem", "facts"):
+                if other == diag.app_id:
+                    continue
+                folder = data_folder(other, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", other))
+                try:
+                    os.makedirs(folder, exist_ok=True)
+                    cloud.gc_mod.Settings(folder).save(vals)
+                    applied.append(other)
+                except (OSError, ValueError):
+                    pass
+        diag.store.activity("Google Cloud set up from a setup code", "ok", "applied to: " + ", ".join(applied))
+        out = gcloud_get(p)
+        out["applied_to"] = applied
+        return out
+
     @api.post("/api/gcloud/forget")
     def gcloud_forget(p):
         cloud.settings.forget(); cloud.g._tok = None

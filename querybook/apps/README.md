@@ -111,6 +111,12 @@ shown or logged. **Copy settings from …** reuses what another QueryBook applic
 | Text-to-Speech / Gemini TTS | API key | Language Builder voices use the same key |
 | YouTube Data API v3 | API key | History & News: search YouTube or add a video by link; videos are "reported by" a channel until promoted to a fact (source kind "video channel") |
 
+* **Easiest — one paste sets up all three applications:** Diagnostics → Google Cloud → open Google Cloud with
+  Cloud Shell, press *Copy the setup commands*, paste them into Cloud Shell and press Enter. Using only Google's own
+  command-line tool in your project, they switch on the APIs, create an API key **restricted** to Text-to-Speech,
+  Speech-to-Text, YouTube and Gemini voices, a backup bucket, and a service account with only the Storage Object
+  Admin (on that bucket) and Monitoring Editor roles. They print one `QBSETUP-…` code: paste it into any
+  application and every QueryBook application on the computer is configured. Safe to run again.
 * **API key:** https://aistudio.google.com/apikey (or Cloud console → APIs & Services → Credentials).
 * **Service account:** Cloud console → IAM → Service accounts → create, give it *Storage Object Admin* and
   *Monitoring Editor*, then Keys → Add key → JSON, and choose that file on the Diagnostics page. Requests are

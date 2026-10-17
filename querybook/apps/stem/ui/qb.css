@@ -124,3 +124,4 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, var(--accent), 
 /* Google Cloud card */
 .grid-gc { display: grid; grid-template-columns: 1fr; gap: 4px 12px; max-width: 760px; }
 label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margin-top: 8px; }
+.stat .v { overflow-wrap: anywhere; }

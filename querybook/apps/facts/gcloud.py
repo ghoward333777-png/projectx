@@ -430,3 +430,69 @@ class Google:
 def youtube_id(text):
     m = re.search(r"(?:v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_\-]{11})", text or "")
     return m.group(1) if m else (text if re.fullmatch(r"[A-Za-z0-9_\-]{11}", text or "") else None)
+
+
+# ---------------------------------------------------------------------------- one-paste setup (Google Cloud Shell)
+# Pasted into Cloud Shell (the >_ button in the Cloud console, already signed in as the user). It uses only Google's
+# own command-line tool, changes nothing outside the user's project, can be run again safely (it reuses what exists),
+# and prints ONE setup code to paste into a QueryBook application.
+SETUP_SCRIPT = r"""set -u
+echo "QueryBook — Google setup (safe to run again)"; echo
+P=$(gcloud config get-value project 2>/dev/null)
+if [ -z "$P" ] || [ "$P" = "(unset)" ]; then P=$(gcloud projects list --format='value(projectId)' --limit=1); fi
+if [ -z "$P" ]; then echo "No Google Cloud project found. Create one in the console first."; return 1 2>/dev/null || exit 1; fi
+gcloud config set project "$P" >/dev/null 2>&1; echo "1/6 Project: $P"
+echo "2/6 Switching on the APIs (about a minute)…"
+gcloud services enable texttospeech.googleapis.com speech.googleapis.com youtube.googleapis.com generativelanguage.googleapis.com \
+  storage.googleapis.com monitoring.googleapis.com apikeys.googleapis.com iam.googleapis.com >/dev/null
+echo "3/6 API key restricted to Text-to-Speech, Speech-to-Text, YouTube and Gemini voices…"
+K=$(gcloud services api-keys list --filter='displayName=QueryBook' --format='value(name)' --limit=1 2>/dev/null)
+if [ -z "$K" ]; then
+  gcloud services api-keys create --display-name=QueryBook --api-target=service=texttospeech.googleapis.com \
+    --api-target=service=speech.googleapis.com --api-target=service=youtube.googleapis.com \
+    --api-target=service=generativelanguage.googleapis.com >/dev/null 2>&1
+  K=$(gcloud services api-keys list --filter='displayName=QueryBook' --format='value(name)' --limit=1)
+fi
+KEY=$(gcloud services api-keys get-key-string "$K" --format='value(keyString)')
+B="querybook-backups-$P"
+echo "4/6 Backup bucket gs://$B …"
+gcloud storage buckets describe "gs://$B" >/dev/null 2>&1 || gcloud storage buckets create "gs://$B" --uniform-bucket-level-access >/dev/null
+SA="querybook-apps@$P.iam.gserviceaccount.com"
+echo "5/6 Service account $SA (backups and health reports only)…"
+gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 || gcloud iam service-accounts create querybook-apps --display-name="QueryBook apps" >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://$B" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null 2>&1
+gcloud projects add-iam-policy-binding "$P" --member="serviceAccount:$SA" --role=roles/monitoring.editor --condition=None >/dev/null 2>&1
+F=$(mktemp); rm -f "$F"
+if ! gcloud iam service-accounts keys create "$F" --iam-account="$SA" >/dev/null 2>&1; then
+  echo "   (your organisation does not allow service-account keys — backups to Google and health reports stay off; everything else works)"; F=""
+fi
+echo "6/6 Your setup code:"; echo
+python3 - "$P" "$KEY" "$B" "$F" <<'PY'
+import base64, json, os, sys
+p, key, b, f = sys.argv[1:5]
+sa = json.load(open(f)) if f and os.path.exists(f) else None
+code = {"v": 1, "project_id": p, "api_key": key, "bucket": b if sa else "", "service_account": sa}
+print("QBSETUP-" + base64.b64encode(json.dumps(code).encode()).decode())
+PY
+[ -n "$F" ] && rm -f "$F"
+echo; echo "Copy the whole line that starts with QBSETUP- and paste it into QueryBook → Diagnostics → Google Cloud → Paste setup code."
+echo "It contains your keys — paste it only there."
+"""
+
+
+def decode_setup_code(code):
+    """The QBSETUP-… line printed by SETUP_SCRIPT → the settings to save."""
+    c = "".join(str(code or "").split())
+    i = c.find("QBSETUP-")
+    if i < 0:
+        raise ValueError("That is not a QueryBook setup code (it starts with QBSETUP-).")
+    try:
+        d = json.loads(base64.b64decode(c[i + 8:]).decode("utf-8"))
+    except Exception:
+        raise ValueError("The setup code is incomplete — copy the whole line again.")
+    if d.get("v") != 1 or not d.get("api_key"):
+        raise ValueError("The setup code has no API key.")
+    vals = {"api_key": d["api_key"], "project_id": d.get("project_id") or ""}
+    if d.get("service_account"):
+        vals.update({"service_account_json": json.dumps(d["service_account"]), "bucket": d.get("bucket") or "", "storage_on": True, "monitoring_on": True})
+    return vals

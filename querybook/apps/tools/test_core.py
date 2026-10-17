@@ -394,6 +394,66 @@ def google_tests(c):
                 os.environ[k] = v
 
 
+def setup_script_tests(c):
+    """The one-paste Cloud Shell setup, run against a stand-in gcloud that records every call."""
+    import shutil, subprocess, gcloud
+    if not shutil.which("bash"):
+        c.check("setup script: skipped (no bash on this computer — it runs in Google Cloud Shell)", True)
+        return
+    pem, n, e = _rsa_test_key()
+    sa = {"type": "service_account", "project_id": "fleet-test", "private_key_id": "k1", "private_key": pem,
+          "client_email": "querybook-apps@fleet-test.iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token"}
+    for allow_keys in (True, False):
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = os.path.join(tmp, "bin"); os.makedirs(bindir)
+            log = os.path.join(tmp, "calls.log")
+            with open(os.path.join(tmp, "sa.json"), "w") as f:
+                json.dump(sa, f)
+            shim = r"""#!/bin/bash
+echo "$*" >> "%(log)s"
+case "$*" in
+  "config get-value project") echo fleet-test ;;
+  "services api-keys list"*) [ -f "%(tmp)s/key-made" ] && echo projects/1/locations/global/keys/abc ;;
+  "services api-keys create"*) touch "%(tmp)s/key-made" ;;
+  "services api-keys get-key-string"*) echo AIzaSETUPKEY000000000000000000000000000 ;;
+  "storage buckets describe"*) exit 1 ;;
+  "iam service-accounts describe"*) exit 1 ;;
+  "iam service-accounts keys create"*) %(keys)s ;;
+esac
+exit 0
+""" % {"log": log, "tmp": tmp, "keys": ('cp "%s/sa.json" "$5"' % tmp) if allow_keys else "exit 1"}
+            with open(os.path.join(bindir, "gcloud"), "w") as f:
+                f.write(shim)
+            os.chmod(os.path.join(bindir, "gcloud"), 0o755)
+            env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"])
+            r = subprocess.run(["bash", "-c", gcloud.SETUP_SCRIPT], capture_output=True, text=True, env=env, timeout=60)
+            calls = open(log).read()
+            line = [l for l in r.stdout.splitlines() if l.startswith("QBSETUP-")]
+            vals = gcloud.decode_setup_code(line[0]) if line else {}
+            st = gcloud.Settings(tmp)
+            if vals:
+                st.save(vals)
+            pub = st.public()
+            if allow_keys:
+                c.check("setup script: enables the APIs, makes a RESTRICTED key, a bucket and a service account with only storage + monitoring roles",
+                        "services enable texttospeech.googleapis.com" in calls and "--api-target=service=youtube.googleapis.com" in calls
+                        and "storage buckets create gs://querybook-backups-fleet-test" in calls and "roles/storage.objectAdmin" in calls
+                        and "roles/monitoring.editor" in calls and "roles/owner" not in calls and "roles/editor " not in calls, r.stdout[-300:])
+                c.check("setup script: its one setup code configures the key, bucket, service account and switches backups and reports on",
+                        pub["api_key_set"] and pub["bucket"] == "querybook-backups-fleet-test" and pub["service_account"]["client_email"].startswith("querybook-apps@")
+                        and pub["storage_on"] and pub["monitoring_on"])
+                c.check("setup script: the key appears only inside the setup code, nowhere else on screen",
+                        "AIzaSETUPKEY" not in "\n".join(l for l in r.stdout.splitlines() if not l.startswith("QBSETUP-")))
+            else:
+                c.check("setup script: where service-account keys are forbidden it still delivers the API key, backups to Google stay off",
+                        pub["api_key_set"] and not pub["service_account"] and not pub["storage_on"], r.stdout[-300:])
+    try:
+        gcloud.decode_setup_code("QBSETUP-not-base64!!")
+        c.check("setup code: a damaged code is refused with a clear message", False)
+    except ValueError as e:
+        c.check("setup code: a damaged code is refused with a clear message", "copy the whole line" in str(e))
+
+
 def main():
     c = core.Checks()
     with tempfile.TemporaryDirectory() as tmp:
@@ -474,6 +534,7 @@ def main():
             c.check("the mirror can be switched off", st4.mirror_dir() is None)
     monitoring_tests(c)
     google_tests(c)
+    setup_script_tests(c)
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))
         c.check("%s carries the current Google module" % app, open(os.path.join(ROOT, app, "gcloud.py"), "rb").read() == open(os.path.join(ROOT, "_core", "gcloud.py"), "rb").read())

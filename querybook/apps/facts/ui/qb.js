@@ -166,6 +166,14 @@ async function renderDiagnostics(el, rerun) {
       '<div id="dg-out" style="margin-top:12px"></div><pre id="dg-selfout" class="small mono" style="display:none;white-space:pre-wrap;max-height:320px;overflow:auto;background:var(--chip);padding:10px;border-radius:8px"></pre></div>' +
       '<div class="card" id="gc-card"><h2>Google Cloud</h2><p class="small muted">Optional. Connects this application to your Google Cloud project: an off-site copy of every backup in Cloud Storage, health reports in Cloud Monitoring (with an alert if the application fails or goes silent), and — with the API key — Speech-to-Text, Text-to-Speech and YouTube. Keys are kept in this application\'s data folder (owner-only) and sent only to Google; they are never shown or logged.</p>' +
       '<div id="gc-status" class="small"></div>' +
+      '<div class="note" style="margin:10px 0"><b>Easiest: let Google set everything up for you (about 2 minutes).</b><ol class="small" style="margin:6px 0 0 18px;padding:0">' +
+      '<li>Open <a href="https://console.cloud.google.com/?cloudshell=true" target="_blank" rel="noopener">Google Cloud with Cloud Shell</a> (signed in as you; a terminal opens at the bottom — press <b>Authorize</b> if asked).</li>' +
+      '<li>Press <button class="btn quiet" id="gc-copyscript" style="padding:2px 10px">📋 Copy the setup commands</button>, click in the Cloud Shell terminal, paste (Ctrl+V / ⌘V) and press Enter.</li>' +
+      '<li>When it finishes, copy the line that starts with <span class="mono">QBSETUP-</span> and paste it here:</li></ol>' +
+      '<div class="row" style="margin-top:6px"><input id="gc-code" class="grow" type="password" autocomplete="off" placeholder="QBSETUP-…"><button class="btn" id="gc-apply">Apply setup code</button></div>' +
+      '<label class="chk"><input type="checkbox" id="gc-all" checked> Set up all QueryBook applications on this computer at once</label>' +
+      '<details class="small" style="margin-top:6px"><summary>What the setup commands do</summary><pre class="mono" id="gc-script" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--chip);padding:8px;border-radius:6px"></pre></details></div>' +
+      '<details><summary class="small"><b>Or enter the details by hand</b></summary>' +
       '<div class="grid-gc">' +
       '<label class="f">API key (Speech-to-Text, Text-to-Speech, YouTube) — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">get one</a></label><input id="gc-key" type="password" autocomplete="off" placeholder="AIza…">' +
       '<label class="f">Service account key file (Cloud Storage, Monitoring) — <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">create one</a> with roles Storage Object Admin + Monitoring Editor, then Keys → Add key → JSON</label>' +
@@ -173,7 +181,7 @@ async function renderDiagnostics(el, rerun) {
       '<label class="f">Cloud Storage bucket — <a href="https://console.cloud.google.com/storage/create-bucket" target="_blank" rel="noopener">create one</a></label><input id="gc-bucket" type="text" placeholder="my-querybook-backups">' +
       '<label class="f">Keep this many backups in the bucket</label><input id="gc-keep" type="number" min="1" max="100" style="width:90px">' +
       '<label class="chk"><input type="checkbox" id="gc-storage"> Copy every backup to Cloud Storage</label>' +
-      '<label class="chk"><input type="checkbox" id="gc-mon"> Send health reports to Cloud Monitoring</label></div>' +
+      '<label class="chk"><input type="checkbox" id="gc-mon"> Send health reports to Cloud Monitoring</label></div></details>' +
       '<div class="row" style="margin-top:10px"><button class="btn" id="gc-save">Save</button><button class="btn quiet" id="gc-test">Test all Google services</button>' +
       '<button class="btn quiet" id="gc-up">Back up to Cloud now</button><button class="btn quiet" id="gc-list">Cloud backups</button><button class="btn quiet" id="gc-alert">Create alert</button>' +
       '<span id="gc-copy"></span><button class="btn quiet" id="gc-forget">Disconnect</button></div>' +
@@ -214,6 +222,18 @@ async function renderDiagnostics(el, rerun) {
       $("#gc-bucket").value = c.bucket || ""; $("#gc-keep").value = c.keep || 10; $("#gc-storage").checked = c.storage_on; $("#gc-mon").checked = c.monitoring_on;
       $("#gc-copy").innerHTML = (g.siblings || []).map(x => '<button class="btn quiet" data-gccopy="' + esc(x.app) + '">Copy settings from ' + esc({ language: "Language Builder", stem: "Math & Science", facts: "History & News" }[x.app] || x.app) + "</button>").join("");
       $$("[data-gccopy]").forEach(b => b.onclick = async () => { await api("/api/gcloud/copy-from", { app: b.dataset.gccopy }); toast("Google settings copied."); gcShow(); });
+    };
+    api("/api/gcloud/setup-script").then(r => { $("#gc-script").textContent = r.script; SETUP_TXT = r.script; });
+    let SETUP_TXT = "";
+    $("#gc-copyscript").onclick = async () => {
+      try { await navigator.clipboard.writeText(SETUP_TXT); toast("Setup commands copied — paste them into Cloud Shell and press Enter."); }
+      catch (e) { $("#gc-script").parentElement.open = true; toast("Select the commands below and copy them (Ctrl+C).", true); }
+    };
+    $("#gc-apply").onclick = async () => {
+      const r = await api("/api/gcloud/setup-code", { code: $("#gc-code").value, all_apps: $("#gc-all").checked });
+      $("#gc-code").value = "";
+      toast("Google Cloud is set up for: " + r.applied_to.map(a => ({ language: "Language Builder", stem: "Math & Science", facts: "History & News" }[a] || a)).join(", ") + ". Press 'Test all Google services'.");
+      gcShow();
     };
     $("#gc-sa").onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { gcSA = r.result; $("#gc-sa-name").textContent = f.name + " — press Save"; }; r.readAsText(f); };
     $("#gc-save").onclick = async () => {
