@@ -97,7 +97,8 @@ function prFaceOpts() {
 function prShowReference(ref) {
   if (!ref) { $("#pr-ref-out").innerHTML = '<p class="small muted">No perfect sample yet — the lab needs it to measure and calibrate.</p>'; return; }
   const m = ref.signature.model || {}, g = m.gap || {}, mx = Math.max(0.05, ...Object.values(g));
-  $("#pr-ref-out").innerHTML = '<div class="stats">' + stat((m.lead_ms ?? "—") + " ms", "lips lead the sound") + stat((m.tau_ms ?? "—") + " ms", "mouth response time") +
+  $("#pr-ref-out").innerHTML = (ref.warnings && ref.warnings.length ? '<div class="note bad"><b>This sample is not good enough for a perfect narrator:</b> ' + esc(ref.warnings.join("; ")) + "</div>" :
+    '<div class="note good">✔ A good perfect sample: the narrator can be measured and calibrated against it.</div>') + '<div class="stats">' + stat((m.lead_ms ?? "—") + " ms", "lips lead the sound") + stat((m.tau_ms ?? "—") + " ms", "mouth response time") +
     stat(Math.round(100 * (m.explained || 0)) + "%", "lip motion explained by the model") + stat(ref.signature.frames, "frames") + stat(ref.signature.seconds + " s", "length") +
     (ref.proven ? stat(ref.proven.score + "/100", "photo face proven") : "") + "</div>" +
     '<p class="small"><b>The author\'s lip opening for each sound</b> (share of mouth width):</p><div class="pr-bars">' +

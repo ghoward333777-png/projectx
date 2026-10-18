@@ -59,6 +59,7 @@ DIMENSIONS = {
     "head_sd_deg": ("head micro-motion (degrees)", 1.5, "abs", 1, False),
 }
 PASS_OVERALL, PASS_CRITICAL = 85, 70
+SAMPLE_MIN_EXPLAINED = 0.8                                # a perfect sample's lips follow its words this closely or better
 FPS = 50                                                   # model time step (20 ms)
 
 # The reference passage (written for this lab, free to use): about 30 s read aloud, every mouth shape several times.
@@ -307,8 +308,9 @@ def keyframes(frames, vis, model, info=None):
                 continue
             d = abs(_f(f.get("gap")) - model["gap"][v]) + 0.5 * abs(width(f) - model["width"][v]) + 0.002 * abs(_f(f.get("yaw")))
             if best is None or d < best[0]:
-                best = (d, _f(f.get("t")))
-        if best:
+                best = (d, _f(f.get("t")), _f(f.get("gap")))
+        # keep a frame only if it really shows that sound: close to the model, and closed lips for p / b / m
+        if best and best[0] < 0.08 and not (v == "PP" and best[2] > 0.05):
             out[v] = round(best[1], 3)
     speech_from = min((x["start"] for x in vis if x["v"] != "sil"), default=0.0)
     speech_to = max((x["end"] for x in vis if x["v"] != "sil"), default=0.0)
@@ -460,7 +462,20 @@ class Lab:
         mdl = sig["model"]
         missing = [v for v in ALL_VISEMES if v not in mdl["gap"]]
         mdl["missing"] = missing
-        facts = [(subj, "mouth shapes not shown (estimated from look-alikes)", ", ".join(missing) or "none", 0.97)] + [(subj, "is", "real footage of the author speaking (perfect lip-sync by definition)", 1.0),
+        warn = []
+        if mdl["explained"] < SAMPLE_MIN_EXPLAINED:
+            warn.append("the lips follow the words only %d%% (%d%% needed for a perfect narrator) — re-record: whole face, steady, good front light, 60 fps, read clearly"
+                        % (round(100 * mdl["explained"]), round(100 * SAMPLE_MIN_EXPLAINED)))
+        if mdl["gap"].get("PP", 0) > min([mdl["gap"][v] for v in ("aa", "O", "E") if v in mdl["gap"]] or [1]):
+            warn.append("closed-lip sounds (p, b, m) do not look closed in this sample")
+        lost = [v for v in ALL_VISEMES if v in mdl["gap"] and v not in kf]
+        if lost:
+            warn.append("no clear frame for: %s (those sounds use the nearest look-alike)" % ", ".join(lost))
+        ref["warnings"] = warn
+        with self.store.write() as db:
+            db.execute("UPDATE personas SET reference = ? WHERE id = ?", (json.dumps(ref), int(pid)))
+        facts = [(subj, "mouth shapes not shown (estimated from look-alikes)", ", ".join(missing) or "none", 0.97)] + \
+                [(subj, "sample problem", w_, 0.97) for w_ in warn] + [(subj, "is", "real footage of the author speaking (perfect lip-sync by definition)", 1.0),
                  (subj, "lips lead the sound by (ms)", mdl["lead_ms"], 0.97), (subj, "mouth response time (ms)", mdl["tau_ms"], 0.97),
                  (subj, "model explains lip motion (share)", mdl["explained"], 0.97), (subj, "model lip error (rmse)", mdl["rmse_gap"], 0.97)]
         for k in ("closure_ms", "jaw_lip_corr", "blink_per_min", "head_sd_deg", "agreement"):
@@ -473,7 +488,7 @@ class Lab:
         self._facts(facts, "reference-%d" % rid, "reference")
         self.store.activity("Photo Real Lab: reference", "ok", "%s · %d frames · lead %s ms · response %s ms · explains %d%%" %
                             (p["name"], sig["frames"], mdl["lead_ms"], mdl["tau_ms"], round(100 * mdl["explained"])))
-        return {"run": rid, "signature": _lean(sig), "model": mdl, "params": params, "keyframes": kf, "dimensions": {k: v[0] for k, v in DIMENSIONS.items()}}
+        return {"run": rid, "signature": _lean(sig), "model": mdl, "params": params, "keyframes": kf, "warnings": warn, "dimensions": {k: v[0] for k, v in DIMENSIONS.items()}}
 
     def reference(self, pid):
         r = self.personas.get(pid).get("reference")
