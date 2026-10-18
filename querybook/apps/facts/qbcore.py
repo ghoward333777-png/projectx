@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.4.3"
+CORE_VERSION = "1.5.0"
 BACKUPS_KEPT = 10
 
 
@@ -809,7 +809,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1660,13 +1660,18 @@ class Checks:
 
 
 def core_matches_master(program_dir):
-    """True when this app's qbcore.py matches the master copy in ../_core (or no master is present)."""
-    master = os.path.join(os.path.dirname(program_dir), "_core", "qbcore.py")
-    mine = os.path.join(program_dir, "qbcore.py")
-    if not os.path.exists(master):
-        return True
-    with open(master, "rb") as a, open(mine, "rb") as b:
-        return a.read() == b.read()
+    """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
+    for name in ("qbcore.py", "qbcommons.py"):
+        master = os.path.join(os.path.dirname(program_dir), "_core", name)
+        mine = os.path.join(program_dir, name)
+        if not os.path.exists(master):
+            continue
+        if not os.path.exists(mine):
+            return False
+        with open(master, "rb") as a, open(mine, "rb") as b:
+            if a.read() != b.read():
+                return False
+    return True
 
 
 # ----------------------------------------------------------------------------- command line
@@ -1683,13 +1688,17 @@ def run_cli(app):
     python app.py set-mirror DIR  keep a verified second copy of every backup in DIR (off to stop)
     python app.py import-old DIR  import from an old QueryBook store (read-only)
     python app.py diagnose        run the internal diagnostics and print the report
+    python app.py harvest         run this application's harvest team once (shared database)
     """
     args = sys.argv[1:]
     if args and args[0] in ("-h", "--help", "help"):
         print(run_cli.__doc__)
         return 0
     if args and args[0] == "--selftest":
-        return 0 if app.selftest() else 1
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:             # never touch the real shared database
+            os.environ["QB_COMMONS_DATA"] = os.path.join(tmp, "commons")
+            return 0 if app.selftest() else 1
     if args and args[0] == "set-data":
         if len(args) < 2:
             print("usage: python app.py set-data FOLDER")
@@ -1732,12 +1741,21 @@ def run_cli(app):
         res = inst.import_old(args[1], lambda d, t=None, m="": print("\r  %s %s" % (d, m), end=""), lambda: False)
         print("\n", json.dumps(res, indent=2))
         return 0
+    if args and args[0] == "harvest":
+        if not getattr(inst, "team", None):
+            print("The shared database (Commons) could not be opened; see the log.")
+            return 1
+        print("Shared database:", inst.commons.store.path)
+        print(json.dumps(inst.team.cycle("command line"), indent=2))
+        return 0
     if args and args[0] in getattr(inst, "CLI_COMMANDS", {}):
         return inst.CLI_COMMANDS[args[0]](args[1:])
     if getattr(inst, "monitor", None):
         inst.monitor.start(inst.diag)
     if hasattr(inst, "autostart"):
         inst.autostart()
+    if getattr(inst, "team", None):
+        inst.team.start_schedule()
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
     serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
           open_browser="--no-browser" not in args, store=inst.store)

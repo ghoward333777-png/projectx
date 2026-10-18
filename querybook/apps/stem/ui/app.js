@@ -169,6 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (id === "saved") loadSaved();
     if (id === "data") loadData();
     if (id === "help") loadHelp();
+    if (id === "commons") renderCommons($("#commons"));
     if (id === "diag") renderDiagnostics($("#diag"));
   });
   $("#examples").innerHTML = EXAMPLES.map(e => '<button class="btn quiet" style="margin:3px" data-ex="' + esc(e) + '">' + esc(e) + "</button>").join("");

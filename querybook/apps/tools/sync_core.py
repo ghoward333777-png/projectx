@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy the shared core (_core/qbcore.py and _core/ui/qb.css, qb.js) into each application.
+"""Copy the shared core (_core/qbcore.py, qbcommons.py and _core/ui/qb.css, qb.js) into each application.
 
 Each application keeps its own copy so it can be shipped and run on its own.
 Run this after editing anything in _core/, then run each app's self-test.
@@ -8,7 +8,7 @@ import os, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPS = ["language", "stem", "facts"]
-FILES = [("qbcore.py", "qbcore.py"), ("gcloud.py", "gcloud.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
+FILES = [("qbcore.py", "qbcore.py"), ("qbcommons.py", "qbcommons.py"), ("gcloud.py", "gcloud.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
          (os.path.join("ui", "qb.js"), os.path.join("ui", "qb.js"))]
 
 if __name__ == "__main__":

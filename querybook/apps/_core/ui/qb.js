@@ -317,3 +317,88 @@ function showMonitor(el, m) {
     '<span class="small">Last report: ' + esc(m.last_sent || "none yet") + (m.last_status ? " (" + esc(m.last_status) + ")" : "") +
     (m.waiting ? " · " + m.waiting + " report(s) waiting to be sent" : "") + " · install " + esc(m.install_id) + "</span></div>";
 }
+
+// ---------------------------------------------------------------- the Commons: shared facts and the harvest teams
+const CM_STATUS = { verified: "good", corroborated: "good", sourced: "good", reported: "warn", unsourced: "", disputed: "warn", rejected: "bad" };
+const cmTag = (text, cls) => '<span class="badge ' + (cls || "") + '">' + esc(text || "") + "</span>";
+const cmBadge = s => cmTag(s, CM_STATUS[s]);
+const cmWhen = t => t ? esc(String(t).replace("T", " ").replace(/\.\d+Z$|Z$/, "")) : "never";
+let CM_TIMER = null;
+
+async function renderCommons(el) {
+  if (!el.dataset.ready) {
+    el.dataset.ready = "1";
+    el.innerHTML =
+      '<div class="card"><h2>Shared facts and the harvest teams</h2><p class="small muted">All three QueryBook applications keep the facts they stand behind in one shared database, the Commons. ' +
+      "Each application has a team of four agents — a Strategist, a Planner, a Harvester and a Curator — that devise a harvest strategy, plan it, carry it out and save and manage what was found. " +
+      "The applications check each other's facts: each kind of check is answered by the application able to answer it, and the answer is kept with the fact as evidence, with its reasoning. " +
+      "The agents are deterministic programs, not AI models.</p>" +
+      '<div class="row"><button class="btn" id="cm-run">Run this team now</button><label class="row small"><input type="checkbox" id="cm-auto"> Harvest automatically (every 30 minutes)</label>' +
+      '<label class="row small">Licence policy <select id="cm-policy"></select></label></div><div id="cm-state" aria-live="polite"></div></div>' +
+      '<div class="card"><h2>The teams</h2><div id="cm-teams"></div></div>' +
+      '<div class="card"><h2>This team\'s strategy and plan</h2><div id="cm-plan"></div></div>' +
+      '<div class="card"><h2>The shared database</h2><div id="cm-db"></div></div>' +
+      '<div class="card"><h2>Browse shared facts</h2><div class="row"><input id="cm-q" class="grow" type="text" placeholder="Search subject or value" aria-label="Search shared facts">' +
+      '<select id="cm-domain" aria-label="Domain"><option value="">all domains</option><option>language</option><option>stem</option><option>history</option></select>' +
+      '<select id="cm-status" aria-label="Status"><option value="">any status</option>' + Object.keys(CM_STATUS).map(s => "<option>" + s + "</option>").join("") + "</select>" +
+      '<button class="btn quiet" id="cm-find">Search</button></div><div id="cm-facts"></div><div id="cm-fact"></div></div>' +
+      '<div class="card"><h2>Agent log</h2><div id="cm-log"></div></div>';
+    $("#cm-run", el).addEventListener("click", async () => { await api("/api/commons/run", {}); toast("The team has started."); setTimeout(() => renderCommons(el), 800); });
+    $("#cm-auto", el).addEventListener("change", e => api("/api/commons/settings", { auto: e.target.checked ? "on" : "off" }));
+    $("#cm-policy", el).addEventListener("change", e => api("/api/commons/settings", { policy: e.target.value }).then(() => toast("Licence policy saved for all three applications.")));
+    const find = async () => {
+      const r = await api("/api/commons/facts", { q: $("#cm-q", el).value, domain: $("#cm-domain", el).value, status: $("#cm-status", el).value, limit: 100 });
+      $("#cm-fact", el).innerHTML = "";
+      $("#cm-facts", el).innerHTML = r.facts.length ? '<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>Domain</th><th>Status</th><th>Apps</th></tr>' +
+        r.facts.map(f => '<tr data-cmf="' + f.id + '" style="cursor:pointer"><td>' + esc(f.subject) + "</td><td>" + esc(f.predicate) + "</td><td>" + esc(String(f.object).slice(0, 160)) +
+          "</td><td>" + esc(f.domain) + "</td><td>" + cmBadge(f.status) + "</td><td>" + f.apps + "</td></tr>").join("") + "</table>" : '<p class="muted">No shared facts match.</p>';
+    };
+    $("#cm-find", el).addEventListener("click", find);
+    onEnter($("#cm-q", el), find);
+    $("#cm-facts", el).addEventListener("click", async e => {
+      const tr = e.target.closest("tr[data-cmf]");
+      if (!tr) return;
+      const f = await api("/api/commons/fact", { id: Number(tr.dataset.cmf) });
+      $("#cm-fact", el).innerHTML = '<div class="note"><b>' + esc(f.subject) + " — " + esc(f.predicate) + ":</b> " + esc(f.object) + " " + cmBadge(f.status) +
+        ' <span class="small muted">confidence ' + f.confidence + " · first harvested by " + esc(f.origin_app) + "</span></div>" +
+        "<h3>Evidence</h3>" + (f.evidence.length ? '<table class="t small"><tr><th>App</th><th>Method</th><th>Source</th><th>Licence</th><th>Verdict</th><th>Detail</th></tr>' +
+          f.evidence.map(x => "<tr><td>" + esc(x.app) + "</td><td>" + esc(x.method) + "</td><td>" + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.source) + "</a>" : esc(x.source)) +
+            "</td><td>" + esc(x.licence || "") + "</td><td>" + cmTag(x.verdict, x.verdict === "supports" ? "good" : x.verdict === "contradicts" ? "bad" : "") +
+            "</td><td>" + esc(x.detail || x.quote || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">No evidence yet.</p>') +
+        "<h3>Reasoning</h3>" + (f.reasoning.length ? "<ol class=\"small\">" + f.reasoning.map(x => "<li><b>" + esc(x.app) + " " + esc(x.agent) + ":</b> " + esc(x.text) + "</li>").join("") + "</ol>" : '<p class="muted">None recorded.</p>') +
+        "<h3>Checks asked of other applications</h3>" + (f.requests.length ? '<table class="t small"><tr><th>Check</th><th>Asked by</th><th>Answered by</th><th>Status</th><th>Detail</th></tr>' +
+          f.requests.map(x => "<tr><td>" + esc(x.kind) + "</td><td>" + esc(x.from_app) + "</td><td>" + esc(x.to_app) + "</td><td>" + esc(x.status === "open" ? "waiting" : x.verdict) +
+            "</td><td>" + esc(x.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">None.</p>');
+    });
+  }
+  const s = await api("/api/commons/status");
+  const c = s.commons;
+  $("#cm-auto", el).checked = s.auto;
+  $("#cm-policy", el).innerHTML = Object.entries(c.policies).map(([k, v]) => '<option value="' + k + '"' + (k === c.policy ? " selected" : "") + ">" + esc(v) + "</option>").join("");
+  $("#cm-state", el).innerHTML = '<div class="note' + (s.state.running ? "" : " good") + '">' + (s.state.running ? "<b>Working:</b> the " + esc(s.state.role || "") + " is running." :
+    "<b>Idle.</b> " + (s.state.last ? (s.state.last.error ? "Last cycle failed: " + esc(s.state.last.error) : "Last cycle: " + (s.state.last.new || 0) + " new facts, " + (s.state.last.merged || 0) +
+      " merged, " + (s.state.last.checks_answered || 0) + " checks answered.") : "No cycle in this session yet.")) +
+    '<br><span class="small">Shared database: <span class="mono">' + esc(c.database) + "</span>" + (c.read_only ? ' <span class="badge bad">failed its check — read-only</span>' : "") + "</span></div>";
+  $("#cm-teams", el).innerHTML = '<table class="t small"><tr><th>Application</th>' + ["Strategist", "Planner", "Harvester", "Curator"].map(x => "<th>" + x + "</th>").join("") + "</tr>" +
+    s.teams.map(t => "<tr><td><b>" + esc(t.name) + "</b>" + (t.app === s.app ? " (this one)" : "") + "</td>" + t.agents.map(a => "<td>" + (a.last_run ?
+      cmTag(a.last_status, a.last_status === "ok" ? "good" : "bad") + " " + cmWhen(a.last_run) + '<br><span class="muted">' + esc(String(a.last_summary || "").slice(0, 140)) + "</span>" :
+      '<span class="muted">' + esc(a.duty) + " — not run yet</span>") + "</td>").join("") + "</tr>").join("") + "</table>";
+  const st = s.strategy && s.strategy.body;
+  $("#cm-plan", el).innerHTML = !st ? '<p class="muted">Run the team to see its strategy and plan.</p>' :
+    "<h3>Strategy (" + cmWhen(s.strategy.created) + ", policy: " + esc(st.policy) + ")</h3><ol>" + (st.goals || []).map(g => "<li><b>" + esc(g.goal) + "</b> — " + esc(g.why) + "</li>").join("") + "</ol>" +
+    ((st.sources || []).length ? '<table class="t small"><tr><th>Source</th><th>Licence</th><th>Use</th></tr>' + st.sources.map(x => "<tr><td>" + esc(x.name) + "</td><td>" + esc(x.licence || "") + "</td><td>" + esc(x.use || "") + "</td></tr>").join("") + "</table>" : "") +
+    (s.plan ? "<h3>Plan: " + esc(s.plan.summary || "") + " (" + esc(s.plan.status) + ")</h3>" + '<table class="t small"><tr><th>#</th><th>Task</th><th>Status</th><th>Items</th><th>Detail</th></tr>' +
+      s.plan.tasks.map(t => "<tr><td>" + t.step + "</td><td>" + esc(t.title) + "</td><td>" + esc(t.status) + "</td><td>" + (t.items === null ? "" : t.items) + "</td><td>" + esc(t.detail || "") + "</td></tr>").join("") + "</table>" : "");
+  const doms = {};
+  c.by_domain.forEach(r => { (doms[r.domain] = doms[r.domain] || {})[r.status] = r.n; });
+  $("#cm-db", el).innerHTML = '<div class="stats"><div class="stat"><div class="v">' + c.facts.toLocaleString() + '</div><div class="k">shared facts</div></div><div class="stat"><div class="v">' +
+    c.shared.toLocaleString() + '</div><div class="k">facts with evidence from more than one application</div></div></div>' +
+    '<table class="t small" style="margin-top:10px"><tr><th>Domain</th>' + Object.keys(CM_STATUS).map(x => "<th>" + x + "</th>").join("") + "</tr>" +
+    Object.entries(doms).map(([d, v]) => "<tr><td>" + esc(d) + "</td>" + Object.keys(CM_STATUS).map(x => "<td>" + (v[x] || "") + "</td>").join("") + "</tr>").join("") + "</table>" +
+    "<h3>Checks between applications</h3>" + (c.requests.length ? '<table class="t small"><tr><th>Asked by</th><th>Answered by</th><th>Check</th><th>Status</th><th>Count</th></tr>' +
+      c.requests.map(r => "<tr><td>" + esc(r.from_app) + "</td><td>" + esc(r.to_app) + "</td><td>" + esc(s.checks[r.kind] || r.kind) + "</td><td>" + esc(r.status === "open" ? "waiting" : r.status) + "</td><td>" + r.n + "</td></tr>").join("") + "</table>" : '<p class="muted">None yet.</p>');
+  $("#cm-log", el).innerHTML = s.log.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Application</th><th>Agent</th><th>What it did</th><th>Time</th></tr>' + s.log.map(l => '<tr><td class="mono">' + cmWhen(l.at) +
+    "</td><td>" + esc(l.app) + "</td><td>" + esc(l.role) + "</td><td>" + esc(l.message) + '</td><td class="mono">' + (l.ms === null ? "" : (l.ms / 1000).toFixed(2) + " s") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing yet.</p>';
+  clearTimeout(CM_TIMER);
+  if (s.state.running && el.classList.contains("active")) CM_TIMER = setTimeout(() => renderCommons(el), 1500);
+}

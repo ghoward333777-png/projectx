@@ -16,6 +16,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import qbcore as core
+import qbcommons as cm
+import harvest
 import engine
 import science
 import units
@@ -23,7 +25,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.2.5"
+VERSION = "1.3.0"
 PORT = 8102
 program_dir = HERE
 
@@ -66,6 +68,7 @@ class App:
         self.log.hooks.append(self.monitor.on_error)
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
+        cm.attach(self, APP_ID, harvest.StemAdapter(self))
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -425,6 +428,8 @@ def selftest():
     # store, save, verify, import — in a throw-away folder
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+                and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         r = app.ask("12 × 7")
         c.check("ask: calculation", r["answer"] == "84")
         c.check("ask: conversion", app.ask("60 mph to km/h")["answer"] == "96.56064 km/h")

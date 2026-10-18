@@ -18,6 +18,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import qbcore as core
+import qbcommons as cm
+import harvest
 import lab
 import speech
 import speechlab
@@ -33,7 +35,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.12.1"
+VERSION = "1.13.0"
 PORT = 8101
 program_dir = HERE
 
@@ -103,6 +105,7 @@ class App:
         self.log.hooks.append(self.monitor.on_error)
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
+        cm.attach(self, APP_ID, harvest.LanguageAdapter(self))
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -1289,6 +1292,8 @@ def selftest():
     with tempfile.TemporaryDirectory() as tmp:
         clock = {"d": "2026-10-16"}
         app = App(os.path.join(tmp, "data"), clock=lambda: clock["d"])
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+                and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         app.set_settings("es", 5)
         s = app.session("es", "type")
         c.check("first session offers 5 new words", s["new"] == 5 and s["due"] == 0 and len(s["items"]) == 5, s["new"])

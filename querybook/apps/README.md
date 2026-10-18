@@ -2,8 +2,10 @@
 
 The full-featured QueryBook prototype grew too large: its interface kept changing and its store was
 damaged. These three applications replace it with one small, separate program for each kind of
-knowledge. Each has its own folder, its own database, its own port and its own launcher. None of
-them depends on another, and none of them changes the old QueryBook store.
+knowledge. Each has its own folder, its own database, its own port and its own launcher, and none of
+them changes the old QueryBook store. The facts they stand behind go into one **shared database, the
+Commons**, where the three check each other's facts (see below). Each still runs on its own: if the
+Commons cannot be opened, the application carries on with its own work.
 
 | Application | Folder | Opens at | What it does |
 |---|---|---|---|
@@ -157,6 +159,48 @@ touches the data.
 * `python app.py restore` lists the backups; `python app.py restore 1` restores the newest. The
   damaged file is set aside, not deleted.
 
+## The Commons: one shared fact database and three harvest teams
+
+All three applications use one shared SQLite database for facts: `~/QueryBook-Data/commons/commons.sqlite`
+(another folder: environment variable `QB_COMMONS_DATA`, or the page **Shared facts & agents**). It is
+protected exactly like each application's own database (one transaction per write, WAL, full sync,
+checked at start-up, verified backups in `commons/backups/`). Their own work — word cards, saved
+answers, sources and feeds — stays in their own databases.
+
+Each application has a **team of four agents**, run in order as one harvest cycle, automatically a
+little after start-up and then every 30 minutes (switch off on the page), or with **Run this team
+now** or `python app.py harvest`:
+
+| Agent | Duty |
+|---|---|
+| **Strategist** | Surveys what the application knows and what the Commons lacks; devises the strategy — ranked goals with reasons, the sources allowed under the licence policy, a budget for the cycle |
+| **Planner** | Turns the strategy into a plan of bounded tasks (for example "Share Finnish translations of words 251–500") |
+| **Harvester** | Executes the tasks and stages what it finds — facts, evidence, reasoning, and checks to ask of the other applications. Nothing is written yet |
+| **Curator** | Saves the staged facts (duplicates merge, evidence accumulates; a failed save is rolled back whole and its cursor stays put), answers the checks the other applications asked of this one, recomputes each fact's status and takes a backup |
+
+| Team | Harvests | Answers for the others |
+|---|---|---|
+| Language Builder | English meanings (Webster 1913, public domain), most common words first; translations into the 16 languages (MUSE, CC BY-NC — left out under the commercial policy) | Is the English word in the dictionary? Is the translation in the bilingual dictionary? |
+| Math, Science & Engineering | Constants (CODATA 2018), elements (IUPAC), unit definitions, molar masses and derived constants (recomputed), its own verified saved answers; re-checks the shared values | Is the lifespan possible? Are the dates in order? Is it a real calendar date? Does the arithmetic or unit conversion hold? Is it a chemical element? |
+| History & News | Facts with documented sources (each source is separate evidence; never AI services); refreshes your feeds and shares headlines as *reported*, not confirmed | Does a documented source record it? |
+
+**Cooperation.** A fact can carry checks for the application able to answer them: History & News asks
+Math & Science whether a person's birth and death dates give a possible lifespan; Math & Science asks
+the Language Builder whether each element's name is a dictionary word. The answer is kept with the fact
+as evidence, with the reasoning steps. Applications never run each other's code; they cooperate only
+through the shared database, so a check waits until the answering application's team next runs.
+
+**Status of a shared fact**, from its evidence alone: *verified* (recomputed), *corroborated* (two
+independent sources, or a source plus another application's confirming check), *sourced*, *reported*
+(news), *unsourced*, *disputed* (support and contradiction — no winner is picked) or *rejected*.
+Consistency checks (lifespan, dates, dictionary word) can refute a fact but never raise one.
+
+**Licence policy** (shared by all three): *research* uses every source and marks non-commercial ones;
+*commercial* never harvests a source whose licence forbids commercial use.
+
+The agents are deterministic programs, not AI models: the same inputs always give the same strategy,
+plan and shared facts.
+
 ## Google Cloud (optional, all three applications)
 
 Diagnostics → **Google Cloud** connects an application to your Google Cloud project. Nothing to install;
@@ -244,16 +288,18 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python language/app.py --selftest     # 97 checks
-python stem/app.py --selftest         # 85 checks
-python facts/app.py --selftest        # 43 checks
+python tools/test_commons.py         # the shared database and the three teams, end to end (38 checks)
+python language/app.py --selftest     # 166 checks
+python stem/app.py --selftest         # 86 checks
+python facts/app.py --selftest        # 44 checks
 python tools/run_all_tests.py         # all of the above
 ```
 
 ## For developers
 
-* `_core/qbcore.py` (database, backups, web server, old-store reader) and `_core/ui/qb.css`, `qb.js`
-  are shared. Each application carries its **own copy** so it can be shipped alone; after editing
+* `_core/qbcore.py` (database, backups, web server, old-store reader), `_core/qbcommons.py` (the
+  Commons and the agent teams) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
+  is its `harvest.py`. Each application carries its **own copy** so it can be shipped alone; after editing
   `_core/`, run `python tools/sync_core.py`. The self-tests fail if a copy differs from the master.
 * `python tools/package.py` builds one zip per application in `dist/`.
 * The web servers listen on 127.0.0.1 only and refuse requests from other sites.

@@ -17,13 +17,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import qbcore as core
+import qbcommons as cm
+import harvest
 import gcloud
 import dates
 import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.2.5"
+VERSION = "1.3.0"
 PORT = 8103
 program_dir = HERE
 
@@ -90,6 +92,7 @@ class App:
         self.log.hooks.append(self.monitor.on_error)
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
+        cm.attach(self, APP_ID, harvest.FactsAdapter(self, dates, OLD_KIND, SINGLE_VALUED))
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -705,6 +708,8 @@ def selftest():
         c.check("feed with XML entities refused", True)
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+                and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         book = {"name": "Magna Carta: The Foundation of Freedom 1215–2015", "kind": "book", "author": "N. Vincent (ed.)"}
         fid, merged = app.add_fact({"statement": "The Magna Carta was sealed by King John at Runnymede.", "subject": "Magna Carta",
                                     "predicate": "sealed on", "object": "15 June 1215", "date": "15 June 1215", "place": "Runnymede",
