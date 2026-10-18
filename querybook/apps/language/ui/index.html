@@ -23,6 +23,11 @@
 tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309; } tr.bad td:first-child { color: #b91c1c; }
 .vd-guide { margin: 10px 0 4px; }
 .good-t { color: #15803d; } .bad-t { color: #b91c1c; }
+.tr-live { font-size: 22px; line-height: 1.5; min-height: 2.6em; padding: 10px 14px; margin-top: 10px; border-radius: 10px; background: #0f172a; color: #e2e8f0; }
+.tr-live .tr-now { color: #fde047; }
+.tr-text { max-height: 420px; overflow-y: auto; margin-top: 6px; }
+.tr-text p { margin: 4px 0; }
+.tr-t { font-family: monospace; font-size: 12px; color: #7c3aed; cursor: pointer; margin-right: 6px; }
 .si-pick { font-size: 18px; margin: 4px; }
 .si-alt { margin: 2px; }
 .pr-list { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -303,7 +308,7 @@ tr.lc-active td { background: #f0fdf4; }
         <div class="row">
           <select id="ls-kind" style="width:auto"><option value="speech">Connected speech (a sentence or more)</option><option value="vowel">Voice-condition test: say “aaah” for 3 seconds</option></select>
           <button class="btn" id="ls-rec">🎙 Record</button><span id="ls-recstate" class="small"></span>
-          <label class="btn quiet" style="cursor:pointer">📁 Upload WAV<input type="file" id="ls-file" accept=".wav,audio/wav" hidden></label>
+          <label class="btn quiet" style="cursor:pointer">📁 Upload audio (MP3, WAV…)<input type="file" id="ls-file" accept="audio/*,.mp3,.m4a,.ogg,.wav,.flac" hidden></label>
           <label class="chk"><input type="checkbox" id="ls-cam"> 📷 Camera too (face + lips)</label>
         </div>
         <div id="ls-cam-view" hidden style="margin-top:8px"></div>
@@ -318,6 +323,25 @@ tr.lc-active td { background: #f0fdf4; }
         <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="ls-go" disabled>🔬 Analyse</button><audio id="ls-audio" controls hidden></audio></div>
       </div>
       <div id="ls-out"></div>
+      <div class="card">
+        <h2>🎧 Transcribe an audio file</h2>
+        <p class="small">MP3, M4A, OGG, WAV — any length. <b>Live captions</b> play the file while Google Speech-to-Text hears it in short pieces cut at pauses, sent ahead of the voice so each word lights up as it is spoken. <b>Whole file</b> transcribes everything in the background: in pieces with your Google key, or — for long recordings with the service account and bucket set up — with Google's long-audio recognition through Cloud Storage.</p>
+        <div class="row">
+          <label class="btn" style="cursor:pointer">📁 Choose an audio file<input type="file" id="tr-file" accept="audio/*,.mp3,.m4a,.ogg,.oga,.wav,.flac,.aac,.webm" hidden></label>
+          <span class="small" id="tr-state"></span>
+        </div>
+        <audio id="tr-audio" controls hidden style="width:100%;margin-top:8px"></audio>
+        <div class="row" style="margin-top:8px">
+          <button class="btn bigbtn" id="tr-live-go" disabled>▶ Play with live captions</button>
+          <button class="btn" id="tr-file-go" disabled>📝 Transcribe the whole file</button>
+          <label class="small">using <select id="tr-mode" style="width:auto"><option value="auto">automatic</option><option value="pieces">pieces (Google key)</option><option value="storage">long-audio (Cloud Storage)</option></select></label>
+          <button class="btn quiet" id="tr-ingest" disabled>📥 Ingest (words + how it was said)</button>
+        </div>
+        <div class="meter" style="margin-top:8px"><i id="tr-prog" style="width:0"></i></div>
+        <div class="tr-live" id="tr-live"></div>
+        <div class="small muted" id="tr-lag"></div>
+        <div id="tr-out"></div>
+      </div>
     </div>
 
     <div class="sp" id="sp-ask" hidden>
@@ -629,6 +653,7 @@ tr.lc-active td { background: #f0fdf4; }
       <ul>
         <li><b>Speak</b> — one voice profile (emotion and strength, tone, accent, speed, pitch, volume, pauses, articulation, tremble, hoarseness, breathiness, whisper, voice age) is sent to any engine: espeak-ng, the prototype's formant voice, Windows or macOS voices (all offline), Google Gemini TTS, Google Cloud Text-to-Speech, ElevenLabs, OpenAI, Microsoft Azure or Amazon Polly. <b>Advanced</b> shows every parameter of the chosen engine. The table “How each control is handled” says, for each control, whether the engine does it natively, QueryBook adds it afterwards, or it is not available; the exact request is shown with keys removed.</li>
         <li><b>Match a target</b> — give the output you need (pitch, speed, loudness, pauses, tremble, breath). The app generates, measures the result, adjusts and repeats until it matches.</li>
+        <li><b>Transcribe an audio file</b> — MP3, M4A, OGG or WAV of any length: live captions while it plays (Google Speech-to-Text hears it in pieces cut at pauses, ahead of the voice), or the whole file in the background — in pieces with the Google key, or by Google's long-audio recognition through Cloud Storage. Click a time to jump there; download TXT, SRT, VTT or JSON; ingest it.</li>
         <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
         <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
         <li><b>Talking face</b> — after <b>Speak</b> or <b>Ask</b>, a face (2D, or 3D with <b>Enter VR</b> on a headset) moves its mouth in time with the voice. The mouth shapes are the 15 standard visemes, timed from the measured audio (or exactly, from Google Speech-to-Text word times). Export as JSON, CSV or Rhubarb TSV for animation tools.</li>
@@ -683,5 +708,6 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="speech.js"></script>
 <script src="video.js"></script>
 <script src="photoreal.js"></script>
+<script src="transcribe.js"></script>
 </body>
 </html>

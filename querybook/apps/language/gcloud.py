@@ -18,7 +18,8 @@ Every endpoint can be pointed elsewhere with QB_GCP_BASE_<SERVICE> (used by the 
 """
 import base64, hashlib, json, os, re, socket, threading, time, urllib.error, urllib.parse, urllib.request
 
-SCOPE = "https://www.googleapis.com/auth/devstorage.read_write https://www.googleapis.com/auth/monitoring.write https://www.googleapis.com/auth/monitoring"
+SCOPE = ("https://www.googleapis.com/auth/devstorage.read_write https://www.googleapis.com/auth/monitoring.write https://www.googleapis.com/auth/monitoring "
+         "https://www.googleapis.com/auth/cloud-platform")      # cloud-platform: Speech-to-Text long-audio jobs with the service account
 DEFAULTS = {"storage": "https://storage.googleapis.com", "monitoring": "https://monitoring.googleapis.com",
             "speech": "https://speech.googleapis.com", "youtube": "https://www.googleapis.com", "token": None}
 CHUNK = 8 * 256 * 1024          # resumable upload chunk (2 MiB, a multiple of 256 KiB)
@@ -368,9 +369,10 @@ class Google:
         return json.loads(raw)
 
     # ------------------------------------------------------------------ Speech-to-Text (API key)
-    def recognize(self, wav, lang="en-US", alt_langs=None, alternatives=1):
+    def recognize(self, wav, lang="en-US", alt_langs=None, alternatives=1, offset_s=0.0):
         """Transcribe up to ~55 s of WAV audio. Returns {transcript, confidence, words:[{word, start_s, end_s, confidence}],
-        alternatives:[{transcript, confidence}]} — other possible readings of the whole clip when `alternatives` > 1."""
+        alternatives:[{transcript, confidence}]} — other possible readings of the whole clip when `alternatives` > 1.
+        offset_s is added to every word time (a piece of a longer recording)."""
         key = self.s.api_key()
         if not key:
             raise GoogleError("no Google API key")
@@ -390,31 +392,58 @@ class Google:
         try:
             st, raw, _ = self.http("POST", base("speech") + "/v1/speech:recognize", json.dumps({"config": cfg, "audio": {"content": base64.b64encode(pcm).decode()}}).encode(),
                                    {"Content-Type": "application/json", "X-Goog-Api-Key": key}, 90)
-            res = json.loads(raw).get("results", [])
-            words, text, confs = [], [], []
-            for r in res:
-                a = (r.get("alternatives") or [{}])[0]
-                text.append(a.get("transcript", "").strip())
-                if a.get("confidence") is not None:
-                    confs.append(a["confidence"])
-                for w in a.get("words", []):
-                    words.append({"word": w.get("word"), "start_s": float(str(w.get("startTime", "0s")).rstrip("s") or 0),
-                                  "end_s": float(str(w.get("endTime", "0s")).rstrip("s") or 0), "confidence": w.get("confidence")})
-            out = {"transcript": " ".join(t for t in text if t), "confidence": round(sum(confs) / len(confs), 3) if confs else None,
-                   "words": words, "language": (res[0].get("languageCode") if res else lang), "seconds": round(time.time() - t0, 2)}
-            # whole-clip alternatives: the best reading with one stretch swapped for its next-best reading
-            alts = [{"transcript": out["transcript"], "confidence": out["confidence"]}]
-            for i, r in enumerate(res):
-                for a in (r.get("alternatives") or [])[1:]:
-                    t = list(text)
-                    t[i] = a.get("transcript", "").strip()
-                    alts.append({"transcript": " ".join(x for x in t if x), "confidence": a.get("confidence")})
-            out["alternatives"] = alts[:max(1, int(alternatives))]
+            out = _speech_results(json.loads(raw).get("results", []), lang, alternatives, offset_s)
+            out["seconds"] = round(time.time() - t0, 2)
+            words = out["words"]
             self._note("speech", True, t0, "%d words" % len(words))
             return out
         except Exception as e:
             self._note("speech", False, t0, str(e))
             raise
+
+    def recognize_long(self, wav_path, lang="en-US", progress=None, poll_s=None, limit_s=6 * 3600):
+        """Any length: upload the WAV to the bucket (MD5-checked), run Speech-to-Text long-running recognition with the
+        service account, follow its progress, read the result, delete the temporary copy."""
+        import io, wave
+        with wave.open(wav_path, "rb") as w:
+            ch, width, sr = w.getnchannels(), w.getsampwidth(), w.getframerate()
+        if width != 2:
+            raise GoogleError("Speech-to-Text needs 16-bit audio")
+        name = "querybook-speech/%s.wav" % hashlib.sha256(open(wav_path, "rb").read()).hexdigest()[:24]
+        t0 = time.time()
+        self.upload(wav_path, name, (lambda a, b: progress("uploading", a / max(1, b))) if progress else None)
+        try:
+            cfg = {"encoding": "LINEAR16", "sampleRateHertz": sr, "audioChannelCount": ch, "languageCode": lang,
+                   "enableWordTimeOffsets": True, "enableWordConfidence": True, "enableAutomaticPunctuation": True, "model": "latest_long"}
+            st, raw, _ = self.http("POST", base("speech") + "/v1/speech:longrunningrecognize",
+                                   json.dumps({"config": cfg, "audio": {"uri": "gs://%s/%s" % (self._bucket(), name)}}).encode(),
+                                   self._auth({"Content-Type": "application/json"}), 60)
+            op = json.loads(raw)["name"]
+            wait = float(poll_s if poll_s is not None else os.environ.get("QB_POLL_S", "3"))
+            while True:
+                st, raw, _ = self.http("GET", base("speech") + "/v1/operations/" + urllib.parse.quote(op, safe=""), None, self._auth(), 60)
+                o = json.loads(raw)
+                if progress:
+                    progress("transcribing", (o.get("metadata") or {}).get("progressPercent", 0) / 100.0)
+                if o.get("done"):
+                    if o.get("error"):
+                        raise GoogleError("Speech-to-Text: %s" % o["error"].get("message", o["error"]))
+                    out = _speech_results((o.get("response") or {}).get("results", []), lang, 1, 0.0)
+                    out["seconds"] = round(time.time() - t0, 2)
+                    out["method"] = "Google long-audio recognition (Cloud Storage)"
+                    self._note("speech", True, t0, "long audio: %d words" % len(out["words"]))
+                    return out
+                if time.time() - t0 > limit_s:
+                    raise GoogleError("Speech-to-Text did not finish within %d minutes" % (limit_s // 60))
+                time.sleep(wait)
+        except Exception as e:
+            self._note("speech", False, t0, str(e))
+            raise
+        finally:
+            try:
+                self.delete(name)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ YouTube Data API v3 (API key)
     def youtube_search(self, q, n=10):
@@ -444,6 +473,31 @@ class Google:
                         "channel_id": sn.get("channelId"), "published": sn.get("publishedAt"), "description": (sn.get("description") or "")[:600],
                         "duration": cd.get("duration"), "views": int(sts.get("viewCount", 0) or 0), "captions": cd.get("caption") == "true"})
         return out
+
+
+def _speech_results(res, lang, alternatives=1, offset_s=0.0):
+    """Speech-to-Text results → {transcript, confidence, words (times shifted by offset_s), language, alternatives}."""
+    sec = lambda v: float(str(v or "0s").rstrip("s") or 0) + offset_s
+    words, text, confs = [], [], []
+    for r in res:
+        a = (r.get("alternatives") or [{}])[0]
+        text.append(a.get("transcript", "").strip())
+        if a.get("confidence") is not None:
+            confs.append(a["confidence"])
+        for w in a.get("words", []):
+            words.append({"word": w.get("word"), "start_s": round(sec(w.get("startTime")), 3), "end_s": round(sec(w.get("endTime")), 3),
+                          "confidence": w.get("confidence")})
+    out = {"transcript": " ".join(t for t in text if t), "confidence": round(sum(confs) / len(confs), 3) if confs else None,
+           "words": words, "language": (res[0].get("languageCode") if res else lang)}
+    # whole-clip alternatives: the best reading with one stretch swapped for its next-best reading
+    alts = [{"transcript": out["transcript"], "confidence": out["confidence"]}]
+    for i, r in enumerate(res):
+        for a in (r.get("alternatives") or [])[1:]:
+            t = list(text)
+            t[i] = a.get("transcript", "").strip()
+            alts.append({"transcript": " ".join(x for x in t if x), "confidence": a.get("confidence")})
+    out["alternatives"] = alts[:max(1, int(alternatives))]
+    return out
 
 
 def youtube_id(text):

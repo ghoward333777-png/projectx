@@ -33,7 +33,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 PORT = 8101
 program_dir = HERE
 
@@ -729,6 +729,35 @@ class App:
             except ValueError as e:
                 raise core.UserError(str(e))
 
+        @a.post("/api/speech/transcribe-file")
+        def sp_transcribe_file(p):
+            wav = _audio(p)
+            if not wav or not voicedsp_is_wav(wav):
+                raise core.UserError("Send the recording as WAV (the page converts MP3 and other formats).")
+            if not self.speech.stt_ready():
+                raise core.UserError("Transcription needs Google Speech-to-Text: add the Google key under Diagnostics → Google Cloud.")
+            mode, lang = p.get("mode") or "auto", p.get("lang") or "en"
+
+            def run(prog, stop):
+                r = self.speech.transcribe_long(wav, lang, mode, prog)
+                if r.get("error"):
+                    raise RuntimeError(r["error"])
+                return r
+            return self.jobs.start("Speech: transcribe a recording", run)
+
+        @a.post("/api/speech/caption/start")
+        def sp_caption_start(p):
+            if not self.speech.stt_ready():
+                raise core.UserError("Live captions need Google Speech-to-Text: add the Google key under Diagnostics → Google Cloud.")
+            return self.speech.caption_session(p.get("name") or "audio", p.get("duration_s") or 0, p.get("lang") or "en")
+
+        @a.post("/api/speech/caption/piece")
+        def sp_caption_piece(p):
+            try:
+                return self.speech.caption_piece(_audio(p), p.get("lang") or "en", float(p.get("offset_s") or 0), p.get("session"))
+            except (ValueError, RuntimeError) as e:
+                raise core.UserError(str(e))
+
         @a.post("/api/speech/query")
         def sp_query(p):
             try:
@@ -1195,6 +1224,11 @@ _fetch = _fetch_text
 
 VENDOR = ["three/three.module.min.js", "three/VRButton.js", "three/LICENSE", "mediapipe/vision_bundle.mjs", "mediapipe/wasm/vision_wasm_internal.js",
           "mediapipe/wasm/vision_wasm_internal.wasm", "mediapipe/face_landmarker.task", "mediapipe/LICENSE"]
+
+
+def voicedsp_is_wav(b):
+    import voicedsp
+    return voicedsp.is_wav(b)
 
 
 def lipread_active_version():
@@ -1929,6 +1963,21 @@ def _speech_selftest(c):
                     r["heard_by"] == "Google Speech-to-Text" and r["transcript"] == "good morning" and r["semantics"]["words"][1].get("start_s") == 0.55)
             r = S.ingest(w, "typed words", "", "stt test", "browser", "en")
             c.check("Speech: 'browser only' never calls Google", r["heard_by"] == "browser / typed")
+            long_w = V.tone_wav(f0=140, seconds=125, gaps=tuple((k * 10 - 0.6, k * 10) for k in range(1, 13)))
+            lr = S.transcribe_long(long_w, "en", "pieces")
+            pt = lr.get("piece_times") or []
+            c.check("Speech: a 2-minute recording is cut at pauses into pieces of at most 50 s, each word placed at its time in the whole recording",
+                    lr.get("pieces", 0) >= 3 and all(b - a <= 50.01 for a, b in pt) and len(lr["words"]) == 2 * len(pt)
+                    and [round(w_["start_s"], 2) for w_ in lr["words"][::2]] == [round(a + 0.2, 2) for a, _ in pt], lr.get("method"))
+            auto = S.transcribe(long_w, "en")
+            c.check("Speech: recordings over 50 s are transcribed whole automatically (no 55-second cut-off)", auto.get("pieces", 0) >= 3 and auto["duration_s"] > 120)
+            cp = S.caption_piece(V.tone_wav(f0=140, seconds=3), "en", 12.5)
+            c.check("Speech: a live-caption piece comes back with each word's time in the whole file", cp["words"][0]["start_s"] == 12.7 and cp["transcript"] == "good morning")
+            try:
+                S.transcribe_long(long_w, "en", "storage")
+                c.check("Speech: long-audio mode without the service account says what is missing", False)
+            except ValueError as e_:
+                c.check("Speech: long-audio mode without the service account says what is missing", "service account" in str(e_))
             os.environ["QB_GCP_BASE_SPEECH"] = "http://127.0.0.1:9"
             r = S.ingest(w, "", "", "stt test", "auto", "en")
             c.check("Speech: when Google Speech-to-Text fails, analysis still completes and says why", "failed" in r["heard_by"] and r["measure"]["pitch"])

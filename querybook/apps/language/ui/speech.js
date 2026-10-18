@@ -455,7 +455,9 @@ async function loadSpeech() {
   $("#sp-go").onclick = generate;
   $("#mt-go").onclick = match;
   $("#ls-rec").onclick = lsRecord;
-  $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.video = null; SP.wav = await blobB64(f); SP.wavName = f.name; $("#ls-audio").src = URL.createObjectURL(f); $("#ls-audio").hidden = false; $("#ls-go").disabled = false; $("#ls-recstate").textContent = f.name; };
+  $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.video = null;
+    // MP3, M4A, OGG …: decoded here and sent as WAV
+    SP.wav = /\.wav$/i.test(f.name) || f.type === "audio/wav" ? await blobB64(f) : await blobB64(trFloatWav(await trDecode(f), 16000)); SP.wavName = f.name; $("#ls-audio").src = URL.createObjectURL(f); $("#ls-audio").hidden = false; $("#ls-go").disabled = false; $("#ls-recstate").textContent = f.name; };
   $("#ls-go").onclick = lsAnalyse;
   $("#ak-rec").onclick = akRecord; $("#ak-go").onclick = () => ask(null); onEnter($("#ak-text"), () => ask(null));
   $("#lg-go").onclick = loadLog; $("#lg-proc").onchange = loadLog;

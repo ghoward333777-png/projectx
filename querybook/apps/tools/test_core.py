@@ -278,6 +278,11 @@ def google_tests(c):
                 seen["metrics"].append(json.loads(body)); return self.send(200, {})
             if u.path.endswith("/alertPolicies"):
                 seen["alerts"] += 1; b = json.loads(body); b["name"] = "projects/p/alertPolicies/1"; return self.send(200, b)
+            if u.path == "/v1/speech:longrunningrecognize":
+                b = json.loads(body)
+                seen["lr_uri"], seen["lr_auth"], seen["lr_polls"] = b["audio"]["uri"], self.authed(), 0
+                seen["lr_object_present"] = b["audio"]["uri"].split("/", 3)[3] in seen["objects"]
+                return self.send(200, {"name": "op-123"})
             if u.path == "/v1/speech:recognize":
                 seen["speech"] += 1
                 if self.headers.get("X-Goog-Api-Key") != "AIzaTESTKEY0000000000000000000000000000":
@@ -316,6 +321,12 @@ def google_tests(c):
                                                   "contentDetails": {"duration": "PT3M33S", "caption": "true"}, "statistics": {"viewCount": "5"}}]})
             if not self.authed():
                 return self.send(401, {"error": {"message": "no token"}})
+            if u.path == "/v1/operations/op-123":
+                seen["lr_polls"] += 1
+                if seen["lr_polls"] < 2:
+                    return self.send(200, {"name": "op-123", "metadata": {"progressPercent": 50}})
+                return self.send(200, {"name": "op-123", "done": True, "response": {"results": [{"alternatives": [{"transcript": "long recording words", "confidence": 0.9,
+                                       "words": [{"word": "long", "startTime": "1.500s", "endTime": "1.900s"}]}], "languageCode": "en-us"}]}})
             parts = u.path.split("/")
             if u.path.startswith("/storage/v1/b/") and len(parts) == 5:
                 return self.send(200, {"name": parts[4], "location": "EU"})
@@ -388,6 +399,24 @@ def google_tests(c):
             c.check("google: Speech-to-Text alternatives for the whole clip (the camera chooses between them)",
                     seen["speech_cfg"]["maxAlternatives"] == 5 and [a["transcript"] for a in r2["alternatives"]] == ["hello there", "yellow there"]
                     and "maxAlternatives" not in json.dumps(seen.get("first_cfg", {})))
+            import tempfile as _tf
+            with _tf.NamedTemporaryFile(suffix=".wav", delete=False) as f_:
+                f_.write(b.getvalue()); wp = f_.name
+            old_poll = os.environ.get("QB_POLL_S"); os.environ["QB_POLL_S"] = "0.01"
+            prog = []
+            try:
+                rl = G_.recognize_long(wp, "en-US", lambda what, frac: prog.append((what, frac)))
+            finally:
+                os.remove(wp)
+                if old_poll is None:
+                    os.environ.pop("QB_POLL_S", None)
+                else:
+                    os.environ["QB_POLL_S"] = old_poll
+            c.check("google: long audio goes to the bucket (MD5-checked), a long-running job transcribes it with progress, the copy is deleted",
+                    rl["transcript"] == "long recording words" and rl["words"][0]["start_s"] == 1.5 and seen["lr_uri"].startswith("gs://qb-backups/querybook-speech/")
+                    and seen["lr_auth"] and seen["lr_object_present"] and not any(k.startswith("querybook-speech/") for k in seen["objects"])
+                    and ("transcribing", 0.5) in prog and any(w_ == "uploading" for w_, _ in prog))
+            c.check("google: the service account's sign-in covers Speech-to-Text", "cloud-platform" in seen["claims"]["scope"])
             v = G_.youtube_search("talk", 3)
             c.check("google: YouTube search returns video, channel, date and link", v and v[0]["channel"] == "A Channel" and v[0]["url"].endswith("dQw4w9WgXcQ"))
             c.check("google: video ids are read from any YouTube link form", gcloud.youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"

@@ -95,9 +95,18 @@ class SpeechLab:
         return pub["api_key_set"] and pub["stt_on"] is not False
 
     def transcribe(self, audio, lang="en", parent=None, alternatives=1):
-        """Google Speech-to-Text with word timings; logged as its own process. Returns None when not available or failed."""
+        """Google Speech-to-Text with word timings; logged as its own process. Returns None when not available or failed.
+        Recordings longer than 50 s go through transcribe_long (any length)."""
         if not self.stt_ready():
             return None
+        try:
+            if voicedsp.is_wav(audio):
+                import wave as _w, io as _io
+                with _w.open(_io.BytesIO(audio), "rb") as w:
+                    if w.getnframes() / float(w.getframerate()) > 50:
+                        return self.transcribe_long(audio, lang, parent=parent)
+        except Exception as e:
+            return {"error": self.google.s.scrub(e)}
         clk = Clock()
         clk("Google Speech-to-Text")
         code = tts.SPEECH_LANG.get(lang, lang if "-" in str(lang) else "en-US")
@@ -109,6 +118,117 @@ class SpeechLab:
         except Exception as e:
             self._record("transcribe", "Google Speech-to-Text failed: %s" % self.google.s.scrub(e), "google_stt", "failed", clk, {"language": code}, None, None, parent)
             return {"error": self.google.s.scrub(e)}
+
+    # ---------------------------------------------------------------- long recordings and live captions
+    @staticmethod
+    def cut_points(x, sr, max_s=50.0, min_s=30.0):
+        """Where to cut a long recording into pieces Speech-to-Text accepts: at the quietest 0.3 s between min_s and max_s
+        after the previous cut, so no word is split."""
+        hop = int(sr * 0.02)
+        rms = [math.sqrt(sum(v * v for v in x[i:i + hop:4]) / max(1, len(x[i:i + hop:4]))) for i in range(0, len(x), hop)]   # x: 16-bit samples
+        n, cuts, start = len(rms), [0], 0
+        win = 15                                            # 15 × 20 ms = 0.3 s
+        while (n - start) * 0.02 > max_s:
+            lo, hi = start + int(min_s / 0.02), min(n - win, start + int(max_s / 0.02))
+            best, bi = None, hi
+            for i in range(lo, hi):
+                e = sum(rms[i:i + win])
+                if best is None or e < best:
+                    best, bi = e, i
+            start = bi + win // 2
+            cuts.append(start)
+        return [c * hop for c in cuts] + [len(x)]
+
+    def transcribe_long(self, audio, lang="en", mode="auto", progress=None, parent=None, workers=4):
+        """Any length. mode "pieces": cut at pauses into ≤ 50 s pieces, transcribe up to 4 at once, join with each
+        word's time in the whole recording (works with the API key alone). mode "storage": Google long-audio recognition
+        through Cloud Storage (needs the service account and bucket). "auto": storage for recordings over 10 minutes
+        when it is set up, else pieces."""
+        import concurrent.futures, tempfile as _tf
+        clk = Clock()
+        clk("read the recording")
+        import array as _array, io as _io, wave as _wave
+        with _wave.open(_io.BytesIO(audio), "rb") as w:            # 16-bit samples kept compact: an hour is ~115 MB, not gigabytes
+            ch, width, sr, nf = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+            raw = w.readframes(nf)
+        if width != 2:
+            raise ValueError("Speech-to-Text needs 16-bit audio.")
+        x = _array.array("h"); x.frombytes(raw[:len(raw) // 2 * 2])
+        if ch > 1:
+            x = x[::ch]                                           # first channel
+        dur = len(x) / float(sr)
+        piece_wav = lambda a, b: voicedsp.pcm16_to_wav(x[a:b].tobytes(), sr)
+        code = tts.SPEECH_LANG.get(lang, lang if "-" in str(lang) else "en-US")
+        cfg = self.google.s.load()
+        storage_ok = bool(self.google.s.service_account() and cfg.get("bucket"))
+        if mode == "storage" and not storage_ok:
+            raise ValueError("Long-audio mode needs the Google service account and a Cloud Storage bucket (Diagnostics → Google Cloud).")
+        use_storage = mode == "storage" or (mode == "auto" and storage_ok and dur > 600)
+        try:
+            if use_storage:
+                clk("Google long-audio recognition")
+                with _tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    f.write(piece_wav(0, len(x)) if ch > 1 else audio)
+                    tmp = f.name
+                try:
+                    r = self.google.recognize_long(tmp, code, (lambda what, frac: progress(int(1000 * frac), 1000, what, overall=frac)) if progress else None)
+                finally:
+                    os.remove(tmp)
+                r["pieces"] = 1
+            else:
+                clk("cut at pauses")
+                cuts = self.cut_points(x, sr)
+                pieces = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
+                clk("transcribe %d pieces" % len(pieces))
+                done = [0]
+
+                def one(ab):
+                    a, b = ab
+                    res = self.google.recognize(piece_wav(a, b), code, offset_s=a / float(sr))
+                    done[0] += 1
+                    if progress:
+                        progress(done[0], len(pieces), "piece %d of %d" % (done[0], len(pieces)), overall=done[0] / len(pieces))
+                    return res
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                    results = list(ex.map(one, pieces))
+                words = [w for r in results for w in r["words"]]
+                confs = [(r["confidence"], len(r["words"])) for r in results if r.get("confidence") is not None]
+                r = {"transcript": " ".join(r["transcript"] for r in results if r["transcript"]),
+                     "confidence": round(sum(c * n for c, n in confs) / max(1, sum(n for _, n in confs)), 3) if confs else None,
+                     "words": words, "language": code, "pieces": len(pieces),
+                     "piece_times": [[round(a / float(sr), 2), round(b / float(sr), 2)] for a, b in pieces],
+                     "method": "pieces cut at pauses (%d × ≤ 50 s)" % len(pieces), "alternatives": []}
+            r["duration_s"] = round(dur, 2)
+            self._record("transcribe", "Google Speech-to-Text, %.2f s of audio in %s: %d words" % (dur, r.get("method"), len(r["words"])), "google_stt", "ok",
+                         clk, {"language": code, "mode": mode, "duration_s": round(dur, 2)},
+                         {"transcript": r["transcript"][:500], "confidence": r["confidence"], "words": len(r["words"]), "pieces": r.get("pieces")}, None, parent)
+            return r
+        except Exception as e:
+            self._record("transcribe", "Google Speech-to-Text (long) failed: %s" % self.google.s.scrub(e), "google_stt", "failed", clk,
+                         {"language": code, "mode": mode}, None, None, parent)
+            return {"error": self.google.s.scrub(e)}
+
+    def caption_piece(self, audio, lang="en", offset_s=0.0, session=None):
+        """One piece of a recording being captioned while it plays: words with their times in the whole recording."""
+        if not self.stt_ready():
+            raise ValueError("Live captions need Google Speech-to-Text (add the Google key under Diagnostics → Google Cloud).")
+        clk = Clock()
+        clk("Google Speech-to-Text (piece at %.2f s)" % offset_s)
+        code = tts.SPEECH_LANG.get(lang, lang if "-" in str(lang) else "en-US")
+        try:
+            r = self.google.recognize(audio, code, offset_s=float(offset_s))
+        except Exception as e:
+            self._record("caption", "piece at %.2f s failed: %s" % (offset_s, self.google.s.scrub(e)), "google_stt", "failed", clk, None, None, None, session)
+            raise RuntimeError(self.google.s.scrub(e))
+        self._record("caption", "piece at %.2f s: %d words" % (offset_s, len(r["words"])), "google_stt", "ok", clk,
+                     {"offset_s": offset_s}, {"transcript": r["transcript"][:300], "confidence": r["confidence"]}, None, session)
+        return {"offset_s": offset_s, "transcript": r["transcript"], "words": r["words"], "confidence": r["confidence"], "seconds": r["seconds"]}
+
+    def caption_session(self, name, duration_s, lang="en"):
+        clk = Clock()
+        clk("start")
+        return {"session": self._record("caption-file", "live captions for “%s” (%.2f s)" % (str(name)[:80], float(duration_s or 0)), "google_stt", "ok", clk,
+                                        {"file": str(name)[:200], "duration_s": duration_s, "lang": lang})}
 
     # ---------------------------------------------------------------- logging
     def _record(self, process, description, engine, status, clock, request=None, result=None, audio=None, parent=None, started=None):
