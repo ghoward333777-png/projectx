@@ -736,14 +736,14 @@ class App:
                 raise core.UserError("Send the recording as WAV (the page converts MP3 and other formats).")
             if not self.speech.stt_ready():
                 raise core.UserError("Transcription needs Google Speech-to-Text: add the Google key under Diagnostics → Google Cloud.")
-            mode, lang = p.get("mode") or "auto", p.get("lang") or "en"
+            return self.speech.start_transcription(wav, p.get("lang") or "en", p.get("mode") or "auto")
 
-            def run(prog, stop):
-                r = self.speech.transcribe_long(wav, lang, mode, prog)
-                if r.get("error"):
-                    raise RuntimeError(r["error"])
-                return r
-            return self.jobs.start("Speech: transcribe a recording", run)
+        @a.get("/api/speech/transcribe-status")
+        def sp_transcribe_status(p):
+            try:
+                return self.speech.transcription(p.get("task") or "")
+            except ValueError as e:
+                raise core.UserError(str(e))
 
         @a.post("/api/speech/caption/start")
         def sp_caption_start(p):
@@ -1971,6 +1971,14 @@ def _speech_selftest(c):
                     and [round(w_["start_s"], 2) for w_ in lr["words"][::2]] == [round(a + 0.2, 2) for a, _ in pt], lr.get("method"))
             auto = S.transcribe(long_w, "en")
             c.check("Speech: recordings over 50 s are transcribed whole automatically (no 55-second cut-off)", auto.get("pieces", 0) >= 3 and auto["duration_s"] > 120)
+            tk = S.start_transcription(long_w, "en", "pieces")["task"]
+            for _ in range(400):
+                st_ = S.transcription(tk)
+                if st_["state"] != "running":
+                    break
+                time.sleep(0.05)
+            c.check("Speech: whole-file transcription runs as its own background task with progress (never waits for other jobs)",
+                    st_["state"] == "finished" and st_["result"]["pieces"] >= 3 and st_["overall"] == 1.0, st_.get("message"))
             cp = S.caption_piece(V.tone_wav(f0=140, seconds=3), "en", 12.5)
             c.check("Speech: a live-caption piece comes back with each word's time in the whole file", cp["words"][0]["start_s"] == 12.7 and cp["transcript"] == "good morning")
             try:

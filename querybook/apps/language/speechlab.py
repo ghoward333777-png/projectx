@@ -208,6 +208,40 @@ class SpeechLab:
                          {"language": code, "mode": mode}, None, None, parent)
             return {"error": self.google.s.scrub(e)}
 
+    def start_transcription(self, audio, lang="en", mode="auto"):
+        """Transcribe a recording in the background, in its own task: it never waits for (or blocks) the language
+        build or any other job. Poll transcription(task) for progress and the result."""
+        import threading, uuid
+        tid = uuid.uuid4().hex[:12]
+        t = {"task": tid, "state": "running", "done": 0, "total": None, "message": "starting", "overall": 0.0, "_t0": time.time(), "result": None}
+        self.tasks = getattr(self, "tasks", {})
+        for k in [k for k, v in self.tasks.items() if v["state"] != "running" and time.time() - v["_t0"] > 3600]:
+            del self.tasks[k]                                # forget finished tasks after an hour
+        self.tasks[tid] = t
+
+        def prog(done, total=None, message="", **extra):
+            t.update({"done": done, "total": total, "message": message}); t.update(extra)
+
+        def run():
+            try:
+                r = self.transcribe_long(audio, lang, mode, prog)
+                if r.get("error"):
+                    raise RuntimeError(r["error"])
+                t.update({"result": r, "state": "finished", "overall": 1.0, "message": "done"})
+            except Exception as e:
+                t.update({"state": "failed", "message": self.google.s.scrub(e)})
+            t["elapsed"] = round(time.time() - t["_t0"], 2)
+        threading.Thread(target=run, daemon=True, name="transcribe-" + tid).start()
+        return {"task": tid}
+
+    def transcription(self, tid):
+        t = getattr(self, "tasks", {}).get(tid)
+        if not t:
+            raise ValueError("No such transcription.")
+        out = {k: v for k, v in t.items() if not k.startswith("_")}
+        out["elapsed"] = t.get("elapsed") or round(time.time() - t["_t0"], 2)
+        return out
+
     def caption_piece(self, audio, lang="en", offset_s=0.0, session=None):
         """One piece of a recording being captioned while it plays: words with their times in the whole recording."""
         if not self.stt_ready():

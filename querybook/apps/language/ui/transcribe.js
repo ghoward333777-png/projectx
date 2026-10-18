@@ -104,10 +104,10 @@ async function trWhole() {
   let ok = false;
   try {
     const b64 = await blobB64(trFloatWav(TR.pcm, TR.sr));
-    await api("/api/speech/transcribe-file", { audio_b64: b64, lang: (SP.profile && SP.profile.lang) || "en", mode: $("#tr-mode").value });
+    const tk = await api("/api/speech/transcribe-file", { audio_b64: b64, lang: (SP.profile && SP.profile.lang) || "en", mode: $("#tr-mode").value });
     for (;;) {
       await new Promise(r => setTimeout(r, 700));
-      const j = await api("/api/job");
+      const j = await api("/api/speech/transcribe-status?task=" + tk.task);
       const pct = Math.round(100 * (j.overall || (j.total ? j.done / j.total : 0)));
       $("#tr-state").textContent = (j.message || "working") + " — " + pct + "% · " + (j.elapsed || 0).toFixed(2) + " s";
       $("#tr-prog").style.width = pct + "%";
