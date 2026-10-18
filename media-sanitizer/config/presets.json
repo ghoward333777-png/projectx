@@ -1,0 +1,46 @@
+{
+  "youtube_ready": {
+    "description": "H.264 + AAC MP4, loudness-normalized to -14 LUFS, faststart",
+    "container": "mp4",
+    "reencode": true,
+    "video": {"codec": "libx264", "crf": 18, "preset": "medium", "pix_fmt": "yuv420p", "profile": "high"},
+    "audio": {"codec": "aac", "bitrate": "192k", "sample_rate": 48000,
+              "loudnorm": {"I": -14, "TP": -1, "LRA": 11}},
+    "faststart": true,
+    "keep_subtitles": false
+  },
+  "mobile": {
+    "description": "Smaller H.264 + AAC MP4 for phones",
+    "container": "mp4",
+    "reencode": true,
+    "video": {"codec": "libx264", "crf": 23, "preset": "fast", "pix_fmt": "yuv420p", "profile": "main"},
+    "audio": {"codec": "aac", "bitrate": "128k", "sample_rate": 44100},
+    "faststart": true,
+    "keep_subtitles": false
+  },
+  "archive": {
+    "description": "Lossless archival master: FFV1 + FLAC in Matroska",
+    "container": "mkv",
+    "reencode": true,
+    "video": {"codec": "ffv1"},
+    "audio": {"codec": "flac"},
+    "faststart": false,
+    "keep_subtitles": true
+  },
+  "master": {
+    "description": "ProRes 422 HQ + 24-bit PCM in QuickTime for editing",
+    "container": "mov",
+    "reencode": true,
+    "video": {"codec": "prores_ks", "profile": 3, "pix_fmt": "yuv422p10le"},
+    "audio": {"codec": "pcm_s24le"},
+    "faststart": false,
+    "keep_subtitles": false
+  },
+  "lossless_sanitize": {
+    "description": "Metadata scrub only - stream copy, no quality change",
+    "container": "source",
+    "reencode": false,
+    "faststart": true,
+    "keep_subtitles": true
+  }
+}

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Sanitizer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677;
+    --border: #d9dde5; --accent: #2f6fdb; --accent-text: #ffffff;
+    --ok: #1f8a4c; --warn: #a86400; --err: #c0392b; --drop: #eef3fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e9ef; --muted: #9aa3b2;
+      --border: #2e343e; --accent: #5b8ff0; --accent-text: #0d1117;
+      --ok: #4cc382; --warn: #e6a23c; --err: #ef6b5b; --drop: #1d2636;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+           padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  .row > label { flex: 1 1 220px; display: flex; flex-direction: column; gap: 4px;
+                 font-size: 13px; color: var(--muted); }
+  select, input[type=text] { font: inherit; color: var(--text); background: var(--bg);
+           border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; width: 100%; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--bg); color: var(--text);
+           border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #presetDesc { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  #drop { border: 2px dashed var(--border); border-radius: 10px; padding: 36px 16px; text-align: center;
+          color: var(--muted); cursor: pointer; transition: background .15s, border-color .15s; }
+  #drop.over { background: var(--drop); border-color: var(--accent); color: var(--text); }
+  #drop strong { color: var(--text); }
+  .uploads { list-style: none; padding: 0; margin: 12px 0 0; font-size: 13px; }
+  .uploads li { display: flex; gap: 10px; align-items: center; padding: 3px 0; }
+  .uploads .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  progress { width: 140px; height: 8px; accent-color: var(--accent); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  td.file { min-width: 120px; max-width: 320px; overflow-wrap: anywhere; }
+  .badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+  .s-done, .v-clean { color: var(--ok); } .s-failed { color: var(--err); }
+  .s-running, .s-queued { color: var(--accent); } .v-review, .s-interrupted { color: var(--warn); }
+  details pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 8px;
+                border-radius: 6px; max-height: 320px; overflow: auto; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: var(--err); font-size: 13px; }
+  a { color: var(--accent); }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .head h2 { font-size: 16px; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Media Sanitizer</h1>
+  <p class="sub">Strip metadata, chapters and stray data streams from your own audio/video, then re-export with a preset.
+    <span id="health" class="muted"></span></p>
+
+  <section class="panel">
+    <div class="row">
+      <label>Preset <select id="preset"></select></label>
+      <label>Output folder (on this machine) <input id="outDir" type="text"></label>
+    </div>
+    <div id="presetDesc"></div>
+  </section>
+
+  <section class="panel">
+    <div id="drop" tabindex="0" role="button" aria-label="Add media files">
+      <strong>Drop media files here</strong> or click to choose.<br>
+      <span class="muted">MP4, MOV, MKV, WebM, M4A, MP3, WAV, FLAC. Each file is queued as soon as it uploads.</span>
+    </div>
+    <input id="picker" type="file" multiple hidden>
+    <ul id="uploads" class="uploads"></ul>
+    <div class="row" style="margin-top:12px">
+      <label>Or sanitize a file or folder already on this machine
+        <input id="localPath" type="text" placeholder="/home/me/Videos/exports"></label>
+      <button id="queuePath" class="primary">Queue path</button>
+    </div>
+    <div id="formErr" class="err"></div>
+  </section>
+
+  <section class="panel">
+    <div class="head"><h2>Jobs</h2><button id="clear">Clear finished</button></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Preset</th><th>Status</th><th>Result</th></tr></thead>
+        <tbody id="jobs"><tr><td colspan="4" class="muted">No jobs yet.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let presets = {};
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const base = (p) => String(p).split(/[\\/]/).pop();
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+async function init() {
+  const [p, s, h] = await Promise.all([api('/api/presets'), api('/api/settings'), api('/api/health')]);
+  presets = p.presets;
+  for (const [name, cfg] of Object.entries(presets)) $('preset').add(new Option(name, name));
+  $('preset').value = recall('preset') in presets ? recall('preset') : p.default;
+  $('outDir').value = recall('outDir') || s.default_output_dir;
+  $('picker').accept = s.media_extensions.join(',');
+  showDesc();
+  $('health').textContent = h.ffmpeg ? '' : ' — ffmpeg not found on PATH; jobs will fail.';
+  refresh();
+  setInterval(refresh, 1200);
+}
+
+function showDesc() {
+  const cfg = presets[$('preset').value];
+  if (!cfg) return;
+  const v = cfg.video ? cfg.video.codec : (cfg.reencode ? 'none' : 'copy');
+  const a = cfg.audio ? cfg.audio.codec : (cfg.reencode ? 'none' : 'copy');
+  $('presetDesc').textContent = `${cfg.description} · container ${cfg.container} · video ${v} · audio ${a}`;
+  remember('preset', $('preset').value);
+}
+
+async function queue(inputs) {
+  remember('outDir', $('outDir').value);
+  return api('/api/jobs', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({inputs, preset: $('preset').value, output_dir: $('outDir').value}),
+  });
+}
+
+function upload(file) {
+  const li = document.createElement('li');
+  li.innerHTML = `<span class="name">${esc(file.name)}</span><progress max="100" value="0"></progress><span class="muted">uploading</span>`;
+  $('uploads').prepend(li);
+  const [bar, label] = [li.querySelector('progress'), li.querySelector('.muted')];
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/upload?name=' + encodeURIComponent(file.name));
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.value = e.loaded * 100 / e.total; };
+  xhr.onload = async () => {
+    try {
+      const data = JSON.parse(xhr.responseText);
+      if (xhr.status !== 200) throw new Error(data.error);
+      await queue([data.path]);
+      bar.value = 100; label.textContent = 'queued';
+      refresh();
+    } catch (e) { label.textContent = e.message; label.className = 'err'; }
+  };
+  xhr.onerror = () => { label.textContent = 'upload failed'; label.className = 'err'; };
+  xhr.send(file);
+}
+
+const drop = $('drop');
+drop.addEventListener('click', () => $('picker').click());
+drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') $('picker').click(); });
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => [...e.dataTransfer.files].forEach(upload));
+$('picker').addEventListener('change', (e) => { [...e.target.files].forEach(upload); e.target.value = ''; });
+$('preset').addEventListener('change', showDesc);
+$('queuePath').addEventListener('click', async () => {
+  $('formErr').textContent = '';
+  const path = $('localPath').value.trim();
+  if (!path) return;
+  try { await queue([path]); $('localPath').value = ''; refresh(); }
+  catch (e) { $('formErr').textContent = e.message; }
+});
+$('clear').addEventListener('click', async () => { await api('/api/jobs/clear', {method: 'POST', body: '{}'}); refresh(); });
+
+const openDetails = new Set();
+let lastSnapshot = '';
+async function refresh() {
+  let data;
+  try { data = await api('/api/jobs'); } catch (e) { return; }
+  const snapshot = JSON.stringify(data.jobs);
+  if (snapshot === lastSnapshot) return;  // keep open reports and scroll positions stable
+  lastSnapshot = snapshot;
+  const rows = data.jobs.map((j) => {
+    let status = `<span class="badge s-${j.status}">${j.status}</span>`;
+    if (j.status === 'running') status += ` <progress max="100" value="${j.progress}"></progress>`;
+    let result = '';
+    if (j.status === 'done') {
+      const r = j.report, rm = r.removed;
+      const streamTags = Object.values(rm.stream_tags).reduce((n, t) => n + t.length, 0);
+      result = `<span class="badge v-${r.verdict}">${r.verdict}</span>
+        <a href="/api/download/${j.id}">download</a>
+        <div class="muted">removed ${rm.format_tags.length} file tags, ${streamTags} stream tags,
+        ${rm.chapters} chapters, ${rm.dropped_streams.length} data streams</div>
+        ${r.notes.map((n) => `<div class="muted">${esc(n)}</div>`).join('')}
+        <details data-id="${j.id}" ${openDetails.has(j.id) ? 'open' : ''}><summary class="muted">JSON report</summary><pre>loading…</pre></details>`;
+    } else if (j.error) {
+      result = `<div class="err">${esc(j.error)}</div>`;
+    }
+    return `<tr><td class="file" title="${esc(j.input)}">${esc(base(j.input))}</td><td>${esc(j.preset)}</td><td>${status}</td><td>${result}</td></tr>`;
+  });
+  $('jobs').innerHTML = rows.join('') || '<tr><td colspan="4" class="muted">No jobs yet.</td></tr>';
+  document.querySelectorAll('details[data-id]').forEach((d) => {
+    const load = async () => {
+      if (!d.open) { openDetails.delete(d.dataset.id); return; }
+      openDetails.add(d.dataset.id);
+      const job = await api('/api/jobs/' + d.dataset.id);
+      d.querySelector('pre').textContent = JSON.stringify(job.report, null, 2);
+    };
+    d.addEventListener('toggle', load);
+    if (d.open) load();
+  });
+}
+
+init().catch((e) => { $('formErr').textContent = 'Could not reach the server: ' + e.message; });
+</script>
+</body>
+</html>

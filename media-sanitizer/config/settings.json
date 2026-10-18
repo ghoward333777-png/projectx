@@ -1,0 +1,18 @@
+{
+  "host": "127.0.0.1",
+  "port": 8090,
+  "workspace": "workspace",
+  "default_output_dir": "workspace/output",
+  "output_suffix": "_clean",
+  "default_preset": "youtube_ready",
+  "media_extensions": [".mp4", ".mov", ".m4v", ".mkv", ".webm", ".m4a", ".mp3", ".wav", ".flac"],
+  "allowed_input_roots": [],
+  "max_upload_mb": 8192,
+  "ffmpeg": "ffmpeg",
+  "ffprobe": "ffprobe",
+  "exiftool": "exiftool",
+  "technical_tags": [
+    "handler_name", "vendor_id", "language", "major_brand", "minor_version",
+    "compatible_brands", "duration", "encoder_options"
+  ]
+}

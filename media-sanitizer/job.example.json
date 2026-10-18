@@ -1,0 +1,7 @@
+{
+  "inputs": ["~/Videos/exports"],
+  "preset": "youtube_ready",
+  "output_dir": "~/Videos/clean",
+  "recursive": true,
+  "report": "workspace/last-run-report.json"
+}
