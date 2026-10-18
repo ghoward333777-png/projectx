@@ -3,3 +3,8 @@ Copyright The MediaPipe Authors (Google LLC). Licensed under the Apache License,
 https://www.apache.org/licenses/LICENSE-2.0
 Sources: https://www.npmjs.com/package/@mediapipe/tasks-vision  and  https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker
 The model runs entirely on this computer; no image leaves it.
+
+Object Detector model (efficientdet_lite0.tflite, float16 v1), used by the Object scan:
+Copyright The MediaPipe Authors (Google LLC). Licensed under the Apache License, Version 2.0.
+Source: https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector  (80 COCO object kinds)
+It also runs entirely on this computer; no image leaves it.

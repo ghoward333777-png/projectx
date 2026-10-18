@@ -387,7 +387,7 @@ tr.lc-active td { background: #f0fdf4; }
         </div>
         <details class="vd-guide" open><summary><b>Best way to film for lip-sync and lip-reading</b></summary><ul id="vd-guide" class="small"></ul></details>
         <div class="vd-grid">
-          <div class="vd-wrap"><video id="vd-video" playsinline muted></video><canvas id="vd-overlay"></canvas><div id="vd-empty" class="muted small">No picture yet — choose Camera, Screen or a Video file.</div></div>
+          <div class="vd-wrap"><video id="vd-video" playsinline muted></video><canvas id="vd-overlay"></canvas><canvas id="sc-overlay"></canvas><div id="vd-empty" class="muted small">No picture yet — choose Camera, Screen or a Video file.</div></div>
           <div>
             <div id="vd-live" class="vd-chips"></div>
             <div class="row" style="margin-top:8px">
@@ -399,6 +399,46 @@ tr.lc-active td { background: #f0fdf4; }
             <div id="vd-avatar" class="face-stage" style="max-width:300px" hidden></div>
           </div>
         </div>
+      </div>
+      <div class="card" id="sc-card">
+        <h2>Object scan — recognize, follow and zoom <span class="small muted">— for ingestion and questions</span></h2>
+        <p class="small">Recognizes 80 kinds of everyday object in the picture above — people, cars, cups, phones, books, dogs… — on this computer (MediaPipe Object Detector, EfficientDet-Lite0, bundled; nothing is uploaded). Each object is followed from frame to frame. <b>Click a box</b> (or name a kind) to follow it and see it enlarged. What was seen is saved as numbers — what, when, how sure, where in the picture — never the picture itself, and you can ask about it later. Recognized objects are observations, not facts.</p>
+        <div class="row">
+          <label class="small"><input type="checkbox" id="sc-on"> Scan</label>
+          <label class="small">Checks per second <select id="sc-fps" style="width:auto"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="30">30</option></select></label>
+          <label class="small">Sure at least <select id="sc-min" style="width:auto"><option value="0.3">30%</option><option value="0.4" selected>40%</option><option value="0.5">50%</option><option value="0.6">60%</option></select></label>
+          <input id="sc-kind" type="text" placeholder="follow a kind: person, dog, car…" style="max-width:220px" aria-label="Kind of object to follow">
+          <span id="sc-state" class="small"></span>
+        </div>
+        <div class="vd-grid">
+          <div>
+            <canvas id="sc-zoom" width="640" height="480" style="width:100%;background:#0f172a;border-radius:10px;display:block" aria-label="Enlarged view of the followed object"></canvas>
+            <div class="small" id="sc-zinfo" style="margin-top:4px"></div>
+            <div class="row" style="margin-top:6px">
+              <button class="btn quiet" id="sc-unfollow">Stop following</button>
+              <button class="btn" id="sc-zrec" disabled>⏺ Record the enlarged view</button>
+            </div>
+            <label class="small" id="sc-consent-row" style="display:block;margin-top:6px"><input type="checkbox" id="sc-consent"> When following a person: they know they are being recorded and agree, or this is a public talk or broadcast. (Needed to record an enlarged face, e.g. through a telephoto lens, for lip-reading.)</label>
+            <p class="small muted">The recording opens in steps 2–4 below, so its face can be lip-read and ingested. Lip-reading from far away is rough: expect a few words from a short list of expected words, not whole conversations. A steady phone (tripod or rest) helps most.</p>
+          </div>
+          <div>
+            <div id="sc-live"></div>
+            <div class="row" style="margin-top:8px">
+              <input id="sc-label" class="grow" type="text" placeholder="Name this scan (optional)">
+              <button class="btn" id="sc-save">💾 Save what was seen</button>
+            </div>
+            <div id="sc-saved" class="small"></div>
+          </div>
+        </div>
+        <h3>Ask about what the camera saw</h3>
+        <div class="row">
+          <input id="sc-q" class="grow" type="text" placeholder="What is this in Spanish? · When did I last see a cup? · What did I see today? · How many people did I see?" aria-label="Question about what was seen">
+          <button class="btn quiet" id="sc-mic" title="Ask by voice">🎤</button>
+          <button class="btn" id="sc-ask">Ask</button>
+          <label class="small"><input type="checkbox" id="sc-speak" checked> speak the answer</label>
+        </div>
+        <div id="sc-answer"></div>
+        <details style="margin-top:8px"><summary class="small"><b>Saved scans</b></summary><div id="sc-sessions"></div></details>
       </div>
       <div class="card">
         <h2>2 · Analyse: sync check and lip-reading</h2>
@@ -714,6 +754,7 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="face.js"></script>
 <script src="speech.js"></script>
 <script src="video.js"></script>
+<script src="scan.js"></script>
 <script src="photoreal.js"></script>
 <script src="transcribe.js"></script>
 </body>

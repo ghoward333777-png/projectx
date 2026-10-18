@@ -117,6 +117,16 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   frame by frame against what the author's mouth would do for the same words and released only if it
   passes the gate; the in-app face is calibrated in a closed loop until it does. Findings are UFCS 1.0
   fact packets in the "photoreal" graph domain, exportable to the QueryBook store.
+* **Object scan (Face & video):** recognizes 80 kinds of everyday object (people, cars, cups, phones, books,
+  animals…) in the camera, a shared screen or a video file, on this computer (MediaPipe Object Detector,
+  EfficientDet-Lite0, bundled, Apache 2.0). Each object is followed from frame to frame; click its box, or name a
+  kind, to follow it and see it enlarged. **Record the enlarged view** opens it in the analysis steps, so a face
+  far away (a telephoto lens on a phone) can be lip-read — only with the box ticked that the person knows and
+  agrees, or that it is a public talk or broadcast; expect a few words from a short expected list, not
+  conversations. What was seen is saved as numbers only (what, when, how sure, where in the picture), never as
+  pictures, and is kept apart from facts. Ask about it by typing or voice, here or in Ask by voice: "what is
+  this in Spanish?", "when did I last see a cup?", "did I see a dog today?", "how many people did I see
+  yesterday?", "what did I see in session 3?".
 * **Silent questions:** a question mouthed without sound is matched against the questions QueryBook
   answers (pattern by pattern, with known words and language names in the gaps); the best readings and
   their look-alike words are offered to tap. Guided mode: tap the question and language, mouth the word.
@@ -289,7 +299,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
 python tools/test_commons.py         # the shared database and the three teams, end to end (38 checks)
-python language/app.py --selftest     # 166 checks
+python language/app.py --selftest     # 174 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
 python tools/run_all_tests.py         # all of the above

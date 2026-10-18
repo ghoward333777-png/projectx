@@ -830,6 +830,9 @@ class SpeechLab:
                 f = vocab.forms(l, w)
                 out.append(f[0] if f else "[%s]" % w)
             return "In %s: %s." % (m.group(2).capitalize(), " ".join(out))
+        seen = self.scan.answer(text) if getattr(self, "scan", None) else None      # questions about what the camera saw
+        if seen:
+            return seen["answer"]
         known = sum(1 for w in sem["words"] if w["known_to_builder"])
         return "I heard %d words in %s; I know %d of them. Ask me what a word means, or how to say a word in another language." % (
             len(sem["words"]), sem["language_name"], known)

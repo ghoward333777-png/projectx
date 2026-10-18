@@ -28,6 +28,7 @@ import persona
 import photoreal
 import silent
 import lipread
+import objscan
 import tts
 import visemes
 import verify
@@ -35,7 +36,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.13.0"
+VERSION = "1.14.0"
 PORT = 8101
 program_dir = HERE
 
@@ -69,7 +70,7 @@ CREATE TABLE custom_pairs (
 );
 INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
   SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
-""", lab.SCHEMA, speechlab.SCHEMA, lipcoach.SCHEMA, persona.SCHEMA, photoreal.SCHEMA]
+""", lab.SCHEMA, speechlab.SCHEMA, lipcoach.SCHEMA, persona.SCHEMA, photoreal.SCHEMA, objscan.SCHEMA]
 
 
 def today():
@@ -99,6 +100,7 @@ class App:
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
+        self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -822,6 +824,30 @@ class App:
                 return visemes.rhubarb_tsv(tr).encode("utf-8"), "text/tab-separated-values; charset=utf-8"
             return json.dumps(tr, indent=1, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8"
 
+        @a.post("/api/scan/save")
+        def scan_save(p):
+            try:
+                return self.scan.save(p)
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.get("/api/scan/sessions")
+        def scan_sessions(p):
+            return {"sessions": self.scan.sessions(), "stats": self.scan.stats()}
+
+        @a.post("/api/scan/delete")
+        def scan_delete(p):
+            return self.scan.delete(int(p.get("id")))
+
+        @a.post("/api/scan/query")
+        def scan_query(p):
+            r = self.scan.answer(p.get("q"), int(p.get("tz_min") or 0), p.get("live"))
+            return r or {"kind": "none", "answer": "Ask about what the camera saw — for example: when did I last see a cup? what did I see today? what is this in Spanish?"}
+
+        @a.post("/api/scan/what")
+        def scan_what(p):
+            return self.scan.what_is(p.get("label"), p.get("score"), p.get("lang"))
+
         @a.post("/api/video/analyse")
         def video_analyse(p):
             return self.speech.video_analysis(p)
@@ -1292,6 +1318,20 @@ def selftest():
     with tempfile.TemporaryDirectory() as tmp:
         clock = {"d": "2026-10-16"}
         app = App(os.path.join(tmp, "data"), clock=lambda: clock["d"])
+        # object scan: observations saved as numbers, questions answered from them
+        sv = app.scan.save({"label": "test walk", "source": "camera", "started": "2026-10-18T09:00:00Z", "seconds": 60, "frames": 600,
+                            "tracks": [{"label": "cup", "first_s": 2, "last_s": 9.5, "frames": 70, "score": 0.82, "box": [.1, .2, .1, .1]},
+                                       {"label": "person", "first_s": 0, "last_s": 50, "frames": 400, "score": 0.9, "followed": True},
+                                       {"label": "dog", "first_s": 1, "last_s": 1.1, "frames": 2, "score": 0.5}]})
+        c.check("Object scan: a scan is saved without one-frame glimpses", sv["objects"] == 2 and sv["summary"] == "1 cup, 1 person", sv)
+        qa = lambda q: (app.scan.answer(q, 0, {"label": "cup", "score": 0.8}) or {}).get("answer", "")
+        c.check("Object scan: when did I last see a mug (synonym)", "from 2.0 s to 9.5 s" in qa("When did I last see a mug?"), qa("When did I last see a mug?"))
+        c.check("Object scan: what did I see in session N", qa("what did I see in session %d" % sv["session_id"]).endswith("1 cup, 1 person."))
+        c.check("Object scan: no record is said plainly", qa("did I see a dog") == "No, I have no dogs on record.")
+        c.check("Object scan: what is this in Spanish", qa("what is this in Spanish") == "That looks like a cup (80% sure). In Spanish: taza or copa.", qa("what is this in Spanish"))
+        c.check("Object scan: unrelated questions are left to the other answers", app.scan.answer("how do you say dog in French") is None)
+        c.check("Object scan: questions reach Ask by voice", "cup" in app.speech._answer("when did I last see a cup", {"words": [], "language_name": "English"}))
+        c.check("Object scan: detector model bundled", os.path.getsize(os.path.join(HERE, "ui", "vendor", "mediapipe", "efficientdet_lite0.tflite")) > 4000000)
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         app.set_settings("es", 5)
