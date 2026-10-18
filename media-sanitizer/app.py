@@ -5,6 +5,7 @@
   python3 app.py presets                           list presets
   python3 app.py validate                          check config/*.json
   python3 app.py probe FILE                        JSON metadata summary
+  python3 app.py inspect PATH [--json]             what identifying data is in a file, and where
   python3 app.py run PATH... [--preset P] [--out DIR] [--report FILE]
   python3 app.py job SPEC.json                     run a JSON job spec
 """
@@ -15,7 +16,8 @@ import os
 import sys
 
 from sanitizer.config import ConfigError, load_presets, load_settings
-from sanitizer.engine import sanitize
+from sanitizer.engine import describe, sanitize
+from sanitizer.inspect import inspect
 from sanitizer.files import collect_media
 from sanitizer.probe import probe
 
@@ -52,6 +54,9 @@ def main(argv=None):
     sub.add_parser("validate", help="validate config files")
     p = sub.add_parser("probe", help="print a file's metadata as JSON")
     p.add_argument("file")
+    p = sub.add_parser("inspect", help="report metadata, provenance, encoder strings and overlays with locations")
+    p.add_argument("paths", nargs="+")
+    p.add_argument("--json", action="store_true", help="full JSON instead of a summary")
     p = sub.add_parser("run", help="sanitize files and/or folders")
     p.add_argument("paths", nargs="+")
     p.add_argument("--preset")
@@ -75,6 +80,24 @@ def main(argv=None):
             print(f"{name:20} {cfg['description']}")
     elif args.command == "probe":
         print(json.dumps(probe(args.file, settings["ffprobe"]), indent=2))
+    elif args.command == "inspect":
+        results = []
+        for path in collect_media(args.paths, settings):
+            result = dict(inspect(path, probe(path, settings["ffprobe"]), settings), path=path)
+            results.append(result)
+            if not args.json:
+                print(path)
+                for f in result["findings"]:
+                    print("  - " + describe(f))
+                if not result["findings"]:
+                    print("  nothing found")
+                print(f"  overlay check: {result['overlay_check']}")
+        if args.json:
+            print(json.dumps({"inspections": results}, indent=2))
+        else:
+            print("\nNot checkable from the file alone:")
+            for line in results[0]["not_checked"] if results else []:
+                print("  * " + line)
     elif args.command == "serve":
         from sanitizer.server import serve
         httpd, _ = serve(settings, presets, args.host, args.port)

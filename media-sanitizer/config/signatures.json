@@ -1,0 +1,18 @@
+{
+  "_comment": "Byte patterns the inspector searches for. 'text' is matched literally, 'hex' as raw bytes. Add your own (e.g. a studio or tool name) - category is free text.",
+  "signatures": [
+    {"name": "XMP packet", "text": "<x:xmpmeta", "category": "metadata"},
+    {"name": "XMP namespace", "text": "http://ns.adobe.com/xap/1.0/", "category": "metadata"},
+    {"name": "C2PA / JUMBF manifest", "text": "c2pa", "category": "provenance"},
+    {"name": "JUMBF box", "text": "jumd", "category": "provenance"},
+    {"name": "ID3v2 tag", "hex": "4944330300", "category": "metadata"},
+    {"name": "ID3v2.4 tag", "hex": "4944330400", "category": "metadata"},
+    {"name": "x264 encoder settings (H.264 SEI)", "text": "x264 - core", "category": "encoder"},
+    {"name": "x265 encoder settings (HEVC SEI)", "text": "x265 (build", "category": "encoder"},
+    {"name": "HandBrake", "text": "HandBrake", "category": "encoder"},
+    {"name": "Adobe software", "text": "Adobe ", "category": "encoder"},
+    {"name": "DaVinci Resolve", "text": "DaVinci", "category": "encoder"},
+    {"name": "Apple encoder", "text": "com.apple.quicktime", "category": "metadata"},
+    {"name": "GPS location (QuickTime)", "hex": "a978797a", "category": "metadata"}
+  ]
+}

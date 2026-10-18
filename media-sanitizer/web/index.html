@@ -58,6 +58,8 @@
   a { color: var(--accent); }
   .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
   .head h2 { font-size: 16px; margin: 0; }
+  .findings { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
+  .finding-block { margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -84,9 +86,11 @@
     <div class="row" style="margin-top:12px">
       <label>Or sanitize a file or folder already on this machine
         <input id="localPath" type="text" placeholder="/home/me/Videos/exports"></label>
+      <button id="inspectPath">Inspect only</button>
       <button id="queuePath" class="primary">Queue path</button>
     </div>
     <div id="formErr" class="err"></div>
+    <div id="inspectOut"></div>
   </section>
 
   <section class="panel">
@@ -175,6 +179,26 @@ drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' '
 drop.addEventListener('drop', (e) => [...e.dataTransfer.files].forEach(upload));
 $('picker').addEventListener('change', (e) => { [...e.target.files].forEach(upload); e.target.value = ''; });
 $('preset').addEventListener('change', showDesc);
+$('inspectPath').addEventListener('click', async () => {
+  $('formErr').textContent = '';
+  const path = $('localPath').value.trim();
+  if (!path) return;
+  $('inspectOut').innerHTML = '<p class="muted">Inspecting…</p>';
+  try {
+    const data = await api('/api/inspect', {method: 'POST', body: JSON.stringify({path})});
+    $('inspectOut').innerHTML = data.inspections.map((r) => `
+      <div class="finding-block"><strong>${esc(base(r.path))}</strong>
+        <span class="muted">· overlay check: ${esc(r.overlay_check)}</span>
+        ${findingList(r.summary, 'Nothing found.')}</div>`).join('') +
+      (data.inspections.length ? `<p class="muted">${data.inspections[0].not_checked.map(esc).join('<br>')}</p>` : '');
+  } catch (e) { $('inspectOut').innerHTML = ''; $('formErr').textContent = e.message; }
+});
+
+function findingList(items, empty) {
+  if (!items || !items.length) return `<div class="muted">${empty}</div>`;
+  return `<ul class="findings">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
+}
+
 $('queuePath').addEventListener('click', async () => {
   $('formErr').textContent = '';
   const path = $('localPath').value.trim();
@@ -204,6 +228,7 @@ async function refresh() {
         <div class="muted">removed ${rm.format_tags.length} file tags, ${streamTags} stream tags,
         ${rm.chapters} chapters, ${rm.dropped_streams.length} data streams</div>
         ${r.notes.map((n) => `<div class="muted">${esc(n)}</div>`).join('')}
+        <details><summary class="muted">Found in source (${(r.found_in_source || []).length})</summary>${findingList(r.found_in_source, 'Nothing found.')}</details>
         <details data-id="${j.id}" ${openDetails.has(j.id) ? 'open' : ''}><summary class="muted">JSON report</summary><pre>loading…</pre></details>`;
     } else if (j.error) {
       result = `<div class="err">${esc(j.error)}</div>`;

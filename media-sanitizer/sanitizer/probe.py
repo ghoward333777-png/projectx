@@ -25,6 +25,8 @@ def probe(path, ffprobe="ffprobe"):
                 "index": s.get("index"),
                 "codec_type": s.get("codec_type", ""),
                 "codec_name": s.get("codec_name", ""),
+                "width": s.get("width"),
+                "height": s.get("height"),
                 "tags": s.get("tags", {}),
                 "side_data": [d.get("side_data_type", "") for d in s.get("side_data_list", [])],
             }

@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sanitizer.commands import build_command, output_path_for  # noqa: E402
 from sanitizer.config import load_presets, load_settings, validate_preset  # noqa: E402
-from sanitizer.engine import compare, sanitize  # noqa: E402
+from sanitizer.engine import compare, describe, sanitize  # noqa: E402
+from sanitizer.inspect import container_findings, inspect, load_signatures, scan_signatures  # noqa: E402
 from sanitizer.probe import probe  # noqa: E402
 
 HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
@@ -59,6 +60,33 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(output_path_for("/x/clip.mov", "/o", self.presets["lossless_sanitize"]), "/o/clip_clean.mov")
 
 
+class InspectTests(unittest.TestCase):
+    def test_signature_scan_reports_offsets_across_chunk_boundaries(self):
+        with tempfile.NamedTemporaryFile(delete=False) as fh:
+            fh.write(b"\0" * 14 + b"x264 - core 1" + b"\0" * 50 + b"<x:xmpmeta")
+        try:
+            hits = {h["name"]: h for h in scan_signatures(fh.name, load_signatures(), chunk=16)}
+            self.assertEqual(hits["x264 encoder settings (H.264 SEI)"]["offsets"], [14])
+            self.assertEqual(hits["XMP packet"]["offsets"], [77])
+        finally:
+            os.remove(fh.name)
+
+    def test_c2pa_uuid_box_and_wav_chunks_are_located(self):
+        import struct
+        c2pa = bytes.fromhex("d8fec3d61b0e483c92975828877ec481")
+        mp4 = struct.pack(">I4s", 16, b"ftyp") + b"isom\0\0\0\0" + struct.pack(">I4s", 28, b"uuid") + c2pa + b"jumb"
+        wav = b"RIFF" + struct.pack("<I", 4 + 18) + b"WAVE" + b"bext" + struct.pack("<I", 10) + b"originator"
+        for data, expect in ((mp4, ("C2PA content credentials manifest", 16)), (wav, ("bext", 12))):
+            with tempfile.NamedTemporaryFile(delete=False) as fh:
+                fh.write(data)
+            try:
+                f = container_findings(fh.name)[0]
+                self.assertIn(expect[0], (f["name"], f["box"]))
+                self.assertEqual(f["offset"], expect[1])
+            finally:
+                os.remove(fh.name)
+
+
 class CompareTests(unittest.TestCase):
     def test_technical_and_generic_encoder_tags_do_not_fail(self):
         before = {"format_tags": {"title": "t", "encoder": "Studio 3"}, "chapters": 2,
@@ -94,6 +122,7 @@ class IntegrationTests(unittest.TestCase):
         cls.settings = load_settings()
         cls.settings["workspace"] = os.path.join(cls.tmp, "ws")
         cls.settings["default_output_dir"] = os.path.join(cls.tmp, "ws", "out")
+        cls.settings["inspection"] = dict(cls.settings["inspection"], visual_overlays=False)
         cls.presets = load_presets()
 
     @classmethod
@@ -108,6 +137,32 @@ class IntegrationTests(unittest.TestCase):
             after = probe(report["output"])
             self.assertNotIn("title", after["format_tags"])
             self.assertTrue(any(s["codec_type"] == "video" for s in after["streams"]), name)
+            self.assertEqual(report["inspection"]["after"]["findings"], [], name)
+        source = {f["name"] for f in report["inspection"]["before"]["findings"]}
+        self.assertTrue({"title", "x264 encoder settings (H.264 SEI)"} <= source)
+
+    def test_audio_only_formats_come_out_clean(self):
+        for ext, codec in (("mp3", "libmp3lame"), ("wav", "pcm_s16le")):
+            src = os.path.join(self.tmp, "in", "tone." + ext)
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=duration=1",
+                            "-c:a", codec, "-metadata", "title=Studio", src], check=True)
+            before = inspect(src, probe(src), self.settings)["findings"]
+            self.assertTrue(before, ext)
+            report = sanitize(src, os.path.join(self.tmp, "audio"), "lossless_sanitize", self.presets, self.settings)
+            self.assertEqual(report["verdict"], "clean", (ext, report["notes"]))
+
+    def test_burned_in_logo_is_located(self):
+        src = os.path.join(self.tmp, "in", "logo.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25:duration=4",
+                        "-vf", "drawbox=x=540:y=20:w=80:h=40:color=white:t=fill,"
+                               "drawbox=x=550:y=28:w=60:h=24:color=black:t=4",
+                        "-c:v", "libx264", src], check=True)
+        settings = dict(self.settings, inspection=dict(self.settings["inspection"], visual_overlays=True))
+        result = inspect(src, probe(src), settings)
+        boxes = [f["box"] for f in result["findings"] if f["kind"] == "overlay"]
+        self.assertTrue(any(b["x"] <= 540 and b["y"] <= 20 and b["x"] + b["w"] >= 620 and b["y"] + b["h"] >= 60
+                            for b in boxes), boxes)
+        self.assertTrue(any("top-right" in describe(f) for f in result["findings"]))
 
     def test_server_round_trip(self):
         from sanitizer.server import serve

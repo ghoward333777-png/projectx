@@ -39,7 +39,19 @@ def _audio_args(audio):
     return args
 
 
-def build_command(input_path, output_path, preset, ffmpeg="ffmpeg", progress=True):
+# H.264 SEI (NAL type 6) carries user data such as the encoder's name, build and
+# settings string. Dropping it also drops in-band captions and recovery-point hints.
+SEI_FILTER = {"h264": "filter_units=remove_types=6"}
+
+
+def _output_video_codec(preset, source_video_codec):
+    video = preset.get("video") or {}
+    if preset.get("reencode"):
+        return {"libx264": "h264"}.get(video.get("codec"), video.get("codec"))
+    return source_video_codec
+
+
+def build_command(input_path, output_path, preset, ffmpeg="ffmpeg", progress=True, source_video_codec=None):
     container = preset.get("container", "source")
     target = container if container != "source" else os.path.splitext(output_path)[1].lstrip(".").lower()
     reencode = bool(preset.get("reencode"))
@@ -67,10 +79,15 @@ def build_command(input_path, output_path, preset, ffmpeg="ffmpeg", progress=Tru
     else:
         args += ["-c:v", "copy", "-c:a", "copy"]
 
+    bsf = SEI_FILTER.get(_output_video_codec(preset, source_video_codec))
+    if preset.get("strip_encoder_info", True) and bsf:
+        args += ["-bsf:v", bsf]
     if keep_subs:
         args += ["-c:s", "mov_text" if target in ("mp4", "m4v", "mov") else "copy"]
     if preset.get("faststart") and target in ("mp4", "m4v", "mov", "m4a"):
         args += ["-movflags", "+faststart"]
+    if target == "mp3":  # the mp3 muxer writes an (empty) ID3v2 header by default
+        args += ["-id3v2_version", "0", "-write_id3v1", "0"]
     if progress:
         args += ["-progress", "pipe:1", "-nostats"]
     args.append(output_path)

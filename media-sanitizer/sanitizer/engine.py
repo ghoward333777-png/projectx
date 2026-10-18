@@ -7,6 +7,7 @@ import tempfile
 import time
 
 from .commands import build_command, output_path_for
+from .inspect import inspect
 from .probe import exiftool_tags, probe
 
 
@@ -59,6 +60,20 @@ def compare(before, after, technical_tags):
     }
 
 
+def describe(finding):
+    """One-line human description of an inspection finding, including where it is."""
+    f = finding
+    if f["kind"] == "overlay":
+        b = f["box"]
+        where = f"{f['position']} of frame, x={b['x']} y={b['y']} {b['w']}x{b['h']}px"
+    elif f["kind"] == "signature":
+        where = "byte offset " + ", ".join(str(o) for o in f["offsets"]) + (" …" if f["count"] > len(f["offsets"]) else "")
+    else:
+        where = f"{f['box']} at byte {f['offset']}"
+    value = f" = {f['value']!r}" if f.get("value") else ""
+    return f"{f['name']}{value} [{f['category']}] - {where}"
+
+
 def sanitize(input_path, output_dir, preset_name, presets, settings, on_progress=None):
     """Process one file; returns the JSON report dict. Raises on failure."""
     preset = presets[preset_name]
@@ -69,7 +84,8 @@ def sanitize(input_path, output_dir, preset_name, presets, settings, on_progress
         raise ValueError("Output would overwrite the input; choose another folder or suffix.")
 
     before = probe(input_path, settings["ffprobe"])
-    cmd = build_command(input_path, output_path, preset, settings["ffmpeg"])
+    source_video = next((s["codec_name"] for s in before["streams"] if s["codec_type"] == "video"), None)
+    cmd = build_command(input_path, output_path, preset, settings["ffmpeg"], source_video_codec=source_video)
     duration_us = before["duration"] * 1_000_000
 
     with tempfile.TemporaryFile(mode="w+") as errlog:
@@ -102,6 +118,13 @@ def sanitize(input_path, output_dir, preset_name, presets, settings, on_progress
     if exif:
         report["verdict"] = "review"
         report["notes"].append("ExifTool still reports descriptive tags: " + ", ".join(exif))
+    report["inspection"] = {"before": inspect(input_path, before, settings),
+                            "after": inspect(output_path, after, settings)}
+    remaining = report["inspection"]["after"]["findings"]
+    if remaining:
+        report["verdict"] = "review"
+        for f in remaining:
+            report["notes"].append(f"Still present: {describe(f)}")
     if on_progress:
         on_progress(100)
     return report

@@ -12,11 +12,44 @@ job specs, job records and per-file reports.
 - Chapters
 - Data, timecode and attachment streams (only video, audio and optionally subtitles are kept)
 - ffmpeg's own version string (`-fflags +bitexact`)
+- The encoder's build-and-settings string inside the H.264 bitstream (SEI user data, for example
+  `x264 - core 164 r3108 … crf=18 …`). Set `"strip_encoder_info": false` on a preset to keep it.
+  Removing it also drops CEA-608/708 captions carried in SEI.
+- The empty ID3 header the MP3 muxer would otherwise write
 
 Then it re-probes the output and writes a before/after JSON report with a `clean` / `review` verdict.
 ffmpeg always writes a few structural fields (`major_brand`, `handler_name`, `language`, a
 versionless `Lavf`/`Lavc` label). These are listed in `technical_tags` and don't affect the verdict.
 If ExifTool is installed, the report also lists any descriptive tags it can still see.
+
+## Inspection: what is in a file, and where
+
+```bash
+python3 app.py inspect clip.mp4 ~/Videos/exports     # or --json
+```
+
+The web page has an **Inspect only** button, and every job report includes an inspection of both the
+source and the output (`inspection.before` / `inspection.after`). Anything still present in the output
+sets the verdict to `review` and gets a "Still present" note.
+
+| Finding | How it's located |
+|---|---|
+| MP4/MOV metadata items (title, artist, comment, encoding tool, GPS, XMP, …) | box path and byte offset, with the value, e.g. `/moov/udta/meta/ilst/©cmt at byte 29437` |
+| C2PA content-credential manifests, XMP `uuid` boxes, unknown `uuid` boxes | box path and byte offset |
+| WAV `LIST`/`bext`/`iXML`/`id3`/XMP chunks, MP3 ID3v1 | chunk and byte offset |
+| Byte signatures from `config/signatures.json` (XMP, C2PA/JUMBF, ID3, x264/x265 settings, editor names) | first byte offsets plus a total count. Add your own strings there |
+| Burned-in logos, bugs or text that stay fixed while the picture moves | position and pixel box, e.g. `top-right of frame, x=520 y=0 120x80px` |
+
+Visible overlays are reported, not removed. Taking one out means masking or inpainting it in an editor,
+and only do that where you have the rights. The overlay check samples 40 frames. It reports
+"too static" for still or near-still video, and it also flags genuinely static parts of the picture
+(UI chrome, letterbox edges), so treat its hits as places to look. Matroska/WebM files get the
+signature scan but not a structural parse.
+
+**What it cannot see:** invisible watermarks (SynthID-, AudioSeal- or Digimarc-style) are spread
+imperceptibly through the whole picture or waveform. They have no location to report, and only the
+issuing vendor's detector can confirm one. Nothing in this tool detects or removes them, and
+re-encoding does not reliably remove them either.
 
 ## Requirements
 
@@ -53,6 +86,7 @@ python3 app.py job job.example.json                      # same thing, driven by
 |---|---|
 | `config/settings.json` | host/port, workspace, default output dir, suffix, accepted extensions, binary paths, technical-tag allowlist, `allowed_input_roots` |
 | `config/presets.json` | the presets; add one by adding an object, nothing else to change |
+| `config/signatures.json` | byte patterns the inspector searches for (`text` or `hex`, with a category) |
 | `job.example.json` | batch spec for `app.py job` |
 | `workspace/jobs/<id>.json` | one record per web job (status, progress, error, report); reloaded on restart |
 | report (inside each job, or `--report`) | `before`/`after` probes, `removed`, `remaining`, `verdict`, `notes`, exact ffmpeg `command` |
@@ -69,7 +103,8 @@ python3 app.py job job.example.json                      # same thing, driven by
   "audio": {"codec": "aac|libopus|flac|pcm_s16le|pcm_s24le|libmp3lame|copy", "bitrate": "192k",
             "sample_rate": 48000, "loudnorm": {"I": -14, "TP": -1, "LRA": 11}},
   "faststart": true,
-  "keep_subtitles": false
+  "keep_subtitles": false,
+  "strip_encoder_info": true
 }
 ```
 
@@ -91,6 +126,7 @@ Shipped presets: `youtube_ready`, `mobile`, `archive` (FFV1 + FLAC), `master` (P
 | GET | `/api/jobs`, `/api/jobs/<id>` | job list (light) / full job with report |
 | GET | `/api/download/<id>` | the sanitized file |
 | POST | `/api/probe` | `{"path": file-or-folder}` → probes |
+| POST | `/api/inspect` | `{"path": file-or-folder}` → findings with locations, plus a readable `summary` |
 | POST | `/api/jobs/clear` | removes finished job records |
 
 ## Security note
@@ -112,6 +148,7 @@ media. Removing metadata doesn't change whether that disclosure applies.
 python3 -m unittest discover -s tests -v
 ```
 
-Unit tests cover config validation, command building and report diffing. Integration tests
-(skipped without ffmpeg) generate a tagged sample, run every preset, and check for a `clean`
-verdict. They also run the HTTP upload → job → download flow.
+Unit tests cover config validation, command building, report diffing, signature offsets and
+C2PA/WAV chunk location. Integration tests (skipped without ffmpeg) run every preset on a tagged
+sample and check that nothing is left. They also check MP3/WAV come out clean, that a burned-in
+logo is located, and the HTTP upload → job → download flow.

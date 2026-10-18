@@ -13,6 +13,8 @@ from . import __version__
 from .config import APP_ROOT
 from .files import collect_media, safe_filename
 from .jobs import JobStore
+from .engine import describe
+from .inspect import inspect
 from .probe import probe
 
 WEB_DIR = os.path.join(APP_ROOT, "web")
@@ -87,7 +89,9 @@ def make_handler(settings, presets, store):
                     jobs = store.list()
                     for j in jobs:  # list view stays light; full report via /api/jobs/<id>
                         if j["report"]:
+                            found = j["report"].get("inspection", {}).get("before", {}).get("findings", [])
                             j["report"] = {k: j["report"][k] for k in ("output", "verdict", "notes", "removed")}
+                            j["report"]["found_in_source"] = [describe(f) for f in found]
                     return self.send_json({"jobs": jobs})
                 if len(parts) == 3 and parts[:2] == ["api", "jobs"]:
                     job = store.get(parts[2])
@@ -113,6 +117,14 @@ def make_handler(settings, presets, store):
                 if url.path == "/api/probe":
                     paths = collect_media([body["path"]], settings)
                     return self.send_json({"probes": [probe(p, settings["ffprobe"]) for p in paths]})
+                if url.path == "/api/inspect":
+                    results = []
+                    for p in collect_media([body["path"]], settings):
+                        info = probe(p, settings["ffprobe"])
+                        result = inspect(p, info, settings)
+                        result["summary"] = [describe(f) for f in result["findings"]]
+                        results.append(dict(result, path=p))
+                    return self.send_json({"inspections": results})
                 if url.path == "/api/jobs/clear":
                     return self.send_json({"cleared": store.clear_finished()})
                 return self.send_error_json(404, "Not found")
