@@ -1,0 +1,19 @@
+# lip_reading — GPU defaults (A100/H100 class). For a CPU smoke run use the script's --tiny flag.
+name: lip_reading
+device: cuda
+checkpoint_dir: checkpoints
+log_every: 50
+eval_every: 2000
+model:
+  dim: 256
+  layers: 6
+  heads: 4
+data:
+  train_manifest: data/manifests/lip_reading_train.jsonl
+  val_manifest: data/manifests/lip_reading_val.jsonl
+  batch_size: 32
+  video_fps: 30
+optim:
+  lr: 0.0003
+  warmup_steps: 2000
+  max_steps: 200000

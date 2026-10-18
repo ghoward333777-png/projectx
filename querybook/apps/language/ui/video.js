@@ -20,7 +20,7 @@ async function tracker() {
     const vision = await import("./vendor/mediapipe/vision_bundle.mjs");
     const files = await vision.FilesetResolver.forVisionTasks("vendor/mediapipe/wasm");
     const opts = d => ({ baseOptions: { modelAssetPath: "vendor/mediapipe/face_landmarker.task", delegate: d },
-      outputFaceBlendshapes: true, runningMode: "VIDEO", numFaces: 1 });
+      outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true, runningMode: "VIDEO", numFaces: 1 });
     let lm;
     try { lm = await vision.FaceLandmarker.createFromOptions(files, opts("GPU")); }
     catch (e) { lm = await vision.FaceLandmarker.createFromOptions(files, opts("CPU")); }
@@ -53,13 +53,71 @@ function measureFrame(res, video, t) {
   const cats = res.faceBlendshapes && res.faceBlendshapes[0] ? res.faceBlendshapes[0].categories : [];
   cats.forEach(c => { if (/^(mouth|jaw|brow|cheek|noseSneer|eyeSquint|eyeWide|eyeBlink)/.test(c.categoryName)) f.bs[c.categoryName] = Math.round(c.score * 1000) / 1000; });
   f.light = VD.lastLight;
+  // Visual Speech Engine: head pose from the face transformation matrix (degrees; translation in cm) and framing
+  const M = res.facialTransformationMatrixes && res.facialTransformationMatrixes[0];
+  if (M && M.data && M.data.length >= 16) {
+    const m = M.data, r2 = v => Math.round(v * 10) / 10, deg = 180 / Math.PI;
+    f.pose = [r2(Math.atan2(-m[2], Math.hypot(m[6], m[10])) * deg), r2(Math.atan2(m[6], m[10]) * deg), r2(Math.atan2(m[1], m[0]) * deg), r2(m[12]), r2(m[13]), r2(m[14])];
+  }
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  L.forEach(q => { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); });
+  f.box = [Math.round(1e4 * (x0 + x1) / 2) / 1e4, Math.round(1e4 * (y0 + y1) / 2) / 1e4, Math.round(1e4 * (y1 - y0)) / 1e4];
   f._L = L;
   return f;
 }
 
 // Face brightness: the face box scaled down to 24×24, mean luma (every few frames; cheap).
 const lightCanvas = document.createElement("canvas"); lightCanvas.width = lightCanvas.height = 24;
-function sampleLight(video, L) {
+// Points spread over the face for the lighting estimate, and stable point pairs for the geometric fingerprint.
+const SH_POINTS = [10, 151, 9, 8, 168, 6, 197, 195, 5, 4, 1, 19, 94, 2, 164, 0, 17, 18, 200, 199, 175, 152, 234, 454, 93, 323, 132, 361, 58, 288,
+  172, 397, 136, 365, 150, 379, 149, 378, 176, 400, 50, 280, 101, 330, 118, 347, 123, 352, 205, 425, 36, 266, 142, 371, 67, 297, 109, 338, 103, 332];
+const GEO_PAIRS = [[33, 263], [133, 362], [1, 152], [10, 152], [1, 10], [234, 454], [61, 291], [2, 0], [33, 61], [263, 291], [105, 334],
+  [1, 234], [1, 454], [152, 234], [152, 454], [98, 327], [168, 1], [70, 300], [132, 361], [58, 288]];
+const shCanvas = document.createElement("canvas"); shCanvas.width = shCanvas.height = 64;
+
+// First-order spherical-harmonics light (4 numbers: ambient, then left-right, up-down, front) fitted by least squares to
+// the face's brightness at SH_POINTS, with normals from the face mesh (points relative to the face centre). Approximate.
+function lightingSH(video, L) {
+  const W = video.videoWidth, H = video.videoHeight;
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0, cx = 0, cy = 0, cz = 0;
+  L.forEach(p => { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); cx += p.x; cy += p.y; cz += p.z; });
+  cx /= L.length; cy /= L.length; cz /= L.length;
+  const g = shCanvas.getContext("2d", { willReadFrequently: true });
+  g.drawImage(video, x0 * W, y0 * H, Math.max(1, (x1 - x0) * W), Math.max(1, (y1 - y0) * H), 0, 0, 64, 64);
+  const d = g.getImageData(0, 0, 64, 64).data;
+  const A = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], b = [0, 0, 0, 0];
+  SH_POINTS.forEach(i => {
+    const p = L[i]; if (!p) return;
+    const px = Math.min(63, Math.max(0, Math.round((p.x - x0) / ((x1 - x0) || 1) * 63))), py = Math.min(63, Math.max(0, Math.round((p.y - y0) / ((y1 - y0) || 1) * 63)));
+    const k = (py * 64 + px) * 4, lum = (0.2126 * d[k] + 0.7152 * d[k + 1] + 0.0722 * d[k + 2]) / 255;
+    let nx = (p.x - cx) * W, ny = (p.y - cy) * H, nz = -(p.z - cz) * W - 0.35 * (x1 - x0) * W;   // facing the camera
+    const nn = Math.hypot(nx, ny, nz) || 1; nx /= nn; ny /= -nn; nz /= nn;   // x right, y up, z toward the camera
+    const r = [1, nx, ny, nz];
+    for (let u = 0; u < 4; u++) { b[u] += r[u] * lum; for (let v = 0; v < 4; v++) A[u][v] += r[u] * r[v]; }
+  });
+  for (let u = 0; u < 4; u++) A[u][u] += 1e-3;
+  for (let c = 0; c < 4; c++) {                                   // Gaussian elimination
+    let piv = c; for (let r = c + 1; r < 4; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
+    for (let r = 0; r < 4; r++) if (r !== c) { const k = A[r][c] / A[c][c]; for (let v = c; v < 4; v++) A[r][v] -= k * A[c][v]; b[r] -= k * b[c]; }
+  }
+  return b.map((v, i) => Math.round(1000 * v / A[i][i]) / 1000);
+}
+
+// Geometric identity fingerprint: distances between stable points ÷ the distance between the outer eye corners.
+function geoPrint(L, W, H) {
+  const dd = (a, c) => Math.hypot((L[a].x - L[c].x) * W, (L[a].y - L[c].y) * H);
+  const io = dd(33, 263) || 1;
+  return GEO_PAIRS.slice(1).map(([a, c]) => Math.round(1e4 * dd(a, c) / io) / 1e4);
+}
+
+function sampleLight(video, L, f) {
+  try {
+    if (f) {
+      f.sh = lightingSH(video, L);
+      if (f.gap !== undefined && f.gap < 0.12 && Math.abs(f.yaw || 0) < 15) f.geo = geoPrint(L, video.videoWidth, video.videoHeight);
+    }
+  } catch (e) { /* not ready */ }
   try {
     const W = video.videoWidth, H = video.videoHeight;
     let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
@@ -251,7 +309,7 @@ async function trackVideo(v, onProgress) {
           const res = lm.detectForVideo(v, d0);
           detMs = detMs ? 0.8 * detMs + 0.2 * (performance.now() - d0) : performance.now() - d0;
           const f = measureFrame(res, v, t);
-          if (f.face && n++ % 5 === 0) sampleLight(v, f._L);
+          if (f.face && n++ % 5 === 0) sampleLight(v, f._L, f);
           if (v === $("#vd-video")) drawOverlay(v, f);
           delete f._L; frames.push(f); times.push(t);
         } catch (e) { reject(e); return; }
@@ -315,6 +373,7 @@ function vdShow(r, note) {
   if (r.lipread) h += '<h3>Lip-reading</h3><p><b>' + esc(r.lipread.text || "(nothing readable)") + '</b></p><p class="small muted">' + esc(r.lipread.note) + " Vocabulary: " + r.lipread.vocabulary_size + " words in " + r.lipread.look_alike_groups + " look-alike groups.</p>" +
     r.lipread.segments.map(s => '<div class="small"><b>' + s.from_s.toFixed(2) + "–" + s.to_s.toFixed(2) + " s</b> (confidence " + Math.round(100 * s.confidence) + "%): " +
       s.words.map(w => "<b>" + esc(w.word) + "</b>" + (w.same_on_lips.length ? ' <span class="muted">(or ' + esc(w.same_on_lips.slice(0, 4).join(", ")) + ")</span>" : "")).join(" · ") + "</div>").join("");
+  if (window.vseRender) h += vseRender(r);
   if (r.stages) h += '<details><summary class="small">Timing of every stage (to 0.01 s)</summary>' + stagesTable(r.stages.stages, r.stages.seconds) + "</details>";
   $("#vd-out").innerHTML = h;
 }

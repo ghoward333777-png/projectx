@@ -29,6 +29,7 @@ import photoreal
 import silent
 import lipread
 import objscan
+import vse
 import tts
 import visemes
 import verify
@@ -36,7 +37,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.14.0"
+VERSION = "1.15.0"
 PORT = 8101
 program_dir = HERE
 
@@ -95,12 +96,13 @@ class App:
         self.store = core.Store(folder, APP_ID, SCHEMA, self.log)
         self.jobs = core.Jobs(self.log, self.store)
         self.lab = lab.Lab(self.store, self.log)
-        self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify, "import-keys": self._cli_import_keys}
+        self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify, "import-keys": self._cli_import_keys, "vse-bench": self._cli_vse_bench}
         self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
+        self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -113,6 +115,12 @@ class App:
         except Exception as e:
             self.log("startup backup failed:", e)
         threading.Thread(target=self._warm, daemon=True).start()
+
+    def _cli_vse_bench(self, args):
+        """python app.py vse-bench — measure the Visual Speech Engine against lip-reading v1 and print the report."""
+        r = self.vse.benchmark_job()(lambda d, t=None, m="": print("\r  %s/%s %s" % (d, t, m[:60]), end="", flush=True))
+        print("\n" + json.dumps(r, indent=2))
+        return 0
 
     # ------------------------------------------------------------------ building the languages (admin, automatic)
     BUILD_JOB = "Build all languages"
@@ -848,6 +856,56 @@ class App:
         def scan_what(p):
             return self.scan.what_is(p.get("label"), p.get("score"), p.get("lang"))
 
+        @a.get("/api/vse/info")
+        def vse_info(p):
+            return {"version": vse.VERSION, "params": vse.PARAMS, "visemes": list(vse.TARGETS), "unit": vse.UNIT,
+                    "subsystems": {"APS": "phonemes, prosody, emotion, voice fingerprint", "VPS": "head pose, camera motion, lighting (SH1), face geometry",
+                                   "LSG/FMS": "coarticulated full-face motion (dominance model)", "LRE": "HMM word decoding / script alignment",
+                                   "COL": "jobs: lip_sync, lip_read, benchmark"},
+                    "learned_model_active": isinstance(lipread.ACTIVE.get("model"), dict)}
+
+        @a.post("/api/vse/lip_sync")
+        def vse_lip_sync(p):
+            text = (p.get("text") or "").strip()
+            wav = None
+            if p.get("audio_b64"):
+                wav = _audio(p)
+            elif p.get("log_id"):
+                row = self.store.one("SELECT request, result, audio FROM speech_log WHERE id = ?", (int(p["log_id"]),))
+                if not row or not row["audio"]:
+                    raise core.UserError("That speech log entry has no recording.")
+                with open(self.speech.audio_path(row["audio"]), "rb") as f:
+                    wav = f.read()
+                if not text:
+                    req = json.loads(row["request"] or "{}"); res = json.loads(row["result"] or "{}")
+                    text = req.get("text") or res.get("transcript") or ""
+            if not text:
+                raise core.UserError("Give the words that are spoken.")
+            if wav is not None and not voicedsp_is_wav(wav):
+                raise core.UserError("Send the audio as WAV (the page converts MP3 and other formats before sending).")
+            if wav is None:
+                tr = vse.timing_from_text(text, p.get("lang") or "en", self.lab)
+                return self.vse.submit("lip_sync", lambda prog: dict(vse.lip_sync(tr, None, p.get("emotion"), int(p.get("fps") or 30), seed=text),
+                                                                      note="timed from the text (no audio)"))
+            return self.vse.submit("lip_sync", self.vse.lip_sync_job(wav, text, p.get("lang") or "en", p.get("word_times"), int(p.get("fps") or 30),
+                                                                     p.get("emotion"), p.get("personal", True) not in (False, "false")))
+
+        @a.post("/api/vse/lip_read")
+        def vse_lip_read(p):
+            words = [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w] if isinstance(p.get("words"), str) else list(p.get("words") or [])
+            return self.vse.submit("lip_read", self.vse.lip_read_job(p.get("frames") or [], p.get("lang") or "en", words, p.get("script") or ""))
+
+        @a.post("/api/vse/benchmark")
+        def vse_benchmark(p):
+            return self.vse.submit("benchmark", self.vse.benchmark_job())
+
+        @a.get("/api/vse/job")
+        def vse_job(p):
+            try:
+                return self.vse.status(p.get("id") or "")
+            except KeyError:
+                raise core.UserError("No such job (jobs are kept while the application runs).")
+
         @a.post("/api/video/analyse")
         def video_analyse(p):
             return self.speech.video_analysis(p)
@@ -1474,7 +1532,52 @@ def selftest():
     _persona_selftest(c)
     _photoreal_selftest(c)
     _silent_selftest(c)
+    _vse_selftest(c)
     return c.report(APP_NAME)
+
+
+def _vse_selftest(c):
+    """Visual Speech Engine (stage 1): audio analysis, lip-sync motion, lip reading, face analysis, determinism."""
+    import voicedsp
+    wav = voicedsp.formant_wav(["pæt", "mɛt", "bʌb"])
+    a = vse.aps(wav, "pat met bob")
+    c.check("VSE audio: phoneme timeline with times", len(a["phonemes"]["phonemes"]) >= 6 and all(p["end_time"] > p["start_time"] for p in a["phonemes"]["phonemes"]))
+    c.check("VSE audio: prosody at 100 frames per second", abs(len(a["prosody"]["frames"]) - int(a["measure"]["analysed_s"] * 100)) <= 1)
+    c.check("VSE audio: 8-dimension emotion vector", all(k in a["emotion"] for k in vse.EMOTION_KEYS))
+    e1, e2 = a["speaker_embedding"], vse.speaker_embedding(voicedsp.formant_wav(["pæt", "mɛt", "bʌb"], f0=230.0))
+    c.check("VSE audio: voice fingerprint (same voice 1.0, a different pitch lower)", e1 and len(e1) == 50 and vse.cosine(e1, e1) > 0.999 and vse.cosine(e1, e2) < 0.999,
+            vse.cosine(e1, e2))
+    tr = vse.timing_from_text("bob you")
+    ls = vse.lip_sync(tr, None, None, fps=100, seed="t")
+    fr = ls["motion"]["frames"]
+    pp = [s_ for s_ in tr["visemes"] if s_["v"] == "PP"]
+    mid = lambda s_: fr[int((s_["start"] + s_["end"]) / 2 * 100)]["mouth"]
+    c.check("VSE lip sync: every p, b and m closes the lips", pp and all(mid(s_)[0] < 0.02 for s_ in pp), [round(mid(s_)[0], 3) for s_ in pp])
+    u = next(s_ for s_ in tr["visemes"] if s_["v"] == "U")
+    pk = vse.PARAMS.index("mouthPucker")
+    c.check("VSE lip sync: lips round ahead of 'oo' (coarticulation)", fr[int((u["start"] - 0.03) * 100)]["mouth"][pk] > 0.3 * vse.TARGETS["U"][pk])
+    c.check("VSE lip sync: deterministic", json.dumps(vse.lip_sync(tr, None, None, fps=100, seed="t")) == json.dumps(ls))
+    c.check("VSE lip sync: ARKit blendshape export", vse.arkit_csv(ls["motion"]).startswith("time_s,jawOpen,mouthClose"))
+    rnd = vse._rng("selftest")
+    spk = {"scale": 1.0, "offset": [0.0] * len(vse.PARAMS), "rate": 4.5, "noise": 0.02, "jitter": 0.0, "fps": 30}
+    frames, truth, _ = vse.synthetic_frames("please open the window", spk, rnd)
+    right = vse.lip_read(frames, "en", (), "please open the window")["script"]["agreement"]
+    wrong = vse.lip_read(frames, "en", (), "we love music and books")["script"]["agreement"]
+    c.check("VSE lip reading: the right script scores far above a wrong one", right >= 60 and right - wrong >= 30, (right, wrong))
+    got = vse.lip_read(frames, "en", ("please", "open", "the", "window"))["lipread"]["text"].split()
+    ok = sum(1 for w in got if w in ("please", "open", "the", "window"))
+    c.check("VSE lip reading: reads at least half the words of a clear clip", ok >= 2, got)
+    v = vse.vps([{"t": i / 30, "face": True, "pose": [5, -2, 1, 0, 0, -50], "box": [0.5, 0.5, 0.4], "sh": [0.6, 0.1, 0.05, 0.3],
+                  "geo": [1.0 + 0.001 * (i % 3)] * 19} for i in range(40)])
+    c.check("VSE face analysis: pose, camera, lighting, identity", v["head_pose_deg"]["yaw"]["mean"] == 5 and v["camera_motion"]["verdict"] == "steady"
+            and v["lighting_sh1"]["from"] == "front" and v["identity"]["same_face_throughout"] is True, v)
+    eng = vse.Engine()
+    j = eng.submit("lip_sync", lambda prog: vse.lip_sync(vse.timing_from_text("hello there"), fps=30))
+    for _ in range(200):
+        if eng.status(j["job_id"])["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.02)
+    c.check("VSE jobs: a lip-sync job runs in the background and completes", eng.status(j["job_id"])["status"] == "completed")
 
 
 def _coach_selftest(c):

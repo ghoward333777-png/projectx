@@ -1,0 +1,20 @@
+# Lip reader small enough to train on a CPU in minutes (synthetic pre-training demonstration).
+name: lip_reader_cpu
+device: cpu
+checkpoint_dir: checkpoints
+log_every: 100
+eval_every: 500
+model:
+  dim: 96
+  layers: 3
+  heads: 4
+  conv_kernel: 7
+  dropout: 0.1
+data:
+  batch_size: 16
+  num_workers: 0
+optim:
+  lr: 0.001
+  warmup_steps: 100
+  max_steps: 2500
+  amp: false

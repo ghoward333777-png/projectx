@@ -1,0 +1,16 @@
+[project]
+name = "visual-speech-engine"
+version = "0.1.0"
+description = "Visual Speech Engine, stage 2: trainable lip sync and lip reading models (PyTorch), compatible with QueryBook's stage-1 engine"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2", "numpy>=1.24", "pyyaml>=6.0", "fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2.0"]
+
+[project.optional-dependencies]
+video = ["mediapipe>=0.10"]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+include = ["vse*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

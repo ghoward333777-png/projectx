@@ -1,0 +1,10 @@
+torch>=2.2
+numpy>=1.24
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.0
+# optional
+# mediapipe>=0.10      face landmarks from video files (lip_read_pipeline.frames_from_video)
+# ffmpeg (system)      reading and writing audio/video other than WAV
+# pytest, httpx        tests

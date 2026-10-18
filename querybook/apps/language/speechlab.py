@@ -653,6 +653,18 @@ class SpeechLab:
         r = lipread.analyse(p.get("frames") or [], p.get("info") or {}, p.get("env") or None, int(p.get("env_fps") or 100),
                             p.get("script") or "", p.get("lang") or "en", [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w],
                             self.lab, p.get("read_lips", True) not in (False, "false"))
+        # the Visual Speech Engine reads the same frames (HMM word decoding over soft viseme scores) and sums up the face analysis
+        try:
+            import vse
+            frames = p.get("frames") or []
+            r["vps"] = vse.vps(frames)
+            if r.get("lipread") or (p.get("script") or "").strip():
+                learned = lipread.ACTIVE.get("model") if isinstance(lipread.ACTIVE.get("model"), dict) else None
+                r["vse"] = vse.lip_read(frames, p.get("lang") or "en", tuple(w for w in re.split(r"[\s,;]+", p.get("words") or "") if w),
+                                        p.get("script") or "", self.lab, learned)
+                clk("visual speech engine")
+        except Exception as e:
+            r["vse_error"] = str(e)
         bits = ["capture quality %d/100" % r["quality"]["score"]]
         if r.get("sync"):
             bits.append("sync: " + r["sync"].get("verdict", r["sync"].get("reason", "")))

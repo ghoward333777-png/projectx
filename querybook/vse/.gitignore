@@ -1,0 +1,4 @@
+checkpoints/
+data/manifests/*.jsonl
+__pycache__/
+*.pt

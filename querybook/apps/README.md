@@ -117,6 +117,23 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   frame by frame against what the author's mouth would do for the same words and released only if it
   passes the gate; the in-app face is calibrated in a closed loop until it does. Findings are UFCS 1.0
   fact packets in the "photoreal" graph domain, exportable to the QueryBook store.
+* **Visual Speech Engine (Face & video):** lip sync and lip reading rebuilt along the Visual Speech Engine
+  specification, without any AI model. *Audio:* sounds and their timing, pitch/energy/voicing/speaking rate at 100 per
+  second, an 8-number emotion vector and a voice fingerprint. *Face:* head pose (from the face mesh's transformation
+  matrix), camera steadiness, a first-order lighting estimate and a geometric "same face throughout?" check — numbers
+  only. *Lip sync:* every sound pulls the mouth toward its shape with a strength that fades in time (Cohen–Massaro
+  coarticulation), so neighbours blend, lips round ahead of "oo" and every p/b/m closes; plus jaw, brows and head
+  nods on stressed words, blinks and glances at pauses, scaled by the emotion; your own mouth shapes once the
+  reservoir has learned them. Exports ARKit-named blendshape curves (CSV) and JSON; a preview face plays it.
+  *Lip reading:* soft scores for all 15 mouth shapes (Gaussian models calibrated by analysis-by-synthesis, or your
+  learned model) decoded by a hidden-Markov word network with word-frequency priors; with a script, forced alignment
+  gives each word's timing and agreement. Results appear next to lip-reading v1 in "Analyse video". **Benchmark**
+  (button, or `python app.py vse-bench`): on 64 synthetic utterances (4 speakers, sentences the decoder was never tuned
+  on) the look-alike word error rate fell from 96% (v1) to 61%, exact words from 98% to 71%, and the script check
+  told right from wrong scripts 100% of the time (v1: 91%). These are synthetic speakers, a regression check; teach
+  the reservoir (step 5) and the same benchmark measures your own face. API: `/api/vse/lip_sync`, `/api/vse/lip_read`,
+  `/api/vse/benchmark`, `/api/vse/job?id=`. Stage 2 — trainable PyTorch models with the same formats, API and
+  benchmark — is the separate package `querybook/vse/`.
 * **Object scan (Face & video):** recognizes 80 kinds of everyday object (people, cars, cups, phones, books,
   animals…) in the camera, a shared screen or a video file, on this computer (MediaPipe Object Detector,
   EfficientDet-Lite0, bundled, Apache 2.0). Each object is followed from frame to frame; click its box, or name a
@@ -299,7 +316,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
 python tools/test_commons.py         # the shared database and the three teams, end to end (38 checks)
-python language/app.py --selftest     # 174 checks
+python language/app.py --selftest     # 186 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
 python tools/run_all_tests.py         # all of the above

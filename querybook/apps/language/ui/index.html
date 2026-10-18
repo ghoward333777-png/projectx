@@ -400,6 +400,26 @@ tr.lc-active td { background: #f0fdf4; }
           </div>
         </div>
       </div>
+      <div class="card" id="vse-card">
+        <h2>Visual Speech Engine — full-face lip sync <span class="small muted">— speech science, no AI model, same answer every time</span></h2>
+        <p class="small">From the words and their recording: the sounds and their timing, pitch and loudness, an emotion estimate and a voice fingerprint (audio analysis); then the mouth moving the way people really speak — each sound blends into its neighbours, lips round ahead of an “oo”, every p, b and m closes — with the jaw, brows that lift on stressed words, small head nods, blinks and glances at pauses (face motion). Your own mouth shapes are used once the reservoir (step 5) has learned them. Exports drive real rigs: ARKit-named blendshape curves for Blender, Unreal, Unity or Live Link.</p>
+        <div class="row">
+          <input id="vse-text" class="grow" type="text" placeholder="The words that are spoken" aria-label="Spoken words">
+          <label class="btn quiet" style="cursor:pointer">🎙 Recording (optional)<input type="file" id="vse-audio" accept="audio/*,video/*" hidden></label>
+          <label class="small">Frames <select id="vse-fps" style="width:auto"><option value="24">24</option><option value="30" selected>30</option><option value="60">60</option><option value="100">100</option></select></label>
+          <button class="btn" id="vse-go">✨ Make lip-sync motion</button>
+          <span id="vse-state" class="small"></span>
+        </div>
+        <div class="vd-grid">
+          <div><canvas id="vse-canvas" width="320" height="300" style="width:100%;max-width:320px;background:#f8fafc;border-radius:10px"></canvas>
+            <div class="row"><button class="btn quiet" id="vse-play" disabled>▶ Play preview</button><audio id="vse-player" hidden></audio></div></div>
+          <div><div id="vse-out" class="small"></div><div id="vse-dl" class="row"></div></div>
+        </div>
+        <h3>How accurate is it?</h3>
+        <p class="small">Measures lip-reading by this engine against lip-reading v1 — on synthetic speakers (each with their own mouth shapes, speed and tracking noise) and on your own held-out recordings from the reservoir.</p>
+        <div class="row"><button class="btn quiet" id="vse-bench">📏 Run the benchmark</button></div>
+        <div id="vse-bench-out"></div>
+      </div>
       <div class="card" id="sc-card">
         <h2>Object scan — recognize, follow and zoom <span class="small muted">— for ingestion and questions</span></h2>
         <p class="small">Recognizes 80 kinds of everyday object in the picture above — people, cars, cups, phones, books, dogs… — on this computer (MediaPipe Object Detector, EfficientDet-Lite0, bundled; nothing is uploaded). Each object is followed from frame to frame. <b>Click a box</b> (or name a kind) to follow it and see it enlarged. What was seen is saved as numbers — what, when, how sure, where in the picture — never the picture itself, and you can ask about it later. Recognized objects are observations, not facts.</p>
@@ -755,6 +775,7 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="speech.js"></script>
 <script src="video.js"></script>
 <script src="scan.js"></script>
+<script src="vse.js"></script>
 <script src="photoreal.js"></script>
 <script src="transcribe.js"></script>
 </body>
