@@ -22,7 +22,17 @@
 .vd-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
 tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309; } tr.bad td:first-child { color: #b91c1c; }
 .vd-guide { margin: 10px 0 4px; }
-.good-t { color: #15803d; }
+.good-t { color: #15803d; } .bad-t { color: #b91c1c; }
+.si-pick { font-size: 18px; margin: 4px; }
+.si-alt { margin: 2px; }
+.pr-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.pr-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px; width: 170px; cursor: pointer; background: var(--card, #fff); }
+.pr-card.sel { outline: 3px solid #7c3aed; }
+.pr-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
+.pr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.pr-bars { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin: 8px 0; }
+.pr-bars div { flex: 1; background: #7c3aed; border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
+.pr-bars span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 10px; color: #475569; }
 .lc-sentence { font-size: 22px; font-weight: 600; padding: 14px 16px; margin: 8px 0; border-radius: 10px; background: #f5f3ff; color: #3b0764; }
 tr.lc-active td { background: #f0fdf4; }
 .face-evidence { border-left: 4px solid #7c3aed; }
@@ -117,6 +127,7 @@ tr.lc-active td { background: #f0fdf4; }
 <nav class="tabs" aria-label="Sections">
   <button data-tab="build">Build</button>
   <button data-tab="speech">Speech</button>
+  <button data-tab="photoreal">Photo Real Lab</button>
   <button data-tab="verify">Verify (proof)</button>
   <button data-tab="lookup">Look up</button>
   <button data-tab="data">Data &amp; backups</button>
@@ -316,8 +327,20 @@ tr.lc-active td { background: #f0fdf4; }
         <div class="row"><button class="btn bigbtn" id="ak-rec">🎙 Ask</button><span id="ak-state" class="small"></span></div>
         <div class="row" style="margin-top:8px"><input id="ak-text" class="grow" type="text" placeholder="…or type the question"><button class="btn" id="ak-go">Answer</button>
           <label class="chk"><input type="checkbox" id="ak-mood" checked> Respond to the mood</label>
-          <label class="chk"><input type="checkbox" id="ak-cam"> 📷 Use the camera too (lips choose the right words; the face shows the mood)</label></div>
+          <label class="chk"><input type="checkbox" id="ak-cam"> 📷 Use the camera too (lips choose the right words; the face shows the mood)</label>
+          <label class="small">Answer as <select id="ak-as" style="width:auto"><option value="">the talking face</option></select></label></div>
         <div id="ak-cam-view" hidden style="margin-top:8px"></div>
+        <details id="si-box" style="margin-top:10px"><summary><b>🤫 Silent question — lips only</b> <span class="small muted">for people who cannot speak aloud</span></summary>
+          <p class="small">Face the camera and mouth the question without sound. Lips show only part of speech, so the app matches them to the questions it answers and shows the best readings — tap the right one. <b>Guided</b> is the most reliable: tap the kind of question and the language, then mouth just the word.</p>
+          <div class="row">
+            <label class="chk"><input type="radio" name="si-mode" value="question" checked> Whole question</label>
+            <label class="chk"><input type="radio" name="si-mode" value="word"> Guided</label>
+            <span id="si-guided" hidden><select id="si-pattern" style="width:auto"></select> <select id="si-lang" style="width:auto"></select></span>
+          </div>
+          <div class="row" style="margin-top:6px"><button class="btn bigbtn" id="si-go">📷 Start — mouth the question</button><span class="small" id="si-state"></span></div>
+          <div id="si-cam" hidden style="margin-top:6px"></div>
+          <div id="si-out" style="margin-top:8px"></div>
+        </details>
         <div id="ak-out" style="margin-top:12px"></div>
       </div>
     </div>
@@ -430,6 +453,95 @@ tr.lc-active td { background: #f0fdf4; }
     </div>
   </section>
 
+  <section class="panel" id="photoreal">
+    <div class="card">
+      <h2>Photo Real Lab — an AI narrator that looks and sounds like the author</h2>
+      <p class="small">The method: record <b>one perfect sample</b> — the author reading the reference passage on camera. The lab fits a model of the author's own mouth to it (how far the lips lead the sound, how fast they move, the exact shape for every sound) — the measured reason it looks right. Every narration, from any face method, is then measured frame by frame against what the author's mouth would do for the same words, and released only if it passes. The photo-driven face is calibrated in a closed loop until it passes. Every result is a QueryBook fact in the <b>photoreal</b> graph domain.</p>
+      <p class="small muted">Only with the author's consent. Everything produced is labelled “AI narrator”.</p>
+    </div>
+    <div class="card">
+      <h2>Author personas</h2>
+      <div id="pr-list" class="pr-list"></div>
+      <details id="pr-new"><summary><b>＋ New author persona</b></summary>
+        <div class="pr-grid">
+          <label>Author's name <input id="pr-name" type="text" placeholder="e.g. Ada Author"></label>
+          <label>Language <select id="pr-lang"></select></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="btn quiet" style="cursor:pointer">🖼 Photo of the author<input type="file" id="pr-photo" accept="image/*" hidden></label>
+          <button class="btn quiet" id="pr-snap">📷 Take the photo now</button>
+          <span class="small muted">Front-facing, mouth closed, even light, face filling about half the picture.</span>
+        </div>
+        <div id="pr-photo-prev" class="small"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn quiet" id="pr-rec">🎙 Record a voice sample</button>
+          <label class="btn quiet" style="cursor:pointer">📁 WAV file<input type="file" id="pr-wav" accept=".wav,audio/wav" hidden></label>
+          <span class="small" id="pr-wav-state">30–120 seconds of the author reading aloud (10 s minimum).</span>
+        </div>
+        <div class="note" id="pr-consent-text" style="margin-top:10px"></div>
+        <div class="row">
+          <label>Signed (full name) <input id="pr-signer" type="text"></label>
+          <label class="chk"><input type="checkbox" id="pr-consent"> I agree to the statement above</label>
+          <label class="chk"><input type="checkbox" id="pr-behalf"> I hold the author's written permission (signing for them)</label>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="pr-create">Create the persona</button></div>
+      </details>
+    </div>
+    <div id="pr-detail" hidden>
+      <div class="card">
+        <h2 id="pr-title"></h2>
+        <div class="pr-grid">
+          <div>
+            <h3>Voice</h3>
+            <select id="pr-voice"></select> <button class="btn" id="pr-voice-go">Set up this voice</button>
+            <p class="small" id="pr-voice-now"></p>
+          </div>
+          <div>
+            <h3>Face</h3>
+            <select id="pr-face"></select> <button class="btn" id="pr-face-go">Use this face</button>
+            <div id="pr-face-opts" class="small"></div>
+            <p class="small" id="pr-face-now"></p>
+          </div>
+        </div>
+        <p class="small"><button class="btn quiet small" id="pr-delete">Delete this persona</button> <span class="muted">— removes the photo, sample, narrations and local voice key.</span></p>
+      </div>
+      <div class="card">
+        <h2>1 · The perfect sample</h2>
+        <p class="small">The author reads this passage on camera (about 30 seconds; it shows every mouth shape several times). Follow the capture guide: whole face, 1080p, 60 fps if possible, even front light.</p>
+        <div class="lc-sentence" id="pr-passage"></div>
+        <div class="row">
+          <button class="btn bigbtn" id="pr-ref-rec">🎙📷 Record the perfect sample</button>
+          <label class="btn quiet" style="cursor:pointer">📁 …or a video of the author reading it<input type="file" id="pr-ref-file" accept="video/*" hidden></label>
+        </div>
+        <div id="pr-ref-cam" hidden style="margin-top:8px"></div>
+        <div id="pr-ref-out"></div>
+      </div>
+      <div class="card">
+        <h2>2 · Narrate, measure, gate</h2>
+        <textarea id="pr-text" rows="3" placeholder="What the narrator should say — e.g. the opening of a chapter or the answer to a question"></textarea>
+        <div class="row" style="margin-top:6px">
+          <label class="small">Face <select id="pr-nface"></select></label>
+          <button class="btn bigbtn" id="pr-narrate">🎬 Narrate</button>
+          <button class="btn" id="pr-measure" disabled>📏 Measure against the author</button>
+          <button class="btn" id="pr-calibrate" disabled>🎯 Calibrate until it passes</button>
+        </div>
+        <div class="pr-grid" style="margin-top:10px">
+          <div><div id="pr-stage" class="face-stage" style="max-width:480px"></div><div id="pr-player"></div></div>
+          <div id="pr-score"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>3 · Findings — the photoreal graph</h2>
+        <div id="pr-findings"></div>
+        <div class="row" style="margin-top:6px">
+          <input id="pr-gq" class="grow" type="text" placeholder="Filter facts (subject or predicate words)">
+          <a class="btn quiet" href="/api/photoreal/export.ufcs" download="photoreal-graph.ufcs.jsonl">⬇ Export as QueryBook (UFCS) packets</a>
+        </div>
+        <div id="pr-graph"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="verify">
     <div class="banner" id="vbanner">
       <div class="bicon" id="vicon">🔍</div>
@@ -526,6 +638,17 @@ tr.lc-active td { background: #f0fdf4; }
         <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>
         <li><b>Honest limits:</b> cloud engines need your own keys; their requests follow each provider's published format and are tested against a stand-in server, not against the live services. The vocal-mode rules are tested on real normal speech and on synthetic whispering, laughing, sobbing and singing; real crying and laughing recordings vary, so close calls are marked “uncertain”.</li>
       </ul>
+      <h2>Photo Real Lab and the author's AI narrator</h2>
+      <ul>
+        <li><b>Author persona</b> — a photo, a voice sample and the author's signed consent (fingerprints of both samples are kept). Voice: Google custom (cloned) voice, ElevenLabs clone, or the offline voice tuned to the sample. Face: the photo-driven face here, HeyGen, D-ID, or a local model (Wav2Lip, SadTalker or any command). Everything it makes is labelled “AI narrator”.</li>
+        <li><b>The perfect sample</b> — the author reads the reference passage on camera. The lab fits the author's own mouth model to it (lip lead, response time, the shape for every sound) and keeps the author's real frames for each sound: the <b>real-mouth library</b> the narrator is made from (real lips, teeth and light).</li>
+        <li><b>Measure and gate</b> — every narration, from any face method, is tracked and compared frame by frame with what the author's mouth would do for the same words. It passes only when the overall score is 85+ and every critical part is 70+; the page says which part failed.</li>
+        <li><b>Calibrate</b> — for the face made here, the lab corrects the settings round by round until it passes, and keeps the proven settings.</li>
+        <li><b>The photoreal graph</b> — every measurement and setting is a QueryBook fact (UFCS 1.0 packet) in the “photoreal” domain; export it to the QueryBook store.</li>
+        <li><b>Answer as the author</b> — in Ask by voice choose the narrator under “Answer as”.</li>
+      </ul>
+      <h2>Silent questions (lips only)</h2>
+      <p class="small">In Ask by voice, open <b>Silent question</b>: mouth the question without sound and tap the right reading. <b>Guided</b> is the most reliable: tap the kind of question and the language, then mouth only the word; words that look the same on the lips are shown together. Teaching the app your mouth (Face &amp; video → Teach and improve) makes it read you better.</p>
       <h2>Filming for lip-sync and lip-reading</h2>
       <ul class="small">
         <li><b>What to capture:</b> the whole face, forehead to chin, filling 40–60% of the picture's height — not just the mouth. The jaw, cheeks and chin carry speech too, and the tracker needs the whole face to find the lips.</li>
@@ -555,8 +678,10 @@ tr.lc-active td { background: #f0fdf4; }
 <footer class="status"></footer>
 <script src="qb.js"></script>
 <script src="app.js"></script>
+<script src="photoface.js"></script>
 <script src="face.js"></script>
 <script src="speech.js"></script>
 <script src="video.js"></script>
+<script src="photoreal.js"></script>
 </body>
 </html>

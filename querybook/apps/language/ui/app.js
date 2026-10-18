@@ -281,7 +281,7 @@ async function loadData() {
 let CURRENT = "build";
 function refreshTab() {
   clearTimeout(POLL);
-  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {} })[CURRENT]();
+  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), help: () => {}, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

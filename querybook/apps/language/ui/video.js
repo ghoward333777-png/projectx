@@ -51,7 +51,7 @@ function measureFrame(res, video, t) {
   f.pitch = Math.round(Math.asin(Math.max(-1, Math.min(1, (q - 0.58) * 2.5))) * 180 / Math.PI);
   f.bs = {};
   const cats = res.faceBlendshapes && res.faceBlendshapes[0] ? res.faceBlendshapes[0].categories : [];
-  cats.forEach(c => { if (/^(mouth|jaw|brow|cheek|noseSneer|eyeSquint|eyeWide)/.test(c.categoryName)) f.bs[c.categoryName] = Math.round(c.score * 1000) / 1000; });
+  cats.forEach(c => { if (/^(mouth|jaw|brow|cheek|noseSneer|eyeSquint|eyeWide|eyeBlink)/.test(c.categoryName)) f.bs[c.categoryName] = Math.round(c.score * 1000) / 1000; });
   f.light = VD.lastLight;
   f._L = L;
   return f;
@@ -227,55 +227,63 @@ async function wavB64(audio, rate) {
 }
 
 // ---------------------------------------------------------------- analyse
+// Play a video element once through the face tracker (muted, slowed down on a slow computer so no frame is
+// skipped). Returns the per-frame measurements, the video's own frame rate and the tracked rate.
+async function trackVideo(v, onProgress) {
+  const lm = await tracker();
+  v.pause(); v.muted = true; v.controls = false;
+  if (v.readyState < 2) await new Promise(r => v.addEventListener("loadeddata", r, { once: true }));
+  if (v.currentTime > 0) await new Promise(r => { v.addEventListener("seeked", r, { once: true }); v.currentTime = 0; });
+  const frames = [], times = [];
+  let n = 0, lastT = -1, p0 = null, p1 = null, m0 = 0, m1 = 0, detMs = 0;
+  v.playbackRate = 1;
+  await new Promise((resolve, reject) => {
+    const step = (now, meta) => {
+      const t = meta && meta.mediaTime !== undefined ? meta.mediaTime : v.currentTime;
+      if (meta && meta.presentedFrames !== undefined) {           // the video's own frame count, for its real frame rate
+        if (p0 === null) { p0 = meta.presentedFrames; m0 = t; }
+        p1 = meta.presentedFrames; m1 = t;
+      }
+      if (t > lastT) {
+        lastT = t;
+        try {
+          const d0 = performance.now();
+          const res = lm.detectForVideo(v, d0);
+          detMs = detMs ? 0.8 * detMs + 0.2 * (performance.now() - d0) : performance.now() - d0;
+          const f = measureFrame(res, v, t);
+          if (f.face && n++ % 5 === 0) sampleLight(v, f._L);
+          if (v === $("#vd-video")) drawOverlay(v, f);
+          delete f._L; frames.push(f); times.push(t);
+        } catch (e) { reject(e); return; }
+        // a slow computer plays the video slower while tracking, so no frames are skipped (the sound is muted)
+        const want = Math.max(0.1, Math.min(1, 1000 / (Math.max(1, detMs) * 1.3 * 30)));
+        if (Math.abs(v.playbackRate - want) > 0.05) v.playbackRate = want;
+        if (onProgress) onProgress(t, v.playbackRate);
+      }
+      if (v.ended) { resolve(); return; }
+      if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(step); else requestAnimationFrame(() => step(performance.now()));
+    };
+    v.onended = () => resolve();
+    v.play().then(() => step(performance.now()), reject);
+  });
+  v.controls = true; v.muted = false; v.playbackRate = 1;
+  const span = times.length > 1 ? times[times.length - 1] - times[0] : 0;
+  const tracked = span > 0 ? (times.length - 1) / span : 0;
+  // the video's frame rate: from frames presented when the browser reports them (live captures are measured as recorded)
+  const fps = p1 !== null && m1 > m0 && p1 > p0 ? (p1 - p0) / (m1 - m0) : tracked;
+  return { frames, fps, tracked, span };
+}
+
 async function vdAnalyse() {
   const btn = $("#vd-go"); if (!VD.blob) return;
   buttonStart(btn);
   let ok = false;
   try {
-    const lm = await tracker();
     const v = $("#vd-video");
-    v.pause(); v.muted = true; v.controls = false;
-    if (v.readyState < 2) await new Promise(r => v.addEventListener("loadeddata", r, { once: true }));
-    if (v.currentTime > 0) await new Promise(r => { v.addEventListener("seeked", r, { once: true }); v.currentTime = 0; });
-    const frames = [], times = [];
-    let n = 0, lastT = -1, p0 = null, p1 = null, m0 = 0, m1 = 0, detMs = 0;
-    v.playbackRate = 1;
-    $("#vd-state").textContent = "Tracking the face frame by frame…";
-    await new Promise((resolve, reject) => {
-      const step = (now, meta) => {
-        const t = meta && meta.mediaTime !== undefined ? meta.mediaTime : v.currentTime;
-        if (meta && meta.presentedFrames !== undefined) {           // the video's own frame count, for its real frame rate
-          if (p0 === null) { p0 = meta.presentedFrames; m0 = t; }
-          p1 = meta.presentedFrames; m1 = t;
-        }
-        if (t > lastT) {
-          lastT = t;
-          try {
-            const d0 = performance.now();
-            const res = lm.detectForVideo(v, d0);
-            detMs = detMs ? 0.8 * detMs + 0.2 * (performance.now() - d0) : performance.now() - d0;
-            const f = measureFrame(res, v, t);
-            if (f.face && n++ % 5 === 0) sampleLight(v, f._L);
-            drawOverlay(v, f);
-            delete f._L; frames.push(f); times.push(t);
-          } catch (e) { reject(e); return; }
-          // a slow computer plays the video slower while tracking, so no frames are skipped (the sound is muted)
-          const want = Math.max(0.1, Math.min(1, 1000 / (Math.max(1, detMs) * 1.3 * 30)));
-          if (Math.abs(v.playbackRate - want) > 0.05) v.playbackRate = want;
-          if (isFinite(v.duration)) $("#vd-prog").style.width = (100 * t / v.duration).toFixed(1) + "%";
-          $("#vd-state").textContent = "Tracking the face frame by frame… " + t.toFixed(2) + " s" + (v.playbackRate < 1 ? " (playing at " + v.playbackRate.toFixed(2) + "× so every frame is read)" : "");
-        }
-        if (v.ended) { resolve(); return; }
-        if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(step); else requestAnimationFrame(() => step(performance.now()));
-      };
-      v.onended = () => resolve();
-      v.play().then(() => step(performance.now()), reject);
+    const { frames, fps, tracked, span } = await trackVideo(v, (t, rate) => {
+      if (isFinite(v.duration)) $("#vd-prog").style.width = (100 * t / v.duration).toFixed(1) + "%";
+      $("#vd-state").textContent = "Tracking the face frame by frame… " + t.toFixed(2) + " s" + (rate < 1 ? " (playing at " + rate.toFixed(2) + "× so every frame is read)" : "");
     });
-    v.controls = true; v.muted = false; v.playbackRate = 1;
-    const span = times.length > 1 ? times[times.length - 1] - times[0] : 0;
-    const tracked = span > 0 ? (times.length - 1) / span : 0;
-    // the video's frame rate: from frames presented when the browser reports them (live captures are measured as recorded)
-    const fps = p1 !== null && m1 > m0 && p1 > p0 ? (p1 - p0) / (m1 - m0) : tracked;
     $("#vd-state").textContent = "Tracked " + frames.length + " frames (" + tracked.toFixed(1) + " per second of video).";
     let env = null, note = "";
     try { env = envelope(await decodeTrack(VD.blob)); } catch (e) { note = "This file's sound could not be read here, so the sync check was skipped."; }
@@ -572,4 +580,51 @@ function lcSetup() {
   lcLoad();
 }
 
+// ---------------------------------------------------------------- silent questions (lips only)
+const SI = { on: false, patterns: null };
+async function siSetup() {
+  if (SI.ready) return; SI.ready = true;
+  try {
+    SI.patterns = await api("/api/silent/patterns");
+    $("#si-pattern").innerHTML = SI.patterns.patterns.map(p => '<option value="' + p.id + '">' + esc(p.parts.map(x => typeof x === "string" ? x : "___").join(" ")) + "</option>").join("");
+    $("#si-lang").innerHTML = SI.patterns.languages.map(l => "<option>" + esc(l) + "</option>").join("");
+  } catch (e) { /* shown when used */ }
+  $$('input[name="si-mode"]').forEach(r => r.onchange = () => { $("#si-guided").hidden = siMode() !== "word"; });
+  $("#si-pattern").onchange = () => { const p = SI.patterns.patterns.find(x => x.id === $("#si-pattern").value); $("#si-lang").hidden = !p.parts.some(x => x.slot === "language"); };
+  $("#si-go").onclick = siToggle;
+  $("#si-box").addEventListener("toggle", () => { if ($("#si-box").open) tracker().catch(() => {}); });
+}
+function siMode() { return ($('input[name="si-mode"]:checked') || {}).value || "question"; }
+function siCompose(word) {
+  const p = SI.patterns.patterns.find(x => x.id === $("#si-pattern").value);
+  return p.parts.map(x => typeof x === "string" ? x : x.slot === "word" ? word : $("#si-lang").value).join(" ");
+}
+async function siToggle() {
+  const btn = $("#si-go");
+  if (!SI.on) {
+    SI.t0 = performance.now();
+    if (!(await camSideStart($("#si-cam"), SI.t0))) return;
+    SI.on = true; btn.textContent = "⏹ Done — read my lips"; btn.classList.add("busy");
+    const tick = () => { if (SI.on) { $("#si-state").textContent = "● watching " + ((performance.now() - SI.t0) / 1000).toFixed(2) + " s"; setTimeout(tick, 50); } };
+    tick();
+  } else {
+    SI.on = false; btn.textContent = "📷 Start — mouth the question"; btn.classList.remove("busy");
+    const cam = camSideStop($("#si-cam"));
+    if (!cam) { $("#si-out").textContent = "No face was seen."; return; }
+    const mode = siMode();
+    const r = await api("/api/silent/read", { frames: cam.frames, mode });
+    $("#si-state").textContent = "";
+    if (!r.readings.length) { $("#si-out").innerHTML = '<div class="note bad">' + esc(r.note || "Nothing could be read.") + " Try again, facing the camera.</div>"; return; }
+    const pick = q => { $("#ak-text").value = q; ask(null); $("#si-box").open = false; };
+    $("#si-out").innerHTML = '<p class="small">' + esc(r.note) + "</p>" + r.readings.map((x, i) => {
+      const q = mode === "word" ? siCompose(x.word) : x.question;
+      const alts = mode === "word" ? x.same_on_lips.map(a => siCompose(a)) : Object.entries(x.same_on_lips || {}).flatMap(([w, ms]) => ms.map(m => x.question.replace(new RegExp("\\b" + w + "\\b"), m)));
+      return '<div><button class="btn si-pick" data-q="' + esc(q) + '">' + (i === 0 ? "★ " : "") + esc(q) + "</button>" +
+        alts.slice(0, 4).map(a => '<button class="btn quiet small si-alt" data-q="' + esc(a) + '">' + esc(a) + "</button>").join("") + "</div>";
+    }).join("") + '<p class="small muted">Not there? Type it in the box above, or mouth it again.</p>';
+    $$("#si-out [data-q]").forEach(b => b.onclick = () => pick(b.dataset.q));
+  }
+}
+
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="ask"]'); if (b) siSetup(); });
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="video"]'); if (b) { vdSetup(); lcSetup(); } });

@@ -122,6 +122,8 @@ KEY_FIELDS = {
     "openai": [("api_key", "OPENAI_API_KEY")],
     "azure": [("api_key", "AZURE_SPEECH_KEY"), ("region", "AZURE_SPEECH_REGION")],
     "polly": [("access_key_id", "AWS_ACCESS_KEY_ID"), ("secret_access_key", "AWS_SECRET_ACCESS_KEY"), ("region", "AWS_REGION")],
+    "heygen": [("api_key", "HEYGEN_API_KEY")],          # talking-photo video (Author Narrator)
+    "did": [("api_key", "DID_API_KEY")],                # D-ID talks (Author Narrator)
 }
 SECRET_FIELDS = {"api_key", "secret_access_key", "access_key_id"}
 

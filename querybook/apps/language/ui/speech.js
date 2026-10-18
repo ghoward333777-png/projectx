@@ -129,6 +129,24 @@ async function faceCard(host, audioName, text, lang, emotion) {
   return face;
 }
 
+// The author's AI narrator speaks a text (Photo Real Lab persona): photo-driven face with the proven settings.
+async function narratorCard(host, pid, text, emotion) {
+  const box = document.createElement("div"); box.className = "card face-card";
+  box.innerHTML = '<h3>Answered by the author\'s AI narrator</h3><div class="face-stage" style="max-width:420px"></div><div class="nar-player"></div>';
+  host.appendChild(box);
+  try {
+    const p = await api("/api/persona/get?id=" + pid);
+    const a0 = host.querySelector("audio"); if (a0) a0.pause();
+    const r = await api("/api/persona/narrate", { id: pid, text, face_method: "photo", emotion });
+    const a = document.createElement("audio"); a.controls = true; a.src = "/api/speech/audio?name=" + encodeURIComponent(r.audio);
+    box.querySelector(".nar-player").appendChild(a);
+    const f = new TalkingFace(box.querySelector(".face-stage"));
+    f.setEmotion(emotion || "neutral");
+    await f.setMode("photo", { persona: prFaceSource(p, pid), params: (p.reference || {}).params });
+    f.attach(a, r.track); a.play().catch(() => {});
+  } catch (e) { box.insertAdjacentHTML("beforeend", '<div class="note bad">The narrator could not answer: ' + esc(e.message) + "</div>"); }
+}
+
 function audioEl(name) { return '<audio controls preload="auto" src="/api/speech/audio?name=' + encodeURIComponent(name) + '"></audio>'; }
 
 async function generate() {
@@ -326,7 +344,9 @@ async function ask(audio, video) {
     '<p class="small"><b>Words understood:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>" +
     (window.faceEvidenceHtml ? faceEvidenceHtml(r.face) + learnedNote(r.learning) : "");
   const a = $("#ak-out audio"); if (a) a.play().catch(() => {});
-  if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang, r.voice_used.emotion);
+  const as = $("#ak-as") && $("#ak-as").value;
+  if (as) narratorCard($("#ak-out"), Number(as), r.answer, r.voice_used.emotion);   // the author's AI narrator answers
+  else if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang, r.voice_used.emotion);
 }
 
 // ---------------------------------------------------------------- providers

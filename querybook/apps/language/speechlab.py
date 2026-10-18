@@ -757,7 +757,7 @@ def diagnostics(sl, C):
         out.append(C("sp_keys", "Provider keys file is private", "ok" if not mode else "warn", "owner-only" if not mode else "readable by others — run: chmod 600 speech_keys.json"))
     pub = sl.keys.public()
     for prov in tts.KEY_FIELDS:
-        name = tts.BY_ID[prov].name
+        name = tts.BY_ID[prov].name if prov in tts.BY_ID else {"heygen": "HeyGen (Author Narrator video)", "did": "D-ID (Author Narrator video)"}.get(prov, prov)
         if not pub[prov]["configured"]:
             out.append(C("sp_" + prov, name, "ok", "not set up (optional)"))
             continue

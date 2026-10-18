@@ -92,7 +92,7 @@ class Face2D {
 class TalkingFace {
   constructor(el) { this.el = el; this.mode = "2d"; this.track = null; this.audio = null; this.impl = null; this.raf = null; this.expr = EXPRESSIONS.neutral; }
   setEmotion(name) { this.expr = EXPRESSIONS[name] || EXPRESSIONS.neutral; }
-  async setMode(mode) {
+  async setMode(mode, opts) {
     const old = this.impl;
     this.impl = null;                                  // the draw loop pauses while the new face loads
     if (old) old.dispose();
@@ -100,8 +100,13 @@ class TalkingFace {
     if (mode === "3d") {
       const mod = await import("./face3d.mjs");
       this.impl = new mod.Face3D(this.el);
+    } else if (mode === "photo") {                     // the author's own photo (photoface.js)
+      const pf = authorFace(this.el, opts.persona, opts.params);
+      await pf.ready;
+      this.impl = pf;
     } else this.impl = new Face2D(this.el);
-    this.impl.draw(Object.assign(mouthAt(this.track || { visemes: [] }, 0), this.expr), 0);
+    if (this.impl.frame) this.impl.frame(this.track || { visemes: [] }, 0, this.expr);
+    else this.impl.draw(Object.assign(mouthAt(this.track || { visemes: [] }, 0), this.expr), 0);
   }
   // drive the mouth directly (e.g. from a tracked camera face) instead of from an audio track
   live(m) {
@@ -113,7 +118,8 @@ class TalkingFace {
     cancelAnimationFrame(this.raf);
     const loop = () => {
       const t = audio ? audio.currentTime : 0;
-      if (this.impl) this.impl.draw(Object.assign(mouthAt(this.track, (audio && !audio.paused) || t > 0 ? t : 0), this.expr), performance.now() / 1000);
+      if (this.impl && this.impl.frame) this.impl.frame(this.track, t, this.expr);   // photo face: driven by the timed track itself
+      else if (this.impl) this.impl.draw(Object.assign(mouthAt(this.track, (audio && !audio.paused) || t > 0 ? t : 0), this.expr), performance.now() / 1000);
       this.raf = requestAnimationFrame(loop);
     };
     loop();

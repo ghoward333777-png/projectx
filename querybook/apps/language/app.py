@@ -22,6 +22,10 @@ import lab
 import speech
 import speechlab
 import lipcoach
+import persona
+import photoreal
+import silent
+import lipread
 import tts
 import visemes
 import verify
@@ -29,7 +33,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 PORT = 8101
 program_dir = HERE
 
@@ -63,7 +67,7 @@ CREATE TABLE custom_pairs (
 );
 INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
   SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
-""", lab.SCHEMA, speechlab.SCHEMA, lipcoach.SCHEMA]
+""", lab.SCHEMA, speechlab.SCHEMA, lipcoach.SCHEMA, persona.SCHEMA, photoreal.SCHEMA]
 
 
 def today():
@@ -91,6 +95,8 @@ class App:
         self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify, "import-keys": self._cli_import_keys}
         self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
+        self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
+        self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -799,6 +805,166 @@ class App:
                                 "failed" if p.get("status") == "failed" else "ok", clk)
             return {"ok": True}
 
+        # ---- Author Narrator (persona) and the Photo Real Lab
+        def _logged(process, desc, fn, engine="persona"):
+            clk = speechlab.Clock()
+            clk(process)
+            try:
+                r = fn()
+            except (ValueError, RuntimeError, FileNotFoundError) as e:
+                self.speech._record(process, "failed: %s" % tts.scrub(e, self.speech.keys)[:300], engine, "failed", clk)
+                raise core.UserError(tts.scrub(e, self.speech.keys))
+            self.speech._record(process, desc(r) if callable(desc) else desc, engine, "ok", clk)
+            return r
+
+        @a.get("/api/persona")
+        def pe_list(p):
+            k = self.speech.keys
+            return {"personas": self.personas.list(), "voice_methods": persona.VOICE_METHODS, "face_methods": persona.FACE_METHODS,
+                    "consent_text": persona.CONSENT_TEXT, "local_presets": persona.LOCAL_PRESETS, "label": persona.LABEL,
+                    "keys": {x: k.configured(x) for x in ("heygen", "did", "elevenlabs", "google_cloud")}, "dimensions": {d: v[0] for d, v in photoreal.DIMENSIONS.items()},
+                    "gate": {"overall": photoreal.PASS_OVERALL, "critical": photoreal.PASS_CRITICAL}, "passage": photoreal.REFERENCE_PASSAGE}
+
+        @a.get("/api/persona/get")
+        def pe_get(p):
+            try:
+                return self.personas.get(p.get("id"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.get("/api/persona/photo")
+        def pe_photo(p):
+            try:
+                pe = self.personas.get(p.get("id"))
+                with open(self.personas.file_path(pe["id"], pe["photo"]), "rb") as f:
+                    return f.read(), "image/jpeg"
+            except (ValueError, FileNotFoundError):
+                raise core.UserError("No photo.")
+
+        @a.get("/api/persona/video")
+        def pe_video(p):
+            try:
+                n = self.personas.narration(p.get("narration"))
+                with open(self.personas.file_path(n["persona"], n["video"]), "rb") as f:
+                    return f.read(), "video/mp4"
+            except (ValueError, FileNotFoundError, TypeError):
+                raise core.UserError("That video is not here.")
+
+        @a.post("/api/persona/create")
+        def pe_create(p):
+            photo = _b64.b64decode((p.get("photo_b64") or "").split(",", 1)[-1] or "")
+            return _logged("persona", lambda r: "persona “%s” created (consent signed by %s)" % (r["name"], r["consent"]["signer"]),
+                           lambda: self.personas.create(p.get("name"), p.get("signer"), p.get("consent") in (True, "true"), photo, _audio(p, "sample_b64"),
+                                                        p.get("lang") or "en", p.get("landmarks"), p.get("on_behalf") in (True, "true")))
+
+        @a.post("/api/persona/library")
+        def pe_library(p):
+            return _logged("persona", lambda r: "real-mouth library: %d frames of the author's own mouth" % r["count"],
+                           lambda: self.personas.set_library(p.get("id"), p.get("items") or []))
+
+        @a.get("/api/persona/lib")
+        def pe_lib(p):
+            try:
+                pe = self.personas.get(p.get("id"))
+                ent = ((pe.get("reference") or {}).get("library") or {}).get(p.get("v") or "")
+                with open(self.personas.file_path(pe["id"], ent["file"]), "rb") as f:
+                    return f.read(), "image/jpeg"
+            except (ValueError, FileNotFoundError, TypeError, KeyError):
+                raise core.UserError("No such frame.")
+
+        @a.post("/api/persona/landmarks")
+        def pe_landmarks(p):
+            return _logged("persona", "face landmarks of the photo saved", lambda: self.personas.set_landmarks(p.get("id"), p.get("landmarks")))
+
+        @a.post("/api/persona/voice")
+        def pe_voice(p):
+            return _logged("persona-voice", lambda r: "voice: %s" % persona.VOICE_METHODS[r["method"]],
+                           lambda: self.personas.set_voice(p.get("id"), p.get("method"), p.get("lang") or "en"))
+
+        @a.post("/api/persona/face")
+        def pe_face(p):
+            return _logged("persona-face", lambda r: "face: %s" % persona.FACE_METHODS[r["method"]],
+                           lambda: self.personas.set_face(p.get("id"), p.get("method"), p.get("settings") or {}))
+
+        @a.post("/api/persona/delete")
+        def pe_delete(p):
+            return _logged("persona", "persona deleted with its samples", lambda: self.personas.delete(p.get("id")))
+
+        @a.post("/api/persona/narrate")
+        def pe_narrate(p):
+            return _logged("narrate", lambda r: "narration #%d (%s) “%s”" % (r["id"], r["face_method"], (p.get("text") or "")[:60]),
+                           lambda: self.personas.narrate(p.get("id"), p.get("text"), p.get("face_method") or None, p.get("emotion") or None))
+
+        @a.get("/api/persona/narration")
+        def pe_narration(p):
+            try:
+                return self.personas.narration(p.get("id"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        def _wav_of(p):
+            if p.get("audio"):
+                with open(self.speech.audio_path(p["audio"]), "rb") as f:
+                    return f.read()
+            w = _audio(p)
+            if not w:
+                raise core.UserError("No sound was sent.")
+            return w
+
+        @a.post("/api/photoreal/reference")
+        def pr_reference(p):
+            wav = _wav_of(p)
+            return _logged("photoreal", lambda r: "perfect reference analysed: %d frames, lead %s ms, response %s ms, explains %d%%" % (r["signature"]["frames"], r["model"]["lead_ms"], r["model"]["tau_ms"], round(100 * r["model"]["explained"])),
+                           lambda: self.prlab.set_reference(p.get("persona"), p.get("frames") or [], wav, p.get("text") or "", p.get("lang") or "en", p.get("info") or {}), "photoreal")
+
+        @a.post("/api/photoreal/measure")
+        def pr_measure(p):
+            wav = _wav_of(p)
+            return _logged("photoreal", lambda r: "%s measured: %.0f/100 — %s" % (p.get("method"), r["score"]["overall"], r["score"]["verdict"]),
+                           lambda: self.prlab.measure(p.get("persona"), p.get("frames") or [], wav, p.get("text") or "", p.get("method") or "photo",
+                                                      p.get("lang") or "en", p.get("info") or {}, p.get("narration"), p.get("params")), "photoreal")
+
+        @a.post("/api/photoreal/calibrate")
+        def pr_calibrate(p):
+            wav = _wav_of(p)
+            return _logged("photoreal", lambda r: "calibration round %d: %.0f/100 %s" % (r["round"], r["score"]["overall"], "PASS" if r["passed"] else "→ corrected"),
+                           lambda: self.prlab.calibrate(p.get("persona"), p.get("frames") or [], wav, p.get("text") or "", p.get("params") or photoreal.DEFAULT_PARAMS,
+                                                        p.get("lang") or "en", p.get("info") or {}, int(p.get("round") or 1)), "photoreal")
+
+        @a.get("/api/photoreal/findings")
+        def pr_findings(p):
+            return self.prlab.findings(p.get("persona") or None)
+
+        @a.get("/api/photoreal/graph")
+        def pr_graph(p):
+            return {"facts": self.prlab.graph(p.get("subject") or None, p.get("predicate") or None)}
+
+        @a.get("/api/photoreal/export.ufcs")
+        def pr_export(p):
+            return self.prlab.export_ufcs().encode("utf-8"), "application/x-ndjson; charset=utf-8"
+
+        # ---- silent questions: lips only (for people who cannot speak aloud)
+        @a.get("/api/silent/patterns")
+        def si_patterns(p):
+            return {"patterns": [{"id": t["id"], "parts": t["parts"], "example": t["example"]} for t in silent.TEMPLATES],
+                    "languages": [v["name"] for v in vocab.LANGUAGES.values()]}
+
+        @a.post("/api/silent/read")
+        def si_read(p):
+            clk = speechlab.Clock()
+            clk("read the lips")
+            frames = p.get("frames") or []
+            cls = lipread.classes_of(frames)[0]
+            if not cls:
+                raise core.UserError("No face was seen — face the camera and mouth the question again.")
+            words = [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w]
+            r = silent.decode_word(cls, self.lab, words) if p.get("mode") == "word" else silent.decode(cls, self.lab, words)
+            best = (r["readings"] or [{}])[0]
+            self.speech._record("silent", "%s: %s" % ("word" if p.get("mode") == "word" else "question", best.get("question") or best.get("word") or "nothing read"),
+                                "lips", "ok" if r["readings"] else "failed", clk, {"frames": len(frames), "mode": p.get("mode") or "question"},
+                                {"seen": r["seen"], "readings": r["readings"][:5]})
+            return r
+
         # ---- the ingestion reservoir (speech-visual) and its learner
         @a.get("/api/lipcoach")
         def lc_status(p):
@@ -1226,6 +1392,9 @@ def selftest():
     _speech_selftest(c)
     _viseme_selftest(c)
     _coach_selftest(c)
+    _persona_selftest(c)
+    _photoreal_selftest(c)
+    _silent_selftest(c)
     return c.report(APP_NAME)
 
 
@@ -1303,6 +1472,266 @@ def _coach_selftest(c):
     finally:
         LR.ACTIVE.clear(); LR.ACTIVE.update(saved)
         visemes.WEIGHT.clear(); visemes.WEIGHT.update(visemes.DEFAULT_WEIGHT); visemes.WORD_BASE = visemes.DEFAULT_WORD_BASE
+
+
+def _persona_selftest(c):
+    """Author Narrator: consent rules, voice by clone or offline match, video by HeyGen, D-ID or a local model —
+    every cloud request checked against a stand-in server; keys never logged."""
+    import http.server, threading as _th
+    if not speech.find_espeak():
+        c.check("Author narrator: skipped (needs espeak-ng)", True)
+        return
+    seen = {"paths": [], "auth": []}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, obj, ctype="application/json"):
+            body = obj if isinstance(obj, bytes) else json.dumps(obj).encode()
+            self.send_response(200); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(body))); self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(n)
+            seen["paths"].append(self.path); seen["auth"].append(self.headers.get("xi-api-key") or self.headers.get("X-Api-Key") or self.headers.get("Authorization"))
+            if self.path == "/v1/voices/add":
+                return self._send({"voice_id": "VOICE123"} if b"sample.wav" in body else {"detail": "no file"})
+            if self.path == "/v1/talking_photo":
+                return self._send({"data": {"talking_photo_id": "TP1"}})
+            if self.path == "/v1/asset":
+                return self._send({"data": {"id": "AS1"}})
+            if self.path == "/v2/video/generate":
+                b = json.loads(body)
+                ok = b["video_inputs"][0]["character"]["talking_photo_id"] == "TP1" and b["video_inputs"][0]["voice"]["audio_asset_id"] == "AS1"
+                return self._send({"data": {"video_id": "VID1" if ok else "BAD"}})
+            if self.path in ("/images", "/audios"):
+                return self._send({"url": "s3://stand-in" + self.path})
+            if self.path == "/talks":
+                b = json.loads(body)
+                return self._send({"id": "TLK1" if b["source_url"] == "s3://stand-in/images" and b["script"]["audio_url"] == "s3://stand-in/audios" else "BAD"})
+            self._send({"error": "no route"})
+
+        def do_GET(self):
+            seen["paths"].append(self.path)
+            if self.path.startswith("/v1/video_status.get"):
+                seen["polls"] = seen.get("polls", 0) + 1
+                return self._send({"data": {"status": "completed", "video_url": base + "/files/v.mp4"} if seen["polls"] > 1 else {"status": "processing"}})
+            if self.path == "/talks/TLK1":
+                return self._send({"status": "done", "result_url": base + "/files/d.mp4"})
+            if self.path.startswith("/files/"):
+                return self._send(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 3000, "video/mp4")
+            self._send({"error": "no route"})
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    base = "http://127.0.0.1:%d" % srv.server_address[1]
+    _th.Thread(target=srv.serve_forever, daemon=True).start()
+    env = {k: base for k in ("QB_TTS_BASE_ELEVENLABS", "QB_TTS_BASE_HEYGEN", "QB_TTS_BASE_HEYGEN_UPLOAD", "QB_TTS_BASE_DID")}
+    env["QB_POLL_S"] = "0.05"
+    old = {k: os.environ.get(k) for k in env}
+    os.environ.update(env)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            inst = App(d)
+            P = inst.personas
+            sample = speech.speak_wav("This is the author reading a passage aloud so that the narrator can learn the voice. " * 3, "en-us")
+            photo = b"\xff\xd8\xff\xe0" + b"\x00" * 2000
+            for args, why in (((("Ada Author", "Ada Author", False, photo, sample)), "consent box"), (("Ada Author", "Someone Else", True, photo, sample), "signer is not the author"),
+                              (("Ada Author", "Ada Author", True, photo, speech.speak_wav("Too short.", "en-us")), "short sample")):
+                try:
+                    P.create(*args)
+                    c.check("Author narrator: refused without proper consent (%s)" % why, False)
+                except ValueError:
+                    c.check("Author narrator: refused without proper consent (%s)" % why, True)
+            pe = P.create("Ada Author", "Ada Author", True, photo, sample, landmarks=[[0.5, 0.5]] * 478)
+            cons = pe["consent"]
+            import hashlib as _h
+            c.check("Author narrator: consent recorded with signer, date, statement and fingerprints of both samples",
+                    cons["signer"] == "Ada Author" and cons["date_utc"] and "AI-generated" in cons["statement"] and cons["photo_sha256"] == _h.sha256(photo).hexdigest()
+                    and cons["sample_sha256"] == _h.sha256(sample).hexdigest())
+            v = P.set_voice(pe["id"], "offline")
+            c.check("Author narrator: offline voice tuned to the author's sample (pitch, speed, loudness)", v["engine"] == "espeak" and v["profile"] and v["target"]["pitch_hz"] > 50)
+            inst.speech.keys.save("elevenlabs", {"api_key": "el-TESTKEY-0123456789"})
+            v = P.set_voice(pe["id"], "elevenlabs")
+            c.check("Author narrator: ElevenLabs voice clone made from the sample (stand-in server)", v["voice"] == "VOICE123" and "/v1/voices/add" in seen["paths"])
+            P.set_voice(pe["id"], "offline")
+            r = P.narrate(pe["id"], "Welcome to my book. Let me read the first chapter to you.")
+            c.check("Author narrator: photo narration returns the voice and the timed mouth track at once", r["status"] == "done" and r["audio"] and len(r["track"]["visemes"]) > 10 and "AI narrator" in r["label"])
+
+            def wait(nid):
+                for _ in range(200):
+                    n = P.narration(nid)
+                    if n["status"] in ("done", "failed"):
+                        return n
+                    time.sleep(0.05)
+                return P.narration(nid)
+            inst.speech.keys.save("heygen", {"api_key": "hg-TESTKEY-0123456789"})
+            inst.speech.keys.save("did", {"api_key": "did-TESTKEY-0123456789"})
+            P.set_face(pe["id"], "heygen")
+            n1 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
+            c.check("Author narrator: HeyGen talking-photo video made, polled and saved (stand-in server)",
+                    n1["status"] == "done" and n1["video"] and os.path.getsize(P.file_path(pe["id"], n1["video"])) > 1000 and "/v2/video/generate" in seen["paths"], n1["detail"])
+            n2 = wait(P.narrate(pe["id"], "This chapter is about rivers.", "did")["id"])
+            c.check("Author narrator: D-ID talk video made and saved (stand-in server)", n2["status"] == "done" and n2["video"] and "/talks" in seen["paths"], n2["detail"])
+            script = os.path.join(d, "fake model.py")
+            with open(script, "w") as f:
+                f.write("import sys, os\nface, audio, out = sys.argv[1:4]\nassert os.path.getsize(face) > 0 and os.path.getsize(audio) > 0\n"
+                        "open(out, 'wb').write(bytes(5000))\n")
+            P.set_face(pe["id"], "local", {"command": '"%s" "%s" {face} {audio} {out}' % (sys.executable, script)})
+            n3 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
+            c.check("Author narrator: a local model (Wav2Lip-style command, paths with spaces) makes the video", n3["status"] == "done" and n3["video"], n3["detail"])
+            script2 = os.path.join(d, "folder_model.py")
+            with open(script2, "w") as f:
+                f.write("import sys, os\nd = os.path.join(sys.argv[1], 'run'); os.makedirs(d)\nopen(os.path.join(d, 'result.mp4'), 'wb').write(bytes(5000))\n")
+            P.set_face(pe["id"], "local", {"command": '"%s" "%s" {outdir}' % (sys.executable, script2)})
+            n4 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
+            c.check("Author narrator: a model that writes into a folder (SadTalker-style) is found", n4["status"] == "done", n4["detail"])
+            P.set_face(pe["id"], "local", {"command": '"%s" -c "import sys; sys.exit(3)"' % sys.executable})
+            n5 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
+            c.check("Author narrator: a failing model is reported, not hidden", n5["status"] == "failed" and "exit 3" in n5["detail"])
+            logs = json.dumps(inst.store.query("SELECT * FROM qb_activity")) + json.dumps(inst.speech.history(500)) + json.dumps(inst.store.query("SELECT * FROM narrations"))
+            c.check("Author narrator: no provider key appears in any log", not any(k in logs for k in ("el-TESTKEY", "hg-TESTKEY", "did-TESTKEY")))
+            dl = P.delete(pe["id"])
+            c.check("Author narrator: deleting a persona removes its samples and narrations", dl["deleted"] and not os.path.isdir(os.path.join(P.dir, str(pe["id"]))) and not inst.store.query("SELECT 1 FROM narrations"))
+    finally:
+        srv.shutdown()
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def _photoreal_selftest(c):
+    """Photo Real Lab: one perfect sample → the author's mouth model → any rendering measured against what the
+    author would do for the same words; the gate catches bad sync and wrong shapes; calibration converges; the
+    proven settings hold for new text; findings are QueryBook (UFCS) fact packets."""
+    import math as _m, random as _r
+    if not speech.find_espeak():
+        c.check("Photo Real Lab: skipped (needs espeak-ng)", True)
+        return
+    author = {"gap_gain": 1.0, "width_gain": 1.0, "lead_ms": 70, "smooth_ms": 45, "closure_hold_ms": 60, "blink_per_min": 17, "head_sd_deg": 1.2,
+              "shapes": {"PP": {"gap": 0.0, "width": 0.36}, "FF": {"gap": 0.05, "width": 0.38}, "aa": {"gap": 0.55, "width": 0.40}, "E": {"gap": 0.3, "width": 0.43},
+                         "I": {"gap": 0.16, "width": 0.45}, "O": {"gap": 0.42, "width": 0.31}, "U": {"gap": 0.18, "width": 0.27}, "DD": {"gap": 0.16, "width": 0.38},
+                         "kk": {"gap": 0.22, "width": 0.38}, "SS": {"gap": 0.08, "width": 0.41}, "nn": {"gap": 0.12, "width": 0.38}, "RR": {"gap": 0.15, "width": 0.33},
+                         "CH": {"gap": 0.14, "width": 0.32}, "TH": {"gap": 0.13, "width": 0.38}}}
+
+    def render(params, track, seed, noise=0.01):
+        """What the face tracker reads from a face driven like photoface.js (the same model: lead, response, shapes)."""
+        rnd, st, out = _r.Random(seed), {"gap": 0.0, "w": 0.37, "t": None, "closed": -1}, []
+        for i in range(int(track["duration"] * 30)):
+            t = i / 30.0
+            tt = t + params["lead_ms"] / 1000.0
+            v = next((x["v"] for x in track["visemes"] if x["start"] <= tt < x["end"]), "sil")
+            sh = params["shapes"].get(v)
+            g, w = (sh["gap"] * params["gap_gain"], sh["width"] * params["width_gain"]) if sh else (0.02 * params["gap_gain"], 0.37)
+            if v == "PP":
+                st["closed"] = tt + params.get("closure_hold_ms", 0) / 1000.0
+            if tt < st["closed"]:
+                g = 0
+            dt = 1 / 30.0 if st["t"] is None else t - st["t"]
+            st["t"] = t
+            a = 1 - _m.exp(-dt / max(0.005, params["smooth_ms"] / 1000.0))
+            st["gap"] += (g - st["gap"]) * a; st["w"] += (w - st["w"]) * a
+            rot = params["head_sd_deg"] * (0.8 * _m.sin(t * 0.53) + 0.6 * _m.sin(t * 1.31 + 1.1))
+            out.append({"t": t, "face": True, "gap": max(0, st["gap"] + rnd.gauss(0, noise)), "mouth_px": st["w"] * 0.5 * 720, "face_h": 0.5,
+                        "yaw": rot, "pitch": rot * 0.6, "bs": {"jawOpen": st["gap"] * 0.8}})
+        return out
+    info = {"width": 1920, "height": 720, "fps": 30}
+    text = photoreal.REFERENCE_PASSAGE
+    wav = speech.speak_wav(text, "en-us")
+    track = visemes.align(text, wav, "en")
+    with tempfile.TemporaryDirectory() as d:
+        inst = App(d)
+        L, P = inst.prlab, inst.personas
+        pe = P.create("Ada Author", "Ada Author", True, b"\xff\xd8" + b"\x00" * 100,
+                      speech.speak_wav("This is the author reading a passage aloud for the narrator. " * 5, "en-us"))
+        ref = L.set_reference(pe["id"], render(author, track, 1), wav, text, "en", info)
+        md = ref["model"]
+        c.check("Photo Real Lab: the perfect sample becomes the author's mouth model (lead, response time, a shape per sound)",
+                abs(md["tau_ms"] - 45) <= 15 and abs(md["lead_ms"] - 70) <= 30 and md["explained"] >= 0.8 and len(md["gap"]) >= 12, md)
+        take2 = L.measure(pe["id"], render(author, track, 2), wav, text, "real footage (second take)", "en", info)["score"]
+        c.check("Photo Real Lab: a second take of the real author passes the gate", take2["passed"], take2["verdict"])
+        bad = L.measure(pe["id"], render(dict(author, lead_ms=-80), track, 3), wav, text, "bad sync", "en", info)["score"]
+        flat = L.measure(pe["id"], render(dict(author, gap_gain=0.35), track, 4), wav, text, "flat mouth", "en", info)["score"]
+        c.check("Photo Real Lab: bad sync and a flat mouth fail, each on the right dimension",
+                not bad["passed"] and any("timing" in f for f in bad["failed"]) and not flat["passed"] and any("lip opening" in f for f in flat["failed"]))
+        params = dict(photoreal.DEFAULT_PARAMS, shapes={v: {"gap": x["gap"] * 0.6, "width": x["width"] * 1.15} for v, x in author["shapes"].items()}, lead_ms=0, smooth_ms=120)
+        rounds = 0
+        for rounds in range(1, 7):
+            r = L.calibrate(pe["id"], render(params, track, 10 + rounds), wav, text, params, "en", info, rounds)
+            if r["passed"]:
+                break
+            params = r["next_params"]
+        c.check("Photo Real Lab: calibration takes a wrongly set renderer to PASS (closed loop)", r["passed"] and rounds <= 4, "%d rounds" % rounds)
+        new = "Please bring the big map to the meeting tomorrow morning, and thank you for your help."
+        w2 = speech.speak_wav(new, "en-us")
+        t2 = visemes.align(new, w2, "en")
+        nt = L.measure(pe["id"], render(params, t2, 21), w2, new, "photo", "en", info)["score"]
+        c.check("Photo Real Lab: the proven settings pass on new words never seen in the reference", nt["passed"], nt["verdict"])
+        f = L.findings(pe["id"])
+        c.check("Photo Real Lab: findings rank the methods by pass rate and name their failures",
+                f["methods"][0]["pass_rate"] >= f["methods"][-1]["pass_rate"] and any(m["most_common_failures"] for m in f["methods"]))
+        row = L.graph(limit=1)[0]
+        import hashlib as _h
+        fp = _h.sha256("|".join([" ".join(str(x).strip().lower().split()) for x in (row["subject"], row["predicate"], row["object"])] + ["+"]).encode()).hexdigest()
+        lines = L.export_ufcs().strip().split("\n")
+        pk = json.loads(lines[0])
+        kf = inst.personas.get(pe["id"])["reference"]["keyframes"]
+        mdl_g = md["gap"]
+        frames_ref = render(author, track, 1)
+        lead = md["lead_ms"] / 1000.0
+        good = 0
+        for v_, t_ in kf.items():
+            if v_ in ("rest", "blink"):
+                continue
+            f_ = min(frames_ref, key=lambda f: abs(f["t"] - t_))
+            seg = [x for x in track["visemes"] if x["v"] == v_ and x["start"] <= t_ + lead <= x["end"]]
+            good += bool(seg) and abs(f_["gap"] - mdl_g[v_]) < 0.08
+        c.check("Photo Real Lab: the real-mouth library picks, for each sound, a frame inside that sound that matches the author's model",
+                "rest" in kf and good >= 0.8 * (len(kf) - 1 - ("blink" in kf)), "%d of %d" % (good, len(kf)))
+        lm = [[0.5, 0.5]] * 478
+        jpg = "data:image/jpeg;base64," + __import__("base64").b64encode(b"\xff\xd8\xff\xe0" + bytes(500)).decode()
+        lib = P.set_library(pe["id"], [{"v": v_, "image_b64": jpg, "landmarks": lm} for v_ in kf] + [{"v": "nonsense", "image_b64": jpg, "landmarks": lm}])
+        c.check("Photo Real Lab: the library stores the author's own frames (only the chosen ones)", lib["count"] == len(kf) and "nonsense" not in lib["frames"])
+        closed = [[0.5, 0.5]] * 478
+        closed[13], closed[14], closed[61], closed[291], closed[1], closed[234], closed[454] = [0.5, 0.60], [0.5, 0.605], [0.4, 0.6], [0.6, 0.6], [0.5, 0.45], [0.3, 0.45], [0.7, 0.45]
+        opened = [list(x) for x in closed]; opened[14] = [0.5, 0.66]
+        c.check("Author narrator: the photo check flags an open mouth and passes a closed one",
+                persona.photo_check(closed) == [] and any("open" in x for x in persona.photo_check(opened)))
+        c.check("Photo Real Lab: every finding is a UFCS 1.0 fact packet with the QueryBook store's fingerprint",
+                row["fingerprint"] == fp and pk["ufcs_version"] == "1.0" and pk["domain"] == "photoreal" and len(lines) == f["facts"])
+
+
+def _silent_selftest(c):
+    """Silent questions: a question mouthed without sound is matched to the questions QueryBook answers; in guided
+    mode the mouthed word is found among the words that look alike."""
+    import lipread as LR
+    if not speech.find_espeak():
+        c.check("Silent questions: skipped (needs espeak-ng)", True)
+        return
+    bs = {"P": (0.0, {"mouthClose": 0.4}), "F": (0.02, {"mouthRollLower": 0.5}), "W": (0.15, {"mouthPucker": 0.6}), "A": (0.45, {"jawOpen": 0.6}),
+          "E": (0.12, {"mouthStretchLeft": 0.4, "mouthStretchRight": 0.4}), "T": (0.1, {}), "-": (0.0, {"mouthClose": 0.3})}
+
+    def mouthed(text):
+        tr, out = visemes.align(text, speech.speak_wav(text, "en-us"), "en"), []
+        for i in range(int(tr["duration"] * 30)):
+            t = i / 30.0
+            v = next((x["v"] for x in tr["visemes"] if x["start"] <= t < x["end"]), None)
+            v = v or min(tr["visemes"], key=lambda x: min(abs(t - x["start"]), abs(t - x["end"])))["v"]
+            g, b = bs[LR.FROM_VISEME[v]]
+            out.append({"t": t, "face": True, "gap": g, "bs": b})
+        return LR.classes_of(out)[0]
+    hits = 0
+    for w in ("house", "money", "time", "water", "good"):
+        r = silent.decode_word(mouthed(w))
+        hits += any(w == x["word"] or w in x["same_on_lips"] for x in r["readings"][:5])
+    c.check("Silent questions (guided): the mouthed word is among the top 5 look-alike groups", hits >= 4, "%d of 5" % hits)
+    q = "translate time to italian"
+    r = silent.decode(mouthed(q))
+    top = [x["question"].lower() for x in r["readings"]]
+    c.check("Silent questions: a mouthed question is matched to the right pattern and offered among the top readings",
+            q in top and r["readings"][0]["pattern"] == "translate", top[:3])
 
 
 def _viseme_selftest(c):

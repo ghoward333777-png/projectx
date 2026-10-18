@@ -96,6 +96,19 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   it beats the current one there. Every version is kept with its scores and can be rolled back; the
   reservoir exports and imports, so several computers can pool what they learn. Deterministic: the
   same reservoir always gives the same version.
+* **Photo Real Lab and the Author Narrator:** an AI narrator that looks and sounds like the author, only with
+  the author's signed consent (fingerprints of the photo and voice sample are kept; everything is labelled
+  "AI narrator"). Voice: Google custom voice, ElevenLabs clone, or the offline voice tuned to the sample.
+  Face: the photo-driven face in the app, HeyGen, D-ID, or a local model (Wav2Lip, SadTalker, any command).
+  The lab starts from one perfect sample (the author reading the reference passage on camera), fits the
+  author's own mouth model to it (lip lead, response time, a shape per sound) and keeps the author's real
+  frames per sound (the real-mouth library the narrator is composed from). Every narration is measured
+  frame by frame against what the author's mouth would do for the same words and released only if it
+  passes the gate; the in-app face is calibrated in a closed loop until it does. Findings are UFCS 1.0
+  fact packets in the "photoreal" graph domain, exportable to the QueryBook store.
+* **Silent questions:** a question mouthed without sound is matched against the questions QueryBook
+  answers (pattern by pattern, with known words and language names in the gaps); the best readings and
+  their look-alike words are offered to tap. Guided mode: tap the question and language, mouth the word.
 * **Best capture:** whole face, forehead to chin, 40–60% of the picture's height (not just the mouth);
   mouth ≥ 150 px wide; 1080p (720p works, 4K adds nothing); 60 fps best, 30 minimum; face the camera
   within 20°; even front light; nothing over the mouth; mic 20–30 cm away.
