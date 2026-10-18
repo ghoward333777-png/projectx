@@ -25,6 +25,9 @@ tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309
 .good-t { color: #15803d; } .bad-t { color: #b91c1c; }
 .tr-live { font-size: 22px; line-height: 1.5; min-height: 2.6em; padding: 10px 14px; margin-top: 10px; border-radius: 10px; background: #0f172a; color: #e2e8f0; }
 .tr-live .tr-now { color: #fde047; }
+.tr-live .tr-draft { color: #94a3b8; font-style: italic; }
+.tr-live .tr-mic { color: #ef4444; animation: qb-pulse 1s infinite; }
+@keyframes qb-pulse { 50% { opacity: .3; } }
 .tr-text { max-height: 420px; overflow-y: auto; margin-top: 6px; }
 .tr-text p { margin: 4px 0; }
 .tr-t { font-family: monospace; font-size: 12px; color: #7c3aed; cursor: pointer; margin-right: 6px; }
@@ -324,9 +327,10 @@ tr.lc-active td { background: #f0fdf4; }
       </div>
       <div id="ls-out"></div>
       <div class="card">
-        <h2>🎧 Transcribe an audio file</h2>
-        <p class="small">MP3, M4A, OGG, WAV — any length. <b>Live captions</b> play the file while Google Speech-to-Text hears it in short pieces cut at pauses, sent ahead of the voice so each word lights up as it is spoken. <b>Whole file</b> transcribes everything in the background: in pieces with your Google key, or — for long recordings with the service account and bucket set up — with Google's long-audio recognition through Cloud Storage.</p>
+        <h2>🎧 Live captions and audio files</h2>
+        <p class="small"><b>Microphone</b>: speak and the words appear as you talk — a quick grey draft from the browser where it can, replaced by Google Speech-to-Text a moment later (the speech is cut at your pauses, at most every 6 seconds). When you stop, the recording and its transcript can be downloaded or ingested. <b>Audio files</b>: MP3, M4A, OGG, WAV — any length. <b>Live captions</b> play the file while Google Speech-to-Text hears it in short pieces cut at pauses, sent ahead of the voice so each word lights up as it is spoken. <b>Whole file</b> transcribes everything in the background: in pieces with your Google key, or — for long recordings with the service account and bucket set up — with Google's long-audio recognition through Cloud Storage.</p>
         <div class="row">
+          <button class="btn" id="tr-mic-go">🎙 Live captions from the microphone</button>
           <label class="btn" style="cursor:pointer">📁 Choose an audio file<input type="file" id="tr-file" accept="audio/*,.mp3,.m4a,.ogg,.oga,.wav,.flac,.aac,.webm" hidden></label>
           <span class="small" id="tr-state"></span>
         </div>
@@ -653,6 +657,7 @@ tr.lc-active td { background: #f0fdf4; }
       <ul>
         <li><b>Speak</b> — one voice profile (emotion and strength, tone, accent, speed, pitch, volume, pauses, articulation, tremble, hoarseness, breathiness, whisper, voice age) is sent to any engine: espeak-ng, the prototype's formant voice, Windows or macOS voices (all offline), Google Gemini TTS, Google Cloud Text-to-Speech, ElevenLabs, OpenAI, Microsoft Azure or Amazon Polly. <b>Advanced</b> shows every parameter of the chosen engine. The table “How each control is handled” says, for each control, whether the engine does it natively, QueryBook adds it afterwards, or it is not available; the exact request is shown with keys removed.</li>
         <li><b>Match a target</b> — give the output you need (pitch, speed, loudness, pauses, tremble, breath). The app generates, measures the result, adjusts and repeats until it matches.</li>
+        <li><b>Live captions from the microphone</b> — speak and the words appear as you talk (a grey draft from the browser, replaced by Google Speech-to-Text about a second or two later); stop to download or ingest the recording and transcript.</li>
         <li><b>Transcribe an audio file</b> — MP3, M4A, OGG or WAV of any length: live captions while it plays (Google Speech-to-Text hears it in pieces cut at pauses, ahead of the voice), or the whole file in the background — in pieces with the Google key, or by Google's long-audio recognition through Cloud Storage. Click a time to jump there; download TXT, SRT, VTT or JSON; ingest it.</li>
         <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
         <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>

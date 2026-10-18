@@ -160,12 +160,108 @@ async function trIngest() {
   if (dur > 300) toast("How it was said was measured on the first 5 minutes; the words cover the whole file.");
 }
 
+// ---------------------------------------------------------------- live captions from the microphone
+const MIC = { on: false };
+function micResample(x, from) {                         // linear resampling to 16 kHz
+  if (from === TR.sr) return x;
+  const k = from / TR.sr, n = Math.floor(x.length / k), y = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const p = i * k, j = Math.floor(p), f = p - j; y[i] = (x[j] || 0) + ((x[j + 1] ?? x[j] ?? 0) - (x[j] || 0)) * f; }
+  return y;
+}
+function micSlice(a, b) {                               // samples a..b of the recording so far (at the microphone's rate)
+  const out = new Float32Array(b - a); let pos = 0, o = 0;
+  for (const c of MIC.chunks) {
+    const s = Math.max(a, pos), e = Math.min(b, pos + c.length);
+    if (e > s) { out.set(c.subarray(s - pos, e - pos), o); o += e - s; }
+    pos += c.length; if (pos >= b) break;
+  }
+  return out;
+}
+async function micLive() {
+  if (MIC.on) return micStop();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) { toast("The microphone could not be opened: " + e.message, true); return; }
+  const lang = (SP.profile && SP.profile.lang) || "en";
+  const s = await api("/api/speech/caption/start", { name: "microphone", duration_s: 0, lang });
+  Object.assign(MIC, { on: true, stream, session: s.session, chunks: [], total: 0, pieceStart: 0, quietRun: 0, floor: null, words: [], pending: 0, lag: null, draft: "", t0: performance.now() });
+  MIC.ctx = new (window.AudioContext || window.webkitAudioContext)(); MIC.sr = MIC.ctx.sampleRate;
+  MIC.src = MIC.ctx.createMediaStreamSource(stream); MIC.proc = MIC.ctx.createScriptProcessor(4096, 1, 1);
+  MIC.proc.onaudioprocess = e => {
+    if (!MIC.on) return;
+    const d = new Float32Array(e.inputBuffer.getChannelData(0)); MIC.chunks.push(d); MIC.total += d.length;
+    let r = 0; for (let i = 0; i < d.length; i += 2) r += d[i] * d[i]; r = Math.sqrt(r / (d.length / 2));
+    MIC.floor = MIC.floor === null ? r : Math.min(r, MIC.floor * 1.002 + 1e-6);   // room noise: follows quiet moments, rises slowly
+    const quiet = r < Math.max(0.006, MIC.floor * 2.5);
+    MIC.quietRun = quiet ? MIC.quietRun + d.length : 0;
+    MIC.level = r;
+    const len = (MIC.total - MIC.pieceStart) / MIC.sr;
+    if ((len >= 2.5 && MIC.quietRun >= 0.25 * MIC.sr) || len >= 6) {            // cut in the middle of a pause, or at 6 s
+      const cut = MIC.total - Math.floor(Math.min(MIC.quietRun, MIC.total - MIC.pieceStart) / 2);
+      micSend(MIC.pieceStart, cut); MIC.pieceStart = cut;
+    }
+  };
+  MIC.src.connect(MIC.proc); MIC.proc.connect(MIC.ctx.destination);
+  MIC.recog = window.listenWords ? listenWords(lang, t => { MIC.draft = t; }) : null;          // instant grey draft, where the browser can
+  $("#tr-mic-go").textContent = "⏹ Stop live captions"; $("#tr-mic-go").classList.add("busy");
+  $("#tr-out").innerHTML = ""; $("#tr-audio").hidden = true;
+  micLoop();
+}
+function micSend(a, b) {
+  const x = micSlice(a, b);
+  let e = 0; for (let i = 0; i < x.length; i += 4) e += x[i] * x[i];
+  if (Math.sqrt(e / Math.max(1, x.length / 4)) < Math.max(0.006, (MIC.floor || 0) * 2)) return;     // only silence: nothing to send
+  MIC.pending++;
+  const sentAt = performance.now();
+  blobB64(trFloatWav(micResample(x, MIC.sr), TR.sr)).then(b64 => fetch("/api/speech/caption/piece", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_b64: b64, offset_s: a / MIC.sr, lang: (SP.profile && SP.profile.lang) || "en", session: MIC.session }) }))
+    .then(r => r.json()).then(r => {
+      if (r.error) { MIC.error = r.error; return; }
+      MIC.words = MIC.words.concat(r.words).sort((p, q) => p.start_s - q.start_s);
+      const now = (performance.now() - MIC.t0) / 1000;
+      if (r.words.length) MIC.lag = now - r.words[r.words.length - 1].end_s;
+      MIC.wait = (performance.now() - sentAt) / 1000;
+      MIC.draft = "";
+    }).catch(err => { MIC.error = err.message; }).finally(() => { MIC.pending--; });
+}
+function micLoop() {
+  if (!MIC.on && !MIC.pending) return;
+  const recent = MIC.words.slice(-24).map(w => esc(w.word)).join(" ");
+  $("#tr-live").innerHTML = (recent || "") + (MIC.draft ? ' <span class="tr-draft">' + esc(MIC.draft.split(" ").slice(-12).join(" ")) + "</span>" : "") +
+    (MIC.on ? ' <span class="tr-mic">●</span>' : "") || '<span class="muted">Listening…</span>';
+  $("#tr-lag").textContent = (MIC.on ? "listening " + ((performance.now() - MIC.t0) / 1000).toFixed(2) + " s" : "finishing") +
+    (MIC.lag !== null ? " · Google's words arrive " + MIC.lag.toFixed(2) + " s after they are spoken" : "") +
+    (MIC.wait ? " (Google took " + MIC.wait.toFixed(2) + " s)" : "") + (MIC.error ? " · last piece failed: " + MIC.error : "");
+  $("#tr-prog").style.width = Math.min(100, 100 * (MIC.level || 0) * 6) + "%";
+  requestAnimationFrame(micLoop);
+}
+async function micStop() {
+  MIC.on = false;
+  if (MIC.total > MIC.pieceStart) micSend(MIC.pieceStart, MIC.total);
+  try { MIC.proc.disconnect(); MIC.src.disconnect(); } catch (e) { /* already stopped */ }
+  MIC.stream.getTracks().forEach(t => t.stop()); MIC.ctx.close();
+  if (MIC.recog) { try { MIC.recog.stop(); } catch (e) { /* ignore */ } }
+  $("#tr-mic-go").textContent = "🎙 Live captions from the microphone"; $("#tr-mic-go").classList.remove("busy");
+  while (MIC.pending) await new Promise(r => setTimeout(r, 100));
+  $("#tr-prog").style.width = "0";
+  // the recording becomes like an opened file: play it back, download the transcript, ingest it
+  TR.pcm = micResample(micSlice(0, MIC.total), MIC.sr);
+  const name = "microphone-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".wav";
+  const blob = trFloatWav(TR.pcm, TR.sr);
+  TR.file = new File([blob], name, { type: "audio/wav" }); TR.words = MIC.words;
+  $("#tr-audio").src = URL.createObjectURL(blob); $("#tr-audio").hidden = false;
+  $("#tr-state").innerHTML = "Recorded " + trTime(TR.pcm.length / TR.sr) + ", " + TR.words.length + ' words. <a href="' + $("#tr-audio").src + '" download="' + name + '">download the recording</a>';
+  ["#tr-live-go", "#tr-file-go", "#tr-ingest"].forEach(id => $(id).disabled = false);
+  trRenderTranscript();
+}
+
 function trSetup() {
   if (TR.ready) return; TR.ready = true;
   $("#tr-file").onchange = e => { const f = e.target.files[0]; if (f) trLoad(f); };
   $("#tr-live-go").onclick = trLive;
   $("#tr-file-go").onclick = trWhole;
   $("#tr-ingest").onclick = trIngest;
+  $("#tr-mic-go").onclick = micLive;
   $("#tr-audio").addEventListener("pause", () => { if (TR.playing && !$("#tr-audio").ended) { TR.playing = false; $("#tr-live-go").textContent = "▶ Play with live captions"; } });
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="listen"]'); if (b) trSetup(); });

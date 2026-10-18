@@ -70,6 +70,9 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   through Google's long-audio recognition via Cloud Storage (service account + bucket; used automatically
   for recordings over 10 minutes). Timed transcript, TXT / SRT / VTT / JSON downloads, ingestion.
   Recordings over 50 s anywhere in the app (Listen & analyse, ingestion) are transcribed whole.
+* **Live captions from the microphone:** words appear as you speak — a grey draft from the browser's own
+  recognizer where available, replaced by Google Speech-to-Text a second or two later (speech is cut at
+  pauses, at most every 6 s). Stop to download or ingest the recording and its transcript.
 * **Talking face:** after Speak or Ask, a face moves its mouth in time with the voice — 2D (SVG) or 3D
   (three.js, bundled) with **Enter VR** for WebXR headsets. Mouth shapes are the 15 standard visemes
   (Oculus/Meta set), timed from the measured audio, or exactly from Google Speech-to-Text word times.
