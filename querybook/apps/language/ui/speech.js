@@ -270,7 +270,7 @@ async function lsAnalyse() {
   const m = r.measure, I = m.indicators, vm = m.vocal_mode, q = m.quality, p = m.pitch;
   const card = (title, o, extra) => '<div class="stat"><div class="k">' + esc(title) + '</div><div class="v">' + esc(o.label) + (o.level !== undefined && o.level !== null ? " · " + o.level + "/100" : "") + "</div>" +
     (o.reasons ? '<div class="small muted">' + o.reasons.map(esc).join("; ") + "</div>" : "") + (extra || "") + "</div>";
-  $("#ls-out").innerHTML = (r.face ? faceEvidenceHtml(r.face) : "") +
+  $("#ls-out").innerHTML = (r.face ? faceEvidenceHtml(r.face) + learnedNote(r.learning) : "") +
     '<div class="card"><h2>Vocal mode' + (r.face ? " heard (sound only)" : "") + '</h2><div class="modebig">' + esc(vm.label) + ' <span class="small muted">(' + esc(vm.confidence || "") + ")</span></div>" +
       (vm.scores || []).map(s => '<div class="scorebar"><span>' + esc(s.mode) + '</span><div class="meter"><i style="width:' + s.score + '%"></i></div><b>' + s.score + '</b></div><div class="small muted" style="margin:-2px 0 6px 118px">' + s.reasons.map(esc).join("; ") + "</div>").join("") +
       '<p class="small muted">' + esc(vm.note || "") + "</p></div>" +
@@ -324,7 +324,7 @@ async function ask(audio, video) {
     (r.how_said ? '<p class="small"><b>How you asked:</b> ' + esc(r.how_said.vocal_mode) + " (" + esc(r.how_said.confidence) + "), " + esc(r.how_said.emotion) + ", " + esc(r.how_said.volume) + "; answered with emotion " +
       esc(r.voice_used.emotion) + (r.voice_used.whisper ? ", whispering" : "") + ".</p>" : "") +
     '<p class="small"><b>Words understood:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>" +
-    (window.faceEvidenceHtml ? faceEvidenceHtml(r.face) : "");
+    (window.faceEvidenceHtml ? faceEvidenceHtml(r.face) + learnedNote(r.learning) : "");
   const a = $("#ak-out audio"); if (a) a.play().catch(() => {});
   if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang, r.voice_used.emotion);
 }
@@ -453,6 +453,7 @@ async function loadSpeech() {
     await loadProviders(); await refreshEngines();
   };
   $$("#sptabs button").forEach(b => b.onclick = () => showSub(b.dataset.sp));
+  ["#ak-cam", "#ls-cam"].forEach(id => $(id).addEventListener("change", e => { if (e.target.checked && window.tracker) tracker().catch(() => {}); }));
   renderTargets();
   profileUI();
   SP.loaded = true;

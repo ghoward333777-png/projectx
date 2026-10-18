@@ -23,6 +23,8 @@
 tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309; } tr.bad td:first-child { color: #b91c1c; }
 .vd-guide { margin: 10px 0 4px; }
 .good-t { color: #15803d; }
+.lc-sentence { font-size: 22px; font-weight: 600; padding: 14px 16px; margin: 8px 0; border-radius: 10px; background: #f5f3ff; color: #3b0764; }
+tr.lc-active td { background: #f0fdf4; }
 .face-evidence { border-left: 4px solid #7c3aed; }
 
   :root { --accent: #5b3c9e; }
@@ -372,6 +374,33 @@ tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309
         <div class="row"><button class="btn bigbtn" id="vd-ingest" disabled>📥 Ingest this video</button></div>
         <div id="vd-ingest-out"></div>
       </div>
+      <div class="card" id="lc-card">
+        <h2>5 · Teach and improve <span class="small muted">— the ingestion reservoir (speech-visual domain)</span></h2>
+        <p class="small">Every recording with a face and known words goes into the reservoir of the ingestion domain (numbers only — never the picture). The app learns from it: how <b>this</b> camera sees <b>these</b> mouths, which shapes they confuse, this computer's camera/microphone delay, the lip-sync timing, and the talking face's mouth shapes. About one recording in four is held back for testing; a learned version is switched on <b>only when it beats the current one on those held-back recordings</b>. Every version is kept and can be rolled back.</p>
+        <div id="lc-stats" class="stats"></div>
+        <h3>Teach it (about 2 minutes)</h3>
+        <p class="small">Face the camera as in the guide above, press the button, read the sentence aloud, press again. Twelve sentences cover every mouth shape. With Google Speech-to-Text connected, each sentence also gets exact word times, which tune the lip-sync timing.</p>
+        <div class="lc-sentence" id="lc-sentence"></div>
+        <div class="row">
+          <button class="btn bigbtn" id="lc-rec">🎙📷 Record this sentence</button>
+          <button class="btn quiet" id="lc-skip">Next sentence ›</button>
+          <input id="lc-own" class="grow" type="text" placeholder="…or type your own sentence (any language) and record it">
+        </div>
+        <div id="lc-cam-view" hidden style="margin-top:8px"></div>
+        <div id="lc-last" class="small" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:10px">
+          <label class="chk"><input type="checkbox" id="lc-auto"> Learn from camera recordings automatically (when the words are certain: a script you gave, or Google Speech-to-Text ≥ 85%)</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="lc-train">🧠 Learn now</button>
+          <button class="btn quiet" id="lc-rules">Use the built-in rules only</button>
+          <a class="btn quiet" id="lc-export" href="/api/lipcoach/export" download="querybook-ingest-reservoir.json">⬇ Export the reservoir</a>
+          <label class="btn quiet" style="cursor:pointer">⬆ Import a reservoir<input type="file" id="lc-import" accept=".json,application/json" hidden></label>
+        </div>
+        <h3>Progress</h3>
+        <div id="lc-chart"></div>
+        <div id="lc-versions"></div>
+      </div>
     </div>
 
     <div class="sp" id="sp-providers" hidden>
@@ -491,6 +520,7 @@ tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309
         <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
         <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
         <li><b>Talking face</b> — after <b>Speak</b> or <b>Ask</b>, a face (2D, or 3D with <b>Enter VR</b> on a headset) moves its mouth in time with the voice. The mouth shapes are the 15 standard visemes, timed from the measured audio (or exactly, from Google Speech-to-Text word times). Export as JSON, CSV or Rhubarb TSV for animation tools.</li>
+        <li><b>Teach and improve</b> — Face &amp; video, step 5. Recordings with a face and known words go into the ingestion reservoir (numbers only, never pictures). The app learns this camera's and this speaker's mouth shapes, the shapes they confuse, the computer's camera/microphone delay, the lip-sync timing and the talking face's mouth shapes. A new version is used only when it does better on held-back recordings; all versions are kept and can be rolled back; the reservoir can be exported and imported to pool learning between computers.</li>
         <li><b>Camera with the voice</b> — in <b>Ask by voice</b> and <b>Listen &amp; analyse</b>, tick the camera box: the lips choose between the recognizer's possible readings of your words, the face settles close calls (crying and laughing sound alike but look opposite), the answer's voice follows the face's mood, and a speaker check says whether the voice belongs to the face.</li>
         <li><b>Face &amp; video</b> — camera, screen or video file. Live face tracking with a quality check, a sync check (how many milliseconds sound and lips are apart), lip-reading with look-alike words, checking the lips against a script, an avatar that copies the mouth, and overdubbing (with consent; always labelled synthetic).</li>
         <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>

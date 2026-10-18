@@ -119,5 +119,9 @@ class TalkingFace {
     loop();
   }
 }
+// mouth shapes learned from real tracked mouths (Face & video → Teach and improve), when there are any
+fetch("/api/lipcoach/mouth").then(r => r.json()).then(d => {
+  Object.entries((d && d.mouth) || {}).forEach(([v, m]) => { if (MOUTH[v]) MOUTH[v] = Object.assign({}, MOUTH[v], m); });
+}).catch(() => {});
 window.TalkingFace = TalkingFace;
 window.mouthAt = mouthAt;

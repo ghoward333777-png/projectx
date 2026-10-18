@@ -430,11 +430,11 @@ async function vdIngest() {
   if (!VD.blob || !VD.analysed) { toast("Analyse the video first (step 2).", true); return; }
   let audio;
   try { audio = await decodeTrack(VD.blob); } catch (e) { toast("This video's sound could not be read here.", true); return; }
-  const r = await api("/api/speech/ingest", { audio_b64: await wavB64(audio, 16000), transcript: $("#vd-script").value, label: "video", recognizer: "auto",
+  const r = await api("/api/speech/ingest", { audio_b64: await wavB64(audio, 16000), transcript: $("#vd-script").value, expected: $("#vd-script").value, label: "video", recognizer: "auto",
     lang: (window.SP && SP.profile && SP.profile.lang) || "en", video: { frames: VD.analysed.frames, env: VD.analysed.env, info: VD.analysed.info } });
   const m = r.measure;
   $("#vd-ingest-out").innerHTML = '<div class="note good">Ingested: <b>' + esc(r.transcript || "(no words)") + "</b> — heard by " + esc(r.heard_by) + "</div>" +
-    faceEvidenceHtml(r.face, m.vocal_mode) +
+    faceEvidenceHtml(r.face, m.vocal_mode) + learnedNote(r.learning) +
     (r.semantics ? '<p class="small"><b>Words:</b> ' + r.semantics.words.map(w => esc(w.word) + (w.known_to_builder ? "" : "?")).join(" ") + " — " + esc(r.semantics.language_name) + "</p>" : "");
 }
 
@@ -500,4 +500,76 @@ function faceEvidenceHtml(face, heard) {
   return h + "</div>";
 }
 
-document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="video"]'); if (b) vdSetup(); });
+// ---------------------------------------------------------------- teach and improve (the ingestion reservoir)
+const LC = { i: 0, rec: false, status: null };
+function learnedNote(l) {
+  if (!l) return "";
+  return '<p class="small ' + (l.stored ? "good-t" : "muted") + '">' + (l.stored ? "✔ Added to the ingestion reservoir (" + l.labelled_frames + " frames labelled, " + l.split + " set) — the app learns from it." :
+    "Not added to the ingestion reservoir: " + esc(l.reason)) + "</p>";
+}
+async function lcLoad() {
+  const r = await api("/api/lipcoach"); LC.status = r;
+  const vs = r.versions, act = vs.find(v => v.id === r.active_version), m = act ? act.metrics : {};
+  const last = vs.length ? vs[vs.length - 1].metrics : {};
+  const pct = v => v === null || v === undefined ? "—" : Math.round(100 * v) + "%";
+  const tr = r.reservoir.filter(x => x.split === "train").reduce((a, x) => a + x.recordings, 0), te = r.total - tr;
+  $("#lc-stats").innerHTML = stat(r.total, "recordings in the reservoir") + stat(tr + " / " + te, "to learn from / held back") + stat(r.exact_timing, "with exact word times") +
+    stat(r.active_version ? "version " + r.active_version : "built-in rules", "in use") +
+    stat(pct(last.rules_accuracy) + " → " + pct(m.learned_accuracy !== undefined && m.reader_switched_on ? m.learned_accuracy : last.learned_accuracy), "mouth shapes read right (rules → learned)") +
+    stat((last.agreement_rules ?? "—") + " → " + (last.agreement_learned ?? "—"), "lips agree with the true words") +
+    stat((r.bias_ms || 0) + " ms", "camera/microphone delay (learned)") + stat(last.align ? last.align.before_ms + " → " + last.align.after_ms + " ms" : "—", "lip-sync timing error") +
+    (r.training ? stat("learning…", "status") : "");
+  $("#lc-auto").checked = r.auto;
+  $("#lc-sentence").textContent = r.teach[LC.i % r.teach.length];
+  // progress chart: learned vs rules accuracy and agreement, per version
+  const pts = vs.filter(v => v.metrics.rules_accuracy !== undefined && v.metrics.rules_accuracy !== null);
+  if (pts.length) {
+    const W = 640, H = 160, X = i => 30 + (pts.length === 1 ? (W - 60) / 2 : i * (W - 60) / (pts.length - 1)), Y = v => H - 20 - v * (H - 40);
+    const line = (k, col, scale) => { const p = pts.map((v, i) => [X(i), Y(Math.max(0, Math.min(1, (v.metrics[k] || 0) / (scale || 1))))]);
+      return '<polyline fill="none" stroke="' + col + '" stroke-width="2.5" points="' + p.map(q => q.join(",")).join(" ") + '"/>' + p.map(q => '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="3.5" fill="' + col + '"/>').join(""); };
+    $("#lc-chart").innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" style="width:100%;max-width:680px"><line x1="30" y1="' + Y(0) + '" x2="' + (W - 30) + '" y2="' + Y(0) + '" stroke="#cbd5e1"/><line x1="30" y1="' + Y(1) + '" x2="' + (W - 30) + '" y2="' + Y(1) + '" stroke="#e2e8f0"/>' +
+      line("rules_accuracy", "#94a3b8") + line("learned_accuracy", "#7c3aed") + line("agreement_learned", "#16a34a", 100) +
+      '<text x="30" y="12" font-size="11" fill="#475569">held-back recordings, per version: <tspan fill="#7c3aed">■ learned reader</tspan> <tspan fill="#94a3b8">■ built-in rules</tspan> <tspan fill="#16a34a">■ lips agree with the words</tspan></text></svg>';
+  } else $("#lc-chart").innerHTML = '<p class="small muted">No versions yet — teach a few sentences (learning starts after three recordings).</p>';
+  $("#lc-versions").innerHTML = vs.length ? '<table class="tbl small"><tr><th>Version</th><th>Made (UTC)</th><th>Recordings</th><th>Rules</th><th>Learned</th><th>Lips agree</th><th>Timing error</th><th>What happened</th><th></th></tr>' +
+    vs.slice().reverse().map(v => { const x = v.metrics; return '<tr class="' + (v.id === r.active_version ? "lc-active" : "") + '"><td>' + v.id + (v.id === r.active_version ? " ✔ in use" : "") + "</td><td>" + esc(v.created) + "</td><td>" + v.examples + "</td><td>" +
+      pct(x.rules_accuracy) + "</td><td>" + pct(x.learned_accuracy) + "</td><td>" + (x.agreement_rules ?? "—") + " → " + (x.agreement_learned ?? "—") + "</td><td>" + (x.align ? x.align.before_ms + " → " + x.align.after_ms + " ms" : "—") +
+      "</td><td>" + esc(v.note || "") + "</td><td>" + (v.id === r.active_version ? "" : '<button class="btn small quiet" data-lcuse="' + v.id + '">use</button>') + "</td></tr>"; }).join("") + "</table>" : "";
+  $$("[data-lcuse]").forEach(b => b.onclick = async () => { await api("/api/lipcoach/use", { version: b.dataset.lcuse }); lcLoad(); });
+  if (r.training) setTimeout(lcLoad, 1500);
+}
+async function lcRecord() {
+  const btn = $("#lc-rec");
+  if (!LC.rec) {
+    try { await recStart(null, $("#lc-last")); } catch (e) { toast("The microphone could not be opened: " + e.message, true); return; }
+    if (!(await camSideStart($("#lc-cam-view"), REC.t0))) { recStop(); return; }
+    LC.rec = true; btn.textContent = "⏹ Stop — done reading"; btn.classList.add("busy");
+  } else {
+    LC.rec = false; btn.textContent = "🎙📷 Record this sentence"; btn.classList.remove("busy");
+    const blob = recStop(), cam = camSideStop($("#lc-cam-view"));
+    const text = $("#lc-own").value.trim() || $("#lc-sentence").textContent;
+    if (!cam) { $("#lc-last").textContent = "No face frames were recorded."; return; }
+    const r = await api("/api/lipcoach/teach", { audio_b64: await blobB64(blob), frames: cam.frames, info: cam.info, text, lang: (SP.profile && SP.profile.lang) || "en" });
+    $("#lc-last").innerHTML = r.stored ? "✔ “" + esc(text) + "”: " + r.labelled_frames + " frames labelled (" + r.split + " set" + (r.exact_word_times ? ", exact word times" : "") + "). Built-in rules read " +
+      Math.round(100 * r.rules_accuracy) + "% of them right" + (r.current_accuracy !== null ? ", the version in use " + Math.round(100 * r.current_accuracy) + "%" : "") + "." : "Not added: " + esc(r.reason);
+    if (r.stored) {                                   // a rejected recording keeps the same sentence, to read again
+      if (!$("#lc-own").value.trim()) LC.i++;
+      $("#lc-own").value = "";
+    }
+    lcLoad();
+  }
+}
+function lcSetup() {
+  if (LC.ready) return; LC.ready = true;
+  tracker().catch(() => {});                          // load the face tracker now, so the first recording is complete
+  $("#lc-rec").onclick = lcRecord;
+  $("#lc-skip").onclick = () => { LC.i++; if (LC.status) $("#lc-sentence").textContent = LC.status.teach[LC.i % LC.status.teach.length]; };
+  $("#lc-auto").onchange = e => api("/api/lipcoach/auto", { on: e.target.checked });
+  $("#lc-train").onclick = async () => { const r = await api("/api/lipcoach/train", {}); toast((r.note || []).join("; ") || "Learned."); lcLoad(); };
+  $("#lc-rules").onclick = async () => { await api("/api/lipcoach/use", { version: "rules" }); lcLoad(); };
+  $("#lc-import").onchange = async e => { const f = e.target.files[0]; if (!f) return;
+    try { const r = await api("/api/lipcoach/import", { data: JSON.parse(await f.text()) }); toast(r.added + " recordings added to the reservoir."); lcLoad(); } catch (err) { toast("Import failed: " + err.message, true); } };
+  lcLoad();
+}
+
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest('#sptabs [data-sp="video"]'); if (b) { vdSetup(); lcSetup(); } });

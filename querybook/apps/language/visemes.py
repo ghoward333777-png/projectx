@@ -36,6 +36,7 @@ _VOWEL_V = {"aa", "E", "I", "O", "U"}
 _SKIP = set("ˈˌ.ːˑ‿͡|‖ ()-/123456789")
 WEIGHT = {"vowel": 1.0, "long": 1.5, "cons": 0.6}      # tuned on measured word timings (mean error about 60 ms)
 WORD_BASE = 1.0          # extra weight per word (time a word takes regardless of its sounds)
+DEFAULT_WEIGHT, DEFAULT_WORD_BASE = dict(WEIGHT), WORD_BASE   # the learner (lipcoach.py) may tune WEIGHT and WORD_BASE
 
 
 def phonemes(ipa):
@@ -173,12 +174,39 @@ def _partition(wts, spans):
     return list(reversed(groups))
 
 
+_CACHE = {}
+
+
+def _measured(wav):
+    """voicedsp.measure, remembered for the last few clips (the learner re-aligns the same clip many times)."""
+    import hashlib
+    k = ("m", hashlib.sha1(wav).hexdigest())
+    if k not in _CACHE:
+        if len(_CACHE) > 64:
+            _CACHE.clear()
+        _CACHE[k] = voicedsp.measure(wav)
+    return _CACHE[k]
+
+
+def _cached_phonemes(words, lang, lab):
+    """Pronunciations (remembered), re-weighted with the current WEIGHT so tuned weights take effect."""
+    k = ("w", tuple(words), lang)
+    if k not in _CACHE:
+        _CACHE[k] = word_phonemes(words, lang, lab)
+    out = []
+    for w in _CACHE[k]:
+        ph = [(sym, v, WEIGHT["long"] if (v in _VOWEL_V and sym.endswith("ː")) else WEIGHT["vowel"] if v in _VOWEL_V else WEIGHT["cons"])
+              for sym, v, _ in w["phonemes"]]
+        out.append(dict(w, phonemes=ph))
+    return out
+
+
 def align(text, wav, lang="en", lab=None, word_times=None):
     """Timed visemes for `text` spoken in `wav`. word_times: optional [{word, start_s, end_s}] (e.g. Speech-to-Text)."""
     words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)
-    m = voicedsp.measure(wav)
+    m = _measured(wav)
     dur = m["duration_s"]
-    wp = word_phonemes(words, lang, lab)
+    wp = _cached_phonemes(words, lang, lab)
     timed, method = [], ""
     if word_times and len(word_times) >= max(1, len(words) // 2):
         method = "word times from speech recognition"

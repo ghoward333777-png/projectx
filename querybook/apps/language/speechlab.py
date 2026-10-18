@@ -87,6 +87,7 @@ class SpeechLab:
         tts.Formant.lab = lab
         tts.BY_ID["formant"].lab = lab
         self.google = gcloud.Google(gcloud.Settings(folder), log)
+        self.coach = None                                   # lipcoach.LipCoach, set by the app
 
     # ---------------------------------------------------------------- Google Speech-to-Text (optional recognizer)
     def stt_ready(self):
@@ -242,6 +243,25 @@ class SpeechLab:
         cands = self._candidates(transcript, video, stt)
         return lipread.fuse(video.get("frames") or [], m["vocal_mode"], env, cands, video.get("info") or {}, lang, self.lab)
 
+    def _learn(self, video, wav, audio_name, face, expected, stt, lang, source):
+        """Deposit a camera recording into the ingestion reservoir when its words are certain: a script the person
+        gave, or Speech-to-Text at 85% confidence or more (never the lips' own choice — that would teach its own mistakes)."""
+        if not (self.coach and video and face and face.get("face_seen")):
+            return None
+        if not self.coach.auto():
+            return {"stored": False, "reason": "learning from recordings is switched off"}
+        text, wt = None, None
+        if expected:
+            text = expected
+        elif stt and stt.get("transcript") and (stt.get("confidence") or 0) >= 0.85:
+            text, wt = stt["transcript"], stt.get("words") or None
+        if not text:
+            return {"stored": False, "reason": "the words are not certain enough to learn from (give the script, or use Google Speech-to-Text)"}
+        try:
+            return self.coach.deposit(video.get("frames") or [], text, lang, source, wav, audio_name, wt, video.get("info"), face.get("sync"))
+        except Exception as e:                              # learning must never break ingestion
+            return {"stored": False, "reason": "not stored: %s" % e}
+
     def ingest(self, audio, transcript="", expected="", label="", recognizer="auto", lang="en", video=None):
         clk = Clock()
         clk("receive")
@@ -286,6 +306,7 @@ class SpeechLab:
             if face:
                 res["face"] = face
                 mode = "%s (%s)" % (face["mode"]["label"], face["mode"]["confidence"])
+                res["learning"] = self._learn(video, audio, name, face, expected, stt, lang, "video" if label == "video" else "ingest")
             rid = self._record("ingest", "%s%.2f s of %s — %s, %s%s" % ((label + ": ") if label else "", m["duration_s"], "video" if video else "audio", mode,
                                m["indicators"]["emotion"]["label"], ("; speaker check: " + face["speaker_check"]["trust"]) if face else ""),
                                "voicedsp+face" if video else "voicedsp", "ok", clk, {"transcript": transcript, "expected": expected, "label": label,
@@ -624,7 +645,8 @@ class SpeechLab:
         rid = self._record("query", "“%s” → “%s”%s" % (text[:80], answer[:80], " (camera used)" if face else ""), g["summary"]["engine_used"], "ok", clk,
                            {"transcript": text, "respond_to_mood": respond_to_mood, "frames": len((video or {}).get("frames") or [])},
                            {"answer": answer, "how_said": how, "transcript_choice": (face or {}).get("transcript"), "speaker_check": (face or {}).get("speaker_check")}, g["audio"])
-        return {"log_id": rid, "answer": answer, "question": text, "semantics": sem, "how_said": how, "face": face,
+        learning = self._learn(video, audio, None, face, "", stt, lang, "query") if face else None
+        return {"log_id": rid, "answer": answer, "question": text, "semantics": sem, "how_said": how, "face": face, "learning": learning,
                 "voice_used": {k: p[k] for k in ("emotion", "whisper", "rate", "volume_db")}, "audio": g["audio"]}
 
     def _answer(self, text, sem):

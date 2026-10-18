@@ -21,6 +21,7 @@ import qbcore as core
 import lab
 import speech
 import speechlab
+import lipcoach
 import tts
 import visemes
 import verify
@@ -28,7 +29,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 PORT = 8101
 program_dir = HERE
 
@@ -62,7 +63,7 @@ CREATE TABLE custom_pairs (
 );
 INSERT INTO custom_pairs(lang, native, target_word, native_word, note, created)
   SELECT lang, 'en', foreign_word, english, note, created FROM custom_words
-""", lab.SCHEMA, speechlab.SCHEMA]
+""", lab.SCHEMA, speechlab.SCHEMA, lipcoach.SCHEMA]
 
 
 def today():
@@ -89,6 +90,7 @@ class App:
         self.lab = lab.Lab(self.store, self.log)
         self.CLI_COMMANDS = {"build": self._cli_build, "verify": self._cli_verify, "import-keys": self._cli_import_keys}
         self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
+        self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -535,6 +537,10 @@ class App:
         vr = self.last_verification()
         out.append(C("proof", "Proof of learning from scratch", "ok" if vr and vr["verdict"] == "PASS" else "fail" if vr else "warn",
                      ("%s %s, fingerprint %s…" % (vr["verdict"], vr["finished"], vr.get("fingerprint", {}).get("sha256", "")[:16])) if vr else "not run yet (Verify tab)"))
+        if hasattr(self, "coach"):
+            st = self.coach.status()
+            out.append(C("reservoir", "Ingestion reservoir (lip-reading / lip-sync learning)", "ok",
+                         "%d recordings; %s" % (st["total"], ("version %s in use" % st["active_version"]) if st["active_version"] else "built-in rules in use")))
         vm = vendor_missing()
         out.append(C("face_video", "Face & video (3D/VR face, face tracker)", "fail" if vm else "ok",
                      ("missing: " + ", ".join(vm)) if vm else "three.js r160 and MediaPipe Face Landmarker 0.10.14 present (%d files)" % len(VENDOR)))
@@ -793,6 +799,69 @@ class App:
                                 "failed" if p.get("status") == "failed" else "ok", clk)
             return {"ok": True}
 
+        # ---- the ingestion reservoir (speech-visual) and its learner
+        @a.get("/api/lipcoach")
+        def lc_status(p):
+            return self.coach.status()
+
+        @a.get("/api/lipcoach/mouth")
+        def lc_mouth(p):
+            return {"mouth": self.coach.mouth, "version": lipread_active_version()}
+
+        @a.post("/api/lipcoach/teach")
+        def lc_teach(p):
+            clk = speechlab.Clock()
+            clk("receive")
+            wav, text, lang = _audio(p), " ".join(str(p.get("text") or "").split()), p.get("lang") or "en"
+            if not wav or not text:
+                raise core.UserError("Record the sentence with the camera on first.")
+            wt = None
+            if self.speech.stt_ready():
+                clk("exact word times (Google Speech-to-Text)")
+                st = self.speech.transcribe(wav, lang)
+                if st and st.get("words") and vocab.similarity(st.get("transcript", ""), text) >= 80:
+                    wt = st["words"]                       # only when Google heard the same sentence
+            clk("label the frames and deposit")
+            try:
+                r = self.coach.deposit(p.get("frames") or [], text, lang, "teach", wav, None, wt, p.get("info") or {})
+            except ValueError as e:
+                raise core.UserError(str(e))
+            self.speech._record("teach", "“%s” — %s" % (text[:60], ("%d frames labelled, %s set" % (r["labelled_frames"], r["split"])) if r.get("stored") else r.get("reason")),
+                                "lipcoach", "ok" if r.get("stored") else "skipped", clk, {"text": text, "frames": len(p.get("frames") or [])}, r)
+            return r
+
+        @a.post("/api/lipcoach/train")
+        def lc_train(p):
+            clk = speechlab.Clock()
+            clk("learn from the reservoir and test on held-back recordings")
+            if self.coach.training:
+                raise core.UserError("Learning is already running — try again in a moment.")
+            r = self.coach.train()
+            self.speech._record("learn", "; ".join(r.get("note") or [])[:400] or "learned", "lipcoach", "ok", clk, None, r.get("metrics"))
+            return r
+
+        @a.post("/api/lipcoach/use")
+        def lc_use(p):
+            try:
+                return {"active_version": self.coach.use(p.get("version") or "rules")}
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/lipcoach/auto")
+        def lc_auto(p):
+            return {"auto": self.coach.set_auto(p.get("on") in (True, "true"))}
+
+        @a.get("/api/lipcoach/export")
+        def lc_export(p):
+            return json.dumps(self.coach.export(), ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8"
+
+        @a.post("/api/lipcoach/import")
+        def lc_import(p):
+            try:
+                return self.coach.import_(p.get("data"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+
         @a.get("/api/video/guide")
         def video_guide(p):
             import lipread
@@ -960,6 +1029,11 @@ _fetch = _fetch_text
 
 VENDOR = ["three/three.module.min.js", "three/VRButton.js", "three/LICENSE", "mediapipe/vision_bundle.mjs", "mediapipe/wasm/vision_wasm_internal.js",
           "mediapipe/wasm/vision_wasm_internal.wasm", "mediapipe/face_landmarker.task", "mediapipe/LICENSE"]
+
+
+def lipread_active_version():
+    import lipread
+    return lipread.ACTIVE.get("version")
 
 
 def vendor_missing():
@@ -1151,7 +1225,84 @@ def selftest():
             c.check("Default voice: audio damaged by Windows text mode is refused, never played", True)
     _speech_selftest(c)
     _viseme_selftest(c)
+    _coach_selftest(c)
     return c.report(APP_NAME)
+
+
+def _coach_selftest(c):
+    """The ingestion reservoir learns: a speaker whose mouth moves more subtly than the rules expect is read far
+    better after teaching, proven on held-back recordings; versions roll back; the reservoir exports and imports."""
+    import random, lipread as LR
+    if not speech.find_espeak():
+        c.check("Learning: skipped (needs espeak-ng to speak the teaching sentences)", True)
+        return
+    subtle = {"P": (0.01, {"mouthClose": 0.15, "mouthPressLeft": 0.2, "mouthPressRight": 0.2}), "F": (0.03, {"mouthRollLower": 0.22, "mouthUpperUpLeft": 0.2, "mouthUpperUpRight": 0.2}),
+              "W": (0.09, {"mouthFunnel": 0.22, "mouthPucker": 0.25}), "A": (0.2, {"jawOpen": 0.26}),
+              "E": (0.07, {"mouthSmileLeft": 0.18, "mouthSmileRight": 0.18, "mouthStretchLeft": 0.12, "mouthStretchRight": 0.12}),
+              "T": (0.06, {"jawOpen": 0.08}), "-": (0.01, {"mouthClose": 0.1})}
+
+    def frames_for(text, wav, seed):
+        rnd, tr, out = random.Random(seed), visemes.align(text, wav, "en"), []
+        for i in range(int(tr["duration"] * 30)):
+            v = next((x["v"] for x in tr["visemes"] if x["start"] <= i / 30 < x["end"]), "sil")
+            g, b = subtle[LR.FROM_VISEME[v]]
+            out.append({"t": i / 30, "face": True, "gap": max(0, g + rnd.gauss(0, 0.01)), "bs": {k: max(0, x + rnd.gauss(0, 0.03)) for k, x in b.items()},
+                        "mouth_px": 170, "face_h": 0.5, "yaw": 3, "pitch": 2, "light": 0.5})
+        return out
+    info = {"width": 1920, "height": 1080, "fps": 60}
+    saved = dict(LR.ACTIVE)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            inst = App(d)
+            C = inst.coach
+            dep = [C.deposit(frames_for(t, w, k), t, "en", "teach", w, info=info) for k, (t, w) in
+                   enumerate((t, speech.speak_wav(t, "en-us")) for t in lipcoach.TEACH)]
+            c.check("Learning: teaching recordings go into the ingestion reservoir (speech-visual), about 1 in 4 held back",
+                    all(r["stored"] and r["domain"] == "speech-visual" for r in dep) and 1 <= sum(r["split"] == "test" for r in dep) <= 6)
+            again = C.deposit(frames_for(lipcoach.TEACH[0], speech.speak_wav(lipcoach.TEACH[0], "en-us"), 0), lipcoach.TEACH[0], "en", "teach",
+                              speech.speak_wav(lipcoach.TEACH[0], "en-us"), info=info)
+            c.check("Learning: the same recording is not stored twice", not again["stored"])
+            long_w = speech.speak_wav("Many people met at the warm mountain lake and talked about the weather for a long time.", "en-us")
+            wrong_ = C.deposit(frames_for("Hi.", long_w, 5), "Hi.", "en", "teach", long_w, info=info)
+            c.check("Learning: a recording that is not the sentence (wrong line read) is kept out of the reservoir", not wrong_["stored"] and "syllables" in wrong_["reason"], wrong_)
+            while C.training:
+                time.sleep(0.1)
+            m = C.train()["metrics"]
+            c.check("Learning: the learned reader beats the built-in rules on held-back recordings and is switched on",
+                    m["reader_switched_on"] and m["learned_accuracy"] >= m["rules_accuracy"] + 0.3, "%s vs %s" % (m["learned_accuracy"], m["rules_accuracy"]))
+            c.check("Learning: lips agree better with the true words after learning (held-back recordings)",
+                    m["agreement_learned"] >= m["agreement_rules"] + 15, "%s vs %s" % (m["agreement_learned"], m["agreement_rules"]))
+            new = "My brave father was very happy to see you."
+            fr = frames_for(new, speech.speak_wav(new, "en-us"), 99)
+            right, rules = LR.script_agreement(LR.classes_of(fr)[0], new)["agreement"], LR.script_agreement(LR.classes_of(fr, model="rules")[0], new, costs={})["agreement"]
+            wrong = LR.script_agreement(LR.classes_of(fr)[0], "the cat sat on a big brown log today")["agreement"]
+            c.check("Learning: on a new sentence the right words now agree and wrong words still do not", right >= rules + 20 and wrong < 25, (rules, right, wrong))
+            c.check("Learning: the talking face gets mouth shapes learned from real mouths", len(C.mouth) >= 3)
+            v = LR.ACTIVE["version"]
+            C.use("rules")
+            off = LR.ACTIVE["model"] is None
+            C.use(v)
+            c.check("Learning: any version can be switched off (rules only) and back on", off and LR.ACTIVE["version"] == v and LR.ACTIVE["model"])
+            m2 = C.train()["metrics"]
+            c.check("Learning: same reservoir, same result (deterministic)", m2["learned_accuracy"] == m["learned_accuracy"] and m2["agreement_learned"] == m["agreement_learned"])
+            al = []                                        # timing: recordings whose exact word times follow other weights
+            for k, t in enumerate(lipcoach.TEACH[:6]):
+                w = speech.speak_wav(t, "en-us")
+                visemes.WEIGHT.update({"vowel": 1.6, "long": 2.4, "cons": 0.36}); visemes.WORD_BASE = 0.6
+                exact = [{"word": x["word"], "start_s": x["start"], "end_s": x["end"]} for x in visemes.align(t, w, "en")["words"]]
+                visemes.WEIGHT.clear(); visemes.WEIGHT.update(visemes.DEFAULT_WEIGHT); visemes.WORD_BASE = visemes.DEFAULT_WORD_BASE
+                al.append({"id": k, "text": t, "lang": "en", "audio": inst.speech._save_audio(w, "teach"), "word_times": json.dumps(exact)})
+            _, am = C._tune_align(al)
+            c.check("Learning: lip-sync timing weights are tuned from exact word times (error goes down)", am["improved"] and am["after_ms"] < am["before_ms"], am)
+            ex = C.export()
+            other = App(os.path.join(d, "second-computer"))
+            imp = other.coach.import_(ex)
+            m3 = other.coach.train()["metrics"]
+            c.check("Learning: the reservoir exports and imports (pooling between computers) and learns there too",
+                    imp["added"] == len(lipcoach.TEACH) and m3["reader_switched_on"] and "frames" in json.dumps(ex) and ex["rows"] and "audio" not in ex["rows"][0])
+    finally:
+        LR.ACTIVE.clear(); LR.ACTIVE.update(saved)
+        visemes.WEIGHT.clear(); visemes.WEIGHT.update(visemes.DEFAULT_WEIGHT); visemes.WORD_BASE = visemes.DEFAULT_WORD_BASE
 
 
 def _viseme_selftest(c):

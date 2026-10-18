@@ -44,9 +44,48 @@ def _f(v, d=0.0):
         return d
 
 
-def frame_class(fr):
+# What the learner (lipcoach.py) has proven better than the rules on held-out recordings; empty = rules only.
+ACTIVE = {"model": None, "costs": None, "bias_ms": 0, "version": None}
+
+FEATURES = ["gap", "jawOpen", "mouthClose", "press", "mouthRollLower", "mouthRollUpper", "mouthFunnel", "mouthPucker",
+            "stretch", "smile", "upperUp", "lowerDown", "mouthShrugLower"]
+
+
+def features(fr):
+    """A frame as numbers the learner uses (lip gap plus the mouth blendshapes, left/right averaged)."""
+    bs = fr.get("bs") or {}
+    g = lambda k: _f(bs.get(k))
+    avg = lambda a: (g(a + "Left") + g(a + "Right")) / 2
+    return [round(v, 4) for v in (_f(fr.get("gap")), g("jawOpen"), g("mouthClose"), avg("mouthPress"), g("mouthRollLower"),
+                                  g("mouthRollUpper"), g("mouthFunnel"), g("mouthPucker"), avg("mouthStretch"), avg("mouthSmile"),
+                                  avg("mouthUpperUp"), avg("mouthLowerDown"), g("mouthShrugLower"))]
+
+
+def predict(model, fv):
+    """Gaussian naive Bayes: the most likely mouth class for a feature vector (deterministic)."""
+    best, bc = -1e18, "T"
+    for c in sorted(model["classes"]):
+        p = model["classes"][c]
+        ll = p["log_prior"]
+        for x, m, v in zip(fv, p["mean"], p["var"]):
+            ll -= 0.5 * ((x - m) ** 2 / v + math.log(v))
+        if ll > best:
+            best, bc = ll, c
+    return bc
+
+
+def frame_class(fr, model=None):
     """One video frame → a mouth class. fr has 'gap' (lip opening ÷ mouth width, from landmarks) and 'bs'
-    (MediaPipe blendshape scores 0..1)."""
+    (MediaPipe blendshape scores 0..1). Uses the learned model when one is active, else the rules;
+    model="rules" forces the rules."""
+    model = ACTIVE["model"] if model is None else model
+    if model and model != "rules":
+        return predict(model, fr["_fv"] if "_fv" in fr else features(fr))
+    if "_fv" in fr and not fr.get("bs"):                  # a stored feature vector (the reservoir)
+        fv = fr["_fv"]
+        fr = {"gap": fv[0], "bs": {"jawOpen": fv[1], "mouthClose": fv[2], "mouthPressLeft": fv[3], "mouthPressRight": fv[3],
+                                   "mouthRollLower": fv[4], "mouthFunnel": fv[6], "mouthPucker": fv[7], "mouthStretchLeft": fv[8],
+                                   "mouthStretchRight": fv[8], "mouthSmileLeft": fv[9], "mouthSmileRight": fv[9]}}
     bs = fr.get("bs") or {}
     g = lambda k: _f(bs.get(k))
     gap = _f(fr.get("gap"))
@@ -109,11 +148,16 @@ def word_classes(phonemes):
 PAUSE = 0.15
 
 
-def _cost(a, b):
-    return 0.0 if a == b else _NEAR.get(frozenset((a, b)), 1.0)
+def _cost(a, b, costs=None):
+    if a == b:
+        return 0.0
+    learned = ACTIVE["costs"] if costs is None else costs
+    if learned:
+        return learned.get(a + b, learned.get(b + a, _NEAR.get(frozenset((a, b)), 1.0)))
+    return _NEAR.get(frozenset((a, b)), 1.0)
 
 
-def dtw(obs, ref):
+def dtw(obs, ref, costs=None):
     """Mean step cost of the best warping path between two class strings (0 identical … 1 unrelated), and the path."""
     n, m = len(obs), len(ref)
     if not n or not m:
@@ -124,7 +168,7 @@ def dtw(obs, ref):
     D[0][0] = 0.0
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            c = _cost(obs[i - 1], ref[j - 1])
+            c = _cost(obs[i - 1], ref[j - 1], costs)
             best, bl = D[i - 1][j - 1] + c, L[i - 1][j - 1]
             # lips closed between words are a pause, not a p/b/m: passing over them is cheap
             v = D[i - 1][j] + (min(c, PAUSE) if obs[i - 1] == "P" else c)
@@ -212,7 +256,9 @@ def av_sync(mouth, env, fps=100, max_lag_s=0.5):
         curve.append(r)
         if r > best:
             best, best_lag = r, lag
-    ms = round(1000.0 * best_lag / fps)
+    raw = round(1000.0 * best_lag / fps)
+    bias = int(ACTIVE.get("bias_ms") or 0)              # this computer's own camera/microphone delay, learned
+    ms = raw - bias
     # ITU-R BT.1359: sound more than 45 ms early or 125 ms late is noticeable
     if best < 0.2:
         verdict = "not measurable (lips and sound move too little together)"
@@ -224,7 +270,7 @@ def av_sync(mouth, env, fps=100, max_lag_s=0.5):
         verdict = "sound is %d ms LATE — noticeable (more than 125 ms)" % ms
     else:
         verdict = "sound is %d ms late — within what viewers accept" % ms
-    return {"ok": best >= 0.2, "offset_ms": ms, "correlation": round(best, 3), "verdict": verdict,
+    return {"ok": best >= 0.2, "offset_ms": ms, "raw_offset_ms": raw, "device_bias_ms": bias, "correlation": round(best, 3), "verdict": verdict,
             "searched_ms": [-int(max_lag_s * 1000), int(max_lag_s * 1000)]}
 
 
@@ -358,7 +404,7 @@ def analyse(frames, info=None, env=None, env_fps=100, script="", lang="en", voca
     return out
 
 
-def script_agreement(cls, script, lang="en", lab=None):
+def script_agreement(cls, script, lang="en", lab=None, costs=None):
     """How well the mouth classes seen (100 per second) agree with a script, scored against chance
     (the same classes in scrambled orders): 0 = no better than chance, 100 = perfect."""
     wp = visemes.word_phonemes(re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)?", script), lang, lab)
@@ -368,17 +414,17 @@ def script_agreement(cls, script, lang="en", lab=None):
     if not ref_c or not obs:
         return {"agreement": 0, "raw_match": 0, "chance_match": 0, "words": [], "expected": ref_c, "seen": obs,
                 "verdict": "nothing to compare (no words or no lip movement)"}
-    cost, path = dtw(obs, ref_c)
+    cost, path = dtw(obs, ref_c, costs)
     per, pos = [], 0
     for w in wp:                                        # per word: the share of its classes that matched what was seen
         k = word_classes(w["phonemes"])
         idx = set(range(pos, pos + len(k))); pos += len(k)
-        hits = [_cost(obs[i], ref_c[j]) for i, j in path if j in idx]
+        hits = [_cost(obs[i], ref_c[j], costs) for i, j in path if j in idx]
         per.append({"word": w["word"], "looks_like": k, "agreement": round(1 - sum(hits) / len(hits), 2) if hits else 0.0})
     raw = 1 - cost
     n_ = len(ref_c)
     scr = [ref_c[::-1]] + [ref_c[k:] + ref_c[:k] for k in (n_ // 3, 2 * n_ // 3) if 0 < k < n_]
-    chance = sum(1 - dtw(obs, x)[0] for x in scr) / len(scr) if scr else raw
+    chance = sum(1 - dtw(obs, x, costs)[0] for x in scr) / len(scr) if scr else raw
     agree = round(100 * max(0.0, (raw - chance) / (1 - chance))) if chance < 1 else 0
     return {"agreement": agree, "raw_match": round(100 * raw), "chance_match": round(100 * chance),
             "words": per, "expected": ref_c, "seen": obs,
@@ -388,14 +434,14 @@ def script_agreement(cls, script, lang="en", lab=None):
 
 
 # ---------------------------------------------------------------------- audio + face together (ingestion and queries)
-def classes_of(frames, fps=100):
+def classes_of(frames, fps=100, model=None):
     """Frames → (mouth class per 1/100 s, lip-gap series per 1/100 s), or ([], []) when no face was seen."""
     seen = sorted((f for f in frames or [] if isinstance(f, dict) and f.get("face")), key=lambda f: _f(f.get("t")))
     if len(seen) < 5:
         return [], []
     times = [_f(f.get("t")) for f in seen]                  # seconds from the start of the recording, same clock as the sound
     dur = times[-1] + 0.05
-    return (_resample(times, [frame_class(f) for f in seen], fps, dur),
+    return (_resample(times, [frame_class(f, model) for f in seen], fps, dur),
             _resample(times, [_f(f.get("gap")) for f in seen], fps, dur))
 
 

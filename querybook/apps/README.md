@@ -86,6 +86,16 @@ same fingerprint. Reports are kept in the data folder (`verification/`) and can 
   the vocal mode (crying and laughing sound alike but look opposite), the answer's voice and the
   talking face's expression follow the asker's mood, and a speaker check says whether the voice
   belongs to the face (lips moving, lips matching the words, sync). Every result is in the speech log.
+* **Teach and improve — the ingestion reservoir (speech-visual domain):** every recording with a face
+  and known words (a teaching sentence, a video with its script, Speech-to-Text at ≥ 85% confidence) is
+  deposited as numbers only — never pictures. Labels come from the words and the audio; a recording
+  that does not fit its sentence is kept out. The learner (`lipcoach.py`) fits a mouth-shape reader for
+  this camera and speaker, the shapes it confuses, the computer's camera/microphone delay, the
+  lip-sync timing weights (from exact word times) and the talking face's mouth shapes. About one
+  recording in four is held back for testing (fixed by its hash); a learned version is used only when
+  it beats the current one there. Every version is kept with its scores and can be rolled back; the
+  reservoir exports and imports, so several computers can pool what they learn. Deterministic: the
+  same reservoir always gives the same version.
 * **Best capture:** whole face, forehead to chin, 40–60% of the picture's height (not just the mouth);
   mouth ≥ 150 px wide; 1080p (720p works, 4K adds nothing); 60 fps best, 30 minimum; face the camera
   within 20°; even front light; nothing over the mouth; mic 20–30 cm away.
