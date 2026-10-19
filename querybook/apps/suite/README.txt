@@ -18,6 +18,12 @@ INSTALL
 
 WHAT'S NEW IN THIS RELEASE
   All three applications
+    * Devices tab and device API: register cameras, phones, smart glasses, robots, wearables, motion suits,
+      eye trackers and microphones; each gets its own key and sends observations (not recordings) through one
+      documented API (OpenAPI). Consent is required for devices that record people, body signals or location.
+      Built in: webcam pan/tilt/zoom, Bluetooth heart-rate straps, imports from Apple Health, iPhone ARKit
+      (Live Link Face), Pupil Labs, BVH motion capture. Bridge programs for robots (ROS 2, Unitree), Polar,
+      Pupil Labs, Tobii, GelSight, Rokoko, iPhone and Meta glasses are in extras/device-bridges.
     * Master control (top of the Harvesting page): Start all / Stop all harvesting, or tick
       applications and online harvesters and Start selected / Stop selected. One switch for all three
       applications; a running harvest stops after its current task.
@@ -47,7 +53,7 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.19.0)
+  Language Builder (1.20.0)
     * Visual Speech Engine (Speech -> Face & video): full-face lip sync from words + a recording
       (coarticulation, jaw, brows, head nods, blinks, gaze, emotion), ARKit blendshape export and a
       preview face; a new lip reader (soft scores for 15 mouth shapes + word decoding) shown next to the
@@ -59,9 +65,11 @@ WHAT'S NEW IN THIS RELEASE
       Spanish?", "when did I last see a cup?", "how many people did I see today?".
     * Speech-to-Text for MP3 and other audio files of any length, live captions while a file plays,
       live captions from the microphone.
-  Math, Science & Engineering (1.7.0) and History & News (1.7.0)
+  Math, Science & Engineering (1.8.0) and History & News (1.8.0)
     * The harvesting engine, registry and approvals (see above).
 
 EXTRAS
+  extras/device-bridges/  — small programs that connect robots, eye trackers, touch sensors, motion suits, phones and
+  smart glasses to QueryBook's device API. See its README.md.
   extras/visual-speech-engine-stage2/  — the trainable (PyTorch) version of the Visual Speech Engine for
   developers with GPUs and licensed data. Not needed to run QueryBook; see its README.md.

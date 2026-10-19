@@ -18,6 +18,7 @@ sys.path.insert(0, HERE)
 
 import qbcore as core
 import qbcommons as cm
+import qbdevices
 import harvest
 import gcloud
 import dates
@@ -25,7 +26,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 PORT = 8103
 program_dir = HERE
 
@@ -93,6 +94,7 @@ class App:
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         cm.attach(self, APP_ID, harvest.FactsAdapter(self, dates, OLD_KIND, SINGLE_VALUED))
+        qbdevices.attach(self, APP_ID, PORT)
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -709,6 +711,7 @@ def selftest():
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
+                and app.devices is not None and ("GET", "/api/devices/openapi.json") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         book = {"name": "Magna Carta: The Foundation of Freedom 1215–2015", "kind": "book", "author": "N. Vincent (ed.)"}
         fid, merged = app.add_fact({"statement": "The Magna Carta was sealed by King John at Runnymede.", "subject": "Magna Carta",

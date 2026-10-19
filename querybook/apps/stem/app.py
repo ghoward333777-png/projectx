@@ -17,6 +17,7 @@ sys.path.insert(0, HERE)
 
 import qbcore as core
 import qbcommons as cm
+import qbdevices
 import harvest
 import engine
 import science
@@ -25,7 +26,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 PORT = 8102
 program_dir = HERE
 
@@ -69,6 +70,7 @@ class App:
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         cm.attach(self, APP_ID, harvest.StemAdapter(self))
+        qbdevices.attach(self, APP_ID, PORT)
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -429,6 +431,7 @@ def selftest():
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
+                and app.devices is not None and ("GET", "/api/devices/openapi.json") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         r = app.ask("12 × 7")
         c.check("ask: calculation", r["answer"] == "84")

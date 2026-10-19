@@ -277,6 +277,43 @@ reliably: the FSI courses (only on unofficial mirrors) and FHWA reports (many ar
 Approve those by hand in the app if a document checks out. Researched sources are **facts only**: no
 wording from them is ever stored, whatever their class.
 
+## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
+
+Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):
+
+* **Register** a device (admin passphrase) → it gets its own key (`qbd_…`, shown once; only a SHA-256 is stored).
+  Devices that record people, body signals or location need the person named and their consent confirmed.
+* **Send events**: `POST /api/devices/ingest` with `Authorization: Bearer qbd_…` and `{"events": [...]}` — kinds:
+  heart, ecg, imu, steps, gaze, face, pose, transcript, location, detection, touch, state, note. Events outside the
+  device's consent are refused with the reason. Media files (≤ 25 MB) go to an admin inbox via `/api/devices/upload`.
+* **Observations, not recordings**: heart rate and movement become per-minute statistics, ECG only a summary;
+  detections, transcripts, touches, fixations and places become dated observations ("when did I last see the cup?").
+  Raw events are deleted after 30 days (configurable).
+* **Home network**: tick "Accept devices on my home network" to open a second listener (port 9101 / 9102 / 9103) that
+  answers **only** the device endpoints — the application pages stay on this computer. Use on a trusted network.
+* **Built in**: webcam pan/tilt/zoom controls; Bluetooth heart-rate straps from the browser; imports of Apple Health
+  export.xml, ARKit face CSV (Live Link Face), Pupil Labs gaze/fixations CSV, BVH motion capture, JSON-lines events.
+* **Bridges** (`bridges/`, shipped as `extras/device-bridges`): ROS 2 (Stretch 3, TurtleBot 4, Unitree), Unitree SDK,
+  Polar (heart rate + H10 ECG), Pupil Labs Neon, Tobii Glasses 3, GelSight Mini, Rokoko Studio Live, an iPhone ARKit
+  sender (Swift) and a Meta glasses sender (Kotlin, with Meta's Wearables Device Access Toolkit). The client library
+  is tested against QueryBook; the bridges follow each maker's SDK but have not been run on the real hardware yet.
+
+| Device | Connection |
+|---|---|
+| Insta360 Link 2 Pro, Logitech MX Brio | built in (browser camera + PTZ) |
+| iPhone 17 Pro | ARKit CSV import; Swift sender |
+| Pixel 10 Pro | video import (Language Builder) |
+| Ray-Ban Meta Gen 2, Meta Ray-Ban Display | Kotlin sender with Meta's toolkit |
+| Unitree G1 EDU, Unitree Go2 EDU | `unitree_bridge.py` or `ros2_bridge.py` |
+| Hello Robot Stretch 3, TurtleBot 4 | `ros2_bridge.py` |
+| GelSight Mini | `gelsight_bridge.py` |
+| Polar H10, Polar Verity Sense | built in (Bluetooth heart rate); `polar_bridge.py` for ECG |
+| Apple Watch Ultra 3 | Apple Health export import |
+| Rokoko Smartsuit Pro II | BVH import; `rokoko_bridge.py` live |
+| Pupil Labs Neon | CSV import; `pupil_neon_bridge.py` live |
+| Tobii Pro Glasses 3 | `tobii_bridge.py` (template) |
+| DJI Mic 2, Rode Wireless PRO | recordings → Language Builder speech-to-text; transcript events |
+
 ## Master control (start and stop harvesting)
 
 Top of the **Harvesting & shared facts** page, the same in all three applications (the switches live in the

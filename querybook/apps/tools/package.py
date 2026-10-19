@@ -38,6 +38,7 @@ def build_suite():
             _add_file(z, os.path.join(ROOT, "suite", f), os.path.join("QueryBook", f))
         for app, name in APPS.items():
             _add_tree(z, os.path.join(ROOT, app), os.path.join("QueryBook", name))
+        _add_tree(z, os.path.join(ROOT, "bridges"), os.path.join("QueryBook", "extras", "device-bridges"))
         vse = os.path.join(os.path.dirname(ROOT), "vse")
         if os.path.isdir(vse):
             _add_tree(z, vse, os.path.join("QueryBook", "extras", "visual-speech-engine-stage2"),

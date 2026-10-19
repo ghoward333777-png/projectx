@@ -583,3 +583,131 @@ async function renderHarvest(el) {
   $("#hv-versions", el).innerHTML = s.versions.map(v => '<div class="small"><span class="mono">v' + v.id + " " + cmWhen(v.at) + "</span> <b>" + esc(v.actor) + "</b> " + esc(JSON.stringify(v.change)) + " — " + esc(v.reason || "") + "</div>").join("") || '<p class="muted small">No changes yet.</p>';
   if (el._showLog) el._showLog();
 }
+
+// ---------------------------------------------------------------- Devices: the device gateway
+let DV = { hr: null, hrBuf: [], hrTimer: null, cam: null };
+const dvBadge = s => cmTag(s, s === "built-in" || s.startsWith("built-in") ? "good" : s.startsWith("import") ? "good" : s === "API" ? "" : "warn");
+
+async function renderDevices(el) {
+  if (!el.dataset.ready) {
+    el.dataset.ready = "1";
+    el.innerHTML =
+      '<div class="card"><h2>Devices</h2><p class="small muted">One documented API for cameras, phones, smart glasses, robots, wearables, motion suits, eye trackers and microphones. ' +
+      "Each device is registered here and gets its own key; it sends <b>observations, not recordings</b> — heart rate, a fixation, an object seen, a sentence heard, a contact force. " +
+      "Devices that record people, body signals or location need the person's consent recorded at registration. Raw events are kept for a limited time; summaries stay.</p>" +
+      '<div id="dv-state"></div><div class="row"><label class="row small"><input type="checkbox" id="dv-lan"> Accept devices on my home network (device API only — the application pages stay on this computer)</label>' +
+      '<label class="row small">Keep raw events <input id="dv-days" type="number" min="1" max="3650" style="width:5em"> days</label>' +
+      '<a class="btn quiet" href="/api/devices/openapi.json" target="_blank" rel="noopener">API description (OpenAPI)</a></div></div>' +
+      '<div class="card"><h2>Supported devices</h2><p class="small muted"><b>built-in</b> works in this page; <b>import</b> reads the device\'s export files; <b>bridge</b> is a small program in the <span class="mono">bridges</span> folder that runs beside the device and sends events (test it on your device); <b>API</b> means the device\'s own software posts events.</p><div id="dv-cat"></div></div>' +
+      '<div class="card"><h2>Register a device</h2><div class="row"><select id="dv-model" aria-label="Device model"></select><input id="dv-name" type="text" placeholder="name, e.g. Lab glasses" aria-label="Device name"></div>' +
+      '<div class="row small">Records: <label><input type="checkbox" class="dv-c" value="people"> people (faces, voices, gaze)</label> <label><input type="checkbox" class="dv-c" value="body"> body signals</label> <label><input type="checkbox" class="dv-c" value="location"> location</label></div>' +
+      '<div class="row"><input id="dv-subject" type="text" placeholder="person recorded (name)" aria-label="Person recorded"><label class="row small"><input type="checkbox" id="dv-consent"> They agreed to be recorded (consent)</label>' +
+      '<input id="dv-pass" type="password" placeholder="admin passphrase" aria-label="Admin passphrase"><button class="btn" id="dv-reg">Register</button></div><div id="dv-key"></div></div>' +
+      '<div class="card"><h2>My devices</h2><div id="dv-list"></div></div>' +
+      '<div class="card"><h2>Live connections</h2><h3>Heart-rate sensor (Bluetooth — Polar H10, Verity Sense and any standard strap)</h3>' +
+      '<div class="row"><select id="dv-hr-dev" aria-label="Registered device"></select><button class="btn" id="dv-hr-go">Connect heart-rate sensor</button><button class="btn quiet" id="dv-hr-stop">Disconnect</button><span id="dv-hr-now" class="mono"></span></div>' +
+      '<p class="small muted">Uses the browser\'s Bluetooth (Chrome or Edge). Readings are sent every 5 seconds to the selected device record.</p>' +
+      '<h3>Camera controls (webcams with pan, tilt and zoom — Insta360 Link 2 Pro, Logitech MX Brio)</h3><div class="row"><button class="btn" id="dv-cam-go">Start camera</button><button class="btn quiet" id="dv-cam-stop">Stop</button></div>' +
+      '<video id="dv-cam" autoplay playsinline muted style="max-width:420px;display:none;border-radius:8px"></video><div id="dv-ptz"></div></div>' +
+      '<div class="card"><h2>Import a device file</h2><div class="row"><select id="dv-imp-dev" aria-label="Registered device"></select><select id="dv-fmt" aria-label="Format">' +
+      '<option value="apple-health">Apple Health export.xml (Apple Watch)</option><option value="arkit-csv">ARKit face CSV (iPhone, Live Link Face)</option>' +
+      '<option value="pupil-csv">Pupil Labs gaze.csv / fixations.csv (Neon)</option><option value="bvh">BVH motion capture (Rokoko and others)</option><option value="jsonl">JSON-lines events (any device)</option></select></div>' +
+      '<div class="row"><input id="dv-file" type="file" aria-label="File"><span class="small muted">or a path on this computer (for large files)</span><input id="dv-path" class="grow" type="text" placeholder="/path/to/export.xml" aria-label="Path"><button class="btn" id="dv-imp">Import</button></div><div id="dv-imp-out"></div></div>' +
+      '<div class="card"><h2>Observations</h2><div class="row"><select id="dv-kind" aria-label="Kind"><option value="">all kinds</option></select><input id="dv-label" type="text" placeholder="when did I last see… (label)" aria-label="Label">' +
+      '<button class="btn quiet" id="dv-find">Show</button></div><div id="dv-obs"></div></div>' +
+      '<div class="card"><h2>For developers</h2><pre class="mono small" id="dv-curl" style="white-space:pre-wrap"></pre></div>';
+    $("#dv-reg", el).onclick = async () => {
+      const r = await api("/api/devices/register", { model: $("#dv-model", el).value, name: $("#dv-name", el).value, consent: [...el.querySelectorAll(".dv-c:checked")].map(x => x.value),
+        subject: $("#dv-subject", el).value, consent_confirmed: $("#dv-consent", el).checked, passphrase: $("#dv-pass", el).value });
+      $("#dv-key", el).innerHTML = '<div class="note good"><b>Device registered.</b> Its key (shown only now — copy it into the device or bridge):<br><span class="mono">' + esc(r.token) + "</span></div>";
+      renderDevices(el);
+    };
+    $("#dv-lan", el).onchange = async e => { try { await api("/api/devices/settings", { lan: e.target.checked, passphrase: $("#dv-pass", el).value }); } finally { renderDevices(el); } };
+    $("#dv-days", el).onchange = e => api("/api/devices/settings", { retain_days: Number(e.target.value) });
+    $("#dv-find", el).onclick = () => dvObs(el);
+    el.addEventListener("click", async e => {
+      const b = e.target.closest("button[data-dv]");
+      if (!b) return;
+      const [act, id] = b.dataset.dv.split(":");
+      if (act === "revoke" && confirm("Revoke this device's key? It will no longer be able to send anything.")) { await api("/api/devices/revoke", { id: Number(id), passphrase: $("#dv-pass", el).value }); renderDevices(el); }
+      if (act === "pick") { $("#dv-model", el).value = id; $("#dv-name", el).focus(); }
+    });
+    $("#dv-imp", el).onclick = async () => {
+      const f = $("#dv-file", el).files[0], body = { device_id: Number($("#dv-imp-dev", el).value), format: $("#dv-fmt", el).value };
+      if ($("#dv-path", el).value.trim()) body.path = $("#dv-path", el).value.trim();
+      else if (f) body.text = await f.text();
+      else return toast("Choose a file or give its path.");
+      const r = await api("/api/devices/import", body);
+      $("#dv-imp-out", el).innerHTML = '<div class="note good">Imported: <span class="mono">' + esc(JSON.stringify(r)) + "</span></div>"; dvObs(el);
+    };
+    $("#dv-hr-go", el).onclick = () => dvHeart(el);
+    $("#dv-hr-stop", el).onclick = () => { if (DV.hr) DV.hr.disconnect(); DV.hr = null; clearInterval(DV.hrTimer); $("#dv-hr-now", el).textContent = "disconnected"; };
+    $("#dv-cam-go", el).onclick = () => dvCamera(el);
+    $("#dv-cam-stop", el).onclick = () => { if (DV.cam) DV.cam.getTracks().forEach(t => t.stop()); DV.cam = null; $("#dv-cam", el).style.display = "none"; $("#dv-ptz", el).innerHTML = ""; };
+  }
+  const [s, cat] = await Promise.all([api("/api/devices/status"), api("/api/devices/catalog")]);
+  $("#dv-state", el).innerHTML = '<div class="note' + (s.lan.running ? " warn" : "") + '"><b>Device gateway ' + esc(s.version) + "</b> · " + s.devices.filter(d => !d.revoked).length + " active device(s)" +
+    (s.latest_heart ? " · latest heart rate " + s.latest_heart.bpm + " bpm (" + cmWhen(s.latest_heart.minute) + ")" : "") +
+    (s.lan.running ? '<br>Network listener ON — devices send to <span class="mono">http://' + esc((s.lan.addresses[0] || "this-computer")) + ":" + s.lan.port + '/api/devices/ingest</span> (device API only; use on a trusted home network)' : "<br>Network listener off — devices on this computer send to this page's address.") + "</div>";
+  $("#dv-lan", el).checked = s.lan.running; $("#dv-days", el).value = s.settings.retain_days;
+  $("#dv-cat", el).innerHTML = '<table class="t small"><tr><th>Device</th><th>Type</th><th>Records</th><th>How it connects</th><th>Status</th><th></th></tr>' + cat.devices.map(d => "<tr><td><b>" + esc(d.name) + "</b></td><td>" + esc(d.category) +
+    "</td><td>" + esc(d.captures.join(", ") || "—") + "</td><td>" + esc(d.how) + "</td><td>" + dvBadge(d.status) + '</td><td><button class="btn quiet" data-dv="pick:' + esc(d.id) + '">Register</button></td></tr>').join("") + "</table>";
+  if (!$("#dv-model", el).options.length) $("#dv-model", el).innerHTML = cat.devices.map(d => '<option value="' + esc(d.id) + '">' + esc(d.name) + "</option>").join("");
+  const active = s.devices.filter(d => !d.revoked);
+  $("#dv-list", el).innerHTML = s.devices.length ? '<table class="t small"><tr><th>#</th><th>Name</th><th>Model</th><th>Consent</th><th>Person</th><th>Key</th><th>Last seen</th><th>Events</th><th></th></tr>' + s.devices.map(d => "<tr><td>" + d.id + "</td><td>" + esc(d.name) +
+    "</td><td>" + esc(d.model_name) + "</td><td>" + esc(d.consent.join(", ") || "none") + "</td><td>" + esc(d.subject || "") + '</td><td class="mono">…' + esc(d.token_hint) + "</td><td>" + cmWhen(d.last_seen) + "</td><td>" + d.events +
+    "</td><td>" + (d.revoked ? cmTag("revoked", "bad") : '<button class="btn quiet" data-dv="revoke:' + d.id + '">Revoke</button>') + "</td></tr>").join("") + "</table>" : '<p class="muted">No devices registered yet.</p>';
+  const opts = list => list.map(d => '<option value="' + d.id + '">' + esc(d.name) + " (#" + d.id + ")</option>").join("") || '<option value="">register a device first</option>';
+  $("#dv-hr-dev", el).innerHTML = opts(active.filter(d => d.consent.includes("body")));
+  $("#dv-imp-dev", el).innerHTML = opts(active);
+  if ($("#dv-kind", el).options.length < 2) $("#dv-kind", el).innerHTML += ["detection", "transcript", "gaze", "touch", "face", "pose", "daily", "ecg", "location", "note"].map(k => "<option>" + k + "</option>").join("");
+  const base = location.origin;
+  $("#dv-curl", el).textContent = "# send events (any language — this is curl)\ncurl -X POST " + base + "/api/devices/ingest \\\n  -H 'Authorization: Bearer qbd_YOUR_DEVICE_KEY' -H 'Content-Type: application/json' \\\n" +
+    "  -d '{\"events\": [{\"kind\": \"detection\", \"data\": {\"label\": \"cup\", \"confidence\": 0.91}},\n                {\"kind\": \"heart\", \"t\": 1760900000, \"data\": {\"bpm\": 72}}]}'\n\n# Python bridges: see the bridges folder (qb_device_client.py) — event kinds: " + Object.keys(cat.kinds).join(", ");
+  dvObs(el);
+}
+
+async function dvObs(el) {
+  const label = $("#dv-label", el).value.trim();
+  if (label) {
+    const r = await api("/api/devices/last_seen", { label });
+    $("#dv-obs", el).innerHTML = r.observation ? '<div class="note good">Last seen <b>' + esc(label) + "</b>: " + cmWhen(r.observation.t) + " (device #" + r.observation.device_id + ")</div>" : '<p class="muted">Never seen “' + esc(label) + "”.</p>";
+    return;
+  }
+  const r = await api("/api/devices/observations", { kind: $("#dv-kind", el).value, limit: 100 });
+  $("#dv-obs", el).innerHTML = r.observations.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Device</th><th>Kind</th><th>What</th><th>Value</th><th>Detail</th><th>From</th></tr>' + r.observations.map(o => '<tr><td class="mono">' + cmWhen(o.t) +
+    "</td><td>#" + (o.device_id || "") + "</td><td>" + esc(o.kind) + "</td><td>" + esc(o.label) + "</td><td>" + esc(o.value === null ? "" : o.value + (o.unit ? " " + o.unit : "")) + "</td><td>" + esc(o.detail || "") + "</td><td>" + esc(o.source) + "</td></tr>").join("") + "</table>" : '<p class="muted">No observations yet.</p>';
+}
+
+async function dvHeart(el) {
+  const did = Number($("#dv-hr-dev", el).value);
+  if (!did) return toast("Register a device with body-signal consent first.");
+  if (!navigator.bluetooth) return toast("This browser has no Bluetooth access. Use Chrome or Edge.");
+  const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ["heart_rate"] }] });
+  const server = await dev.gatt.connect();
+  const ch = await (await server.getPrimaryService("heart_rate")).getCharacteristic("heart_rate_measurement");
+  DV.hr = dev.gatt; DV.hrBuf = [];
+  ch.addEventListener("characteristicvaluechanged", e => {
+    const v = e.target.value, flags = v.getUint8(0), wide = flags & 1;
+    const bpm = wide ? v.getUint16(1, true) : v.getUint8(1);
+    let i = wide ? 3 : 2; if (flags & 0x08) i += 2;
+    const rr = []; if (flags & 0x10) for (; i + 1 < v.byteLength; i += 2) rr.push(Math.round(v.getUint16(i, true) * 1000 / 1024));
+    DV.hrBuf.push({ kind: "heart", t: Date.now() / 1000, data: rr.length ? { bpm, rr_ms: rr } : { bpm } });
+    $("#dv-hr-now", el).textContent = "♥ " + bpm + " bpm — " + esc(dev.name || "sensor");
+  });
+  await ch.startNotifications();
+  clearInterval(DV.hrTimer);
+  DV.hrTimer = setInterval(async () => { if (!DV.hrBuf.length) return; const ev = DV.hrBuf.splice(0); try { await api("/api/devices/ingest", { device_id: did, events: ev }); } catch (e) { DV.hrBuf.unshift(...ev); } }, 5000);
+  toast("Heart-rate sensor connected.");
+}
+
+async function dvCamera(el) {
+  try { DV.cam = await navigator.mediaDevices.getUserMedia({ video: { pan: true, tilt: true, zoom: true } }); }
+  catch (e) { DV.cam = await navigator.mediaDevices.getUserMedia({ video: true }); }
+  const v = $("#dv-cam", el); v.srcObject = DV.cam; v.style.display = "block";
+  const track = DV.cam.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {}, set = track.getSettings();
+  const ctl = ["zoom", "pan", "tilt"].filter(k => caps[k]);
+  $("#dv-ptz", el).innerHTML = '<p class="small">' + esc(track.label || "camera") + "</p>" + (ctl.length ? ctl.map(k => '<label class="row small">' + k + ' <input type="range" data-ptz="' + k + '" min="' + caps[k].min + '" max="' + caps[k].max +
+    '" step="' + (caps[k].step || 1) + '" value="' + (set[k] !== undefined ? set[k] : caps[k].min) + '"></label>').join("") : '<p class="small muted">This camera or browser offers no pan, tilt or zoom control.</p>');
+  el.querySelectorAll("input[data-ptz]").forEach(r => r.oninput = () => track.applyConstraints({ advanced: [{ [r.dataset.ptz]: Number(r.value) }] }).catch(() => {}));
+}

@@ -19,6 +19,7 @@ sys.path.insert(0, HERE)
 
 import qbcore as core
 import qbcommons as cm
+import qbdevices
 import harvest
 import lab
 import speech
@@ -37,7 +38,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.19.0"
+VERSION = "1.20.0"
 PORT = 8101
 program_dir = HERE
 
@@ -110,6 +111,7 @@ class App:
         core.add_diagnostics(self.api, self.diag, self.monitor, HERE)
         self._routes()
         cm.attach(self, APP_ID, harvest.LanguageAdapter(self))
+        qbdevices.attach(self, APP_ID, PORT)
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -1391,6 +1393,7 @@ def selftest():
         c.check("Object scan: questions reach Ask by voice", "cup" in app.speech._answer("when did I last see a cup", {"words": [], "language_name": "English"}))
         c.check("Object scan: detector model bundled", os.path.getsize(os.path.join(HERE, "ui", "vendor", "mediapipe", "efficientdet_lite0.tflite")) > 4000000)
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
+                and app.devices is not None and ("GET", "/api/devices/openapi.json") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         app.set_settings("es", 5)
         s = app.session("es", "type")

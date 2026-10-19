@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.8.0"
+CORE_VERSION = "1.9.0"
 BACKUPS_KEPT = 10
 
 
@@ -650,6 +650,9 @@ def make_handler(api, ui_dir, log, app_name, store=None):
                         return self._send(400, {"error": "Body is not valid JSON."})
                     if isinstance(body, dict):
                         params.update(body)
+            auth = self.headers.get("Authorization") or self.headers.get("X-QB-Device-Token") or ""
+            if auth and url.path.startswith("/api/devices/"):          # device keys (the device gateway checks them)
+                params["_token"] = auth[7:].strip() if auth.lower().startswith("bearer ") else auth.strip()
             fn = api.routes.get((method, url.path))
             if fn is None:
                 if method == "GET":
@@ -809,7 +812,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1661,7 +1664,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -1832,6 +1835,9 @@ def run_cli(app):
         inst.autostart()
     if getattr(inst, "team", None):
         inst.team.start_schedule()
+    if getattr(inst, "devices", None):
+        import qbdevices
+        qbdevices.start(inst)
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
     serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
           open_browser="--no-browser" not in args, store=inst.store)
