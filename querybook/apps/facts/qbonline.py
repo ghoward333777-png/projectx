@@ -21,12 +21,12 @@ class SourceBusy(Exception):
     """The site asked us to slow down (HTTP 429/503) or is unreachable; try again on a later turn."""
 
 
-def _fetch(url, kind="json", timeout=60):
+def _fetch(url, kind="json", timeout=60, headers=None):
     host = urllib.parse.urlsplit(url).netloc
     wait = MIN_GAP_S - (time.time() - _last.get(host, 0))
     if wait > 0:
         time.sleep(wait)
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json" if kind == "json" else "*/*"})
+    req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json" if kind == "json" else "*/*"}, **(headers or {})))
     for attempt in (1, 2):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -35,7 +35,9 @@ def _fetch(url, kind="json", timeout=60):
         except urllib.error.HTTPError as e:
             if e.code in (429, 503):
                 raise SourceBusy("%s asked to slow down (HTTP %d)" % (host, e.code))
-            raise
+            if e.code in (401, 403):
+                raise SourceBusy("%s refused the API key (HTTP %d): check it on the Harvesting page" % (host, e.code))
+            raise SourceBusy("%s answered HTTP %d" % (host, e.code))    # never the URL: it may carry an API key
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             if attempt == 2:
                 raise SourceBusy("%s unreachable: %s" % (host, e))
@@ -293,6 +295,244 @@ def _ncbi(cursor, budget):
     return items, (nxt if nxt // TAXA_STEP < len(TAXA) else None), "%d %s species with common names (%d of %d)" % (len(items) // 2 if items else 0, TAXA[g], pos, total)
 
 
+# ---------------------------------------------------------------------------------------------------- sources needing a free key
+# Keys live in <commons folder>/api-keys.json (owner-only), never in the database, its backups, the code or the logs.
+KEY_SERVICES = {
+    "api.data.gov": {"title": "api.data.gov (Smithsonian Open Access and USDA FoodData Central)", "how": "Fill in the form at "
+                     "https://api.data.gov/signup/ (name and email); the key is shown at once. One key serves both sources."},
+    "dpla": {"title": "Digital Public Library of America", "how": "Type your email and press Request: DPLA emails you the key."},
+    "nara": {"title": "US National Archives Catalog", "how": "Email Catalog_API@nara.gov with your name and email and ask for a "
+             "read-only Catalog API v2 key."},
+    "europeana": {"title": "Europeana", "how": "Create a free account at europeana.eu, confirm it, then My Profile → Manage API key → "
+                  "tick the terms → Request. Issued at once."},
+}
+_KEYS = {"folder": None}
+
+
+def _keys_file(folder):
+    return os.path.join(folder, "api-keys.json")
+
+
+def load_keys(folder):
+    try:
+        with open(_keys_file(folder), encoding="utf-8") as f:
+            return {k: v for k, v in json.load(f).items() if k in KEY_SERVICES and v}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_key(folder, service, key):
+    if service not in KEY_SERVICES:
+        raise ValueError("unknown service")
+    keys = load_keys(folder)
+    key = "".join((key or "").split())
+    if key:
+        keys[service] = key
+    else:
+        keys.pop(service, None)
+    path = _keys_file(folder)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(keys, f)
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def key_status(folder):
+    keys = load_keys(folder)
+    return [{"service": k, "title": v["title"], "how": v["how"], "set": k in keys, "hint": ("…" + keys[k][-4:]) if k in keys else ""}
+            for k, v in KEY_SERVICES.items()]
+
+
+def request_dpla_key(email):
+    """Ask DPLA to email a key to `email` (run from the admin's own computer, at the admin's request)."""
+    email = (email or "").strip()
+    if "@" not in email or " " in email or "/" in email:
+        raise ValueError("Give a valid email address.")
+    req = urllib.request.Request("https://api.dp.la/v2/api_key/" + urllib.parse.quote(email, safe="@."), method="POST",
+                                 headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return {"status": r.status, "message": "DPLA says the key was created and emailed. Check your inbox (and spam folder), "
+                                               "then paste the key here."}
+
+
+def _key(service):
+    return load_keys(_KEYS["folder"]).get(service) if _KEYS["folder"] else None
+
+
+TOPICS = ["history", "architecture", "science", "engineering", "geography", "map", "astronomy", "chemistry", "mathematics", "language",
+          "manuscript", "exploration", "invention", "railway", "bridge", "medicine", "music", "war"]
+
+
+def _first(v):
+    if isinstance(v, list):
+        v = v[0] if v else None
+    if isinstance(v, dict):
+        v = v.get("name") or v.get("displayDate") or v.get("content")
+    return " ".join(str(v).split()) if v not in (None, "") else None
+
+
+SI = "https://api.si.edu/openaccess/api/v1.0/category/%s/search?"
+
+
+def _smithsonian(category):
+    def run(cursor, budget):
+        r = FETCH(SI % category + urllib.parse.urlencode({"q": "*", "start": cursor, "rows": min(int(budget), 100), "api_key": _key("api.data.gov")}))
+        rows, total = r.get("response", {}).get("rows", []), r.get("response", {}).get("rowCount", 0)
+        items, kept = [], 0
+        for row in rows:
+            c = row.get("content") or {}
+            d, ix = c.get("descriptiveNonRepeating") or {}, c.get("indexedStructured") or {}
+            if (d.get("metadata_usage") or {}).get("access") != "CC0" or not row.get("title"):
+                continue                                   # only records the Smithsonian marks CC0
+            kept += 1
+            subj = "Smithsonian object “%s” (%s)" % (row["title"][:150], d.get("record_ID") or row.get("id"))
+            url = d.get("record_link") or "https://collections.si.edu/"
+            why = "Smithsonian Open Access record %s, marked CC0." % (d.get("record_ID") or row.get("id"))
+            mk = lambda pred, obj: _item(subj, pred, obj, "smithsonian-open-access", "Smithsonian Open Access", "CC0", url, why)
+            if d.get("data_source"):
+                items.append(mk("held by", d["data_source"]))
+            for field, pred, n in (("date", "date", 1), ("object_type", "object type", 1), ("place", "place", 3), ("topic", "topic", 3)):
+                for v in (ix.get(field) or [])[:n]:
+                    if isinstance(v, str) and v.strip() and not v.startswith("["):
+                        items.append(mk(pred, v.strip()))
+        nxt = cursor + len(rows)
+        return items, (nxt if rows and nxt < total else None), "%d CC0 records of %d read (%d–%d of %d)" % (kept, len(rows), cursor + 1, nxt, total)
+    return run
+
+
+FDC = "https://api.nal.usda.gov/fdc/v1/foods/list?"
+FDC_TYPES = ["Foundation", "SR Legacy"]
+NUTRIENTS = {"208": "energy", "203": "protein", "204": "total fat", "205": "carbohydrate", "291": "dietary fibre", "269": "total sugars",
+             "301": "calcium", "303": "iron", "307": "sodium", "401": "vitamin C"}
+
+
+def _fdc(cursor, budget):
+    t, page = divmod(cursor, 10 ** 6)
+    if t >= len(FDC_TYPES):
+        return [], None, "finished"
+    size = min(int(budget), 200)
+    foods = FETCH(FDC + urllib.parse.urlencode({"dataType": FDC_TYPES[t], "pageSize": size, "pageNumber": page + 1, "api_key": _key("api.data.gov")}))
+    items = []
+    for f in foods if isinstance(foods, list) else []:
+        subj = "food %s" % " ".join(str(f.get("description") or "").split())
+        url = "https://fdc.nal.usda.gov/food-details/%s/nutrients" % f.get("fdcId")
+        why = "USDA FoodData Central %s food %s." % (FDC_TYPES[t], f.get("fdcId"))
+        for n in f.get("foodNutrients") or []:
+            name = NUTRIENTS.get(str(n.get("number") or n.get("nutrientNumber") or ""))
+            amount = n.get("amount", n.get("value"))
+            if name and amount is not None and subj != "food ":
+                items.append(_item(subj, "%s per 100 g" % name, "%s %s" % (amount, (n.get("unitName") or "").lower()), "usda-fooddata-central",
+                                   "USDA FoodData Central", "CC0 1.0", url, why))
+    n = len(foods) if isinstance(foods, list) else 0
+    nxt = cursor + 1 if n == size else (t + 1) * 10 ** 6
+    return items, (nxt if nxt // 10 ** 6 < len(FDC_TYPES) else None), "%d %s foods (page %d)" % (n, FDC_TYPES[t], page + 1)
+
+
+NARA = "https://catalog.archives.gov/api/v2/records/search?"
+
+
+def _nara(cursor, budget):
+    size = min(int(budget), 100)
+    r = FETCH(NARA + urllib.parse.urlencode({"q": "*", "availableOnline": "true", "limit": size, "page": cursor // size + 1}),
+              headers={"x-api-key": _key("nara") or "", "Content-Type": "application/json"})
+    hits = ((r.get("body") or {}).get("hits") or {}).get("hits") or []
+    items, kept = [], 0
+    for h in hits:
+        rec = (h.get("_source") or {}).get("record") or {}
+        if (rec.get("useRestriction") or {}).get("status") != "Unrestricted" or not rec.get("title"):
+            continue                                       # only records NARA marks "Unrestricted"
+        kept += 1
+        na = rec.get("naId") or h.get("_id")
+        subj = "National Archives record “%s” (NAID %s)" % (rec["title"][:150], na)
+        url = "https://catalog.archives.gov/id/%s" % na
+        why = "National Archives Catalog record %s; use restriction: Unrestricted." % na
+        mk = lambda pred, obj: _item(subj, pred, obj, "nara-catalog", "US National Archives Catalog", "US government record", url, why)
+        if rec.get("levelOfDescription"):
+            items.append(mk("level of description", rec["levelOfDescription"]))
+        for d in (rec.get("productionDates") or [])[:1]:
+            if d.get("year"):
+                items.append(mk("date", "-".join(str(x) for x in (d.get("year"), d.get("month"), d.get("day")) if x)))
+        for a in rec.get("ancestors") or []:
+            if a.get("levelOfDescription") == "series" and a.get("title"):
+                items.append(mk("part of series", a["title"][:300]))
+                if a.get("inclusiveStartDate") and a.get("inclusiveEndDate"):
+                    items.append(mk("series covers", "%s to %s" % (_first(a["inclusiveStartDate"].get("logicalDate") if isinstance(a["inclusiveStartDate"], dict) else a["inclusiveStartDate"]),
+                                                                    _first(a["inclusiveEndDate"].get("logicalDate") if isinstance(a["inclusiveEndDate"], dict) else a["inclusiveEndDate"]))))
+                break
+    nxt = cursor + len(hits)
+    return items, (nxt if hits and nxt < 10000 else None), "%d unrestricted records of %d read" % (kept, len(hits))
+
+
+DPLA = "https://api.dp.la/v2/items?"
+
+
+def _dpla(cursor, budget):
+    t, page = divmod(cursor, 10 ** 4)
+    if t >= len(TOPICS):
+        return [], None, "finished"
+    size = min(int(budget), 100)
+    r = FETCH(DPLA + urllib.parse.urlencode({"q": TOPICS[t], "page_size": size, "page": page + 1, "api_key": _key("dpla")}))
+    docs, items = r.get("docs") or [], []
+    for d in docs:
+        sr = d.get("sourceResource") or {}
+        title = _first(sr.get("title"))
+        if not title:
+            continue
+        subj = "DPLA item “%s” (%s)" % (title[:150], d.get("id"))
+        url = d.get("isShownAt") or "https://dp.la/item/%s" % d.get("id")
+        why = "DPLA record %s (metadata CC0), topic '%s'." % (d.get("id"), TOPICS[t])
+        mk = lambda pred, obj: _item(subj, pred, obj, "dpla-metadata", "Digital Public Library of America", "CC0 (metadata)", url, why)
+        for field, pred, n in (("date", "date", 1), ("subject", "subject", 3), ("spatial", "place", 2), ("type", "type", 1)):
+            vals = sr.get(field)
+            for v in (vals if isinstance(vals, list) else [vals])[:n]:
+                v = _first(v)
+                if v:
+                    items.append(mk(pred, v[:300]))
+        if _first(d.get("dataProvider")):
+            items.append(mk("provided by", _first(d.get("dataProvider"))))
+    nxt = cursor + 1 if len(docs) == size and (page + 1) * size < min(int(r.get("count") or 0), 10000) else (t + 1) * 10 ** 4
+    return items, (nxt if nxt // 10 ** 4 < len(TOPICS) else None), "%d items on '%s' (page %d)" % (len(docs), TOPICS[t], page + 1)
+
+
+EUROPEANA = "https://api.europeana.eu/record/v2/search.json?"
+
+
+def _europeana(cursor, budget):
+    t, start = divmod(cursor, 10 ** 4)
+    if t >= len(TOPICS):
+        return [], None, "finished"
+    rows = min(int(budget), 100)
+    r = FETCH(EUROPEANA + urllib.parse.urlencode({"wskey": _key("europeana"), "query": TOPICS[t], "rows": rows, "start": start + 1}))
+    found, items = r.get("items") or [], []
+    for it in found:
+        title = _first(it.get("title"))
+        if not title:
+            continue
+        subj = "Europeana record “%s” (%s)" % (title[:150], it.get("id"))
+        url = it.get("guid") or "https://www.europeana.eu/item%s" % it.get("id")
+        why = "Europeana record %s (metadata CC0), topic '%s'." % (it.get("id"), TOPICS[t])
+        mk = lambda pred, obj: _item(subj, pred, obj, "europeana-metadata", "Europeana", "CC0 (metadata)", url.split("?")[0], why)
+        for field, pred in (("year", "year"), ("country", "country"), ("dataProvider", "held by"), ("type", "type")):
+            v = _first(it.get(field))
+            if v:
+                items.append(mk(pred, v))
+        for c in list(dict.fromkeys(it.get("dcCreator") or []))[:3]:
+            if c and not str(c).startswith("http"):
+                items.append(mk("creator", str(c)[:200]))
+    nxt = start + len(found)
+    nxt = t * 10 ** 4 + nxt if found and nxt < min(int(r.get("totalResults") or 0), 1000) else (t + 1) * 10 ** 4
+    return items, (nxt if nxt // 10 ** 4 < len(TOPICS) else None), "%d records on '%s'" % (len(found), TOPICS[t])
+
+
+NEEDS_KEY = {"smithsonian-history": "api.data.gov", "smithsonian-science": "api.data.gov", "usda-foods": "api.data.gov",
+             "nara-records": "nara", "dpla-items": "dpla", "europeana-records": "europeana"}
+
+
 # ---------------------------------------------------------------------------------------------------- the catalogue
 # name: (application, registry source key, title, why, budget key, default budget, harvester)
 HARVESTERS = {
@@ -316,6 +556,18 @@ HARVESTERS = {
     "wikidata-languages": ("language", "wikidata", "The world's languages: ISO codes and writing systems (Wikidata)",
                            "which languages exist, how they are written — the most-documented first", "wd_languages", 50,
                            lambda c, b: _wikidata("P220", _languages, c, b)),
+    "smithsonian-history": ("facts", "smithsonian-open-access", "Smithsonian history and culture records (CC0 only)",
+                            "dated, placed objects from 19 Smithsonian museums", "si_history", 100, _smithsonian("history_culture")),
+    "smithsonian-science": ("stem", "smithsonian-open-access", "Smithsonian science and technology records (CC0 only)",
+                            "specimens and instruments with their dates, places and topics", "si_science", 100, _smithsonian("science_technology")),
+    "usda-foods": ("stem", "usda-fooddata-central", "Food composition: energy, protein, fat, vitamins per 100 g (USDA)",
+                   "nutrition facts measured by the USDA — Foundation foods first", "fdc", 100, _fdc),
+    "nara-records": ("facts", "nara-catalog", "National Archives records online (Unrestricted only)",
+                     "primary US records with dates and their series", "nara", 100, _nara),
+    "dpla-items": ("facts", "dpla-metadata", "Digital Public Library of America records by topic",
+                   "US library, archive and museum records on the subjects QueryBook covers", "dpla", 100, _dpla),
+    "europeana-records": ("facts", "europeana-metadata", "Europeana records by topic",
+                          "European cultural heritage records on the subjects QueryBook covers", "europeana", 100, _europeana),
 }
 
 
@@ -324,13 +576,16 @@ def budgets(app_id):
 
 
 def plan(ctx, app_id):
-    """Tasks for this application's approved online sources (unfinished ones only)."""
+    """Tasks for this application's approved online sources (unfinished ones, with their key if one is needed)."""
     if not enabled(ctx):
         return []
+    _KEYS["folder"] = ctx.commons.folder
     tasks = []
     for name, (app, key, title, why, bkey, bdef, _) in HARVESTERS.items():
         if app != app_id or not ctx.source_ok(key):
             continue
+        if name in NEEDS_KEY and not _key(NEEDS_KEY[name]):
+            continue                                  # waits for its free key (Harvesting page → API keys)
         cur = ctx.cursor("online:" + name)
         if cur < 0:
             continue                                  # source finished
@@ -341,6 +596,7 @@ def plan(ctx, app_id):
 
 def execute(task, ctx):
     name = task["action"].split(":", 1)[1]
+    _KEYS["folder"] = ctx.commons.folder
     app, key, title, why, bkey, bdef, fn = HARVESTERS[name]
     items, nxt, detail = fn(int(task["target"]["cursor"]), ctx.budget(bkey, bdef))
     return {"items": items, "cursor": {"online:" + name: -1 if nxt is None else nxt}, "detail": detail}

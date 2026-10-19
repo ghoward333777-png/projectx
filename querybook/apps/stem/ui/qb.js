@@ -419,7 +419,8 @@ async function renderHarvest(el) {
       '<div class="card"><h2>Harvesting engine</h2><p class="small muted">One engine runs the three harvest teams in turn — language, STEM and history — so they never harvest at the same time. ' +
       "Each turn goes to the application with the most to gain: checks other applications are waiting for, a fast recent harvest, or no harvest yet; the one that just harvested waits, and one that found nothing new backs off for longer each time (less volume). " +
       "Every task is checked against the policy registry first: only sources whose licence puts no restriction on QueryBook are harvested. Everything is logged with its source and why.</p>" +
-      '<div id="hv-engine"></div><h3>Online harvesters</h3><label class="row small"><input type="checkbox" id="hv-online"> Harvest from the online sources the admin approved (this application)</label><div id="hv-online-list"></div></div>' +
+      '<div id="hv-engine"></div><h3>Online harvesters</h3><label class="row small"><input type="checkbox" id="hv-online"> Harvest from the online sources the admin approved (this application)</label><div id="hv-online-list"></div>' +
+      '<h3>API keys (free)</h3><p class="small muted">Some approved sources need a free key. Keys are kept only in the shared folder on this computer (api-keys.json, owner-only) — never in the database, its backups or the logs. Saving a key needs the admin passphrase.</p><div id="hv-keys"></div></div>' +
       '<div class="card"><h2>Waiting for your approval</h2><p class="small muted">The learning agent reads the harvest record and recommends changes — bigger or smaller batches, pausing a failing task, classifying a new source. ' +
       "Nothing is changed until you, the admin, approve it here. Every decision is versioned.</p>" +
       '<div id="hv-admin"></div><div id="hv-pending"></div><details><summary class="small">Decided recommendations</summary><div id="hv-decided"></div></details></div>' +
@@ -485,6 +486,16 @@ async function renderHarvest(el) {
           reason: $("input.hv-why", row).value || "admin decision", accept_restriction: $("input.hv-acc", row).checked });
         toast("Registry updated — the change is versioned."); renderHarvest(el); return;
       }
+      if (act === "key") {
+        const row = b.closest("tr");
+        await api("/api/harvest/key", { service: id, key: $("input.hv-kv", row).value, passphrase: hvPass(el) });
+        toast("Key saved — its harvesters start on their next turn."); renderHarvest(el); return;
+      }
+      if (act === "dpla") {
+        const row = b.closest("tr");
+        const r = await api("/api/harvest/dpla_request", { email: $("input.hv-email", row).value, passphrase: hvPass(el) });
+        toast(r.message); return;
+      }
       if (act === "param") {
         const row = b.closest("tr");
         await api("/api/harvest/param", { key: id, value: $("input.hv-pv", row).value, passphrase: hvPass(el), reason: "set by the admin" });
@@ -510,7 +521,11 @@ async function renderHarvest(el) {
   $("#hv-online-list", el).innerHTML = (s.offline_env ? '<div class="note warn small">QB_OFFLINE is set: no online harvesting in this process.</div>' : "") +
     '<table class="t small"><tr><th>Harvester</th><th>Application</th><th>Source</th><th>Progress</th></tr>' + s.harvesters.map(h => "<tr><td><b>" + esc(h.title) + '</b><br><span class="muted">' + esc(h.why) +
       "</span></td><td>" + esc(names[h.app] || h.app) + '</td><td class="mono">' + esc(h.source) + " " + (h.approved ? cmTag("approved", "good") : cmTag("not approved", "bad")) + "</td><td>" +
-      (h.cursor === null ? "not started" : h.cursor === "-1" ? cmTag("finished", "good") : "next item " + (Number(h.cursor) + 1)) + "</td></tr>").join("") + "</table>";
+      (h.needs_key && !s.keys.find(k => k.service === h.needs_key && k.set) ? cmTag("waiting for its " + h.needs_key + " key", "warn") : h.cursor === null ? "not started" : h.cursor === "-1" ? cmTag("finished", "good") : "next item " + (Number(h.cursor) + 1)) + "</td></tr>").join("") + "</table>";
+  $("#hv-keys", el).innerHTML = '<table class="t small"><tr><th>Service</th><th>How to get it</th><th>Key</th></tr>' + s.keys.map(k => "<tr><td><b>" + esc(k.title) + "</b><br>" +
+    (k.set ? cmTag("saved " + k.hint, "good") : cmTag("not set", "warn")) + "</td><td>" + esc(k.how) +
+    (k.service === "dpla" ? '<br><input class="hv-email" type="email" placeholder="your email" aria-label="Email for the DPLA key"> <button class="btn quiet" data-hv="dpla:x">Request my DPLA key</button>' : "") +
+    '</td><td><input class="hv-kv" type="password" autocomplete="off" placeholder="' + (k.set ? "paste a new key to replace" : "paste the key") + '" aria-label="API key"> <button class="btn quiet" data-hv="key:' + esc(k.service) + '">Save</button></td></tr>').join("") + "</table>";
   $("#hv-admin", el).innerHTML = s.admin_set ?
     '<div class="row"><label class="row small">Admin passphrase <input id="hv-pass" type="password" autocomplete="current-password" placeholder="' + (HV_PASS ? "remembered for this page" : "needed to decide") + '"></label>' +
     '<details class="small"><summary>Change passphrase</summary><input id="hv-old" type="password" placeholder="current"> <input id="hv-new" type="password" placeholder="new (8+ characters)"> <button class="btn quiet" data-hv="setpass">Change</button></details></div>' :

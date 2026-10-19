@@ -215,8 +215,29 @@ def main():
     }
     calls = []
 
-    def fake(url, kind="json", timeout=60):
-        calls.append(url)
+    def fake(url, kind="json", timeout=60, headers=None):
+        calls.append((url, headers))
+        if "api.si.edu" in url:
+            return {"response": {"rowCount": 2, "rows": [
+                {"id": "a", "title": "Wright Flyer", "content": {"descriptiveNonRepeating": {"record_ID": "nasm_A19610048000", "data_source": "National Air and Space Museum",
+                 "record_link": "https://airandspace.si.edu/collection/id/nasm_A19610048000", "metadata_usage": {"access": "CC0"}},
+                 "indexedStructured": {"date": ["1900s"], "object_type": ["Aircraft"], "place": ["North Carolina"], "topic": ["Aviation"]}}},
+                {"id": "b", "title": "Not open", "content": {"descriptiveNonRepeating": {"record_ID": "x1", "metadata_usage": {"access": "Usage conditions apply"}}}}]}}
+        if "fdc/v1" in url:
+            return [{"fdcId": 1750340, "description": "Apples, fuji, with skin, raw", "foodNutrients": [
+                {"number": "208", "name": "Energy", "amount": 64.7, "unitName": "KCAL"}, {"number": "999", "name": "Other", "amount": 1, "unitName": "G"}]}]
+        if "catalog.archives.gov" in url:
+            return {"body": {"hits": {"hits": [
+                {"_id": "305268", "_source": {"record": {"naId": 305268, "title": "Telegram from Orville Wright", "levelOfDescription": "item",
+                 "useRestriction": {"status": "Unrestricted"}, "productionDates": [{"year": 1903, "month": 12, "day": 17}],
+                 "ancestors": [{"levelOfDescription": "series", "title": "Wright Brothers Papers"}]}}},
+                {"_id": "9", "_source": {"record": {"naId": 9, "title": "Restricted", "useRestriction": {"status": "Restricted - Partly"}}}}]}}}
+        if "api.dp.la" in url:
+            return {"count": 1, "docs": [{"id": "abc", "isShownAt": "https://example.org/item/abc", "dataProvider": {"name": "Library of Congress"},
+                    "sourceResource": {"title": ["Brooklyn Bridge"], "date": [{"displayDate": "1883"}], "subject": [{"name": "Bridges"}], "spatial": [{"name": "New York"}]}}]}
+        if "api.europeana.eu" in url:
+            return {"totalResults": 1, "items": [{"id": "/9200/abc", "title": ["Map of Europe"], "year": ["1570"], "country": ["Belgium"],
+                    "dataProvider": ["KBR"], "type": "IMAGE", "dcCreator": ["http://viaf.org/1", "Abraham Ortelius"], "guid": "https://www.europeana.eu/item/9200/abc?utm=x"}]}
         if "natural-earth" in url:
             return FIX["natural-earth"]
         if "frus-metadata" in url:
@@ -264,6 +285,30 @@ def main():
         c.check("online: Wikidata dates keep their precision", ol._year({"time": "+1991-00-00T00:00:00Z", "precision": 9}) == "1991"
                 and ol._year({"time": "-0500-00-00T00:00:00Z", "precision": 9}) == "500 BC")
         with tempfile.TemporaryDirectory() as tmp:
+            ol.save_key(tmp, "api.data.gov", "SECRETKEY1234")
+            ol._KEYS["folder"] = tmp
+            trip = lambda r: {(i["subject"], i["predicate"], i["object"]) for i in r[0]}
+            c.check("keyed: Smithsonian takes only CC0 records", trip(ol._smithsonian("history_culture")(0, 10)) >=
+                    {("Smithsonian object \u201cWright Flyer\u201d (nasm_A19610048000)", "held by", "National Air and Space Museum")} and
+                    not any("Not open" in i[0] for i in trip(ol._smithsonian("history_culture")(0, 10))))
+            c.check("keyed: USDA gives nutrients per 100 g", ("food Apples, fuji, with skin, raw", "energy per 100 g", "64.7 kcal") in trip(ol._fdc(0, 10)))
+            ol.save_key(tmp, "nara", "NARAKEY")
+            nr = trip(ol._nara(0, 10))
+            c.check("keyed: National Archives takes only Unrestricted records, key sent as a header",
+                    ("National Archives record \u201cTelegram from Orville Wright\u201d (NAID 305268)", "date", "1903-12-17") in nr and
+                    not any("Restricted" == i[0] for i in nr) and calls[-1][1].get("x-api-key") == "NARAKEY" and "NARAKEY" not in calls[-1][0])
+            ol.save_key(tmp, "dpla", "DPLAKEY")
+            c.check("keyed: DPLA records by topic", ("DPLA item \u201cBrooklyn Bridge\u201d (abc)", "date", "1883") in trip(ol._dpla(0, 10)))
+            ol.save_key(tmp, "europeana", "EUKEY")
+            eu = trip(ol._europeana(0, 10))
+            c.check("keyed: Europeana keeps named creators, drops link-only ones", ("Europeana record \u201cMap of Europe\u201d (/9200/abc)", "creator", "Abraham Ortelius") in eu
+                    and not any(i[2].startswith("http") for i in eu))
+            st = ol.key_status(tmp)
+            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st) and st[0]["hint"] == "\u20261234" and
+                    (os.name == "nt" or (os.stat(os.path.join(tmp, "api-keys.json")).st_mode & 0o077) == 0))
+            ol.save_key(tmp, "api.data.gov", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
             com = cm.Commons(tmp, "facts")
 
             class Quiet(cm.Adapter):
@@ -279,11 +324,16 @@ def main():
             c.check("online: a finished source is not planned again", com.cursor("online:natural-earth-places") == -1 and
                     not any(t["action"] == "online:natural-earth-places" for t in ol.plan(cm.Context(com), "facts")))
             com.registry.set_source("met-open-access", "blocked", "admin", "test")
+            c.check("keys: harvesters needing a key wait for it", not any(t["action"] in ("online:nara-records", "online:dpla-items") for t in ol.plan(cm.Context(com), "facts")))
+            ol.save_key(tmp, "dpla", "DPLAKEY")
+            c.check("keys: once the key is saved its harvester is planned", any(t["action"] == "online:dpla-items" for t in ol.plan(cm.Context(com), "facts")))
+            c.check("keys: no key ever reaches the database, log or evidence", not any(
+                "DPLAKEY" in json.dumps(r) or "SECRETKEY" in json.dumps(r) for t in ("harvest_log", "evidence", "settings", "tasks") for r in d.query("SELECT * FROM %s" % t)))
             c.check("online: a source the admin blocks is not harvested", not any(t["source"] == "met-open-access" for t in ol.plan(cm.Context(com), "facts")))
             com.set_setting("online:facts", "off")
             c.check("online: harvesting online can be switched off", ol.plan(cm.Context(com), "facts") == [])
 
-            def busy(url, kind="json", timeout=60):
+            def busy(url, kind="json", timeout=60, headers=None):
                 raise ol.SourceBusy("asked to slow down (HTTP 429)")
             ol.FETCH = busy
             com.set_setting("online:facts", "on")

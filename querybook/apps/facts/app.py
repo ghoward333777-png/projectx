@@ -25,7 +25,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 PORT = 8103
 program_dir = HERE
 

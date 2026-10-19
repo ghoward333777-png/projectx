@@ -36,12 +36,15 @@ WHAT'S NEW IN THIS RELEASE
       (Natural Earth), US diplomatic history volumes (FRUS), the Met's highlighted artworks, programming
       languages and chemical compounds (Wikidata), species (NCBI Taxonomy) and the world's languages
       (Wikidata). They need an internet connection; switch them off on the Harvesting page.
+    * Six more harvesters wait for free API keys (Harvesting page -> API keys): Smithsonian (two),
+      USDA food composition, National Archives, DPLA and Europeana. The page explains how to get each
+      key; "Request my DPLA key" asks DPLA to email you one. Keys stay on your computer only.
     * Shared facts & agents: one shared fact database (the Commons, ~/QueryBook-Data/commons) used by
       all three. Each application has a team of four agents — Strategist, Planner, Harvester, Curator —
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.17.0)
+  Language Builder (1.18.0)
     * Visual Speech Engine (Speech -> Face & video): full-face lip sync from words + a recording
       (coarticulation, jaw, brows, head nods, blinks, gaze, emotion), ARKit blendshape export and a
       preview face; a new lip reader (soft scores for 15 mouth shapes + word decoding) shown next to the
@@ -53,7 +56,7 @@ WHAT'S NEW IN THIS RELEASE
       Spanish?", "when did I last see a cup?", "how many people did I see today?".
     * Speech-to-Text for MP3 and other audio files of any length, live captions while a file plays,
       live captions from the microphone.
-  Math, Science & Engineering (1.5.0) and History & News (1.5.0)
+  Math, Science & Engineering (1.6.0) and History & News (1.6.0)
     * The harvesting engine, registry and approvals (see above).
 
 EXTRAS

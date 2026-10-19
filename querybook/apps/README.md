@@ -296,8 +296,19 @@ Each is a task in its application's plan, so the engine's rotation, the registry
 and the learner apply to it exactly as to the built-in tasks. Requests go one at a time with a pause
 between calls to the same site and a named user agent; a site that answers "too many requests" fails
 only that task for the turn (logged with why), and the cursor stays put. Switch off per application on
-the Harvesting page, or set `QB_OFFLINE=1`. Self-tests never go online. The other approved sources have
-no harvester yet — several (Smithsonian, NARA, DPLA, Europeana, USDA) need a free API key.
+the Harvesting page, or set `QB_OFFLINE=1`. Self-tests never go online.
+
+**Harvesters that need a free key** wait, idle, until the key is pasted on the Harvesting page (API keys —
+admin passphrase required). Keys are kept in `<commons folder>/api-keys.json` (owner-only), never in the
+database, its backups, the code or the logs; requests never put a key in an error message.
+
+| Harvester | Application | Key | How to get the key |
+|---|---|---|---|
+| Smithsonian history & culture, science & technology (CC0 records only) | History & News, Math & Science | api.data.gov | form at api.data.gov/signup — shown at once; one key serves Smithsonian and USDA |
+| Food composition per 100 g (USDA FoodData Central) | Math & Science | api.data.gov | (same key) |
+| National Archives records online ("Unrestricted" only) | History & News | nara | email Catalog_API@nara.gov for a read-only v2 key |
+| DPLA records by topic | History & News | dpla | **Request my DPLA key** on the page — DPLA emails it |
+| Europeana records by topic | History & News | europeana | free Europeana account → My Profile → Manage API key |
 
 **Engine.** One engine gives the three teams turns — language, STEM, history — so they never harvest at
 once. Each running application asks every `schedule.tick_s` (30 s) whether it is its turn; the claim is

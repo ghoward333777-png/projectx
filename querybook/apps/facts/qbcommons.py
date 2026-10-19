@@ -708,6 +708,25 @@ def add_routes(api, team, app_folder):
         c.registry.set_param(p.get("key"), val, "admin", p.get("reason") or "set by the admin")
         return {"ok": True}
 
+    @api.post("/api/harvest/key")
+    def h_key(p):
+        c.approvals._require(p.get("passphrase") or "")
+        try:
+            ol.save_key(c.folder, p.get("service"), p.get("key") or "")
+        except ValueError as e:
+            raise core.UserError(str(e))
+        return {"keys": ol.key_status(c.folder)}
+
+    @api.post("/api/harvest/dpla_request")
+    def h_dpla(p):
+        c.approvals._require(p.get("passphrase") or "")
+        try:
+            return ol.request_dpla_key(p.get("email"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        except Exception as e:
+            raise core.UserError("DPLA did not accept the request: %s" % e)
+
     @api.post("/api/harvest/log")
     def h_log(p):
         return {"log": c.harvest_log.recent(p.get("app") or None, p.get("decision") or None, p.get("limit") or 200)}
@@ -738,9 +757,10 @@ def harvest_status(team):
     trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
                         FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
     return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(),
-            "online": c.setting("online:%s" % team.app_id, "on") != "off", "offline_env": bool(os.environ.get("QB_OFFLINE")),
+            "online": c.setting("online:%s" % team.app_id, "on") != "off", "keys": ol.key_status(c.folder), "offline_env": bool(os.environ.get("QB_OFFLINE")),
             "harvesters": [{"name": k, "app": h[0], "source": h[1], "title": h[2], "why": h[3],
-                            "approved": c.registry.check(h[1])[0], "cursor": c.store.scalar("SELECT value FROM settings WHERE key = ?",
+                            "approved": c.registry.check(h[1])[0], "needs_key": ol.NEEDS_KEY.get(k),
+                            "cursor": c.store.scalar("SELECT value FROM settings WHERE key = ?",
                                                                                                 ("cursor:%s:online:%s" % (h[0], k),))}
                            for k, h in ol.HARVESTERS.items()],
             "admin_set": c.approvals.admin_set(), "pending": c.approvals.list("pending"), "decided": c.approvals.list(None, 40),
