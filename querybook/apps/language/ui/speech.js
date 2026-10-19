@@ -102,13 +102,35 @@ function stagesTable(stages, total) {
     (total !== undefined ? "<tr><td><b>Total</b></td><td></td><td><b>" + Number(total).toFixed(2) + "</b></td><td></td></tr>" : "") + "</table>";
 }
 
-// Talking face card: lip-sync track from the server, drawn in 2D (SVG) or 3D (three.js, with Enter VR), synced to the audio.
+// The face that speaks: 2D, 3D or any analysed library avatar. Remembered in this browser.
+function faceChoice() { try { return localStorage.getItem("qb.face") || "2d"; } catch (e) { return "2d"; } }
+function setFaceChoice(v) { try { localStorage.setItem("qb.face", v); } catch (e) {} }
+let FACE_LIST = null;
+async function faceAvatars(fresh) {
+  if (!FACE_LIST || fresh) FACE_LIST = api("/api/avatars/list").then(r => r.avatars.filter(a => a.analysed)).catch(() => []);
+  return FACE_LIST;
+}
+// A strip of clickable faces; onPick(value) with "2d", "3d" or an avatar id.
+async function facePicker(host, onPick) {
+  const list = await faceAvatars();
+  const cur = faceChoice();
+  const tile = (v, inner, title) => '<button class="fp-tile' + (String(v) === cur ? " on" : "") + '" data-fp="' + v + '" title="' + esc(title) + '">' + inner + "</button>";
+  host.innerHTML = '<div class="fp-strip">' + tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR") +
+    list.map(a => tile(a.id, '<img loading="lazy" alt="" src="/api/avatars/image?id=' + a.id + '"><span>' + esc(a.name) + "</span>", a.name + " — " + a.label)).join("") + "</div>" +
+    (list.length ? "" : '<p class="small muted">No avatars yet — add portraits in <a href="#" data-fp-lib>Speech → Avatars</a>.</p>');
+  host.querySelectorAll("[data-fp]").forEach(b => b.onclick = () => {
+    host.querySelectorAll("[data-fp]").forEach(x => x.classList.toggle("on", x === b));
+    setFaceChoice(b.dataset.fp); onPick(b.dataset.fp);
+  });
+  const lib = host.querySelector("[data-fp-lib]"); if (lib) lib.onclick = e => { e.preventDefault(); showSub("avatars"); };
+}
+
+// Talking face card: lip-sync track from the server, drawn as the chosen face (2D SVG, 3D with Enter VR, or a library avatar
+// moved by all 52 face channels), synced to the audio.
 async function faceCard(host, audioName, text, lang, emotion) {
   const box = document.createElement("div"); box.className = "card face-card";
-  box.innerHTML = '<h3>Talking face <span class="small muted">mouth shapes timed to this audio</span></h3>' +
-    '<div class="row"><button class="btn small" data-fm="2d">2D face</button><button class="btn small" data-fm="3d">3D / VR face</button>' +
-    '<select class="small" data-avsel aria-label="Avatar"><option value="">Avatar from the library…</option></select>' +
-    '<label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
+  box.innerHTML = '<h3>Talking face <span class="small muted">click a face to change who speaks</span></h3><div data-fpick></div>' +
+    '<div class="row"><label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
     '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
     '<div class="face-stage" style="max-width:360px"></div><p class="small muted" data-finfo>Working out the mouth shapes…</p>';
   host.appendChild(box);
@@ -116,33 +138,33 @@ async function faceCard(host, audioName, text, lang, emotion) {
   box.querySelectorAll("[data-fx]").forEach(a => { a.href = "/api/speech/lipsync.export?audio=" + encodeURIComponent(audioName) + "&text=" + encodeURIComponent(text) + "&lang=" + encodeURIComponent(lang) + "&format=" + a.dataset.fx; a.setAttribute("download", ""); });
   const face = new TalkingFace(stage);
   face.setEmotion(emotion || "neutral");
+  let track = null, motion = null;
   const load = async exact => {
     const t0 = performance.now();
-    const tr = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
-    face.attach(audio, tr);
-    info.textContent = tr.words.length + " words, " + tr.visemes.length + " mouth shapes, " + tr.duration.toFixed(2) + " s of audio — timing: " + tr.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
-    return tr;
+    track = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
+    face.attach(audio, motion ? Object.assign({}, track, { motion }) : track);
+    info.textContent = track.words.length + " words, " + track.visemes.length + " mouth shapes, " + track.duration.toFixed(2) + " s of audio — timing: " + track.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
+    return track;
   };
-  await face.setMode("2d");
-  box.querySelectorAll("[data-fm]").forEach(b => b.onclick = () => face.setMode(b.dataset.fm).catch(e => { info.textContent = "3D could not start here: " + e.message; face.setMode("2d"); }));
-  api("/api/avatars/list").then(r => {
-    const sel = box.querySelector("[data-avsel]");
-    r.avatars.filter(a => a.analysed).forEach(a => sel.insertAdjacentHTML("beforeend", '<option value="' + a.id + '">' + esc(a.name) + "</option>"));
-    sel.onchange = async () => {
-      if (!sel.value) return;
-      try {
-        const av = await api("/api/avatars/get?id=" + sel.value);
-        await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label } });
+  const show = async v => {
+    try {
+      if (v === "2d" || v === "3d") { await face.setMode(v); return; }
+      const av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
+      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label } });
+      if (!motion) {
         info.textContent = "Working out all 52 face channels for this audio…";
         const j = await api("/api/vse/lip_sync", { audio_name: audioName, text, lang, emotion: null });
-        const res = await avWaitJob(j.job_id);
-        face.track = Object.assign({}, face.track || {}, { motion: res.motion });
-        info.textContent = av.label + " — " + res.motion.frames.length + " frames × 52 channels";
-      } catch (e) { info.textContent = "The avatar could not be shown: " + e.message; }
-    };
-  }).catch(() => {});
+        motion = (await avWaitJob(j.job_id)).motion;
+      }
+      face.track = Object.assign({}, face.track || track || {}, { motion });
+      info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels";
+    } catch (e) { info.textContent = "That face could not be shown (" + e.message + "); showing the 2D face."; setFaceChoice("2d"); await face.setMode("2d"); }
+  };
+  await face.setMode("2d");
+  facePicker(box.querySelector("[data-fpick]"), show);
   box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
   try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
+  if (faceChoice() !== "2d") await show(faceChoice());
   return face;
 }
 
@@ -471,6 +493,7 @@ async function loadSpeech() {
   $("#sp-engine").onchange = async e => { await selectEngine(e.target.value); renderQuick(); };
   $("#sp-voice").onchange = schedulePlan; $("#sp-model").onchange = schedulePlan; $("#sp-text").oninput = schedulePlan;
   $("#sp-go").onclick = generate;
+  facePicker($("#sp-faces"), () => {});
   $("#mt-go").onclick = match;
   $("#ls-rec").onclick = lsRecord;
   $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.video = null;

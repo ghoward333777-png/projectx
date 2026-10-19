@@ -291,7 +291,13 @@ and tongue — with co-articulation, lip closure on p/b/m, blinks at phrase brea
 words, and slight left/right asymmetry. The renderer (`ui/avatarface.js`) moves each channel's region of the 3D mesh and
 turns the head in 3D using the landmarks' depth. The studio shows all 52 channels as sliders, expression presets, and
 exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
-a library avatar ("Avatar from the library…" under the talking face).
+a library avatar.
+
+**Choosing a face.** Speech → Speak opens with a *Choose a face* strip — 2D, 3D/VR and a thumbnail of every analysed
+avatar; the choice is remembered in the browser and every talking face (Speak, Ask) uses it. The same strip sits
+under each talking face, so one click switches who speaks. The installer ships a **starter set of 20 AI-generated
+portraits** (`language/avatars_starter/`, already analysed) that is added once on first start; avatars you delete
+stay deleted. Full-length or group photos are cropped to the face automatically when analysed (the original is kept).
 
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 

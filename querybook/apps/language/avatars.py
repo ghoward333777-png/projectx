@@ -123,6 +123,39 @@ class Library:
             db.execute("UPDATE avatars SET image = ? WHERE id = ?", (fn, aid))
         return {"id": aid, "name": name, "duplicate": False}
 
+    def install_starter(self, folder):
+        """Install the bundled starter faces (already analysed) once; avatars the admin later deletes stay deleted."""
+        mf = os.path.join(folder, "manifest.json")
+        if not os.path.isfile(mf):
+            return {"installed": 0}
+        mark = os.path.join(self.folder, "starter-installed.json")
+        with open(mf, encoding="utf-8") as f:
+            man = json.load(f)
+        done = {}
+        if os.path.isfile(mark):
+            with open(mark, encoding="utf-8") as f:
+                done = json.load(f)
+        if done.get("version") == man.get("version"):
+            return {"installed": 0}
+        n = 0
+        for a in man.get("avatars", []):
+            p = os.path.join(folder, os.path.basename(a["file"]))
+            if not os.path.isfile(p):
+                continue
+            with open(p, "rb") as f:
+                r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"], filename=a["file"])
+            if not r["duplicate"]:
+                with self.store.write() as db:
+                    att = json.loads(db.execute("SELECT attestation FROM avatars WHERE id = ?", (r["id"],)).fetchone()[0])
+                    att.update(confirmed_by="bundled starter set", note=man.get("note", ""))
+                    db.execute("UPDATE avatars SET attestation = ? WHERE id = ?", (json.dumps(att), r["id"]))
+                if a.get("landmarks"):
+                    self.set_landmarks(r["id"], a["landmarks"])
+                n += 1
+        with open(mark, "w", encoding="utf-8") as f:
+            json.dump({"version": man.get("version"), "at": _now(), "installed": n}, f)
+        return {"installed": n}
+
     def import_path(self, path, source="synthetic", attest=False):
         """A folder or a .zip of portraits on this computer (PNG / JPEG / WebP; other files are skipped)."""
         path = os.path.abspath(os.path.expanduser(path or ""))
@@ -205,6 +238,26 @@ class Library:
         with self.store.write() as db:
             db.execute("UPDATE avatars SET landmarks = ?, quality = ? WHERE id = ?", (json.dumps(lm) if lm else None, json.dumps(q), int(aid)))
         return {"id": int(aid), "quality": q, "points": len(lm) if lm else 0}
+
+    def crop(self, aid, data):
+        """Replace the working portrait with a close crop of the face (full-length photos animate badly); the original is kept."""
+        kind = _kind(data or b"")
+        if not kind or len(data) > MAX_BYTES:
+            raise core.UserError("Send the crop as a PNG, JPEG or WebP image.")
+        r = self.store.one("SELECT image FROM avatars WHERE id = ?", (int(aid),))
+        if not r:
+            raise core.UserError("No such avatar.")
+        d = os.path.join(self.folder, str(int(aid)))
+        old = os.path.join(d, os.path.basename(r["image"]))
+        if os.path.isfile(old) and not os.path.basename(old).startswith("original."):
+            os.replace(old, os.path.join(d, "original" + os.path.splitext(old)[1]))
+        fn = "face.%s" % kind
+        with open(os.path.join(d, fn), "wb") as f:
+            f.write(data)
+        w, h = _size(data, kind)
+        with self.store.write() as db:
+            db.execute("UPDATE avatars SET image = ?, width = ?, height = ?, landmarks = NULL, quality = NULL WHERE id = ?", (fn, w, h, int(aid)))
+        return {"id": int(aid), "width": w, "height": h}
 
     def update(self, aid, name=None, tags=None, voice=None, notes=None, hidden=None):
         self.get(aid)

@@ -6,6 +6,11 @@
 <title>QueryBook Language Builder</title>
 <link rel="stylesheet" href="qb.css">
 <style>
+.fp-strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px}
+.fp-tile{flex:0 0 auto;width:84px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:2px solid transparent;border-radius:10px;background:none;cursor:pointer;font-size:12px;color:inherit}
+.fp-tile img,.fp-tile .fp-ico{width:72px;height:72px;object-fit:cover;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:34px;background:rgba(127,127,127,.12)}
+.fp-tile span:last-child{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-tile.on{border-color:var(--accent,#1f6feb)}
 .vd-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 10px; }
 @media (max-width: 800px) { .vd-grid { grid-template-columns: 1fr; } }
 .vd-wrap { position: relative; background: #0f172a; border-radius: 10px; min-height: 200px; overflow: hidden; align-self: start; }
@@ -283,6 +288,7 @@ tr.lc-active td { background: #f0fdf4; }
     </div>
 
     <div class="sp" id="sp-speak">
+      <div class="card"><h2>Choose a face <span class="small muted">who speaks your text — click one</span></h2><div id="sp-faces"></div></div>
       <div class="card">
         <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Generate speech</button>
           <label class="chk"><input type="checkbox" id="sp-fallback" checked> If the engine fails, use the offline voice</label></div>

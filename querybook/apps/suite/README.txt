@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.21.0)
+  Language Builder (1.22.0)
+    * Choose a face: Speech -> Speak shows thumbnails of every avatar (plus 2D and 3D/VR); click one and that
+      face speaks. 20 AI-generated starter avatars come installed and ready. Full-length photos are cropped to
+      the face automatically when analysed.
     * Avatar library (Speech -> Avatars): import portraits (files, a folder or a .zip); each becomes a talking
       avatar measured at 478 face points with depth and animated with all 52 ARKit face channels — lips, jaw,
       cheeks, nose, eyelids, gaze, brows and tongue — with natural co-articulation, blinks, brow raises and 3D head

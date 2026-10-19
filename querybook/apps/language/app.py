@@ -39,7 +39,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.21.0"
+VERSION = "1.22.0"
 PORT = 8101
 program_dir = HERE
 
@@ -103,6 +103,10 @@ class App:
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
+        try:
+            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))           # the 20 bundled faces, ready to talk
+        except Exception as e:
+            self.log("starter avatars not installed: %s" % e)
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
@@ -900,6 +904,10 @@ class App:
         def av_landmarks(p):
             return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
 
+        @a.post("/api/avatars/crop")
+        def av_crop(p):
+            return self.avatars.crop(p.get("id"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
+
         @a.post("/api/avatars/update")
         def av_update(p):
             return self.avatars.update(p.get("id"), p.get("name"), p.get("tags"), p.get("voice"), p.get("notes"), p.get("hidden"))
@@ -935,7 +943,11 @@ class App:
             text = (p.get("text") or "").strip()
             wav = None
             if p.get("audio_name"):                                   # a file the Speech lab made
-                with open(self.speech.audio_path(os.path.basename(p["audio_name"])), "rb") as f:
+                try:
+                    ap = self.speech.audio_path(str(p["audio_name"]))      # e.g. 20261019/out-….wav; audio_path keeps it inside the folder
+                except FileNotFoundError:
+                    raise core.UserError("That audio file is not kept here.")
+                with open(ap, "rb") as f:
                     wav = f.read()
             elif p.get("audio_b64"):
                 wav = _audio(p)
@@ -1497,6 +1509,15 @@ def selftest():
             zz.writestr("images/one.png", png(9, 9, (1, 2, 3))); zz.writestr("images/desktop.ini", "x"); zz.writestr("images/two.png", png(9, 9, (4, 5, 6)))
         imp = app.avatars.import_path(z, "synthetic", True)
         c.check("avatars: a .zip of portraits imports (other files skipped)", imp["added"] == 2 and not imp["failed"], imp)
+        cr = app.avatars.crop(a1["id"], png(6, 7, (9, 9, 9)))
+        c.check("avatars: a full-length photo is cropped to the face, original kept", cr["width"] == 6 and app.avatars.get(a1["id"])["landmarks"] is None
+                and os.path.isfile(os.path.join(app.avatars.folder, str(a1["id"]), "original.png")) and app.avatars.image_path(a1["id"]).endswith("face.png"))
+        g = app.speech.generate("Hello there.", {"lang": "en"}, measure=False)
+        jj = app.api.routes[("POST", "/api/vse/lip_sync")]({"audio_name": g["audio"], "text": "Hello there.", "lang": "en"})
+        c.check("avatars: the face motion job finds speech the lab made (dated sub-folder)", "/" in g["audio"] and bool(jj.get("job_id")), g["audio"])
+        st = [a for a in app.avatars.list() if "starter" in a["tags"]]
+        c.check("avatars: the 20 bundled starter faces are installed and analysed, once", len(st) == 20 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
+                and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

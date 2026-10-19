@@ -22,12 +22,31 @@ async function avLandmarks(url) {
   return L ? L.map(p => [Math.round(p.x * 1e5) / 1e5, Math.round(p.y * 1e5) / 1e5, Math.round(p.z * 1e5) / 1e5]) : null;
 }
 
+async function avCropFace(url, L, id) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("image")); i.src = url; });
+  const xs = L.map(p => p[0] * img.width), ys = L.map(p => p[1] * img.height);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  let side = Math.min(img.width, img.height, 2.2 * Math.max(x1 - x0, y1 - y0));
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - 0.08 * side;
+  const sx = Math.max(0, Math.min(img.width - side, cx - side / 2)), sy = Math.max(0, Math.min(img.height - side, cy - side / 2));
+  const out = Math.min(768, Math.round(side)); if (out < 160) return false;
+  const c = document.createElement("canvas"); c.width = c.height = out;
+  c.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, out, out);
+  await api("/api/avatars/crop", { id, data_b64: c.toDataURL("image/jpeg", 0.9) });
+  return true;
+}
+
 async function avAnalyse(el, all) {
   const todo = AV.list.filter(a => all || !a.analysed), out = $("#av-msg", el);
   for (let n = 0; n < todo.length; n++) {
     out.textContent = "Analysing faces " + (n + 1) + " of " + todo.length + " (478 points with depth)…";
     let L = null;
-    try { L = await avLandmarks("/api/avatars/image?id=" + todo[n].id); } catch (e) { L = null; }
+    const url = "/api/avatars/image?id=" + todo[n].id;
+    try { L = await avLandmarks(url); } catch (e) { L = null; }
+    // A full-length or group photo: crop square around the face so it fills the frame, then measure again.
+    if (L && Math.abs(L[152][1] - L[10][1]) < 0.4) {
+      try { if (await avCropFace(url, L, todo[n].id)) L = await avLandmarks(url + "&t=" + Date.now()); } catch (e) {}
+    }
     await api("/api/avatars/landmarks", { id: todo[n].id, landmarks: L || [] });
   }
   out.textContent = todo.length ? "Analysed " + todo.length + " portrait(s)." : "All portraits are analysed.";
@@ -37,6 +56,7 @@ async function avAnalyse(el, all) {
 async function avRefresh(el) {
   const r = await api("/api/avatars/list");
   AV.list = r.avatars; AV.sources = r.sources;
+  if (typeof faceAvatars === "function") { faceAvatars(true); if ($("#sp-faces")) facePicker($("#sp-faces"), () => {}); }
   $("#av-grid", el).innerHTML = AV.list.length ? AV.list.map(a => '<div class="av-tile' + (AV.sel && AV.sel.id === a.id ? " sel" : "") + '" data-av="' + a.id + '" style="display:inline-block;width:132px;margin:4px;vertical-align:top;cursor:pointer;border:2px solid ' +
     (AV.sel && AV.sel.id === a.id ? "var(--accent,#1f6feb)" : "transparent") + ';border-radius:10px;padding:4px">' +
     '<img src="/api/avatars/image?id=' + a.id + '" alt="" loading="lazy" style="width:120px;height:120px;object-fit:cover;border-radius:8px">' +
