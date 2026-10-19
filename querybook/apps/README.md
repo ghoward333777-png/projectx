@@ -259,6 +259,16 @@ ones arrive as *pending* with an approval request each; the 8 restricted ones ar
 | Civil engineering | HAER, FHWA federal-authored reports, USACE manuals marked for public release | — |
 | Quantum computing | NIST FIPS 203/204/205, arXiv CC0 papers | Qiskit textbook (Apache 2.0 notice) |
 
+**Second round — all areas of language, STEM and history** (24 more; 16 pending, 8 blocked):
+
+| Area | Pending your approval (unrestricted) | Blocked (restriction) |
+|---|---|---|
+| Language | Tatoeba CC0 sentences, Common Voice sentence text (CC0), US Foreign Service Institute courses (federal; mirrors only — verify each) | Wiktionary (CC BY-SA), Princeton WordNet (notice required), PanLex (its two licence statements conflict) |
+| STEM | NASA, NOAA, USDA FoodData Central (CC0), NCBI Taxonomy, Smithsonian Open Access (CC0) | Wikipedia text (CC BY-SA — use Wikidata), CK-12 (non-commercial), Saylor (CC BY), LibreTexts (per-page, often NC) |
+| History | National Archives (records marked "Unrestricted"), Chronicling America newspapers over 95 years old, Foreign Relations of the US, Army Center of Military History, Europeana / DPLA / Met / Rijksmuseum metadata (CC0) | OpenStreetMap (ODbL share-alike) |
+
+In total 46 researched sources: 30 pending approval, 16 blocked.
+
 Approving a source makes it *allowed*; a harvester for it (an adapter task naming its key) is still
 needed before facts flow from it.
 

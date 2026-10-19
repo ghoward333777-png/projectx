@@ -26,9 +26,10 @@ WHAT'S NEW IN THIS RELEASE
       Every task is logged with its source and why, hash-chained and archived monthly
       (commons/archives). A learning agent recommends faster or leaner settings; nothing changes until
       you approve it with your admin passphrase (set it on first use).
-    * 22 researched sources for chemistry, architecture, geography, programming, mathematics, civil
-      engineering and quantum computing are in the registry: 14 unrestricted ones wait for your
-      approval, 8 restricted ones are blocked with the reason.
+    * 46 researched sources are in the registry — chemistry, architecture, geography, programming,
+      mathematics, civil engineering, quantum computing, and education and data sites across all of
+      language, STEM and history: 30 unrestricted ones wait for your approval, 16 restricted ones are
+      blocked with the reason.
     * Shared facts & agents: one shared fact database (the Commons, ~/QueryBook-Data/commons) used by
       all three. Each application has a team of four agents — Strategist, Planner, Harvester, Curator —
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the

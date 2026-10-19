@@ -158,7 +158,80 @@ RESEARCHED_SOURCES = [
      "cc0", "https://info.arxiv.org/help/license/",
      "arXiv licences are chosen per paper and irrevocable. Only papers marked CC0 qualify; CC BY, CC BY-SA, CC BY-NC and arXiv's "
      "default distribution licence are all excluded paper by paper."),
-    # researched and blocked: they restrict QueryBook
+    # second round (all areas of language, STEM and history)
+    ("tatoeba-cc0", "Tatoeba example sentences — the CC0 subset only", "language", "language (example sentences)",
+     "CC0 1.0 for sentences their authors marked CC0; everything else CC BY 2.0 FR", "cc0", "https://tatoeba.org/en/downloads",
+     "Only original sentences explicitly marked CC0 (Tatoeba publishes them as a separate download). Translations and audio are not CC0 "
+     "and are excluded, so this gives example sentences per language, not translation pairs."),
+    ("common-voice-text", "Mozilla Common Voice sentence collection (text)", "language", "language (sentences in 100+ languages)",
+     "CC0 (Mozilla accepts only CC0 source text)", "cc0", "https://github.com/common-voice/common-voice",
+     "Use the sentence text from the open-source repository. The packaged speech datasets add terms (no re-hosting, no identifying "
+     "speakers) and are not taken."),
+    ("fsi-courses", "US Foreign Service Institute language courses", "language", "language (40+ languages: grammar, drills, vocabulary)",
+     "US government work (as stated by the hosting sites)", "us-federal", "https://fsi-language-courses.org/",
+     "Courses written by the State Department's FSI. They are hosted only by unofficial mirrors; the public-domain status is stated by "
+     "those sites, not confirmed by an official page — verify each course's title page shows federal authorship."),
+    ("nasa", "NASA science and education material", "stem", "astronomy, space, earth science, physics",
+     "Generally not copyrighted in the US (NASA media guidelines)", "us-federal", "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+     "Exclude the NASA insignia and logos, items marked as third-party copyright, and material from non-US space agencies."),
+    ("noaa", "NOAA data (weather, climate, oceans)", "stem,facts", "earth science, geography, climate history",
+     "Public domain unless annotated otherwise", "us-federal", "https://psl.noaa.gov/disclaimer",
+     "NOAA: server information is public domain unless annotated. Exclude annotated products and production software; facts only."),
+    ("usda-fooddata-central", "USDA FoodData Central", "stem", "chemistry and biology (food composition)", "CC0 1.0", "cc0",
+     "https://fdc.nal.usda.gov/", "USDA: the data are public domain, not copyrighted, published under CC0. Nutrients per food."),
+    ("ncbi-taxonomy", "NCBI Taxonomy", "stem", "biology (classification of organisms)", "US government work (NCBI policy)", "us-federal",
+     "https://www.ncbi.nlm.nih.gov/home/about/policies/", "NCBI-created information is public domain; the taxonomy names and ranks are "
+     "facts. Skip anything NCBI attributes to another rights holder."),
+    ("smithsonian-open-access", "Smithsonian Open Access", "stem,facts", "natural history, science, art and history", "CC0 1.0 (items marked CC0)",
+     "cc0", "https://www.si.edu/openaccess", "5 million+ items from 19 museums and 9 research centres, with data via API and GitHub. "
+     "Only items marked CC0."),
+    ("nara-catalog", "US National Archives Catalog", "facts", "US history (records, dates, people)", "Federal records: not copyrighted",
+     "us-federal", "https://www.archives.gov/faqs",
+     "Only records whose use-restriction field is 'Unrestricted'. Donated materials can carry copyright or deed restrictions — skipped. "
+     "NARA does not certify status, so the restriction field is the gate."),
+    ("chronicling-america-pre1931", "Chronicling America historic newspapers, titles over 95 years old", "facts,language",
+     "history (dated events), historical language", "Public domain (cleared in their entirety by the Library of Congress)", "public-domain",
+     "https://www.loc.gov/collections/chronicling-america/about-this-collection/rights-and-access/",
+     "Titles more than 95 years old are cleared in full; newer issues can contain protected material and are not taken. Facts are kept "
+     "with the paper's date — a newspaper report is 'reported', not confirmed."),
+    ("frus", "Foreign Relations of the United States (State Department Office of the Historian)", "facts", "diplomatic history since 1861",
+     "US government work", "us-federal", "https://history.state.gov/open/frus-metadata",
+     "Nearly 500 volumes of documents with open metadata (XML). Dates, participants and events."),
+    ("army-cmh", "US Army Center of Military History publications", "facts", "military history", "US government work (17 U.S.C. § 105)",
+     "us-federal", "https://history.army.mil/", "Federal histories and unit lineages. Check each title for third-party photographs or art, "
+     "which can have their own copyright."),
+    ("europeana-metadata", "Europeana metadata", "facts,language", "European history, art and culture (60+ million records)", "CC0 (metadata)",
+     "cc0", "https://pro.europeana.eu/page/the-data-exchange-agreement",
+     "All metadata is published under CC0 by agreement with the providers. The objects themselves (images, texts) carry their own "
+     "rights statements and are not taken — only the record facts."),
+    ("dpla-metadata", "Digital Public Library of America metadata", "facts", "US history and culture", "CC0 (metadata)", "cc0",
+     "https://pro.dp.la/hubs/metadata-application-profile", "Partners dedicate their metadata to the public domain under CC0; the linked "
+     "items have their own rights and are not taken."),
+    ("met-open-access", "The Metropolitan Museum of Art Open Access data", "facts", "art history (titles, artists, dates, media)", "CC0",
+     "cc0", "https://www.metmuseum.org/policies/image-resources", "Basic metadata for the whole online collection is CC0, including works "
+     "still in copyright (only the data, not their images). Bulk CSV on GitHub and a JSON API."),
+    ("rijksmuseum-open-data", "Rijksmuseum open data", "facts", "Dutch and European history and art", "CC0 (museum policy)", "cc0",
+     "https://www.rijksmuseum.nl/en/data/policy", "The museum waives copyright and database rights with CC0; some third-party listings say "
+     "CC BY — follow the museum's own policy and each object's licence field. Use the download, not a keyed API with its own terms."),
+    ("wiktionary", "Wiktionary", "language", "language (definitions, etymology, translations)", "CC BY-SA 4.0 / GFDL", "share-alike",
+     "https://en.wiktionary.org/wiki/Wiktionary:Copyrights", "Share-alike: would impose its licence. Wikidata lexemes (CC0) cover part of the same ground."),
+    ("princeton-wordnet", "Princeton WordNet", "language", "language (English word senses and relations)", "WordNet licence (notice must be kept)",
+     "attribution", "https://wordnet.princeton.edu/license-and-commercial-use", "Permissive, but its copyright notice must accompany copies — a condition."),
+    ("panlex", "PanLex translation database", "language", "language (translations across thousands of languages)",
+     "Conflicting: download README says CC0, licence page says CC BY-NC-SA 4.0", "unknown", "https://panlex.org/license/",
+     "The two official statements contradict each other. Blocked until PanLex confirms CC0 in writing; then reclassify as cc0."),
+    ("wikipedia-text", "Wikipedia article text", "language,stem,facts", "all areas", "CC BY-SA 4.0 / GFDL", "share-alike",
+     "https://meta.wikimedia.org/wiki/Terms_of_use", "Share-alike for the wording. Use Wikidata (CC0) for the same facts."),
+    ("ck12", "CK-12 FlexBooks", "stem", "mathematics and science (K-12)", "CK-12 Curriculum Materials License / CC BY-NC", "non-commercial",
+     "https://www.ck12.org/", "Non-commercial or CK-12's own licence depending on the copy."),
+    ("saylor-academy", "Saylor Academy courses", "stem,facts", "all areas (college courses)", "CC BY 3.0 for course framing; third-party resources vary",
+     "attribution", "https://saylor.org/open/licensinginformation", "Attribution required, and most course content is curated from third "
+     "parties under their own terms."),
+    ("libretexts", "LibreTexts", "stem", "chemistry, physics, mathematics, biology, engineering", "Per page (many CC BY-NC-SA)", "unknown",
+     "https://libretexts.org/", "No site-wide licence: each page states its own, often non-commercial. Blocked as a whole."),
+    ("openstreetmap", "OpenStreetMap", "facts", "geography (streets, buildings, places)", "ODbL 1.0", "share-alike",
+     "https://wiki.openstreetmap.org/wiki/Open_Database_License", "Share-alike for databases: mixing OSM data would put QueryBook's facts under the ODbL."),
+    # first round: researched and blocked: they restrict QueryBook
     ("openstax", "OpenStax textbooks (Rice University)", "stem", "chemistry, mathematics, physics", "CC BY 4.0", "attribution",
      "https://openstax.org/", "CC BY 4.0: free but attribution is a condition (and some adaptations are CC BY-NC-SA)."),
     ("mit-ocw", "MIT OpenCourseWare", "stem", "all subjects", "CC BY-NC-SA 4.0", "non-commercial", "https://ocw.mit.edu/terms",
