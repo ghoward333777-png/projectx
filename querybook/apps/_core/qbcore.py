@@ -1688,6 +1688,17 @@ def _harvest_cli(inst, cmd, a):
                 for t in st["turns"][:10]:
                     print("  turn %-4d %s %-8s %s" % (t["id"], t["started"][:19], t["domain"], t["reason"]))
                 print("  pending approvals: %d   policy version: %s" % (len(c.approvals.list("pending")), c.registry.version()))
+            elif sub in ("start", "stop"):
+                import qbcommons
+                names = a[1:]
+                scope = "all" if not names or names == ["all"] else "selected"
+                st = qbcommons.harvest_control(team, sub, scope, [n for n in names if n in qbcommons.APPS],
+                                               [n for n in names if n not in qbcommons.APPS])
+                print("Master switch:", st["master"])
+                for x in st["apps"]:
+                    print("  %-3s application %s" % ("on" if x["on"] else "off", x["app"]))
+                for x in st["harvesters"]:
+                    print("  %-3s harvester   %s" % ("on" if x["on"] else "off", x["name"]))
             elif sub == "turn":
                 out = team.engine_turn("command line")
                 print(json.dumps(out, indent=2) if out else "Not this application's turn (another is harvesting, or it is backing off).")
@@ -1743,6 +1754,8 @@ def run_cli(app):
     python app.py diagnose        run the internal diagnostics and print the report
     python app.py harvest         run this application's harvest team once (shared database)
     python app.py harvest-engine status|turn|log [N]|verify|archive|review|pending
+    python app.py harvest-engine start|stop [all | language stem facts | harvester names]
+                                  the master switch: start or stop all harvesting, or only the named ones
                                   the harvesting engine: rotation, one engine turn, the harvest log, its hash chain
     python app.py harvest-admin set-pass | approve ID | reject ID | source KEY approved|blocked|pending [CLASS] [--accept-restriction]
                                   admin decisions (asks for the admin passphrase)

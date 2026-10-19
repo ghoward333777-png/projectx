@@ -566,6 +566,11 @@ class Approvals:
         return {"ok": True}
 
 
+def master_running(commons):
+    """The master harvesting switch, shared by the three applications."""
+    return commons.setting("harvest:master", "running") != "stopped"
+
+
 class Engine:
     """Turn-taking across the three applications (alternating language, STEM and history)."""
 
@@ -599,15 +604,19 @@ class Engine:
         """Whose turn is it? Returns the new turn if it is `app`'s, else None. Atomic across processes."""
         now = datetime.datetime.now(datetime.timezone.utc).timestamp()
         tmo = float(self.reg.param("rotation.turn_timeout_s", 900))
+        stopped = not master_running(self.c)
+        off = {a for a in DOMAIN_OF if self.c.setting("auto:%s" % a, "on") == "off"}
         with self.store.write() as db:
             db.execute("INSERT OR REPLACE INTO app_heartbeat(app, at, version) VALUES(?,?,?)", (app, now, ENGINE_VERSION))
+            if stopped or app in off:
+                return None                                # the master switch, or this application's own switch, is off
             cur = db.execute("SELECT id, app, started FROM engine_turns WHERE ended IS NULL ORDER BY id DESC LIMIT 1").fetchone()
             if cur:
                 started = _ts(cur[2])
                 if now - started < tmo:
                     return None                            # someone is harvesting
                 db.execute("UPDATE engine_turns SET ended = ?, result = ? WHERE id = ?", (_now(), json.dumps({"timeout": True}), cur[0]))
-            active = self._active(db, now)
+            active = [a for a in self._active(db, now) if a not in off]
             if app not in active:
                 active.append(app)
             last = db.execute("SELECT app FROM engine_turns ORDER BY id DESC LIMIT 1").fetchone()

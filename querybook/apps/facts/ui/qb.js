@@ -416,6 +416,11 @@ async function renderHarvest(el) {
   if (!el.dataset.ready) {
     el.dataset.ready = "1";
     el.innerHTML =
+      '<div class="card" id="hv-master-card"><h2>Master control</h2><div id="hv-master"></div>' +
+      '<div class="row" style="margin:10px 0"><button class="btn" id="hv-start-all">▶ Start all harvesting</button><button class="btn" id="hv-stop-all" style="background:#b42318">■ Stop all harvesting</button></div>' +
+      '<details open><summary class="small">Start or stop selected</summary><p class="small muted">Tick applications and online harvesters, then <b>Start selected</b> (only the ticked ones run; ticking a harvester also turns its application on) or <b>Stop selected</b> (the ticked ones stop; the rest carry on). A running task finishes; the rest of its turn is skipped.</p>' +
+      '<div id="hv-select"></div><div class="row"><button class="btn quiet" id="hv-start-sel">▶ Start selected</button><button class="btn quiet" id="hv-stop-sel">■ Stop selected</button>' +
+      '<button class="btn quiet" id="hv-sel-all">Tick all</button><button class="btn quiet" id="hv-sel-none">Tick none</button></div></details></div>' +
       '<div class="card"><h2>Harvesting engine</h2><p class="small muted">One engine runs the three harvest teams in turn — language, STEM and history — so they never harvest at the same time. ' +
       "Each turn goes to the application with the most to gain: checks other applications are waiting for, a fast recent harvest, or no harvest yet; the one that just harvested waits, and one that found nothing new backs off for longer each time (less volume). " +
       "Every task is checked against the policy registry first: only sources whose licence puts no restriction on QueryBook are harvested. Everything is logged with its source and why.</p>" +
@@ -449,6 +454,20 @@ async function renderHarvest(el) {
     };
     el._showLog = showLog;
     $("#hv-show", el).addEventListener("click", showLog);
+    const control = async (action, scope) => {
+      const ticked = [...el.querySelectorAll("#hv-select input[data-sel]:checked")];
+      const body = { action, scope, apps: ticked.filter(x => x.dataset.kind === "app").map(x => x.dataset.sel),
+        harvesters: ticked.filter(x => x.dataset.kind === "harvester").map(x => x.dataset.sel) };
+      await api("/api/harvest/control", body);
+      toast(action === "start" ? "Harvesting started" + (scope === "all" ? " for all applications." : " for the selection.") : "Harvesting stopped" + (scope === "all" ? " everywhere." : " for the selection."));
+      renderHarvest(el);
+    };
+    $("#hv-start-all", el).addEventListener("click", () => control("start", "all"));
+    $("#hv-stop-all", el).addEventListener("click", () => control("stop", "all"));
+    $("#hv-start-sel", el).addEventListener("click", () => control("start", "selected"));
+    $("#hv-stop-sel", el).addEventListener("click", () => control("stop", "selected"));
+    $("#hv-sel-all", el).addEventListener("click", () => el.querySelectorAll("#hv-select input[data-sel]").forEach(x => { x.checked = true; }));
+    $("#hv-sel-none", el).addEventListener("click", () => el.querySelectorAll("#hv-select input[data-sel]").forEach(x => { x.checked = false; }));
     $("#hv-online", el).addEventListener("change", e => api("/api/commons/settings", { online: e.target.checked ? "on" : "off" }).then(() => toast("Online harvesting " + (e.target.checked ? "on." : "off."))));
     $("#hv-verify", el).addEventListener("click", async () => {
       const v = await api("/api/harvest/verify", {});
@@ -517,6 +536,15 @@ async function renderHarvest(el) {
       '</td><td class="mono">' + cmWhen(t.started) + "</td><td>" + esc(t.domain) + "</td><td>" + esc(t.reason) + "</td><td>" + (!t.ended ? cmTag("running", "warn") : !t.result ? "" :
         t.result.error ? cmTag("failed", "bad") + " " + esc(t.result.error) : t.result.timeout ? cmTag("timed out", "warn") :
           (t.result.new || 0) + " new, " + (t.result.checks_answered || 0) + " checks, " + (t.result.blocked || 0) + " blocked") + "</td></tr>").join("") + "</table>" : '<p class="muted">No turns yet.</p>');
+  const ct = s.control, running = ct.master === "running";
+  const busy = e.turns.find(t => !t.ended);
+  $("#hv-master", el).innerHTML = '<div class="note ' + (running ? "good" : "bad") + '" style="font-size:1.1em"><b>' + (running ? "▶ Harvesting is ON" : "■ Harvesting is STOPPED") + "</b> — " +
+    (running ? ct.apps.filter(a => a.on).length + " of 3 applications and " + ct.harvesters.filter(h => h.on).length + " of " + ct.harvesters.length + " online harvesters switched on" +
+      (busy ? "; now harvesting: " + esc(busy.domain) : "; waiting for the next turn") : "no application will start a harvest until you press Start.") + "</div>";
+  const tick = (kind, key, label, on, extra) => '<label class="row small" style="margin-right:14px"><input type="checkbox" data-kind="' + kind + '" data-sel="' + esc(key) + '"> ' +
+    cmTag(on ? "on" : "off", on ? "good" : "") + " " + esc(label) + (extra ? ' <span class="muted">(' + esc(extra) + ")</span>" : "") + "</label>";
+  $("#hv-select", el).innerHTML = "<h3>Applications</h3><div class=\"row\">" + ct.apps.map(a => tick("app", a.app, a.name, a.on)).join("") + "</div>" +
+    "<h3>Online harvesters</h3><div>" + ct.harvesters.map(h => tick("harvester", h.name, h.title, h.on, names[h.app] || h.app)).join("<br>") + "</div>";
   $("#hv-online", el).checked = s.online;
   $("#hv-online-list", el).innerHTML = (s.offline_env ? '<div class="note warn small">QB_OFFLINE is set: no online harvesting in this process.</div>' : "") +
     '<table class="t small"><tr><th>Harvester</th><th>Application</th><th>Source</th><th>Progress</th></tr>' + s.harvesters.map(h => "<tr><td><b>" + esc(h.title) + '</b><br><span class="muted">' + esc(h.why) +

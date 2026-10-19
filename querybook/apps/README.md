@@ -277,6 +277,23 @@ reliably: the FSI courses (only on unofficial mirrors) and FHWA reports (many ar
 Approve those by hand in the app if a document checks out. Researched sources are **facts only**: no
 wording from them is ever stored, whatever their class.
 
+## Master control (start and stop harvesting)
+
+Top of the **Harvesting & shared facts** page, the same in all three applications (the switches live in the
+shared database, so pressing Stop in one application stops all three):
+
+* **▶ Start all harvesting** — master switch on, all three applications and every online harvester on;
+  the engine gives the next turn at once.
+* **■ Stop all harvesting** — master switch off: no application starts a harvest, and one already
+  running stops after its current task (the rest of its turn is skipped and logged). "Run this team
+  now" is refused until you start again.
+* **Start selected / Stop selected** — tick applications and online harvesters. Start selected runs
+  *only* the ticked ones (ticking a harvester also turns its application on); Stop selected stops the
+  ticked ones and leaves the rest running.
+
+From the command line: `python app.py harvest-engine stop` (all), `harvest-engine start`,
+`harvest-engine start stem usda-foods` (only these), `harvest-engine stop language`.
+
 ## Online harvesters (`_core/qbonline.py`)
 
 Approving a source makes it allowed; a harvester turns it into facts. Running now:

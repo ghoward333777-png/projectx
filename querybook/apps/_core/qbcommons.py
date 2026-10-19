@@ -307,7 +307,8 @@ class Context:
     def __init__(self, commons, stop=None):
         self.commons = commons
         self.policy = commons.policy()
-        self.stop = stop or (lambda: False)
+        own = stop or (lambda: False)
+        self.stop = lambda: bool(own()) or not hv.master_running(commons)    # the master switch stops a running harvest between tasks
         self.registry = commons.registry
 
     def budget(self, key, default):
@@ -580,6 +581,8 @@ class Team:
     def run_in_background(self, trigger="manual"):
         if self.state["running"]:
             raise core.UserError("This application's harvest team is already working.")
+        if not hv.master_running(self.commons):
+            raise core.UserError("Harvesting is stopped by the master switch. Press Start all (or Start selected) first.")
 
         def go():
             turn = self.commons.engine.manual(self.app_id, "started by hand")
@@ -591,6 +594,15 @@ class Team:
             self.commons.engine.finish(turn, out)
         threading.Thread(target=go, daemon=True).start()
         return {"started": True}
+
+    def start_now(self):
+        """Ask the engine for a turn right away (in the background) instead of waiting for the next tick."""
+        def go():
+            try:
+                self.engine_turn("started from the master control")
+            except Exception as e:
+                self.log("engine turn failed:", repr(e))
+        threading.Thread(target=go, daemon=True).start()
 
     def auto(self):
         return self.commons.setting("auto:%s" % self.app_id, "on") == "on"
@@ -708,6 +720,10 @@ def add_routes(api, team, app_folder):
         c.registry.set_param(p.get("key"), val, "admin", p.get("reason") or "set by the admin")
         return {"ok": True}
 
+    @api.post("/api/harvest/control")
+    def h_control(p):
+        return harvest_control(team, p.get("action"), p.get("scope") or "all", p.get("apps") or [], p.get("harvesters") or [])
+
     @api.post("/api/harvest/key")
     def h_key(p):
         c.approvals._require(p.get("passphrase") or "")
@@ -744,6 +760,46 @@ def add_routes(api, team, app_folder):
         return {"made": c.learner.review(team.app_id), "pending": c.approvals.list("pending")}
 
 
+def harvest_control(team, action, scope="all", apps=(), harvesters=()):
+    """The master start/stop: all harvesting, or the selected applications and online harvesters."""
+    c = team.commons
+    if action not in ("start", "stop"):
+        raise core.UserError("action must be start or stop")
+    apps = [a for a in apps if a in APPS] if scope == "selected" else list(APPS)
+    harvesters = [h for h in harvesters if h in ol.HARVESTERS] if scope == "selected" else list(ol.HARVESTERS)
+    if scope == "selected" and not apps and not harvesters:
+        raise core.UserError("Tick at least one application or harvester first.")
+    if scope == "selected" and action == "start":              # a harvester runs inside its application's turn
+        apps = sorted(set(apps) | {ol.HARVESTERS[h][0] for h in harvesters})
+    on = "on" if action == "start" else "off"
+    with c.store.write() as db:
+        if scope == "all":
+            c.set_setting("harvest:master", "running" if action == "start" else "stopped", db)
+        elif action == "start":
+            c.set_setting("harvest:master", "running", db)     # starting a selection also lifts the master stop
+        if scope == "selected" or action == "start":
+            for a in apps:
+                c.set_setting("auto:%s" % a, on, db)
+            for h in harvesters:
+                c.set_setting("harvester:%s" % h, on, db)
+        if scope == "selected" and action == "start":         # "start selected" runs only the selection
+            for a in set(APPS) - set(apps):
+                c.set_setting("auto:%s" % a, "off", db)
+            for h in set(ol.HARVESTERS) - set(harvesters):
+                c.set_setting("harvester:%s" % h, "off", db)
+        c.agent_log(db, "engine", "%s %s%s" % ("Started" if action == "start" else "Stopped", "all harvesting" if scope == "all" else "selected: ",
+                                               "" if scope == "all" else ", ".join(apps + harvesters)))
+    if action == "start" and c.setting("auto:%s" % team.app_id, "on") != "off" and not team.state["running"]:
+        team.start_now()
+    return control_state(c)
+
+
+def control_state(c):
+    return {"master": "running" if hv.master_running(c) else "stopped",
+            "apps": [{"app": a, "name": APPS[a], "on": c.setting("auto:%s" % a, "on") != "off"} for a in APPS],
+            "harvesters": [{"name": k, "app": h[0], "title": h[2], "on": c.setting("harvester:%s" % k, "on") != "off"} for k, h in ol.HARVESTERS.items()]}
+
+
 def harvest_status(team):
     """Everything the Harvesting page shows: the rotation, approvals, registry, parameters and learning metrics."""
     c = team.commons
@@ -756,7 +812,7 @@ def harvest_status(team):
         m["facts_per_s"] = round((m["new"] or 0) / m["seconds"], 1) if m["seconds"] else None
     trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
                         FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
-    return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(),
+    return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(), "control": control_state(c),
             "online": c.setting("online:%s" % team.app_id, "on") != "off", "keys": ol.key_status(c.folder), "offline_env": bool(os.environ.get("QB_OFFLINE")),
             "harvesters": [{"name": k, "app": h[0], "source": h[1], "title": h[2], "why": h[3],
                             "approved": c.registry.check(h[1])[0], "needs_key": ol.NEEDS_KEY.get(k),

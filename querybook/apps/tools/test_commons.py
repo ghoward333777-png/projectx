@@ -202,6 +202,29 @@ def main():
         c.check("engine: then a different domain again", t3 is not None and t3["app"] != t2["app"], t3)
         eng.finish(t3, {"new": 5, "seconds": 1})
         c.check("engine: an application that found nothing new backs off", eng.claim(t2["app"]) is None)
+        # the master control
+        class Stub:
+            pass
+        stub = Stub(); stub.commons, stub.app_id, stub.state = com, "stem", {"running": True}
+        cm.harvest_control(stub, "stop", "all")
+        c.check("master: Stop all — no application gets a turn", all(eng.claim(a) is None for a in ("language", "stem", "facts")))
+        c.check("master: Stop all — a running harvest stops between tasks", cm.Context(com).stop())
+        st = cm.harvest_control(stub, "start", "selected", ["language"], ["natural-earth-places"])
+        c.check("master: Start selected — only the ticked ones (and a ticked harvester's application) are on",
+                st["master"] == "running" and {a["app"] for a in st["apps"] if a["on"]} == {"language", "facts"}
+                and [h["name"] for h in st["harvesters"] if h["on"]] == ["natural-earth-places"], st)
+        c.check("master: an application switched off gets no turn", eng.claim("stem") is None)
+        cm.harvest_control(stub, "stop", "selected", ["language"], [])
+        c.check("master: Stop selected — only the ticked ones stop", not cm.control_state(com)["apps"][0]["on"] and cm.control_state(com)["apps"][2]["on"])
+        st = cm.harvest_control(stub, "start", "all")
+        c.check("master: Start all — everything back on", st["master"] == "running" and all(x["on"] for x in st["apps"] + st["harvesters"])
+                and not cm.Context(com).stop())
+        try:
+            cm.harvest_control(stub, "start", "selected", [], [])
+            empty = False
+        except core.UserError:
+            empty = True
+        c.check("master: Start selected with nothing ticked is refused", empty)
         com.store.conn().close()
 
     # the online harvesters, with the internet replaced by recorded answers
@@ -329,6 +352,17 @@ def main():
             c.check("keys: once the key is saved its harvester is planned", any(t["action"] == "online:dpla-items" for t in ol.plan(cm.Context(com), "facts")))
             c.check("keys: no key ever reaches the database, log or evidence", not any(
                 "DPLAKEY" in json.dumps(r) or "SECRETKEY" in json.dumps(r) for t in ("harvest_log", "evidence", "settings", "tasks") for r in d.query("SELECT * FROM %s" % t)))
+            com.set_setting("harvester:dpla-items", "off")
+            c.check("master: a harvester switched off is not planned", not any(t["action"] == "online:dpla-items" for t in ol.plan(cm.Context(com), "facts")))
+            com.set_setting("harvester:dpla-items", "on")
+            com.set_setting("harvest:master", "stopped")
+            try:
+                team.run_in_background()
+                refused = False
+            except core.UserError:
+                refused = True
+            c.check("master: Run now is refused while harvesting is stopped", refused)
+            com.set_setting("harvest:master", "running")
             c.check("online: a source the admin blocks is not harvested", not any(t["source"] == "met-open-access" for t in ol.plan(cm.Context(com), "facts")))
             com.set_setting("online:facts", "off")
             c.check("online: harvesting online can be switched off", ol.plan(cm.Context(com), "facts") == [])

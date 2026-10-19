@@ -582,7 +582,7 @@ def plan(ctx, app_id):
     _KEYS["folder"] = ctx.commons.folder
     tasks = []
     for name, (app, key, title, why, bkey, bdef, _) in HARVESTERS.items():
-        if app != app_id or not ctx.source_ok(key):
+        if app != app_id or ctx.commons.setting("harvester:%s" % name, "on") == "off" or not ctx.source_ok(key):
             continue
         if name in NEEDS_KEY and not _key(NEEDS_KEY[name]):
             continue                                  # waits for its free key (Harvesting page → API keys)

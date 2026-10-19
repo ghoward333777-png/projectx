@@ -18,6 +18,9 @@ INSTALL
 
 WHAT'S NEW IN THIS RELEASE
   All three applications
+    * Master control (top of the Harvesting page): Start all / Stop all harvesting, or tick
+      applications and online harvesters and Start selected / Stop selected. One switch for all three
+      applications; a running harvest stops after its current task.
     * Harvesting engine + policy registry (tab "Harvesting & shared facts"). One engine takes turns
       between language, STEM and history, gives the turn to whichever has the most to gain, and backs
       off a source that stops producing new facts. Every source has a licence class; only sources that
@@ -44,7 +47,7 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.18.0)
+  Language Builder (1.19.0)
     * Visual Speech Engine (Speech -> Face & video): full-face lip sync from words + a recording
       (coarticulation, jaw, brows, head nods, blinks, gaze, emotion), ARKit blendshape export and a
       preview face; a new lip reader (soft scores for 15 mouth shapes + word decoding) shown next to the
@@ -56,7 +59,7 @@ WHAT'S NEW IN THIS RELEASE
       Spanish?", "when did I last see a cup?", "how many people did I see today?".
     * Speech-to-Text for MP3 and other audio files of any length, live captions while a file plays,
       live captions from the microphone.
-  Math, Science & Engineering (1.6.0) and History & News (1.6.0)
+  Math, Science & Engineering (1.7.0) and History & News (1.7.0)
     * The harvesting engine, registry and approvals (see above).
 
 EXTRAS

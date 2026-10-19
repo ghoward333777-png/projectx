@@ -25,7 +25,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 PORT = 8102
 program_dir = HERE
 
