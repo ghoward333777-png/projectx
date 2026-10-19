@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.7.0"
+CORE_VERSION = "1.8.0"
 BACKUPS_KEPT = 10
 
 
@@ -809,7 +809,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1661,7 +1661,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -1755,6 +1755,7 @@ def run_cli(app):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:             # never touch the real shared database
             os.environ["QB_COMMONS_DATA"] = os.path.join(tmp, "commons")
+            os.environ["QB_OFFLINE"] = "1"                     # the self-test never goes online
             return 0 if app.selftest() else 1
     if args and args[0] == "set-data":
         if len(args) < 2:

@@ -419,7 +419,7 @@ async function renderHarvest(el) {
       '<div class="card"><h2>Harvesting engine</h2><p class="small muted">One engine runs the three harvest teams in turn — language, STEM and history — so they never harvest at the same time. ' +
       "Each turn goes to the application with the most to gain: checks other applications are waiting for, a fast recent harvest, or no harvest yet; the one that just harvested waits, and one that found nothing new backs off for longer each time (less volume). " +
       "Every task is checked against the policy registry first: only sources whose licence puts no restriction on QueryBook are harvested. Everything is logged with its source and why.</p>" +
-      '<div id="hv-engine"></div></div>' +
+      '<div id="hv-engine"></div><h3>Online harvesters</h3><label class="row small"><input type="checkbox" id="hv-online"> Harvest from the online sources the admin approved (this application)</label><div id="hv-online-list"></div></div>' +
       '<div class="card"><h2>Waiting for your approval</h2><p class="small muted">The learning agent reads the harvest record and recommends changes — bigger or smaller batches, pausing a failing task, classifying a new source. ' +
       "Nothing is changed until you, the admin, approve it here. Every decision is versioned.</p>" +
       '<div id="hv-admin"></div><div id="hv-pending"></div><details><summary class="small">Decided recommendations</summary><div id="hv-decided"></div></details></div>' +
@@ -448,6 +448,7 @@ async function renderHarvest(el) {
     };
     el._showLog = showLog;
     $("#hv-show", el).addEventListener("click", showLog);
+    $("#hv-online", el).addEventListener("change", e => api("/api/commons/settings", { online: e.target.checked ? "on" : "off" }).then(() => toast("Online harvesting " + (e.target.checked ? "on." : "off."))));
     $("#hv-verify", el).addEventListener("click", async () => {
       const v = await api("/api/harvest/verify", {});
       $("#hv-vres", el).innerHTML = '<div class="note ' + (v.ok ? "good" : "bad") + '">' + (v.ok ? "<b>Chain intact:</b> " + v.entries + " entries, last hash <span class=\"mono\">" + esc(String(v.last_hash).slice(0, 16)) + "…</span>"
@@ -505,6 +506,11 @@ async function renderHarvest(el) {
       '</td><td class="mono">' + cmWhen(t.started) + "</td><td>" + esc(t.domain) + "</td><td>" + esc(t.reason) + "</td><td>" + (!t.ended ? cmTag("running", "warn") : !t.result ? "" :
         t.result.error ? cmTag("failed", "bad") + " " + esc(t.result.error) : t.result.timeout ? cmTag("timed out", "warn") :
           (t.result.new || 0) + " new, " + (t.result.checks_answered || 0) + " checks, " + (t.result.blocked || 0) + " blocked") + "</td></tr>").join("") + "</table>" : '<p class="muted">No turns yet.</p>');
+  $("#hv-online", el).checked = s.online;
+  $("#hv-online-list", el).innerHTML = (s.offline_env ? '<div class="note warn small">QB_OFFLINE is set: no online harvesting in this process.</div>' : "") +
+    '<table class="t small"><tr><th>Harvester</th><th>Application</th><th>Source</th><th>Progress</th></tr>' + s.harvesters.map(h => "<tr><td><b>" + esc(h.title) + '</b><br><span class="muted">' + esc(h.why) +
+      "</span></td><td>" + esc(names[h.app] || h.app) + '</td><td class="mono">' + esc(h.source) + " " + (h.approved ? cmTag("approved", "good") : cmTag("not approved", "bad")) + "</td><td>" +
+      (h.cursor === null ? "not started" : h.cursor === "-1" ? cmTag("finished", "good") : "next item " + (Number(h.cursor) + 1)) + "</td></tr>").join("") + "</table>";
   $("#hv-admin", el).innerHTML = s.admin_set ?
     '<div class="row"><label class="row small">Admin passphrase <input id="hv-pass" type="password" autocomplete="current-password" placeholder="' + (HV_PASS ? "remembered for this page" : "needed to decide") + '"></label>' +
     '<details class="small"><summary>Change passphrase</summary><input id="hv-old" type="password" placeholder="current"> <input id="hv-new" type="password" placeholder="new (8+ characters)"> <button class="btn quiet" data-hv="setpass">Change</button></details></div>' :

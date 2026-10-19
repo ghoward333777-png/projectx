@@ -30,6 +30,7 @@ import json, os, threading, time
 
 import qbcore as core
 import qbharvest as hv
+import qbonline as ol
 
 COMMONS_VERSION = "1.0.0"
 APPS = {"language": "Language Builder", "stem": "Math, Science & Engineering", "facts": "History & News"}
@@ -362,7 +363,7 @@ class Team:
         self.commons = commons
         self.app_id = commons.app_id
         self.adapter = adapter
-        commons.registry.ensure(commons.app_id, adapter.budgets())
+        commons.registry.ensure(commons.app_id, dict(adapter.budgets(), **ol.budgets(commons.app_id)))
         self.log = log or (lambda *a: None)
         self._lock = threading.Lock()
         self.state = {"running": False, "role": None, "last": None, "started": None}
@@ -386,7 +387,8 @@ class Team:
             if not ok:
                 continue
             e = dict(e, source_key=key, licence_class=cls)
-            if cls not in hv.TEXT_FREE:
+            src = reg.source(key) or {}
+            if cls not in hv.TEXT_FREE or src.get("added_by") == "research":   # researched sources: facts only, never wording
                 e.pop("quote", None)
             ev.append(e)
         if not ev and item.get("evidence"):
@@ -413,6 +415,10 @@ class Team:
             t0 = time.time()
             survey = self.adapter.survey(ctx)
             strat = self.adapter.strategy(survey, ctx)
+            online = ol.plan(ctx, self.app_id)
+            if online:
+                strat.setdefault("goals", []).append({"goal": "Harvest approved online sources", "priority": 4,
+                                                      "why": "%d open sources the admin approved: %s" % (len(online), "; ".join(t["title"] for t in online))})
             strat["survey"] = survey
             strat["policy"] = "registry version %s" % pv
             strat["open_checks"] = store.scalar("SELECT count(*) FROM requests WHERE to_app = ? AND status = 'open'", (self.app_id,), 0)
@@ -426,7 +432,7 @@ class Team:
             # 2. Planner, then the policy check of every task
             self.state["role"] = "planner"
             t0 = time.time()
-            tasks = self.adapter.plan(strat, ctx)
+            tasks = self.adapter.plan(strat, ctx) + online
             allowed, blocked = [], 0
             with store.write() as db:
                 pid = db.execute("INSERT INTO plans(app, strategy_id, created, status, summary) VALUES(?,?,?,?,?)",
@@ -463,7 +469,7 @@ class Team:
                     db.execute("UPDATE tasks SET status = 'running', started = ? WHERE id = ?", (core.now_cs(), tid))
                 ts = time.time()
                 try:
-                    r = self.adapter.execute(t, ctx) or {}
+                    r = (ol.execute(t, ctx) if t["action"].startswith("online:") else self.adapter.execute(t, ctx)) or {}
                     items = [x for x in (self._policy_filter(i, t.get("source"), reg) for i in r.get("items") or []) if x]
                     staged.append((tid, t, cls, items, time.time() - ts, None))
                     cursors.update(r.get("cursor") or {})
@@ -643,6 +649,8 @@ def add_routes(api, team, app_folder):
             c.set_setting("licence_policy", p["policy"])
         if p.get("auto") in ("on", "off"):
             c.set_setting("auto:%s" % team.app_id, p["auto"])
+        if p.get("online") in ("on", "off"):
+            c.set_setting("online:%s" % team.app_id, p["online"])
         return team.status()
 
     @api.post("/api/commons/facts")
@@ -730,6 +738,11 @@ def harvest_status(team):
     trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
                         FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
     return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(),
+            "online": c.setting("online:%s" % team.app_id, "on") != "off", "offline_env": bool(os.environ.get("QB_OFFLINE")),
+            "harvesters": [{"name": k, "app": h[0], "source": h[1], "title": h[2], "why": h[3],
+                            "approved": c.registry.check(h[1])[0], "cursor": c.store.scalar("SELECT value FROM settings WHERE key = ?",
+                                                                                                ("cursor:%s:online:%s" % (h[0], k),))}
+                           for k, h in ol.HARVESTERS.items()],
             "admin_set": c.approvals.admin_set(), "pending": c.approvals.list("pending"), "decided": c.approvals.list(None, 40),
             "sources": c.registry.sources(), "classes": {k: {"allowed": v[0], "why": v[1]} for k, v in hv.LICENCE_CLASSES.items()},
             "params": c.registry.params(), "versions": c.registry.versions(40), "policy_version": c.registry.version(),

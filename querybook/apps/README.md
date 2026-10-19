@@ -269,8 +269,35 @@ ones arrive as *pending* with an approval request each; the 8 restricted ones ar
 
 In total 46 researched sources: 30 pending approval, 16 blocked.
 
-Approving a source makes it *allowed*; a harvester for it (an adapter task naming its key) is still
-needed before facts flow from it.
+**Admin decision, 19 October 2026:** "I approve all the above sources — provided they do not risk
+copyright issues." Applied by `Registry.ensure()` (`ADMIN_DECISIONS`) to every source still pending that
+was never decided in the app: 28 approved, each recorded as a policy version with the admin's words and
+its conditions. Two are **held back** under the condition, because a program cannot check their copyright
+reliably: the FSI courses (only on unofficial mirrors) and FHWA reports (many are contractor-written).
+Approve those by hand in the app if a document checks out. Researched sources are **facts only**: no
+wording from them is ever stored, whatever their class.
+
+## Online harvesters (`_core/qbonline.py`)
+
+Approving a source makes it allowed; a harvester turns it into facts. Running now:
+
+| Harvester | Application | Source | Facts |
+|---|---|---|---|
+| Countries | History & News | Wikidata (CC0) | capital, continent, ISO code — most-linked countries first |
+| Cities and towns | History & News | Natural Earth (public domain) | country, region, coordinates, capital — largest first |
+| FRUS volumes | History & News | Office of the Historian (US federal) | title, publication year, years covered (550+ volumes) |
+| Met highlights | History & News | The Met Open Access (CC0) | artist, date, medium, culture, department |
+| Programming languages | Math & Science | Wikidata | first appeared, designers, developers |
+| Chemical compounds | Math & Science | Wikidata | formula, CAS number — most-referenced first |
+| Species | Math & Science | NCBI Taxonomy (US federal) | common name, group — mammals, birds, reptiles, amphibians, fish, insects, plants, fungi |
+| The world's languages | Language Builder | Wikidata | ISO 639-3 code, writing systems |
+
+Each is a task in its application's plan, so the engine's rotation, the registry check, the harvest log
+and the learner apply to it exactly as to the built-in tasks. Requests go one at a time with a pause
+between calls to the same site and a named user agent; a site that answers "too many requests" fails
+only that task for the turn (logged with why), and the cursor stays put. Switch off per application on
+the Harvesting page, or set `QB_OFFLINE=1`. Self-tests never go online. The other approved sources have
+no harvester yet — several (Smithsonian, NARA, DPLA, Europeana, USDA) need a free API key.
 
 **Engine.** One engine gives the three teams turns — language, STEM, history — so they never harvest at
 once. Each running application asks every `schedule.tick_s` (30 s) whether it is its turn; the claim is

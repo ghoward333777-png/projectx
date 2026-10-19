@@ -251,6 +251,25 @@ RESEARCHED_SOURCES = [
      "https://docs.python.org/3/license.html", "Permissive, but the PSF notice must be kept: a condition. Code examples are 0BSD but are code, not facts."),
 ]
 
+# The admin's own decisions on researched sources, given outside the app (with the date and their words). Applied once
+# by Registry.ensure() to sources still pending and never decided in the app — a decision made in the app wins.
+ADMIN_DECISIONS = [
+    ("2026-10-19", "I approve all the above sources - provided they do not risk copyright issues",
+     "approved", ["wikidata", "pubchem-computed", "natural-earth", "usgs-gnis", "census-gazetteer", "world-factbook-2020-archive",
+                  "habs-haer-hals", "vitruvius-1914", "gutenberg-pre1931", "nist-dads", "usace-engineering-manuals", "nist-pqc-fips",
+                  "arxiv-cc0", "tatoeba-cc0", "common-voice-text", "nasa", "noaa", "usda-fooddata-central", "ncbi-taxonomy",
+                  "smithsonian-open-access", "nara-catalog", "chronicling-america-pre1931", "frus", "army-cmh", "europeana-metadata",
+                  "dpla-metadata", "met-open-access", "rijksmuseum-open-data"]),
+    # held back under the admin's condition: copyright status cannot be checked reliably by a program
+    ("2026-10-19", "provided they do not risk copyright issues", "pending", ["fsi-courses", "fhwa-federal-authored"]),
+]
+HELD_REASON = {
+    "fsi-courses": "Held back under the admin's condition (no copyright risk): the courses are only on unofficial mirrors and their "
+                   "public-domain status is not confirmed by an official page. Approve by hand after checking a course's title page.",
+    "fhwa-federal-authored": "Held back under the admin's condition (no copyright risk): many FHWA reports are written by contractors "
+                             "whose copyright varies, and a program cannot tell them apart reliably. Approve by hand per report.",
+}
+
 DEFAULT_PARAMS = {
     "rotation.check_weight": (2.0, "How strongly waiting cross-checks pull an application's turn forward"),
     "rotation.repeat_penalty": (5.0, "Penalty for giving the same domain two turns in a row while another has work"),
@@ -297,6 +316,20 @@ class Registry:
                                   VALUES(?,?,?,?,?,?,?,?)""", (_now(), None, "new source", "Approve a researched source for %s: %s" % (subj, name),
                                                                note, json.dumps({"licence": lic, "class": cls, "url": url}),
                                                                json.dumps(change), core.fingerprint("new source", "", json.dumps(change, sort_keys=True))))
+            for day, words, status, keys in ADMIN_DECISIONS:
+                for key in keys:
+                    row = db.execute("SELECT status, licence_class, reason FROM policy_sources WHERE key = ? AND decided_by IS NULL", (key,)).fetchone()
+                    if not row or row[0] != "pending":
+                        continue
+                    if status == "approved":
+                        why = "Approved by the admin on %s (\u201c%s\u201d). Facts only: no wording from the source is stored. Conditions: %s" % (day, words, row[2])
+                        db.execute("UPDATE policy_sources SET status = 'approved', reason = ?, decided_by = 'admin', decided_at = ? WHERE key = ?",
+                                   (why, _now(), key))
+                        db.execute("UPDATE recommendations SET status = 'applied', decided_by = 'admin', decided_at = ?, note = ? "
+                                   "WHERE status = 'pending' AND kind = 'new source' AND change LIKE ?", (_now(), "approved on " + day, '%%"key": "%s"%%' % key))
+                        self._version(db, "admin", {"source": key, "status": "approved", "licence_class": row[1], "was": ["pending", row[1]]}, why[:500])
+                    elif key in HELD_REASON and HELD_REASON[key] not in (row[2] or ""):
+                        db.execute("UPDATE policy_sources SET reason = ? WHERE key = ?", (HELD_REASON[key] + " — " + (row[2] or ""), key))
             for key, (val, desc) in DEFAULT_PARAMS.items():
                 db.execute("INSERT OR IGNORE INTO policy_params(key, value, description, updated, updated_by) VALUES(?,?,?,?,?)",
                            (key, json.dumps(val), desc, _now(), "system"))

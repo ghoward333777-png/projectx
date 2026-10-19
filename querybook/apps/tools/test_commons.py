@@ -10,6 +10,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "_core"))
 import qbcore as core
 import qbcommons as cm
+import qbharvest as hv
+import qbonline as ol
+
+os.environ["QB_OFFLINE"] = "1"              # the end-to-end runs below never go online; the online harvesters are tested with stubs
 
 FACTS_SETUP = r"""
 f = [({"statement": "Albert Einstein was born on 14 March 1879.", "subject": "Albert Einstein", "predicate": "born on", "object": "14 March 1879", "category": "People", "date": "14 March 1879"},
@@ -114,13 +118,18 @@ def main():
         reg.ensure("stem", {"constants": 40})
         c.check("registry: seeded sources with licence classes", reg.source("webster-1913")["status"] == "approved"
                 and reg.source("muse-bilingual")["status"] == "blocked" and reg.source("news-headlines")["status"] == "blocked")
-        c.check("research: unrestricted researched sources wait for the admin (none approved)",
-                reg.source("natural-earth")["status"] == "pending" and reg.source("wikidata")["status"] == "pending" and not reg.check("usgs-gnis")[0])
+        approved = set(hv.ADMIN_DECISIONS[0][3])
+        held = set(hv.ADMIN_DECISIONS[1][3])
+        c.check("admin decision 2026-10-19: the approved researched sources are approved, with the admin's words and conditions",
+                all(reg.source(k)["status"] == "approved" and reg.source(k)["decided_by"] == "admin" and "2026-10-19" in reg.source(k)["reason"] for k in approved))
+        c.check("admin decision: sources with a copyright risk a program cannot check are held back, with why",
+                all(reg.source(k)["status"] == "pending" and "Held back" in reg.source(k)["reason"] for k in held) and not reg.check("fsi-courses")[0])
+        c.check("admin decision: every approval is a policy version", sum(1 for v in reg.versions(200) if v["change"].get("status") == "approved") == len(approved))
         c.check("research: restricted ones are recorded as blocked with the reason",
                 reg.source("mit-ocw")["status"] == "blocked" and reg.source("nist-webbook")["licence_class"] == "copyrighted-text" and reg.source("openstax")["reason"])
         res = [r for r in ap.list("pending") if r["kind"] == "new source"]
-        c.check("research: one approval request per unrestricted source", len(res) == sum(1 for x in __import__("qbharvest").RESEARCHED_SOURCES
-                                                                                            if __import__("qbharvest").LICENCE_CLASSES[x[5]][0]), len(res))
+        c.check("research: the held sources still wait for the admin; the approved ones' requests are marked applied",
+                {r["change"]["key"] for r in res} == held and len([r for r in ap.list("applied") if r["kind"] == "new source"]) == len(approved), [r["change"]["key"] for r in res])
         reg.ensure("stem", {})
         c.check("research: seeding again adds nothing twice", len([r for r in ap.list("pending") if r["kind"] == "new source"]) == len(res))
         c.check("registry: an application's budgets become parameters", reg.param("budget.stem.constants") == 40)
@@ -169,9 +178,11 @@ def main():
         c.check("approvals: a restricted licence needs an explicit acceptance", guarded and reg.source("muse-bilingual")["status"] == "blocked")
         ap.admin_source("some-new-site", "approved", "correct horse", "checked: CC0", licence_class="cc0")
         c.check("approvals: the admin can classify and approve a source", reg.check("some-new-site")[0])
-        ne = next(r for r in res if r["change"]["key"] == "natural-earth")
-        ap.decide(ne["id"], True, "correct horse")
-        c.check("approvals: approving a researched source makes it harvestable", reg.check("natural-earth")[0] and not reg.check("usgs-gnis")[0])
+        fsi = next(r for r in res if r["change"]["key"] == "fsi-courses")
+        ap.decide(fsi["id"], True, "correct horse")
+        c.check("approvals: approving a held source in the app makes it harvestable", reg.check("fsi-courses")[0] and not reg.check("fhwa-federal-authored")[0])
+        reg.ensure("stem", {})
+        c.check("an admin decision made in the app is never overridden", reg.source("fsi-courses")["status"] == "approved")
         v = hl.verify()
         c.check("harvest log: the hash chain verifies", v["ok"] and v["entries"] == 8, v)
         com.store.conn().execute("UPDATE harvest_log SET new = 0 WHERE id = 2")
@@ -192,6 +203,98 @@ def main():
         eng.finish(t3, {"new": 5, "seconds": 1})
         c.check("engine: an application that found nothing new backs off", eng.claim(t2["app"]) is None)
         com.store.conn().close()
+
+    # the online harvesters, with the internet replaced by recorded answers
+    FIX = {
+        "natural-earth": {"features": [{"properties": {"name": "Paris", "adm0name": "France", "adm1name": "Ile-de-France", "latitude": 48.8667,
+                                                       "longitude": 2.3333, "featurecla": "Admin-0 capital", "pop_max": 11000000}},
+                                       {"properties": {"name": "Lyon", "adm0name": "France", "adm1name": "Auvergne-Rhone-Alpes", "latitude": 45.75,
+                                                       "longitude": 4.85, "featurecla": "Admin-1 region capital", "pop_max": 1400000}}]},
+        "frus": b'''<volumes xmlns="http://history.state.gov/ns/1.0"><volume id="frus1861"><title type="complete">Message of the
+            President</title><published>1861</published><coverage>1860 to 1861</coverage></volume></volumes>''',
+    }
+    calls = []
+
+    def fake(url, kind="json", timeout=60):
+        calls.append(url)
+        if "natural-earth" in url:
+            return FIX["natural-earth"]
+        if "frus-metadata" in url:
+            return FIX["frus"]
+        if "v1.1/search" in url:
+            return {"total": 1, "objectIDs": [436535]}
+        if "/objects/436535" in url:
+            return {"objectID": 436535, "title": "Wheat Field with Cypresses", "artistDisplayName": "Vincent van Gogh", "objectDate": "1889",
+                    "medium": "Oil on canvas", "culture": "", "department": "European Paintings", "objectURL": "https://www.metmuseum.org/art/collection/search/436535"}
+        if "esearch" in url:
+            return {"esearchresult": {"count": "1", "idlist": ["9606"]}}
+        if "esummary" in url:
+            return {"result": {"uids": ["9606"], "9606": {"status": "active", "scientificname": "Homo sapiens", "commonname": "human", "division": "primates"}}}
+        if "list=search" in url:
+            return {"query": {"searchinfo": {"totalhits": 1}, "search": [{"title": "Q142"}]}}
+        if "wbgetentities" in url and "Q142" in url:
+            return {"entities": {"Q142": {"labels": {"en": {"value": "France"}}, "claims": {
+                "P36": [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"id": "Q90"}}}}],
+                "P30": [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"id": "Q46"}}}}],
+                "P297": [{"rank": "normal", "mainsnak": {"datavalue": {"value": "FR"}}}],
+                "P571": [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"time": "+1792-09-22T00:00:00Z", "precision": 11}}}}]}}}}
+        if "wbgetentities" in url:
+            return {"entities": {"Q90": {"labels": {"en": {"value": "Paris"}}}, "Q46": {"labels": {"en": {"value": "Europe"}}}}}
+        raise ol.SourceBusy("no fixture for " + url)
+    ol.FETCH = fake
+    del os.environ["QB_OFFLINE"]
+    try:
+        items, nxt, _ = ol._natural_earth(0, 10)
+        c.check("online: Natural Earth gives country, coordinates, capital, region — biggest first",
+                {(i["subject"], i["predicate"], i["object"]) for i in items} >= {("city Paris (France)", "is capital of", "France"),
+                                                                                 ("city Paris (France)", "coordinates", "48.8667, 2.3333")}
+                and items[0]["subject"] == "city Paris (France)" and nxt is None)
+        items, _, _ = ol._frus(0, 10)
+        c.check("online: FRUS volumes give title, publication and coverage", ("FRUS volume frus1861", "covers the years", "1860 to 1861") in
+                {(i["subject"], i["predicate"], i["object"]) for i in items})
+        items, _, _ = ol._met(0, 10)
+        c.check("online: The Met gives artist, date, medium", ("artwork \u201cWheat Field with Cypresses\u201d (Met 436535)", "artist", "Vincent van Gogh") in
+                {(i["subject"], i["predicate"], i["object"]) for i in items})
+        items, nxt, _ = ol._ncbi(0, 10)
+        c.check("online: NCBI Taxonomy gives common names, then moves to the next group", ("organism Homo sapiens", "common name", "human") in
+                {(i["subject"], i["predicate"], i["object"]) for i in items} and nxt == ol.TAXA_STEP)
+        items, _, _ = ol._wikidata("P31=Q3624078", ol._countries, 0, 10)
+        c.check("online: Wikidata countries resolve capital and continent names", {("country France", "capital", "Paris"), ("country France", "continent", "Europe"),
+                ("country France", "ISO 3166-1 code", "FR")} <= {(i["subject"], i["predicate"], i["object"]) for i in items})
+        c.check("online: Wikidata dates keep their precision", ol._year({"time": "+1991-00-00T00:00:00Z", "precision": 9}) == "1991"
+                and ol._year({"time": "-0500-00-00T00:00:00Z", "precision": 9}) == "500 BC")
+        with tempfile.TemporaryDirectory() as tmp:
+            com = cm.Commons(tmp, "facts")
+
+            class Quiet(cm.Adapter):
+                pass
+            team = cm.Team(com, Quiet())
+            out = team.cycle("test")
+            d = com.store
+            c.check("online: the team plans and runs the approved online harvesters", out["new"] > 0 and
+                    d.scalar("SELECT count(*) FROM tasks WHERE action LIKE 'online:%' AND status = 'done'") >= 3, out)
+            c.check("online: every online fact is logged with its source and why", d.scalar(
+                "SELECT count(*) FROM harvest_log WHERE action LIKE 'online:%' AND decision = 'harvested' AND source_key IN ('natural-earth', 'frus', 'met-open-access', 'wikidata') AND reason <> ''") >= 3)
+            c.check("online: facts only — no wording stored from researched sources", d.scalar("SELECT count(*) FROM evidence WHERE quote IS NOT NULL") == 0)
+            c.check("online: a finished source is not planned again", com.cursor("online:natural-earth-places") == -1 and
+                    not any(t["action"] == "online:natural-earth-places" for t in ol.plan(cm.Context(com), "facts")))
+            com.registry.set_source("met-open-access", "blocked", "admin", "test")
+            c.check("online: a source the admin blocks is not harvested", not any(t["source"] == "met-open-access" for t in ol.plan(cm.Context(com), "facts")))
+            com.set_setting("online:facts", "off")
+            c.check("online: harvesting online can be switched off", ol.plan(cm.Context(com), "facts") == [])
+
+            def busy(url, kind="json", timeout=60):
+                raise ol.SourceBusy("asked to slow down (HTTP 429)")
+            ol.FETCH = busy
+            com.set_setting("online:facts", "on")
+            com.set_setting("cursor:facts:online:frus-volumes", 0)
+            out2 = team.cycle("test")
+            c.check("online: a site that asks us to slow down fails only its task, logged with why", "slow down" in (d.scalar(
+                "SELECT reason FROM harvest_log WHERE decision = 'failed' ORDER BY id DESC LIMIT 1") or "") and com.cursor("online:frus-volumes") == 0, out2)
+            com.store.conn().close()
+    finally:
+        ol.FETCH = ol._fetch
+        os.environ["QB_OFFLINE"] = "1"
 
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2, tempfile.TemporaryDirectory() as tmp3:
         commons, res = one_world(tmp1)
