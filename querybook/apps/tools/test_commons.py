@@ -114,6 +114,15 @@ def main():
         reg.ensure("stem", {"constants": 40})
         c.check("registry: seeded sources with licence classes", reg.source("webster-1913")["status"] == "approved"
                 and reg.source("muse-bilingual")["status"] == "blocked" and reg.source("news-headlines")["status"] == "blocked")
+        c.check("research: unrestricted researched sources wait for the admin (none approved)",
+                reg.source("natural-earth")["status"] == "pending" and reg.source("wikidata")["status"] == "pending" and not reg.check("usgs-gnis")[0])
+        c.check("research: restricted ones are recorded as blocked with the reason",
+                reg.source("mit-ocw")["status"] == "blocked" and reg.source("nist-webbook")["licence_class"] == "copyrighted-text" and reg.source("openstax")["reason"])
+        res = [r for r in ap.list("pending") if r["kind"] == "new source"]
+        c.check("research: one approval request per unrestricted source", len(res) == sum(1 for x in __import__("qbharvest").RESEARCHED_SOURCES
+                                                                                            if __import__("qbharvest").LICENCE_CLASSES[x[5]][0]), len(res))
+        reg.ensure("stem", {})
+        c.check("research: seeding again adds nothing twice", len([r for r in ap.list("pending") if r["kind"] == "new source"]) == len(res))
         c.check("registry: an application's budgets become parameters", reg.param("budget.stem.constants") == 40)
         ok, cls, why = reg.check("some-new-site")
         c.check("registry: an unknown source is blocked and registered as pending", not ok and reg.source("some-new-site")["status"] == "pending")
@@ -160,6 +169,9 @@ def main():
         c.check("approvals: a restricted licence needs an explicit acceptance", guarded and reg.source("muse-bilingual")["status"] == "blocked")
         ap.admin_source("some-new-site", "approved", "correct horse", "checked: CC0", licence_class="cc0")
         c.check("approvals: the admin can classify and approve a source", reg.check("some-new-site")[0])
+        ne = next(r for r in res if r["change"]["key"] == "natural-earth")
+        ap.decide(ne["id"], True, "correct horse")
+        c.check("approvals: approving a researched source makes it harvestable", reg.check("natural-earth")[0] and not reg.check("usgs-gnis")[0])
         v = hl.verify()
         c.check("harvest log: the hash chain verifies", v["ok"] and v["entries"] == 8, v)
         com.store.conn().execute("UPDATE harvest_log SET new = 0 WHERE id = 2")

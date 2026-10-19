@@ -518,7 +518,7 @@ async function renderHarvest(el) {
   const clsOpts = sel => Object.keys(classes).map(k => '<option value="' + k + '"' + (k === sel ? " selected" : "") + ">" + k + "</option>").join("");
   $("#hv-c", el).innerHTML = clsOpts("unknown");
   $("#hv-sources", el).innerHTML = '<table class="t small"><tr><th>Source</th><th>Apps</th><th>Licence</th><th>Class</th><th>Status</th><th>Why / decided</th><th>Admin decision</th></tr>' + s.sources.map(x => "<tr><td><b>" +
-    (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name) + "</a>" : esc(x.name)) + '</b><br><span class="mono muted">' + esc(x.key) + "</span></td><td>" + esc(x.apps || "") + "</td><td>" +
+    (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name) + "</a>" : esc(x.name)) + '</b><br><span class="mono muted">' + esc(x.key) + "</span>" + (x.kind ? '<br><span class="small muted">' + esc(x.kind) + "</span>" : "") + "</td><td>" + esc(x.apps || "") + "</td><td>" +
     esc(x.licence || "") + "</td><td>" + hvClass(x.licence_class, classes) + "</td><td>" + hvState(x.status) + "</td><td>" + esc(x.reason || "") + (x.decided_by ? '<br><span class="muted">' + esc(x.decided_by) + " " + cmWhen(x.decided_at) + "</span>" : "") +
     '</td><td><select class="hv-st"><option' + (x.status === "approved" ? " selected" : "") + ">approved</option><option" + (x.status === "blocked" ? " selected" : "") + ">blocked</option><option" + (x.status === "pending" ? " selected" : "") + ">pending</option></select> " +
     '<select class="hv-cl">' + clsOpts(x.licence_class) + '</select> <input class="hv-why" type="text" placeholder="reason"> <label class="small"><input class="hv-acc" type="checkbox"> accept the restriction</label> ' +

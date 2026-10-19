@@ -243,6 +243,25 @@ US-federal or computed sources; from anything else only the fact itself is kept.
 (approved), CODATA, IUPAC, SI definitions, computed values, your saved answers and your history sources
 (approved), MUSE bilingual dictionaries (blocked: CC BY-NC) and news headlines (blocked: copyrighted text).
 
+**Researched sources (October 2026): chemistry, architecture, geography, programming, mathematics, civil
+engineering, quantum computing.** Each publisher's own terms were checked on the web and the results are
+seeded into the registry (`RESEARCHED_SOURCES`). Nothing is approved automatically: the 14 unrestricted
+ones arrive as *pending* with an approval request each; the 8 restricted ones arrive *blocked* with why.
+
+| Subject | Pending your approval (unrestricted) | Blocked (restriction) |
+|---|---|---|
+| All | Wikidata structured data (CC0) | — |
+| Chemistry | PubChem computed properties (US federal; NCBI-computed values only) | NIST Chemistry WebBook (SRD copyright), OpenStax (CC BY), Khan Academy (BY-NC-SA) |
+| Architecture | HABS/HAER/HALS (public domain), Vitruvius 1914 translation, pre-1931 Gutenberg texts | MIT OCW (BY-NC-SA) |
+| Geography | Natural Earth (public domain), USGS GNIS, Census Gazetteer, archived World Factbook (ended Feb 2026; facts kept "as of" their edition) | — |
+| Programming | NIST Dictionary of Algorithms and Data Structures (except CRC Press entries) | Python docs (PSF notice) |
+| Mathematics | pre-1931 Gutenberg texts, arXiv CC0 papers, QueryBook's own computation | OEIS (CC BY-SA), NIST DLMF (copyright claimed) |
+| Civil engineering | HAER, FHWA federal-authored reports, USACE manuals marked for public release | — |
+| Quantum computing | NIST FIPS 203/204/205, arXiv CC0 papers | Qiskit textbook (Apache 2.0 notice) |
+
+Approving a source makes it *allowed*; a harvester for it (an adapter task naming its key) is still
+needed before facts flow from it.
+
 **Engine.** One engine gives the three teams turns — language, STEM, history — so they never harvest at
 once. Each running application asks every `schedule.tick_s` (30 s) whether it is its turn; the claim is
 one transaction, so two applications can never both win. The turn goes to the highest score: +3 for an

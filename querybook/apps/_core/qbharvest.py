@@ -97,6 +97,87 @@ SEED_SOURCES = [
      "Headlines are the publishers' wording: not harvested. Add a fact by hand with its source instead."),
 ]
 
+# Sources researched for the seven new subjects (October 2026 web research of each publisher's own terms).
+# None is approved automatically: the ones whose licence class is unrestricted enter the registry as *pending*
+# with a recommendation for the admin; the restricted ones enter *blocked*, with the reason, so they are not
+# researched again. Each note records the evidence and the limits of the approval.
+RESEARCHED_SOURCES = [
+    # key, name, apps, subjects, licence as stated, class, url, note
+    ("wikidata", "Wikidata (structured data)", "language,stem,facts", "all seven subjects", "CC0 1.0 (main, property and lexeme namespaces)", "cc0",
+     "https://www.wikidata.org/wiki/Wikidata:Licensing",
+     "Wikidata's licensing page: structured data is CC0. Only items and statements; its free-text pages are CC BY-SA and are not used. "
+     "Covers chemistry (compounds, elements), architecture (buildings, architects, styles), geography (places, coordinates), programming "
+     "languages, mathematics, civil-engineering works and quantum-computing concepts."),
+    ("pubchem-computed", "PubChem computed properties (NCBI, US National Library of Medicine)", "stem", "chemistry",
+     "US government work (NLM); depositor records may carry their own rights", "us-federal", "https://pubchem.ncbi.nlm.nih.gov/",
+     "NLM states its government information is public domain, but PubChem also holds material contributed by depositors that may be "
+     "copyrighted. Approve for NCBI-computed properties only (formula, molecular weight, identifiers) — never depositor text."),
+    ("natural-earth", "Natural Earth map data", "facts", "geography", "Public domain", "public-domain", "https://www.naturalearthdata.com/about/terms-of-use/",
+     "Natural Earth's terms: all raster and vector data are public domain, no permission or attribution needed. Countries, capitals, "
+     "rivers, lakes and their coordinates."),
+    ("usgs-gnis", "USGS Geographic Names Information System (GNIS)", "facts", "geography", "US government work (public domain)", "us-federal",
+     "https://www.usgs.gov/us-board-on-geographic-names/download-gnis-data",
+     "Official US place and feature names with coordinates; metadata states 'Limitations of use: None (Public Domain Information)'."),
+    ("census-gazetteer", "US Census Bureau Gazetteer files", "facts", "geography", "US government work", "us-federal",
+     "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html",
+     "Places, counties and their areas and coordinates. 'TIGER' is a Census Bureau trademark: use the facts, not the name as a brand."),
+    ("world-factbook-2020-archive", "CIA World Factbook (archived edition)", "facts", "geography", "US government work", "us-federal",
+     "https://github.com/simonw/cia-world-factbook-2020",
+     "The CIA ended the Factbook on 4 February 2026 and took the site down; archived editions remain public domain. Facts must be stored "
+     "'as of' their edition year — never as current."),
+    ("habs-haer-hals", "Historic American Buildings / Engineering Record / Landscapes Survey (NPS, Library of Congress)", "facts,stem",
+     "architecture, civil engineering", "US government work; some items credit a third party", "us-federal",
+     "https://www.nps.gov/subjects/heritagedocumentation/collection.htm",
+     "NPS: material created for HABS/HAER/HALS is public domain (46,000+ sites: buildings, bridges, dams, canals). Skip any item with a "
+     "credit line naming another source — those may need permission."),
+    ("vitruvius-1914", "Vitruvius, The Ten Books on Architecture (M. H. Morgan translation, 1914)", "facts", "architecture",
+     "Public domain in the US (published 1914)", "public-domain", "https://www.gutenberg.org/ebooks/20239",
+     "Out of copyright in the US. Taken from Project Gutenberg: its licence and trademark wrapper must be stripped (Gutenberg says the "
+     "remaining text is then unrestricted in the US)."),
+    ("gutenberg-pre1931", "Public-domain textbooks from Project Gutenberg (published before 1931)", "language,stem,facts",
+     "mathematics, architecture, engineering, chemistry", "Public domain in the US; Gutenberg wrapper removed", "public-domain",
+     "https://www.gutenberg.org/policy/license",
+     "Each book's own Gutenberg header must say it is not restricted by US copyright; strip the licence and every 'Project Gutenberg' "
+     "reference. Old textbooks give definitions and theorems; check facts against current science before trusting them."),
+    ("nist-dads", "NIST Dictionary of Algorithms and Data Structures", "stem", "computer programming", "Public domain (17 U.S.C. § 105), except CRC Press entries",
+     "us-federal", "https://xlinux.nist.gov/dads/Other/creditNotice.html",
+     "NIST's credit notice: entries by federal employees are public domain; a subset belongs to CRC Press — skip entries marked as CRC."),
+    ("fhwa-federal-authored", "FHWA reports written by federal employees", "stem", "civil engineering", "US government work (only federal-authored)",
+     "us-federal", "https://highways.dot.gov/research",
+     "FHWA guidance: work by federal employees is not copyrighted; contractor reports and borrowed figures vary. Approve only documents "
+     "whose front matter shows federal authorship."),
+    ("usace-engineering-manuals", "US Army Corps of Engineers manuals and regulations (EM, ER, EC)", "stem", "civil engineering",
+     "US government work; 'Approved for public release; distribution is unlimited'", "us-federal", "https://www.publications.usace.army.mil/",
+     "Harvest only documents carrying the public-release statement (hydraulics, coastal engineering, geotechnics, structures). Some "
+     "chapters are superseded — keep each fact's document date."),
+    ("nist-pqc-fips", "NIST post-quantum cryptography standards (FIPS 203, 204, 205)", "stem", "quantum computing",
+     "US government work (published 13 August 2024)", "us-federal", "https://csrc.nist.gov/projects/post-quantum-cryptography",
+     "Parameter sets, key sizes and algorithm names. The standards' text is federal; the algorithms' patent statements are on NIST's "
+     "'PQC License Summary' page — read it before any implementation use."),
+    ("arxiv-cc0", "arXiv papers released under CC0 only", "stem", "quantum computing, mathematics, computer science", "CC0 (author's choice, per paper)",
+     "cc0", "https://info.arxiv.org/help/license/",
+     "arXiv licences are chosen per paper and irrevocable. Only papers marked CC0 qualify; CC BY, CC BY-SA, CC BY-NC and arXiv's "
+     "default distribution licence are all excluded paper by paper."),
+    # researched and blocked: they restrict QueryBook
+    ("openstax", "OpenStax textbooks (Rice University)", "stem", "chemistry, mathematics, physics", "CC BY 4.0", "attribution",
+     "https://openstax.org/", "CC BY 4.0: free but attribution is a condition (and some adaptations are CC BY-NC-SA)."),
+    ("mit-ocw", "MIT OpenCourseWare", "stem", "all subjects", "CC BY-NC-SA 4.0", "non-commercial", "https://ocw.mit.edu/terms",
+     "Non-commercial and share-alike; some items are all rights reserved."),
+    ("khan-academy", "Khan Academy", "stem", "mathematics, chemistry, computing", "CC BY-NC-SA", "non-commercial",
+     "https://support.khanacademy.org/hc/en-us/articles/202262954", "Non-commercial, attribution and share-alike conditions."),
+    ("qiskit-textbook", "Qiskit textbook (IBM)", "stem", "quantum computing", "Apache License 2.0", "attribution",
+     "https://github.com/Qiskit/qiskit-textbook", "Apache 2.0 requires keeping the licence and notices: a condition on QueryBook."),
+    ("oeis", "On-Line Encyclopedia of Integer Sequences", "stem", "mathematics", "CC BY-SA 4.0", "share-alike", "https://oeis.org/",
+     "Share-alike. (The sequences themselves are mathematics and can be computed by QueryBook instead.)"),
+    ("nist-dlmf", "NIST Digital Library of Mathematical Functions", "stem", "mathematics", "Copyright claimed by NIST", "copyrighted-text",
+     "https://dlmf.nist.gov/", "Unusually for a federal site, NIST asserts copyright in the DLMF; formulas can be computed and checked instead."),
+    ("nist-webbook", "NIST Chemistry WebBook (Standard Reference Database 69)", "stem", "chemistry",
+     "Standard Reference Data: copyright reserved under 15 U.S.C. § 290e", "copyrighted-text", "https://webbook.nist.gov/",
+     "NIST Standard Reference Data are an exception to federal public domain; NIST notices say they may not be reproduced without permission."),
+    ("python-docs", "Python documentation (Python Software Foundation)", "stem", "computer programming", "PSF License Agreement", "attribution",
+     "https://docs.python.org/3/license.html", "Permissive, but the PSF notice must be kept: a condition. Code examples are 0BSD but are code, not facts."),
+]
+
 DEFAULT_PARAMS = {
     "rotation.check_weight": (2.0, "How strongly waiting cross-checks pull an application's turn forward"),
     "rotation.repeat_penalty": (5.0, "Penalty for giving the same domain two turns in a row while another has work"),
@@ -132,6 +213,17 @@ class Registry:
                 ok = LICENCE_CLASSES[cls][0]
                 db.execute("""INSERT OR IGNORE INTO policy_sources(key, name, apps, kind, licence, licence_class, url, status, reason, added_by, added)
                               VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (key, name, apps, kind, lic, cls, url, "approved" if ok else "blocked", why, "system", _now()))
+            for key, name, apps, subj, lic, cls, url, note in RESEARCHED_SOURCES:
+                ok = LICENCE_CLASSES[cls][0]
+                cur = db.execute("""INSERT OR IGNORE INTO policy_sources(key, name, apps, kind, licence, licence_class, url, status, reason, added_by, added)
+                                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (key, name, apps, "researched: " + subj, lic, cls, url,
+                                                                      "pending" if ok else "blocked", note, "research", _now()))
+                if cur.rowcount and ok:                 # a recommendation for the admin; nothing is approved here
+                    change = {"type": "source", "key": key, "status": "approved", "licence_class": cls}
+                    db.execute("""INSERT OR IGNORE INTO recommendations(created, app, kind, title, rationale, evidence, change, fingerprint)
+                                  VALUES(?,?,?,?,?,?,?,?)""", (_now(), None, "new source", "Approve a researched source for %s: %s" % (subj, name),
+                                                               note, json.dumps({"licence": lic, "class": cls, "url": url}),
+                                                               json.dumps(change), core.fingerprint("new source", "", json.dumps(change, sort_keys=True))))
             for key, (val, desc) in DEFAULT_PARAMS.items():
                 db.execute("INSERT OR IGNORE INTO policy_params(key, value, description, updated, updated_by) VALUES(?,?,?,?,?)",
                            (key, json.dumps(val), desc, _now(), "system"))
