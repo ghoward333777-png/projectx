@@ -31,6 +31,9 @@ class LanguageAdapter(cm.Adapter):
     def __init__(self, app=None):
         self.app = app
 
+    def budgets(self):
+        return {"definitions": BUDGET["definitions"], "words_per_language": BUDGET["words_per_language"]}
+
     # ------------------------------------------------------------------ Strategist
     def survey(self, ctx):
         words = vocab.definitions()
@@ -50,7 +53,7 @@ class LanguageAdapter(cm.Adapter):
         if sv["definitions_done"] < sv["definitions"]:
             goals.append({"goal": "Share English meanings", "priority": 2,
                           "why": "%d of %d done; public-domain Webster 1913, most common words first" % (sv["definitions_done"], sv["definitions"])})
-        nc_ok = ctx.allowed(LIC_MUSE)
+        nc_ok = ctx.source_ok("muse-bilingual")
         behind = sorted((v["done"] / max(v["words"], 1), code) for code, v in sv["languages"].items() if v["done"] < v["words"])
         if behind and nc_ok:
             goals.append({"goal": "Share translations", "priority": 3,
@@ -58,11 +61,11 @@ class LanguageAdapter(cm.Adapter):
                                  % (sv["translations_done"], sv["translation_entries"], ", ".join(sv["languages"][c]["name"] for _, c in behind[:3]))})
         elif behind:
             goals.append({"goal": "Hold translations back", "priority": 3,
-                          "why": "the licence policy is commercial and the only bundled bilingual source (MUSE) is non-commercial; "
-                                 "a commercially usable source is needed first"})
+                          "why": "the policy registry blocks the only bundled bilingual source (MUSE, CC BY-NC 4.0: non-commercial); "
+                                 "an unrestricted source (public domain or CC0) is needed first"})
         return {"goals": goals, "budget": BUDGET, "order": [c for _, c in behind],
                 "sources": [{"name": SRC_WEBSTER, "licence": LIC_WEBSTER, "use": "English meanings"},
-                            {"name": SRC_MUSE, "licence": LIC_MUSE, "use": "translations" if nc_ok else "not used (commercial policy)"}]}
+                            {"name": SRC_MUSE, "licence": LIC_MUSE, "use": "translations" if nc_ok else "not used (blocked by the policy registry)"}]}
 
     # ------------------------------------------------------------------ Planner
     def plan(self, st, ctx):
@@ -70,14 +73,17 @@ class LanguageAdapter(cm.Adapter):
         tasks = []
         if "Share English meanings" in names:
             a = ctx.cursor("definitions")
-            b = min(a + BUDGET["definitions"], len(vocab.definitions()))
-            tasks.append({"action": "definitions", "title": "Share meanings of words %d–%d" % (a + 1, b), "target": {"from": a, "to": b}})
+            b = min(a + int(ctx.budget("definitions", BUDGET["definitions"])), len(vocab.definitions()))
+            tasks.append({"action": "definitions", "title": "Share meanings of words %d–%d" % (a + 1, b), "target": {"from": a, "to": b},
+                          "source": "webster-1913", "budget_key": "definitions",
+                          "why": "English meanings are the base every other language and check builds on; most common words first"})
         if "Share translations" in names:
             for code in st["order"]:
                 a = ctx.cursor("tr_" + code)
-                b = min(a + BUDGET["words_per_language"], len(vocab.deck(code)))
+                b = min(a + int(ctx.budget("words_per_language", BUDGET["words_per_language"])), len(vocab.deck(code)))
                 tasks.append({"action": "translations", "title": "Share %s translations of words %d–%d" % (vocab.LANGUAGES[code]["name"], a + 1, b),
-                              "target": {"lang": code, "from": a, "to": b}})
+                              "target": {"lang": code, "from": a, "to": b}, "source": "muse-bilingual", "budget_key": "words_per_language",
+                              "why": "translations of the most common words; the least-covered language first"})
         return tasks
 
     # ------------------------------------------------------------------ Harvester
@@ -113,8 +119,8 @@ class LanguageAdapter(cm.Adapter):
                     "reasoning": ["The bundled dictionary is from 1913 and has the most common words only; a newer or rarer word is not evidence against it."]}
 
         def translation(p):
-            if not ctx.allowed(LIC_MUSE):
-                return {"verdict": "cannot_check", "detail": "the bilingual dictionary is non-commercial; not used under the commercial policy"}
+            if not ctx.source_ok("muse-bilingual"):
+                return {"verdict": "cannot_check", "detail": "the bilingual dictionary (CC BY-NC) is blocked by the policy registry"}
             code = p.get("lang")
             if code not in vocab.OTHERS:
                 return {"verdict": "cannot_check", "detail": "language not covered"}

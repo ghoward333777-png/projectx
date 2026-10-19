@@ -189,13 +189,13 @@ touches the data.
 ## The Commons: one shared fact database and three harvest teams
 
 All three applications use one shared SQLite database for facts: `~/QueryBook-Data/commons/commons.sqlite`
-(another folder: environment variable `QB_COMMONS_DATA`, or the page **Shared facts & agents**). It is
+(another folder: environment variable `QB_COMMONS_DATA`, or the page **Harvesting & shared facts**). It is
 protected exactly like each application's own database (one transaction per write, WAL, full sync,
 checked at start-up, verified backups in `commons/backups/`). Their own work — word cards, saved
 answers, sources and feeds — stays in their own databases.
 
-Each application has a **team of four agents**, run in order as one harvest cycle, automatically a
-little after start-up and then every 30 minutes (switch off on the page), or with **Run this team
+Each application has a **team of four agents**, run in order as one harvest cycle, automatically when the
+harvesting engine gives the application its turn (switch off on the page), or with **Run this team
 now** or `python app.py harvest`:
 
 | Agent | Duty |
@@ -207,9 +207,9 @@ now** or `python app.py harvest`:
 
 | Team | Harvests | Answers for the others |
 |---|---|---|
-| Language Builder | English meanings (Webster 1913, public domain), most common words first; translations into the 16 languages (MUSE, CC BY-NC — left out under the commercial policy) | Is the English word in the dictionary? Is the translation in the bilingual dictionary? |
+| Language Builder | English meanings (Webster 1913, public domain), most common words first; translations into the 16 languages only from an approved source — the bundled MUSE dictionaries are CC BY-NC, so the registry blocks them | Is the English word in the dictionary? Is the translation in the bilingual dictionary? |
 | Math, Science & Engineering | Constants (CODATA 2018), elements (IUPAC), unit definitions, molar masses and derived constants (recomputed), its own verified saved answers; re-checks the shared values | Is the lifespan possible? Are the dates in order? Is it a real calendar date? Does the arithmetic or unit conversion hold? Is it a chemical element? |
-| History & News | Facts with documented sources (each source is separate evidence; never AI services); refreshes your feeds and shares headlines as *reported*, not confirmed | Does a documented source record it? |
+| History & News | Facts with documented sources (each source is separate evidence; never AI services); refreshes your feeds; headlines (copyrighted text) are blocked by the registry unless the admin accepts that restriction | Does a documented source record it? |
 
 **Cooperation.** A fact can carry checks for the application able to answer them: History & News asks
 Math & Science whether a person's birth and death dates give a possible lifespan; Math & Science asks
@@ -227,6 +227,55 @@ Consistency checks (lifespan, dates, dictionary word) can refute a fact but neve
 
 The agents are deterministic programs, not AI models: the same inputs always give the same strategy,
 plan and shared facts.
+
+## The harvesting engine, policy registry and admin approvals
+
+Page **Harvesting & shared facts** (all three applications); code `_core/qbharvest.py`.
+
+**Policy registry.** Every source a harvest task names is a registry entry with its stated licence and a
+*licence class*. Only `public-domain`, `cc0`, `facts` (bare facts and measurements, not copyrightable),
+`us-federal`, `computed` (QueryBook's own calculations) and `user-facts` (facts you entered with your own
+citations) are harvested. `attribution`, `share-alike`, `non-commercial`, `no-derivatives`,
+`copyrighted-text`, `terms-of-service` and `unknown` are blocked, because each would put a condition on
+QueryBook. A source the planner names that is not in the registry is registered as *pending / unknown*
+and blocked until classified. Third-party wording (quotes) is stored only from public-domain, CC0,
+US-federal or computed sources; from anything else only the fact itself is kept. Seeded: Webster 1913
+(approved), CODATA, IUPAC, SI definitions, computed values, your saved answers and your history sources
+(approved), MUSE bilingual dictionaries (blocked: CC BY-NC) and news headlines (blocked: copyrighted text).
+
+**Engine.** One engine gives the three teams turns — language, STEM, history — so they never harvest at
+once. Each running application asks every `schedule.tick_s` (30 s) whether it is its turn; the claim is
+one transaction, so two applications can never both win. The turn goes to the highest score: +3 for an
+application that has not harvested yet or harvests fast, extra for checks other applications are waiting
+on (`rotation.check_weight`), minus `rotation.repeat_penalty` for the one that had the last turn. An
+application whose turns found nothing new backs off 1, 4, 16 … minutes (up to `rotation.idle_backoff_max_s`),
+which cuts volume once a source is exhausted. A turn that runs past `rotation.turn_timeout_s` is closed.
+
+**Learning, never applied without you.** After each cycle the learning agent reads the harvest log and
+may recommend: larger batches (≥ 90 % new facts at ≤ 10 s per task over 3 runs), smaller batches
+(≤ 10 % new), pausing a task that failed 3 of its last 5 runs, classifying the licence of a source plans
+keep asking for, or a higher check weight when checks wait too long. A recommendation is made once
+(fingerprinted) and changes nothing until the **admin** approves it with the admin passphrase
+(PBKDF2-SHA256, set on first use; only a salted hash is stored). Approving a restricted licence class
+also needs an explicit "accept the restriction" tick. Every change — approved recommendation, source
+decision, parameter — is a numbered **policy version** with who and why.
+
+**Harvest log.** Every task — *harvested*, *blocked*, *failed* or *refreshed* — is logged with its
+application, domain, source key, licence class, why it was harvested, items, new, merged, seconds,
+engine turn and policy version. Entries are SHA-256 hash-chained (**Verify the chain** detects any later
+edit) and appended after each cycle to `commons/archives/harvest-YYYY-MM.jsonl`. Each shared fact's
+evidence points at the log entry that brought it in (`evidence.harvest_id`). Export as CSV from the page.
+
+```
+python app.py harvest-engine status        # rotation, recent turns, pending approvals
+python app.py harvest-engine turn          # ask for one engine turn now
+python app.py harvest-engine log 50        # the last 50 log entries
+python app.py harvest-engine verify        # check the hash chain
+python app.py harvest-engine review        # run the learning agent, list pending recommendations
+python app.py harvest-admin set-pass       # set or change the admin passphrase
+python app.py harvest-admin approve 3      # approve recommendation #3 (asks for the passphrase)
+python app.py harvest-admin source KEY approved cc0
+```
 
 ## Google Cloud (optional, all three applications)
 
@@ -315,7 +364,7 @@ The same import is available on the command line: `python app.py import-old E:\Q
 
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
-python tools/test_commons.py         # the shared database and the three teams, end to end (38 checks)
+python tools/test_commons.py         # the shared database and the three teams, end to end (68 checks)
 python language/app.py --selftest     # 186 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
@@ -325,7 +374,7 @@ python tools/run_all_tests.py         # all of the above
 ## For developers
 
 * `_core/qbcore.py` (database, backups, web server, old-store reader), `_core/qbcommons.py` (the
-  Commons and the agent teams) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
+  Commons and the agent teams), `_core/qbharvest.py` (registry, engine, log, approvals, learner) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
   is its `harvest.py`. Each application carries its **own copy** so it can be shipped alone; after editing
   `_core/`, run `python tools/sync_core.py`. The self-tests fail if a copy differs from the master.
 * `python tools/package.py` builds one zip per application in `dist/`.

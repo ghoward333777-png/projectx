@@ -29,6 +29,7 @@ checked at start-up, verified backups). Standard library only.
 import json, os, threading, time
 
 import qbcore as core
+import qbharvest as hv
 
 COMMONS_VERSION = "1.0.0"
 APPS = {"language": "Language Builder", "stem": "Math, Science & Engineering", "facts": "History & News"}
@@ -95,7 +96,7 @@ CREATE TABLE tasks (
 CREATE INDEX tasks_plan ON tasks(plan_id);
 CREATE TABLE agent_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, app TEXT NOT NULL, role TEXT NOT NULL, message TEXT NOT NULL, ms INTEGER);
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)
-"""]
+""", hv.SCHEMA]
 
 
 def commons_folder(app_folder=None):
@@ -158,6 +159,11 @@ class Commons:
         self.app_id = app_id
         self.log = log or (lambda *a: None)
         self.store = core.Store(folder, "commons", SCHEMA, self.log)
+        self.registry = hv.Registry(self)            # harvesting policy registry
+        self.harvest_log = hv.HarvestLog(self)       # every harvest, its source and why (hash-chained, archived)
+        self.approvals = hv.Approvals(self, self.registry)
+        self.engine = hv.Engine(self, self.registry)
+        self.learner = hv.Learner(self, self.registry, self.approvals)
 
     # -- settings shared by all applications
     def setting(self, key, default=None):
@@ -301,6 +307,16 @@ class Context:
         self.commons = commons
         self.policy = commons.policy()
         self.stop = stop or (lambda: False)
+        self.registry = commons.registry
+
+    def budget(self, key, default):
+        """How much one turn harvests for `key`: the approved parameter budget.<app>.<key> (else the default)."""
+        v = self.registry.param("budget.%s.%s" % (self.commons.app_id, key), default)
+        return v if isinstance(v, (int, float)) and v > 0 else default
+
+    def source_ok(self, key):
+        """Is this source approved in the policy registry?"""
+        return self.registry.check(key)[0]
 
     def cursor(self, key, default=0):
         return self.commons.cursor(key, default)
@@ -313,7 +329,12 @@ class Context:
 
 
 class Adapter:
-    """What each application supplies to its team. Every method is deterministic."""
+    """What each application supplies to its team. Every method is deterministic.
+    Every task names its source ("source": registry key), why it is harvested ("why") and, when its size can be
+    tuned, its budget key ("budget_key"); items may name a different source per evidence ("source_key")."""
+
+    def budgets(self):                          # default budgets, registered as policy parameters
+        return {}
 
     def survey(self, ctx):                      # Strategist: what is known, what is missing
         return {}
@@ -341,6 +362,7 @@ class Team:
         self.commons = commons
         self.app_id = commons.app_id
         self.adapter = adapter
+        commons.registry.ensure(commons.app_id, adapter.budgets())
         self.log = log or (lambda *a: None)
         self._lock = threading.Lock()
         self.state = {"running": False, "role": None, "last": None, "started": None}
@@ -354,24 +376,45 @@ class Team:
                        (self.app_id, role, core.now_cs(), status, str(summary)[:1000], ms))
             self.commons.agent_log(db, role, summary, ms)
 
-    def cycle(self, trigger="manual", stop=None):
-        """Strategist → Planner → Harvester → Curator. Returns a summary of what each agent did."""
+    def _policy_filter(self, item, task_source, reg):
+        """Drop evidence from sources the registry does not approve; drop quotes (third-party wording) unless the
+        source's licence class allows storing its text. An item left without evidence is not saved."""
+        ev = []
+        for e in item.get("evidence") or []:
+            key = e.get("source_key") or task_source
+            ok, cls, _ = reg.check(key)
+            if not ok:
+                continue
+            e = dict(e, source_key=key, licence_class=cls)
+            if cls not in hv.TEXT_FREE:
+                e.pop("quote", None)
+            ev.append(e)
+        if not ev and item.get("evidence"):
+            return None
+        return dict(item, evidence=ev)
+
+    def cycle(self, trigger="manual", stop=None, turn=None):
+        """Strategist → Planner → (policy check) → Harvester → Curator. Every task is checked against the policy
+        registry before it runs and logged — harvested, blocked or skipped — with its source and why."""
         if self.commons.store.read_only:
             raise core.UserError("The shared database failed its check; nothing was harvested.")
         if not self._lock.acquire(blocking=False):
             raise core.UserError("This application's harvest team is already working.")
         out = {"app": self.app_id, "trigger": trigger}
+        reg, hlog = self.commons.registry, self.commons.harvest_log
+        t_cycle = time.time()
         try:
             self.state.update(running=True, started=core.now_cs())
             ctx = Context(self.commons, stop)
             store = self.commons.store
+            pv = reg.version()
             # 1. Strategist
             self.state["role"] = "strategist"
             t0 = time.time()
             survey = self.adapter.survey(ctx)
             strat = self.adapter.strategy(survey, ctx)
             strat["survey"] = survey
-            strat["policy"] = ctx.policy
+            strat["policy"] = "registry version %s" % pv
             strat["open_checks"] = store.scalar("SELECT count(*) FROM requests WHERE to_app = ? AND status = 'open'", (self.app_id,), 0)
             with store.write() as db:
                 sid = db.execute("INSERT INTO strategies(app, created, body) VALUES(?,?,?)",
@@ -380,67 +423,99 @@ class Team:
                            (self.app_id, self.app_id))
             out["strategy"] = "%d goals" % len(strat.get("goals") or [])
             self._role("strategist", "ok", "; ".join(g["goal"] for g in strat.get("goals") or []) or "nothing to do", int((time.time() - t0) * 1000))
-            # 2. Planner
+            # 2. Planner, then the policy check of every task
             self.state["role"] = "planner"
             t0 = time.time()
             tasks = self.adapter.plan(strat, ctx)
+            allowed, blocked = [], 0
             with store.write() as db:
                 pid = db.execute("INSERT INTO plans(app, strategy_id, created, status, summary) VALUES(?,?,?,?,?)",
                                  (self.app_id, sid, core.now_cs(), "running", "%d tasks" % len(tasks))).lastrowid
-                ids = [db.execute("INSERT INTO tasks(plan_id, app, step, action, title, target) VALUES(?,?,?,?,?,?)",
-                                  (pid, self.app_id, i, t["action"], t["title"], json.dumps(t.get("target") or {}, ensure_ascii=False))).lastrowid
-                       for i, t in enumerate(tasks, 1)]
                 db.execute("DELETE FROM plans WHERE app = ? AND id NOT IN (SELECT id FROM plans WHERE app = ? ORDER BY id DESC LIMIT 50)",
                            (self.app_id, self.app_id))
-            out["plan"] = "%d tasks" % len(tasks)
-            self._role("planner", "ok", "; ".join(t["title"] for t in tasks) or "no tasks", int((time.time() - t0) * 1000))
-            # 3. Harvester: stages items; writes only task progress
+            for i, t in enumerate(tasks, 1):
+                ok, cls, why = reg.check(t.get("source"))
+                if ok and reg.param("disabled.%s.%s" % (self.app_id, t["action"]), False):
+                    ok, why = False, "paused by an approved recommendation"
+                with store.write() as db:
+                    tid = db.execute("INSERT INTO tasks(plan_id, app, step, action, title, target, status, detail) VALUES(?,?,?,?,?,?,?,?)",
+                                     (pid, self.app_id, i, t["action"], t["title"], json.dumps(t.get("target") or {}, ensure_ascii=False),
+                                      "queued" if ok else "skipped", None if ok else "blocked by policy: " + why)).lastrowid
+                    if not ok:
+                        blocked += 1
+                        hlog.write(db, self.app_id, t["action"], t["title"], t.get("source"), cls, "blocked",
+                                   "%s — not harvested: %s" % (t.get("why") or "", why), turn_id=(turn or {}).get("id"), policy_version=pv)
+                if ok:
+                    allowed.append((tid, t, cls))
+            out["plan"] = "%d tasks (%d blocked by policy)" % (len(tasks), blocked)
+            self._role("planner", "ok", ("; ".join(t["title"] for t in tasks) or "no tasks") + ("; %d blocked by policy" % blocked if blocked else ""),
+                       int((time.time() - t0) * 1000))
+            # 3. Harvester: stages items per task; writes only task progress
             self.state["role"] = "harvester"
             t0 = time.time()
             staged, cursors, failed = [], {}, 0
-            for tid, t in zip(ids, tasks):
+            for tid, t, cls in allowed:
                 if ctx.stop():
                     with store.write() as db:
                         db.execute("UPDATE tasks SET status = 'skipped', detail = 'stopped' WHERE id = ?", (tid,))
                     continue
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = 'running', started = ? WHERE id = ?", (core.now_cs(), tid))
+                ts = time.time()
                 try:
                     r = self.adapter.execute(t, ctx) or {}
-                    items = [i for i in r.get("items") or [] if all(ctx.allowed(e.get("licence")) for e in i.get("evidence") or [])]
-                    staged += items
+                    items = [x for x in (self._policy_filter(i, t.get("source"), reg) for i in r.get("items") or []) if x]
+                    staged.append((tid, t, cls, items, time.time() - ts, None))
                     cursors.update(r.get("cursor") or {})
                     st, detail = "done", r.get("detail") or ""
                 except Exception as e:
                     failed += 1
                     items, st, detail = [], "failed", str(e)
+                    staged.append((tid, t, cls, [], time.time() - ts, str(e)))
                     self.log("harvest task failed:", t["title"], repr(e))
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = ?, items = ?, finished = ?, detail = ? WHERE id = ?",
                                (st, len(items), core.now_cs(), detail[:1000], tid))
-            out["harvested"] = len(staged)
-            self._role("harvester", "failed" if failed and failed == len(tasks) else "ok",
-                       "%d items staged from %d tasks%s" % (len(staged), len(tasks), (", %d failed" % failed) if failed else ""),
+            n_staged = sum(len(x[3]) for x in staged)
+            out["harvested"] = n_staged
+            self._role("harvester", "failed" if failed and failed == len(allowed) else "ok",
+                       "%d items staged from %d tasks%s" % (n_staged, len(allowed), (", %d failed" % failed) if failed else ""),
                        int((time.time() - t0) * 1000))
-            # 4. Curator: save, answer checks, upkeep, statuses, backup
+            # 4. Curator: save task by task (each task's facts and its log entry in one transaction), answer checks, upkeep
             self.state["role"] = "curator"
             t0 = time.time()
             new = merged = 0
-            upkeep = self.adapter.curate(ctx) or []
-            work = staged + upkeep
-            for k in range(0, len(work), BATCH):
-                with store.write() as db:
-                    for item in work[k:k + BATCH]:
-                        _, is_new = self.commons.save(db, item)
-                        new += is_new
-                        merged += not is_new
-                    if k + BATCH >= len(work):
-                        for key, v in cursors.items():          # cursors move only when what they cover is saved
-                            self.commons.set_setting("cursor:%s:%s" % (self.app_id, key), v, db)
-            if not work and cursors:
-                with store.write() as db:
-                    for key, v in cursors.items():
-                        self.commons.set_setting("cursor:%s:%s" % (self.app_id, key), v, db)
+            upkeep = [x for x in (self._policy_filter(i, None, reg) for i in (self.adapter.curate(ctx) or [])) if x]
+            if upkeep:
+                staged.append((None, {"action": "upkeep", "title": "Keep shared facts in step with their sources",
+                                      "why": "re-check facts already shared", "source": None}, None, upkeep, 0.0, None))
+            for tid, t, cls, items, secs, err in staged:
+                if err:
+                    with store.write() as db:
+                        hlog.write(db, self.app_id, t["action"], t["title"], t.get("source"), cls, "failed", (t.get("why") or "") + " — " + err,
+                                   seconds=secs, budget_key=t.get("budget_key"), turn_id=(turn or {}).get("id"), policy_version=pv)
+                    continue
+                for k in range(0, max(1, len(items)), BATCH):
+                    with store.write() as db:
+                        tn = tm = 0
+                        fids = []
+                        for item in items[k:k + BATCH]:
+                            fid, is_new = self.commons.save(db, item)
+                            fids.append(fid)
+                            tn += is_new; tm += not is_new
+                        new += tn; merged += tm
+                        srcs = sorted({e.get("source_key") or "" for i in items[k:k + BATCH] for e in i.get("evidence") or []})
+                        hid = hlog.write(db, self.app_id, t["action"], t["title"] + ("" if k == 0 else " (part %d)" % (k // BATCH + 1)),
+                                         t.get("source") or ",".join(srcs), cls or "mixed", "harvested" if t["action"] != "upkeep" else "refreshed",
+                                         t.get("why") or "", len(items[k:k + BATCH]), tn, tm, secs if k == 0 else 0.0, t.get("budget_key"),
+                                         (turn or {}).get("id"), pv)
+                        for j in range(0, len(fids), 500):
+                            part = fids[j:j + 500]
+                            db.execute("UPDATE evidence SET harvest_id = ? WHERE app = ? AND harvest_id IS NULL AND fact_id IN (%s)"
+                                       % ",".join("?" * len(part)), [hid, self.app_id] + part)
+            with store.write() as db:
+                for key, v in cursors.items():                  # cursors move only when what they cover is saved
+                    self.commons.set_setting("cursor:%s:%s" % (self.app_id, key), v, db)
             answered, verdicts = 0, {}
             fns = self.adapter.verifiers(ctx)
             for req in self.commons.open_requests():
@@ -455,9 +530,10 @@ class Team:
                 verdicts[res.get("verdict", "cannot_check")] = verdicts.get(res.get("verdict", "cannot_check"), 0) + 1
             with store.write() as db:
                 db.execute("UPDATE plans SET status = ?, summary = ? WHERE id = ?",
-                           ("done" if not failed else "done with failures", "%d tasks, %d new facts, %d merged, %d checks answered"
-                            % (len(tasks), new, merged, answered), pid))
-            out.update(new=new, merged=merged, upkeep=len(upkeep), checks_answered=answered, verdicts=verdicts)
+                           ("done" if not failed else "done with failures", "%d tasks (%d blocked), %d new facts, %d merged, %d checks answered"
+                            % (len(tasks), blocked, new, merged, answered), pid))
+            out.update(new=new, merged=merged, upkeep=len(upkeep), checks_answered=answered, verdicts=verdicts, blocked=blocked,
+                       seconds=round(time.time() - t_cycle, 2))
             self._role("curator", "ok", "%d new facts, %d merged (%d from upkeep), %d checks answered %s"
                        % (new, merged, len(upkeep), answered, json.dumps(verdicts) if verdicts else ""), int((time.time() - t0) * 1000))
             if new or merged or answered:
@@ -465,6 +541,11 @@ class Team:
                     store.backup("harvest")
                 except Exception as e:                  # another application may be pruning the same backups
                     self.log("commons backup:", e)
+            try:
+                self.commons.harvest_log.archive()
+                out["recommendations"] = self.commons.learner.review(self.app_id)
+            except Exception as e:
+                self.log("harvest archive / review:", e)
             self.state["last"] = dict(out, finished=core.now_cs())
             return out
         except Exception as e:
@@ -478,31 +559,49 @@ class Team:
             self.state.update(running=False, role=None)
             self._lock.release()
 
+    def engine_turn(self, trigger="engine"):
+        """Ask the engine whether it is this application's turn; if so, run a cycle and report back."""
+        turn = self.commons.engine.claim(self.app_id)
+        if not turn:
+            return None
+        try:
+            out = self.cycle("%s: %s" % (trigger, turn["reason"]), turn=turn)
+        except Exception as e:
+            out = {"error": str(e), "new": 0, "checks_answered": 0}
+        self.commons.engine.finish(turn, out)
+        return out
+
     def run_in_background(self, trigger="manual"):
         if self.state["running"]:
             raise core.UserError("This application's harvest team is already working.")
 
         def go():
+            turn = self.commons.engine.manual(self.app_id, "started by hand")
             try:
-                self.cycle(trigger)
+                out = self.cycle(trigger, turn=turn)
             except Exception as e:
+                out = {"error": str(e), "new": 0, "checks_answered": 0}
                 self.log("harvest cycle failed:", repr(e))
+            self.commons.engine.finish(turn, out)
         threading.Thread(target=go, daemon=True).start()
         return {"started": True}
 
     def auto(self):
         return self.commons.setting("auto:%s" % self.app_id, "on") == "on"
 
-    def start_schedule(self, first_delay=30, every=AUTO_EVERY_S):
-        """Run a cycle shortly after start-up and then every `every` seconds while automatic harvesting is on."""
+    def start_schedule(self, first_delay=20, every=None):
+        """Automatic harvesting: every few seconds (schedule.tick_s) ask the harvesting engine whose turn it is; the
+        engine alternates language, STEM and history across the running applications."""
         def tick(delay):
             def run():
-                if self.auto() and not self.state["running"]:
-                    try:
-                        self.cycle("automatic")
-                    except Exception as e:
-                        self.log("automatic harvest failed:", repr(e))
-                tick(every)
+                try:
+                    if self.auto() and not self.state["running"]:
+                        self.engine_turn("automatic")
+                    else:
+                        self.commons.engine.heartbeat(self.app_id, hv.ENGINE_VERSION)
+                except Exception as e:
+                    self.log("automatic harvest failed:", repr(e))
+                tick(every or float(self.commons.registry.param("schedule.tick_s", 30)))
             self._timer = threading.Timer(delay, run)
             self._timer.daemon = True
             self._timer.start()
@@ -561,6 +660,82 @@ def add_routes(api, team, app_folder):
         set_commons_folder(app_folder, p["folder"])
         return {"folder": commons_folder(app_folder), "restart": True}
 
+    # -- the harvesting engine, policy registry, approvals and harvest log
+    @api.get("/api/harvest/status")
+    def h_status(p):
+        return harvest_status(team)
+
+    @api.post("/api/harvest/admin")
+    def h_admin(p):
+        return c.approvals.set_admin(p.get("new") or "", p.get("old") or None)
+
+    @api.post("/api/harvest/decide")
+    def h_decide(p):
+        return c.approvals.decide(p.get("id"), bool(p.get("approve")), p.get("passphrase") or "", p.get("note") or "")
+
+    @api.post("/api/harvest/source")
+    def h_source(p):
+        return c.approvals.admin_source(p.get("key"), p.get("status"), p.get("passphrase") or "", p.get("reason") or "",
+                                        p.get("licence_class") or None, bool(p.get("accept_restriction")))
+
+    @api.post("/api/harvest/source_add")
+    def h_source_add(p):
+        c.approvals._require(p.get("passphrase") or "")
+        key = "".join(ch for ch in (p.get("key") or "").lower() if ch.isalnum() or ch in "-_.")
+        if not key or not (p.get("name") or "").strip():
+            raise core.UserError("Give the source a short key and a name.")
+        c.registry.add_source(key, p["name"].strip(), p.get("apps") or "", p.get("kind") or "", p.get("licence") or "",
+                              p.get("licence_class") or "unknown", p.get("url") or "", "admin", p.get("reason") or "added by the admin")
+        return {"ok": True, "key": key}
+
+    @api.post("/api/harvest/param")
+    def h_param(p):
+        c.approvals._require(p.get("passphrase") or "")
+        val = p.get("value")
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except ValueError:
+                pass
+        c.registry.set_param(p.get("key"), val, "admin", p.get("reason") or "set by the admin")
+        return {"ok": True}
+
+    @api.post("/api/harvest/log")
+    def h_log(p):
+        return {"log": c.harvest_log.recent(p.get("app") or None, p.get("decision") or None, p.get("limit") or 200)}
+
+    @api.post("/api/harvest/verify")
+    def h_verify(p):
+        return c.harvest_log.verify()
+
+    @api.post("/api/harvest/archive")
+    def h_archive(p):
+        return c.harvest_log.archive()
+
+    @api.post("/api/harvest/review")
+    def h_review(p):
+        return {"made": c.learner.review(team.app_id), "pending": c.approvals.list("pending")}
+
+
+def harvest_status(team):
+    """Everything the Harvesting page shows: the rotation, approvals, registry, parameters and learning metrics."""
+    c = team.commons
+    st = c.store
+    metrics = st.query("""SELECT app, domain, count(*) AS tasks, sum(decision = 'harvested') AS harvested, sum(decision = 'blocked') AS blocked,
+                          sum(decision = 'failed') AS failed, sum(items) AS items, sum(new) AS new, sum(merged) AS merged,
+                          round(sum(seconds), 1) AS seconds FROM harvest_log GROUP BY app ORDER BY app""")
+    for m in metrics:
+        m["new_share"] = round((m["new"] or 0) / m["items"], 3) if m["items"] else None
+        m["facts_per_s"] = round((m["new"] or 0) / m["seconds"], 1) if m["seconds"] else None
+    trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
+                        FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
+    return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(),
+            "admin_set": c.approvals.admin_set(), "pending": c.approvals.list("pending"), "decided": c.approvals.list(None, 40),
+            "sources": c.registry.sources(), "classes": {k: {"allowed": v[0], "why": v[1]} for k, v in hv.LICENCE_CLASSES.items()},
+            "params": c.registry.params(), "versions": c.registry.versions(40), "policy_version": c.registry.version(),
+            "metrics": metrics, "trend": trend, "log_entries": st.scalar("SELECT count(*) FROM harvest_log", default=0),
+            "archive_folder": os.path.join(c.folder, "archives")}
+
 
 def attach(app, app_id, adapter):
     """Give an application its Commons, its team and the shared pages. A Commons that cannot be opened
@@ -577,4 +752,8 @@ def attach(app, app_id, adapter):
         @app.api.get("/api/commons/status")
         def unavailable(p):
             raise core.UserError("The shared database could not be opened (%s). This application works on its own meanwhile." % why)
+
+        @app.api.get("/api/harvest/status")
+        def h_unavailable(p):
+            raise core.UserError("The shared database could not be opened (%s); the harvesting engine needs it." % why)
     return app.team

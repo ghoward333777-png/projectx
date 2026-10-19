@@ -13,7 +13,7 @@ import qbcommons as cm
 
 FACTS_SETUP = r"""
 f = [({"statement": "Albert Einstein was born on 14 March 1879.", "subject": "Albert Einstein", "predicate": "born on", "object": "14 March 1879", "category": "People", "date": "14 March 1879"},
-      [{"name": "Einstein: His Life and Universe", "kind": "book", "author": "Walter Isaacson"}]),
+      [{"name": "Einstein: His Life and Universe", "kind": "book", "author": "Walter Isaacson", "quote": "born in Ulm"}]),
      ({"statement": "Albert Einstein died on 18 April 1955.", "subject": "Albert Einstein", "predicate": "died on", "object": "18 April 1955", "category": "People", "date": "18 April 1955"},
       [{"name": "Einstein: His Life and Universe", "kind": "book", "author": "Walter Isaacson"}, {"name": "The New York Times, 19 April 1955", "kind": "newspaper"}]),
      ({"statement": "Test Person was born in 1700.", "subject": "Test Person", "predicate": "born on", "object": "1700", "category": "People", "date": "1700"},
@@ -87,7 +87,7 @@ def main():
     # crash safety: a harvest that fails while saving leaves nothing half-written and its cursor unmoved
     class Broken(cm.Adapter):
         def plan(self, st, ctx):
-            return [{"action": "x", "title": "two good items and a bad one"}]
+            return [{"action": "x", "title": "two good items and a bad one", "source": "stem-computed", "why": "test"}]
 
         def execute(self, task, ctx):
             ok = {"subject": "s", "predicate": "p", "object": "o", "evidence": [{"method": "reference", "source": "r"}]}
@@ -106,6 +106,81 @@ def main():
         c.check("the team can run again afterwards", not team.state["running"])
         com.store.conn().close()
 
+
+    # policy registry, admin approvals, the engine's rotation and the learner (one Commons, no applications)
+    with tempfile.TemporaryDirectory() as tmp:
+        com = cm.Commons(tmp, "stem")
+        reg, ap, eng, hl = com.registry, com.approvals, com.engine, com.harvest_log
+        reg.ensure("stem", {"constants": 40})
+        c.check("registry: seeded sources with licence classes", reg.source("webster-1913")["status"] == "approved"
+                and reg.source("muse-bilingual")["status"] == "blocked" and reg.source("news-headlines")["status"] == "blocked")
+        c.check("registry: an application's budgets become parameters", reg.param("budget.stem.constants") == 40)
+        ok, cls, why = reg.check("some-new-site")
+        c.check("registry: an unknown source is blocked and registered as pending", not ok and reg.source("some-new-site")["status"] == "pending")
+        try:
+            ap.decide(1, True, "whatever")
+            no_admin = False
+        except core.UserError:
+            no_admin = True
+        c.check("approvals: nothing is decided before the admin passphrase is set", no_admin)
+        ap.set_admin("correct horse")
+        c.check("approvals: the passphrase is checked", ap.check_admin("correct horse") and not ap.check_admin("wrong horse"))
+        with com.store.write() as d:
+            for i in range(4):
+                hl.write(d, "stem", "constants", "batch %d" % i, "codata-2018", "facts", "harvested", "test", items=40, new=40, seconds=0.5, budget_key="constants")
+            for i in range(3):
+                hl.write(d, "stem", "flaky", "flaky %d" % i, "stem-computed", "computed", "failed", "test")
+            hl.write(d, "stem", "web", "web", "some-new-site", "unknown", "blocked", "test")
+        made = com.learner.review("stem")
+        recs = ap.list("pending")
+        kinds = {r["kind"] for r in recs}
+        c.check("learner: recommends bigger batches, pausing a failing task and classifying a source", made >= 3 and {"speed", "reliability", "source"} <= kinds,
+                [(r["kind"], r["title"]) for r in recs])
+        c.check("learner: the same recommendation is never made twice", com.learner.review("stem") == 0)
+        c.check("learner: recommendations change nothing until approved", reg.param("budget.stem.constants") == 40)
+        speed = next(r for r in recs if r["kind"] == "speed")
+        try:
+            ap.decide(speed["id"], True, "wrong horse")
+            refused = False
+        except core.UserError:
+            refused = True
+        v0 = reg.version()
+        c.check("approvals: a wrong passphrase changes nothing", refused and reg.param("budget.stem.constants") == 40)
+        ap.decide(speed["id"], True, "correct horse")
+        c.check("approvals: an approved change is applied and versioned", reg.param("budget.stem.constants") == 60 and reg.version() > v0
+                and ap.list("applied")[0]["id"] == speed["id"])
+        pause = next(r for r in recs if r["kind"] == "reliability")
+        ap.decide(pause["id"], False, "correct horse", "keep trying")
+        c.check("approvals: a rejected change is not applied", reg.param("disabled.stem.flaky") is None and ap.list("rejected")[0]["id"] == pause["id"])
+        try:
+            ap.admin_source("muse-bilingual", "approved", "correct horse", "test")
+            guarded = False
+        except core.UserError:
+            guarded = True
+        c.check("approvals: a restricted licence needs an explicit acceptance", guarded and reg.source("muse-bilingual")["status"] == "blocked")
+        ap.admin_source("some-new-site", "approved", "correct horse", "checked: CC0", licence_class="cc0")
+        c.check("approvals: the admin can classify and approve a source", reg.check("some-new-site")[0])
+        v = hl.verify()
+        c.check("harvest log: the hash chain verifies", v["ok"] and v["entries"] == 8, v)
+        com.store.conn().execute("UPDATE harvest_log SET new = 0 WHERE id = 2")
+        com.store.conn().commit()
+        c.check("harvest log: tampering is detected", hl.verify() == {"ok": False, "entries": 1, "broken_at": 2})
+        # the engine: first come, then alternation, then backoff for an application that found nothing
+        t1 = eng.claim("language")
+        c.check("engine: the first application gets a turn", t1 and t1["app"] == "language")
+        c.check("engine: nobody else starts while a turn is running", eng.claim("stem") is None)
+        eng.finish(t1, {"new": 100, "seconds": 1})
+        eng.heartbeat("stem"); eng.heartbeat("facts")
+        c.check("engine: the application that just harvested waits its turn", eng.claim("language") is None)
+        t2 = eng.claim("stem") or eng.claim("facts")
+        c.check("engine: another domain goes next", t2 and t2["app"] in ("stem", "facts"), t2)
+        eng.finish(t2, {"new": 0, "seconds": 1})
+        t3 = eng.claim({"stem": "facts", "facts": "stem"}[t2["app"]]) or eng.claim("language")
+        c.check("engine: then a different domain again", t3 is not None and t3["app"] != t2["app"], t3)
+        eng.finish(t3, {"new": 5, "seconds": 1})
+        c.check("engine: an application that found nothing new backs off", eng.claim(t2["app"]) is None)
+        com.store.conn().close()
+
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2, tempfile.TemporaryDirectory() as tmp3:
         commons, res = one_world(tmp1)
         d = db(commons)
@@ -114,7 +189,7 @@ def main():
         c.check("every application ran all four agents", q("SELECT count(*) FROM team WHERE last_status = 'ok'") == 12,
                 [tuple(r) for r in d.execute("SELECT app, role, last_status, last_summary FROM team")])
         c.check("each team stored a strategy and a plan", q("SELECT count(DISTINCT app) FROM strategies") == 3 and q("SELECT count(DISTINCT app) FROM plans") == 3)
-        c.check("plans were executed task by task", q("SELECT count(*) FROM tasks WHERE status = 'done'") >= 8 and q("SELECT count(*) FROM tasks WHERE status = 'failed'") == 0)
+        c.check("plans were executed task by task", q("SELECT count(*) FROM tasks WHERE status = 'done'") >= 6 and q("SELECT count(*) FROM tasks WHERE status = 'failed'") == 0)
         died = d.execute("SELECT * FROM facts WHERE subject = 'Albert Einstein' AND predicate = 'died on'").fetchone()
         c.check("history fact shared with both its sources (corroborated)", died and died["status"] == "corroborated", died and dict(died))
         ev = d.execute("SELECT * FROM evidence WHERE fact_id = ? AND app = 'stem'", (died["id"],)).fetchone()
@@ -130,7 +205,27 @@ def main():
         c.check("derived constant R is reference + recomputed (verified)", q("SELECT status FROM facts WHERE subject = 'constant R (molar gas constant)'") == "verified")
         c.check("saved answer recomputed and shared", q("SELECT status FROM facts WHERE subject = '12 × 7'") == "verified")
         c.check("English meanings shared (public domain)", q("SELECT count(*) FROM facts WHERE domain = 'language' AND predicate = 'means'") == 500)
-        c.check("translations shared and marked non-commercial", q("SELECT count(*) FROM evidence WHERE licence LIKE '%BY-NC%'") > 1000)
+        c.check("registry: MUSE (non-commercial) is blocked, so no translation is shared", q("SELECT count(*) FROM evidence WHERE licence LIKE '%BY-NC%'") == 0
+                and q("SELECT status FROM policy_sources WHERE key = 'muse-bilingual'") == "blocked")
+        c.check("registry: Webster 1913 (public domain) is approved", q("SELECT status FROM policy_sources WHERE key = 'webster-1913'") == "approved")
+        lang_goals = json.loads(d.execute("SELECT body FROM strategies WHERE app = 'language' ORDER BY id DESC LIMIT 1").fetchone()[0])["goals"]
+        c.check("the Strategist says why translations are held back", any(g["goal"] == "Hold translations back" for g in lang_goals), lang_goals)
+        c.check("every harvest is logged with its source and why",
+                q("SELECT count(*) FROM harvest_log WHERE decision = 'harvested'") >= 6 and
+                q("SELECT count(*) FROM harvest_log WHERE decision = 'harvested' AND (source_key IS NULL OR source_key = '' OR reason = '')") == 0,
+                [dict(r) for r in d.execute("SELECT app, action, source_key, reason FROM harvest_log LIMIT 8")])
+        c.check("harvesting alternates language, STEM and history", q("SELECT count(DISTINCT domain) FROM harvest_log WHERE decision = 'harvested'") == 3)
+        c.check("news headlines (copyrighted text) are blocked, and the block is logged",
+                q("SELECT count(*) FROM harvest_log WHERE source_key = 'news-headlines' AND decision = 'harvested'") == 0)
+        c.check("each shared fact's evidence points at its harvest record",
+                q("SELECT count(*) FROM evidence WHERE app = 'language' AND method = 'reference' AND harvest_id IS NULL") == 0 and
+                q("SELECT count(*) FROM evidence e JOIN harvest_log h ON h.id = e.harvest_id") > 500)
+        c.check("history evidence keeps no third-party wording (quotes stripped)",
+                q("SELECT count(*) FROM evidence WHERE app = 'facts' AND method = 'source' AND detail LIKE '%\u201c%'") == 0)
+        ver = cm.Commons(commons, "facts").harvest_log.verify()
+        c.check("the harvest log's hash chain verifies", ver["ok"] and ver["entries"] >= 6, ver)
+        c.check("the harvest log is archived to a monthly file",
+                any(n.startswith("harvest-") and n.endswith(".jsonl") for n in os.listdir(os.path.join(commons, "archives"))))
         c.check("no check left waiting", q("SELECT count(*) FROM requests WHERE status = 'open'") == 0,
                 [tuple(r) for r in d.execute("SELECT kind, to_app, status FROM requests WHERE status='open' LIMIT 5")])
         c.check("checks crossed between all three applications",

@@ -25,7 +25,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 PORT = 8103
 program_dir = HERE
 
@@ -708,7 +708,7 @@ def selftest():
         c.check("feed with XML entities refused", True)
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
-        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         book = {"name": "Magna Carta: The Foundation of Freedom 1215–2015", "kind": "book", "author": "N. Vincent (ed.)"}
         fid, merged = app.add_fact({"statement": "The Magna Carta was sealed by King John at Runnymede.", "subject": "Magna Carta",

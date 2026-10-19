@@ -37,7 +37,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.15.0"
+VERSION = "1.16.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1390,7 +1390,7 @@ def selftest():
         c.check("Object scan: unrelated questions are left to the other answers", app.scan.answer("how do you say dog in French") is None)
         c.check("Object scan: questions reach Ask by voice", "cup" in app.speech._answer("when did I last see a cup", {"words": [], "language_name": "English"}))
         c.check("Object scan: detector model bundled", os.path.getsize(os.path.join(HERE, "ui", "vendor", "mediapipe", "efficientdet_lite0.tflite")) > 4000000)
-        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         app.set_settings("es", 5)
         s = app.session("es", "type")

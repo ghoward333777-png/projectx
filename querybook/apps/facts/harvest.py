@@ -26,6 +26,9 @@ def hours_ago(h):
 
 
 class FactsAdapter(cm.Adapter):
+    def budgets(self):
+        return {"facts": BUDGET["facts"], "feeds": BUDGET["feeds"], "headlines": BUDGET["headlines"]}
+
     def __init__(self, app, dates, old_kind, single_valued):
         self.app = app
         self.dates = dates
@@ -55,10 +58,15 @@ class FactsAdapter(cm.Adapter):
         if sv["sourced_not_shared"]:
             goals.append({"goal": "Share the sourced facts", "priority": 2,
                           "why": "%d facts with documented sources are not in the Commons yet; birth and death dates go to Math & Science for a lifespan check" % sv["sourced_not_shared"]})
-        if sv["feeds_due"]:
+        news_ok = ctx.source_ok("news-headlines")
+        if not news_ok and (sv["feeds_due"] or sv["headlines_not_shared"]):
+            goals.append({"goal": "Leave news headlines out", "priority": 5,
+                          "why": "the policy registry blocks headlines (the publishers' own wording); a news item enters the store "
+                                 "only when you add it as a fact with its source"})
+        if sv["feeds_due"] and news_ok:
             goals.append({"goal": "Refresh the news feeds", "priority": 3,
                           "why": "%d of your %d feeds were last read more than %d hours ago" % (sv["feeds_due"], sv["feeds"], BUDGET["feed_age_h"])})
-        if sv["headlines_not_shared"] or sv["feeds_due"]:
+        if (sv["headlines_not_shared"] or sv["feeds_due"]) and news_ok:
             goals.append({"goal": "Share the latest headlines as reported", "priority": 4,
                           "why": "news is shared as 'reported by', never as confirmed, until it is added as a fact with its source"})
         return {"goals": goals, "budget": BUDGET,
@@ -69,19 +77,23 @@ class FactsAdapter(cm.Adapter):
     # ------------------------------------------------------------------ Planner
     def plan(self, st, ctx):
         names = {g["goal"] for g in st["goals"]}
+        why = {g["goal"]: g["why"] for g in st["goals"]}
         tasks = []
         if "Share the sourced facts" in names:
-            tasks.append({"action": "facts", "title": "Share up to %d sourced facts" % BUDGET["facts"],
-                          "target": {"after": ctx.cursor("facts"), "limit": BUDGET["facts"]}})
+            lim = int(ctx.budget("facts", BUDGET["facts"]))
+            tasks.append({"action": "facts", "title": "Share up to %d sourced facts" % lim, "target": {"after": ctx.cursor("facts"), "limit": lim},
+                          "source": "history-user-sources", "budget_key": "facts", "why": why["Share the sourced facts"]})
         if "Refresh the news feeds" in names:
             cutoff = hours_ago(BUDGET["feed_age_h"])
             feeds = self.app.store.query("""SELECT id, name FROM feeds WHERE url NOT LIKE 'https://www.youtube.com/#%' AND (last_fetched IS NULL OR last_fetched < ?)
-                                            ORDER BY coalesce(last_fetched, ''), id LIMIT ?""", (cutoff, BUDGET["feeds"]))
+                                            ORDER BY coalesce(last_fetched, ''), id LIMIT ?""", (cutoff, int(ctx.budget("feeds", BUDGET["feeds"]))))
             for f in feeds:
-                tasks.append({"action": "feed", "title": "Read the feed %s" % f["name"], "target": {"feed": f["id"]}})
+                tasks.append({"action": "feed", "title": "Read the feed %s" % f["name"], "target": {"feed": f["id"]}, "source": "news-headlines",
+                              "budget_key": "feeds", "why": why["Refresh the news feeds"]})
         if "Share the latest headlines as reported" in names:
-            tasks.append({"action": "headlines", "title": "Share up to %d headlines as reported" % BUDGET["headlines"],
-                          "target": {"limit": BUDGET["headlines"]}})
+            lim = int(ctx.budget("headlines", BUDGET["headlines"]))
+            tasks.append({"action": "headlines", "title": "Share up to %d headlines as reported" % lim, "target": {"limit": lim},
+                          "source": "news-headlines", "budget_key": "headlines", "why": why["Share the latest headlines as reported"]})
         return tasks
 
     # ------------------------------------------------------------------ Harvester

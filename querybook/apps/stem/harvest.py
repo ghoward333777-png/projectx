@@ -62,6 +62,9 @@ class StemAdapter(cm.Adapter):
     def __init__(self, app):
         self.app = app
 
+    def budgets(self):
+        return dict(BUDGET)
+
     # ------------------------------------------------------------------ Strategist
     def survey(self, ctx):
         have = {r["predicate"]: r["n"] for r in ctx.commons.store.query(
@@ -101,20 +104,27 @@ class StemAdapter(cm.Adapter):
     # ------------------------------------------------------------------ Planner
     def plan(self, st, ctx):
         names = {g["goal"].split(" (")[0] for g in st["goals"]}
+        why = {g["goal"].split(" (")[0]: g["why"] for g in st["goals"]}
         tasks = []
         if "Share the physical constants" in names:
-            tasks.append({"action": "constants", "title": "Publish %d constants and recompute R and F" % len(science.CONSTANTS)})
+            tasks.append({"action": "constants", "title": "Publish %d constants and recompute R and F" % len(science.CONSTANTS),
+                          "source": "codata-2018", "why": why["Share the physical constants"]})
         if "Share the elements" in names:
             start = ctx.cursor("elements")
-            end = min(start + st["budget"]["elements"], len(science.ELEMENTS))
-            tasks.append({"action": "elements", "title": "Publish elements %d–%d" % (start + 1, end), "target": {"from": start, "to": end}})
+            end = min(start + int(ctx.budget("elements", BUDGET["elements"])), len(science.ELEMENTS))
+            tasks.append({"action": "elements", "title": "Publish elements %d–%d" % (start + 1, end), "target": {"from": start, "to": end},
+                          "source": "iupac-atomic-weights", "budget_key": "elements", "why": why["Share the elements"]})
         if "Share the unit definitions" in names:
-            tasks.append({"action": "units", "title": "Publish %d unit definitions" % len(_units())})
+            tasks.append({"action": "units", "title": "Publish %d unit definitions" % len(_units()), "source": "si-definitions",
+                          "why": why["Share the unit definitions"]})
         if "Compute molar masses of common compounds" in names:
-            tasks.append({"action": "compounds", "title": "Compute %d molar masses" % len(COMPOUNDS)})
+            tasks.append({"action": "compounds", "title": "Compute %d molar masses" % len(COMPOUNDS), "source": "stem-computed",
+                          "why": why["Compute molar masses of common compounds"]})
         if "Share this application's verified saved answers" in names:
-            tasks.append({"action": "saved", "title": "Recompute and publish up to %d saved answers" % st["budget"]["saved"],
-                          "target": {"after": ctx.cursor("saved"), "limit": st["budget"]["saved"]}})
+            lim = int(ctx.budget("saved", BUDGET["saved"]))
+            tasks.append({"action": "saved", "title": "Recompute and publish up to %d saved answers" % lim,
+                          "target": {"after": ctx.cursor("saved"), "limit": lim}, "source": "stem-saved-answers", "budget_key": "saved",
+                          "why": why["Share this application's verified saved answers"]})
         return tasks
 
     # ------------------------------------------------------------------ Harvester
@@ -143,7 +153,7 @@ class StemAdapter(cm.Adapter):
         sym, name, value, unit, exact, note = c
         return {"subject": "constant %s (%s)" % (sym, name), "predicate": "value", "object": ("%s %s" % (value, unit)).strip(),
                 "statement": "The %s %s is %s %s%s." % (name, sym, value, unit, " exactly" if exact else ""),
-                "evidence": [{"method": "reference", "source": SRC_CODATA, "licence": LIC_FACTS, "verdict": verdict, "detail": note}],
+                "evidence": [{"method": "reference", "source": SRC_CODATA, "source_key": "codata-2018", "licence": LIC_FACTS, "verdict": verdict, "detail": note}],
                 "reasoning": ["Read from the bundled CODATA 2018 table: %s." % note]}
 
     def _derived(self):
@@ -152,7 +162,7 @@ class StemAdapter(cm.Adapter):
         for sym, name, val, unit, how in (("R", "molar gas constant", na * kb, "J/(mol*K)", "N_A × k_B"), ("F", "Faraday constant", na * e, "C/mol", "N_A × e")):
             dec = science._dec(val)
             out.append({"subject": "constant %s (%s)" % (sym, name), "predicate": "value", "object": "%s %s" % (dec, unit),
-                        "evidence": [{"method": "recompute", "source": SRC_APP, "licence": "computed here", "detail": "%s, exact rational arithmetic" % how}],
+                        "evidence": [{"method": "recompute", "source": SRC_APP, "source_key": "stem-computed", "licence": "computed here", "detail": "%s, exact rational arithmetic" % how}],
                         "reasoning": ["%s = %s, both exact SI defining constants since 2019." % (sym, how), "Multiplied exactly as fractions: %s." % dec]})
         return out
 
@@ -160,16 +170,16 @@ class StemAdapter(cm.Adapter):
         subj = "element %s (%s)" % (e["symbol"], e["name"])
         checks = [{"kind": "term", "payload": {"word": e["name"].lower()}}] if e["name"].isalpha() else []
         return [{"subject": subj, "predicate": "atomic number", "object": str(e["z"]),
-                 "evidence": [{"method": "reference", "source": SRC_IUPAC, "licence": LIC_FACTS, "verdict": verdict}],
+                 "evidence": [{"method": "reference", "source": SRC_IUPAC, "source_key": "iupac-atomic-weights", "licence": LIC_FACTS, "verdict": verdict}],
                  "reasoning": ["Position %d in the IUPAC periodic table." % e["z"]], "checks": checks},
                 {"subject": subj, "predicate": "standard atomic weight", "object": e["weight"],
-                 "evidence": [{"method": "reference", "source": SRC_IUPAC, "licence": LIC_FACTS, "verdict": verdict,
+                 "evidence": [{"method": "reference", "source": SRC_IUPAC, "source_key": "iupac-atomic-weights", "licence": LIC_FACTS, "verdict": verdict,
                                "detail": None if e["stable"] else "no stable isotope: [mass number] of a long-lived isotope"}]}]
 
     def _unit(self, u, verdict="supports"):
         return {"subject": "unit %s (%s)" % (u["description"], u["unit"]), "predicate": "equals in SI units",
                 "object": ("%s %s" % (u["si_factor"], u["dimension"])).strip(),
-                "evidence": [{"method": "reference", "source": SRC_UNITS, "licence": LIC_FACTS, "verdict": verdict}]}
+                "evidence": [{"method": "reference", "source": SRC_UNITS, "source_key": "si-definitions", "licence": LIC_FACTS, "verdict": verdict}]}
 
     def _compound(self, f):
         r = science.molar_mass(f)
@@ -217,7 +227,7 @@ class StemAdapter(cm.Adapter):
                 fresh = dict(fresh, object=r["object"], checks=[], reasoning=["Re-checked against the reference table: it gives %s, not %s." % (fresh["object"], r["object"])])
                 fresh["evidence"] = [dict(fresh["evidence"][0], verdict="contradicts", detail="reference gives %s" % self._ref_value(s, p, consts, elems, unit_rows))]
             out.append(fresh)
-        nxt = rows[-1]["id"] if len(rows) == BUDGET["recheck"] else 0          # wrap around when the end is reached
+        nxt = rows[-1]["id"] if len(rows) == BUDGET["recheck"] else 0  # (re-check window stays fixed: it is upkeep, not harvesting)          # wrap around when the end is reached
         ctx.commons.set_setting("cursor:stem:recheck", nxt)
         return out
 

@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.5.0"
+CORE_VERSION = "1.7.0"
 BACKUPS_KEPT = 10
 
 
@@ -809,7 +809,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1661,7 +1661,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -1675,6 +1675,59 @@ def core_matches_master(program_dir):
 
 
 # ----------------------------------------------------------------------------- command line
+def _harvest_cli(inst, cmd, a):
+    import getpass
+    c, team = inst.commons, inst.team
+    sub = a[0] if a else "status"
+    try:
+        if cmd == "harvest-engine":
+            if sub == "status":
+                st = c.engine.status()
+                for h in st["heartbeats"]:
+                    print("  %-9s last heard %6.0f s ago" % (h["app"], h["seconds_ago"]))
+                for t in st["turns"][:10]:
+                    print("  turn %-4d %s %-8s %s" % (t["id"], t["started"][:19], t["domain"], t["reason"]))
+                print("  pending approvals: %d   policy version: %s" % (len(c.approvals.list("pending")), c.registry.version()))
+            elif sub == "turn":
+                out = team.engine_turn("command line")
+                print(json.dumps(out, indent=2) if out else "Not this application's turn (another is harvesting, or it is backing off).")
+            elif sub == "log":
+                for h in reversed(c.harvest_log.recent(limit=int(a[1]) if len(a) > 1 else 30)):
+                    print("  #%-5d %s %-8s %-9s %-22s %3d new  %s" % (h["id"], h["at"][:19], h["domain"], h["decision"], h["source_key"] or "", h["new"], h["reason"][:80]))
+            elif sub == "verify":
+                v = c.harvest_log.verify()
+                print(json.dumps(v, indent=2))
+                return 0 if v["ok"] else 1
+            elif sub == "archive":
+                print(json.dumps(c.harvest_log.archive(), indent=2))
+            elif sub in ("review", "pending"):
+                if sub == "review":
+                    print("New recommendations:", c.learner.review(team.app_id))
+                for r in c.approvals.list("pending"):
+                    print("  #%-4d [%s] %s\n        %s" % (r["id"], r["kind"], r["title"], r["rationale"]))
+            else:
+                print("unknown: harvest-engine", sub)
+                return 2
+            return 0
+        if sub == "set-pass":
+            old = getpass.getpass("Current admin passphrase: ") if c.approvals.admin_set() else None
+            c.approvals.set_admin(getpass.getpass("New admin passphrase (8+ characters): "), old)
+            print("Admin passphrase saved.")
+        elif sub in ("approve", "reject") and len(a) > 1:
+            print(c.approvals.decide(int(a[1]), sub == "approve", getpass.getpass("Admin passphrase: "), " ".join(a[2:])))
+        elif sub == "source" and len(a) > 2:
+            cls = next((x for x in a[3:] if not x.startswith("--")), None)
+            c.approvals.admin_source(a[1], a[2], getpass.getpass("Admin passphrase: "), "admin decision (command line)", cls, "--accept-restriction" in a)
+            print("Registry updated.")
+        else:
+            print("usage: harvest-admin set-pass | approve ID | reject ID | source KEY STATUS [CLASS] [--accept-restriction]")
+            return 2
+        return 0
+    except UserError as e:
+        print(e)
+        return 1
+
+
 def run_cli(app):
     """Common command line for every application.
 
@@ -1689,6 +1742,10 @@ def run_cli(app):
     python app.py import-old DIR  import from an old QueryBook store (read-only)
     python app.py diagnose        run the internal diagnostics and print the report
     python app.py harvest         run this application's harvest team once (shared database)
+    python app.py harvest-engine status|turn|log [N]|verify|archive|review|pending
+                                  the harvesting engine: rotation, one engine turn, the harvest log, its hash chain
+    python app.py harvest-admin set-pass | approve ID | reject ID | source KEY approved|blocked|pending [CLASS] [--accept-restriction]
+                                  admin decisions (asks for the admin passphrase)
     """
     args = sys.argv[1:]
     if args and args[0] in ("-h", "--help", "help"):
@@ -1748,6 +1805,11 @@ def run_cli(app):
         print("Shared database:", inst.commons.store.path)
         print(json.dumps(inst.team.cycle("command line"), indent=2))
         return 0
+    if args and args[0] in ("harvest-engine", "harvest-admin"):
+        if not getattr(inst, "team", None):
+            print("The shared database (Commons) could not be opened; see the log.")
+            return 1
+        return _harvest_cli(inst, args[0], args[1:])
     if args and args[0] in getattr(inst, "CLI_COMMANDS", {}):
         return inst.CLI_COMMANDS[args[0]](args[1:])
     if getattr(inst, "monitor", None):

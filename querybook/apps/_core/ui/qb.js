@@ -333,8 +333,9 @@ async function renderCommons(el) {
       "Each application has a team of four agents — a Strategist, a Planner, a Harvester and a Curator — that devise a harvest strategy, plan it, carry it out and save and manage what was found. " +
       "The applications check each other's facts: each kind of check is answered by the application able to answer it, and the answer is kept with the fact as evidence, with its reasoning. " +
       "The agents are deterministic programs, not AI models.</p>" +
-      '<div class="row"><button class="btn" id="cm-run">Run this team now</button><label class="row small"><input type="checkbox" id="cm-auto"> Harvest automatically (every 30 minutes)</label>' +
+      '<div class="row"><button class="btn" id="cm-run">Run this team now</button><label class="row small"><input type="checkbox" id="cm-auto"> Harvest automatically (the engine gives each application its turn)</label>' +
       '<label class="row small">Licence policy <select id="cm-policy"></select></label></div><div id="cm-state" aria-live="polite"></div></div>' +
+      '<div id="hv"></div>' +
       '<div class="card"><h2>The teams</h2><div id="cm-teams"></div></div>' +
       '<div class="card"><h2>This team\'s strategy and plan</h2><div id="cm-plan"></div></div>' +
       '<div class="card"><h2>The shared database</h2><div id="cm-db"></div></div>' +
@@ -371,6 +372,7 @@ async function renderCommons(el) {
             "</td><td>" + esc(x.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">None.</p>');
     });
   }
+  renderHarvest($("#hv", el));
   const s = await api("/api/commons/status");
   const c = s.commons;
   $("#cm-auto", el).checked = s.auto;
@@ -401,4 +403,134 @@ async function renderCommons(el) {
     "</td><td>" + esc(l.app) + "</td><td>" + esc(l.role) + "</td><td>" + esc(l.message) + '</td><td class="mono">' + (l.ms === null ? "" : (l.ms / 1000).toFixed(2) + " s") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing yet.</p>';
   clearTimeout(CM_TIMER);
   if (s.state.running && el.classList.contains("active")) CM_TIMER = setTimeout(() => renderCommons(el), 1500);
+}
+
+// ---------------------------------------------------------------- the harvesting engine, policy registry and approvals
+let HV_PASS = "";            // the admin passphrase, held in this page only (never stored)
+let HV_LOG = [];
+const hvClass = (cls, classes) => cmTag(cls, classes[cls] && classes[cls].allowed ? "good" : "bad");
+const hvState = s => cmTag(s, s === "approved" || s === "applied" || s === "harvested" || s === "refreshed" ? "good" : s === "blocked" || s === "rejected" || s === "failed" ? "bad" : "warn");
+const hvPass = el => { const v = $("#hv-pass", el).value; if (v) HV_PASS = v; if (!HV_PASS) { toast("Type the admin passphrase first."); throw new Error("no passphrase"); } return HV_PASS; };
+
+async function renderHarvest(el) {
+  if (!el.dataset.ready) {
+    el.dataset.ready = "1";
+    el.innerHTML =
+      '<div class="card"><h2>Harvesting engine</h2><p class="small muted">One engine runs the three harvest teams in turn — language, STEM and history — so they never harvest at the same time. ' +
+      "Each turn goes to the application with the most to gain: checks other applications are waiting for, a fast recent harvest, or no harvest yet; the one that just harvested waits, and one that found nothing new backs off for longer each time (less volume). " +
+      "Every task is checked against the policy registry first: only sources whose licence puts no restriction on QueryBook are harvested. Everything is logged with its source and why.</p>" +
+      '<div id="hv-engine"></div></div>' +
+      '<div class="card"><h2>Waiting for your approval</h2><p class="small muted">The learning agent reads the harvest record and recommends changes — bigger or smaller batches, pausing a failing task, classifying a new source. ' +
+      "Nothing is changed until you, the admin, approve it here. Every decision is versioned.</p>" +
+      '<div id="hv-admin"></div><div id="hv-pending"></div><details><summary class="small">Decided recommendations</summary><div id="hv-decided"></div></details></div>' +
+      '<div class="card"><h2>Policy registry — sources</h2><p class="small muted">A source is harvested only when it is <b>approved</b>. Licence classes that restrict QueryBook (attribution, share-alike, non-commercial, no-derivatives, copyrighted text, terms of service, unknown) are blocked; ' +
+      "approving one needs your passphrase and an explicit acceptance of the restriction. Third-party wording (quotes) is kept only from public-domain, CC0, US-federal or computed sources.</p>" +
+      '<div id="hv-sources"></div><details><summary class="small">Add a source</summary><div class="row">' +
+      '<input id="hv-k" type="text" placeholder="key, e.g. wikidata-cc0" aria-label="Source key"><input id="hv-n" class="grow" type="text" placeholder="name" aria-label="Source name">' +
+      '<input id="hv-a" type="text" placeholder="apps (language, stem, facts)" aria-label="Applications"><input id="hv-u" type="text" placeholder="URL" aria-label="URL"></div>' +
+      '<div class="row"><input id="hv-l" type="text" placeholder="licence as stated" aria-label="Licence"><select id="hv-c" aria-label="Licence class"></select>' +
+      '<input id="hv-r" class="grow" type="text" placeholder="why this source" aria-label="Reason"><button class="btn quiet" id="hv-add">Add (pending until approved)</button></div></details>' +
+      '<details><summary class="small">Licence classes</summary><div id="hv-classes"></div></details></div>' +
+      '<div class="card"><h2>Learning — is harvesting getting faster?</h2><div id="hv-metrics"></div><div class="row"><button class="btn quiet" id="hv-review">Ask the learning agent to review now</button></div></div>' +
+      '<div class="card"><h2>Harvest log</h2><p class="small muted">Every task — harvested, blocked, failed or refreshed — with its source, licence class and why. Entries are hash-chained (any later edit is detected) and archived monthly as JSON lines in the shared folder.</p>' +
+      '<div class="row"><select id="hv-fa" aria-label="Application"><option value="">all applications</option><option value="language">language</option><option value="stem">stem</option><option value="facts">history</option></select>' +
+      '<select id="hv-fd" aria-label="Decision"><option value="">any decision</option><option>harvested</option><option>blocked</option><option>failed</option><option>refreshed</option></select>' +
+      '<button class="btn quiet" id="hv-show">Show</button><button class="btn quiet" id="hv-verify">Verify the chain</button><button class="btn quiet" id="hv-arch">Archive now</button>' +
+      '<button class="btn quiet" id="hv-csv">Export CSV</button></div><div id="hv-vres"></div><div id="hv-log"></div></div>' +
+      '<div class="card"><h2>Parameters and policy versions</h2><div id="hv-params"></div><details><summary class="small">Policy versions (every change, who and why)</summary><div id="hv-versions"></div></details></div>';
+    const showLog = async () => {
+      const r = await api("/api/harvest/log", { app: $("#hv-fa", el).value, decision: $("#hv-fd", el).value, limit: 300 });
+      HV_LOG = r.log;
+      $("#hv-log", el).innerHTML = r.log.length ? '<table class="t small"><tr><th>#</th><th>When (UTC)</th><th>Domain</th><th>Task</th><th>Source</th><th>Class</th><th>Decision</th><th>Items</th><th>New</th><th>Time</th><th>Why</th></tr>' +
+        r.log.map(h => "<tr><td>" + h.id + '</td><td class="mono">' + cmWhen(h.at) + "</td><td>" + esc(h.domain) + "</td><td>" + esc(h.title) + '</td><td class="mono">' + esc(h.source_key || "") +
+          "</td><td>" + esc(h.licence_class || "") + "</td><td>" + hvState(h.decision) + "</td><td>" + h.items + "</td><td>" + h.new + '</td><td class="mono">' + (h.seconds || 0).toFixed(2) +
+          " s</td><td>" + esc(h.reason) + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
+    };
+    el._showLog = showLog;
+    $("#hv-show", el).addEventListener("click", showLog);
+    $("#hv-verify", el).addEventListener("click", async () => {
+      const v = await api("/api/harvest/verify", {});
+      $("#hv-vres", el).innerHTML = '<div class="note ' + (v.ok ? "good" : "bad") + '">' + (v.ok ? "<b>Chain intact:</b> " + v.entries + " entries, last hash <span class=\"mono\">" + esc(String(v.last_hash).slice(0, 16)) + "…</span>"
+        : "<b>Chain broken</b> at entry #" + v.broken_at + " — " + v.entries + " entries before it are intact. The record was edited outside the engine.") + "</div>";
+    });
+    $("#hv-arch", el).addEventListener("click", async () => { const r = await api("/api/harvest/archive", {}); toast(r.archived ? r.archived + " entries archived to " + r.folder : "Nothing new to archive."); });
+    $("#hv-csv", el).addEventListener("click", () => {
+      const cols = ["id", "at", "app", "domain", "action", "title", "source_key", "licence_class", "decision", "items", "new", "merged", "seconds", "reason", "budget_key", "turn_id", "policy_version", "hash"];
+      const q = v => '"' + String(v === null || v === undefined ? "" : v).replace(/"/g, '""') + '"';
+      const blob = new Blob([cols.join(",") + "\n" + HV_LOG.map(h => cols.map(k => q(h[k])).join(",")).join("\n")], { type: "text/csv" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "querybook-harvest-log.csv"; a.click();
+    });
+    $("#hv-review", el).addEventListener("click", async () => { const r = await api("/api/harvest/review", {}); toast(r.made ? r.made + " new recommendation(s) for you to decide." : "No new recommendations."); renderHarvest(el); });
+    $("#hv-add", el).addEventListener("click", async () => {
+      await api("/api/harvest/source_add", { passphrase: hvPass(el), key: $("#hv-k", el).value, name: $("#hv-n", el).value, apps: $("#hv-a", el).value, url: $("#hv-u", el).value,
+        licence: $("#hv-l", el).value, licence_class: $("#hv-c", el).value, reason: $("#hv-r", el).value });
+      toast("Source added as pending — approve it below when its licence is confirmed."); renderHarvest(el);
+    });
+    el.addEventListener("click", async e => {
+      const b = e.target.closest("button[data-hv]");
+      if (!b) return;
+      const [act, id] = b.dataset.hv.split(":");
+      if (act === "setpass") {
+        await api("/api/harvest/admin", { new: $("#hv-new", el).value, old: $("#hv-old", el) ? $("#hv-old", el).value : "" });
+        HV_PASS = $("#hv-new", el).value; toast("Admin passphrase saved (only a salted hash is kept)."); renderHarvest(el); return;
+      }
+      if (act === "ok" || act === "no") {
+        const r = await api("/api/harvest/decide", { id: Number(id), approve: act === "ok", passphrase: hvPass(el), note: $("#hv-note-" + id, el).value });
+        toast("Recommendation #" + r.id + " " + r.status + "."); renderHarvest(el); return;
+      }
+      if (act === "src") {
+        const row = b.closest("tr");
+        await api("/api/harvest/source", { key: id, status: $("select.hv-st", row).value, licence_class: $("select.hv-cl", row).value, passphrase: hvPass(el),
+          reason: $("input.hv-why", row).value || "admin decision", accept_restriction: $("input.hv-acc", row).checked });
+        toast("Registry updated — the change is versioned."); renderHarvest(el); return;
+      }
+      if (act === "param") {
+        const row = b.closest("tr");
+        await api("/api/harvest/param", { key: id, value: $("input.hv-pv", row).value, passphrase: hvPass(el), reason: "set by the admin" });
+        toast("Parameter saved."); renderHarvest(el);
+      }
+    });
+  }
+  const f = document.activeElement;
+  if (f && el.contains(f) && /^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) return;    // don't wipe what the admin is typing
+  const s = await api("/api/harvest/status");
+  const classes = s.classes;
+  const names = { language: "Language", stem: "Math & Science", facts: "History & News" };
+  const e = s.engine;
+  $("#hv-engine", el).innerHTML = '<div class="note' + (s.auto ? " good" : "") + '">' + (s.auto ? "<b>Automatic harvesting is on</b> for this application." : "<b>Automatic harvesting is off</b> for this application — tick the box below to let the engine give it turns.") +
+    ' <span class="small">Engine ' + esc(e.version) + " · policy version " + s.policy_version + " · " + s.log_entries.toLocaleString() + " log entries</span></div>" +
+    '<table class="t small"><tr><th>Application</th><th>Last heard</th></tr>' + e.heartbeats.map(h => "<tr><td>" + esc(names[h.app] || h.app) + "</td><td>" +
+      (h.seconds_ago < 180 ? cmTag("running", "good") : cmTag("not running")) + " " + Math.round(h.seconds_ago) + " s ago</td></tr>").join("") + "</table>" +
+    "<h3>Recent turns</h3>" + (e.turns.length ? '<table class="t small"><tr><th>#</th><th>Started (UTC)</th><th>Domain</th><th>Why this turn</th><th>Result</th></tr>' + e.turns.map(t => "<tr><td>" + t.id +
+      '</td><td class="mono">' + cmWhen(t.started) + "</td><td>" + esc(t.domain) + "</td><td>" + esc(t.reason) + "</td><td>" + (!t.ended ? cmTag("running", "warn") : !t.result ? "" :
+        t.result.error ? cmTag("failed", "bad") + " " + esc(t.result.error) : t.result.timeout ? cmTag("timed out", "warn") :
+          (t.result.new || 0) + " new, " + (t.result.checks_answered || 0) + " checks, " + (t.result.blocked || 0) + " blocked") + "</td></tr>").join("") + "</table>" : '<p class="muted">No turns yet.</p>');
+  $("#hv-admin", el).innerHTML = s.admin_set ?
+    '<div class="row"><label class="row small">Admin passphrase <input id="hv-pass" type="password" autocomplete="current-password" placeholder="' + (HV_PASS ? "remembered for this page" : "needed to decide") + '"></label>' +
+    '<details class="small"><summary>Change passphrase</summary><input id="hv-old" type="password" placeholder="current"> <input id="hv-new" type="password" placeholder="new (8+ characters)"> <button class="btn quiet" data-hv="setpass">Change</button></details></div>' :
+    '<div class="note warn"><b>Set the admin passphrase first.</b> Only the admin can approve recommendations or change the registry. <input id="hv-new" type="password" autocomplete="new-password" placeholder="at least 8 characters"> ' +
+    '<button class="btn" data-hv="setpass">Set admin passphrase</button><input id="hv-pass" type="hidden"></div>';
+  $("#hv-pending", el).innerHTML = s.pending.length ? '<table class="t small"><tr><th>#</th><th>Kind</th><th>Recommendation</th><th>Why</th><th>Change</th><th>Decision</th></tr>' + s.pending.map(r => "<tr><td>" + r.id +
+    "</td><td>" + cmTag(r.kind) + "</td><td><b>" + esc(r.title) + "</b></td><td>" + esc(r.rationale) + '</td><td class="mono">' + esc(JSON.stringify(r.change)) +
+    '</td><td><input id="hv-note-' + r.id + '" type="text" placeholder="note (optional)"> <button class="btn" data-hv="ok:' + r.id + '">Approve</button> <button class="btn quiet" data-hv="no:' + r.id + '">Reject</button></td></tr>').join("") + "</table>" :
+    '<p class="muted">Nothing waiting for you.</p>';
+  $("#hv-decided", el).innerHTML = s.decided.filter(r => r.status !== "pending").map(r => '<div class="small">#' + r.id + " " + hvState(r.status) + " " + esc(r.title) + " — " + cmWhen(r.decided_at) + (r.note ? " (" + esc(r.note) + ")" : "") + "</div>").join("") || '<p class="muted small">None yet.</p>';
+  const clsOpts = sel => Object.keys(classes).map(k => '<option value="' + k + '"' + (k === sel ? " selected" : "") + ">" + k + "</option>").join("");
+  $("#hv-c", el).innerHTML = clsOpts("unknown");
+  $("#hv-sources", el).innerHTML = '<table class="t small"><tr><th>Source</th><th>Apps</th><th>Licence</th><th>Class</th><th>Status</th><th>Why / decided</th><th>Admin decision</th></tr>' + s.sources.map(x => "<tr><td><b>" +
+    (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name) + "</a>" : esc(x.name)) + '</b><br><span class="mono muted">' + esc(x.key) + "</span></td><td>" + esc(x.apps || "") + "</td><td>" +
+    esc(x.licence || "") + "</td><td>" + hvClass(x.licence_class, classes) + "</td><td>" + hvState(x.status) + "</td><td>" + esc(x.reason || "") + (x.decided_by ? '<br><span class="muted">' + esc(x.decided_by) + " " + cmWhen(x.decided_at) + "</span>" : "") +
+    '</td><td><select class="hv-st"><option' + (x.status === "approved" ? " selected" : "") + ">approved</option><option" + (x.status === "blocked" ? " selected" : "") + ">blocked</option><option" + (x.status === "pending" ? " selected" : "") + ">pending</option></select> " +
+    '<select class="hv-cl">' + clsOpts(x.licence_class) + '</select> <input class="hv-why" type="text" placeholder="reason"> <label class="small"><input class="hv-acc" type="checkbox"> accept the restriction</label> ' +
+    '<button class="btn quiet" data-hv="src:' + esc(x.key) + '">Save</button></td></tr>').join("") + "</table>";
+  $("#hv-classes", el).innerHTML = '<table class="t small"><tr><th>Class</th><th>Harvested?</th><th>Why</th></tr>' + Object.entries(classes).map(([k, v]) => "<tr><td>" + esc(k) + "</td><td>" + (v.allowed ? cmTag("yes", "good") : cmTag("blocked", "bad")) + "</td><td>" + esc(v.why) + "</td></tr>").join("") + "</table>";
+  $("#hv-metrics", el).innerHTML = s.metrics.length ? '<table class="t small"><tr><th>Application</th><th>Tasks</th><th>Harvested</th><th>Blocked</th><th>Failed</th><th>Items</th><th>New</th><th>New share</th><th>New facts / s</th></tr>' +
+    s.metrics.map(m => "<tr><td>" + esc(names[m.app] || m.app) + "</td><td>" + m.tasks + "</td><td>" + m.harvested + "</td><td>" + m.blocked + "</td><td>" + m.failed + "</td><td>" + (m.items || 0).toLocaleString() + "</td><td>" + (m.new || 0).toLocaleString() +
+      "</td><td>" + (m.new_share === null ? "" : Math.round(100 * m.new_share) + "%") + "</td><td>" + (m.facts_per_s === null ? "" : m.facts_per_s) + "</td></tr>").join("") + "</table>" +
+    (s.trend.length ? "<h3>By day</h3>" + '<table class="t small"><tr><th>Day</th><th>Domain</th><th>New</th><th>Items</th><th>Seconds</th></tr>' + s.trend.map(t => '<tr><td class="mono">' + esc(t.day) + "</td><td>" + esc(t.domain) + "</td><td>" + t.new + "</td><td>" + t.items + "</td><td>" + t.seconds + "</td></tr>").join("") + "</table>" : "") :
+    '<p class="muted">No harvests logged yet.</p>';
+  $("#hv-params", el).innerHTML = '<table class="t small"><tr><th>Parameter</th><th>Value</th><th>What it does</th><th>Last set</th><th></th></tr>' + s.params.map(p => '<tr><td class="mono">' + esc(p.key) + '</td><td><input class="hv-pv" type="text" size="8" value="' +
+    esc(JSON.stringify(p.value)) + '"></td><td>' + esc(p.description || "") + "</td><td>" + esc(p.updated_by || "") + " " + cmWhen(p.updated) + '</td><td><button class="btn quiet" data-hv="param:' + esc(p.key) + '">Save</button></td></tr>').join("") + "</table>";
+  $("#hv-versions", el).innerHTML = s.versions.map(v => '<div class="small"><span class="mono">v' + v.id + " " + cmWhen(v.at) + "</span> <b>" + esc(v.actor) + "</b> " + esc(JSON.stringify(v.change)) + " — " + esc(v.reason || "") + "</div>").join("") || '<p class="muted small">No changes yet.</p>';
+  if (el._showLog) el._showLog();
 }

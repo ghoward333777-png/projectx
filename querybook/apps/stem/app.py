@@ -25,7 +25,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 PORT = 8102
 program_dir = HERE
 
@@ -428,7 +428,7 @@ def selftest():
     # store, save, verify, import — in a throw-away folder
     with tempfile.TemporaryDirectory() as tmp:
         app = App(os.path.join(tmp, "data"))
-        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes
+        c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
         r = app.ask("12 × 7")
         c.check("ask: calculation", r["answer"] == "84")
