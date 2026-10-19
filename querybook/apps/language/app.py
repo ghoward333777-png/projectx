@@ -11,7 +11,7 @@ Start:      python app.py            (opens http://127.0.0.1:8101/)
 Self-test:  python app.py --selftest
 More:       python app.py --help
 """
-import datetime, hashlib, json, os, re, sys, tempfile, threading, time
+import base64, datetime, hashlib, json, os, re, sys, tempfile, threading, time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +26,7 @@ import speech
 import speechlab
 import lipcoach
 import persona
+import avatars
 import photoreal
 import silent
 import lipread
@@ -38,7 +39,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.20.0"
+VERSION = "1.21.0"
 PORT = 8101
 program_dir = HERE
 
@@ -101,6 +102,7 @@ class App:
         self.speech = speechlab.SpeechLab(self.store, self.lab, self.log, self.store.folder)
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
+        self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
@@ -866,11 +868,76 @@ class App:
                                    "COL": "jobs: lip_sync, lip_read, benchmark"},
                     "learned_model_active": isinstance(lipread.ACTIVE.get("model"), dict)}
 
+        # ---------------------------------------------------------------- avatar library
+        @a.get("/api/avatars/list")
+        def av_list(p):
+            return {"avatars": self.avatars.list(p.get("all") == "1"), "sources": avatars.SOURCES, "label": avatars.LABEL}
+
+        @a.get("/api/avatars/get")
+        def av_get(p):
+            return self.avatars.get(p.get("id"))
+
+        @a.get("/api/avatars/image")
+        def av_image(p):
+            path = self.avatars.image_path(p.get("id"))
+            with open(path, "rb") as f:
+                data = f.read()
+            return data, {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[path.rsplit(".", 1)[-1]]
+
+        @a.post("/api/avatars/import")
+        def av_import(p):
+            if p.get("path"):
+                return self.avatars.import_path(p["path"], p.get("source") or "synthetic", bool(p.get("attest")))
+            return self.avatars.import_files(p.get("files"), p.get("source") or "synthetic", bool(p.get("attest")))
+
+        @a.post("/api/avatars/add")
+        def av_add(p):
+            data = base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1])
+            return self.avatars.add(data, p.get("name"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("tags"),
+                                    p.get("subject"), bool(p.get("consent")), p.get("filename"))
+
+        @a.post("/api/avatars/landmarks")
+        def av_landmarks(p):
+            return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
+
+        @a.post("/api/avatars/update")
+        def av_update(p):
+            return self.avatars.update(p.get("id"), p.get("name"), p.get("tags"), p.get("voice"), p.get("notes"), p.get("hidden"))
+
+        @a.post("/api/avatars/delete")
+        def av_delete(p):
+            return self.avatars.delete(p.get("id"))
+
+        @a.post("/api/avatars/speak")
+        def av_speak(p):
+            """The avatar says a text: speech in its voice, then the full 52-channel face motion (a VSE job to poll)."""
+            av = self.avatars.get(p.get("id"))
+            text = " ".join(str(p.get("text") or "").split())
+            if not text:
+                raise core.UserError("Type what the avatar should say.")
+            v = av.get("voice") or {}
+            prof = {k: x for k, x in (p.get("profile") or {}).items() if k in ("emotion", "lang") and x}
+            prof["lang"] = v.get("lang") or prof.get("lang") or p.get("lang") or "en"
+            for k in ("pitch_hz", "rate"):
+                if v.get(k):
+                    prof[k] = v[k]
+            if p.get("emotion"):
+                prof["emotion"] = p["emotion"]
+            g = self.speech.generate(text, prof, v.get("engine") or p.get("engine") or "espeak", v.get("voice") or p.get("voice") or "",
+                                     v.get("model") or "", None, measure=False, quiet_label="avatar %s: " % av["name"])
+            with open(self.speech.audio_path(g["audio"]), "rb") as f:
+                wav = f.read()
+            job = self.vse.submit("lip_sync", self.vse.lip_sync_job(wav, text, prof["lang"], None, 30, None, False))
+            return {"audio": g["audio"], "job": job, "label": av["label"], "engine_used": g["summary"]["engine_used"]}
+
         @a.post("/api/vse/lip_sync")
         def vse_lip_sync(p):
             text = (p.get("text") or "").strip()
             wav = None
-            if p.get("audio_b64"):
+            if p.get("audio_name"):                                   # a file the Speech lab made
+                with open(self.speech.audio_path(os.path.basename(p["audio_name"])), "rb") as f:
+                    wav = f.read()
+            elif p.get("audio_b64"):
                 wav = _audio(p)
             elif p.get("log_id"):
                 row = self.store.one("SELECT request, result, audio FROM speech_log WHERE id = ?", (int(p["log_id"]),))
@@ -1395,6 +1462,50 @@ def selftest():
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
                 and app.devices is not None and ("GET", "/api/devices/openapi.json") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
+        # avatar library and the 52-channel face
+        import base64 as b64, struct as st, zlib as zl
+        def png(w, h, rgb):
+            raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+            ch = lambda t, d: st.pack(">I", len(d)) + t + d + st.pack(">I", zl.crc32(t + d) & 0xffffffff)
+            return b"\x89PNG\r\n\x1a\n" + ch(b"IHDR", st.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + ch(b"IDAT", zl.compress(raw)) + ch(b"IEND", b"")
+        try:
+            app.avatars.add(png(8, 8, (200, 150, 120)), "Test", "synthetic", False)
+            refused = False
+        except core.UserError:
+            refused = True
+        c.check("avatars: a synthetic portrait needs the 'no real person' confirmation", refused)
+        try:
+            app.avatars.add(png(8, 8, (10, 150, 120)), "Real", "consented", False, subject="", consent=False)
+            refused2 = False
+        except core.UserError:
+            refused2 = True
+        c.check("avatars: a real person's portrait needs their name and consent", refused2)
+        a1 = app.avatars.add(png(16, 12, (200, 150, 120)), None, "synthetic", True, filename="maasai2.png")
+        c.check("avatars: added, named from the file, size read", a1["name"] == "Maasai 2" and app.avatars.get(a1["id"])["width"] == 16
+                and app.avatars.add(png(16, 12, (200, 150, 120)), None, "synthetic", True)["duplicate"])
+        import math as _m
+        fake = [[0.5 + 0.2 * _m.cos(k), 0.5 + 0.25 * _m.sin(k), 0.01 * (k % 7)] for k in range(478)]
+        for i, xy in ((10, (0.5, 0.2)), (152, (0.5, 0.8)), (13, (0.5, 0.62)), (14, (0.5, 0.625)), (61, (0.42, 0.62)), (291, (0.58, 0.62)),
+                      (1, (0.5, 0.5)), (234, (0.3, 0.5)), (454, (0.7, 0.5))):
+            fake[i] = [xy[0], xy[1], 0.0]
+        q = app.avatars.set_landmarks(a1["id"], fake)
+        c.check("avatars: 478 3D landmarks stored with depth, quality checked", q["points"] == 478 and q["quality"] == []
+                and len(app.avatars.get(a1["id"])["landmarks"][0]) == 3, q)
+        z = os.path.join(app.folder, "av-test.zip")
+        import zipfile as zf
+        with zf.ZipFile(z, "w") as zz:
+            zz.writestr("images/one.png", png(9, 9, (1, 2, 3))); zz.writestr("images/desktop.ini", "x"); zz.writestr("images/two.png", png(9, 9, (4, 5, 6)))
+        imp = app.avatars.import_path(z, "synthetic", True)
+        c.check("avatars: a .zip of portraits imports (other files skipped)", imp["added"] == 2 and not imp["failed"], imp)
+        tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
+        mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
+        bs = mo["frames"][len(mo["frames"]) // 2]["bs"]
+        col = lambda k: [f["bs"][vse.ARKIT52.index(k)] for f in mo["frames"]]
+        c.check("face: all 52 ARKit channels per frame, in range", len(vse.ARKIT52) == 52 == len(set(vse.ARKIT52)) == len(bs) and all(0 <= x <= 1 for x in bs)
+                and mo["bs_names"] == vse.ARKIT52)
+        c.check("face: lips close on p/b, tongue shows on th, eyes blink, smile lifts the cheeks",
+                max(col("mouthPressLeft")) > 0.3 and max(col("tongueOut")) > 0.3 and max(col("eyeBlinkLeft")) > 0.5 and max(col("cheekSquintLeft")) > 0.1)
+        c.check("face: 52-channel CSV for Live Link Face / Blender / Unreal", vse.arkit52_csv(mo).splitlines()[0].split(",")[1:53] == vse.ARKIT52)
         app.set_settings("es", 5)
         s = app.session("es", "type")
         c.check("first session offers 5 new words", s["new"] == 5 and s["due"] == 0 and len(s["items"]) == 5, s["new"])

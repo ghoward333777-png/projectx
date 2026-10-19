@@ -431,6 +431,17 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed=""):
                        "head_pose_deg": [round(1.5 * math.sin(0.9 * t + phase), 2), round(nod, 2), round(0.6 * math.sin(0.5 * t + phase / 2), 2)],
                        "eye_gaze": [round(gaze[0], 3), round(gaze[1], 3)], "blink": round(max(0.0, min(1.0, blink)), 3),
                        "brows": [round(min(1.0, brow + 0.1 * sad), 3), round(min(1.0, 0.7 * brow), 3)]})
+    # the full 52-channel ARKit face for every frame (mouth, jaw, cheeks, nose, eyes, brows, tongue)
+    tongue = [0.0] * n
+    for v, a, b in segs:
+        if v in ("TH", "DD", "nn", "SS"):
+            peak = 0.55 if v == "TH" else 0.12
+            c, h = (a + b) / 2, max(0.03, (b - a) / 2)
+            for i in range(max(0, int((c - 2 * h) * fps)), min(n, int((c + 2 * h) * fps) + 1)):
+                tongue[i] = max(tongue[i], peak * math.exp(-((i / fps - c) / h) ** 2))
+    asym = 0.06 * (rnd.random() - 0.5)                    # this speaker's slight left/right difference
+    for i, f in enumerate(motion):
+        f["bs"] = arkit52(f, e, tongue[i], asym, i / fps, phase)
     # the viseme sequence, with how far each sound was reached and how much its neighbours took over
     vseq = []
     for k, (v, a, b) in enumerate(segs):
@@ -446,8 +457,69 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed=""):
         vseq.append({"id": v, "start_time": round(a, 3), "end_time": round(b, 3), "intensity": round(max(0.0, min(1.0, inten)), 3),
                      "coarticulation_left": round(_dominance(left, crit[0])[0] / 1.0, 2) if left else 0.0,
                      "coarticulation_right": round(_dominance(right, crit[0])[0] / 1.0, 2) if right else 0.0})
-    return {"viseme_sequence": {"visemes": vseq}, "motion": {"fps": fps, "params": PARAMS, "frames": motion, "accents_s": accents,
+    return {"viseme_sequence": {"visemes": vseq}, "motion": {"fps": fps, "params": PARAMS, "bs_names": ARKIT52, "frames": motion, "accents_s": accents,
                                                              "blinks_s": [round(b, 2) for b in blinks]}}
+
+
+# The 52 ARKit blendshapes, in Apple's order (ARFaceAnchor.BlendShapeLocation).
+ARKIT52 = ["eyeBlinkLeft", "eyeLookDownLeft", "eyeLookInLeft", "eyeLookOutLeft", "eyeLookUpLeft", "eyeSquintLeft", "eyeWideLeft",
+           "eyeBlinkRight", "eyeLookDownRight", "eyeLookInRight", "eyeLookOutRight", "eyeLookUpRight", "eyeSquintRight", "eyeWideRight",
+           "jawForward", "jawLeft", "jawRight", "jawOpen", "mouthClose", "mouthFunnel", "mouthPucker", "mouthLeft", "mouthRight",
+           "mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight", "mouthDimpleLeft", "mouthDimpleRight",
+           "mouthStretchLeft", "mouthStretchRight", "mouthRollLower", "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper",
+           "mouthPressLeft", "mouthPressRight", "mouthLowerDownLeft", "mouthLowerDownRight", "mouthUpperUpLeft", "mouthUpperUpRight",
+           "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight", "cheekPuff", "cheekSquintLeft",
+           "cheekSquintRight", "noseSneerLeft", "noseSneerRight", "tongueOut"]
+
+
+def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0):
+    """One motion frame → all 52 ARKit blendshapes. The 13 measured mouth parameters drive their own channels; the rest
+    follow how faces move together in speech: a smile narrows the eyes and lifts the cheeks, lip presses build cheek
+    pressure, upper-lip raises wrinkle the nose, sadness pulls the corners down, the eyes follow the gaze, and the two
+    sides of the face differ slightly (no real face is symmetric)."""
+    m = {k: f["mouth"][_I[k]] for k in PARAMS}
+    gx, gy = f["eye_gaze"]
+    blink, (brow_in, brow_out) = f["blink"], f["brows"]
+    joy, sad, ang = float(emo.get("joy", 0.0)), float(emo.get("sadness", 0.0)), float(emo.get("anger", 0.0))
+    L, R = 1.0 + asym, 1.0 - asym
+    c = lambda x: round(max(0.0, min(1.0, x)), 4)
+    smile, stretch, press = m["smile"], m["stretch"], m["press"]
+    v = {
+        "eyeBlinkLeft": blink, "eyeBlinkRight": blink,
+        "eyeLookOutLeft": max(0.0, -gx) * 2.4, "eyeLookInRight": max(0.0, -gx) * 2.4,
+        "eyeLookInLeft": max(0.0, gx) * 2.4, "eyeLookOutRight": max(0.0, gx) * 2.4,
+        "eyeLookUpLeft": max(0.0, -gy) * 3.0, "eyeLookUpRight": max(0.0, -gy) * 3.0,
+        "eyeLookDownLeft": max(0.0, gy) * 3.0, "eyeLookDownRight": max(0.0, gy) * 3.0,
+        "eyeSquintLeft": (0.55 * smile + 0.25 * ang) * L, "eyeSquintRight": (0.55 * smile + 0.25 * ang) * R,
+        "eyeWideLeft": 0.35 * brow_out, "eyeWideRight": 0.35 * brow_out,
+        "jawForward": 0.25 * m["mouthRollLower"] + 0.08 * stretch,
+        "jawLeft": max(0.0, 0.03 * math.sin(0.7 * t + phase)), "jawRight": max(0.0, -0.03 * math.sin(0.7 * t + phase)),
+        "jawOpen": m["jawOpen"], "mouthClose": m["mouthClose"], "mouthFunnel": m["mouthFunnel"], "mouthPucker": m["mouthPucker"],
+        "mouthLeft": max(0.0, asym) * 0.5 * m["jawOpen"], "mouthRight": max(0.0, -asym) * 0.5 * m["jawOpen"],
+        "mouthSmileLeft": (smile + 0.12 * joy) * L, "mouthSmileRight": (smile + 0.12 * joy) * R,
+        "mouthFrownLeft": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * L, "mouthFrownRight": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * R,
+        "mouthDimpleLeft": (0.3 * smile + 0.25 * press) * L, "mouthDimpleRight": (0.3 * smile + 0.25 * press) * R,
+        "mouthStretchLeft": stretch * L, "mouthStretchRight": stretch * R,
+        "mouthRollLower": m["mouthRollLower"], "mouthRollUpper": m["mouthRollUpper"],
+        "mouthShrugLower": m["mouthShrugLower"], "mouthShrugUpper": 0.35 * m["mouthShrugLower"] + 0.2 * m["mouthRollLower"],
+        "mouthPressLeft": press * L, "mouthPressRight": press * R,
+        "mouthLowerDownLeft": m["lowerDown"] * L, "mouthLowerDownRight": m["lowerDown"] * R,
+        "mouthUpperUpLeft": m["upperUp"] * L, "mouthUpperUpRight": m["upperUp"] * R,
+        "browDownLeft": 0.4 * ang, "browDownRight": 0.4 * ang,
+        "browInnerUp": brow_in + 0.25 * sad, "browOuterUpLeft": brow_out * L, "browOuterUpRight": brow_out * R,
+        "cheekPuff": 0.3 * press * (1.0 - m["jawOpen"]), "cheekSquintLeft": 0.6 * smile * L, "cheekSquintRight": 0.6 * smile * R,
+        "noseSneerLeft": 0.35 * m["upperUp"] + 0.1 * smile, "noseSneerRight": 0.35 * m["upperUp"] + 0.1 * smile,
+        "tongueOut": tongue,
+    }
+    return [c(v.get(k, 0.0)) for k in ARKIT52]
+
+
+def arkit52_csv(motion):
+    """All 52 ARKit channels per frame plus head pose (Live Link Face column order)."""
+    lines = [",".join(["time_s"] + ARKIT52 + ["headYaw", "headPitch", "headRoll"])]
+    for f in motion["frames"]:
+        lines.append(",".join(str(x) for x in [f["time"]] + f["bs"] + f["head_pose_deg"]))
+    return "\n".join(lines) + "\n"
 
 
 ARKIT = [("jawOpen", "jawOpen", 1), ("mouthClose", "mouthClose", 1), ("mouthFunnel", "mouthFunnel", 1), ("mouthPucker", "mouthPucker", 1),
@@ -1068,7 +1140,7 @@ class Engine:
             progress(4, 4, "done")
             return {"phonemes": a["phonemes"], "emotion": emo, "speaker_embedding": a["speaker_embedding"],
                     "prosody_summary": {"pitch_hz": a["measure"]["pitch"].get("mean_hz"), "rate_syl_s": a["measure"]["rate"]["articulation_rate_syl_s"]},
-                    "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]),
+                    "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]), "arkit52_csv": arkit52_csv(ls["motion"]),
                     "personal_targets": sorted(tg), "duration": a["duration"]}
         return fn
 

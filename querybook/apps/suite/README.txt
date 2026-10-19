@@ -53,7 +53,12 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.20.0)
+  Language Builder (1.21.0)
+    * Avatar library (Speech -> Avatars): import portraits (files, a folder or a .zip); each becomes a talking
+      avatar measured at 478 face points with depth and animated with all 52 ARKit face channels — lips, jaw,
+      cheeks, nose, eyelids, gaze, brows and tongue — with natural co-articulation, blinks, brow raises and 3D head
+      motion. Studio with expression presets, a slider for each of the 52 channels and a 52-channel CSV export.
+      AI-generated portraits need a "no real person" confirmation; real people need their consent.
     * Visual Speech Engine (Speech -> Face & video): full-face lip sync from words + a recording
       (coarticulation, jaw, brows, head nods, blinks, gaze, emotion), ARKit blendshape export and a
       preview face; a new lip reader (soft scores for 15 mouth shapes + word decoding) shown next to the

@@ -100,6 +100,10 @@ class TalkingFace {
     if (mode === "3d") {
       const mod = await import("./face3d.mjs");
       this.impl = new mod.Face3D(this.el);
+    } else if (mode === "avatar") {                    // a library avatar: depth mesh driven by 52 face channels (avatarface.js)
+      const af = new DepthFace(this.el, opts.avatar, opts.params);
+      await af.ready;
+      this.impl = af;
     } else if (mode === "photo") {                     // the author's own photo (photoface.js)
       const pf = authorFace(this.el, opts.persona, opts.params);
       await pf.ready;

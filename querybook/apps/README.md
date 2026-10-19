@@ -277,6 +277,22 @@ reliably: the FSI courses (only on unofficial mirrors) and FHWA reports (many ar
 Approve those by hand in the app if a document checks out. Researched sources are **facts only**: no
 wording from them is ever stored, whatever their class.
 
+## Avatar library (Language Builder → Speech → Avatars)
+
+Portraits become talking avatars. Import PNG/JPEG/WebP files, a folder or a .zip; each portrait is measured in the
+browser at **478 face points with depth** and checked (front-facing, closed mouth, face size). Only portraits that show
+nobody real (the admin confirms they are AI-generated) or a real person who agreed (name and consent recorded) can be
+added; everything an avatar says is labelled as synthetic.
+
+When an avatar speaks, the Visual Speech Engine drives **all 52 ARKit face channels** frame by frame — jaw, lips
+(open, close, funnel, pucker, press, roll, stretch, smile, frown, dimple, upper up, lower down, shrug), cheeks (puff,
+squint), nose (sneer), eyelids (blink, squint, wide), eye direction (8 gaze channels), brows (inner up, outer up, down)
+and tongue — with co-articulation, lip closure on p/b/m, blinks at phrase breaks, brow raises and nods on stressed
+words, and slight left/right asymmetry. The renderer (`ui/avatarface.js`) moves each channel's region of the 3D mesh and
+turns the head in 3D using the landmarks' depth. The studio shows all 52 channels as sliders, expression presets, and
+exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
+a library avatar ("Avatar from the library…" under the talking face).
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

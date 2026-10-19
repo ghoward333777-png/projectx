@@ -107,6 +107,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
   const box = document.createElement("div"); box.className = "card face-card";
   box.innerHTML = '<h3>Talking face <span class="small muted">mouth shapes timed to this audio</span></h3>' +
     '<div class="row"><button class="btn small" data-fm="2d">2D face</button><button class="btn small" data-fm="3d">3D / VR face</button>' +
+    '<select class="small" data-avsel aria-label="Avatar"><option value="">Avatar from the library…</option></select>' +
     '<label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
     '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
     '<div class="face-stage" style="max-width:360px"></div><p class="small muted" data-finfo>Working out the mouth shapes…</p>';
@@ -124,6 +125,22 @@ async function faceCard(host, audioName, text, lang, emotion) {
   };
   await face.setMode("2d");
   box.querySelectorAll("[data-fm]").forEach(b => b.onclick = () => face.setMode(b.dataset.fm).catch(e => { info.textContent = "3D could not start here: " + e.message; face.setMode("2d"); }));
+  api("/api/avatars/list").then(r => {
+    const sel = box.querySelector("[data-avsel]");
+    r.avatars.filter(a => a.analysed).forEach(a => sel.insertAdjacentHTML("beforeend", '<option value="' + a.id + '">' + esc(a.name) + "</option>"));
+    sel.onchange = async () => {
+      if (!sel.value) return;
+      try {
+        const av = await api("/api/avatars/get?id=" + sel.value);
+        await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label } });
+        info.textContent = "Working out all 52 face channels for this audio…";
+        const j = await api("/api/vse/lip_sync", { audio_name: audioName, text, lang, emotion: null });
+        const res = await avWaitJob(j.job_id);
+        face.track = Object.assign({}, face.track || {}, { motion: res.motion });
+        info.textContent = av.label + " — " + res.motion.frames.length + " frames × 52 channels";
+      } catch (e) { info.textContent = "The avatar could not be shown: " + e.message; }
+    };
+  }).catch(() => {});
   box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
   try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
   return face;
@@ -424,6 +441,7 @@ function showSub(id) {
   $("#sp-shared").hidden = !["speak", "match", "ask"].includes(id);
   if (id === "providers") loadProviders();
   if (id === "log") loadLog();
+  if (id === "avatars") renderAvatars($("#sp-avatars"));
 }
 
 async function loadSpeech() {
