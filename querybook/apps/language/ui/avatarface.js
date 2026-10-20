@@ -17,6 +17,13 @@
   const OUT_UP = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291], OUT_LO = [291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
   const IN_UP = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308], IN_LO = [308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78];
   const RING = new Set(IN_UP.concat(IN_LO));
+  // every landmark row of each lip (inner line → outer line), so a curved mouth is split by the lip, not by a straight line
+  const LIP_LO = [14, 87, 178, 88, 95, 317, 402, 318, 324, 15, 86, 179, 89, 96, 316, 403, 319, 325, 16, 85, 180, 90, 77, 315, 404, 320, 307, 17, 84, 181, 91, 146, 314, 405, 321, 375];
+  const LIP_UP = [13, 82, 81, 80, 191, 312, 311, 310, 415, 12, 38, 41, 42, 183, 268, 271, 272, 407, 11, 72, 73, 74, 184, 302, 303, 304, 408, 0, 37, 39, 40, 185, 267, 269, 270, 409];
+  // y of the upper inner lip line at x (straight on beyond the corners)
+  const lipLine = P => { const q = IN_UP.map(i => P[i]).sort((a, b) => a[0] - b[0]);
+    return x => { if (x <= q[0][0]) return q[0][1]; if (x >= q[q.length - 1][0]) return q[q.length - 1][1];
+      for (let j = 1; j < q.length; j++) if (x <= q[j][0]) { const t = (x - q[j - 1][0]) / ((q[j][0] - q[j - 1][0]) || 1); return q[j - 1][1] + (q[j][1] - q[j - 1][1]) * t; } return q[q.length - 1][1]; }; };
   const EYE = {
     L: { up: [466, 388, 387, 386, 385, 384, 398], lo: [249, 390, 373, 374, 380, 381, 382], iris: [473, 474, 475, 476, 477], outer: 263, inner: 362,
          brow: [336, 296, 334, 293, 300, 285, 295, 282, 283, 276], browIn: [336, 285, 296, 295], browOut: [300, 276, 293, 283], cheek: 425, wing: [358, 327, 294, 278] },
@@ -57,6 +64,31 @@
     }
     return tris.filter(t => t[0] < n && t[1] < n && t[2] < n);
   }
+  // edge flipping until every constraint edge is in the triangulation (Sloan's method, brute force: the mesh is small)
+  function constrain(tris, P, cons) {
+    const ori = (a, b, c) => (P[b][0] - P[a][0]) * (P[c][1] - P[a][1]) - (P[b][1] - P[a][1]) * (P[c][0] - P[a][0]);
+    const cross = (a, b, c, d) => a !== c && a !== d && b !== c && b !== d && ori(a, b, c) * ori(a, b, d) < 0 && ori(c, d, a) * ori(c, d, b) < 0;
+    const key = (a, b) => a < b ? a + "," + b : b + "," + a;
+    for (const [a, b] of cons) {
+      for (let guard = 0; guard < 400; guard++) {
+        const owners = new Map();
+        tris.forEach((t, k) => [[t[0], t[1], t[2]], [t[1], t[2], t[0]], [t[2], t[0], t[1]]].forEach(([u, v, w]) => {
+          const q = key(u, v); if (!owners.has(q)) owners.set(q, []); owners.get(q).push([k, w]); }));
+        if (owners.has(key(a, b))) break;
+        let flipped = false;
+        for (const [q, own] of owners) {
+          if (own.length !== 2) continue;
+          const [u, v] = q.split(",").map(Number);
+          if (!cross(a, b, u, v)) continue;
+          const p1 = own[0][1], p2 = own[1][1];
+          if (!cross(p1, p2, u, v)) continue;                  // the quad is not convex: flip another crossing edge first
+          tris[own[0][0]] = [p1, p2, u]; tris[own[1][0]] = [p2, p1, v]; flipped = true; break;
+        }
+        if (!flipped) break;
+      }
+    }
+    return tris;
+  }
   const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
   class DepthFace {
@@ -90,22 +122,34 @@
       for (let k = 0; k <= 4; k++) [[crop.x + crop.w * k / 4, crop.y], [crop.x + crop.w * k / 4, crop.y + crop.h], [crop.x, crop.y + crop.h * k / 4], [crop.x + crop.w, crop.y + crop.h * k / 4]]
         .forEach(([x, y]) => anchors.push([x, y, 0]));
       this.base3 = pts3.concat(anchors.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= H));
-      this.base = this.base3.map(([x, y]) => [x, y]);
       this.nFace = pts3.length;
+      this.nX0 = this.base3.length; this.extra = []; this.ring = new Set(RING);
+      this.base = this.base3.map(([x, y]) => [x, y]);
       // triangulate a copy with the mouth slightly open, so no triangle bridges the lips (they part cleanly when the jaw drops)
       const Pb = i => this.base[i], Fh = Math.hypot(Pb(10)[0] - Pb(152)[0], Pb(10)[1] - Pb(152)[1]);
       const cRb = Pb(61), cLb = Pb(291), Wmb = Math.hypot(cRb[0] - cLb[0], cRb[1] - cLb[1]), Mb = [(Pb(13)[0] + Pb(14)[0]) / 2, (Pb(13)[1] + Pb(14)[1]) / 2];
-      const lowSet = new Set(IN_LO.concat(OUT_LO).filter(i => ![61, 291, 78, 308].includes(i)));
-      const upSet = new Set(IN_UP.concat(OUT_UP).filter(i => ![61, 291, 78, 308].includes(i)));
-      const midY = x => cRb[1] + (cLb[1] - cRb[1]) * (x - cRb[0]) / ((cLb[0] - cRb[0]) || 1);
+      const lowSet = new Set(IN_LO.concat(OUT_LO, LIP_LO).filter(i => ![61, 291, 78, 308].includes(i)));
+      const upSet = new Set(IN_UP.concat(OUT_UP, LIP_UP).filter(i => ![61, 291, 78, 308].includes(i)));
+      const midY = lipLine(this.base);
       const triPts = this.base.map(([x, y], i) => {
+        if (i >= this.nX0) return null;
         if (i >= this.nFace || upSet.has(i)) return [x, y];
         const near = Math.abs(x - Mb[0]) < 0.75 * Wmb && y < Mb[1] + 0.45 * Fh;
-        return lowSet.has(i) || (near && y > midY(x) + 0.002 * Fh) ? [x, y + 0.04 * Fh] : [x, y];
+        const tq = Math.min(1, Math.abs(x - Mb[0]) / (0.5 * Wmb)), dy = 0.04 * Fh * Math.max(0.25, 1 - tq * tq);   // a lens, like the real opening
+        return lowSet.has(i) || (near && y > midY(x) + 0.002 * Fh) ? [x, y + dy] : [x, y];
       });
-      this.tris = delaunay(triPts);
-      this.inner = this.tris.filter(t => RING.has(t[0]) && RING.has(t[1]) && RING.has(t[2]));
-      this.mesh = this.tris.filter(t => !(RING.has(t[0]) && RING.has(t[1]) && RING.has(t[2])));
+      // the lip lines are constraints: no triangle may cross them (edges that do are flipped until they don't)
+      const lines = [IN_UP, IN_LO, OUT_UP, OUT_LO], cons = [];
+      lines.forEach(l => { for (let j = 0; j + 1 < l.length; j++) cons.push([l[j], l[j + 1]]); });
+      this.tris = constrain(delaunay(triPts), triPts, cons); this.triPts = triPts; this.cons = cons;
+      // the opening: triangles whose centre lies between the inner lip lines (in the parted copy)
+      const poly = IN_UP.concat(IN_LO.slice(1, -1)).map(i => triPts[i]);
+      const inside = (x, y) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+      const isIn = t => { const R = this.ring; if (!(R.has(t[0]) && R.has(t[1]) && R.has(t[2]))) return false;
+        return inside((triPts[t[0]][0] + triPts[t[1]][0] + triPts[t[2]][0]) / 3, (triPts[t[0]][1] + triPts[t[1]][1] + triPts[t[2]][1]) / 3); };
+      this.inner = this.tris.filter(isIn);
+      this.mesh = this.tris.filter(t => !isIn(t));
       const P = i => this.base3[i];
       this.F = Math.hypot(P(10)[0] - P(152)[0], P(10)[1] - P(152)[1]);
       this.Wm = Math.hypot(P(61)[0] - P(291)[0], P(61)[1] - P(291)[1]);
@@ -129,34 +173,42 @@
       const add = (k, i, dx, dy, dz) => { if (i >= nF) return; const a = D[IDX[k]]; a[3 * i] += dx; a[3 * i + 1] += dy; a[3 * i + 2] += dz || 0; };
       const g = (i, c, s) => Math.exp(-(((B[i][0] - c[0]) ** 2 + (B[i][1] - c[1]) ** 2) / (s * s)));
       // mouth geometry: midline between the lips, corners, which side of the midline each point is
-      const cL = B[291], cR = B[61], mid = x => { const t = (x - cR[0]) / ((cL[0] - cR[0]) || 1); return cR[1] + (cL[1] - cR[1]) * t; };
-      const LOWER = new Set(IN_LO.concat(OUT_LO).filter(i => ![61, 291, 78, 308].includes(i)));
-      const UPPER = new Set(IN_UP.concat(OUT_UP).filter(i => ![61, 291, 78, 308].includes(i)));
+      const cL = B[291], cR = B[61], mid = lipLine(B);
+      const LOWER = new Set(IN_LO.concat(OUT_LO, LIP_LO).filter(i => ![61, 291, 78, 308].includes(i)));
+      const UPPER = new Set(IN_UP.concat(OUT_UP, LIP_UP).filter(i => ![61, 291, 78, 308].includes(i)));
       const below = i => LOWER.has(i) ? 1 : UPPER.has(i) ? 0 : smooth(-0.004 * F, 0.006 * F, B[i][1] - mid(B[i][0]));   // lower lip and chin side
       const above = i => 1 - below(i);
       const lipZ = i => Math.exp(-((Math.hypot(B[i][0] - M[0], (B[i][1] - M[1]) * 1.5) / (0.75 * Wm)) ** 2));
       const side = (i, s) => smooth(-0.15 * Wm, 0.25 * Wm, s * (B[i][0] - M[0]));                // 1 on that side (s=+1: picture right = subject left)
+      // lips part as a lens, not a slot: the opening tapers to nothing at the corners (prof = 1 at the centre, 0 at a corner),
+      // and only the lip band follows that taper — the chin below drops with the whole jaw
+      const prof = i => { const t = Math.min(1, Math.abs(B[i][0] - M[0]) / (0.5 * Wm)); return Math.pow(1 - t * t, 0.8); };
+      const lipBand = i => { const ax = Math.abs(B[i][0] - M[0]);
+        return Math.exp(-(((B[i][1] - M[1]) / (0.09 * F)) ** 2)) * (ax < 0.6 * Wm ? 1 : Math.exp(-(((ax - 0.6 * Wm) / (0.15 * Wm)) ** 2))); };
+      const wOpen = i => 1 - lipBand(i) * (1 - prof(i));
       const jawW = i => Math.exp(-(((B[i][0] - M[0]) / (0.42 * F)) ** 2)) * below(i) * (1 - 0.25 * smooth(0, 0.3 * F, B[i][1] - M[1]));
       for (let i = 0; i < nF; i++) {
         const [x, y] = B[i], lz = lipZ(i), up = above(i), lo = below(i), sL = side(i, 1), sR = side(i, -1), dxm = x - M[0];
         // jaw: the lower face swings down and slightly back; the lower lip rides with it
-        add("jawOpen", i, -dxm * 0.04 * jawW(i), 0.17 * F * jawW(i), 0.03 * F * jawW(i));
+        const wo = wOpen(i), pr = Math.sqrt(prof(i));
+        add("jawOpen", i, -dxm * 0.05 * jawW(i), 0.17 * F * jawW(i) * wo, 0.03 * F * jawW(i));
+        add("jawOpen", i, 0, -0.014 * F * prof(i) * up * lz, 0);                // the upper lip's centre lifts a little: a lens top
         add("jawForward", i, 0, 0.006 * F * jawW(i), -0.05 * F * jawW(i));
         add("jawLeft", i, 0.045 * F * jawW(i), 0, 0); add("jawRight", i, -0.045 * F * jawW(i), 0, 0);
         // lips: closing against an open jaw, rounding, sideways, corners
-        add("mouthClose", i, 0, -0.17 * F * jawW(i) * lz * 1.1, 0);
+        add("mouthClose", i, 0, -0.17 * F * jawW(i) * lz * 1.1 * wo, 0);
         add("mouthFunnel", i, -dxm * 0.28 * lz, (lo - up) * 0.025 * F * lz, -0.035 * F * lz);
         add("mouthPucker", i, -dxm * 0.42 * lz, -(y - M[1]) * 0.15 * lz, -0.05 * F * lz);
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
           const cw = g(i, c, 0.32 * Wm), sd = s > 0 ? sL : sR;
-          add("mouthSmile" + k, i, s * 0.16 * Wm * cw, -0.055 * F * cw, 0);
+          add("mouthSmile" + k, i, s * 0.07 * Wm * cw, -0.045 * F * cw, 0);
           add("mouthFrown" + k, i, s * 0.03 * Wm * cw, 0.045 * F * cw, 0);
-          add("mouthDimple" + k, i, s * 0.07 * Wm * cw, -0.008 * F * cw, 0.02 * F * cw);
-          add("mouthStretch" + k, i, s * 0.17 * Wm * cw, 0.02 * F * cw, 0);
+          add("mouthDimple" + k, i, s * 0.03 * Wm * cw, -0.008 * F * cw, 0.02 * F * cw);
+          add("mouthStretch" + k, i, s * 0.06 * Wm * cw, 0.01 * F * cw, 0);
           add("mouthPress" + k, i, 0, (up - lo) * 0.012 * F * lz * sd, 0);
-          add("mouthLowerDown" + k, i, 0, 0.04 * F * lz * lo * sd, 0);
-          add("mouthUpperUp" + k, i, 0, -0.035 * F * lz * up * sd, 0);
+          add("mouthLowerDown" + k, i, 0, 0.04 * F * lz * lo * sd * pr, 0);
+          add("mouthUpperUp" + k, i, 0, -0.035 * F * lz * up * sd * pr, 0);
         }
         add("mouthRollLower", i, 0, -0.018 * F * lz * lo, 0.01 * F * lz * lo);
         add("mouthRollUpper", i, 0, 0.016 * F * lz * up, 0.01 * F * lz * up);
@@ -195,6 +247,8 @@
           add("eyeBlink" + k, j, 0, 0.08 * ew, 0);
         });
       }
+      this.extra.forEach(([a, b, t], j) => { const i = this.nX0 + j;
+        D.forEach(d => { for (let q = 0; q < 3; q++) d[3 * i + q] = d[3 * a + q] * (1 - t) + d[3 * b + q] * t; }); });
       this.D = D;
     }
     // channel values for audio time t: the VSE's 52-channel motion when present, else the viseme fallback
@@ -231,12 +285,18 @@
       this.setChannels(v);
     }
     _points() {
-      const n = this.base3.length, out = new Array(n), c = this.cur, D = this.D, nF = this.nFace, g = this.params.head_gain;
+      const n = this.base3.length, out = new Array(n), c = Float32Array.from(this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
+      // a mouth widens at most ~10% in speech: stretch, smile and dimple share one soft-limited budget per side
+      for (const k of ["Left", "Right"]) {
+        const ks = ["mouthStretch" + k, "mouthSmile" + k, "mouthDimple" + k].map(q => IDX[q]);
+        const wide = 0.06 * c[ks[0]] + 0.07 * c[ks[1]] + 0.03 * c[ks[2]], cap = 0.05;
+        if (wide > 1e-4) { const f = cap * Math.tanh(wide / cap) / wide; ks.forEach(q => { c[q] *= f; }); }
+      }
       const [yaw, pitch, roll] = this.head.map(d => d * g * Math.PI / 180), [px, py, pz] = this.pivot;
       const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
       for (let i = 0; i < n; i++) {
         let [x, y, z] = this.base3[i];
-        if (i < nF) {
+        if (i < nF || i >= this.nX0) {
           for (let k = 0; k < c.length; k++) {
             const w = k === MC ? Math.min(c[k], c[JAW]) : c[k];               // lips can only close against an open jaw
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
@@ -257,9 +317,9 @@
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height);
       c.setTransform(k, 0, 0, k, -cr.x * k, -cr.y * k);
       c.drawImage(src, 0, 0);
-      const warp = tr => {
+      const warp = (tr, always) => {
         const [a, b, d] = tr, s0 = B[a], s1 = B[b], s2 = B[d], d0 = pts[a], d1 = pts[b], d2 = pts[d];
-        if (Math.abs(d0[0] - s0[0]) + Math.abs(d0[1] - s0[1]) + Math.abs(d1[0] - s1[0]) + Math.abs(d1[1] - s1[1]) + Math.abs(d2[0] - s2[0]) + Math.abs(d2[1] - s2[1]) < 0.05) return;
+        if (!always && Math.abs(d0[0] - s0[0]) + Math.abs(d0[1] - s0[1]) + Math.abs(d1[0] - s1[0]) + Math.abs(d1[1] - s1[1]) + Math.abs(d2[0] - s2[0]) + Math.abs(d2[1] - s2[1]) < 0.05) return;
         const den = (s1[0] - s0[0]) * (s2[1] - s0[1]) - (s2[0] - s0[0]) * (s1[1] - s0[1]);
         if (Math.abs(den) < 1e-6) return;
         const m11 = ((d1[0] - d0[0]) * (s2[1] - s0[1]) - (d2[0] - d0[0]) * (s1[1] - s0[1])) / den;
@@ -275,30 +335,50 @@
         c.save(); c.beginPath(); c.moveTo(e0[0], e0[1]); c.lineTo(e1[0], e1[1]); c.lineTo(e2[0], e2[1]); c.closePath(); c.clip();
         c.transform(m11, m21, m12, m22, dx, dy); c.drawImage(src, sx, sy, sw, sh, sx, sy, sw, sh); c.restore();
       };
-      // the inside of the mouth first (cavity, teeth, tongue), then the face over it
-      const ring = IN_UP.concat(IN_LO.slice(1, -1)).map(i => pts[i]);
-      const open = Math.hypot(pts[13][0] - pts[14][0], pts[13][1] - pts[14][1]);
-      if (open > 1) {
-        c.save(); c.beginPath(); ring.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.closePath(); c.clip();
-        const tw = Math.hypot(pts[78][0] - pts[308][0], pts[78][1] - pts[308][1]), mx = (pts[78][0] + pts[308][0]) / 2, my = (pts[13][1] + pts[14][1]) / 2;
-        const gr = c.createRadialGradient(mx, my, 0, mx, my, tw * 0.6);
-        gr.addColorStop(0, "#140606"); gr.addColorStop(0.7, "#2c0e0e"); gr.addColorStop(1, "#45191a");
-        c.fillStyle = gr; c.fillRect(mx - tw, pts[13][1] - open, tw * 2, open * 3);
-        const th = Math.min(open * 0.34, F * 0.024), y0 = pts[13][1];
-        const tg = c.createLinearGradient(0, y0, 0, y0 + th); tg.addColorStop(0, "#d6d0c3"); tg.addColorStop(0.35, "#f2eee5"); tg.addColorStop(1, "#cbc4b4");
-        c.fillStyle = tg; c.beginPath(); c.ellipse(mx, y0, tw * 0.4, th, 0, 0, Math.PI); c.fill();
+      // the inside of the mouth: the portrait's own mouth first (exact at rest), then — only as the lips part beyond
+      // where they are in the portrait — a dark cavity with soft teeth that follow the curve of the lips
+      for (const tr of this.inner) warp(tr, true);
+      const gap = (q, i, j) => Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]);
+      const open = gap(pts, 13, 14), extra = open - gap(B, 13, 14), vis = smooth(0.004 * F, 0.02 * F, extra);
+      if (vis > 0.01) {
+        const curve = (ids, ctx, first) => {                    // a smooth curve through the lip points (midpoint quadratics)
+          const q = ids.map(i => pts[i]);
+          if (first) ctx.moveTo(q[0][0], q[0][1]); else ctx.lineTo(q[0][0], q[0][1]);
+          for (let i = 1; i < q.length - 1; i++) ctx.quadraticCurveTo(q[i][0], q[i][1], (q[i][0] + q[i + 1][0]) / 2, (q[i][1] + q[i + 1][1]) / 2);
+          ctx.lineTo(q[q.length - 1][0], q[q.length - 1][1]);
+        };
+        c.save(); c.globalAlpha = vis;
+        c.beginPath(); curve(IN_UP, c, true); curve(IN_LO, c, false); c.closePath(); c.clip();
+        const tw = gap(pts, 78, 308), mx = (pts[78][0] + pts[308][0]) / 2, my = (pts[13][1] + pts[14][1]) / 2;
+        const gr = c.createRadialGradient(mx, my, 0, mx, my, tw * 0.55);
+        gr.addColorStop(0, "#1a0808"); gr.addColorStop(0.75, "#2a0d0d"); gr.addColorStop(1, "#3a1515");
+        c.fillStyle = gr; c.fillRect(mx - tw, pts[13][1] - open - F * 0.02, tw * 2, open * 3 + F * 0.04);
+        // upper teeth: a band hanging from the upper lip's own curve, deepest at the centre, gone at the corners
+        const th = Math.min(open * 0.32, F * 0.02) * smooth(0.012 * F, 0.04 * F, extra);
+        if (th > 0.4) {
+          const band = (ids, dir, h) => {
+            c.beginPath(); curve(ids, c, true);
+            ids.slice().reverse().forEach((i, j) => { const q = pts[i], t = Math.min(1, Math.abs(q[0] - mx) / (tw / 2)); c.lineTo(q[0], q[1] + dir * h * Math.pow(Math.max(0, 1 - t * t), 0.7)); });
+            c.closePath();
+          };
+          const tg = c.createLinearGradient(0, pts[13][1], 0, pts[13][1] + th);
+          tg.addColorStop(0, "rgba(205,198,186,.9)"); tg.addColorStop(0.5, "rgba(232,227,216,.92)"); tg.addColorStop(1, "rgba(196,188,174,.85)");
+          c.fillStyle = tg; band(IN_UP, 1, th); c.fill();
+          if (open > F * 0.05) { c.fillStyle = "rgba(200,192,178,.45)"; band(IN_LO.slice().reverse(), -1, th * 0.45); c.fill(); }
+        }
         const tongue = this.cur[IDX.tongueOut];
-        if (open > F * 0.045) {                                // lower teeth and a resting tongue, low in a well-open mouth
-          c.fillStyle = "rgba(118,48,54,.85)"; c.beginPath(); c.ellipse(mx, pts[14][1] + open * 0.02, tw * 0.24, open * 0.14, 0, Math.PI, 2 * Math.PI); c.fill();
-          c.fillStyle = "rgba(222,216,204,.6)"; c.beginPath(); c.ellipse(mx, pts[14][1], tw * 0.28, th * 0.4, 0, Math.PI, 2 * Math.PI); c.fill();
-        }
-        if (tongue > 0.1) {                                    // tongue tip between the teeth (th), forward with tongueOut
+        if (open > F * 0.05) { c.fillStyle = "rgba(112,46,52,.8)"; c.beginPath(); c.ellipse(mx, pts[14][1] + open * 0.05, tw * 0.22, open * 0.16, 0, Math.PI, 2 * Math.PI); c.fill(); }
+        if (tongue > 0.1) {
           c.fillStyle = "rgba(170,82,88,.95)"; c.beginPath();
-          c.ellipse(mx, (pts[13][1] + pts[14][1]) / 2 + open * 0.1, tw * (0.16 + 0.1 * tongue), Math.max(open * 0.35, F * 0.008) * (0.5 + 0.5 * tongue), 0, 0, 2 * Math.PI); c.fill();
+          c.ellipse(mx, my + open * 0.1, tw * (0.16 + 0.1 * tongue), Math.max(open * 0.35, F * 0.008) * (0.5 + 0.5 * tongue), 0, 0, 2 * Math.PI); c.fill();
         }
+        // shade toward the corners and under the upper lip, so the inside reads as depth, not a flat slot
         const sh = c.createLinearGradient(mx - tw / 2, 0, mx + tw / 2, 0);
-        sh.addColorStop(0, "rgba(0,0,0,.55)"); sh.addColorStop(0.2, "rgba(0,0,0,0)"); sh.addColorStop(0.8, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,0,.55)");
-        c.fillStyle = sh; c.fillRect(mx - tw, pts[13][1] - open, tw * 2, open * 3);
+        sh.addColorStop(0, "rgba(10,2,2,.75)"); sh.addColorStop(0.22, "rgba(10,2,2,0)"); sh.addColorStop(0.78, "rgba(10,2,2,0)"); sh.addColorStop(1, "rgba(10,2,2,.75)");
+        c.fillStyle = sh; c.fillRect(mx - tw, pts[13][1] - open - F * 0.02, tw * 2, open * 3 + F * 0.04);
+        const us = c.createLinearGradient(0, pts[13][1] - 1, 0, pts[13][1] + Math.max(2, open * 0.25));
+        us.addColorStop(0, "rgba(20,4,4,.55)"); us.addColorStop(1, "rgba(20,4,4,0)");
+        c.fillStyle = us; c.fillRect(mx - tw, pts[13][1] - 2, tw * 2, Math.max(3, open * 0.3));
         c.restore();
       }
       for (const tr of this.mesh) warp(tr);

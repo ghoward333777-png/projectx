@@ -289,7 +289,11 @@ When an avatar speaks, the Visual Speech Engine drives **all 52 ARKit face chann
 squint), nose (sneer), eyelids (blink, squint, wide), eye direction (8 gaze channels), brows (inner up, outer up, down)
 and tongue — with co-articulation, lip closure on p/b/m, blinks at phrase breaks, brow raises and nods on stressed
 words, and slight left/right asymmetry. The renderer (`ui/avatarface.js`) moves each channel's region of the 3D mesh and
-turns the head in 3D using the landmarks' depth. The studio shows all 52 channels as sliders, expression presets, and
+turns the head in 3D using the landmarks' depth.
+The mouth is shaped like a real one: the lips part as a lens that tapers to the corners (not a slot), the lip lines are
+constraints of the face mesh (no skin is stretched across the opening, on any face shape), the lips are told apart by
+their own landmark rows rather than a straight corner-to-corner line, mouth widening is soft-limited to about 10%, and
+the teeth follow the curve of the upper lip. The portrait's own mouth is used until the lips part beyond it. The studio shows all 52 channels as sliders, expression presets, and
 exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
 a library avatar.
 

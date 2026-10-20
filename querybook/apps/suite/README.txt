@@ -53,7 +53,9 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.22.3)
+  Language Builder (1.22.4)
+    * Natural talking mouth: lens-shaped opening (no square slot), widening limited to ~10%, teeth that follow
+      the lips, and no skin stretched across the open mouth on any face.
     * Speak is now 4 numbered steps: 1 choose the face (big preview + every face), 2 voice, 3 text, 4 Speak.
       The chosen face always does the speaking (fixed: it used to fall back to the plain face).
     * Avatar studio: opens on a face; click any face in the strip and the speech carries on with that face;
