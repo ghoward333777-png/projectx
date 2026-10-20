@@ -157,6 +157,7 @@
       this.fc = [fcx, fcy]; this.crop = crop;
       this.zMean = pts3.reduce((s, p) => s + p[2], 0) / pts3.length;
       this.pivot = [fcx, P(152)[1] + this.F * 0.35, this.zMean + this.F * 0.5];      // the neck
+      this.fit = this._fit();
       this._fields();
       const cv = document.createElement("canvas"), outW = Math.min(this.el.clientWidth || 380, 480);
       cv.width = Math.round(outW); cv.height = Math.round(outW * crop.h / crop.w);
@@ -165,6 +166,32 @@
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
       this._draw();
+    }
+    // Mouth fit: the speaking mouth sized and shaped from this face's own anatomy, measured once per portrait.
+    //  * scale: millimetres per pixel from the iris (≈11.7 mm across in adults, the steadiest size in a face),
+    //    cross-checked against face height (forehead to chin ≈ 150–230 mm);
+    //  * size: conversational speech opens the lips about 0.28 × mouth width on an open vowel ("aa"), 9–16 mm,
+    //    so a small mouth opens less than a large one;
+    //  * shape: the opening follows this person's own lower-lip outline, blended with an anatomical lens;
+    //  * teeth: upper incisors show at most ~3 mm, never more than a third of the opening.
+    _fit() {
+      const B = this.base3, d = (a, b) => Math.hypot(B[a][0] - B[b][0], B[a][1] - B[b][1]);
+      let pxmm = null, how = "iris";
+      if (this.hasIris) { const iris = (d(469, 471) + d(470, 472) + d(474, 476) + d(475, 477)) / 4; if (iris > 2) pxmm = iris / 11.7; }
+      const Fmm = pxmm ? this.F / pxmm : 0;
+      if (!pxmm || Fmm < 150 || Fmm > 230) { pxmm = this.F / 185; how = "face height"; }
+      const Wmm = this.Wm / pxmm, upLip = d(0, 13) / pxmm, loLip = d(14, 17) / pxmm, chin = d(17, 152) / pxmm;
+      const aa = Math.max(9, Math.min(16, 0.28 * Wmm));                       // lip opening on "aa", mm
+      const jaw1 = aa / 0.45 * pxmm;                                            // the speech engine's "aa" is jawOpen ≈ 0.45
+      const gain = jaw1 / (0.184 * this.F);                                     // the jaw field gives 0.184·F of opening at 1
+      // the person's lower-lip outline under the lip line, normalised: the opening takes the same curve
+      const line = lipLine(B), outl = OUT_LO.map(i => [B[i][0], B[i][1] - line(B[i][0])]).sort((a, b) => a[0] - b[0]);
+      const depth = Math.max(1e-6, ...outl.map(q => q[1]));
+      const own = x => { if (x <= outl[0][0] || x >= outl[outl.length - 1][0]) return 0;
+        for (let j = 1; j < outl.length; j++) if (x <= outl[j][0]) { const t = (x - outl[j - 1][0]) / ((outl[j][0] - outl[j - 1][0]) || 1);
+          return Math.max(0, (outl[j - 1][1] + (outl[j][1] - outl[j - 1][1]) * t) / depth); } return 0; };
+      return { pxmm, scale_from: how, mouth_mm: +Wmm.toFixed(1), upper_lip_mm: +upLip.toFixed(1), lower_lip_mm: +loLip.toFixed(1), chin_mm: +chin.toFixed(1),
+        aa_open_mm: +aa.toFixed(1), jaw_gain: gain, teeth_mm: Math.min(3, 0.3 * aa), own };
     }
     // per-channel displacement fields over the mesh (pixels at channel value 1), built once per portrait
     _fields() {
@@ -182,7 +209,9 @@
       const side = (i, s) => smooth(-0.15 * Wm, 0.25 * Wm, s * (B[i][0] - M[0]));                // 1 on that side (s=+1: picture right = subject left)
       // lips part as a lens, not a slot: the opening tapers to nothing at the corners (prof = 1 at the centre, 0 at a corner),
       // and only the lip band follows that taper — the chin below drops with the whole jaw
-      const prof = i => { const t = Math.min(1, Math.abs(B[i][0] - M[0]) / (0.5 * Wm)); return Math.pow(1 - t * t, 0.8); };
+      const fit = this.fit;
+      const prof = i => { const t = Math.min(1, Math.abs(B[i][0] - M[0]) / (0.5 * Wm)), lens = Math.pow(1 - t * t, 0.8);
+        return 0.5 * lens + 0.5 * Math.min(1, fit.own(B[i][0]) * 1.15); };
       const lipBand = i => { const ax = Math.abs(B[i][0] - M[0]);
         return Math.exp(-(((B[i][1] - M[1]) / (0.09 * F)) ** 2)) * (ax < 0.6 * Wm ? 1 : Math.exp(-(((ax - 0.6 * Wm) / (0.15 * Wm)) ** 2))); };
       const wOpen = i => 1 - lipBand(i) * (1 - prof(i));
@@ -191,14 +220,15 @@
         const [x, y] = B[i], lz = lipZ(i), up = above(i), lo = below(i), sL = side(i, 1), sR = side(i, -1), dxm = x - M[0];
         // jaw: the lower face swings down and slightly back; the lower lip rides with it
         const wo = wOpen(i), pr = Math.sqrt(prof(i));
-        add("jawOpen", i, -dxm * 0.05 * jawW(i), 0.17 * F * jawW(i) * wo, 0.03 * F * jawW(i));
-        add("jawOpen", i, 0, -0.014 * F * prof(i) * up * lz, 0);                // the upper lip's centre lifts a little: a lens top
+        const jg = fit.jaw_gain;
+        add("jawOpen", i, -dxm * 0.05 * jawW(i), 0.17 * F * jawW(i) * wo * jg, 0.03 * F * jawW(i) * jg);
+        add("jawOpen", i, 0, -0.014 * F * prof(i) * up * lz * jg, 0);                // the upper lip's centre lifts a little: a lens top
         add("jawForward", i, 0, 0.006 * F * jawW(i), -0.05 * F * jawW(i));
         add("jawLeft", i, 0.045 * F * jawW(i), 0, 0); add("jawRight", i, -0.045 * F * jawW(i), 0, 0);
         // lips: closing against an open jaw, rounding, sideways, corners
-        add("mouthClose", i, 0, -0.17 * F * jawW(i) * lz * 1.1 * wo, 0);
+        add("mouthClose", i, 0, -0.17 * F * jawW(i) * lz * 1.1 * wo * fit.jaw_gain, 0);
         add("mouthFunnel", i, -dxm * 0.28 * lz, (lo - up) * 0.025 * F * lz, -0.035 * F * lz);
-        add("mouthPucker", i, -dxm * 0.42 * lz, -(y - M[1]) * 0.15 * lz, -0.05 * F * lz);
+        add("mouthPucker", i, -dxm * 0.5 * lz, -(y - M[1]) * 0.15 * lz, -0.05 * F * lz);
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
           const cw = g(i, c, 0.32 * Wm), sd = s > 0 ? sL : sR;
@@ -354,7 +384,7 @@
         gr.addColorStop(0, "#1a0808"); gr.addColorStop(0.75, "#2a0d0d"); gr.addColorStop(1, "#3a1515");
         c.fillStyle = gr; c.fillRect(mx - tw, pts[13][1] - open - F * 0.02, tw * 2, open * 3 + F * 0.04);
         // upper teeth: a band hanging from the upper lip's own curve, deepest at the centre, gone at the corners
-        const th = Math.min(open * 0.32, F * 0.02) * smooth(0.012 * F, 0.04 * F, extra);
+        const th = Math.min(open * 0.3, this.fit.teeth_mm * this.fit.pxmm) * smooth(0.012 * F, 0.04 * F, extra);
         if (th > 0.4) {
           const band = (ids, dir, h) => {
             c.beginPath(); curve(ids, c, true);

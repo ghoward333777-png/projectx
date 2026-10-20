@@ -87,6 +87,9 @@ async function avSelect(el, id) {
   if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
   await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label } });
   if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
+  const ft = AV.face.impl && AV.face.impl.fit;
+  if (ft) $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small muted">Mouth fit (from this face): mouth ' + ft.mouth_mm + " mm wide, lips " + ft.upper_lip_mm + " / " + ft.lower_lip_mm +
+    " mm, opens about " + ft.aa_open_mm + ' mm on "aa", teeth show ≤ ' + ft.teeth_mm.toFixed(1) + " mm · scale from the " + ft.scale_from + "</div>");
   avChannels(el);
 }
 

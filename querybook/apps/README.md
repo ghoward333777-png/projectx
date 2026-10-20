@@ -293,7 +293,11 @@ turns the head in 3D using the landmarks' depth.
 The mouth is shaped like a real one: the lips part as a lens that tapers to the corners (not a slot), the lip lines are
 constraints of the face mesh (no skin is stretched across the opening, on any face shape), the lips are told apart by
 their own landmark rows rather than a straight corner-to-corner line, mouth widening is soft-limited to about 10%, and
-the teeth follow the curve of the upper lip. The portrait's own mouth is used until the lips part beyond it. The studio shows all 52 channels as sliders, expression presets, and
+the teeth follow the curve of the upper lip. The portrait's own mouth is used until the lips part beyond it.
+**Mouth fit**: each face's mouth is sized from its own anatomy — millimetre scale from the iris (≈11.7 mm; face
+height as a cross-check), mouth width and lip thickness measured from the landmarks, the opening on "aa" set to about
+0.28 × mouth width (9–16 mm, as in conversational speech), the opening's outline taken from the person's own lower lip,
+and the teeth limited to ~3 mm. The studio shows the numbers for the selected face. The studio shows all 52 channels as sliders, expression presets, and
 exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
 a library avatar.
 
