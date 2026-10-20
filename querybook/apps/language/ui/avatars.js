@@ -51,12 +51,21 @@ async function avAnalyse(el, all) {
   }
   out.textContent = todo.length ? "Analysed " + todo.length + " portrait(s)." : "All portraits are analysed.";
   await avRefresh(el);
+  if (!AV.sel) {                                       // open the studio straight away on the remembered (or first) face
+    const ready = AV.list.filter(a => a.analysed), want = typeof faceChoice === "function" ? Number(faceChoice()) : 0;
+    const pick = ready.find(a => a.id === want) || ready[0];
+    if (pick) await avSelect(el, pick.id);
+  }
 }
 
 async function avRefresh(el) {
   const r = await api("/api/avatars/list");
   AV.list = r.avatars; AV.sources = r.sources;
-  if (typeof faceAvatars === "function") { faceAvatars(true); if ($("#sp-faces")) facePicker($("#sp-faces"), () => {}); }
+  if (typeof faceAvatars === "function") {
+    faceAvatars(true);
+    if ($("#sp-faces")) facePicker($("#sp-faces"), () => {});
+    facePicker($("#av-faces", el), v => avSelect(el, Number(v)), { avatarsOnly: true, current: AV.sel ? AV.sel.id : "" });
+  }
   $("#av-grid", el).innerHTML = AV.list.length ? AV.list.map(a => '<div class="av-tile' + (AV.sel && AV.sel.id === a.id ? " sel" : "") + '" data-av="' + a.id + '" style="display:inline-block;width:132px;margin:4px;vertical-align:top;cursor:pointer;border:2px solid ' +
     (AV.sel && AV.sel.id === a.id ? "var(--accent,#1f6feb)" : "transparent") + ';border-radius:10px;padding:4px">' +
     '<img src="/api/avatars/image?id=' + a.id + '" alt="" loading="lazy" style="width:120px;height:120px;object-fit:cover;border-radius:8px">' +
@@ -74,9 +83,10 @@ async function avSelect(el, id) {
   $("#av-info", el).innerHTML = '<span class="small">' + esc(a.label) + " · " + esc(AV.sources[a.source] || a.source) + (a.width ? " · " + a.width + "×" + a.height + " px" : "") +
     (a.voice ? " · voice: " + esc([a.voice.engine, a.voice.voice].filter(Boolean).join(" ")) : " · voice: the Speak tab's current voice") + "</span>" +
     ((a.quality || []).length ? '<div class="note warn small">' + a.quality.map(esc).join("<br>") + "</div>" : "");
-  if (!a.analysed) { $("#av-stage", el).innerHTML = '<p class="muted">Analyse the faces first.</p>'; return; }
-  AV.face = new TalkingFace($("#av-stage", el));
+  if (!a.analysed) { if (AV.face && AV.face.impl) AV.face.impl.dispose(); AV.face = null; $("#av-stage", el).innerHTML = '<p class="muted">Analyse the faces first.</p>'; return; }
+  if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
   await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label } });
+  if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
   avChannels(el);
 }
 
@@ -117,15 +127,44 @@ async function avSpeak(el) {
   $("#av-player", el).innerHTML = ""; $("#av-player", el).appendChild(a); AV.audio = a;
   const blob = new Blob([res.arkit52_csv], { type: "text/csv" });
   $("#av-player", el).insertAdjacentHTML("beforeend", ' <a class="small" download="avatar-arkit52.csv" href="' + URL.createObjectURL(blob) + '">52-channel CSV</a>');
+  AV.motion = res.motion;
   AV.face.attach(a, { visemes: [], motion: res.motion });
   a.play().catch(() => {});
   note.textContent = res.motion.frames.length + " frames × 52 channels at " + res.motion.fps + " fps · voice: " + r.engine_used + " · " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
+}
+
+// Play the speech while the faces take turns, so each one can be seen speaking.
+async function avTour(el) {
+  const faces = AV.list.filter(a => a.analysed && !a.hidden);
+  if (!faces.length) return toast("Analyse the faces first.");
+  if (!AV.audio || !AV.motion) await avSpeak(el);
+  if (!AV.audio) return;
+  const btn = $("#av-tour", el), a = AV.audio, step = Math.max(1.2, Math.min(3, a.duration / Math.min(faces.length, 8) || 2));
+  AV.touring = !AV.touring;
+  btn.textContent = AV.touring ? "■ Stop" : "🎭 Every face in turn";
+  if (!AV.touring) return;
+  let i = Math.max(0, faces.findIndex(f => AV.sel && f.id === AV.sel.id));
+  a.loop = true; a.currentTime = 0; a.play().catch(() => {});
+  while (AV.touring && $("#av-tour", el)) {
+    await new Promise(r => setTimeout(r, step * 1000));
+    if (!AV.touring) break;
+    i = (i + 1) % faces.length;
+    await avSelect(el, faces[i].id);
+  }
+  a.loop = false;
 }
 
 async function renderAvatars(el) {
   if (!el.dataset.ready) {
     el.dataset.ready = "1";
     el.innerHTML =
+      '<div class="card" id="av-studio" hidden><h2>Avatar studio <span class="small muted">click a face to try it — speech keeps playing on the new face</span></h2><div id="av-faces"></div><div class="row"><input id="av-name" type="text" aria-label="Name"><input id="av-tags" class="grow" type="text" placeholder="tags, comma separated" aria-label="Tags">' +
+      '<button class="btn quiet" id="av-save">Save</button><button class="btn quiet" id="av-voice">Give it the Speak tab\'s current voice</button><button class="btn quiet" id="av-del">Delete</button></div><div id="av-info"></div>' +
+      '<div class="grid2"><div><div id="av-stage" style="max-width:440px"></div><div id="av-player" class="row"></div><p class="small muted" id="av-note"></p></div>' +
+      '<div><textarea id="av-text" rows="3" aria-label="What the avatar says">Hello! I can speak any text you give me, with natural lips, eyes and expressions.</textarea>' +
+      '<div class="row"><button class="btn bigbtn" id="av-speak">🗣 Speak</button><button class="btn" id="av-tour">🎭 Every face in turn</button></div>' +
+      '<p class="small"><b>Try an expression:</b> ' + Object.keys(AV_PRESETS).map(k => '<button class="btn quiet small" data-avp="' + k + '">' + k + "</button>").join(" ") + "</p>" +
+      '<p class="small muted">The 52 face channels — move any slider to see what it does:</p><div id="av-ch"></div></div></div></div>' +
       '<div class="card"><h2>Avatar library</h2><p class="small muted">Portraits become talking avatars. Each portrait is measured at 478 points with depth; when the avatar speaks, ' +
       "the Visual Speech Engine drives <b>all 52 face channels</b> (jaw, lips, cheeks, nose, eyelids, eye direction, brows, tongue) with natural co-articulation, blinks and head motion, and the head turns in 3D. " +
       "Only portraits that show nobody real (AI-generated), or a real person who agreed, can be added — every avatar is labelled as synthetic.</p>" +
@@ -136,14 +175,7 @@ async function renderAvatars(el) {
       '<div class="row"><input id="av-files" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Portraits"><span class="small muted">or a folder / .zip on this computer</span>' +
       '<input id="av-path" class="grow" type="text" placeholder="/path/to/portraits.zip" aria-label="Folder or zip"><button class="btn" id="av-import">Import</button>' +
       '<button class="btn quiet" id="av-analyse">Analyse faces</button></div><div class="small" id="av-msg" aria-live="polite"></div>' +
-      '<div id="av-grid" style="margin-top:8px"></div></div>' +
-      '<div class="card" id="av-studio" hidden><h2>Avatar studio</h2><div class="row"><input id="av-name" type="text" aria-label="Name"><input id="av-tags" class="grow" type="text" placeholder="tags, comma separated" aria-label="Tags">' +
-      '<button class="btn quiet" id="av-save">Save</button><button class="btn quiet" id="av-voice">Give it the Speak tab\'s current voice</button><button class="btn quiet" id="av-del">Delete</button></div><div id="av-info"></div>' +
-      '<div class="grid2"><div><div id="av-stage" style="max-width:440px"></div><div id="av-player" class="row"></div><p class="small muted" id="av-note"></p></div>' +
-      '<div><textarea id="av-text" rows="3" aria-label="What the avatar says">Hello! I can speak any text you give me, with natural lips, eyes and expressions.</textarea>' +
-      '<div class="row"><button class="btn bigbtn" id="av-speak">🗣 Speak</button></div>' +
-      '<p class="small"><b>Try an expression:</b> ' + Object.keys(AV_PRESETS).map(k => '<button class="btn quiet small" data-avp="' + k + '">' + k + "</button>").join(" ") + "</p>" +
-      '<p class="small muted">The 52 face channels — move any slider to see what it does:</p><div id="av-ch"></div></div></div></div>';
+      '<div id="av-grid" style="margin-top:8px"></div></div>';
     el.querySelectorAll('input[name="av-src"]').forEach(r => r.onchange = () => {
       const syn = el.querySelector('input[name="av-src"]:checked').value === "synthetic";
       $("#av-syn", el).hidden = !syn; $("#av-con", el).hidden = syn;
@@ -182,6 +214,7 @@ async function renderAvatars(el) {
       toast("This avatar now speaks with that voice."); avSelect(el, AV.sel.id);
     };
     $("#av-del", el).onclick = async () => { if (!confirm("Delete this avatar and its portrait?")) return; await api("/api/avatars/delete", { id: AV.sel.id }); AV.sel = null; $("#av-studio", el).hidden = true; avRefresh(el); };
+    $("#av-tour", el).onclick = () => avTour(el).catch(e => { $("#av-note", el).textContent = "Could not speak: " + e.message; });
     $("#av-speak", el).onclick = () => avSpeak(el).catch(e => { $("#av-note", el).textContent = "Could not speak: " + e.message; });
     el.addEventListener("click", e => {
       const b = e.target.closest("[data-avp]");
@@ -195,4 +228,9 @@ async function renderAvatars(el) {
     });
   }
   await avRefresh(el);
+  if (!AV.sel) {                                       // open the studio straight away on the remembered (or first) face
+    const ready = AV.list.filter(a => a.analysed), want = typeof faceChoice === "function" ? Number(faceChoice()) : 0;
+    const pick = ready.find(a => a.id === want) || ready[0];
+    if (pick) await avSelect(el, pick.id);
+  }
 }

@@ -111,11 +111,11 @@ async function faceAvatars(fresh) {
   return FACE_LIST;
 }
 // A strip of clickable faces; onPick(value) with "2d", "3d" or an avatar id.
-async function facePicker(host, onPick) {
-  const list = await faceAvatars();
-  const cur = faceChoice();
+async function facePicker(host, onPick, opts) {
+  const list = await faceAvatars(), only = opts && opts.avatarsOnly;
+  const cur = opts && opts.current !== undefined ? String(opts.current) : faceChoice();
   const tile = (v, inner, title) => '<button class="fp-tile' + (String(v) === cur ? " on" : "") + '" data-fp="' + v + '" title="' + esc(title) + '">' + inner + "</button>";
-  host.innerHTML = '<div class="fp-strip">' + tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR") +
+  host.innerHTML = '<div class="fp-strip">' + (only ? "" : tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR")) +
     list.map(a => tile(a.id, '<img loading="lazy" alt="" src="/api/avatars/image?id=' + a.id + '"><span>' + esc(a.name) + "</span>", a.name + " — " + a.label)).join("") + "</div>" +
     (list.length ? "" : '<p class="small muted">No avatars yet — add portraits in <a href="#" data-fp-lib>Speech → Avatars</a>.</p>');
   host.querySelectorAll("[data-fp]").forEach(b => b.onclick = () => {

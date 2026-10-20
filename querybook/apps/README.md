@@ -295,7 +295,8 @@ a library avatar.
 
 **Choosing a face.** Speech → Speak opens with a *Choose a face* strip — 2D, 3D/VR and a thumbnail of every analysed
 avatar; the choice is remembered in the browser and every talking face (Speak, Ask) uses it. The same strip sits
-under each talking face, so one click switches who speaks. The installer ships a **starter set of 20 AI-generated
+under each talking face, so one click switches who speaks. The Avatar studio opens on a face with the same strip: clicking another face
+keeps the speech playing on the new face, and **Every face in turn** plays the speech while the faces take turns. The installer ships a **starter set of 20 AI-generated
 portraits** (`language/avatars_starter/`, already analysed) that is added once on first start; avatars you delete
 stay deleted. Full-length or group photos are cropped to the face automatically when analysed (the original is kept).
 
