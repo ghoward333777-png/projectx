@@ -40,7 +40,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.25.0"
+VERSION = "1.26.0"
 PORT = 8101
 program_dir = HERE
 
@@ -112,6 +112,7 @@ class App:
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
+        self.vse.human = self.qlab.human_model                                          # learned from real speakers in the Quality lab
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -940,6 +941,27 @@ class App:
             data = base64.b64decode(str(p.get("video_b64") or "").split(",", 1)[-1])
             return self.qlab.add(p.get("kind") or "avatar", data, p)
 
+        @a.post("/api/qlab/fetch")
+        def ql_fetch(p):
+            return self.qlab.fetch_reference(p.get("url"), p.get("source") or "", p.get("licence") or "", p.get("transcript") or "")
+
+        @a.post("/api/qlab/learn")
+        def ql_learn(p):
+            return self.qlab.learn(p.get("id"), p.get("frames") or [], p.get("segments") or [], p.get("transcript") or "",
+                                   p.get("words") or [], p.get("emotion") or {}, p.get("lang") or "")
+
+        @a.get("/api/qlab/graph")
+        def ql_graph(p):
+            return self.qlab.graph(p.get("node") or None)
+
+        @a.post("/api/qlab/shape")
+        def ql_shape(p):
+            return {"shape_error": self.qlab.shape_error(p.get("frames") or [], p.get("segments") or [])}
+
+        @a.get("/api/qlab/human")
+        def ql_human(p):
+            return self.qlab.human_model()
+
         @a.post("/api/qlab/metrics")
         def ql_metrics(p):
             return self.qlab.set_metrics(p.get("id"), p.get("metrics") or {})
@@ -1612,6 +1634,37 @@ def selftest():
             ql.approve(cand["version"], "selftest-admin-pass", "production")
         c.check("quality lab: human references replace the provisional ranges; only the admin approves; approved is what faces use",
                 ql.human_ranges()[1].startswith("from 1") and deny and (not okp or (ql.active()["status"] == "approved" and ql.active()["params"]["jaw"] == cand["params"]["jaw"])))
+        rid = ql.list("reference")[0]["id"]
+        frs = [{"t": i / 30, "face": True, "gap": 0.4, "bs": {"jawOpen": 0.45, "eyeBlinkLeft": 1.0 if i % 60 == 0 else 0.0, "browInnerUp": 0.05 * (i % 3)},
+                "pose": [0.5 * (i % 5), 1.0 * (i % 7) - 3, 0.2]} for i in range(600)]
+        segs = [{"v": "aa" if (i // 30) % 2 else "PP", "start": i * 0.5, "end": i * 0.5 + 0.5} for i in range(40)]
+        hm = ql.learn(rid, frs, segs, "a test", [{"word": "Water", "start": 0.0, "end": 1.0}, {"word": "moon", "start": 1.0, "end": 2.0}], {"joy": 0.7, "sadness": 0.1}, "en-US")
+        g = ql.graph("word:en:water")
+        c.check("quality lab: the motion graph links words, sounds, emotions and languages to measured movement",
+                any(e["rel"] == "moves_mouth" and abs(e["stats"]["mouth"]["gap"] - 0.4) < 1e-6 for e in g["edges"])
+                and any(e["rel"] == "articulated_as" for e in g["edges"]) and g["languages"] == ["en"]
+                and any(e["src"] == "emotion:joy" for e in ql.graph()["edges"]), g["edges"][:3])
+        try:
+            ql.fetch_reference("https://ftp.example.org/x.mp4"); other = False
+        except core.UserError as e:
+            other = "allowed list" in str(e)
+        c.check("quality lab: Voice of America and US-government hosts are allowed sources; other sites are not",
+                other and bool(qualitylab.VOA_HOST.search("www.voanews.com")) and bool(qualitylab.VOA_HOST.search("www.voachinese.com"))
+                and not qualitylab.VOA_HOST.search("evilvoa.example.com"))
+        c.check("quality lab: real speakers teach the mouth shape of each sound and their blink rate and head movement",
+                abs(hm["targets"]["aa"][0] - 0.4) < 1e-6 and abs(hm["targets"]["aa"][1] - 0.45) < 1e-6 and abs(hm["style"]["blink_per_min"] - 30) < 0.5
+                and hm["style"]["pitch_sd"] > 1.5 and hm["style"]["yaw_sd"] < 1, hm["style"])
+        try:
+            ql.fetch_reference("https://www.youtube.com/watch?v=x"); yt = False
+        except core.UserError as e:
+            yt = "forbid" in str(e)
+        tr2 = vse.timing_from_text("We can see the moon and the stars tonight, and then we sleep until the morning comes.", "en", app.lab)
+        b0 = len(vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"]["blinks_s"]) if "blinks_s" in vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"] else None
+        mo_fast = vse.lip_sync(tr2, None, None, fps=30, seed="s", style={"blink_per_min": 40, "yaw_sd": 3.2})["motion"]
+        mo_def = vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"]
+        yaw = lambda mo: max(abs(f["head_pose_deg"][0]) for f in mo["frames"])
+        c.check("quality lab: YouTube and broadcasters are refused; the learned style drives the speech engine's head and blinks",
+                yt and yaw(mo_fast) > 2 * yaw(mo_def) and app.vse.human() and app.vse.human()["version"] >= 1)
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
         c.check("avatars: the 19 bundled starter faces are installed and analysed, once", len(st) == 19 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))

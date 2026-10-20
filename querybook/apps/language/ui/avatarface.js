@@ -98,10 +98,12 @@
       const cal = Object.assign({ jaw: 1, spread: 1, round: 1, close: 1, arch: 1, teeth: 1, smooth_ms: 35, lead_ms: 40 },
         (window.QB_CAL && window.QB_CAL.params) || {}, (params && params.cal) || {});
       this.cal = cal;
-      this.params = Object.assign({ lead_ms: cal.lead_ms, smooth_ms: cal.smooth_ms, head_gain: 1, label: avatar.label || "Synthetic avatar — AI-generated" }, params || {});
+      cal.head = cal.head || 1; cal.brow = cal.brow || 1;
+      this.params = Object.assign({ lead_ms: cal.lead_ms, smooth_ms: cal.smooth_ms, head_gain: cal.head, label: avatar.label || "Synthetic avatar — AI-generated" }, params || {});
       const cg = { jawOpen: cal.jaw, mouthLowerDownLeft: cal.jaw, mouthLowerDownRight: cal.jaw, mouthStretchLeft: cal.spread, mouthStretchRight: cal.spread,
         mouthSmileLeft: cal.spread, mouthSmileRight: cal.spread, mouthDimpleLeft: cal.spread, mouthDimpleRight: cal.spread, mouthPucker: cal.round,
-        mouthFunnel: cal.round, mouthClose: cal.close, mouthPressLeft: cal.close, mouthPressRight: cal.close };
+        mouthFunnel: cal.round, mouthClose: cal.close, mouthPressLeft: cal.close, mouthPressRight: cal.close,
+        browDownLeft: cal.brow, browDownRight: cal.brow, browInnerUp: cal.brow, browOuterUpLeft: cal.brow, browOuterUpRight: cal.brow };
       this.calGain = Float32Array.from(BS.map(k => cg[k] || 1));
       this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null;
       this.ready = new Promise((res, rej) => {

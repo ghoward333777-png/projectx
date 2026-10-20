@@ -16,6 +16,24 @@ const qlPct = (a, p) => { if (!a.length) return 0; const s = a.slice().sort((x, 
 const qlMean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
 const qlStd = a => { const m = qlMean(a); return Math.sqrt(qlMean(a.map(x => (x - m) ** 2))); };
 
+// Whole-face style from the tracked frames: blinks per minute, head movement, eyebrow movement.
+function qlFaceStyle(full) {
+  const f = full.filter(x => x.face); if (f.length < 10) return {};
+  let blinks = 0, prev = 0; f.forEach(x => { const b = (x.bs || {}).eyeBlinkLeft || 0; if (b > 0.5 && prev <= 0.5) blinks++; prev = b; });
+  const mins = Math.max(1 / 60, (f[f.length - 1].t - f[0].t) / 60);
+  const yaw = f.filter(x => x.pose).map(x => x.pose[0]), pitch = f.filter(x => x.pose).map(x => x.pose[1]);
+  return { blink_rate: blinks / mins, head_motion: Math.hypot(qlStd(yaw), qlStd(pitch)), brow_activity: qlStd(f.map(x => (x.bs || {}).browInnerUp || 0)) };
+}
+// The sounds of a recording, in time: its audio aligned with its words by the speech engine.
+async function qlAlign(blob, text, lang) {
+  const wav = await qlB64(trFloatWav(await trDecode(blob), 16000));
+  const j = await api("/api/vse/lip_sync", { audio_b64: wav, text, lang: lang || "en" });
+  const res = await avWaitJob(j.job_id);
+  const segs = ((res.visemes || {}).visemes || []).map(x => ({ v: x.id, start: x.start_time, end: x.end_time }));
+  segs.words = res.words || []; segs.emotion = res.emotion || {};
+  return segs;
+}
+
 // Measure a video (avatar or human) with the face tracker, frame by frame, plus its sound envelope.
 async function qlMeasure(url, note) {
   const lm = await tracker();
@@ -24,13 +42,14 @@ async function qlMeasure(url, note) {
   await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error("the video could not be read")); });
   // step through every frame (seek, measure, next) so no frame is skipped however slow the computer
   if (!isFinite(v.duration)) { await new Promise(res => { v.ondurationchange = () => { if (isFinite(v.duration)) res(); }; v.currentTime = 1e9; setTimeout(res, 3000); }); }
-  const dur = isFinite(v.duration) ? v.duration : 0, fr = [], fps = 30;
+  const dur = isFinite(v.duration) ? v.duration : 0, fr = [], fps = 30, full = [];
   if (!QL.cv) QL.cv = document.createElement("canvas");
   for (let t = 0; t < dur; t += 1 / fps) {
     await new Promise(res => { v.onseeked = res; v.currentTime = t; });
     const cv = QL.cv; cv.width = v.videoWidth; cv.height = v.videoHeight; cv.getContext("2d").drawImage(v, 0, 0);
     QL.ts = Math.max((QL.ts || 0) + 1, performance.now());
     const r = lm.detectForVideo(cv, QL.ts), L = r.faceLandmarks && r.faceLandmarks[0];
+    const mf = measureFrame(r, { videoWidth: cv.width, videoHeight: cv.height }, t); delete mf._L; full.push(mf);
     if (L) { const W = cv.width, H = cv.height, d = (a, b) => Math.hypot((L[a].x - L[b].x) * W, (L[a].y - L[b].y) * H);
       fr.push({ t, w: d(61, 291), ap: d(13, 14), up: d(0, 13), lo: d(14, 17) }); } else fr.push({ t, miss: 1 });
     if (note && fr.length % 10 === 0) note("measuring the mouth, " + t.toFixed(1) + " of " + dur.toFixed(1) + " s");
@@ -62,7 +81,7 @@ async function qlMeasure(url, note) {
   return { aperture_mean: qlMean(ap), aperture_p90: qlPct(ap, 0.9), width_var: qlStd(S.map(f => f.w / W0)),
     upper_thick_cv: qlStd(S.map(f => f.up)) / (qlMean(S.map(f => f.up)) || 1), lower_thick_cv: qlStd(S.map(f => f.lo)) / (qlMean(S.map(f => f.lo)) || 1),
     velocity_p90: qlPct(vel, 0.9), jerk_rms: Math.sqrt(qlMean(jerk.map(x => x * x))), closure_rate: S.filter(f => f.ap / W0 < 0.04).length / S.length,
-    av_lag_ms: 1000 * best[0] / fpsM, frames: fr.length, tracked: ok.length / fr.length };
+    av_lag_ms: 1000 * best[0] / fpsM, frames: fr.length, tracked: ok.length / fr.length, ...qlFaceStyle(full), _frames: full };
 }
 
 // Record one test: the chosen avatar says the script; picture and sound are recorded together.
@@ -106,7 +125,11 @@ async function qlRecordTest(script) {
     words_text: wText.length, words_timed: wTimed.length, duration, audio_duration: audio.duration });
   note("Measuring the video against human speech…");
   const m = await qlMeasure(URL.createObjectURL(blob), note);
+  const segs = ((res.visemes || {}).visemes || []).map(x => ({ v: x.id, start: x.start_time + 0.3, end: x.end_time + 0.3 }));   // 0.3 s lead-in
+  try { const se = await api("/api/qlab/shape", { frames: m._frames, segments: segs }); if (se.shape_error != null) m.shape_error = se.shape_error; } catch (e) {}
+  delete m._frames;
   const out = await api("/api/qlab/metrics", { id: smp.id, metrics: m });
+  QL.history = (QL.history || []).concat([out.score]).slice(-60);
   if ($("#ql-auto").checked && out.proposal_notes && out.proposal_notes.length) await api("/api/qlab/candidate", { params: out.proposal, origin: "auto (sample " + smp.id + ")" });
   qlShowResult(smp, out, wText, wTimed);
   note("Done: sample " + smp.id + " · score " + out.score + " / 100 (" + out.basis + ")");
@@ -151,18 +174,77 @@ async function qlRefresh() {
     : '<p class="small muted">No tests yet.</p>';
   $("#ql-refs").innerHTML = refs.length ? refs.map(r => '<div class="small">#' + r.id + " " + esc(r.source) + (r.licence ? " · " + esc(r.licence) : "") + (r.metrics ? " · measured" : " · ⚠ not measured") +
     ' · <a href="/api/qlab/video?id=' + r.id + '" target="_blank">video</a> · <a href="#" data-qdel="' + r.id + '">remove</a></div>').join("") : '<p class="small muted">No human references yet — the scores use provisional ranges.</p>';
+  const hm = await api("/api/qlab/human");
+  $("#ql-human").innerHTML = hm.version ? "<b>Human motion model v" + hm.version + "</b>: " + hm.references_used + " clip(s), " + hm.frames_used + " frames · sounds learned: " + esc((hm.visemes || []).join(" ") || "—") +
+    " · blinks/min " + (hm.style.blink_per_min ?? "—") + " · head sway " + (hm.style.yaw_sd ?? "—") + "° · used by the speech engine for every face" : "No human motion learned yet — add a reference with its words.";
   $$("#ql-refs [data-qdel]").forEach(x => x.onclick = async e => { e.preventDefault(); await api("/api/qlab/delete", { id: Number(x.dataset.qdel) }); qlRefresh(); });
 }
 
-async function qlAddReference(blob, source, licence) {
+async function qlAddReference(blob, source, licence, transcript, existing) {
   const note = m => { $("#ql-rnote").textContent = m; };
-  note("Saving the reference…");
-  const smp = await api("/api/qlab/sample", { kind: "reference", video_b64: await qlB64(blob), source, licence });
-  note("Measuring the human mouth in the reference…");
+  let smp = existing;
+  if (!smp) { note("Saving the reference…"); smp = await api("/api/qlab/sample", { kind: "reference", video_b64: await qlB64(blob), source, licence, transcript }); }
+  note("Measuring the human face in the reference, frame by frame…");
   const m = await qlMeasure(URL.createObjectURL(blob), note);
+  const frames = m._frames; delete m._frames;
   await api("/api/qlab/metrics", { id: smp.id, metrics: m });
-  note("Reference " + smp.id + " added (" + m.frames + " frames, face found in " + Math.round(100 * m.tracked) + "%).");
+  let learned = "";
+  if ((transcript || "").trim()) {
+    note("Learning: aligning the speech with its words, labelling every frame with the sound being made…");
+    const lang = ($("#ql-lang") && $("#ql-lang").value.trim()) || (typeof SP !== "undefined" && SP.profile ? SP.profile.lang : "en");
+    const segs = await qlAlign(blob, transcript, lang);
+    const hm = await api("/api/qlab/learn", { id: smp.id, frames, segments: segs, transcript, words: segs.words, emotion: segs.emotion, lang });
+    learned = " Learned — human model v" + hm.version + " from " + hm.references_used + " clip(s), " + hm.frames_used + " frames; sounds learned: " + hm.visemes.join(" ") + ".";
+  } else learned = " (no transcript given — measured, but not learned from)";
+  note("Reference " + smp.id + " added (" + m.frames + " frames, face found in " + Math.round(100 * m.tracked) + "%)." + learned);
   qlRefresh();
+}
+
+async function qlFetchRef() {
+  const url = $("#ql-url").value.trim(); if (!url) return toast("Paste the address of the video file.");
+  $("#ql-rnote").textContent = "Downloading from an allowed archive…";
+  const smp = await api("/api/qlab/fetch", { url, source: $("#ql-src").value.trim(), licence: $("#ql-lic").value.trim(), transcript: $("#ql-tr").value.trim() });
+  const blob = await (await fetch("/api/qlab/video?id=" + smp.id)).blob();
+  await qlAddReference(blob, smp.source, smp.licence, $("#ql-tr").value.trim(), smp);
+}
+
+async function qlGraph(q) {
+  const g0 = await api("/api/qlab/graph");
+  $("#ql-gsum").textContent = "Nodes: " + Object.entries(g0.nodes).map(([k, n]) => n + " " + k).join(", ") + " · languages: " + (g0.languages.join(", ") || "—");
+  if (!q) return;
+  const lang = ($("#ql-lang") && $("#ql-lang").value.trim()) || "en", w = q.toLowerCase();
+  const node = /^(viseme|word|emotion|lang):/.test(q) ? q : ["sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U"].includes(q) ? "viseme:" + q
+    : ["joy", "sadness", "anger", "fear", "surprise", "neutral", "disgust"].includes(w) ? "emotion:" + w : w.length <= 3 && g0.languages.includes(w) ? "lang:" + w : "word:" + lang.split("-")[0] + ":" + w;
+  const g = await api("/api/qlab/graph?node=" + encodeURIComponent(node));
+  $("#ql-gout").innerHTML = g.edges.length ? '<table class="t small"><thead><tr><th>From</th><th>Relation</th><th>To</th><th>Seen</th><th>Measured</th></tr></thead><tbody>' +
+    g.edges.map(e => "<tr><td>" + esc(e.src) + "</td><td>" + esc(e.rel) + "</td><td>" + esc(e.dst) + "</td><td>" + e.n + "</td><td>" +
+      esc(Object.entries(e.stats).map(([k, v]) => k === "mouth" ? "gap " + v.gap + ", jaw " + v.jawOpen + ", funnel " + v.mouthFunnel + ", pucker " + v.mouthPucker + ", stretch " + v.stretch : k + " " + v).join(" · ")) + "</td></tr>").join("") + "</tbody></table>"
+    : '<p class="small muted">Nothing learned about ' + esc(node) + " yet.</p>";
+}
+
+// The self-learning loop: test after test (rotating scripts and faces), each one measured, scored and used to calibrate
+// the next, until the admin stops it or approves a calibration. It resumes whenever the Quality lab is opened.
+async function qlLoop(on) {
+  try { localStorage.setItem("qb.qlab.loop", on ? "1" : "0"); } catch (e) {}
+  QL.loop = on; $("#ql-loop").textContent = on ? "■ Stop the self-learning loop" : "▶ Start the self-learning loop";
+  if (!on || QL.busy) return;
+  QL.busy = true;
+  try {
+    const faces = (await api("/api/avatars/list")).avatars.filter(a => a.analysed && (!a.qc || a.qc.ok));
+    for (let round = 0; QL.loop; round++) {
+      const st = await api("/api/qlab/status");
+      if (st.approved && st.candidate && st.approved.version === st.candidate.version) { $("#ql-note").textContent = "The admin approved this calibration — the loop rests."; break; }
+      const face = faces[round % Math.max(1, faces.length)]; if (face && typeof setFaceChoice === "function") setFaceChoice(String(face.id));
+      try { await qlRecordTest(QL_SCRIPTS[round % QL_SCRIPTS.length]); } catch (e) { $("#ql-note").textContent = "Round " + (round + 1) + " failed: " + e.message; await new Promise(r => setTimeout(r, 3000)); }
+      qlTrend();
+    }
+  } finally { QL.busy = false; }
+}
+function qlTrend() {
+  const h = QL.history || []; if (!h.length) return;
+  const w = 300, ht = 50, pts = h.map((v, i) => (h.length === 1 ? 0 : i * w / (h.length - 1)).toFixed(1) + "," + (ht - v / 100 * ht).toFixed(1)).join(" ");
+  $("#ql-trend").innerHTML = '<svg width="' + w + '" height="' + ht + '" style="background:rgba(127,127,127,.08);border-radius:6px"><polyline fill="none" stroke="currentColor" stroke-width="2" points="' + pts + '"/></svg>' +
+    '<span class="small"> last ' + h.length + " tests · latest " + h[h.length - 1] + " / 100</span>";
 }
 
 async function qlWebcam() {
@@ -173,7 +255,7 @@ async function qlWebcam() {
   const rec = new MediaRecorder(s, { mimeType: ["video/webm;codecs=vp9,opus", "video/webm"].find(m => MediaRecorder.isTypeSupported(m)) }), ch = [];
   rec.ondataavailable = e => { if (e.data.size) ch.push(e.data); };
   rec.onstop = async () => { s.getTracks().forEach(t => t.stop()); v.hidden = true; QL.cam = null; btn.textContent = "🎥 Record myself reading the script";
-    await qlAddReference(new Blob(ch, { type: "video/webm" }), "own recording (webcam): " + $("#ql-script").value.slice(0, 80), "own"); };
+    await qlAddReference(new Blob(ch, { type: "video/webm" }), "own recording (webcam): " + $("#ql-script").value.slice(0, 80), "own", $("#ql-script").value); };
   rec.start(250); QL.cam = rec; btn.textContent = "■ Stop recording";
 }
 
@@ -187,12 +269,21 @@ async function renderQualityLab(el) {
       '<div class="row"><select id="ql-pick">' + QL_SCRIPTS.map((s, i) => '<option value="' + i + '">Script ' + (i + 1) + ": " + esc(s.slice(0, 50)) + "…</option>").join("") + '<option value="c">My own text</option></select>' +
       '<label class="small"><input type="checkbox" id="ql-auto" checked> calibrate automatically after each test</label></div>' +
       '<textarea id="ql-script" rows="2"></textarea>' +
-      '<div class="row"><button class="btn bigbtn" id="ql-go">⏺ Record test</button><button class="btn" id="ql-all">Run all four scripts</button></div>' +
+      '<div class="row"><button class="btn bigbtn" id="ql-go">⏺ Record test</button><button class="btn" id="ql-all">Run all four scripts</button>' +
+      '<button class="btn" id="ql-loop">▶ Start the self-learning loop</button></div><div id="ql-trend"></div>' +
       '<p class="small" id="ql-note" aria-live="polite"></p><div class="grid2"><div id="ql-stage" style="max-width:420px"></div><div id="ql-measure"></div></div><div id="ql-result"></div></div>' +
       '<div class="card"><h2><span class="step">2</span> Human references</h2><p class="small muted">Real people speaking, filmed face-on: record yourself reading the script, or add clips you may use — public domain, Creative Commons, government works, or your own. Only measurements are compared.</p>' +
       '<div class="row"><button class="btn" id="ql-cam">🎥 Record myself reading the script</button></div><video id="ql-campv" hidden style="max-width:320px"></video>' +
-      '<div class="row small"><input type="file" id="ql-file" accept="video/mp4,video/webm"><input id="ql-src" class="grow" placeholder="where it comes from (address or description)"><input id="ql-lic" placeholder="licence (e.g. public domain, CC BY)"><button class="btn quiet" id="ql-addref">Add reference</button></div>' +
+      '<div class="row small"><input id="ql-src" class="grow" placeholder="where it comes from (address or description)"><input id="ql-lic" placeholder="licence (e.g. public domain, CC BY)"></div>' +
+      '<div class="row small"><textarea id="ql-tr" class="grow" rows="2" placeholder="what is said in the clip, word for word (needed for learning)"></textarea>' +
+      '<input id="ql-lang" placeholder="language (en, es, zh, ar…)" style="width:160px"></div>' +
+      '<div class="row small"><input type="file" id="ql-file" accept="video/mp4,video/webm"><button class="btn quiet" id="ql-addref">Add file</button>' +
+      '<input id="ql-url" class="grow" placeholder="or the address of a video file: US government (.gov/.mil), Wikimedia Commons, Internet Archive, Zenodo, GRID corpus"><button class="btn quiet" id="ql-fetch">Fetch</button></div>' +
+      '<p class="small muted">Not YouTube, TV or film: their terms forbid downloading and the footage is copyrighted. Good stable-camera sources: US government press briefings and NASA (public domain), the GRID audiovisual corpus (CC BY 4.0), Wikimedia Commons speeches.</p>' +
+      '<div id="ql-human" class="small"></div>' +
       '<p class="small" id="ql-rnote"></p><div id="ql-refs"></div></div>' +
+      '<div class="card"><h2>Motion graph <span class="small muted">words, sounds, emotions and languages linked to the measured movement of real speakers</span></h2>' +
+      '<div id="ql-gsum" class="small"></div><div class="row small"><input id="ql-gq" class="grow" placeholder="look up: a word (e.g. water), a sound (aa, O, PP…), an emotion (joy) or a language (en)"><button class="btn quiet small" id="ql-gbtn">Look up</button></div><div id="ql-gout"></div></div>' +
       '<div class="card"><h2><span class="step">3</span> Calibration — approved by the admin</h2><div id="ql-cal"></div></div>' +
       '<div class="card"><h2>All tests</h2><div id="ql-samples"></div></div>';
     const setScript = () => { const v = $("#ql-pick").value; $("#ql-script").value = v === "c" ? ($("#sp-text") ? $("#sp-text").value : "") : QL_SCRIPTS[Number(v)]; };
@@ -203,7 +294,12 @@ async function renderQualityLab(el) {
     $("#ql-all").onclick = () => run(QL_SCRIPTS);
     $("#ql-cam").onclick = () => qlWebcam().catch(e => toast("Camera: " + e.message));
     $("#ql-addref").onclick = async () => { const f = $("#ql-file").files[0]; if (!f) return toast("Choose a video file.");
-      try { await qlAddReference(f, $("#ql-src").value.trim(), $("#ql-lic").value.trim()); } catch (e) { $("#ql-rnote").textContent = "Not added: " + e.message; } };
+      try { await qlAddReference(f, $("#ql-src").value.trim(), $("#ql-lic").value.trim(), $("#ql-tr").value.trim()); } catch (e) { $("#ql-rnote").textContent = "Not added: " + e.message; } };
+    $("#ql-fetch").onclick = () => qlFetchRef().catch(e => { $("#ql-rnote").textContent = "Not added: " + e.message; });
+    $("#ql-loop").onclick = () => qlLoop(!QL.loop);
+    $("#ql-gbtn").onclick = () => qlGraph($("#ql-gq").value.trim()).catch(e => toast(e.message));
   }
   await qlRefresh();
+  qlTrend(); qlGraph("").catch(() => {});
+  try { if (localStorage.getItem("qb.qlab.loop") === "1" && !QL.loop) qlLoop(true); } catch (e) {}
 }

@@ -352,6 +352,19 @@ until references exist, provisional ranges are used and say so. Each test propos
 (passphrase) **approves** a calibration; every face outside the lab speaks with the approved one, and *Ship approved
 with the installer* writes `calibration.json` next to the program so packaged installs start with it.
 
+**Self-learning from real speakers.** A reference clip given with its words is aligned (its audio against its words by
+the speech engine), every frame is labelled with the sound being made, and the **human motion model** is rebuilt: the
+mouth shape of each sound (in the tracker's units), blink rate, head sway and brow movement. The speech engine uses it
+for every face (a speaker's own learned shapes still win). The **motion graph** links languages, words, sounds and
+emotions to the measured movement (`lang —uses_word→ word —articulated_as→ viseme`, `word —moves_mouth/moves_head→`,
+`viseme —shaped_under→ emotion`, `emotion —moves_head→`), rebuilt deterministically from every learned clip; look up any
+node in the lab. **Sources**: record yourself, add files you may use, or fetch from allowed archives — Voice of America
+(news in ~40+ languages, public domain as a US government work, except third-party footage), US government .gov/.mil,
+Wikimedia Commons, Internet Archive, Zenodo, the GRID corpus. YouTube, broadcasters and film/TV sites are refused: their
+terms forbid downloading and the footage is copyrighted. The **self-learning loop** records test after test (rotating
+scripts and faces), scores each against the human references, calibrates the next, and resumes whenever the lab is
+open, until the admin approves.
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

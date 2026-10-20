@@ -327,7 +327,7 @@ def _rng(*parts):
     return random.Random(int(hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:12], 16))
 
 
-def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed=""):
+def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=None):
     """Visemes → coarticulated full-face motion. Returns {viseme_sequence, motion}.
 
     track: visemes.align() / timing_from_text() output; pros: prosody(); emo: emotion();
@@ -401,10 +401,18 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed=""):
         if v == "sil" and b - a >= 0.3 and a > 0.1:
             pauses.append((a, b))
     rnd = _rng("vse-motion", seed, round(dur, 2), len(segs))
+    # style learned from real speakers (Quality lab): blink rate, head and brow movement; defaults otherwise
+    st = style or {}
+    clamp = lambda x: max(0.3, min(3.0, x))
+    blink_mean = 60.0 / st["blink_per_min"] if st.get("blink_per_min") else 3.2
+    hy = clamp(st["yaw_sd"] / 1.06) if st.get("yaw_sd") else 1.0
+    hp = clamp(st["pitch_sd"] / 0.9) if st.get("pitch_sd") else 1.0
+    hr = clamp(st["roll_sd"] / 0.42) if st.get("roll_sd") else 1.0
+    bw = clamp(st["brow_sd"] / 0.06) if st.get("brow_sd") else 1.0
     blinks, t = [], 0.6 + rnd.random() * 1.5
     while t < dur:
         blinks.append(t)
-        t += max(1.4, rnd.expovariate(1 / 3.2))
+        t += max(1.4, rnd.expovariate(1 / blink_mean))
     for a, b in pauses:
         if rnd.random() < 0.6:
             blinks.append(a + 0.05)
@@ -423,12 +431,12 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed=""):
             if bt - 0.07 <= t <= bt + 0.11:
                 blink = (t - bt + 0.07) / 0.07 if t < bt else 1 - (t - bt) / 0.11
                 break
-        brow = sum(0.3 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
-        nod = sum(-2.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
+        brow = bw * sum(0.3 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
+        nod = hp * sum(-2.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
         m = frames_mouth[i]
         motion.append({"time": round(t, 3), "mouth": [round(x, 4) for x in m],
                        "jaw_rotation_deg": round(24.0 * m[_I["jawOpen"]], 2),
-                       "head_pose_deg": [round(1.5 * math.sin(0.9 * t + phase), 2), round(nod, 2), round(0.6 * math.sin(0.5 * t + phase / 2), 2)],
+                       "head_pose_deg": [round(hy * 1.5 * math.sin(0.9 * t + phase), 2), round(nod, 2), round(hr * 0.6 * math.sin(0.5 * t + phase / 2), 2)],
                        "eye_gaze": [round(gaze[0], 3), round(gaze[1], 3)], "blink": round(max(0.0, min(1.0, blink)), 3),
                        "brows": [round(min(1.0, brow + 0.1 * sad), 3), round(min(1.0, 0.7 * brow), 3)]})
     # the full 52-channel ARKit face for every frame (mouth, jaw, cheeks, nose, eyes, brows, tongue)
@@ -1089,6 +1097,7 @@ class Engine:
         self.sl, self.lab, self.coach = speech_lab, lab, coach
         self.jobs = {}
         self._lock = threading.Lock()
+        self.human = None                     # the human motion model (Quality lab), set by the app
 
     def _learned(self):
         return lipread.ACTIVE.get("model") if isinstance(lipread.ACTIVE.get("model"), dict) else None
@@ -1135,13 +1144,16 @@ class Engine:
             if emotion_override:
                 emo.update({k: float(v) for k, v in emotion_override.items() if k in EMOTION_KEYS})
             progress(2, 4, "lip sync and face motion")
-            tg = self._targets() if personal else {}
-            ls = lip_sync(a["track"], a["prosody"], emo, fps=int(fps), targets=tg, seed=text)
+            hm = self.human() if self.human else {}
+            tg = dict(hm.get("targets") or {})                              # mouth shapes learned from real speakers
+            if personal:
+                tg.update(self._targets())                                   # this speaker's own shapes win
+            ls = lip_sync(a["track"], a["prosody"], emo, fps=int(fps), targets=tg, seed=text, style=hm.get("style"))
             progress(4, 4, "done")
             return {"phonemes": a["phonemes"], "emotion": emo, "speaker_embedding": a["speaker_embedding"],
                     "prosody_summary": {"pitch_hz": a["measure"]["pitch"].get("mean_hz"), "rate_syl_s": a["measure"]["rate"]["articulation_rate_syl_s"]},
                     "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]), "arkit52_csv": arkit52_csv(ls["motion"]),
-                    "personal_targets": sorted(tg), "duration": a["duration"],
+                    "personal_targets": sorted(tg), "duration": a["duration"], "human_model": hm.get("version", 0),
                     "words": [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in a["track"].get("words", [])]}
         return fn
 

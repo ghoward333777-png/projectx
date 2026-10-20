@@ -53,7 +53,11 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.25.0)
+  Language Builder (1.26.0)
+    * Self-learning from real speakers: reference clips with their words teach the mouth shape of every sound, blink
+      rate, head and brow movement; a motion graph links languages, words, sounds and emotions to measured movement.
+      Fetch from Voice of America (40+ languages, public domain), US government, Wikimedia Commons, Internet Archive.
+    * Self-learning loop: test after test, scored and calibrated automatically until the admin approves.
     * Quality lab (Speech -> Quality lab): each avatar test is recorded as a video with every word, measured
       against human reference clips (your webcam or clips you may use), scored, and used to calibrate the next test.
       Only the admin approves a calibration; all faces then speak with it.

@@ -12,9 +12,11 @@ The loop, run until the admin approves a quality level:
   5. only the admin (passphrase) approves a calibration; every face outside the lab speaks with the approved one.
 Deterministic: the same measures always give the same score and the same proposal.
 """
-import base64, datetime, hashlib, json, math, os
+import base64, datetime, hashlib, json, math, os, urllib.parse, urllib.request
 
 import qbcore as core
+import lipread
+import vse
 
 SCHEMA = ["""
 CREATE TABLE samples (
@@ -25,11 +27,24 @@ CREATE TABLE samples (
 CREATE TABLE calibration (
   version INTEGER PRIMARY KEY, created TEXT NOT NULL, params TEXT NOT NULL, status TEXT NOT NULL, origin TEXT,
   approved_at TEXT, level TEXT, note TEXT);
+""", """
+ALTER TABLE samples ADD COLUMN transcript TEXT;
+ALTER TABLE samples ADD COLUMN frames TEXT;
+ALTER TABLE samples ADD COLUMN labels TEXT;
+CREATE TABLE human_model (version INTEGER PRIMARY KEY, created TEXT NOT NULL, references_used INTEGER, frames_used INTEGER,
+  targets TEXT, style TEXT, visemes TEXT);
+""", """
+ALTER TABLE samples ADD COLUMN words TEXT;
+ALTER TABLE samples ADD COLUMN emotion TEXT;
+ALTER TABLE samples ADD COLUMN lang TEXT;
+CREATE TABLE motion_graph (src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, n INTEGER NOT NULL, stats TEXT,
+  PRIMARY KEY (src, rel, dst));
 """]
 
-DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 35.0, "lead_ms": 40.0}
+DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 35.0, "lead_ms": 40.0,
+            "head": 1.0, "brow": 1.0}
 BOUNDS = {"jaw": (0.5, 1.5), "spread": (0.4, 1.6), "round": (0.5, 1.5), "close": (0.6, 1.6), "arch": (0.4, 1.8), "teeth": (0.5, 1.4),
-          "smooth_ms": (15.0, 90.0), "lead_ms": (-60.0, 140.0)}
+          "smooth_ms": (15.0, 90.0), "lead_ms": (-60.0, 140.0), "head": (0.3, 3.0), "brow": (0.3, 3.0)}
 
 # What is measured (from the face tracker, per frame; sizes relative to the speaker's own mouth width at rest)
 METRICS = {
@@ -42,13 +57,24 @@ METRICS = {
     "jerk_rms": "jitter (rough, flickering movement)",
     "closure_rate": "lip closures while speaking (p, b, m)",
     "av_lag_ms": "lips behind (+) or ahead of (-) the sound",
+    "shape_error": "mouth shape per sound vs the learned human shapes",
+    "blink_rate": "blinks per minute",
+    "head_motion": "head movement (degrees, typical swing)",
+    "brow_activity": "eyebrow movement",
 }
 # Provisional ranges, used only until the admin adds human reference clips (estimates for conversational speech filmed
 # face-on; the references replace them).
 PROVISIONAL = {"aperture_mean": (0.08, 0.28), "aperture_p90": (0.2, 0.5), "width_var": (0.015, 0.07), "upper_thick_cv": (0.03, 0.16),
-               "lower_thick_cv": (0.04, 0.2), "velocity_p90": (0.8, 3.5), "jerk_rms": (0, 60), "closure_rate": (0.04, 0.25), "av_lag_ms": (-60, 60)}
+               "lower_thick_cv": (0.04, 0.2), "velocity_p90": (0.8, 3.5), "jerk_rms": (0, 60), "closure_rate": (0.04, 0.25), "av_lag_ms": (-60, 60),
+               "shape_error": (0, 0.06), "blink_rate": (8, 30), "head_motion": (1.0, 6.0), "brow_activity": (0.02, 0.12)}
 WEIGHTS = {"aperture_mean": 2, "aperture_p90": 1.5, "width_var": 1.5, "upper_thick_cv": 1.5, "lower_thick_cv": 1, "velocity_p90": 1.5,
-           "jerk_rms": 1.5, "closure_rate": 1, "av_lag_ms": 2}
+           "jerk_rms": 1.5, "closure_rate": 1, "av_lag_ms": 2, "shape_error": 3, "blink_rate": 1, "head_motion": 1.5, "brow_activity": 1}
+# Where reference video may be fetched from automatically: public-domain and openly licensed archives, and US government
+# works. YouTube and broadcasters are not: their terms forbid downloading, and TV/film footage is copyrighted.
+# Voice of America: news in ~40+ languages, public domain as a US government work (except third-party footage it licenses).
+VOA_HOST = __import__("re").compile(r"(^|\.)(voa[a-z]*|insidevoa|golosameriki|radiosvoboda|martinoticias)\.(com|gov|org)$|(^|\.)voa-video[a-z0-9.-]*$")
+ALLOWED_HOSTS = ("upload.wikimedia.org", "commons.wikimedia.org", "archive.org", "ia800", "ia900", "spandh.dcs.shef.ac.uk", "zenodo.org")
+REFUSED_HOSTS = ("youtube.com", "youtu.be", "googlevideo.com", "vimeo.com", "tiktok.com", "netflix.com", "facebook.com", "instagram.com")
 
 
 def _now():
@@ -115,6 +141,10 @@ def propose(params, scores):
                 nudge("smooth_ms", 1.2, METRICS[k] + " — smoother")
             else:
                 nudge("smooth_ms", 0.85, METRICS[k] + " — livelier")
+        elif k == "head_motion":
+            nudge("head", step, METRICS[k])
+        elif k == "brow_activity":
+            nudge("brow", step, METRICS[k])
         elif k == "av_lag_ms":
             lo, hi = BOUNDS["lead_ms"]
             old = p["lead_ms"]
@@ -234,7 +264,7 @@ class QualityLab:
             fn = "%s-%d.%s" % (kind, sid, ext)
             with open(os.path.join(self.folder, fn), "wb") as f:
                 f.write(data)
-            db.execute("UPDATE samples SET video = ? WHERE id = ?", (fn, sid))
+            db.execute("UPDATE samples SET video = ?, transcript = ? WHERE id = ?", (fn, str(meta.get("transcript") or "")[:4000], sid))
         return self.get(sid)
 
     def get(self, sid):
@@ -244,6 +274,8 @@ class QualityLab:
         r = dict(r)
         for k in ("metrics", "scores"):
             r[k] = json.loads(r[k]) if r[k] else None
+        r["learned"] = bool(r.pop("frames", None))
+        r.pop("labels", None)
         r["complete"] = bool(r["complete"])
         return r
 
@@ -257,12 +289,15 @@ class QualityLab:
 
     def delete(self, sid):
         p = self.video_path(sid)
+        was_ref = self.get(sid)["kind"] == "reference"
         with self.store.write() as db:
             db.execute("DELETE FROM samples WHERE id = ?", (int(sid),))
         try:
             os.remove(p)
         except OSError:
             pass
+        if was_ref:
+            self.rebuild()                    # what was learned from it goes too
         return {"deleted": True}
 
     def human_ranges(self):
@@ -317,3 +352,175 @@ class QualityLab:
                 "references": len(self.list("reference")), "samples": len(avatar),
                 "recent_mean_score": round(sum(r["score"] for r in recent) / len(recent), 1) if recent else None,
                 "basis": self.human_ranges()[1]}
+
+    # ------------------------------------------------------------------ learning from human speech
+    def fetch_reference(self, url, source="", licence="", transcript=""):
+        """Download a reference clip from an allowed archive (public domain / open licence / US government works)."""
+        u = urllib.parse.urlsplit(str(url or "").strip())
+        host = (u.hostname or "").lower()
+        if u.scheme not in ("http", "https") or not host:
+            raise core.UserError("Give the full address of the video file.")
+        if any(host == h or host.endswith("." + h) for h in REFUSED_HOSTS):
+            raise core.UserError("Not from %s: its terms forbid downloading, and TV, film and news footage there is copyrighted. "
+                                 "Use public-domain sources (US government briefings, NASA, Wikimedia Commons, Internet Archive "
+                                 "public-domain items), openly licensed corpora, or record yourself." % host)
+        if not (host.endswith(".gov") or host.endswith(".mil") or VOA_HOST.search(host) or any(h in host for h in ALLOWED_HOSTS)):
+            raise core.UserError("That site is not on the allowed list (Voice of America sites, US government .gov/.mil, Wikimedia Commons, "
+                                 "Internet Archive, Zenodo, the GRID corpus). Download it yourself if you may, and add it as a file.")
+        req = urllib.request.Request(u.geturl(), headers={"User-Agent": "QueryBook-QualityLab/1.0 (reference clips; polite)"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read(300 * 1024 * 1024 + 1)
+        return self.add("reference", data, {"source": source or u.geturl(), "licence": licence or "public domain / open licence (from %s)" % host,
+                                            "transcript": transcript})
+
+    def learn(self, sid, frames, segments, transcript="", words=None, emotion=None, lang=""):
+        """Keep a reference clip's measured frames, each labelled with the sound being made (from aligning its audio with its
+        words), then rebuild the human motion model."""
+        r = self.get(sid)
+        if r["kind"] != "reference":
+            raise core.UserError("Only human reference clips teach the model.")
+        segs = sorted([(str(x["v"]), float(x["start"]), float(x["end"])) for x in segments or [] if x.get("v")], key=lambda x: x[1])
+        rows, labels, j = [], [], 0
+        for fr in frames or []:
+            t = float(fr.get("t") or 0)
+            while j < len(segs) and segs[j][2] <= t:
+                j += 1
+            v = segs[j][0] if j < len(segs) and segs[j][1] <= t < segs[j][2] else None
+            rows.append([t] + lipread.features(fr) + [fr.get("pose") or [], (fr.get("bs") or {}).get("eyeBlinkLeft", 0), (fr.get("bs") or {}).get("browInnerUp", 0)])
+            labels.append(["", v] if (v and fr.get("face")) else None)
+        with self.store.write() as db:
+            db.execute("UPDATE samples SET frames = ?, labels = ?, transcript = ?, words = ?, emotion = ?, lang = ? WHERE id = ?",
+                       (json.dumps(rows), json.dumps(labels), str(transcript)[:4000],
+                        json.dumps([{"word": str(w.get("word", ""))[:60], "start": float(w.get("start", 0)), "end": float(w.get("end", 0))} for w in (words or [])]),
+                        json.dumps({k: round(float(v), 3) for k, v in (emotion or {}).items() if isinstance(v, (int, float))}), str(lang or "")[:12], int(sid)))
+        return self.rebuild()
+
+    def rebuild(self):
+        refs = [dict(r) for r in self.store.query("SELECT id, frames, labels, words, emotion, lang FROM samples WHERE kind = 'reference' AND frames IS NOT NULL")]
+        self._graph(refs)
+        data, nf, blinks, mins, yaw, pitch, roll, brow = [], 0, 0, 0.0, [], [], [], []
+        for r in refs:
+            fr, lb = json.loads(r["frames"]), json.loads(r["labels"] or "[]")
+            data.append(([f[:1 + len(lipread.FEATURES)] for f in fr], lb))
+            nf += len(fr)
+            if len(fr) > 2:
+                mins += (fr[-1][0] - fr[0][0]) / 60
+                prev = 0
+                for f in fr:
+                    b = f[-2] or 0
+                    if b > 0.5 and prev <= 0.5:
+                        blinks += 1
+                    prev = b
+                    if f[-3] and len(f[-3]) >= 3:
+                        yaw.append(f[-3][0]); pitch.append(f[-3][1]); roll.append(f[-3][2])   # measureFrame: [yaw, pitch, roll, …]
+                    brow.append(f[-1] or 0)
+        targets = vse.learn_targets(data)
+        sd = lambda a: (sum((x - sum(a) / len(a)) ** 2 for x in a) / len(a)) ** 0.5 if len(a) > 2 else None
+        style = {"blink_per_min": round(blinks / mins, 1) if mins > 0.05 else None, "yaw_sd": sd(yaw), "pitch_sd": sd(pitch), "roll_sd": sd(roll),
+                 "brow_sd": sd(brow)}
+        style = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in style.items()}
+        with self.store.write() as db:
+            v = db.execute("INSERT INTO human_model(created, references_used, frames_used, targets, style, visemes) VALUES(?,?,?,?,?,?)",
+                           (_now(), len(refs), nf, json.dumps(targets), json.dumps(style), json.dumps(sorted(targets)))).lastrowid
+        return self.human_model()
+
+    def human_model(self):
+        r = self.store.one("SELECT * FROM human_model ORDER BY version DESC LIMIT 1")
+        if not r:
+            return {"version": 0, "targets": {}, "style": {}, "visemes": [], "references_used": 0, "frames_used": 0}
+        r = dict(r)
+        for k in ("targets", "style", "visemes"):
+            r[k] = json.loads(r[k] or "{}")
+        return r
+
+    def shape_error(self, frames, segments):
+        """How far the avatar's measured mouth shape per sound is from the learned human shape (mean abs difference)."""
+        hm = self.human_model()["targets"]
+        if not hm:
+            return None
+        segs = sorted([(str(x["v"]), float(x["start"]), float(x["end"])) for x in segments or []], key=lambda x: x[1])
+        acc = {}
+        for fr in frames or []:
+            t = float(fr.get("t") or 0)
+            v = next((a for a, b0, b1 in segs if b0 <= t < b1), None)
+            if v in hm and fr.get("face"):
+                acc.setdefault(v, []).append(lipread.features(fr))
+        diffs = []
+        for v, rows in acc.items():
+            mean = [sum(r[i] for r in rows) / len(rows) for i in range(len(lipread.FEATURES))]
+            diffs.append(sum(abs(a - b) for a, b in zip(mean, hm[v])) / len(mean))
+        return round(sum(diffs) / len(diffs), 4) if diffs else None
+
+    # ------------------------------------------------------------------ the motion graph
+    def _graph(self, refs):
+        """Rebuild the graph library of movement from every learned clip (deterministic):
+             lang:<l>        —uses_word→        word:<l>:<w>      (how often)
+             word:<l>:<w>    —articulated_as→   viseme:<v>        (how often)
+             word:<l>:<w>    —moves_mouth→      motion:mouth      (mean of the 13 mouth measures, duration)
+             word:<l>:<w>    —moves_head→       motion:head       (mean yaw/pitch/roll swing, brow lift)
+             viseme:<v>      —shaped_under→     emotion:<e>       (mean mouth measures while that emotion leads)
+             emotion:<e>     —moves_head→       motion:head       (head swing, brow movement, blinks)"""
+        acc = {}
+
+        def add(src, rel, dst, vec=None, extra=None):
+            k = (src, rel, dst)
+            a = acc.setdefault(k, {"n": 0, "sum": None, "extra": {}})
+            a["n"] += 1
+            if vec is not None:
+                a["sum"] = list(vec) if a["sum"] is None else [x + y for x, y in zip(a["sum"], vec)]
+            for ek, ev in (extra or {}).items():
+                a["extra"][ek] = a["extra"].get(ek, 0.0) + ev
+
+        nf = len(lipread.FEATURES)
+        for r in refs:
+            fr = json.loads(r["frames"] or "[]")
+            lb = json.loads(r["labels"] or "[]")
+            words = json.loads(r.get("words") or "[]")
+            emo = json.loads(r.get("emotion") or "{}")
+            lang = (r.get("lang") or "en").split("-")[0].lower()
+            lead = max(emo, key=emo.get) if emo else "neutral"
+            for w in words:
+                ww = "".join(ch for ch in str(w["word"]).lower() if ch.isalnum() or ch == "'")
+                if not ww:
+                    continue
+                inside = [f for f in fr if w["start"] <= f[0] < w["end"]]
+                node = "word:%s:%s" % (lang, ww)
+                add("lang:" + lang, "uses_word", node)
+                if inside:
+                    mean = [sum(f[1 + i] for f in inside) / len(inside) for i in range(nf)]
+                    add(node, "moves_mouth", "motion:mouth", mean, {"seconds": w["end"] - w["start"]})
+                    poses = [f[-3] for f in inside if f[-3] and len(f[-3]) >= 3]
+                    if poses:
+                        sw = lambda i: max(p[i] for p in poses) - min(p[i] for p in poses)
+                        add(node, "moves_head", "motion:head", None, {"yaw": sw(0), "pitch": sw(1), "roll": sw(2),
+                                                                      "brow": max(f[-1] or 0 for f in inside)})
+            for f, l in zip(fr, lb):
+                if l and l[1]:
+                    add("viseme:" + l[1], "shaped_under", "emotion:" + lead, f[1:1 + nf])
+                    for w in words:
+                        if w["start"] <= f[0] < w["end"]:
+                            ww = "".join(ch for ch in str(w["word"]).lower() if ch.isalnum() or ch == "'")
+                            if ww:
+                                add("word:%s:%s" % (lang, ww), "articulated_as", "viseme:" + l[1])
+                            break
+            poses = [f[-3] for f in fr if f[-3] and len(f[-3]) >= 3]
+            if poses:
+                sd = lambda i: (sum((p[i] - sum(q[i] for q in poses) / len(poses)) ** 2 for p in poses) / len(poses)) ** 0.5
+                add("emotion:" + lead, "moves_head", "motion:head", None, {"yaw_sd": sd(0), "pitch_sd": sd(1), "roll_sd": sd(2)})
+        with self.store.write() as db:
+            db.execute("DELETE FROM motion_graph")
+            for (src, rel, dst), a in sorted(acc.items()):
+                st = {}
+                if a["sum"] is not None:
+                    st["mouth"] = dict(zip(lipread.FEATURES, [round(x / a["n"], 4) for x in a["sum"]]))
+                st.update({k: round(v / a["n"], 3) for k, v in a["extra"].items()})
+                db.execute("INSERT INTO motion_graph(src, rel, dst, n, stats) VALUES(?,?,?,?,?)", (src, rel, dst, a["n"], json.dumps(st)))
+
+    def graph(self, node=None, limit=200):
+        if node:
+            rows = self.store.query("SELECT * FROM motion_graph WHERE src = ? OR dst = ? ORDER BY n DESC LIMIT ?", (node, node, int(limit)))
+        else:
+            rows = self.store.query("SELECT * FROM motion_graph ORDER BY n DESC LIMIT ?", (int(limit),))
+        counts = {r["k"]: r["c"] for r in self.store.query("SELECT substr(src, 1, instr(src, ':') - 1) AS k, COUNT(DISTINCT src) AS c FROM motion_graph GROUP BY k")}
+        langs = [r["src"][5:] for r in self.store.query("SELECT DISTINCT src FROM motion_graph WHERE src LIKE 'lang:%' ORDER BY src")]
+        return {"nodes": counts, "languages": langs, "edges": [dict(r, stats=json.loads(r["stats"] or "{}")) for r in rows]}
