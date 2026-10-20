@@ -6,11 +6,18 @@
 <title>QueryBook Language Builder</title>
 <link rel="stylesheet" href="qb.css">
 <style>
-.fp-strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px}
+.step{display:inline-flex;width:28px;height:28px;border-radius:50%;background:var(--accent,#1f6feb);color:#fff;align-items:center;justify-content:center;font-size:16px;margin-right:6px}
+.fp-wrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.fp-now{flex:0 0 180px;text-align:center}
+.fp-now img,.fp-now .fp-ico{width:180px;height:180px;object-fit:cover;border-radius:14px;border:3px solid var(--accent,#1f6feb);display:flex;align-items:center;justify-content:center;font-size:80px;background:rgba(127,127,127,.12)}
+.fp-now b{display:block;margin-top:6px;font-size:16px}
+.fp-strip{display:flex;gap:8px;flex-wrap:wrap;padding:4px 2px 8px}
+.face-card .fp-strip{flex-wrap:nowrap;overflow-x:auto}
 .fp-tile{flex:0 0 auto;width:84px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:2px solid transparent;border-radius:10px;background:none;cursor:pointer;font-size:12px;color:inherit}
 .fp-tile img,.fp-tile .fp-ico{width:72px;height:72px;object-fit:cover;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:34px;background:rgba(127,127,127,.12)}
 .fp-tile span:last-child{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fp-tile.on{border-color:var(--accent,#1f6feb)}
+.fp-tile.on{border-color:var(--accent,#1f6feb);background:rgba(31,111,235,.12);font-weight:700}
+.fp-tile:hover{border-color:rgba(31,111,235,.45)}
 .vd-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 10px; }
 @media (max-width: 800px) { .vd-grid { grid-template-columns: 1fr; } }
 .vd-wrap { position: relative; background: #0f172a; border-radius: 10px; min-height: 200px; overflow: hidden; align-self: start; }
@@ -222,21 +229,23 @@ tr.lc-active td { background: #f0fdf4; }
       <button data-sp="listen">🎙 Listen &amp; analyse</button>
       <button data-sp="ask">💬 Ask by voice</button>
       <button data-sp="video">🎥 Face &amp; video</button>
-      <button data-sp="avatars">🧑 Avatars</button>
+      <button data-sp="avatars">🧑 Avatar studio &amp; library</button>
       <button data-sp="providers">🔑 Voice providers</button>
       <button data-sp="log">⏱ Speech log</button>
     </nav>
 
     <!-- shared: text, engine and the voice profile -->
     <div id="sp-shared">
+      <div class="card fp-card"><h2><span class="step">1</span> Choose the face that speaks</h2>
+        <div class="fp-wrap"><div class="fp-now" id="sp-face-now"></div><div class="grow" id="sp-faces"></div></div></div>
       <div class="card">
-        <div class="small muted" style="margin-bottom:6px"><b>Choose the voice</b> — one click:</div>
+        <h2><span class="step">2</span> Choose the voice</h2>
         <div class="voicepick" id="sp-quick"></div>
       </div>
       <div class="card">
         <div class="grid2">
           <div>
-            <label class="f" for="sp-text">Text to speak</label>
+            <h2><span class="step">3</span> Type what to say</h2>
             <textarea id="sp-text" rows="3">Good morning. I have something important to tell you, so please listen carefully.</textarea>
           </div>
           <div>
@@ -288,9 +297,9 @@ tr.lc-active td { background: #f0fdf4; }
     </div>
 
     <div class="sp" id="sp-speak">
-      <div class="card"><h2>Choose a face <span class="small muted">who speaks your text — click one</span></h2><div id="sp-faces"></div></div>
       <div class="card">
-        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Generate speech</button>
+        <h2><span class="step">4</span> Speak</h2>
+        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Speak with the chosen face</button>
           <label class="chk"><input type="checkbox" id="sp-fallback" checked> If the engine fails, use the offline voice</label></div>
         <div id="sp-out" style="margin-top:12px"></div>
       </div>

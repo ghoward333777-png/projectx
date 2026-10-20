@@ -293,7 +293,9 @@ turns the head in 3D using the landmarks' depth. The studio shows all 52 channel
 exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
 a library avatar.
 
-**Choosing a face.** Speech → Speak opens with a *Choose a face* strip — 2D, 3D/VR and a thumbnail of every analysed
+**Choosing a face.** Speech → Speak is four numbered steps — ① the face (large preview of the chosen face plus every
+face as a tile), ② the voice, ③ the text, ④ *Speak with the chosen face*. The chosen face appears at once and speaks
+with mouth shapes while the 52-channel motion is computed; if that motion fails the same face keeps speaking. The strip — 2D, 3D/VR and a thumbnail of every analysed
 avatar; the choice is remembered in the browser and every talking face (Speak, Ask) uses it. The same strip sits
 under each talking face, so one click switches who speaks. The Avatar studio opens on a face with the same strip: clicking another face
 keeps the speech playing on the new face, and **Every face in turn** plays the speech while the faces take turns. The installer ships a **starter set of 19 AI-generated

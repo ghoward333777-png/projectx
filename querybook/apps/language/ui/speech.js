@@ -110,6 +110,16 @@ async function faceAvatars(fresh) {
   if (!FACE_LIST || fresh) FACE_LIST = api("/api/avatars/list").then(r => r.avatars.filter(a => a.analysed)).catch(() => []);
   return FACE_LIST;
 }
+// The big "this face will speak" preview on the Speak page (kept in step with every picker).
+async function showFaceNow() {
+  const el = $("#sp-face-now"); if (!el) return;
+  const v = faceChoice(), list = await faceAvatars(), a = list.find(x => String(x.id) === v);
+  if (v !== "2d" && v !== "3d" && !a) { setFaceChoice("2d"); }
+  const c = faceChoice();
+  el.innerHTML = a ? '<img alt="" src="/api/avatars/image?id=' + a.id + '"><b>' + esc(a.name) + '</b><span class="small muted">will speak</span>'
+    : '<span class="fp-ico">' + (c === "3d" ? "🧊" : "🙂") + "</span><b>" + (c === "3d" ? "3D / VR face" : "2D face") + '</b><span class="small muted">will speak</span>';
+  $$("#sp-faces [data-fp]").forEach(x => x.classList.toggle("on", x.dataset.fp === c));
+}
 // A strip of clickable faces; onPick(value) with "2d", "3d" or an avatar id.
 async function facePicker(host, onPick, opts) {
   const list = await faceAvatars(), only = opts && opts.avatarsOnly;
@@ -120,8 +130,10 @@ async function facePicker(host, onPick, opts) {
     (list.length ? "" : '<p class="small muted">No avatars yet — add portraits in <a href="#" data-fp-lib>Speech → Avatars</a>.</p>');
   host.querySelectorAll("[data-fp]").forEach(b => b.onclick = () => {
     host.querySelectorAll("[data-fp]").forEach(x => x.classList.toggle("on", x === b));
-    setFaceChoice(b.dataset.fp); onPick(b.dataset.fp);
+    setFaceChoice(b.dataset.fp);
+    showFaceNow(); onPick(b.dataset.fp);
   });
+  showFaceNow();
   const lib = host.querySelector("[data-fp-lib]"); if (lib) lib.onclick = e => { e.preventDefault(); showSub("avatars"); };
 }
 
@@ -146,25 +158,38 @@ async function faceCard(host, audioName, text, lang, emotion) {
     info.textContent = track.words.length + " words, " + track.visemes.length + " mouth shapes, " + track.duration.toFixed(2) + " s of audio — timing: " + track.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
     return track;
   };
+  // Show the chosen face at once, driven by the mouth shapes; the full 52-channel motion is added when it is ready.
+  // A problem with the motion never swaps the face back: the chosen face keeps speaking with the mouth shapes.
+  let shown = null;
   const show = async v => {
+    shown = v;
+    if (v === "2d" || v === "3d") {
+      try { await face.setMode(v); } catch (e) { info.textContent = "3D could not start here: " + e.message; await face.setMode("2d"); }
+      return;
+    }
+    let av;
     try {
-      if (v === "2d" || v === "3d") { await face.setMode(v); return; }
-      const av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
+      av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
+      if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatars → Analyse faces");
       await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label } });
-      if (!motion) {
-        info.textContent = "Working out all 52 face channels for this audio…";
-        const j = await api("/api/vse/lip_sync", { audio_name: audioName, text, lang, emotion: null });
-        motion = (await avWaitJob(j.job_id)).motion;
-      }
+    } catch (e) { info.textContent = "That face could not be shown: " + e.message; await face.setMode("2d"); return; }
+    if (track) face.track = motion ? Object.assign({}, track, { motion }) : track;
+    if (motion) { info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels"; return; }
+    info.textContent = av.name + " is speaking (mouth shapes) — adding all 52 face channels…";
+    if (!motionJob) motionJob = api("/api/vse/lip_sync", { audio_name: audioName, text, lang, emotion: null }).then(j => avWaitJob(j.job_id)).then(r => r.motion);
+    motionJob.then(m => {                              // not awaited: the face speaks with mouth shapes meanwhile
+      motion = m;
+      if (shown !== v) return;
       face.track = Object.assign({}, face.track || track || {}, { motion });
       info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels";
-    } catch (e) { info.textContent = "That face could not be shown (" + e.message + "); showing the 2D face."; setFaceChoice("2d"); await face.setMode("2d"); }
+    }).catch(e => { motionJob = null; if (shown === v) info.textContent = av.name + " is speaking with mouth shapes only (the 52-channel motion failed: " + e.message + ")"; });
   };
-  await face.setMode("2d");
+  let motionJob = null;
   facePicker(box.querySelector("[data-fpick]"), show);
   box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
+  await show(faceChoice());
   try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
-  if (faceChoice() !== "2d") await show(faceChoice());
+  if (motion && shown !== "2d" && shown !== "3d") info.textContent = "52 face channels × " + motion.frames.length + " frames";
   return face;
 }
 
@@ -199,6 +224,7 @@ async function generate() {
       stat(m.duration_s + " s", "length") : "") + "</div>" +
     (s.effects && s.effects.length ? '<p class="small"><b>Added after the engine:</b> ' + esc(s.effects.join("; ")) + "</p>" : "") +
     "<details><summary class=\"small\">Timing of every stage (to 0.01 s)</summary>" + stagesTable(r.stages.stages, r.stages.seconds) + "</details>";
+  $("#sp-out").scrollIntoView({ behavior: "smooth", block: "start" });   // the speaking face, right where the eye goes
   if (window.TalkingFace) faceCard($("#sp-out"), r.audio, $("#sp-text").value, SP.profile.lang, SP.profile.emotion);
 }
 
