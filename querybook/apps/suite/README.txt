@@ -53,7 +53,11 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.22.5)
+  Language Builder (1.23.0)
+    * Lips move as solid bands: the upper lip keeps its width and thickness, the lower lip rides the jaw smoothly,
+      rounding moves the corners, lips never cross, blinks close cleanly.
+    * Movement quality control on every avatar (24 poses checked against human limits, folds, crossing lips) with
+      per-face correction; results shown in the studio and library ("Check movement of every face").
     * Mouth fit: every face's talking mouth is sized and shaped from its own anatomy (mouth width, lips, iris scale);
       the opening follows the person's own lip outline. The studio shows the measurements.
     * Natural talking mouth: lens-shaped opening (no square slot), widening limited to ~10%, teeth that follow

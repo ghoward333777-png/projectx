@@ -36,6 +36,32 @@ async function avCropFace(url, L, id) {
   return true;
 }
 
+// Movement check of one face: build it off-screen, run the anatomy/fold/crossing checks (with per-face tuning), keep the result.
+async function avCheck(id) {
+  const av = await api("/api/avatars/get?id=" + id);
+  if (!av.landmarks) return null;
+  const host = document.createElement("div"); host.style.cssText = "position:absolute;left:-9999px;width:320px"; document.body.appendChild(host);
+  try {
+    const f = new DepthFace(host, { imageUrl: "/api/avatars/image?id=" + id, landmarks: av.landmarks, label: "" }); await f.ready;
+    const q = f.quality; f.dispose();
+    await api("/api/avatars/qc", { id, qc: q });
+    return q;
+  } finally { host.remove(); }
+}
+function avQcText(q) {
+  if (!q) return "";
+  const t = Object.entries(q.tuned || {}).map(([k, v]) => k + " ×" + v).join(", ");
+  return q.ok ? "✔ Movement check passed — " + q.poses + " mouth poses within human limits, no folds, lips never cross" + (t ? " (tuned for this face: " + t + ")" : "")
+    : "⚠ Movement check: " + q.issues.slice(0, 4).join("; ") + (q.issues.length > 4 ? " … +" + (q.issues.length - 4) : "");
+}
+async function avCheckAll(el) {
+  const out = $("#av-msg", el), list = AV.list.filter(a => a.analysed);
+  let ok = 0;
+  for (let n = 0; n < list.length; n++) { out.textContent = "Checking movement " + (n + 1) + " of " + list.length + "…"; const q = await avCheck(list[n].id); if (q && q.ok) ok++; }
+  out.textContent = "Movement check: " + ok + " of " + list.length + " faces pass every check.";
+  await avRefresh(el);
+}
+
 async function avAnalyse(el, all) {
   const todo = AV.list.filter(a => all || !a.analysed), out = $("#av-msg", el);
   for (let n = 0; n < todo.length; n++) {
@@ -48,6 +74,7 @@ async function avAnalyse(el, all) {
       try { if (await avCropFace(url, L, todo[n].id)) L = await avLandmarks(url + "&t=" + Date.now()); } catch (e) {}
     }
     await api("/api/avatars/landmarks", { id: todo[n].id, landmarks: L || [] });
+    if (L) { try { await avCheck(todo[n].id); } catch (e) {} }
   }
   out.textContent = todo.length ? "Analysed " + todo.length + " portrait(s)." : "All portraits are analysed.";
   await avRefresh(el);
@@ -70,7 +97,7 @@ async function avRefresh(el) {
     (AV.sel && AV.sel.id === a.id ? "var(--accent,#1f6feb)" : "transparent") + ';border-radius:10px;padding:4px">' +
     '<img src="/api/avatars/image?id=' + a.id + '" alt="" loading="lazy" style="width:120px;height:120px;object-fit:cover;border-radius:8px">' +
     '<div class="small"><b>' + esc(a.name) + "</b></div>" + (a.tags.length ? '<div class="small muted">' + esc(a.tags.join(", ")) + "</div>" : "") +
-    '<div class="small">' + (!a.analysed ? cmTag("not analysed", "warn") : (a.quality || []).length ? cmTag((a.quality || []).length + " note(s)", "warn") : cmTag("ready", "good")) + "</div></div>").join("")
+    '<div class="small">' + (!a.analysed ? cmTag("not analysed", "warn") : a.qc && !a.qc.ok ? cmTag("⚠ movement", "warn") : (a.quality || []).length ? cmTag((a.quality || []).length + " note(s)", "warn") : cmTag(a.qc ? "✔ checked" : "ready", "good")) + "</div></div>").join("")
     : '<p class="muted">No avatars yet — import portraits above.</p>';
 }
 
@@ -87,6 +114,8 @@ async function avSelect(el, id) {
   if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
   await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label } });
   if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
+  const fq = AV.face.impl && AV.face.impl.quality;
+  if (fq) { $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small ' + (fq.ok ? "" : "note warn") + '">' + esc(avQcText(fq)) + "</div>"); api("/api/avatars/qc", { id: a.id, qc: fq }).catch(() => {}); }
   const ft = AV.face.impl && AV.face.impl.fit;
   if (ft) $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small muted">Mouth fit (from this face): mouth ' + ft.mouth_mm + " mm wide, lips " + ft.upper_lip_mm + " / " + ft.lower_lip_mm +
     " mm, opens about " + ft.aa_open_mm + ' mm on "aa", teeth show ≤ ' + ft.teeth_mm.toFixed(1) + " mm · scale from the " + ft.scale_from + "</div>");
@@ -177,7 +206,7 @@ async function renderAvatars(el) {
       '<div class="row small" id="av-con" hidden><input id="av-subject" type="text" placeholder="the person\'s name" aria-label="Person"><label><input type="checkbox" id="av-consent"> They agreed to become an avatar (consent)</label></div>' +
       '<div class="row"><input id="av-files" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Portraits"><span class="small muted">or a folder / .zip on this computer</span>' +
       '<input id="av-path" class="grow" type="text" placeholder="/path/to/portraits.zip" aria-label="Folder or zip"><button class="btn" id="av-import">Import</button>' +
-      '<button class="btn quiet" id="av-analyse">Analyse faces</button></div><div class="small" id="av-msg" aria-live="polite"></div>' +
+      '<button class="btn quiet" id="av-analyse">Analyse faces</button><button class="btn quiet" id="av-checkall">Check movement of every face</button></div><div class="small" id="av-msg" aria-live="polite"></div>' +
       '<div id="av-grid" style="margin-top:8px"></div></div>';
     el.querySelectorAll('input[name="av-src"]').forEach(r => r.onchange = () => {
       const syn = el.querySelector('input[name="av-src"]:checked').value === "synthetic";
@@ -209,6 +238,7 @@ async function renderAvatars(el) {
       if (r.added) await avAnalyse(el, false);
     };
     $("#av-analyse", el).onclick = () => avAnalyse(el, true);
+    $("#av-checkall", el).onclick = () => avCheckAll(el).catch(e => { $("#av-msg", el).textContent = "Check failed: " + e.message; });
     $("#av-grid", el).onclick = e => { const t = e.target.closest("[data-av]"); if (t) avSelect(el, Number(t.dataset.av)); };
     $("#av-save", el).onclick = async () => { await api("/api/avatars/update", { id: AV.sel.id, name: $("#av-name", el).value, tags: $("#av-tags", el).value.split(",").map(s => s.trim()).filter(Boolean) }); avRefresh(el); toast("Saved."); };
     $("#av-voice", el).onclick = async () => {

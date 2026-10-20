@@ -21,7 +21,7 @@
   const LIP_LO = [14, 87, 178, 88, 95, 317, 402, 318, 324, 15, 86, 179, 89, 96, 316, 403, 319, 325, 16, 85, 180, 90, 77, 315, 404, 320, 307, 17, 84, 181, 91, 146, 314, 405, 321, 375];
   const LIP_UP = [13, 82, 81, 80, 191, 312, 311, 310, 415, 12, 38, 41, 42, 183, 268, 271, 272, 407, 11, 72, 73, 74, 184, 302, 303, 304, 408, 0, 37, 39, 40, 185, 267, 269, 270, 409];
   // y of the upper inner lip line at x (straight on beyond the corners)
-  const lipLine = P => { const q = IN_UP.map(i => P[i]).sort((a, b) => a[0] - b[0]);
+  const lipLine = (P, ids) => { const q = (ids || IN_UP).map(i => P[i]).sort((a, b) => a[0] - b[0]);
     return x => { if (x <= q[0][0]) return q[0][1]; if (x >= q[q.length - 1][0]) return q[q.length - 1][1];
       for (let j = 1; j < q.length; j++) if (x <= q[j][0]) { const t = (x - q[j - 1][0]) / ((q[j][0] - q[j - 1][0]) || 1); return q[j - 1][1] + (q[j][1] - q[j - 1][1]) * t; } return q[q.length - 1][1]; }; };
   const EYE = {
@@ -141,7 +141,12 @@
       // the lip lines are constraints: no triangle may cross them (edges that do are flipped until they don't)
       const lines = [IN_UP, IN_LO, OUT_UP, OUT_LO], cons = [];
       lines.forEach(l => { for (let j = 0; j + 1 < l.length; j++) cons.push([l[j], l[j + 1]]); });
-      this.tris = constrain(delaunay(triPts), triPts, cons); this.triPts = triPts; this.cons = cons;
+      // the iris outline runs under the lids (the iris is a circle partly hidden by them): those points stay out of the
+      // mesh, and the eye moves by the iris centre, so the lids never fold over the iris
+      const IRIS_RING = new Set([469, 470, 471, 472, 474, 475, 476, 477]);
+      const use = triPts.map((q, i) => i).filter(i => triPts[i] && !IRIS_RING.has(i)), sub = use.map(i => triPts[i]);
+      const at = new Map(use.map((i, j) => [j, i])), Psub = triPts;
+      this.tris = constrain(delaunay(sub).map(t => t.map(j => at.get(j))), Psub, cons); this.triPts = triPts; this.cons = cons;
       // the opening: triangles whose centre lies between the inner lip lines (in the parted copy)
       const poly = IN_UP.concat(IN_LO.slice(1, -1)).map(i => triPts[i]);
       const inside = (x, y) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -157,7 +162,7 @@
       this.fc = [fcx, fcy]; this.crop = crop;
       this.zMean = pts3.reduce((s, p) => s + p[2], 0) / pts3.length;
       this.pivot = [fcx, P(152)[1] + this.F * 0.35, this.zMean + this.F * 0.5];      // the neck
-      this.fit = this._fit();
+      this.fit = this._fit(); this.gain = new Float32Array(BS.length).fill(1);
       this._fields();
       const cv = document.createElement("canvas"), outW = Math.min(this.el.clientWidth || 380, 480);
       cv.width = Math.round(outW); cv.height = Math.round(outW * crop.h / crop.w);
@@ -165,7 +170,7 @@
       this.el.innerHTML = ""; this.el.appendChild(cv);
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
-      this._draw();
+      this.autotune();                                    // quality control before the face ever speaks (draws when done)
     }
     // Mouth fit: the speaking mouth sized and shaped from this face's own anatomy, measured once per portrait.
     //  * scale: millimetres per pixel from the iris (≈11.7 mm across in adults, the steadiest size in a face),
@@ -216,34 +221,47 @@
         return Math.exp(-(((B[i][1] - M[1]) / (0.09 * F)) ** 2)) * (ax < 0.6 * Wm ? 1 : Math.exp(-(((ax - 0.6 * Wm) / (0.15 * Wm)) ** 2))); };
       const wOpen = i => 1 - lipBand(i) * (1 - prof(i));
       const jawW = i => Math.exp(-(((B[i][0] - M[0]) / (0.42 * F)) ** 2)) * below(i) * (1 - 0.25 * smooth(0, 0.3 * F, B[i][1] - M[1]));
+      // Each lip moves as a solid band: every row of a lip moves together, so its thickness and its width stay what they
+      // are in the portrait (lips do not stretch or shrink while we talk). Only the skin around them takes up the motion:
+      // above the upper lip it fades out within ~6% of the face, below the lower lip it blends into the chin.
+      const outUp = lipLine(B, OUT_UP), outLo = lipLine(B, OUT_LO);
+      const lat = i => { const ax = Math.abs(B[i][0] - M[0]); return ax < 0.5 * Wm ? 1 : Math.exp(-(((ax - 0.5 * Wm) / (0.12 * Wm)) ** 2)); };
+      const upBand = i => UPPER.has(i) ? 1 : (B[i][1] < outUp(B[i][0]) ? (1 - smooth(0, 0.06 * F, outUp(B[i][0]) - B[i][1])) * lat(i) : 0);
+      const loBand = i => LOWER.has(i) ? 1 : (B[i][1] > outLo(B[i][0]) ? (1 - smooth(0, 0.1 * F, B[i][1] - outLo(B[i][0]))) * lat(i) : 0);
+      const chinMix = i => smooth(0, 0.1 * F, B[i][1] - outLo(B[i][0]));    // 0 at the lower lip, 1 well down the chin
+      // corners: rounding and spreading move the corners, not the middle of the lips
+      const corner = i => smooth(0.32 * Wm, 0.52 * Wm, Math.abs(B[i][0] - M[0])) * Math.exp(-(((B[i][1] - M[1]) / (0.08 * F)) ** 2));
       for (let i = 0; i < nF; i++) {
         const [x, y] = B[i], lz = lipZ(i), up = above(i), lo = below(i), sL = side(i, 1), sR = side(i, -1), dxm = x - M[0];
-        // jaw: the lower face swings down and slightly back; the lower lip rides with it
-        const wo = wOpen(i), pr = Math.sqrt(prof(i));
-        const jg = fit.jaw_gain;
-        add("jawOpen", i, -dxm * 0.05 * jawW(i), 0.17 * F * jawW(i) * wo * jg, 0.03 * F * jawW(i) * jg);
-        add("jawOpen", i, 0, -0.014 * F * prof(i) * up * lz * jg, 0);                // the upper lip's centre lifts a little: a lens top
+        const pf = prof(i), ub = upBand(i), lb = loBand(i), jg = fit.jaw_gain, sg = Math.sign(dxm);
+        // jaw: the chin swings down; the lower lip rides on it as a band, opening as a lens (most at the centre)
+        const jawMove = LOWER.has(i) ? pf : lo > 0.5 ? pf + (1 - pf) * chinMix(i) : 0;
+        add("jawOpen", i, -dxm * 0.03 * jawW(i) * chinMix(i), 0.17 * F * jawW(i) * jawMove * jg, 0.03 * F * jawW(i) * jg);
+        add("jawOpen", i, 0, -0.014 * F * pf * ub * jg, 0);                    // the upper lip lifts a little, as one band
         add("jawForward", i, 0, 0.006 * F * jawW(i), -0.05 * F * jawW(i));
         add("jawLeft", i, 0.045 * F * jawW(i), 0, 0); add("jawRight", i, -0.045 * F * jawW(i), 0, 0);
-        // lips: closing against an open jaw, rounding, sideways, corners
-        add("mouthClose", i, 0, -0.17 * F * jawW(i) * lz * 1.1 * wo * fit.jaw_gain, 0);
-        add("mouthFunnel", i, -dxm * 0.28 * lz, (lo - up) * 0.025 * F * lz, -0.035 * F * lz);
-        add("mouthPucker", i, -dxm * 0.5 * lz, -(y - M[1]) * 0.15 * lz, -0.05 * F * lz);
+        // closing the lips against an open jaw: the lower lip band rises back to the upper lip
+        add("mouthClose", i, 0, -0.17 * F * jawW(i) * 1.1 * jg * (LOWER.has(i) ? pf : lo > 0.5 ? pf * (1 - chinMix(i)) : 0), 0);
+        // rounding (o, u, w, ch): the corners come in and the lips push forward; the lips keep their own width
+        add("mouthFunnel", i, -sg * 0.05 * Wm * corner(i), (lb - ub) * 0.012 * F * pf, -0.03 * F * lz);
+        add("mouthPucker", i, -sg * 0.075 * Wm * corner(i), 0, -0.045 * F * lz);
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
-          const cw = g(i, c, 0.32 * Wm), sd = s > 0 ? sL : sR;
+          const cw = g(i, c, 0.24 * Wm), sd = s > 0 ? sL : sR;
           add("mouthSmile" + k, i, s * 0.07 * Wm * cw, -0.045 * F * cw, 0);
           add("mouthFrown" + k, i, s * 0.03 * Wm * cw, 0.045 * F * cw, 0);
           add("mouthDimple" + k, i, s * 0.03 * Wm * cw, -0.008 * F * cw, 0.02 * F * cw);
           add("mouthStretch" + k, i, s * 0.06 * Wm * cw, 0.01 * F * cw, 0);
-          add("mouthPress" + k, i, 0, (up - lo) * 0.012 * F * lz * sd, 0);
-          add("mouthLowerDown" + k, i, 0, 0.04 * F * lz * lo * sd * pr, 0);
-          add("mouthUpperUp" + k, i, 0, -0.035 * F * lz * up * sd * pr, 0);
+          // pressing: the outer edges of the lips draw in toward the closed line; the line itself stays put (never crosses)
+          const outer = UPPER.has(i) || LOWER.has(i) ? Math.min(1, Math.abs(y - mid(x)) / (0.05 * F)) : 0;
+          add("mouthPress" + k, i, 0, (ub - lb) * 0.006 * F * outer * sd, 0);
+          add("mouthLowerDown" + k, i, 0, 0.04 * F * lb * sd * Math.sqrt(pf), 0);
+          add("mouthUpperUp" + k, i, 0, -0.03 * F * ub * sd * Math.sqrt(pf), 0);
         }
-        add("mouthRollLower", i, 0, -0.018 * F * lz * lo, 0.01 * F * lz * lo);
-        add("mouthRollUpper", i, 0, 0.016 * F * lz * up, 0.01 * F * lz * up);
-        add("mouthShrugLower", i, 0, -0.03 * F * lz * lo, -0.01 * F * lz * lo);
-        add("mouthShrugUpper", i, 0, -0.02 * F * lz * up, 0);
+        add("mouthRollLower", i, 0, -0.008 * F * lb * pf, 0.006 * F * lb);
+        add("mouthRollUpper", i, 0, 0.006 * F * ub * pf, 0.006 * F * ub);
+        add("mouthShrugLower", i, 0, -0.015 * F * lb, -0.008 * F * lb);
+        add("mouthShrugUpper", i, 0, -0.01 * F * ub, 0);
         // cheeks and nose
         for (const [k, s, e] of [["Left", 1, EYE.L], ["Right", -1, EYE.R]]) {
           const ck = g(i, B[e.cheek], 0.16 * F);
@@ -263,20 +281,56 @@
       // eyelids, squint, wide, and the irises (gaze)
       for (const [k, e] of [["Left", EYE.L], ["Right", EYE.R]]) {
         const ew = Math.hypot(B[e.outer][0] - B[e.inner][0], B[e.outer][1] - B[e.inner][1]);
+        // a blink closes along a curve from corner to corner, a third of the way down to the lower lid: the upper lid comes
+        // down to it, the lower lid rises a little to meet it (no lid point can pass a corner, so nothing folds)
+        const cA = B[e.outer], cB = B[e.inner], cline = x => cA[1] + (cB[1] - cA[1]) * (x - cA[0]) / ((cB[0] - cA[0]) || 1);
+        const lidAt = (ids, x) => { const q = ids.map(i => B[i]).sort((a, b) => a[0] - b[0]);
+          if (x <= q[0][0]) return q[0][1]; if (x >= q[q.length - 1][0]) return q[q.length - 1][1];
+          for (let n = 1; n < q.length; n++) if (x <= q[n][0]) return q[n - 1][1] + (q[n][1] - q[n - 1][1]) * (x - q[n - 1][0]) / ((q[n][0] - q[n - 1][0]) || 1); };
+        const shut = x => cline(x) + 0.35 * (lidAt(e.lo, x) - cline(x));
+        e.lo.forEach(l => add("eyeBlink" + k, l, 0, Math.min(0, shut(B[l][0]) - B[l][1]), 0));
+        this.shut = this.shut || {}; this.shut[k] = shut;
         e.up.forEach((u, j) => {
           const l = e.lo[j], dy = B[l][1] - B[u][1];
-          add("eyeBlink" + k, u, (B[l][0] - B[u][0]) * 0.9, dy * 0.92, 0);
+          add("eyeBlink" + k, u, 0, Math.max(0, shut(B[u][0]) - B[u][1]), 0);
           add("eyeWide" + k, u, 0, -dy * 0.3, 0);
           add("eyeSquint" + k, l, 0, -dy * 0.3, 0);
           add("eyeLookUp" + k, u, 0, -dy * 0.12, 0); add("eyeLookDown" + k, u, 0, dy * 0.25, 0);
         });
         if (this.hasIris) e.iris.forEach(j => {
           const s = k === "Left" ? 1 : -1;                                   // "out" is toward the ear
-          add("eyeLookOut" + k, j, s * 0.13 * ew, 0, 0); add("eyeLookIn" + k, j, -s * 0.13 * ew, 0, 0);
-          add("eyeLookUp" + k, j, 0, -0.06 * ew, 0); add("eyeLookDown" + k, j, 0, 0.07 * ew, 0);
-          add("eyeBlink" + k, j, 0, 0.08 * ew, 0);
+          // the iris stays inside the lids: modest travel, and it does not dive under the lower lid on a blink
+          add("eyeLookOut" + k, j, s * 0.06 * ew, 0, 0); add("eyeLookIn" + k, j, -s * 0.06 * ew, 0, 0);
+          add("eyeLookUp" + k, j, 0, -0.02 * ew, 0); add("eyeLookDown" + k, j, 0, 0.02 * ew, 0);
+          // as the lid closes the eye's contents are squeezed under it toward the lower lid (never overlapped by it)
+          const at = (ids, x) => { const q = ids.map(i => B[i]).sort((a, b) => a[0] - b[0]);
+            if (x <= q[0][0]) return q[0][1]; if (x >= q[q.length - 1][0]) return q[q.length - 1][1];
+            for (let n = 1; n < q.length; n++) if (x <= q[n][0]) return q[n - 1][1] + (q[n][1] - q[n - 1][1]) * (x - q[n - 1][0]) / ((q[n][0] - q[n - 1][0]) || 1); };
+          add("eyeBlink" + k, j, 0, this.shut[k](B[j][0]) - B[j][1], 0);
         });
       }
+      // relax the mouth and jaw fields over the mesh (lips pinned): the skin takes up the lips' motion smoothly, so no
+      // triangle beside a lip or corner can fold over
+      const nb = Array.from({ length: nF }, () => new Set());
+      this.tris.forEach(t => t.forEach(a => t.forEach(b2 => { if (a !== b2 && a < nF && b2 < nF) nb[a].add(b2); })));
+      // the corners: a small patch around each corner moves with it rigidly (the corner skin is not squeezed past it)
+      const patch = [];
+      for (const cnr of [61, 291]) for (let i = 0; i < nF; i++)
+        if (i !== cnr && !UPPER.has(i) && !LOWER.has(i) && Math.hypot(B[i][0] - B[cnr][0], B[i][1] - B[cnr][1]) < 0.1 * Wm) patch.push([i, cnr]);
+      BS.forEach((k, ki) => { if (!/^(jaw|mouth)/.test(k)) return; const d = D[ki];
+        patch.forEach(([i, cnr]) => { for (let q = 0; q < 3; q++) d[3 * i + q] = d[3 * cnr + q]; }); });
+      const pinned = new Set([...UPPER, ...LOWER, ...RING, 61, 291, 78, 308, ...patch.map(p => p[0])]);
+      const free = [...Array(nF).keys()].filter(i => !pinned.has(i) && nb[i].size && Math.hypot(B[i][0] - M[0], B[i][1] - M[1]) < 0.45 * F);
+      BS.forEach((k, ki) => {
+        if (!/^(jaw|mouth)/.test(k)) return;
+        const d = D[ki];
+        for (let it = 0; it < 8; it++) {
+          const nd = d.slice();
+          for (const i of free) { let sx = 0, sy = 0, sz = 0; nb[i].forEach(j => { sx += d[3 * j]; sy += d[3 * j + 1]; sz += d[3 * j + 2]; });
+            const n = nb[i].size; nd[3 * i] = 0.5 * d[3 * i] + 0.5 * sx / n; nd[3 * i + 1] = 0.5 * d[3 * i + 1] + 0.5 * sy / n; nd[3 * i + 2] = 0.5 * d[3 * i + 2] + 0.5 * sz / n; }
+          d.set(nd);
+        }
+      });
       this.extra.forEach(([a, b, t], j) => { const i = this.nX0 + j;
         D.forEach(d => { for (let q = 0; q < 3; q++) d[3 * i + q] = d[3 * a + q] * (1 - t) + d[3 * b + q] * t; }); });
       this.D = D;
@@ -314,21 +368,21 @@
       v.mouthSmileLeft = v.mouthSmileRight = m.smile || 0;
       this.setChannels(v);
     }
-    _points() {
-      const n = this.base3.length, out = new Array(n), c = Float32Array.from(this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
+    _points(chan, head) {
+      const n = this.base3.length, out = new Array(n), c = Float32Array.from(chan || this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
       // a mouth widens at most ~10% in speech: stretch, smile and dimple share one soft-limited budget per side
       for (const k of ["Left", "Right"]) {
         const ks = ["mouthStretch" + k, "mouthSmile" + k, "mouthDimple" + k].map(q => IDX[q]);
-        const wide = 0.06 * c[ks[0]] + 0.07 * c[ks[1]] + 0.03 * c[ks[2]], cap = 0.05;
+        const wide = 0.06 * c[ks[0]] + 0.07 * c[ks[1]] + 0.03 * c[ks[2]], cap = 0.035;
         if (wide > 1e-4) { const f = cap * Math.tanh(wide / cap) / wide; ks.forEach(q => { c[q] *= f; }); }
       }
-      const [yaw, pitch, roll] = this.head.map(d => d * g * Math.PI / 180), [px, py, pz] = this.pivot;
+      const [yaw, pitch, roll] = (head || this.head).map(d => d * g * Math.PI / 180), [px, py, pz] = this.pivot;
       const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
       for (let i = 0; i < n; i++) {
         let [x, y, z] = this.base3[i];
         if (i < nF || i >= this.nX0) {
           for (let k = 0; k < c.length; k++) {
-            const w = k === MC ? Math.min(c[k], c[JAW]) : c[k];               // lips can only close against an open jaw
+            const w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k];   // lips can only close against an open jaw
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
           }
           // head rotation about the neck: yaw (y axis), pitch (x axis), roll (z axis), then a weak perspective
@@ -369,7 +423,7 @@
       // where they are in the portrait — a dark cavity with soft teeth that follow the curve of the lips
       for (const tr of this.inner) warp(tr, true);
       const gap = (q, i, j) => Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]);
-      const open = gap(pts, 13, 14), extra = open - gap(B, 13, 14), vis = smooth(0.004 * F, 0.02 * F, extra);
+      const open = gap(pts, 13, 14), extra = open - gap(B, 13, 14), vis = smooth(0.002 * F, 0.01 * F, extra);
       if (vis > 0.01) {
         const curve = (ids, ctx, first) => {                    // a smooth curve through the lip points (midpoint quadratics)
           const q = ids.map(i => pts[i]);
@@ -378,7 +432,9 @@
           ctx.lineTo(q[q.length - 1][0], q[q.length - 1][1]);
         };
         c.save(); c.globalAlpha = vis;
-        c.beginPath(); curve(IN_UP, c, true); curve(IN_LO, c, false); c.closePath(); c.clip();
+        // the opening is exactly the lip line of the mesh (the same edges the lips are drawn with): nothing of the old
+        // mouth can show between the cavity and the lips
+        c.beginPath(); IN_UP.concat(IN_LO.slice(1, -1)).forEach((i, j) => j ? c.lineTo(pts[i][0], pts[i][1]) : c.moveTo(pts[i][0], pts[i][1])); c.closePath(); c.clip();
         const tw = gap(pts, 78, 308), mx = (pts[78][0] + pts[308][0]) / 2, my = (pts[13][1] + pts[14][1]) / 2;
         const gr = c.createRadialGradient(mx, my, 0, mx, my, tw * 0.55);
         gr.addColorStop(0, "#1a0808"); gr.addColorStop(0.75, "#2a0d0d"); gr.addColorStop(1, "#3a1515");
@@ -394,7 +450,6 @@
           const tg = c.createLinearGradient(0, pts[13][1], 0, pts[13][1] + th);
           tg.addColorStop(0, "rgba(205,198,186,.9)"); tg.addColorStop(0.5, "rgba(232,227,216,.92)"); tg.addColorStop(1, "rgba(196,188,174,.85)");
           c.fillStyle = tg; band(IN_UP, 1, th); c.fill();
-          if (open > F * 0.05) { c.fillStyle = "rgba(200,192,178,.45)"; band(IN_LO.slice().reverse(), -1, th * 0.45); c.fill(); }
         }
         const tongue = this.cur[IDX.tongueOut];
         if (open > F * 0.05) { c.fillStyle = "rgba(112,46,52,.8)"; c.beginPath(); c.ellipse(mx, pts[14][1] + open * 0.05, tw * 0.22, open * 0.16, 0, Math.PI, 2 * Math.PI); c.fill(); }
@@ -412,6 +467,63 @@
         c.restore();
       }
       for (const tr of this.mesh) warp(tr);
+    }
+    // Quality control of the face and its movement: every mouth pose is checked on the mesh against human anatomy —
+    // lips keep their thickness and width, the mouth widens/narrows within human limits, the lips never cross, and no
+    // triangle of the face folds over (folds are what show up as smeared lips or "gums"). Deterministic, no network.
+    qc() {
+      const P0 = this._points(new Float32Array(BS.length), [0, 0, 0]), F = this.F, nF = this.nFace;
+      const dist = (P, a, b) => Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]);
+      const m = P => ({ upT: (dist(P, 0, 13) + dist(P, 37, 82) + dist(P, 267, 312)) / 3, loT: (dist(P, 14, 17) + dist(P, 87, 84) + dist(P, 317, 314)) / 3,
+        upW: Math.abs(P[40][0] - P[270][0]), mW: dist(P, 61, 291) });
+      const r0 = m(P0), area = (P, t) => (P[t[1]][0] - P[t[0]][0]) * (P[t[2]][1] - P[t[0]][1]) - (P[t[2]][0] - P[t[0]][0]) * (P[t[1]][1] - P[t[0]][1]);
+      const faceTris = this.mesh.filter(t => t[0] < nF && t[1] < nF && t[2] < nF), a0 = faceTris.map(t => area(P0, t));
+      const lim = { upT: [0.88, 1.15], loT: [0.85, 1.2], upW: [0.9, 1.07], mW: [0.8, 1.1] };
+      const label = { upT: "upper-lip thickness", loT: "lower-lip thickness", upW: "upper-lip width", mW: "mouth width" };
+      // one pose: its measurements and what is wrong with it
+      const evalPose = v => {
+        const P = this._points(v, [0, 0, 0]), q = m(P), out = [], ratio = {};
+        for (const k of Object.keys(lim)) { const r = q[k] / r0[k]; ratio[k] = r; if (r < lim[k][0] || r > lim[k][1]) out.push(label[k] + " ×" + r.toFixed(2)); }
+        // a fold is a triangle turned over with visible area (one that only flattens shut, like a closing lid, is not)
+        const f = faceTris.reduce((s, t, j) => { const n = area(P, t); return s + (Math.sign(n) !== Math.sign(a0[j]) && Math.abs(a0[j]) > 0.5 && Math.abs(n) > 0.1 * Math.abs(a0[j]) ? 1 : 0); }, 0);
+        if (f) out.push(f + " folded triangle(s)");
+        const line = lipLine(P), c = IN_LO.filter(i => ![78, 308].includes(i) && P[i][1] < line(P[i][0]) - 0.003 * F).length;
+        if (c) out.push("lips cross at " + c + " point(s)");
+        return { out, ratio, folds: f, cross: c };
+      };
+      const z = () => new Float32Array(BS.length), set = o => { const v = z(); Object.entries(o).forEach(([k, x]) => { v[IDX[k]] = x; }); return v; };
+      const poses = Object.entries(VIS).map(([k, o]) => [k, set(o)]).concat([
+        ["aa-strong", set({ jawOpen: 0.6, mouthLowerDownLeft: 0.4, mouthLowerDownRight: 0.4 })],
+        ["ee-strong", set({ jawOpen: 0.12, mouthStretchLeft: 0.6, mouthStretchRight: 0.6, mouthSmileLeft: 0.5, mouthSmileRight: 0.5 })],
+        ["oo-strong", set({ jawOpen: 0.2, mouthPucker: 0.9, mouthFunnel: 0.5 })], ["smile", set({ mouthSmileLeft: 0.8, mouthSmileRight: 0.8, jawOpen: 0.1 })],
+        ["blink", set({ eyeBlinkLeft: 1, eyeBlinkRight: 1 })], ["look down", set({ eyeLookDownLeft: 0.8, eyeLookDownRight: 0.8 })],
+        ["look up", set({ eyeLookUpLeft: 0.8, eyeLookUpRight: 0.8 })], ["look aside", set({ eyeLookOutLeft: 0.8, eyeLookInRight: 0.8 })],
+        ["half blink, looking down", set({ eyeBlinkLeft: 0.5, eyeBlinkRight: 0.5, eyeLookDownLeft: 0.6, eyeLookDownRight: 0.6 })]]);
+      const issues = [], worst = { upT: [1, 1], loT: [1, 1], upW: [1, 1], mW: [1, 1] }, culprits = new Set();
+      let folds = 0, cross = 0;
+      for (const [name, v] of poses) {
+        const e = evalPose(v);
+        Object.entries(e.ratio).forEach(([k, r]) => { worst[k] = [Math.min(worst[k][0], r), Math.max(worst[k][1], r)]; });
+        folds += e.folds; cross += e.cross;
+        if (!e.out.length) continue;
+        e.out.forEach(t => issues.push(name + ": " + t));
+        // which channel is to blame: the pose without it passes (or gets better)
+        v.forEach((x, k) => { if (x <= 0.05 || !/^(jaw|mouth|eye)/.test(BS[k])) return; const w = v.slice(); w[k] = 0;
+          if (evalPose(w).out.length < e.out.length || evalPose(w).folds < e.folds) culprits.add(k); });
+      }
+      const r = x => +x.toFixed(2);
+      return { ok: !issues.length, issues, poses: poses.length, folds, crossings: cross, culprits: [...culprits],
+        range: Object.fromEntries(Object.entries(worst).map(([k, [a, b]]) => [k, [r(a), r(b)]])) };
+    }
+    // check, and where a pose fails, soften only the channels to blame (×0.9 per round, at most 6 rounds) for this face
+    autotune() {
+      let q = this.qc(); const tuned = {};
+      for (let round = 0; round < 6 && !q.ok && q.culprits.length; round++) {
+        q.culprits.forEach(k => { this.gain[k] *= 0.9; tuned[BS[k]] = +this.gain[k].toFixed(2); });
+        q = this.qc();
+      }
+      delete q.culprits; q.tuned = tuned; this.quality = q; this._draw();
+      return q;
     }
     dispose() { this.el.innerHTML = ""; this.ctx = null; }
   }

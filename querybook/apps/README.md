@@ -297,7 +297,18 @@ the teeth follow the curve of the upper lip. The portrait's own mouth is used un
 **Mouth fit**: each face's mouth is sized from its own anatomy — millimetre scale from the iris (≈11.7 mm; face
 height as a cross-check), mouth width and lip thickness measured from the landmarks, the opening on "aa" set to about
 0.28 × mouth width (9–16 mm, as in conversational speech), the opening's outline taken from the person's own lower lip,
-and the teeth limited to ~3 mm. The studio shows the numbers for the selected face. The studio shows all 52 channels as sliders, expression presets, and
+and the teeth limited to ~3 mm. The studio shows the numbers for the selected face.
+
+**Lips move like lips.** Each lip moves as a solid band — all of its landmark rows together — so it keeps its own
+thickness and width while talking; the skin around the lips (relaxed over the mesh, lips pinned) takes up the motion.
+Rounding (o, u, w) moves the corners, not the middle of the lips; pressing (p, b, m) draws the outer edges in without the
+lips ever crossing; a blink closes along a corner-to-corner curve with the iris tucked under the lid.
+
+**Movement quality control** (`DepthFace.qc()` / `autotune()`, run every time a face is built): 24 poses (every viseme,
+strong vowels, smile, blinks, gaze) are checked on the mesh — upper-lip thickness 0.88–1.15 and width 0.90–1.07 of the
+portrait, lower-lip thickness 0.85–1.20, mouth width 0.80–1.10, no triangle turned over, lips never crossing. A failing
+pose softens only the channel to blame, for that face. The result is kept with the avatar (`qc.json`), shown in the
+studio, flagged in the library, and *Check movement of every face* re-runs it for the whole library. The studio shows all 52 channels as sliders, expression presets, and
 exports the motion as a 52-channel CSV (Live Link Face / Blender / Unreal order). Any Speech-lab result can be shown on
 a library avatar.
 

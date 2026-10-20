@@ -208,6 +208,14 @@ class Library:
         r["quality"] = json.loads(r["quality"]) if r["quality"] else None
         r["voice"] = json.loads(r["voice"]) if r["voice"] else None
         r["analysed"] = bool(r["landmarks"])
+        qp = os.path.join(self.folder, str(r["id"]), "qc.json")
+        r["qc"] = None
+        if os.path.isfile(qp):
+            try:
+                with open(qp, encoding="utf-8") as f:
+                    r["qc"] = json.load(f)
+            except (OSError, ValueError):
+                pass
         r["label"] = LABEL if r["source"] == "synthetic" else "Avatar of %s — with consent" % r["attestation"].get("subject", "")
         if landmarks:
             r["landmarks"] = json.loads(r["landmarks"]) if r["landmarks"] else None
@@ -239,6 +247,10 @@ class Library:
             lm = [[round(float(p[0]), 5), round(float(p[1]), 5), round(float(p[2]) if len(p) > 2 else 0.0, 5)] for p in landmarks[:478]]
             r = self.store.one("SELECT width, height FROM avatars WHERE id = ?", (int(aid),))
             q = quality(lm, r and r["width"], r and r["height"])
+        try:
+            os.remove(os.path.join(self.folder, str(int(aid)), "qc.json"))
+        except OSError:
+            pass
         with self.store.write() as db:
             db.execute("UPDATE avatars SET landmarks = ?, quality = ? WHERE id = ?", (json.dumps(lm) if lm else None, json.dumps(q), int(aid)))
         return {"id": int(aid), "quality": q, "points": len(lm) if lm else 0}
@@ -262,6 +274,17 @@ class Library:
         with self.store.write() as db:
             db.execute("UPDATE avatars SET image = ?, width = ?, height = ?, landmarks = NULL, quality = NULL WHERE id = ?", (fn, w, h, int(aid)))
         return {"id": int(aid), "width": w, "height": h}
+
+    def set_qc(self, aid, qc):
+        """The movement check the page ran on this face (anatomy limits, folds, crossing lips) and any per-face tuning."""
+        self.get(aid)
+        q = {"ok": bool(qc.get("ok")), "issues": [str(x)[:120] for x in (qc.get("issues") or [])][:40], "tuned": {str(k)[:40]: float(v) for k, v in (qc.get("tuned") or {}).items()},
+             "range": qc.get("range") or {}, "poses": int(qc.get("poses") or 0), "at": _now()}
+        d = os.path.join(self.folder, str(int(aid)))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "qc.json"), "w", encoding="utf-8") as f:
+            json.dump(q, f)
+        return q
 
     def update(self, aid, name=None, tags=None, voice=None, notes=None, hidden=None):
         self.get(aid)

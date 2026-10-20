@@ -39,7 +39,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.22.5"
+VERSION = "1.23.0"
 PORT = 8101
 program_dir = HERE
 
@@ -904,6 +904,10 @@ class App:
         def av_landmarks(p):
             return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
 
+        @a.post("/api/avatars/qc")
+        def av_qc(p):
+            return self.avatars.set_qc(p.get("id"), p.get("qc") or {})
+
         @a.post("/api/avatars/crop")
         def av_crop(p):
             return self.avatars.crop(p.get("id"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
@@ -1515,6 +1519,9 @@ def selftest():
         g = app.speech.generate("Hello there.", {"lang": "en"}, measure=False)
         jj = app.api.routes[("POST", "/api/vse/lip_sync")]({"audio_name": g["audio"], "text": "Hello there.", "lang": "en"})
         c.check("avatars: the face motion job finds speech the lab made (dated sub-folder)", "/" in g["audio"] and bool(jj.get("job_id")), g["audio"])
+        qc = app.avatars.set_qc(a1["id"], {"ok": False, "issues": ["aa: 1 folded triangle(s)"], "tuned": {"jawOpen": 0.9}, "poses": 18})
+        c.check("avatars: the movement check is kept with the face and cleared when it is re-analysed",
+                qc["tuned"]["jawOpen"] == 0.9 and app.avatars.get(a1["id"])["qc"]["issues"] and app.avatars.set_landmarks(a1["id"], fake) and app.avatars.get(a1["id"])["qc"] is None)
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
         c.check("avatars: the 19 bundled starter faces are installed and analysed, once", len(st) == 19 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
