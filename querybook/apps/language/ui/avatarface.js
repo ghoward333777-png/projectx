@@ -110,6 +110,7 @@
       const src = document.createElement("canvas"); src.width = W; src.height = H; src.getContext("2d").drawImage(img, 0, 0, W, H);
       this.src = src;
       const pts3 = lm.slice(0, 478).map(p => [p[0] * W, p[1] * H, (p[2] || 0) * W]);
+      this.lipFix = this._refineLipLine(src, pts3);      // where the lips really meet, from the photo itself
       this.hasIris = pts3.length >= 478; this.hasDepth = lm[0].length > 2;
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       pts3.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
@@ -172,6 +173,59 @@
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
       this.autotune();                                    // quality control before the face ever speaks (draws when done)
+    }
+    // The face tracker sometimes puts the line where the lips meet too low or too high (glossy or stylised lips): then
+    // part of one lip is moved with the other and shows as a flap of "gum" when the mouth opens. With the mouth closed in
+    // the portrait, the true line is the dark crease between the outer lip edges: it is found column by column, fitted
+    // with a smooth curve through the corners, and the lip landmarks are moved onto it (the rows inside each lip are
+    // re-spaced so they keep their order). Nothing changes when the tracker already agrees with the photo.
+    _refineLipLine(src, P) {
+      const g = src.getContext("2d"), F = Math.hypot(P[10][0] - P[152][0], P[10][1] - P[152][1]);
+      if (Math.hypot(P[13][0] - P[14][0], P[13][1] - P[14][1]) > 0.012 * F) return { moved_px: 0, reason: "mouth open in the portrait" };
+      const line = ids => lipLine(P, ids), oUp = line(OUT_UP), oLo = line(OUT_LO), inn = line(IN_UP);
+      const cR = P[61], cL = P[291], x0 = Math.min(cR[0], cL[0]), x1 = Math.max(cR[0], cL[0]), hw = (x1 - x0) / 2, xm = (x0 + x1) / 2;
+      const yTop = Math.floor(Math.min(...OUT_UP.map(i => P[i][1]))), yBot = Math.ceil(Math.max(...OUT_LO.map(i => P[i][1])));
+      const img = g.getImageData(Math.floor(x0), yTop, Math.max(1, Math.ceil(x1 - x0)), Math.max(1, yBot - yTop)).data, iw = Math.max(1, Math.ceil(x1 - x0));
+      const L = (x, y) => { const xi = Math.max(0, Math.min(iw - 1, Math.round(x - Math.floor(x0)))), yi = Math.round(y - yTop), i = 4 * (yi * iw + xi);
+        return 0.2126 * img[i] + 0.7152 * img[i + 1] + 0.0722 * img[i + 2]; };
+      const samples = [];
+      for (let t = -0.75; t <= 0.751; t += 0.1) {
+        const x = xm + t * hw, a = oUp(x), b = oLo(x), h = b - a;
+        if (h < 4) continue;
+        // a crease is a valley — darker than the lip just above it AND just below it — not merely the darkest row
+        // (with one dark and one pale lip, the darkest row lies inside the dark lip)
+        const prof = [], y0r = Math.ceil(a + 0.12 * h), y1r = Math.floor(b - 0.15 * h);
+        for (let y = y0r - 8; y <= y1r + 8; y++) { let v = 0; for (let dx = -2; dx <= 2; dx++) for (let dy = -1; dy <= 1; dy++) v += L(x + dx, y + dy); prof.push([y, v / 15]); }
+        const at = y => { const j = y - (y0r - 8); return prof[Math.max(0, Math.min(prof.length - 1, j))][1]; };
+        const k = Math.max(3, Math.round(0.06 * h));
+        let best = null;
+        for (let y = y0r; y <= y1r; y++) {
+          let up = 0, dn = 0; for (let d = 2; d <= k + 1; d++) { up += at(y - d); dn += at(y + d); } up /= k; dn /= k;
+          const score = Math.min(up, dn) - at(y);
+          if (!best || score > best[1]) best = [y, score];
+        }
+        if (best && best[1] > 6) samples.push([x, best[0]]);   // a clear crease
+      }
+      if (samples.length < 6) return { moved_px: 0, reason: "no clear crease" };
+      // smooth curve through the corners: y = c0 + c1·u + c2·u² (u = position across the mouth), least squares with the corners weighted
+      const pts = samples.map(([x, y]) => [(x - xm) / hw, y, 1]).concat([[(cR[0] - xm) / hw, cR[1], 4], [(cL[0] - xm) / hw, cL[1], 4]]);
+      const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], r = [0, 0, 0];
+      pts.forEach(([u, y, w]) => { const v = [1, u, u * u]; for (let i = 0; i < 3; i++) { r[i] += w * v[i] * y; for (let j = 0; j < 3; j++) S[i][j] += w * v[i] * v[j]; } });
+      const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+      const D = det(S); if (Math.abs(D) < 1e-9) return { moved_px: 0, reason: "fit failed" };
+      const cf = [0, 1, 2].map(k => det(S.map((row, i) => row.map((v, j) => j === k ? r[i] : v))) / D);
+      const crease = x => { const u = (x - xm) / hw; return cf[0] + cf[1] * u + cf[2] * u * u; };
+      const mid = IN_UP.filter(i => ![78, 308].includes(i)), shift = mid.reduce((s, i) => s + (crease(P[i][0]) - inn(P[i][0])), 0) / mid.length;
+      if (Math.abs(shift) < 0.006 * F) return { moved_px: +shift.toFixed(1), reason: "the tracker agrees with the photo" };
+      // move the lip line onto the crease, re-space the rows inside each lip by their fraction of the lip
+      const old = P.map(q => q.slice());
+      const newIn = x => Math.max(oUp(x) + 1, Math.min(oLo(x) - 1, crease(x)));
+      IN_UP.concat(IN_LO).forEach(i => { if (![78, 308].includes(i)) P[i][1] = newIn(old[i][0]); });
+      LIP_UP.forEach(i => { if (IN_UP.includes(i) || OUT_UP.includes(i)) return; const x = old[i][0], a = oUp(x), b = inn(x);
+        const f = Math.max(0, Math.min(1, (old[i][1] - a) / ((b - a) || 1))); P[i][1] = a + f * (newIn(x) - a); });
+      LIP_LO.forEach(i => { if (IN_LO.includes(i) || OUT_LO.includes(i)) return; const x = old[i][0], a = inn(x), b = oLo(x);
+        const f = Math.max(0, Math.min(1, (old[i][1] - a) / ((b - a) || 1))); P[i][1] = newIn(x) + f * (b - newIn(x)); });
+      return { moved_px: +shift.toFixed(1), moved_mm: null, reason: "lip line moved onto the crease in the photo" };
     }
     // Colours for the inside of the mouth, taken from this portrait so they match its light and white balance:
     // the lips (the cavity is a deep, warm shade of them), and the whites of the eyes (teeth are never brighter or
@@ -582,7 +636,7 @@
       }
       const aest = this.aesthetic(); aest.issues.forEach(t => issues.push("look: " + t));
       const r = x => +x.toFixed(2);
-      return { ok: !issues.length, issues, poses: poses.length, aesthetic: aest.measures, folds, crossings: cross, culprits: [...culprits],
+      return { ok: !issues.length, issues, poses: poses.length, aesthetic: aest.measures, lip_line: this.lipFix, folds, crossings: cross, culprits: [...culprits],
         range: Object.fromEntries(Object.entries(worst).map(([k, [a, b]]) => [k, [r(a), r(b)]])) };
     }
     // Aesthetic guardrail, measured on the rendered pixels of an open "aa" (the most revealing pose): the inside of the mouth

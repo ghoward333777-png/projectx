@@ -51,7 +51,8 @@ async function avCheck(id) {
 function avQcText(q) {
   if (!q) return "";
   const t = Object.entries(q.tuned || {}).map(([k, v]) => k + " ×" + v).join(", ");
-  return q.ok ? "✔ Movement check passed — " + q.poses + " mouth poses within human limits, no folds, lips never cross" + (t ? " (tuned for this face: " + t + ")" : "")
+  const lip = q.lip_line && /moved/.test(q.lip_line.reason || "") ? "; lip line corrected from the photo (" + q.lip_line.moved_px + " px)" : "";
+  return q.ok ? "✔ Movement check passed — " + q.poses + " mouth poses within human limits, no folds, lips never cross" + lip + (t ? " (tuned for this face: " + t + ")" : "")
     : "⚠ Movement check: " + q.issues.slice(0, 4).join("; ") + (q.issues.length > 4 ? " … +" + (q.issues.length - 4) : "");
 }
 async function avCheckAll(el) {

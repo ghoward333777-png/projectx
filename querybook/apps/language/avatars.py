@@ -279,7 +279,8 @@ class Library:
         """The movement check the page ran on this face (anatomy limits, folds, crossing lips) and any per-face tuning."""
         self.get(aid)
         q = {"ok": bool(qc.get("ok")), "issues": [str(x)[:120] for x in (qc.get("issues") or [])][:40], "tuned": {str(k)[:40]: float(v) for k, v in (qc.get("tuned") or {}).items()},
-             "range": qc.get("range") or {}, "poses": int(qc.get("poses") or 0), "at": _now()}
+             "range": qc.get("range") or {}, "poses": int(qc.get("poses") or 0), "lip_line": qc.get("lip_line") or {},
+             "aesthetic": qc.get("aesthetic") or {}, "at": _now()}
         d = os.path.join(self.folder, str(int(aid)))
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "qc.json"), "w", encoding="utf-8") as f:

@@ -316,6 +316,12 @@ bluer than the sclera, at most ~3 mm and a third of the opening, the cavity 8–
 lip-coloured flesh inside the opening; the opening on "aa" is held to conversational size (0.24 × mouth width, 8–13 mm).
 It is part of the movement check, so it runs on every face and is reported in the studio.
 
+**Lip line from the photo.** The face tracker can put the line where the lips meet too low or too high on glossy or
+stylised lips; then part of one lip moves with the other and shows as a flap of "gum". With the mouth closed in the
+portrait, the true line is found in the photo — the crease between the lips, a valley darker than the lip above and
+below it, sampled across the mouth and fitted with a smooth curve through the corners — and the lip landmarks are moved
+onto it (rows inside each lip re-spaced). When the tracker already agrees, nothing changes.
+
 **Movement quality control** (`DepthFace.qc()` / `autotune()`, run every time a face is built): 24 poses (every viseme,
 strong vowels, smile, blinks, gaze) are checked on the mesh — upper-lip thickness 0.88–1.15 and width 0.90–1.07 of the
 portrait, lower-lip thickness 0.85–1.20, mouth width 0.80–1.10, no triangle turned over, lips never crossing. A failing
