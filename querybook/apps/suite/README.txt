@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.23.0)
+  Language Builder (1.24.0)
+    * Both lips curve open (upper lip arches, lower lip drops) - the oval of a real mouth.
+    * Aesthetic guardrail: realistic inside of the mouth (colours from the person's own lips and eye whites, a row of
+      upper teeth that follows the lip, resting tongue, no gums, smooth edges), checked on the rendered pixels.
     * Lips move as solid bands: the upper lip keeps its width and thickness, the lower lip rides the jaw smoothly,
       rounding moves the corners, lips never cross, blinks close cleanly.
     * Movement quality control on every avatar (24 poses checked against human limits, folds, crossing lips) with

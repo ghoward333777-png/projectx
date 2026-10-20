@@ -304,6 +304,18 @@ thickness and width while talking; the skin around the lips (relaxed over the me
 Rounding (o, u, w) moves the corners, not the middle of the lips; pressing (p, b, m) draws the outer edges in without the
 lips ever crossing; a blink closes along a corner-to-corner curve with the iris tucked under the lid.
 
+**Both lips curve open.** On a vowel the lower lip drops (about 70% of the opening) and the upper lip arches up toward its
+middle (about 30%), both tapering to the corners, so the opening is the oval of a real mouth, never a flat-topped slot.
+
+**Aesthetic guardrail** (`_mouthInside`, `aesthetic()`): the inside of the mouth is drawn as a real one looks in speech —
+a deep, warm shade of this person's own lips (not black), the tongue resting on the floor of the mouth (it rises for
+th/l, never floats), six upper front teeth as one row hanging from the upper lip's curve with a faint scallop and fine
+separations, darker toward the corners, coloured from this face's own eye whites, and a smooth, feathered edge (no
+facets). Gums are never shown in speech. The check, on the rendered pixels of an open "aa": teeth no brighter and no
+bluer than the sclera, at most ~3 mm and a third of the opening, the cavity 8–60% of the lips' brightness, no
+lip-coloured flesh inside the opening; the opening on "aa" is held to conversational size (0.24 × mouth width, 8–13 mm).
+It is part of the movement check, so it runs on every face and is reported in the studio.
+
 **Movement quality control** (`DepthFace.qc()` / `autotune()`, run every time a face is built): 24 poses (every viseme,
 strong vowels, smile, blinks, gaze) are checked on the mesh — upper-lip thickness 0.88–1.15 and width 0.90–1.07 of the
 portrait, lower-lip thickness 0.85–1.20, mouth width 0.80–1.10, no triangle turned over, lips never crossing. A failing
