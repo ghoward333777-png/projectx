@@ -39,7 +39,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.22.1"
+VERSION = "1.22.2"
 PORT = 8101
 program_dir = HERE
 
@@ -104,7 +104,7 @@ class App:
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
         try:
-            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))           # the 20 bundled faces, ready to talk
+            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))           # the bundled faces, ready to talk
         except Exception as e:
             self.log("starter avatars not installed: %s" % e)
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
@@ -1516,7 +1516,7 @@ def selftest():
         jj = app.api.routes[("POST", "/api/vse/lip_sync")]({"audio_name": g["audio"], "text": "Hello there.", "lang": "en"})
         c.check("avatars: the face motion job finds speech the lab made (dated sub-folder)", "/" in g["audio"] and bool(jj.get("job_id")), g["audio"])
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
-        c.check("avatars: the 20 bundled starter faces are installed and analysed, once", len(st) == 20 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
+        c.check("avatars: the 19 bundled starter faces are installed and analysed, once", len(st) == 19 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]

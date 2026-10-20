@@ -131,6 +131,10 @@ class Library:
         mark = os.path.join(self.folder, "starter-installed.json")
         with open(mf, encoding="utf-8") as f:
             man = json.load(f)
+        for sha in man.get("removed", []):                        # withdrawn from the set: take it out of installs too
+            r = self.store.one("SELECT id FROM avatars WHERE sha256 = ? AND tags LIKE '%\"starter\"%'", (sha,))
+            if r:
+                self.delete(r["id"])
         done = {}
         if os.path.isfile(mark):
             with open(mark, encoding="utf-8") as f:
