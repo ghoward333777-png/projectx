@@ -94,7 +94,15 @@
   class DepthFace {
     constructor(el, avatar, params) {
       this.el = el; this.avatar = avatar;
-      this.params = Object.assign({ lead_ms: 40, smooth_ms: 35, head_gain: 1, label: avatar.label || "Synthetic avatar — AI-generated" }, params || {});
+      // calibration (Quality Lab): the admin-approved one everywhere; the lab passes its candidate in params.cal
+      const cal = Object.assign({ jaw: 1, spread: 1, round: 1, close: 1, arch: 1, teeth: 1, smooth_ms: 35, lead_ms: 40 },
+        (window.QB_CAL && window.QB_CAL.params) || {}, (params && params.cal) || {});
+      this.cal = cal;
+      this.params = Object.assign({ lead_ms: cal.lead_ms, smooth_ms: cal.smooth_ms, head_gain: 1, label: avatar.label || "Synthetic avatar — AI-generated" }, params || {});
+      const cg = { jawOpen: cal.jaw, mouthLowerDownLeft: cal.jaw, mouthLowerDownRight: cal.jaw, mouthStretchLeft: cal.spread, mouthStretchRight: cal.spread,
+        mouthSmileLeft: cal.spread, mouthSmileRight: cal.spread, mouthDimpleLeft: cal.spread, mouthDimpleRight: cal.spread, mouthPucker: cal.round,
+        mouthFunnel: cal.round, mouthClose: cal.close, mouthPressLeft: cal.close, mouthPressRight: cal.close };
+      this.calGain = Float32Array.from(BS.map(k => cg[k] || 1));
       this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null;
       this.ready = new Promise((res, rej) => {
         const img = new Image();
@@ -279,7 +287,7 @@
         for (let j = 1; j < outl.length; j++) if (x <= outl[j][0]) { const t = (x - outl[j - 1][0]) / ((outl[j][0] - outl[j - 1][0]) || 1);
           return Math.max(0, (outl[j - 1][1] + (outl[j][1] - outl[j - 1][1]) * t) / depth); } return 0; };
       return { pxmm, scale_from: how, mouth_mm: +Wmm.toFixed(1), upper_lip_mm: +upLip.toFixed(1), lower_lip_mm: +loLip.toFixed(1), chin_mm: +chin.toFixed(1),
-        aa_open_mm: +aa.toFixed(1), jaw_gain: gain, teeth_mm: Math.min(3, 0.3 * aa), own };
+        aa_open_mm: +aa.toFixed(1), jaw_gain: gain, teeth_mm: Math.min(3, 0.3 * aa) * this.cal.teeth, own };
     }
     // per-channel displacement fields over the mesh (pixels at channel value 1), built once per portrait
     _fields() {
@@ -323,7 +331,7 @@
         // arches up toward its middle (about 30%), both tapering to the corners — never a flat upper edge
         add("jawOpen", i, -dxm * 0.03 * jawW(i) * chinMix(i), 0.122 * F * jawW(i) * jawMove * jg, 0.03 * F * jawW(i) * jg);
         const arch = Math.pow(Math.max(0, 1 - (Math.min(1, Math.abs(dxm) / (0.5 * Wm))) ** 2), 1.5);
-        add("jawOpen", i, 0, -0.062 * F * arch * ub * jg, 0);
+        add("jawOpen", i, 0, -0.062 * F * arch * ub * jg * this.cal.arch, 0);
         add("jawForward", i, 0, 0.006 * F * jawW(i), -0.05 * F * jawW(i));
         add("jawLeft", i, 0.045 * F * jawW(i), 0, 0); add("jawRight", i, -0.045 * F * jawW(i), 0, 0);
         // closing the lips against an open jaw: the lower lip band rises back to the upper lip
@@ -468,7 +476,7 @@
         let [x, y, z] = this.base3[i];
         if (i < nF || i >= this.nX0) {
           for (let k = 0; k < c.length; k++) {
-            const w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k];   // lips can only close against an open jaw
+            const w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k] * this.calGain[k];   // lips can only close against an open jaw
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
           }
           // head rotation about the neck: yaw (y axis), pitch (x axis), roll (z axis), then a weak perspective

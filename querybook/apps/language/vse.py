@@ -1141,7 +1141,8 @@ class Engine:
             return {"phonemes": a["phonemes"], "emotion": emo, "speaker_embedding": a["speaker_embedding"],
                     "prosody_summary": {"pitch_hz": a["measure"]["pitch"].get("mean_hz"), "rate_syl_s": a["measure"]["rate"]["articulation_rate_syl_s"]},
                     "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]), "arkit52_csv": arkit52_csv(ls["motion"]),
-                    "personal_targets": sorted(tg), "duration": a["duration"]}
+                    "personal_targets": sorted(tg), "duration": a["duration"],
+                    "words": [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in a["track"].get("words", [])]}
         return fn
 
     def lip_read_job(self, frames, lang="en", words=(), script=""):

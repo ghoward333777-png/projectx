@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.24.1)
+  Language Builder (1.25.0)
+    * Quality lab (Speech -> Quality lab): each avatar test is recorded as a video with every word, measured
+      against human reference clips (your webcam or clips you may use), scored, and used to calibrate the next test.
+      Only the admin approves a calibration; all faces then speak with it.
     * Fix: no "gum" flaps - the line where the lips meet is found in the photo (the crease between the lips)
       when the face tracker puts it on the lip itself.
     * Both lips curve open (upper lip arches, lower lip drops) - the oval of a real mouth.

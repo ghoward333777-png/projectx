@@ -490,6 +490,7 @@ function showSub(id) {
   if (id === "providers") loadProviders();
   if (id === "log") loadLog();
   if (id === "avatars") renderAvatars($("#sp-avatars"));
+  if (id === "qlab") renderQualityLab($("#sp-qlab"));
 }
 
 async function loadSpeech() {

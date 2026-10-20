@@ -1,6 +1,8 @@
 "use strict";
 // Avatar library: portraits → depth avatars that speak with all 52 face channels (Speech → Avatars).
 const AV = { list: [], sel: null, face: null, audio: null, sources: {} };
+// the calibration every face speaks with (approved by the admin in the Quality Lab)
+fetch("/api/qlab/active").then(r => r.json()).then(c => { window.QB_CAL = c; }).catch(() => {});
 
 async function avWaitJob(jid, note) {
   for (let i = 0; i < 600; i++) {

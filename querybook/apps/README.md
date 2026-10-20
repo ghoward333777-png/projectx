@@ -339,6 +339,19 @@ keeps the speech playing on the new face, and **Every face in turn** plays the s
 portraits** (`language/avatars_starter/`, already analysed) that is added once on first start; avatars you delete
 stay deleted. Full-length or group photos are cropped to the face automatically when analysed (the original is kept).
 
+## Quality lab (Speech → 🎬 Quality lab)
+
+Every avatar test is a quality sample. The chosen face says a test script (four built-in scripts cover every mouth
+shape, or your own text) and the picture and sound are **recorded as a video holding every word** (a test is marked
+incomplete otherwise). The video is then measured with the face tracker frame by frame — lip opening, wide openings,
+widening/narrowing, upper- and lower-lip thickness change, lip speed, jitter, closures, lips-to-sound timing — exactly
+as **human reference clips** are measured (record yourself reading the script with the webcam, or add clips you may
+use: public domain, Creative Commons, government works, your own). Each measure scores 100 inside the human range;
+until references exist, provisional ranges are used and say so. Each test proposes the next **candidate calibration**
+(jaw, spread, rounding, closure, upper-lip arch, teeth, smoothing, timing) and the next test uses it. Only the admin
+(passphrase) **approves** a calibration; every face outside the lab speaks with the approved one, and *Ship approved
+with the installer* writes `calibration.json` next to the program so packaged installs start with it.
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

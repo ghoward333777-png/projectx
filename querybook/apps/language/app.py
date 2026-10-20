@@ -27,6 +27,7 @@ import speechlab
 import lipcoach
 import persona
 import avatars
+import qualitylab
 import photoreal
 import silent
 import lipread
@@ -39,7 +40,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.24.1"
+VERSION = "1.25.0"
 PORT = 8101
 program_dir = HERE
 
@@ -107,6 +108,7 @@ class App:
             self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))           # the bundled faces, ready to talk
         except Exception as e:
             self.log("starter avatars not installed: %s" % e)
+        self.qlab = qualitylab.QualityLab(self.folder, lambda: getattr(getattr(self, "commons", None), "approvals", None), HERE, self.log)   # Quality Lab
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
@@ -904,6 +906,62 @@ class App:
         def av_landmarks(p):
             return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
 
+        # -- Quality Lab: recorded avatar tests, human references, calibration approved by the admin
+        @a.get("/api/qlab/status")
+        def ql_status(p):
+            return self.qlab.status()
+
+        @a.get("/api/qlab/active")
+        def ql_active(p):
+            return self.qlab.active(lab=p.get("lab") == "1")
+
+        @a.get("/api/qlab/calibration")
+        def ql_cal(p):
+            return self.qlab.calibration()
+
+        @a.post("/api/qlab/candidate")
+        def ql_candidate(p):
+            return self.qlab.save_candidate(p.get("params") or {}, p.get("origin") or "admin", p.get("note") or "")
+
+        @a.post("/api/qlab/approve")
+        def ql_approve(p):
+            return self.qlab.approve(p.get("version"), p.get("passphrase") or "", p.get("level") or "production", p.get("note") or "")
+
+        @a.post("/api/qlab/ship")
+        def ql_ship(p):
+            return self.qlab.ship(p.get("passphrase") or "")
+
+        @a.get("/api/qlab/export")
+        def ql_export(p):
+            return self.qlab.export()
+
+        @a.post("/api/qlab/sample")
+        def ql_sample(p):
+            data = base64.b64decode(str(p.get("video_b64") or "").split(",", 1)[-1])
+            return self.qlab.add(p.get("kind") or "avatar", data, p)
+
+        @a.post("/api/qlab/metrics")
+        def ql_metrics(p):
+            return self.qlab.set_metrics(p.get("id"), p.get("metrics") or {})
+
+        @a.get("/api/qlab/list")
+        def ql_list(p):
+            return {"samples": self.qlab.list(p.get("kind") or None)}
+
+        @a.get("/api/qlab/video")
+        def ql_video(p):
+            path = self.qlab.video_path(p.get("id"))
+            with open(path, "rb") as f:
+                return f.read(), "video/mp4" if path.endswith(".mp4") else "video/webm"
+
+        @a.post("/api/qlab/verdict")
+        def ql_verdict(p):
+            return self.qlab.verdict(p.get("id"), p.get("verdict") or "pending", p.get("note") or "")
+
+        @a.post("/api/qlab/delete")
+        def ql_delete(p):
+            return self.qlab.delete(p.get("id"))
+
         @a.post("/api/avatars/qc")
         def av_qc(p):
             return self.avatars.set_qc(p.get("id"), p.get("qc") or {})
@@ -1522,6 +1580,38 @@ def selftest():
         qc = app.avatars.set_qc(a1["id"], {"ok": False, "issues": ["aa: 1 folded triangle(s)"], "tuned": {"jawOpen": 0.9}, "poses": 18})
         c.check("avatars: the movement check is kept with the face and cleared when it is re-analysed",
                 qc["tuned"]["jawOpen"] == 0.9 and app.avatars.get(a1["id"])["qc"]["issues"] and app.avatars.set_landmarks(a1["id"], fake) and app.avatars.get(a1["id"])["qc"] is None)
+        ql = app.qlab
+        c.check("quality lab: faces speak with the default until the admin approves a calibration", ql.active()["status"].startswith("default"))
+        webm = b"\x1aE\xdf\xa3" + b"\x00" * 64
+        try:
+            ql.add("reference", webm, {"source": ""}); ref_ok = False
+        except core.UserError:
+            ref_ok = True
+        smp = ql.add("avatar", webm, {"avatar_id": 1, "avatar_name": "T", "script": "a b c", "words_text": 3, "words_timed": 3, "duration": 2.0, "audio_duration": 1.98})
+        short = ql.add("avatar", webm + b"x", {"script": "a b c", "words_text": 3, "words_timed": 2, "duration": 1.0, "audio_duration": 2.0})
+        c.check("quality lab: a test video is complete only with every word and the whole audio; references need a source",
+                ref_ok and smp["complete"] and not short["complete"])
+        mets = {"aperture_mean": 0.5, "aperture_p90": 0.9, "width_var": 0.03, "upper_thick_cv": 0.3, "lower_thick_cv": 0.1, "velocity_p90": 6,
+                "jerk_rms": 10, "closure_rate": 0.1, "av_lag_ms": 90}
+        r1, r2 = ql.set_metrics(smp["id"], mets), ql.set_metrics(smp["id"], mets)
+        c.check("quality lab: scored against human ranges, and the next calibration is proposed the same way every time",
+                r1["score"] < 90 and r1["proposal"] == r2["proposal"] and r1["proposal"]["jaw"] < 1 and r1["proposal"]["lead_ms"] > 40
+                and r1["proposal"]["smooth_ms"] > 35 and r1["scores"]["width_var"]["score"] == 100, r1["proposal"])
+        ql.add("reference", webm + b"r", {"source": "own recording"})
+        ql.set_metrics(ql.list("reference")[0]["id"], dict(mets, aperture_mean=0.2))
+        cand = ql.save_candidate(r1["proposal"], "test")
+        ap = app.commons.approvals
+        if not ap.admin_set():
+            ap.set_admin("selftest-admin-pass")
+        try:
+            ql.approve(cand["version"], "wrong passphrase"); deny = False
+        except core.UserError:
+            deny = True
+        okp = ap.check_admin("selftest-admin-pass")
+        if okp:
+            ql.approve(cand["version"], "selftest-admin-pass", "production")
+        c.check("quality lab: human references replace the provisional ranges; only the admin approves; approved is what faces use",
+                ql.human_ranges()[1].startswith("from 1") and deny and (not okp or (ql.active()["status"] == "approved" and ql.active()["params"]["jaw"] == cand["params"]["jaw"])))
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
         c.check("avatars: the 19 bundled starter faces are installed and analysed, once", len(st) == 19 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
