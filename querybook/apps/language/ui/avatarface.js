@@ -262,7 +262,10 @@
       const L = Math.min(lum(sclera) * 0.9, 222), base = [1.0, 0.975, 0.92], k = L / lum(base.map(x => x * 255));
       const teeth = base.map(x => Math.round(x * 255 * k));
       const tone = (v, f, add) => v.map((x, i) => Math.round(Math.max(0, Math.min(255, x * f + (add ? add[i] : 0)))));
-      return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth,
+      const skinS = [avg(P[205][0], P[205][1], ew * 0.12), avg(P[425][0], P[425][1], ew * 0.12)];
+      const skin = [0, 1, 2].map(c => (skinS[0][c] + skinS[1][c]) / 2);
+      return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth, skin: skin.map(Math.round),
+        crease: tone(skin, 0.55), sheen: tone(skin, 1.12),
         cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, 0.62, [10, -4, -2]), gum: tone(lip, 0.75) };
     }
     // Mouth fit: the speaking mouth sized and shaped from this face's own anatomy, measured once per portrait.
@@ -361,7 +364,7 @@
         // cheeks and nose
         for (const [k, s, e] of [["Left", 1, EYE.L], ["Right", -1, EYE.R]]) {
           const ck = g(i, B[e.cheek], 0.16 * F);
-          add("cheekSquint" + k, i, 0, -0.022 * F * ck, 0);
+          add("cheekSquint" + k, i, 0, -0.032 * F * ck, 0);
           add("cheekPuff", i, s * 0.035 * F * g(i, [M[0] + s * 0.75 * Wm, M[1] - 0.02 * F], 0.13 * F), 0, -0.02 * F * ck);
           const wing = e.wing.reduce((a, j) => [a[0] + B[j][0] / e.wing.length, a[1] + B[j][1] / e.wing.length], [0, 0]);
           add("noseSneer" + k, i, s * 0.004 * F * g(i, wing, 0.05 * F), -0.016 * F * g(i, wing, 0.05 * F), 0);
@@ -523,6 +526,43 @@
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis);
       for (const tr of this.mesh) warp(tr);
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis, true);     // final pass: a smooth, feathered edge (no facets)
+      this._wrinkles(c, pts);
+    }
+    // Skin creases that deepen and fade with the muscles while talking — drawn along the moving mesh, in a darker shade of
+    // this face's own skin with a faint highlight above each one (a fold, not a pen line): forehead lines as the brows rise,
+    // frown lines as they lower, crow's feet and under-eye bunching as the cheeks lift and the eyes narrow, and the smile
+    // lines from nose to mouth as the lips spread.
+    _wrinkles(c, pts) {
+      const F = this.F, pal = this.palette, cur = this.cur, G = k => cur[IDX[k]] * this.gain[IDX[k]] * this.calGain[IDX[k]];
+      const rgb = (v, a) => "rgba(" + v[0] + "," + v[1] + "," + v[2] + "," + a + ")";
+      const fold = (q, a, w) => {
+        if (a < 0.015 || q.length < 2) return;
+        const path = dy => { c.beginPath(); c.moveTo(q[0][0], q[0][1] + dy);
+          for (let i = 1; i < q.length - 1; i++) c.quadraticCurveTo(q[i][0], q[i][1] + dy, (q[i][0] + q[i + 1][0]) / 2, (q[i][1] + q[i + 1][1]) / 2 + dy);
+          c.lineTo(q[q.length - 1][0], q[q.length - 1][1] + dy); };
+        c.save(); c.lineCap = "round"; c.filter = "blur(" + (w * 0.55).toFixed(2) + "px)";
+        c.globalAlpha = Math.min(0.3, a); c.strokeStyle = rgb(pal.crease, 1); c.lineWidth = w; path(0); c.stroke();
+        c.globalAlpha = Math.min(0.18, a * 0.6); c.strokeStyle = rgb(pal.sheen, 1); c.lineWidth = w * 0.8; path(-w * 0.9); c.stroke();
+        c.restore();
+      };
+      const P = i => pts[i], lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], w = Math.max(0.8, F * 0.0035);
+      // forehead: three arcs across the brows, rising with them
+      const up = Math.max(G("browInnerUp"), (G("browOuterUpLeft") + G("browOuterUpRight")) / 2);
+      const browArc = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300].map(P);
+      [0.05, 0.085, 0.12].forEach((h, k) => fold(browArc.map(q => [q[0], q[1] - h * F]).slice(1 + k % 2, browArc.length - 1 - k % 2), 0.22 * up * (1 - 0.2 * k), w));
+      // frown lines between the brows
+      const bd = (G("browDownLeft") + G("browDownRight")) / 2, iL = P(336), iR = P(107);
+      [0.38, 0.62].forEach(t => { const m = lerp(iR, iL, t); fold([[m[0], m[1] - 0.01 * F], [m[0] + (t - 0.5) * 0.01 * F, m[1] + 0.02 * F], [m[0], m[1] + 0.04 * F]], 0.3 * bd, w * 0.8); });
+      for (const [k, corner, lids, s] of [["Left", 263, [249, 390, 373, 374, 380, 381, 382], 1], ["Right", 33, [7, 163, 144, 145, 153, 154, 155], -1]]) {
+        // crow's feet and under-eye bunching
+        const sq = Math.max(G("eyeSquint" + k), G("cheekSquint" + k)), o = P(corner);
+        [-0.45, 0, 0.45].forEach(ang => { const a0 = [o[0] + s * 0.012 * F, o[1]], dir = [s * Math.cos(ang), Math.sin(ang)];
+          fold([a0, [a0[0] + dir[0] * 0.02 * F, a0[1] + dir[1] * 0.02 * F], [a0[0] + dir[0] * 0.035 * F, a0[1] + dir[1] * 0.035 * F]], 0.24 * sq, w * 0.7); });
+        fold(lids.map(i => [P(i)[0], P(i)[1] + 0.022 * F]), 0.18 * G("cheekSquint" + k), w * 0.8);
+        // smile line: from the side of the nose, curving out and down past the mouth corner
+        const nose = P(s > 0 ? 358 : 129), mc = P(s > 0 ? 291 : 61), sp = G("mouthSmile" + k) + 0.5 * G("mouthStretch" + k) + 0.5 * G("mouthUpperUp" + k) + 0.3 * G("cheekSquint" + k);
+        fold([[nose[0] + s * 0.01 * F, nose[1]], [mc[0] + s * 0.05 * F, (nose[1] + mc[1]) / 2], [mc[0] + s * 0.03 * F, mc[1] + 0.03 * F]], 0.2 * Math.min(1.2, sp), w);
+      }
     }
     // The inside of the mouth, drawn as a real one looks while talking (the aesthetic guardrail):
     //  * the opening is a soft, deep, warm shade of this person's lips — never a flat black slot, never hard-edged;

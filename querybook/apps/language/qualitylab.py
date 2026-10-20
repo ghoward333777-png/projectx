@@ -12,7 +12,7 @@ The loop, run until the admin approves a quality level:
   5. only the admin (passphrase) approves a calibration; every face outside the lab speaks with the approved one.
 Deterministic: the same measures always give the same score and the same proposal.
 """
-import base64, datetime, hashlib, json, math, os, urllib.parse, urllib.request
+import base64, datetime, hashlib, json, math, os, re, threading, time, urllib.error, urllib.parse, urllib.request
 
 import qbcore as core
 import lipread
@@ -39,6 +39,9 @@ ALTER TABLE samples ADD COLUMN emotion TEXT;
 ALTER TABLE samples ADD COLUMN lang TEXT;
 CREATE TABLE motion_graph (src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, n INTEGER NOT NULL, stats TEXT,
   PRIMARY KEY (src, rel, dst));
+""", """
+ALTER TABLE samples ADD COLUMN cues TEXT;
+ALTER TABLE samples ADD COLUMN origin TEXT;
 """]
 
 DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 35.0, "lead_ms": 40.0,
@@ -69,6 +72,77 @@ PROVISIONAL = {"aperture_mean": (0.08, 0.28), "aperture_p90": (0.2, 0.5), "width
                "shape_error": (0, 0.06), "blink_rate": (8, 30), "head_motion": (1.0, 6.0), "brow_activity": (0.02, 0.12)}
 WEIGHTS = {"aperture_mean": 2, "aperture_p90": 1.5, "width_var": 1.5, "upper_thick_cv": 1.5, "lower_thick_cv": 1, "velocity_p90": 1.5,
            "jerk_rms": 1.5, "closure_rate": 1, "av_lag_ms": 2, "shape_error": 3, "blink_rate": 1, "head_motion": 1.5, "brow_activity": 1}
+# The library of places that show how talking looks — what each teaches, its licence, and whether "Ingest example videos"
+# takes clips from it automatically (only public-domain / openly licensed sources with a machine-readable licence).
+SOURCES = [
+    {"name": "NASA press briefings and interviews", "url": "https://images.nasa.gov", "licence": "public domain (NASA media)", "auto": True,
+     "teaches": "steady, front-facing speakers with caption files (exact words): mouth shape per sound, timing, blinks, brows, head",
+     "languages": "English"},
+    {"name": "Wikimedia Commons — videos of speeches", "url": "https://commons.wikimedia.org/wiki/Category:Videos_of_speeches",
+     "licence": "public domain / CC BY / CC BY-SA (per file)", "auto": True,
+     "teaches": "many languages and speakers: face, eye, brow and head movement while talking", "languages": "many"},
+    {"name": "Voice of America — Learning English", "url": "https://learningenglish.voanews.com", "licence": "public domain (US government), except third-party footage",
+     "auto": False, "teaches": "slow, clear, front-facing presenters with full transcripts; add clips with “Fetch”", "languages": "English"},
+    {"name": "Voice of America — language services", "url": "https://www.insidevoa.com/p/5831.html", "licence": "public domain (US government), except third-party footage",
+     "auto": False, "teaches": "news presenters in ~40+ languages, stable studio camera", "languages": "40+"},
+    {"name": "GRID audio-visual corpus", "url": "https://spandh.dcs.shef.ac.uk/gridcorpus/", "licence": "CC BY 4.0", "auto": False,
+     "teaches": "34 speakers, full frontal faces, 1,000 sentences each with word timings — the cleanest mouth-shape data", "languages": "English"},
+    {"name": "CREMA-D (emotional actors)", "url": "https://github.com/CheyneyComputerScience/CREMA-D", "licence": "Open Database Licence", "auto": False,
+     "teaches": "91 actors saying 12 sentences in six emotions — how emotion changes the whole face while speaking", "languages": "English"},
+    {"name": "RAVDESS (emotional speech video)", "url": "https://zenodo.org/records/1188976", "licence": "CC BY-NC-SA 4.0 (non-commercial only)", "auto": False,
+     "teaches": "24 actors, frontal, eight emotions at two intensities", "languages": "English"},
+    {"name": "Seeing Speech (University of Glasgow)", "url": "https://www.seeingspeech.ac.uk", "licence": "view only (copyrighted)", "auto": False,
+     "teaches": "how each speech sound is made — lips, tongue, jaw (articulation videos, MRI and ultrasound); for reading, not ingesting", "languages": "English"},
+    {"name": "Your own recordings", "url": "", "licence": "yours", "auto": False,
+     "teaches": "the webcam button records you reading the test script — the best match of all", "languages": "any"},
+]
+UA = "QueryBook-QualityLab/1.0 (https://github.com/ghoward333777-png/projectx; talking-face reference clips, polite, low volume) python-urllib"
+COMMONS_OK = re.compile(r"^(public domain|pd|cc0|cc by(-sa)? ?\d|cc-by(-sa)?)", re.I)
+
+
+def _safe(url):
+    u = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((u.scheme, u.netloc, urllib.parse.quote(urllib.parse.unquote(u.path), safe="/~:@!$&'()*+,;="), u.query, u.fragment))
+
+
+def _get(url, timeout=40, limit=None, tries=3):
+    """Polite GET: one request at a time, and when a site says “too many requests” we wait as long as it asks (≤ 60 s)."""
+    import time
+    for k in range(tries):
+        try:
+            req = urllib.request.Request(_safe(url), headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read(limit) if limit else r.read()
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and k + 1 < tries:
+                time.sleep(min(60, int(e.headers.get("Retry-After") or 0) or 10 * (k + 1)))
+                continue
+            raise
+
+
+def _size(url):
+    try:
+        req = urllib.request.Request(_safe(url), method="HEAD", headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return int(r.headers.get("Content-Length") or 0)
+    except Exception:
+        return 0
+
+
+def srt_cues(text):
+    """SRT/VTT captions → [{start, end, text}]."""
+    cues, t = [], lambda h, m, s_, ms: int(h) * 3600 + int(m) * 60 + int(s_) + int(ms) / 1000
+    for blk in re.split(r"\n\s*\n", (text or "").replace("\r", "")):
+        m = re.search(r"(\d+):(\d\d):(\d\d)[,.](\d{1,3})\s*-->\s*(\d+):(\d\d):(\d\d)[,.](\d{1,3})", blk)
+        if not m:
+            continue
+        words = " ".join(l.strip() for l in blk.split("\n")[blk.split("\n").index(next(l for l in blk.split("\n") if "-->" in l)) + 1:] if l.strip())
+        words = re.sub(r"<[^>]+>|\[[^\]]*\]|\([^)]*\)", " ", words)
+        if words.strip():
+            cues.append({"start": t(*m.group(1, 2, 3, 4)), "end": t(*m.group(5, 6, 7, 8)), "text": " ".join(words.split())})
+    return cues
+
+
 # Where reference video may be fetched from automatically: public-domain and openly licensed archives, and US government
 # works. YouTube and broadcasters are not: their terms forbid downloading, and TV/film footage is copyrighted.
 # Voice of America: news in ~40+ languages, public domain as a US government work (except third-party footage it licenses).
@@ -386,7 +460,10 @@ class QualityLab:
             while j < len(segs) and segs[j][2] <= t:
                 j += 1
             v = segs[j][0] if j < len(segs) and segs[j][1] <= t < segs[j][2] else None
-            rows.append([t] + lipread.features(fr) + [fr.get("pose") or [], (fr.get("bs") or {}).get("eyeBlinkLeft", 0), (fr.get("bs") or {}).get("browInnerUp", 0)])
+            bs = fr.get("bs") or {}
+            upper = {k: round(float(bs.get(n, 0) or 0), 3) for k, n in (("sq", "eyeSquintLeft"), ("ch", "cheekSquintLeft"), ("wd", "eyeWideLeft"),
+                                                                       ("bd", "browDownLeft"), ("ns", "noseSneerLeft"), ("bo", "browOuterUpLeft"))}
+            rows.append([t] + lipread.features(fr) + [fr.get("pose") or [], bs.get("eyeBlinkLeft", 0), bs.get("browInnerUp", 0), upper])
             labels.append(["", v] if (v and fr.get("face")) else None)
         with self.store.write() as db:
             db.execute("UPDATE samples SET frames = ?, labels = ?, transcript = ?, words = ?, emotion = ?, lang = ? WHERE id = ?",
@@ -398,7 +475,7 @@ class QualityLab:
     def rebuild(self):
         refs = [dict(r) for r in self.store.query("SELECT id, frames, labels, words, emotion, lang FROM samples WHERE kind = 'reference' AND frames IS NOT NULL")]
         self._graph(refs)
-        data, nf, blinks, mins, yaw, pitch, roll, brow = [], 0, 0, 0.0, [], [], [], []
+        data, nf, blinks, mins, yaw, pitch, roll, brow, upper = [], 0, 0, 0.0, [], [], [], [], {}
         for r in refs:
             fr, lb = json.loads(r["frames"]), json.loads(r["labels"] or "[]")
             data.append(([f[:1 + len(lipread.FEATURES)] for f in fr], lb))
@@ -406,18 +483,25 @@ class QualityLab:
             if len(fr) > 2:
                 mins += (fr[-1][0] - fr[0][0]) / 60
                 prev = 0
+                P = 1 + len(lipread.FEATURES)
                 for f in fr:
-                    b = f[-2] or 0
+                    b = f[P + 1] or 0
                     if b > 0.5 and prev <= 0.5:
                         blinks += 1
                     prev = b
-                    if f[-3] and len(f[-3]) >= 3:
-                        yaw.append(f[-3][0]); pitch.append(f[-3][1]); roll.append(f[-3][2])   # measureFrame: [yaw, pitch, roll, …]
-                    brow.append(f[-1] or 0)
+                    if f[P] and len(f[P]) >= 3:
+                        yaw.append(f[P][0]); pitch.append(f[P][1]); roll.append(f[P][2])   # measureFrame: [yaw, pitch, roll, …]
+                    brow.append(f[P + 2] or 0)
+                    up = f[P + 3] if len(f) > P + 3 and isinstance(f[P + 3], dict) else None
+                    if up:
+                        for k in ("sq", "ch", "wd", "bd", "ns"):
+                            upper.setdefault(k, []).append(up.get(k, 0))
         targets = vse.learn_targets(data)
         sd = lambda a: (sum((x - sum(a) / len(a)) ** 2 for x in a) / len(a)) ** 0.5 if len(a) > 2 else None
         style = {"blink_per_min": round(blinks / mins, 1) if mins > 0.05 else None, "yaw_sd": sd(yaw), "pitch_sd": sd(pitch), "roll_sd": sd(roll),
                  "brow_sd": sd(brow)}
+        for k, name in (("sq", "squint_sd"), ("ch", "cheek_sd"), ("wd", "wide_sd"), ("bd", "browdown_sd"), ("ns", "sneer_sd")):
+            style[name] = sd(upper.get(k, []))
         style = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in style.items()}
         with self.store.write() as db:
             v = db.execute("INSERT INTO human_model(created, references_used, frames_used, targets, style, visemes) VALUES(?,?,?,?,?,?)",
@@ -489,11 +573,11 @@ class QualityLab:
                 if inside:
                     mean = [sum(f[1 + i] for f in inside) / len(inside) for i in range(nf)]
                     add(node, "moves_mouth", "motion:mouth", mean, {"seconds": w["end"] - w["start"]})
-                    poses = [f[-3] for f in inside if f[-3] and len(f[-3]) >= 3]
+                    poses = [f[1 + nf] for f in inside if f[1 + nf] and len(f[1 + nf]) >= 3]
                     if poses:
                         sw = lambda i: max(p[i] for p in poses) - min(p[i] for p in poses)
                         add(node, "moves_head", "motion:head", None, {"yaw": sw(0), "pitch": sw(1), "roll": sw(2),
-                                                                      "brow": max(f[-1] or 0 for f in inside)})
+                                                                      "brow": max(f[3 + nf] or 0 for f in inside)})
             for f, l in zip(fr, lb):
                 if l and l[1]:
                     add("viseme:" + l[1], "shaped_under", "emotion:" + lead, f[1:1 + nf])
@@ -503,7 +587,7 @@ class QualityLab:
                             if ww:
                                 add("word:%s:%s" % (lang, ww), "articulated_as", "viseme:" + l[1])
                             break
-            poses = [f[-3] for f in fr if f[-3] and len(f[-3]) >= 3]
+            poses = [f[1 + nf] for f in fr if f[1 + nf] and len(f[1 + nf]) >= 3]
             if poses:
                 sd = lambda i: (sum((p[i] - sum(q[i] for q in poses) / len(poses)) ** 2 for p in poses) / len(poses)) ** 0.5
                 add("emotion:" + lead, "moves_head", "motion:head", None, {"yaw_sd": sd(0), "pitch_sd": sd(1), "roll_sd": sd(2)})
@@ -524,3 +608,139 @@ class QualityLab:
         counts = {r["k"]: r["c"] for r in self.store.query("SELECT substr(src, 1, instr(src, ':') - 1) AS k, COUNT(DISTINCT src) AS c FROM motion_graph GROUP BY k")}
         langs = [r["src"][5:] for r in self.store.query("SELECT DISTINCT src FROM motion_graph WHERE src LIKE 'lang:%' ORDER BY src")]
         return {"nodes": counts, "languages": langs, "edges": [dict(r, stats=json.loads(r["stats"] or "{}")) for r in rows]}
+
+    # ------------------------------------------------------------------ "Ingest example videos"
+    def sources(self):
+        return {"sources": SOURCES}
+
+    def _have(self, origin):
+        return bool(self.store.one("SELECT id FROM samples WHERE origin = ?", (origin,)))
+
+    def _keep(self, data, origin, source, licence, cues=None, lang="en"):
+        smp = self.add("reference", data, {"source": source, "licence": licence,
+                                           "transcript": " ".join(c["text"] for c in cues or [])})
+        with self.store.write() as db:
+            db.execute("UPDATE samples SET origin = ?, cues = ?, lang = ? WHERE id = ?", (origin, json.dumps(cues or []), lang, smp["id"]))
+        return smp["id"]
+
+    def _nasa(self, want, log, max_mb):
+        got = []
+        for q in ("interview", "astronaut interview", "press conference", "briefing", "explains"):
+            if len(got) >= want:
+                break
+            d = json.loads(_get("https://images-api.nasa.gov/search?media_type=video&page_size=40&q=" + urllib.parse.quote(q)))
+            for it in d.get("collection", {}).get("items", []):
+                if len(got) >= want:
+                    break
+                meta = (it.get("data") or [{}])[0]
+                nid = meta.get("nasa_id")
+                origin = "nasa:" + str(nid)
+                if not nid or self._have(origin):
+                    continue
+                try:
+                    files = json.loads(_get(it["href"]))
+                    mp4 = next((f for f in files if f.endswith("~mobile.mp4")), None) or next((f for f in files if f.endswith("~small.mp4")), None)
+                    srt = next((f for f in files if f.endswith(".srt") or f.endswith(".vtt")), None)
+                    if not mp4 or not srt:
+                        continue                                  # learning needs the words: only clips with captions
+                    mp4, srt = mp4.replace("http://", "https://"), srt.replace("http://", "https://")
+                    size = _size(mp4)
+                    if not size or size > max_mb * 1024 * 1024:
+                        continue
+                    cues = srt_cues(_get(srt).decode("utf-8", "replace"))
+                    if len(cues) < 3:
+                        continue
+                    log("NASA: downloading “%s” (%.0f MB, %d caption lines)" % (meta.get("title", nid)[:70], size / 1048576, len(cues)))
+                    got.append(self._keep(_get(mp4, timeout=300), origin, "https://images.nasa.gov/details/" + nid + " — " + meta.get("title", ""),
+                                          "public domain (NASA media)", cues))
+                except Exception as e:
+                    log("NASA: skipped %s (%s)" % (nid, e))
+        return got
+
+    def _commons(self, want, log, max_mb):
+        got, cont = [], ""
+        for _ in range(6):
+            if len(got) >= want:
+                break
+            url = ("https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=categorymembers&gcmtitle=Category:Videos_of_speeches"
+                   "&gcmtype=file&gcmlimit=40&prop=videoinfo&viprop=url%7Csize%7Cmime%7Cderivatives%7Cextmetadata"
+                   "&viextmetadatafilter=LicenseShortName%7CArtist" + ("&gcmcontinue=" + urllib.parse.quote(cont) if cont else ""))
+            try:
+                d = json.loads(_get(url))
+            except urllib.error.HTTPError as e:
+                log("Wikimedia Commons is busy (%s) — try again later; the other sources carry on." % e.code)
+                break
+            cont = (d.get("continue") or {}).get("gcmcontinue", "")
+            for p in (d.get("query") or {}).get("pages", {}).values():
+                if len(got) >= want:
+                    break
+                vi = (p.get("videoinfo") or [{}])[0]
+                lic = ((vi.get("extmetadata") or {}).get("LicenseShortName") or {}).get("value", "")
+                origin = "commons:" + p["title"]
+                if not COMMONS_OK.search(lic.strip()) or self._have(origin):
+                    continue
+                der = next((x for x in vi.get("derivatives", []) if (x.get("transcodekey") or "") in ("360p.vp9.webm", "240p.vp9.webm")), None)
+                if not der:
+                    continue
+                time.sleep(1.0)                                   # Wikimedia asks bots to go gently
+                size = _size(der["src"])
+                if not size or size > max_mb * 1024 * 1024:
+                    continue
+                try:
+                    cues = []
+                    for code in ("en", "de", "fr", "es", "it", "cs", "el"):
+                        t = json.loads(_get("https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles="
+                                            + urllib.parse.quote("TimedText:" + p["title"][5:] + "." + code + ".srt")))
+                        pg = next(iter(t["query"]["pages"].values()))
+                        if "revisions" in pg:
+                            cues = srt_cues(pg["revisions"][0]["slots"]["main"]["*"]); lang = code
+                            break
+                    log("Commons: downloading “%s” (%s, %.0f MB%s)" % (p["title"][5:70], lic, size / 1048576, ", with captions" if cues else ", no captions: face movement only"))
+                    got.append(self._keep(_get(der["src"], timeout=300), origin, vi.get("descriptionurl") or ("https://commons.wikimedia.org/wiki/" + p["title"]),
+                                          lic + " (Wikimedia Commons)", cues, lang if cues else ""))
+                except Exception as e:
+                    log("Commons: skipped %s (%s)" % (p["title"][:60], e))
+                    if "429" in str(e):
+                        log("Wikimedia Commons asks us to slow down — leaving it for now.")
+                        return got
+            if not cont:
+                break
+        return got
+
+    def ingest(self, n=6, max_mb=60):
+        """Fetch example talking videos from the automatic sources in the background; the page then measures and learns."""
+        job = {"id": hashlib.sha1(_now().encode()).hexdigest()[:10], "status": "running", "log": [], "ids": []}
+        self.jobs = getattr(self, "jobs", {})
+        self.jobs[job["id"]] = job
+        log = lambda m: job["log"].append(m)
+
+        def run():
+            try:
+                half = max(1, n // 2)
+                job["ids"] += self._nasa(half, log, max_mb)
+                job["ids"] += self._commons(n - len(job["ids"]), log, max_mb)
+                log("Downloaded %d clip(s)." % len(job["ids"]))
+                job["status"] = "done"
+            except Exception as e:
+                log("Stopped: %s" % e)
+                job["status"] = "failed"
+        threading.Thread(target=run, daemon=True).start()
+        return {"job": job["id"]}
+
+    def ingest_status(self, jid):
+        j = getattr(self, "jobs", {}).get(jid)
+        if not j:
+            raise core.UserError("No such ingest job.")
+        return j
+
+    def pending(self):
+        """Reference clips not yet measured (the page measures and learns them)."""
+        rows = self.store.query("SELECT id FROM samples WHERE kind = 'reference' AND metrics IS NULL ORDER BY id")
+        out = []
+        for r in rows:
+            x = self.get(r["id"])
+            c = self.store.one("SELECT cues, lang FROM samples WHERE id = ?", (r["id"],))
+            x["cues"] = json.loads(c["cues"] or "[]") if c else []
+            x["lang"] = (c["lang"] if c else "") or "en"
+            out.append(x)
+        return out

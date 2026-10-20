@@ -120,13 +120,14 @@ def _semitones(a, b):
 
 
 # ---------------------------------------------------------------------- measurement
-def measure(data, timer=None):
-    """Measure a WAV recording. `timer(stage)` is called at each stage so the caller can time it."""
+def measure(data, timer=None, max_s=None):
+    """Measure a WAV recording. `timer(stage)` is called at each stage so the caller can time it.
+    max_s: how much of the recording to analyse (default MAX_ANALYSE_S; lip sync passes the whole length)."""
     t = timer or (lambda s: None)
     t("decode")
     x, sr = read_wav(data)
     dur_total = len(x) / float(sr) if sr else 0.0
-    x = x[:int(MAX_ANALYSE_S * sr)]
+    x = x[:int((max_s or MAX_ANALYSE_S) * sr)]
     t("resample")
     y, fs = _downsample(x, sr)
     fs = float(fs)

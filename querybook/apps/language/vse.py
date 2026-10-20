@@ -409,6 +409,9 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
     hp = clamp(st["pitch_sd"] / 0.9) if st.get("pitch_sd") else 1.0
     hr = clamp(st["roll_sd"] / 0.42) if st.get("roll_sd") else 1.0
     bw = clamp(st["brow_sd"] / 0.06) if st.get("brow_sd") else 1.0
+    # the upper face in speech (learned from real speakers when clips have been ingested)
+    upper = {k: clamp(st[k] / ref) if st.get(k) else 1.0 for k, ref in (("squint_sd", 0.05), ("cheek_sd", 0.05), ("wide_sd", 0.04),
+                                                                          ("browdown_sd", 0.04), ("sneer_sd", 0.03))}
     blinks, t = [], 0.6 + rnd.random() * 1.5
     while t < dur:
         blinks.append(t)
@@ -431,7 +434,7 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
             if bt - 0.07 <= t <= bt + 0.11:
                 blink = (t - bt + 0.07) / 0.07 if t < bt else 1 - (t - bt) / 0.11
                 break
-        brow = bw * sum(0.3 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
+        brow = bw * sum(0.45 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
         nod = hp * sum(-2.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
         m = frames_mouth[i]
         motion.append({"time": round(t, 3), "mouth": [round(x, 4) for x in m],
@@ -449,7 +452,7 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
                 tongue[i] = max(tongue[i], peak * math.exp(-((i / fps - c) / h) ** 2))
     asym = 0.06 * (rnd.random() - 0.5)                    # this speaker's slight left/right difference
     for i, f in enumerate(motion):
-        f["bs"] = arkit52(f, e, tongue[i], asym, i / fps, phase)
+        f["bs"] = arkit52(f, e, tongue[i], asym, i / fps, phase, upper)
     # the viseme sequence, with how far each sound was reached and how much its neighbours took over
     vseq = []
     for k, (v, a, b) in enumerate(segs):
@@ -480,7 +483,7 @@ ARKIT52 = ["eyeBlinkLeft", "eyeLookDownLeft", "eyeLookInLeft", "eyeLookOutLeft",
            "cheekSquintRight", "noseSneerLeft", "noseSneerRight", "tongueOut"]
 
 
-def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0):
+def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
     """One motion frame → all 52 ARKit blendshapes. The 13 measured mouth parameters drive their own channels; the rest
     follow how faces move together in speech: a smile narrows the eyes and lifts the cheeks, lip presses build cheek
     pressure, upper-lip raises wrinkle the nose, sadness pulls the corners down, the eyes follow the gaze, and the two
@@ -491,15 +494,21 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0):
     joy, sad, ang = float(emo.get("joy", 0.0)), float(emo.get("sadness", 0.0)), float(emo.get("anger", 0.0))
     L, R = 1.0 + asym, 1.0 - asym
     c = lambda x: round(max(0.0, min(1.0, x)), 4)
-    smile, stretch, press = m["smile"], m["stretch"], m["press"]
+    smile, stretch, press, jaw = m["smile"], m["stretch"], m["press"], m["jawOpen"]
+    u = upper or {}
+    gsq, gch, gwd, gbd, gns = (u.get(k, 1.0) for k in ("squint_sd", "cheek_sd", "wide_sd", "browdown_sd", "sneer_sd"))
+    # a speaking face is never still above the mouth: the cheeks lift with spread and open vowels, the lower lids narrow a
+    # little with them and with emphasis, the eyes widen on raised brows, the nose wrinkles on f/v and raised upper lip
+    sq = (0.55 * smile + 0.25 * ang + 0.16 * stretch + 0.1 * jaw + 0.15 * brow_in) * gsq
+    ch = (0.6 * smile + 0.3 * stretch + 0.14 * jaw) * gch
     v = {
         "eyeBlinkLeft": blink, "eyeBlinkRight": blink,
         "eyeLookOutLeft": max(0.0, -gx) * 2.4, "eyeLookInRight": max(0.0, -gx) * 2.4,
         "eyeLookInLeft": max(0.0, gx) * 2.4, "eyeLookOutRight": max(0.0, gx) * 2.4,
         "eyeLookUpLeft": max(0.0, -gy) * 3.0, "eyeLookUpRight": max(0.0, -gy) * 3.0,
         "eyeLookDownLeft": max(0.0, gy) * 3.0, "eyeLookDownRight": max(0.0, gy) * 3.0,
-        "eyeSquintLeft": (0.55 * smile + 0.25 * ang) * L, "eyeSquintRight": (0.55 * smile + 0.25 * ang) * R,
-        "eyeWideLeft": 0.35 * brow_out, "eyeWideRight": 0.35 * brow_out,
+        "eyeSquintLeft": sq * L, "eyeSquintRight": sq * R,
+        "eyeWideLeft": (0.35 * brow_out + 0.2 * brow_in) * gwd, "eyeWideRight": (0.35 * brow_out + 0.2 * brow_in) * gwd,
         "jawForward": 0.25 * m["mouthRollLower"] + 0.08 * stretch,
         "jawLeft": max(0.0, 0.03 * math.sin(0.7 * t + phase)), "jawRight": max(0.0, -0.03 * math.sin(0.7 * t + phase)),
         "jawOpen": m["jawOpen"], "mouthClose": m["mouthClose"], "mouthFunnel": m["mouthFunnel"], "mouthPucker": m["mouthPucker"],
@@ -513,10 +522,11 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0):
         "mouthPressLeft": press * L, "mouthPressRight": press * R,
         "mouthLowerDownLeft": m["lowerDown"] * L, "mouthLowerDownRight": m["lowerDown"] * R,
         "mouthUpperUpLeft": m["upperUp"] * L, "mouthUpperUpRight": m["upperUp"] * R,
-        "browDownLeft": 0.4 * ang, "browDownRight": 0.4 * ang,
-        "browInnerUp": brow_in + 0.25 * sad, "browOuterUpLeft": brow_out * L, "browOuterUpRight": brow_out * R,
-        "cheekPuff": 0.3 * press * (1.0 - m["jawOpen"]), "cheekSquintLeft": 0.6 * smile * L, "cheekSquintRight": 0.6 * smile * R,
-        "noseSneerLeft": 0.35 * m["upperUp"] + 0.1 * smile, "noseSneerRight": 0.35 * m["upperUp"] + 0.1 * smile,
+        "browDownLeft": (0.4 * ang + 0.12 * press) * gbd, "browDownRight": (0.4 * ang + 0.12 * press) * gbd,
+        "browInnerUp": 1.3 * brow_in + 0.25 * sad, "browOuterUpLeft": 1.3 * brow_out * L, "browOuterUpRight": 1.3 * brow_out * R,
+        "cheekPuff": 0.3 * press * (1.0 - m["jawOpen"]), "cheekSquintLeft": ch * L, "cheekSquintRight": ch * R,
+        "noseSneerLeft": (0.35 * m["upperUp"] + 0.1 * smile + 0.2 * m["mouthRollLower"]) * gns,
+        "noseSneerRight": (0.35 * m["upperUp"] + 0.1 * smile + 0.2 * m["mouthRollLower"]) * gns,
         "tongueOut": tongue,
     }
     return [c(v.get(k, 0.0)) for k in ARKIT52]

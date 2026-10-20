@@ -184,7 +184,7 @@ def _measured(wav):
     if k not in _CACHE:
         if len(_CACHE) > 64:
             _CACHE.clear()
-        _CACHE[k] = voicedsp.measure(wav)
+        _CACHE[k] = voicedsp.measure(wav, max_s=3600.0)        # the whole recording: words are placed over all of it
     return _CACHE[k]
 
 

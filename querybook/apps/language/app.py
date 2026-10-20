@@ -33,6 +33,7 @@ import silent
 import lipread
 import objscan
 import vse
+import voicedsp
 import tts
 import visemes
 import verify
@@ -40,7 +41,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.26.0"
+VERSION = "1.27.0"
 PORT = 8101
 program_dir = HERE
 
@@ -950,6 +951,41 @@ class App:
             return self.qlab.learn(p.get("id"), p.get("frames") or [], p.get("segments") or [], p.get("transcript") or "",
                                    p.get("words") or [], p.get("emotion") or {}, p.get("lang") or "")
 
+        @a.post("/api/media/mp4")
+        def media_mp4(p):
+            """A recorded WebM → MP4 (H.264 + AAC), when ffmpeg is on this computer."""
+            import shutil, subprocess
+            ff = shutil.which("ffmpeg")
+            if not ff:
+                raise core.UserError("ffmpeg is not installed on this computer.")
+            data = base64.b64decode(str(p.get("video_b64") or "").split(",", 1)[-1])
+            with tempfile.TemporaryDirectory() as d:
+                src, dst = os.path.join(d, "in.webm"), os.path.join(d, "out.mp4")
+                with open(src, "wb") as f:
+                    f.write(data)
+                r = subprocess.run([ff, "-y", "-loglevel", "error", "-i", src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", dst],
+                                   capture_output=True, timeout=600)
+                if r.returncode or not os.path.isfile(dst):
+                    raise core.UserError("The conversion failed: " + r.stderr.decode("utf-8", "replace")[-200:])
+                with open(dst, "rb") as f:
+                    return {"mp4_b64": base64.b64encode(f.read()).decode("ascii")}
+
+        @a.get("/api/qlab/sources")
+        def ql_sources(p):
+            return self.qlab.sources()
+
+        @a.post("/api/qlab/ingest")
+        def ql_ingest(p):
+            return self.qlab.ingest(int(p.get("n") or 6), int(p.get("max_mb") or 60))
+
+        @a.get("/api/qlab/ingest_status")
+        def ql_ingest_status(p):
+            return self.qlab.ingest_status(p.get("id"))
+
+        @a.get("/api/qlab/pending")
+        def ql_pending(p):
+            return {"pending": self.qlab.pending()}
+
         @a.get("/api/qlab/graph")
         def ql_graph(p):
             return self.qlab.graph(p.get("node") or None)
@@ -1634,6 +1670,12 @@ def selftest():
             ql.approve(cand["version"], "selftest-admin-pass", "production")
         c.check("quality lab: human references replace the provisional ranges; only the admin approves; approved is what faces use",
                 ql.human_ranges()[1].startswith("from 1") and deny and (not okp or (ql.active()["status"] == "approved" and ql.active()["params"]["jaw"] == cand["params"]["jaw"])))
+        cues = qualitylab.srt_cues("1\n00:00:01,000 --> 00:00:03,500\nHello there, [music] world.\n\n2\n00:00:04,000 --> 00:00:05,000\n<i>Good</i> day\n")
+        tr3 = vse.timing_from_text(" ".join(["We can see the moon and the stars tonight."] * 12), "en", app.lab)
+        jaw_end = max(f["bs"][vse.ARKIT52.index("jawOpen")] for f in vse.lip_sync(tr3, None, None, fps=30, seed="x")["motion"]["frames"][-60:])
+        c.check("speech: captions become timed lines; the mouth keeps moving to the very end of long speech; lip sync analyses the whole recording",
+                cues == [{"start": 1.0, "end": 3.5, "text": "Hello there, world."}, {"start": 4.0, "end": 5.0, "text": "Good day"}] and jaw_end > 0.2
+                and "max_s" in voicedsp.measure.__code__.co_varnames)
         rid = ql.list("reference")[0]["id"]
         frs = [{"t": i / 30, "face": True, "gap": 0.4, "bs": {"jawOpen": 0.45, "eyeBlinkLeft": 1.0 if i % 60 == 0 else 0.0, "browInnerUp": 0.05 * (i % 3)},
                 "pose": [0.5 * (i % 5), 1.0 * (i % 7) - 3, 0.2]} for i in range(600)]

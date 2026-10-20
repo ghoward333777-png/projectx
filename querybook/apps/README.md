@@ -365,6 +365,22 @@ terms forbid downloading and the footage is copyrighted. The **self-learning loo
 scripts and faces), scores each against the human references, calibrates the next, and resumes whenever the lab is
 open, until the admin approves.
 
+**Ingest example videos** (Quality lab): one button fetches talking clips from the automatic sources — NASA briefings and
+interviews (public domain, with caption files) and Wikimedia Commons speeches (public domain / CC BY / CC BY-SA per file,
+captions when the file has them) — politely (one request at a time, waiting when a site asks). Each clip is scanned for
+close-ups (one face, large and facing the camera, ≥ 3 s; up to 90 s per clip), measured, and learned from: the caption
+lines inside each close-up give the words, aligned with its speech. Clips with no clear talking face are dropped. The
+**library** lists where to see how talking should look (NASA, Wikimedia Commons, Voice of America, GRID, CREMA-D, RAVDESS,
+Seeing Speech, your own recordings), what each teaches, its licence, and whether the button ingests it.
+
+**The whole face talks.** Cheeks lift with spread and open vowels, the lower lids narrow with them and with emphasis,
+the eyes widen on raised brows, brows move more on stressed words, the nose wrinkles on f/v; all scaled to what real
+speakers do once clips are learned. Skin creases deepen and fade with the muscles — forehead lines, frown lines, crow's
+feet, under-eye bunching and smile lines — drawn along the moving mesh in this face's own skin tone.
+
+**Under every talking face**: ▶ Play / ❚❚ Pause with the clock, and ⬇ Download video (MP4: recorded in the browser as
+H.264 where it can, otherwise converted with ffmpeg when installed, else WebM).
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

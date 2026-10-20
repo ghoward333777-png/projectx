@@ -137,6 +137,38 @@ async function facePicker(host, onPick, opts) {
   const lib = host.querySelector("[data-fp-lib]"); if (lib) lib.onclick = e => { e.preventDefault(); showSub("avatars"); };
 }
 
+// Record the talking face with its voice, from the first word to the last, as an MP4 (WebM where the browser cannot).
+async function faceVideo(stage, audio, note, text) {
+  const cv = stage.querySelector("canvas");
+  if (!cv || !audio) throw new Error("choose a photo face or the 3D face first (the drawn 2D face cannot be filmed)");
+  if (!audio._qbCtx) { const ac = new (window.AudioContext || window.webkitAudioContext)(); audio._qbCtx = ac; audio._qbSrc = ac.createMediaElementSource(audio); audio._qbSrc.connect(ac.destination); }
+  const ac = audio._qbCtx, dest = ac.createMediaStreamDestination(); audio._qbSrc.connect(dest);
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const types = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1,opus", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"];
+  const mime = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!mime) throw new Error("this browser cannot record video");
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 }), parts = [];
+  rec.ondataavailable = e => { if (e.data.size) parts.push(e.data); };
+  await ac.resume(); audio.pause(); audio.currentTime = 0;
+  rec.start(250); await new Promise(r => setTimeout(r, 250));
+  const tick = setInterval(() => { note.textContent = "Recording… " + Math.floor(audio.currentTime) + " of " + Math.ceil(audio.duration || 0) + " s"; }, 500);
+  await audio.play();
+  await new Promise(r => audio.addEventListener("ended", r, { once: true }));
+  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => { rec.onstop = r; rec.stop(); });
+  clearInterval(tick); audio._qbSrc.disconnect(dest);
+  let blob = new Blob(parts, { type: mime.split(";")[0] }), ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  if (ext === "webm" || !/avc1/.test(mime)) {                     // make it play everywhere: H.264 + AAC
+    note.textContent = "Converting to MP4 (H.264)…";
+    try { const r = await api("/api/media/mp4", { video_b64: await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); }) });
+      blob = await (await fetch("data:video/mp4;base64," + r.mp4_b64)).blob(); ext = "mp4"; }
+    catch (e) { note.textContent = ext === "webm" ? "MP4 needs a newer browser or ffmpeg on this computer — saved as WebM instead. " : ""; }
+  }
+  const a = document.createElement("a"), name = (String(text || "avatar").replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 40) || "avatar") + "." + ext;
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  note.textContent += "Saved " + name + " (" + (blob.size / 1048576).toFixed(1) + " MB).";
+}
+
 // Talking face card: lip-sync track from the server, drawn as the chosen face (2D SVG, 3D with Enter VR, or a library avatar
 // moved by all 52 face channels), synced to the audio.
 async function faceCard(host, audioName, text, lang, emotion) {
@@ -144,13 +176,24 @@ async function faceCard(host, audioName, text, lang, emotion) {
   box.innerHTML = '<h3>Talking face <span class="small muted">click a face to change who speaks</span></h3><div data-fpick></div>' +
     '<div class="row"><label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
     '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
-    '<div class="face-stage" style="max-width:360px"></div><p class="small muted" data-finfo>Working out the mouth shapes…</p>';
+    '<div class="face-stage" style="max-width:360px"></div>' +
+    '<div class="row" style="margin:6px 0"><button class="btn bigbtn" data-fplay>▶ Play</button><span class="small" data-ftime>0:00 / 0:00</span>' +
+    '<button class="btn quiet" data-fdl>⬇ Download video (MP4)</button><span class="small muted" data-fdlnote></span></div>' +
+    '<p class="small muted" data-finfo>Working out the mouth shapes…</p>';
   host.appendChild(box);
   const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
   box.querySelectorAll("[data-fx]").forEach(a => { a.href = "/api/speech/lipsync.export?audio=" + encodeURIComponent(audioName) + "&text=" + encodeURIComponent(text) + "&lang=" + encodeURIComponent(lang) + "&format=" + a.dataset.fx; a.setAttribute("download", ""); });
   const face = new TalkingFace(stage);
   face.setEmotion(emotion || "neutral");
   let track = null, motion = null;
+  // play / pause right under the face, and the clock
+  const pb = box.querySelector("[data-fplay]"), clock = box.querySelector("[data-ftime]"), mmss = x => Math.floor(x / 60) + ":" + String(Math.floor(x % 60)).padStart(2, "0");
+  if (audio) {
+    const sync = () => { pb.textContent = audio.paused ? "▶ Play" : "❚❚ Pause"; clock.textContent = mmss(audio.currentTime || 0) + " / " + mmss(isFinite(audio.duration) ? audio.duration : 0); };
+    pb.onclick = () => { if (audio.paused) { if (audio.ended) audio.currentTime = 0; audio.play().catch(() => {}); } else audio.pause(); };
+    ["play", "pause", "ended", "timeupdate", "loadedmetadata"].forEach(ev => audio.addEventListener(ev, sync)); sync();
+  }
+  box.querySelector("[data-fdl]").onclick = () => faceVideo(stage, audio, box.querySelector("[data-fdlnote]"), text).catch(e => { box.querySelector("[data-fdlnote]").textContent = "Could not record: " + e.message; });
   const load = async exact => {
     const t0 = performance.now();
     track = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });

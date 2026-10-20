@@ -53,7 +53,13 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.26.0)
+  Language Builder (1.27.0)
+    * Fix: the mouth kept still after 30 s of speech - lip sync now analyses the whole recording.
+    * Play / pause and Download video (MP4) right under the talking face.
+    * The whole face talks: cheeks, eyelids, brows, nose, and skin creases (forehead, frown lines, crow's feet,
+      smile lines) that deepen and fade with the muscles.
+    * Ingest example videos: NASA (public domain, with captions) and Wikimedia Commons clips are fetched, scanned for
+      close-ups and learned from; a library of sources that show how talking should look.
     * Self-learning from real speakers: reference clips with their words teach the mouth shape of every sound, blink
       rate, head and brow movement; a motion graph links languages, words, sounds and emotions to measured movement.
       Fetch from Voice of America (40+ languages, public domain), US government, Wikimedia Commons, Internet Archive.
