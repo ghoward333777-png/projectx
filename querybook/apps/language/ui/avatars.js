@@ -49,18 +49,29 @@ async function avTurnaround(id, file, note) {
   const seek = t => new Promise(r => { v.onseeked = r; v.currentTime = t; });
   const lm = await tracker(), rows = [];
   let det = null; try { det = await scDetector(); } catch (e) { det = null; }     // the person's outline (also from behind)
+  const zc = document.createElement("canvas"); zc.width = zc.height = 512; let zoomed = false;
   const sm = document.createElement("canvas"); sm.width = 64; sm.height = 36; const sg = sm.getContext("2d", { willReadFrequently: true }); let prev = null;
   for (let t = 0; t < dur - 0.02; t += 1 / fps) {
     await seek(t); g.drawImage(v, 0, 0);
-    const now = performance.now() + rows.length, r = lm.detectForVideo(c, now), L = r.faceLandmarks && r.faceLandmarks[0];
+    const now = performance.now() + rows.length;
     let face = null, yaw = null, box = null;
-    if (L) {
-      face = { cx: (L[10].x + L[152].x) / 2 * W, cy: (L[10].y + L[152].y) / 2 * H, fh: Math.hypot((L[10].x - L[152].x) * W, (L[10].y - L[152].y) * H) };
-      try { const m = measureFrame(r, { videoWidth: W, videoHeight: H }, t); yaw = m.pose ? m.pose[0] : null; } catch (e) { yaw = null; }
-    }
     if (det) { const people = (det.detectForVideo(c, now).detections || []).filter(d => (d.categories[0] || {}).categoryName === "person");
       const bb = people.sort((a, b) => b.boundingBox.width * b.boundingBox.height - a.boundingBox.width * a.boundingBox.height)[0];
       if (bb) box = { x: bb.boundingBox.originX, y: bb.boundingBox.originY, w: bb.boundingBox.width, h: bb.boundingBox.height }; }
+    // the face: in the whole frame, or — full length, where it is small — in a zoomed square around the head
+    const head = () => {                             // a square around the top of the person's outline, enlarged
+      const side = Math.min(H, Math.max(box.w * 0.9, box.h * 0.3)), x0 = box.x + box.w / 2 - side / 2, y0 = Math.max(0, box.y - side * 0.08);
+      zc.getContext("2d").drawImage(c, x0, y0, side, side, 0, 0, 512, 512); return { src: zc, map: { x: x0, y: y0, s: side / 512 } };
+    };
+    let src = c, map = { x: 0, y: 0, s: 1 };
+    if (box && zoomed) ({ src, map } = head());
+    let r = lm.detectForVideo(src, now), L = r.faceLandmarks && r.faceLandmarks[0];
+    if (!L && !zoomed && box) { zoomed = true; ({ src, map } = head()); r = lm.detectForVideo(src, now + 0.5); L = r.faceLandmarks && r.faceLandmarks[0]; }
+    if (L) {
+      const X = q => map.x + q.x * src.width * map.s, Y = q => map.y + q.y * src.height * map.s;
+      face = { cx: (X(L[10]) + X(L[152])) / 2, cy: (Y(L[10]) + Y(L[152])) / 2, fh: Math.hypot(X(L[10]) - X(L[152]), Y(L[10]) - Y(L[152])) };
+      try { const m = measureFrame(r, { videoWidth: src.width, videoHeight: src.height }, t); yaw = m.pose ? m.pose[0] : null; } catch (e) { yaw = null; }
+    }
     sg.drawImage(c, 0, 0, 64, 36); const px = sg.getImageData(0, 0, 64, 36).data; let diff = 0;
     if (prev) { for (let i = 0; i < px.length; i += 4) diff += Math.abs(px[i] - prev[i]) + Math.abs(px[i + 1] - prev[i + 1]); diff /= px.length / 2; }
     prev = px;
@@ -111,6 +122,7 @@ async function avTurnaround(id, file, note) {
     if (i % 12 === 0) note("Storing the turn… " + Math.round(100 * i / rows.length) + "%");
   }
   URL.revokeObjectURL(v.src);
+  AV.lastTurn = rows.map(r => ({ t: r.t, face: r.face, yaw: r.yaw, box: r.box, seg: r.seg }));       // kept for inspection
   return api("/api/avatars/turn_set", { id, meta: { frames: rows.length, fps, width: Wn, height: Hn, face_h: faceH, face_cy: faceCy,
     yaw: rows.map(r => r.yaw === null ? null : +r.yaw.toFixed(1)), start, end, source: file.name } });
 }

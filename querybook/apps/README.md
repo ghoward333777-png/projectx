@@ -365,7 +365,10 @@ shows, the person detector's outline (shoulder width and head top, calibrated on
 the size and position across, shot by shot, so camera cuts and zooms in the source do not make her jump. The part
 where she actually turns is found and kept. Then *↻ Turn around* (under the talking face, and in the studio) — or the
 words "turn around" in the text, at the moment they are spoken — cuts to a medium shot, fades into her real turn, and
-fades back to the talking photo. Pamela's stadium avatar ships with hers (81 frames). In the calibrated speaking smile
+fades back to the talking photo, at her own pace (a real turn on the spot takes ~7–8 s; if the speech ends or pauses
+mid-turn she finishes turning). Full-length clips work too: where the face is too small for the tracker, it is found in
+a zoomed square around the head. Pamela ships with two: a full-length one on her track avatar (97 frames) and a closer
+one on her stadium avatar (81 frames). In the calibrated speaking smile
 the upper front teeth now show as they do in the reference (up to ~9 mm, never brighter than the eye whites).
 
 ## Quality lab (Speech → 🎬 Quality lab)

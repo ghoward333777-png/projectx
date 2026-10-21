@@ -42,7 +42,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.32.0"
+VERSION = "1.33.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1741,6 +1741,10 @@ def selftest():
         tm = stad and app.avatars.turn(stad["id"])
         c.check("avatars: Pamela's turnaround (her own side and back views) comes with her stadium avatar, aligned and timed",
                 bool(tm) and tm["frames"] == 81 and tm["end"] == 80 and os.path.isfile(app.avatars.turn_frame(stad["id"], 40)) and stad["turn"], tm and tm["frames"])
+        trk = next((a for a in bodies if a["name"] == "Pamela — track"), None)
+        tt = trk and app.avatars.turn(trk["id"])
+        c.check("avatars: her full-length turnaround comes with the track avatar (face found by zooming on the head)",
+                bool(tt) and tt["frames"] == 97 and trk["turn"] and sum(1 for y in tt["yaw"] if y is not None) >= 40, tt and tt["frames"])
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

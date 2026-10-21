@@ -538,7 +538,7 @@
       const k = this.F / (m.face_h * m.height), fw = m.width * k, fh = m.height * k, asp = this.cv.width / this.cv.height;
       const vh = Math.min(fh, fw / asp) * 0.9, vw = vh * asp, fx = this.fc[0] - m.width / 2 * k, fy = this.fc[1] - m.face_cy * m.height * k;
       this.turning = { clock: at === undefined ? "wall" : "track", t0: at === undefined ? performance.now() / 1000 : at, s0, s1,
-        dur: (s1 - s0 + 1) / m.fps / 1.25, k, fx, fy, view: { x: fx + (fw - vw) / 2, y: fy + (fh - vh) * 0.3, w: vw, h: vh } };
+        dur: (s1 - s0 + 1) / m.fps, k, fx, fy, view: { x: fx + (fw - vw) / 2, y: fy + (fh - vh) * 0.3, w: vw, h: vh } };   // at her own pace (a real turn takes ~7–8 s)
       return true;
     }
     cueTurns(words) {                                      // "turn around" in the words: she turns as the words are said
@@ -569,6 +569,9 @@
       for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
       this.head = this.head.map((h, q) => h + ((this.headT || [0, 0, 0])[q] - h) * a);
       if (this.turnCues && !this.turning && this.tPrev !== undefined) for (const cu of this.turnCues) if (this.tPrev < cu && cu <= t) this.turnAround(cu);
+      if (this.turning && this.turning.clock === "track" && this.tPrev !== undefined && t === this.tPrev) {   // the speech ended or paused mid-turn:
+        this.turning.t0 = performance.now() / 1000 - (t - this.turning.t0); this.turning.clock = "wall";     // she finishes turning anyway
+      }
       this.tPrev = t;
       this.view = this._turnNow() !== null ? this.turning.view : this._camera(t);
       this._draw();
