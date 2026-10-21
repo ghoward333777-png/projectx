@@ -149,6 +149,8 @@ class Library:
                 continue
             with open(p, "rb") as f:
                 r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
+            if a.get("anatomy") and not os.path.isfile(os.path.join(self.folder, str(r["id"]), "anatomy.json")):
+                self.set_anatomy(r["id"], a["anatomy"])
             moves = ([{"slug": "turn-around", "dir": a["turn"]}] if a.get("turn") else []) + list(a.get("motions") or [])
             for mv in moves:                                     # the person's recorded moves (also added to earlier installs)
                 src = os.path.join(folder, os.path.basename(mv["dir"]))
@@ -347,6 +349,8 @@ class Library:
              "face_h": float(meta.get("face_h") or 0.2), "face_cy": float(meta.get("face_cy") or 0.25), "align": str(meta.get("align") or "track")[:10],
              "yaw": [None if v is None else round(float(v), 1) for v in (meta.get("yaw") or [])][:n], "start": max(0, min(n - 1, int(meta.get("start") or 0))),
              "end": max(0, min(n - 1, int(meta["end"]) if meta.get("end") is not None else n - 1)), "source": str(meta.get("source") or "")[:200], "at": _now()}
+        if meta.get("take_of"):                                 # another take of a move: she alternates between them
+            m["take_of"] = self._slug(meta["take_of"])
         with open(self._meta_file(d), "w", encoding="utf-8") as f:
             json.dump(m, f)
         return m
@@ -377,6 +381,23 @@ class Library:
     def motion_delete(self, aid, slug):
         shutil.rmtree(self._motion_dir(aid, slug), ignore_errors=True)
         return {"deleted": True}
+
+    # the person's proportions, learned from all their footage (face height per shoulder width, head top, body height):
+    # aligns a new video where the face is seldom seen
+    def anatomy(self, aid):
+        p = os.path.join(self.folder, str(int(aid)), "anatomy.json")
+        if not os.path.isfile(p):
+            return None
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+
+    def set_anatomy(self, aid, a):
+        self.get(aid)
+        keep = {k: float(a[k]) for k in ("face_per_width", "headtop", "height_per_face", "x_off") if isinstance(a.get(k), (int, float))}
+        keep.update(frames=int(a.get("frames") or 0), videos=[str(v)[:120] for v in (a.get("videos") or [])][:50], at=_now())
+        with open(os.path.join(self.folder, str(int(aid)), "anatomy.json"), "w", encoding="utf-8") as f:
+            json.dump(keep, f)
+        return keep
 
     # the turnaround, as earlier versions called it
     def turn_put(self, aid, i, data):

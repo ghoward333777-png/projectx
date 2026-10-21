@@ -536,10 +536,14 @@
         if (this._pendingWords) this.cueTurns(this._pendingWords);
       }).catch(() => {});
     }
-    moveList() { return Object.values(this.moves || {}).map(x => ({ slug: x.meta.slug, name: x.meta.name, words: x.meta.words })); }
+    moveList() { return Object.values(this.moves || {}).filter(x => !x.meta.take_of).map(x => ({ slug: x.meta.slug, name: x.meta.name, words: x.meta.words })); }
     // Play a move: cut to the shot its frames cover, fade into them, and back to the talking photo. at: a time on the speech
     // track (a word cue); none: now (wall clock). At the person's own pace (a real turn on the spot takes ~7–8 s).
     playMove(slug, at) {
+      // a move with several takes plays them in turn (the same words never replay the identical clip)
+      const takes = this.moves ? [slug].concat(Object.values(this.moves).filter(x => x.meta.take_of === slug).map(x => x.meta.slug)) : [];
+      this.takeN = this.takeN || {};
+      if (takes.length > 1) { const k = this.takeN[slug] = ((this.takeN[slug] === undefined ? -1 : this.takeN[slug]) + 1) % takes.length; slug = takes[k]; }
       const mv = this.moves && this.moves[slug];
       if (!mv || this.turning) return false;
       const m = mv.meta, s0 = m.start || 0, s1 = m.end === undefined ? m.frames - 1 : m.end;
@@ -555,7 +559,7 @@
       this._pendingWords = words; this.moveQueue = [];
       const norm = x => String(x || "").toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, ""), W = (words || []).map(w => norm(w.word));
       this.turnCues = [];
-      for (const mv of Object.values(this.moves || {})) for (const phrase of mv.meta.words || []) {
+      for (const mv of Object.values(this.moves || {}).filter(x => !x.meta.take_of)) for (const phrase of mv.meta.words || []) {
         const P = phrase.split(/\s+/).map(norm).filter(Boolean);
         if (!P.length) continue;
         for (let i = 0; i + P.length <= W.length; i++) {

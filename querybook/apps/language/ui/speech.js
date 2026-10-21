@@ -231,8 +231,9 @@ async function faceCard(host, audioName, text, lang, emotion) {
       box.querySelector("[data-fcamw]").hidden = av.kind !== "body";
       const mv = box.querySelector("[data-fmoves]"), moves = (av.motions || []).length ? (await api("/api/avatars/motions?id=" + av.id)).motions : [];
       mv.hidden = !moves.length;                         // her recorded moves: a button each (the words in brackets set them off in a script)
-      mv.innerHTML = moves.length ? "<b>Moves:</b> " + moves.map(m => '<button class="btn quiet" data-move="' + esc(m.slug) + '" title="Says: ' + esc((m.words || []).join(", ")) + '">' +
-        esc(m.slug === "turn-around" ? "↻ turn around" : m.name) + "</button>").join("") + '<span class="muted"> — or write a move\'s words in the text</span>' : "";
+      const takes = slug => moves.filter(m => m.take_of === slug).length;
+      mv.innerHTML = moves.length ? "<b>Moves:</b> " + moves.filter(m => !m.take_of).map(m => '<button class="btn quiet" data-move="' + esc(m.slug) + '" title="Says: ' + esc((m.words || []).join(", ")) + '">' +
+        esc(m.slug === "turn-around" ? "↻ turn around" : m.name) + (takes(m.slug) ? " (" + (takes(m.slug) + 1) + " takes)" : "") + "</button>").join("") + '<span class="muted"> — or write a move\'s words in the text</span>' : "";
       mv.querySelectorAll("[data-move]").forEach(b => b.onclick = () => face.impl && face.impl.playMove && face.impl.playMove(b.dataset.move));
       await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body", turnId: moves.length ? av.id : null },
         params: { camera: faceCamera() ? "director" : "still" } });

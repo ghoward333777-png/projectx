@@ -40,7 +40,7 @@ async function avLandmarks(url) {
 // is aligned to the face where the tracker sees it (front to ~60° either way); behind, where no face shows, the
 // alignment is carried across from the frames on either side. Frames are stored with the avatar; the part where the
 // person actually turns is marked so the avatar can play just that.
-async function avMotionAnalyse(file, note) {
+async function avMotionAnalyse(file, note, prior) {
   const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.src = URL.createObjectURL(file);
   await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("this video cannot be played here")); });
   if (!isFinite(v.duration)) await new Promise(res => { v.ondurationchange = () => { if (isFinite(v.duration)) res(); }; v.currentTime = 1e9; setTimeout(res, 3000); });
@@ -83,7 +83,11 @@ async function avMotionAnalyse(file, note) {
   const med0 = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null;
   // calibrate the outline against the face on frames facing the camera: face size per shoulder width, head top to face centre
   const cal = rows.filter(r => r.face && r.box && Math.abs(r.yaw || 0) < 20);
-  const qW = med0(cal.map(r => r.face.fh / r.box.w)), qTop = med0(cal.map(r => (r.face.cy - r.box.y) / r.face.fh)), qX = med0(cal.map(r => (r.face.cx - (r.box.x + r.box.w / 2)) / r.face.fh));
+  let qW = med0(cal.map(r => r.face.fh / r.box.w)), qTop = med0(cal.map(r => (r.face.cy - r.box.y) / r.face.fh)), qX = med0(cal.map(r => (r.face.cx - (r.box.x + r.box.w / 2)) / r.face.fh));
+  const calib = { face_per_width: qW, headtop: qTop, x_off: qX, height_per_face: med0(cal.map(r => r.box.h / r.face.fh)), frames: cal.length };
+  if (cal.length < 6 && prior && prior.face_per_width) {  // few clear views of her face here: her proportions from all her other footage
+    qW = prior.face_per_width; qTop = prior.headtop; qX = prior.x_off || 0;
+  }
   let seg = 0; rows.forEach(r => { if (r.cut) seg++; r.seg = seg; });
   const segW = {};                                     // per shot: the shoulder width when the body is square to the camera (front or back)
   rows.forEach(r => { if (r.box) (segW[r.seg] = segW[r.seg] || []).push(r.box.w); });
@@ -105,7 +109,7 @@ async function avMotionAnalyse(file, note) {
     r.al2 = { cx: med0(nb.map(x => x.align.cx)), cy: med0(nb.map(x => x.align.cy)), fh: med0(nb.map(x => x.align.fh)) };
   });
   rows.forEach(r => { r.align = r.al2; });
-  return { v, file, W, H, fps, rows, seek };
+  return { v, file, W, H, fps, rows, seek, calib };
 }
 
 // Store one move from an analysed video: o = { slug, name, words, from, to (s), align: "track" | "fixed", trim }.
@@ -150,13 +154,22 @@ async function avMotionStore(id, A, o, note) {
   }
   AV.lastTurn = rows.map(r => ({ t: r.t, face: r.face, yaw: r.yaw, box: r.box, seg: r.seg }));       // kept for inspection
   return api("/api/avatars/motion_set", { id, slug: o.slug, meta: { name: o.name, words: o.words, frames: rows.length, fps, width: Wn, height: Hn, face_h: faceH,
-    face_cy: faceCy, align: o.align || "track", yaw: rows.map(r => r.yaw === null ? null : +r.yaw.toFixed(1)), start, end, source: A.file.name } });
+    face_cy: faceCy, align: o.align || "track", take_of: o.take_of || null, yaw: rows.map(r => r.yaw === null ? null : +r.yaw.toFixed(1)), start, end, source: A.file.name } });
 }
 
 async function avTurnaround(id, file, note) {
-  const A = await avMotionAnalyse(file, note);
-  try { return await avMotionStore(id, A, { slug: "turn-around", name: "turn around", words: ["turn around"], align: "track", trim: true }, note); }
+  const A = await avMotionAnalyse(file, note, await avAnatomy(id));
+  try { const r = await avMotionStore(id, A, { slug: "turn-around", name: "turn around", words: ["turn around"], align: "track", trim: true }, note); await avAnatomyLearn(id, A); return r; }
   finally { URL.revokeObjectURL(A.v.src); }
+}
+
+// The person's proportions, learned across all their footage (each video weighted by its clear front views)
+async function avAnatomy(id) { try { return (await api("/api/avatars/anatomy?id=" + id)).anatomy; } catch (e) { return null; } }
+async function avAnatomyLearn(id, A) {
+  const c = A.calib; if (!c || c.frames < 3 || !c.face_per_width) return null;
+  const old = await avAnatomy(id), n0 = old ? old.frames || 0 : 0, n = n0 + c.frames, mix = k => old && old[k] !== undefined && c[k] !== null ? (old[k] * n0 + c[k] * c.frames) / n : c[k];
+  return api("/api/avatars/anatomy", { id, anatomy: { face_per_width: mix("face_per_width"), headtop: mix("headtop"), height_per_face: mix("height_per_face"), x_off: mix("x_off"),
+    frames: n, videos: ((old && old.videos) || []).concat([A.file.name]) } });
 }
 
 // The moves in a video of many: one suggestion per camera shot (edit the names, times and trigger words before storing)
@@ -269,21 +282,22 @@ async function avSelect(el, id) {
       try { await avTurnaround(a.id, f, note); toast("Turnaround stored."); avSelect(el, a.id); } catch (e) { note("Could not import: " + e.message); } };
     $("#av-movefind", el).onclick = async () => {
       const f = file(); if (!f) return;
-      let A; try { A = await avMotionAnalyse(f, note); } catch (e) { return note("Could not read it: " + e.message); }
+      let A; try { A = await avMotionAnalyse(f, note, await avAnatomy(a.id)); } catch (e) { return note("Could not read it: " + e.message); }
       const plan = avMoveSuggest(A);
       note(plan.length + " shot(s) found — name each move, set its times and the words that start it, then store them.");
-      const draw = () => { $("#av-moveplan", el).innerHTML = '<table class="t small"><tr><th>Move</th><th>Words that start it</th><th>From (s)</th><th>To (s)</th><th>Camera</th><th></th></tr>' +
+      const draw = () => { $("#av-moveplan", el).innerHTML = '<table class="t small"><tr><th>Move</th><th>Words that start it</th><th>From (s)</th><th>To (s)</th><th>Camera</th><th>Another take of</th><th></th></tr>' +
         plan.map((m, k) => '<tr><td><input data-mp="name" data-k="' + k + '" value="' + esc(m.name) + '" style="width:120px"></td><td><input data-mp="words" data-k="' + k + '" value="' + esc(m.words.join(", ")) +
           '" placeholder="e.g. stretch, warm up"></td><td><input data-mp="from" data-k="' + k + '" type="number" step="0.05" value="' + m.from + '" style="width:70px"></td><td><input data-mp="to" data-k="' + k +
           '" type="number" step="0.05" value="' + m.to + '" style="width:70px"></td><td><select data-mp="align" data-k="' + k + '"><option value="fixed"' + (m.align === "fixed" ? " selected" : "") +
-          '>still camera (the body moves)</option><option value="track"' + (m.align === "track" ? " selected" : "") + '>follow her (on the spot)</option></select></td><td><button class="btn quiet small" data-mpdel="' + k + '">✕</button></td></tr>').join("") +
+          '>still camera (the body moves)</option><option value="track"' + (m.align === "track" ? " selected" : "") + '>follow her (on the spot)</option></select></td><td><input data-mp="take_of" data-k="' + k + '" value="' + esc(m.take_of || "") +
+          '" placeholder="(a move she has)" style="width:110px"></td><td><button class="btn quiet small" data-mpdel="' + k + '">✕</button></td></tr>').join("") +
         '</table><div class="row"><button class="btn quiet" id="av-mpadd">+ Add a move</button><button class="btn" id="av-mpstore">Store these moves</button></div>';
         $("#av-moveplan", el).querySelectorAll("[data-mp]").forEach(x => x.onchange = () => { const m = plan[+x.dataset.k], f2 = x.dataset.mp;
           m[f2] = f2 === "words" ? x.value.split(",").map(w => w.trim()).filter(Boolean) : f2 === "from" || f2 === "to" ? Number(x.value) : x.value; });
         $("#av-moveplan", el).querySelectorAll("[data-mpdel]").forEach(x => x.onclick = () => { plan.splice(+x.dataset.mpdel, 1); draw(); });
         $("#av-mpadd", el).onclick = () => { const last = plan[plan.length - 1]; plan.push({ name: "move " + (plan.length + 1), words: [], from: last ? last.to : 0, to: (last ? last.to : 0) + 1, align: "fixed" }); draw(); };
         $("#av-mpstore", el).onclick = async () => {
-          try { for (const m of plan) await avMotionStore(a.id, A, Object.assign({}, m, { slug: m.name }), note); toast(plan.length + " move(s) stored."); avSelect(el, a.id); }
+          try { for (const m of plan) await avMotionStore(a.id, A, Object.assign({}, m, { slug: m.name }), note); await avAnatomyLearn(a.id, A); toast(plan.length + " move(s) stored."); avSelect(el, a.id); }
           catch (e) { note("Could not store: " + e.message); } finally { URL.revokeObjectURL(A.v.src); }
         };
       };

@@ -908,6 +908,14 @@ class App:
             return self.avatars.add(data, p.get("name"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("tags"),
                                     p.get("subject"), bool(p.get("consent")), p.get("filename"))
 
+        @a.get("/api/avatars/anatomy")
+        def av_anatomy(p):
+            return {"anatomy": self.avatars.anatomy(p.get("id"))}
+
+        @a.post("/api/avatars/anatomy")
+        def av_anatomy_set(p):
+            return self.avatars.set_anatomy(p.get("id"), p.get("anatomy") or {})
+
         @a.get("/api/avatars/motions")
         def av_motions(p):
             return {"motions": self.avatars.motions(p.get("id"))}
