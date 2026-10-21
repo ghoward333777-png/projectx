@@ -45,13 +45,15 @@
   // with less jaw and little rounding; brows move 6–10× more; within a shot the head turns ~15°, nods ~12° and tilts
   // ~11°, the torso follows, and the camera cuts every ~2.5 s between a wide and a close shot with a slow push-in.
   const BODY_CAL = {
-    gain: { jawOpen: 0.62, mouthLowerDownLeft: 1.4, mouthLowerDownRight: 1.4, mouthUpperUpLeft: 2.2, mouthUpperUpRight: 2.2, mouthPucker: 0.15,
-            mouthFunnel: 0.5, mouthPressLeft: 2, mouthPressRight: 2, browInnerUp: 5, browOuterUpLeft: 5, browOuterUpRight: 5,
-            browDownLeft: 2, browDownRight: 2, eyeSquintLeft: 1.2, eyeSquintRight: 1.2 },
-    derive: { up: 1.1, upSmile: 0.45, down: 0.4 },
-    teeth_mm: 9, teeth_frac: 0.62, lower_teeth: 0.32,   // the reference speaker shows her upper front teeth (~9 mm) and some lower ones     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
-    head: [4.5, 1.8, 5],                                 // yaw, pitch, roll (a still photo stays clean to ~10°; beyond, the hair tears)
-    sway: 1.0, breath: 1.2, torsoFollow: 0.7,
+    // (revised after the first full-body test: stronger settings read as a worried brow and a sneer on a real face)
+    gain: { jawOpen: 0.7, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 0.3,
+            mouthFunnel: 0.6, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 3, browOuterUpLeft: 3, browOuterUpRight: 3,
+            browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1 },
+    derive: { up: 0.55, upSmile: 0.2, down: 0.5 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+    teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.25,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
+    head: [3, 2.2, 4.5],                                 // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
+    parallax: [1.8, 1.4],                                // the little 3D turn inside the face itself (more makes it slide like a decal)
+    sway: 1.0, breath: 1.2, torsoFollow: 0.3,
     shot_s: 2.5, shots: [1.0, 0.5, 0.78, 0.47], push: 0.05,
   };
   function delaunay(pts) {
@@ -220,18 +222,6 @@
       cv.width = Math.round(pxW); cv.height = Math.round(pxW * crop.h / crop.w);
       cv.style.width = "100%"; cv.style.maxWidth = (body ? Math.max(outW, 420) : outW) + "px"; cv.style.borderRadius = "10px";
       this.bodyShape = { fw, fh, fcx, fcy, H };
-      if (body) {                          // for each point around the head: its four nearest outline points (inverse-distance weights)
-        const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
-        this.follow = [];
-        for (let i = this.nFace; i < this.base3.length; i++) {
-          if (this.fixed.has(i)) continue;
-          const [x, y] = this.base3[i], d = Math.hypot((x - fcx) / (fw * 0.95), (y - fcy) / (fh * 0.9)), w = 1 - smooth(1.0, 2.1, d);
-          if (w <= 0) continue;
-          const nb = OVAL.map(j => [j, Math.hypot(x - this.base3[j][0], y - this.base3[j][1]) + 1e-3]).sort((a, b) => a[1] - b[1]).slice(0, 4);
-          const tot = nb.reduce((s2, [, dd]) => s2 + 1 / (dd * dd), 0);
-          this.follow.push([i, w, nb.map(([j, dd]) => [j, 1 / (dd * dd) / tot])]);
-        }
-      }
       this.el.innerHTML = ""; this.el.appendChild(cv);
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
@@ -517,7 +507,8 @@
     _camera(t) {
       if (!this.director || !this.t) return null;
       const c = this.crop, k = Math.floor(t / BODY_CAL.shot_s), u = (t - k * BODY_CAL.shot_s) / BODY_CAL.shot_s;
-      const s = BODY_CAL.shots[k % BODY_CAL.shots.length] * (1 - BODY_CAL.push * u);
+      // never closer than the photo's own resolution allows (at least ~0.62 photo pixels per screen pixel: no soft blow-ups)
+      const s = Math.max(BODY_CAL.shots[k % BODY_CAL.shots.length] * (1 - BODY_CAL.push * u), Math.min(1, 0.62 * this.cv.width / c.w));
       const w = c.w * s, h = c.h * s, fx = this.fc[0], fy = this.fc[1] - this.F * 0.1;
       const x = Math.max(0, Math.min(this.src.width - w, fx - w / 2)), y = Math.max(0, Math.min(this.src.height - h, s >= 0.99 ? c.y : fy - h * 0.36));
       return s >= 0.99 && u === 0 ? null : { x, y: s >= 0.99 ? c.y + (c.h - h) * 0.15 : y, w, h };
@@ -615,11 +606,11 @@
     _bodyMove(x, y, t) {
       const { fw, fh, fcx, fcy, H } = this.bodyShape;
       const pivot = H + 2.2 * fh, up = Math.max(0, Math.min(1.3, (pivot - y) / (pivot - fcy)));
-      const col = 1 - smooth(1.7 * fw, 3.2 * fw, Math.abs(x - fcx));
+      const col = 1 - smooth(3.0 * fw, 4.6 * fw, Math.abs(x - fcx));   // the whole body moves as one piece (arms included: no shear)
       const sway = 0.045 * BODY_CAL.sway * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
       const br = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 4.1);
       const chest = smooth(fcy + 0.6 * fh, fcy + 1.4 * fh, y) * (1 - smooth(fcy + 2.8 * fh, fcy + 4 * fh, y)), above = 1 - smooth(fcy + 1.4 * fh, fcy + 2.4 * fh, y);
-      const dy = -0.018 * BODY_CAL.breath * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.008 * br * chest;
+      const dy = -0.018 * BODY_CAL.breath * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.003 * br * chest;
       return [dx * col, dy * col];
     }
     _points(chan, head) {
@@ -636,7 +627,10 @@
         if (wide > 1e-4) { const f = cap * Math.tanh(wide / cap) / wide; ks.forEach(q => { c[q] *= f; }); }
       }
       const [yaw, pitch, roll] = (head || this.head).map((d, q) => d * g * this.headAxis[q] * Math.PI / 180), [px, py, pz] = this.pivot;
-      const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
+      // full body: the face only gets a little 3D turn of its own; the turn and the tilt move the whole head — face, hair
+      // and skull — as one rigid piece (below), so the face never slides over the head like a decal
+      const yawF = this.body ? yaw / this.headAxis[0] * BODY_CAL.parallax[0] : yaw, pitchF = this.body ? pitch / this.headAxis[1] * BODY_CAL.parallax[1] : pitch, rollF = this.body ? 0 : roll;
+      const cy = Math.cos(yawF), sy = Math.sin(yawF), cp = Math.cos(pitchF), sp = Math.sin(pitchF), cr = Math.cos(rollF), sr = Math.sin(rollF);
       for (let i = 0; i < n; i++) {
         let [x, y, z] = this.base3[i];
         if (i < nF || i >= this.nX0) {
@@ -653,11 +647,17 @@
           out[i] = [px + X2, py + Y2];                                      // orthographic: the face at rest maps exactly onto the portrait
         } else out[i] = [x, y];
       }
-      if (this.follow) {                   // the hair and the head's surroundings move with the nearest part of the face outline
-        for (const [i, w, nb] of this.follow) {
-          let dx = 0, dy = 0;
-          for (const [j, q] of nb) { dx += q * (out[j][0] - this.base3[j][0]); dy += q * (out[j][1] - this.base3[j][1]); }
-          out[i] = [out[i][0] + w * dx, out[i][1] + w * dy];
+      if (this.body) {                     // the whole head as one piece: tilt about the neck, and a turn/nod that carries it sideways/up
+        const F = this.F, [hx, hy] = this.fc, { fw } = this.bodyShape, c2 = Math.cos(roll), s2 = Math.sin(roll);
+        const tx = Math.sin(yaw) * F * 0.22, ty = -Math.sin(pitch) * F * 0.12;
+        const H2 = (x, y) => [px + (x - px) * c2 - (y - py) * s2 + tx, py + (x - px) * s2 + (y - py) * c2 + ty];
+        for (let i = 0; i < n; i++) {
+          if (this.fixed.has(i)) continue;
+          let w = 1;
+          if (i >= nF) { const [x0, y0] = this.base3[i], d = Math.hypot((x0 - hx) / (fw * 0.95), (y0 - hy) / (F * 0.9)); w = 1 - smooth(1.15, 2.3, d); }
+          if (w <= 0) continue;
+          const q = H2(out[i][0], out[i][1]);
+          out[i] = [out[i][0] + w * (q[0] - out[i][0]), out[i][1] + w * (q[1] - out[i][1])];
         }
       }
       if (this.body && !head && this.t) {                                   // checks (qc) pass a head pose and see the figure at rest
@@ -667,9 +667,9 @@
           if (this.fixed.has(i)) continue;
           const [x0, y0] = this.base3[i], [bx, by] = this._bodyMove(x0, y0, this.t);
           // the torso follows the head a little: it leans with the tilt (about the hips) and turns with it
-          const col = 1 - smooth(1.7 * fw, 3.2 * fw, Math.abs(x0 - fcx)), up = Math.max(0, Math.min(1.2, (hp - y0) / (hp - this.fc[1])));
+          const col = 1 - smooth(3.0 * fw, 4.6 * fw, Math.abs(x0 - fcx)), up = Math.max(0, Math.min(1.2, (hp - y0) / (hp - this.fc[1])));
           const rx = fcx + (x0 - fcx) * ct - (y0 - hp) * st - x0, ry = hp + (x0 - fcx) * st + (y0 - hp) * ct - y0;
-          const w = i < this.nFace ? 0 : col;                               // the face already carries the head's own turn
+          const w = col;                                                    // face, hair and body lean together
           out[i] = [out[i][0] + bx + w * (rx + ty * up), out[i][1] + by + w * ry];
         }
       }

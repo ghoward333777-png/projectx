@@ -356,7 +356,11 @@ lid is drawn with her own lid skin and a lash line, and stays shut ~0.25 s); the
 10° with the hair and the torso following; breathing and weight shift; and the camera cuts every 2.5 s between a wide
 and a close shot with a slow push-in (switch it off under the face: *camera cuts and push-ins*). What a single photo
 cannot do: turn the head as far as the reference (~18°: beyond ~10° the hair tears), move the arms into new gestures,
-or change the camera angle — those need a generative video model.
+or change the camera angle — those need a generative video model. **Revised after the first full-body test (1.37):** the head now moves as one rigid piece — face, hair
+and skull turn, nod and tilt together, with only a little 3D turn inside the face (a stronger one made the face slide
+over the head like a paper cut-out); the torso leans as one piece (no shear across chest and arms) and breathes with less
+chest widening; brows, the speaking-smile lip lift and the teeth were toned down (they read as a worried frown and a
+sneer); and the camera never zooms past the photo's own resolution.
 
 **Turnaround: her own side and back views.** A full-body avatar can carry a turnaround — a short video of the person
 turning on the spot (front → side → back → side → front). *Avatar studio → Import a turnaround video* reads it frame
