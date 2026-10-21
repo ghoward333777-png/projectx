@@ -289,20 +289,20 @@ def vps(frames):
 # Viseme targets in the tracker's own units (blendshape scores 0..1 and lip gap ÷ mouth width).
 TARGETS = {
     "sil": _vec(gap=0.02, jawOpen=0.03, mouthClose=0.05),
-    "PP": _vec(gap=0.004, jawOpen=0.05, mouthClose=0.55, press=0.45, mouthRollLower=0.15, mouthRollUpper=0.1),
+    "PP": _vec(gap=0.004, jawOpen=0.05, mouthClose=0.6, press=0.6, mouthRollLower=0.15, mouthRollUpper=0.1),
     "FF": _vec(gap=0.025, jawOpen=0.08, mouthRollLower=0.55, upperUp=0.15, press=0.05),
     "TH": _vec(gap=0.10, jawOpen=0.15, lowerDown=0.1, stretch=0.1),
     "DD": _vec(gap=0.10, jawOpen=0.14, stretch=0.12),
     "kk": _vec(gap=0.12, jawOpen=0.18),
-    "CH": _vec(gap=0.12, jawOpen=0.12, mouthFunnel=0.45, mouthPucker=0.25, upperUp=0.1),
+    "CH": _vec(gap=0.14, jawOpen=0.14, mouthFunnel=0.45, mouthPucker=0.5, upperUp=0.05),
     "SS": _vec(gap=0.06, jawOpen=0.08, stretch=0.22, smile=0.08),
     "nn": _vec(gap=0.09, jawOpen=0.12, stretch=0.1),
-    "RR": _vec(gap=0.12, jawOpen=0.12, mouthFunnel=0.4, mouthPucker=0.32),
-    "aa": _vec(gap=0.45, jawOpen=0.5, lowerDown=0.3),
-    "E": _vec(gap=0.22, jawOpen=0.25, stretch=0.35, smile=0.15),
-    "I": _vec(gap=0.09, jawOpen=0.1, stretch=0.45, smile=0.3),
-    "O": _vec(gap=0.35, jawOpen=0.35, mouthFunnel=0.55, mouthPucker=0.2),
-    "U": _vec(gap=0.18, jawOpen=0.15, mouthFunnel=0.3, mouthPucker=0.65),
+    "RR": _vec(gap=0.12, jawOpen=0.12, mouthFunnel=0.35, mouthPucker=0.55),
+    "aa": _vec(gap=0.5, jawOpen=0.55, lowerDown=0.4),
+    "E": _vec(gap=0.25, jawOpen=0.28, stretch=0.45, smile=0.2, lowerDown=0.15),
+    "I": _vec(gap=0.1, jawOpen=0.1, stretch=0.6, smile=0.4),
+    "O": _vec(gap=0.4, jawOpen=0.4, mouthFunnel=0.5, mouthPucker=0.5),
+    "U": _vec(gap=0.18, jawOpen=0.15, mouthFunnel=0.4, mouthPucker=0.85),
 }
 NEUTRAL = TARGETS["sil"]
 LIP_CLOSURE = ("gap", "mouthClose", "press", "mouthRollLower", "mouthRollUpper", "jawOpen")
@@ -434,12 +434,12 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
             if bt - 0.07 <= t <= bt + 0.11:
                 blink = (t - bt + 0.07) / 0.07 if t < bt else 1 - (t - bt) / 0.11
                 break
-        brow = bw * sum(0.45 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
-        nod = hp * sum(-2.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
+        brow = bw * sum(0.8 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
+        nod = hp * sum(-4.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
         m = frames_mouth[i]
         motion.append({"time": round(t, 3), "mouth": [round(x, 4) for x in m],
                        "jaw_rotation_deg": round(24.0 * m[_I["jawOpen"]], 2),
-                       "head_pose_deg": [round(hy * 1.5 * math.sin(0.9 * t + phase), 2), round(nod, 2), round(hr * 0.6 * math.sin(0.5 * t + phase / 2), 2)],
+                       "head_pose_deg": [round(hy * 0.8 * math.sin(0.9 * t + phase), 2), round(nod, 2), round(hr * 0.5 * math.sin(0.5 * t + phase / 2), 2)],
                        "eye_gaze": [round(gaze[0], 3), round(gaze[1], 3)], "blink": round(max(0.0, min(1.0, blink)), 3),
                        "brows": [round(min(1.0, brow + 0.1 * sad), 3), round(min(1.0, 0.7 * brow), 3)]})
     # the full 52-channel ARKit face for every frame (mouth, jaw, cheeks, nose, eyes, brows, tongue)
@@ -499,7 +499,7 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
     gsq, gch, gwd, gbd, gns = (u.get(k, 1.0) for k in ("squint_sd", "cheek_sd", "wide_sd", "browdown_sd", "sneer_sd"))
     # a speaking face is never still above the mouth: the cheeks lift with spread and open vowels, the lower lids narrow a
     # little with them and with emphasis, the eyes widen on raised brows, the nose wrinkles on f/v and raised upper lip
-    sq = (0.55 * smile + 0.25 * ang + 0.16 * stretch + 0.1 * jaw + 0.15 * brow_in) * gsq
+    sq = (0.55 * smile + 0.25 * ang + 0.3 * stretch + 0.2 * jaw + 0.3 * brow_in) * gsq
     ch = (0.6 * smile + 0.3 * stretch + 0.14 * jaw) * gch
     v = {
         "eyeBlinkLeft": blink, "eyeBlinkRight": blink,
@@ -513,7 +513,8 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
         "jawLeft": max(0.0, 0.03 * math.sin(0.7 * t + phase)), "jawRight": max(0.0, -0.03 * math.sin(0.7 * t + phase)),
         "jawOpen": m["jawOpen"], "mouthClose": m["mouthClose"], "mouthFunnel": m["mouthFunnel"], "mouthPucker": m["mouthPucker"],
         "mouthLeft": max(0.0, asym) * 0.5 * m["jawOpen"], "mouthRight": max(0.0, -asym) * 0.5 * m["jawOpen"],
-        "mouthSmileLeft": (smile + 0.12 * joy) * L, "mouthSmileRight": (smile + 0.12 * joy) * R,
+        # a speaking face carries a little warmth: a slight smile while talking, more with joy
+        "mouthSmileLeft": (smile + 0.08 + 0.3 * joy) * L, "mouthSmileRight": (smile + 0.08 + 0.3 * joy) * R,
         "mouthFrownLeft": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * L, "mouthFrownRight": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * R,
         "mouthDimpleLeft": (0.3 * smile + 0.25 * press) * L, "mouthDimpleRight": (0.3 * smile + 0.25 * press) * R,
         "mouthStretchLeft": stretch * L, "mouthStretchRight": stretch * R,
@@ -523,7 +524,7 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
         "mouthLowerDownLeft": m["lowerDown"] * L, "mouthLowerDownRight": m["lowerDown"] * R,
         "mouthUpperUpLeft": m["upperUp"] * L, "mouthUpperUpRight": m["upperUp"] * R,
         "browDownLeft": (0.4 * ang + 0.12 * press) * gbd, "browDownRight": (0.4 * ang + 0.12 * press) * gbd,
-        "browInnerUp": 1.3 * brow_in + 0.25 * sad, "browOuterUpLeft": 1.3 * brow_out * L, "browOuterUpRight": 1.3 * brow_out * R,
+        "browInnerUp": 1.3 * brow_in + 0.25 * sad + 0.15 * jaw, "browOuterUpLeft": (1.3 * brow_out + 0.1 * jaw) * L, "browOuterUpRight": (1.3 * brow_out + 0.1 * jaw) * R,
         "cheekPuff": 0.3 * press * (1.0 - m["jawOpen"]), "cheekSquintLeft": ch * L, "cheekSquintRight": ch * R,
         "noseSneerLeft": (0.35 * m["upperUp"] + 0.1 * smile + 0.2 * m["mouthRollLower"]) * gns,
         "noseSneerRight": (0.35 * m["upperUp"] + 0.1 * smile + 0.2 * m["mouthRollLower"]) * gns,

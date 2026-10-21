@@ -44,7 +44,7 @@ ALTER TABLE samples ADD COLUMN cues TEXT;
 ALTER TABLE samples ADD COLUMN origin TEXT;
 """]
 
-DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 35.0, "lead_ms": 40.0,
+DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 20.0, "lead_ms": 40.0,
             "head": 1.0, "brow": 1.0}
 BOUNDS = {"jaw": (0.5, 1.5), "spread": (0.4, 1.6), "round": (0.5, 1.5), "close": (0.6, 1.6), "arch": (0.4, 1.8), "teeth": (0.5, 1.4),
           "smooth_ms": (15.0, 90.0), "lead_ms": (-60.0, 140.0), "head": (0.3, 3.0), "brow": (0.3, 3.0)}
@@ -67,9 +67,11 @@ METRICS = {
 }
 # Provisional ranges, used only until the admin adds human reference clips (estimates for conversational speech filmed
 # face-on; the references replace them).
-PROVISIONAL = {"aperture_mean": (0.08, 0.28), "aperture_p90": (0.2, 0.5), "width_var": (0.015, 0.07), "upper_thick_cv": (0.03, 0.16),
-               "lower_thick_cv": (0.04, 0.2), "velocity_p90": (0.8, 3.5), "jerk_rms": (0, 60), "closure_rate": (0.04, 0.25), "av_lag_ms": (-60, 60),
-               "shape_error": (0, 0.06), "blink_rate": (8, 30), "head_motion": (1.0, 6.0), "brow_activity": (0.02, 0.12)}
+# (centred on a clearly articulating reference speaker measured with the same tracker: opening mean 0.19 / p90 0.35,
+# width sd 0.09, lip speed p90 3.6 mouth widths/s, brow sd 0.11, head movement 1.5°)
+PROVISIONAL = {"aperture_mean": (0.13, 0.27), "aperture_p90": (0.26, 0.48), "width_var": (0.05, 0.13), "upper_thick_cv": (0.05, 0.2),
+               "lower_thick_cv": (0.04, 0.18), "velocity_p90": (2.4, 5.0), "jerk_rms": (0, 90), "closure_rate": (0.06, 0.3), "av_lag_ms": (-60, 60),
+               "shape_error": (0, 0.06), "blink_rate": (6, 30), "head_motion": (0.9, 4.0), "brow_activity": (0.06, 0.16)}
 WEIGHTS = {"aperture_mean": 2, "aperture_p90": 1.5, "width_var": 1.5, "upper_thick_cv": 1.5, "lower_thick_cv": 1, "velocity_p90": 1.5,
            "jerk_rms": 1.5, "closure_rate": 1, "av_lag_ms": 2, "shape_error": 3, "blink_rate": 1, "head_motion": 1.5, "brow_activity": 1}
 # The library of places that show how talking looks — what each teaches, its licence, and whether "Ingest example videos"

@@ -381,6 +381,18 @@ feet, under-eye bunching and smile lines — drawn along the moving mesh in this
 **Under every talking face**: ▶ Play / ❚❚ Pause with the clock, and ⬇ Download video (MP4: recorded in the browser as
 H.264 where it can, otherwise converted with ffmpeg when installed, else WebM).
 
+**Matched against a reference speaker.** A Gemini-generated reading of an articulation script was measured frame by
+frame with the same tracker as the prototype's own recording, and the engine retuned toward it: a larger opening (0.34 ×
+mouth width on "aa"), the jaw as a hinge (the chin travels ≈1.35× the lower lip, the jawline drops with it), rounding that
+narrows the mouth to ~0.6–0.7 and spreading up to ~1.2 of its width, stronger lip presses and lower-lip pull, lower teeth
+on wide openings, a slight smile while talking, livelier brows and lower lids, deeper nods, less upper-lip lift and less
+smoothing (20 ms). Quality-control limits were widened to match (mouth width 0.60–1.25). The Quality lab's provisional
+human ranges are centred on the reference's measures.
+
+**Speed.** The face is drawn with whichever method is faster on the computer, timed when the face loads: WebGL (the
+graphics card warps the photo as one textured mesh) or the 2D canvas. A slow draw was the main reason recordings ran at
+~7 frames a second.
+
 ## Staying awake, the log, and the system's own logs (all three applications)
 
 While an application runs it asks the computer **not to sleep** (Windows: a power request, `SetThreadExecutionState`;

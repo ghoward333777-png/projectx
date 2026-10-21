@@ -41,7 +41,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.27.1"
+VERSION = "1.28.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1649,12 +1649,12 @@ def selftest():
         short = ql.add("avatar", webm + b"x", {"script": "a b c", "words_text": 3, "words_timed": 2, "duration": 1.0, "audio_duration": 2.0})
         c.check("quality lab: a test video is complete only with every word and the whole audio; references need a source",
                 ref_ok and smp["complete"] and not short["complete"])
-        mets = {"aperture_mean": 0.5, "aperture_p90": 0.9, "width_var": 0.03, "upper_thick_cv": 0.3, "lower_thick_cv": 0.1, "velocity_p90": 6,
+        mets = {"aperture_mean": 0.5, "aperture_p90": 0.9, "width_var": 0.08, "upper_thick_cv": 0.3, "lower_thick_cv": 0.1, "velocity_p90": 6,
                 "jerk_rms": 10, "closure_rate": 0.1, "av_lag_ms": 90}
         r1, r2 = ql.set_metrics(smp["id"], mets), ql.set_metrics(smp["id"], mets)
         c.check("quality lab: scored against human ranges, and the next calibration is proposed the same way every time",
                 r1["score"] < 90 and r1["proposal"] == r2["proposal"] and r1["proposal"]["jaw"] < 1 and r1["proposal"]["lead_ms"] > 40
-                and r1["proposal"]["smooth_ms"] > 35 and r1["scores"]["width_var"]["score"] == 100, r1["proposal"])
+                and r1["proposal"]["smooth_ms"] > 20 and r1["scores"]["width_var"]["score"] == 100, r1["proposal"])
         ql.add("reference", webm + b"r", {"source": "own recording"})
         ql.set_metrics(ql.list("reference")[0]["id"], dict(mets, aperture_mean=0.2))
         cand = ql.save_candidate(r1["proposal"], "test")

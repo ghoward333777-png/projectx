@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.27.1)
+  Language Builder (1.28.0)
+    * Talking face retuned against a Gemini reference reading (measured frame by frame): wider opening, jaw that
+      swings like a hinge, stronger rounding/spreading, lip presses, lower teeth, smile, brows, nods.
+    * Faster drawing: WebGL (graphics card) or 2D canvas, whichever is faster on the computer - smooth, full-rate video.
     * (all three apps) Keeps the computer awake while running; long work keeps the screen awake; the log marks
       every session and every sleep; the system's own logs (sleep, wake, unexpected shutdowns, power and screen-saver
       settings) are checked at start-up. Diagnostics -> Power, sleep and the log; Download the log.
