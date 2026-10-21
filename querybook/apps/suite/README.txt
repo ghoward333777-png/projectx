@@ -53,7 +53,9 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.37.0)
+  Language Builder (1.38.0)
+    * Fix: the top of the head stayed still while the face nodded (the forehead stretched). Hair and skull now move
+      with the face, up to the top of the picture.
     * Full body fixes from the first test: the head moves as one piece (no "paper face"), no chest/arm shear, gentler
       brows and lip lift (no worried frown or sneer), smaller teeth, close-ups never blurrier than the photo.
     * Moves can have several takes (Pamela's swimming has two); each avatar learns the person's body proportions

@@ -152,11 +152,15 @@
       const anchors = [];
       for (let a = 0; a < 32; a++) {
         const q = [fcx + Math.cos(a / 32 * 2 * Math.PI) * fw * 0.8, fcy + Math.sin(a / 32 * 2 * Math.PI) * fh * 0.74, 0];
-        // a full figure's head can sit near the top of the photo: a ring point hugging the frame's edge makes slivers that flip
-        if (!body || Math.min(q[0] - crop.x, q[1] - crop.y, crop.x + crop.w - q[0]) > 0.3 * fh) anchors.push(q);
+        // full body: the ring stays whole even where the head nears the top of the photo (the head must move up there too)
+        if (!body || Math.min(q[0] - crop.x, crop.x + crop.w - q[0]) > 0.3 * fh) anchors.push(q);
       }
       for (let k = 0; k <= 4; k++) [[crop.x + crop.w * k / 4, crop.y], [crop.x + crop.w * k / 4, crop.y + crop.h], [crop.x, crop.y + crop.h * k / 4], [crop.x + crop.w, crop.y + crop.h * k / 4]]
         .forEach(([x, y]) => anchors.push([x, y, 0]));
+      if (body) {                                         // above the head: points along the top that move with it, and a fixed row
+        for (let k = 1; k < 8; k++) if (k % 2) anchors.push([crop.x + crop.w * k / 8, crop.y, 0]);   // beyond the picture, where any stretch stays out of sight
+        for (let k = 0; k <= 8; k++) anchors.push([crop.x + crop.w * k / 8, crop.y - 0.9 * fh, 0]);
+      }
       this.nEdge = anchors.length;                       // the crop's edge never moves (the background stays put)
       if (body) {                                         // a lattice over the figure carries breathing and sway to hair, shoulders and arms
         for (let j = 1; j < 10; j++) for (let k = 1; k < 8; k++) {
@@ -166,10 +170,17 @@
       }
       const seen = new Set();                            // each corner is listed by two edges: a point twice makes zero-area triangles
       this.base3 = pts3.concat(anchors.filter(([x, y]) => { const key = Math.round(x) + "," + Math.round(y);
-        if (x < 0 || y < 0 || x > W || y > H || seen.has(key)) return false; seen.add(key); return true; }));
+        if (x < 0 || y < (body ? crop.y - fh : 0) || x > W || y > H || seen.has(key)) return false; seen.add(key); return true; }));
       this.nFace = pts3.length;
       const ringN = 32, edgeOf = new Set();
       this.base3.forEach(([x, y], i) => { if (i >= pts3.length + ringN && (Math.abs(x - crop.x) < 0.5 || Math.abs(y - crop.y) < 0.5 || Math.abs(x - crop.x - crop.w) < 0.5 || Math.abs(y - crop.y - crop.h) < 0.5)) edgeOf.add(i); });
+      if (body) {                                         // the top edge over the head is free to move with it; the row beyond the picture holds
+        this.base3.forEach(([x, y], i) => {
+          if (i < pts3.length) return;
+          if (Math.abs(y - crop.y) < 0.5 && Math.abs(x - fcx) < 2.2 * fw) edgeOf.delete(i);
+          if (y < crop.y - 1) edgeOf.add(i);
+        });
+      }
       this.fixed = edgeOf;
       this.nX0 = this.base3.length; this.extra = []; this.ring = new Set(RING);
       this.base = this.base3.map(([x, y]) => [x, y]);
@@ -649,14 +660,22 @@
       }
       if (this.body) {                     // the whole head as one piece: tilt about the neck, and a turn/nod that carries it sideways/up
         const F = this.F, [hx, hy] = this.fc, { fw } = this.bodyShape, c2 = Math.cos(roll), s2 = Math.sin(roll);
-        const tx = Math.sin(yaw) * F * 0.22, ty = -Math.sin(pitch) * F * 0.12;
-        const H2 = (x, y) => [px + (x - px) * c2 - (y - py) * s2 + tx, py + (x - px) * s2 + (y - py) * c2 + ty];
+        // the face's own little 3D turn moves it by (mx, my): the hair and skull must move exactly the same way (opposite
+        // ways tear the forehead), and the whole head then carries on a little further in that same direction
+        const O = [10, 109, 338, 67, 297, 103, 332];          // the top of the forehead, where the hair begins
+        let mx = 0, my = 0; O.forEach(i => { mx += out[i][0] - this.base3[i][0]; my += out[i][1] - this.base3[i][1]; }); mx /= O.length; my /= O.length;
+        const k = 1.5;
+        const H2 = (x, y, face) => [px + (x - px) * c2 - (y - py) * s2 + (face ? k - 1 : k) * mx, py + (x - px) * s2 + (y - py) * c2 + (face ? k - 1 : k) * my];
         for (let i = 0; i < n; i++) {
           if (this.fixed.has(i)) continue;
           let w = 1;
-          if (i >= nF) { const [x0, y0] = this.base3[i], d = Math.hypot((x0 - hx) / (fw * 0.95), (y0 - hy) / (F * 0.9)); w = 1 - smooth(1.15, 2.3, d); }
+          if (i >= nF) {
+            const [x0, y0] = this.base3[i], ax = Math.abs(x0 - hx) / (fw * 0.95);
+            // above the face the whole head column moves (hair up to the top of the picture); below, it fades into the neck
+            w = y0 < hy ? 1 - smooth(1.15, 2.0, ax) : 1 - smooth(1.15, 2.3, Math.hypot(ax, (y0 - hy) / (F * 0.9)));
+          }
           if (w <= 0) continue;
-          const q = H2(out[i][0], out[i][1]);
+          const q = i < nF ? H2(out[i][0], out[i][1], true) : H2(this.base3[i][0], this.base3[i][1], false);
           out[i] = [out[i][0] + w * (q[0] - out[i][0]), out[i][1] + w * (q[1] - out[i][1])];
         }
       }
