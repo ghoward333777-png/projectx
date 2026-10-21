@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, subprocess, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.12.0"
+CORE_VERSION = "1.13.0"
 BACKUPS_KEPT = 10
 
 
@@ -903,9 +903,19 @@ def free_port(preferred):
     raise RuntimeError("no free port near %d" % preferred)
 
 
+_SERVER = {}
+
+
+def stop_server():
+    """Stop the running web server (the Control Panel's "stop"): serve() returns and the program ends normally."""
+    if _SERVER.get("httpd"):
+        _SERVER["httpd"].shutdown()
+
+
 def serve(app_name, api, ui_dir, port, log, open_browser=True, on_start=None, store=None):
     port = free_port(port)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(api, ui_dir, log, app_name, store))
+    _SERVER["httpd"] = httpd
     httpd.daemon_threads = True
     url = "http://127.0.0.1:%d/" % port
     print("\n  %s is running at %s" % (app_name, url))
@@ -993,7 +1003,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1865,7 +1875,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -2051,9 +2061,17 @@ def run_cli(app):
         inst.diag.power = power
     threading.Thread(target=lambda: power.system_check(), daemon=True, name="qb-system-check").start()
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
+
+    def started(url):                                         # the Control Panel finds the application here
+        if getattr(inst, "commons", None):
+            try:
+                import qbcontrol
+                qbcontrol.register(inst.commons, app.APP_ID, url, app.VERSION)
+            except Exception as e:
+                inst.log("control panel registration:", e)
     try:
         serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
-              open_browser="--no-browser" not in args, store=inst.store)
+              open_browser="--no-browser" not in args, store=inst.store, on_start=started)
     finally:
         power.session_end()
     inst.store.activity("Application stopped", "ok")

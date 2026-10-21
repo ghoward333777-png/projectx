@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Control Panel</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #3b3f8f; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; max-width: 1400px; margin: 0 auto; padding: 16px; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  main { max-width: none; padding: 0; margin: 0; }
+  .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .appcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: var(--panel); }
+  .appcard h3 { margin: 0 0 6px; font-size: 16px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.on { background: var(--good); } .dot.off { background: var(--muted); } .dot.bad { background: var(--bad); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; margin: 8px 0; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .btns .btn { padding: 6px 11px; font-size: 14px; }
+  .sechead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sechead h2 { margin: 0; flex: 1; }
+  .alert { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; margin: 6px 0; }
+  .alert.error { background: var(--bad-bg); } .alert.warn { background: var(--warn-bg); } .alert.info { background: var(--chip); }
+  .alert .txt { flex: 1; }
+  .diag { margin-top: 10px; }
+  .diag .ck { display: flex; gap: 8px; font-size: 14px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .bar { height: 10px; background: var(--chip); border-radius: 5px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  aside.chat { position: sticky; top: 12px; align-self: start; display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 420px; }
+  @media (max-width: 980px) { aside.chat { position: static; height: 520px; } }
+  .chatlog { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .msg { margin: 6px 0; padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; font-size: 14px; max-width: 92%; }
+  .msg.you { background: var(--accent); color: var(--accent-ink); margin-left: auto; }
+  .msg.assistant { background: var(--panel); border: 1px solid var(--line); }
+  .msg .did { display: block; font-size: 12px; opacity: .75; margin-top: 4px; }
+  .sugg { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+  .sugg button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); }
+  .checks { display: flex; gap: 12px; flex-wrap: wrap; }
+  .checks label { font-size: 14px; display: flex; gap: 5px; align-items: center; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 16px; border-radius: 8px; display: none; z-index: 10; max-width: 90vw; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Control Panel</h1>
+  <span class="tag">Language · Math, Science &amp; Engineering · History &amp; News — one place to run, steer and watch all three</span>
+  <span class="tag" id="hdr-state"></span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="overview">Overview</button>
+  <button data-tab="harvest">Mass harvesting</button>
+  <button data-tab="target">Targeting</button>
+  <button data-tab="filter">Filtering</button>
+  <button data-tab="facts">Shared facts</button>
+  <button data-tab="audit">Audit trail</button>
+  <button data-tab="diag">Diagnostics</button>
+  <button data-tab="help">Help</button>
+</nav>
+<div class="layout">
+<main>
+  <!-- Overview: the applications, alerts and monitoring -->
+  <section class="panel" id="overview">
+    <div class="card">
+      <div class="sechead"><h2>Applications</h2>
+        <button class="btn quiet" data-diag="apps">Diagnose</button>
+        <button class="btn quiet" id="refresh">Refresh now</button></div>
+      <p class="muted small">Each application records its address when it starts. Start, stop, open and harvest each one from here.</p>
+      <div class="apps" id="apps"></div>
+      <div class="diag" id="diag-apps"></div>
+    </div>
+    <div class="card">
+      <div class="sechead"><h2>Alerts <span class="pill" id="alert-n">0</span></h2>
+        <label class="small"><input type="checkbox" id="alerts-all"> show resolved and dismissed</label>
+        <button class="btn quiet" id="alerts-clear">Clear all alerts</button></div>
+      <p class="muted small">Checked every 20 seconds. An alert clears itself when its cause ends; "clear" dismisses it until it happens again.</p>
+      <div id="alerts"></div>
+    </div>
+    <div class="card">
+      <div class="sechead"><h2>Monitoring</h2><span class="muted small" id="last-check"></span></div>
+      <div class="stats" id="stats"></div>
+      <h3>Shared facts by domain</h3>
+      <div id="domains"></div>
+      <h3>Last harvest turns (all applications)</h3>
+      <div id="turns"></div>
+    </div>
+  </section>
+
+  <!-- Mass harvesting -->
+  <section class="panel" id="harvest">
+    <div class="card">
+      <div class="sechead"><h2>Mass harvesting</h2>
+        <button class="btn quiet" data-diag="harvest">Diagnose</button></div>
+      <p class="muted small">One switch for all three applications. Harvesting only uses sources the admin approved (licence policy) and obeys the
+        target and filter below.</p>
+      <div class="row">
+        <button class="btn" id="h-start-all">Start all harvesting</button>
+        <button class="btn" id="h-now">Start all and harvest now</button>
+        <button class="btn secondary" id="h-stop-all">Stop all harvesting</button>
+        <span id="h-master" class="badge"></span>
+      </div>
+      <h3>Or a selection</h3>
+      <div class="checks" id="h-apps"></div>
+      <h3>Online harvesters</h3>
+      <div class="checks" id="h-harvesters"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="h-start-sel">Start selected only</button>
+        <button class="btn secondary" id="h-stop-sel">Stop selected</button>
+        <button class="btn quiet" id="h-clear-sel">Clear selection</button>
+      </div>
+      <div class="diag" id="diag-harvest"></div>
+    </div>
+  </section>
+
+  <!-- Targeting -->
+  <section class="panel" id="target">
+    <div class="card">
+      <div class="sechead"><h2>Special targeting</h2>
+        <button class="btn quiet" data-diag="target">Diagnose</button>
+        <button class="btn quiet" id="t-clear">Clear target</button></div>
+      <p class="muted small">What harvesting concentrates on. Matching tasks run first and harvest more per turn (budget boost); with
+        "only targeted", everything else waits. Now: <b id="t-now"></b></p>
+      <label class="f" for="t-topics">Topics (words, comma-separated — matched against each harvest task)</label>
+      <input type="text" id="t-topics" placeholder="volcanoes, Roman Empire, prime numbers">
+      <label class="f">Applications</label><div class="checks" id="t-apps"></div>
+      <label class="f">Online harvesters</label><div class="checks" id="t-harvesters"></div>
+      <label class="f" for="t-sources">Sources (registry keys, comma-separated)</label>
+      <input type="text" id="t-sources" placeholder="wikidata, loc">
+      <div class="row" style="margin-top:10px">
+        <label class="small"><input type="checkbox" id="t-only"> only targeted (nothing else is harvested)</label>
+        <label class="small">budget boost × <input type="number" id="t-boost" min="1" max="5" step="0.5" value="2" style="width:80px"></label>
+      </div>
+      <label class="f" for="t-pass">Admin passphrase (needed once the admin has set one)</label>
+      <input type="password" id="t-pass" autocomplete="off">
+      <div class="row" style="margin-top:10px"><button class="btn" id="t-save">Apply target to all three</button></div>
+      <div class="diag" id="diag-target"></div>
+    </div>
+  </section>
+
+  <!-- Filtering -->
+  <section class="panel" id="filter">
+    <div class="card">
+      <div class="sechead"><h2>Special filtering</h2>
+        <button class="btn quiet" data-diag="filter">Diagnose</button>
+        <button class="btn quiet" id="f-clear">Clear filter</button></div>
+      <p class="muted small">What may enter the shared facts. A harvested fact that fails a rule is not saved, and the harvest log says how
+        many were left out and why. Now: <b id="f-now"></b></p>
+      <label class="f" for="f-ex">Leave out facts mentioning (comma-separated)</label>
+      <input type="text" id="f-ex" placeholder="football, celebrity">
+      <label class="f" for="f-req">Keep only facts mentioning one of (comma-separated; empty = no requirement)</label>
+      <input type="text" id="f-req" placeholder="">
+      <div class="row">
+        <div class="grow"><label class="f" for="f-y1">Years from</label><input type="number" id="f-y1" placeholder="e.g. 1800"></div>
+        <div class="grow"><label class="f" for="f-y2">to</label><input type="number" id="f-y2" placeholder="e.g. 1950"></div>
+      </div>
+      <p class="muted small">Facts without any year in them always pass the year range.</p>
+      <label class="f">Domains allowed (none ticked = all)</label><div class="checks" id="f-domains"></div>
+      <label class="f">Licence classes allowed (none ticked = every approved class)</label><div class="checks" id="f-lic"></div>
+      <label class="f" for="f-pass">Admin passphrase (needed once the admin has set one)</label>
+      <input type="password" id="f-pass" autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button class="btn secondary" id="f-preview">Preview (dry run on shared facts)</button>
+        <button class="btn" id="f-save">Apply filter to all three</button>
+      </div>
+      <div id="f-out"></div>
+      <div class="diag" id="diag-filter"></div>
+    </div>
+  </section>
+
+  <!-- Shared facts -->
+  <section class="panel" id="facts">
+    <div class="card">
+      <div class="sechead"><h2>Shared facts (all three applications)</h2><button class="btn quiet" id="s-clear">Clear</button></div>
+      <div class="row">
+        <input type="text" id="s-q" class="grow" placeholder="Search subjects and values">
+        <select id="s-domain" style="width:auto"><option value="">all domains</option><option>language</option><option>stem</option><option>history</option></select>
+        <button class="btn" id="s-go">Search</button>
+      </div>
+      <div id="s-out"></div>
+    </div>
+  </section>
+
+  <!-- Audit trail -->
+  <section class="panel" id="audit">
+    <div class="card">
+      <div class="sechead"><h2>Audit trail</h2>
+        <button class="btn quiet" id="a-refresh">Refresh</button>
+        <button class="btn quiet" id="a-clear">Clear view</button>
+        <button class="btn quiet" id="a-all">Show all</button></div>
+      <p class="muted small">Every action taken here — by a button or by the assistant — with what changed and the outcome. "Clear view"
+        starts the list afresh; the trail itself is kept (show all brings it back).</p>
+      <div id="a-out"></div>
+    </div>
+  </section>
+
+  <!-- Diagnostics -->
+  <section class="panel" id="diag">
+    <div class="card">
+      <div class="sechead"><h2>Diagnostics</h2><button class="btn" data-diag="all">Run all diagnostics</button>
+        <button class="btn quiet" id="d-clear">Clear results</button></div>
+      <p class="muted small">Every section has its own Diagnose button; this runs them all: the panel, each application (with its own
+        diagnostics), harvesting, targeting, filtering and the assistant.</p>
+      <div class="row">
+        <button class="btn quiet" data-diag="panel">Panel</button><button class="btn quiet" data-diag="assistant">Assistant</button>
+      </div>
+      <div class="diag" id="diag-all"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>Help</h2>
+      <p>Start the panel with <span class="mono">START-CONTROL-PANEL</span> (or <span class="mono">python app.py</span> in its folder). It finds
+        the three applications on this computer and can start them.</p>
+      <ul>
+        <li><b>Overview</b> — each application's state, version, health, harvest switch, facts and last harvest turn; alerts and monitoring.</li>
+        <li><b>Mass harvesting</b> — start or stop harvesting everywhere, or a selection of applications and online harvesters.</li>
+        <li><b>Targeting / Filtering</b> — global rules every application obeys from its next harvest turn. They need the admin passphrase
+          once the admin has set one.</li>
+        <li><b>Assistant</b> — type plain requests ("stop all harvesting", "focus on volcanoes in history", "exclude football", "find
+          Marie Curie", "any alerts?"). It works by fixed rules (no AI model): it does only what it recognises, says what it changed, and asks
+          before stopping anything.</li>
+        <li><b>Transparency</b> — every action is in the audit trail; every harvest turn reports how many facts the filter left out and
+          which tasks the target moved first.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<aside class="chat card" aria-label="Assistant">
+  <div class="sechead"><h2>Assistant</h2><button class="btn quiet" id="c-clear">Clear chat</button></div>
+  <div class="sugg" id="c-sugg"></div>
+  <div class="chatlog" id="c-log" aria-live="polite"></div>
+  <div class="row" style="margin-top:8px">
+    <input type="text" id="c-in" class="grow" placeholder="Ask, or tell me what to do" autocomplete="off">
+    <button class="btn" id="c-send">Send</button>
+  </div>
+  <input type="password" id="c-pass" placeholder="admin passphrase (only for target / filter changes)" autocomplete="off" style="margin-top:6px">
+</aside>
+</div>
+<div id="toast" role="status"></div>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

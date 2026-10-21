@@ -9,6 +9,8 @@ INSTALL
        Windows: double-click START-ALL-WINDOWS.bat     (or START-WINDOWS.bat inside one application's folder)
        Mac:     double-click START-ALL-MAC.command     (first time: right-click -> Open -> Open)
        Any:     python app.py   inside an application's folder
+     Control Panel (one page for all three): START-CONTROL-PANEL-WINDOWS.bat / START-CONTROL-PANEL-MAC.command
+       QueryBook Control Panel       http://127.0.0.1:8100/
      Each application opens in your browser and keeps its window open while you use it:
        Language Builder              http://127.0.0.1:8101/
        Math, Science & Engineering   http://127.0.0.1:8102/
@@ -17,6 +19,22 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel (new, 1.0.0) - one separate page to show and manage all three applications
+    * Applications: running or not, version, health, harvest switch, facts, last harvest turn; Start / Stop / Open /
+      Harvest now for each (it can start them for you).
+    * Mass harvesting: start or stop all harvesting at once, or a selection of applications and online harvesters,
+      and set every running application harvesting now.
+    * Special targeting: topics, applications, harvesters and sources to concentrate on - first, or only - with a
+      budget boost. Special filtering: words to leave out or require, a year range, domains, licence classes, with a
+      dry run on the facts already shared. All three applications obey both from their next harvest turn.
+    * Every function has a Diagnose button and a Clear button; every action goes to the audit trail (transparency);
+      the panel monitors everything every 20 s and raises alerts that clear themselves when the cause ends.
+    * Assistant: type plain requests - "stop all harvesting", "focus on volcanoes in history", "exclude football",
+      "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
+      changed and asks before stopping anything.
+    * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.40.0), Math, Science & Engineering and History & News (1.11.0)
+    * Obey the Control Panel's targeting and filtering; record their address for the panel; stop when the panel asks.
   All three applications
     * Devices tab and device API: register cameras, phones, smart glasses, robots, wearables, motion suits,
       eye trackers and microphones; each gets its own key and sends observations (not recordings) through one

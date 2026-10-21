@@ -31,6 +31,7 @@ import json, os, threading, time
 import qbcore as core
 import qbharvest as hv
 import qbonline as ol
+import qbcontrol as ctl
 
 COMMONS_VERSION = "1.0.0"
 APPS = {"language": "Language Builder", "stem": "Math, Science & Engineering", "facts": "History & News"}
@@ -310,11 +311,13 @@ class Context:
         own = stop or (lambda: False)
         self.stop = lambda: bool(own()) or not hv.master_running(commons)    # the master switch stops a running harvest between tasks
         self.registry = commons.registry
+        self.boost = 1.0                              # set per task: targeted tasks harvest more per turn
 
     def budget(self, key, default):
         """How much one turn harvests for `key`: the approved parameter budget.<app>.<key> (else the default)."""
         v = self.registry.param("budget.%s.%s" % (self.commons.app_id, key), default)
-        return v if isinstance(v, (int, float)) and v > 0 else default
+        v = v if isinstance(v, (int, float)) and v > 0 else default
+        return int(round(v * self.boost)) if isinstance(v, int) else v * self.boost      # the Control Panel's target boost
 
     def source_ok(self, key):
         """Is this source approved in the policy registry?"""
@@ -434,6 +437,10 @@ class Team:
             self.state["role"] = "planner"
             t0 = time.time()
             tasks = self.adapter.plan(strat, ctx) + online
+            # the Control Panel's global rules: targeted tasks first (or only), and the filter every fact must pass
+            trules, frules = ctl.get(self.commons, "target"), ctl.get(self.commons, "filter")
+            tasks = ctl.order_tasks(tasks, trules, self.app_id)
+            filtered = on_target = 0
             allowed, blocked = [], 0
             with store.write() as db:
                 pid = db.execute("INSERT INTO plans(app, strategy_id, created, status, summary) VALUES(?,?,?,?,?)",
@@ -444,6 +451,8 @@ class Team:
                 ok, cls, why = reg.check(t.get("source"))
                 if ok and reg.param("disabled.%s.%s" % (self.app_id, t["action"]), False):
                     ok, why = False, "paused by an approved recommendation"
+                if ok and t.get("_skip"):
+                    ok, why = False, t["_skip"]
                 with store.write() as db:
                     tid = db.execute("INSERT INTO tasks(plan_id, app, step, action, title, target, status, detail) VALUES(?,?,?,?,?,?,?,?)",
                                      (pid, self.app_id, i, t["action"], t["title"], json.dumps(t.get("target") or {}, ensure_ascii=False),
@@ -469,12 +478,18 @@ class Team:
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = 'running', started = ? WHERE id = ?", (core.now_cs(), tid))
                 ts = time.time()
+                ctx.boost = trules["boost"] if t.get("_targeted") else 1.0
                 try:
                     r = (ol.execute(t, ctx) if t["action"].startswith("online:") else self.adapter.execute(t, ctx)) or {}
                     items = [x for x in (self._policy_filter(i, t.get("source"), reg) for i in r.get("items") or []) if x]
+                    items, nf, fwhy = ctl.apply_filter(items, frules, DOMAINS[self.app_id])
+                    filtered += nf
+                    on_target += sum(1 for i in items if ctl.on_target(i, trules))
                     staged.append((tid, t, cls, items, time.time() - ts, None))
                     cursors.update(r.get("cursor") or {})
-                    st, detail = "done", r.get("detail") or ""
+                    st, detail = "done", (r.get("detail") or "") + (
+                        " — %d left out by the Control Panel's filter (e.g. %s)" % (nf, "; ".join(fwhy)) if nf else "") + (
+                        " [targeted, budget ×%g]" % trules["boost"] if t.get("_targeted") else "")
                 except Exception as e:
                     failed += 1
                     items, st, detail = [], "failed", str(e)
@@ -540,7 +555,7 @@ class Team:
                            ("done" if not failed else "done with failures", "%d tasks (%d blocked), %d new facts, %d merged, %d checks answered"
                             % (len(tasks), blocked, new, merged, answered), pid))
             out.update(new=new, merged=merged, upkeep=len(upkeep), checks_answered=answered, verdicts=verdicts, blocked=blocked,
-                       seconds=round(time.time() - t_cycle, 2))
+                       filtered=filtered, on_target=on_target, seconds=round(time.time() - t_cycle, 2))
             self._role("curator", "ok", "%d new facts, %d merged (%d from upkeep), %d checks answered %s"
                        % (new, merged, len(upkeep), answered, json.dumps(verdicts) if verdicts else ""), int((time.time() - t0) * 1000))
             if new or merged or answered:
@@ -833,6 +848,7 @@ def attach(app, app_id, adapter):
         app.commons = Commons(commons_folder(app.folder), app_id, app.log)
         app.team = Team(app.commons, adapter, app.log)
         add_routes(app.api, app.team, app.folder)
+        ctl.add_routes(app.api, app.commons, core.stop_server)        # the Control Panel's rules and its stop
     except Exception as e:
         app.log("shared database (Commons) unavailable:", repr(e))
         app.commons = app.team = None

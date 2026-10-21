@@ -1,0 +1,189 @@
+// QueryBook Control Panel page.
+"use strict";
+let S = null, pending = null;
+const NAMES = { language: "Language Builder", stem: "Math, Science & Engineering", facts: "History & News" };
+const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
+
+function tabs() {
+  const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); };
+  $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
+  let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
+  show($("#" + t) ? t : "overview");
+}
+
+async function load(quiet) {
+  try { S = quiet ? await (await fetch("/api/panel/status")).json() : await api("/api/panel/status"); } catch (e) { return; }
+  if (!S || !S.apps) return;
+  renderApps(); renderAlerts(); renderMonitor(); renderHarvest(); renderRules();
+  const run = S.apps.filter(a => a.running).length;
+  $("#hdr-state").textContent = run + " of 3 running · harvesting " + S.control.master + " · " + S.alerts.length + " alert(s)";
+}
+
+function renderApps() {
+  $("#apps").innerHTML = S.apps.map(a => {
+    const lt = a.last_turn && a.last_turn.result;
+    return `<div class="appcard"><h3><span class="dot ${a.running ? (a.health === "fail" ? "bad" : "on") : "off"}"></span>${esc(a.name)}</h3>
+      <div class="kv"><b>State</b><span>${a.running ? "running" + (a.version ? " · v" + esc(a.version) : "") : (a.installed ? "not running" : "not installed here")}</span>
+      <b>Health</b><span>${a.health ? `<span class="badge ${level(a.health === "fail" ? "error" : a.health === "warn" ? "warn" : "ok")}">${esc(a.health)}</span>` : "—"}</span>
+      <b>Harvesting</b><span>${a.harvest_on ? "on" : "off"}${a.heartbeat_s !== null ? " · checked in " + Math.round(a.heartbeat_s) + " s ago" : ""}</span>
+      <b>Facts</b><span>${a.facts.toLocaleString()} (${esc(a.domain)})</span>
+      <b>Last turn</b><span class="small">${a.last_turn ? esc(a.last_turn.started) + (lt ? ` — ${lt.new || 0} new, ${lt.merged || 0} merged${lt.filtered ? ", " + lt.filtered + " filtered out" : ""}${lt.on_target ? ", " + lt.on_target + " on target" : ""}` : " (running)") : "—"}</span></div>
+      <div class="btns">${a.running ? `<a class="btn quiet" href="${esc(a.url)}" target="_blank" rel="noopener" style="padding:6px 11px;font-size:14px;border-radius:8px;text-decoration:none">Open</a>
+        <button class="btn quiet" data-app="${a.app}" data-act="harvest">Harvest now</button><button class="btn secondary" data-app="${a.app}" data-act="stop">Stop</button>`
+        : `<button class="btn" data-app="${a.app}" data-act="start" ${a.installed ? "" : "disabled"}>Start</button>`}</div></div>`;
+  }).join("");
+  $$("#apps [data-act]").forEach(b => b.onclick = async () => {
+    if (b.dataset.act === "stop" && !confirm("Stop " + NAMES[b.dataset.app] + "?")) return;
+    const r = await api("/api/panel/app", { app: b.dataset.app, action: b.dataset.act });
+    toast(r.summary); setTimeout(() => load(true), b.dataset.act === "start" ? 4000 : 1200);
+  });
+}
+
+function renderAlerts() {
+  const all = $("#alerts-all").checked, show = rows => rows.length ? rows.map(x => `<div class="alert ${x.level}"><span class="badge ${level(x.level)}">${esc(x.level)}</span>
+      <div class="txt">${esc(x.text)}<div class="muted small">first ${esc(x.first)} · last ${esc(x.last)}${x.status !== "open" ? " · " + esc(x.status) : ""}</div></div>
+      ${x.status === "open" ? `<button class="btn quiet" data-dismiss="${x.id}">Clear</button>` : ""}</div>`).join("") : `<p class="muted">No ${all ? "" : "open "}alerts.</p>`;
+  $("#alert-n").textContent = S.alerts.length;
+  if (all) api("/api/panel/alerts?all=1").then(r => { $("#alerts").innerHTML = show(r.alerts); bindDismiss(); });
+  else { $("#alerts").innerHTML = show(S.alerts); bindDismiss(); }
+}
+function bindDismiss() { $$("[data-dismiss]").forEach(b => b.onclick = async () => { await api("/api/panel/alerts_clear", { id: +b.dataset.dismiss }); load(true); }); }
+
+function renderMonitor() {
+  const o = S.overview, run = S.apps.filter(a => a.running).length;
+  $("#last-check").textContent = S.last_check ? "last check " + S.last_check : "first check in a few seconds";
+  $("#stats").innerHTML = [["Applications running", run + " / 3"], ["Harvesting", S.control.master], ["Shared facts", o.facts.toLocaleString()],
+    ["Confirmed by 2+ apps", o.shared.toLocaleString()], ["Open alerts", S.alerts.length], ["Target", S.rules.target_text === "none (everything)" ? "none" : "set"],
+    ["Filter", S.rules.filter_text === "none (everything)" ? "none" : "set"]].map(([k, v]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
+  const doms = Object.entries(o.by_domain), max = Math.max(1, ...doms.map(([, v]) => Object.values(v).reduce((a, b) => a + b, 0)));
+  $("#domains").innerHTML = doms.length ? doms.map(([d, v]) => { const n = Object.values(v).reduce((a, b) => a + b, 0);
+    return `<div class="row small" style="margin:4px 0"><span style="width:90px">${esc(d)}</span><div class="bar grow"><i style="width:${100 * n / max}%"></i></div>
+      <span style="width:240px" class="muted">${n.toLocaleString()} — ${Object.entries(v).map(([s, k]) => esc(s) + " " + k).join(", ")}</span></div>`; }).join("") : `<p class="muted">No shared facts yet.</p>`;
+  $("#turns").innerHTML = o.turns.length ? `<table class="t"><tr><th>When</th><th>App</th><th>Result</th><th>Why its turn</th></tr>` + o.turns.map(t => {
+    const r = t.result || {};
+    return `<tr><td class="small">${esc(t.started)}</td><td>${esc(NAMES[t.app] || t.app)}</td><td class="small">${t.ended ? (r.timeout ? "timed out" : `${r.new || 0} new, ${r.merged || 0} merged` +
+      (r.filtered ? `, ${r.filtered} filtered out` : "") + (r.on_target ? `, ${r.on_target} on target` : "") + (r.blocked ? `, ${r.blocked} blocked/skipped` : "")) : "running"}</td>
+      <td class="small muted">${esc(t.reason)}</td></tr>`; }).join("") + "</table>" : `<p class="muted">No harvest turns yet.</p>`;
+}
+
+function checks(el, items, name, sel) {
+  const keep = new Set($$("input:checked", el).map(i => i.value));
+  el.innerHTML = items.map(([v, label]) => `<label><input type="checkbox" name="${name}" value="${esc(v)}" ${(sel ? sel.includes(v) : keep.has(v)) ? "checked" : ""}> ${esc(label)}</label>`).join("");
+}
+const picked = el => $$("input:checked", el).map(i => i.value);
+
+function renderHarvest() {
+  const m = $("#h-master"); m.textContent = "harvesting " + S.control.master; m.className = "badge " + (S.control.master === "running" ? "good" : "warn");
+  if (!$("#h-apps").children.length) {
+    checks($("#h-apps"), S.control.apps.map(a => [a.app, a.name]), "h-app");
+    checks($("#h-harvesters"), S.harvesters.map(h => [h.name, h.title + " (" + (NAMES[h.app] || h.app) + ")"]), "h-hv");
+  }
+}
+
+let rulesShown = null;
+function renderRules() {
+  const R = S.rules, t = R.target, f = R.filter;
+  $("#t-now").textContent = R.target_text; $("#f-now").textContent = R.filter_text;
+  const sig = JSON.stringify([t, f]);
+  if (sig === rulesShown) return;                // do not overwrite what the user is typing unless the rules changed
+  rulesShown = sig;
+  $("#t-topics").value = t.topics.join(", "); $("#t-sources").value = t.sources.join(", ");
+  $("#t-only").checked = t.only; $("#t-boost").value = t.boost;
+  checks($("#t-apps"), Object.entries(NAMES), "t-app", t.apps);
+  checks($("#t-harvesters"), S.harvesters.map(h => [h.name, h.title]), "t-hv", t.harvesters);
+  $("#f-ex").value = f.exclude_words.join(", "); $("#f-req").value = f.require_words.join(", ");
+  $("#f-y1").value = f.years ? f.years[0] : ""; $("#f-y2").value = f.years ? f.years[1] : "";
+  checks($("#f-domains"), [["language", "language"], ["stem", "stem"], ["history", "history"]], "f-dom", f.domains);
+  checks($("#f-lic"), S.licence_classes.map(c => [c, c]), "f-lic", f.licence_classes);
+}
+
+function filterRules() {
+  const y1 = $("#f-y1").value, y2 = $("#f-y2").value;
+  return { exclude_words: $("#f-ex").value, require_words: $("#f-req").value, years: y1 && y2 ? [+y1, +y2] : null,
+           domains: picked($("#f-domains")), licence_classes: picked($("#f-lic")) };
+}
+
+async function diag(section) {
+  const r = await api("/api/panel/diagnose", { section });
+  const el = $("#diag-" + section) || $("#diag-all");
+  el.innerHTML = `<div class="note ${r.overall === "fail" ? "bad" : r.overall === "ok" ? "good" : ""}"><b>Diagnostics (${esc(section)}): ${esc(r.overall.toUpperCase())}</b>
+    <span class="muted small"> · ${esc(r.at)}</span> <button class="btn quiet" style="padding:2px 8px;font-size:13px" data-clear-diag>Clear</button>
+    ${r.checks.map(c => `<div class="ck"><span class="badge ${c.status === "ok" ? "good" : c.status === "warn" ? "warn" : "bad"}">${esc(c.status)}</span><span class="grow">${esc(c.name)}</span>
+      <span class="muted">${esc(c.detail)}</span></div>`).join("")}</div>`;
+  $("[data-clear-diag]", el).onclick = () => { el.innerHTML = ""; };
+}
+
+async function loadAudit() {
+  const r = await api("/api/panel/audit");
+  $("#a-out").innerHTML = (r.hidden_before ? `<p class="muted small">View cleared at ${esc(r.hidden_before)} — ${r.total} entries kept in all.</p>` : "") +
+    (r.audit.length ? `<table class="t"><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th><th>Outcome</th></tr>` + r.audit.map(x =>
+      `<tr><td class="small">${esc(x.at)}</td><td>${esc(x.actor)}</td><td>${esc(x.action)}</td><td class="small mono">${esc(x.detail)}</td>
+       <td class="small"><span class="badge ${x.ok ? "good" : "bad"}">${x.ok ? "done" : "failed"}</span> ${esc(x.result)}</td></tr>`).join("") + "</table>" : `<p class="muted">Nothing since the view was cleared.</p>`);
+}
+
+// ---------------------------------------------------------------- the assistant
+const SUGG = ["status", "any alerts?", "harvest now", "stop all harvesting", "focus on volcanoes in history", "exclude football", "find Einstein", "run diagnostics", "help"];
+function chatMsg(role, text, did) {
+  const d = document.createElement("div"); d.className = "msg " + role; d.textContent = text;
+  if (did) { const s = document.createElement("span"); s.className = "did"; s.textContent = "✓ did: " + did + " (in the audit trail)"; d.appendChild(s); }
+  $("#c-log").appendChild(d); $("#c-log").scrollTop = $("#c-log").scrollHeight;
+}
+async function say(text) {
+  text = (text || $("#c-in").value).trim(); if (!text) return;
+  $("#c-in").value = ""; chatMsg("you", text);
+  const r = await api("/api/panel/chat", { message: text, passphrase: $("#c-pass").value, pending });
+  pending = r.pending || null;
+  chatMsg("assistant", r.reply, r.did);
+  if (r.needs === "passphrase") $("#c-pass").focus();
+  if (r.did) load(true);
+}
+async function loadChat() {
+  const r = await api("/api/panel/chat");
+  $("#c-log").innerHTML = ""; r.chat.forEach(m => { let did = null; try { did = JSON.parse(m.data || "{}").did; } catch (e) { } chatMsg(m.role, m.text, did); });
+  if (!r.chat.length) chatMsg("assistant", "Hello — I can report on the three applications and work this panel for you. Try a suggestion above, or type “help”.");
+}
+
+function bind() {
+  $("#refresh").onclick = async () => { await api("/api/panel/check", {}); load(); };
+  $("#alerts-all").onchange = renderAlerts;
+  $("#alerts-clear").onclick = async () => { await api("/api/panel/alerts_clear", {}); load(true); };
+  const H = async (action, sel, now) => { const body = { action, now }; if (sel) { body.apps = picked($("#h-apps")); body.harvesters = picked($("#h-harvesters"));
+    if (!body.apps.length && !body.harvesters.length) return toast("Tick at least one application or harvester first.", true); }
+    if (action === "stop" && !confirm(sel ? "Stop the selected harvesting?" : "Stop all harvesting in all three applications?")) return;
+    const r = await api("/api/panel/harvest", body); toast(r.summary); load(true); };
+  $("#h-start-all").onclick = () => H("start", false, false); $("#h-now").onclick = () => H("start", false, true);
+  $("#h-stop-all").onclick = () => H("stop", false); $("#h-start-sel").onclick = () => H("start", true, true); $("#h-stop-sel").onclick = () => H("stop", true);
+  $("#h-clear-sel").onclick = () => $$("#h-apps input, #h-harvesters input").forEach(i => { i.checked = false; });
+  $("#t-save").onclick = async () => { const r = await api("/api/panel/rules", { kind: "target", passphrase: $("#t-pass").value, rules: {
+      topics: $("#t-topics").value, apps: picked($("#t-apps")), harvesters: picked($("#t-harvesters")), sources: $("#t-sources").value,
+      only: $("#t-only").checked, boost: +$("#t-boost").value } }); toast(r.summary); load(true); };
+  $("#t-clear").onclick = async () => { if (!confirm("Clear the target (harvest everything evenly again)?")) return;
+    const r = await api("/api/panel/rules_clear", { kind: "target", passphrase: $("#t-pass").value }); toast(r.summary); load(true); };
+  $("#f-preview").onclick = async () => { const r = await api("/api/panel/preview", { rules: filterRules() });
+    $("#f-out").innerHTML = `<div class="note"><b>Dry run:</b> of the latest ${r.checked} shared facts, ${r.kept} would be kept and ${r.dropped} left out
+      ${Object.keys(r.dropped_by_domain).length ? "(" + Object.entries(r.dropped_by_domain).map(([d, n]) => esc(d) + " " + n).join(", ") + ")" : ""}. Rules: ${esc(r.rules)}.
+      ${r.examples.length ? `<ul class="small">${r.examples.map(x => `<li>${esc(x.subject)} — ${esc(x.predicate)} — ${esc(x.object)}: <i>${esc(x.why)}</i></li>`).join("")}</ul>` : ""}
+      <button class="btn quiet" style="padding:2px 8px;font-size:13px" onclick="this.parentNode.remove()">Clear</button></div>`; };
+  $("#f-save").onclick = async () => { const r = await api("/api/panel/rules", { kind: "filter", passphrase: $("#f-pass").value, rules: filterRules() }); toast(r.summary); load(true); };
+  $("#f-clear").onclick = async () => { if (!confirm("Clear the filter (let every fact in again)?")) return;
+    const r = await api("/api/panel/rules_clear", { kind: "filter", passphrase: $("#f-pass").value }); toast(r.summary); load(true); };
+  const search = async () => { const r = await api("/api/panel/search", { q: $("#s-q").value, domain: $("#s-domain").value });
+    $("#s-out").innerHTML = r.facts.length ? `<table class="t"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>Domain</th><th>Status</th><th>Apps</th></tr>` +
+      r.facts.map(f => `<tr><td>${esc(f.subject)}</td><td>${esc(f.predicate)}</td><td>${esc(String(f.object).slice(0, 160))}</td><td>${esc(f.domain)}</td>
+        <td>${esc(f.status)}</td><td>${f.apps}</td></tr>`).join("") + "</table>" : `<p class="muted">Nothing found.</p>`; };
+  $("#s-go").onclick = search; $("#s-q").onkeydown = e => { if (e.key === "Enter") search(); };
+  $("#s-clear").onclick = () => { $("#s-q").value = ""; $("#s-out").innerHTML = ""; };
+  $("#a-refresh").onclick = loadAudit;
+  $("#a-clear").onclick = async () => { await api("/api/panel/audit_clear", {}); loadAudit(); };
+  $("#a-all").onclick = async () => { await api("/api/panel/audit_clear", { show_all: true }); loadAudit(); };
+  $("#d-clear").onclick = () => { $("#diag-all").innerHTML = ""; };
+  $$("[data-diag]").forEach(b => b.onclick = () => diag(b.dataset.diag));
+  $("#c-send").onclick = () => say(); $("#c-in").onkeydown = e => { if (e.key === "Enter") say(); };
+  $("#c-clear").onclick = async () => { await api("/api/panel/chat_clear", {}); pending = null; loadChat(); };
+  $("#c-sugg").innerHTML = SUGG.map(s => `<button>${esc(s)}</button>`).join("");
+  $$("#c-sugg button").forEach(b => b.onclick = () => say(b.textContent));
+}
+
+tabs(); bind(); load(); loadChat();
+setInterval(() => { if (document.visibilityState === "visible") load(true); }, 10000);

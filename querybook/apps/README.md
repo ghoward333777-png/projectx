@@ -554,6 +554,25 @@ Every application has a **Devices** tab and the same device API (`GET /api/devic
 | Tobii Pro Glasses 3 | `tobii_bridge.py` (template) |
 | DJI Mic 2, Rode Wireless PRO | recordings → Language Builder speech-to-text; transcript events |
 
+## Control Panel (`control/`, `_core/qbcontrol.py`)
+
+A fourth, separate program — **QueryBook Control Panel** at http://127.0.0.1:8100/ — shows and manages the three
+applications from one page. Each application records its address in the shared database when it starts
+(`url:<app>` setting), so the panel finds it; it can also start an application itself (`python app.py --no-browser` in
+the sibling folder) and stop it (`POST /api/control/quit` with the panel's key, a random secret in the shared folder).
+
+* **Global rules** live in the Commons settings (`control:target`, `control:filter`) and every application obeys them in
+  `Team.cycle()`: targeted tasks are planned first with a budget boost (`Context.boost`), "only targeted" skips the rest
+  (logged with the reason), and every harvested fact passes the filter before it is saved (`filtered` and `on_target`
+  are reported per turn and in each task's detail). Changing them needs the admin passphrase once one is set.
+* **Transparency, monitoring, alerts:** an audit trail of every action (button or assistant); a monitor every 20 s
+  that raises alerts — an application that stopped unexpectedly, its own diagnostics failing, failing harvests, a
+  filter that lets almost nothing in, "only targeted" harvesting nothing, approvals waiting — and resolves them when
+  the cause ends. Every section has Diagnose and Clear buttons; "clear" on the audit trail only starts the view afresh.
+* **Assistant** (`control/assistant.py`): a fixed set of requests recognised by their words — status, alerts, start /
+  stop an application, start / stop / harvest now, target, filter, years, search, diagnose. No language model, no
+  network; it asks before stopping anything and for the passphrase when a rule needs it.
+
 ## Master control (start and stop harvesting)
 
 Top of the **Harvesting & shared facts** page, the same in all three applications (the switches live in the

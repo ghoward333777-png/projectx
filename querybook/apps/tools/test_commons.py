@@ -110,6 +110,36 @@ def main():
         c.check("the team can run again afterwards", not team.state["running"])
         com.store.conn().close()
 
+    # the Control Panel's global rules, obeyed inside a real harvest cycle
+    import qbcontrol as ctl
+
+    class Two(cm.Adapter):
+        def plan(self, st, ctx):
+            return [{"action": "a", "title": "Rivers of Europe", "source": "stem-computed", "why": "test"},
+                    {"action": "b", "title": "Volcanoes of Iceland", "source": "stem-computed", "why": "test"}]
+
+        def execute(self, task, ctx):
+            ev = [{"method": "reference", "source": "r"}]
+            n = ctx.budget("x", 2)
+            return {"items": [{"subject": "%s %d" % (task["title"], i), "predicate": "p", "object": "football" if i == 0 else "ok %d" % i,
+                               "evidence": ev} for i in range(n)]}
+    with tempfile.TemporaryDirectory() as tmp:
+        com = cm.Commons(tmp, "stem")
+        team = cm.Team(com, Two())
+        ctl.set_rules(com, "target", {"topics": ["volcanoes"], "boost": 2})
+        ctl.set_rules(com, "filter", {"exclude_words": ["football"]})
+        out = team.cycle("test")
+        tasks = com.store.query("SELECT action, step, detail FROM tasks ORDER BY step")
+        c.check("control: the targeted task runs first, with the budget boost", tasks[0]["action"] == "b" and "targeted" in tasks[0]["detail"]
+                and com.store.scalar("SELECT count(*) FROM facts WHERE subject LIKE 'Volcanoes%'") == 3, tasks)
+        c.check("control: the filter keeps excluded facts out and says so", out["filtered"] == 2 and
+                com.store.scalar("SELECT count(*) FROM facts WHERE object = 'football'") == 0 and "left out by the Control Panel" in tasks[0]["detail"], out)
+        ctl.set_rules(com, "target", {"topics": ["volcanoes"], "only": True})
+        out = team.cycle("test")
+        c.check("control: with \"only targeted\" the other tasks are skipped, logged with why", com.store.scalar(
+            "SELECT count(*) FROM harvest_log WHERE action = 'a' AND reason LIKE '%outside the Control Panel%'") == 1, out)
+        com.store.conn().close()
+
 
     # policy registry, admin approvals, the engine's rotation and the learner (one Commons, no applications)
     with tempfile.TemporaryDirectory() as tmp:

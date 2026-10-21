@@ -6,7 +6,7 @@ Each zip unpacks to a single folder that runs on its own. Runs every self-test f
 import os, subprocess, sys, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APPS = {"language": "QueryBook-Language", "stem": "QueryBook-STEM", "facts": "QueryBook-History-News"}
+APPS = {"language": "QueryBook-Language", "stem": "QueryBook-STEM", "facts": "QueryBook-History-News", "control": "QueryBook-Control-Panel"}
 SKIP_DIRS = {"__pycache__"}
 SKIP_FILES = {"config.json"}
 
@@ -32,7 +32,7 @@ def build_suite():
     """One installer with all three applications, start-all launchers, the release notes and the stage-2 extras."""
     vers = {app: next(l.split('"')[1] for l in open(os.path.join(ROOT, app, "app.py"), encoding="utf-8") if l.startswith("VERSION ="))
             for app in APPS}
-    out = os.path.join(ROOT, "dist", "QueryBook-Suite-Language%s-STEM%s-History%s.zip" % (vers["language"], vers["stem"], vers["facts"]))
+    out = os.path.join(ROOT, "dist", "QueryBook-Suite-Language%s-STEM%s-History%s-Control%s.zip" % (vers["language"], vers["stem"], vers["facts"], vers["control"]))
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(os.listdir(os.path.join(ROOT, "suite"))):
             _add_file(z, os.path.join(ROOT, "suite", f), os.path.join("QueryBook", f))
