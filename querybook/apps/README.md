@@ -335,9 +335,18 @@ face as a tile), ② the voice, ③ the text, ④ *Speak with the chosen face*. 
 with mouth shapes while the 52-channel motion is computed; if that motion fails the same face keeps speaking. The strip — 2D, 3D/VR and a thumbnail of every analysed
 avatar; the choice is remembered in the browser and every talking face (Speak, Ask) uses it. The same strip sits
 under each talking face, so one click switches who speaks. The Avatar studio opens on a face with the same strip: clicking another face
-keeps the speech playing on the new face, and **Every face in turn** plays the speech while the faces take turns. The installer ships a **starter set of 19 AI-generated
-portraits** (`language/avatars_starter/`, already analysed) that is added once on first start; avatars you delete
-stay deleted. Full-length or group photos are cropped to the face automatically when analysed (the original is kept).
+keeps the speech playing on the new face, and **Every face in turn** plays the speech while the faces take turns. The installer ships a **starter set of 20 AI-generated
+portraits and 3 full-body avatars** (`language/avatars_starter/`, already analysed) that is added once on first start; avatars you delete
+stay deleted. Full-length or group photos are cropped to the face automatically when analysed (the original is kept),
+unless they are imported as full-body photos.
+
+**Full-body avatars.** A second row under the faces holds full-body avatars — the whole figure is shown, the face
+speaks with all 52 channels exactly as a face avatar does, and the body breathes (chest and shoulders rise, the head
+with them) and shifts its weight in a slow sway that grows with height above the hips; the edge of the picture stays
+still, so the background never slides. The first is *Pamela* (AI-generated): her head is in the face library and she
+stands as three full-body avatars (track, stadium, water bottle). To add more, tick *full-body photos* when importing:
+the photo is kept whole, and when the face is too small for the tracker it is found through zoomed windows over the
+picture. The Quality lab keeps testing face avatars, whose mouths fill the frame.
 
 ## Quality lab (Speech → 🎬 Quality lab)
 

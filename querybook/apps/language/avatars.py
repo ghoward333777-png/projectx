@@ -65,7 +65,7 @@ def _name_from_file(fn):
     return base[:1].upper() + base[1:] if base else "Avatar"
 
 
-def quality(landmarks, width=None, height=None):
+def quality(landmarks, width=None, height=None, body=False):
     """What makes a portrait animate well. Returns a list of problems (empty = good)."""
     out = []
     if not landmarks or len(landmarks) < 468:
@@ -78,7 +78,7 @@ def quality(landmarks, width=None, height=None):
     if abs(r - 0.5) > 0.12:
         out.append("face turned to one side — front-facing works best")
     fh = abs(P(152)[1] - P(10)[1])
-    if fh < 0.25:
+    if fh < 0.25 and not body:                                # a full-body avatar shows the whole figure on purpose
         out.append("face small in the picture (%.0f%% of its height) — crop closer for more detail" % (100 * fh))
     if len(landmarks[0]) < 3:
         out.append("no depth measured — re-analyse to enable 3D head motion")
@@ -147,7 +147,7 @@ class Library:
             if not os.path.isfile(p):
                 continue
             with open(p, "rb") as f:
-                r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"], filename=a["file"])
+                r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
             if not r["duplicate"]:
                 with self.store.write() as db:
                     att = json.loads(db.execute("SELECT attestation FROM avatars WHERE id = ?", (r["id"],)).fetchone()[0])
@@ -160,7 +160,7 @@ class Library:
             json.dump({"version": man.get("version"), "at": _now(), "installed": n}, f)
         return {"installed": n}
 
-    def import_path(self, path, source="synthetic", attest=False):
+    def import_path(self, path, source="synthetic", attest=False, kind="face"):
         """A folder or a .zip of portraits on this computer (PNG / JPEG / WebP; other files are skipped)."""
         path = os.path.abspath(os.path.expanduser(path or ""))
         items = []
@@ -179,17 +179,17 @@ class Library:
                     items.append((os.path.basename(fn), z.read(info)))
         else:
             raise core.UserError("Give a folder or a .zip file of portraits.")
-        return self._many(items, source, attest)
+        return self._many(items, source, attest, kind)
 
-    def import_files(self, files, source="synthetic", attest=False):
+    def import_files(self, files, source="synthetic", attest=False, kind="face"):
         items = [(f.get("name") or "avatar", base64.b64decode(str(f.get("data_b64") or "").split(",", 1)[-1])) for f in files or []]
-        return self._many(items, source, attest)
+        return self._many(items, source, attest, kind)
 
-    def _many(self, items, source, attest):
+    def _many(self, items, source, attest, kind="face"):
         added, dup, failed = [], 0, []
         for fn, data in items:
             try:
-                r = self.add(data, None, source, attest, filename=fn)
+                r = self.add(data, None, source, attest, tags=["body"] if kind == "body" else None, filename=fn)
                 if r["duplicate"]:
                     dup += 1
                 else:
@@ -208,6 +208,7 @@ class Library:
         r["quality"] = json.loads(r["quality"]) if r["quality"] else None
         r["voice"] = json.loads(r["voice"]) if r["voice"] else None
         r["analysed"] = bool(r["landmarks"])
+        r["kind"] = "body" if "body" in r["tags"] else "face"     # full-body avatar (whole figure moves) or a face portrait
         qp = os.path.join(self.folder, str(r["id"]), "qc.json")
         r["qc"] = None
         if os.path.isfile(qp):
@@ -245,8 +246,8 @@ class Library:
             lm = None
         else:
             lm = [[round(float(p[0]), 5), round(float(p[1]), 5), round(float(p[2]) if len(p) > 2 else 0.0, 5)] for p in landmarks[:478]]
-            r = self.store.one("SELECT width, height FROM avatars WHERE id = ?", (int(aid),))
-            q = quality(lm, r and r["width"], r and r["height"])
+            r = self.store.one("SELECT width, height, tags FROM avatars WHERE id = ?", (int(aid),))
+            q = quality(lm, r and r["width"], r and r["height"], body=bool(r and "body" in json.loads(r["tags"] or "[]")))
         try:
             os.remove(os.path.join(self.folder, str(int(aid)), "qc.json"))
         except OSError:

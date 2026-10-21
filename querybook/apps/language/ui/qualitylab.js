@@ -91,7 +91,7 @@ async function qlMeasure(url, note, opt) {
 async function qlRecordTest(script) {
   const note = m => { $("#ql-note").textContent = m; };
   const cal = await api("/api/qlab/active?lab=1");
-  const list = (await api("/api/avatars/list")).avatars.filter(a => a.analysed);
+  const list = (await api("/api/avatars/list")).avatars.filter(a => a.analysed && a.kind !== "body");   // faces fill the frame: the mouth is measurable
   const want = Number(typeof faceChoice === "function" ? faceChoice() : 0), av = list.find(a => a.id === want) || list[0];
   if (!av) throw new Error("no analysed avatar — add faces in the Avatar studio");
   note("Speaking the script with " + av.name + " (calibration v" + cal.version + ")…");
@@ -101,7 +101,7 @@ async function qlRecordTest(script) {
   const res = await avWaitJob(r.job.job_id, m => note("Face motion: " + m));
   const full = await api("/api/avatars/get?id=" + av.id);
   const stage = $("#ql-stage"); stage.innerHTML = "";
-  const f = new DepthFace(stage, { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: full.landmarks, label: full.label }, { cal: cal.params });
+  const f = new DepthFace(stage, { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: full.landmarks, label: full.label, body: full.kind === "body" }, { cal: cal.params });
   await f.ready;
   const audio = new Audio("/api/speech/audio?name=" + encodeURIComponent(r.audio)); audio.preload = "auto";
   await new Promise((ok, bad) => { audio.oncanplaythrough = ok; audio.onerror = () => bad(new Error("the speech could not be loaded")); audio.load(); });

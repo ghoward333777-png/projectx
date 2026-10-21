@@ -41,7 +41,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.28.0"
+VERSION = "1.29.0"
 PORT = 8101
 program_dir = HERE
 
@@ -895,8 +895,8 @@ class App:
         @a.post("/api/avatars/import")
         def av_import(p):
             if p.get("path"):
-                return self.avatars.import_path(p["path"], p.get("source") or "synthetic", bool(p.get("attest")))
-            return self.avatars.import_files(p.get("files"), p.get("source") or "synthetic", bool(p.get("attest")))
+                return self.avatars.import_path(p["path"], p.get("source") or "synthetic", bool(p.get("attest")), p.get("kind") or "face")
+            return self.avatars.import_files(p.get("files"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("kind") or "face")
 
         @a.post("/api/avatars/add")
         def av_add(p):
@@ -1708,8 +1708,12 @@ def selftest():
         c.check("quality lab: YouTube and broadcasters are refused; the learned style drives the speech engine's head and blinks",
                 yt and yaw(mo_fast) > 2 * yaw(mo_def) and app.vse.human() and app.vse.human()["version"] >= 1)
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
-        c.check("avatars: the 19 bundled starter faces are installed and analysed, once", len(st) == 19 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
+        c.check("avatars: the 23 bundled starter avatars are installed and analysed, once", len(st) == 23 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
+        bodies = [a for a in st if a["kind"] == "body"]
+        c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
+                len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)
+                and any(a["name"] == "Pamela" and a["kind"] == "face" for a in st), [a["name"] for a in bodies])
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

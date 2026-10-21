@@ -20,8 +20,20 @@ async function avLandmarks(url) {
   const k = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement("canvas");
   c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   const lm = await tracker(), r = lm.detectForVideo(c, performance.now());
-  const L = r.faceLandmarks && r.faceLandmarks[0];
-  return L ? L.map(p => [Math.round(p.x * 1e5) / 1e5, Math.round(p.y * 1e5) / 1e5, Math.round(p.z * 1e5) / 1e5]) : null;
+  const L = r.faceLandmarks && r.faceLandmarks[0], q = x => Math.round(x * 1e5) / 1e5;
+  if (L) return L.map(p => [q(p.x), q(p.y), q(p.z)]);
+  // a full-length photo: the face is too small for the tracker — look again through zoomed windows over the upper part
+  // of the picture, and map the points back onto the whole photo
+  const W = img.width, H = img.height, z = document.createElement("canvas"); z.width = z.height = 640;
+  for (const f of [0.5, 0.35, 0.7]) {
+    const side = f * Math.min(W, H);
+    for (let sy = 0; sy <= Math.max(0, 0.6 * H - side / 2); sy += side / 3) for (let sx = 0; sx + side <= W + 1; sx += side / 3) {
+      const g = z.getContext("2d"); g.clearRect(0, 0, 640, 640); g.drawImage(img, sx, sy, side, side, 0, 0, 640, 640);
+      const rr = lm.detectForVideo(z, performance.now()), M = rr.faceLandmarks && rr.faceLandmarks[0];
+      if (M) return M.map(p => [q((sx + p.x * side) / W), q((sy + p.y * side) / H), q(p.z * side / W)]);
+    }
+  }
+  return null;
 }
 
 async function avCropFace(url, L, id) {
@@ -44,7 +56,7 @@ async function avCheck(id) {
   if (!av.landmarks) return null;
   const host = document.createElement("div"); host.style.cssText = "position:absolute;left:-9999px;width:320px"; document.body.appendChild(host);
   try {
-    const f = new DepthFace(host, { imageUrl: "/api/avatars/image?id=" + id, landmarks: av.landmarks, label: "" }); await f.ready;
+    const f = new DepthFace(host, { imageUrl: "/api/avatars/image?id=" + id, landmarks: av.landmarks, label: "", body: av.kind === "body" }); await f.ready;
     const q = f.quality; f.dispose();
     await api("/api/avatars/qc", { id, qc: q });
     return q;
@@ -73,7 +85,7 @@ async function avAnalyse(el, all) {
     const url = "/api/avatars/image?id=" + todo[n].id;
     try { L = await avLandmarks(url); } catch (e) { L = null; }
     // A full-length or group photo: crop square around the face so it fills the frame, then measure again.
-    if (L && Math.abs(L[152][1] - L[10][1]) < 0.4) {
+    if (L && todo[n].kind !== "body" && Math.abs(L[152][1] - L[10][1]) < 0.4) {
       try { if (await avCropFace(url, L, todo[n].id)) L = await avLandmarks(url + "&t=" + Date.now()); } catch (e) {}
     }
     await api("/api/avatars/landmarks", { id: todo[n].id, landmarks: L || [] });
@@ -115,7 +127,7 @@ async function avSelect(el, id) {
     ((a.quality || []).length ? '<div class="note warn small">' + a.quality.map(esc).join("<br>") + "</div>" : "");
   if (!a.analysed) { if (AV.face && AV.face.impl) AV.face.impl.dispose(); AV.face = null; $("#av-stage", el).innerHTML = '<p class="muted">Analyse the faces first.</p>'; return; }
   if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
-  await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label } });
+  await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label, body: a.kind === "body" } });
   if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
   const fq = AV.face.impl && AV.face.impl.quality;
   if (fq) { $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small ' + (fq.ok ? "" : "note warn") + '">' + esc(avQcText(fq)) + "</div>"); api("/api/avatars/qc", { id: a.id, qc: fq }).catch(() => {}); }
@@ -208,7 +220,8 @@ async function renderAvatars(el) {
       '<div class="row small" id="av-syn"><label><input type="checkbox" id="av-attest"> I confirm these portraits are AI-generated and show no real person.</label></div>' +
       '<div class="row small" id="av-con" hidden><input id="av-subject" type="text" placeholder="the person\'s name" aria-label="Person"><label><input type="checkbox" id="av-consent"> They agreed to become an avatar (consent)</label></div>' +
       '<div class="row"><input id="av-files" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Portraits"><span class="small muted">or a folder / .zip on this computer</span>' +
-      '<input id="av-path" class="grow" type="text" placeholder="/path/to/portraits.zip" aria-label="Folder or zip"><button class="btn" id="av-import">Import</button>' +
+      '<input id="av-path" class="grow" type="text" placeholder="/path/to/portraits.zip" aria-label="Folder or zip">' +
+      '<label class="small"><input type="checkbox" id="av-body"> full-body photos (keep the whole figure)</label><button class="btn" id="av-import">Import</button>' +
       '<button class="btn quiet" id="av-analyse">Analyse faces</button><button class="btn quiet" id="av-checkall">Check movement of every face</button></div><div class="small" id="av-msg" aria-live="polite"></div>' +
       '<div id="av-grid" style="margin-top:8px"></div></div>';
     el.querySelectorAll('input[name="av-src"]').forEach(r => r.onchange = () => {
@@ -216,7 +229,7 @@ async function renderAvatars(el) {
       $("#av-syn", el).hidden = !syn; $("#av-con", el).hidden = syn;
     });
     $("#av-import", el).onclick = async () => {
-      const source = el.querySelector('input[name="av-src"]:checked').value, attest = $("#av-attest", el).checked;
+      const source = el.querySelector('input[name="av-src"]:checked').value, attest = $("#av-attest", el).checked, kind = $("#av-body", el).checked ? "body" : "face";
       let r;
       if (source === "consented") {
         const fs = [...$("#av-files", el).files];
@@ -224,17 +237,17 @@ async function renderAvatars(el) {
         let added = 0;
         for (const f of fs) {
           const data = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.readAsDataURL(f); });
-          const x = await api("/api/avatars/add", { data_b64: data, filename: f.name, source, subject: $("#av-subject", el).value, consent: $("#av-consent", el).checked });
+          const x = await api("/api/avatars/add", { data_b64: data, filename: f.name, source, subject: $("#av-subject", el).value, consent: $("#av-consent", el).checked, tags: kind === "body" ? ["body"] : [] });
           if (!x.duplicate) added++;
         }
         r = { added, duplicates: fs.length - added, failed: [] };
       } else if ($("#av-path", el).value.trim()) {
-        r = await api("/api/avatars/import", { path: $("#av-path", el).value.trim(), source, attest });
+        r = await api("/api/avatars/import", { path: $("#av-path", el).value.trim(), source, attest, kind });
       } else {
         const fs = [...$("#av-files", el).files];
         if (!fs.length) return toast("Choose portraits, or give a folder or .zip.");
         const files = await Promise.all(fs.map(f => new Promise(res => { const rd = new FileReader(); rd.onload = () => res({ name: f.name, data_b64: rd.result }); rd.readAsDataURL(f); })));
-        r = await api("/api/avatars/import", { files, source, attest });
+        r = await api("/api/avatars/import", { files, source, attest, kind });
       }
       $("#av-msg", el).textContent = "Added " + r.added + (r.duplicates ? ", " + r.duplicates + " already in the library" : "") + (r.failed.length ? ", " + r.failed.length + " skipped" : "") + ".";
       await avRefresh(el);

@@ -116,7 +116,7 @@ async function showFaceNow() {
   const v = faceChoice(), list = await faceAvatars(), a = list.find(x => String(x.id) === v);
   if (v !== "2d" && v !== "3d" && !a) { setFaceChoice("2d"); }
   const c = faceChoice();
-  el.innerHTML = a ? '<img alt="" src="/api/avatars/image?id=' + a.id + '"><b>' + esc(a.name) + '</b><span class="small muted">will speak</span>'
+  el.innerHTML = a ? '<img alt="" src="/api/avatars/image?id=' + a.id + '"' + (a.kind === "body" ? ' class="fp-bodyimg"' : "") + '><b>' + esc(a.name) + '</b><span class="small muted">' + (a.kind === "body" ? "full body · " : "") + 'will speak</span>'
     : '<span class="fp-ico">' + (c === "3d" ? "🧊" : "🙂") + "</span><b>" + (c === "3d" ? "3D / VR face" : "2D face") + '</b><span class="small muted">will speak</span>';
   $$("#sp-faces [data-fp]").forEach(x => x.classList.toggle("on", x.dataset.fp === c));
 }
@@ -125,8 +125,12 @@ async function facePicker(host, onPick, opts) {
   const list = await faceAvatars(), only = opts && opts.avatarsOnly;
   const cur = opts && opts.current !== undefined ? String(opts.current) : faceChoice();
   const tile = (v, inner, title) => '<button class="fp-tile' + (String(v) === cur ? " on" : "") + '" data-fp="' + v + '" title="' + esc(title) + '">' + inner + "</button>";
-  host.innerHTML = '<div class="fp-strip">' + (only ? "" : tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR")) +
-    list.map(a => tile(a.id, '<img loading="lazy" alt="" src="/api/avatars/image?id=' + a.id + '"><span>' + esc(a.name) + "</span>", a.name + " — " + a.label)).join("") + "</div>" +
+  const faces = list.filter(a => a.kind !== "body"), bodies = list.filter(a => a.kind === "body");
+  const av = a => tile(a.id, '<img loading="lazy" alt="" src="/api/avatars/image?id=' + a.id + '"><span>' + esc(a.name) + "</span>", a.name + " — " + a.label);
+  host.innerHTML = (bodies.length ? '<div class="small muted fp-head">Faces</div>' : "") +
+    '<div class="fp-strip">' + (only ? "" : tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR")) +
+    faces.map(av).join("") + "</div>" +
+    (bodies.length ? '<div class="small muted fp-head">Full-body avatars — the whole figure breathes and moves while the face speaks</div><div class="fp-strip fp-bodies">' + bodies.map(av).join("") + "</div>" : "") +
     (list.length ? "" : '<p class="small muted">No avatars yet — add portraits in <a href="#" data-fp-lib>Speech → Avatars</a>.</p>');
   host.querySelectorAll("[data-fp]").forEach(b => b.onclick = () => {
     host.querySelectorAll("[data-fp]").forEach(x => x.classList.toggle("on", x === b));
@@ -210,6 +214,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
   const show = async v => {
     shown = v;
     if (v === "2d" || v === "3d") {
+      stage.style.maxWidth = "360px";
       try { await face.setMode(v); } catch (e) { info.textContent = "3D could not start here: " + e.message; await face.setMode("2d"); }
       return;
     }
@@ -217,7 +222,8 @@ async function faceCard(host, audioName, text, lang, emotion) {
     try {
       av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
       if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatars → Analyse faces");
-      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label } });
+      stage.style.maxWidth = av.kind === "body" ? "460px" : "360px";
+      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body" } });
     } catch (e) { info.textContent = "That face could not be shown: " + e.message; await face.setMode("2d"); return; }
     if (track) face.track = motion ? Object.assign({}, track, { motion }) : track;
     if (motion) { info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels"; return; }

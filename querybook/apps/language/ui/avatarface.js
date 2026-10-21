@@ -115,7 +115,8 @@
     }
     _setup(img, lm) {
       if (!lm || lm.length < 468) throw new Error("this avatar has not been analysed yet — use “Analyse faces” in the library");
-      const scale = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const body = this.body = !!this.avatar.body;          // full-body avatar: the whole figure is shown and breathes and sways
+      const scale = Math.min(1, (body ? 1600 : 1000) / Math.max(img.width, img.height));
       const W = Math.round(img.width * scale), H = Math.round(img.height * scale);
       const src = document.createElement("canvas"); src.width = W; src.height = H; src.getContext("2d").drawImage(img, 0, 0, W, H);
       this.src = src;
@@ -125,15 +126,25 @@
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       pts3.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
       const fw = x1 - x0, fh = y1 - y0, fcx = (x0 + x1) / 2, fcy = (y0 + y1) / 2;
-      const crop = { x: Math.max(0, fcx - fw * 1.1), y: Math.max(0, y0 - fh * 0.5) };
-      crop.w = Math.min(W, fcx + fw * 1.1) - crop.x; crop.h = Math.min(H, y1 + fh * 0.55) - crop.y;
+      const crop = body ? { x: Math.max(0, fcx - fw * 3.4), y: Math.max(0, y0 - fh * 0.9) } : { x: Math.max(0, fcx - fw * 1.1), y: Math.max(0, y0 - fh * 0.5) };
+      crop.w = Math.min(W, fcx + fw * (body ? 3.4 : 1.1)) - crop.x; crop.h = (body ? H : Math.min(H, y1 + fh * 0.55)) - crop.y;
       // fixed anchors: a ring around the face and the crop's edge, so hair, neck and background stretch, never tear
       const anchors = [];
       for (let a = 0; a < 32; a++) anchors.push([fcx + Math.cos(a / 32 * 2 * Math.PI) * fw * 0.8, fcy + Math.sin(a / 32 * 2 * Math.PI) * fh * 0.74, 0]);
       for (let k = 0; k <= 4; k++) [[crop.x + crop.w * k / 4, crop.y], [crop.x + crop.w * k / 4, crop.y + crop.h], [crop.x, crop.y + crop.h * k / 4], [crop.x + crop.w, crop.y + crop.h * k / 4]]
         .forEach(([x, y]) => anchors.push([x, y, 0]));
+      this.nEdge = anchors.length;                       // the crop's edge never moves (the background stays put)
+      if (body) {                                         // a lattice over the figure carries breathing and sway to hair, shoulders and arms
+        for (let j = 1; j < 10; j++) for (let k = 1; k < 8; k++) {
+          const x = crop.x + crop.w * k / 8, y = crop.y + crop.h * j / 10;
+          if (((x - fcx) / (fw * 0.95)) ** 2 + ((y - fcy) / (fh * 0.9)) ** 2 > 1) anchors.push([x, y, 0]);
+        }
+      }
       this.base3 = pts3.concat(anchors.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= H));
       this.nFace = pts3.length;
+      const ringN = 32, edgeOf = new Set();
+      this.base3.forEach(([x, y], i) => { if (i >= pts3.length + ringN && (Math.abs(x - crop.x) < 0.5 || Math.abs(y - crop.y) < 0.5 || Math.abs(x - crop.x - crop.w) < 0.5 || Math.abs(y - crop.y - crop.h) < 0.5)) edgeOf.add(i); });
+      this.fixed = edgeOf;
       this.nX0 = this.base3.length; this.extra = []; this.ring = new Set(RING);
       this.base = this.base3.map(([x, y]) => [x, y]);
       // triangulate a copy with the mouth slightly open, so no triangle bridges the lips (they part cleanly when the jaw drops)
@@ -177,8 +188,10 @@
       this.fit = this._fit(); this.gain = new Float32Array(BS.length).fill(1);
       this._fields();
       const cv = document.createElement("canvas"), outW = Math.min(this.el.clientWidth || 380, 480);
-      cv.width = Math.round(outW); cv.height = Math.round(outW * crop.h / crop.w);
-      cv.style.width = "100%"; cv.style.maxWidth = outW + "px"; cv.style.borderRadius = "10px";
+      const pxW = body ? Math.min(crop.w, 720) : outW;   // a full figure is drawn sharper than it is shown (the face stays detailed in video)
+      cv.width = Math.round(pxW); cv.height = Math.round(pxW * crop.h / crop.w);
+      cv.style.width = "100%"; cv.style.maxWidth = (body ? Math.max(outW, 420) : outW) + "px"; cv.style.borderRadius = "10px";
+      this.bodyShape = { fw, fh, fcx, fcy, H };
       this.el.innerHTML = ""; this.el.appendChild(cv);
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
@@ -472,6 +485,18 @@
       v.mouthSmileLeft = v.mouthSmileRight = m.smile || 0;
       this.setChannels(v);
     }
+    // Idle life of a standing figure: breathing (chest and shoulders rise, the head with them) and a slow shift of weight that
+    // sways everything above the hips, growing with height; the crop's edge stays still so the background never slides.
+    _bodyMove(x, y, t) {
+      const { fw, fh, fcx, fcy, H } = this.bodyShape;
+      const pivot = H + 2.2 * fh, up = Math.max(0, Math.min(1.3, (pivot - y) / (pivot - fcy)));
+      const col = 1 - smooth(1.7 * fw, 3.2 * fw, Math.abs(x - fcx));
+      const sway = 0.045 * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
+      const br = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 4.1);
+      const chest = smooth(fcy + 0.6 * fh, fcy + 1.4 * fh, y) * (1 - smooth(fcy + 2.8 * fh, fcy + 4 * fh, y)), above = 1 - smooth(fcy + 1.4 * fh, fcy + 2.4 * fh, y);
+      const dy = -0.018 * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.008 * br * chest;
+      return [dx * col, dy * col];
+    }
     _points(chan, head) {
       const n = this.base3.length, out = new Array(n), c = Float32Array.from(chan || this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
       // a mouth widens at most ~10% in speech: stretch, smile and dimple share one soft-limited budget per side
@@ -496,6 +521,9 @@
           const X2 = X1 * cr - Y1 * sr, Y2 = X1 * sr + Y1 * cr;
           out[i] = [px + X2, py + Y2];                                      // orthographic: the face at rest maps exactly onto the portrait
         } else out[i] = [x, y];
+      }
+      if (this.body && !head && this.t) {                                   // checks (qc) pass a head pose and see the figure at rest
+        for (let i = 0; i < n; i++) { if (this.fixed.has(i)) continue; const [bx, by] = this._bodyMove(this.base3[i][0], this.base3[i][1], this.t); out[i] = [out[i][0] + bx, out[i][1] + by]; }
       }
       return out;
     }

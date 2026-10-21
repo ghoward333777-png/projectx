@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.28.0)
+  Language Builder (1.29.0)
+    * Full-body avatars: a second row under the faces. The whole figure breathes and sways while the face speaks.
+      First model: Pamela (AI-generated): her head joins the face library, and she stands as three full-body avatars.
+      Import your own with "full-body photos" ticked.
     * Talking face retuned against a Gemini reference reading (measured frame by frame): wider opening, jaw that
       swings like a hinge, stronger rounding/spreading, lip presses, lower teeth, smile, brows, nods.
     * Faster drawing: WebGL (graphics card) or 2D canvas, whichever is faster on the computer - smooth, full-rate video.
