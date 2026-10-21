@@ -53,7 +53,9 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.35.0)
+  Language Builder (1.36.0)
+    * Moves can have several takes (Pamela's swimming has two); each avatar learns the person's body proportions
+      from their standing footage and uses them to align new videos.
     * (all three apps) Self-improvement: the Engineer reads QueryBook's own code, log and activity record and
       proposes improvements - exact fixes or advice. Nothing changes without the admin; every approved fix is
       tested on a copy with the whole self-test first, backed up, and can be reverted. Agents tab -> 5.

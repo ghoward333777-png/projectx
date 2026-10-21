@@ -43,7 +43,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.35.0"
+VERSION = "1.36.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1778,9 +1778,12 @@ def selftest():
                 bool(tt) and tt["frames"] == 97 and trk["turn"] and sum(1 for y in tt["yaw"] if y is not None) >= 40, tt and tt["frames"])
         mv = trk and app.avatars.motions(trk["id"])
         c.check("avatars: Pamela's motion library — turn around, arm swings, boxing, side kick, cartwheel, walk, high knee, water break, swimming — each with its words",
-                bool(mv) and {m["slug"] for m in mv} == {"turn-around", "arm-swings", "boxing", "side-kick", "cartwheel", "walk-to-you", "high-knee", "water-break", "swimming"}
+                bool(mv) and {m["slug"] for m in mv} == {"turn-around", "arm-swings", "boxing", "side-kick", "cartwheel", "walk-to-you", "high-knee", "water-break", "swimming", "swimming-2"}
                 and all(m["words"] and m["frames"] >= 10 for m in mv) and trk["motions"][0] == "turn-around"
                 and os.path.isfile(app.avatars.motion_frame(trk["id"], "swimming", 0)), [m["slug"] for m in mv or []])
+        an = trk and app.avatars.anatomy(trk["id"])
+        c.check("avatars: a second swimming take (she alternates) and her body proportions learned from her standing footage",
+                bool(an) and abs(an["face_per_width"] - 0.294) < 0.01 and app.avatars.motion(trk["id"], "swimming-2")["take_of"] == "swimming", an)
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

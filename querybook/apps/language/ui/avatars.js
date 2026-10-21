@@ -167,7 +167,11 @@ async function avTurnaround(id, file, note) {
 async function avAnatomy(id) { try { return (await api("/api/avatars/anatomy?id=" + id)).anatomy; } catch (e) { return null; } }
 async function avAnatomyLearn(id, A) {
   const c = A.calib; if (!c || c.frames < 3 || !c.face_per_width) return null;
-  const old = await avAnatomy(id), n0 = old ? old.frames || 0 : 0, n = n0 + c.frames, mix = k => old && old[k] !== undefined && c[k] !== null ? (old[k] * n0 + c[k] * c.frames) / n : c[k];
+  const prev = await avAnatomy(id);
+  // a video whose proportions differ by more than a quarter (arms overhead, swimming, lying down) is a move, not a
+  // measurement of how she stands: it does not change her profile
+  if (prev && prev.face_per_width && Math.abs(c.face_per_width / prev.face_per_width - 1) > 0.25) return null;
+  const old = prev, n0 = old ? old.frames || 0 : 0, n = n0 + c.frames, mix = k => old && old[k] !== undefined && c[k] !== null ? (old[k] * n0 + c[k] * c.frames) / n : c[k];
   return api("/api/avatars/anatomy", { id, anatomy: { face_per_width: mix("face_per_width"), headtop: mix("headtop"), height_per_face: mix("height_per_face"), x_off: mix("x_off"),
     frames: n, videos: ((old && old.videos) || []).concat([A.file.name]) } });
 }

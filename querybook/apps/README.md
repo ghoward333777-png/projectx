@@ -380,7 +380,11 @@ play one after another, and a move named twice in one sentence plays once. Pamel
 turn around, arm swings, boxing, side kick, cartwheel, walk to you, high knee, water break, and swimming (a drone view
 in a pool, played as a cutaway). The words: "turn around"; "arm swings / stretch / warm up"; "box / punch / fight";
 "kick"; "cartwheel / flip"; "walk / come closer"; "high knee / march"; "water / drink / bottle"; "swim / pool /
-backstroke". In the calibrated speaking smile
+backstroke". A move can have several takes (*Another take of* when storing): the same words play them in turn —
+Pamela's swimming has two. **Her proportions.** Each import measures the person standing (face height per shoulder
+width, head top, body height); the avatar keeps a profile learned across all their standing footage and uses it to
+align videos where the face is seldom seen. A video whose proportions differ by more than a quarter (swimming, arms
+overhead) is used as a move but does not change the profile. In the calibrated speaking smile
 the upper front teeth now show as they do in the reference (up to ~9 mm, never brighter than the eye whites).
 
 ## Quality lab (Speech → 🎬 Quality lab)
