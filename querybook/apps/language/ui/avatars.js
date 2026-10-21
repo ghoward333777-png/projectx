@@ -36,6 +36,85 @@ async function avLandmarks(url) {
   return null;
 }
 
+// Turnaround (full body): a video of the person turning on the spot becomes their own side and back views. Every frame
+// is aligned to the face where the tracker sees it (front to ~60° either way); behind, where no face shows, the
+// alignment is carried across from the frames on either side. Frames are stored with the avatar; the part where the
+// person actually turns is marked so the avatar can play just that.
+async function avTurnaround(id, file, note) {
+  const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.src = URL.createObjectURL(file);
+  await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("this video cannot be played here")); });
+  if (!isFinite(v.duration)) await new Promise(res => { v.ondurationchange = () => { if (isFinite(v.duration)) res(); }; v.currentTime = 1e9; setTimeout(res, 3000); });
+  const fps = 12, dur = Math.min(v.duration || 0, 30), W = v.videoWidth, H = v.videoHeight;
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  const seek = t => new Promise(r => { v.onseeked = r; v.currentTime = t; });
+  const lm = await tracker(), rows = [];
+  let det = null; try { det = await scDetector(); } catch (e) { det = null; }     // the person's outline (also from behind)
+  const sm = document.createElement("canvas"); sm.width = 64; sm.height = 36; const sg = sm.getContext("2d", { willReadFrequently: true }); let prev = null;
+  for (let t = 0; t < dur - 0.02; t += 1 / fps) {
+    await seek(t); g.drawImage(v, 0, 0);
+    const now = performance.now() + rows.length, r = lm.detectForVideo(c, now), L = r.faceLandmarks && r.faceLandmarks[0];
+    let face = null, yaw = null, box = null;
+    if (L) {
+      face = { cx: (L[10].x + L[152].x) / 2 * W, cy: (L[10].y + L[152].y) / 2 * H, fh: Math.hypot((L[10].x - L[152].x) * W, (L[10].y - L[152].y) * H) };
+      try { const m = measureFrame(r, { videoWidth: W, videoHeight: H }, t); yaw = m.pose ? m.pose[0] : null; } catch (e) { yaw = null; }
+    }
+    if (det) { const people = (det.detectForVideo(c, now).detections || []).filter(d => (d.categories[0] || {}).categoryName === "person");
+      const bb = people.sort((a, b) => b.boundingBox.width * b.boundingBox.height - a.boundingBox.width * a.boundingBox.height)[0];
+      if (bb) box = { x: bb.boundingBox.originX, y: bb.boundingBox.originY, w: bb.boundingBox.width, h: bb.boundingBox.height }; }
+    sg.drawImage(c, 0, 0, 64, 36); const px = sg.getImageData(0, 0, 64, 36).data; let diff = 0;
+    if (prev) { for (let i = 0; i < px.length; i += 4) diff += Math.abs(px[i] - prev[i]) + Math.abs(px[i + 1] - prev[i + 1]); diff /= px.length / 2; }
+    prev = px;
+    rows.push({ t, face, yaw, box, cut: diff > 12 });
+    if (rows.length % 12 === 0) note("Reading the turn… " + t.toFixed(0) + " of " + dur.toFixed(0) + " s");
+  }
+  const seen = rows.map((r, i) => r.face ? i : -1).filter(i => i >= 0);
+  if (seen.length < 4) throw new Error("the face is not visible at the start or end — use a video that begins and ends facing the camera");
+  const med0 = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null;
+  // calibrate the outline against the face on frames facing the camera: face size per shoulder width, head top to face centre
+  const cal = rows.filter(r => r.face && r.box && Math.abs(r.yaw || 0) < 20);
+  const qW = med0(cal.map(r => r.face.fh / r.box.w)), qTop = med0(cal.map(r => (r.face.cy - r.box.y) / r.face.fh)), qX = med0(cal.map(r => (r.face.cx - (r.box.x + r.box.w / 2)) / r.face.fh));
+  let seg = 0; rows.forEach(r => { if (r.cut) seg++; r.seg = seg; });
+  const segW = {};                                     // per shot: the shoulder width when the body is square to the camera (front or back)
+  rows.forEach(r => { if (r.box) (segW[r.seg] = segW[r.seg] || []).push(r.box.w); });
+  Object.keys(segW).forEach(k => { const a = segW[k].sort((x, y) => x - y); segW[k] = a[Math.floor(a.length * 0.8)]; });
+  rows.forEach(r => {
+    if (r.face) { r.align = r.face; return; }
+    if (r.box && qW && segW[r.seg]) { const fh = qW * segW[r.seg]; r.align = { fh, cx: r.box.x + r.box.w / 2 + (qX || 0) * fh, cy: r.box.y + qTop * fh }; }
+  });
+  const known = rows.map((r, i) => r.align ? i : -1).filter(i => i >= 0);
+  rows.forEach((r, i) => {                             // anything still unknown: carried across from its neighbours
+    if (r.align) return;
+    const a = [...known].reverse().find(j => j < i), b = known.find(j => j > i);
+    if (a === undefined || b === undefined) { r.align = Object.assign({}, rows[a === undefined ? b : a].align); return; }
+    const u = (i - a) / (b - a), A = rows[a].align, B = rows[b].align;
+    r.align = { cx: A.cx + (B.cx - A.cx) * u, cy: A.cy + (B.cy - A.cy) * u, fh: A.fh + (B.fh - A.fh) * u };
+  });
+  rows.forEach((r, i) => {                             // steady: a 5-frame running median within each shot
+    const nb = rows.slice(Math.max(0, i - 2), i + 3).filter(x => x.seg === r.seg);
+    r.al2 = { cx: med0(nb.map(x => x.align.cx)), cy: med0(nb.map(x => x.align.cy)), fh: med0(nb.map(x => x.align.fh)) };
+  });
+  rows.forEach(r => { r.align = r.al2; });
+  const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const faceH = med(seen.map(i => rows[i].face.fh / H)), faceCy = med(seen.map(i => rows[i].face.cy / H));
+  // where the turning happens: from just before the head leaves the front to just after it is back
+  const away = rows.map(r => r.face === null || Math.abs(r.yaw || 0) > 15);
+  const first = away.indexOf(true), last = away.lastIndexOf(true);
+  const start = Math.max(0, first - Math.round(0.4 * fps)), end = Math.min(rows.length - 1, last + Math.round(0.4 * fps));
+  const Hn = Math.min(720, H), Wn = Hn, o = document.createElement("canvas"); o.width = Wn; o.height = Hn; const og = o.getContext("2d");
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], k = faceH * Hn / r.align.fh;
+    await seek(r.t);
+    og.setTransform(1, 0, 0, 1, 0, 0); og.fillStyle = "#777"; og.fillRect(0, 0, Wn, Hn);
+    const cover = Math.max(Wn / W, Hn / H); og.drawImage(v, (Wn - W * cover) / 2, (Hn - H * cover) / 2, W * cover, H * cover);   // nothing left blank
+    og.setTransform(k, 0, 0, k, Wn / 2 - r.align.cx * k, faceCy * Hn - r.align.cy * k); og.drawImage(v, 0, 0);
+    await api("/api/avatars/turn_put", { id, i, data_b64: o.toDataURL("image/jpeg", 0.85) });
+    if (i % 12 === 0) note("Storing the turn… " + Math.round(100 * i / rows.length) + "%");
+  }
+  URL.revokeObjectURL(v.src);
+  return api("/api/avatars/turn_set", { id, meta: { frames: rows.length, fps, width: Wn, height: Hn, face_h: faceH, face_cy: faceCy,
+    yaw: rows.map(r => r.yaw === null ? null : +r.yaw.toFixed(1)), start, end, source: file.name } });
+}
+
 async function avCropFace(url, L, id) {
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("image")); i.src = url; });
   const xs = L.map(p => p[0] * img.width), ys = L.map(p => p[1] * img.height);
@@ -126,8 +205,19 @@ async function avSelect(el, id) {
     (a.voice ? " · voice: " + esc([a.voice.engine, a.voice.voice].filter(Boolean).join(" ")) : " · voice: the Speak tab's current voice") + "</span>" +
     ((a.quality || []).length ? '<div class="note warn small">' + a.quality.map(esc).join("<br>") + "</div>" : "");
   if (!a.analysed) { if (AV.face && AV.face.impl) AV.face.impl.dispose(); AV.face = null; $("#av-stage", el).innerHTML = '<p class="muted">Analyse the faces first.</p>'; return; }
+  if (a.kind === "body") {
+    $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="row small" id="av-turnrow"><b>Turnaround:</b> ' + (a.turn ? "✔ her own side and back views are stored" : "none yet") +
+      ' <input type="file" accept="video/*" id="av-turnfile" aria-label="Turnaround video"><button class="btn quiet" id="av-turnimp">Import a turnaround video</button>' +
+      (a.turn ? '<button class="btn" id="av-turnplay">↻ Turn around</button>' : "") + '<span class="muted" id="av-turnnote"></span></div>');
+    $("#av-turnimp", el).onclick = async () => {
+      const f = $("#av-turnfile", el).files[0]; if (!f) return toast("Choose a video of the person turning around on the spot (front → back → front).");
+      try { await avTurnaround(a.id, f, m => { $("#av-turnnote", el).textContent = m; }); toast("Turnaround stored."); avSelect(el, a.id); }
+      catch (e) { $("#av-turnnote", el).textContent = "Could not import: " + e.message; }
+    };
+  }
   if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
-  await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label, body: a.kind === "body" } });
+  await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label, body: a.kind === "body", turnId: a.turn ? a.id : null } });
+  if ($("#av-turnplay", el)) $("#av-turnplay", el).onclick = () => AV.face.impl && AV.face.impl.turnAround && AV.face.impl.turnAround();
   if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
   const fq = AV.face.impl && AV.face.impl.quality;
   if (fq) { $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small ' + (fq.ok ? "" : "note warn") + '">' + esc(avQcText(fq)) + "</div>"); api("/api/avatars/qc", { id: a.id, qc: fq }).catch(() => {}); }

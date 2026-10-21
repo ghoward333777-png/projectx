@@ -53,7 +53,9 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.31.0)
+  Language Builder (1.32.0)
+    * Turnaround for full-body avatars: import a video of the person turning on the spot; she turns around on
+      "Turn around" or when the text says "turn around". Pamela (stadium) ships with hers. Teeth show in the speaking smile.
     * Full-body avatars calibrated against a reference video of the same model: speaking-smile mouth (upper lip lifts,
       lower lip drops), stronger brows, real blinks, head turns and tilts with hair and torso following, camera cuts
       between wide and close shots (can be switched off). Fix: a streak beside the head on big head moves.

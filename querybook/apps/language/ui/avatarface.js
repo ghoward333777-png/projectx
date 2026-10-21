@@ -45,10 +45,11 @@
   // with less jaw and little rounding; brows move 6–10× more; within a shot the head turns ~15°, nods ~12° and tilts
   // ~11°, the torso follows, and the camera cuts every ~2.5 s between a wide and a close shot with a slow push-in.
   const BODY_CAL = {
-    gain: { jawOpen: 0.62, mouthLowerDownLeft: 1.6, mouthLowerDownRight: 1.6, mouthUpperUpLeft: 2.2, mouthUpperUpRight: 2.2, mouthPucker: 0.15,
+    gain: { jawOpen: 0.62, mouthLowerDownLeft: 1.4, mouthLowerDownRight: 1.4, mouthUpperUpLeft: 2.2, mouthUpperUpRight: 2.2, mouthPucker: 0.15,
             mouthFunnel: 0.5, mouthPressLeft: 2, mouthPressRight: 2, browInnerUp: 5, browOuterUpLeft: 5, browOuterUpRight: 5,
             browDownLeft: 2, browDownRight: 2, eyeSquintLeft: 1.2, eyeSquintRight: 1.2 },
-    derive: { up: 1.1, upSmile: 0.45, down: 0.55 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+    derive: { up: 1.1, upSmile: 0.45, down: 0.4 },
+    teeth_mm: 9, teeth_frac: 0.62, lower_teeth: 0.32,   // the reference speaker shows her upper front teeth (~9 mm) and some lower ones     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
     head: [4.5, 1.8, 5],                                 // yaw, pitch, roll (a still photo stays clean to ~10°; beyond, the hair tears)
     sway: 1.0, breath: 1.2, torsoFollow: 0.7,
     shot_s: 2.5, shots: [1.0, 0.5, 0.78, 0.47], push: 0.05,
@@ -128,6 +129,7 @@
         img.onerror = () => rej(new Error("the portrait could not be loaded"));
         img.src = avatar.imageUrl;
       });
+      if (avatar.turnId) this._loadTurn(avatar.turnId);
     }
     _setup(img, lm) {
       if (!lm || lm.length < 468) throw new Error("this avatar has not been analysed yet — use “Analyse faces” in the library");
@@ -520,6 +522,45 @@
       const x = Math.max(0, Math.min(this.src.width - w, fx - w / 2)), y = Math.max(0, Math.min(this.src.height - h, s >= 0.99 ? c.y : fy - h * 0.36));
       return s >= 0.99 && u === 0 ? null : { x, y: s >= 0.99 ? c.y + (c.h - h) * 0.15 : y, w, h };
     }
+    // Turnaround: the person's own frames of turning on the spot (side and back views a photo cannot give), aligned to this
+    // avatar's face. Playing it cuts to a medium shot the frames cover, fades into them, and fades back to the talking photo.
+    _loadTurn(id) {
+      fetch("/api/avatars/turn?id=" + id).then(r => r.json()).then(d => {
+        const m = d && d.turn; if (!m) return;
+        const imgs = [];
+        for (let i = m.start || 0; i <= (m.end === undefined ? m.frames - 1 : m.end); i++) { const im = new Image(); im.src = "/api/avatars/turn_frame?id=" + id + "&i=" + i; imgs[i] = im; }
+        this.turnSet = { meta: m, imgs };
+      }).catch(() => {});
+    }
+    turnAround(at) {                                       // at: a time on the speech track; none: now (wall clock)
+      if (!this.turnSet || this.turning) return false;
+      const m = this.turnSet.meta, s0 = m.start || 0, s1 = m.end === undefined ? m.frames - 1 : m.end;
+      const k = this.F / (m.face_h * m.height), fw = m.width * k, fh = m.height * k, asp = this.cv.width / this.cv.height;
+      const vh = Math.min(fh, fw / asp) * 0.9, vw = vh * asp, fx = this.fc[0] - m.width / 2 * k, fy = this.fc[1] - m.face_cy * m.height * k;
+      this.turning = { clock: at === undefined ? "wall" : "track", t0: at === undefined ? performance.now() / 1000 : at, s0, s1,
+        dur: (s1 - s0 + 1) / m.fps / 1.25, k, fx, fy, view: { x: fx + (fw - vw) / 2, y: fy + (fh - vh) * 0.3, w: vw, h: vh } };
+      return true;
+    }
+    cueTurns(words) {                                      // "turn around" in the words: she turns as the words are said
+      this.turnCues = [];
+      (words || []).forEach((w, i) => { const a = String(w.word || "").toLowerCase().replace(/[^a-z]/g, ""), b = words[i + 1] && String(words[i + 1].word || "").toLowerCase().replace(/[^a-z]/g, "");
+        if ((a === "turn" || a === "turning" || a === "turns") && b === "around") this.turnCues.push(w.start); });
+    }
+    _turnNow() {
+      const T = this.turning; if (!T) return null;
+      const e = (T.clock === "track" ? (this.t || 0) : performance.now() / 1000) - T.t0;
+      if (e > T.dur) { this.turning = null; return null; }
+      return e < 0 ? null : e;
+    }
+    _turnOverlay(c) {
+      const T = this.turning, e = this._turnNow(); if (e === null || !T) return;
+      const m = this.turnSet.meta, idx = T.s0 + Math.min(T.s1 - T.s0, Math.floor(e / T.dur * (T.s1 - T.s0 + 1))), img = this.turnSet.imgs[idx];
+      if (!img || !img.complete || !img.naturalWidth) return;
+      const a = Math.max(0, Math.min(1, e / 0.2, (T.dur - e) / 0.25)), cr = this.view || this.crop, kk = this.cv.width / cr.w;
+      c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = a;
+      c.drawImage(img, (T.fx - cr.x) * kk, (T.fy - cr.y) * kk, m.width * T.k * kk, m.height * T.k * kk);
+      c.restore();
+    }
     frame(track, t) {
       const tt = t + this.params.lead_ms / 1000, tgt = this._target(track, tt);
       const dt = this.t === null ? 1 : Math.max(0, Math.min(0.2, t - this.t)); this.t = t;
@@ -527,7 +568,9 @@
       const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
       for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
       this.head = this.head.map((h, q) => h + ((this.headT || [0, 0, 0])[q] - h) * a);
-      this.view = this._camera(t);
+      if (this.turnCues && !this.turning && this.tPrev !== undefined) for (const cu of this.turnCues) if (this.tPrev < cu && cu <= t) this.turnAround(cu);
+      this.tPrev = t;
+      this.view = this._turnNow() !== null ? this.turning.view : this._camera(t);
       this._draw();
     }
     setChannels(values) { Object.entries(values || {}).forEach(([k, v]) => { if (k in IDX) this.cur[IDX[k]] = v; }); this._draw(); }
@@ -719,6 +762,7 @@
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis, true);     // final pass: a smooth, feathered edge (no facets)
       this._wrinkles(c, pts);
       this._lids(c, pts);
+      this._turnOverlay(c);
     }
     _drawGL() {
       const pts = this._points(), c = this.ctx, cr = this.view || this.crop, k = this.cv.width / cr.w, B = this.base, F = this.F;
@@ -735,6 +779,7 @@
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis, true);
       this._wrinkles(c, pts);
       this._lids(c, pts);
+      this._turnOverlay(c);
     }
     // A blink that really closes: on small or stylised eyes the moving lid alone can leave the iris showing through a
     // smeared strip of lashes. As the lid comes down, the opening (from where the upper lid would be at rest down to the
@@ -806,6 +851,11 @@
     //    the lip above and darker toward the corners; at most ~3 mm and a third of the opening; coloured from the sclera;
     //  * the tongue rests low and is attached to the floor of the mouth (it rises for th/l, never floats);
     //  * gums are never shown in speech; lower teeth only as a faint edge in a wide opening.
+    // How much upper tooth shows below the lip: a third of the opening and ~3 mm for a neutral speaker; the full-body
+    // calibration's speaking smile shows more (as the reference speaker does), up to half the opening
+    _teethLen(open) {
+      return this.body ? Math.min(open * BODY_CAL.teeth_frac, BODY_CAL.teeth_mm * this.fit.pxmm) : Math.min(open * 0.33, this.fit.teeth_mm * this.fit.pxmm);
+    }
     _mouthInside(c, pts, open, extra, vis, smoothEdge) {
       const F = this.F, pal = this.palette, rgb = (v, a) => "rgba(" + v[0] + "," + v[1] + "," + v[2] + "," + (a === undefined ? 1 : a) + ")";
       const smooth2 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -832,7 +882,7 @@
         c.fillStyle = tg; c.beginPath(); c.ellipse(mx, ty, rx, ry, 0, 0, 2 * Math.PI); c.fill();
       }
       // upper front teeth, hanging from the upper lip's curve
-      const th = Math.min(open * 0.33, this.fit.teeth_mm * this.fit.pxmm) * smooth2(0.01 * F, 0.03 * F, extra);
+      const th = this._teethLen(open) * smooth2(0.01 * F, 0.03 * F, extra);
       if (th > 0.6) {
         // one continuous row (as teeth read at speaking distance), its lower edge gently scalloped tooth by tooth,
         // then barely-there separations; the side teeth sit deeper and darker
@@ -859,7 +909,7 @@
         teethL.slice(1).forEach(t => { const yy = upY(t.x); c.beginPath(); c.moveTo(t.x, yy); c.lineTo(t.x, yy + lenAt(t.x) * 0.75); c.stroke(); });
         // lower front teeth: a smaller row rising from behind the lower lip, only as the jaw opens wide (as in real
         // speech, where the lower incisors show on open vowels); shaded, never brighter than the upper row
-        const lt = Math.min(th * 0.7, open * 0.2) * smooth(0.035 * F, 0.06 * F, extra);
+        const lt = Math.min(th * 0.7, open * (this.body ? BODY_CAL.lower_teeth : 0.2)) * smooth(0.035 * F, 0.06 * F, extra);
         if (lt > 0.6) {
           const lspan = span * 0.62, lx0 = mx - lspan / 2, N2 = 24;
           c.beginPath(); c.moveTo(lx0, loY(lx0) + 1);
@@ -971,8 +1021,8 @@
       if (blue / n > 0.01) issues.push("bluish teeth");
       if (cavRel < 0.08) issues.push("the inside of the mouth is flat black");
       if (cavRel > 0.6) issues.push("the inside of the mouth is too light");
-      const teethMm = Math.min(open * 0.33, this.fit.teeth_mm * this.fit.pxmm) / this.fit.pxmm;
-      if (teethMm > 3.2) issues.push("too much tooth showing");
+      const teethMm = this._teethLen(open) / this.fit.pxmm;
+      if (teethMm > (this.body ? BODY_CAL.teeth_mm + 0.2 : 3.2)) issues.push("too much tooth showing");
       return { issues, measures: { opening_mm: +(open / this.fit.pxmm).toFixed(1), teeth_mm: +teethMm.toFixed(1), cavity_vs_lips: +cavRel.toFixed(2),
         bright_pct: +(100 * bright / n).toFixed(2), pink_pct: +(100 * pink / n).toFixed(2), teeth_vs_sclera: +(teethMax / Math.max(1, scL)).toFixed(2) } };
     }

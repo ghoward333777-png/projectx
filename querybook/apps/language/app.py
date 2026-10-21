@@ -42,7 +42,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.31.0"
+VERSION = "1.32.0"
 PORT = 8101
 program_dir = HERE
 
@@ -906,6 +906,27 @@ class App:
             return self.avatars.add(data, p.get("name"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("tags"),
                                     p.get("subject"), bool(p.get("consent")), p.get("filename"))
 
+        @a.get("/api/avatars/turn")
+        def av_turn(p):
+            return {"turn": self.avatars.turn(p.get("id"))}
+
+        @a.get("/api/avatars/turn_frame")
+        def av_turn_frame(p):
+            with open(self.avatars.turn_frame(p.get("id"), p.get("i") or 0), "rb") as f:
+                return f.read(), "image/jpeg"
+
+        @a.post("/api/avatars/turn_put")
+        def av_turn_put(p):
+            return self.avatars.turn_put(p.get("id"), p.get("i"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
+
+        @a.post("/api/avatars/turn_set")
+        def av_turn_set(p):
+            return self.avatars.turn_set(p.get("id"), p.get("meta") or {})
+
+        @a.post("/api/avatars/turn_delete")
+        def av_turn_delete(p):
+            return self.avatars.turn_delete(p.get("id"))
+
         @a.post("/api/avatars/landmarks")
         def av_landmarks(p):
             return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
@@ -1716,6 +1737,10 @@ def selftest():
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)
                 and any(a["name"] == "Pamela" and a["kind"] == "face" for a in st), [a["name"] for a in bodies])
+        stad = next((a for a in bodies if a["name"] == "Pamela — stadium"), None)
+        tm = stad and app.avatars.turn(stad["id"])
+        c.check("avatars: Pamela's turnaround (her own side and back views) comes with her stadium avatar, aligned and timed",
+                bool(tm) and tm["frames"] == 81 and tm["end"] == 80 and os.path.isfile(app.avatars.turn_frame(stad["id"], 40)) and stad["turn"], tm and tm["frames"])
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

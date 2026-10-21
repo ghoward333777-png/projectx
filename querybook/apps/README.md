@@ -358,6 +358,16 @@ and a close shot with a slow push-in (switch it off under the face: *camera cuts
 cannot do: turn the head as far as the reference (~18°: beyond ~10° the hair tears), move the arms into new gestures,
 or change the camera angle — those need a generative video model.
 
+**Turnaround: her own side and back views.** A full-body avatar can carry a turnaround — a short video of the person
+turning on the spot (front → side → back → side → front). *Avatar studio → Import a turnaround video* reads it frame
+by frame: every frame is aligned to the face where the tracker sees it (front to ~60° either way); behind, where no face
+shows, the person detector's outline (shoulder width and head top, calibrated on the frames facing the camera) carries
+the size and position across, shot by shot, so camera cuts and zooms in the source do not make her jump. The part
+where she actually turns is found and kept. Then *↻ Turn around* (under the talking face, and in the studio) — or the
+words "turn around" in the text, at the moment they are spoken — cuts to a medium shot, fades into her real turn, and
+fades back to the talking photo. Pamela's stadium avatar ships with hers (81 frames). In the calibrated speaking smile
+the upper front teeth now show as they do in the reference (up to ~9 mm, never brighter than the eye whites).
+
 ## Quality lab (Speech → 🎬 Quality lab)
 
 Every avatar test is a quality sample. The chosen face says a test script (four built-in scripts cover every mouth

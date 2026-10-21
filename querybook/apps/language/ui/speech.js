@@ -187,7 +187,8 @@ async function faceCard(host, audioName, text, lang, emotion) {
     '<div class="face-stage" style="max-width:360px"></div>' +
     '<div class="row" style="margin:6px 0"><button class="btn bigbtn" data-fplay>▶ Play</button><span class="small" data-ftime>0:00 / 0:00</span>' +
     '<button class="btn quiet" data-fdl>⬇ Download video (MP4)</button><span class="small muted" data-fdlnote></span>' +
-    '<label class="small" data-fcamw hidden><input type="checkbox" data-fcam> camera cuts and push-ins (full body)</label></div>' +
+    '<label class="small" data-fcamw hidden><input type="checkbox" data-fcam> camera cuts and push-ins (full body)</label>' +
+    '<button class="btn quiet" data-fturn hidden title="Her own side and back views (turnaround)">↻ Turn around</button></div>' +
     '<p class="small muted" data-finfo>Working out the mouth shapes…</p>';
   host.appendChild(box);
   const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
@@ -208,6 +209,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
     const t0 = performance.now();
     track = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
     face.attach(audio, motion ? Object.assign({}, track, { motion }) : track);
+    if (face.impl && face.impl.cueTurns) face.impl.cueTurns(track.words);         // "… turn around …" in the text: she turns
     info.textContent = track.words.length + " words, " + track.visemes.length + " mouth shapes, " + track.duration.toFixed(2) + " s of audio — timing: " + track.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
     return track;
   };
@@ -227,7 +229,8 @@ async function faceCard(host, audioName, text, lang, emotion) {
       if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatars → Analyse faces");
       stage.style.maxWidth = av.kind === "body" ? "460px" : "360px";
       box.querySelector("[data-fcamw]").hidden = av.kind !== "body";
-      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body" },
+      box.querySelector("[data-fturn]").hidden = !av.turn;
+      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body", turnId: av.turn ? av.id : null },
         params: { camera: faceCamera() ? "director" : "still" } });
     } catch (e) { info.textContent = "That face could not be shown: " + e.message; await face.setMode("2d"); return; }
     if (track) face.track = motion ? Object.assign({}, track, { motion }) : track;
@@ -242,6 +245,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
     }).catch(e => { motionJob = null; if (shown === v) info.textContent = av.name + " is speaking with mouth shapes only (the 52-channel motion failed: " + e.message + ")"; });
   };
   let motionJob = null;
+  box.querySelector("[data-fturn]").onclick = () => face.impl && face.impl.turnAround && face.impl.turnAround();
   const cam = box.querySelector("[data-fcam]"); cam.checked = faceCamera();
   cam.onchange = () => { try { localStorage.setItem("qb.camera", cam.checked ? "director" : "still"); } catch (e) {} if (shown) show(shown); };
   facePicker(box.querySelector("[data-fpick]"), show);
