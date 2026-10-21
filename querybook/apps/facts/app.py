@@ -20,6 +20,7 @@ import qbcore as core
 import qbcommons as cm
 import qbdevices
 import qbagents
+import qbengineer
 import harvest
 import gcloud
 import dates
@@ -27,7 +28,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 PORT = 8103
 program_dir = HERE
 
@@ -97,6 +98,7 @@ class App:
         cm.attach(self, APP_ID, harvest.FactsAdapter(self, dates, OLD_KIND, SINGLE_VALUED))
         qbdevices.attach(self, APP_ID, PORT)
         qbagents.attach(self, APP_ID)
+        qbengineer.attach(self, APP_ID, HERE)
         try:
             self.store.backup("startup")
         except Exception as e:

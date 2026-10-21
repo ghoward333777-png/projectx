@@ -485,6 +485,23 @@ terms and links are kept; every line that instructs a language model — persona
 "think step by step" — is quarantined, shown with the reason, and never used; scripts are listed, never executed.
 A text skill can use a playbook: its key terms become a measure ("playbook terms covered").
 
+## Self-improvement: the Engineer (`_core/qbengineer.py`, Agents tab → 5, all three applications)
+
+QueryBook reads its own program and suggests improvements to itself — with deterministic program analysis, no AI model.
+**Its skills:** Python read with the language's own parser — imports never used (fix), `== None` (fix), bare `except:`
+that also swallows Ctrl+C (fix), mutable default arguments, very long or very branchy functions, TODO/FIXME notes
+(advice); the pages' JavaScript — `console.log` / `debugger` left in (fix), functions nothing calls (advice); and the
+running program — errors in its own log, traced to the file and line (advice), and work that is regularly slow, from
+its activity record (advice).
+
+**Nothing changes without the admin.** Every finding is a proposal with its evidence; a fix carries the exact change
+(a unified diff). Approving needs the admin passphrase. An approved fix is first made in a copy of the program, compiled,
+and the program's whole self-test is run on that copy; only if it passes is the change made — the originals backed up,
+a one-click revert, the result recorded (restart QueryBook to run the improved program). A shared core file is changed in
+every application and the master copy. Approved advice becomes a to-do item. **It learns from the admin:** proposals are
+ranked by severity and by what the admin has approved or rejected before, and a skill rejected three times without an
+approval is muted until the admin unmutes it.
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

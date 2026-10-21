@@ -881,7 +881,14 @@ async function renderAgents(el) {
       '<div class="small" id="ag-cmsg" aria-live="polite"></div><div id="ag-pbs"></div><div id="ag-pb"></div></div>' +
       '<div class="card"><h2>4 · Live data</h2><p class="small muted">A data address (JSON or CSV) read on a schedule while QueryBook runs. Addresses of AI-model services are refused.</p>' +
       '<div class="row"><input id="ag-fname" placeholder="name" style="width:140px"><input id="ag-furl" class="grow" placeholder="https://…/data.json"><input id="ag-fpath" placeholder="JSON path (e.g. data.price) or CSV column" style="width:220px">' +
-      '<input id="ag-fevery" type="number" value="300" min="30" style="width:80px" title="seconds"><button class="btn" id="ag-fadd">Add feed</button></div><div id="ag-feeds"></div></div>';
+      '<input id="ag-fevery" type="number" value="300" min="30" style="width:80px" title="seconds"><button class="btn" id="ag-fadd">Add feed</button></div><div id="ag-feeds"></div></div>' +
+      '<div class="card"><h2>5 · Self-improvement — the Engineer</h2><p class="small muted">QueryBook reads its own program, log and activity record with deterministic ' +
+      "program analysis (no AI model) and proposes improvements to itself — each with its evidence, and for mechanical fixes the exact change. <b>Nothing changes without the admin.</b> " +
+      "An approved fix is first made in a copy of the program and the whole self-test is run on it; only if it passes is it applied, with a backup and a one-click revert " +
+      "(restart QueryBook to run the improved program). Approved advice becomes a to-do item. The Engineer learns from the admin's decisions.</p>" +
+      '<div class="row"><button class="btn" id="ag-escan">🔍 Look for improvements</button><select id="ag-efilter"><option value="">all proposals</option><option value="open" selected>waiting for the admin</option>' +
+      '<option value="accepted">to do (approved advice)</option><option value="applied">applied</option><option value="failed">not applied (test failed)</option><option value="rejected">rejected</option>' +
+      '<option value="muted">muted</option></select><span class="small" id="ag-ejob" aria-live="polite"></span></div><div id="ag-eskills"></div><div id="ag-eprops"></div><div id="ag-eone"></div></div>';
     $("#ag-sadd", el).onclick = async () => { const s = await api("/api/agents/skill_add", { name: $("#ag-sname", el).value, agent: $("#ag-sagent", el).value }); $("#ag-sname", el).value = ""; AG.skill = s.id; renderAgents(el); };
     $("#ag-csearch", el).onclick = async () => {
       const r = await api("/api/agents/claw/search", { q: $("#ag-cq", el).value, safe: $("#ag-csafe", el).checked });
@@ -935,6 +942,10 @@ async function renderAgents(el) {
       renderAgents(el);
     };
     $("#ag-skills", el).onclick = e => { const b = e.target.closest("[data-sk]"); if (b) { AG.skill = Number(b.dataset.sk); renderAgents(el); } };
+    $("#ag-escan", el).onclick = async () => { const r = await api("/api/engineer/scan", {}); $("#ag-ejob", el).textContent = r.found + " finding(s), " + r.new + " new" + (r.resolved ? ", " + r.resolved + " resolved" : "") + "."; agEngineer(el); };
+    $("#ag-efilter", el).onchange = () => agEngineer(el);
+    $("#ag-eprops", el).onclick = e => { const b = e.target.closest("[data-ep]"); if (b) agProposal(el, b.dataset.ep); };
+    $("#ag-eskills", el).onclick = async e => { const b = e.target.closest("[data-eunmute]"); if (b) { await api("/api/engineer/unmute", { skill: b.dataset.eunmute, passphrase: agPass(el) }); agEngineer(el); } };
   }
   const st = AG.status = await api("/api/agents/status");
   const pu = st.purity;
@@ -950,7 +961,40 @@ async function renderAgents(el) {
     ' <span class="small">· ' + s.exemplars + " exemplar(s)</span></button>").join("") + "</div>" : '<p class="muted">No skills yet — name one above and choose the agent that measures it.</p>';
   if (AG.skill && sk.find(s => s.id === AG.skill)) await agSkill(el, sk.find(s => s.id === AG.skill));
   else $("#ag-skill", el).innerHTML = "";
-  agPlaybooks(el); agFeeds(el);
+  agPlaybooks(el); agFeeds(el); agEngineer(el);
+}
+async function agEngineer(el) {
+  let st; try { st = await api("/api/engineer/status"); } catch (e) { $("#ag-eprops", el).innerHTML = '<p class="muted">The Engineer is not available.</p>'; return; }
+  const j = st.job;
+  $("#ag-ejob", el).textContent = j && j.state === "running" ? "⏳ Testing proposal #" + j.proposal + ": " + j.step + "…" : j ? "Last: proposal #" + j.proposal + " — " + j.step : "";
+  if (j && j.state === "running") { clearTimeout(AG.etimer); AG.etimer = setTimeout(() => agEngineer(el), 2500); }
+  $("#ag-eskills", el).innerHTML = (st.admin_set ? "" : '<div class="note bad small">Set the admin passphrase first (Harvesting tab → Admin): every improvement needs the admin\'s approval.</div>') +
+    '<details class="small"><summary>Its programming skills (' + st.skills.length + ") and what the admin has decided</summary><table class=\"t small\"><tr><th>Skill</th><th>In</th><th>Gives</th><th>Why</th><th>Proposed</th><th>Approved</th><th>Rejected</th><th>Applied</th><th></th></tr>" +
+    st.skills.map(s => "<tr><td><b>" + esc(s.name) + "</b></td><td>" + esc(s.lang) + "</td><td>" + (s.kind === "fix" ? cmTag("exact fix", "good") : cmTag("advice", "")) + "</td><td>" + esc(s.why) + "</td><td>" +
+      (s.stats.proposed || 0) + "</td><td>" + (s.stats.approved || 0) + "</td><td>" + (s.stats.rejected || 0) + "</td><td>" + (s.stats.applied || 0) + "</td><td>" +
+      (s.stats.muted ? '<button class="btn quiet small" data-eunmute="' + s.id + '">muted — unmute</button>' : "") + "</td></tr>").join("") + "</table></details>";
+  const f = $("#ag-efilter", el).value, ps = (await api("/api/engineer/proposals" + (f ? "?status=" + f : ""))).proposals;
+  const tag = s => cmTag(s, s === "applied" || s === "done" ? "good" : s === "failed" || s === "rejected" ? "bad" : s === "open" ? "warn" : "");
+  $("#ag-eprops", el).innerHTML = ps.length ? '<table class="t small"><tr><th>#</th><th>Proposal</th><th>Where</th><th>Kind</th><th>Priority</th><th>Status</th><th></th></tr>' + ps.map(p => "<tr><td>" + p.id + "</td><td><b>" +
+    esc(p.title) + '</b><br><span class="muted">' + esc(p.skill_name) + "</span></td><td class=\"mono\">" + esc((p.file || "running program") + (p.line ? ":" + p.line : "")) + "</td><td>" + (p.fixable ? "fix" : "advice") +
+    "</td><td>" + p.priority + "</td><td>" + tag(p.status) + '</td><td><button class="btn quiet small" data-ep="' + p.id + '">Review</button></td></tr>').join("") + "</table>"
+    : '<p class="muted">' + (f === "open" ? "Nothing waiting — press “Look for improvements”." : "None.") + "</p>";
+}
+async function agProposal(el, id) {
+  const p = await api("/api/engineer/proposal?id=" + id), box = $("#ag-eone", el);
+  box.innerHTML = '<div class="note"><h3>#' + p.id + " " + esc(p.title) + " " + cmTag(p.status) + '</h3><p class="small"><b>Why:</b> ' + esc(p.rationale || p.skill_info.why) + "</p>" +
+    (p.evidence ? '<p class="small"><b>Evidence:</b> <span class="mono">' + esc(p.evidence) + "</span>" + (p.file ? " — " + esc(p.file) + (p.line ? ":" + p.line : "") : "") + "</p>" : "") +
+    (p.patch ? '<p class="small"><b>The exact change</b> (tested on a copy with the whole self-test before it is applied):</p><pre class="mono small" style="max-height:260px;overflow:auto;white-space:pre">' + esc(p.patch) + "</pre>" : "") +
+    (p.test ? '<p class="small"><b>Test:</b> ' + esc((p.test.steps || []).join(" · ")) + (p.test.error ? " — " + esc(p.test.error) : "") + (p.test.selftest ? "<br>" + esc(p.test.selftest.summary.join(" | ")) : "") +
+      (p.test.restart ? "<br><b>" + esc(p.test.restart) + "</b>" : "") + "</p>" : "") + (p.note ? '<p class="small muted">Note: ' + esc(p.note) + "</p>" : "") +
+    '<div class="row">' + (["open", "muted", "failed"].includes(p.status) ? '<button class="btn" data-ea="approve">✔ Approve' + (p.fixable ? " (test, then apply)" : " (to-do)") + '</button><button class="btn quiet" data-ea="reject">✖ Reject</button>' : "") +
+    (p.status === "applied" ? '<button class="btn quiet" data-ea="revert">↺ Revert</button>' : "") + (p.status === "accepted" ? '<button class="btn quiet" data-ea="done">Mark done</button>' : "") +
+    '<input data-enote placeholder="note (optional)" class="grow"></div></div>';
+  box.querySelectorAll("[data-ea]").forEach(b => b.onclick = async () => {
+    const pass = agPass(el); if (!pass) return toast("Type the admin passphrase at the top of the Agents tab.", true);
+    await api("/api/engineer/" + b.dataset.ea, { id: p.id, passphrase: pass, note: $("[data-enote]", box).value });
+    agEngineer(el); agProposal(el, p.id);
+  });
 }
 function agClawTable(items) {
   return items && items.length ? '<table class="t small"><tr><th>Skill</th><th>Summary</th><th>Version</th><th>Owner</th><th></th></tr>' + items.map(r => "<tr><td><b>" + esc(r.name) + '</b><br><span class="mono">' +

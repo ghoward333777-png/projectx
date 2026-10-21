@@ -8,7 +8,7 @@ import os, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPS = ["language", "stem", "facts"]
-FILES = [("qbcore.py", "qbcore.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("gcloud.py", "gcloud.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
+FILES = [("qbcore.py", "qbcore.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("qbengineer.py", "qbengineer.py"), ("gcloud.py", "gcloud.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
          (os.path.join("ui", "qb.js"), os.path.join("ui", "qb.js"))]
 
 if __name__ == "__main__":

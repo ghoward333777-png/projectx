@@ -19,6 +19,7 @@ import qbcore as core
 import qbcommons as cm
 import qbdevices
 import qbagents
+import qbengineer
 import harvest
 import engine
 import science
@@ -27,7 +28,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 PORT = 8102
 program_dir = HERE
 
@@ -73,6 +74,7 @@ class App:
         cm.attach(self, APP_ID, harvest.StemAdapter(self))
         qbdevices.attach(self, APP_ID, PORT)
         qbagents.attach(self, APP_ID)
+        qbengineer.attach(self, APP_ID, HERE)
         try:
             self.store.backup("startup")
         except Exception as e:
