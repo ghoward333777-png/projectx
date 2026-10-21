@@ -374,6 +374,13 @@ mid-turn she finishes turning). Full-length clips work too: where the face is to
 a zoomed square around the head. Pamela ships with two: a full-length one on her track avatar (97 frames) and a closer
 one on her stadium avatar (81 frames).
 
+**Lip shapes, teeth and tongue (1.39).** Every rounding and spreading sound was measured through the renderer on 52
+test words (width change, corner curl, lip fullness) against the lip shapes of English speakers. Rounding now gathers
+the whole lip toward the true middle of the mouth (half-way between the corners) so both corners travel equally, and
+the lips grow fuller as they push forward; spread vowels thin the lips slightly. *er* (bird, her) maps to the rounded
+r shape; the short *oo* of book is lightly rounded (a lax vowel's strength `s` on its viseme). The speaking smile relaxes
+while the lips round. Teeth are drawn tooth by tooth; on wide-open vowels the tongue's top surface shows.
+
 **Moves: a motion library per full-body avatar.** The turnaround is one move among many. *Avatar studio → Moves →
 Find the moves in it* reads any video of the person (one pass: face, outline and camera cuts in every frame), suggests one
 move per camera shot, and lets you name each, set its times, the words that start it, and its camera: *still camera*

@@ -231,7 +231,7 @@ def timing_from_text(text, lang="en", lab=None, syl_per_s=4.5):
     for r in rows:
         if r["start"] - last > 0.05:
             vis.append({"v": "sil", "start": round(last, 3), "end": r["start"]})
-        vis.append({"v": r["v"], "start": r["start"], "end": r["end"]})
+        vis.append(visemes.shaped(r))
         last = r["end"]
     vis.append({"v": "sil", "start": round(last, 3), "end": dur})
     return {"duration": dur, "method": "timed from the text at %.1f syllables/s (no audio)" % syl_per_s, "words": wout,
@@ -336,6 +336,9 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
     T.update(targets or {})
     dur = float(track["duration"])
     segs = [(s["v"], float(s["start"]), float(s["end"])) for s in track["visemes"] if s["end"] > s["start"]]
+    # lighter lip rounding where the sound is a lax vowel (the short oo of book): its target is pulled toward rest
+    lax = [float(s.get("s", 1.0)) for s in track["visemes"] if s["end"] > s["start"]]
+    RI = {_I[p] for p in ROUNDING}
     n = max(1, int(dur * fps))
     dom = {p: {v: _dominance(v, p) for v in T} for p in PARAMS}
     frames_mouth = []
@@ -348,7 +351,7 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
         for p in PARAMS:
             pi = _I[p]
             num = den = 0.0
-            for v, a, b in segs[j0:]:
+            for q, (v, a, b) in enumerate(segs[j0:], j0):
                 if a > t + 0.5:
                     break
                 al, tl, tr = dom[p][v]
@@ -358,7 +361,8 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
                     d = al * math.exp(-tr * (t - b))
                 else:
                     d = al
-                num += d * T[v][pi]; den += d
+                tv = T[v][pi] if lax[q] == 1.0 or pi not in RI else NEUTRAL[pi] + (T[v][pi] - NEUTRAL[pi]) * lax[q]
+                num += d * tv; den += d
             row.append(num / den if den > 1e-6 else NEUTRAL[pi])
         frames_mouth.append(row)
     # loudness shapes the jaw (when the track came from audio)
@@ -495,6 +499,7 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
     L, R = 1.0 + asym, 1.0 - asym
     c = lambda x: round(max(0.0, min(1.0, x)), 4)
     smile, stretch, press, jaw = m["smile"], m["stretch"], m["press"], m["jawOpen"]
+    rel = 1.0 - 0.85 * min(1.0, max(m["mouthPucker"], m["mouthFunnel"]))
     u = upper or {}
     gsq, gch, gwd, gbd, gns = (u.get(k, 1.0) for k in ("squint_sd", "cheek_sd", "wide_sd", "browdown_sd", "sneer_sd"))
     # a speaking face is never still above the mouth: the cheeks lift with spread and open vowels, the lower lids narrow a
@@ -513,11 +518,12 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
         "jawLeft": max(0.0, 0.03 * math.sin(0.7 * t + phase)), "jawRight": max(0.0, -0.03 * math.sin(0.7 * t + phase)),
         "jawOpen": m["jawOpen"], "mouthClose": m["mouthClose"], "mouthFunnel": m["mouthFunnel"], "mouthPucker": m["mouthPucker"],
         "mouthLeft": max(0.0, asym) * 0.5 * m["jawOpen"], "mouthRight": max(0.0, -asym) * 0.5 * m["jawOpen"],
-        # a speaking face carries a little warmth: a slight smile while talking, more with joy
-        "mouthSmileLeft": (smile + 0.08 + 0.3 * joy) * L, "mouthSmileRight": (smile + 0.08 + 0.3 * joy) * R,
+        # a speaking face carries a little warmth: a slight smile while talking, more with joy — relaxed while the lips
+        # round (the muscles that smile and the ones that pucker pull against each other)
+        "mouthSmileLeft": (smile + 0.08 + 0.3 * joy) * rel * L, "mouthSmileRight": (smile + 0.08 + 0.3 * joy) * rel * R,
         "mouthFrownLeft": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * L, "mouthFrownRight": (0.5 * m["mouthShrugLower"] + 0.35 * sad) * R,
         "mouthDimpleLeft": (0.3 * smile + 0.25 * press) * L, "mouthDimpleRight": (0.3 * smile + 0.25 * press) * R,
-        "mouthStretchLeft": stretch * L, "mouthStretchRight": stretch * R,
+        "mouthStretchLeft": stretch * rel * L, "mouthStretchRight": stretch * rel * R,
         "mouthRollLower": m["mouthRollLower"], "mouthRollUpper": m["mouthRollUpper"],
         "mouthShrugLower": m["mouthShrugLower"], "mouthShrugUpper": 0.35 * m["mouthShrugLower"] + 0.2 * m["mouthRollLower"],
         "mouthPressLeft": press * L, "mouthPressRight": press * R,
@@ -1077,7 +1083,7 @@ def _bench_real(rows, lab=None, learned=None):
                         if a <= t <= b:
                             return c + (t - a) * (d - c) / max(1e-6, b - a)
                     return t
-                tr["visemes"] = [{"v": s["v"], "start": round(remap(s["start"]), 3), "end": round(remap(s["end"]), 3)} for s in tr["visemes"]]
+                tr["visemes"] = [dict(s, start=round(remap(s["start"]), 3), end=round(remap(s["end"]), 3)) for s in tr["visemes"]]
                 tr["duration"] = max(tr["duration"], max(float(x["end_s"]) for x in wt) + 0.2)
             mo = lip_sync(tr, None, None, fps=100, targets=targets)["motion"]["frames"]
             meas = [(fr[0], fr[1]) for fr in r["frames"]]

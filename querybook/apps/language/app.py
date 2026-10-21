@@ -43,7 +43,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.38.0"
+VERSION = "1.39.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1730,6 +1730,14 @@ def selftest():
         c.check("speech: captions become timed lines; the mouth keeps moving to the very end of long speech; lip sync analyses the whole recording",
                 cues == [{"start": 1.0, "end": 3.5, "text": "Hello there, world."}, {"start": 4.0, "end": 5.0, "text": "Good day"}] and jaw_end > 0.2
                 and "max_s" in voicedsp.measure.__code__.co_varnames)
+        # lip rounding: er (bird, her) rounds like r, the short oo of book rounds less than food, and the speaking smile
+        # relaxes while the lips round
+        ph = {w["word"]: w["phonemes"] for w in visemes.word_phonemes(["bird", "book", "food"], "en", app.lab)}
+        peak = lambda w: max(f["bs"][vse.ARKIT52.index("mouthPucker")] for f in vse.lip_sync(vse.timing_from_text(w, "en", app.lab), fps=30, seed="r")["motion"]["frames"])
+        oo = max(vse.lip_sync(vse.timing_from_text("food", "en", app.lab), fps=30, seed="r")["motion"]["frames"], key=lambda f: f["bs"][vse.ARKIT52.index("mouthPucker")])
+        c.check("lips: er rounds like r (a vowel's length kept); short oo rounds less than long oo; the smile relaxes on a pucker",
+                any(v == "RR" and w >= 1.0 for _, v, w in ph["bird"]) and peak("food") > 0.6 and 0.25 < peak("book") < 0.75 * peak("food")
+                and oo["bs"][vse.ARKIT52.index("mouthSmileLeft")] < 0.05, (ph["bird"], peak("food"), peak("book")))
         rid = ql.list("reference")[0]["id"]
         frs = [{"t": i / 30, "face": True, "gap": 0.4, "bs": {"jawOpen": 0.45, "eyeBlinkLeft": 1.0 if i % 60 == 0 else 0.0, "browInnerUp": 0.05 * (i % 3)},
                 "pose": [0.5 * (i % 5), 1.0 * (i % 7) - 3, 0.2]} for i in range(600)]

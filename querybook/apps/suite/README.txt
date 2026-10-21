@@ -53,6 +53,15 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
+  Language Builder (1.39.0)
+    * Lips: rounding words (you, two, true, shoe, food, w, r, sh, o) now pucker properly - the lips gather toward the
+      middle (about 25-30% narrower) and grow fuller as they push forward. "Tree", "three", "true" round on the tr.
+      The vowel of bird, her, girl, first is said with rounded lips; the short oo of book, put, look rounds lightly.
+      The speaking smile relaxes while the lips round. Spread vowels (me, thee, see) keep their upward curl.
+      Measured on 52 test words: lip-shape score 62 -> 100 (full body), 64 -> 99 (face).
+    * Teeth: each tooth has its own form - light down its middle, a greyer biting edge, gaps and small notches
+      between teeth; up to ~5 mm of tooth on a wide-open vowel.
+    * Tongue: on wide-open vowels the top of the tongue shows - domed, moist, lit at the tip, with its middle groove.
   Language Builder (1.38.0)
     * Fix: the top of the head stayed still while the face nodded (the forehead stretched). Hair and skull now move
       with the face, up to the top of the picture.

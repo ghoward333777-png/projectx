@@ -31,8 +31,29 @@ RHUBARB = {"sil": "X", "PP": "A", "FF": "G", "TH": "H", "DD": "B", "kk": "B", "C
 
 _MAP = [("tʃ", "CH"), ("dʒ", "CH"), ("ts", "SS"), ("dz", "SS")] + [(c, v) for v, cs in {
     "PP": "pbmɸβ", "FF": "fvʋɱ", "TH": "θð", "DD": "tdʈɖ", "kk": "kgŋɡxɣqχʔh", "CH": "ʃʒɕʑçʝ", "SS": "sz",
-    "nn": "nlɲɫʎɭ", "RR": "rɹɾʁʀɻ", "aa": "aɑæʌɐɒ", "E": "eɛəɜøœɘɵ", "I": "iɪyʏɨj", "O": "oɔɤ", "U": "uʊwɯʉ"}.items() for c in cs]
+    "nn": "nlɲɫʎɭ", "RR": "rɹɾʁʀɻɜɚɝ", "aa": "aɑæʌɐɒ", "E": "eɛəøœɘɵ", "I": "iɪyʏɨj", "O": "oɔɤ", "U": "uʊwɯʉ"}.items() for c in cs]
 _VOWEL_V = {"aa", "E", "I", "O", "U"}
+# the r-coloured vowel of bird, her, work is said with the lips rounded and pushed forward, as for r (RR) — but it is
+# still a vowel: it keeps a vowel's length and weight in the timing
+_R_VOWELS = set("ɜɚɝ")
+
+
+# lax vowels share a viseme with their tense partner but are said with less lip shaping: the short oo of book, put,
+# look is lightly rounded, not puckered like food (the strength scales the rounding of that sound's mouth shape)
+LAX = {"ʊ": 0.55}
+
+
+def _vowel(sym, v):
+    return v in _VOWEL_V or (sym or "")[:1] in _R_VOWELS
+
+
+def shaped(row):
+    """A timed viseme for the track, carrying a lax vowel's lighter lip shaping ("s") when the sound has one."""
+    out = {"v": row["v"], "start": row["start"], "end": row["end"]}
+    k = LAX.get((row.get("p") or "")[:1])
+    if k:
+        out["s"] = k
+    return out
 _SKIP = set("ˈˌ.ːˑ‿͡|‖ ()-/123456789")
 WEIGHT = {"vowel": 1.0, "long": 1.5, "cons": 0.6}      # tuned on measured word timings (mean error about 60 ms)
 WORD_BASE = 1.0          # extra weight per word (time a word takes regardless of its sounds)
@@ -48,7 +69,7 @@ def phonemes(ipa):
         if ch in _SKIP:
             if ch == "ː" and out:
                 p, v, w = out[-1]
-                out[-1] = (p + "ː", v, WEIGHT["long"] if v in _VOWEL_V else w)
+                out[-1] = (p + "ː", v, WEIGHT["long"] if _vowel(p, v) else w)
             i += 1
             continue
         hit = None
@@ -57,7 +78,7 @@ def phonemes(ipa):
                 hit = (sym, v)
                 break
         if hit:
-            out.append((hit[0], hit[1], WEIGHT["vowel"] if hit[1] in _VOWEL_V else WEIGHT["cons"]))
+            out.append((hit[0], hit[1], WEIGHT["vowel"] if _vowel(*hit) else WEIGHT["cons"]))
             i += len(hit[0])
         else:
             i += 1                                     # diacritic or unknown symbol: no mouth shape of its own
@@ -99,7 +120,7 @@ def _speech_spans(m):
 def _word_bounds_by_syllables(words, peaks, a, b, db, hop):
     """Word boundaries inside one stretch of speech: give each word as many measured syllable peaks as it has
     vowels, and cut at the quietest moment between the last peak of one word and the first of the next."""
-    vc = [max(1, sum(1 for p in w["phonemes"] if p[1] in _VOWEL_V)) for w in words]
+    vc = [max(1, sum(1 for p in w["phonemes"] if _vowel(p[0], p[1]))) for w in words]
     V, N = sum(vc), len(peaks)
     if len(words) == 1:
         return [a, b]
@@ -195,7 +216,7 @@ def _cached_phonemes(words, lang, lab):
         _CACHE[k] = word_phonemes(words, lang, lab)
     out = []
     for w in _CACHE[k]:
-        ph = [(sym, v, WEIGHT["long"] if (v in _VOWEL_V and sym.endswith("ː")) else WEIGHT["vowel"] if v in _VOWEL_V else WEIGHT["cons"])
+        ph = [(sym, v, WEIGHT["long"] if (_vowel(sym, v) and sym.endswith("ː")) else WEIGHT["vowel"] if _vowel(sym, v) else WEIGHT["cons"])
               for sym, v, _ in w["phonemes"]]
         out.append(dict(w, phonemes=ph))
     return out
@@ -250,7 +271,7 @@ def align(text, wav, lang="en", lab=None, word_times=None):
     if not word_times and peaks:
         # pull each vowel's centre toward the nearest syllable peak inside its word (at most 120 ms), keep order
         for r in ph_rows:
-            if r["v"] in _VOWEL_V:
+            if _vowel(r["p"], r["v"]):
                 c = (r["start"] + r["end"]) / 2
                 near = min(peaks, key=lambda p: abs(p - c))
                 if abs(near - c) <= 0.12:
@@ -273,7 +294,7 @@ def align(text, wav, lang="en", lab=None, word_times=None):
         if vis and vis[-1]["v"] == r["v"] and abs(vis[-1]["end"] - r["start"]) < 0.02:
             vis[-1]["end"] = r["end"]
         else:
-            vis.append({"v": r["v"], "start": r["start"], "end": r["end"]})
+            vis.append(shaped(r))
         last = r["end"]
     if dur - last > 0.02:
         vis.append({"v": "sil", "start": round(last, 3), "end": round(dur, 3)})

@@ -132,7 +132,7 @@ class LipCoach:
         # guard the reservoir: the recording must plausibly be this sentence (syllables heard vs syllables written)
         heard = visemes._measured(wav)["rate"]["syllables"]
         want = sum(1 for w in visemes._cached_phonemes(lipread.re.findall(r"[^\W\d_]+", text), lang, self.speech.lab)
-                   for _, v, _ in w["phonemes"] if v in visemes._VOWEL_V)
+                   for sym, v, _ in w["phonemes"] if visemes._vowel(sym, v))
         if want and not (0.45 <= heard / want <= 2.2):
             return {"stored": False, "reason": "the recording does not seem to be this sentence (%d syllables heard, about %d written) — read it again" % (heard, want)}
         if not audio_name:

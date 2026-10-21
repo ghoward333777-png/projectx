@@ -46,8 +46,8 @@
   // ~11°, the torso follows, and the camera cuts every ~2.5 s between a wide and a close shot with a slow push-in.
   const BODY_CAL = {
     // (revised after the first full-body test: stronger settings read as a worried brow and a sneer on a real face)
-    gain: { jawOpen: 0.7, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 0.3,
-            mouthFunnel: 0.6, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 3, browOuterUpLeft: 3, browOuterUpRight: 3,
+    gain: { jawOpen: 0.7, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 1.0,
+            mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 3, browOuterUpLeft: 3, browOuterUpRight: 3,
             browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1 },
     derive: { up: 0.55, upSmile: 0.2, down: 0.5 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
     teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.25,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
@@ -324,7 +324,8 @@
       const lidOf = (lid, brow) => { const q = mid(lid, brow, 0.38); return avg(q[0], q[1], ew * 0.07).map(Math.round); };
       return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth, skin: skin.map(Math.round), lidLeft: lidOf(386, 334), lidRight: lidOf(159, 105),
         crease: tone(skin, 0.55), sheen: tone(skin, 1.12),
-        cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, 0.62, [10, -4, -2]), gum: tone(lip, 0.75) };
+        cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, 0.5, [10, -6, -4]),
+        tongueHi: tone(lip, 0.64, [14, -8, -5]), gum: tone(lip, 0.75) };
     }
     // Mouth fit: the speaking mouth sized and shaped from this face's own anatomy, measured once per portrait.
     //  * scale: millimetres per pixel from the iris (≈11.7 mm across in adults, the steadiest size in a face),
@@ -332,7 +333,7 @@
     //  * size: conversational speech opens the lips about 0.28 × mouth width on an open vowel ("aa"), 9–16 mm,
     //    so a small mouth opens less than a large one;
     //  * shape: the opening follows this person's own lower-lip outline, blended with an anatomical lens;
-    //  * teeth: upper incisors show at most ~3 mm, never more than a third of the opening.
+    //  * teeth: upper incisors show at most ~5 mm on a wide open vowel (about 3 mm in ordinary speech), never more than a third of the opening.
     _fit() {
       const B = this.base3, d = (a, b) => Math.hypot(B[a][0] - B[b][0], B[a][1] - B[b][1]);
       let pxmm = null, how = "iris";
@@ -350,7 +351,7 @@
         for (let j = 1; j < outl.length; j++) if (x <= outl[j][0]) { const t = (x - outl[j - 1][0]) / ((outl[j][0] - outl[j - 1][0]) || 1);
           return Math.max(0, (outl[j - 1][1] + (outl[j][1] - outl[j - 1][1]) * t) / depth); } return 0; };
       return { pxmm, scale_from: how, mouth_mm: +Wmm.toFixed(1), upper_lip_mm: +upLip.toFixed(1), lower_lip_mm: +loLip.toFixed(1), chin_mm: +chin.toFixed(1),
-        aa_open_mm: +aa.toFixed(1), jaw_gain: gain, teeth_mm: Math.min(3, 0.3 * aa) * this.cal.teeth, own };
+        aa_open_mm: +aa.toFixed(1), jaw_gain: gain, teeth_mm: Math.min(5, 0.3 * aa) * this.cal.teeth, own };
     }
     // per-channel displacement fields over the mesh (pixels at channel value 1), built once per portrait
     _fields() {
@@ -386,7 +387,15 @@
       const loBand = i => LOWER.has(i) ? 1 : (B[i][1] > outLo(B[i][0]) ? (1 - smooth(0, 0.1 * F, B[i][1] - outLo(B[i][0]))) * lat(i) : 0);
       const chinMix = i => smooth(0, 0.1 * F, B[i][1] - outLo(B[i][0]));    // 0 at the lower lip, 1 well down the chin
       // corners: rounding and spreading move the corners, not the middle of the lips
-      const corner = i => smooth(0.22 * Wm, 0.5 * Wm, Math.abs(B[i][0] - M[0])) * Math.exp(-(((B[i][1] - M[1]) / (0.08 * F)) ** 2));
+      // rounding gathers the whole lip toward the true middle of the mouth — half-way between the corners, not the lip-centre
+      // landmarks (off-centre on a smiling or turned face) — so both corners travel the same distance and the lips keep
+      // their proportions as they narrow; the skin around follows within the lip bands
+      const Mx = (cL[0] + cR[0]) / 2, CORNERS = [61, 291, 78, 308];
+      // how far a point sits from the line between the lips (its own lip's thickness, for the skin just outside a lip):
+      // scaling this makes the lips fuller (rounded, pushed forward and turned out) or thinner (spread, stretched flat)
+      const thick = (i, ub, lb) => { const [x, y] = B[i], m = mid(x);
+        if (UPPER.has(i) || LOWER.has(i)) return y - m;
+        return y < m ? (outUp(x) - m) * ub : (outLo(x) - m) * lb; };
       for (let i = 0; i < nF; i++) {
         const [x, y] = B[i], lz = lipZ(i), up = above(i), lo = below(i), sL = side(i, 1), sR = side(i, -1), dxm = x - M[0];
         const pf = prof(i), ub = upBand(i), lb = loBand(i), jg = fit.jaw_gain, sg = Math.sign(dxm);
@@ -403,15 +412,19 @@
         // closing the lips against an open jaw: the lower lip band rises back to the upper lip
         add("mouthClose", i, 0, -0.17 * F * jawW(i) * 1.1 * jg * (LOWER.has(i) ? pf : lo > 0.5 ? pf * (1 - chinMix(i)) : 0), 0);
         // rounding (o, u, w, ch): the corners come in and the lips push forward; the lips keep their own width
-        add("mouthFunnel", i, -sg * 0.09 * Wm * corner(i), (lb - ub) * 0.012 * F * pf, -0.03 * F * lz);
-        add("mouthPucker", i, -sg * 0.17 * Wm * corner(i), 0, -0.045 * F * lz);
+        // rounding (oo, w, r, sh, o): the lips gather toward the middle (pucker narrows the mouth by up to ~30%, funnel ~12%)
+        // and grow fuller as they push forward and turn out, most at the centre, least at the corners
+        const gw = CORNERS.includes(i) || UPPER.has(i) || LOWER.has(i) ? 1 : Math.max(ub, lb);
+        const tk = thick(i, ub, lb) * (1 - 0.7 * smooth(0.3 * Wm, 0.5 * Wm, Math.abs(x - Mx)));
+        add("mouthFunnel", i, -0.12 * (x - Mx) * gw, (lb - ub) * 0.012 * F * pf + 0.1 * tk, -0.03 * F * lz);
+        add("mouthPucker", i, -0.3 * (x - Mx) * gw, 0.22 * tk, -0.045 * F * lz);
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
           const cw = g(i, c, 0.24 * Wm), sd = s > 0 ? sL : sR;
           add("mouthSmile" + k, i, s * 0.09 * Wm * cw, -0.045 * F * cw, 0);
           add("mouthFrown" + k, i, s * 0.03 * Wm * cw, 0.045 * F * cw, 0);
           add("mouthDimple" + k, i, s * 0.03 * Wm * cw, -0.008 * F * cw, 0.02 * F * cw);
-          add("mouthStretch" + k, i, s * 0.08 * Wm * cw, 0.01 * F * cw, 0);
+          add("mouthStretch" + k, i, s * 0.08 * Wm * cw, 0.01 * F * cw - 0.05 * tk * sd, 0);   // spread lips thin out
           // pressing: the outer edges of the lips draw in toward the closed line; the line itself stays put (never crosses)
           const outer = UPPER.has(i) || LOWER.has(i) ? Math.min(1, Math.abs(y - mid(x)) / (0.05 * F)) : 0;
           add("mouthPress" + k, i, 0, (ub - lb) * 0.014 * F * outer * sd, 0);
@@ -897,7 +910,7 @@
     // The inside of the mouth, drawn as a real one looks while talking (the aesthetic guardrail):
     //  * the opening is a soft, deep, warm shade of this person's lips — never a flat black slot, never hard-edged;
     //  * upper front teeth: six teeth (canines, laterals, centrals) under the upper lip, rounded, with fine gaps, shaded by
-    //    the lip above and darker toward the corners; at most ~3 mm and a third of the opening; coloured from the sclera;
+    //    the lip above and darker toward the corners; at most ~5 mm and a third of the opening; coloured from the sclera;
     //  * the tongue rests low and is attached to the floor of the mouth (it rises for th/l, never floats);
     //  * gums are never shown in speech; lower teeth only as a faint edge in a wide opening.
     // How much upper tooth shows below the lip: a third of the opening and ~3 mm for a neutral speaker; the full-body
@@ -922,13 +935,32 @@
       const gr = c.createRadialGradient(mx, my + open * 0.15, 0, mx, my, tw * 0.55);
       gr.addColorStop(0, rgb(pal.cavDeep)); gr.addColorStop(0.7, rgb(pal.cavDeep)); gr.addColorStop(1, rgb(pal.cavEdge));
       c.fillStyle = gr; c.fillRect(mx - tw, top, tw * 2, h);
-      // tongue: a soft mound rising from the floor of the mouth; it lifts toward the teeth for th / l
+      // tongue: the body of the tongue fills the floor of the mouth behind the lower teeth. In a narrow opening only its
+      // dark back shows; as the jaw opens wide its top surface comes into view — a domed, moist, pink-red surface, lit at
+      // the tip and falling away into shadow at the sides and the back, with the faint groove down its middle. It lifts
+      // toward the upper teeth for th / l / t / n. Never as light as the lips (the guardrail's "flesh in the opening").
       const tng = this.cur[IDX.tongueOut], lowC = loY(mx);
       if (open > F * 0.012) {
-        const ty = lowC + open * (0.32 - 0.55 * tng), ry = open * (0.55 + 0.2 * tng), rx = tw * (0.3 + 0.06 * tng);
-        const tg = c.createRadialGradient(mx, ty - ry * 0.6, 0, mx, ty, Math.max(rx, ry));
-        tg.addColorStop(0, rgb(pal.tongue)); tg.addColorStop(1, rgb(pal.cavEdge));
-        c.fillStyle = tg; c.beginPath(); c.ellipse(mx, ty, rx, ry, 0, 0, 2 * Math.PI); c.fill();
+        const wide = smooth2(0.022 * F, 0.06 * F, open);                      // how much of the top surface is in view
+        const rise = open * (0.22 + 0.18 * wide + 0.45 * tng), half = tw * (0.36 + 0.06 * wide);
+        const topY = lowC - rise, baseY = lowC + open * 0.2;
+        const body = () => { c.beginPath(); c.moveTo(mx - half, baseY);
+          c.bezierCurveTo(mx - half, lowC - rise * 0.55, mx - half * 0.55, topY, mx, topY);
+          c.bezierCurveTo(mx + half * 0.55, topY, mx + half, lowC - rise * 0.55, mx + half, baseY); c.closePath(); };
+        const tg = c.createRadialGradient(mx, topY + rise * 0.25, 0, mx, topY + rise * 0.4, half * 1.1);
+        tg.addColorStop(0, rgb(wide > 0.05 ? pal.tongueHi : pal.tongue)); tg.addColorStop(0.55, rgb(pal.tongue)); tg.addColorStop(1, rgb(pal.cavDeep));
+        c.fillStyle = tg; body(); c.fill();
+        if (wide > 0.05) {
+          // the median groove, and the moist sheen on the front of the tongue
+          c.strokeStyle = rgb(pal.cavDeep, 0.28 * wide); c.lineWidth = Math.max(0.6, tw * 0.012);
+          c.beginPath(); c.moveTo(mx, topY + rise * 0.12); c.quadraticCurveTo(mx + tw * 0.005, topY + rise * 0.45, mx, topY + rise * 0.8); c.stroke();
+          c.fillStyle = rgb(pal.tongueHi, 0.35 * wide); c.beginPath();
+          c.ellipse(mx - half * 0.18, topY + rise * 0.2, half * 0.16, Math.max(0.6, rise * 0.07), -0.15, 0, 2 * Math.PI); c.fill();
+          // shadow where the tongue meets the lower teeth and the cheeks
+          const ts = c.createLinearGradient(0, topY, 0, lowC);
+          ts.addColorStop(0, rgb(pal.cavDeep, 0)); ts.addColorStop(1, rgb(pal.cavDeep, 0.35));
+          c.fillStyle = ts; body(); c.fill();
+        }
       }
       // upper front teeth, hanging from the upper lip's curve
       const th = this._teethLen(open) * smooth2(0.01 * F, 0.03 * F, extra);
@@ -954,8 +986,26 @@
         const side = c.createLinearGradient(x0, 0, x0 + span, 0);         // deeper toward the corners
         side.addColorStop(0, rgb(pal.cavDeep, 0.55)); side.addColorStop(0.3, rgb(pal.cavDeep, 0)); side.addColorStop(0.7, rgb(pal.cavDeep, 0)); side.addColorStop(1, rgb(pal.cavDeep, 0.55));
         c.fillStyle = side; c.fill();
-        c.strokeStyle = rgb(pal.cavDeep, 0.16); c.lineWidth = Math.max(0.4, span * 0.004);
-        teethL.slice(1).forEach(t => { const yy = upY(t.x); c.beginPath(); c.moveTo(t.x, yy); c.lineTo(t.x, yy + lenAt(t.x) * 0.75); c.stroke(); });
+        // each tooth's own form: the enamel catches the light down its middle (never brighter than the row's own colour),
+        // the biting edge is a little greyer and translucent, the gaps between teeth darken toward the biting edge and
+        // open into small V-shaped notches there; the canines at the ends sit back in shadow
+        c.save(); c.clip();
+        teethL.forEach((t, n) => { const yy = upY(t.cx) - 1, L = lenAt(t.cx);
+          const hi = c.createLinearGradient(t.x, 0, t.x + t.w, 0), a = n === 2 || n === 3 ? 0.55 : 0.3;
+          hi.addColorStop(0, rgb(tc, 0)); hi.addColorStop(0.42, rgb(tc, a)); hi.addColorStop(0.6, rgb(tc, a * 0.6)); hi.addColorStop(1, rgb(tc, 0));
+          c.fillStyle = hi; c.fillRect(t.x, yy + L * 0.12, t.w, L * 0.7);
+          const edge = c.createLinearGradient(0, yy + L * 0.72, 0, yy + L);
+          edge.addColorStop(0, rgb(pal.cavEdge, 0)); edge.addColorStop(1, rgb(pal.cavEdge, 0.22));
+          c.fillStyle = edge; c.fillRect(t.x, yy + L * 0.72, t.w, L * 0.3); });
+        c.restore();
+        teethL.slice(1).forEach(t => { const yy = upY(t.x), L = lenAt(t.x);
+          const sep = c.createLinearGradient(0, yy, 0, yy + L);
+          sep.addColorStop(0, rgb(pal.cavDeep, 0.1)); sep.addColorStop(1, rgb(pal.cavDeep, 0.38));
+          c.strokeStyle = sep; c.lineWidth = Math.max(0.5, span * 0.006);
+          c.beginPath(); c.moveTo(t.x, yy); c.lineTo(t.x, yy + L * 0.92); c.stroke();
+          const v = Math.min(t.w * 0.18, L * 0.22);                  // the notch between two biting edges
+          c.fillStyle = rgb(pal.cavDeep, 0.6); c.beginPath();
+          c.moveTo(t.x - v, yy + L + 0.5); c.lineTo(t.x, yy + L - v * 1.4); c.lineTo(t.x + v, yy + L + 0.5); c.closePath(); c.fill(); });
         // lower front teeth: a smaller row rising from behind the lower lip, only as the jaw opens wide (as in real
         // speech, where the lower incisors show on open vowels); shaded, never brighter than the upper row
         const lt = Math.min(th * 0.7, open * (this.body ? BODY_CAL.lower_teeth : 0.2)) * smooth(0.035 * F, 0.06 * F, extra);
@@ -970,6 +1020,9 @@
           const sd2 = c.createLinearGradient(lx0, 0, lx0 + lspan, 0);
           sd2.addColorStop(0, rgb(pal.cavDeep, 0.6)); sd2.addColorStop(0.3, rgb(pal.cavDeep, 0)); sd2.addColorStop(0.7, rgb(pal.cavDeep, 0)); sd2.addColorStop(1, rgb(pal.cavDeep, 0.6));
           c.fillStyle = sd2; c.fill();
+          c.strokeStyle = rgb(pal.cavDeep, 0.3); c.lineWidth = Math.max(0.4, lspan * 0.006);
+          for (let q = 1; q < 4; q++) { const xx = lx0 + lspan * q / 4, yy = loY(xx) + 1, u = Math.abs(xx - mx) / (lspan / 2);
+            c.beginPath(); c.moveTo(xx, yy); c.lineTo(xx, yy - lt * (1 - 0.35 * u * u) * 0.9); c.stroke(); }
         }
       }
       // shadows: the corners go dark, the upper lip shades what is under it
@@ -997,7 +1050,8 @@
       const r0 = m(P0), area = (P, t) => (P[t[1]][0] - P[t[0]][0]) * (P[t[2]][1] - P[t[0]][1]) - (P[t[2]][0] - P[t[0]][0]) * (P[t[1]][1] - P[t[0]][1]);
       const faceTris = this.mesh.filter(t => t[0] < nF && t[1] < nF && t[2] < nF), a0 = faceTris.map(t => area(P0, t));
       // human limits; width limits from a clearly articulating reference speaker (mouth 0.65–1.19 of its rest width)
-      const lim = { upT: [0.88, 1.15], loT: [0.85, 1.2], upW: [0.72, 1.2], mW: [0.6, 1.25] };
+      // (fuller lips are allowed on a pucker: lips pushed forward and turned out read ~25% thicker from the front)
+      const lim = { upT: [0.86, 1.3], loT: [0.85, 1.32], upW: [0.6, 1.2], mW: [0.58, 1.25] };
       const label = { upT: "upper-lip thickness", loT: "lower-lip thickness", upW: "upper-lip width", mW: "mouth width" };
       // one pose: its measurements and what is wrong with it
       const evalPose = v => {
@@ -1071,7 +1125,7 @@
       if (cavRel < 0.08) issues.push("the inside of the mouth is flat black");
       if (cavRel > 0.6) issues.push("the inside of the mouth is too light");
       const teethMm = this._teethLen(open) / this.fit.pxmm;
-      if (teethMm > (this.body ? BODY_CAL.teeth_mm + 0.2 : 3.2)) issues.push("too much tooth showing");
+      if (teethMm > (this.body ? BODY_CAL.teeth_mm + 0.2 : 5.2)) issues.push("too much tooth showing");
       return { issues, measures: { opening_mm: +(open / this.fit.pxmm).toFixed(1), teeth_mm: +teethMm.toFixed(1), cavity_vs_lips: +cavRel.toFixed(2),
         bright_pct: +(100 * bright / n).toFixed(2), pink_pct: +(100 * pink / n).toFixed(2), teeth_vs_sclera: +(teethMax / Math.max(1, scL)).toFixed(2) } };
     }
