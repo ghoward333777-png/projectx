@@ -281,7 +281,7 @@ async function loadData() {
 let CURRENT = "build";
 function refreshTab() {
   clearTimeout(POLL);
-  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), devices: () => renderDevices($("#devices")), help: () => {}, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
+  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), agents: () => renderAgents($("#agents")), devices: () => renderDevices($("#devices")), help: () => {}, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

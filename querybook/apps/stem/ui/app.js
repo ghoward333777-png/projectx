@@ -170,6 +170,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (id === "data") loadData();
     if (id === "help") loadHelp();
     if (id === "commons") renderCommons($("#commons"));
+    if (id === "agents") renderAgents($("#agents"));
     if (id === "devices") renderDevices($("#devices"));
     if (id === "diag") renderDiagnostics($("#diag"));
   });

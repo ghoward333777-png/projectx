@@ -21,7 +21,7 @@ import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, soc
 import platform, subprocess, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.10.0"
+CORE_VERSION = "1.11.0"
 BACKUPS_KEPT = 10
 
 
@@ -993,7 +993,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1865,7 +1865,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -2039,6 +2039,9 @@ def run_cli(app):
     if getattr(inst, "devices", None):
         import qbdevices
         qbdevices.start(inst)
+    if getattr(inst, "agents", None):
+        import qbagents
+        qbagents.start(inst)                                  # live feeds are read on their schedule
     # stay awake while working, notice sleeps, and read the system's own logs (in the background: start-up is not delayed)
     power = Power(inst.log, os.path.dirname(getattr(inst.log, "path", "") or ".") or ".", app.APP_ID)
     power.session_start(app.VERSION)

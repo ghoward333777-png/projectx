@@ -416,6 +416,40 @@ off/on, unexpected shutdowns and restarts), the sleep / hibernate / screen-off t
 is blocking sleep (`powercfg /requests`); macOS `pmset`; Linux `journalctl` — and writes what it found to the log.
 Diagnostics → *Power, sleep and the log* shows it all and offers **Download the log**.
 
+## Agents: pick your agents, learn from the best, Open Claw as knowledge (`_core/qbagents.py`, all three applications)
+
+**Non-LLM reasoning.** Every agent is a deterministic program — measurements, statistics and stated rules; the same
+input always gives the same result, with the measures and examples that produced it. No agent calls or imitates an
+AI model: requests to AI-model services (29 hosts: OpenAI, Anthropic, Google Gemini/Vertex, Mistral, Groq, OpenRouter,
+Hugging Face inference, local Ollama …) are refused by the one network function every agent uses. The tab shows a
+purity audit (no model libraries imported, hosts blocked, imported lines kept vs quarantined).
+
+**Pick your agents** (tick to use, untick to switch off; the admin passphrase guards it once set):
+Reader (text — typed, any of 40+ document formats via the Open Claw Artifact Segmenter, or a web page), Listener
+(any recording or the microphone: pauses, phrasing, speaking rate, loudness dynamics, pitch range and melody),
+Watcher (any video or the camera, measured frame by frame in the page: movement, stillness, rhythm, cuts, light,
+colour), Live feed (JSON/CSV addresses read on a schedule), Toucher (pen and touch pressure, speed, smoothness,
+rhythm on a drawing pad; contact force from tactile sensors via Devices), Mover (phone motion, wearables, heart rate,
+gaze via Devices), Any sensor (smell, taste, temperature … any numeric channels), Mentor, Open Claw importer.
+
+**Skills — learn from the best.** Name a skill and the agent that measures it; add exemplars of best-in-class
+performers (title, performer, source, licence — own work, public domain, Creative Commons, government work or
+permission — and a 1–5 rating). The Mentor builds a mastery profile: per measure the rating-weighted median, the
+p10–p90 range, a robust spread, and a weight that grows with how consistently the masters share it. Every sample you
+score gets 0–100, a verdict, the closest exemplar, and the advice that would close the biggest gaps ("average sentence
+length: yours 16 words, masters 5.5 → write shorter sentences"). Each new exemplar makes a candidate profile; the
+admin adopts one.
+
+**Open Claw — agents, skills and tools as knowledge.** Search ClawHub, index every ClawHub skill (its public
+read-only API, page by page; suspicious skills skipped; flagged skills refused), import any skill as a zip, read
+your own Open Claw installation (`~/.openclaw`: each agent's AGENTS.md, SOUL.md, IDENTITY.md, TOOLS.md, HEARTBEAT.md,
+every skill folder, the tools allow/deny configuration, plugins and MCP servers; credentials, sessions and keys are
+never read and secrets in openclaw.json are redacted; USER.md and memory only when you tick it), or upload a skill
+folder. Each becomes a playbook: checklist steps, commands (listed, never run), required tools and settings, facts,
+terms and links are kept; every line that instructs a language model — personas, tone, prompts, "respond with…",
+"think step by step" — is quarantined, shown with the reason, and never used; scripts are listed, never executed.
+A text skill can use a playbook: its key terms become a measure ("playbook terms covered").
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

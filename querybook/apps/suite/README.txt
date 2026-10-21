@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.29.0)
+  Language Builder (1.30.0)
+    * (all three apps) Agents tab: pick your agents (text, sound, video, live data, touch, body, any sensor),
+      learn from best-in-class exemplars (mastery profile, 0-100 score, advice), and Open Claw agents, skills and
+      tools taken in as knowledge - read, never run; model instructions quarantined. No LLM anywhere.
     * Full-body avatars: a second row under the faces. The whole figure breathes and sways while the face speaks.
       First model: Pamela (AI-generated): her head joins the face library, and she stands as three full-body avatars.
       Import your own with "full-body photos" ticked.

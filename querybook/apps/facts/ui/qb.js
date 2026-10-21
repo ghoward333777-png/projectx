@@ -744,3 +744,285 @@ async function dvCamera(el) {
     '" step="' + (caps[k].step || 1) + '" value="' + (set[k] !== undefined ? set[k] : caps[k].min) + '"></label>').join("") : '<p class="small muted">This camera or browser offers no pan, tilt or zoom control.</p>');
   el.querySelectorAll("input[data-ptz]").forEach(r => r.oninput = () => track.applyConstraints({ advanced: [{ [r.dataset.ptz]: Number(r.value) }] }).catch(() => {}));
 }
+
+// ---------------------------------------------------------------- Agents: pick your agents, learn from the best, Open Claw as knowledge
+const AG = { status: null, skill: null, pass: "", touch: [], stroke: 0, motion: null };
+const agPass = el => ($("#ag-pass", el) && $("#ag-pass", el).value) || AG.pass;
+const agB64 = blob => new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+
+// any recording → 16 kHz mono 16-bit WAV (the Listener measures WAV; the browser decodes every other format)
+async function agWav(blob) {
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await ac.decodeAudioData(await blob.arrayBuffer()); ac.close();
+  const sr = 16000, n = Math.min(Math.floor(buf.duration * sr), sr * 90), ch = buf.numberOfChannels, src = buf.sampleRate;
+  const out = new DataView(new ArrayBuffer(44 + 2 * n)), w = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); out.setUint32(4, 36 + 2 * n, true); w(8, "WAVEfmt "); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+  out.setUint32(24, sr, true); out.setUint32(28, 2 * sr, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true); w(36, "data"); out.setUint32(40, 2 * n, true);
+  const data = [...Array(ch).keys()].map(c => buf.getChannelData(c));
+  for (let i = 0; i < n; i++) { const j = Math.floor(i * src / sr); let v = 0; for (let c = 0; c < ch; c++) v += data[c][j] || 0; v = Math.max(-1, Math.min(1, v / ch)); out.setInt16(44 + 2 * i, v * 32767, true); }
+  return agB64(new Blob([out.buffer], { type: "audio/wav" }));
+}
+async function agRecord(kind, seconds, note) {                     // live microphone or camera, for a few seconds
+  const stream = await navigator.mediaDevices.getUserMedia(kind === "audio" ? { audio: true } : { video: true });
+  try {
+    if (kind === "video") return await agFrames(stream, seconds, note);
+    const rec = new MediaRecorder(stream), parts = [];
+    rec.ondataavailable = e => parts.push(e.data); rec.start();
+    for (let s = seconds; s > 0; s--) { note("Listening… " + s + " s"); await new Promise(r => setTimeout(r, 1000)); }
+    await new Promise(r => { rec.onstop = r; rec.stop(); });
+    return { wav_b64: await agWav(new Blob(parts, { type: rec.mimeType })) };
+  } finally { stream.getTracks().forEach(t => t.stop()); }
+}
+// per-frame measures of a video (file or camera): movement, brightness, contrast, colour — computed here, only numbers are sent
+async function agFrames(source, seconds, note) {
+  const v = document.createElement("video"); v.muted = true; v.playsInline = true;
+  if (source instanceof Blob) v.src = URL.createObjectURL(source); else v.srcObject = source;
+  await new Promise((ok, bad) => { v.onloadedmetadata = ok; v.onerror = () => bad(new Error("this video cannot be played here")); });
+  const c = document.createElement("canvas"); c.width = 64; c.height = 36; const g = c.getContext("2d", { willReadFrequently: true });
+  const fps = 6, frames = []; let prev = null;
+  const grab = () => {
+    g.drawImage(v, 0, 0, 64, 36); const d = g.getImageData(0, 0, 64, 36).data, n = d.length / 4;
+    let sum = 0, sum2 = 0, sat = 0, mo = 0; const lum = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const r = d[4 * i], gg = d[4 * i + 1], b = d[4 * i + 2], L = 0.299 * r + 0.587 * gg + 0.114 * b; lum[i] = L; sum += L; sum2 += L * L;
+      sat += Math.max(r, gg, b) - Math.min(r, gg, b); if (prev) mo += Math.abs(L - prev[i]); }
+    const m = sum / n; frames.push({ motion: prev ? +(mo / n).toFixed(3) : 0, bright: +m.toFixed(2), contrast: +Math.sqrt(Math.max(0, sum2 / n - m * m)).toFixed(2), sat: +(sat / n).toFixed(2) }); prev = lum;
+  };
+  if (source instanceof Blob) {                                      // a file: step through it, frame by frame
+    const dur = Math.min(v.duration || 0, 120);
+    for (let t = 0; t < dur; t += 1 / fps) { v.currentTime = t; await new Promise(r => { v.onseeked = r; }); grab(); if (frames.length % 30 === 0) note("Watching… " + t.toFixed(0) + " of " + dur.toFixed(0) + " s"); }
+    URL.revokeObjectURL(v.src);
+  } else {
+    await v.play();
+    for (let i = 0; i < seconds * fps; i++) { grab(); if (i % fps === 0) note("Watching… " + Math.ceil(seconds - i / fps) + " s"); await new Promise(r => setTimeout(r, 1000 / fps)); }
+  }
+  return { frames: frames.slice(1), fps };
+}
+async function agMotion(seconds, note) {                              // the phone's own accelerometer
+  if (window.DeviceMotionEvent && DeviceMotionEvent.requestPermission) await DeviceMotionEvent.requestPermission();
+  const acc = [], t0 = performance.now();
+  const on = e => { const a = e.accelerationIncludingGravity || {}; acc.push(Math.hypot(a.x || 0, a.y || 0, a.z || 0)); };
+  window.addEventListener("devicemotion", on);
+  for (let s = seconds; s > 0; s--) { note("Move now… " + s + " s"); await new Promise(r => setTimeout(r, 1000)); }
+  window.removeEventListener("devicemotion", on);
+  if (acc.length < 10) throw new Error("no motion sensor here — use a phone, or Devices");
+  return { acc, rate_hz: acc.length / ((performance.now() - t0) / 1000) };
+}
+// the input area for one agent; returns a function that collects its input
+function agInput(host, agent, feeds) {
+  const note = m => { $("[data-agnote]", host).textContent = m; };
+  const parts = {
+    text: '<textarea data-ag="text" rows="5" placeholder="Paste text here — or choose any document, or give a web page address"></textarea>' +
+      '<div class="row"><input type="file" data-ag="file" aria-label="Document"><input type="url" data-ag="url" class="grow" placeholder="https://… (a web page)"></div>',
+    audio: '<div class="row"><input type="file" data-ag="file" accept="audio/*,video/*" aria-label="Recording"><button class="btn quiet" data-agrec="audio">🎙 Record 15 s</button></div>',
+    video: '<div class="row"><input type="file" data-ag="file" accept="video/*" aria-label="Video"><button class="btn quiet" data-agrec="video">📷 Camera 10 s</button></div>',
+    touch: '<canvas data-agpad width="480" height="200" style="width:100%;max-width:480px;border:1px dashed var(--line);border-radius:10px;touch-action:none;background:var(--panel)"></canvas>' +
+      '<div class="row"><button class="btn quiet" data-agclear>Clear</button><button class="btn quiet" data-agdev="touch">✋ From tactile devices</button><span class="small muted">draw, write or tap on the pad (pen and touch pressure are measured)</span></div>',
+    motion: '<div class="row"><button class="btn quiet" data-agrec="motion">📱 Record phone motion 10 s</button><button class="btn quiet" data-agdev="motion">⌚ From body devices</button></div>',
+    sensor: '<textarea data-ag="csv" rows="4" placeholder="CSV with a header row, e.g. time,ethanol,temperature"></textarea><div class="row"><input type="file" data-ag="file" accept=".csv,.txt,.json" aria-label="Sensor file"><label class="small">samples per second <input data-ag="rate" type="number" value="1" step="any" style="width:70px"></label></div>',
+    live: '<select data-ag="feed">' + (feeds || []).map(f => '<option value="' + f.id + '">' + esc(f.name) + " (" + f.n + " readings)</option>").join("") + "</select>" +
+      '<span class="small muted"> add feeds under Live data below</span>',
+  };
+  host.innerHTML = (parts[agent] || "") + '<div class="small muted" data-agnote aria-live="polite"></div>';
+  let captured = null;
+  host.querySelectorAll("[data-agrec]").forEach(b => b.onclick = async () => {
+    try { captured = b.dataset.agrec === "motion" ? await agMotion(10, note) : await agRecord(b.dataset.agrec, b.dataset.agrec === "audio" ? 15 : 10, note); note("Captured — now add it as an exemplar or score it."); }
+    catch (e) { note("Could not capture: " + e.message); }
+  });
+  host.querySelectorAll("[data-agdev]").forEach(b => b.onclick = async () => {
+    try { captured = await api("/api/agents/from_devices", { kind: b.dataset.agdev }); note(captured.count + " readings from the Device gateway."); } catch (e) { note(e.message); }
+  });
+  const pad = $("[data-agpad]", host);
+  if (pad) {
+    AG.touch = []; AG.stroke = 0; const g = pad.getContext("2d"); let down = false;
+    const pt = e => { const r = pad.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.width, t: Math.round(e.timeStamp), p: e.pressure, w: e.width || 1, stroke: AG.stroke }; };
+    pad.onpointerdown = e => { down = true; AG.stroke++; pad.setPointerCapture(e.pointerId); AG.touch.push(pt(e)); };
+    pad.onpointermove = e => { if (!down) return; const a = AG.touch[AG.touch.length - 1], b = pt(e); AG.touch.push(b);
+      g.lineWidth = 1 + 6 * (b.p || 0.5); g.lineCap = "round"; g.strokeStyle = "#1f6feb"; g.beginPath(); g.moveTo(a.x * pad.width, a.y * pad.width); g.lineTo(b.x * pad.width, b.y * pad.width); g.stroke(); };
+    pad.onpointerup = pad.onpointercancel = () => { down = false; note(AG.stroke + " stroke(s), " + AG.touch.length + " points"); };
+    $("[data-agclear]", host).onclick = () => { AG.touch = []; AG.stroke = 0; g.clearRect(0, 0, pad.width, pad.height); note(""); };
+  }
+  return async () => {
+    if (captured) { const c = captured; captured = null; return c; }
+    const f = $('[data-ag="file"]', host), file = f && f.files[0];
+    if (agent === "text") {
+      if (file) return { file_b64: await agB64(file), name: file.name };
+      if ($('[data-ag="url"]', host).value.trim()) return { url: $('[data-ag="url"]', host).value.trim() };
+      return { text: $('[data-ag="text"]', host).value };
+    }
+    if (agent === "audio") { if (!file) throw new Error("choose a recording or record one"); note("Converting the sound…"); return { wav_b64: await agWav(file) }; }
+    if (agent === "video") { if (!file) throw new Error("choose a video or use the camera"); return await agFrames(file, 0, note); }
+    if (agent === "touch") { if (AG.touch.length < 5) throw new Error("draw or tap on the pad first"); return { points: AG.touch.slice() }; }
+    if (agent === "motion") throw new Error("record motion or read it from devices first");
+    if (agent === "sensor") { const t = file ? await file.text() : $('[data-ag="csv"]', host).value; return t.trim().startsWith("{") ? JSON.parse(t) : { csv: t, rate_hz: Number($('[data-ag="rate"]', host).value) || 1 }; }
+    if (agent === "live") return { feed_id: Number($('[data-ag="feed"]', host).value) };
+    return {};
+  };
+}
+
+async function renderAgents(el) {
+  if (!el.dataset.ready) {
+    el.dataset.ready = "1";
+    el.innerHTML =
+      '<div class="card"><h2>Agents</h2><p class="small muted">Agents you pick and choose. They take in text, sound, video, live data, touch, body motion and any other sensor, ' +
+      "and learn from <b>best-in-class examples</b> of people with superior skills: each skill's exemplars become a profile of mastery, and every new sample is scored against it, " +
+      "with advice on what to change. Open Claw agents, skills and tools are taken in as <b>knowledge</b> — read, never run.</p><div id=\"ag-purity\"></div>" +
+      '<div class="row small"><label>Admin passphrase (when one is set) <input id="ag-pass" type="password" autocomplete="off" style="width:200px"></label></div></div>' +
+      '<div class="card"><h2>1 · Pick your agents</h2><div id="ag-list"></div></div>' +
+      '<div class="card"><h2>2 · Skills — learn from the best</h2><div class="row"><input id="ag-sname" placeholder="New skill, e.g. Persuasive speaking" class="grow">' +
+      '<select id="ag-sagent"></select><button class="btn" id="ag-sadd">Add skill</button></div><div id="ag-skills"></div><div id="ag-skill"></div></div>' +
+      '<div class="card"><h2>3 · Open Claw — agents, skills and tools as knowledge</h2><p class="small muted">Open Claw agents are made for language models. Here they are read by deterministic ' +
+      "programs: checklists, commands, required tools, terms and links are kept; every line that instructs a model (persona, tone, prompts, “respond with…”) is <b>quarantined</b> — " +
+      "kept for you to inspect, never used; scripts are listed, never run.</p>" +
+      '<div class="row"><input id="ag-cq" class="grow" placeholder="Search ClawHub skills, e.g. calendar, pdf, weather"><button class="btn" id="ag-csearch">Search</button>' +
+      '<button class="btn quiet" id="ag-cindex">Index every ClawHub skill</button><label class="small"><input type="checkbox" id="ag-csafe" checked> skip suspicious</label></div><div id="ag-cres"></div>' +
+      '<div class="row"><button class="btn quiet" id="ag-clocal">Read my Open Claw installation</button><input id="ag-chome" class="grow" placeholder="(default ~/.openclaw — another folder needs the admin passphrase)">' +
+      '<label class="small"><input type="checkbox" id="ag-cpers"> include USER.md and memory</label></div>' +
+      '<div class="row"><input type="file" id="ag-cup" accept=".zip,.md" aria-label="Skill folder (zip) or SKILL.md"><button class="btn quiet" id="ag-cupb">Import a skill folder (.zip) or SKILL.md</button></div>' +
+      '<div class="small" id="ag-cmsg" aria-live="polite"></div><div id="ag-pbs"></div><div id="ag-pb"></div></div>' +
+      '<div class="card"><h2>4 · Live data</h2><p class="small muted">A data address (JSON or CSV) read on a schedule while QueryBook runs. Addresses of AI-model services are refused.</p>' +
+      '<div class="row"><input id="ag-fname" placeholder="name" style="width:140px"><input id="ag-furl" class="grow" placeholder="https://…/data.json"><input id="ag-fpath" placeholder="JSON path (e.g. data.price) or CSV column" style="width:220px">' +
+      '<input id="ag-fevery" type="number" value="300" min="30" style="width:80px" title="seconds"><button class="btn" id="ag-fadd">Add feed</button></div><div id="ag-feeds"></div></div>';
+    $("#ag-sadd", el).onclick = async () => { const s = await api("/api/agents/skill_add", { name: $("#ag-sname", el).value, agent: $("#ag-sagent", el).value }); $("#ag-sname", el).value = ""; AG.skill = s.id; renderAgents(el); };
+    $("#ag-csearch", el).onclick = async () => {
+      const r = await api("/api/agents/claw/search", { q: $("#ag-cq", el).value, safe: $("#ag-csafe", el).checked });
+      $("#ag-cres", el).innerHTML = agClawTable(r.results);
+    };
+    onEnter($("#ag-cq", el), () => $("#ag-csearch", el).click());
+    $("#ag-cindex", el).onclick = async () => {
+      $("#ag-cmsg", el).textContent = "Indexing every ClawHub skill (names and summaries only)…";
+      const r = await api("/api/agents/claw/sync_index", { safe: $("#ag-csafe", el).checked });
+      $("#ag-cmsg", el).textContent = r.total + " ClawHub skills in the local index" + (r.complete ? "" : " (more remain — run again to continue)") + ". Search filters the index too.";
+      const ix = await api("/api/agents/claw/index?limit=200&q=" + encodeURIComponent($("#ag-cq", el).value));
+      $("#ag-cres", el).innerHTML = '<p class="small muted">' + ix.total + " skills" + (ix.total > 200 ? " — showing 200; type to filter" : "") + "</p>" + agClawTable(ix.items);
+    };
+    $("#ag-cres", el).onclick = async e => {
+      const b = e.target.closest("[data-cimp]"); if (!b) return;
+      const r = await api("/api/agents/claw/import", { slug: b.dataset.cimp });
+      $("#ag-cmsg", el).textContent = r.duplicate ? "Already imported." : "Imported " + r.name + ": " + r.kept + " usable lines kept, " + r.quarantined + " model instructions quarantined.";
+      agPlaybooks(el);
+    };
+    $("#ag-clocal", el).onclick = async () => {
+      const r = await api("/api/agents/claw/local", { home: $("#ag-chome", el).value.trim() || null, include_personal: $("#ag-cpers", el).checked, passphrase: agPass(el) });
+      $("#ag-cmsg", el).textContent = r.found ? "Open Claw at " + r.home + ": " + r.agents + " agent(s), " + r.skills + " skill(s) and the tools catalogue imported as knowledge." + (r.config_error ? " " + r.config_error : "")
+        : "No Open Claw installation at " + r.home + ".";
+      agPlaybooks(el);
+    };
+    $("#ag-cupb", el).onclick = async () => {
+      const f = $("#ag-cup", el).files[0]; if (!f) return toast("Choose a skill folder (.zip) or a SKILL.md.");
+      const r = await api("/api/agents/claw/upload", { name: f.name, data_b64: await agB64(f) });
+      $("#ag-cmsg", el).textContent = r.duplicate ? "Already imported." : "Imported " + r.name + ": " + r.kept + " kept, " + r.quarantined + " quarantined.";
+      agPlaybooks(el);
+    };
+    $("#ag-pbs", el).onclick = async e => {
+      const v = e.target.closest("[data-pbv]"), d = e.target.closest("[data-pbd]"), t = e.target.closest("[data-pbt]");
+      if (v) agPlaybook(el, v.dataset.pbv);
+      if (d && confirm("Remove this playbook?")) { await api("/api/agents/playbook_delete", { id: Number(d.dataset.pbd) }); agPlaybooks(el); $("#ag-pb", el).innerHTML = ""; }
+      if (t) { await api("/api/agents/playbook_pick", { id: Number(t.dataset.pbt), enabled: t.checked }); }
+    };
+    $("#ag-fadd", el).onclick = async () => {
+      const r = await api("/api/agents/feed_add", { name: $("#ag-fname", el).value, url: $("#ag-furl", el).value, path: $("#ag-fpath", el).value, every_s: Number($("#ag-fevery", el).value) });
+      toast(r.error ? "Feed added, but: " + r.error : "Feed added — first reading " + r.value); agFeeds(el);
+    };
+    $("#ag-feeds", el).onclick = async e => {
+      const p = e.target.closest("[data-fp]"), d = e.target.closest("[data-fd]");
+      if (p) { const r = await api("/api/agents/feed_poll", { id: Number(p.dataset.fp) }); toast(r.error || "Reading: " + r.value); }
+      if (d && confirm("Remove this feed and its readings?")) await api("/api/agents/feed_delete", { id: Number(d.dataset.fd) });
+      agFeeds(el);
+    };
+    $("#ag-list", el).onchange = async e => {
+      const c = e.target.closest("[data-agpick]"); if (!c) return;
+      try { await api("/api/agents/pick", { agent: c.dataset.agpick, enabled: c.checked, passphrase: agPass(el) }); } catch (err) { c.checked = !c.checked; }
+      renderAgents(el);
+    };
+    $("#ag-skills", el).onclick = e => { const b = e.target.closest("[data-sk]"); if (b) { AG.skill = Number(b.dataset.sk); renderAgents(el); } };
+  }
+  const st = AG.status = await api("/api/agents/status");
+  const pu = st.purity;
+  $("#ag-purity", el).innerHTML = '<div class="note ' + (pu.ok ? "good" : "bad") + '"><b>' + (pu.ok ? "✔ Non-LLM reasoning" : "⚠ Check the agents") + "</b> — " + esc(pu.statement) +
+    " <span class=\"small\">(" + pu.llm_hosts_blocked + " AI-model services blocked · imported lines kept " + (pu.imported_lines_kept || 0) + ", quarantined " + (pu.imported_lines_quarantined || 0) + ")</span></div>";
+  $("#ag-list", el).innerHTML = '<table class="t small"><tr><th>Use</th><th>Agent</th><th>Sense</th><th>Takes in</th><th>Measures / does</th><th>Network</th><th>Reasoning</th></tr>' +
+    st.agents.map(a => '<tr><td><input type="checkbox" data-agpick="' + a.id + '"' + (a.enabled ? " checked" : "") + ' aria-label="Use ' + esc(a.name) + '"></td><td>' + a.icon + " <b>" + esc(a.name) + "</b></td><td>" +
+      esc(a.sense) + "</td><td>" + esc(a.takes) + "</td><td>" + esc(a.measures) + "</td><td>" + esc(a.network) + "</td><td>" + cmTag("deterministic · no LLM", "good") + "</td></tr>").join("") + "</table>";
+  const sel = $("#ag-sagent", el);
+  if (!sel.options.length) sel.innerHTML = st.agents.filter(a => ["text", "audio", "video", "live", "touch", "motion", "sensor"].includes(a.id)).map(a => '<option value="' + a.id + '">measured by ' + esc(a.name) + " (" + esc(a.sense) + ")</option>").join("");
+  const sk = (await api("/api/agents/skills")).skills;
+  $("#ag-skills", el).innerHTML = sk.length ? '<div class="row">' + sk.map(s => '<button class="btn ' + (s.id === AG.skill ? "" : "quiet") + '" data-sk="' + s.id + '">' + esc(s.name) +
+    ' <span class="small">· ' + s.exemplars + " exemplar(s)</span></button>").join("") + "</div>" : '<p class="muted">No skills yet — name one above and choose the agent that measures it.</p>';
+  if (AG.skill && sk.find(s => s.id === AG.skill)) await agSkill(el, sk.find(s => s.id === AG.skill));
+  else $("#ag-skill", el).innerHTML = "";
+  agPlaybooks(el); agFeeds(el);
+}
+function agClawTable(items) {
+  return items && items.length ? '<table class="t small"><tr><th>Skill</th><th>Summary</th><th>Version</th><th>Owner</th><th></th></tr>' + items.map(r => "<tr><td><b>" + esc(r.name) + '</b><br><span class="mono">' +
+    esc(r.slug) + "</span></td><td>" + esc(r.summary || "") + "</td><td>" + esc(r.version || "") + "</td><td>" + esc(r.owner || "") + '</td><td><button class="btn quiet" data-cimp="' + esc(r.slug) + '">Import as knowledge</button></td></tr>').join("") + "</table>"
+    : '<p class="muted">Nothing found.</p>';
+}
+async function agSkill(el, s) {
+  const box = $("#ag-skill", el), agent = AG.status.agents.find(a => a.id === s.agent);
+  const [ex, pr, sm, fd, pbs] = await Promise.all([api("/api/agents/exemplars?skill_id=" + s.id), api("/api/agents/profile?skill_id=" + s.id), api("/api/agents/samples?skill_id=" + s.id),
+    api("/api/agents/feeds"), api("/api/agents/playbooks")]);
+  const p = pr.profile, defs = (await api("/api/agents/features"))[s.agent] || {};
+  box.innerHTML = '<h3>' + esc(s.name) + ' <span class="small muted">measured by ' + agent.icon + " " + esc(agent.name) + '</span> <button class="btn quiet small" data-skdel>Delete skill</button></h3>' +
+    '<div class="grid2"><div><h4>Add a best-in-class exemplar — or score your own sample</h4><div data-aginput></div>' +
+    '<div class="row small"><input data-ex="title" placeholder="title (e.g. Keynote, 2019)" class="grow"><input data-ex="performer" placeholder="performer"></div>' +
+    '<div class="row small"><input data-ex="source" placeholder="source (address or reference)" class="grow"><select data-ex="licence"><option value="">licence…</option><option>own work</option><option>public domain</option>' +
+    '<option>Creative Commons</option><option>government work</option><option>permission from the owner</option></select><label>rating <select data-ex="rating"><option>5</option><option selected>4</option><option>3</option><option>2</option><option>1</option></select></label></div>' +
+    '<div class="row"><button class="btn" data-exadd>➕ Add as exemplar</button><button class="btn bigbtn" data-score>🎯 Score my sample</button></div>' +
+    (s.agent === "text" ? '<div class="row small">Playbook terms to cover: <select data-attach><option value="">none</option>' + pbs.playbooks.filter(b => b.enabled).map(b => '<option value="' + b.id + '"' + (b.id === s.playbook_id ? " selected" : "") + ">" +
+      esc(b.name) + "</option>").join("") + "</select></div>" : "") + '<div data-result></div></div>' +
+    "<div><h4>Mastery profile " + (p ? "v" + p.version + " · " + esc(p.status) + (p.adopted ? "" : ' <button class="btn quiet small" data-adopt="' + p.version + '">Adopt</button>') : "") + "</h4>" +
+    (p ? '<table class="t small"><tr><th>Measure</th><th>Masters (median)</th><th>Range</th><th>Weight</th></tr>' + Object.entries(p.profile.features).sort((a, b) => b[1].importance - a[1].importance).map(([k, v]) =>
+      "<tr><td>" + esc((defs[k] || [k])[0]) + "</td><td>" + v.median + " " + esc((defs[k] || [0, ""])[1]) + "</td><td>" + v.p10 + " – " + v.p90 + '</td><td><div class="meter"><i style="width:' + Math.round(100 * v.importance / Math.max(...Object.values(p.profile.features).map(x => x.importance))) + '%"></i></div></td></tr>').join("") + "</table>"
+      : '<p class="muted">No exemplars yet. Add recordings or samples of people with superior skill — the profile is built from them.</p>') +
+    "<h4>Exemplars (" + ex.exemplars.length + ")</h4>" + (ex.exemplars.length ? '<table class="t small">' + ex.exemplars.map(x => "<tr><td><b>" + esc(x.title) + "</b> " + esc(x.performer || "") + '<br><span class="muted">' + esc(x.licence) +
+      (x.source ? " · " + esc(x.source) : "") + "</span></td><td>" + "★".repeat(x.rating) + '</td><td><button class="btn quiet small" data-exdel="' + x.id + '">Remove</button></td></tr>').join("") + "</table>" : "") +
+    "<h4>Your samples</h4>" + (sm.samples.length ? '<table class="t small">' + sm.samples.map(x => "<tr><td>" + esc(x.created) + "</td><td>" + esc(x.title) + "</td><td><b>" + (x.overall === null ? "—" : x.overall) + "</b> " + esc(x.verdict || "") +
+      '<br><span class="small muted">' + x.advice.map(esc).join("<br>") + "</span></td></tr>").join("") + "</table>" : '<p class="muted">None yet.</p>') + "</div></div>";
+  const collect = agInput($("[data-aginput]", box), s.agent, fd.feeds);
+  const v = k => $('[data-ex="' + k + '"]', box).value;
+  $("[data-skdel]", box).onclick = async () => { if (confirm("Delete this skill, its exemplars and samples?")) { await api("/api/agents/skill_delete", { id: s.id }); AG.skill = null; renderAgents(el); } };
+  $("[data-exadd]", box).onclick = async () => {
+    let input; try { input = await collect(); } catch (e) { return toast(e.message, true); }
+    const r = await api("/api/agents/exemplar_add", { skill_id: s.id, input, title: v("title") || "exemplar", performer: v("performer"), source: v("source"), licence: v("licence"), rating: Number(v("rating")) });
+    toast(r.duplicate ? "That exemplar is already in." : "Exemplar added — profile v" + r.profile.version + " from " + r.profile.exemplars + " exemplar(s)."); renderAgents(el);
+  };
+  $("[data-score]", box).onclick = async () => {
+    let input; try { input = await collect(); } catch (e) { return toast(e.message, true); }
+    const r = await api("/api/agents/sample", { skill_id: s.id, input, title: v("title") || "my sample" });
+    $("[data-result]", box).innerHTML = r.overall === null ? '<div class="note">' + esc(r.note || "No profile yet.") + "</div>" :
+      '<div class="note ' + (r.overall >= 70 ? "good" : r.overall < 50 ? "bad" : "") + '"><b>' + r.overall + " / 100 — " + esc(r.verdict) + "</b> (profile v" + r.profile_version + ", " + esc(r.profile_status) + ")" +
+      (r.closest_exemplar ? "<br>Closest to: <b>" + esc(r.closest_exemplar.title) + "</b> " + esc(r.closest_exemplar.performer || "") : "") +
+      (r.advice.length ? "<ul>" + r.advice.map(a => "<li>" + esc(a.text) + "</li>").join("") + "</ul>" : "<br>Every measure is within the masters' range.") + "</div>";
+  };
+  box.querySelectorAll("[data-exdel]").forEach(b => b.onclick = async () => { await api("/api/agents/exemplar_delete", { id: Number(b.dataset.exdel) }); renderAgents(el); });
+  const ad = $("[data-adopt]", box); if (ad) ad.onclick = async () => { await api("/api/agents/adopt", { skill_id: s.id, version: Number(ad.dataset.adopt), passphrase: agPass(el) }); renderAgents(el); };
+  const at = $("[data-attach]", box); if (at) at.onchange = () => api("/api/agents/skill_attach", { id: s.id, playbook_id: at.value ? Number(at.value) : null });
+}
+async function agPlaybooks(el) {
+  const r = await api("/api/agents/playbooks");
+  $("#ag-pbs", el).innerHTML = r.playbooks.length ? '<table class="t small"><tr><th>Use</th><th>Kind</th><th>Name</th><th>From</th><th>Kept</th><th>Quarantined</th><th></th></tr>' + r.playbooks.map(b =>
+    '<tr><td><input type="checkbox" data-pbt="' + b.id + '"' + (b.enabled ? " checked" : "") + ' aria-label="Use"></td><td>' + esc(b.kind) + "</td><td><b>" + esc(b.name) + "</b> " + esc(b.version || "") +
+    '<br><span class="small muted">' + esc(b.description || "") + "</span></td><td>" + esc(b.origin) + "</td><td>" + b.kept + "</td><td>" + (b.quarantined ? cmTag(b.quarantined + " model line(s)", "warn") : "0") +
+    '</td><td><button class="btn quiet small" data-pbv="' + b.id + '">View</button><button class="btn quiet small" data-pbd="' + b.id + '">Remove</button></td></tr>').join("") + "</table>"
+    : '<p class="muted">No Open Claw agents, skills or tools imported yet.</p>';
+}
+async function agPlaybook(el, id) {
+  const b = await api("/api/agents/playbook?id=" + id), d = b.data, k = d.kept || {};
+  const list = (title, xs, mono) => xs && xs.length ? "<h4>" + title + " (" + xs.length + ')</h4><ul class="small">' + xs.slice(0, 80).map(x => "<li" + (mono ? ' class="mono"' : "") + ">" + esc(x) + "</li>").join("") + "</ul>" : "";
+  $("#ag-pb", el).innerHTML = '<div class="note"><h3>' + esc(b.name) + " " + esc(b.version || "") + '</h3><p class="small">' + esc(b.description || "") + "</p>" +
+    '<p class="small"><b>How it is used:</b> ' + esc(d.how_used || "") + "</p>" + (b.warnings.length ? '<p class="small">' + b.warnings.map(w => cmTag(w, "warn")).join(" ") + "</p>" : "") +
+    (d.requires && (d.requires.bins || []).length ? '<p class="small"><b>Needs tools:</b> ' + esc(d.requires.bins.concat(d.requires.anyBins || []).join(", ")) + (d.requires.env && d.requires.env.length ? " · <b>settings:</b> " + esc(d.requires.env.join(", ")) : "") + "</p>" : "") +
+    (d.tools_config ? '<p class="small"><b>Tools configuration:</b> <span class="mono">' + esc(JSON.stringify(d.tools_config)) + "</span><br><b>Plugins:</b> " + esc((d.plugins || []).join(", ") || "none") +
+      " · <b>MCP servers:</b> " + esc((d.mcp_servers || []).join(", ") || "none") + " · <b>Tools its skills use:</b> " + esc((d.skill_tools || []).join(", ") || "none") + "</p>" : "") +
+    list("Checklist steps", k.steps) + list("Commands — listed, never run", k.commands, true) + list("Facts and notes", k.facts) + list("Key terms", k.terms) + list("Links", k.links, true) +
+    (d.resources && d.resources.length ? "<h4>Files</h4><ul class=\"small\">" + d.resources.map(r => "<li><span class=\"mono\">" + esc(r.path) + "</span> · " + esc(r.format) + (r.note ? " · " + cmTag(r.note, "warn") : "") + "</li>").join("") + "</ul>" : "") +
+    (d.quarantined && d.quarantined.length ? "<h4>Quarantined — instructions for a language model, not used (" + d.quarantined.length + ')</h4><ul class="small muted">' +
+      d.quarantined.slice(0, 80).map(q => "<li>" + esc(q.line) + " <i>(" + esc(q.why) + (q.file ? ", " + esc(q.file) : "") + ")</i></li>").join("") + "</ul>" : "") + "</div>";
+}
+async function agFeeds(el) {
+  const r = await api("/api/agents/feeds");
+  $("#ag-feeds", el).innerHTML = r.feeds.length ? '<table class="t small"><tr><th>Feed</th><th>Every</th><th>Readings</th><th>Latest</th><th>Last read</th><th></th></tr>' + r.feeds.map(f => "<tr><td><b>" + esc(f.name) +
+    '</b><br><span class="mono small">' + esc(f.url) + (f.path ? " · " + esc(f.path) : "") + "</span></td><td>" + f.every_s + " s</td><td>" + f.n + "</td><td>" + (f.latest === null ? "—" : f.latest) + "</td><td>" + esc(f.last || "") +
+    (f.error ? "<br>" + cmTag(f.error, "bad") : "") + '</td><td><button class="btn quiet small" data-fp="' + f.id + '">Read now</button><button class="btn quiet small" data-fd="' + f.id + '">Remove</button></td></tr>').join("") + "</table>"
+    : '<p class="muted">No live feeds yet.</p>';
+}

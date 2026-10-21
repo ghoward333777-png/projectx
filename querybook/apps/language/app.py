@@ -20,6 +20,7 @@ sys.path.insert(0, HERE)
 import qbcore as core
 import qbcommons as cm
 import qbdevices
+import qbagents
 import harvest
 import lab
 import speech
@@ -41,7 +42,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.29.0"
+VERSION = "1.30.0"
 PORT = 8101
 program_dir = HERE
 
@@ -122,6 +123,7 @@ class App:
         self._routes()
         cm.attach(self, APP_ID, harvest.LanguageAdapter(self))
         qbdevices.attach(self, APP_ID, PORT)
+        qbagents.attach(self, APP_ID)
         try:
             self.store.backup("startup")
         except Exception as e:

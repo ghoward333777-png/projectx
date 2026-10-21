@@ -18,6 +18,7 @@ sys.path.insert(0, HERE)
 import qbcore as core
 import qbcommons as cm
 import qbdevices
+import qbagents
 import harvest
 import engine
 import science
@@ -26,7 +27,7 @@ import verify
 
 APP_ID = "stem"
 APP_NAME = "QueryBook Math, Science & Engineering"
-VERSION = "1.8.1"
+VERSION = "1.9.0"
 PORT = 8102
 program_dir = HERE
 
@@ -71,6 +72,7 @@ class App:
         self._routes()
         cm.attach(self, APP_ID, harvest.StemAdapter(self))
         qbdevices.attach(self, APP_ID, PORT)
+        qbagents.attach(self, APP_ID)
         try:
             self.store.backup("startup")
         except Exception as e:
