@@ -368,7 +368,19 @@ words "turn around" in the text, at the moment they are spoken — cuts to a med
 fades back to the talking photo, at her own pace (a real turn on the spot takes ~7–8 s; if the speech ends or pauses
 mid-turn she finishes turning). Full-length clips work too: where the face is too small for the tracker, it is found in
 a zoomed square around the head. Pamela ships with two: a full-length one on her track avatar (97 frames) and a closer
-one on her stadium avatar (81 frames). In the calibrated speaking smile
+one on her stadium avatar (81 frames).
+
+**Moves: a motion library per full-body avatar.** The turnaround is one move among many. *Avatar studio → Moves →
+Find the moves in it* reads any video of the person (one pass: face, outline and camera cuts in every frame), suggests one
+move per camera shot, and lets you name each, set its times, the words that start it, and its camera: *still camera*
+(the body travels through the picture — a cartwheel, a walk towards you; the camera is taken from frames where she
+stands upright facing it, and a close-up stays a close-up) or *follow her* (on the spot, like a turn). Each move gets a
+button under the talking face, and its words in a script set it off as they are spoken; moves named close together
+play one after another, and a move named twice in one sentence plays once. Pamela's track avatar ships with nine:
+turn around, arm swings, boxing, side kick, cartwheel, walk to you, high knee, water break, and swimming (a drone view
+in a pool, played as a cutaway). The words: "turn around"; "arm swings / stretch / warm up"; "box / punch / fight";
+"kick"; "cartwheel / flip"; "walk / come closer"; "high knee / march"; "water / drink / bottle"; "swim / pool /
+backstroke". In the calibrated speaking smile
 the upper front teeth now show as they do in the reference (up to ~9 mm, never brighter than the eye whites).
 
 ## Quality lab (Speech → 🎬 Quality lab)

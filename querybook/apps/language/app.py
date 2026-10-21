@@ -42,7 +42,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.33.0"
+VERSION = "1.34.0"
 PORT = 8101
 program_dir = HERE
 
@@ -906,6 +906,27 @@ class App:
             return self.avatars.add(data, p.get("name"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("tags"),
                                     p.get("subject"), bool(p.get("consent")), p.get("filename"))
 
+        @a.get("/api/avatars/motions")
+        def av_motions(p):
+            return {"motions": self.avatars.motions(p.get("id"))}
+
+        @a.get("/api/avatars/motion_frame")
+        def av_motion_frame(p):
+            with open(self.avatars.motion_frame(p.get("id"), p.get("slug"), p.get("i") or 0), "rb") as f:
+                return f.read(), "image/jpeg"
+
+        @a.post("/api/avatars/motion_put")
+        def av_motion_put(p):
+            return self.avatars.motion_put(p.get("id"), p.get("slug"), p.get("i"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
+
+        @a.post("/api/avatars/motion_set")
+        def av_motion_set(p):
+            return self.avatars.motion_set(p.get("id"), p.get("slug"), p.get("meta") or {})
+
+        @a.post("/api/avatars/motion_delete")
+        def av_motion_delete(p):
+            return self.avatars.motion_delete(p.get("id"), p.get("slug"))
+
         @a.get("/api/avatars/turn")
         def av_turn(p):
             return {"turn": self.avatars.turn(p.get("id"))}
@@ -1745,6 +1766,11 @@ def selftest():
         tt = trk and app.avatars.turn(trk["id"])
         c.check("avatars: her full-length turnaround comes with the track avatar (face found by zooming on the head)",
                 bool(tt) and tt["frames"] == 97 and trk["turn"] and sum(1 for y in tt["yaw"] if y is not None) >= 40, tt and tt["frames"])
+        mv = trk and app.avatars.motions(trk["id"])
+        c.check("avatars: Pamela's motion library — turn around, arm swings, boxing, side kick, cartwheel, walk, high knee, water break, swimming — each with its words",
+                bool(mv) and {m["slug"] for m in mv} == {"turn-around", "arm-swings", "boxing", "side-kick", "cartwheel", "walk-to-you", "high-knee", "water-break", "swimming"}
+                and all(m["words"] and m["frames"] >= 10 for m in mv) and trk["motions"][0] == "turn-around"
+                and os.path.isfile(app.avatars.motion_frame(trk["id"], "swimming", 0)), [m["slug"] for m in mv or []])
         tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
         mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
         bs = mo["frames"][len(mo["frames"]) // 2]["bs"]

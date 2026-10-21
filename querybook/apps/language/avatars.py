@@ -149,10 +149,11 @@ class Library:
                 continue
             with open(p, "rb") as f:
                 r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
-            if a.get("turn") and os.path.isfile(os.path.join(folder, a["turn"], "turn.json")):
-                src = os.path.join(folder, os.path.basename(a["turn"]))
-                dst = os.path.join(self.folder, str(r["id"]), "turn")
-                if not os.path.isfile(os.path.join(dst, "turn.json")):
+            moves = ([{"slug": "turn-around", "dir": a["turn"]}] if a.get("turn") else []) + list(a.get("motions") or [])
+            for mv in moves:                                     # the person's recorded moves (also added to earlier installs)
+                src = os.path.join(folder, os.path.basename(mv["dir"]))
+                dst = self._motion_dir(r["id"], mv["slug"])
+                if os.path.isdir(src) and not os.path.isfile(self._meta_file(dst)):
                     shutil.copytree(src, dst, dirs_exist_ok=True)
             if not r["duplicate"]:
                 with self.store.write() as db:
@@ -216,6 +217,8 @@ class Library:
         r["analysed"] = bool(r["landmarks"])
         r["kind"] = "body" if "body" in r["tags"] else "face"     # full-body avatar (whole figure moves) or a face portrait
         r["turn"] = os.path.isfile(os.path.join(self.folder, str(r["id"]), "turn", "turn.json"))
+        md = os.path.join(self.folder, str(r["id"]), "motions")
+        r["motions"] = (["turn-around"] if r["turn"] else []) + (sorted(x for x in os.listdir(md) if os.path.isfile(os.path.join(md, x, "motion.json"))) if os.path.isdir(md) else [])
         qp = os.path.join(self.folder, str(r["id"]), "qc.json")
         r["qc"] = None
         if os.path.isfile(qp):
@@ -295,57 +298,101 @@ class Library:
             json.dump(q, f)
         return q
 
-    # ---------------------------------------------------------------- turnaround (full body): the person's own side and back views
-    def _turn_dir(self, aid):
-        self.get(aid)
-        return os.path.join(self.folder, str(int(aid)), "turn")
+    # ---------------------------------------------------------------- motions (full body): the person's own recorded moves
+    # Each motion is a run of frames from a video of the person (a turnaround, a stretch, a walk …), aligned by the page to
+    # this avatar's framing, with a name and the words that set it off in a script. "turn-around" keeps its original
+    # folder (turn/), so turnarounds stored by earlier versions stay where they are.
+    @staticmethod
+    def _slug(slug):
+        s = re.sub(r"[^a-z0-9]+", "-", str(slug or "").lower()).strip("-")[:40]
+        if not s:
+            raise core.UserError("Name the move (for example: turn around, stretch, walk).")
+        return s
 
-    def turn_put(self, aid, i, data):
-        """One frame of a turnaround, already aligned to the face by the page (JPEG)."""
+    def _motion_dir(self, aid, slug):
+        self.get(aid)
+        s = self._slug(slug)
+        return os.path.join(self.folder, str(int(aid)), "turn" if s == "turn-around" else os.path.join("motions", s))
+
+    @staticmethod
+    def _meta_file(d):
+        return os.path.join(d, "turn.json" if os.path.basename(d) == "turn" else "motion.json")
+
+    def motion_put(self, aid, slug, i, data):
+        """One frame of a motion, already aligned by the page (JPEG)."""
         i = int(i)
         if not 0 <= i < MAX_TURN_FRAMES:
-            raise core.UserError("A turnaround holds at most %d frames." % MAX_TURN_FRAMES)
+            raise core.UserError("A move holds at most %d frames." % MAX_TURN_FRAMES)
         if _kind(data or b"") != "jpg" or len(data) > 2 * 1024 * 1024:
-            raise core.UserError("Send each turnaround frame as a JPEG under 2 MB.")
-        d = self._turn_dir(aid)
+            raise core.UserError("Send each frame as a JPEG under 2 MB.")
+        d = self._motion_dir(aid, slug)
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "%03d.jpg" % i), "wb") as f:
             f.write(data)
         return {"id": int(aid), "frame": i}
 
-    def turn_set(self, aid, meta):
-        """Finish a turnaround: its timing, the face alignment used, and each frame's head angle (None where the face is hidden)."""
-        d = self._turn_dir(aid)
+    def motion_set(self, aid, slug, meta):
+        """Finish a motion: its name and trigger words, timing, the alignment used, each frame's head angle (None = hidden)."""
+        d = self._motion_dir(aid, slug)
         n = int(meta.get("frames") or 0)
-        if n < 8 or any(not os.path.isfile(os.path.join(d, "%03d.jpg" % i)) for i in range(n)):
-            raise core.UserError("The turnaround frames did not all arrive — import it again.")
-        for fn in os.listdir(d):                                  # frames left over from a longer earlier turnaround
+        if n < 4 or any(not os.path.isfile(os.path.join(d, "%03d.jpg" % i)) for i in range(n)):
+            raise core.UserError("The frames of this move did not all arrive — import it again.")
+        for fn in os.listdir(d):                                  # frames left over from a longer earlier version
             if fn.endswith(".jpg") and int(fn[:3]) >= n:
                 os.remove(os.path.join(d, fn))
-        m = {"frames": n, "fps": float(meta.get("fps") or 12), "width": int(meta.get("width") or 0), "height": int(meta.get("height") or 0),
-             "face_h": float(meta.get("face_h") or 0.2), "face_cy": float(meta.get("face_cy") or 0.25),
+        s = self._slug(slug)
+        words = [" ".join(str(w).lower().split())[:40] for w in (meta.get("words") or []) if str(w).strip()][:12]
+        m = {"slug": s, "name": " ".join(str(meta.get("name") or s.replace("-", " ")).split())[:40], "words": words or ([s.replace("-", " ")]),
+             "frames": n, "fps": float(meta.get("fps") or 12), "width": int(meta.get("width") or 0), "height": int(meta.get("height") or 0),
+             "face_h": float(meta.get("face_h") or 0.2), "face_cy": float(meta.get("face_cy") or 0.25), "align": str(meta.get("align") or "track")[:10],
              "yaw": [None if v is None else round(float(v), 1) for v in (meta.get("yaw") or [])][:n], "start": max(0, min(n - 1, int(meta.get("start") or 0))),
              "end": max(0, min(n - 1, int(meta["end"]) if meta.get("end") is not None else n - 1)), "source": str(meta.get("source") or "")[:200], "at": _now()}
-        with open(os.path.join(d, "turn.json"), "w", encoding="utf-8") as f:
+        with open(self._meta_file(d), "w", encoding="utf-8") as f:
             json.dump(m, f)
         return m
 
-    def turn(self, aid):
-        p = os.path.join(self._turn_dir(aid), "turn.json")
+    def motion(self, aid, slug):
+        p = self._meta_file(self._motion_dir(aid, slug))
         if not os.path.isfile(p):
             return None
         with open(p, encoding="utf-8") as f:
-            return json.load(f)
+            m = json.load(f)
+        if self._slug(slug) == "turn-around":                     # stored before moves had names
+            m.setdefault("slug", "turn-around"); m.setdefault("name", "turn around"); m.setdefault("words", ["turn around"]); m.setdefault("align", "track")
+        return m
 
-    def turn_frame(self, aid, i):
-        p = os.path.join(self._turn_dir(aid), "%03d.jpg" % int(i))
+    def motions(self, aid):
+        base = os.path.join(self.folder, str(int(aid)))
+        slugs = (["turn-around"] if os.path.isfile(os.path.join(base, "turn", "turn.json")) else []) + \
+                sorted(x for x in (os.listdir(os.path.join(base, "motions")) if os.path.isdir(os.path.join(base, "motions")) else [])
+                       if os.path.isfile(os.path.join(base, "motions", x, "motion.json")))
+        return [self.motion(aid, x) for x in slugs]
+
+    def motion_frame(self, aid, slug, i):
+        p = os.path.join(self._motion_dir(aid, slug), "%03d.jpg" % int(i))
         if not os.path.isfile(p):
-            raise core.UserError("No such turnaround frame.")
+            raise core.UserError("No such frame.")
         return p
 
-    def turn_delete(self, aid):
-        shutil.rmtree(self._turn_dir(aid), ignore_errors=True)
+    def motion_delete(self, aid, slug):
+        shutil.rmtree(self._motion_dir(aid, slug), ignore_errors=True)
         return {"deleted": True}
+
+    # the turnaround, as earlier versions called it
+    def turn_put(self, aid, i, data):
+        return self.motion_put(aid, "turn-around", i, data)
+
+    def turn_set(self, aid, meta):
+        return self.motion_set(aid, "turn-around", dict(meta, name=meta.get("name") or "turn around", words=meta.get("words") or ["turn around"]))
+
+    def turn(self, aid):
+        return self.motion(aid, "turn-around")
+
+    def turn_frame(self, aid, i):
+        return self.motion_frame(aid, "turn-around", i)
+
+    def turn_delete(self, aid):
+        return self.motion_delete(aid, "turn-around")
 
     def update(self, aid, name=None, tags=None, voice=None, notes=None, hidden=None):
         self.get(aid)

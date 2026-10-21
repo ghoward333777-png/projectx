@@ -524,27 +524,48 @@
     }
     // Turnaround: the person's own frames of turning on the spot (side and back views a photo cannot give), aligned to this
     // avatar's face. Playing it cuts to a medium shot the frames cover, fades into them, and fades back to the talking photo.
-    _loadTurn(id) {
-      fetch("/api/avatars/turn?id=" + id).then(r => r.json()).then(d => {
-        const m = d && d.turn; if (!m) return;
-        const imgs = [];
-        for (let i = m.start || 0; i <= (m.end === undefined ? m.frames - 1 : m.end); i++) { const im = new Image(); im.src = "/api/avatars/turn_frame?id=" + id + "&i=" + i; imgs[i] = im; }
-        this.turnSet = { meta: m, imgs };
+    _loadTurn(id) {                                       // every recorded move of this avatar (the turnaround is one of them)
+      fetch("/api/avatars/motions?id=" + id).then(r => r.json()).then(d => {
+        this.moves = {};
+        for (const m of (d && d.motions) || []) {
+          const imgs = [];
+          for (let i = m.start || 0; i <= (m.end === undefined ? m.frames - 1 : m.end); i++) { const im = new Image(); im.src = "/api/avatars/motion_frame?id=" + id + "&slug=" + m.slug + "&i=" + i; imgs[i] = im; }
+          this.moves[m.slug] = { meta: m, imgs };
+        }
+        this.turnSet = this.moves["turn-around"] || null;
+        if (this._pendingWords) this.cueTurns(this._pendingWords);
       }).catch(() => {});
     }
-    turnAround(at) {                                       // at: a time on the speech track; none: now (wall clock)
-      if (!this.turnSet || this.turning) return false;
-      const m = this.turnSet.meta, s0 = m.start || 0, s1 = m.end === undefined ? m.frames - 1 : m.end;
+    moveList() { return Object.values(this.moves || {}).map(x => ({ slug: x.meta.slug, name: x.meta.name, words: x.meta.words })); }
+    // Play a move: cut to the shot its frames cover, fade into them, and back to the talking photo. at: a time on the speech
+    // track (a word cue); none: now (wall clock). At the person's own pace (a real turn on the spot takes ~7–8 s).
+    playMove(slug, at) {
+      const mv = this.moves && this.moves[slug];
+      if (!mv || this.turning) return false;
+      const m = mv.meta, s0 = m.start || 0, s1 = m.end === undefined ? m.frames - 1 : m.end;
       const k = this.F / (m.face_h * m.height), fw = m.width * k, fh = m.height * k, asp = this.cv.width / this.cv.height;
       const vh = Math.min(fh, fw / asp) * 0.9, vw = vh * asp, fx = this.fc[0] - m.width / 2 * k, fy = this.fc[1] - m.face_cy * m.height * k;
-      this.turning = { clock: at === undefined ? "wall" : "track", t0: at === undefined ? performance.now() / 1000 : at, s0, s1,
-        dur: (s1 - s0 + 1) / m.fps, k, fx, fy, view: { x: fx + (fw - vw) / 2, y: fy + (fh - vh) * 0.3, w: vw, h: vh } };   // at her own pace (a real turn takes ~7–8 s)
+      this.turning = { slug, set: mv, clock: at === undefined ? "wall" : "track", t0: at === undefined ? performance.now() / 1000 : at, s0, s1,
+        dur: (s1 - s0 + 1) / m.fps, k, fx, fy, view: { x: fx + (fw - vw) / 2, y: fy + (fh - vh) * 0.3, w: vw, h: vh } };
       return true;
     }
-    cueTurns(words) {                                      // "turn around" in the words: she turns as the words are said
+    turnAround(at) { return this.playMove("turn-around", at); }
+    // the words that set off each move ("turn around", "stretch", "water" …), at the moment they are spoken
+    cueTurns(words) {
+      this._pendingWords = words; this.moveQueue = [];
+      const norm = x => String(x || "").toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, ""), W = (words || []).map(w => norm(w.word));
       this.turnCues = [];
-      (words || []).forEach((w, i) => { const a = String(w.word || "").toLowerCase().replace(/[^a-z]/g, ""), b = words[i + 1] && String(words[i + 1].word || "").toLowerCase().replace(/[^a-z]/g, "");
-        if ((a === "turn" || a === "turning" || a === "turns") && b === "around") this.turnCues.push(w.start); });
+      for (const mv of Object.values(this.moves || {})) for (const phrase of mv.meta.words || []) {
+        const P = phrase.split(/\s+/).map(norm).filter(Boolean);
+        if (!P.length) continue;
+        for (let i = 0; i + P.length <= W.length; i++) {
+          const hit = P.every((p, j) => W[i + j] === p || (p.length >= 4 && W[i + j].startsWith(p)) || (p === "turn" && /^turn/.test(W[i + j])));
+          if (hit) this.turnCues.push({ t: words[i].start, slug: mv.meta.slug });
+        }
+      }
+      this.turnCues.sort((a, b) => a.t - b.t);
+      // one sentence often names a move twice ("a swim in the pool"): once is enough within a few seconds
+      this.turnCues = this.turnCues.filter((c, i, all) => !all.slice(0, i).some(p => p.slug === c.slug && c.t - p.t < 4));
     }
     _turnNow() {
       const T = this.turning; if (!T) return null;
@@ -554,7 +575,7 @@
     }
     _turnOverlay(c) {
       const T = this.turning, e = this._turnNow(); if (e === null || !T) return;
-      const m = this.turnSet.meta, idx = T.s0 + Math.min(T.s1 - T.s0, Math.floor(e / T.dur * (T.s1 - T.s0 + 1))), img = this.turnSet.imgs[idx];
+      const m = T.set.meta, idx = T.s0 + Math.min(T.s1 - T.s0, Math.floor(e / T.dur * (T.s1 - T.s0 + 1))), img = T.set.imgs[idx];
       if (!img || !img.complete || !img.naturalWidth) return;
       const a = Math.max(0, Math.min(1, e / 0.2, (T.dur - e) / 0.25)), cr = this.view || this.crop, kk = this.cv.width / cr.w;
       c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = a;
@@ -568,7 +589,9 @@
       const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
       for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
       this.head = this.head.map((h, q) => h + ((this.headT || [0, 0, 0])[q] - h) * a);
-      if (this.turnCues && !this.turning && this.tPrev !== undefined) for (const cu of this.turnCues) if (this.tPrev < cu && cu <= t) this.turnAround(cu);
+      // moves named in the script: each starts as its words are spoken; one named while another plays follows it
+      if (this.turnCues && this.tPrev !== undefined) for (const cu of this.turnCues) if (this.tPrev < cu.t && cu.t <= t) (this.moveQueue = this.moveQueue || []).push(cu.slug);
+      if (this.moveQueue && this.moveQueue.length && this._turnNow() === null) this.playMove(this.moveQueue.shift(), t);
       if (this.turning && this.turning.clock === "track" && this.tPrev !== undefined && t === this.tPrev) {   // the speech ended or paused mid-turn:
         this.turning.t0 = performance.now() / 1000 - (t - this.turning.t0); this.turning.clock = "wall";     // she finishes turning anyway
       }

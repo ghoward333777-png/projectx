@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.33.0)
+  Language Builder (1.34.0)
+    * Moves: a motion library for full-body avatars, from videos of the person. Pamela (track) ships with nine -
+      turn around, arm swings, boxing, side kick, cartwheel, walk, high knee, water break, swimming - on buttons
+      under the face and set off by their words in a script.
     * Full-length turnaround for Pamela (track avatar); turnarounds play at the person's own pace and finish even
       when the speech ends; full-length clips work (the face is found by zooming on the head).
     * Turnaround for full-body avatars: import a video of the person turning on the spot; she turns around on
