@@ -33,6 +33,13 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.42.0)
+    * Fix: the lower lip's edge stayed straight (looking swollen) while the upper lip curved. The lower teeth and the
+      tongue showed as a flat light band along the lower lip; now the lower teeth appear only on a wide-open vowel, small
+      and shaded, the tongue sits lower and darker, and the lower lip's edge curves and has its own soft shadow.
+    * Fix: exaggerated pucker. Rounding now narrows the mouth by up to ~18% (was ~27%) and no longer thickens the lips
+      (was up to +24%); the lip opening tapers evenly to both corners; on full-body avatars the upper lip no longer lifts
+      while the lips close or round.
   Language Builder (1.41.0)
     * Five new faces in the avatar library: Man - gym, Man - park, Man - street, Woman - braids, Woman - curls
       (AI-generated portraits supplied by the admin; already analysed; all pass the mouth quality checks).
