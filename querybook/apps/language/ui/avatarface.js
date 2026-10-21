@@ -13,6 +13,7 @@
     "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight", "cheekPuff", "cheekSquintLeft",
     "cheekSquintRight", "noseSneerLeft", "noseSneerRight", "tongueOut"];
   const IDX = Object.fromEntries(BS.map((k, i) => [k, i])), MC = IDX.mouthClose, JAW = IDX.jawOpen;
+  const BROWS = new Set(["browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight"].map(k => IDX[k]));
   // MediaPipe face-mesh landmarks ("Left" = the subject's left = the right of the picture)
   const OUT_UP = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291], OUT_LO = [291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
   const IN_UP = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308], IN_LO = [308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78];
@@ -39,6 +40,19 @@
     I: { jawOpen: 0.1, mouthStretchLeft: 0.45, mouthStretchRight: 0.45, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, O: { jawOpen: 0.35, mouthFunnel: 0.55, mouthPucker: 0.2 },
     U: { jawOpen: 0.15, mouthFunnel: 0.3, mouthPucker: 0.65 } };
 
+  // Full-body calibration, measured frame by frame (face tracker) against a reference video of the same model speaking the
+  // same lines (Gemini, October 2026): there the mouth opens mostly by lifting the upper lip and dropping the lower one,
+  // with less jaw and little rounding; brows move 6–10× more; within a shot the head turns ~15°, nods ~12° and tilts
+  // ~11°, the torso follows, and the camera cuts every ~2.5 s between a wide and a close shot with a slow push-in.
+  const BODY_CAL = {
+    gain: { jawOpen: 0.62, mouthLowerDownLeft: 1.6, mouthLowerDownRight: 1.6, mouthUpperUpLeft: 2.2, mouthUpperUpRight: 2.2, mouthPucker: 0.15,
+            mouthFunnel: 0.5, mouthPressLeft: 2, mouthPressRight: 2, browInnerUp: 5, browOuterUpLeft: 5, browOuterUpRight: 5,
+            browDownLeft: 2, browDownRight: 2, eyeSquintLeft: 1.2, eyeSquintRight: 1.2 },
+    derive: { up: 1.1, upSmile: 0.45, down: 0.55 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+    head: [4.5, 1.8, 5],                                 // yaw, pitch, roll (a still photo stays clean to ~10°; beyond, the hair tears)
+    sway: 1.0, breath: 1.2, torsoFollow: 0.7,
+    shot_s: 2.5, shots: [1.0, 0.5, 0.78, 0.47], push: 0.05,
+  };
   function delaunay(pts) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     pts.forEach(([x, y]) => { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); });
@@ -104,7 +118,9 @@
         mouthSmileLeft: cal.spread, mouthSmileRight: cal.spread, mouthDimpleLeft: cal.spread, mouthDimpleRight: cal.spread, mouthPucker: cal.round,
         mouthFunnel: cal.round, mouthClose: cal.close, mouthPressLeft: cal.close, mouthPressRight: cal.close,
         browDownLeft: cal.brow, browDownRight: cal.brow, browInnerUp: cal.brow, browOuterUpLeft: cal.brow, browOuterUpRight: cal.brow };
-      this.calGain = Float32Array.from(BS.map(k => cg[k] || 1));
+      this.calGain = Float32Array.from(BS.map(k => (cg[k] || 1) * (avatar.body ? BODY_CAL.gain[k] || 1 : 1)));
+      this.headAxis = avatar.body ? BODY_CAL.head : [1, 1, 1];
+      this.director = avatar.body && !(params && params.camera === "still");     // full body: the camera cuts and pushes in
       this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null;
       this.ready = new Promise((res, rej) => {
         const img = new Image();
@@ -130,7 +146,11 @@
       crop.w = Math.min(W, fcx + fw * (body ? 3.4 : 1.1)) - crop.x; crop.h = (body ? H : Math.min(H, y1 + fh * 0.55)) - crop.y;
       // fixed anchors: a ring around the face and the crop's edge, so hair, neck and background stretch, never tear
       const anchors = [];
-      for (let a = 0; a < 32; a++) anchors.push([fcx + Math.cos(a / 32 * 2 * Math.PI) * fw * 0.8, fcy + Math.sin(a / 32 * 2 * Math.PI) * fh * 0.74, 0]);
+      for (let a = 0; a < 32; a++) {
+        const q = [fcx + Math.cos(a / 32 * 2 * Math.PI) * fw * 0.8, fcy + Math.sin(a / 32 * 2 * Math.PI) * fh * 0.74, 0];
+        // a full figure's head can sit near the top of the photo: a ring point hugging the frame's edge makes slivers that flip
+        if (!body || Math.min(q[0] - crop.x, q[1] - crop.y, crop.x + crop.w - q[0]) > 0.3 * fh) anchors.push(q);
+      }
       for (let k = 0; k <= 4; k++) [[crop.x + crop.w * k / 4, crop.y], [crop.x + crop.w * k / 4, crop.y + crop.h], [crop.x, crop.y + crop.h * k / 4], [crop.x + crop.w, crop.y + crop.h * k / 4]]
         .forEach(([x, y]) => anchors.push([x, y, 0]));
       this.nEdge = anchors.length;                       // the crop's edge never moves (the background stays put)
@@ -140,7 +160,9 @@
           if (((x - fcx) / (fw * 0.95)) ** 2 + ((y - fcy) / (fh * 0.9)) ** 2 > 1) anchors.push([x, y, 0]);
         }
       }
-      this.base3 = pts3.concat(anchors.filter(([x, y]) => x >= 0 && y >= 0 && x <= W && y <= H));
+      const seen = new Set();                            // each corner is listed by two edges: a point twice makes zero-area triangles
+      this.base3 = pts3.concat(anchors.filter(([x, y]) => { const key = Math.round(x) + "," + Math.round(y);
+        if (x < 0 || y < 0 || x > W || y > H || seen.has(key)) return false; seen.add(key); return true; }));
       this.nFace = pts3.length;
       const ringN = 32, edgeOf = new Set();
       this.base3.forEach(([x, y], i) => { if (i >= pts3.length + ringN && (Math.abs(x - crop.x) < 0.5 || Math.abs(y - crop.y) < 0.5 || Math.abs(x - crop.x - crop.w) < 0.5 || Math.abs(y - crop.y - crop.h) < 0.5)) edgeOf.add(i); });
@@ -168,7 +190,9 @@
       const IRIS_RING = new Set([469, 470, 471, 472, 474, 475, 476, 477]);
       const use = triPts.map((q, i) => i).filter(i => triPts[i] && !IRIS_RING.has(i)), sub = use.map(i => triPts[i]);
       const at = new Map(use.map((i, j) => [j, i])), Psub = triPts;
-      this.tris = constrain(delaunay(sub).map(t => t.map(j => at.get(j))), Psub, cons); this.triPts = triPts; this.cons = cons;
+      this.tris = constrain(delaunay(sub).map(t => t.map(j => at.get(j))), Psub, cons).filter(t => t[0] !== t[1] && t[1] !== t[2] && t[0] !== t[2] &&
+        Math.abs((triPts[t[1]][0] - triPts[t[0]][0]) * (triPts[t[2]][1] - triPts[t[0]][1]) - (triPts[t[2]][0] - triPts[t[0]][0]) * (triPts[t[1]][1] - triPts[t[0]][1])) > 1e-6);
+      this.triPts = triPts; this.cons = cons;
       // the opening: triangles whose centre lies between the inner lip lines (in the parted copy)
       const poly = IN_UP.concat(IN_LO.slice(1, -1)).map(i => triPts[i]);
       const inside = (x, y) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -177,6 +201,8 @@
         return inside((triPts[t[0]][0] + triPts[t[1]][0] + triPts[t[2]][0]) / 3, (triPts[t[0]][1] + triPts[t[1]][1] + triPts[t[2]][1]) / 3); };
       this.inner = this.tris.filter(isIn);
       this.mesh = this.tris.filter(t => !isIn(t));
+      const sgn = t => Math.sign((triPts[t[1]][0] - triPts[t[0]][0]) * (triPts[t[2]][1] - triPts[t[0]][1]) - (triPts[t[2]][0] - triPts[t[0]][0]) * (triPts[t[1]][1] - triPts[t[0]][1]));
+      this.meshSign = this.mesh.map(sgn);
       const P = i => this.base3[i];
       this.F = Math.hypot(P(10)[0] - P(152)[0], P(10)[1] - P(152)[1]);
       this.Wm = Math.hypot(P(61)[0] - P(291)[0], P(61)[1] - P(291)[1]);
@@ -192,6 +218,18 @@
       cv.width = Math.round(pxW); cv.height = Math.round(pxW * crop.h / crop.w);
       cv.style.width = "100%"; cv.style.maxWidth = (body ? Math.max(outW, 420) : outW) + "px"; cv.style.borderRadius = "10px";
       this.bodyShape = { fw, fh, fcx, fcy, H };
+      if (body) {                          // for each point around the head: its four nearest outline points (inverse-distance weights)
+        const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+        this.follow = [];
+        for (let i = this.nFace; i < this.base3.length; i++) {
+          if (this.fixed.has(i)) continue;
+          const [x, y] = this.base3[i], d = Math.hypot((x - fcx) / (fw * 0.95), (y - fcy) / (fh * 0.9)), w = 1 - smooth(1.0, 2.1, d);
+          if (w <= 0) continue;
+          const nb = OVAL.map(j => [j, Math.hypot(x - this.base3[j][0], y - this.base3[j][1]) + 1e-3]).sort((a, b) => a[1] - b[1]).slice(0, 4);
+          const tot = nb.reduce((s2, [, dd]) => s2 + 1 / (dd * dd), 0);
+          this.follow.push([i, w, nb.map(([j, dd]) => [j, 1 / (dd * dd) / tot])]);
+        }
+      }
       this.el.innerHTML = ""; this.el.appendChild(cv);
       const lab = document.createElement("div"); lab.className = "small muted"; lab.textContent = this.params.label; this.el.appendChild(lab);
       this.cv = cv; this.ctx = cv.getContext("2d");
@@ -279,7 +317,9 @@
       const tone = (v, f, add) => v.map((x, i) => Math.round(Math.max(0, Math.min(255, x * f + (add ? add[i] : 0)))));
       const skinS = [avg(P[205][0], P[205][1], ew * 0.12), avg(P[425][0], P[425][1], ew * 0.12)];
       const skin = [0, 1, 2].map(c => (skinS[0][c] + skinS[1][c]) / 2);
-      return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth, skin: skin.map(Math.round),
+      // each upper lid's own skin: just above the lid crease, below the brow
+      const lidOf = (lid, brow) => { const q = mid(lid, brow, 0.38); return avg(q[0], q[1], ew * 0.07).map(Math.round); };
+      return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth, skin: skin.map(Math.round), lidLeft: lidOf(386, 334), lidRight: lidOf(159, 105),
         crease: tone(skin, 0.55), sheen: tone(skin, 1.12),
         cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, 0.62, [10, -4, -2]), gum: tone(lip, 0.75) };
     }
@@ -470,12 +510,24 @@
       this.headT = [1.5 * Math.sin(0.9 * t), 0.8 * Math.sin(0.6 * t + 1), 0.6 * Math.sin(0.5 * t)];
       return out;
     }
+    // The camera of a full-body avatar: shots of ~2.5 s alternating wide and close, each with a slow push-in, framed on
+    // the face (the output keeps its size; only the part of the photo it shows changes)
+    _camera(t) {
+      if (!this.director || !this.t) return null;
+      const c = this.crop, k = Math.floor(t / BODY_CAL.shot_s), u = (t - k * BODY_CAL.shot_s) / BODY_CAL.shot_s;
+      const s = BODY_CAL.shots[k % BODY_CAL.shots.length] * (1 - BODY_CAL.push * u);
+      const w = c.w * s, h = c.h * s, fx = this.fc[0], fy = this.fc[1] - this.F * 0.1;
+      const x = Math.max(0, Math.min(this.src.width - w, fx - w / 2)), y = Math.max(0, Math.min(this.src.height - h, s >= 0.99 ? c.y : fy - h * 0.36));
+      return s >= 0.99 && u === 0 ? null : { x, y: s >= 0.99 ? c.y + (c.h - h) * 0.15 : y, w, h };
+    }
     frame(track, t) {
       const tt = t + this.params.lead_ms / 1000, tgt = this._target(track, tt);
       const dt = this.t === null ? 1 : Math.max(0, Math.min(0.2, t - this.t)); this.t = t;
       const a = 1 - Math.exp(-dt / Math.max(0.005, this.params.smooth_ms / 1000));
-      for (let k = 0; k < BS.length; k++) this.cur[k] += (tgt[k] - this.cur[k]) * (k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? 1 : a);
+      const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
+      for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
       this.head = this.head.map((h, q) => h + ((this.headT || [0, 0, 0])[q] - h) * a);
+      this.view = this._camera(t);
       this._draw();
     }
     setChannels(values) { Object.entries(values || {}).forEach(([k, v]) => { if (k in IDX) this.cur[IDX[k]] = v; }); this._draw(); }
@@ -491,27 +543,33 @@
       const { fw, fh, fcx, fcy, H } = this.bodyShape;
       const pivot = H + 2.2 * fh, up = Math.max(0, Math.min(1.3, (pivot - y) / (pivot - fcy)));
       const col = 1 - smooth(1.7 * fw, 3.2 * fw, Math.abs(x - fcx));
-      const sway = 0.045 * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
+      const sway = 0.045 * BODY_CAL.sway * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
       const br = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 4.1);
       const chest = smooth(fcy + 0.6 * fh, fcy + 1.4 * fh, y) * (1 - smooth(fcy + 2.8 * fh, fcy + 4 * fh, y)), above = 1 - smooth(fcy + 1.4 * fh, fcy + 2.4 * fh, y);
-      const dy = -0.018 * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.008 * br * chest;
+      const dy = -0.018 * BODY_CAL.breath * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.008 * br * chest;
       return [dx * col, dy * col];
     }
     _points(chan, head) {
       const n = this.base3.length, out = new Array(n), c = Float32Array.from(chan || this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
+      if (this.body) for (const k of ["Left", "Right"]) {           // a speaking smile: the lips, not only the jaw, open the mouth
+        const j = c[JAW], dv = BODY_CAL.derive, up = IDX["mouthUpperUp" + k], dn = IDX["mouthLowerDown" + k];
+        c[up] = Math.min(1, c[up] + dv.up * j + dv.upSmile * c[IDX["mouthSmile" + k]] * Math.min(1, 4 * j));
+        c[dn] = Math.min(1, c[dn] + dv.down * j);
+      }
       // a mouth widens at most ~10% in speech: stretch, smile and dimple share one soft-limited budget per side
       for (const k of ["Left", "Right"]) {
         const ks = ["mouthStretch" + k, "mouthSmile" + k, "mouthDimple" + k].map(q => IDX[q]);
         const wide = 0.08 * c[ks[0]] + 0.09 * c[ks[1]] + 0.03 * c[ks[2]], cap = 0.09;
         if (wide > 1e-4) { const f = cap * Math.tanh(wide / cap) / wide; ks.forEach(q => { c[q] *= f; }); }
       }
-      const [yaw, pitch, roll] = (head || this.head).map(d => d * g * Math.PI / 180), [px, py, pz] = this.pivot;
+      const [yaw, pitch, roll] = (head || this.head).map((d, q) => d * g * this.headAxis[q] * Math.PI / 180), [px, py, pz] = this.pivot;
       const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
       for (let i = 0; i < n; i++) {
         let [x, y, z] = this.base3[i];
         if (i < nF || i >= this.nX0) {
           for (let k = 0; k < c.length; k++) {
-            const w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k] * this.calGain[k];   // lips can only close against an open jaw
+            let w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k] * this.calGain[k];   // lips can only close against an open jaw
+            if (w > 0.85 && BROWS.has(k)) w = 0.85;                                               // brows stay within their range
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
           }
           // head rotation about the neck: yaw (y axis), pitch (x axis), roll (z axis), then a weak perspective
@@ -522,8 +580,25 @@
           out[i] = [px + X2, py + Y2];                                      // orthographic: the face at rest maps exactly onto the portrait
         } else out[i] = [x, y];
       }
+      if (this.follow) {                   // the hair and the head's surroundings move with the nearest part of the face outline
+        for (const [i, w, nb] of this.follow) {
+          let dx = 0, dy = 0;
+          for (const [j, q] of nb) { dx += q * (out[j][0] - this.base3[j][0]); dy += q * (out[j][1] - this.base3[j][1]); }
+          out[i] = [out[i][0] + w * dx, out[i][1] + w * dy];
+        }
+      }
       if (this.body && !head && this.t) {                                   // checks (qc) pass a head pose and see the figure at rest
-        for (let i = 0; i < n; i++) { if (this.fixed.has(i)) continue; const [bx, by] = this._bodyMove(this.base3[i][0], this.base3[i][1], this.t); out[i] = [out[i][0] + bx, out[i][1] + by]; }
+        const { fw, fh, fcx, H } = this.bodyShape, hp = H + 2.2 * fh;
+        const tr = BODY_CAL.torsoFollow * roll, ty = BODY_CAL.torsoFollow * Math.sin(yaw) * fh * 1.2, ct = Math.cos(tr), st = Math.sin(tr);
+        for (let i = 0; i < n; i++) {
+          if (this.fixed.has(i)) continue;
+          const [x0, y0] = this.base3[i], [bx, by] = this._bodyMove(x0, y0, this.t);
+          // the torso follows the head a little: it leans with the tilt (about the hips) and turns with it
+          const col = 1 - smooth(1.7 * fw, 3.2 * fw, Math.abs(x0 - fcx)), up = Math.max(0, Math.min(1.2, (hp - y0) / (hp - this.fc[1])));
+          const rx = fcx + (x0 - fcx) * ct - (y0 - hp) * st - x0, ry = hp + (x0 - fcx) * st + (y0 - hp) * ct - y0;
+          const w = i < this.nFace ? 0 : col;                               // the face already carries the head's own turn
+          out[i] = [out[i][0] + bx + w * (rx + ty * up), out[i][1] + by + w * ry];
+        }
       }
       return out;
     }
@@ -574,6 +649,18 @@
         return g;
       } catch (e) { return null; }
     }
+    // Full body: a background triangle (touching the hair, the lattice or the frame) that turns over in a big head move is
+    // not drawn — the photo beneath shows instead of a streak of stretched texture
+    _flips(pts) {
+      if (!this.body) return null;
+      const nF = this.nFace, out = new Set();
+      this.mesh.forEach((t, j) => {
+        if (t[0] < nF && t[1] < nF && t[2] < nF) return;
+        const a = (pts[t[1]][0] - pts[t[0]][0]) * (pts[t[2]][1] - pts[t[0]][1]) - (pts[t[2]][0] - pts[t[0]][0]) * (pts[t[1]][1] - pts[t[0]][1]);
+        if (Math.sign(a) !== this.meshSign[j]) out.add(j);
+      });
+      return out.size ? out : null;
+    }
     _glPass(layer, pts) {
       const g = this.gl, gl = g.gl;
       gl.viewport(0, 0, g.glc.width, g.glc.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -584,14 +671,22 @@
       for (let i = 0; i < pts.length; i++) { g.posArr[2 * i] = pts[i][0]; g.posArr[2 * i + 1] = pts[i][1]; }
       gl.bindBuffer(gl.ARRAY_BUFFER, g.pos); gl.bufferData(gl.ARRAY_BUFFER, g.posArr, gl.DYNAMIC_DRAW);
       attr(g.aPos, g.pos); attr(g.aUv, g.uv);
-      const ib = layer === "back" ? g.inner : g.mesh, nb = layer === "back" ? g.nInner : g.nMesh;
+      let ib = layer === "back" ? g.inner : g.mesh, nb = layer === "back" ? g.nInner : g.nMesh;
+      if (layer !== "back") {
+        const skip = this._flips(pts);
+        if (skip || g.filtered) {                        // upload the triangles without the flipped ones (or restore all)
+          const keep = skip ? this.mesh.filter((t, j) => !skip.has(j)) : this.mesh;
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.mesh); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(keep.flat()), gl.DYNAMIC_DRAW);
+          g.filtered = !!skip; nb = keep.length * 3;
+        }
+      }
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.drawElements(gl.TRIANGLES, nb, gl.UNSIGNED_SHORT, 0);
       return g.glc;
     }
     _draw() {
       if (!this.ctx) return;
       if (this.gl) return this._drawGL();
-      const pts = this._points(), c = this.ctx, cr = this.crop, k = this.cv.width / cr.w, src = this.src, B = this.base, F = this.F;
+      const pts = this._points(), c = this.ctx, cr = this.view || this.crop, k = this.cv.width / cr.w, src = this.src, B = this.base, F = this.F;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height);
       c.setTransform(k, 0, 0, k, -cr.x * k, -cr.y * k);
       c.drawImage(src, 0, 0);
@@ -619,12 +714,15 @@
       const gap = (q, i, j) => Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]);
       const open = gap(pts, 13, 14), extra = open - gap(B, 13, 14), vis = smooth(0.002 * F, 0.01 * F, extra);
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis);
-      for (const tr of this.mesh) warp(tr);
+      const skip = this._flips(pts);
+      this.mesh.forEach((tr, j) => { if (!skip || !skip.has(j)) warp(tr); });
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis, true);     // final pass: a smooth, feathered edge (no facets)
       this._wrinkles(c, pts);
+      this._lids(c, pts);
     }
     _drawGL() {
-      const pts = this._points(), c = this.ctx, cr = this.crop, k = this.cv.width / cr.w, B = this.base, F = this.F;
+      const pts = this._points(), c = this.ctx, cr = this.view || this.crop, k = this.cv.width / cr.w, B = this.base, F = this.F;
+      const vw = this.view || this.crop; this.gl.gl.uniform4f(this.gl.uCrop, vw.x, vw.y, vw.w, vw.h);
       const crop = () => c.setTransform(k, 0, 0, k, -cr.x * k, -cr.y * k), px = () => c.setTransform(1, 0, 0, 1, 0, 0);
       px(); c.clearRect(0, 0, this.cv.width, this.cv.height);
       c.drawImage(this._glPass("back", pts), 0, 0);
@@ -636,6 +734,34 @@
       crop();
       if (vis > 0.01) this._mouthInside(c, pts, open, extra, vis, true);
       this._wrinkles(c, pts);
+      this._lids(c, pts);
+    }
+    // A blink that really closes: on small or stylised eyes the moving lid alone can leave the iris showing through a
+    // smeared strip of lashes. As the lid comes down, the opening (from where the upper lid would be at rest down to the
+    // lower lid) is covered with this face's own lid skin, shaded towards the fold, with a soft lash line on the closing lid.
+    _lids(c, pts) {
+      const pal = this.palette, D = this.D;
+      for (const [side, E] of [["Left", EYE.L], ["Right", EYE.R]]) {
+        const k = IDX["eyeBlink" + side], w = this.cur[k] * this.gain[k] * this.calGain[k];
+        const a = smooth(0.3, 0.75, this.cur[k]);                         // the blink itself decides closure, whatever the lid's tuning
+        if (a < 0.02) continue;
+        const rest = E.up.map(i => [pts[i][0] - w * D[k][3 * i], pts[i][1] - w * D[k][3 * i + 1]]);
+        const lo = E.lo.map(i => pts[i]), oc = pts[E.outer], ic = pts[E.inner];
+        const top = Math.min(...rest.map(q => q[1])), bot = Math.max(...lo.map(q => q[1]));
+        const own = pal["lid" + side] || pal.skin, lid = own, fold = own.map(v => Math.round(v * 0.78));
+        const g = c.createLinearGradient(0, top, 0, bot);
+        g.addColorStop(0, "rgba(" + lid + "," + a + ")"); g.addColorStop(0.8, "rgba(" + lid + "," + a + ")"); g.addColorStop(1, "rgba(" + fold + "," + a + ")");
+        c.save(); c.beginPath(); c.moveTo(oc[0], oc[1]);
+        // the eye list runs outer → inner on both lids
+        rest.forEach(q => c.lineTo(q[0], q[1])); c.lineTo(ic[0], ic[1]);
+        lo.slice().reverse().forEach(q => c.lineTo(q[0], q[1])); c.closePath();
+        const lw = Math.max(0.6, 0.012 * this.F);
+        c.fillStyle = g; c.filter = "blur(" + (0.35 * lw * (this.cv.width / (this.view || this.crop).w)).toFixed(2) + "px)"; c.fill(); c.filter = "none";
+        const ln = E.up.map(i => pts[i]);
+        c.beginPath(); c.moveTo(oc[0], oc[1]); ln.forEach(q => c.lineTo(q[0], q[1] + lw * 0.3)); c.lineTo(ic[0], ic[1]);
+        c.strokeStyle = "rgba(" + own.map(v => Math.round(v * 0.3)) + "," + (0.7 * a) + ")"; c.lineWidth = 1.4 * lw; c.lineCap = "round"; c.stroke();
+        c.restore();
+      }
     }
     // Skin creases that deepen and fade with the muscles while talking — drawn along the moving mesh, in a darker shade of
     // this face's own skin with a faint highlight above each one (a fold, not a pen line): forehead lines as the brows rise,

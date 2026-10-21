@@ -348,6 +348,16 @@ stands as three full-body avatars (track, stadium, water bottle). To add more, t
 the photo is kept whole, and when the face is too small for the tracker it is found through zoomed windows over the
 picture. The Quality lab keeps testing face avatars, whose mouths fill the frame.
 
+**Calibrated against a reference video of the same model.** Full-body motion was measured frame by frame with the
+face tracker against a Gemini video of Pamela speaking the same lines, and tuned until the measures met it: the mouth
+opens mostly by lifting the upper lip and dropping the lower lip (a speaking smile) with less jaw and little rounding
+(opening, lower-lip drop and width now within ~10% of the reference); brows move 3–5× more; blinks really close (the
+lid is drawn with her own lid skin and a lash line, and stays shut ~0.25 s); the head turns, nods and tilts up to about
+10° with the hair and the torso following; breathing and weight shift; and the camera cuts every 2.5 s between a wide
+and a close shot with a slow push-in (switch it off under the face: *camera cuts and push-ins*). What a single photo
+cannot do: turn the head as far as the reference (~18°: beyond ~10° the hair tears), move the arms into new gestures,
+or change the camera angle — those need a generative video model.
+
 ## Quality lab (Speech → 🎬 Quality lab)
 
 Every avatar test is a quality sample. The chosen face says a test script (four built-in scripts cover every mouth

@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.30.0)
+  Language Builder (1.31.0)
+    * Full-body avatars calibrated against a reference video of the same model: speaking-smile mouth (upper lip lifts,
+      lower lip drops), stronger brows, real blinks, head turns and tilts with hair and torso following, camera cuts
+      between wide and close shots (can be switched off). Fix: a streak beside the head on big head moves.
     * (all three apps) Agents tab: pick your agents (text, sound, video, live data, touch, body, any sensor),
       learn from best-in-class exemplars (mastery profile, 0-100 score, advice), and Open Claw agents, skills and
       tools taken in as knowledge - read, never run; model instructions quarantined. No LLM anywhere.

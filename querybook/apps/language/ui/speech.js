@@ -120,6 +120,8 @@ async function showFaceNow() {
     : '<span class="fp-ico">' + (c === "3d" ? "🧊" : "🙂") + "</span><b>" + (c === "3d" ? "3D / VR face" : "2D face") + '</b><span class="small muted">will speak</span>';
   $$("#sp-faces [data-fp]").forEach(x => x.classList.toggle("on", x.dataset.fp === c));
 }
+// Full-body avatars: whether the camera cuts between wide and close shots (on by default), remembered in this browser
+function faceCamera() { try { return localStorage.getItem("qb.camera") !== "still"; } catch (e) { return true; } }
 // A strip of clickable faces; onPick(value) with "2d", "3d" or an avatar id.
 async function facePicker(host, onPick, opts) {
   const list = await faceAvatars(), only = opts && opts.avatarsOnly;
@@ -184,7 +186,8 @@ async function faceCard(host, audioName, text, lang, emotion) {
     '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
     '<div class="face-stage" style="max-width:360px"></div>' +
     '<div class="row" style="margin:6px 0"><button class="btn bigbtn" data-fplay>▶ Play</button><span class="small" data-ftime>0:00 / 0:00</span>' +
-    '<button class="btn quiet" data-fdl>⬇ Download video (MP4)</button><span class="small muted" data-fdlnote></span></div>' +
+    '<button class="btn quiet" data-fdl>⬇ Download video (MP4)</button><span class="small muted" data-fdlnote></span>' +
+    '<label class="small" data-fcamw hidden><input type="checkbox" data-fcam> camera cuts and push-ins (full body)</label></div>' +
     '<p class="small muted" data-finfo>Working out the mouth shapes…</p>';
   host.appendChild(box);
   const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
@@ -223,7 +226,9 @@ async function faceCard(host, audioName, text, lang, emotion) {
       av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
       if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatars → Analyse faces");
       stage.style.maxWidth = av.kind === "body" ? "460px" : "360px";
-      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body" } });
+      box.querySelector("[data-fcamw]").hidden = av.kind !== "body";
+      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body" },
+        params: { camera: faceCamera() ? "director" : "still" } });
     } catch (e) { info.textContent = "That face could not be shown: " + e.message; await face.setMode("2d"); return; }
     if (track) face.track = motion ? Object.assign({}, track, { motion }) : track;
     if (motion) { info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels"; return; }
@@ -237,6 +242,8 @@ async function faceCard(host, audioName, text, lang, emotion) {
     }).catch(e => { motionJob = null; if (shown === v) info.textContent = av.name + " is speaking with mouth shapes only (the 52-channel motion failed: " + e.message + ")"; });
   };
   let motionJob = null;
+  const cam = box.querySelector("[data-fcam]"); cam.checked = faceCamera();
+  cam.onchange = () => { try { localStorage.setItem("qb.camera", cam.checked ? "director" : "still"); } catch (e) {} if (shown) show(shown); };
   facePicker(box.querySelector("[data-fpick]"), show);
   box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
   await show(faceChoice());
