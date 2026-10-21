@@ -94,6 +94,41 @@ def range_tests(c):
         httpd.shutdown()
 
 
+def power_tests(c):
+    import tempfile, time as _t
+    with tempfile.TemporaryDirectory() as tmp:
+        log = core.make_logger(tmp, "t")
+        pw = core.Power(log, tmp, "t")
+        pw.session_start("1.0")
+        c.check("power: a clean first start is not flagged", not pw.state.get("previous_unclean"))
+        pw2 = core.Power(log, tmp, "t")
+        pw2.session_start("1.0")                                    # the first never ended: like a sleep, crash or power cut
+        c.check("power: a run that did not stop cleanly is noticed at the next start", bool(pw2.state.get("previous_unclean")))
+        pw2.session_end()
+        c.check("power: a clean stop removes the marker", not os.path.exists(pw2.marker))
+        os.environ["QB_ALLOW_SLEEP"] = "1"
+        c.check("power: QB_ALLOW_SLEEP=1 lets the computer sleep", pw2.keep_awake()["keep_awake"] is False)
+        del os.environ["QB_ALLOW_SLEEP"]
+        r = pw2.system_check()
+        c.check("power: the system-log check always answers (never fails start-up)", isinstance(r, dict) and "events" in r and "advice" in r)
+        real = _t.time
+        ticks = iter([1000.0, 1000.0, 1010.0, 1200.0] + [1210.0] * 50)
+        _t_sleep = _t.sleep
+        core.time.time = lambda: next(ticks)
+        core.time.sleep = lambda s: None
+        try:
+            th = pw2.watch(every=10, gap=45)
+            import threading as _th
+            for x in _th.enumerate():
+                if x.name == "qb-heartbeat":
+                    x.join(0.3)
+        finally:
+            core.time.time, core.time.sleep = real, _t_sleep
+        txt = open(log.path, encoding="utf-8").read()
+        c.check("power: a gap in the heartbeat is logged as sleep/pause", any(x["seconds"] == 190 for x in pw2.state["sleeps"]) and "paused for 190 s" in txt, pw2.state["sleeps"])
+        c.check("power: every session is marked in the log file", txt.count("==== session start") == 2 and "==== session end" in txt)
+
+
 def monitoring_tests(c):
     gh = FakeGitHub()
     os.environ["QB_GITHUB_API"] = gh.url
@@ -621,6 +656,7 @@ def main():
             st4.set_mirror("off")
             c.check("the mirror can be switched off", st4.mirror_dir() is None)
     range_tests(c)
+    power_tests(c)
     monitoring_tests(c)
     google_tests(c)
     setup_script_tests(c)

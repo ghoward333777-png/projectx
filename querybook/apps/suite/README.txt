@@ -53,7 +53,10 @@ WHAT'S NEW IN THIS RELEASE
       that devise a harvest strategy, plan it, carry it out and save and manage the facts, when the
       engine gives them their turn, or on demand. The applications check each other's facts (lifespans, dates, dictionary
       words) and keep every answer with its evidence and reasoning. Tab: "Harvesting & shared facts".
-  Language Builder (1.27.0)
+  Language Builder (1.27.1)
+    * (all three apps) Keeps the computer awake while running; long work keeps the screen awake; the log marks
+      every session and every sleep; the system's own logs (sleep, wake, unexpected shutdowns, power and screen-saver
+      settings) are checked at start-up. Diagnostics -> Power, sleep and the log; Download the log.
     * Fix: the mouth kept still after 30 s of speech - lip sync now analyses the whole recording.
     * Play / pause and Download video (MP4) right under the talking face.
     * The whole face talks: cheeks, eyelids, brows, nose, and skin creases (forehead, frown lines, crow's feet,

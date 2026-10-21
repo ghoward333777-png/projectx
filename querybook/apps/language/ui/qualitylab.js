@@ -206,6 +206,9 @@ async function qlAddReference(blob, source, licence, transcript, existing) {
 // "Ingest example videos": the app fetches talking clips from the automatic sources (public domain / open licences), then
 // measures each one here (first 90 s), learns from it (the words come from its captions), and drops clips with no clear face.
 async function qlIngest() {
+  qbWake("ingest"); try { await qlIngestRun(); } finally { qbWakeEnd("ingest"); }
+}
+async function qlIngestRun() {
   const note = m => { $("#ql-inote").textContent = m; };
   const n = Number($("#ql-in").value) || 6;
   note("Looking for example videos…");
@@ -299,7 +302,7 @@ async function qlLoop(on) {
   try { localStorage.setItem("qb.qlab.loop", on ? "1" : "0"); } catch (e) {}
   QL.loop = on; $("#ql-loop").textContent = on ? "■ Stop the self-learning loop" : "▶ Start the self-learning loop";
   if (!on || QL.busy) return;
-  QL.busy = true;
+  QL.busy = true; qbWake("learning loop");
   try {
     const faces = (await api("/api/avatars/list")).avatars.filter(a => a.analysed && (!a.qc || a.qc.ok));
     for (let round = 0; QL.loop; round++) {
@@ -309,7 +312,7 @@ async function qlLoop(on) {
       try { await qlRecordTest(QL_SCRIPTS[round % QL_SCRIPTS.length]); } catch (e) { $("#ql-note").textContent = "Round " + (round + 1) + " failed: " + e.message; await new Promise(r => setTimeout(r, 3000)); }
       qlTrend();
     }
-  } finally { QL.busy = false; }
+  } finally { QL.busy = false; qbWakeEnd("learning loop"); }
 }
 function qlTrend() {
   const h = QL.history || []; if (!h.length) return;
@@ -362,8 +365,8 @@ async function renderQualityLab(el) {
       '<div class="card"><h2>All tests</h2><div id="ql-samples"></div></div>';
     const setScript = () => { const v = $("#ql-pick").value; $("#ql-script").value = v === "c" ? ($("#sp-text") ? $("#sp-text").value : "") : QL_SCRIPTS[Number(v)]; };
     $("#ql-pick").onchange = setScript; setScript();
-    const run = async scripts => { if (QL.busy) return; QL.busy = true;
-      try { for (const s of scripts) await qlRecordTest(s); } catch (e) { $("#ql-note").textContent = "Test failed: " + e.message; } finally { QL.busy = false; } };
+    const run = async scripts => { if (QL.busy) return; QL.busy = true; qbWake("tests");
+      try { for (const s of scripts) await qlRecordTest(s); } catch (e) { $("#ql-note").textContent = "Test failed: " + e.message; } finally { QL.busy = false; qbWakeEnd("tests"); } };
     $("#ql-go").onclick = () => run([$("#ql-script").value.trim()]);
     $("#ql-all").onclick = () => run(QL_SCRIPTS);
     $("#ql-cam").onclick = () => qlWebcam().catch(e => toast("Camera: " + e.message));

@@ -153,8 +153,37 @@ async function pollJob(el, onDone) {
 // A failed request already showed its message in a toast; don't also report it as a page error.
 window.addEventListener("unhandledrejection", e => e.preventDefault());
 
+// ---------------------------------------------------------------- keep the screen awake during long work
+// The screen saver (and a sleeping screen) makes the browser pause pages it thinks nobody watches. Long work — learning
+// loops, ingesting, recording, long speech — holds a screen wake lock while it runs; released when it ends.
+const QB_WAKE = { n: 0, lock: null, why: new Set() };
+async function qbWake(why) {
+  QB_WAKE.n++; QB_WAKE.why.add(why || "work");
+  try { if (!QB_WAKE.lock && navigator.wakeLock) { QB_WAKE.lock = await navigator.wakeLock.request("screen"); QB_WAKE.lock.addEventListener("release", () => { QB_WAKE.lock = null; }); } } catch (e) {}
+}
+function qbWakeEnd(why) {
+  QB_WAKE.n = Math.max(0, QB_WAKE.n - 1); QB_WAKE.why.delete(why || "work");
+  if (!QB_WAKE.n && QB_WAKE.lock) { QB_WAKE.lock.release().catch(() => {}); QB_WAKE.lock = null; }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && QB_WAKE.n && !QB_WAKE.lock) qbWake("resume").then(() => qbWakeEnd("resume")); });
+
 // ---------------------------------------------------------------- diagnostics and monitoring (shared by every application)
 const DIAG_BADGE = { ok: '<span class="badge good">OK</span>', warn: '<span class="badge warn">WARNING</span>', fail: '<span class="badge bad">PROBLEM</span>' };
+
+async function dgPower(refresh) {
+  const box = document.getElementById("dg-power"); if (!box) return;
+  const b = document.getElementById("dg-power-re"); if (b) b.onclick = () => dgPower(true);
+  try {
+    const p = await api("/api/system/power" + (refresh ? "?refresh=1" : "")), s = p.system || {};
+    const ev = (s.events || []).slice(0, 20).map(e => "<tr><td>" + esc(e.time) + "</td><td>" + esc(e.event) + "</td><td>" + esc(e.detail || "") + "</td></tr>").join("");
+    const set = Object.entries(s.settings || {}).map(([k, v]) => "<li>" + esc(k) + ": " + esc(typeof v === "object" ? JSON.stringify(v) : String(v)) + "</li>").join("");
+    box.innerHTML = "<p>" + (p.keep_awake ? "✔ Keeping the computer awake — " : "⚠ Not keeping the computer awake — ") + esc(p.method || "") + "</p>" +
+      ((s.advice || []).length ? "<ul>" + s.advice.map(a => "<li>" + esc(a) + "</li>").join("") + "</ul>" : "") +
+      ((p.sleeps || []).length ? "<p><b>Paused while running:</b> " + p.sleeps.map(x => esc(x.from) + " → " + esc(x.to) + " (" + x.seconds + " s)").join("; ") + "</p>" : "") +
+      (set ? "<p><b>System settings</b></p><ul>" + set + "</ul>" : "") +
+      (ev ? '<p><b>Sleep, wake and shutdowns (system log, newest first)</b></p><table class="t small"><tbody>' + ev + "</tbody></table>" : "<p>No sleep, wake or shutdown events in the system log for the last 48 h.</p>");
+  } catch (e) { box.textContent = "Could not read: " + e.message; }
+}
 
 async function renderDiagnostics(el, rerun) {
   if (!el.dataset.built) {
@@ -188,7 +217,10 @@ async function renderDiagnostics(el, rerun) {
       '<div id="gc-job" style="margin-top:10px"></div><div id="gc-out" style="margin-top:10px"></div></div>' +
       '<div class="card"><h2>Backup mirror (redundancy)</h2><p class="small muted">A second, verified copy of every backup in another folder — best on another drive (USB disk, NAS, synced folder). Each copy is checked: same SHA-256 as the backup and a passing database check. Restoring can use either copy.</p>' +
       '<div class="row"><input id="mr-f" class="grow" type="text" placeholder="Folder on another drive, e.g. E:\\QB-Mirror" aria-label="Mirror folder"><button class="btn" id="mr-set">Set mirror</button><button class="btn quiet" id="mr-off">Switch off</button></div><div id="mr-out" class="small" style="margin-top:8px"></div></div>' +
-      '<div class="card"><h2>Activity log</h2><p class="small muted">Every action that changes something, every background task, backup, import, diagnostics run and monitoring report — with its result and how long it took. Kept in this application\'s database (newest 20,000).</p>' +
+      '<div class="card"><h2>Power, sleep and the log</h2><p class="small muted">While it runs, QueryBook asks the computer not to sleep (the screen may still turn off); long work in the browser keeps the screen awake. At start-up it reads the system\'s own log for sleep, wake and unexpected shutdowns.</p>' +
+      '<div id="dg-power" class="small">Checking…</div><div class="row"><button class="btn quiet" id="dg-power-re">Check the system log again</button>' +
+      '<a class="btn quiet" href="/api/system/log.txt" download="querybook-log.txt" style="text-decoration:none">Download the log</a></div></div>' +
+            '<div class="card"><h2>Activity log</h2><p class="small muted">Every action that changes something, every background task, backup, import, diagnostics run and monitoring report — with its result and how long it took. Kept in this application\'s database (newest 20,000).</p>' +
       '<div class="row"><input id="act-q" type="text" placeholder="Filter by task" style="max-width:260px" aria-label="Filter activity"><button class="btn quiet" id="act-go">Refresh</button></div><div id="act-out" style="margin-top:10px;max-height:420px;overflow:auto"></div></div>' +
       '<div class="card"><h2>Monitoring connection</h2>' +
       '<p class="small">Sends health reports to the development repository on GitHub, as comments on one issue for this application on this computer, so problems can be seen and fixed from the development side. ' +
@@ -286,6 +318,7 @@ async function renderDiagnostics(el, rerun) {
     $("#mon-preview", el).onclick = async () => { const r = await api("/api/monitor/preview"); const pre = $("#mon-prev", el); pre.textContent = r.title + "\n\n" + r.body; pre.style.display = "block"; };
     $("#mon-off", el).onclick = async () => { if (confirm("Remove the token and turn the monitoring connection off?")) showMonitor(el, await api("/api/monitor/disconnect", {})); };
   }
+  dgPower(false);
   const r = rerun ? await api("/api/diagnostics/run", {}) : await api("/api/diagnostics");
   $("#dg-out", el).innerHTML = '<p>Overall: ' + DIAG_BADGE[r.overall] + ' <span class="small muted">' + esc(r.app) + " " + esc(r.version) + " · checked " + esc(r.time) + " · running for " + esc(r.uptime) + "</span></p>" +
     '<table class="t"><tr><th>Check</th><th>Result</th><th>Detail</th></tr>' + r.checks.map(c => "<tr><td>" + esc(c.name) + "</td><td>" + DIAG_BADGE[c.status] + '</td><td class="small">' + esc(c.detail) + "</td></tr>").join("") + "</table>" +

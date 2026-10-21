@@ -18,10 +18,10 @@ Design rules (they exist because the full-featured prototype lost data):
   * Standard library only. No pip installs.
 """
 import bz2, contextlib, datetime, gzip, hashlib, json, lzma, os, re, shutil, socket, sqlite3, struct
-import platform, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
+import platform, subprocess, sys, threading, time, traceback, urllib.error, urllib.parse, urllib.request, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CORE_VERSION = "1.9.0"
+CORE_VERSION = "1.10.0"
 BACKUPS_KEPT = 10
 
 
@@ -382,6 +382,9 @@ def make_logger(folder, app_id):
         with lock:
             try:
                 if os.path.exists(path) and os.path.getsize(path) > 2_000_000:
+                    for k in range(4, 0, -1):                     # keep five older logs: .1 (newest) … .5
+                        if os.path.exists("%s.%d" % (path, k)):
+                            os.replace("%s.%d" % (path, k), "%s.%d" % (path, k + 1))
                     os.replace(path, path + ".1")
                 with open(path, "a", encoding="utf-8") as f:
                     f.write(line)
@@ -399,6 +402,184 @@ def make_logger(folder, app_id):
 
 
 ERROR_MARKS = ("ERROR", "JOB FAILED")
+
+
+# ----------------------------------------------------------------------------- staying awake, sleep detection, system logs
+class Power:
+    """Keeps the computer from sleeping while QueryBook runs (the display and screen saver may still switch on), notices
+    when it was asleep or paused anyway, and reads the system's own logs at start-up for sleep, wake and unexpected
+    shutdowns. Set QB_ALLOW_SLEEP=1 (or start with --allow-sleep) to let the computer sleep."""
+
+    def __init__(self, log, folder, app_id):
+        self.log, self.folder, self.app_id = log, folder, app_id
+        self.state = {"keep_awake": False, "method": None, "sleeps": [], "since": now_iso()}
+        self._proc = None
+        self.marker = os.path.join(folder, app_id + ".running")
+
+    # -- session: a header in the log, and a marker that tells the next start whether this one ended cleanly
+    def session_start(self, version):
+        unclean = None
+        if os.path.exists(self.marker):
+            try:
+                with open(self.marker, encoding="utf-8") as f:
+                    unclean = f.read().strip()[:200] or "unknown time"
+            except OSError:
+                unclean = "unknown time"
+        self.log("==== session start", self.app_id, version, "| python", sys.version.split()[0], "|", sys.platform, "| pid", os.getpid())
+        if unclean:
+            self.log("WARNING previous run did not stop cleanly (started %s) — the computer may have slept, lost power or restarted" % unclean)
+        self.state["previous_unclean"] = unclean
+        try:
+            with open(self.marker, "w", encoding="utf-8") as f:
+                f.write(now_iso())
+        except OSError:
+            pass
+
+    def session_end(self):
+        self.release()
+        try:
+            os.remove(self.marker)
+        except OSError:
+            pass
+        self.log("==== session end")
+
+    # -- keep the computer awake (not the screen)
+    def keep_awake(self):
+        if os.environ.get("QB_ALLOW_SLEEP") == "1" or "--allow-sleep" in sys.argv:
+            self.state.update(keep_awake=False, method="off (allowed to sleep)")
+            return self.state
+        try:
+            if os.name == "nt":
+                import ctypes
+                ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_AWAYMODE_REQUIRED = 0x80000000, 0x00000001, 0x00000040
+
+                def hold():                                     # the request lasts as long as this thread lives
+                    k = ctypes.windll.kernel32
+                    while True:
+                        if not k.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED):
+                            k.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                        time.sleep(60)
+                threading.Thread(target=hold, daemon=True, name="qb-keep-awake").start()
+                self.state.update(keep_awake=True, method="Windows power request (SetThreadExecutionState: system required)")
+            elif sys.platform == "darwin" and shutil.which("caffeinate"):
+                self._proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.state.update(keep_awake=True, method="caffeinate -i")
+            elif shutil.which("systemd-inhibit"):
+                self._proc = subprocess.Popen(["systemd-inhibit", "--what=sleep:idle", "--who=QueryBook", "--why=QueryBook is working",
+                                               "--mode=block", "sleep", "infinity"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.state.update(keep_awake=True, method="systemd-inhibit (sleep, idle)")
+            else:
+                self.state.update(keep_awake=False, method="not available on this system")
+        except Exception as e:
+            self.state.update(keep_awake=False, method="failed: %s" % e)
+        self.log("power: keep the computer awake —", self.state["method"])
+        return self.state
+
+    def release(self):
+        if self._proc:
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+            self._proc = None
+
+    # -- heartbeat: a missing stretch of time means the computer slept or the program was paused
+    def watch(self, every=10.0, gap=45.0):
+        def run():
+            last = time.time()
+            while True:
+                time.sleep(every)
+                now = time.time()
+                if now - last > gap:
+                    a = datetime.datetime.fromtimestamp(last, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    b = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    self.state["sleeps"] = (self.state["sleeps"] + [{"from": a, "to": b, "seconds": round(now - last)}])[-50:]
+                    self.log("WARNING QueryBook was paused for %d s (%s → %s): the computer slept or the program was suspended" % (now - last, a, b))
+                last = now
+        threading.Thread(target=run, daemon=True, name="qb-heartbeat").start()
+
+    # -- the system's own logs and settings
+    @staticmethod
+    def _run(cmd, timeout=8):
+        try:
+            kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
+            r = subprocess.run(cmd, capture_output=True, timeout=timeout, **kw)
+            return r.stdout.decode("utf-8", "replace") if r.returncode == 0 else ""
+        except Exception:
+            return ""
+
+    def system_check(self, hours=48):
+        out = {"platform": sys.platform, "events": [], "settings": {}, "blocking_sleep": "", "advice": [], "checked": now_iso()}
+        if os.name == "nt":
+            q = ("*[System[(EventID=1 or EventID=42 or EventID=107 or EventID=506 or EventID=507 or EventID=41 or EventID=6008)"
+                 " and TimeCreated[timediff(@SystemTime) <= %d]]]" % (hours * 3600 * 1000))
+            txt = self._run(["wevtutil", "qe", "System", "/q:" + q, "/f:text", "/c:60", "/rd:true"], 15)
+            kinds = {"42": "going to sleep", "1": "woke up", "107": "resumed", "506": "screen off (modern standby)", "507": "screen on (modern standby)",
+                     "41": "restarted without shutting down cleanly", "6008": "unexpected shutdown"}
+            for blk in txt.split("Event["):
+                d = re.search(r"Date:\s*(\S+)", blk)
+                e = re.search(r"Event ID:\s*(\d+)", blk)
+                src = re.search(r"Source:\s*(\S+)", blk)
+                if d and e and e.group(1) in kinds:
+                    if e.group(1) == "1" and src and "Troubleshooter" not in src.group(1):
+                        continue
+                    desc = blk.split("Description:", 1)[-1].strip().split("\n")
+                    out["events"].append({"time": d.group(1), "event": kinds[e.group(1)], "detail": " ".join(x.strip() for x in desc[:6])[:300]})
+            for name, sub, setting in (("sleep after (s)", "SUB_SLEEP", "STANDBYIDLE"), ("hibernate after (s)", "SUB_SLEEP", "HIBERNATEIDLE"),
+                                       ("screen off after (s)", "SUB_VIDEO", "VIDEOIDLE")):
+                t = self._run(["powercfg", "/query", "SCHEME_CURRENT", sub, setting])
+                ac = re.search(r"Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)", t)
+                dc = re.search(r"Current DC Power Setting Index:\s*0x([0-9a-fA-F]+)", t)
+                if ac:
+                    out["settings"][name] = {"plugged_in": int(ac.group(1), 16), "on_battery": int(dc.group(1), 16) if dc else None}
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop") as k:
+                    active = winreg.QueryValueEx(k, "ScreenSaveActive")[0]
+                    timeout_s = winreg.QueryValueEx(k, "ScreenSaveTimeOut")[0]
+                    secure = winreg.QueryValueEx(k, "ScreenSaverIsSecure")[0]
+                    out["settings"]["screen saver"] = {"on": str(active) == "1", "after (s)": int(timeout_s or 0), "locks the screen": str(secure) == "1"}
+            except Exception:
+                pass
+            out["blocking_sleep"] = self._run(["powercfg", "/requests"])[:1500]
+        elif sys.platform == "darwin":
+            t = self._run(["pmset", "-g", "log"], 20)
+            for line in t.splitlines()[-4000:]:
+                m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \S+\s+(Sleep|Wake|DarkWake)\s+(.*)", line)
+                if m:
+                    out["events"].append({"time": m.group(1), "event": {"Sleep": "going to sleep", "Wake": "woke up", "DarkWake": "woke briefly"}[m.group(2)],
+                                          "detail": m.group(3)[:200]})
+            out["events"] = out["events"][-40:][::-1]
+            out["settings"]["pmset"] = self._run(["pmset", "-g"])[:800]
+        else:
+            t = self._run(["journalctl", "--since", "-%dh" % hours, "-o", "short-iso", "--no-pager", "-n", "400",
+                           "-g", "suspend|hibernat|Suspending|resumed|PM: suspend"], 15)
+            for line in t.splitlines():
+                m = re.match(r"(\S+)\s+\S+\s+(.*)", line)
+                if m and not line.startswith("--"):
+                    ev = "woke up" if re.search(r"resum|exit", line, re.I) else "going to sleep"
+                    out["events"].append({"time": m.group(1), "event": ev, "detail": m.group(2)[:200]})
+            out["events"] = out["events"][-40:][::-1]
+        sl = (out["settings"].get("sleep after (s)") or {}).get("plugged_in")
+        ss = out["settings"].get("screen saver") or {}
+        if sl:
+            out["advice"].append("Windows puts this computer to sleep after %d min when plugged in; QueryBook asks it to stay awake while it runs." % (sl // 60))
+        if ss.get("on") and ss.get("locks the screen"):
+            out["advice"].append("The screen saver locks the screen after %d min. Long work in the browser keeps the screen awake while it runs; "
+                                 "the program itself keeps working when the screen is locked." % (ss.get("after (s)", 0) // 60))
+        n_sleep = sum(1 for e in out["events"] if e["event"] in ("going to sleep", "screen off (modern standby)"))
+        n_crash = sum(1 for e in out["events"] if e["event"] in ("unexpected shutdown", "restarted without shutting down cleanly"))
+        if n_sleep:
+            out["advice"].append("The computer slept %d time(s) in the last %d h (listed below)." % (n_sleep, hours))
+        if n_crash:
+            out["advice"].append("%d unexpected shutdown(s) or restart(s) in the last %d h." % (n_crash, hours))
+        if self.state.get("previous_unclean"):
+            out["advice"].append("The previous QueryBook run did not stop cleanly (started %s)." % self.state["previous_unclean"])
+        self.state["system"] = out
+        self.log("system check:", "; ".join(out["advice"]) or "no sleep, wake or shutdown events found in the system log", "| events:", len(out["events"]))
+        for e in out["events"][:15]:
+            self.log("system log:", e["time"], e["event"], "—", e["detail"][:160])
+        return out
 
 
 # ----------------------------------------------------------------------------- old QueryBook store (read-only)
@@ -1597,6 +1778,26 @@ def add_diagnostics(api, diag, monitor, program_dir):
         d = diag.store.set_mirror(p.get("folder") or "off")
         return {"folder": d, "copies": len(diag.store.mirror_backups())}
 
+    @api.get("/api/system/power")
+    def system_power(p):
+        pw = getattr(diag, "power", None)
+        if not pw:
+            return {"keep_awake": False, "method": "not running from the program (self-test or command line)", "sleeps": [], "system": None}
+        if p.get("refresh") == "1" or not pw.state.get("system"):
+            pw.system_check()
+        return pw.state
+
+    @api.get("/api/system/log.txt")
+    def system_log(p):
+        """The application's log as it is being written (this run and the ones before it, newest last)."""
+        path = getattr(diag.log, "path", None)
+        parts = []
+        for f in ([path + ".1"] if path else []) + ([path] if path else []):
+            if f and os.path.exists(f):
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    parts.append(fh.read())
+        return redact("".join(parts)[-3_000_000:]).encode("utf-8"), "text/plain; charset=utf-8"
+
     @api.get("/api/diagnostics/report.txt")
     def diagnostics_text(p):
         return diag.text(diag.run()).encode("utf-8"), "text/plain; charset=utf-8"
@@ -1838,8 +2039,19 @@ def run_cli(app):
     if getattr(inst, "devices", None):
         import qbdevices
         qbdevices.start(inst)
+    # stay awake while working, notice sleeps, and read the system's own logs (in the background: start-up is not delayed)
+    power = Power(inst.log, os.path.dirname(getattr(inst.log, "path", "") or ".") or ".", app.APP_ID)
+    power.session_start(app.VERSION)
+    power.keep_awake()
+    power.watch()
+    if getattr(inst, "diag", None):
+        inst.diag.power = power
+    threading.Thread(target=lambda: power.system_check(), daemon=True, name="qb-system-check").start()
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
-    serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
-          open_browser="--no-browser" not in args, store=inst.store)
+    try:
+        serve(app.APP_NAME, inst.api, os.path.join(app.program_dir, "ui"), app.PORT, inst.log,
+              open_browser="--no-browser" not in args, store=inst.store)
+    finally:
+        power.session_end()
     inst.store.activity("Application stopped", "ok")
     return 0

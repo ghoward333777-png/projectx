@@ -381,6 +381,20 @@ feet, under-eye bunching and smile lines — drawn along the moving mesh in this
 **Under every talking face**: ▶ Play / ❚❚ Pause with the clock, and ⬇ Download video (MP4: recorded in the browser as
 H.264 where it can, otherwise converted with ffmpeg when installed, else WebM).
 
+## Staying awake, the log, and the system's own logs (all three applications)
+
+While an application runs it asks the computer **not to sleep** (Windows: a power request, `SetThreadExecutionState`;
+macOS: `caffeinate -i`; Linux: `systemd-inhibit`). The screen and screen saver may still switch on; the work goes on.
+Long work in the browser (learning loop, ingesting, recording, speaking) holds a **screen wake lock** while it runs, so
+the screen saver does not pause the page. To let the computer sleep, start with `--allow-sleep` or set `QB_ALLOW_SLEEP=1`.
+
+The **log file** (`<data folder>/<app>.log`, five older copies kept) marks every session, notes when a previous run did not
+stop cleanly, and a heartbeat records any stretch when the program was paused (the computer slept). At start-up each
+application **reads the system's own logs** — Windows Event Log (sleep, wake with its wake source, modern-standby screen
+off/on, unexpected shutdowns and restarts), the sleep / hibernate / screen-off timeouts, the screen-saver settings and what
+is blocking sleep (`powercfg /requests`); macOS `pmset`; Linux `journalctl` — and writes what it found to the log.
+Diagnostics → *Power, sleep and the log* shows it all and offers **Download the log**.
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):

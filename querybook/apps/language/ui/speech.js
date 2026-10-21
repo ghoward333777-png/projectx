@@ -148,6 +148,7 @@ async function faceVideo(stage, audio, note, text) {
   const mime = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
   if (!mime) throw new Error("this browser cannot record video");
   const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 }), parts = [];
+  qbWake("video"); try {
   rec.ondataavailable = e => { if (e.data.size) parts.push(e.data); };
   await ac.resume(); audio.pause(); audio.currentTime = 0;
   rec.start(250); await new Promise(r => setTimeout(r, 250));
@@ -157,6 +158,7 @@ async function faceVideo(stage, audio, note, text) {
   await new Promise(r => setTimeout(r, 300));
   await new Promise(r => { rec.onstop = r; rec.stop(); });
   clearInterval(tick); audio._qbSrc.disconnect(dest);
+  } finally { qbWakeEnd("video"); }
   let blob = new Blob(parts, { type: mime.split(";")[0] }), ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
   if (ext === "webm" || !/avc1/.test(mime)) {                     // make it play everywhere: H.264 + AAC
     note.textContent = "Converting to MP4 (H.264)…";
@@ -192,6 +194,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
     const sync = () => { pb.textContent = audio.paused ? "▶ Play" : "❚❚ Pause"; clock.textContent = mmss(audio.currentTime || 0) + " / " + mmss(isFinite(audio.duration) ? audio.duration : 0); };
     pb.onclick = () => { if (audio.paused) { if (audio.ended) audio.currentTime = 0; audio.play().catch(() => {}); } else audio.pause(); };
     ["play", "pause", "ended", "timeupdate", "loadedmetadata"].forEach(ev => audio.addEventListener(ev, sync)); sync();
+    audio.addEventListener("play", () => qbWake("speech")); ["pause", "ended"].forEach(ev => audio.addEventListener(ev, () => qbWakeEnd("speech")));
   }
   box.querySelector("[data-fdl]").onclick = () => faceVideo(stage, audio, box.querySelector("[data-fdlnote]"), text).catch(e => { box.querySelector("[data-fdlnote]").textContent = "Could not record: " + e.message; });
   const load = async exact => {
