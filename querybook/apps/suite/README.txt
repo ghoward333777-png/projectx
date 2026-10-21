@@ -33,6 +33,9 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.41.0)
+    * Five new faces in the avatar library: Man - gym, Man - park, Man - street, Woman - braids, Woman - curls
+      (AI-generated portraits supplied by the admin; already analysed; all pass the mouth quality checks).
   Language Builder (1.40.0), Math, Science & Engineering and History & News (1.11.0)
     * Obey the Control Panel's targeting and filtering; record their address for the panel; stop when the panel asks.
   All three applications

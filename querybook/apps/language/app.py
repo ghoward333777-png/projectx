@@ -43,7 +43,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.40.0"
+VERSION = "1.41.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1770,7 +1770,7 @@ def selftest():
         c.check("quality lab: YouTube and broadcasters are refused; the learned style drives the speech engine's head and blinks",
                 yt and yaw(mo_fast) > 2 * yaw(mo_def) and app.vse.human() and app.vse.human()["version"] >= 1)
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
-        c.check("avatars: the 23 bundled starter avatars are installed and analysed, once", len(st) == 23 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
+        c.check("avatars: the 28 bundled starter avatars are installed and analysed, once", len(st) == 28 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
