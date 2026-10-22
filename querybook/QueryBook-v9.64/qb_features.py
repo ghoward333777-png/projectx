@@ -136,7 +136,7 @@ FEATURES = [
      "OpenClaw skill)", "system": "platform", "registry": "AI embodiment", "module": "qb_mcp,qb_shield",
      "endpoints": ["/agent/execute"], "page": None, "status": "built"},
     {"id": "platform.self_knowledge", "title": "Self-Knowledge Layer (SKL) — accurate self-description with sources",
-     "system": "platform", "registry": "[294]-[301] (v70)", "module": "qb_selfknow",
+     "system": "platform", "registry": "[383]-[391] (v70)", "module": "qb_selfknow",
      "endpoints": ["/api/self", "/api/self/ask"], "page": "/self", "status": "built"},
     {"id": "platform.two_system", "title": "Two-system home (Ingestion | Query)", "system": "platform",
      "registry": "Two-System Arch.", "module": "qb_api", "endpoints": ["/api/system"], "page": "/", "status": "built"},

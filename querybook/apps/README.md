@@ -544,6 +544,23 @@ every application and the master copy. Approved advice becomes a to-do item. **I
 ranked by severity and by what the admin has approved or rejected before, and a skill rejected three times without an
 approval is muted until the admin unmutes it.
 
+## Self-knowledge: the Self-Knowledge Layer (`_core/qbselfknow.py`, all four applications)
+
+QueryBook describes itself accurately, with sources — never from generated text. Three layers: the **specification**
+(every numbered section of the Core Technology Overview, §1–§56), the **implementation** (for each section and each
+reasoning aspect, the file and symbol that implement it, checked against the program's own files every time it is asked)
+and the **evidence** (the application's own self-test). Every statement carries one label — built and tested, partly
+built, specified (not yet built), not planned (by design), not in this application — and its sources.
+
+* **Twelve reasoning aspects**, at brief, user or engineer level: deterministic, atomic (the Fact Unit), world model,
+  predictive, neuromorphic, hypothesis, simulation, deduction, feedback loops, supervised self-improvement, recursive
+  self-improvement (not planned: nothing changes without the admin) and self-knowledge.
+* **Consistency check:** a claim whose code is missing, or a "specified" capability whose code has appeared, is a
+  contradiction — withheld from answers and failing the self-test. **Gap agenda:** every section specified but not built.
+* `GET /api/self` (summary, counts, aspects, process, sections, contradictions, gaps) and `GET /api/self/ask?q=…&level=…`
+  in every application; the Control Panel has a **Self-knowledge** tab and its assistant answers "are you neuromorphic?".
+  A disclosure filter removes anything that looks like a key. Rule-based, deterministic, no AI model.
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):
@@ -772,16 +789,17 @@ The same import is available on the command line: `python app.py import-old E:\Q
 ```
 python tools/test_core.py            # data safety, diagnostics, monitoring (against a stand-in GitHub)
 python tools/test_commons.py         # the shared database and the three teams, end to end (68 checks)
-python language/app.py --selftest     # 186 checks
+python language/app.py --selftest     # 216 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
+python control/app.py --selftest      # 34 checks
 python tools/run_all_tests.py         # all of the above
 ```
 
 ## For developers
 
 * `_core/qbcore.py` (database, backups, web server, old-store reader), `_core/qbcommons.py` (the
-  Commons and the agent teams), `_core/qbharvest.py` (registry, engine, log, approvals, learner) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
+  Commons and the agent teams), `_core/qbharvest.py` (registry, engine, log, approvals, learner), `_core/qbselfknow.py` (the Self-Knowledge Layer) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
   is its `harvest.py`. Each application carries its **own copy** so it can be shipped alone; after editing
   `_core/`, run `python tools/sync_core.py`. The self-tests fail if a copy differs from the master.
 * `python tools/package.py` builds one zip per application in `dist/`.

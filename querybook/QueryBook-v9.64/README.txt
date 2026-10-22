@@ -213,6 +213,15 @@ If there is NO such line, QueryBook kept running fine and only the screen
 turned off — nothing was lost.
 
 
+WHAT QUERYBOOK KNOWS ABOUT ITSELF (the Self-Knowledge Layer)
+-------------------------------------------------------------
+Open http://127.0.0.1:<port>/self (or ask /api/self/ask?q=are you neuromorphic). QueryBook
+answers questions about itself only from its design document (the Core Technology Overview,
+sections 1-56), its own program files and its own self-test - each capability labelled built,
+partly built, specified (not yet built) or not planned, with its sources. A claim its code
+cannot prove is reported as a contradiction, never repeated. No AI model is used.
+
+
 WHAT'S IN THIS FOLDER
 ---------------------
 START-WINDOWS.bat / START-MAC.command   the launchers (double-click these)
@@ -222,6 +231,7 @@ qb_agents.py                            24x7 background agents
 qb_keepawake.py                         keep-awake + sleep watchdog
 qb_chat.py                              grounded chat answering
 qb_selftest.py                          quality-control self-tests (run at startup)
+qb_selfknow.py / self.html              the Self-Knowledge Layer and its page
 qb_web_harvest.py                       optional web harvesting
 qb_language.py                          Language Lab engine (learn English structure)
 dashboard.html / chat.html / console.html   the pages

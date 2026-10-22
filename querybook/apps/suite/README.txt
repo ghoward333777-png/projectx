@@ -19,6 +19,13 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  All four applications - the Self-Knowledge Layer (Control Panel 1.1.0, STEM and History 1.12.0, Language 1.46.1)
+    * QueryBook describes itself accurately, with sources: ask "are you neuromorphic?", "do you improve yourself?" or
+      "what is section 21?" and it answers built, partly built, specified (not yet built) or not planned - with the
+      design-document sections and the program files that prove it. It checks every claim against its own code each
+      time, and reports a contradiction instead of repeating a claim it cannot prove. No AI model.
+    * Control Panel: new Self-knowledge tab (ask box, the twelve reasoning aspects, the eight-step process, every section,
+      contradictions); the assistant answers questions about QueryBook itself. Every application: /api/self.
   Control Panel (new, 1.0.0) - one separate page to show and manage all three applications
     * Applications: running or not, version, health, harvest switch, facts, last harvest turn; Start / Stop / Open /
       Harvest now for each (it can start them for you).
