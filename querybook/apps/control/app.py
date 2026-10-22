@@ -34,10 +34,11 @@ import qbcommons as cm
 import qbcontrol as ctl
 import qbonline as ol
 import assistant
+import qbselfknow
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8100
 program_dir = HERE
 
@@ -81,6 +82,7 @@ class Panel:
         self.store = core.Store(self.folder, APP_ID, SCHEMA, self.log)
         self.commons = cm.Commons(commons_folder or cm.commons_folder(self.folder), APP_ID, self.log)
         self.api = core.Api()
+        qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         self.seen = {}                      # application → was it running at the last check
         self.stopping = set()               # stopped from the panel (not an unexpected stop)
         self.procs = {}
@@ -598,6 +600,15 @@ def selftest():
         say = lambda m, **k: assistant.respond(p, m, k.get("pw", ""), k.get("pending"))
         r = say("how is everything?")
         check("assistant: status in plain words", "Language Builder" in r["reply"] and "not running" in r["reply"], r["reply"])
+        # the Self-Knowledge Layer through the assistant and the API: labelled, sourced, never claiming what is only specified
+        r = say("Are you neuromorphic?")
+        check("self-knowledge: 'are you neuromorphic?' is answered as specified, with the design section", "not yet built" in r["reply"] and "§3" in r["reply"], r["reply"])
+        r = say("can you improve yourself recursively?")
+        check("self-knowledge: recursive self-improvement is not planned, by design", "not planned" in r["reply"], r["reply"])
+        r = say("how does supervised self-improvement work?")
+        check("self-knowledge: built claims carry their source file", "built and tested" in r["reply"] and "qbengineer.py" in r["reply"], r["reply"])
+        sk = p.api.routes[("GET", "/api/self")]({})
+        check("self-knowledge: /api/self lists every design section and no contradictions", len(sk["sections"]) >= 56 and not sk["contradictions"], sk["contradictions"])
         r = say("focus on volcanoes and earthquakes in history", pw="admin-pass-1")
         check("assistant: sets a target from a sentence", ctl.get(co, "target")["topics"] == ["volcanoes", "earthquakes"]
               and ctl.get(co, "target")["apps"] == ["facts"], (r["reply"], ctl.get(co, "target")))

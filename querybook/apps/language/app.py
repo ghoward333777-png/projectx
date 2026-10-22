@@ -22,6 +22,7 @@ import qbcommons as cm
 import qbdevices
 import qbagents
 import qbengineer
+import qbselfknow
 import harvest
 import lab
 import speech
@@ -43,7 +44,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.46.0"
+VERSION = "1.46.1"
 PORT = 8101
 program_dir = HERE
 
@@ -126,6 +127,7 @@ class App:
         qbdevices.attach(self, APP_ID, PORT)
         qbagents.attach(self, APP_ID)
         qbengineer.attach(self, APP_ID, HERE)
+        qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         try:
             self.store.backup("startup")
         except Exception as e:

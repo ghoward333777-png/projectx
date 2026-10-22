@@ -661,6 +661,17 @@ def main():
     google_tests(c)
     setup_script_tests(c)
     first_run_tests(c)
+    # the Self-Knowledge Layer, as each application runs it: its own self-test (no contradictions; specified never called
+    # built; every aspect sourced; the disclosure filter), and the copy in QueryBook 9.64
+    import importlib.util
+    for app in ("language", "stem", "facts", "control"):
+        spec = importlib.util.spec_from_file_location("qbselfknow_" + app, os.path.join(ROOT, app, "qbselfknow.py"))
+        K = importlib.util.module_from_spec(spec); spec.loader.exec_module(K)
+        ok, total, fails = K.self_test()
+        c.check("self-knowledge layer (%s): %d of %d, no contradictions" % (app, ok, total), not fails, fails)
+    v964 = os.path.join(os.path.dirname(ROOT), "QueryBook-v9.64", "qb_selfknow.py")
+    if os.path.exists(v964):
+        c.check("self-knowledge layer: QueryBook 9.64 carries the same layer", open(v964, "rb").read() == open(os.path.join(ROOT, "_core", "qbselfknow.py"), "rb").read())
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))
         c.check("%s carries the current Google module" % app, open(os.path.join(ROOT, app, "gcloud.py"), "rb").read() == open(os.path.join(ROOT, "_core", "gcloud.py"), "rb").read())

@@ -135,6 +135,9 @@ FEATURES = [
     {"id": "platform.openclaw_agent", "title": "OpenClaw agent support (MCP server through the Agent Gateway + "
      "OpenClaw skill)", "system": "platform", "registry": "AI embodiment", "module": "qb_mcp,qb_shield",
      "endpoints": ["/agent/execute"], "page": None, "status": "built"},
+    {"id": "platform.self_knowledge", "title": "Self-Knowledge Layer (SKL) — accurate self-description with sources",
+     "system": "platform", "registry": "[294]-[301] (v70)", "module": "qb_selfknow",
+     "endpoints": ["/api/self", "/api/self/ask"], "page": "/self", "status": "built"},
     {"id": "platform.two_system", "title": "Two-system home (Ingestion | Query)", "system": "platform",
      "registry": "Two-System Arch.", "module": "qb_api", "endpoints": ["/api/system"], "page": "/", "status": "built"},
     {"id": "platform.saas", "title": "Multi-tenant SaaS admin (tenants/users/roles/usage/plans)",
@@ -162,7 +165,7 @@ def _page_ok(spec):
              "/language": "language.html", "/voice": "voice.html", "/director": "director.html",
              "/reconstructor": "reconstructor.html", "/dashboard": "dashboard.html",
              "/learn": "learn.html", "/educator": "educator.html", "/collab": "collab.html",
-             "/admin": "admin.html", "/openclaw": "openclaw.html", "/security": "security.html"}.get(page)
+             "/admin": "admin.html", "/openclaw": "openclaw.html", "/security": "security.html", "/self": "self.html"}.get(page)
     return bool(fname) and _os.path.exists(_os.path.join(_HERE, fname))
 
 def catalog():

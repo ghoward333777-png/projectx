@@ -57,6 +57,7 @@
   <button data-tab="facts">Shared facts</button>
   <button data-tab="audit">Audit trail</button>
   <button data-tab="diag">Diagnostics</button>
+  <button data-tab="self">Self-knowledge</button>
   <button data-tab="help">Help</button>
 </nav>
 <div class="layout">
@@ -206,6 +207,26 @@
         <button class="btn quiet" data-diag="panel">Panel</button><button class="btn quiet" data-diag="assistant">Assistant</button>
       </div>
       <div class="diag" id="diag-all"></div>
+    </div>
+  </section>
+
+  <!-- Self-Knowledge Layer (SKL): QueryBook's accurate self-description, with sources -->
+  <section class="panel" id="self">
+    <div class="card">
+      <div class="sechead"><h2>Self-knowledge</h2><button class="btn quiet" id="sk-refresh">Check again</button></div>
+      <p class="muted small">What QueryBook can say about itself — only from its design document (the Core Technology Overview), checked
+        against its own program files right now. Every statement is labelled <b>built and tested</b>, <b>partly built</b>,
+        <b>specified, not yet built</b>, <b>not planned</b> or <b>not in this application</b>, with its sources. Nothing specified is ever
+        described as built.</p>
+      <div id="sk-counts" class="row"></div>
+      <div class="row"><input id="sk-q" placeholder="Ask about QueryBook — e.g. are you neuromorphic? · section 21 · what can't you do?" style="flex:1">
+        <select id="sk-level" aria-label="Detail"><option value="brief">Brief</option><option value="user" selected>Everyday</option><option value="engineer">Engineer</option></select>
+        <button class="btn" id="sk-ask">Ask</button><button class="btn quiet" id="sk-clear">Clear</button></div>
+      <div id="sk-answer"></div>
+      <div id="sk-contra"></div>
+      <h3>How QueryBook reasons</h3><div id="sk-aspects"></div>
+      <h3>How it works</h3><div id="sk-process"></div>
+      <h3>Every section of its design</h3><div id="sk-sections"></div>
     </div>
   </section>
 

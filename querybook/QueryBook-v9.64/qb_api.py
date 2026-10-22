@@ -1309,6 +1309,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/openclaw/history":
             import qb_openclaw
             return self._send(200, qb_openclaw.history())
+        if u.path in ("/self", "/self.html", "/self-knowledge"):
+            return self._send_html(self._asset_path("QB_SELF_HTML", "self.html"))
         if u.path in ("/security", "/security.html", "/shield"):
             return self._send_html(self._asset_path("QB_SECURITY_HTML", "security.html"))
         if u.path in ("/openclaw", "/openclaw.html", "/claw", "/nft", "/nft.html", "/provenance"):
@@ -1515,6 +1517,15 @@ class H(BaseHTTPRequestHandler):
                 elif u.path == "/api/features":
                     import qb_features
                     self._send(200, qb_features.catalog())
+                elif u.path == "/api/self":
+                    # Self-Knowledge Layer (Overview §56): the labelled, sourced self-description
+                    import qb_selfknow, qb_features
+                    cat = qb_features.catalog()
+                    self._send(200, qb_selfknow.summary(checks={"features built": cat["built"], "features live": cat["live"], "features": cat["count"]}))
+                elif u.path == "/api/self/ask":
+                    import qb_selfknow
+                    q = urllib.parse.parse_qs(u.query)
+                    self._send(200, qb_selfknow.answer((q.get("q") or [""])[0], (q.get("level") or ["user"])[0]))
                 elif u.path == "/api/ingest/strategy":
                     import qb_ingest_strategy
                     self._send(200, qb_ingest_strategy.status(DATA_DIR))

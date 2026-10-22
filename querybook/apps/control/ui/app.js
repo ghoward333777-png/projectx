@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -114,6 +114,31 @@ async function diag(section) {
   $("[data-clear-diag]", el).onclick = () => { el.innerHTML = ""; };
 }
 
+// ---- Self-Knowledge Layer
+const SK_BADGE = { "built and tested": "good", "partly built": "warn", "specified, not yet built": "", "not planned (by design)": "",
+  "not in this application": "", "description, not a capability": "" };
+const skSrc = s => (s || []).map(x => `${esc(x.file)}${x.line ? ":" + x.line : ""}`).join(", ");
+async function loadSelf() {
+  const r = await api("/api/self");
+  $("#sk-counts").innerHTML = Object.entries(r.counts).map(([k, v]) => `<span class="badge ${SK_BADGE[k] || ""}">${v} ${esc(k)}</span>`).join(" ") +
+    ` <span class="muted small">${esc(r.layer)} ${esc(r.version)} · ${esc(r.codebase)}</span>`;
+  $("#sk-contra").innerHTML = r.contradictions.length ? `<div class="note bad"><b>Contradictions — these statements would not be true, so QueryBook will not make them until fixed:</b>
+    ${r.contradictions.map(c => `<div>${esc(c)}</div>`).join("")}</div>` : `<div class="note good">No contradictions: every claim is backed by code that exists.</div>`;
+  $("#sk-aspects").innerHTML = `<table class="t small"><tr><th>Aspect</th><th>Status</th><th>What QueryBook says</th><th>Sources</th><th>Design</th></tr>` +
+    r.aspects.map(a => `<tr><td><b>${esc(a.name)}</b></td><td><span class="badge ${SK_BADGE[a.label] || ""}">${esc(a.label)}</span></td><td>${esc(a.text)}</td>
+      <td class="mono">${skSrc(a.sources.filter(s => s.found))}</td><td>${esc(a.sections.join("; "))}</td></tr>`).join("") + "</table>";
+  $("#sk-process").innerHTML = `<ol class="small">${r.process.map(p => `<li><b>${esc(p.step)}</b> — ${esc(p.what)} <span class="muted">(${esc(p.sections.join("; "))})</span></li>`).join("")}</ol>`;
+  $("#sk-sections").innerHTML = `<table class="t small"><tr><th>§</th><th>Section</th><th>Status</th><th>Note</th><th>Sources</th></tr>` +
+    r.sections.map(s => `<tr><td>${esc(s.section)}</td><td>${esc(s.title)}</td><td><span class="badge ${SK_BADGE[s.label] || ""}">${esc(s.label)}</span></td>
+      <td>${esc(s.note || "")}</td><td class="mono">${skSrc(s.sources.filter(x => x.found))}</td></tr>`).join("") + "</table>";
+}
+async function askSelf() {
+  const q = $("#sk-q").value.trim(); if (!q) return;
+  const r = await api("/api/self/ask?q=" + encodeURIComponent(q) + "&level=" + $("#sk-level").value);
+  $("#sk-answer").innerHTML = `<div class="note"><b>${esc(q)}</b><div>${esc(r.answer)}</div>
+    ${r.source_text ? `<div class="muted small">Sources: ${esc(r.source_text)}</div>` : ""}${r.sections.length ? `<div class="muted small">Design: ${esc(r.sections.join("; "))}</div>` : ""}</div>`;
+}
+
 async function loadAudit() {
   const r = await api("/api/panel/audit");
   $("#a-out").innerHTML = (r.hidden_before ? `<p class="muted small">View cleared at ${esc(r.hidden_before)} — ${r.total} entries kept in all.</p>` : "") +
@@ -145,6 +170,8 @@ async function loadChat() {
 }
 
 function bind() {
+  $("#sk-refresh").onclick = () => loadSelf(); $("#sk-ask").onclick = askSelf; $("#sk-clear").onclick = () => { $("#sk-answer").innerHTML = ""; $("#sk-q").value = ""; };
+  $("#sk-q").onkeydown = e => { if (e.key === "Enter") askSelf(); };
   $("#refresh").onclick = async () => { await api("/api/panel/check", {}); load(); };
   $("#alerts-all").onchange = renderAlerts;
   $("#alerts-clear").onclick = async () => { await api("/api/panel/alerts_clear", {}); load(true); };

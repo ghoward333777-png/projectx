@@ -18,6 +18,10 @@ RULES = [  # (intent, pattern) — the first match wins; order matters
     ("yes", r"^(?:yes|y|ok(?:ay)?|sure|confirm|go ahead|do it)\b[.!]*$"),
     ("no", r"^(?:no|n|cancel|don'?t|stop that|never mind)\b[.!]*$"),
     ("help", r"^(?:help|\?|what can you do|commands)\b"),
+    # questions about QueryBook itself go to the Self-Knowledge Layer (qbselfknow): labelled, sourced answers only
+    ("self", r"\b(?:who are you|what are you|what is querybook|how do you (?:work|think|reason|answer)|your (?:design|architecture)|"
+             r"(?:section|sec\.?)\s*\d|§\s*\d|neuro\w*morphic|neomorphic|world[- ]?(?:view|model)|predictive|hypothes\w*|simulat\w*|recursive|\brsi\b|"
+             r"self[- ]?(?:improv\w*|knowledge)|determinis\w*|fact units?|atomic|what can'?t you|your limit\w*|deduc\w*|abduc\w*|feedback loops?)"),
     ("alerts_clear", r"\b(?:clear|dismiss)\b.*\balerts?\b"),
     ("alerts", r"\b(?:alerts?|problems?|issues?|anything wrong|warnings?)\b"),
     ("diagnose", r"\b(?:diagnos\w*|health ?check|run (?:the )?checks?|self[- ]?check)\b"),
@@ -39,7 +43,8 @@ SELF_TEST = [("stop all harvesting", "harvest_stop"), ("start harvesting for ste
              ("focus on volcanoes in history", "target_set"), ("exclude football", "filter_exclude"), ("only keep facts about Rome", "filter_require"),
              ("years 1800 to 1950", "filter_years"), ("clear the filter", "filter_clear"), ("find Marie Curie", "search"),
              ("start the language builder", "app_start"), ("stop stem", "app_stop"), ("any alerts?", "alerts"), ("how is everything?", "status"),
-             ("run diagnostics", "diagnose"), ("yes", "yes")]
+             ("run diagnostics", "diagnose"), ("yes", "yes"),
+             ("are you neuromorphic?", "self"), ("what is section 21?", "self"), ("can you improve yourself recursively?", "self")]
 
 
 def apps_in(text):
@@ -69,7 +74,7 @@ def parse(text):
             break
     else:
         intent = "unknown"
-    args = {"apps": apps_in(low)}
+    args = {"apps": apps_in(low), "text": t}
     if intent == "target_set":
         m = re.search(r"\b(?:focus|target|concentrate|prioriti[sz]e)\w*\s+(?:only\s+)?(?:on|upon)?\s*(.*)$", t, re.I)
         rest = _strip_apps(m.group(1) if m else "")
@@ -100,6 +105,7 @@ HELP = ("I can:\n"
         "• filter — \u201cexclude football\u201d, \u201conly keep facts about science\u201d, \u201cyears 1800 to 1950\u201d, \u201cclear the filter\u201d\n"
         "• search the shared facts — \u201cfind Marie Curie\u201d\n"
         "• diagnose — \u201crun diagnostics\u201d, \u201cdiagnose the filter\u201d; \u201cclear alerts\u201d\n"
+        "• talk about QueryBook itself, with sources — \u201care you neuromorphic?\u201d, \u201csection 21\u201d, \u201cwhat can\u2019t you do?\u201d, \u201chow do you work?\u201d\n"
         "I work by fixed rules (no AI model), so I only do what I recognise, and I say exactly what I changed.")
 CONFIRM = {"harvest_stop", "app_stop", "target_clear", "filter_clear", "alerts_clear"}
 NEEDS_ADMIN = {"target_set", "target_clear", "filter_exclude", "filter_require", "filter_years", "filter_clear"}
@@ -136,6 +142,12 @@ def _do(panel, intent, a, pw):
     act = lambda what, detail, fn: panel.act("assistant", what, detail, fn)
     if intent == "help":
         return {"reply": HELP}
+    if intent == "self":
+        import qbselfknow
+        r = qbselfknow.answer(a.get("text", ""), "user")
+        src = (" Sources: " + r["source_text"] + ".") if r["source_text"] else ""
+        secs = (" Design: " + ", ".join(r["sections"]) + ".") if r["sections"] else ""
+        return {"reply": r["answer"] + src + secs, "label": r["label"]}
     if intent == "status":
         apps = panel.apps()
         lines = []
