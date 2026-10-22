@@ -95,18 +95,21 @@ class Curriculum:
                       f, separators=(",", ":"))
         return len(clips)
 
-    def run(self, lab=None, learned=None, targets=None, progress=None):
+    def run(self, lab=None, learned=None, targets=None, progress=None, real=None, only=None, models_for=None):
+        """real: viseme models measured on real faces; models_for(clip) -> such models per clip (cross-validation);
+        only: the items to read (default all)"""
         clips = self.clips()
         stage_words = {st["id"]: sorted({w for c in clips if STAGE_OF.get(c["item"]) == st["id"] for w in words(c["script"])}) for st in STAGES}
         per = []
         for n, c in enumerate(clips):
             st = STAGE_OF.get(c["item"])
-            if not st:
+            if not st or (only is not None and c["item"] not in only):
                 continue
             hint = next(s["hint"] for s in STAGES if s["id"] == st)
             hw = stage_words[st] if hint == "stage" else words(c["script"]) if hint == "item" else []
             # told the words beforehand = a closed set (as a course tells the learner which words may come); told nothing = open vocabulary
-            r = vse.lip_read(c["frames"], "en", tuple(hw), "", lab, learned, targets, vocab_size=0 if hw else 1500)
+            rm = models_for(c) if models_for else real
+            r = vse.lip_read(c["frames"], "en", tuple(hw), "", lab, learned, targets, vocab_size=0 if hw else 1500, real=rm)
             read = [w for s in (r.get("lipread") or {}).get("segments", []) for w in s["words"]]
             exp = words(c["script"])
             strict, alike = match(exp, read)
@@ -130,6 +133,55 @@ class Curriculum:
         return {"version": VERSION, "clips": len(per), "stages": stages, "items": per,
                 "weakest_stage": weakest and {"stage": weakest["stage"], "name": weakest["name"], "look_alike": weakest["look_alike"]},
                 "engine": "VSE lip reader (%s)" % vse.VERSION, "deterministic": True}
+
+
+# ------------------------------------------------------------------------------------------------ real-face viseme models (1.48)
+def labelled_rows(clips, lib):
+    """every frame of the curriculum clips with the viseme being said, from the sounds as re-timed on her own mouth in the
+    speech motion library (same clips, same frames): [(exemplar, features, viseme)]"""
+    by_ex = {}
+    fps = lib["fps"]
+    for k, lc in enumerate(lib["clips"]):
+        by_ex[lc["exemplar"]] = [(u["c0"] / fps, (u["c1"] + 1) / fps, u["v"]) for u in lib["units"] if u["clip"] == k]
+    out = []
+    for c in clips:
+        us = by_ex.get(c["exemplar"])
+        if not us:
+            continue
+        a, b = min(u[0] for u in us), max(u[1] for u in us)
+        for row in c["frames"]:
+            t = row[0]
+            v = next((u[2] for u in us if u[0] <= t < u[1]), None)
+            if v is None:
+                v = "sil" if (t < a - 0.15 or t > b + 0.15) else None      # pauses inside speech are left out (uncertain)
+            if v:
+                out.append((c["exemplar"], row[1:], v))
+    return out
+
+
+def train(rows, about=""):
+    """Gaussian viseme models from real frames: mean and variance per measure, widened a little for unseen faces"""
+    acc = {}
+    for _, fv, v in rows:
+        acc.setdefault(v, []).append(fv)
+    vis = {}
+    for v, xs in sorted(acc.items()):
+        n = len(xs)
+        mean = [sum(x[i] for x in xs) / n for i in range(len(xs[0]))]
+        var = [sum((x[i] - mean[i]) ** 2 for x in xs) / n + 0.0004 + 0.01 * mean[i] ** 2 for i in range(len(xs[0]))]
+        vis[v] = {"mean": [round(x, 5) for x in mean], "var": [round(x, 6) for x in var], "frames": n}
+    return {"kind": "lipread-real-visemes", "version": VERSION, "visemes": vis, "frames": len(rows),
+            "about": about or "viseme models measured on real faces (%d frames)" % len(rows)}
+
+
+def cross_validate(cur, lib, k=5, lab=None, targets=None, progress=None, only=None):
+    """k-fold by clip: each clip is read with models trained only on the OTHER folds' clips (never on itself)"""
+    clips = [c for c in cur.clips() if STAGE_OF.get(c["item"])]
+    rows = labelled_rows(clips, lib)
+    exs = sorted({c["exemplar"] for c in clips})
+    fold = {e: i % k for i, e in enumerate(exs)}
+    models = {f: train([r for r in rows if fold[r[0]] != f], "held-out fold %d" % f) for f in range(k)}
+    return cur.run(lab, None, targets, progress, only=only, models_for=lambda c: models[fold[c["exemplar"]]])
 
 
 def self_test():

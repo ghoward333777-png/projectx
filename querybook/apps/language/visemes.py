@@ -222,6 +222,49 @@ def _cached_phonemes(words, lang, lab):
     return out
 
 
+def fit_word_times(text, heard):
+    """Speech-to-Text word times fitted to the script's words (1.48). heard: [{word, start_s, end_s}]. Words are matched in
+    order (longest common subsequence on letters only: "60" never matches "sixty"); a script word with no match takes its
+    share of the gap between the matched words around it, by length. None when fewer than half the words match."""
+    norm = lambda w: re.sub(r"[^a-z']", "", str(w).lower())
+    words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)
+    a, b = [norm(w) for w in words], [norm(h.get("word")) for h in heard or []]
+    if not a or not b:
+        return None
+    L = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+    for i in range(len(a) - 1, -1, -1):
+        for j in range(len(b) - 1, -1, -1):
+            L[i][j] = L[i + 1][j + 1] + 1 if a[i] == b[j] and a[i] else max(L[i + 1][j], L[i][j + 1])
+    pairs, i, j = {}, 0, 0
+    while i < len(a) and j < len(b):
+        if a[i] == b[j] and a[i]:
+            pairs[i] = j; i += 1; j += 1
+        elif L[i + 1][j] >= L[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    if len(pairs) < max(1, len(a) // 2):
+        return None
+    out = [None] * len(a)
+    for i, j in pairs.items():
+        out[i] = [float(heard[j]["start_s"]), float(heard[j]["end_s"])]
+    k = 0
+    while k < len(a):                                      # fill each run of unmatched words between its anchors
+        if out[k] is not None:
+            k += 1; continue
+        e = k
+        while e < len(a) and out[e] is None:
+            e += 1
+        t0 = out[k - 1][1] if k else max(0.0, (out[e][0] if e < len(a) else 0.0) - 0.3 * (e - k))
+        t1 = out[e][0] if e < len(a) else t0 + 0.3 * (e - k)
+        tot = sum(max(1, len(a[x])) for x in range(k, e)); t = t0
+        for x in range(k, e):
+            d = (t1 - t0) * max(1, len(a[x])) / tot
+            out[x] = [t, t + d]; t += d
+        k = e
+    return [{"word": words[x], "start_s": round(out[x][0], 3), "end_s": round(max(out[x][0] + 0.03, out[x][1]), 3)} for x in range(len(a))]
+
+
 def align(text, wav, lang="en", lab=None, word_times=None):
     """Timed visemes for `text` spoken in `wav`. word_times: optional [{word, start_s, end_s}] (e.g. Speech-to-Text)."""
     words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)

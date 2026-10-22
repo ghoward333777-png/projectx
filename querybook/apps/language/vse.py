@@ -607,6 +607,8 @@ def class_models(targets=None, learned=None, fps=FPS_READ, unit=None):
     the lip-sync model speaks a set of calibration sentences (never the benchmark's), and each class is modelled
     on the mouth shapes it actually produces once neighbours have blended in — coarticulation included."""
     unit = unit or UNIT
+    if learned and learned.get("visemes") and unit == "viseme":         # (1.48) viseme models measured on real faces
+        return {v: {"mean": list(m["mean"]), "var": [max(1e-4, x) for x in m["var"]]} for v, m in learned["visemes"].items()}
     if learned and learned.get("classes") and unit == "class":
         return {c: {"mean": list(m["mean"]), "var": [max(1e-4, x) for x in m["var"]]} for c, m in learned["classes"].items()}
     key = (json.dumps(targets or {}, sort_keys=True), fps, unit)
@@ -700,7 +702,9 @@ def lexicon(lang="en", extra=(), lab=None, size=1500, unit=None):
     lipread.vocabulary(lang, size=size, extra=tuple(extra), lab=lab)           # fills the word-frequency positions
     pos = lipread._POS
     import vocab as _vocab
-    if lang == "en":
+    if size == 0 and extra:
+        words = []                                                 # a closed set: only the expected words
+    elif lang == "en":
         words = list(lipread._ALWAYS) + [w for w, _ in sorted(_vocab.rank().items(), key=lambda kv: kv[1]) if w.isalpha()][:size]
     else:
         words = [w["tr"][0].lower() for w in _vocab.deck(lang)[:size] if w["tr"] and w["tr"][0].isalpha()]
@@ -808,16 +812,18 @@ def decode(post, lex, beam=30.0):
     return words[::-1], best
 
 
-def lip_read(frames, lang="en", words=(), script="", lab=None, learned=None, targets=None, fps=FPS_READ, vocab_size=1500):
+def lip_read(frames, lang="en", words=(), script="", lab=None, learned=None, targets=None, fps=FPS_READ, vocab_size=1500, real=None):
     """Read the lips. With a script: force-align it and score each word; without: decode freely."""
     ts, vs = frame_series(frames, fps)
     if len(vs) < 5:
         return {"error": "No face was found in enough frames to read the lips."}
-    models = class_models(targets, learned)
+    use = learned if (learned and learned.get("visemes")) else real if real else learned   # this camera's own model wins; else real faces
+    models = class_models(targets, use)
     post = [_loglik(models, fv) for fv in vs]
     best_cls = [best_class(p) for p in post]
     out = {"engine": "VSE %s (HMM word network over Gaussian %s models)" % (VERSION, "viseme" if UNIT == "viseme" else "mouth-class"), "fps": fps,
-           "class_models": "learned from your recordings" if learned else "built from the lip-sync targets",
+           "class_models": "learned from your recordings" if (learned and use is learned) else (real.get("about") or "measured on real faces") if (real and use is real)
+                            else "built from the lip-sync targets",
            "timeline": [{"class": c, "start": round(ts[i], 2)} for i, c in enumerate(best_cls) if i == 0 or c != best_cls[i - 1]]}
     if script.strip():
         out["script"] = align_script(post, ts, script, lang, lab)
@@ -1137,6 +1143,8 @@ class Engine:
         self.jobs = {}
         self._lock = threading.Lock()
         self.human = None                     # the human motion model (Quality lab), set by the app
+        self.real = None                      # (1.48) viseme models measured on real faces, set by the app
+        self.stt_timing = True                # (1.48) time speech by Speech-to-Text word times when Google is set up
 
     def _learned(self):
         return lipread.ACTIVE.get("model") if isinstance(lipread.ACTIVE.get("model"), dict) else None
@@ -1178,7 +1186,16 @@ class Engine:
     def lip_sync_job(self, wav, text, lang="en", word_times=None, fps=30, emotion_override=None, personal=True):
         def fn(progress):
             progress(1, 4, "audio: phonemes, prosody, emotion, voice")
-            a = aps(wav, text, lang, self.lab, word_times)
+            wt, timing = word_times, "word times given" if word_times else "fitted to the sound"
+            if not wt and self.sl is not None and self.stt_timing:
+                try:                                      # (1.48) Speech-to-Text word times, fitted to the script's words
+                    if self.sl.stt_ready():
+                        r = self.sl.transcribe(wav, lang)
+                        wt = visemes.fit_word_times(text, (r or {}).get("words") or []) if r and not r.get("error") else None
+                        timing = "Speech-to-Text word times" if wt else "fitted to the sound (Speech-to-Text did not match the words)"
+                except Exception:
+                    wt = None
+            a = aps(wav, text, lang, self.lab, wt)
             emo = dict(a["emotion"])
             if emotion_override:
                 emo.update({k: float(v) for k, v in emotion_override.items() if k in EMOTION_KEYS})
@@ -1193,7 +1210,7 @@ class Engine:
                     "prosody_summary": {"pitch_hz": a["measure"]["pitch"].get("mean_hz"), "rate_syl_s": a["measure"]["rate"]["articulation_rate_syl_s"]},
                     "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]), "arkit52_csv": arkit52_csv(ls["motion"]),
                     "personal_targets": sorted(tg), "duration": a["duration"], "human_model": hm.get("version", 0),
-                    "words": [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in a["track"].get("words", [])]}
+                    "words": [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in a["track"].get("words", [])], "timing": timing}
         return fn
 
     def lip_read_job(self, frames, lang="en", words=(), script=""):
@@ -1201,7 +1218,7 @@ class Engine:
             progress(1, 2, "face analysis")
             v = vps(frames)
             progress(1, 2, "reading the lips")
-            r = lip_read(frames, lang, tuple(words), script, self.lab, self._learned(), self._targets())
+            r = lip_read(frames, lang, tuple(words), script, self.lab, self._learned(), self._targets(), real=self.real)
             r["vps"] = v
             return r
         return fn

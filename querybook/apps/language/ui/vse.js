@@ -153,6 +153,9 @@ async function vseCurriculum() {
     let h = '<table class="tbl small"><tr><th>Stage</th><th>Clips</th><th>Told beforehand</th><th>Exact word</th><th>Right look-alike set</th><th>Says when words look alike</th></tr>' +
       r.stages.map(s => "<tr" + (r.weakest_stage && r.weakest_stage.stage === s.stage ? ' style="background:#fff4e5"' : "") + "><td>" + s.stage + ". " + esc(s.name) +
         '<div class="muted">' + esc(s.about) + "</div></td><td>" + s.clips + "</td><td>" + esc(s.told) + "</td><td>" + pc(s.strict) + "</td><td>" + pc(s.look_alike) + "</td><td>" + pc(s.alternatives_shown) + "</td></tr>").join("") + "</table>";
+    if (r.held_out) h = '<p class="small"><b>Honest score</b> — ' + esc(r.held_out.about) + ':</p><table class="tbl small"><tr><th>Stage</th><th>Exact word</th><th>Right look-alike set</th><th>Says when words look alike</th></tr>' +
+      r.held_out.stages.map(s => "<tr><td>" + s.stage + ". " + esc(s.name) + "</td><td>" + pc(s.strict) + "</td><td>" + pc(s.look_alike) + "</td><td>" + pc(s.alternatives_shown) + "</td></tr>").join("") + "</table>" +
+      '<p class="small muted">Below: the shipped models (' + esc(r.models) + ') on the same clips — they were trained on these clips, so this is not a fair score.</p>' + h;
     if (r.weakest_stage) h += '<p class="small">Weakest stage: <b>' + r.weakest_stage.stage + ". " + esc(r.weakest_stage.name) + "</b> — the place to work first.</p>";
     h += '<details class="small"><summary>Every clip</summary><table class="tbl small"><tr><th>Clip</th><th>Said</th><th>Read</th><th>Exact</th><th>Look-alike</th></tr>' +
       r.items.map(i => "<tr><td>" + i.item + "</td><td>" + esc(i.script) + "</td><td>" + esc(i.text) + "</td><td>" + pc(i.strict) + "</td><td>" + pc(i.look_alike) + "</td></tr>").join("") + "</table></details>";

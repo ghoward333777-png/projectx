@@ -48,7 +48,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.47.0"
+VERSION = "1.48.0"
 PORT = 8101
 program_dir = HERE
 
@@ -123,6 +123,11 @@ class App:
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
         self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
         self.vse.human = self.qlab.human_model                                          # learned from real speakers in the Quality lab
+        try:                                                                            # (1.48) the lip reader's viseme models from real faces
+            with open(os.path.join(HERE, "data", "lipread-real-model.json"), encoding="utf-8") as f:
+                self.vse.real = json.load(f)
+        except (OSError, ValueError):
+            self.vse.real = None
         self.api = core.Api()
         self.diag = core.Diagnostics(APP_ID, APP_NAME, VERSION, HERE, self.store, self.log, self.jobs, self._health)
         self.monitor = core.Monitor(folder, APP_ID, APP_NAME, VERSION, self.log)
@@ -1319,7 +1324,18 @@ class App:
         @a.post("/api/vse/curriculum/run")
         def vse_curr_run(p):
             """the lip reader through the five stages of the curriculum (a job to poll): scored stage by stage"""
-            return self.vse.submit("curriculum", lambda prog: self.curriculum.run(self.lab, self.vse._learned(), self.vse._targets(), prog))
+            def job(prog):
+                # the reader with its shipped models, and — where a speech motion library gives frame labels — with real-face
+                # models trained without the clip being read (k-fold), so the score is honest
+                r = self.curriculum.run(self.lab, self.vse._learned(), self.vse._targets(), prog, real=self.vse.real)
+                lib_path = next((self.motionlib.path(p) for p in self.motionlib.assignments().values() if os.path.isfile(self.motionlib.path(p))), None)
+                if lib_path:
+                    with open(lib_path, encoding="utf-8") as f:
+                        cv = curriculum.cross_validate(self.curriculum, json.load(f), lab=self.lab, targets=self.vse._targets())
+                    r["held_out"] = {"stages": cv["stages"], "about": "real-face viseme models, each clip read by models trained without it (5-fold)"}
+                r["models"] = (self.vse.real or {}).get("about") or "built from the lip-sync targets (synthetic)"
+                return r
+            return self.vse.submit("curriculum", job)
 
         @a.post("/api/vse/benchmark")
         def vse_benchmark(p):
@@ -1998,6 +2014,24 @@ def selftest():
                     sy["units"]["covered"] == sy["units"]["sounds"] and sy["units"]["joined_as_recorded"] >= 3 and sy == mo.synthesize(ph, tr["duration"]), sy["units"])
         cl = app.curriculum.clips()
         c.check("the lip-reading curriculum ships with her clips for all five stages", len(cl) >= 40 and {curriculum.STAGE_OF[x["item"]] for x in cl} == {1, 2, 3, 4, 5}, len(cl))
+        # 1.48: the lip reader's mouth shapes measured on her real face (held-out check), Speech-to-Text word times for new speech
+        rm = app.vse.real or {}
+        c.check("lip reader (1.48): viseme models measured on real faces ship and are loaded", len(rm.get("visemes") or {}) >= 12 and rm.get("frames", 0) >= 3000,
+                (len(rm.get("visemes") or {}), rm.get("frames")))
+        s1 = [x["item"] for x in cl if curriculum.STAGE_OF[x["item"]] == 1]
+        lp = app.motionlib.path("pamela")
+        if os.path.isfile(lp):
+            with open(lp, encoding="utf-8") as f:
+                cv = curriculum.cross_validate(app.curriculum, json.load(f), lab=app.lab, only=s1)
+            sy1 = app.curriculum.run(app.lab, None, None, only=s1)
+            a1, b1 = cv["stages"][0]["strict"] or 0, sy1["stages"][0]["strict"] or 0
+            c.check("lip reader (1.48): held-out real-face models read stage 1 better than the synthetic models (no clip read by a model trained on it)",
+                    a1 > b1 and cv == curriculum.cross_validate(app.curriculum, json.load(open(lp, encoding="utf-8")), lab=app.lab, only=s1), (a1, b1))
+        ft = visemes.fit_word_times("She sells sixty seashells.", [{"word": "she", "start_s": 0.5, "end_s": 0.7}, {"word": "sells", "start_s": 0.7, "end_s": 1.0},
+                                                                    {"word": "60", "start_s": 1.0, "end_s": 1.4}, {"word": "seashells", "start_s": 1.4, "end_s": 2.0}])
+        c.check("lip sync (1.48): Speech-to-Text word times are fitted to the script's words (unheard words placed between their neighbours)",
+                ft and [w["word"] for w in ft] == ["She", "sells", "sixty", "seashells"] and ft[2]["start_s"] == 1.0 and ft[2]["end_s"] == 1.4
+                and visemes.fit_word_times("one two three four", [{"word": "five", "start_s": 0, "end_s": 1}]) is None and app.vse.stt_timing, ft)
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)
