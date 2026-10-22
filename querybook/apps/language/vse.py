@@ -287,22 +287,26 @@ def vps(frames):
 
 # ============================================================================ LSG / FMS — lip sync and face motion
 # Viseme targets in the tracker's own units (blendshape scores 0..1 and lip gap ÷ mouth width).
+# The upper lip is not still in speech: measured word by word on the original creator's clips of a speaker (Pamela,
+# Gemini), it lifts on nearly every open sound — most on open and rounded vowels (our, whole, push), clearly on ee and s,
+# hardly on m / b / p — and makes about a third of each opening; it lifts most with the spread, smiling sounds (ee, i, eh,
+# s: the upper teeth show), less on wide-open and round ones. Each sound's upperUp is set from that.
 TARGETS = {
     "sil": _vec(gap=0.02, jawOpen=0.03, mouthClose=0.05),
     "PP": _vec(gap=0.004, jawOpen=0.05, mouthClose=0.6, press=0.6, mouthRollLower=0.15, mouthRollUpper=0.1),
-    "FF": _vec(gap=0.025, jawOpen=0.08, mouthRollLower=0.55, upperUp=0.15, press=0.05),
-    "TH": _vec(gap=0.10, jawOpen=0.15, lowerDown=0.1, stretch=0.1),
-    "DD": _vec(gap=0.10, jawOpen=0.14, stretch=0.12),
-    "kk": _vec(gap=0.12, jawOpen=0.18),
-    "CH": _vec(gap=0.14, jawOpen=0.14, mouthFunnel=0.45, mouthPucker=0.5, upperUp=0.05),
-    "SS": _vec(gap=0.06, jawOpen=0.08, stretch=0.22, smile=0.08),
-    "nn": _vec(gap=0.09, jawOpen=0.12, stretch=0.1),
-    "RR": _vec(gap=0.12, jawOpen=0.12, mouthFunnel=0.35, mouthPucker=0.55),
-    "aa": _vec(gap=0.5, jawOpen=0.55, lowerDown=0.4),
-    "E": _vec(gap=0.25, jawOpen=0.28, stretch=0.45, smile=0.2, lowerDown=0.15),
-    "I": _vec(gap=0.1, jawOpen=0.1, stretch=0.6, smile=0.4),
-    "O": _vec(gap=0.4, jawOpen=0.4, mouthFunnel=0.5, mouthPucker=0.5),
-    "U": _vec(gap=0.18, jawOpen=0.15, mouthFunnel=0.4, mouthPucker=0.85),
+    "FF": _vec(gap=0.025, jawOpen=0.08, mouthRollLower=0.55, upperUp=0.2, press=0.05),
+    "TH": _vec(gap=0.10, jawOpen=0.15, lowerDown=0.1, stretch=0.1, upperUp=0.3),
+    "DD": _vec(gap=0.10, jawOpen=0.14, stretch=0.12, upperUp=0.3),
+    "kk": _vec(gap=0.12, jawOpen=0.18, upperUp=0.3),
+    "CH": _vec(gap=0.14, jawOpen=0.14, mouthFunnel=0.45, mouthPucker=0.5, upperUp=0.4),
+    "SS": _vec(gap=0.06, jawOpen=0.08, stretch=0.22, smile=0.08, upperUp=0.45),
+    "nn": _vec(gap=0.09, jawOpen=0.12, stretch=0.1, upperUp=0.25),
+    "RR": _vec(gap=0.12, jawOpen=0.12, mouthFunnel=0.35, mouthPucker=0.55, upperUp=0.35),
+    "aa": _vec(gap=0.5, jawOpen=0.55, lowerDown=0.4, upperUp=0.35),
+    "E": _vec(gap=0.25, jawOpen=0.28, stretch=0.45, smile=0.2, lowerDown=0.15, upperUp=0.55),
+    "I": _vec(gap=0.1, jawOpen=0.1, stretch=0.6, smile=0.4, upperUp=0.6),
+    "O": _vec(gap=0.4, jawOpen=0.4, mouthFunnel=0.5, mouthPucker=0.5, upperUp=0.35),
+    "U": _vec(gap=0.18, jawOpen=0.15, mouthFunnel=0.4, mouthPucker=0.85, upperUp=0.35),
 }
 NEUTRAL = TARGETS["sil"]
 LIP_CLOSURE = ("gap", "mouthClose", "press", "mouthRollLower", "mouthRollUpper", "jawOpen")

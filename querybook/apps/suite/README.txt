@@ -33,6 +33,11 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.44.0)
+    * The upper lip moves with the words. Measured word by word against her two Gemini originals, our upper lip used to
+      make under a tenth of each opening (hers: about a third) and sank on "ee" words. Now every sound has its own
+      upper-lip lift (most on ee, i, eh and s; less on m, b, p), the upper lip flares up as the lips round, and its
+      middle rises with the corners on a smile: lift 0.04 -> 0.09 (hers 0.08-0.10), share of the opening 0.07 -> 0.25.
   Language Builder (1.43.0)
     * Fix: on full-body avatars the background and the whole region above the face moved with no reason (up to a quarter
       of a face height). The person's outline is now found in the photo and everything outside it stays perfectly still;

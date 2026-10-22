@@ -51,7 +51,7 @@
     gain: { jawOpen: 0.84, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 1.0,
             mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 4.5, browOuterUpLeft: 4.5, browOuterUpRight: 4.5,
             browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1 },
-    derive: { up: 0.55, upSmile: 0.2, down: 0.5 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+    derive: { up: 0.35, upSmile: 0.2, down: 0.5 },     // (1.44: less lift tied to the jaw — each sound now sets its own upper lip)     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
     arch: 1.6,                                           // the upper lip arches up in the middle as the mouth opens
     teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.12,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
     head: [3, 2.2, 4.5],                                 // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
@@ -493,14 +493,14 @@
         // (revised: a strong pout read as swollen lips and an exaggerated pucker — rounding narrows the mouth by up to ~18%
         // and the lips stay their own thickness within a few percent, as they look from the front)
         add("mouthFunnel", i, -0.08 * (x - Mx) * gw, (lb - ub) * 0.012 * F * pf + 0.02 * tk, -0.03 * F * lz);
-        add("mouthPucker", i, -0.2 * (x - Mx) * gw, 0.04 * tk, -0.045 * F * lz);
+        add("mouthPucker", i, -0.2 * (x - Mx) * gw, 0.04 * tk - 0.016 * F * ub * pf, -0.045 * F * lz);   // the upper lip flares up and out as it rounds
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
           const cw = g(i, c, 0.24 * Wm), sd = s > 0 ? sL : sR;
-          add("mouthSmile" + k, i, s * 0.09 * Wm * cw, -0.045 * F * cw, 0);
+          add("mouthSmile" + k, i, s * 0.09 * Wm * cw, -0.06 * F * cw - 0.04 * F * ub * pf * sd, 0);   // the upper lip's middle rises with the corners (upper teeth show)
           add("mouthFrown" + k, i, s * 0.03 * Wm * cw, 0.045 * F * cw, 0);
           add("mouthDimple" + k, i, s * 0.03 * Wm * cw, -0.008 * F * cw, 0.02 * F * cw);
-          add("mouthStretch" + k, i, s * 0.08 * Wm * cw, 0.01 * F * cw - 0.05 * tk * sd, 0);   // spread lips thin out
+          add("mouthStretch" + k, i, s * 0.08 * Wm * cw, 0.01 * F * cw - 0.05 * tk * sd - 0.03 * F * ub * pf * sd, 0);   // spread lips thin out; the upper lip's middle lifts
           // pressing: the outer edges of the lips draw in toward the closed line; the line itself stays put (never crosses)
           const outer = UPPER.has(i) || LOWER.has(i) ? Math.min(1, Math.abs(y - mid(x)) / (0.05 * F)) : 0;
           add("mouthPress" + k, i, 0, (ub - lb) * 0.014 * F * outer * sd, 0);
@@ -1219,7 +1219,8 @@
       const g = C.lipg(P), L0 = C.L0, open = (g.lo - g.up) - (L0.lo - L0.up), dUp = -(g.up - L0.up), dLo = g.lo - L0.lo;
       const mouthIn = inBox(B[13][0], B[13][1]);
       // (thinner lips are natural when they press together for p, b, m — only swelling counts)
-      m.lowerShare = mouthIn && open > 0.04 * Wm ? dLo / Math.max(1e-6, dUp + dLo) : null;
+      // (only real openings: on ee, s, f the upper lip rightly makes most of a small opening while the lower stays by the teeth)
+      m.lowerShare = mouthIn && open > 0.1 * Wm ? dLo / Math.max(1e-6, dUp + dLo) : null;
       m.thick = mouthIn ? Math.max(g.loT / L0.loT - 1, g.upT / L0.upT - 1) : 0;
       m.width = mouthIn ? g.w / L0.w - 1 : 0;
       // tearing near her edge: the most any side of an edge triangle stretched or squeezed (0.35 = 35%)
