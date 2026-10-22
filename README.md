@@ -24,6 +24,7 @@ Then open:
 - `http://127.0.0.1:8082/generate-book.php` — editable TOC and manuscript generator
 - `http://127.0.0.1:8082/amazon-book-writer.php` — Amazon KDP publishing package builder
 - `http://127.0.0.1:8082/user-guide.php` — friendly user guide
+- `http://127.0.0.1:8082/media-graph.php` — stock media graph (harvest, FQL console, QueryBook)
 - `http://127.0.0.1:8082/download-app.php` — download the whole app as a hosting-ready .zip
 - `http://127.0.0.1:8082/index.php?format=json` — generated strategy kit JSON
 - `http://127.0.0.1:8082/index.php?format=json&part=toc` — table of contents JSON
@@ -274,6 +275,59 @@ and the full manuscript text — and listed on the **Book projects** page
 CLI saves a record after every assembled run, so no outline or manuscript is
 ever lost.
 
+## Stock Media Graph (QueryBook / UFCS / FQL)
+
+`media-graph.php` (and `bin/media-graph.php`) indexes free stock and
+AI-generated video into one graph. It reads **metadata only** through each
+source's official API — titles, tags, size, duration, creator, license, page
+link — and never downloads, caches, or re-hosts footage.
+
+- **Sources** — keyless: Wikimedia Commons, Internet Archive, NASA Image and
+  Video Library. Free keys: Pexels (`PEXELS_API_KEY`), Pixabay
+  (`PIXABAY_API_KEY`). Anything else (AI-video galleries, your own exports)
+  comes in as a JSON manifest. `data/sample-media.json` is an invented demo
+  corpus for exploring the queries and for the tests.
+- **Analysis** (`MediaAnalyzer`) — resolution class (SD → 8K), orientation,
+  aspect, frame rate, origin (camera / CGI / AI-generated and which
+  generator), concepts from a fixed taxonomy (speech, people, culture,
+  places, fashion, weather, vehicles, structures, occupations, business,
+  events, nature), shot framing (close-up, waist-up, wide, plain background),
+  learning uses (lip reading, language, culture, places and fashion, world
+  objects, occupations, business, avatar source), and a 0–100 quality score.
+- **UFCS** (`MediaGraphStore`, the Universal Fact & Concept Store) —
+  subject → predicate → object facts with subject, predicate and object
+  indexes, saved as sorted JSON Lines in `media-graph/facts.jsonl`. Same
+  inputs, same file.
+- **FQL** (`FqlEngine`, the Fact Query Language):
+
+  ```
+  SELECT ?v ?title WHERE ?v supports use:lip_reading AND ?v title ?title AND ?v width ?w
+    FILTER ?w >= 3840 ORDER BY ?title LIMIT 50
+  COUNT ?v BY ?origin WHERE ?v is_a Video AND ?v origin ?origin
+  DESCRIBE video:nasa:jsc-123
+  NEIGHBORS concept:weather/rain DEPTH 2
+  STATS
+  ```
+
+  `?x` is a variable, `"text"` a string literal, a bare number a numeric
+  literal, anything else a node. FILTER operators: `= != > < >= <= CONTAINS`.
+- **QueryBook** (`QueryBook`) — saved FQL notebooks under
+  `media-graph/querybooks/`. The starter book covers lip reading, avatar
+  sources, plain-background presenters, culture, weather, occupations,
+  business, AI generators and top creators.
+
+```bash
+php bin/media-graph.php harvest nasa "astronaut interview" --limit=25
+php bin/media-graph.php harvest all "woman talking close up"
+php bin/media-graph.php sample
+php bin/media-graph.php query "COUNT ?v BY ?c WHERE ?v depicts ?c"
+php bin/media-graph.php querybook
+```
+
+The graph is held in memory while it is queried, so on ordinary PHP hosting it
+handles hundreds of thousands of facts comfortably. Respect each source's terms
+and rate limits; Wikimedia throttles shared IPs.
+
 ## Run the contract tests
 
 ```bash
@@ -285,6 +339,9 @@ php tests/illustration-contract.php
 php tests/quality-lab-contract.php
 php tests/epub-contract.php
 php tests/print-media-contract.php
+php tests/manuscript-developer-contract.php
+php tests/hygiene-contract.php
+php tests/media-graph-contract.php
 ```
 
 ## Install on a hosting site
@@ -310,6 +367,9 @@ no API keys.
 - `generate-book.php` — editable TOC, writing-style, page-style, and manuscript interface
 - `amazon-book-writer.php` — Amazon KDP publishing package interface and exports
 - `data/teen-jobs.json` — canonical teen-job catalog
+- `MediaGraphStore.php`, `MediaAnalyzer.php`, `StockMediaHarvester.php`, `FqlEngine.php`, `QueryBook.php` + `media-graph.php` + `bin/media-graph.php` — stock media graph (UFCS store, FQL, QueryBook)
+- `data/sample-media.json` — illustrative stock-media demo corpus
+- `tests/media-graph-contract.php` — media graph contract checks
 - `tests/rich-chapter-contract.php` — PHP output contract checks
 - `tests/amazon-book-writer-contract.php` — Amazon Book Writer contract checks
 - `tests/audiobook-contract.php` — editions and audiobook production contract checks

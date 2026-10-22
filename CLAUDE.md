@@ -61,6 +61,15 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   `ManuscriptDeveloper::revisionReport()` flags chapters wanting a human pass —
   deterministic, local, no API cost — surfaced in the writer results page.
 
+## Stock media graph
+
+- Harvest **metadata only** through official APIs; never download or store
+  footage (`tests/media-graph-contract.php` checks every requested URL).
+- `MediaGraphStore::save()` sorts facts — same records, byte-identical
+  `media-graph/facts.jsonl`. Re-ingesting a video replaces its facts.
+- Every `QueryBook::starterCells()` cell must run and find rows in
+  `data/sample-media.json`.
+
 ## Housekeeping
 
 - New app files must be added to `SitePackageExporter::FILES` or the hosting zip
