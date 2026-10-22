@@ -213,6 +213,29 @@ If there is NO such line, QueryBook kept running fine and only the screen
 turned off — nothing was lost.
 
 
+HARVEST CAMPAIGNS, THE MASTER SWITCH AND MORE SOURCES
+-----------------------------------------------------
+On the Console (dashboard) there is now a third row:
+  * Master: ON/OFF     one switch for all harvesting - every switched-on source,
+                       the active campaign and the Google tools. OFF stops it all.
+  * Campaigns & sources  opens the card with:
+      - Campaigns: name a selection of sources (and Google tools), Start / Stop it
+        together, set a goal, and see the new facts since it started.
+      - Sources: each switched on or off on its own - the built-in generators plus
+        23 open online sources: Wikidata (CC0: countries, cities, languages,
+        writing systems, programming languages, compounds, minerals, battles,
+        treaties, rivers, mountains), US government data (USGS earthquakes,
+        Federal Register, NCBI Taxonomy, PubChem computed properties, Foreign
+        Relations of the US, National Archives), Natural Earth (public domain),
+        CC0 museum and library records (The Met, Smithsonian, DPLA, Europeana,
+        USDA FoodData). Only open, unrestricted licences; every fact keeps its
+        source, licence and page. Some need a free key (boxes in the card).
+      - Google tools: Gemini Omni, Veo, TTS, Nano Banana, drill texts, second
+        transcripts - examples to learn from, never facts. Accept the Gemini terms,
+        save your Gemini key, switch each tool on with its plan (plans/), then
+        "Start the exemplar generator" (generate_exemplars.py, a separate program).
+
+
 WHAT QUERYBOOK KNOWS ABOUT ITSELF (the Self-Knowledge Layer)
 -------------------------------------------------------------
 Open http://127.0.0.1:<port>/self (or ask /api/self/ask?q=are you neuromorphic). QueryBook
@@ -232,6 +255,8 @@ qb_keepawake.py                         keep-awake + sleep watchdog
 qb_chat.py                              grounded chat answering
 qb_selftest.py                          quality-control self-tests (run at startup)
 qb_selfknow.py / self.html              the Self-Knowledge Layer and its page
+qb_campaign.py / qb_online.py           harvest campaigns, master switch, open online sources
+generate_exemplars.py / qbexemplar.py   the exemplar generator (Google tools) and library; plans/
 qb_web_harvest.py                       optional web harvesting
 qb_language.py                          Language Lab engine (learn English structure)
 dashboard.html / chat.html / console.html   the pages

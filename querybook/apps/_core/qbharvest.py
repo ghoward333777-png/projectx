@@ -210,6 +210,32 @@ RESEARCHED_SOURCES = [
     ("met-open-access", "The Metropolitan Museum of Art Open Access data", "facts", "art history (titles, artists, dates, media)", "CC0",
      "cc0", "https://www.metmuseum.org/policies/image-resources", "Basic metadata for the whole online collection is CC0, including works "
      "still in copyright (only the data, not their images). Bulk CSV on GitHub and a JSON API."),
+    # (1.47) more sources researched — unrestricted ones enter pending with a recommendation; restricted ones blocked with the reason
+    ("usgs-earthquakes", "USGS Earthquake Hazards Program — earthquake catalog (ComCat)", "stem,facts", "earth science (earthquakes since 1900)",
+     "US government work (USGS data are in the US public domain)", "us-federal", "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+     "USGS policy: USGS-authored or produced data and information are in the US public domain. The FDSN event web service is open, "
+     "no key. Facts only: magnitude, time, place name, coordinates, depth. Contributed network data are part of the catalog record."),
+    ("federal-register", "Federal Register (Office of the Federal Register, National Archives)", "facts", "US history (executive orders, proclamations, rules)",
+     "US government work; no restrictions on republication", "us-federal", "https://www.federalregister.gov/reader-aids/understanding-the-federal-register",
+     "The Federal Register is a federal publication with no restrictions on republication; its API is open, no key. Facts only: "
+     "document titles, numbers, signing and publication dates, issuing president or agency."),
+    ("world-bank-indicators", "World Bank Open Data (indicators)", "facts,stem", "economics and development statistics",
+     "CC BY 4.0", "attribution", "https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets",
+     "Requires attribution (a condition on QueryBook): blocked unless the admin accepts the attribution condition."),
+    ("openstreetmap", "OpenStreetMap", "facts", "geography (places, roads, buildings)", "ODbL 1.0", "share-alike",
+     "https://www.openstreetmap.org/copyright", "Open Database Licence is share-alike for derived databases: blocked. Natural Earth, "
+     "GNIS and Wikidata cover the same geography without conditions."),
+    ("geonames", "GeoNames gazetteer", "facts", "geography (place names, populations)", "CC BY 4.0", "attribution",
+     "https://www.geonames.org/about.html", "Attribution required: blocked. Wikidata and Natural Earth give place facts under CC0 / public domain."),
+    ("wiktionary", "Wiktionary", "language", "dictionary (meanings, pronunciations)", "CC BY-SA 4.0 and GFDL", "share-alike",
+     "https://en.wiktionary.org/wiki/Wiktionary:Copyrights", "Share-alike: blocked. Webster 1913 (public domain) and Wikidata lexemes (CC0) instead."),
+    ("google-generative-exemplars", "Google Gemini API — generated exemplars (Omni, Veo, TTS, image, text)", "language",
+     "learning objects (talking-face video, speech, mouth-shape stills, drill texts)",
+     "Output not claimed by Google; Gemini API terms (paid tier): no use to develop competing models", "terms-of-service",
+     "https://ai.google.dev/gemini-api/terms",
+     "Not a fact source: generated examples become exemplars (learning objects), never Fact Units. Used only by the admin's generator "
+     "tool outside the applications, on the paid tier, each tool switched on by the admin. Narrow use: examples for QueryBook's own "
+     "engines, never a general model built from Gemini output. Counsel to confirm the competing-models reading."),
     ("rijksmuseum-open-data", "Rijksmuseum open data", "facts", "Dutch and European history and art", "CC0 (museum policy)", "cc0",
      "https://www.rijksmuseum.nl/en/data/policy", "The museum waives copyright and database rights with CC0; some third-party listings say "
      "CC BY — follow the museum's own policy and each object's licence field. Use the download, not a keyed API with its own terms."),

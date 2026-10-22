@@ -544,6 +544,38 @@ every application and the master copy. Approved advice becomes a to-do item. **I
 ranked by severity and by what the admin has approved or rejected before, and a skill rejected three times without an
 approval is muted until the admin unmutes it.
 
+## Harvest campaigns, the master switch and the Google tools (`_core/qbcampaign.py`, Harvesting page)
+
+* **Master switch** — one button, top of the Harvesting page: ON starts every application, every approved online harvester and
+  every Google tool that is switched on; OFF stops it all (a running task finishes first). Start/stop all and start/stop
+  selected are still there below it.
+* **Harvest campaigns** — a named selection of applications, online harvesters and Google tools, with an optional goal
+  (new facts). *Start* runs only the campaign's selection (the rest pauses); *Stop* stops only its selection. Progress since
+  the start comes from the harvest record (new facts per harvester and application) and the exemplar library (takes made).
+* **Google tools** — Gemini Omni (talking-face clips), Veo 3 Fast, Gemini 3.8 Flash TTS (pronunciations), Nano Banana 2 and
+  Pro (mouth-shape and pose stills), Gemini 3.8 Flash (drill texts) and Gemini 3.5 Transcribe (second-opinion transcripts).
+  They make **examples, never facts**: everything goes to the exemplar library as a learning object, measured by QueryBook
+  and approved by the admin. Each tool is off until the admin switches it on (passphrase) with its plan (`tools/plans/`),
+  and only while the registry source `google-generative-exemplars` is approved — its class is *terms-of-service*, so
+  approving it needs the admin's explicit acceptance. Each has a daily request budget. The Gemini key is saved under
+  Harvesting → API keys (owner-only file in the shared folder).
+* They run in the **exemplar generator** (`tools/generate_exemplars.py run-campaign`, `extras/exemplar-generator/` in the
+  suite) — a separate program started from the Harvesting page or the Control Panel. The applications and their agents never
+  call a model for this; the generator reads the switches and writes only to the exemplar library.
+* **More open sources (online harvesters, 23 in all):** Wikidata (CC0) battles, treaties, rivers, mountains, minerals and
+  writing systems; USGS earthquakes since 1900 (public domain); Federal Register executive orders and proclamations (no
+  restrictions on republication); PubChem computed properties (NCBI). Each new source enters the registry *pending* with a
+  recommendation for the admin. Researched and recorded as **blocked**, with the reason: World Bank indicators (CC BY),
+  OpenStreetMap (ODbL share-alike), GeoNames (CC BY), Wiktionary (CC BY-SA).
+
+## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
+
+Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.
+QueryBook measures every take (words heard, duration, checks); the best passing take of each item is proposed and becomes the
+exemplar only when the admin approves it — the others are kept as "also ran", a replaced exemplar is retired, never deleted.
+Outside opinions (a second transcript) are kept beside the scores and never change them. `tools/generate_exemplars.py`
+plans, generates (within budget), imports, scores and reports.
+
 ## Self-knowledge: the Self-Knowledge Layer (`_core/qbselfknow.py`, all four applications)
 
 QueryBook describes itself accurately, with sources — never from generated text. Three layers: the **specification**
@@ -560,6 +592,21 @@ built, specified (not yet built), not planned (by design), not in this applicati
 * `GET /api/self` (summary, counts, aspects, process, sections, contradictions, gaps) and `GET /api/self/ask?q=…&level=…`
   in every application; the Control Panel has a **Self-knowledge** tab and its assistant answers "are you neuromorphic?".
   A disclosure filter removes anything that looks like a key. Rule-based, deterministic, no AI model.
+
+## Speech motion library and the lip-reading curriculum (Language Builder 1.47)
+
+* **Her own movement:** Avatar studio → Speech motion library. Each approved exemplar clip of a person (e.g. the Gemini
+  Omni clips of Pamela) is tracked frame by frame; the head's movement is removed and the lower face's movement from her own
+  closed-mouth rest is kept per sound in context. New speech chooses, sound by sound, her unit that fits best (same shape,
+  same neighbours, similar length, a smooth join — units that followed each other in her clip join perfectly; Viterbi) and
+  stretches it to the new timing. The avatar's lower face then moves exactly as hers did. Pamela's four avatars ship with
+  her library (from 45 of her clips); assigning a library to another avatar needs the admin passphrase.
+* **Teeth by the jaw:** with a library, the upper teeth are fixed to the skull and the lower teeth ride on the chin; the lips
+  only uncover them (ee and s show the teeth together; an open vowel drops the lower row).
+* **Lip-reading curriculum:** Visual Speech Engine → Lip-reading curriculum. Five stages, as a speechreading course
+  examines a learner: single mouth shapes, look-alike consonants, words in context, sentences at natural pace, harder
+  conditions. Scored per stage — the exact word, the right look-alike set (pat / bat / mat), and whether the reader says when
+  words look alike. Ships with her clips; new exemplar clips are added as the library is built.
 
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
@@ -792,7 +839,7 @@ python tools/test_commons.py         # the shared database and the three teams, 
 python language/app.py --selftest     # 216 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
-python control/app.py --selftest      # 34 checks
+python control/app.py --selftest      # Control Panel
 python tools/run_all_tests.py         # all of the above
 ```
 

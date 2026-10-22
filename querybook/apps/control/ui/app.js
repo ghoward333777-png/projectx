@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -132,6 +132,40 @@ async function loadSelf() {
     r.sections.map(s => `<tr><td>${esc(s.section)}</td><td>${esc(s.title)}</td><td><span class="badge ${SK_BADGE[s.label] || ""}">${esc(s.label)}</span></td>
       <td>${esc(s.note || "")}</td><td class="mono">${skSrc(s.sources.filter(x => x.found))}</td></tr>`).join("") + "</table>";
 }
+// ---- exemplar library: best-in-class examples, approved by the admin
+const exPc = x => x === null || x === undefined ? "—" : (Math.round(x * 100) / 100).toFixed(2);
+async function loadExemplars() {
+  const r = await api("/api/exemplars"), s = r.summary;
+  $("#ex-summary").innerHTML = `<p class="small">${s.takes} takes in <span class="mono">${esc(s.folder)}</span></p>` + (Object.keys(s.skills).length ?
+    `<table class="t small"><tr><th>Skill</th><th>Items</th><th>Takes</th><th>Exemplars</th><th>Candidates</th><th>Also ran</th><th>Rejected</th><th>From</th></tr>` +
+    Object.entries(s.skills).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${v.items}</td><td>${v.takes}</td><td>${v.exemplar}</td><td>${v.candidate}</td><td>${v.also_ran}</td>
+      <td>${v.rejected}</td><td>${esc(Object.entries(v.origins).map(([o, n]) => o + " ×" + n).join(", "))}</td></tr>`).join("") + "</table>" : `<p class="muted small">No exemplars yet.</p>`);
+  try { const cs = await api("/api/campaigns"), on = cs.tools.filter(t => t.on);
+    $("#ex-gen").innerHTML = (cs.runner.alive ? `<span class="badge good">running</span> ${esc(cs.runner.note || "")}` : `<span class="badge">not running</span>`) +
+      ` · tools on: ${on.length ? on.map(t => esc(t.title)).join(", ") : "none"} · Google source ${cs.source.approved ? "approved" : "not approved"}`; } catch (e) { $("#ex-gen").textContent = e.message; }
+  const p = (await api("/api/exemplars/proposals")).proposals;
+  $("#ex-proposals").innerHTML = p.length ? `<table class="t small"><tr><th>Skill</th><th>Item</th><th>Proposed take</th><th>Score</th><th>Current exemplar</th><th></th></tr>` +
+    p.map(x => `<tr><td class="mono">${esc(x.skill)}</td><td>${esc(x.item)}</td><td class="mono"><a href="/api/exemplars/file?id=${esc(x.proposed)}" target="_blank" rel="noopener">${esc(x.proposed)}</a></td>
+      <td>${exPc(x.overall)}</td><td class="mono">${esc(x.current || "—")} ${x.current ? exPc(x.current_overall) : ""}</td>
+      <td><button class="btn" data-exok="${esc(x.proposed)}">Approve</button></td></tr>`).join("") + "</table>" +
+    `<button class="btn quiet" id="ex-okall">Approve all ${p.length}</button>` : `<p class="muted small">Nothing waiting.</p>`;
+  $$("[data-exok]").forEach(b => b.onclick = () => exApprove([b.dataset.exok]));
+  if ($("#ex-okall")) $("#ex-okall").onclick = () => exApprove(p.map(x => x.proposed));
+}
+async function exApprove(ids) {
+  let n = 0;
+  try { for (const id of ids) { await api("/api/exemplars/approve", { id, passphrase: $("#ex-pass").value, note: "approved in the Control Panel" }); n++; } toast(n + " approved."); }
+  catch (e) { toast((n ? n + " approved; then: " : "") + e.message); }
+  loadExemplars();
+}
+async function listTakes() {
+  const r = await api("/api/exemplars?skill=" + encodeURIComponent($("#ex-skill").value.trim()));
+  $("#ex-takes").innerHTML = `<table class="t small"><tr><th>Item</th><th>Take</th><th>Status</th><th>Score</th><th>Checks</th><th>Origin</th><th></th></tr>` +
+    r.takes.map(t => `<tr><td>${esc(t.item)}</td><td class="mono"><a href="/api/exemplars/file?id=${esc(t.id)}" target="_blank" rel="noopener">${esc(t.id)}</a></td><td>${esc(t.status)}</td>
+      <td>${exPc(t.overall)}</td><td>${t.checks.map(c => `<span class="badge ${c.ok ? "good" : "bad"}" title="${esc(c.detail)}">${esc(c.name)}</span>`).join(" ")}</td>
+      <td>${esc(t.label)}</td><td>${t.status === "rejected" ? "" : `<button class="btn quiet" data-exno="${esc(t.id)}">Reject</button>`}</td></tr>`).join("") + "</table>";
+  $$("[data-exno]").forEach(b => b.onclick = async () => { try { await api("/api/exemplars/reject", { id: b.dataset.exno, passphrase: $("#ex-pass").value, reason: "rejected in the Control Panel" }); listTakes(); } catch (e) { toast(e.message); } });
+}
 async function askSelf() {
   const q = $("#sk-q").value.trim(); if (!q) return;
   const r = await api("/api/self/ask?q=" + encodeURIComponent(q) + "&level=" + $("#sk-level").value);
@@ -170,6 +204,10 @@ async function loadChat() {
 }
 
 function bind() {
+  $("#ex-refresh").onclick = () => loadExemplars(); $("#ex-list").onclick = listTakes;
+  $("#ex-gen-start").onclick = async () => { try { const r = await api("/api/gtools/runner", { action: "start", passphrase: $("#ex-pass").value }); toast(r.summary); loadExemplars(); } catch (e) { toast(e.message); } };
+  $("#ex-gen-stop").onclick = async () => { const r = await api("/api/gtools/runner", { action: "stop" }); toast(r.summary); loadExemplars(); };
+  $("#ex-verify").onclick = async () => { const r = await api("/api/exemplars/verify"); toast(r.checked + " checked, " + r.problems.length + " problem(s)" + (r.problems.length ? ": " + r.problems.map(p => p.id + " " + p.problem).join("; ") : "")); };
   $("#sk-refresh").onclick = () => loadSelf(); $("#sk-ask").onclick = askSelf; $("#sk-clear").onclick = () => { $("#sk-answer").innerHTML = ""; $("#sk-q").value = ""; };
   $("#sk-q").onkeydown = e => { if (e.key === "Enter") askSelf(); };
   $("#refresh").onclick = async () => { await api("/api/panel/check", {}); load(); };

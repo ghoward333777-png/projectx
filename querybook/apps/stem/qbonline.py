@@ -121,7 +121,7 @@ def _wikidata(statement, build, cursor, budget):
     if not ids:
         return [], None, "finished"
     ents = _wd_entities(ids)
-    refs = sorted({v["id"] for e in ents.values() for p in ("P36", "P30", "P287", "P178", "P282", "P17") for v in _values(e, p)
+    refs = sorted({v["id"] for e in ents.values() for p in ("P36", "P30", "P287", "P178", "P282", "P17", "P276", "P361", "P403", "P556", "P710") for v in _values(e, p)
                    if isinstance(v, dict) and "id" in v})
     names = {k: _label(v) for k, v in _wd_entities(refs, "labels").items()} if refs else {}
     items = []
@@ -182,6 +182,151 @@ def _languages(qid, e, names):
         if names.get(v.get("id")):
             out.append(_wd_item(qid, "language " + n, "writing system", names[v["id"]], "writing system (P282)"))
     return out
+
+
+def _qty(v):
+    """a Wikidata quantity with its unit, as stated (km, m or none); None for units we do not name"""
+    amt, unit = v.get("amount", "").lstrip("+"), v.get("unit", "1")
+    u = {"1": "", "http://www.wikidata.org/entity/Q828224": " km", "http://www.wikidata.org/entity/Q11573": " m"}.get(unit)
+    return None if u is None or not amt else amt + u
+
+
+def _named(qid, e, names, subj, prop, pred, n=3):
+    return [_wd_item(qid, subj, pred, names[v["id"]], "%s (%s)" % (pred, prop)) for v in _values(e, prop)[:n]
+            if isinstance(v, dict) and names.get(v.get("id"))]
+
+
+def _when(qid, e, subj, pred="date"):
+    for p in ("P585", "P580", "P571"):
+        for v in _values(e, p)[:1]:
+            return [_wd_item(qid, subj, pred, _year(v), "%s (%s)" % ({"P585": "point in time", "P580": "start time", "P571": "inception"}[p], p))]
+    return []
+
+
+def _battles(qid, e, names):
+    n = _label(e); subj = n if n.lower().startswith(("battle", "siege")) else "battle " + n
+    return _when(qid, e, subj) + _named(qid, e, names, subj, "P276", "location", 2) + _named(qid, e, names, subj, "P361", "part of", 2)
+
+
+def _treaties(qid, e, names):
+    n = _label(e); subj = n if "treaty" in n.lower() else "treaty " + n
+    return _when(qid, e, subj, "signed") + _named(qid, e, names, subj, "P276", "signed at", 1)
+
+
+def _rivers(qid, e, names):
+    subj, out = "river " + _label(e), []
+    for v in _values(e, "P2043")[:1]:
+        q = _qty(v)
+        if q:
+            out.append(_wd_item(qid, subj, "length", q, "length (P2043)"))
+    return out + _named(qid, e, names, subj, "P17", "flows through", 6) + _named(qid, e, names, subj, "P403", "flows into", 1)
+
+
+def _mountains(qid, e, names):
+    subj, out = "mountain " + _label(e), []
+    for v in _values(e, "P2044")[:1]:
+        q = _qty(v)
+        if q:
+            out.append(_wd_item(qid, subj, "elevation above sea level", q, "elevation (P2044)"))
+    return out + _named(qid, e, names, subj, "P17", "in country", 3)
+
+
+def _minerals(qid, e, names):
+    subj, out = "mineral " + _label(e), []
+    for v in _values(e, "P274")[:1]:
+        out.append(_wd_item(qid, subj, "chemical formula", v, "chemical formula (P274)"))
+    return out + _named(qid, e, names, subj, "P556", "crystal system", 1)
+
+
+def _scripts(qid, e, names):
+    subj, out = "writing system " + _label(e), []
+    for v in _values(e, "P506")[:1]:
+        out.append(_wd_item(qid, subj, "ISO 15924 code", v, "ISO 15924 code (P506)"))
+    return out + _when(qid, e, subj, "first used")
+
+
+# ---------------------------------------------------------------------------------------------------- US government (public domain)
+USGS_EQ = "https://earthquake.usgs.gov/fdsnws/event/1/query?"
+
+
+def _usgs_quakes(cursor, budget):
+    """the strongest recorded earthquakes since 1900, strongest first (USGS ComCat; US government work)"""
+    n = min(int(budget), 200)
+    r = FETCH(USGS_EQ + urllib.parse.urlencode({"format": "geojson", "starttime": "1900-01-01", "minmagnitude": 6.5,
+                                                "orderby": "magnitude", "limit": n, "offset": cursor + 1}))
+    feats, items = r.get("features") or [], []
+    for f in feats:
+        p, g = f.get("properties") or {}, (f.get("geometry") or {}).get("coordinates") or []
+        if p.get("mag") is None or not p.get("time"):
+            continue
+        day = time.strftime("%Y-%m-%d", time.gmtime(p["time"] / 1000))
+        subj = "earthquake %s (%s)" % ((p.get("place") or "unknown place")[:120], day)
+        url = p.get("url") or "https://earthquake.usgs.gov/earthquakes/search/"
+        why = "USGS earthquake catalog event %s." % f.get("id")
+        mk = lambda pred, obj: _item(subj, pred, obj, "usgs-earthquakes", "USGS Earthquake Catalog (ComCat)", "US government work", url, why)
+        items += [mk("magnitude", "%s %s" % (p["mag"], p.get("magType") or "")), mk("date (UTC)", day)]
+        if len(g) >= 3:
+            items += [mk("coordinates", "%.3f, %.3f" % (g[1], g[0])), mk("depth", "%.0f km" % g[2])]
+        if p.get("tsunami"):
+            items.append(mk("tsunami flag", "yes (catalog flag)"))
+    nxt = cursor + len(feats)
+    return items, (nxt if len(feats) == n else None), "%d earthquakes of magnitude 6.5+ (%d–%d, strongest first)" % (len(feats), cursor + 1, nxt)
+
+
+FR_API = "https://www.federalregister.gov/api/v1/documents.json?"
+
+
+def _federal_register(cursor, budget):
+    """presidential documents in the Federal Register since 1994 (executive orders, proclamations), oldest first"""
+    n = min(int(budget), 100)
+    q = [("per_page", n), ("page", cursor // n + 1), ("order", "oldest"), ("conditions[type][]", "PRESDOCU")] + \
+        [("fields[]", f) for f in ("document_number", "title", "publication_date", "signing_date", "subtype", "executive_order_number",
+                                   "proclamation_number", "president", "html_url")]
+    r = FETCH(FR_API + urllib.parse.urlencode(q))
+    docs, items = r.get("results") or [], []
+    for d in docs:
+        if not d.get("document_number") or not d.get("title"):
+            continue
+        kind = d.get("subtype") or "Presidential document"
+        num = d.get("executive_order_number") or d.get("proclamation_number")
+        subj = "%s%s" % (kind, " " + str(num) if num else " (Federal Register %s)" % d["document_number"])
+        why = "Federal Register document %s." % d["document_number"]
+        mk = lambda pred, obj: _item(subj, pred, obj, "federal-register", "Federal Register (Office of the Federal Register)", "US government work",
+                                     d.get("html_url") or "https://www.federalregister.gov/", why)
+        items.append(mk("title", d["title"][:300]))
+        if d.get("signing_date"):
+            items.append(mk("signed", d["signing_date"]))
+        if d.get("publication_date"):
+            items.append(mk("published", d["publication_date"]))
+        if isinstance(d.get("president"), dict) and d["president"].get("name"):
+            items.append(mk("issued by", d["president"]["name"]))
+    nxt = cursor + len(docs)
+    total = int(r.get("count") or 0)
+    return items, (nxt if docs and nxt < min(total, 10000) else None), "%d presidential documents (%d–%d of %d)" % (len(docs), cursor + 1, nxt, total)
+
+
+PUG = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/"
+
+
+def _pubchem(cursor, budget):
+    """NCBI-computed properties only (formula, weight, IUPAC name, InChIKey) — never depositor text — lowest CIDs first"""
+    n = min(int(budget), 100)
+    cids = list(range(cursor + 1, cursor + n + 1))
+    r = FETCH(PUG + ",".join(map(str, cids)) + "/property/MolecularFormula,MolecularWeight,IUPACName,InChIKey/JSON")
+    items = []
+    for p in (r.get("PropertyTable") or {}).get("Properties", []):
+        if not p.get("IUPACName"):
+            continue
+        subj = "compound %s" % p["IUPACName"][:200]
+        url = "https://pubchem.ncbi.nlm.nih.gov/compound/%d" % p["CID"]
+        why = "PubChem CID %d, computed properties." % p["CID"]
+        mk = lambda pred, obj: _item(subj, pred, obj, "pubchem-computed", "PubChem computed properties (NCBI)", "US government work", url, why)
+        items += [mk("chemical formula", p.get("MolecularFormula")), mk("molecular weight", "%s g/mol" % p.get("MolecularWeight")),
+                  mk("PubChem CID", p["CID"])]
+        if p.get("InChIKey"):
+            items.append(mk("InChIKey", p["InChIKey"]))
+    nxt = cursor + n
+    return items, (nxt if nxt < 200000 else None), "%d compounds (CID %d–%d)" % (len({i["subject"] for i in items}), cursor + 1, nxt)
 
 
 # ---------------------------------------------------------------------------------------------------- the others
@@ -300,6 +445,8 @@ def _ncbi(cursor, budget):
 KEY_SERVICES = {
     "api.data.gov": {"title": "api.data.gov (Smithsonian Open Access and USDA FoodData Central)", "how": "Fill in the form at "
                      "https://api.data.gov/signup/ (name and email); the key is shown at once. One key serves both sources."},
+    "gemini": {"title": "Google Gemini API (paid tier) — for the Google exemplar tools only",
+               "how": "Google AI Studio → Get API key (aistudio.google.com/apikey), on a project with billing (the paid tier keeps your prompts out of Google's training). Used only by the exemplar generator, never by the applications."},
     "dpla": {"title": "Digital Public Library of America", "how": "Type your email and press Request: DPLA emails you the key."},
     "nara": {"title": "US National Archives Catalog", "how": "Email Catalog_API@nara.gov with your name and email and ask for a "
              "read-only Catalog API v2 key."},
@@ -556,6 +703,27 @@ HARVESTERS = {
     "wikidata-languages": ("language", "wikidata", "The world's languages: ISO codes and writing systems (Wikidata)",
                            "which languages exist, how they are written — the most-documented first", "wd_languages", 50,
                            lambda c, b: _wikidata("P220", _languages, c, b)),
+    # (1.47) more open, unrestricted sources: Wikidata (CC0) sets and US government data (public domain)
+    "wikidata-battles": ("facts", "wikidata", "Battles: date, place and the war they belong to (Wikidata)",
+                         "military history anchored to dates and places — the best-known first", "wd_battles", 50,
+                         lambda c, b: _wikidata("P31=Q178561", _battles, c, b)),
+    "wikidata-treaties": ("facts", "wikidata", "Treaties: when and where they were signed (Wikidata)",
+                          "diplomatic history: the treaties people ask about most", "wd_treaties", 50,
+                          lambda c, b: _wikidata("P31=Q131569", _treaties, c, b)),
+    "wikidata-rivers": ("facts", "wikidata", "Rivers: length, countries and where they flow (Wikidata)",
+                        "physical geography: the great rivers first", "wd_rivers", 50, lambda c, b: _wikidata("P31=Q4022", _rivers, c, b)),
+    "wikidata-mountains": ("facts", "wikidata", "Mountains: elevation and country (Wikidata)",
+                           "physical geography: the best-known peaks first", "wd_mountains", 50, lambda c, b: _wikidata("P31=Q8502", _mountains, c, b)),
+    "wikidata-minerals": ("stem", "wikidata", "Minerals: chemical formula and crystal system (Wikidata)",
+                          "earth science and chemistry: common minerals first", "wd_minerals", 50, lambda c, b: _wikidata("P31=Q7946", _minerals, c, b)),
+    "wikidata-writing-systems": ("language", "wikidata", "Writing systems: ISO 15924 codes and age (Wikidata)",
+                                 "how the world's languages are written", "wd_scripts", 50, lambda c, b: _wikidata("P506", _scripts, c, b)),
+    "usgs-earthquakes": ("stem", "usgs-earthquakes", "Major earthquakes since 1900: magnitude, date, place, depth (USGS)",
+                         "earth science: every recorded magnitude 6.5+ earthquake, strongest first", "usgs_eq", 200, _usgs_quakes),
+    "federal-register-presidential": ("facts", "federal-register", "Executive orders and proclamations since 1994 (Federal Register)",
+                                      "US history: what each president ordered and proclaimed, with dates", "fr_pres", 100, _federal_register),
+    "pubchem-compounds": ("stem", "pubchem-computed", "Compounds: formula, molecular weight, IUPAC name (PubChem, computed properties only)",
+                          "chemistry: NCBI-computed identifiers for the most-studied compounds", "pubchem", 100, _pubchem),
     "smithsonian-history": ("facts", "smithsonian-open-access", "Smithsonian history and culture records (CC0 only)",
                             "dated, placed objects from 19 Smithsonian museums", "si_history", 100, _smithsonian("history_culture")),
     "smithsonian-science": ("stem", "smithsonian-open-access", "Smithsonian science and technology records (CC0 only)",

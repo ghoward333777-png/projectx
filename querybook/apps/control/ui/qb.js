@@ -449,11 +449,24 @@ async function renderHarvest(el) {
   if (!el.dataset.ready) {
     el.dataset.ready = "1";
     el.innerHTML =
-      '<div class="card" id="hv-master-card"><h2>Master control</h2><div id="hv-master"></div>' +
+      '<div class="card" id="hv-master-card"><h2>Master control</h2>' +
+      '<div class="row" style="align-items:center;gap:14px"><button class="btn" id="hv-master-toggle" style="font-size:1.25em;padding:10px 26px" aria-pressed="false">Master: …</button>' +
+      '<span class="small muted">One switch for everything: every application, every approved online harvester and every Google tool that is switched on. Off stops it all at once; a running task finishes first.</span></div>' +
+      '<div id="hv-master"></div>' +
       '<div class="row" style="margin:10px 0"><button class="btn" id="hv-start-all">▶ Start all harvesting</button><button class="btn" id="hv-stop-all" style="background:#b42318">■ Stop all harvesting</button></div>' +
       '<details open><summary class="small">Start or stop selected</summary><p class="small muted">Tick applications and online harvesters, then <b>Start selected</b> (only the ticked ones run; ticking a harvester also turns its application on) or <b>Stop selected</b> (the ticked ones stop; the rest carry on). A running task finishes; the rest of its turn is skipped.</p>' +
       '<div id="hv-select"></div><div class="row"><button class="btn quiet" id="hv-start-sel">▶ Start selected</button><button class="btn quiet" id="hv-stop-sel">■ Stop selected</button>' +
       '<button class="btn quiet" id="hv-sel-all">Tick all</button><button class="btn quiet" id="hv-sel-none">Tick none</button></div></details></div>' +
+      '<div class="card" id="hv-camp-card"><h2>Harvest campaigns</h2><p class="small muted">A campaign is a named selection — applications, online harvesters and Google tools — started and stopped together, ' +
+      "with its progress counted from the harvest record since it started. Starting a campaign runs only its selection (the rest pauses); stopping it stops only its selection. " +
+      'Campaigns with Google tools need the admin passphrase.</p><div id="hv-camps"></div>' +
+      '<details><summary class="small">New campaign</summary><div class="row"><input id="hv-cname" type="text" placeholder="name, e.g. World geography week" aria-label="Campaign name" style="flex:1">' +
+      '<input id="hv-cgoal" type="number" min="0" placeholder="goal: new facts (optional)" aria-label="Goal" style="width:14em"></div><div id="hv-cpick" class="small"></div>' +
+      '<div class="row"><button class="btn" id="hv-csave">Save campaign</button></div></details></div>' +
+      '<div class="card" id="hv-g-card"><h2>Google tools <span class="small muted">— examples to learn from, never facts</span></h2><p class="small muted">Each tool asks a Google model for <b>examples</b> — talking-face clips, spoken words, mouth-shape stills, drill texts, second-opinion transcripts — ' +
+      "which go to the exemplar library as learning objects: QueryBook measures them and the admin approves them. They run in a separate program, the <b>exemplar generator</b>, never inside these applications or their agents. " +
+      "Each tool is off until you switch it on (passphrase), only while the registry source <b>Google Gemini API — generated exemplars</b> is approved, and never beyond its daily budget. Needs the Gemini key (API keys, below; paid tier).</p>" +
+      '<div id="hv-gtools"></div><div class="row"><button class="btn quiet" id="hv-grun">▶ Start the exemplar generator</button><button class="btn quiet" id="hv-gstop">■ Stop the generator</button><span class="small" id="hv-gstate"></span></div></div>' +
       '<div class="card"><h2>Harvesting engine</h2><p class="small muted">One engine runs the three harvest teams in turn — language, STEM and history — so they never harvest at the same time. ' +
       "Each turn goes to the application with the most to gain: checks other applications are waiting for, a fast recent harvest, or no harvest yet; the one that just harvested waits, and one that found nothing new backs off for longer each time (less volume). " +
       "Every task is checked against the policy registry first: only sources whose licence puts no restriction on QueryBook are harvested. Everything is logged with its source and why.</p>" +
@@ -496,6 +509,17 @@ async function renderHarvest(el) {
       renderHarvest(el);
     };
     $("#hv-start-all", el).addEventListener("click", () => control("start", "all"));
+    $("#hv-master-toggle", el).addEventListener("click", async e => {
+      const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
+      await api("/api/harvest/master", { on }); toast(on ? "Master ON: all harvesting started." : "Master OFF: all harvesting stopped."); renderHarvest(el);
+    });
+    $("#hv-csave", el).addEventListener("click", async () => {
+      const pick = k => [...el.querySelectorAll('#hv-cpick input[data-ck="' + k + '"]:checked')].map(x => x.value);
+      await api("/api/campaigns/save", { name: $("#hv-cname", el).value, goal: +$("#hv-cgoal", el).value || 0, apps: pick("app"), harvesters: pick("harvester"), tools: pick("tool") });
+      $("#hv-cname", el).value = ""; toast("Campaign saved."); renderHarvest(el);
+    });
+    $("#hv-grun", el).addEventListener("click", async () => { const r = await api("/api/gtools/runner", { action: "start", passphrase: hvPass(el) }); toast(r.summary); renderHarvest(el); });
+    $("#hv-gstop", el).addEventListener("click", async () => { const r = await api("/api/gtools/runner", { action: "stop" }); toast(r.summary); renderHarvest(el); });
     $("#hv-stop-all", el).addEventListener("click", () => control("stop", "all"));
     $("#hv-start-sel", el).addEventListener("click", () => control("start", "selected"));
     $("#hv-stop-sel", el).addEventListener("click", () => control("stop", "selected"));
@@ -524,6 +548,15 @@ async function renderHarvest(el) {
       const b = e.target.closest("button[data-hv]");
       if (!b) return;
       const [act, id] = b.dataset.hv.split(":");
+      if (act === "cstart" || act === "cstop" || act === "cdel") {
+        const r = await api("/api/campaigns/" + { cstart: "start", cstop: "stop", cdel: "delete" }[act], { id, passphrase: act === "cstart" && b.dataset.tools === "1" ? hvPass(el) : "" });
+        toast(act === "cstart" ? "Campaign started: only its selection runs." : act === "cstop" ? "Campaign stopped." : "Campaign deleted."); renderHarvest(el); return;
+      }
+      if (act === "gon" || act === "goff" || act === "gplan") {
+        const row = b.closest("tr"), plan = row.querySelector(".hv-gplan").value;
+        await api("/api/gtools/switch", { id, on: act === "gplan" ? row.dataset.on === "1" : act === "gon", passphrase: hvPass(el), plan });
+        toast(act === "gplan" ? "Plan saved." : "Tool switched " + (act === "gon" ? "on." : "off.")); renderHarvest(el); return;
+      }
       if (act === "setpass") {
         await api("/api/harvest/admin", { new: $("#hv-new", el).value, old: $("#hv-old", el) ? $("#hv-old", el).value : "" });
         HV_PASS = $("#hv-new", el).value; toast("Admin passphrase saved (only a salted hash is kept)."); renderHarvest(el); return;
@@ -570,6 +603,10 @@ async function renderHarvest(el) {
         t.result.error ? cmTag("failed", "bad") + " " + esc(t.result.error) : t.result.timeout ? cmTag("timed out", "warn") :
           (t.result.new || 0) + " new, " + (t.result.checks_answered || 0) + " checks, " + (t.result.blocked || 0) + " blocked") + "</td></tr>").join("") + "</table>" : '<p class="muted">No turns yet.</p>');
   const ct = s.control, running = ct.master === "running";
+  const mt = $("#hv-master-toggle", el);
+  mt.setAttribute("aria-pressed", running ? "true" : "false"); mt.textContent = running ? "⏻ Master: ON — press to stop everything" : "⏻ Master: OFF — press to start everything";
+  mt.style.background = running ? "#067647" : "#b42318";
+  try { hvCampaigns(el, await api("/api/campaigns"), s, names); } catch (err) { $("#hv-camps", el).innerHTML = '<p class="muted small">Campaigns unavailable: ' + esc(err.message) + "</p>"; }
   const busy = e.turns.find(t => !t.ended);
   $("#hv-master", el).innerHTML = '<div class="note ' + (running ? "good" : "bad") + '" style="font-size:1.1em"><b>' + (running ? "▶ Harvesting is ON" : "■ Harvesting is STOPPED") + "</b> — " +
     (running ? ct.apps.filter(a => a.on).length + " of 3 applications and " + ct.harvesters.filter(h => h.on).length + " of " + ct.harvesters.length + " online harvesters switched on" +
@@ -615,6 +652,33 @@ async function renderHarvest(el) {
     esc(JSON.stringify(p.value)) + '"></td><td>' + esc(p.description || "") + "</td><td>" + esc(p.updated_by || "") + " " + cmWhen(p.updated) + '</td><td><button class="btn quiet" data-hv="param:' + esc(p.key) + '">Save</button></td></tr>').join("") + "</table>";
   $("#hv-versions", el).innerHTML = s.versions.map(v => '<div class="small"><span class="mono">v' + v.id + " " + cmWhen(v.at) + "</span> <b>" + esc(v.actor) + "</b> " + esc(JSON.stringify(v.change)) + " — " + esc(v.reason || "") + "</div>").join("") || '<p class="muted small">No changes yet.</p>';
   if (el._showLog) el._showLog();
+}
+
+// the campaigns, the Google tools and the generator's state (Harvesting page)
+function hvCampaigns(el, cs, s, names) {
+  const toolName = Object.fromEntries(cs.tools.map(t => [t.id, t.title])), hvName = Object.fromEntries(s.harvesters.map(h => [h.name, h.title]));
+  $("#hv-camps", el).innerHTML = cs.campaigns.length ? '<table class="t small"><tr><th>Campaign</th><th>Selection</th><th>Status</th><th>Progress since it started</th><th></th></tr>' + cs.campaigns.map(c => {
+    const p = c.progress, sel = c.apps.map(a => names[a] || a).concat(c.harvesters.map(h => hvName[h] || h), c.tools.map(t => toolName[t] || t));
+    const prog = !p ? '<span class="muted">not started</span>' : "<b>" + p.new_facts.toLocaleString() + "</b> new facts" + (c.goal ? " of " + c.goal.toLocaleString() + (p.goal_reached ? " " + cmTag("goal reached", "good") : "") : "") +
+      (c.tools.length ? " · " + p.exemplar_takes + " exemplar takes" : "") + (c.harvesters.length ? '<br><span class="muted">' + c.harvesters.map(h => esc(hvName[h] || h) + ": " + (p.harvesters[h] || {}).new).join(" · ") + "</span>" : "");
+    return "<tr><td><b>" + esc(c.name) + "</b>" + (cs.active === c.id ? " " + cmTag("active", "good") : "") + '</td><td>' + esc(sel.join(", ")) + "</td><td>" + cmTag(c.status, c.status === "running" ? "good" : "") +
+      (c.started ? '<br><span class="muted">' + cmWhen(c.started) + "</span>" : "") + "</td><td>" + prog + "</td><td>" +
+      (c.status === "running" ? '<button class="btn quiet" data-hv="cstop:' + esc(c.id) + '">■ Stop</button>' : '<button class="btn" data-hv="cstart:' + esc(c.id) + '" data-tools="' + (c.tools.length ? 1 : 0) + '">▶ Start</button>') +
+      ' <button class="btn quiet" data-hv="cdel:' + esc(c.id) + '">Delete</button></td></tr>'; }).join("") + "</table>" : '<p class="muted small">No campaigns yet — make one below.</p>';
+  if (!$("#hv-cpick", el).dataset.ready) {
+    $("#hv-cpick", el).dataset.ready = "1";
+    const box = (k, v, t) => '<label class="row" style="margin-right:12px"><input type="checkbox" data-ck="' + k + '" value="' + esc(v) + '"> ' + esc(t) + "</label>";
+    $("#hv-cpick", el).innerHTML = '<b>Applications</b><div class="row">' + Object.entries(names).map(([k, v]) => box("app", k, v)).join("") + "</div>" +
+      "<b>Online harvesters</b><div>" + s.harvesters.map(h => box("harvester", h.name, h.title + " — " + (names[h.app] || h.app))).join("") + "</div>" +
+      "<b>Google tools</b><div>" + cs.tools.map(t => box("tool", t.id, t.title)).join("") + "</div>";
+  }
+  $("#hv-gtools", el).innerHTML = (cs.source.approved ? "" : '<div class="note warn small">The source <b>google-generative-exemplars</b> is not approved: no Google tool can run. Approve it in the policy registry below (accept its terms-of-service condition) when you are ready.</div>') +
+    '<table class="t small"><tr><th>Tool</th><th>Makes</th><th>Per day</th><th>Today</th><th>State</th><th>Plan</th><th></th></tr>' + cs.tools.map(t => '<tr data-on="' + (t.on ? 1 : 0) + '"><td><b>' + esc(t.title) + '</b><br><span class="mono muted">' + esc(t.model) + "</span></td><td>" + esc(t.makes) +
+      "</td><td>" + t.budget + "</td><td>" + t.made_today + "</td><td>" + cmTag(t.on ? "on" : "off", t.on ? "good" : "") + '<br><span class="muted">' + esc(t.state) + '</span></td><td><input class="hv-gplan" type="text" value="' + esc(t.plan) +
+      '" placeholder="' + esc(t.plan_hint) + '" style="width:16em"> <button class="btn quiet" data-hv="gplan:' + esc(t.id) + '">Save</button></td><td>' +
+      (t.on ? '<button class="btn quiet" data-hv="goff:' + esc(t.id) + '">Switch off</button>' : '<button class="btn" data-hv="gon:' + esc(t.id) + '">Switch on</button>') + "</td></tr>").join("") + "</table>";
+  const r = cs.runner;
+  $("#hv-gstate", el).innerHTML = r.alive ? cmTag("generator running", "good") + " " + esc(r.note || "") : cmTag("generator not running") + (r.note ? ' <span class="muted">last: ' + esc(r.note) + "</span>" : "");
 }
 
 // ---------------------------------------------------------------- Devices: the device gateway

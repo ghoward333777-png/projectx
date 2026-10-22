@@ -39,6 +39,12 @@ def build_suite():
         for app, name in APPS.items():
             _add_tree(z, os.path.join(ROOT, app), os.path.join("QueryBook", name))
         _add_tree(z, os.path.join(ROOT, "bridges"), os.path.join("QueryBook", "extras", "device-bridges"))
+        # the admin's exemplar generator (Google tools) — a separate program, never part of the applications
+        gen = os.path.join("QueryBook", "extras", "exemplar-generator")
+        for f in ("generate_exemplars.py",):
+            _add_file(z, os.path.join(ROOT, "tools", f), os.path.join(gen, f))
+        _add_file(z, os.path.join(ROOT, "_core", "qbexemplar.py"), os.path.join(gen, "qbexemplar.py"))
+        _add_tree(z, os.path.join(ROOT, "tools", "plans"), os.path.join(gen, "plans"))
         vse = os.path.join(os.path.dirname(ROOT), "vse")
         if os.path.isdir(vse):
             _add_tree(z, vse, os.path.join("QueryBook", "extras", "visual-speech-engine-stage2"),

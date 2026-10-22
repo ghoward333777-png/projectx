@@ -22,6 +22,8 @@ import qbdevices
 import qbagents
 import qbengineer
 import qbselfknow
+import qbexemplar
+import qbcampaign
 import harvest
 import gcloud
 import dates
@@ -29,7 +31,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 PORT = 8103
 program_dir = HERE
 
@@ -101,6 +103,8 @@ class App:
         qbagents.attach(self, APP_ID)
         qbengineer.attach(self, APP_ID, HERE)
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
+        qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
+        qbcampaign.attach(self, HERE)                         # harvest campaigns, the master On/Off, the Google exemplar tools
         try:
             self.store.backup("startup")
         except Exception as e:

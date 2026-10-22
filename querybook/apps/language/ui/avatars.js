@@ -312,7 +312,7 @@ async function avSelect(el, id) {
   if (!AV.face) AV.face = new TalkingFace($("#av-stage", el));
   await AV.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + a.id, landmarks: a.landmarks, label: a.label, body: a.kind === "body", turnId: (a.motions || []).length ? a.id : null } });
   el.querySelectorAll("[data-avmove]").forEach(b => b.onclick = () => AV.face.impl && AV.face.impl.playMove && AV.face.impl.playMove(b.dataset.avmove));
-  if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion });   // the same speech carries on, on the new face
+  if (AV.audio && AV.motion) AV.face.attach(AV.audio, { visemes: [], motion: AV.motion, mouth: AV.mouth });   // the same speech carries on, on the new face
   const fq = AV.face.impl && AV.face.impl.quality;
   if (fq) { $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small ' + (fq.ok ? "" : "note warn") + '">' + esc(avQcText(fq)) + "</div>"); api("/api/avatars/qc", { id: a.id, qc: fq }).catch(() => {}); }
   const ft = AV.face.impl && AV.face.impl.fit;
@@ -359,8 +359,8 @@ async function avSpeak(el) {
   $("#av-player", el).innerHTML = ""; $("#av-player", el).appendChild(a); AV.audio = a;
   const blob = new Blob([res.arkit52_csv], { type: "text/csv" });
   $("#av-player", el).insertAdjacentHTML("beforeend", ' <a class="small" download="avatar-arkit52.csv" href="' + URL.createObjectURL(blob) + '">52-channel CSV</a>');
-  AV.motion = res.motion;
-  AV.face.attach(a, { visemes: [], motion: res.motion });
+  AV.motion = res.motion; AV.mouth = res.mouth || null;
+  AV.face.attach(a, { visemes: [], motion: res.motion, mouth: res.mouth });
   a.play().catch(() => {});
   note.textContent = res.motion.frames.length + " frames × 52 channels at " + res.motion.fps + " fps · voice: " + r.engine_used + " · " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
   if (window.rvAttach) { const sel = AV.sel; rvAttach($("#av-player", el), AV.face, { avatarId: () => sel.id, text, audio: a }); }

@@ -94,6 +94,76 @@ def range_tests(c):
         httpd.shutdown()
 
 
+def campaign_tests(c):
+    """harvest campaigns, the master On/Off and the Google tools: selections start and stop together, Google tools need the
+    admin and the approved source, the generator stays a separate program, and the new open sources are in the registry"""
+    import qbcampaign as K, qbcommons as cm, qbonline as ol
+    with tempfile.TemporaryDirectory() as d:
+        co = cm.Commons(os.path.join(d, "commons"), "facts")
+        co.registry.ensure()
+        calls = []
+        def control(action, scope, apps, harvesters):
+            calls.append((action, scope, list(apps), list(harvesters)))
+            with co.store.write() as db:
+                if scope == "all":
+                    co.set_setting("harvest:master", "running" if action == "start" else "stopped", db)
+        co.approvals.set_admin("correct horse battery")
+        camp = K.save_campaign(co, {"name": "Geography week", "apps": ["facts"], "harvesters": ["wikidata-rivers", "wikidata-mountains", "no-such"], "goal": 100}, set(ol.HARVESTERS))
+        c.check("campaign: saved with only known harvesters", camp["harvesters"] == ["wikidata-rivers", "wikidata-mountains"] and camp["status"] == "ready")
+        st = K.start_campaign(co, camp["id"], control)
+        c.check("campaign: starting runs only its selection", calls[-1] == ("start", "selected", ["facts"], ["wikidata-rivers", "wikidata-mountains"])
+                and st["active"] == camp["id"] and st["campaigns"][0]["progress"]["new_facts"] == 0, calls)
+        K.stop_campaign(co, camp["id"], control)
+        c.check("campaign: stopping stops only its selection", calls[-1] == ("stop", "selected", ["facts"], ["wikidata-rivers", "wikidata-mountains"]))
+        K.master(co, False, control)
+        c.check("master switch: off stops everything", calls[-1] == ("stop", "all", [], []) and not K.master_running(co))
+        K.master(co, True, control)
+        c.check("master switch: on starts everything", calls[-1] == ("start", "all", [], []) and K.master_running(co))
+        try:
+            K.set_tool(co, "tts-pronunciation", True, "correct horse battery"); ok = False
+        except ValueError:
+            ok = True
+        c.check("Google tools: none can be switched on before the admin approves the Google source", ok and not any(t["on"] for t in K.tools(co)))
+        try:
+            K.set_tool(co, "tts-pronunciation", True, "wrong passphrase"); ok2 = False
+        except Exception:
+            ok2 = True
+        c.check("Google tools: switching on needs the admin passphrase", ok2)
+        row = co.store.one("SELECT licence_class, status FROM policy_sources WHERE key = ?", (K.SOURCE_KEY,))
+        c.check("Google tools: their source is registered as a terms-of-service condition, blocked until the admin accepts it",
+                row and row["licence_class"] == "terms-of-service" and row["status"] == "blocked", row)
+        co.approvals.admin_source(K.SOURCE_KEY, "approved", "correct horse battery", "admin accepts the Gemini API terms for exemplars", "terms-of-service", True)
+        K.set_tool(co, "tts-pronunciation", True, "correct horse battery", "plans/pronunciation-en.json")
+        t = next(x for x in K.tools(co) if x["id"] == "tts-pronunciation")
+        c.check("Google tools: switched on one at a time, with its plan; the others stay off",
+                t["on"] and t["plan"].endswith("pronunciation-en.json") and sum(x["on"] for x in K.tools(co)) == 1, t)
+        gc = K.save_campaign(co, {"name": "Pronunciation", "tools": ["tts-pronunciation", "text-drills"]}, set(ol.HARVESTERS))
+        try:
+            K.start_campaign(co, gc["id"], control, ""); ok3 = False
+        except Exception:
+            ok3 = True
+        K.start_campaign(co, gc["id"], control, "correct horse battery")
+        c.check("campaign with Google tools: needs the passphrase, then switches exactly its tools on",
+                ok3 and {x["id"] for x in K.tools(co) if x["on"]} == {"tts-pronunciation", "text-drills"})
+        c.check("Google tools: the generator is found beside the applications (tools/ or extras/exemplar-generator/)",
+                (K.generator_path(os.path.join(ROOT, "language")) or "").endswith("generate_exemplars.py"))
+        src = open(os.path.join(ROOT, "tools", "generate_exemplars.py"), encoding="utf-8").read()
+        c.check("Google tools: the generator follows the same tool catalogue", all(("\"%s\"" % k) in src for k in K.GOOGLE_TOOLS))
+        apps_src = "".join(open(os.path.join(ROOT, a, f), encoding="utf-8").read() for a in ("language", "stem", "facts", "control")
+                           for f in os.listdir(os.path.join(ROOT, a)) if f.endswith(".py"))
+        camp_src = open(os.path.join(ROOT, "_core", "qbcampaign.py"), encoding="utf-8").read()
+        c.check("no application imports the generator; the campaign module only switches tools (it calls no model)",
+                "import generate_exemplars" not in apps_src and "googleapis" not in camp_src and "urllib" not in camp_src)
+    new = ["wikidata-battles", "wikidata-treaties", "wikidata-rivers", "wikidata-mountains", "wikidata-minerals", "wikidata-writing-systems",
+           "usgs-earthquakes", "federal-register-presidential", "pubchem-compounds"]
+    keys = {k[0]: k[5] for k in __import__("qbharvest").RESEARCHED_SOURCES}
+    c.check("new open sources: every new harvester's source is researched and unrestricted",
+            all(n in ol.HARVESTERS and keys.get(ol.HARVESTERS[n][1], "cc0") in ("cc0", "us-federal", "public-domain") for n in new),
+            [(n, keys.get(ol.HARVESTERS[n][1])) for n in new if n in ol.HARVESTERS])
+    c.check("restricted sources are recorded as blocked with the reason (World Bank, OpenStreetMap, GeoNames, Wiktionary)",
+            all(keys.get(k) in ("attribution", "share-alike") for k in ("world-bank-indicators", "openstreetmap", "geonames", "wiktionary")))
+
+
 def power_tests(c):
     import tempfile, time as _t
     with tempfile.TemporaryDirectory() as tmp:
@@ -669,8 +739,17 @@ def main():
         K = importlib.util.module_from_spec(spec); spec.loader.exec_module(K)
         ok, total, fails = K.self_test()
         c.check("self-knowledge layer (%s): %d of %d, no contradictions" % (app, ok, total), not fails, fails)
+    # the shared exemplar library, as each application carries it
+    for app in ("language", "stem", "facts", "control"):
+        spec = importlib.util.spec_from_file_location("qbexemplar_" + app, os.path.join(ROOT, app, "qbexemplar.py"))
+        X = importlib.util.module_from_spec(spec); spec.loader.exec_module(X)
+        r = X.self_test()
+        c.check("exemplar library (%s): %d of %d" % (app, sum(g for _, g in r), len(r)), all(g for _, g in r), [n for n, g in r if not g])
+    campaign_tests(c)
     v964 = os.path.join(os.path.dirname(ROOT), "QueryBook-v9.64", "qb_selfknow.py")
     if os.path.exists(v964):
+        for m, d in (("_core/qbonline.py", "qb_online.py"), ("_core/qbexemplar.py", "qbexemplar.py"), ("tools/generate_exemplars.py", "generate_exemplars.py")):
+            c.check("QueryBook 9.64 carries the same %s" % d, open(os.path.join(os.path.dirname(v964), d), "rb").read() == open(os.path.join(ROOT, m), "rb").read())
         c.check("self-knowledge layer: QueryBook 9.64 carries the same layer", open(v964, "rb").read() == open(os.path.join(ROOT, "_core", "qbselfknow.py"), "rb").read())
     for app in ("language", "stem", "facts"):
         c.check("%s carries the current core" % app, core.core_matches_master(os.path.join(ROOT, app)))

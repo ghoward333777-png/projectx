@@ -157,9 +157,11 @@ def main():
         c.check("admin decision: every approval is a policy version", sum(1 for v in reg.versions(200) if v["change"].get("status") == "approved") == len(approved))
         c.check("research: restricted ones are recorded as blocked with the reason",
                 reg.source("mit-ocw")["status"] == "blocked" and reg.source("nist-webbook")["licence_class"] == "copyrighted-text" and reg.source("openstax")["reason"])
+        # (1.47) sources researched since the admin's decisions wait for the admin too
+        NEW_147 = {k for k, *_x in hv.RESEARCHED_SOURCES if hv.LICENCE_CLASSES[_x[4]][0]} - approved - held
         res = [r for r in ap.list("pending") if r["kind"] == "new source"]
         c.check("research: the held sources still wait for the admin; the approved ones' requests are marked applied",
-                {r["change"]["key"] for r in res} == held and len([r for r in ap.list("applied") if r["kind"] == "new source"]) == len(approved), [r["change"]["key"] for r in res])
+                {r["change"]["key"] for r in res} == held | NEW_147 and len([r for r in ap.list("applied") if r["kind"] == "new source"]) == len(approved), [r["change"]["key"] for r in res])
         reg.ensure("stem", {})
         c.check("research: seeding again adds nothing twice", len([r for r in ap.list("pending") if r["kind"] == "new source"]) == len(res))
         c.check("registry: an application's budgets become parameters", reg.param("budget.stem.constants") == 40)
@@ -357,7 +359,7 @@ def main():
             c.check("keyed: Europeana keeps named creators, drops link-only ones", ("Europeana record \u201cMap of Europe\u201d (/9200/abc)", "creator", "Abraham Ortelius") in eu
                     and not any(i[2].startswith("http") for i in eu))
             st = ol.key_status(tmp)
-            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st) and st[0]["hint"] == "\u20261234" and
+            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st if k["service"] != "gemini") and st[0]["hint"] == "\u20261234" and
                     (os.name == "nt" or (os.stat(os.path.join(tmp, "api-keys.json")).st_mode & 0o077) == 0))
             ol.save_key(tmp, "api.data.gov", "")
 

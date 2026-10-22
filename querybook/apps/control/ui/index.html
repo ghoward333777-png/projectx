@@ -58,6 +58,7 @@
   <button data-tab="audit">Audit trail</button>
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="self">Self-knowledge</button>
+  <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
 </nav>
 <div class="layout">
@@ -207,6 +208,24 @@
         <button class="btn quiet" data-diag="panel">Panel</button><button class="btn quiet" data-diag="assistant">Assistant</button>
       </div>
       <div class="diag" id="diag-all"></div>
+    </div>
+  </section>
+
+  <!-- Exemplar library: best-in-class examples QueryBook learns from (measured by QueryBook, approved by the admin, never facts) -->
+  <section class="panel" id="exemplars">
+    <div class="card">
+      <div class="sechead"><h2>Exemplars</h2><button class="btn quiet" id="ex-refresh">Check again</button><button class="btn quiet" id="ex-verify">Verify files</button></div>
+      <p class="muted small">Examples QueryBook learns from — videos, sounds, images and drill texts, made by the admin's generator tool
+        (outside the applications) or recorded. QueryBook measures every take itself; the best passing take of each item is proposed here,
+        and becomes the exemplar only when you approve it. Exemplars are learning objects, never facts.</p>
+      <div id="ex-summary"></div>
+      <div class="row"><b class="small">Exemplar generator (Google tools — a separate program):</b> <span id="ex-gen" class="small"></span>
+        <button class="btn quiet" id="ex-gen-start">▶ Start</button><button class="btn quiet" id="ex-gen-stop">■ Stop</button>
+        <span class="small muted">Which tools run, their plans and campaigns: any application's Harvesting page.</span></div>
+      <div class="row"><input type="password" id="ex-pass" placeholder="Admin passphrase" style="width:14em"></div>
+      <h3>Waiting for your approval</h3><div id="ex-proposals"></div>
+      <h3>Every take</h3><div class="row"><input id="ex-skill" placeholder="skill (e.g. speech-video-pamela)" style="width:20em"><button class="btn quiet" id="ex-list">Show</button></div>
+      <div id="ex-takes"></div>
     </div>
   </section>
 

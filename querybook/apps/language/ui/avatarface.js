@@ -13,6 +13,7 @@
     "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight", "cheekPuff", "cheekSquintLeft",
     "cheekSquintRight", "noseSneerLeft", "noseSneerRight", "tongueOut"];
   const IDX = Object.fromEntries(BS.map((k, i) => [k, i])), MC = IDX.mouthClose, JAW = IDX.jawOpen;
+  const MOUTH_CH = BS.map((k, i) => /^mouth|^jaw/.test(k) ? i : -1).filter(i => i >= 0);   // replaced by a speech motion library (1.47)
   const BROWS = new Set(["browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight"].map(k => IDX[k]));
   // MediaPipe face-mesh landmarks ("Left" = the subject's left = the right of the picture)
   const OUT_UP = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291], OUT_LO = [291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
@@ -725,6 +726,7 @@
       const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
       for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
       this.head = this.head.map((h, q) => h + ((this.headT || [0, 0, 0])[q] - h) * a);
+      this.mdisp = this._mouthAt(track, t);
       // moves named in the script: each starts as its words are spoken; one named while another plays follows it
       if (this.turnCues && this.tPrev !== undefined) for (const cu of this.turnCues) if (this.tPrev < cu.t && cu.t <= t) (this.moveQueue = this.moveQueue || []).push(cu.slug);
       if (this.moveQueue && this.moveQueue.length && this._turnNow() === null) this.playMove(this.moveQueue.shift(), t);
@@ -732,6 +734,31 @@
         this.turning.t0 = performance.now() / 1000 - (t - this.turning.t0); this.turning.clock = "wall";     // she finishes turning anyway
       }
       this.tPrev = t;
+    }
+    // Speech motion library (1.47): her own recorded lower-face movement for this speech, already chosen sound by sound and
+    // joined on the program's side (track.mouth: int8 frames, eye-to-eye units, eyes level). Turned and scaled to this face.
+    _mouthAt(track, t) {
+      const M = track && track.mouth;
+      if (!M || !M.data || !M.points) return null;
+      if (!M._q) {
+        const bin = atob(M.data), q = new Int8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) q[i] = (bin.charCodeAt(i) << 24) >> 24;
+        M._q = q; M._w = 2 * M.points.length;
+      }
+      if (!this._mlTf) {
+        const B = this.base3, e1 = B[33], e2 = B[263], ang = Math.atan2(e2[1] - e1[1], e2[0] - e1[0]);
+        this._mlTf = { iod: Math.hypot(e2[0] - e1[0], e2[1] - e1[1]), cs: Math.cos(ang), sn: Math.sin(ang), idx: new Int16Array(this.base3.length).fill(-1), pts: null };
+      }
+      const T = this._mlTf;
+      if (T.pts !== M.points) { T.idx.fill(-1); M.points.forEach((p, k) => { if (p < T.idx.length) T.idx[p] = k; }); T.pts = M.points; }
+      const n = M._q.length / M._w, f = Math.max(0, t * M.fps), i0 = Math.min(n - 1, Math.floor(f)), i1 = Math.min(n - 1, i0 + 1), w = f - i0;
+      if (t * M.fps > n + 1) return null;                        // after the speech: her rest
+      const out = this._mdBuf && this._mdBuf.length === M._w ? this._mdBuf : (this._mdBuf = new Float32Array(M._w)), s = M.step * T.iod;
+      for (let k = 0; k < M._w; k += 2) {
+        const dx = (M._q[i0 * M._w + k] * (1 - w) + M._q[i1 * M._w + k] * w) * s, dy = (M._q[i0 * M._w + k + 1] * (1 - w) + M._q[i1 * M._w + k + 1] * w) * s;
+        out[k] = dx * T.cs - dy * T.sn; out[k + 1] = dx * T.sn + dy * T.cs;
+      }
+      return out;
     }
     setChannels(values) { Object.entries(values || {}).forEach(([k, v]) => { if (k in IDX) this.cur[IDX[k]] = v; }); this._draw(); }
     draw(m) {                                                // live mirroring from a tracked camera face
@@ -754,6 +781,8 @@
     }
     _points(chan, head) {
       const n = this.base3.length, out = new Array(n), c = Float32Array.from(chan || this.cur), D = this.D, nF = this.nFace, g = this.params.head_gain;
+      const md = !chan && this.mdisp && this._mlTf ? this.mdisp : null, mIdx = md ? this._mlTf.idx : null;
+      if (md) for (const k of MOUTH_CH) c[k] = 0;                 // her own movement replaces the mouth model (the rest of the face stays)
       if (this.body) for (const k of ["Left", "Right"]) {           // a speaking smile: the lips, not only the jaw, open the mouth
         const j = c[JAW], dv = BODY_CAL.derive, up = IDX["mouthUpperUp" + k], dn = IDX["mouthLowerDown" + k];
         // the upper lip does not lift while the lips close (m, b, p, f) or round (oo, w): otherwise the opening comes only
@@ -765,11 +794,11 @@
       // rounding at rest (calibration): a portrait taken smiling keeps its corners spread; the pucker field draws them in
       // while the face is not smiling or spreading. It is added on top of the spoken pucker (not inside its 0–1 range),
       // so oo and w still have their full rounding to go.
-      const rr = (this.cal.rest_round || 0) + (this.body ? BODY_CAL.restRound || 0 : 0), PK = IDX.mouthPucker;
+      const rr = md ? 0 : (this.cal.rest_round || 0) + (this.body ? BODY_CAL.restRound || 0 : 0), PK = IDX.mouthPucker;
       const rnd = this.XL ? Math.min(1, Math.max(c[PK], c[IDX.mouthFunnel])) : 0, wRoll = rnd * BODY_CAL.roll;
       const wLift = rnd * BODY_CAL.lift * (0.35 + 0.65 * Math.min(1, c[JAW] / 0.15));   // the lift grows as the mouth opens (not while rounding is only anticipated)
       const FRL = IDX.mouthFrownLeft, FRR = IDX.mouthFrownRight;
-      const restLev = this.body ? BODY_CAL.restLevel * (1 - Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]))) : 0;
+      const restLev = this.body && !md ? BODY_CAL.restLevel * (1 - Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]))) : 0;
       const restP = rr > 0 ? rr * (1 - 0.12 * Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]) + 0.7 * Math.max(c[IDX.mouthStretchLeft], c[IDX.mouthStretchRight]))) : 0;
       // while an eye closes, its "wide", squint and gaze give way to the lid (together they fought the blink and folded the eye)
       for (const k of ["Left", "Right"]) {
@@ -800,6 +829,7 @@
           }
           if (wLift > 0.002) { y += wLift * this.XL[3 * i + 1]; }
           if (wRoll > 0.002) { y += wRoll * this.XR[3 * i + 1]; z += wRoll * this.XR[3 * i + 2]; }
+          if (md && mIdx[i] >= 0) { x += md[2 * mIdx[i]]; y += md[2 * mIdx[i] + 1]; }
           // head rotation about the neck: yaw (y axis), pitch (x axis), roll (z axis), then a weak perspective
           let X = x - px, Y = y - py, Z = z - pz;
           let X1 = X * cy + Z * sy, Z1 = -X * sy + Z * cy;
@@ -936,6 +966,7 @@
       if (!this.ctx) return;
       if (this.gl) return this._drawGL();
       const pts = this._points(), c = this.ctx, cr = this.view || this.crop, k = this.cv.width / cr.w, src = this.src, B = this.base, F = this.F;
+      this._restPts = this.mdisp ? this._points(this._zeroCh || (this._zeroCh = new Float32Array(BS.length))) : null;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height);
       c.setTransform(k, 0, 0, k, -cr.x * k, -cr.y * k);
       c.drawImage(src, 0, 0);
@@ -972,6 +1003,7 @@
     }
     _drawGL() {
       const pts = this._points(), c = this.ctx, cr = this.view || this.crop, k = this.cv.width / cr.w, B = this.base, F = this.F;
+      this._restPts = this.mdisp ? this._points(this._zeroCh || (this._zeroCh = new Float32Array(BS.length))) : null;
       const vw = this.view || this.crop; this.gl.gl.uniform4f(this.gl.uCrop, vw.x, vw.y, vw.w, vw.h);
       const crop = () => c.setTransform(k, 0, 0, k, -cr.x * k, -cr.y * k), px = () => c.setTransform(1, 0, 0, 1, 0, 0);
       px(); c.clearRect(0, 0, this.cv.width, this.cv.height);
@@ -1062,6 +1094,19 @@
     _teethLen(open) {
       return this.body ? Math.min(open * BODY_CAL.teeth_frac, BODY_CAL.teeth_mm * this.fit.pxmm) : Math.min(open * 0.33, this.fit.teeth_mm * this.fit.pxmm);
     }
+    // Teeth by the jaw (1.47, with a speech motion library): the upper incisors are fixed to the skull, their edge a little
+    // below where the lips meet at rest; the lower incisors ride on the jaw — their edge a little above the upper one at rest
+    // (the overbite), lowered by most of the chin's drop. The lips only uncover them: with the jaw nearly shut and the lips
+    // apart (ee, s) the teeth show together; on an open vowel the lower row drops away with the chin.
+    _jawTeeth() {
+      const R = this._restPts, md = this.mdisp, T = this._mlTf;
+      if (!R || !md || !T) return null;
+      const mm = this.fit && this.fit.pxmm ? this.fit.pxmm : this.F * 0.012, contact = lipLine(R, IN_UP);
+      const k = T.idx[152], jaw = k >= 0 ? Math.max(0, md[2 * k + 1]) : 0;
+      const mx = (R[78][0] + R[308][0]) / 2, span = 0.66 * Math.hypot(R[78][0] - R[308][0], R[78][1] - R[308][1]);
+      const arch = xx => { const u = Math.min(1, Math.abs(xx - mx) / (span / 2)); return 1 - 0.5 * u * u; };
+      return { mx, span, up: xx => contact(xx) + 2.0 * mm * arch(xx), lo: xx => contact(xx) + 0.8 * mm * arch(xx) + 0.8 * jaw };
+    }
     _mouthInside(c, pts, open, extra, vis, smoothEdge) {
       const F = this.F, pal = this.palette, rgb = (v, a) => "rgba(" + v[0] + "," + v[1] + "," + v[2] + "," + (a === undefined ? 1 : a) + ")";
       const smooth2 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -1106,24 +1151,25 @@
           c.fillStyle = ts; body(); c.fill();
         }
       }
-      // upper front teeth, hanging from the upper lip's curve
-      const th = this._teethLen(open) * smooth2(0.01 * F, 0.03 * F, extra);
+      // upper front teeth, hanging from the upper lip's curve (with a speech motion library: fixed to the skull, uncovered by the lips)
+      const J = this._jawTeeth(), tmx = J ? J.mx : mx;
+      const th = J ? Math.max(0, J.up(tmx) - upY(tmx)) : this._teethLen(open) * smooth2(0.01 * F, 0.03 * F, extra);
       if (th > 0.6) {
         // one continuous row (as teeth read at speaking distance), its lower edge gently scalloped tooth by tooth,
         // then barely-there separations; the side teeth sit deeper and darker
-        const span = tw * 0.66, widths = [0.78, 0.74, 1, 1, 0.74, 0.78], tot = widths.reduce((a, b) => a + b, 0);
-        const teethL = [], x0 = mx - span / 2; let x = x0;
-        widths.forEach((wf, n) => { const w = span * wf / tot, cx = x + w / 2, side = Math.abs(cx - mx) / (span / 2);
+        const span = J ? J.span : tw * 0.66, widths = [0.78, 0.74, 1, 1, 0.74, 0.78], tot = widths.reduce((a, b) => a + b, 0);
+        const teethL = [], x0 = tmx - span / 2; let x = x0;
+        widths.forEach((wf, n) => { const w = span * wf / tot, cx = x + w / 2, side = Math.abs(cx - tmx) / (span / 2);
           teethL.push({ x, w, cx, len: th * (n === 2 || n === 3 ? 1 : n === 1 || n === 4 ? 0.9 : 0.8) * (1 - 0.2 * side) }); x += w; });
         // the row's lower edge is one smooth curve along the lip (no steps), with a faint scallop at each tooth
-        const lenAt = xx => { const t = Math.max(0, Math.min(1, Math.abs(xx - mx) / (span / 2))); return th * (1 - 0.32 * t * t); };
+        const lenAt = J ? xx => Math.max(0, J.up(xx) - upY(xx) + 1) : xx => { const t = Math.max(0, Math.min(1, Math.abs(xx - mx) / (span / 2))); return th * (1 - 0.32 * t * t); };
         const scal = xx => { for (const t of teethL) if (xx >= t.x && xx <= t.x + t.w) { const u = (xx - t.x) / t.w; return 0.07 * (1 - Math.sin(Math.PI * u)); } return 0; };
         const N = 36;
         c.beginPath(); c.moveTo(x0, upY(x0) - 1);
         for (let q = 0; q <= N; q++) { const xx = x0 + span * q / N; c.lineTo(xx, upY(xx) - 1); }
         for (let q = N; q >= 0; q--) { const xx = x0 + span * q / N, L = lenAt(xx); c.lineTo(xx, upY(xx) - 1 + L * (1 - scal(xx))); }
         c.closePath();
-        const y0 = upY(mx) - 1, tc = pal.teeth;
+        const y0 = upY(tmx) - 1, tc = pal.teeth;
         const lg = c.createLinearGradient(0, y0, 0, y0 + th);
         lg.addColorStop(0, rgb(tc.map(v => Math.round(v * 0.86)))); lg.addColorStop(0.5, rgb(tc)); lg.addColorStop(1, rgb(tc.map(v => Math.round(v * 0.93))));
         c.fillStyle = lg; c.fill();
@@ -1155,12 +1201,14 @@
         // (revised: a flat light row along the lower lip read as a straight, swollen lower lip — the lower incisors now show
         // only on a wide-open vowel, small, in shadow, and their edge follows the lip's own curve)
         // (1.46, full body: her lower teeth show on most open words — a row about two-thirds the upper's, lit, from mid openings)
-        const lt = this.body ? Math.min(th * 0.7, open * BODY_CAL.lower_teeth) * smooth(0.025 * F, 0.05 * F, extra)
+        const lt = J ? Math.max(0, loY(tmx) + 1 - Math.max(J.lo(tmx), J.up(tmx)))      // (behind the upper row: only what shows below its edge)
+          : this.body ? Math.min(th * 0.7, open * BODY_CAL.lower_teeth) * smooth(0.025 * F, 0.05 * F, extra)
           : Math.min(th * 0.45, open * 0.1) * smooth(0.05 * F, 0.085 * F, extra);
         if (lt > 0.8) {
-          const lspan = span * (this.body ? 0.62 : 0.5), lx0 = mx - lspan / 2, N2 = 24, lk = this.body ? [0.97, 0.78] : [0.72, 0.45];
+          const lspan = span * (J ? 0.8 : this.body ? 0.62 : 0.5), lx0 = tmx - lspan / 2, N2 = 24, lk = this.body || J ? [0.97, 0.78] : [0.72, 0.45];
           c.beginPath(); c.moveTo(lx0, loY(lx0) + 1);
-          for (let q = 0; q <= N2; q++) { const xx = lx0 + lspan * q / N2, u = Math.abs(xx - mx) / (lspan / 2); c.lineTo(xx, loY(xx) + 1 - lt * (1 - 0.35 * u * u)); }
+          for (let q = 0; q <= N2; q++) { const xx = lx0 + lspan * q / N2, u = Math.abs(xx - tmx) / (lspan / 2);
+            c.lineTo(xx, J ? Math.min(loY(xx) + 1, Math.max(J.lo(xx), J.up(xx)) + 0.15 * lt * u * u) : loY(xx) + 1 - lt * (1 - 0.35 * u * u)); }
           c.lineTo(lx0 + lspan, loY(lx0 + lspan) + 1); c.closePath();
           const lg2 = c.createLinearGradient(0, lowC - lt, 0, lowC);
           lg2.addColorStop(0, rgb(pal.teeth.map(v => Math.round(v * lk[0])))); lg2.addColorStop(1, rgb(pal.teeth.map(v => Math.round(v * lk[1]))));

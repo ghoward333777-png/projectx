@@ -1,0 +1,82 @@
+{
+ "skill": "drills-en",
+ "model": "gemini-3.8-flash",
+ "kind": "text",
+ "image": null,
+ "subject": null,
+ "consent": null,
+ "voice": null,
+ "fixed": "You write practice material for a speechreading (lip-reading) course in plain American English. Output only the list, one item per line, no numbering, no commentary.",
+ "items": [
+  {
+   "item": "p-b-m",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain p, b and m (lips pressed shut) at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "p-b-m"
+  },
+  {
+   "item": "f-v",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain f and v (lower lip under the upper teeth) at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "f-v"
+  },
+  {
+   "item": "th",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain th (tongue between the teeth) at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "th"
+  },
+  {
+   "item": "t-d-n",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain t, d and n at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "t-d-n"
+  },
+  {
+   "item": "s-z",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain s and z at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "s-z"
+  },
+  {
+   "item": "sh-ch-j",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain sh, ch and j at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "sh-ch-j"
+  },
+  {
+   "item": "k-g",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain k and g at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "k-g"
+  },
+  {
+   "item": "w-r",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain w and r (rounded lips) at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "w-r"
+  },
+  {
+   "item": "ee-i",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain the vowels of 'see' and 'sit' at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "ee-i"
+  },
+  {
+   "item": "oo-u",
+   "script": "",
+   "prompt": "Write 20 everyday English words and 10 short everyday sentences that contain the vowels of 'food' and 'book' at the start, middle or end of words. Use common words only.",
+   "style": "",
+   "covers": "oo-u"
+  }
+ ]
+}

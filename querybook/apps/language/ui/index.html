@@ -441,6 +441,10 @@ tr.lc-active td { background: #f0fdf4; }
         <p class="small">Measures lip-reading by this engine against lip-reading v1 — on synthetic speakers (each with their own mouth shapes, speed and tracking noise) and on your own held-out recordings from the reservoir.</p>
         <div class="row"><button class="btn quiet" id="vse-bench">📏 Run the benchmark</button></div>
         <div id="vse-bench-out"></div>
+        <h3>Lip-reading curriculum</h3>
+        <p class="small">The lip reader examined like a speechreading course examines a learner, on real clips of a person saying the speech test script: single mouth shapes, look-alike consonants, words in context, sentences at natural pace, harder conditions. Scored stage by stage — the exact word, and the right look-alike set (pat / bat / mat look the same on the lips).</p>
+        <div class="row"><button class="btn quiet" id="vse-curr">🎓 Run the curriculum test</button></div>
+        <div id="vse-curr-out"></div>
       </div>
       <div class="card" id="sc-card">
         <h2>Object scan — recognize, follow and zoom <span class="small muted">— for ingestion and questions</span></h2>
@@ -808,6 +812,7 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="avatars.js"></script>
 <script src="review.js"></script>
 <script src="bench.js"></script>
+<script src="motionlib.js"></script>
 <script src="qualitylab.js"></script>
 <script src="transcribe.js"></script>
 </body>

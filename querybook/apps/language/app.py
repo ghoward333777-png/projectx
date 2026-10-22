@@ -23,6 +23,10 @@ import qbdevices
 import qbagents
 import qbengineer
 import qbselfknow
+import qbexemplar
+import qbcampaign
+import motionlib
+import curriculum
 import harvest
 import lab
 import speech
@@ -44,7 +48,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.46.1"
+VERSION = "1.47.0"
 PORT = 8101
 program_dir = HERE
 
@@ -108,8 +112,10 @@ class App:
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
+        self.motionlib = motionlib.Libraries(self.avatars.folder)                        # speech motion libraries (1.47): her own mouth movement
+        self.curriculum = curriculum.Curriculum(self.folder, os.path.join(HERE, "data", "lipread-curriculum.json"))   # lip-reading curriculum test
         try:
-            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))           # the bundled faces, ready to talk
+            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"), self._starter_motion)   # the bundled faces, ready to talk
         except Exception as e:
             self.log("starter avatars not installed: %s" % e)
         self.qlab = qualitylab.QualityLab(self.folder, lambda: getattr(getattr(self, "commons", None), "approvals", None), HERE, self.log)   # Quality Lab
@@ -128,6 +134,8 @@ class App:
         qbagents.attach(self, APP_ID)
         qbengineer.attach(self, APP_ID, HERE)
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
+        qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
+        qbcampaign.attach(self, HERE)                         # harvest campaigns, the master On/Off, the Google exemplar tools
         try:
             self.store.backup("startup")
         except Exception as e:
@@ -154,6 +162,31 @@ class App:
                 self.store.activity(self.BUILD_JOB, "auto", "started automatically at launch (languages not built yet)")
             except core.UserError:
                 pass
+
+    def _with_mouth(self, fn, avatar_id):
+        """a lip-sync job that also carries the avatar's own speech movement, when it has a speech motion library"""
+        def run(progress):
+            r = fn(progress)
+            try:
+                m = self.motionlib.motion_for(avatar_id)
+                if m is not None:
+                    ph = r.get("phonemes") or []
+                    ph = ph.get("phonemes", []) if isinstance(ph, dict) else ph
+                    r["mouth"] = m.synthesize(ph, float(r.get("duration") or 0) or max([float(x["end_time"]) for x in ph] + [0]) + 0.3)
+            except Exception as e:
+                self.log("speech motion not used: %r" % e)
+            return r
+        return run
+
+    def _starter_motion(self, aid, spec, folder):
+        """a starter avatar that comes with its person's speech motion library: install it and speak with it"""
+        src = os.path.join(folder, os.path.basename(spec["file"]))
+        if not os.path.isfile(src):
+            return
+        if not os.path.isfile(self.motionlib.path(spec["person"])):
+            self.motionlib.install(src, spec["person"])
+        if str(int(aid)) not in self.motionlib.assignments():
+            self.motionlib.assign(aid, spec["person"])
 
     def _cli_build(self, args):
         """python app.py build [--again]: build every language in this window, with progress."""
@@ -1190,7 +1223,7 @@ class App:
                                      v.get("model") or "", None, measure=False, quiet_label="avatar %s: " % av["name"])
             with open(self.speech.audio_path(g["audio"]), "rb") as f:
                 wav = f.read()
-            job = self.vse.submit("lip_sync", self.vse.lip_sync_job(wav, text, prof["lang"], None, 30, None, False))
+            job = self.vse.submit("lip_sync", self._with_mouth(self.vse.lip_sync_job(wav, text, prof["lang"], None, 30, None, False), av["id"]))
             return {"audio": g["audio"], "job": job, "label": av["label"], "engine_used": g["summary"]["engine_used"]}
 
         @a.post("/api/vse/lip_sync")
@@ -1223,13 +1256,70 @@ class App:
                 tr = vse.timing_from_text(text, p.get("lang") or "en", self.lab)
                 return self.vse.submit("lip_sync", lambda prog: dict(vse.lip_sync(tr, None, p.get("emotion"), int(p.get("fps") or 30), seed=text),
                                                                       note="timed from the text (no audio)"))
-            return self.vse.submit("lip_sync", self.vse.lip_sync_job(wav, text, p.get("lang") or "en", p.get("word_times"), int(p.get("fps") or 30),
-                                                                     p.get("emotion"), p.get("personal", True) not in (False, "false")))
+            return self.vse.submit("lip_sync", self._with_mouth(self.vse.lip_sync_job(wav, text, p.get("lang") or "en", p.get("word_times"), int(p.get("fps") or 30),
+                                                                     p.get("emotion"), p.get("personal", True) not in (False, "false")), p.get("avatar")))
+
+        # ---- speech motion libraries (1.47): a person's own mouth movement, sound by sound, from exemplar clips
+        @a.get("/api/motionlib")
+        def ml_list(p):
+            return self.motionlib.list()
+
+        @a.post("/api/motionlib/clip")
+        def ml_clip(p):
+            """one exemplar clip, tracked in the page (478 points per frame, in pixels) with its own sounds: analysed here"""
+            frames = [None if not f else [(float(q[0]), float(q[1])) for q in f] for f in (p.get("frames") or [])]
+            if len(frames) < 12 or sum(1 for f in frames if f and len(f) >= 468) < len(frames) // 2:
+                raise core.UserError("Too few tracked frames in this clip (the face must be in view).")
+            ph = p.get("phonemes") or []
+            ph = ph.get("phonemes", []) if isinstance(ph, dict) else ph
+            try:
+                clip = motionlib.analyse_clip(frames, int(p.get("fps") or 24), ph, p.get("exemplar"), p.get("script") or "")
+                return self.motionlib.add_clip(p.get("person"), clip)
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/motionlib/build")
+        def ml_build(p):
+            try:
+                return self.motionlib.build(p.get("person"), p.get("note") or "")
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/motionlib/assign")
+        def ml_assign(p):
+            """which avatars speak with whose movement: it changes how an avatar moves, so the admin decides"""
+            ap = getattr(getattr(self, "commons", None), "approvals", None)
+            if ap is None:
+                raise core.UserError("The admin approvals are not available.")
+            ap._require(p.get("passphrase") or "")
+            try:
+                return self.motionlib.assign(int(p.get("avatar")), p.get("person") or None)
+            except ValueError as e:
+                raise core.UserError(str(e))
 
         @a.post("/api/vse/lip_read")
         def vse_lip_read(p):
             words = [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w] if isinstance(p.get("words"), str) else list(p.get("words") or [])
             return self.vse.submit("lip_read", self.vse.lip_read_job(p.get("frames") or [], p.get("lang") or "en", words, p.get("script") or ""))
+
+        @a.post("/api/vse/curriculum/clip")
+        def vse_curr_clip(p):
+            """an exemplar clip as the lip reader measures it (lip gap and mouth blendshapes per frame), for the curriculum"""
+            try:
+                return self.curriculum.add(p.get("exemplar"), str(p.get("item") or ""), p.get("script") or "", p.get("frames") or [], p.get("skill") or "")
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.get("/api/vse/curriculum")
+        def vse_curr(p):
+            cs = self.curriculum.clips()
+            return {"stages": curriculum.STAGES, "clips": [{"item": c["item"], "stage": curriculum.STAGE_OF.get(c["item"]), "source": c.get("source"),
+                                                            "frames": len(c["frames"]), "script": c["script"]} for c in cs]}
+
+        @a.post("/api/vse/curriculum/run")
+        def vse_curr_run(p):
+            """the lip reader through the five stages of the curriculum (a job to poll): scored stage by stage"""
+            return self.vse.submit("curriculum", lambda prog: self.curriculum.run(self.lab, self.vse._learned(), self.vse._targets(), prog))
 
         @a.post("/api/vse/benchmark")
         def vse_benchmark(p):
@@ -1886,6 +1976,28 @@ def selftest():
                 "function bnSection" in bench and "bench.js" in idx and "bnSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read()
                 and tg("O", "gap") < 0.65 * tg("aa", "gap") and tg("RR", "gap") < 0.3 * tg("aa", "gap") and tg("O", "mouthPucker") >= 0.65
                 and qualitylab.BOUNDS["rest_round"] == (0.0, 0.6) and qualitylab.DEFAULTS["rest_round"] == 0.0, "targets")
+        # 1.47: her own speech movement (speech motion library from exemplar clips), teeth by the jaw, the lip-reading curriculum
+        c.check("speech motion library (1.47): analysis, Viterbi joining and synthesis are deterministic and correct", all(g for _, g in motionlib.self_test()),
+                [n for n, g in motionlib.self_test() if not g])
+        c.check("lip-reading curriculum (1.47): five stages, look-alike credit", all(g for _, g in curriculum.self_test()) and len(curriculum.STAGES) == 5)
+        mlj = open(os.path.join(HERE, "ui", "motionlib.js"), encoding="utf-8").read()
+        c.check("speech motion library is wired: Avatar studio builds it from exemplars, the renderer plays it, teeth follow the jaw",
+                "motionlib.js" in idx and "mlSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read() and "function mlAnalyse" in mlj
+                and all(x in af for x in ("_mouthAt(track, t)", "_jawTeeth()", "MOUTH_CH")) and ("POST", "/api/motionlib/clip") in app.api.routes
+                and ("POST", "/api/motionlib/assign") in app.api.routes and ("POST", "/api/vse/curriculum/run") in app.api.routes, "routes")
+        pams = [a for a in st if a["name"].startswith("Pamela")]
+        asg = app.motionlib.assignments()
+        mo = app.motionlib.motion_for(pams[0]["id"]) if pams else None
+        c.check("Pamela's avatars speak with her own movement out of the box (bundled library from her exemplar clips)",
+                len(pams) == 4 and all(asg.get(str(a["id"])) == "pamela" for a in pams) and mo is not None and len(mo.lib["clips"]) >= 40, (len(pams), asg))
+        if mo is not None:
+            tr = vse.timing_from_text("Who knew the blue moon would move through the room so soon?", "en", app.lab)
+            ph = [{"viseme": v["v"], "start_time": v["start"], "end_time": v["end"]} for v in tr["visemes"]]
+            sy = mo.synthesize(ph, tr["duration"])
+            c.check("her movement covers new speech: every sound finds a unit of her own, many joined as she said them",
+                    sy["units"]["covered"] == sy["units"]["sounds"] and sy["units"]["joined_as_recorded"] >= 3 and sy == mo.synthesize(ph, tr["duration"]), sy["units"])
+        cl = app.curriculum.clips()
+        c.check("the lip-reading curriculum ships with her clips for all five stages", len(cl) >= 40 and {curriculum.STAGE_OF[x["item"]] for x in cl} == {1, 2, 3, 4, 5}, len(cl))
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)

@@ -258,7 +258,8 @@ async function rvStudio(el, a) {
   const host = document.createElement("div"); host.className = "note small"; host.id = "rv-studio";
   const old = $("#rv-studio", el); if (old) old.remove();
   $("#av-info", el).appendChild(host);
-  host.innerHTML = '<b>Delivery review</b> — flags, reference clips and learning. <div data-rvbench></div><div data-rvref></div><div data-rvflags></div>';
+  host.innerHTML = '<b>Delivery review</b> — flags, reference clips and learning. <div data-rvmotion></div><div data-rvbench></div><div data-rvref></div><div data-rvflags></div>';
+  if (window.mlSection) mlSection(host.querySelector("[data-rvmotion]"), a);
   if (window.bnSection) bnSection(host.querySelector("[data-rvbench]"), a);
   await rvRefSection(host.querySelector("[data-rvref]"), a);
   await rvFlagSection(host.querySelector("[data-rvflags]"), a);
@@ -295,8 +296,8 @@ async function rvReproduce(out, a, file, words, note) {
   note("Taking the clip's own voice…");
   const b64 = await rvWav(file);                             // the clip's own sound as WAV (data URL)
   note("Lip sync of the clip's voice…");
-  const job = await api("/api/vse/lip_sync", { audio_b64: b64, text: words, lang: "en" }), res = await avWaitJob(job.job_id, note);
-  const track = { visemes: [], motion: res.motion, words: res.words };
+  const job = await api("/api/vse/lip_sync", { audio_b64: b64, text: words, lang: "en", avatar: a.id }), res = await avWaitJob(job.job_id, note);
+  const track = { visemes: [], motion: res.motion, words: res.words, mouth: res.mouth };
   const A = await rvMeasureVideo(await rvPlayable(file), note);
   out.innerHTML = '<div class="row" style="align-items:flex-start"><div style="flex:1;min-width:240px"><b class="small">Original</b><div data-rvorig></div></div>' +
     '<div style="flex:1;min-width:240px"><b class="small">QueryBook reproduction (same voice, same words)</b><div data-rvours style="max-width:420px"></div></div></div><div data-rvbar></div><div data-rvtab></div>';

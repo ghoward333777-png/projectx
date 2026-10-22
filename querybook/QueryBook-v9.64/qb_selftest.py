@@ -97,7 +97,8 @@ def run_all(store_dir=None):
         return fn
     for modname, label in (("qb_seclog", "tamper-evident log"), ("qb_shield", "agent gateway & deception"),
                            ("qb_mcp", "MCP via gateway"), ("qb_openclaw", "Open Claw ingestion"),
-                           ("qb_nft", "NFT crypto (offline vectors)"), ("qb_selfknow", "self-knowledge layer")):
+                           ("qb_nft", "NFT crypto (offline vectors)"), ("qb_selfknow", "self-knowledge layer"),
+                           ("qb_campaign", "harvest campaigns and sources")):
         checks.append(_check(label[0].upper() + label[1:], _module_qc(modname, label)))
 
     if store_dir and os.path.isdir(store_dir):

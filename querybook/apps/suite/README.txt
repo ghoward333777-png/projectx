@@ -19,6 +19,20 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Harvesting (all applications: STEM and History 1.13.0, Control Panel 1.2.0)
+    * Master switch: one ON/OFF button for all harvesting, at the top of the Harvesting page.
+    * Harvest campaigns: name a selection of applications, online harvesters and Google tools, start and stop it together,
+      and see its progress (new facts, exemplar takes) since it started.
+    * Google tools: Gemini Omni, Veo, TTS, Nano Banana, drill texts and second-opinion transcripts - each switched on
+      separately by the admin, used only for examples to learn from (never facts), run by the separate exemplar generator
+      (extras/exemplar-generator), within a daily budget, on the paid tier.
+    * Nine more open sources: battles, treaties, rivers, mountains, minerals, writing systems (Wikidata, CC0), earthquakes
+      since 1900 (USGS), executive orders and proclamations (Federal Register), compound properties (PubChem).
+    * Exemplars tab in the Control Panel: approve the best take of each item; start or stop the exemplar generator.
+  Language Builder (1.47.0)
+    * Speech motion library: Pamela's avatars now speak with her own recorded mouth movement, sound by sound, from her
+      exemplar clips (Avatar studio -> Speech motion library to build one for another person). Teeth follow the jaw.
+    * Lip-reading curriculum test (Visual Speech Engine): five stages, scored stage by stage.
   All four applications - the Self-Knowledge Layer (Control Panel 1.1.0, STEM and History 1.12.0, Language 1.46.1)
     * QueryBook describes itself accurately, with sources: ask "are you neuromorphic?", "do you improve yourself?" or
       "what is section 21?" and it answers built, partly built, specified (not yet built) or not planned - with the

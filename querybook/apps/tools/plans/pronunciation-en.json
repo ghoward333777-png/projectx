@@ -1,0 +1,462 @@
+{
+ "skill": "pronunciation-en",
+ "model": "gemini-3.8-flash-tts",
+ "kind": "audio",
+ "image": null,
+ "subject": null,
+ "consent": "stock synthetic voice (no person)",
+ "voice": "Kore",
+ "fixed": "",
+ "items": [
+  {
+   "item": "w-see",
+   "script": "see",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-me",
+   "script": "me",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-three",
+   "script": "three",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-green",
+   "script": "green",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-you",
+   "script": "you",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-who",
+   "script": "who",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-food",
+   "script": "food",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-moon",
+   "script": "moon",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-blue",
+   "script": "blue",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-go",
+   "script": "go",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-show",
+   "script": "show",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-home",
+   "script": "home",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-road",
+   "script": "road",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-far",
+   "script": "far",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-father",
+   "script": "father",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-calm",
+   "script": "calm",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-hot",
+   "script": "hot",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-cat",
+   "script": "cat",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-man",
+   "script": "man",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-bad",
+   "script": "bad",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-bed",
+   "script": "bed",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-red",
+   "script": "red",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-said",
+   "script": "said",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-sit",
+   "script": "sit",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-big",
+   "script": "big",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-fish",
+   "script": "fish",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-cup",
+   "script": "cup",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-love",
+   "script": "love",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-sun",
+   "script": "sun",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-book",
+   "script": "book",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-good",
+   "script": "good",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-foot",
+   "script": "foot",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-bird",
+   "script": "bird",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-her",
+   "script": "her",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-word",
+   "script": "word",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-thought",
+   "script": "thought",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-saw",
+   "script": "saw",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-talk",
+   "script": "talk",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-day",
+   "script": "day",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-rain",
+   "script": "rain",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-make",
+   "script": "make",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-my",
+   "script": "my",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-time",
+   "script": "time",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-light",
+   "script": "light",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-now",
+   "script": "now",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-how",
+   "script": "how",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-house",
+   "script": "house",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-boy",
+   "script": "boy",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-coin",
+   "script": "coin",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-voice",
+   "script": "voice",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-pea",
+   "script": "pea",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-bee",
+   "script": "bee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-fee",
+   "script": "fee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-vee",
+   "script": "vee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-theme",
+   "script": "theme",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-these",
+   "script": "these",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-tea",
+   "script": "tea",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-dee",
+   "script": "dee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-knee",
+   "script": "knee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-sea",
+   "script": "sea",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-zee",
+   "script": "zee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-she",
+   "script": "she",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-cheese",
+   "script": "cheese",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-jeep",
+   "script": "jeep",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-measure",
+   "script": "measure",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-key",
+   "script": "key",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-geese",
+   "script": "geese",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-lee",
+   "script": "lee",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-real",
+   "script": "real",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-we",
+   "script": "we",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-ye",
+   "script": "ye",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-he",
+   "script": "he",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-sing",
+   "script": "sing",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-thing",
+   "script": "thing",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  },
+  {
+   "item": "w-young",
+   "script": "young",
+   "style": "slowly and clearly",
+   "covers": "English word"
+  }
+ ]
+}

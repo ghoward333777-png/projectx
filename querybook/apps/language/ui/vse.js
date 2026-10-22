@@ -143,8 +143,28 @@ async function vseBench() {
   finally { buttonEnd(btn, ok); }
 }
 
+// ---------------------------------------------------------------- lip-reading curriculum (1.47): five stages, scored stage by stage
+async function vseCurriculum() {
+  const btn = $("#vse-curr"), out = $("#vse-curr-out"); buttonStart(btn);
+  let ok = false;
+  try {
+    const r = await vseJob("/api/vse/curriculum/run", {}, p => { out.innerHTML = '<p class="small">Reading… ' + (p.done || 0) + " of " + (p.total || "?") + " · " + esc(p.message || "") + "</p>"; });
+    const pc = x => x === null || x === undefined ? "—" : Math.round(100 * x) + "%";
+    let h = '<table class="tbl small"><tr><th>Stage</th><th>Clips</th><th>Told beforehand</th><th>Exact word</th><th>Right look-alike set</th><th>Says when words look alike</th></tr>' +
+      r.stages.map(s => "<tr" + (r.weakest_stage && r.weakest_stage.stage === s.stage ? ' style="background:#fff4e5"' : "") + "><td>" + s.stage + ". " + esc(s.name) +
+        '<div class="muted">' + esc(s.about) + "</div></td><td>" + s.clips + "</td><td>" + esc(s.told) + "</td><td>" + pc(s.strict) + "</td><td>" + pc(s.look_alike) + "</td><td>" + pc(s.alternatives_shown) + "</td></tr>").join("") + "</table>";
+    if (r.weakest_stage) h += '<p class="small">Weakest stage: <b>' + r.weakest_stage.stage + ". " + esc(r.weakest_stage.name) + "</b> — the place to work first.</p>";
+    h += '<details class="small"><summary>Every clip</summary><table class="tbl small"><tr><th>Clip</th><th>Said</th><th>Read</th><th>Exact</th><th>Look-alike</th></tr>' +
+      r.items.map(i => "<tr><td>" + i.item + "</td><td>" + esc(i.script) + "</td><td>" + esc(i.text) + "</td><td>" + pc(i.strict) + "</td><td>" + pc(i.look_alike) + "</td></tr>").join("") + "</table></details>";
+    out.innerHTML = h + '<p class="small muted">' + r.clips + " clips · " + esc(r.engine) + " · the same clips always give the same scores.</p>";
+    ok = true;
+  } catch (e) { out.innerHTML = '<div class="note bad">' + esc(e.message) + "</div>"; }
+  finally { buttonEnd(btn, ok); }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   if (!$("#vse-card")) return;
+  if ($("#vse-curr")) $("#vse-curr").onclick = vseCurriculum;
   $("#vse-go").onclick = vseLipSync;
   $("#vse-play").onclick = vsePlay;
   $("#vse-bench").onclick = vseBench;

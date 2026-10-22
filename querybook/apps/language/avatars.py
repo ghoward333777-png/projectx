@@ -107,6 +107,7 @@ class Library:
         self.folder = os.path.join(app_folder, "avatars")
         os.makedirs(self.folder, exist_ok=True)
         self.store = core.Store(self.folder, "avatars", SCHEMA, log)
+        self.log = log
 
     # ---------------------------------------------------------------- adding
     def add(self, data, name=None, source="synthetic", attest=False, tags=None, subject=None, consent=False, filename=None):
@@ -140,7 +141,7 @@ class Library:
             db.execute("UPDATE avatars SET image = ? WHERE id = ?", (fn, aid))
         return {"id": aid, "name": name, "duplicate": False}
 
-    def install_starter(self, folder):
+    def install_starter(self, folder, on_speech_motion=None):
         """Install the bundled starter faces (already analysed) once; avatars the admin later deletes stay deleted."""
         mf = os.path.join(folder, "manifest.json")
         if not os.path.isfile(mf):
@@ -174,6 +175,12 @@ class Library:
                 have = {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}
                 if c["clip"] not in have:
                     self.reference_add(r["id"], c["clip"], c["stats"], c["frames"])
+            if a.get("speech_motion") and on_speech_motion:        # the person's own speech movement (Language 1.47)
+                try:
+                    on_speech_motion(r["id"], a["speech_motion"], folder)
+                except (OSError, ValueError) as e:
+                    if self.log:
+                        self.log("speech motion not installed for %s: %s" % (a.get("name"), e))
             moves = ([{"slug": "turn-around", "dir": a["turn"]}] if a.get("turn") else []) + list(a.get("motions") or [])
             for mv in moves:                                     # the person's recorded moves (also added to earlier installs)
                 src = os.path.join(folder, os.path.basename(mv["dir"]))

@@ -107,8 +107,8 @@ async function bnSection(box, a) {
 
 async function bnBuild(out, a, file, words, fps, note) {
   note("Taking the clip's own voice…");
-  const job = await api("/api/vse/lip_sync", { audio_b64: await rvWav(file), text: words, lang: "en" }), res = await avWaitJob(job.job_id, note);
-  const track = { visemes: [], motion: res.motion, words: res.words };
+  const job = await api("/api/vse/lip_sync", { audio_b64: await rvWav(file), text: words, lang: "en", avatar: a.id }), res = await avWaitJob(job.job_id, note);
+  const track = { visemes: [], motion: res.motion, words: res.words, mouth: res.mouth };
   const v = document.createElement("video"); v.playsInline = true; v.preload = "auto"; v.src = URL.createObjectURL(await rvPlayable(file));
   await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("this video cannot be played here")); });
   const dur = Math.min(v.duration || 0, 60);

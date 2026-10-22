@@ -35,10 +35,12 @@ import qbcontrol as ctl
 import qbonline as ol
 import assistant
 import qbselfknow
+import qbexemplar
+import qbcampaign
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PORT = 8100
 program_dir = HERE
 
@@ -83,6 +85,10 @@ class Panel:
         self.commons = cm.Commons(commons_folder or cm.commons_folder(self.folder), APP_ID, self.log)
         self.api = core.Api()
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
+        qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
+        qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
+                              lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
+                              lambda: set(ol.HARVESTERS), HERE)
         self.seen = {}                      # application → was it running at the last check
         self.stopping = set()               # stopped from the panel (not an unexpected stop)
         self.procs = {}

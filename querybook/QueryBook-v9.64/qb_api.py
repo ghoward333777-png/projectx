@@ -433,6 +433,14 @@ def _run_harvest(count, domain="mathematics"):
                    HARVEST.get("error") or ("stopped; %s facts this run" % HARVEST.get("done", 0)))
         qb_keepawake.release("harvest")   # allow the PC to sleep again
 
+# ---- harvest campaigns, the master On/Off, open online sources, Google exemplar tools (qb_campaign.py) ----
+_CAMP = []
+def campaigns():
+    if not _CAMP:
+        import qb_campaign
+        _CAMP.append(qb_campaign.Campaigns(DATA_DIR, harvest_busy=lambda: HARVEST["running"], log=qb_log.log))
+    return _CAMP[0]
+
 def start_harvest(count, domain="mathematics"):
     with _HLOCK:
         if HARVEST["running"]:
@@ -545,6 +553,7 @@ class H(BaseHTTPRequestHandler):
                           "/api/language/custom_voice", "/api/language/dialects",
                           "/api/language/dialect_detect", "/api/mirror", "/api/help") \
                 and not u.path.startswith("/api/director/") \
+                and not u.path.startswith(("/api/campaigns/", "/api/gtools/", "/api/sources/")) and u.path != "/api/harvest/master" \
                 and not u.path.startswith("/api/scene/") \
                 and not u.path.startswith("/api/lil/") \
                 and not u.path.startswith("/api/pil/") \
@@ -1171,6 +1180,34 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(502, {"error": "language ingest failed: " + str(e)})
             return self._send(200 if "error" not in res else 400, res)
+        if u.path in ("/api/campaigns/save", "/api/campaigns/start", "/api/campaigns/stop", "/api/campaigns/delete", "/api/harvest/master",
+                      "/api/sources/switch", "/api/gtools/switch", "/api/gtools/runner", "/api/gtools/key"):
+            C = campaigns()
+            try:
+                if u.path == "/api/campaigns/save":
+                    r = C.save_campaign(body)
+                elif u.path == "/api/campaigns/start":
+                    r = C.start_campaign(body.get("id"))
+                elif u.path == "/api/campaigns/stop":
+                    r = C.stop_campaign(body.get("id"))
+                elif u.path == "/api/campaigns/delete":
+                    r = C.delete_campaign(body.get("id"))
+                elif u.path == "/api/harvest/master":
+                    on = body.get("on") in (True, "true", "on", 1)
+                    if not on:
+                        HARVEST["stop"] = True                    # the master OFF stops the dashboard's own harvest too
+                    r = C.master(on)
+                elif u.path == "/api/sources/switch":
+                    r = C.switch_source(body.get("name"), body.get("on") in (True, "true", "on", 1))
+                elif u.path == "/api/gtools/switch":
+                    r = C.switch_tool(body.get("id"), body.get("on") in (True, "true", "on", 1), body.get("plan"), bool(body.get("accept_terms")))
+                elif u.path == "/api/gtools/key":
+                    r = C.save_key(body.get("key") or "", body.get("service") or "gemini")
+                else:
+                    r = C.runner(body.get("action"))
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
+            return self._send(200, r)
         if u.path == "/api/harvest":
             if body.get("stop"):
                 HARVEST["stop"] = True
@@ -1517,6 +1554,8 @@ class H(BaseHTTPRequestHandler):
                 elif u.path == "/api/features":
                     import qb_features
                     self._send(200, qb_features.catalog())
+                elif u.path == "/api/campaigns":
+                    self._send(200, campaigns().view())
                 elif u.path == "/api/self":
                     # Self-Knowledge Layer (Overview §56): the labelled, sourced self-description
                     import qb_selfknow, qb_features

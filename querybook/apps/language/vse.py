@@ -808,7 +808,7 @@ def decode(post, lex, beam=30.0):
     return words[::-1], best
 
 
-def lip_read(frames, lang="en", words=(), script="", lab=None, learned=None, targets=None, fps=FPS_READ):
+def lip_read(frames, lang="en", words=(), script="", lab=None, learned=None, targets=None, fps=FPS_READ, vocab_size=1500):
     """Read the lips. With a script: force-align it and score each word; without: decode freely."""
     ts, vs = frame_series(frames, fps)
     if len(vs) < 5:
@@ -821,7 +821,7 @@ def lip_read(frames, lang="en", words=(), script="", lab=None, learned=None, tar
            "timeline": [{"class": c, "start": round(ts[i], 2)} for i, c in enumerate(best_cls) if i == 0 or c != best_cls[i - 1]]}
     if script.strip():
         out["script"] = align_script(post, ts, script, lang, lab)
-    lex = lexicon(lang, tuple(w.lower() for w in words), lab)
+    lex = lexicon(lang, tuple(w.lower() for w in words), lab, size=vocab_size)      # vocab_size=0: only the expected words (a closed set)
     segs = speech_segments(best_cls, fps)
     read = []
     for a, b in segs[:20]:
