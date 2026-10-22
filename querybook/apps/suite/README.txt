@@ -33,6 +33,22 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.43.0)
+    * Fix: on full-body avatars the background and the whole region above the face moved with no reason (up to a quarter
+      of a face height). The person's outline is now found in the photo and everything outside it stays perfectly still;
+      the head and hair move only with the head's own turn, never with the brows. Also fixed: a jump at the very first
+      frame, small eye folds during blinks, and smears at the cheekbones.
+    * Check delivery (under every talking face): every frame measured - background, forehead and head region, hair,
+      jumps, lips, smears - with a timeline and a box on the picture for each problem, and a comparison with the
+      person's own original clips.
+    * Flag a problem: pause, drag a box around what is wrong, say why. Each flag keeps the exact moment and a picture;
+      Avatar studio -> Flags re-checks them, records fixed / still wrong, and "Improve from flags" proposes a better
+      calibration to the Quality Lab (the admin approves it).
+    * Reference clips and Reproduce & compare: add the original creator's clips of the person speaking; the app makes
+      her say the same words with the same voice, plays both side by side and compares them word by word.
+      Pamela ships with her two Gemini speaking clips.
+    * Upper lip arches up in the middle as the mouth opens (it lifted as a block); brows move with the voice all through
+      speech, as in her original clips.
   Language Builder (1.42.0)
     * Fix: the lower lip's edge stayed straight (looking swollen) while the upper lip curved. The lower teeth and the
       tongue showed as a flat light band along the lower lip; now the lower teeth appear only on a wide-open vowel, small

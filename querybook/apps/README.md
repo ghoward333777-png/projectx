@@ -381,6 +381,26 @@ the lips grow fuller as they push forward; spread vowels thin the lips slightly.
 r shape; the short *oo* of book is lightly rounded (a lax vowel's strength `s` on its viseme). The speaking smile relaxes
 while the lips round. Teeth are drawn tooth by tooth; on wide-open vowels the tongue's top surface shows.
 
+**Delivery review (1.43): check, flag, compare with her original clips, learn.** (`ui/review.js`, `DepthFace.deliveryCheck`)
+* *Check delivery* (under every talking face) replays the delivery exactly as it plays and measures every frame in the
+  portrait's own pixels: the background outside her silhouette (must not move), the forehead and head region beyond the
+  head's own turn, the hair against the head's rigid motion, sudden jumps, the lips (a straight lower edge, swelling,
+  exaggerated pucker or spread) and folds. Problems become time spans with a box on the picture, a timeline and *Keep as flag*.
+* *Flag a problem*: pause, drag a box around what is wrong, pick a reason. The flag keeps the exact moment (all 52
+  channels, head pose, time), the box and a picture; Avatar studio → Flags re-checks it under the current renderer
+  (measured where the reason is measurable, re-drawn always) and keeps its history (fixed / still wrong / won't fix).
+* *Reference clips*: videos of the person speaking from her original creator, read by the same face tracker
+  (brows, blinks, head turns/nods/tilts, mouth opening, speaking smile, the upper lip's share of the opening).
+  Pamela ships with her two Gemini speaking clips. Every check compares the delivery with them.
+* *Reproduce & compare*: a reference clip's own voice and words (Google Speech-to-Text, or typed) → our lip sync → her
+  face, played in step beside the original, both read by the tracker, compared for the whole clip and **word by word**
+  (opening, narrowest, widest, how the lips share the opening), worst words first.
+* *Improve from flags*: a coordinate search over the calibration (brows, head, rounding, spread, jaw, upper-lip arch,
+  closure, sway, breathing) scored on every open measurable flag; the mouth-pose checks must not get worse. The best set
+  goes to the Quality Lab as a candidate — the admin approves it there.
+* Silhouette: MediaPipe's selfie segmenter (bundled, Apache-2.0) outlines the person once per portrait; points outside
+  are pinned, points along the edge keep it crisp, and body and head movement is scaled by how much a point is hers.
+
 **Moves: a motion library per full-body avatar.** The turnaround is one move among many. *Avatar studio → Moves →
 Find the moves in it* reads any video of the person (one pass: face, outline and camera cuts in every frame), suggests one
 move per camera shot, and lets you name each, set its times, the words that start it, and its camera: *still camera*

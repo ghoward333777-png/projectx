@@ -319,6 +319,7 @@ async function avSelect(el, id) {
   if (ft) $("#av-info", el).insertAdjacentHTML("beforeend", '<div class="small muted">Mouth fit (from this face): mouth ' + ft.mouth_mm + " mm wide, lips " + ft.upper_lip_mm + " / " + ft.lower_lip_mm +
     " mm, opens about " + ft.aa_open_mm + ' mm on "aa", teeth show ≤ ' + ft.teeth_mm.toFixed(1) + " mm · scale from the " + ft.scale_from + "</div>");
   avChannels(el);
+  if (window.rvStudio) rvStudio(el, a).catch(e => console.warn("review:", e));   // flags, reference clips, reproduce & compare, learning
 }
 
 function avChannels(el) {
@@ -362,6 +363,7 @@ async function avSpeak(el) {
   AV.face.attach(a, { visemes: [], motion: res.motion });
   a.play().catch(() => {});
   note.textContent = res.motion.frames.length + " frames × 52 channels at " + res.motion.fps + " fps · voice: " + r.engine_used + " · " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
+  if (window.rvAttach) { const sel = AV.sel; rvAttach($("#av-player", el), AV.face, { avatarId: () => sel.id, text, audio: a }); }
 }
 
 // Play the speech while the faces take turns, so each one can be seen speaking.

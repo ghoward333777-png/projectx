@@ -916,6 +916,60 @@ class App:
         def av_anatomy_set(p):
             return self.avatars.set_anatomy(p.get("id"), p.get("anatomy") or {})
 
+        # the delivery check, flags (with their picture) and the person's reference clips
+        @a.get("/api/avatars/flags")
+        def av_flags(p):
+            return {"flags": self.avatars.flags(p.get("id") or None, p.get("status") or None), "reasons": avatars.FLAG_REASONS}
+
+        @a.post("/api/avatars/flag")
+        def av_flag(p):
+            thumb = None
+            if p.get("thumb"):
+                try:
+                    thumb = base64.b64decode(str(p["thumb"]).split(",")[-1])
+                except Exception:
+                    raise core.UserError("The flag's picture could not be read.")
+                if thumb[:3] != b"\xff\xd8\xff" or len(thumb) > 2_000_000:
+                    raise core.UserError("The flag's picture must be a JPEG under 2 MB.")
+            return self.avatars.flag_add(p.get("id"), p, thumb)
+
+        @a.post("/api/avatars/flag_set")
+        def av_flag_set(p):
+            return self.avatars.flag_set(p.get("flag"), p.get("status") or None, p.get("note"), p.get("recheck"))
+
+        @a.post("/api/avatars/flag_delete")
+        def av_flag_delete(p):
+            return self.avatars.flag_delete(p.get("flag"))
+
+        @a.get("/api/avatars/flag_thumb")
+        def av_flag_thumb(p):
+            f = self.avatars.flag(p.get("flag"))
+            path = self.avatars.flag_thumb(f["avatar_id"], f["id"])
+            if not os.path.isfile(path):
+                raise core.UserError("This flag has no picture.")
+            with open(path, "rb") as fh:
+                return fh.read(), "image/jpeg"
+
+        @a.post("/api/avatars/check")
+        def av_check(p):
+            return self.avatars.check_add(p.get("id"), p)
+
+        @a.get("/api/avatars/checks")
+        def av_checks(p):
+            return {"checks": self.avatars.checks(p.get("id"))}
+
+        @a.get("/api/avatars/reference")
+        def av_reference(p):
+            return {"reference": self.avatars.reference(p.get("id")), "keys": avatars.REFERENCE_KEYS}
+
+        @a.post("/api/avatars/reference")
+        def av_reference_add(p):
+            return {"reference": self.avatars.reference_add(p.get("id"), p.get("clip") or "clip", p.get("stats") or {}, p.get("frames") or 0)}
+
+        @a.post("/api/avatars/reference_remove")
+        def av_reference_remove(p):
+            return {"reference": self.avatars.reference_remove(p.get("id"), p.get("clip") or "")}
+
         @a.get("/api/avatars/motions")
         def av_motions(p):
             return {"motions": self.avatars.motions(p.get("id"))}
@@ -1023,6 +1077,29 @@ class App:
                     raise core.UserError("The conversion failed: " + r.stderr.decode("utf-8", "replace")[-200:])
                 with open(dst, "rb") as f:
                     return {"mp4_b64": base64.b64encode(f.read()).decode("ascii")}
+
+        @a.post("/api/media/convert")
+        def media_convert(p):
+            """A clip the browser cannot decode itself → WAV (its sound, 16 kHz mono) or WebM (picture and sound), with ffmpeg
+            on this computer (Reproduce & compare, reference clips)."""
+            import shutil, subprocess
+            ff = shutil.which("ffmpeg")
+            if not ff:
+                raise core.UserError("This browser cannot read the clip and ffmpeg is not installed on this computer — use Chrome or Edge, or install ffmpeg.")
+            to = p.get("to") if p.get("to") in ("wav", "webm") else "wav"
+            data = base64.b64decode(str(p.get("file_b64") or "").split(",", 1)[-1])
+            if len(data) > 300 * 1024 * 1024:
+                raise core.UserError("The clip is larger than 300 MB.")
+            with tempfile.TemporaryDirectory() as d:
+                src, dst = os.path.join(d, "in"), os.path.join(d, "out." + to)
+                with open(src, "wb") as f:
+                    f.write(data)
+                args = ["-vn", "-ac", "1", "-ar", "16000"] if to == "wav" else ["-c:v", "libvpx-vp9", "-b:v", "3M", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus"]
+                r = subprocess.run([ff, "-y", "-loglevel", "error", "-i", src, "-t", "120"] + args + [dst], capture_output=True, timeout=900)
+                if r.returncode or not os.path.isfile(dst):
+                    raise core.UserError("The conversion failed: " + r.stderr.decode("utf-8", "replace")[-200:])
+                with open(dst, "rb") as f:
+                    return {"b64": ("data:audio/wav;base64," if to == "wav" else "data:video/webm;base64,") + base64.b64encode(f.read()).decode("ascii")}
 
         @a.get("/api/qlab/sources")
         def ql_sources(p):
@@ -1772,6 +1849,26 @@ def selftest():
         st = [a for a in app.avatars.list() if "starter" in a["tags"]]
         c.check("avatars: the 28 bundled starter avatars are installed and analysed, once", len(st) == 28 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
                 and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
+        # delivery review: Pamela ships with her reference clips; flags keep their moment, box and picture; checks are kept
+        pam = next(a for a in st if a["name"] == "Pamela — track")
+        ref = app.avatars.reference(pam["id"])
+        jpg = b"\xff\xd8\xff\xe0" + b"0" * 64
+        fl = app.api.routes[("POST", "/api/avatars/flag")]({"id": pam["id"], "t": 1.5, "box": [10, 20, 30, 40], "reason": "region", "note": "forehead jumps",
+                                                           "state": {"chan": [0.0] * 52, "head": [0, 0, 0], "t": 1.5}, "thumb": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
+        fl2 = app.avatars.flag_set(fl["id"], recheck={"badness": 0.4})
+        fl3 = app.avatars.flag_set(fl["id"], "fixed", "looks right now")
+        try:
+            app.avatars.flag_add(pam["id"], {"reason": "lips", "box": [1, 2]}); badbox = False
+        except core.UserError:
+            badbox = True
+        app.avatars.check_add(pam["id"], {"script": "x", "duration": 2.0, "score": 97, "spans": [{"kind": "lips"}]})
+        r2 = app.avatars.reference_add(pam["id"], "test clip", {k: 0.5 for k in avatars.REFERENCE_KEYS}, 100)
+        c.check("review: Pamela ships with her own reference clips; flags keep moment, box, picture and history; checks are kept; references average",
+                ref and len(ref["clips"]) >= 2 and fl["measured"] and fl["has_thumb"] and fl2["history"][-1]["recheck"]["badness"] == 0.4 and fl3["status"] == "fixed"
+                and badbox and app.avatars.checks(pam["id"])[0]["score"] == 97 and len(r2["clips"]) == len(ref["clips"]) + 1
+                and abs(r2["stats"]["brow_inner_sd"] - (sum(x["stats"]["brow_inner_sd"] * x["frames"] for x in r2["clips"]) / r2["frames"])) < 1e-3,
+                (ref, fl, r2.get("stats")))
+        app.avatars.reference_remove(pam["id"], "test clip"); app.avatars.flag_delete(fl["id"])
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)

@@ -18,7 +18,23 @@ CREATE TABLE avatars (
   id INTEGER PRIMARY KEY, created TEXT NOT NULL, name TEXT NOT NULL, tags TEXT, source TEXT NOT NULL, attestation TEXT NOT NULL,
   image TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE, width INTEGER, height INTEGER, landmarks TEXT, quality TEXT,
   voice TEXT, notes TEXT, hidden INTEGER NOT NULL DEFAULT 0);
+""", """
+CREATE TABLE delivery_flags (
+  id INTEGER PRIMARY KEY, created TEXT NOT NULL, avatar_id INTEGER NOT NULL, t REAL, box TEXT, reason TEXT NOT NULL, note TEXT,
+  source TEXT NOT NULL, state TEXT, script TEXT, renderer TEXT, status TEXT NOT NULL DEFAULT 'open', resolved TEXT, history TEXT);
+CREATE INDEX delivery_flags_av ON delivery_flags(avatar_id, status);
+CREATE TABLE delivery_checks (
+  id INTEGER PRIMARY KEY, created TEXT NOT NULL, avatar_id INTEGER NOT NULL, script TEXT, duration REAL, score INTEGER, spans TEXT,
+  reference TEXT, renderer TEXT);
 """]
+# what a person can flag in a delivery; the first five are measured by the delivery check (and the learning loop works on
+# them), the rest need a person's eyes — each flag stays open until someone marks it fixed
+FLAG_REASONS = {"background": "the background moves", "region": "the forehead / head region moves for no reason",
+                "lips": "lip shape (flat lower lip, swollen lips, pucker, spread)", "hair": "the hair separates from the head",
+                "fold": "a smear or fold in the face", "teeth": "teeth or tongue look wrong", "sync": "the mouth is out of sync with the voice",
+                "eyes": "eyes or blinks look wrong", "brows": "brows move too much or too little", "head": "head movement unnatural",
+                "body": "body movement unnatural", "other": "something else (say what in the note)"}
+REFERENCE_KEYS = ("brow_inner_sd", "brow_outer_sd", "blinks_per_min", "yaw_range", "pitch_range", "roll_range", "gap_mean", "gap_p90", "smile_p50", "upper_lift")
 SOURCES = {"synthetic": "AI-generated portrait — shows no real person", "consented": "a real person who agreed (name and consent recorded)"}
 LABEL = "Synthetic avatar — AI-generated"
 MAX_BYTES = 20 * 1024 * 1024
@@ -151,6 +167,10 @@ class Library:
                 r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
             if a.get("anatomy") and not os.path.isfile(os.path.join(self.folder, str(r["id"]), "anatomy.json")):
                 self.set_anatomy(r["id"], a["anatomy"])
+            for c in a.get("reference") or []:                    # the person's own reference clips, already measured
+                have = {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}
+                if c["clip"] not in have:
+                    self.reference_add(r["id"], c["clip"], c["stats"], c["frames"])
             moves = ([{"slug": "turn-around", "dir": a["turn"]}] if a.get("turn") else []) + list(a.get("motions") or [])
             for mv in moves:                                     # the person's recorded moves (also added to earlier installs)
                 src = os.path.join(folder, os.path.basename(mv["dir"]))
@@ -364,6 +384,124 @@ class Library:
         if self._slug(slug) == "turn-around":                     # stored before moves had names
             m.setdefault("slug", "turn-around"); m.setdefault("name", "turn around"); m.setdefault("words", ["turn around"]); m.setdefault("align", "track")
         return m
+
+    # -- the delivery check, flags and the reference clips (Speech → Check delivery; Avatar studio → Flags / Reference)
+    def flag_add(self, aid, meta, thumb=None):
+        self.get(aid)
+        reason = meta.get("reason") if meta.get("reason") in FLAG_REASONS else "other"
+        box = meta.get("box")
+        if box is not None and not (isinstance(box, list) and len(box) == 4 and all(isinstance(v, (int, float)) for v in box)):
+            raise core.UserError("The flagged region must be a box [x, y, width, height].")
+        with self.store.write() as db:
+            fid = db.execute("""INSERT INTO delivery_flags(created, avatar_id, t, box, reason, note, source, state, script, renderer, history)
+                                VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (_now(), int(aid), float(meta.get("t") or 0), json.dumps(box), reason,
+                                                                 str(meta.get("note") or "")[:1000], "check" if meta.get("source") == "check" else "you",
+                                                                 json.dumps(meta.get("state") or None), str(meta.get("script") or "")[:4000],
+                                                                 str(meta.get("renderer") or "")[:40], json.dumps([]))).lastrowid
+        if thumb:
+            d = os.path.join(self.folder, str(int(aid)), "flags")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "%d.jpg" % fid), "wb") as f:
+                f.write(thumb)
+        return self.flag(fid)
+
+    def flag(self, fid):
+        r = self.store.one("SELECT * FROM delivery_flags WHERE id = ?", (int(fid),))
+        if not r:
+            raise core.UserError("That flag no longer exists.")
+        for k in ("box", "state", "history"):
+            r[k] = json.loads(r[k]) if r[k] else None
+        r["reason_text"] = FLAG_REASONS.get(r["reason"], r["reason"])
+        r["measured"] = r["reason"] in ("background", "region", "lips", "hair", "fold")
+        r["has_thumb"] = os.path.isfile(self.flag_thumb(r["avatar_id"], fid))
+        return r
+
+    def flag_thumb(self, aid, fid):
+        return os.path.join(self.folder, str(int(aid)), "flags", "%d.jpg" % int(fid))
+
+    def flags(self, aid=None, status=None):
+        q, a = "SELECT id FROM delivery_flags WHERE 1 = 1", []
+        if aid:
+            q += " AND avatar_id = ?"; a.append(int(aid))
+        if status:
+            q += " AND status = ?"; a.append(status)
+        return [self.flag(r["id"]) for r in self.store.query(q + " ORDER BY id DESC LIMIT 500", a)]
+
+    def flag_set(self, fid, status=None, note=None, recheck=None):
+        """Mark a flag fixed / still wrong / won't fix, or record a re-check (its measurement under the current renderer)."""
+        f = self.flag(fid)
+        hist = f["history"] or []
+        if recheck is not None:
+            hist.append({"at": _now(), "recheck": recheck})
+        if status:
+            if status not in ("open", "fixed", "wontfix"):
+                raise core.UserError("A flag is open, fixed or won't fix.")
+            hist.append({"at": _now(), "status": status, "note": str(note or "")[:500]})
+        with self.store.write() as db:
+            db.execute("UPDATE delivery_flags SET status = ?, resolved = ?, history = ? WHERE id = ?",
+                       (status or f["status"], _now() if status in ("fixed", "wontfix") else f["resolved"], json.dumps(hist[-50:]), int(fid)))
+        return self.flag(fid)
+
+    def flag_delete(self, fid):
+        f = self.flag(fid)
+        with self.store.write() as db:
+            db.execute("DELETE FROM delivery_flags WHERE id = ?", (int(fid),))
+        p = self.flag_thumb(f["avatar_id"], fid)
+        if os.path.isfile(p):
+            os.remove(p)
+        return {"deleted": int(fid)}
+
+    def check_add(self, aid, r):
+        self.get(aid)
+        with self.store.write() as db:
+            cid = db.execute("""INSERT INTO delivery_checks(created, avatar_id, script, duration, score, spans, reference, renderer)
+                                VALUES(?,?,?,?,?,?,?,?)""", (_now(), int(aid), str(r.get("script") or "")[:4000], float(r.get("duration") or 0),
+                                                           int(r.get("score") or 0), json.dumps(r.get("spans") or [])[:200000],
+                                                           json.dumps(r.get("reference") or None), str(r.get("renderer") or "")[:40])).lastrowid
+            db.execute("DELETE FROM delivery_checks WHERE avatar_id = ? AND id NOT IN (SELECT id FROM delivery_checks WHERE avatar_id = ? ORDER BY id DESC LIMIT 200)",
+                       (int(aid), int(aid)))
+        return {"id": cid}
+
+    def checks(self, aid, limit=30):
+        rows = self.store.query("SELECT * FROM delivery_checks WHERE avatar_id = ? ORDER BY id DESC LIMIT ?", (int(aid), int(limit)))
+        for r in rows:
+            r["spans"] = json.loads(r["spans"] or "[]"); r["reference"] = json.loads(r["reference"] or "null")
+        return rows
+
+    def reference(self, aid):
+        p = os.path.join(self.folder, str(int(aid)), "reference.json")
+        if not os.path.isfile(p):
+            return None
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+
+    def reference_add(self, aid, clip, stats, frames):
+        """One reference clip of the person speaking, measured by the face tracker; the reference is the frame-weighted
+        mean over all clips (more clips: a steadier picture of how she really moves)."""
+        self.get(aid)
+        st = {k: float(stats[k]) for k in REFERENCE_KEYS if isinstance(stats.get(k), (int, float))}
+        if len(st) < 5 or int(frames or 0) < 24:
+            raise core.UserError("The clip was too short, or no face was found in it (at least a second of a visible face is needed).")
+        ref = self.reference(aid) or {"clips": []}
+        ref["clips"] = [c for c in ref["clips"] if c["clip"] != str(clip)[:160]] + [{"clip": str(clip)[:160], "frames": int(frames), "stats": st, "at": _now()}]
+        tot = sum(c["frames"] for c in ref["clips"])
+        ref["stats"] = {k: round(sum(c["stats"][k] * c["frames"] for c in ref["clips"] if k in c["stats"]) /
+                              max(1, sum(c["frames"] for c in ref["clips"] if k in c["stats"])), 4) for k in REFERENCE_KEYS}
+        ref.update(frames=tot, at=_now())
+        with open(os.path.join(self.folder, str(int(aid)), "reference.json"), "w", encoding="utf-8") as f:
+            json.dump(ref, f)
+        return ref
+
+    def reference_remove(self, aid, clip):
+        ref = self.reference(aid) or {"clips": []}
+        keep = [c for c in ref["clips"] if c["clip"] != clip]
+        p = os.path.join(self.folder, str(int(aid)), "reference.json")
+        if os.path.isfile(p):
+            os.remove(p)
+        out = None
+        for c in keep:
+            out = self.reference_add(aid, c["clip"], c["stats"], c["frames"])
+        return out
 
     def motions(self, aid):
         base = os.path.join(self.folder, str(int(aid)))

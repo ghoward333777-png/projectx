@@ -56,6 +56,42 @@
     sway: 1.0, breath: 1.2, torsoFollow: 0.3,
     shot_s: 2.5, shots: [1.0, 0.5, 0.78, 0.47], push: 0.05,
   };
+  // The person's silhouette in the portrait: everything outside it is background and must never move. MediaPipe's
+  // selfie segmenter (bundled, ~250 KB, Apache-2.0) runs once per portrait in the browser; without it the renderer
+  // falls back to its fixed frame of anchors.
+  let SEG = null;
+  async function personMask(img) {
+    if (!SEG) SEG = (async () => {
+      const vision = await import("./vendor/mediapipe/vision_bundle.mjs");
+      const files = await vision.FilesetResolver.forVisionTasks("vendor/mediapipe/wasm");
+      const o = d => ({ baseOptions: { modelAssetPath: "vendor/mediapipe/selfie_segmenter.tflite", delegate: d }, outputConfidenceMasks: true, runningMode: "IMAGE" });
+      try { return await vision.ImageSegmenter.createFromOptions(files, o("GPU")); } catch (e) { return vision.ImageSegmenter.createFromOptions(files, o("CPU")); }
+    })();
+    const seg = await SEG, k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const r = seg.segment(c), m = r.confidenceMasks[0], out = { w: m.width, h: m.height, d: Float32Array.from(m.getAsFloat32Array()) };
+    try { r.close(); } catch (e) { }
+    return out;
+  }
+  // a soft "how much is this the person" field over the portrait: the mask widened a little (stray hair, a missed sliver
+  // beside an arm) and feathered, sampled bilinearly in portrait pixels
+  function personField(mask, W, H, grow, feather) {
+    const { w, h, d } = mask, sx = w / W, r1 = Math.max(1, Math.round(grow * sx)), r2 = Math.max(1, Math.round(feather * sx));
+    let a = new Float32Array(w * h); for (let i = 0; i < w * h; i++) a[i] = d[i] > 0.5 ? 1 : 0;
+    const pass = (src, r, op, horiz) => { const o = new Float32Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = op === "max" ? 0 : 0, n = 0;
+        for (let k = -r; k <= r; k++) { const xx = horiz ? x + k : x, yy = horiz ? y : y + k; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const q = src[yy * w + xx]; if (op === "max") { if (q > v) v = q; } else { v += q; n++; } }
+        o[y * w + x] = op === "max" ? v : v / Math.max(1, n); }
+      return o; };
+    a = pass(pass(a, r1, "max", true), r1, "max", false);
+    a = pass(pass(a, r2, "avg", true), r2, "avg", false);
+    const raw = d;
+    const at = (f, x, y) => { x = Math.max(0, Math.min(w - 1.001, x * sx)); y = Math.max(0, Math.min(h - 1.001, y * sx));
+      const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0, i = y0 * w + x0;
+      return f[i] * (1 - fx) * (1 - fy) + f[i + 1] * fx * (1 - fy) + f[i + w] * (1 - fx) * fy + f[i + w + 1] * fx * fy; };
+    return { soft: (x, y) => at(a, x, y), inside: (x, y) => at(raw, x, y) > 0.5 };
+  }
   function delaunay(pts) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     pts.forEach(([x, y]) => { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); });
@@ -127,13 +163,16 @@
       this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null;
       this.ready = new Promise((res, rej) => {
         const img = new Image();
-        img.onload = () => { try { this._setup(img, avatar.landmarks); res(); } catch (e) { rej(e); } };
+        img.onload = async () => {
+          let mask = null;
+          if (avatar.body || params && params.mask) { try { mask = await personMask(img); } catch (e) { mask = null; } }   // no silhouette: the fixed frame still holds
+          try { this._setup(img, avatar.landmarks, mask); res(); } catch (e) { rej(e); } };
         img.onerror = () => rej(new Error("the portrait could not be loaded"));
         img.src = avatar.imageUrl;
       });
       if (avatar.turnId) this._loadTurn(avatar.turnId);
     }
-    _setup(img, lm) {
+    _setup(img, lm, mask) {
       if (!lm || lm.length < 468) throw new Error("this avatar has not been analysed yet — use “Analyse faces” in the library");
       const body = this.body = !!this.avatar.body;          // full-body avatar: the whole figure is shown and breathes and sways
       const scale = Math.min(1, (body ? 1600 : 1000) / Math.max(img.width, img.height));
@@ -168,9 +207,26 @@
           if (((x - fcx) / (fw * 0.95)) ** 2 + ((y - fcy) / (fh * 0.9)) ** 2 > 1) anchors.push([x, y, 0]);
         }
       }
+      // the silhouette: pairs of points along the person's outline — one just outside (pinned: the background stays put),
+      // one just inside (free: it moves with her) — so her edge moves crisply and nothing behind her slides
+      const pf = this.pfield = mask ? personField(mask, W, H, 0.06 * fw, 0.05 * fw) : null;
+      if (pf && body) {
+        const st = 0.25 * fw, out = 0.05 * fw, inn = 0.06 * fw;   // tight to the edge: the transition stays within ~0.1 face width
+        for (let y = crop.y + 0.1 * fh; y < crop.y + crop.h; y += st) {
+          let prev = pf.inside(crop.x, y);
+          for (let x = crop.x + 2; x < crop.x + crop.w; x += 2) {
+            const now = pf.inside(x, y);
+            if (now !== prev) { const dir = now ? 1 : -1;      // entering (left edge) or leaving (right edge) the person
+              anchors.push([x - dir * out, y, 0, "out"], [x + dir * inn, y, 0, "in"]); prev = now; }
+          }
+        }
+        for (let x = fcx - 1.8 * fw; x <= fcx + 1.8 * fw; x += st) {   // over the head
+          for (let y = crop.y; y < fcy; y += 2) if (pf.inside(x, y)) { if (y > crop.y + 0.05 * fh) anchors.push([x, y - out, 0, "out"], [x, y + inn, 0, "in"]); break; }
+        }
+      }
       const seen = new Set();                            // each corner is listed by two edges: a point twice makes zero-area triangles
       this.base3 = pts3.concat(anchors.filter(([x, y]) => { const key = Math.round(x) + "," + Math.round(y);
-        if (x < 0 || y < (body ? crop.y - fh : 0) || x > W || y > H || seen.has(key)) return false; seen.add(key); return true; }));
+        if (x < 0 || y < (body ? crop.y - fh : 0) || x > W || y > H || seen.has(key)) return false; seen.add(key); return true; }).map(q => q.slice(0, 3)));
       this.nFace = pts3.length;
       const ringN = 32, edgeOf = new Set();
       this.base3.forEach(([x, y], i) => { if (i >= pts3.length + ringN && (Math.abs(x - crop.x) < 0.5 || Math.abs(y - crop.y) < 0.5 || Math.abs(x - crop.x - crop.w) < 0.5 || Math.abs(y - crop.y - crop.h) < 0.5)) edgeOf.add(i); });
@@ -181,7 +237,12 @@
           if (y < crop.y - 1) edgeOf.add(i);
         });
       }
+      // background: pinned — every helper point outside her widened outline, and every point placed just outside her edge
+      const outKey = new Set(anchors.filter(q => q[3] === "out").map(q => Math.round(q[0]) + "," + Math.round(q[1])));
+      if (pf && body) this.base3.forEach(([x, y], i) => { if (i >= pts3.length && (pf.soft(x, y) < 0.5 || outKey.has(Math.round(x) + "," + Math.round(y)))) edgeOf.add(i); });
       this.fixed = edgeOf;
+      // how much each point belongs to her (1 inside, 0 in the background): every body and head movement is scaled by it
+      this.personW = pf && body ? Float32Array.from(this.base3.map(([x, y], i) => i < pts3.length ? 1 : Math.min(1, pf.soft(x, y) * 1.15))) : null;
       this.nX0 = this.base3.length; this.extra = []; this.ring = new Set(RING);
       this.base = this.base3.map(([x, y]) => [x, y]);
       // triangulate a copy with the mouth slightly open, so no triangle bridges the lips (they part cleanly when the jaw drops)
@@ -435,7 +496,7 @@
           const outer = UPPER.has(i) || LOWER.has(i) ? Math.min(1, Math.abs(y - mid(x)) / (0.05 * F)) : 0;
           add("mouthPress" + k, i, 0, (ub - lb) * 0.014 * F * outer * sd, 0);
           add("mouthLowerDown" + k, i, 0, 0.06 * F * lb * sd * pf, 0);           // a curve, deepest in the middle
-          add("mouthUpperUp" + k, i, 0, -0.03 * F * ub * sd * Math.sqrt(pf), 0);
+          add("mouthUpperUp" + k, i, 0, -0.03 * F * ub * sd * pf, 0);                // the upper lip arches up in the middle, not as a block
         }
         add("mouthRollLower", i, 0, -0.008 * F * lb * pf, 0.006 * F * lb);
         add("mouthRollUpper", i, 0, 0.006 * F * ub * pf, 0.006 * F * ub);
@@ -488,6 +549,16 @@
           add("eyeBlink" + k, j, 0, this.shut[k](B[j][0]) - B[j][1], 0);
         });
       }
+      // the face's outline does not move with the cheeks, the squint, the nose or the brows: their movement fades to nothing
+      // at the outline (thin triangles there flipped over — a smear by the cheekbones — when she smiled or squinted)
+      const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+        172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+      const segD = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], u = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+        return Math.hypot(p[0] - a[0] - u * dx, p[1] - a[1] - u * dy); };
+      const toOval = i => { let m = Infinity; for (let j = 0; j < OVAL.length; j++) m = Math.min(m, segD(B[i], B[OVAL[j]], B[OVAL[(j + 1) % OVAL.length]])); return m; };
+      const fade = Float32Array.from({ length: nF }, (_, i) => smooth(0, 0.06 * F, toOval(i)));
+      BS.forEach((k, ki) => { if (!/^(cheek|eyeSquint|noseSneer|brow)/.test(k)) return; const d = D[ki];
+        for (let i = 0; i < nF; i++) for (let q = 0; q < 3; q++) d[3 * i + q] *= fade[i]; });
       // relax the mouth and jaw fields over the mesh (lips pinned): the skin takes up the lips' motion smoothly, so no
       // triangle beside a lip or corner can fold over
       const nb = Array.from({ length: nF }, () => new Set());
@@ -608,8 +679,14 @@
       c.restore();
     }
     frame(track, t) {
+      this._advance(track, t);
+      this.view = this._turnNow() !== null ? this.turning.view : this.fixedView || this._camera(t);
+      this._draw();
+    }
+    // one step of the animation state (shared by playback and the delivery check, so the check sees exactly what plays)
+    _advance(track, t) {
       const tt = t + this.params.lead_ms / 1000, tgt = this._target(track, tt);
-      const dt = this.t === null ? 1 : Math.max(0, Math.min(0.2, t - this.t)); this.t = t;
+      const dt = this.t === null ? 1 / 24 : Math.max(0, Math.min(0.2, t - this.t)); this.t = t;   // the first frame eases in from rest
       const a = 1 - Math.exp(-dt / Math.max(0.005, this.params.smooth_ms / 1000));
       const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
       for (let k = 0; k < BS.length; k++) this.cur[k] = k === IDX.eyeBlinkLeft || k === IDX.eyeBlinkRight ? Math.max(tgt[k], this.cur[k] * hold) : this.cur[k] + (tgt[k] - this.cur[k]) * a;
@@ -621,8 +698,6 @@
         this.turning.t0 = performance.now() / 1000 - (t - this.turning.t0); this.turning.clock = "wall";     // she finishes turning anyway
       }
       this.tPrev = t;
-      this.view = this._turnNow() !== null ? this.turning.view : this._camera(t);
-      this._draw();
     }
     setChannels(values) { Object.entries(values || {}).forEach(([k, v]) => { if (k in IDX) this.cur[IDX[k]] = v; }); this._draw(); }
     draw(m) {                                                // live mirroring from a tracked camera face
@@ -637,10 +712,10 @@
       const { fw, fh, fcx, fcy, H } = this.bodyShape;
       const pivot = H + 2.2 * fh, up = Math.max(0, Math.min(1.3, (pivot - y) / (pivot - fcy)));
       const col = 1 - smooth(3.0 * fw, 4.6 * fw, Math.abs(x - fcx));   // the whole body moves as one piece (arms included: no shear)
-      const sway = 0.045 * BODY_CAL.sway * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
+      const sway = 0.045 * BODY_CAL.sway * (this.cal.sway ?? 1) * fh * (0.75 * Math.sin(2 * Math.PI * t / 6.3) + 0.25 * Math.sin(2 * Math.PI * t / 2.9 + 1.1));
       const br = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 4.1);
       const chest = smooth(fcy + 0.6 * fh, fcy + 1.4 * fh, y) * (1 - smooth(fcy + 2.8 * fh, fcy + 4 * fh, y)), above = 1 - smooth(fcy + 1.4 * fh, fcy + 2.4 * fh, y);
-      const dy = -0.018 * BODY_CAL.breath * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.003 * br * chest;
+      const dy = -0.018 * BODY_CAL.breath * (this.cal.breath ?? 1) * fh * br * Math.max(chest, above), dx = sway * up + (x - fcx) * 0.003 * br * chest;
       return [dx * col, dy * col];
     }
     _points(chan, head) {
@@ -652,6 +727,12 @@
         const hold = Math.min(1, c[MC] + c[IDX["mouthPress" + k]] + c[IDX.mouthRollLower]), rnd = Math.min(1, Math.max(c[IDX.mouthPucker], c[IDX.mouthFunnel]));
         c[up] = Math.min(1, c[up] + (dv.up * j + dv.upSmile * c[IDX["mouthSmile" + k]] * Math.min(1, 4 * j)) * (1 - hold) * (1 - 0.6 * rnd));
         c[dn] = Math.min(1, c[dn] + dv.down * j);
+      }
+      // while an eye closes, its "wide", squint and gaze give way to the lid (together they fought the blink and folded the eye)
+      for (const k of ["Left", "Right"]) {
+        const bl = Math.min(1, c[IDX["eyeBlink" + k]]);
+        c[IDX["eyeWide" + k]] *= 1 - bl; c[IDX["eyeSquint" + k]] *= 1 - 0.7 * bl;
+        for (const d of ["Up", "Down", "In", "Out"]) c[IDX["eyeLook" + d + k]] *= 1 - 0.8 * bl;
       }
       // a mouth widens at most ~10% in speech: stretch, smile and dimple share one soft-limited budget per side
       for (const k of ["Left", "Right"]) {
@@ -684,8 +765,13 @@
         const F = this.F, [hx, hy] = this.fc, { fw } = this.bodyShape, c2 = Math.cos(roll), s2 = Math.sin(roll);
         // the face's own little 3D turn moves it by (mx, my): the hair and skull must move exactly the same way (opposite
         // ways tear the forehead), and the whole head then carries on a little further in that same direction
+        // (from the head's turn alone — never from the brows or the forehead skin: a brow raise must not lift the whole
+        // region above the face, which read as the head and the background jumping for no reason)
         const O = [10, 109, 338, 67, 297, 103, 332];          // the top of the forehead, where the hair begins
-        let mx = 0, my = 0; O.forEach(i => { mx += out[i][0] - this.base3[i][0]; my += out[i][1] - this.base3[i][1]; }); mx /= O.length; my /= O.length;
+        let mx = 0, my = 0;
+        O.forEach(i => { const [x, y, z] = this.base3[i], X = x - px, Y = y - py, Z = z - pz, X1 = X * cy + Z * sy, Z1 = -X * sy + Z * cy;
+          mx += X1 - X; my += Y * cp - Z1 * sp - Y; });
+        mx /= O.length; my /= O.length;
         const k = 1.5;
         const H2 = (x, y, face) => [px + (x - px) * c2 - (y - py) * s2 + (face ? k - 1 : k) * mx, py + (x - px) * s2 + (y - py) * c2 + (face ? k - 1 : k) * my];
         for (let i = 0; i < n; i++) {
@@ -695,13 +781,14 @@
             const [x0, y0] = this.base3[i], ax = Math.abs(x0 - hx) / (fw * 0.95);
             // above the face the whole head column moves (hair up to the top of the picture); below, it fades into the neck
             w = y0 < hy ? 1 - smooth(1.15, 2.0, ax) : 1 - smooth(1.15, 2.3, Math.hypot(ax, (y0 - hy) / (F * 0.9)));
+            if (this.personW) w *= this.personW[i];             // only her head and hair: the background beside them stays
           }
           if (w <= 0) continue;
           const q = i < nF ? H2(out[i][0], out[i][1], true) : H2(this.base3[i][0], this.base3[i][1], false);
           out[i] = [out[i][0] + w * (q[0] - out[i][0]), out[i][1] + w * (q[1] - out[i][1])];
         }
       }
-      if (this.body && !head && this.t) {                                   // checks (qc) pass a head pose and see the figure at rest
+      if (this.body && !head && this.t !== null) {                          // checks (qc) pass a head pose and see the figure at rest (t = 0 is a time, not "none")
         const { fw, fh, fcx, H } = this.bodyShape, hp = H + 2.2 * fh;
         const tr = BODY_CAL.torsoFollow * roll, ty = BODY_CAL.torsoFollow * Math.sin(yaw) * fh * 1.2, ct = Math.cos(tr), st = Math.sin(tr);
         for (let i = 0; i < n; i++) {
@@ -710,8 +797,9 @@
           // the torso follows the head a little: it leans with the tilt (about the hips) and turns with it
           const col = 1 - smooth(3.0 * fw, 4.6 * fw, Math.abs(x0 - fcx)), up = Math.max(0, Math.min(1.2, (hp - y0) / (hp - this.fc[1])));
           const rx = fcx + (x0 - fcx) * ct - (y0 - hp) * st - x0, ry = hp + (x0 - fcx) * st + (y0 - hp) * ct - y0;
-          const w = col;                                                    // face, hair and body lean together
-          out[i] = [out[i][0] + bx + w * (rx + ty * up), out[i][1] + by + w * ry];
+          const pw = this.personW ? this.personW[i] : 1;                    // she moves; what is behind her does not
+          const w = col * pw;                                               // face, hair and body lean together
+          out[i] = [out[i][0] + pw * bx + w * (rx + ty * up), out[i][1] + pw * by + w * ry];
         }
       }
       return out;
@@ -1053,6 +1141,164 @@
       c.strokeStyle = rgb(pal.cavEdge); c.lineWidth = Math.max(1.5, F * 0.005);
       outline(); c.stroke();
       c.restore();
+    }
+    // Delivery check: replays a delivery exactly as it plays (same animation state, frame by frame) and measures, in the
+    // portrait's own pixels, everything that must not happen. Returns time spans with the worst value, the limit, why it
+    // matters and the region (a box in portrait pixels), plus the per-frame series for the timeline. Deterministic.
+    //   background   anything outside her silhouette moves
+    //   region       the forehead, hair or head region moves beyond what the head's own turn explains
+    //   hair         the hair separates from the head
+    //   jump         a sudden jump of the head between frames
+    //   lips         a flat, straight lower lip edge; swollen lips; an exaggerated pucker or spread
+    //   fold         part of the face turned over (smears)
+    _checkCtx() {
+      if (this._cctx) return this._cctx;
+      const F = this.F, B = this.base3, nF = this.nFace, pf = this.pfield;
+      const tri = this.mesh.filter(t => t.every(i => i < this.base.length)), probes = [];
+      const bary = (q, a, b, c) => { const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]); if (Math.abs(d) < 1e-9) return null;
+        const l1 = ((b[1] - c[1]) * (q[0] - c[0]) + (c[0] - b[0]) * (q[1] - c[1])) / d, l2 = ((c[1] - a[1]) * (q[0] - c[0]) + (a[0] - c[0]) * (q[1] - c[1])) / d;
+        return [l1, l2, 1 - l1 - l2]; };
+      const cr = this.crop, step = Math.max(4, 0.12 * F);
+      const isBg = (x, y) => pf ? pf.soft(x, y) < 0.02 : Math.hypot((x - this.fc[0]) / (0.9 * (this.bodyShape ? this.bodyShape.fw : F * 0.8)), (y - this.fc[1]) / F) > 1.6;
+      for (let y = cr.y + step / 2; y < cr.y + cr.h; y += step) for (let x = cr.x + step / 2; x < cr.x + cr.w; x += step) {
+        if (!isBg(x, y)) continue;
+        for (const t of tri) { const w = bary([x, y], this.base[t[0]], this.base[t[1]], this.base[t[2]]); if (w && w[0] >= -1e-6 && w[1] >= -1e-6 && w[2] >= -1e-6) { probes.push({ x, y, t, w }); break; } }
+      }
+      const top = B[10][1], eyeY = (B[159][1] + B[386][1]) / 2, hair = [], region = [];
+      for (let i = nF; i < B.length; i++) { const [x, y] = B[i]; if (this.fixed.has(i)) continue;
+        if (y < top && Math.abs(x - this.fc[0]) < 0.6 * F && (!pf || pf.soft(x, y) > 0.9)) hair.push(i);
+        if (y < eyeY && (!pf || pf.soft(x, y) > 0.5)) region.push(i); }
+      const area = (P, t) => (P[t[1]][0] - P[t[0]][0]) * (P[t[2]][1] - P[t[0]][1]) - (P[t[2]][0] - P[t[0]][0]) * (P[t[1]][1] - P[t[0]][1]);
+      const faceTris = this.mesh.filter(t => t[0] < nF && t[1] < nF && t[2] < nF);
+      const sag = (Q, i) => { const a = Q[78], c = Q[308], u = (Q[i][0] - a[0]) / ((c[0] - a[0]) || 1); return Q[i][1] - (a[1] + u * (c[1] - a[1])); };
+      const lipg = Q => ({ up: sag(Q, 13), lo: sag(Q, 14), loT: Q[17][1] - Q[14][1], upT: Q[13][1] - Q[0][1], w: Math.hypot(Q[291][0] - Q[61][0], Q[291][1] - Q[61][1]) });
+      return this._cctx = { probes, hair, region, area, faceTris, a0: faceTris.map(t => area(B, t)), lipg, L0: lipg(B.map(q => [q[0], q[1]])),
+        LIM: { background: 0.006, region: 0.012, hair: 0.025, jump: 0.03, flat: 0.35, swell: 0.12, pucker: -0.24, spread: 0.18 } };
+    }
+    // every measurement of one moment: P as delivered, R the same moment with no expression (the rigid head and body);
+    // `box` (portrait pixels) limits the measurement to a region; returns values and the offending points of each kind
+    _measure(P, R, box, prevTop, fpsK) {
+      const C = this._checkCtx(), F = this.F, Wm = this.Wm, B = this.base3, LIM = C.LIM;
+      const inBox = (x, y) => !box || (x >= box[0] && y >= box[1] && x <= box[0] + box[2] && y <= box[1] + box[3]);
+      const m = { pts: {} };
+      let bg = 0; m.pts.background = [];
+      for (const pr of C.probes) { if (!inBox(pr.x, pr.y)) continue; const [a, b, c] = pr.t;
+        const dx = pr.w[0] * (P[a][0] - B[a][0]) + pr.w[1] * (P[b][0] - B[b][0]) + pr.w[2] * (P[c][0] - B[c][0]),
+          dy = pr.w[0] * (P[a][1] - B[a][1]) + pr.w[1] * (P[b][1] - B[b][1]) + pr.w[2] * (P[c][1] - B[c][1]), d = Math.hypot(dx, dy) / F;
+        if (d > bg) bg = d; if (d > LIM.background) m.pts.background.push([pr.x, pr.y]); }
+      m.background = bg;
+      let rg = 0; m.pts.region = [];
+      for (const i of C.region.concat([10, 151, 109, 338, 67, 297])) { if (!inBox(B[i][0], B[i][1])) continue; const d = Math.hypot(P[i][0] - R[i][0], P[i][1] - R[i][1]) / F;
+        if (d > rg) rg = d; if (d > LIM.region) m.pts.region.push(B[i]); }
+      m.region = rg;
+      // hair against the head: the top of the forehead gives the head's own movement (shift, turn, scale) — the hair must
+      // follow it; a hair point that goes its own way is the hair separating from the head
+      const O2 = [10, 109, 338, 67, 297, 103, 332, 151]; let ax = 0, ay = 0, bx = 0, by = 0;
+      O2.forEach(i => { ax += B[i][0]; ay += B[i][1]; bx += P[i][0]; by += P[i][1]; }); ax /= O2.length; ay /= O2.length; bx /= O2.length; by /= O2.length;
+      let sxx = 0, sxy = 0, n2 = 0; O2.forEach(i => { const x = B[i][0] - ax, y = B[i][1] - ay, u = P[i][0] - bx, v = P[i][1] - by; sxx += x * u + y * v; sxy += x * v - y * u; n2 += x * x + y * y; });
+      const sa = sxx / n2, sb = sxy / n2;
+      let hr = 0; m.pts.hair = [];
+      for (const i of C.hair) { if (!inBox(B[i][0], B[i][1])) continue; const x = B[i][0] - ax, y = B[i][1] - ay, qx = bx + sa * x - sb * y, qy = by + sb * x + sa * y;
+        const d = Math.hypot(P[i][0] - qx, P[i][1] - qy) / F; if (d > hr) hr = d; if (d > LIM.hair) m.pts.hair.push(B[i]); }
+      m.hair = hr;
+      m.jump = prevTop ? Math.hypot(P[10][0] - prevTop[0], P[10][1] - prevTop[1]) / F * (fpsK || 1) : 0;
+      const g = C.lipg(P), L0 = C.L0, open = (g.lo - g.up) - (L0.lo - L0.up), dUp = -(g.up - L0.up), dLo = g.lo - L0.lo;
+      const mouthIn = inBox(B[13][0], B[13][1]);
+      // (thinner lips are natural when they press together for p, b, m — only swelling counts)
+      m.lowerShare = mouthIn && open > 0.04 * Wm ? dLo / Math.max(1e-6, dUp + dLo) : null;
+      m.thick = mouthIn ? Math.max(g.loT / L0.loT - 1, g.upT / L0.upT - 1) : 0;
+      m.width = mouthIn ? g.w / L0.w - 1 : 0;
+      // (slivers smaller than ~2% of the face on a side — a few pixels along the face's edge — flip on a nod without a visible mark)
+      m.folds = 0; m.pts.fold = []; m.foldIds = [];
+      C.faceTris.forEach((t, j) => { const ar = C.area(P, t), a0 = C.a0[j];
+        if (Math.sign(ar) !== Math.sign(a0) && Math.abs(a0) > 0.0004 * F * F && Math.abs(ar) > 0.1 * Math.abs(a0) && inBox(B[t[0]][0], B[t[0]][1])) {
+          m.folds++; m.pts.fold.push(B[t[0]], B[t[1]], B[t[2]]); m.foldIds.push(t.join("-")); } });
+      return m;
+    }
+    // how bad one moment is for one complaint (0 = fine; >1 = over the limit) — what the learning loop minimises
+    badness(m, kind) {
+      const L = this._checkCtx().LIM;
+      if (kind === "background") return m.background / L.background;
+      if (kind === "region") return Math.max(m.region / L.region, m.jump / L.jump);
+      if (kind === "hair") return m.hair / L.hair;
+      if (kind === "lips") return Math.max(m.lowerShare === null ? 0 : (0.6 - m.lowerShare) / (0.6 - L.flat), m.thick / L.swell, m.width / L.pucker, m.width / L.spread);
+      if (kind === "fold") return m.folds;
+      return 0;
+    }
+    // one stored moment (a flag): the same measurements, restricted to its box
+    measureState(state, box) {
+      const save = { cur: this.cur, head: this.head, t: this.t };
+      this.cur = Float32Array.from(state.chan); this.head = state.head.slice(); this.t = state.t;
+      const P = this._points(), R = this._points(new Float32Array(BS.length));
+      Object.assign(this, save);
+      const m = this._measure(P, R, box, null);
+      delete m.pts; return m;
+    }
+    // a fixed head-and-shoulders view (measuring and side-by-side comparison: the face large enough to read the lips)
+    closeUp(on) {
+      if (!on) { this.fixedView = null; return; }
+      const F = this.F, w = Math.min(this.src.width, 3.2 * F), h = Math.min(this.src.height, w * this.cv.height / this.cv.width);
+      this.fixedView = { x: Math.max(0, Math.min(this.src.width - w, this.fc[0] - w / 2)), y: Math.max(0, Math.min(this.src.height - h, this.fc[1] - 0.42 * h)), w, h };
+    }
+    // screen ↔ portrait: a point on the shown picture (canvas pixels) and the same point in the portrait, for flag boxes
+    toPortrait(cx, cy) { const cr = this.view || this.crop, k = this.cv.width / cr.w; return [cr.x + cx / k, cr.y + cy / k]; }
+    toCanvas(x, y) { const cr = this.view || this.crop, k = this.cv.width / cr.w; return [(x - cr.x) * k, (y - cr.y) * k]; }
+    // the exact moment being shown (for a flag): channels, head pose and time
+    state() { return { chan: Array.from(this.cur, v => +v.toFixed(4)), head: this.head.map(v => +v.toFixed(3)), t: this.t, body: !!this.body }; }
+    deliveryCheck(track, opts) {
+      opts = opts || {};
+      const fps = opts.fps || 24, F = this.F, B = this.base3, C = this._checkCtx(), LIM = C.LIM;
+      const dur = opts.duration || (track && track.motion && track.motion.frames.length ? track.motion.frames.length / track.motion.fps : (track && track.duration) || 0);
+      const save = { cur: Float32Array.from(this.cur), head: this.head.slice(), t: this.t, tPrev: this.tPrev, view: this.view, turning: this.turning, moveQueue: this.moveQueue };
+      this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null; this.tPrev = undefined; this.turning = null; this.moveQueue = [];
+      const zero = new Float32Array(BS.length), KINDS = ["background", "region", "hair", "jump", "lowerShare", "thick", "width", "folds"];
+      const series = { t: [] }; KINDS.forEach(k => { series[k] = []; });
+      const hits = [], hit = (kind, i, value, box, why) => hits.push({ kind, i, value, box, why });
+      const bbox = pts => { if (!pts.length) return null; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        pts.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
+        const mg = 0.15 * F; return [Math.round(x0 - mg), Math.round(y0 - mg), Math.round(x1 - x0 + 2 * mg), Math.round(y1 - y0 + 2 * mg)]; };
+      const region_of = id => { const v = id.split("-").map(Number), near = set => v.some(i => set.includes(i));
+        return near([33, 133, 159, 145, 362, 263, 386, 374, 468, 473, 380, 373, 390, 144, 153, 160, 158, 385, 387]) ? "the eyes" :
+          near([61, 291, 0, 17, 13, 14, 78, 308, 37, 267, 84, 314]) ? "the mouth" : near([234, 454, 127, 356, 93, 323, 132, 361, 227, 447, 116, 345]) ? "the cheekbones" :
+          near([70, 63, 105, 66, 107, 300, 293, 334, 296, 336, 10, 151, 109, 338]) ? "the brows / forehead" : near([152, 148, 377, 176, 400, 149, 378]) ? "the chin" : "the face"; };
+      const mouthBox = bbox([B[61], B[291], B[0], B[17]]), headBox = bbox([B[10], B[152], B[234], B[454]]);
+      let prevTop = null;
+      const n = Math.max(1, Math.floor(dur * fps));
+      for (let k = 0; k < n; k++) {
+        const t = k / fps;
+        this._advance(track, t);
+        series.t.push(+t.toFixed(3));
+        if (this._turnNow() !== null) { KINDS.forEach(k2 => series[k2].push(null)); prevTop = null; continue; }   // a recorded move plays its own video
+        const P = this._points(), R = this._points(zero), m = this._measure(P, R, null, prevTop, 24 / fps);
+        prevTop = P[10];
+        KINDS.forEach(k2 => series[k2].push(m[k2] === null ? null : +(+m[k2]).toFixed(4)));
+        if (m.background > LIM.background) hit("background", k, m.background, bbox(m.pts.background), "the background moves");
+        if (m.region > LIM.region) hit("region", k, m.region, bbox(m.pts.region), "the forehead / head region moves without the head turning");
+        if (m.hair > LIM.hair) hit("hair", k, m.hair, bbox(m.pts.hair.concat([B[10]])), "the hair separates from the head");
+        if (m.jump > LIM.jump) hit("jump", k, m.jump, headBox, "the head jumps between frames");
+        if (m.lowerShare !== null && m.lowerShare < LIM.flat) hit("lips", k, m.lowerShare, mouthBox, "the lower lip's edge stays straight while the upper lip curves");
+        if (m.thick > LIM.swell) hit("lips", k, m.thick, mouthBox, "the lips swell (thicker by more than " + Math.round(LIM.swell * 100) + "%)");
+        if (m.width < LIM.pucker) hit("lips", k, m.width, mouthBox, "exaggerated pucker (the mouth narrows by more than " + Math.round(-LIM.pucker * 100) + "%)");
+        if (m.width > LIM.spread) hit("lips", k, m.width, mouthBox, "exaggerated spread (the mouth widens by more than " + Math.round(LIM.spread * 100) + "%)");
+        if (m.folds) hit("fold", k, m.folds, bbox(m.pts.fold), "part of the face folds over (smears) near " + region_of(m.foldIds[0]));
+      }
+      // consecutive frames of one kind and reason become one span; its box covers the whole span
+      const spans = [];
+      hits.sort((a, b) => a.kind.localeCompare(b.kind) || a.why.localeCompare(b.why) || a.i - b.i).forEach(h => {
+        const last = spans[spans.length - 1], low = h.why.startsWith("the lower") || h.why.startsWith("exaggerated pucker");
+        if (last && last.kind === h.kind && last.why === h.why && h.i - last.i1 <= 2) {
+          last.i1 = h.i; last.worst = low ? Math.min(last.worst, h.value) : Math.max(last.worst, h.value);
+          if (h.box) { const b = last.box || h.box, x0 = Math.min(b[0], h.box[0]), y0 = Math.min(b[1], h.box[1]);
+            last.box = [x0, y0, Math.max(b[0] + b[2], h.box[0] + h.box[2]) - x0, Math.max(b[1] + b[3], h.box[1] + h.box[3]) - y0]; }
+        } else spans.push({ kind: h.kind, why: h.why, i0: h.i, i1: h.i, worst: h.value, box: h.box });
+      });
+      spans.forEach(sp => { sp.t0 = +(sp.i0 / fps).toFixed(2); sp.t1 = +((sp.i1 + 1) / fps).toFixed(2); sp.limit = sp.kind === "lips" || sp.kind === "fold" ? null : LIM[sp.kind];
+        sp.worst = +sp.worst.toFixed(4); delete sp.i0; delete sp.i1; });
+      spans.sort((a, b) => a.t0 - b.t0);
+      Object.assign(this, save); this._draw();
+      const secs = spans.reduce((a, s2) => a + (s2.t1 - s2.t0), 0);
+      return { fps, frames: n, duration: +dur.toFixed(2), spans, series, limits: LIM, probes: C.probes.length, silhouette: !!this.pfield,
+        score: Math.max(0, Math.round(100 * (1 - secs / Math.max(0.5, dur)))) };
     }
     // Quality control of the face and its movement: every mouth pose is checked on the mesh against human anatomy —
     // lips keep their thickness and width, the mouth widens/narrows within human limits, the lips never cross, and no

@@ -45,9 +45,10 @@ ALTER TABLE samples ADD COLUMN origin TEXT;
 """]
 
 DEFAULTS = {"jaw": 1.0, "spread": 1.0, "round": 1.0, "close": 1.0, "arch": 1.0, "teeth": 1.0, "smooth_ms": 20.0, "lead_ms": 40.0,
-            "head": 1.0, "brow": 1.0}
+            "head": 1.0, "brow": 1.0, "sway": 1.0, "breath": 1.0}
 BOUNDS = {"jaw": (0.5, 1.5), "spread": (0.4, 1.6), "round": (0.5, 1.5), "close": (0.6, 1.6), "arch": (0.4, 1.8), "teeth": (0.5, 1.4),
-          "smooth_ms": (15.0, 90.0), "lead_ms": (-60.0, 140.0), "head": (0.3, 3.0), "brow": (0.3, 3.0)}
+          "smooth_ms": (15.0, 90.0), "lead_ms": (-60.0, 140.0), "head": (0.3, 3.0), "brow": (0.3, 3.0),
+          "sway": (0.0, 2.0), "breath": (0.0, 2.0)}       # full body: weight shift and breathing
 
 # What is measured (from the face tracker, per frame; sizes relative to the speaker's own mouth width at rest)
 METRICS = {

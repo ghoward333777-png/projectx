@@ -426,6 +426,22 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
     blinks.sort()
     gaze_shifts = [(a, (rnd.uniform(-0.25, 0.25), rnd.uniform(-0.12, 0.08))) for a, _ in pauses]
     phase = rnd.random() * 6.28
+    # brows live with the voice: measured on the original creator's clips of a speaker, the brows move all through
+    # speech (not only on stressed words) — a small, continuous rise with the pitch above the speaker's middle and with
+    # the loudness, smoothed over ~0.15 s (text-only timing has no voice: brows then move on accents only)
+    live = [0.0] * n
+    if pf:
+        voiced = sorted(f["pitch"] for f in pf if f["pitch"] > 0)
+        med = voiced[len(voiced) // 2] if voiced else 0
+        raw = []
+        for i in range(n):
+            q = pf[min(len(pf) - 1, int(i / fps * 100))]
+            up = max(0.0, min(1.0, (q["pitch"] / med - 1.0) / 0.25)) if med and q["pitch"] > 0 else 0.0
+            raw.append(0.6 * up + 0.4 * q["energy"])
+        k = max(1, int(0.15 * fps))
+        for i in range(n):
+            seg = raw[max(0, i - k):i + k + 1]
+            live[i] = sum(seg) / len(seg)
     motion = []
     gaze = (0.0, 0.0)
     gi = 0
@@ -438,7 +454,7 @@ def lip_sync(track, pros=None, emo=None, fps=100, targets=None, seed="", style=N
             if bt - 0.07 <= t <= bt + 0.11:
                 blink = (t - bt + 0.07) / 0.07 if t < bt else 1 - (t - bt) / 0.11
                 break
-        brow = bw * sum(0.8 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5)
+        brow = bw * (sum(0.8 * math.exp(-((t - (a - 0.08)) / 0.12) ** 2) for a in accents if abs(t - a) < 0.5) + 0.35 * live[i])
         nod = hp * sum(-4.5 * math.exp(-((t - (a + 0.1)) / 0.15) ** 2) for a in accents if abs(t - a) < 0.6)
         m = frames_mouth[i]
         motion.append({"time": round(t, 3), "mouth": [round(x, 4) for x in m],

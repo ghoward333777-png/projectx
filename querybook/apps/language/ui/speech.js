@@ -253,6 +253,7 @@ async function faceCard(host, audioName, text, lang, emotion) {
   const cam = box.querySelector("[data-fcam]"); cam.checked = faceCamera();
   cam.onchange = () => { try { localStorage.setItem("qb.camera", cam.checked ? "director" : "still"); } catch (e) {} if (shown) show(shown); };
   facePicker(box.querySelector("[data-fpick]"), show);
+  if (window.rvAttach) rvAttach(box, face, { avatarId: () => +shown, text, audio });   // check the delivery, flag what is wrong
   box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
   await show(faceChoice());
   try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
