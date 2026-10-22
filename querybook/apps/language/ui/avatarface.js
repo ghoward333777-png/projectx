@@ -46,10 +46,13 @@
   // ~11°, the torso follows, and the camera cuts every ~2.5 s between a wide and a close shot with a slow push-in.
   const BODY_CAL = {
     // (revised after the first full-body test: stronger settings read as a worried brow and a sneer on a real face)
-    gain: { jawOpen: 0.7, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 1.0,
-            mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 3, browOuterUpLeft: 3, browOuterUpRight: 3,
+    // (1.43: measured against her two Gemini speaking clips by reproducing them — same voice, same words — and reading
+    // both with the face tracker: more jaw, a stronger upper-lip arch and livelier brows brought ours closest to hers)
+    gain: { jawOpen: 0.84, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 1.0,
+            mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 4.5, browOuterUpLeft: 4.5, browOuterUpRight: 4.5,
             browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1 },
     derive: { up: 0.55, upSmile: 0.2, down: 0.5 },     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+    arch: 1.6,                                           // the upper lip arches up in the middle as the mouth opens
     teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.12,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
     head: [3, 2.2, 4.5],                                 // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
     parallax: [1.8, 1.4],                                // the little 3D turn inside the face itself (more makes it slide like a decal)
@@ -90,7 +93,7 @@
     const at = (f, x, y) => { x = Math.max(0, Math.min(w - 1.001, x * sx)); y = Math.max(0, Math.min(h - 1.001, y * sx));
       const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0, i = y0 * w + x0;
       return f[i] * (1 - fx) * (1 - fy) + f[i + 1] * fx * (1 - fy) + f[i + w] * (1 - fx) * fy + f[i + w + 1] * fx * fy; };
-    return { soft: (x, y) => at(a, x, y), inside: (x, y) => at(raw, x, y) > 0.5 };
+    return { soft: (x, y) => at(a, x, y), inside: (x, y) => at(raw, x, y) > 0.5, field: a };
   }
   function delaunay(pts) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -152,6 +155,7 @@
         (window.QB_CAL && window.QB_CAL.params) || {}, (params && params.cal) || {});
       this.cal = cal;
       cal.head = cal.head || 1; cal.brow = cal.brow || 1;
+      if (avatar.body) cal.arch = (cal.arch || 1) * BODY_CAL.arch;
       this.params = Object.assign({ lead_ms: cal.lead_ms, smooth_ms: cal.smooth_ms, head_gain: cal.head, label: avatar.label || "Synthetic avatar — AI-generated" }, params || {});
       const cg = { jawOpen: cal.jaw, mouthLowerDownLeft: cal.jaw, mouthLowerDownRight: cal.jaw, mouthStretchLeft: cal.spread, mouthStretchRight: cal.spread,
         mouthSmileLeft: cal.spread, mouthSmileRight: cal.spread, mouthDimpleLeft: cal.spread, mouthDimpleRight: cal.spread, mouthPucker: cal.round,
@@ -209,9 +213,14 @@
       }
       // the silhouette: pairs of points along the person's outline — one just outside (pinned: the background stays put),
       // one just inside (free: it moves with her) — so her edge moves crisply and nothing behind her slides
+      // (revised: a band only ~0.1 face width wide tore the hair and shoulders into shards when she moved — the movement now
+      // fades out over ~0.4 face width across her edge; the background beyond that band stays perfectly still)
       const pf = this.pfield = mask ? personField(mask, W, H, 0.06 * fw, 0.05 * fw) : null;
+      // how much a point moves with her ramps smoothly from 1 just inside her edge to 0 about half a face width outside it
+      // (wispy hair the outline misses moves with her head; nothing shears; the background beyond stays perfectly still)
+      const wide = this.pwide = mask ? personField(mask, W, H, 0.12 * fw, 0.3 * fw) : null;
       if (pf && body) {
-        const st = 0.25 * fw, out = 0.05 * fw, inn = 0.06 * fw;   // tight to the edge: the transition stays within ~0.1 face width
+        const st = 0.2 * fw, out = 0.45 * fw, inn = 0.15 * fw;
         for (let y = crop.y + 0.1 * fh; y < crop.y + crop.h; y += st) {
           let prev = pf.inside(crop.x, y);
           for (let x = crop.x + 2; x < crop.x + crop.w; x += 2) {
@@ -237,12 +246,12 @@
           if (y < crop.y - 1) edgeOf.add(i);
         });
       }
-      // background: pinned — every helper point outside her widened outline, and every point placed just outside her edge
-      const outKey = new Set(anchors.filter(q => q[3] === "out").map(q => Math.round(q[0]) + "," + Math.round(q[1])));
-      if (pf && body) this.base3.forEach(([x, y], i) => { if (i >= pts3.length && (pf.soft(x, y) < 0.5 || outKey.has(Math.round(x) + "," + Math.round(y)))) edgeOf.add(i); });
+      // background: pinned — every helper point beyond the ramp (the ramp alone decides: a point the outline missed, like
+      // wispy hair, still moves with her)
+      if (pf && body) this.base3.forEach(([x, y], i) => { if (i >= pts3.length && wide.soft(x, y) < 0.03) edgeOf.add(i); });
       this.fixed = edgeOf;
       // how much each point belongs to her (1 inside, 0 in the background): every body and head movement is scaled by it
-      this.personW = pf && body ? Float32Array.from(this.base3.map(([x, y], i) => i < pts3.length ? 1 : Math.min(1, pf.soft(x, y) * 1.15))) : null;
+      this.personW = pf && body ? Float32Array.from(this.base3.map(([x, y], i) => i < pts3.length ? 1 : Math.min(1, wide.soft(x, y) * 1.1))) : null;
       this.nX0 = this.base3.length; this.extra = []; this.ring = new Set(RING);
       this.base = this.base3.map(([x, y]) => [x, y]);
       // triangulate a copy with the mouth slightly open, so no triangle bridges the lips (they part cleanly when the jaw drops)
@@ -1159,7 +1168,7 @@
         const l1 = ((b[1] - c[1]) * (q[0] - c[0]) + (c[0] - b[0]) * (q[1] - c[1])) / d, l2 = ((c[1] - a[1]) * (q[0] - c[0]) + (a[0] - c[0]) * (q[1] - c[1])) / d;
         return [l1, l2, 1 - l1 - l2]; };
       const cr = this.crop, step = Math.max(4, 0.12 * F);
-      const isBg = (x, y) => pf ? pf.soft(x, y) < 0.02 : Math.hypot((x - this.fc[0]) / (0.9 * (this.bodyShape ? this.bodyShape.fw : F * 0.8)), (y - this.fc[1]) / F) > 1.6;
+      const isBg = (x, y) => pf ? (this.pwide || pf).soft(x, y) < 0.02 : Math.hypot((x - this.fc[0]) / (0.9 * (this.bodyShape ? this.bodyShape.fw : F * 0.8)), (y - this.fc[1]) / F) > 1.6;
       for (let y = cr.y + step / 2; y < cr.y + cr.h; y += step) for (let x = cr.x + step / 2; x < cr.x + cr.w; x += step) {
         if (!isBg(x, y)) continue;
         for (const t of tri) { const w = bary([x, y], this.base[t[0]], this.base[t[1]], this.base[t[2]]); if (w && w[0] >= -1e-6 && w[1] >= -1e-6 && w[2] >= -1e-6) { probes.push({ x, y, t, w }); break; } }
@@ -1172,8 +1181,13 @@
       const faceTris = this.mesh.filter(t => t[0] < nF && t[1] < nF && t[2] < nF);
       const sag = (Q, i) => { const a = Q[78], c = Q[308], u = (Q[i][0] - a[0]) / ((c[0] - a[0]) || 1); return Q[i][1] - (a[1] + u * (c[1] - a[1])); };
       const lipg = Q => ({ up: sag(Q, 13), lo: sag(Q, 14), loT: Q[17][1] - Q[14][1], upT: Q[13][1] - Q[0][1], w: Math.hypot(Q[291][0] - Q[61][0], Q[291][1] - Q[61][1]) });
-      return this._cctx = { probes, hair, region, area, faceTris, a0: faceTris.map(t => area(B, t)), lipg, L0: lipg(B.map(q => [q[0], q[1]])),
-        LIM: { background: 0.006, region: 0.012, hair: 0.025, jump: 0.03, flat: 0.35, swell: 0.12, pucker: -0.24, spread: 0.18 } };
+      // tear probes: the triangles outside the face that touch a moving point and a pinned one (her edge, her hair's edge):
+      // their sides must not stretch or squeeze beyond what reads as natural
+      const nonFace = this.mesh.filter(t => t.some(i => i >= nF) && t.some(i => !this.fixed.has(i) && i >= nF) && t.some(i => this.fixed.has(i)));
+      const len = (P, a, b) => Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]);
+      return this._cctx = { probes, hair, region, area, faceTris, a0: faceTris.map(t => area(B, t)), lipg, L0: lipg(B.map(q => [q[0], q[1]])), edgeTris: nonFace, len,
+        // (background: a couple of pixels in the fade beside her edge cannot be seen; the defect it catches was 0.2 face heights)
+        LIM: { background: 0.02, region: 0.012, hair: 0.025, jump: 0.03, flat: 0.35, swell: 0.12, pucker: -0.24, spread: 0.18, tear: 0.35 } };
     }
     // every measurement of one moment: P as delivered, R the same moment with no expression (the rigid head and body);
     // `box` (portrait pixels) limits the measurement to a region; returns values and the offending points of each kind
@@ -1208,6 +1222,12 @@
       m.lowerShare = mouthIn && open > 0.04 * Wm ? dLo / Math.max(1e-6, dUp + dLo) : null;
       m.thick = mouthIn ? Math.max(g.loT / L0.loT - 1, g.upT / L0.upT - 1) : 0;
       m.width = mouthIn ? g.w / L0.w - 1 : 0;
+      // tearing near her edge: the most any side of an edge triangle stretched or squeezed (0.35 = 35%)
+      let tr = 0; m.pts.tear = [];
+      for (const t of C.edgeTris) { if (!inBox(B[t[0]][0], B[t[0]][1])) continue;
+        for (const [a, b] of [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]]) { const l0 = C.len(B, a, b); if (l0 < 0.08 * F || B[a][1] < 0 || B[b][1] < 0) continue;   // visible sides only
+          const d = Math.abs(C.len(P, a, b) / l0 - 1); if (d > tr) tr = d; if (d > C.LIM.tear) m.pts.tear.push(B[a], B[b]); } }
+      m.tear = tr;
       // (slivers smaller than ~2% of the face on a side — a few pixels along the face's edge — flip on a nod without a visible mark)
       m.folds = 0; m.pts.fold = []; m.foldIds = [];
       C.faceTris.forEach((t, j) => { const ar = C.area(P, t), a0 = C.a0[j];
@@ -1222,7 +1242,7 @@
       if (kind === "region") return Math.max(m.region / L.region, m.jump / L.jump);
       if (kind === "hair") return m.hair / L.hair;
       if (kind === "lips") return Math.max(m.lowerShare === null ? 0 : (0.6 - m.lowerShare) / (0.6 - L.flat), m.thick / L.swell, m.width / L.pucker, m.width / L.spread);
-      if (kind === "fold") return m.folds;
+      if (kind === "fold") return Math.max(m.folds, m.tear / L.tear);
       return 0;
     }
     // one stored moment (a flag): the same measurements, restricted to its box
@@ -1251,7 +1271,7 @@
       const dur = opts.duration || (track && track.motion && track.motion.frames.length ? track.motion.frames.length / track.motion.fps : (track && track.duration) || 0);
       const save = { cur: Float32Array.from(this.cur), head: this.head.slice(), t: this.t, tPrev: this.tPrev, view: this.view, turning: this.turning, moveQueue: this.moveQueue };
       this.cur = new Float32Array(BS.length); this.head = [0, 0, 0]; this.t = null; this.tPrev = undefined; this.turning = null; this.moveQueue = [];
-      const zero = new Float32Array(BS.length), KINDS = ["background", "region", "hair", "jump", "lowerShare", "thick", "width", "folds"];
+      const zero = new Float32Array(BS.length), KINDS = ["background", "region", "hair", "jump", "lowerShare", "thick", "width", "folds", "tear"];
       const series = { t: [] }; KINDS.forEach(k => { series[k] = []; });
       const hits = [], hit = (kind, i, value, box, why) => hits.push({ kind, i, value, box, why });
       const bbox = pts => { if (!pts.length) return null; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -1281,6 +1301,7 @@
         if (m.width < LIM.pucker) hit("lips", k, m.width, mouthBox, "exaggerated pucker (the mouth narrows by more than " + Math.round(-LIM.pucker * 100) + "%)");
         if (m.width > LIM.spread) hit("lips", k, m.width, mouthBox, "exaggerated spread (the mouth widens by more than " + Math.round(LIM.spread * 100) + "%)");
         if (m.folds) hit("fold", k, m.folds, bbox(m.pts.fold), "part of the face folds over (smears) near " + region_of(m.foldIds[0]));
+        if (m.tear > LIM.tear) hit("tear", k, m.tear, bbox(m.pts.tear), "the picture tears or shears near her edge (hair, shoulders)");
       }
       // consecutive frames of one kind and reason become one span; its box covers the whole span
       const spans = [];

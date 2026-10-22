@@ -9,7 +9,7 @@ const REF_KEYS = ["brow_inner_sd", "brow_outer_sd", "blinks_per_min", "yaw_range
 const REF_TEXT = { brow_inner_sd: "inner brows move", brow_outer_sd: "outer brows move", blinks_per_min: "blinks per minute", yaw_range: "head turns (left–right, °)",
   pitch_range: "head nods (°)", roll_range: "head tilts (°)", gap_mean: "mouth opening (average)", gap_p90: "mouth opening (wide moments)", smile_p50: "speaking smile",
   upper_lift: "upper lip's share of the opening" };
-const KIND_COLOR = { background: "#d33", region: "#e67e22", hair: "#8e44ad", jump: "#c0392b", lips: "#2a7ae2", fold: "#16a085" };
+const KIND_COLOR = { background: "#d33", region: "#e67e22", hair: "#8e44ad", jump: "#c0392b", lips: "#2a7ae2", fold: "#16a085", tear: "#b8860b" };
 
 async function rvReasons() {
   if (!RV.reasons) RV.reasons = (await api("/api/avatars/flags?id=-1")).reasons;
@@ -245,7 +245,7 @@ function rvAttach(box, face, ctx) {
         (s.limit ? " (limit " + s.limit + ")" : "") + '</td><td><button class="btn quiet small" data-rvshow="' + i + '">Show</button><button class="btn quiet small" data-rvkeep="' + i + '">⚑ Keep as flag</button></td></tr>').join("") + "</table>");
       out.querySelectorAll("[data-rvshow]").forEach(b => b.onclick = () => { const s = r.spans[+b.dataset.rvshow]; seek((s.t0 + s.t1) / 2); setTimeout(() => rvShowBox(f, s.box, KIND_COLOR[s.kind], s.kind), 120); });
       out.querySelectorAll("[data-rvkeep]").forEach(b => b.onclick = async () => { const s = r.spans[+b.dataset.rvkeep]; seek((s.t0 + s.t1) / 2); await new Promise(z => setTimeout(z, 150));
-        const reason = { background: "background", region: "region", hair: "hair", jump: "head", lips: "lips", fold: "fold" }[s.kind] || "other"; await flag((s.t0 + s.t1) / 2, s.box, reason, "check", s.why); });
+        const reason = { background: "background", region: "region", hair: "hair", jump: "head", lips: "lips", fold: "fold", tear: "fold" }[s.kind] || "other"; await flag((s.t0 + s.t1) / 2, s.box, reason, "check", s.why); });
     }
     if (cmp) out.insertAdjacentHTML("beforeend", rvCompareTable(cmp));
     else if (!ref) out.insertAdjacentHTML("beforeend", '<p class="small muted">No reference clips for this face yet — Avatar studio → Reference clips: add videos of the person speaking to compare with.</p>');

@@ -31,7 +31,7 @@ CREATE TABLE delivery_checks (
 # them), the rest need a person's eyes — each flag stays open until someone marks it fixed
 FLAG_REASONS = {"background": "the background moves", "region": "the forehead / head region moves for no reason",
                 "lips": "lip shape (flat lower lip, swollen lips, pucker, spread)", "hair": "the hair separates from the head",
-                "fold": "a smear or fold in the face", "teeth": "teeth or tongue look wrong", "sync": "the mouth is out of sync with the voice",
+                "fold": "a smear, tear or fold in the picture", "teeth": "teeth or tongue look wrong", "sync": "the mouth is out of sync with the voice",
                 "eyes": "eyes or blinks look wrong", "brows": "brows move too much or too little", "head": "head movement unnatural",
                 "body": "body movement unnatural", "other": "something else (say what in the note)"}
 REFERENCE_KEYS = ("brow_inner_sd", "brow_outer_sd", "blinks_per_min", "yaw_range", "pitch_range", "roll_range", "gap_mean", "gap_p90", "smile_p50", "upper_lift")
@@ -167,6 +167,9 @@ class Library:
                 r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
             if a.get("anatomy") and not os.path.isfile(os.path.join(self.folder, str(r["id"]), "anatomy.json")):
                 self.set_anatomy(r["id"], a["anatomy"])
+            for old in man.get("removed_reference") or []:       # a bundled clip measured again: the earlier entry goes
+                if old in {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}:
+                    self.reference_remove(r["id"], old)
             for c in a.get("reference") or []:                    # the person's own reference clips, already measured
                 have = {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}
                 if c["clip"] not in have:
