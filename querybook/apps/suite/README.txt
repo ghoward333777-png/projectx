@@ -33,6 +33,17 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.45.0)
+    * Calibration bench (Avatar studio): choose her original clip and its words; the app makes our face say the same
+      words with the same voice and shows three columns - her original, our approved calibration, and a trial you set
+      with sliders. Each has a level, same-scale mouth close-up with the tracked lip outline and her outline laid over
+      ours, live width / opening / upper-lip numbers, the words, full / half / quarter speed, frame stepping, jump to the
+      worst words, and Record (WebM, or MP4 through ffmpeg). Re-render the trial, compare the scores, then send it to the
+      Quality Lab (the admin approves it there). New slider: rounding at rest.
+    * Full-body avatars, tuned on the bench against her Gemini clip (same voice, same words, same tracker): the mouth
+      no longer keeps the portrait's smile (14% too wide -> matches hers), open vowels and r no longer open 2-3x hers
+      ("ah" 0.093 -> 0.051, hers 0.042), the lips no longer trail her by two frames, and the head no longer tilts and
+      turns 4-5x as much as hers (tilt range 5.5 -> 1.7 deg, hers 1.1). Word-by-word distance from her 1.19 -> 0.89.
   Language Builder (1.44.0)
     * The upper lip moves with the words. Measured word by word against her two Gemini originals, our upper lip used to
       make under a tenth of each opening (hers: about a third) and sank on "ee" words. Now every sound has its own

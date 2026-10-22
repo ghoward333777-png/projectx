@@ -43,7 +43,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.44.0"
+VERSION = "1.45.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1086,7 +1086,7 @@ class App:
             ff = shutil.which("ffmpeg")
             if not ff:
                 raise core.UserError("This browser cannot read the clip and ffmpeg is not installed on this computer — use Chrome or Edge, or install ffmpeg.")
-            to = p.get("to") if p.get("to") in ("wav", "webm") else "wav"
+            to = p.get("to") if p.get("to") in ("wav", "webm", "mp4") else "wav"
             data = base64.b64decode(str(p.get("file_b64") or "").split(",", 1)[-1])
             if len(data) > 300 * 1024 * 1024:
                 raise core.UserError("The clip is larger than 300 MB.")
@@ -1094,12 +1094,14 @@ class App:
                 src, dst = os.path.join(d, "in"), os.path.join(d, "out." + to)
                 with open(src, "wb") as f:
                     f.write(data)
-                args = ["-vn", "-ac", "1", "-ar", "16000"] if to == "wav" else ["-c:v", "libvpx-vp9", "-b:v", "3M", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus"]
+                args = (["-vn", "-ac", "1", "-ar", "16000"] if to == "wav" else
+                        ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "veryfast", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"] if to == "mp4" else
+                        ["-c:v", "libvpx-vp9", "-b:v", "3M", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus"])
                 r = subprocess.run([ff, "-y", "-loglevel", "error", "-i", src, "-t", "120"] + args + [dst], capture_output=True, timeout=900)
                 if r.returncode or not os.path.isfile(dst):
                     raise core.UserError("The conversion failed: " + r.stderr.decode("utf-8", "replace")[-200:])
                 with open(dst, "rb") as f:
-                    return {"b64": ("data:audio/wav;base64," if to == "wav" else "data:video/webm;base64,") + base64.b64encode(f.read()).decode("ascii")}
+                    return {"b64": {"wav": "data:audio/wav;base64,", "mp4": "data:video/mp4;base64,"}.get(to, "data:video/webm;base64,") + base64.b64encode(f.read()).decode("ascii")}
 
         @a.get("/api/qlab/sources")
         def ql_sources(p):
@@ -1869,6 +1871,16 @@ def selftest():
                 and abs(r2["stats"]["brow_inner_sd"] - (sum(x["stats"]["brow_inner_sd"] * x["frames"] for x in r2["clips"]) / r2["frames"])) < 1e-3,
                 (ref, fl, r2.get("stats")))
         app.avatars.reference_remove(pam["id"], "test clip"); app.avatars.flag_delete(fl["id"])
+        # calibration bench (1.45): the side-by-side page is shipped and wired; rounded sounds open less than "ah" and round
+        # more; the rounding-at-rest knob exists with sane bounds; recordings can be converted to MP4
+        bench = open(os.path.join(HERE, "ui", "bench.js"), encoding="utf-8").read()
+        idx = open(os.path.join(HERE, "ui", "index.html"), encoding="utf-8").read()
+        T = vse.TARGETS
+        tg = lambda v, k: T[v][vse.PARAMS.index(k)] if hasattr(vse, "PARAMS") else T[v][k]
+        c.check("bench: side-by-side calibration bench is wired; oh/oo/r open less than ah and round more; rest rounding is a bounded knob",
+                "function bnSection" in bench and "bench.js" in idx and "bnSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read()
+                and tg("O", "gap") < 0.65 * tg("aa", "gap") and tg("RR", "gap") < 0.3 * tg("aa", "gap") and tg("O", "mouthPucker") >= 0.65
+                and qualitylab.BOUNDS["rest_round"] == (0.0, 0.6) and qualitylab.DEFAULTS["rest_round"] == 0.0, "targets")
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)

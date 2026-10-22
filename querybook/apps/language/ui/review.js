@@ -258,7 +258,8 @@ async function rvStudio(el, a) {
   const host = document.createElement("div"); host.className = "note small"; host.id = "rv-studio";
   const old = $("#rv-studio", el); if (old) old.remove();
   $("#av-info", el).appendChild(host);
-  host.innerHTML = '<b>Delivery review</b> — flags, reference clips and learning. <div data-rvref></div><div data-rvflags></div>';
+  host.innerHTML = '<b>Delivery review</b> — flags, reference clips and learning. <div data-rvbench></div><div data-rvref></div><div data-rvflags></div>';
+  if (window.bnSection) bnSection(host.querySelector("[data-rvbench]"), a);
   await rvRefSection(host.querySelector("[data-rvref]"), a);
   await rvFlagSection(host.querySelector("[data-rvflags]"), a);
 }

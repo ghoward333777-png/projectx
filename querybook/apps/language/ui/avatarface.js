@@ -48,13 +48,19 @@
     // (revised after the first full-body test: stronger settings read as a worried brow and a sneer on a real face)
     // (1.43: measured against her two Gemini speaking clips by reproducing them — same voice, same words — and reading
     // both with the face tracker: more jaw, a stronger upper-lip arch and livelier brows brought ours closest to hers)
-    gain: { jawOpen: 0.84, mouthLowerDownLeft: 1.2, mouthLowerDownRight: 1.2, mouthUpperUpLeft: 1.4, mouthUpperUpRight: 1.4, mouthPucker: 1.0,
+    // (1.45: tuned on the calibration bench against her Gemini clip — same voice, same words, read by the same tracker:
+    // the mouth was 14% too wide with the portrait's smile, opened 2–3× too far, the head turned and tilted 4–5× as much
+    // as hers and the lips trailed her by two frames. Width miss 0.123 → 0.051, opening miss 0.094 → 0.079, opening
+    // follows hers 0.21 → 0.35, head tilt 5.7× → 1.5× hers)
+    gain: { jawOpen: 0.6, mouthLowerDownLeft: 0.8, mouthLowerDownRight: 0.8, mouthUpperUpLeft: 1.0, mouthUpperUpRight: 1.0, mouthPucker: 1.0,
             mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 4.5, browOuterUpLeft: 4.5, browOuterUpRight: 4.5,
-            browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1 },
-    derive: { up: 0.35, upSmile: 0.2, down: 0.5 },     // (1.44: less lift tied to the jaw — each sound now sets its own upper lip)     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
+            browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1, mouthSmileLeft: 0.85, mouthSmileRight: 0.85, mouthStretchLeft: 0.8, mouthStretchRight: 0.8 },
+    derive: { up: 0.35, upSmile: 0.2, down: 0.3 },
+    restRound: 0.7,                                      // the portrait smiles: its corners are drawn in at rest (not when she smiles)
+    lead: 0.04,                                          // the lips 40 ms earlier (they trailed hers by about two frames)     // (1.44: less lift tied to the jaw — each sound now sets its own upper lip)     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
     arch: 1.6,                                           // the upper lip arches up in the middle as the mouth opens
     teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.12,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
-    head: [3, 2.2, 4.5],                                 // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
+    head: [0.9, 1.5, 0.9],                               // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
     parallax: [1.8, 1.4],                                // the little 3D turn inside the face itself (more makes it slide like a decal)
     sway: 1.0, breath: 1.2, torsoFollow: 0.3,
     shot_s: 2.5, shots: [1.0, 0.5, 0.78, 0.47], push: 0.05,
@@ -151,7 +157,7 @@
     constructor(el, avatar, params) {
       this.el = el; this.avatar = avatar;
       // calibration (Quality Lab): the admin-approved one everywhere; the lab passes its candidate in params.cal
-      const cal = Object.assign({ jaw: 1, spread: 1, round: 1, close: 1, arch: 1, teeth: 1, smooth_ms: 20, lead_ms: 40 },
+      const cal = Object.assign({ jaw: 1, spread: 1, round: 1, rest_round: 0, close: 1, arch: 1, teeth: 1, smooth_ms: 20, lead_ms: 40 },
         (window.QB_CAL && window.QB_CAL.params) || {}, (params && params.cal) || {});
       this.cal = cal;
       cal.head = cal.head || 1; cal.brow = cal.brow || 1;
@@ -694,7 +700,7 @@
     }
     // one step of the animation state (shared by playback and the delivery check, so the check sees exactly what plays)
     _advance(track, t) {
-      const tt = t + this.params.lead_ms / 1000, tgt = this._target(track, tt);
+      const tt = t + this.params.lead_ms / 1000 + (this.body ? BODY_CAL.lead || 0 : 0), tgt = this._target(track, tt);
       const dt = this.t === null ? 1 / 24 : Math.max(0, Math.min(0.2, t - this.t)); this.t = t;   // the first frame eases in from rest
       const a = 1 - Math.exp(-dt / Math.max(0.005, this.params.smooth_ms / 1000));
       const hold = this.body ? Math.exp(-dt / 0.07) : 0;                 // full body: a blink stays shut a little longer (~0.25 s)
@@ -737,6 +743,11 @@
         c[up] = Math.min(1, c[up] + (dv.up * j + dv.upSmile * c[IDX["mouthSmile" + k]] * Math.min(1, 4 * j)) * (1 - hold) * (1 - 0.6 * rnd));
         c[dn] = Math.min(1, c[dn] + dv.down * j);
       }
+      // rounding at rest (calibration): a portrait taken smiling keeps its corners spread; the pucker field draws them in
+      // while the face is not smiling or spreading. It is added on top of the spoken pucker (not inside its 0–1 range),
+      // so oo and w still have their full rounding to go.
+      const rr = (this.cal.rest_round || 0) + (this.body ? BODY_CAL.restRound || 0 : 0), PK = IDX.mouthPucker;
+      const restP = rr > 0 ? rr * (1 - 0.12 * Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]) + 0.7 * Math.max(c[IDX.mouthStretchLeft], c[IDX.mouthStretchRight]))) : 0;
       // while an eye closes, its "wide", squint and gaze give way to the lid (together they fought the blink and folded the eye)
       for (const k of ["Left", "Right"]) {
         const bl = Math.min(1, c[IDX["eyeBlink" + k]]);
@@ -759,6 +770,7 @@
         if (i < nF || i >= this.nX0) {
           for (let k = 0; k < c.length; k++) {
             let w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k] * this.calGain[k];   // lips can only close against an open jaw
+            if (k === PK) w += restP;
             if (w > 0.85 && BROWS.has(k)) w = 0.85;                                               // brows stay within their range
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
           }
@@ -1424,6 +1436,6 @@
     }
     dispose() { this.el.innerHTML = ""; this.ctx = null; }
   }
-  window.DepthFace = DepthFace;
+  window.DepthFace = DepthFace; DepthFace.BODY_CAL = BODY_CAL;   // (the calibration bench and the tests read it)
   window.ARKIT52 = BS;
 })();

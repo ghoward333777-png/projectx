@@ -381,6 +381,13 @@ the lips grow fuller as they push forward; spread vowels thin the lips slightly.
 r shape; the short *oo* of book is lightly rounded (a lax vowel's strength `s` on its viseme). The speaking smile relaxes
 while the lips round. Teeth are drawn tooth by tooth; on wide-open vowels the tongue's top surface shows.
 
+**Calibration bench (1.45): side by side with her original clip, on this computer.** (`ui/bench.js`) Avatar studio →
+Calibration bench: her clip and its words → our face speaks the same voice and words; three columns (original, approved
+calibration, trial calibration from sliders), each with a level same-scale mouth close-up, tracked lip outlines and her
+outline over ours, live width/opening/upper-lip numbers, slow motion, frame stepping, worst-words list, recording to
+WebM/MP4. The trial goes to the Quality Lab as a candidate. Full-body settings (`BODY_CAL`: rest rounding, jaw/lip
+gains, smile, head, lip lead) and the VSE vowel targets were tuned with the bench's own scoring against her clip.
+
 **Delivery review (1.43): check, flag, compare with her original clips, learn.** (`ui/review.js`, `DepthFace.deliveryCheck`)
 * *Check delivery* (under every talking face) replays the delivery exactly as it plays and measures every frame in the
   portrait's own pixels: the background outside her silhouette (must not move), the forehead and head region beyond the
