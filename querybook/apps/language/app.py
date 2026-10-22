@@ -43,7 +43,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.45.0"
+VERSION = "1.46.0"
 PORT = 8101
 program_dir = HERE
 
@@ -1877,6 +1877,9 @@ def selftest():
         idx = open(os.path.join(HERE, "ui", "index.html"), encoding="utf-8").read()
         T = vse.TARGETS
         tg = lambda v, k: T[v][vse.PARAMS.index(k)] if hasattr(vse, "PARAMS") else T[v][k]
+        af = open(os.path.join(HERE, "ui", "avatarface.js"), encoding="utf-8").read()
+        c.check("mouth shape (1.46): full-body openings taper into the corners, rounded sounds lift the top middle and drop the lower lip, lower teeth show",
+                all(x in af for x in ("taper: 1.3", "lift: 0.6", "restLevel:", "liftBand", "dropBand", "lower_teeth: 0.3", "pucker: -0.32")), "avatarface.js")
         c.check("bench: side-by-side calibration bench is wired; oh/oo/r open less than ah and round more; rest rounding is a bounded knob",
                 "function bnSection" in bench and "bench.js" in idx and "bnSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read()
                 and tg("O", "gap") < 0.65 * tg("aa", "gap") and tg("RR", "gap") < 0.3 * tg("aa", "gap") and tg("O", "mouthPucker") >= 0.65

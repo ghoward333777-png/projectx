@@ -52,14 +52,20 @@
     // the mouth was 14% too wide with the portrait's smile, opened 2–3× too far, the head turned and tilted 4–5× as much
     // as hers and the lips trailed her by two frames. Width miss 0.123 → 0.051, opening miss 0.094 → 0.079, opening
     // follows hers 0.21 → 0.35, head tilt 5.7× → 1.5× hers)
-    gain: { jawOpen: 0.6, mouthLowerDownLeft: 0.8, mouthLowerDownRight: 0.8, mouthUpperUpLeft: 1.0, mouthUpperUpRight: 1.0, mouthPucker: 1.0,
+    gain: { jawOpen: 0.6, mouthLowerDownLeft: 1.0, mouthLowerDownRight: 1.0, mouthUpperUpLeft: 1.0, mouthUpperUpRight: 1.0, mouthPucker: 1.0,
             mouthFunnel: 0.9, mouthPressLeft: 1.5, mouthPressRight: 1.5, browInnerUp: 4.5, browOuterUpLeft: 4.5, browOuterUpRight: 4.5,
             browDownLeft: 1.4, browDownRight: 1.4, eyeSquintLeft: 1.1, eyeSquintRight: 1.1, mouthSmileLeft: 0.85, mouthSmileRight: 0.85, mouthStretchLeft: 0.8, mouthStretchRight: 0.8 },
     derive: { up: 0.35, upSmile: 0.2, down: 0.3 },
     restRound: 0.7,                                      // the portrait smiles: its corners are drawn in at rest (not when she smiles)
+    // (1.46: measured edge by edge against her clip — the mouth-shape study — her opening changes form with each sound and
+    // ours was one oval scaled up and down)
+    taper: 1.3,        // the opening narrows hard into the corners, where the lips press (lens exponent; faces: 0.8)
+    lift: 0.6,         // rounded sounds lift the middle of the upper lip above the corners (oo, oh, w, r, sh)
+    roll: 0.1,         // rounded sounds roll the lips forward: more of the red shows (within the 12% swell limit)
+    restLevel: 0.12,   // the portrait's smile curve is taken out of the corners at rest
     lead: 0.04,                                          // the lips 40 ms earlier (they trailed hers by about two frames)     // (1.44: less lift tied to the jaw — each sound now sets its own upper lip)     // lips open with the jaw: upper lip lifts, lower lip drops (speaking smile)
     arch: 1.6,                                           // the upper lip arches up in the middle as the mouth opens
-    teeth_mm: 6.5, teeth_frac: 0.5, lower_teeth: 0.12,  // upper front teeth show as she speaks, never a dark gape or a wall of teeth
+    teeth_mm: 8, teeth_frac: 0.55, lower_teeth: 0.3,    // upper and lower front teeth show as she speaks (1.46: hers fill a quarter of the opening, ours was a dark hole)
     head: [0.9, 1.5, 0.9],                               // yaw, pitch, roll of the WHOLE head (face, hair and skull move as one piece)
     parallax: [1.8, 1.4],                                // the little 3D turn inside the face itself (more makes it slide like a decal)
     sway: 1.0, breath: 1.2, torsoFollow: 0.3,
@@ -391,7 +397,7 @@
       let sclera = sc.length ? sc[0] : [225, 220, 210];
       if (lum(sclera) < 120) sclera = [Math.max(sclera[0], 170), Math.max(sclera[1], 162), Math.max(sclera[2], 150)];
       // teeth: a little darker and warmer than the sclera, never brighter, never blue
-      const L = Math.min(lum(sclera) * 0.9, 222), base = [1.0, 0.975, 0.92], k = L / lum(base.map(x => x * 255));
+      const L = this.body ? Math.min(lum(sclera) * 1.02, 232) : Math.min(lum(sclera) * 0.9, 222), base = [1.0, 0.975, 0.92], k = L / lum(base.map(x => x * 255));
       const teeth = base.map(x => Math.round(x * 255 * k));
       const tone = (v, f, add) => v.map((x, i) => Math.round(Math.max(0, Math.min(255, x * f + (add ? add[i] : 0)))));
       const skinS = [avg(P[205][0], P[205][1], ew * 0.12), avg(P[425][0], P[425][1], ew * 0.12)];
@@ -400,8 +406,8 @@
       const lidOf = (lid, brow) => { const q = mid(lid, brow, 0.38); return avg(q[0], q[1], ew * 0.07).map(Math.round); };
       return { lip: lip.map(Math.round), sclera: sclera.map(Math.round), teeth, skin: skin.map(Math.round), lidLeft: lidOf(386, 334), lidRight: lidOf(159, 105),
         crease: tone(skin, 0.55), sheen: tone(skin, 1.12),
-        cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, 0.4, [8, -5, -4]),
-        tongueHi: tone(lip, 0.52, [12, -7, -5]), gum: tone(lip, 0.75) };
+        cavDeep: tone(lip, 0.22, [8, 1, 1]), cavEdge: tone(lip, 0.45, [8, 0, 0]), tongue: tone(lip, this.body ? 0.52 : 0.4, [8, -5, -4]),
+        tongueHi: tone(lip, this.body ? 0.68 : 0.52, [12, -7, -5]), gum: tone(lip, 0.75) };
     }
     // Mouth fit: the speaking mouth sized and shaped from this face's own anatomy, measured once per portrait.
     //  * scale: millimetres per pixel from the iris (≈11.7 mm across in adults, the steadiest size in a face),
@@ -450,7 +456,8 @@
       // (measured from the true middle between the corners), and the person's own lip outline only shades it — a flat
       // lower lip in the photo must not make a flat, straight lower edge in speech (it reads as a swollen lip)
       const Mc = (B[61][0] + B[291][0]) / 2;
-      const prof = i => { const t = Math.min(1, Math.abs(B[i][0] - Mc) / (0.5 * Wm)), lens = Math.pow(1 - t * t, 0.8);
+      const taper = this.body ? BODY_CAL.taper : 0.8;
+      const prof = i => { const t = Math.min(1, Math.abs(B[i][0] - Mc) / (0.5 * Wm)), lens = Math.pow(1 - t * t, taper);
         return lens * (0.75 + 0.25 * Math.min(1, fit.own(B[i][0]) * 1.15)); };
       const lipBand = i => { const ax = Math.abs(B[i][0] - M[0]);
         return Math.exp(-(((B[i][1] - M[1]) / (0.09 * F)) ** 2)) * (ax < 0.6 * Wm ? 1 : Math.exp(-(((ax - 0.6 * Wm) / (0.15 * Wm)) ** 2))); };
@@ -476,6 +483,9 @@
       const thick = (i, ub, lb) => { const [x, y] = B[i], m = mid(x);
         if (UPPER.has(i) || LOWER.has(i)) return y - m;
         return y < m ? (outUp(x) - m) * ub : (outLo(x) - m) * lb; };
+      // shapes of their own (full body): the top-middle lift and the lip roll of rounded sounds (driven in _points)
+      const XL = new Float32Array(n * 3), XR = new Float32Array(n * 3);
+      this.XL = this.body ? XL : null; this.XR = this.body ? XR : null;
       for (let i = 0; i < nF; i++) {
         const [x, y] = B[i], lz = lipZ(i), up = above(i), lo = below(i), sL = side(i, 1), sR = side(i, -1), dxm = x - M[0];
         const pf = prof(i), ub = upBand(i), lb = loBand(i), jg = fit.jaw_gain, sg = Math.sign(dxm);
@@ -500,6 +510,15 @@
         // and the lips stay their own thickness within a few percent, as they look from the front)
         add("mouthFunnel", i, -0.08 * (x - Mx) * gw, (lb - ub) * 0.012 * F * pf + 0.02 * tk, -0.03 * F * lz);
         add("mouthPucker", i, -0.2 * (x - Mx) * gw, 0.04 * tk - 0.016 * F * ub * pf, -0.045 * F * lz);   // the upper lip flares up and out as it rounds
+        // her rounded sounds: the middle of the upper lip lifts well above the corners (a peak, flat across the middle
+        // third), the corners stay down; and the lips roll forward, showing more red, most at the centre
+        const pk = Math.pow(Math.max(0, 1 - ((x - Mx) / (0.44 * Wm)) ** 2), 1.2);
+        // the skin above follows over a broad band (a narrow one folds the mesh just above the lip)
+        const liftBand = UPPER.has(i) ? 1 : (y < outUp(x) ? (1 - smooth(0, 0.18 * F, outUp(x) - y)) * lat(i) : 0);
+        // ... and the lower lip drops with it (she opens a rounded vowel about half from each lip: a tall box, not a lid)
+        const dropBand = LOWER.has(i) ? 1 : (lo > 0.5 && y > outLo(x) ? (1 - smooth(0, 0.18 * F, y - outLo(x))) * lat(i) : 0);
+        XL[3 * i + 1] = -0.065 * F * liftBand * pk + 0.065 * F * dropBand * pk;
+        XR[3 * i + 1] = (tk < 0 ? 0.16 : 0.07) * tk; XR[3 * i + 2] = -0.012 * F * lz;     // the upper lip turns out most
         add("mouthLeft", i, 0.13 * Wm * lz, 0, 0); add("mouthRight", i, -0.13 * Wm * lz, 0, 0);
         for (const [k, s, c] of [["Left", 1, cL], ["Right", -1, cR]]) {
           const cw = g(i, c, 0.24 * Wm), sd = s > 0 ? sL : sR;
@@ -747,6 +766,10 @@
       // while the face is not smiling or spreading. It is added on top of the spoken pucker (not inside its 0–1 range),
       // so oo and w still have their full rounding to go.
       const rr = (this.cal.rest_round || 0) + (this.body ? BODY_CAL.restRound || 0 : 0), PK = IDX.mouthPucker;
+      const rnd = this.XL ? Math.min(1, Math.max(c[PK], c[IDX.mouthFunnel])) : 0, wRoll = rnd * BODY_CAL.roll;
+      const wLift = rnd * BODY_CAL.lift * (0.35 + 0.65 * Math.min(1, c[JAW] / 0.15));   // the lift grows as the mouth opens (not while rounding is only anticipated)
+      const FRL = IDX.mouthFrownLeft, FRR = IDX.mouthFrownRight;
+      const restLev = this.body ? BODY_CAL.restLevel * (1 - Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]))) : 0;
       const restP = rr > 0 ? rr * (1 - 0.12 * Math.min(1, Math.max(c[IDX.mouthSmileLeft], c[IDX.mouthSmileRight]) + 0.7 * Math.max(c[IDX.mouthStretchLeft], c[IDX.mouthStretchRight]))) : 0;
       // while an eye closes, its "wide", squint and gaze give way to the lid (together they fought the blink and folded the eye)
       for (const k of ["Left", "Right"]) {
@@ -771,9 +794,12 @@
           for (let k = 0; k < c.length; k++) {
             let w = (k === MC ? Math.min(c[k], c[JAW]) : c[k]) * this.gain[k] * this.calGain[k];   // lips can only close against an open jaw
             if (k === PK) w += restP;
+            else if (k === FRL || k === FRR) w += restLev;
             if (w > 0.85 && BROWS.has(k)) w = 0.85;                                               // brows stay within their range
             if (w > 0.002) { x += w * D[k][3 * i]; y += w * D[k][3 * i + 1]; z += w * D[k][3 * i + 2]; }
           }
+          if (wLift > 0.002) { y += wLift * this.XL[3 * i + 1]; }
+          if (wRoll > 0.002) { y += wRoll * this.XR[3 * i + 1]; z += wRoll * this.XR[3 * i + 2]; }
           // head rotation about the neck: yaw (y axis), pitch (x axis), roll (z axis), then a weak perspective
           let X = x - px, Y = y - py, Z = z - pz;
           let X1 = X * cy + Z * sy, Z1 = -X * sy + Z * cy;
@@ -1128,14 +1154,16 @@
         // speech, where the lower incisors show on open vowels); shaded, never brighter than the upper row
         // (revised: a flat light row along the lower lip read as a straight, swollen lower lip — the lower incisors now show
         // only on a wide-open vowel, small, in shadow, and their edge follows the lip's own curve)
-        const lt = Math.min(th * 0.45, open * (this.body ? BODY_CAL.lower_teeth : 0.1)) * smooth(0.05 * F, 0.085 * F, extra);
+        // (1.46, full body: her lower teeth show on most open words — a row about two-thirds the upper's, lit, from mid openings)
+        const lt = this.body ? Math.min(th * 0.7, open * BODY_CAL.lower_teeth) * smooth(0.025 * F, 0.05 * F, extra)
+          : Math.min(th * 0.45, open * 0.1) * smooth(0.05 * F, 0.085 * F, extra);
         if (lt > 0.8) {
-          const lspan = span * 0.5, lx0 = mx - lspan / 2, N2 = 24;
+          const lspan = span * (this.body ? 0.62 : 0.5), lx0 = mx - lspan / 2, N2 = 24, lk = this.body ? [0.97, 0.78] : [0.72, 0.45];
           c.beginPath(); c.moveTo(lx0, loY(lx0) + 1);
           for (let q = 0; q <= N2; q++) { const xx = lx0 + lspan * q / N2, u = Math.abs(xx - mx) / (lspan / 2); c.lineTo(xx, loY(xx) + 1 - lt * (1 - 0.35 * u * u)); }
           c.lineTo(lx0 + lspan, loY(lx0 + lspan) + 1); c.closePath();
           const lg2 = c.createLinearGradient(0, lowC - lt, 0, lowC);
-          lg2.addColorStop(0, rgb(pal.teeth.map(v => Math.round(v * 0.72)))); lg2.addColorStop(1, rgb(pal.teeth.map(v => Math.round(v * 0.45))));
+          lg2.addColorStop(0, rgb(pal.teeth.map(v => Math.round(v * lk[0])))); lg2.addColorStop(1, rgb(pal.teeth.map(v => Math.round(v * lk[1]))));
           c.fillStyle = lg2; c.fill();
           const sd2 = c.createLinearGradient(lx0, 0, lx0 + lspan, 0);
           sd2.addColorStop(0, rgb(pal.cavDeep, 0.6)); sd2.addColorStop(0.3, rgb(pal.cavDeep, 0)); sd2.addColorStop(0.7, rgb(pal.cavDeep, 0)); sd2.addColorStop(1, rgb(pal.cavDeep, 0.6));
@@ -1199,7 +1227,7 @@
       const len = (P, a, b) => Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]);
       return this._cctx = { probes, hair, region, area, faceTris, a0: faceTris.map(t => area(B, t)), lipg, L0: lipg(B.map(q => [q[0], q[1]])), edgeTris: nonFace, len,
         // (background: a couple of pixels in the fade beside her edge cannot be seen; the defect it catches was 0.2 face heights)
-        LIM: { background: 0.02, region: 0.012, hair: 0.025, jump: 0.03, flat: 0.35, swell: 0.12, pucker: -0.24, spread: 0.18, tear: 0.35 } };
+        LIM: { background: 0.02, region: 0.012, hair: 0.025, jump: 0.03, flat: 0.35, swell: 0.12, pucker: -0.32, spread: 0.18, tear: 0.35 } };   // (1.46: pucker −0.32 — her own clip narrows 29% on "our" and "whole")
     }
     // every measurement of one moment: P as delivered, R the same moment with no expression (the rigid head and body);
     // `box` (portrait pixels) limits the measurement to a region; returns values and the offending points of each kind

@@ -33,6 +33,17 @@ WHAT'S NEW IN THIS RELEASE
       "find Marie Curie", "any alerts?". It is rule-based (no AI model): it does only what it recognises, says what it
       changed and asks before stopping anything.
     * Target and filter changes need the admin passphrase once the admin has set one.
+  Language Builder (1.46.0)
+    * Mouth shape, measured edge by edge against her Gemini clip (the tooth-side lip edges found in the pixels, every
+      frame): our opening was one oval scaled up and down; hers changes form with each sound. Full-body avatars now:
+      - the opening narrows into the corners where the lips press (end taper 0.49 -> 0.42, hers 0.33);
+      - rounded sounds (oh, oo, w, r, sh) lift the middle of the upper lip above the corners and drop the lower lip
+        with it - a tall rounded opening, not a smile-lens (top-middle lift on rounded words 0.074 -> 0.113, hers 0.119);
+      - the portrait's smile curve is taken out of the corners at rest (ends-up 0.024 -> 0.011, hers 0.015);
+      - more of the teeth: longer, brighter upper teeth and the lower teeth on mid openings (teeth 4% -> 13% of the
+        opening, dark 69% -> 51%; hers 23% / 30%); a lighter tongue;
+      - overall the average opening shape is 2.5x closer to hers.
+    * Delivery check: the pucker limit follows her own clip (she narrows 29% on "our") - 32% instead of 24%.
   Language Builder (1.45.0)
     * Calibration bench (Avatar studio): choose her original clip and its words; the app makes our face say the same
       words with the same voice and shows three columns - her original, our approved calibration, and a trial you set
