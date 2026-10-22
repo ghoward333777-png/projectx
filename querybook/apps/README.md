@@ -608,6 +608,19 @@ built, specified (not yet built), not planned (by design), not in this applicati
   conditions. Scored per stage — the exact word, the right look-alike set (pat / bat / mat), and whether the reader says when
   words look alike. Ships with her clips; new exemplar clips are added as the library is built.
 
+## Real-face lip reading and Speech-to-Text timing (Language Builder 1.48)
+
+* **Mouth shapes measured on a real face:** the lip reader's viseme models (`data/lipread-real-model.json`) are trained on
+  6,810 frames of Pamela's 45 exemplar clips, each frame labelled with the sound she was making (the sounds re-timed on her
+  own mouth by the speech motion library). The curriculum now reports an honest score first: 5-fold by clip, so no clip is
+  read by a model that saw it. Held out, exact words: single mouth shapes 3% → 13%, look-alike consonants 2% → 12% (15%
+  counting look-alikes), words in context 8% → 16%. Sentences with nothing known stay about 1% — the next thing to work on.
+* **New speech timed by Speech-to-Text:** when Speech-to-Text is set up, lip sync takes Google's word times, fits them to
+  the script's words (in order; a word written differently, "60" for "sixty", is placed between its neighbours) and times
+  the sounds inside each word. Fewer than half the words matched → the old timing from the sound alone. Measured on her 20
+  sentence clips, each synthesized from her other clips: how closely the avatar's mouth follows hers rose from r = 0.08 to
+  0.25 (opening) and 0.08 to 0.24 (width).
+
 ## Devices: one API for cameras, glasses, robots, wearables (`_core/qbdevices.py`)
 
 Every application has a **Devices** tab and the same device API (`GET /api/devices/openapi.json`):
