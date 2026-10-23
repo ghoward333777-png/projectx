@@ -266,7 +266,7 @@ def open_store():
 
 # ---- background harvest control (so the dashboard can start harvesting) ----
 HARVEST = {"running": False, "target": 0, "done": 0, "started_at": 0.0, "error": None,
-           "stop": False, "continuous": False, "samples": [], "peak_fps": 0.0, "ended_at": 0.0}
+           "stop": False, "continuous": False, "samples": [], "peak_fps": 0.0, "ended_at": 0.0, "note": None}
 _HLOCK = threading.Lock()
 
 # Per-Fact-Unit creation cost, measured once at startup (build + fingerprint + fuid of a
@@ -410,7 +410,7 @@ def _run_harvest(count, domain="mathematics"):
     forever = int(count) <= 0
     HARVEST.update(running=True, target=(0 if forever else int(count)), done=0,
                    started_at=time.time(), error=None, stop=False, continuous=forever,
-                   domain=domain, samples=[(time.time(), 0)], peak_fps=0.0, ended_at=0.0)
+                   domain=domain, samples=[(time.time(), 0)], peak_fps=0.0, ended_at=0.0, note=None)
     qb_keepawake.acquire("harvest")   # don't let the PC sleep while harvesting
     qb_log.log("info", "harvest", "started domain=%s count=%s" % (domain, "24x7" if forever else count))
     try:
@@ -421,17 +421,51 @@ def _run_harvest(count, domain="mathematics"):
             s.append((time.time(), n))
             if len(s) > 8:                      # rolling window for instantaneous fps
                 del s[0]
+        info = {}
         store.harvest_into(DATA_DIR, int(count), "gzip", 1024,
                            progress=prog, should_stop=lambda: HARVEST.get("stop"),
-                           domain=domain)
+                           domain=domain, info=info)
+        HARVEST["done"] = info.get("made", HARVEST["done"])
+        if info.get("exhausted") and not HARVEST.get("stop"):
+            HARVEST["note"] = _domain_finished(domain, forever)
     except Exception as e:
         HARVEST["error"] = str(e)
     finally:
         HARVEST["running"] = False
         HARVEST["ended_at"] = time.time()
         qb_log.log("error" if HARVEST.get("error") else "ok", "harvest",
-                   HARVEST.get("error") or ("stopped; %s facts this run" % HARVEST.get("done", 0)))
+                   HARVEST.get("error") or HARVEST.get("note") or ("stopped; %s facts this run" % HARVEST.get("done", 0)))
         qb_keepawake.release("harvest")   # allow the PC to sleep again
+
+# The built-in generators for history, news, culture and art are FINITE (a curated list plus rule-true facts):
+# a 24x7 run of one of them carries on with the open online sources of the same subject.
+ONLINE_FOR_DOMAIN = {"history": ("frus-volumes", "wikidata-battles", "wikidata-treaties", "federal-register-presidential",
+                                 "smithsonian-history", "nara-records", "dpla-items", "europeana-records", "natural-earth-places",
+                                 "wikidata-countries"),
+                     "culture": ("met-highlights", "smithsonian-history", "europeana-records", "dpla-items"),
+                     "art": ("met-highlights", "smithsonian-history")}
+
+
+def _domain_finished(domain, forever):
+    """Every built-in fact of a finite domain is stored. In 24x7 mode, switch on the domain's open online sources
+    (approved, unrestricted licences) and the master switch, so harvesting goes on instead of stopping."""
+    msg = "all built-in %s facts are stored — the built-in %s list is finite" % (domain, domain)
+    if not forever:
+        return msg
+    try:
+        import qb_campaign
+        C = campaigns()
+        known = {x["name"] for x in C.sources() if x["kind"] == "online"}
+        names = [n for n in ONLINE_FOR_DOMAIN.get(domain, ()) if n in known]
+        if not names:
+            return msg + "; no online source covers %s yet" % domain
+        for n in names:
+            C.switch_source(n, True)
+        C.master(True)
+        return msg + "; 24x7 continues with the open online %s sources: %s (Campaigns & sources)" % (domain, ", ".join(names))
+    except Exception as e:
+        return msg + "; the online sources could not be started: %s" % e
+
 
 # ---- harvest campaigns, the master On/Off, open online sources, Google exemplar tools (qb_campaign.py) ----
 _CAMP = []
@@ -1213,7 +1247,8 @@ class H(BaseHTTPRequestHandler):
                 HARVEST["stop"] = True
                 return self._send(200, {"stopping": True})
             try:
-                count = int(body.get("count", 250000) or 250000)
+                count = body.get("count", 250000)
+                count = 250000 if count in (None, "") else int(count)    # 0 (or less) = 24x7, never "the default"
             except Exception:
                 return self._send(400, {"error": "count must be a number"})
             # count <= 0 means run forever (24x7) until stopped

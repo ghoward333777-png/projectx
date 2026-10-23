@@ -37,6 +37,7 @@ import assistant
 import qbselfknow
 import qbexemplar
 import qbcampaign
+import qbdirective
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
@@ -89,6 +90,7 @@ class Panel:
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
                               lambda: set(ol.HARVESTERS), HERE)
+        qbdirective.add_routes(self.api, self.commons, HERE)  # the Campaign Manager: directives in, wave-scheduled campaigns out
         self.seen = {}                      # application → was it running at the last check
         self.stopping = set()               # stopped from the panel (not an unexpected stop)
         self.procs = {}

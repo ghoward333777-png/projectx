@@ -79,9 +79,12 @@ class AgentManager:
         self.threads = {}       # id -> Thread
         self.stop = {}          # id -> bool
         self._sup = None        # self-heal supervisor thread
+        self._save_lock = threading.Lock()
+        self._resume = []       # agents that were running when the application last closed
         self._load()
 
-    MAX_RESTARTS = 6            # per agent before it stays errored for a human to look at
+    MAX_RESTARTS = 6            # quick restarts per agent; after these it keeps retrying, slowly (SLOW_RETRY_S)
+    SLOW_RETRY_S = 600          # an agent past its quick restarts is retried every 10 minutes, never abandoned
 
     # ---------- persistence ----------
     def _load(self):
@@ -92,19 +95,30 @@ class AgentManager:
             self.providers = d.get("providers", [])
             for a in self.agents.values():
                 if a.get("status") == "running":
-                    a["status"] = "stopped"   # nothing runs until explicitly started
+                    # It was working when the application closed (restart, update, crash, power cut): it resumes
+                    # when the supervisor starts — unless QB_RESUME_AGENTS=0, the old "start by hand" behaviour.
+                    a["status"] = "stopped"
+                    if os.environ.get("QB_RESUME_AGENTS", "1") != "0":
+                        self._resume.append(a["id"])
         except Exception:
             pass
 
     def _save(self):
-        try:
-            os.makedirs(self.store_dir, exist_ok=True)
-            tmp = self.path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"agents": list(self.agents.values()), "providers": self.providers}, f, indent=2)
-            os.replace(tmp, self.path)
-        except Exception:
-            pass
+        """Write agents.json atomically. Agents save from many threads at once: one at a time, a snapshot taken
+        first (an agent may be changing its own record meanwhile), and a retry when Windows holds the file."""
+        with self._save_lock:
+            for attempt in range(6):
+                try:
+                    os.makedirs(self.store_dir, exist_ok=True)
+                    data = json.dumps({"agents": [dict(a) for a in list(self.agents.values())],
+                                       "providers": list(self.providers)}, indent=2)
+                    tmp = self.path + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        f.write(data)
+                    os.replace(tmp, self.path)
+                    return
+                except (OSError, RuntimeError, ValueError):
+                    time.sleep(0.05 * (attempt + 1))
 
     # ---------- CRUD ----------
     def create(self, name, kind, target="", interval=10, chunk=50000, provider=None, extractor="structured"):
@@ -226,6 +240,13 @@ class AgentManager:
         purpose) and cleanly stopped agents are left alone."""
         if self._sup and self._sup.is_alive():
             return
+        for aid in self._resume:                   # pick up where the last session left off
+            a = self.agents.get(aid)
+            if a and a.get("status") == "stopped":
+                a["heal_note"] = "resumed at start-up (it was running when the application closed)"
+                _ev("info", "self-heal", "resuming '%s' (was running when the application closed)" % a.get("name"))
+                self._start(a)
+        self._resume = []
         def loop():
             while True:
                 try:
@@ -244,16 +265,19 @@ class AgentManager:
             if a.get("kind") in _ROADMAP_ENGINE:   # these refuse by design — never "heal"
                 continue
             retries = int(a.get("retries", 0))
-            if retries >= self.MAX_RESTARTS:
-                continue
-            backoff = min(120, 2 ** retries)        # 1,2,4,…,120s
+            # 1,2,4,…,32 s for the quick restarts; then every SLOW_RETRY_S, so a long outage (no network, a site
+            # asking us to wait, a locked drive) never leaves an agent stopped for good
+            backoff = min(120, 2 ** retries) if retries < self.MAX_RESTARTS else self.SLOW_RETRY_S
             if now - float(a.get("error_at", 0)) < backoff:
                 continue
             a["retries"] = retries + 1
             a["error"] = None
-            a["heal_note"] = "auto-restarted (attempt %d/%d) after: %s" % (
-                a["retries"], self.MAX_RESTARTS, str(a.get("_last_err", ""))[:120])
-            _ev("warn", "self-heal", "restarting '%s' (attempt %d/%d)" % (a.get("name"), a["retries"], self.MAX_RESTARTS))
+            slow = a["retries"] > self.MAX_RESTARTS
+            a["heal_note"] = "auto-restarted (attempt %d%s) after: %s" % (
+                a["retries"], " — slow retry every %d min" % (self.SLOW_RETRY_S // 60) if slow else "/%d" % self.MAX_RESTARTS,
+                str(a.get("_last_err", ""))[:120])
+            _ev("warn", "self-heal", "restarting '%s' (attempt %d%s)" % (a.get("name"), a["retries"],
+                                                                        ", slow retry" if slow else "/%d" % self.MAX_RESTARTS))
             self._start(a)
 
     def _provider_for(self, name):

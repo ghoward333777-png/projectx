@@ -18,7 +18,7 @@ import json, os, subprocess, sys, threading, time
 import qb_online as ol
 import ufcs_store as store
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 # the licence of each online source (the Composite Registry's classes; only unrestricted classes are harvested here)
 LICENCE = {"wikidata": ("CC0 1.0", "cc0"), "natural-earth": ("Public domain", "public-domain"), "frus": ("US government work", "us-federal"),
@@ -48,15 +48,28 @@ class Campaigns:
         self._lock = threading.Lock()
         self._thread = None
         self._backoff = {}
+        self._good = None             # the last state read whole (a half-written or locked file never reads as "master off")
+        self.heartbeat = 0.0          # when the harvesting loop last went round
         ol._KEYS["folder"] = data_dir
 
     # ------------------------------------------------------------------ state
     def state(self):
-        try:
-            with open(self.path, encoding="utf-8") as f:
-                s = json.load(f)
-        except (OSError, ValueError):
-            s = {}
+        s = None
+        for attempt in range(5):
+            try:
+                with open(self.path, encoding="utf-8") as f:
+                    s = json.load(f)
+                self._good = json.loads(json.dumps(s))
+                break
+            except FileNotFoundError:
+                s = {}
+                break
+            except (OSError, ValueError):
+                # Windows: the file is being replaced by another thread (sharing violation), or a reader caught it
+                # half-written. Never take that for "master off": retry, then fall back to the last good state.
+                time.sleep(0.05 * (attempt + 1))
+        if s is None:
+            s = json.loads(json.dumps(self._good)) if self._good is not None else {}
         s.setdefault("master", "off"); s.setdefault("sources", {}); s.setdefault("cursors", {}); s.setdefault("campaigns", [])
         s.setdefault("active", None); s.setdefault("tools", {}); s.setdefault("google_terms_accepted", False); s.setdefault("recent", [])
         s.setdefault("counts", {})
@@ -66,7 +79,15 @@ class Campaigns:
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(s, f, indent=1)
-        os.replace(tmp, self.path)
+        for attempt in range(10):
+            try:
+                os.replace(tmp, self.path)
+                break
+            except PermissionError:                     # Windows: a reader has the file open for a moment
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+        self._good = json.loads(json.dumps(s))
 
     def sources(self):
         out = [{"name": "domain:" + d, "title": "Generated %s facts (built-in, deterministic)" % d, "kind": "generator", "licence": "computed by QueryBook",
@@ -88,6 +109,7 @@ class Campaigns:
             x["facts"] = s["counts"].get(x["name"], 0)
             x["key_set"] = (not x.get("needs_key")) or bool(ol._key(x["needs_key"]))
         run = self.runner_status()
+        self.ensure_running()                           # watchdog: master ON always has a live harvesting loop
         tools = [{"id": t, "title": v[0], "model": v[1], "budget": v[2], "on": (s["tools"].get(t) or {}).get("on", False),
                   "plan": (s["tools"].get(t) or {}).get("plan", ""), "made_today": (run.get("today") or {}).get(v[1], 0)} for t, v in GOOGLE_TOOLS.items()]
         for c in s["campaigns"]:
@@ -225,10 +247,13 @@ class Campaigns:
             if name.startswith("domain:"):
                 if self.busy():
                     return None
-                before = store.manifest_value(self.dir, "facts", 0)
-                store.harvest_into(self.dir, 2000, "gzip", 1024, domain=name.split(":", 1)[1])
-                added = store.manifest_value(self.dir, "facts", 0) - before
+                info = {}
+                store.harvest_into(self.dir, 2000, "gzip", 1024, domain=name.split(":", 1)[1], info=info)
+                added = int(info.get("made", 0))
                 detail = "%d generated facts" % added
+                if info.get("exhausted"):                 # a finite generator (history, news, culture, art) is complete
+                    self._backoff[name] = time.time() + 6 * 3600
+                    detail += " — every built-in fact of this domain is stored; switch on its online sources for more"
             else:
                 h = ol.HARVESTERS[name]
                 if name in ol.NEEDS_KEY and not ol._key(ol.NEEDS_KEY[name]):
@@ -254,8 +279,9 @@ class Campaigns:
                 with self._lock:
                     s2 = self.state(); s2["cursors"][name] = -1 if nxt is None else nxt; self._save(s2)
         except ol.SourceBusy as e:
-            self._backoff[name] = time.time() + 600
-            detail = "paused 10 min: %s" % e
+            until = getattr(e, "until", None) or time.time() + 600     # RateLimited carries the site's own Retry-After
+            self._backoff[name] = until
+            detail = "waiting %d s: %s" % (max(1, until - time.time()), e)
         except Exception as e:
             self._backoff[name] = time.time() + 600
             detail = "failed: %s" % e
@@ -272,19 +298,35 @@ class Campaigns:
         return "%s: %s" % (name, detail)
 
     def _loop(self):
-        while True:
-            try:
-                did = self.step()
-            except Exception as e:
-                did = None
-                self.log("error", "campaign", repr(e))
-            if self.state()["master"] != "on":
-                break
-            time.sleep(2 if did else 15)
-        self._thread = None
+        try:
+            while True:
+                self.heartbeat = time.time()
+                try:
+                    did = self.step()
+                except Exception as e:
+                    did = None
+                    self.log("error", "campaign", repr(e))
+                try:
+                    if self.state()["master"] != "on":
+                        break
+                except Exception as e:                  # a state read must never end the loop
+                    self.log("error", "campaign", "state read: %r" % e)
+                if did:
+                    time.sleep(0.5)                     # one task after another while there is work
+                else:                                   # nothing due: sleep until the first source's wait is over (max 15 s)
+                    waits = [t - time.time() for t in self._backoff.values() if t > time.time()]
+                    time.sleep(max(1.0, min([15.0] + waits)))
+        finally:
+            if self._thread is threading.current_thread():
+                self._thread = None
 
     def ensure_running(self):
-        if self.autorun and self._thread is None and self.state()["master"] == "on":
+        """Start the harvesting loop when the master is ON — or restart it when it died."""
+        t = self._thread
+        if t is not None and not t.is_alive():
+            self.log("warn", "campaign", "the harvesting loop had stopped; restarting it")
+            self._thread = t = None
+        if self.autorun and t is None and self.state()["master"] == "on":
             self._thread = threading.Thread(target=self._loop, name="qb-campaign", daemon=True)
             self._thread.start()
 

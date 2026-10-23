@@ -26,7 +26,7 @@ import datetime, hashlib, hmac, json, os, secrets
 
 import qbcore as core
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 
 SCHEMA = """
 CREATE TABLE policy_sources (
@@ -302,7 +302,9 @@ DEFAULT_PARAMS = {
     "rotation.turn_timeout_s": (900, "A turn not finished within this time is given up (the application may have closed)"),
     "rotation.active_window_s": (180, "An application counts as running if it checked in within this time"),
     "rotation.idle_backoff_max_s": (14400, "Longest pause for a domain that is producing nothing new"),
-    "schedule.tick_s": (30, "How often each application asks the engine whether it is its turn"),
+    "rotation.wait_backoff_max_s": (600, "Longest pause for a domain whose sources asked it to slow down (it is not out of work)"),
+    "schedule.tick_s": (30, "How often an idle application asks the engine whether it is its turn"),
+    "schedule.busy_tick_s": (3, "How often an application asks while harvesting is under way, so turns follow each other without a gap"),
 }
 
 
@@ -602,6 +604,7 @@ class Engine:
 
     def __init__(self, commons, registry):
         self.c, self.reg, self.store = commons, registry, commons.store
+        self.last_refusal = None        # why the last claim gave no turn: stopped, off, busy, other, paused
 
     def heartbeat(self, app, version=""):
         with self.store.write() as db:
@@ -613,18 +616,22 @@ class Engine:
         return [r[0] for r in db.execute("SELECT app FROM app_heartbeat WHERE at >= ? ORDER BY app", (now - win,))]
 
     def _app_state(self, db, app):
-        """Recent productivity of an application: its last finished turns."""
-        rows = db.execute("SELECT result, ended FROM engine_turns WHERE app = ? AND ended IS NOT NULL ORDER BY id DESC LIMIT 5", (app,)).fetchall()
+        """Recent productivity of an application: its last finished turns. A turn that found nothing new only because
+        a site asked it to wait, a task failed or the turn was cut short is "held up", not "out of work": it earns a
+        short pause, never the long idle back-off."""
+        rows = db.execute("SELECT result, ended FROM engine_turns WHERE app = ? AND ended IS NOT NULL ORDER BY id DESC LIMIT 8", (app,)).fetchall()
         res = [json.loads(r[0] or "{}") for r in rows]
-        empty = 0
+        empty = held = 0
         for r in res:                                      # consecutive turns that produced nothing new
-            if r.get("new", 0) == 0 and r.get("checks_answered", 0) == 0:
-                empty += 1
-            else:
+            if r.get("new", 0) or r.get("checks_answered", 0):
                 break
-        rate = [r.get("new", 0) / max(0.5, r.get("seconds", 1.0)) for r in res]
+            if r.get("deferred") or r.get("failed") or r.get("error") or r.get("timeout") or r.get("abandoned"):
+                held += 1
+            else:
+                empty += 1
+        rate = [r.get("new", 0) / max(0.5, r.get("seconds", 1.0)) for r in res[:5]]
         last_end = rows[0][1] if rows else None
-        return {"empty_streak": empty, "rate": sum(rate) / len(rate) if rate else None, "last_end": last_end}
+        return {"empty_streak": empty, "held_streak": held, "rate": sum(rate) / len(rate) if rate else None, "last_end": last_end}
 
     def claim(self, app):
         """Whose turn is it? Returns the new turn if it is `app`'s, else None. Atomic across processes."""
@@ -632,16 +639,23 @@ class Engine:
         tmo = float(self.reg.param("rotation.turn_timeout_s", 900))
         stopped = not master_running(self.c)
         off = {a for a in DOMAIN_OF if self.c.setting("auto:%s" % a, "on") == "off"}
+        win = float(self.reg.param("rotation.active_window_s", 180))
         with self.store.write() as db:
             db.execute("INSERT OR REPLACE INTO app_heartbeat(app, at, version) VALUES(?,?,?)", (app, now, ENGINE_VERSION))
             if stopped or app in off:
+                self.last_refusal = "stopped" if stopped else "off"
                 return None                                # the master switch, or this application's own switch, is off
             cur = db.execute("SELECT id, app, started FROM engine_turns WHERE ended IS NULL ORDER BY id DESC LIMIT 1").fetchone()
             if cur:
                 started = _ts(cur[2])
-                if now - started < tmo:
+                beat = db.execute("SELECT at FROM app_heartbeat WHERE app = ?", (cur[1],)).fetchone()
+                gone = cur[1] != app and now - started > win and (not beat or now - beat[0] > win)
+                if now - started < tmo and not gone:
+                    self.last_refusal = "busy"
                     return None                            # someone is harvesting
-                db.execute("UPDATE engine_turns SET ended = ?, result = ? WHERE id = ?", (_now(), json.dumps({"timeout": True}), cur[0]))
+                # the turn ran past its time, or its application stopped answering (closed mid-turn): give it up
+                db.execute("UPDATE engine_turns SET ended = ?, result = ? WHERE id = ?",
+                           (_now(), json.dumps({"abandoned": True} if gone else {"timeout": True}), cur[0]))
             active = [a for a in self._active(db, now) if a not in off]
             if app not in active:
                 active.append(app)
@@ -650,6 +664,7 @@ class Engine:
             w_check = float(self.reg.param("rotation.check_weight", 2.0))
             w_rep = float(self.reg.param("rotation.repeat_penalty", 5.0))
             back_max = float(self.reg.param("rotation.idle_backoff_max_s", 14400))
+            w_back = float(self.reg.param("rotation.wait_backoff_max_s", 600))
             scores, why = {}, {}
             for a in sorted(active):
                 st = self._app_state(db, a)
@@ -661,17 +676,24 @@ class Engine:
                     s += min(3.0, st["rate"] / 50.0); reasons.append("recent rate %.1f new facts/s" % st["rate"])
                 if checks:
                     s += w_check * min(5, checks) / 5.0 * 3; reasons.append("%d checks waiting for it" % checks)
+                since = now - _ts(st["last_end"]) if st["last_end"] else 1e9
                 if st["empty_streak"]:
                     pause = min(back_max, 60.0 * (4 ** (st["empty_streak"] - 1)))
-                    since = now - _ts(st["last_end"]) if st["last_end"] else 1e9
                     if since < pause and not checks:
                         s = -1.0; reasons.append("paused %d s after %d turn(s) with nothing new (less volume)" % (pause, st["empty_streak"]))
+                elif st["held_streak"]:
+                    pause = min(w_back, 30.0 * st["held_streak"])
+                    if since < pause and not checks:
+                        s = -1.0; reasons.append("waiting %d s: its sources asked it to slow down or failed (%d turn(s)); not out of work"
+                                                 % (pause, st["held_streak"]))
                 if a == last and len(active) > 1:
                     s -= w_rep; reasons.append("had the last turn (alternate)")
                 scores[a], why[a] = round(s, 2), reasons
             best = max(sorted(scores), key=lambda a: scores[a])
             if best != app or scores[best] < 0:
+                self.last_refusal = "paused" if scores.get(app, -1) < 0 else "other"
                 return None
+            self.last_refusal = None
             reason = "%s's turn: %s" % (DOMAIN_OF[app], "; ".join(why[app]))
             tid = db.execute("INSERT INTO engine_turns(started, app, domain, reason, scores) VALUES(?,?,?,?,?)",
                              (_now(), app, DOMAIN_OF[app], reason, json.dumps({"scores": scores, "why": why}))).lastrowid

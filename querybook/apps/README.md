@@ -568,6 +568,60 @@ approval is muted until the admin unmutes it.
   recommendation for the admin. Researched and recorded as **blocked**, with the reason: World Bank indicators (CC BY),
   OpenStreetMap (ODbL share-alike), GeoNames (CC BY), Wiktionary (CC BY-SA).
 
+## Harvesting that keeps going (engine 1.1, online harvesters 1.1)
+
+Harvesting used to run for a few seconds and then appear to stop. Measured causes, and what changed:
+
+* **Sites asking us to slow down.** Wikidata and NCBI answer HTTP 429 with a `Retry-After` of up to a minute. The fetcher
+  failed the task at once; the turn counted as "nothing new", so the engine paused the application for 1, 4, 16, 64 minutes and
+  up to 4 hours, and after three such failures the Learner recommended pausing the source for good. Now a short wait is waited
+  for and retried; a long one ends the task as **deferred** (not failed), the site is left alone until its wait is over, the
+  pause between requests to that site grows and eases back, and the source resumes on a later turn. Deferred tasks never count
+  toward the Learner's "pause this task" recommendation.
+* **"Held up" is not "out of work".** A turn that found nothing new because its sources were waiting, failed or the turn was
+  cut short now earns a short pause (30 s per such turn, at most `rotation.wait_backoff_max_s` = 10 min); only genuinely empty
+  turns get the long idle back-off.
+* **No dead time between turns.** After a productive turn, and while another application is harvesting, each application asks
+  the engine again every `schedule.busy_tick_s` (3 s) instead of every 30 s, so turns follow each other back to back. The
+  schedule re-arms itself whatever goes wrong in a tick (a busy shared database used to end it for good).
+* **A closed application no longer blocks the others for 15 minutes.** A running turn sends a heartbeat every 30 s; a turn
+  whose application stopped answering is given up at once (`abandoned`).
+
+QueryBook 9.64 (the single-program prototype) got the same online fetcher, plus: its campaign loop no longer stops when
+`campaigns.json` is briefly unreadable (Windows) and restarts itself if it dies; "Run 24x7" with `count 0` really runs 24x7;
+the finite built-in domains (history, news, culture, art) resume where they stopped instead of re-writing — and counting —
+the same facts each run, and a 24x7 history run carries on with the open online history sources when the built-in list is done;
+agents that were running when the program closed resume at start-up (`QB_RESUME_AGENTS=0` for the old behaviour), and an
+agent past its six quick restarts keeps retrying every 10 minutes instead of staying stopped.
+
+## Campaign Manager: directives in, executable harvest campaigns out (`_core/qbdirective.py`, Control Panel → Campaign manager)
+
+Open **Campaign manager ↗** in the Control Panel (`/campaigns.html`). Feed it a **directive** — a Word (.docx), Markdown or text
+document whose task register is a table with task ids like `MED-01`, the task and its tier (T0 / T30 / SM) — by dropping the
+file on the page or pasting its text. Directives in `control/directives/` are set up automatically: the **QueryBook
+Synthetic-Video Directive** (122 learn-by-example tasks in 19 categories) ships there and is ready on first start.
+
+* **Reader** — the task register, category profiles, capture specification (cameras, points of view, overlays, dialog,
+  captions), specialized-modeling schedule, metadata record, fastest/largest-revenue lists, anchor-set rule and scope exclusions.
+* **Designer** — three waves (T0 now, T30 from day 30, SM from the directive's own "online by" day), fastest-revenue tasks
+  first, each task's takes × camera views as generation requests with deterministic variety (place, light, performer) and
+  failure-and-recovery takes where the world model needs them, the real anchor set (the directive's 2–5 %, the higher figure
+  for regulated categories), the expert reviewer per category, and a day-by-day schedule at the video tool's **real** daily
+  budget (Veo 3 Fast 10/day, Gemini Omni 100/day — the page says how that compares with the directive's planned throughput).
+  A **scope guard** holds back any task about weapons, targeting or identifying real people, whatever a directive says.
+* **Assistant** (right-hand chat) — walks you through what is missing and applies what you tell it, every change audited:
+  "I acknowledge the scope", "use the default reviewers", "reviewer for MED is …", "consent is on file", "anchor source is …",
+  "use omni", "15 requests a day", "3 takes for T0", "2 views", "start on 2026-11-02", "exclude MED-07", "only wave 1",
+  "explain ROB-09", "show the waves". It is rule-based; with an Anthropic key (`ANTHROPIC_API_KEY`, or Harvesting → API keys
+  → Anthropic) open questions are also answered by Claude — advisory only: Claude never changes, compiles or launches anything.
+* **Compile** — one exemplar plan per wave (`<shared folder>/directives/<id>/plans/wave-t0.json` …, a *scene* plan the exemplar
+  generator runs text-to-video) and `jobs.jsonl`: every request with its prompt and the directive's metadata record.
+* **Launch** (admin passphrase) — hands a wave's plan to the chosen Google video tool, switches it on and, if ticked, starts the
+  exemplar generator. It is refused until the checklist is complete: scope acknowledged, reviewers, likeness consent (digital
+  humans), an anchor-set source (regulated categories), the `google-generative-exemplars` source approved, a Gemini key and
+  the admin passphrase. Clips go to the exemplar library as examples — never Fact Units — measured by QueryBook and approved
+  by the admin.
+
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
 Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.
@@ -853,6 +907,7 @@ python language/app.py --selftest     # 216 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
 python control/app.py --selftest      # Control Panel
+python tools/test_directive.py       # the Campaign Manager: directive → campaign → plans → launch (40 checks)
 python tools/run_all_tests.py         # all of the above
 ```
 

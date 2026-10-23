@@ -11,40 +11,101 @@ Offline: set QB_OFFLINE=1, or switch online harvesting off on the Harvesting pag
 import json, os, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 UA = "QueryBook-harvester/%s (personal research tool; one request at a time)" % VERSION
 MIN_GAP_S = 1.0                     # pause between requests to the same site
+MAX_GAP_S = 20.0                    # the most a site's pause grows after it asked us to slow down
+WAIT_INLINE_S = 20.0                # a site asking for a wait this short is waited for; longer, the task waits for a later turn
 _last = {}
+_gap = {}                           # host → current pause between requests (grows after HTTP 429/503, eases back after successes)
+_cool = {}                          # host → time before which the site asked not to be called again (Retry-After)
+_waiting = {}                       # harvester → time it may run again (its site asked us to wait)
 
 
 class SourceBusy(Exception):
     """The site asked us to slow down (HTTP 429/503) or is unreachable; try again on a later turn."""
 
 
+class RateLimited(SourceBusy):
+    """The site asked us to wait (HTTP 429/503, Wikimedia maxlag). Not a failure: the task resumes once the wait is over."""
+
+    def __init__(self, msg, until):
+        super().__init__(msg)
+        self.until = until
+
+
+def _retry_after(value, default):
+    """Seconds from a Retry-After header (seconds or an HTTP date)."""
+    if not value:
+        return default
+    try:
+        return max(1.0, float(value))
+    except ValueError:
+        pass
+    try:
+        import email.utils
+        return max(1.0, email.utils.parsedate_to_datetime(value).timestamp() - time.time())
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def cooling(host_or_url):
+    """Seconds the site still asked us to wait (0 when it may be called)."""
+    host = urllib.parse.urlsplit(host_or_url).netloc or host_or_url
+    return max(0.0, _cool.get(host, 0) - time.time())
+
+
 def _fetch(url, kind="json", timeout=60, headers=None):
+    """One polite request. Waits the site's own pause; on HTTP 429/503 (or Wikimedia's maxlag answer) it honours
+    Retry-After — waiting short pauses in place, raising RateLimited for longer ones so the task resumes on a later turn."""
     host = urllib.parse.urlsplit(url).netloc
-    wait = MIN_GAP_S - (time.time() - _last.get(host, 0))
-    if wait > 0:
-        time.sleep(wait)
+    if cooling(host) > 0:
+        raise RateLimited("%s asked us to wait %.0f s more" % (host, cooling(host)), _cool[host])
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json" if kind == "json" else "*/*"}, **(headers or {})))
-    for attempt in (1, 2):
+    busy = 0
+    for attempt in range(1, 6):
+        wait = _gap.get(host, MIN_GAP_S) - (time.time() - _last.get(host, 0))
+        if wait > 0:
+            time.sleep(wait)
+        retry = None
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 body = r.read()
-            break
+            if kind == "json":
+                data = json.loads(body)
+                err = data.get("error") if isinstance(data, dict) else None
+                if isinstance(err, dict) and err.get("code") == "maxlag":       # Wikimedia: servers lagging, come back later
+                    retry = _retry_after(r.headers.get("Retry-After"), 5.0)
+                else:
+                    _gap[host] = max(MIN_GAP_S, _gap.get(host, MIN_GAP_S) * 0.9)
+                    return data
+            else:
+                _gap[host] = max(MIN_GAP_S, _gap.get(host, MIN_GAP_S) * 0.9)
+                return body
         except urllib.error.HTTPError as e:
             if e.code in (429, 503):
-                raise SourceBusy("%s asked to slow down (HTTP %d)" % (host, e.code))
-            if e.code in (401, 403):
+                retry = _retry_after(e.headers.get("Retry-After") if e.headers else None, 5.0 * 2 ** busy)
+            elif e.code in (401, 403):
                 raise SourceBusy("%s refused the API key (HTTP %d): check it on the Harvesting page" % (host, e.code))
-            raise SourceBusy("%s answered HTTP %d" % (host, e.code))    # never the URL: it may carry an API key
+            elif e.code in (500, 502, 504) and attempt < 3:
+                retry = 3.0 * attempt
+            else:
+                raise SourceBusy("%s answered HTTP %d" % (host, e.code))    # never the URL: it may carry an API key
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt == 2:
+            if attempt >= 3:
                 raise SourceBusy("%s unreachable: %s" % (host, e))
-            time.sleep(3)
+            retry = 3.0 * attempt
+        except ValueError:
+            raise SourceBusy("%s answered something that is not JSON" % host)
         finally:
             _last[host] = time.time()
-    return json.loads(body) if kind == "json" else body
+        busy += 1
+        _gap[host] = min(MAX_GAP_S, max(MIN_GAP_S, _gap.get(host, MIN_GAP_S)) * 2)     # slow down for this site from now on
+        if retry > WAIT_INLINE_S or attempt == 5:
+            _cool[host] = time.time() + retry
+            raise RateLimited("%s asked to slow down; resuming after %.0f s" % (host, retry), _cool[host])
+        time.sleep(retry)
+    raise SourceBusy("%s did not answer" % host)
 
 
 FETCH = _fetch                      # tests replace this
@@ -452,6 +513,9 @@ KEY_SERVICES = {
              "read-only Catalog API v2 key."},
     "europeana": {"title": "Europeana", "how": "Create a free account at europeana.eu, confirm it, then My Profile → Manage API key → "
                   "tick the terms → Request. Issued at once."},
+    "anthropic": {"title": "Anthropic Claude API — optional, for the Campaign Manager assistant's free answers only",
+                  "how": "console.anthropic.com → API keys (needs credits). Without it the assistant stays rule-based; it never "
+                         "changes, compiles or launches anything with Claude. ANTHROPIC_API_KEY in the environment also works."},
 }
 _KEYS = {"folder": None}
 
@@ -757,6 +821,8 @@ def plan(ctx, app_id):
         cur = ctx.cursor("online:" + name)
         if cur < 0:
             continue                                  # source finished
+        if _waiting.get(name, 0) > time.time():
+            continue                                  # its site asked us to wait (Retry-After): it resumes on a later turn
         tasks.append({"action": "online:" + name, "title": "%s — from item %d" % (title, cur + 1), "target": {"cursor": cur},
                       "source": key, "budget_key": bkey, "why": why})
     return tasks
@@ -766,5 +832,10 @@ def execute(task, ctx):
     name = task["action"].split(":", 1)[1]
     _KEYS["folder"] = ctx.commons.folder
     app, key, title, why, bkey, bdef, fn = HARVESTERS[name]
-    items, nxt, detail = fn(int(task["target"]["cursor"]), ctx.budget(bkey, bdef))
+    try:
+        items, nxt, detail = fn(int(task["target"]["cursor"]), ctx.budget(bkey, bdef))
+    except RateLimited as e:
+        _waiting[name] = e.until                      # skip this harvester until the site's wait is over
+        raise
+    _waiting.pop(name, None)
     return {"items": items, "cursor": {"online:" + name: -1 if nxt is None else nxt}, "detail": detail}

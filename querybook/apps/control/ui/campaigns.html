@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campaign Manager · QueryBook Control Panel</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #3b3f8f; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; max-width: 1440px; margin: 0 auto; padding: 16px; }
+  @media (max-width: 1020px) { .layout { grid-template-columns: 1fr; } }
+  main { max-width: none; padding: 0; margin: 0; }
+  header.top a { color: var(--accent-ink); }
+  .sechead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sechead h2 { margin: 0; flex: 1; }
+  .ck { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+  .ck .mark { width: 22px; font-weight: 700; }
+  .ck.ok .mark { color: var(--good); } .ck.no .mark { color: var(--bad); }
+  .ck .need { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; }
+  .grid2 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  .grid2 input, .grid2 select { font-size: 14px; }
+  .list .row { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .list .row.sel { font-weight: 650; }
+  table.t td.n, table.t th.n { text-align: right; }
+  .scroll { max-height: 520px; overflow: auto; }
+  aside.chat { position: sticky; top: 12px; align-self: start; display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 460px; }
+  @media (max-width: 1020px) { aside.chat { position: static; height: 560px; } }
+  .chatlog { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .msg { margin: 6px 0; padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; font-size: 14px; max-width: 94%; }
+  .msg.you { background: var(--accent); color: var(--accent-ink); margin-left: auto; }
+  .msg.assistant { background: var(--panel); border: 1px solid var(--line); }
+  .msg .did { display: block; font-size: 12px; opacity: .75; margin-top: 4px; }
+  .sugg { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+  .sugg button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); }
+  .drop.over { border-color: var(--accent); color: var(--ink); }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 16px; border-radius: 8px; display: none; z-index: 10; max-width: 90vw; }
+  #toast.show { display: block; } #toast.bad { background: var(--bad); color: #fff; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Campaign Manager</h1>
+  <span class="tag">Feed it a directive — it designs an executable, wave-scheduled harvest campaign. <a href="/">← Control Panel</a></span>
+  <span class="tag" id="hdr"></span>
+</header>
+<div class="layout">
+<main>
+  <section class="card">
+    <div class="sechead"><h2>Directives</h2><button class="btn quiet" id="refresh">Refresh</button></div>
+    <p class="muted small">A directive is a Word (.docx), Markdown (.md) or text file with a task register: a table whose first column holds task ids
+      like <code>MED-01</code>, with the task and its tier (T0 / T30 / SM). Directives placed in the Control Panel's <code>directives</code>
+      folder are set up automatically.</p>
+    <div class="list" id="list"></div>
+    <h3>Add a directive</h3>
+    <div class="drop" id="drop">Drop a .docx / .md / .txt file here, or <input type="file" id="file" accept=".docx,.md,.markdown,.txt"></div>
+    <details style="margin-top:8px"><summary class="small">…or paste the directive's text (Markdown)</summary>
+      <textarea id="paste" rows="6" style="width:100%" placeholder="# My directive&#10;| # | Task | Why it pays | Who pays | Ease | Tier | Rev | WM / AG |&#10;| --- | --- | --- | --- | --- | --- | --- | --- |&#10;| ROB-01 | Bin picking | … | … | 4 | T0 | A | H / H |"></textarea>
+      <button class="btn" id="paste-go">Read this directive</button></details>
+  </section>
+
+  <div id="camp" class="hidden">
+    <section class="card">
+      <div class="sechead"><h2 id="c-title"></h2><span class="badge" id="c-status"></span>
+        <button class="btn secondary" id="c-delete">Remove</button></div>
+      <p class="muted small" id="c-sub"></p>
+      <div class="stats" id="c-stats"></div>
+      <p class="note small" id="c-note"></p>
+    </section>
+
+    <section class="card">
+      <div class="sechead"><h2>Readiness</h2><span id="c-ready" class="badge"></span></div>
+      <p class="muted small">Everything below must be settled before a wave may run. The assistant asks for each in turn; the last three are set on
+        the Harvesting page (they need the admin).</p>
+      <div id="c-check"></div>
+    </section>
+
+    <section class="card">
+      <div class="sechead"><h2>Settings</h2><button class="btn" id="s-save">Save settings</button></div>
+      <div class="grid2">
+        <label>Video tool<select id="s-tool"><option value="veo-speech-video">Veo 3 Fast (text-to-video)</option>
+          <option value="omni-speech-video">Gemini Omni 1.1 Flash</option></select></label>
+        <label>Requests a day<input type="number" id="s-rpd" min="1"></label>
+        <label>Camera views per take<input type="number" id="s-views" min="1" max="4"></label>
+        <label>Clip length (seconds)<input type="number" id="s-secs" min="4" max="60"></label>
+        <label>Takes per task — T0<input type="number" id="s-t0" min="1" max="20"></label>
+        <label>Takes per task — T30<input type="number" id="s-t30" min="1" max="20"></label>
+        <label>Takes per task — SM<input type="number" id="s-sm" min="1" max="20"></label>
+        <label>Start date<input type="date" id="s-start"></label>
+        <label>Anchor set % (blank = directive's rule)<input type="number" id="s-anchor" min="1" max="50"></label>
+        <label>Real anchor-set source<input type="text" id="s-asrc" placeholder="where the real calibration clips come from"></label>
+      </div>
+      <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
+        <label class="small"><input type="checkbox" id="s-w-T0"> Wave 1 (T0)</label>
+        <label class="small"><input type="checkbox" id="s-w-T30"> Wave 2 (T30)</label>
+        <label class="small"><input type="checkbox" id="s-w-SM"> Wave 3 (SM)</label>
+        <label class="small"><input type="checkbox" id="s-scope"> Scope exclusions acknowledged</label>
+        <label class="small"><input type="checkbox" id="s-rev"> Reviewers confirmed</label>
+        <label class="small"><input type="checkbox" id="s-consent"> Likeness consent on file</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="sechead"><h2>Waves</h2>
+        <button class="btn" id="w-compile">Compile the plans</button></div>
+      <p class="muted small">Compiling writes one exemplar plan per wave (and a jobs manifest with every clip's metadata record); it starts nothing.
+        Launching (admin) hands a wave's plan to the video tool and switches it on; the exemplar generator — a separate program — makes the clips
+        into the exemplar library, where QueryBook measures them and you approve them. Generated video is an example, never a fact.</p>
+      <div class="scroll"><table class="t" id="w-table"></table></div>
+      <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+        <input type="password" id="w-pass" placeholder="admin passphrase (to launch)" autocomplete="off">
+        <label class="small"><input type="checkbox" id="w-gen" checked> also start the exemplar generator</label>
+      </div>
+      <p class="small muted" id="w-compiled"></p>
+    </section>
+
+    <section class="card">
+      <div class="sechead"><h2>Tasks</h2>
+        <select id="t-wave"><option value="">all waves</option><option>T0</option><option>T30</option><option>SM</option></select>
+        <input type="search" id="t-q" placeholder="filter"></div>
+      <div class="scroll"><table class="t" id="t-table"></table></div>
+      <div id="t-held"></div>
+    </section>
+  </div>
+</main>
+
+<aside class="chat card" aria-label="Campaign assistant">
+  <div class="sechead"><h2>Assistant</h2><span class="badge" id="ai-mode"></span></div>
+  <div class="sugg" id="sugg"></div>
+  <div class="chatlog" id="log" aria-live="polite"><p class="muted small">Choose or add a directive and I'll walk you through setting it up.</p></div>
+  <div class="row" style="margin-top:8px">
+    <input type="text" id="in" class="grow" placeholder="e.g. what's missing?" autocomplete="off">
+    <button class="btn" id="send">Send</button>
+  </div>
+  <p class="muted small" style="margin:6px 0 0">Changes come only from your words and are audited. Never type passphrases or keys here.</p>
+</aside>
+</div>
+<div id="toast" role="status"></div>
+<script src="qb.js"></script>
+<script>
+"use strict";
+let CID = null, V = null;
+const SUGG = ["what's missing?", "I acknowledge the scope", "use the default reviewers", "consent is on file", "show the waves", "explain ROB-09", "help"];
+const fmt = n => (n === null || n === undefined) ? "—" : Number(n).toLocaleString();
+
+async function loadList(select) {
+  const r = await api("/api/directives");
+  $("#list").innerHTML = r.campaigns.length ? r.campaigns.map(c => `<div class="row ${c.id === CID ? "sel" : ""}"><span>${esc(c.title)}
+      <span class="muted small">· ${c.tasks} tasks · ${esc(c.source)} · ${esc(c.created)}</span></span>
+      <span><span class="badge">${esc(c.status)}</span> <button class="btn quiet" data-open="${esc(c.id)}">Open</button></span></div>`).join("")
+    : '<p class="muted">No directives yet.</p>';
+  $$("[data-open]").forEach(b => b.onclick = () => open_(b.dataset.open));
+  const want = select || CID || (() => { try { return localStorage.getItem("qb-campaign"); } catch (e) { return null; } })();
+  if (want && r.campaigns.some(c => c.id === want)) await open_(want);
+  else if (!CID && r.campaigns.length === 1) await open_(r.campaigns[0].id);
+}
+
+async function open_(id) {
+  CID = id; try { localStorage.setItem("qb-campaign", id); } catch (e) { }
+  render(await api("/api/directives/get", { id }));
+  $$("#list .row").forEach(r => r.classList.toggle("sel", !!r.querySelector(`[data-open="${CSS.escape(id)}"]`)));
+}
+
+function render(v) {
+  V = v; $("#camp").classList.remove("hidden");
+  const d = v.design, b = v.brief, s = d.settings, ck = v.checklist;
+  $("#c-title").textContent = b.title; $("#c-status").textContent = v.campaign.status;
+  $("#c-sub").textContent = (b.subtitle ? b.subtitle + " · " : "") + b.source + " · " + b.tasks.length + " tasks · " + (b.categories.length) + " categories";
+  $("#c-stats").innerHTML = [["Tasks in campaign", d.totals.tasks + " / " + d.totals.directive_tasks], ["Generation requests", fmt(d.totals.requests)],
+    ["Clip minutes", d.totals.clip_minutes], ["Days at budget", d.totals.days], ["Categories", d.totals.categories],
+    ["Requests a day · " + d.model, d.requests_per_day]].map(([k, val]) => `<div class="stat"><div class="v">${esc(val)}</div><div class="k">${esc(k)}</div></div>`).join("");
+  $("#c-note").textContent = d.throughput_note;
+  $("#c-ready").textContent = ck.ready_to_launch ? "ready to launch" : ck.ready_to_compile ? "ready to compile" : "not ready";
+  $("#c-ready").className = "badge " + (ck.ready_to_launch ? "good" : ck.ready_to_compile ? "warn" : "bad");
+  $("#hdr").textContent = b.title + " · " + $("#c-ready").textContent;
+  $("#c-check").innerHTML = ck.items.map(i => `<div class="ck ${i.ok ? "ok" : "no"}"><span class="mark">${i.ok ? "✓" : "✗"}</span>
+      <span style="flex:1"><b>${esc(i.title)}</b><br><span class="small">${esc(i.detail)}</span></span>
+      <span class="need">${i.needed_for === "launch" ? "to launch" : i.needed_for === "all" ? "to compile" : "if " + esc(i.needed_for) + " tasks"}</span></div>`).join("");
+  // settings form
+  $("#s-tool").value = s.tool; $("#s-rpd").value = s.requests_per_day; $("#s-views").value = s.views; $("#s-secs").value = s.clip_seconds;
+  $("#s-t0").value = s.takes.T0; $("#s-t30").value = s.takes.T30; $("#s-sm").value = s.takes.SM; $("#s-start").value = s.start || d.waves.length && d.waves[0].start_date || "";
+  $("#s-anchor").value = s.anchor_pct || ""; $("#s-asrc").value = s.anchor_source || "";
+  ["T0", "T30", "SM"].forEach(t => $("#s-w-" + t).checked = s.waves.includes(t));
+  $("#s-scope").checked = !!s.scope_ack; $("#s-rev").checked = !!s.reviewers_confirmed; $("#s-consent").checked = !!s.consent_confirmed;
+  // waves
+  $("#w-table").innerHTML = "<tr><th>Wave</th><th class=n>Tasks</th><th class=n>Requests</th><th>Dates</th><th class=n>Anchor clips</th><th>Status</th><th class=n>Made</th><th></th></tr>" +
+    d.waves.map(w => `<tr><td>${esc(w.name)}</td><td class=n>${w.tasks}</td><td class=n>${fmt(w.requests)}</td>
+      <td>${w.included ? esc(w.start_date + " → " + w.end_date) + `<br><span class="muted small">days ${w.start_day}–${w.end_day} (not before day ${w.earliest_day})</span>` : '<span class="muted">not included</span>'}</td>
+      <td class=n>${w.included ? w.anchor_clips : "—"}</td><td>${w.launch ? '<span class="badge good">launched</span> <span class="small muted">' + esc(w.launch.at) + "</span>" : esc(w.status || "")}</td>
+      <td class=n>${w.made || 0}</td><td>${w.included ? `<button class="btn quiet" data-launch="${w.tier}" ${v.compiled && ck.ready_to_launch ? "" : "disabled"} title="${v.compiled ? (ck.ready_to_launch ? "" : "not ready to launch") : "compile first"}">Launch</button>` : ""}</td></tr>`).join("");
+  $$("[data-launch]").forEach(btn => btn.onclick = () => launch(btn.dataset.launch));
+  $("#w-compiled").textContent = v.compiled ? "Compiled " + v.compiled.compiled + ": " + v.compiled.waves.map(w => w.tier + " " + w.items + " requests").join(", ") + " — " + v.compiled.jobs : "Not compiled yet.";
+  renderTasks();
+  // chat
+  $("#ai-mode").textContent = v.ai ? "rule-based + Claude (advisory)" : "rule-based";
+  $("#log").innerHTML = v.chat.map(m => `<div class="msg ${m.role === "you" ? "you" : "assistant"}">${esc(m.text)}${m.changes && m.changes.length ? `<span class="did">changed: ${esc(m.changes.join("; "))}</span>` : ""}</div>`).join("");
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+function renderTasks() {
+  if (!V) return;
+  const w = $("#t-wave").value, q = $("#t-q").value.toLowerCase();
+  const rows = V.design.tasks.filter(t => (!w || t.tier === w) && (!q || (t.id + " " + t.task + " " + t.category_name + " " + t.reviewer).toLowerCase().includes(q)));
+  $("#t-table").innerHTML = "<tr><th>#</th><th>Task</th><th>Tier</th><th>Band</th><th class=n>Ease</th><th class=n>Requests</th><th>From</th><th>Anchor</th><th>Reviewer</th></tr>" +
+    rows.map(t => `<tr><td><a href="#" data-explain="${esc(t.id)}">${esc(t.id)}</a></td><td>${esc(t.task)}<br><span class="muted small">${esc(t.category_name)}${t.prerequisite !== "none" ? " · needs " + esc(t.prerequisite) : ""}</span></td>
+      <td>${esc(t.tier)}</td><td>${esc(t.revenue_band)}</td><td class=n>${t.ease}</td><td class=n>${t.requests}</td><td>${esc(t.start_date)}</td>
+      <td>${t.anchor_pct}% (${t.anchor_clips})</td><td class="small">${esc(t.reviewer)}</td></tr>`).join("");
+  $$("[data-explain]").forEach(a => a.onclick = e => { e.preventDefault(); say("explain " + a.dataset.explain); });
+  $("#t-held").innerHTML = V.design.held.length ? '<p class="note small">Held back by the scope guard (kept for a person to decide): ' +
+    V.design.held.map(h => esc(h.id + " " + h.task)).join("; ") + "</p>" : "";
+}
+
+async function say(text) {
+  if (!CID) { toast("Choose or add a directive first.", true); return; }
+  $("#log").insertAdjacentHTML("beforeend", `<div class="msg you">${esc(text)}</div>`); $("#log").scrollTop = $("#log").scrollHeight;
+  render(await api("/api/directives/chat", { id: CID, message: text }));
+}
+
+async function upload(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  const v = await api("/api/directives/upload", { name: file.name, data: btoa(bin) });
+  CID = v.campaign.id; render(v); await loadList(CID); toast("Directive read: " + v.brief.tasks.length + " tasks.");
+}
+
+async function launch(tier) {
+  const pass = $("#w-pass").value;
+  if (!pass) { toast("Type the admin passphrase first.", true); return; }
+  if (!confirm("Launch " + tier + "? Its plan goes to the video tool, which is switched on" + ($("#w-gen").checked ? ", and the exemplar generator starts." : "."))) return;
+  const v = await api("/api/directives/launch", { id: CID, tier, passphrase: pass, start_generator: $("#w-gen").checked });
+  $("#w-pass").value = ""; render(v); toast(v.summary + (v.generator ? " " + v.generator : ""));
+}
+
+function bind() {
+  $("#refresh").onclick = () => loadList();
+  $("#file").onchange = e => e.target.files[0] && upload(e.target.files[0]).catch(() => { });
+  const drop = $("#drop");
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]).catch(() => { }); };
+  $("#paste-go").onclick = async () => { const v = await api("/api/directives/upload", { name: "pasted-directive.md", text: $("#paste").value }); CID = v.campaign.id; render(v); loadList(CID); };
+  $("#send").onclick = () => { const t = $("#in").value.trim(); if (t) { $("#in").value = ""; say(t).catch(() => { }); } };
+  $("#in").onkeydown = e => { if (e.key === "Enter") $("#send").click(); };
+  $("#sugg").innerHTML = SUGG.map(s => `<button>${esc(s)}</button>`).join("");
+  $$("#sugg button").forEach(b => b.onclick = () => say(b.textContent).catch(() => { }));
+  $("#t-wave").onchange = renderTasks; $("#t-q").oninput = renderTasks;
+  $("#s-save").onclick = async () => {
+    const num = id => $(id).value === "" ? null : Number($(id).value);
+    const settings = { tool: $("#s-tool").value, requests_per_day: num("#s-rpd"), views: num("#s-views"), clip_seconds: num("#s-secs"),
+      takes: { T0: num("#s-t0"), T30: num("#s-t30"), SM: num("#s-sm") }, start: $("#s-start").value || null, anchor_pct: num("#s-anchor"),
+      anchor_source: $("#s-asrc").value.trim(), waves: ["T0", "T30", "SM"].filter(t => $("#s-w-" + t).checked),
+      scope_ack: $("#s-scope").checked, reviewers_confirmed: $("#s-rev").checked, consent_confirmed: $("#s-consent").checked };
+    render(await api("/api/directives/settings", { id: CID, settings })); toast("Settings saved.");
+  };
+  $("#w-compile").onclick = async () => { const v = await api("/api/directives/compile", { id: CID }); render(v); toast(v.summary); };
+  $("#c-delete").onclick = async () => { if (!confirm("Remove this campaign? Its compiled plans stay on disk.")) return;
+    await api("/api/directives/delete", { id: CID }); CID = null; $("#camp").classList.add("hidden"); loadList(); };
+}
+
+bind();
+loadList().catch(() => { });
+</script>
+</body>
+</html>

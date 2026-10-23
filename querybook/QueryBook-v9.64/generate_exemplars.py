@@ -208,6 +208,8 @@ def plan_from_script(path, skill, model, image=None, subject=None, consent=None,
 
 
 def prompt_for(plan, it):
+    if plan.get("scene"):                                          # a directive campaign's scene: the item carries its whole prompt
+        return ((plan.get("fixed") or "") + "\n\n" + (it.get("prompt") or "")).strip()
     say = it["script"].replace(" … ", ", ").replace("…", ",")       # spoken pauses as commas (ellipses upset the audio)
     if plan["kind"] in ("audio",):
         return ("Say clearly, at a calm pace%s: %s" % ((", " + it["style"].lower()) if it.get("style") else "", say)) if say else it.get("style", "")
@@ -437,8 +439,9 @@ def _one_step(lib, budget, key, tid, model, plan_path, takes):
     if not plan_path or not os.path.isfile(plan_path):
         return None
     plan = json.load(open(plan_path))
-    if plan.get("kind") in ("image", "video") and not (plan.get("image") and os.path.isfile(plan["image"])):
+    if plan.get("kind") in ("image", "video") and not plan.get("scene") and not (plan.get("image") and os.path.isfile(plan["image"])):
         return None                                    # an avatar's examples need the avatar's own image: set "image" in the plan
+                                                       # (a scene plan from a directive campaign is text-to-video: no image)
     if plan.get("model") != model:
         plan = dict(plan, model=model, kind=KIND(model))
     for it in plan["items"]:

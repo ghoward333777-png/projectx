@@ -409,6 +409,15 @@ class Team:
         out = {"app": self.app_id, "trigger": trigger}
         reg, hlog = self.commons.registry, self.commons.harvest_log
         t_cycle = time.time()
+        alive = threading.Event()
+
+        def beat():                                     # the other applications see this one is still working
+            while not alive.wait(30):
+                try:
+                    self.commons.engine.heartbeat(self.app_id, hv.ENGINE_VERSION)
+                except Exception:
+                    pass
+        threading.Thread(target=beat, daemon=True, name="qb-harvest-beat").start()
         try:
             self.state.update(running=True, started=core.now_cs())
             ctx = Context(self.commons, stop)
@@ -469,7 +478,7 @@ class Team:
             # 3. Harvester: stages items per task; writes only task progress
             self.state["role"] = "harvester"
             t0 = time.time()
-            staged, cursors, failed = [], {}, 0
+            staged, cursors, failed, deferred = [], {}, 0, 0
             for tid, t, cls in allowed:
                 if ctx.stop():
                     with store.write() as db:
@@ -490,6 +499,10 @@ class Team:
                     st, detail = "done", (r.get("detail") or "") + (
                         " — %d left out by the Control Panel's filter (e.g. %s)" % (nf, "; ".join(fwhy)) if nf else "") + (
                         " [targeted, budget ×%g]" % trules["boost"] if t.get("_targeted") else "")
+                except ol.RateLimited as e:          # the site asked us to wait: not a failure, the task resumes later
+                    deferred += 1
+                    items, st, detail = [], "waiting", str(e)
+                    staged.append((tid, t, cls, [], time.time() - ts, "deferred: " + str(e)))
                 except Exception as e:
                     failed += 1
                     items, st, detail = [], "failed", str(e)
@@ -501,7 +514,8 @@ class Team:
             n_staged = sum(len(x[3]) for x in staged)
             out["harvested"] = n_staged
             self._role("harvester", "failed" if failed and failed == len(allowed) else "ok",
-                       "%d items staged from %d tasks%s" % (n_staged, len(allowed), (", %d failed" % failed) if failed else ""),
+                       "%d items staged from %d tasks%s%s" % (n_staged, len(allowed), (", %d failed" % failed) if failed else "",
+                                                              (", %d waiting for a site that asked us to slow down" % deferred) if deferred else ""),
                        int((time.time() - t0) * 1000))
             # 4. Curator: save task by task (each task's facts and its log entry in one transaction), answer checks, upkeep
             self.state["role"] = "curator"
@@ -514,7 +528,8 @@ class Team:
             for tid, t, cls, items, secs, err in staged:
                 if err:
                     with store.write() as db:
-                        hlog.write(db, self.app_id, t["action"], t["title"], t.get("source"), cls, "failed", (t.get("why") or "") + " — " + err,
+                        hlog.write(db, self.app_id, t["action"], t["title"], t.get("source"), cls,
+                                   "deferred" if err.startswith("deferred: ") else "failed", (t.get("why") or "") + " — " + err,
                                    seconds=secs, budget_key=t.get("budget_key"), turn_id=(turn or {}).get("id"), policy_version=pv)
                     continue
                 for k in range(0, max(1, len(items)), BATCH):
@@ -555,7 +570,8 @@ class Team:
                            ("done" if not failed else "done with failures", "%d tasks (%d blocked), %d new facts, %d merged, %d checks answered"
                             % (len(tasks), blocked, new, merged, answered), pid))
             out.update(new=new, merged=merged, upkeep=len(upkeep), checks_answered=answered, verdicts=verdicts, blocked=blocked,
-                       filtered=filtered, on_target=on_target, seconds=round(time.time() - t_cycle, 2))
+                       filtered=filtered, on_target=on_target, failed=failed, deferred=deferred, tasks_run=len(allowed),
+                       seconds=round(time.time() - t_cycle, 2))
             self._role("curator", "ok", "%d new facts, %d merged (%d from upkeep), %d checks answered %s"
                        % (new, merged, len(upkeep), answered, json.dumps(verdicts) if verdicts else ""), int((time.time() - t0) * 1000))
             if new or merged or answered:
@@ -578,6 +594,7 @@ class Team:
                 pass
             raise
         finally:
+            alive.set()
             self.state.update(running=False, role=None)
             self._lock.release()
 
@@ -622,19 +639,42 @@ class Team:
     def auto(self):
         return self.commons.setting("auto:%s" % self.app_id, "on") == "on"
 
+    def next_delay(self, out, every=None):
+        """How long to wait before asking the engine again. While harvesting is under way — this application just
+        found something, or another one is working or due — ask again within seconds (schedule.busy_tick_s), so one
+        turn follows another without a gap; when everything is idle, stopped or paused, wait schedule.tick_s."""
+        if every:
+            return every
+        reg = self.commons.registry
+        idle = float(reg.param("schedule.tick_s", 30))
+        busy = min(idle, float(reg.param("schedule.busy_tick_s", 3)))
+        if out and (out.get("new") or out.get("checks_answered") or out.get("deferred")):
+            return busy
+        if out is None and self.commons.engine.last_refusal in ("busy", "other"):
+            return busy
+        return idle
+
     def start_schedule(self, first_delay=20, every=None):
-        """Automatic harvesting: every few seconds (schedule.tick_s) ask the harvesting engine whose turn it is; the
-        engine alternates language, STEM and history across the running applications."""
+        """Automatic harvesting: ask the harvesting engine whose turn it is — every few seconds while harvesting is
+        under way, every schedule.tick_s when idle; the engine alternates language, STEM and history across the
+        running applications. The schedule always re-arms itself, whatever went wrong in a tick."""
         def tick(delay):
             def run():
+                nxt = None
                 try:
                     if self.auto() and not self.state["running"]:
-                        self.engine_turn("automatic")
+                        nxt = self.next_delay(self.engine_turn("automatic"), every)
                     else:
                         self.commons.engine.heartbeat(self.app_id, hv.ENGINE_VERSION)
                 except Exception as e:
                     self.log("automatic harvest failed:", repr(e))
-                tick(every or float(self.commons.registry.param("schedule.tick_s", 30)))
+                finally:
+                    if nxt is None:
+                        try:
+                            nxt = every or float(self.commons.registry.param("schedule.tick_s", 30))
+                        except Exception:
+                            nxt = every or 30.0        # the shared database is busy: try again shortly, never stop
+                    tick(nxt)
             self._timer = threading.Timer(delay, run)
             self._timer.daemon = True
             self._timer.start()

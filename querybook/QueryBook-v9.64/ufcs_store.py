@@ -383,8 +383,11 @@ def history_records(start_n=1):
                              source=_HIST_SRC, trust=0.9)
         n += 1
     # Phase B: rule-true temporal facts (definitionally true) for each year.
+    n = k + 1                             # Phase B numbering always continues from the end of Phase A
     for yr in range(1, 2026):
         n += 1
+        if n < idx:
+            continue                      # resume where the last run stopped (never re-yield stored years)
         century = (yr - 1) // 100 + 1
         decade = (yr // 10) * 10
         leap = (yr % 4 == 0 and (yr % 100 != 0 or yr % 400 == 0))
@@ -429,8 +432,11 @@ def culture_records(start_n=1):
         n += 1
     months = [("January",31),("February",28),("March",31),("April",30),("May",31),("June",30),
               ("July",31),("August",31),("September",30),("October",31),("November",30),("December",31)]
+    n = k + 1
     for name, days in months:
         n += 1
+        if n < idx:
+            continue
         yield n, make_packet(name, "days_in_common_year", str(days), domain="culture")
 
 _ART_SRC = ("SRC-ART", "Public-domain art reference", "attributed", 0.9)
@@ -451,8 +457,11 @@ def art_records(start_n=1):
         s, p, o = _CURATED_ART[n - 1]
         yield n, make_packet(s, p, o, domain="art", source=_ART_SRC, trust=0.9)
         n += 1
+    n = k + 1
     for v in range(0, 256):
         n += 1
+        if n < idx:
+            continue
         yield n, make_packet("grayscale level %d" % v, "hex", "#%02x%02x%02x" % (v, v, v), domain="art")
 
 # Per-domain harvest logic + the AI strategy each domain uses.
@@ -504,11 +513,13 @@ def _resume_key(domain):
     return "det_n" if domain == "mathematics" else "det_n_" + domain
 
 def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, should_stop=None,
-                 resume=True, domain="mathematics", batch=100000, verify=True):
+                 resume=True, domain="mathematics", batch=100000, verify=True, info=None):
     """FAST batched, RESUMING, per-domain harvest. Every run adds NEW facts (no 1M restart).
-    count<=0 runs forever (24x7) until should_stop(). Batched disk+index writes make it
-    ~2x+ faster per core than the old per-fact path; run several domains at once (agents) for
-    much higher aggregate throughput. Returns total facts in the store."""
+    count<=0 runs forever (24x7) until should_stop() — or until a FINITE domain (history, news,
+    culture, art) has given all its facts. Facts already in the store are skipped, never written or
+    counted twice. Batched disk+index writes make it ~2x+ faster per core than the old per-fact path;
+    run several domains at once (agents) for much higher aggregate throughput. Returns total facts in
+    the store; `info` (a dict, optional) receives made, duplicates and exhausted."""
     gen = DOMAIN_GEN.get(domain, det_records)
     st = UFCSStore(store_path, block_mb, codec)
     key = _resume_key(domain)
@@ -524,7 +535,7 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
     # In continuous (24x7) mode, flush in smaller increments so a stop request is prompt:
     # the pending buffer at stop is bounded, so we never block on gzipping a huge batch.
     flush_batch = min(batch, 10000) if forever else batch
-    made = 0; cur = start_n; sample_fp = None
+    made = 0; cur = start_n; sample_fp = None; dups = 0; batch_fps = set()
     facts_before = int(st.manifest.get("facts", 0))
     buf = []; fprows = []; nucrows = []
     if st._blk is None:
@@ -542,6 +553,7 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
             st._blk.write("".join(buf))
             st._bump("facts", len(buf))
             st._bump("facts_dom_" + domain, len(buf))   # per-domain tally for the Navigator
+            batch_fps.clear()
             st._set_key(key, cur)
             buf.clear(); fprows.clear(); nucrows.clear()
             st._blk.flush()
@@ -555,13 +567,18 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
                 st._blk.close(); st._blk = None; st._open_block()
 
     stopped = False
+    exhausted = True                      # becomes False if the run ends for any reason but the generator running out
     try:
         for nn, rec in gen(start_n):
             if should_stop and should_stop():
-                stopped = True
+                stopped = True; exhausted = False
                 break
             cur = nn
             f = rec["semantic_fingerprint"]; n = rec["nucleus"]
+            if f in batch_fps or st.db.execute("SELECT 1 FROM fp WHERE fingerprint=?", (f,)).fetchone():
+                dups += 1                 # already stored: not written again, not counted as a new fact
+                continue
+            batch_fps.add(f)
             if sample_fp is None:
                 sample_fp = f
             trust = (rec.get("certification") or {}).get("trust_score", 0.99)
@@ -577,8 +594,11 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
                 # even with a large write batch
                 progress(made, facts_before + made)
             if not forever and made >= int(count):
+                exhausted = False
                 break
         flush()
+        if dups:
+            st._bump("duplicates", dups)
         st._set_key(key, cur + 1)
         st.flush()
         if progress: progress(made, st.manifest["facts"])
@@ -590,6 +610,8 @@ def harvest_into(store_path, count, codec="gzip", block_mb=1024, progress=None, 
     if verify and not stopped:
         _verify_store(store_path, facts_before, sample_fp)
     v = UFCSStore(store_path); total = v.manifest.get("facts", 0); v.db.close()
+    if info is not None:
+        info.update(made=made, duplicates=dups, exhausted=exhausted, stopped=stopped, domain=domain)
     return total
 
 

@@ -4,7 +4,7 @@ as on a real computer), their four-agent teams harvest into it, and they check e
 
 Also: the status rules, the licence policy, crash safety of a harvest, and determinism (two separate
 runs from the same inputs give the same shared facts, evidence and reasoning)."""
-import json, os, sqlite3, subprocess, sys, tempfile
+import datetime, json, os, sqlite3, subprocess, sys, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "_core"))
@@ -234,6 +234,30 @@ def main():
         c.check("engine: then a different domain again", t3 is not None and t3["app"] != t2["app"], t3)
         eng.finish(t3, {"new": 5, "seconds": 1})
         c.check("engine: an application that found nothing new backs off", eng.claim(t2["app"]) is None)
+        # reliability (engine 1.1): a turn held up by a site asking us to wait is not "out of work"
+        t4 = eng.manual("language", "test")
+        eng.finish(t4, {"new": 0, "deferred": 2, "seconds": 1})
+        st4 = eng._app_state(com.store.conn(), "language")
+        c.check("engine: a rate-limited turn counts as held up, not as nothing new", st4["held_streak"] == 1 and st4["empty_streak"] == 0, st4)
+        c.check("engine: a held-up application waits briefly (not the idle back-off)",
+                eng.claim("language") is None and eng.last_refusal in ("paused", "other"), eng.last_refusal)
+        old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=400)).strftime("%Y-%m-%dT%H:%M:%S.00Z")
+        with com.store.write() as wdb:
+            wdb.execute("INSERT INTO engine_turns(started, app, domain, reason) VALUES(?,?,?,?)", (old, "facts", "history", "test"))
+            wdb.execute("UPDATE app_heartbeat SET at = ? WHERE app = 'facts'", (time.time() - 1000,))
+        eng.claim("stem")
+        gone = com.store.one("SELECT ended, result FROM engine_turns WHERE app = 'facts' AND reason = 'test'")
+        c.check("engine: a turn whose application closed mid-turn is given up at once (not after 15 min)",
+                gone["ended"] and json.loads(gone["result"]).get("abandoned"), gone)
+        class Beat:
+            pass
+        beat = Beat(); beat.commons = com
+        c.check("schedule: after a productive turn the next ask comes within seconds", cm.Team.next_delay(beat, {"new": 7}) == 3)
+        c.check("schedule: an idle turn waits the normal tick", cm.Team.next_delay(beat, {"new": 0}) == 30)
+        eng.last_refusal = "busy"
+        c.check("schedule: while another application is harvesting, ask again within seconds", cm.Team.next_delay(beat, None) == 3)
+        eng.last_refusal = "stopped"
+        c.check("schedule: stopped harvesting asks at the normal tick", cm.Team.next_delay(beat, None) == 30)
         # the master control
         class Stub:
             pass
@@ -258,6 +282,54 @@ def main():
             empty = True
         c.check("master: Start selected with nothing ticked is refused", empty)
         com.store.conn().close()
+
+    # polite fetching (qbonline 1.1): HTTP 429 with Retry-After is honoured, never taken for a failure
+    real_urlopen = ol.urllib.request.urlopen
+    answers = []
+
+    class Resp:
+        def __init__(self, body):
+            self.body, self.headers = body, {}
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_open(req, timeout=60):
+        a = answers.pop(0)
+        if isinstance(a, int):
+            raise ol.urllib.error.HTTPError(req.full_url, a, "slow down", {"Retry-After": str(answers.pop(0))}, None)
+        return Resp(a)
+    ol.urllib.request.urlopen = fake_open
+    try:
+        answers[:] = [429, 1, b'{"ok": 1}']
+        t0 = time.time()
+        r = ol._fetch("https://slow.example/api")
+        c.check("fetch: a short Retry-After is waited for and the request succeeds", r == {"ok": 1} and time.time() - t0 >= 1, r)
+        answers[:] = [429, 120]
+        try:
+            ol._fetch("https://busy.example/api")
+            limited = None
+        except ol.RateLimited as e:
+            limited = e
+        c.check("fetch: a long Retry-After ends the task as 'rate-limited' with the site's own wait",
+                limited is not None and 100 < limited.until - time.time() <= 121 and ol.cooling("busy.example") > 100)
+        answers[:] = [b'{"never": 1}']
+        try:
+            ol._fetch("https://busy.example/api/other")
+            waited = False
+        except ol.RateLimited:
+            waited = True
+        c.check("fetch: no request reaches a site before its wait is over", waited and answers == [b'{"never": 1}'])
+        c.check("fetch: a rate limit is not a failure", issubclass(ol.RateLimited, ol.SourceBusy))
+    finally:
+        ol.urllib.request.urlopen = real_urlopen
+        ol._cool.clear(); ol._gap.clear()
 
     # the online harvesters, with the internet replaced by recorded answers
     FIX = {
@@ -359,7 +431,7 @@ def main():
             c.check("keyed: Europeana keeps named creators, drops link-only ones", ("Europeana record \u201cMap of Europe\u201d (/9200/abc)", "creator", "Abraham Ortelius") in eu
                     and not any(i[2].startswith("http") for i in eu))
             st = ol.key_status(tmp)
-            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st if k["service"] != "gemini") and st[0]["hint"] == "\u20261234" and
+            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st if k["service"] not in ("gemini", "anthropic")) and st[0]["hint"] == "\u20261234" and
                     (os.name == "nt" or (os.stat(os.path.join(tmp, "api-keys.json")).st_mode & 0o077) == 0))
             ol.save_key(tmp, "api.data.gov", "")
 
