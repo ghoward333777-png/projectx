@@ -48,7 +48,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.48.0"
+VERSION = "1.48.1"
 PORT = 8101
 program_dir = HERE
 

@@ -213,6 +213,20 @@ If there is NO such line, QueryBook kept running fine and only the screen
 turned off — nothing was lost.
 
 
+HARVESTING THAT KEEPS GOING (October 23, 2026)
+----------------------------------------------
+  * "Run 24x7" really runs 24x7 (count 0 used to become a 250,000-fact run).
+  * History, news, culture and art have a finite built-in list: each run now resumes where the last one stopped and
+    never writes or counts the same fact twice. When a 24x7 history run has stored every built-in fact, it carries on
+    with the open online history sources (FRUS, Federal Register, Smithsonian, National Archives, Wikidata battles and
+    treaties, Natural Earth ...) instead of stopping.
+  * Sites that ask us to slow down (HTTP 429, e.g. Wikidata) are waited for as they ask, then resumed - no more
+    10-minute pauses after a single "slow down".
+  * The Master ON loop no longer stops when its settings file is briefly locked (Windows) and restarts itself if it dies.
+  * Agents that were running when QueryBook closed start again at the next start (set QB_RESUME_AGENTS=0 to start them
+    by hand instead); an agent past its six quick restarts keeps retrying every 10 minutes instead of staying stopped.
+
+
 HARVEST CAMPAIGNS, THE MASTER SWITCH AND MORE SOURCES
 -----------------------------------------------------
 On the Console (dashboard) there is now a third row:

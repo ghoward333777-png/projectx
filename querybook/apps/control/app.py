@@ -41,7 +41,7 @@ import qbdirective
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PORT = 8100
 program_dir = HERE
 

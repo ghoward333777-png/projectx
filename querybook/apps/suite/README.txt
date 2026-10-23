@@ -19,6 +19,27 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Campaign Manager (Control Panel 1.3.0) - Control Panel -> "Campaign manager"
+    * Feed it a directive (Word, Markdown or text) and it designs an executable harvest campaign: waves T0 -> T30 ->
+      specialized modeling, every task's camera views and takes as generation requests, the real anchor set, the expert
+      reviewer, and a day-by-day schedule at the Google video tool's real daily budget. A scope guard holds back weapons,
+      targeting and identifying real people, whatever a directive asks.
+    * Ready on first start: the QueryBook Synthetic-Video Directive (122 tasks, 19 categories), refined by the focus
+      directive "Market Need for Verifiable AI Answers" - aviation maintenance, energy and pharma procedures lead.
+    * Focus directives: a document with a Sector table and a recommended first move re-ranks the open campaign
+      ("focus tasks only" runs just the focus).
+    * Assistant: walks you through what is missing and applies what you tell it ("I acknowledge the scope", "use the
+      default reviewers", "15 requests a day", "exclude MED-07", "explain ROB-09"), every change audited. Optional: with an
+      Anthropic key it also answers open questions with Claude - advisory only, it never changes or launches anything.
+    * Compile writes one plan per wave for the exemplar generator; Launch (admin passphrase) hands a wave to the video tool.
+  Harvesting that keeps going (all applications: STEM and History 1.14.0, Language 1.48.1)
+    * Sites that ask us to slow down (Wikidata, NCBI: HTTP 429) are waited for, not failed; their tasks resume later and
+      never lead to "pause this source" recommendations.
+    * A turn held up by waiting sources gets a short pause, not the 1 minute -> 4 hour idle back-off that made STEM,
+      History and Language seem to stop after a few seconds.
+    * Turns follow each other within seconds while harvesting is under way; an application closed mid-turn no longer
+      blocks the others for 15 minutes; the schedule restarts itself after any error.
+
   Harvesting (all applications: STEM and History 1.13.0, Control Panel 1.2.0)
     * Master switch: one ON/OFF button for all harvesting, at the top of the Harvesting page.
     * Harvest campaigns: name a selection of applications, online harvesters and Google tools, start and stop it together,
