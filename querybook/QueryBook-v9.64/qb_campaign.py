@@ -13,12 +13,12 @@
 
 State lives in <data>/campaigns.json. Standard library only; deterministic apart from what the sources return.
 """
-import json, os, subprocess, sys, threading, time
+import collections, json, os, subprocess, sys, threading, time
 
 import qb_online as ol
 import ufcs_store as store
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 # the licence of each online source (the Composite Registry's classes; only unrestricted classes are harvested here)
 LICENCE = {"wikidata": ("CC0 1.0", "cc0"), "natural-earth": ("Public domain", "public-domain"), "frus": ("US government work", "us-federal"),
@@ -50,6 +50,11 @@ class Campaigns:
         self._backoff = {}
         self._good = None             # the last state read whole (a half-written or locked file never reads as "master off")
         self.heartbeat = 0.0          # when the harvesting loop last went round
+        self._store_lock = threading.Lock()     # lanes fetch in parallel; one writes to the store at a time
+        self._lanes = {}              # lane → its thread (one per site, plus "local" for the built-in generators)
+        self._turn = {}               # lane → round-robin position
+        self.lanes = {}               # lane → what it is doing now (shown in the status bar)
+        self._made = collections.deque(maxlen=2000)     # (time, new facts) of recent tasks — the facts-a-minute rate
         ol._KEYS["folder"] = data_dir
 
     # ------------------------------------------------------------------ state
@@ -115,7 +120,7 @@ class Campaigns:
         for c in s["campaigns"]:
             c["progress"] = {n: s["counts"].get(n, 0) - (c.get("start_counts") or {}).get(n, 0) for n in c.get("sources", [])} if c.get("start_counts") is not None else None
             c["new_facts"] = sum((c["progress"] or {}).values())
-        return {"version": VERSION, "master": s["master"], "active": s["active"], "sources": src, "campaigns": s["campaigns"], "tools": tools,
+        return {"version": VERSION, "master": s["master"], "active": s["active"], "pulse": self.pulse(), "sources": src, "campaigns": s["campaigns"], "tools": tools,
                 "google_terms_accepted": s["google_terms_accepted"], "runner": run, "recent": s["recent"][:20],
                 "gemini_key_set": bool(ol.load_keys(self.dir).get("gemini")), "keys": ol.key_status(self.dir)}
 
@@ -232,23 +237,43 @@ class Campaigns:
                 return c["sources"]
         return [n for n, v in s["sources"].items() if v == "on"]
 
-    def step(self):
-        """one task: the next source of the selection, round robin (returns what it did, or None)"""
+    @staticmethod
+    def lane_of(name):
+        """Sources on the same site share a lane (and its politeness); different sites run side by side."""
+        if name.startswith("domain:"):
+            return "local"
+        h = ol.HARVESTERS.get(name)
+        return h[1] if h else name
+
+    def _lane_set(self, lane, **kw):
+        cur = self.lanes.get(lane) or {}
+        cur.update(kw, at=time.time())
+        self.lanes[lane] = cur
+
+    def step(self, lane=None):
+        """one task: the next due source of the selection (of one lane, when given), round robin (returns what it did, or None)"""
         s = self.state()
         if s["master"] != "on":
             return None
-        sel = [n for n in self.selection(s) if self._backoff.get(n, 0) < time.time()]
+        sel = [n for n in self.selection(s) if self._backoff.get(n, 0) < time.time() and (lane is None or self.lane_of(n) == lane)]
         if not sel:
             return None
-        k = int(s.get("turn", 0)) % len(sel)
+        key = lane or "*"
+        k = self._turn.get(key, int(s.get("turn", 0))) % len(sel)
+        self._turn[key] = k + 1
         name = sel[k]
+        if lane:
+            self._lane_set(lane, state="working", source=name)
         added, detail = 0, ""
         try:
             if name.startswith("domain:"):
                 if self.busy():
                     return None
                 info = {}
-                store.harvest_into(self.dir, 2000, "gzip", 1024, domain=name.split(":", 1)[1], info=info)
+                with self._store_lock:
+                    # verify=False: the full read-back proof scans the open block (up to 1 GB) and grows with the store —
+                    # seconds at 300k facts, minutes at millions. Each batch is committed to the index before it returns.
+                    store.harvest_into(self.dir, 2000, "gzip", 1024, domain=name.split(":", 1)[1], info=info, verify=False)
                 added = int(info.get("made", 0))
                 detail = "%d generated facts" % added
                 if info.get("exhausted"):                 # a finite generator (history, news, culture, art) is complete
@@ -264,18 +289,19 @@ class Campaigns:
                     return None
                 items, nxt, detail = h[6](cur, 50)
                 lic, cls = LICENCE[h[1]]
-                st = store.UFCSStore(self.dir)
-                try:
-                    for it in items:
-                        ev = it["evidence"][0]
-                        pkt = store.make_packet(str(it["subject"])[:300], str(it["predicate"])[:200], str(it["object"])[:500], "+", "online",
-                                                ("SRC-" + h[1].upper(), ev["source"], cls, TRUST[cls]), TRUST[cls])
-                        pkt["provenance"] = {"url": ev.get("url"), "licence": lic, "harvester": name, "why": (it.get("reasoning") or [""])[0]}
-                        if st.add(pkt):
-                            added += 1
-                    st.flush()
-                finally:
-                    st.close()
+                with self._store_lock:
+                    st = store.UFCSStore(self.dir)
+                    try:
+                        for it in items:
+                            ev = it["evidence"][0]
+                            pkt = store.make_packet(str(it["subject"])[:300], str(it["predicate"])[:200], str(it["object"])[:500], "+", "online",
+                                                    ("SRC-" + h[1].upper(), ev["source"], cls, TRUST[cls]), TRUST[cls])
+                            pkt["provenance"] = {"url": ev.get("url"), "licence": lic, "harvester": name, "why": (it.get("reasoning") or [""])[0]}
+                            if st.add(pkt):
+                                added += 1
+                        st.flush()
+                    finally:
+                        st.close()
                 with self._lock:
                     s2 = self.state(); s2["cursors"][name] = -1 if nxt is None else nxt; self._save(s2)
         except ol.SourceBusy as e:
@@ -294,31 +320,82 @@ class Campaigns:
                 if c["id"] == s2["active"] and c.get("goal") and sum(s2["counts"].get(n, 0) - (c.get("start_counts") or {}).get(n, 0) for n in c["sources"]) >= c["goal"]:
                     c["status"] = "goal reached"; s2["active"] = None
             self._save(s2)
+        self._made.append((time.time(), added))
+        if lane:
+            self._lane_set(lane, state="idle", source=name, last="%s: %s" % (name, detail), until=self._backoff.get(name))
         self.log("info", "campaign", "%s: %s" % (name, detail))
         return "%s: %s" % (name, detail)
 
     def _loop(self):
+        """Supervisor: keeps one harvesting lane per site of the selection, so a slow or rate-limited site never holds
+        the others up; it ends (and so do the lanes) when the master switch goes OFF."""
         try:
             while True:
                 self.heartbeat = time.time()
                 try:
-                    did = self.step()
-                except Exception as e:
-                    did = None
-                    self.log("error", "campaign", repr(e))
-                try:
-                    if self.state()["master"] != "on":
+                    s = self.state()
+                    if s["master"] != "on":
                         break
-                except Exception as e:                  # a state read must never end the loop
-                    self.log("error", "campaign", "state read: %r" % e)
-                if did:
-                    time.sleep(0.5)                     # one task after another while there is work
-                else:                                   # nothing due: sleep until the first source's wait is over (max 15 s)
-                    waits = [t - time.time() for t in self._backoff.values() if t > time.time()]
-                    time.sleep(max(1.0, min([15.0] + waits)))
+                    for lane in sorted({self.lane_of(n) for n in self.selection(s)}):
+                        t = self._lanes.get(lane)
+                        if t is None or not t.is_alive():
+                            if t is not None:
+                                self.log("warn", "campaign", "harvesting lane %s had stopped; restarting it" % lane)
+                            t = threading.Thread(target=self._lane, args=(lane,), name="qb-lane-" + lane, daemon=True)
+                            self._lanes[lane] = t
+                            t.start()
+                except Exception as e:                  # the supervisor must never die
+                    self.log("error", "campaign", "supervisor: %r" % e)
+                time.sleep(2.0)
         finally:
             if self._thread is threading.current_thread():
                 self._thread = None
+
+    def _lane(self, lane):
+        """One site's tasks, one after another, for as long as the master is ON and the lane has sources."""
+        try:
+            while True:
+                try:
+                    s = self.state()
+                    if s["master"] != "on":
+                        break
+                    mine = [n for n in self.selection(s) if self.lane_of(n) == lane]
+                    if not mine:
+                        break
+                    did = self.step(lane)
+                except Exception as e:
+                    did = None
+                    self.log("error", "campaign", "lane %s: %r" % (lane, e))
+                if did:
+                    time.sleep(0.2)                     # straight on to the next task while there is work
+                else:                                   # nothing due: sleep until this lane's first wait is over (max 15 s)
+                    waits = [self._backoff[n] - time.time() for n in mine if self._backoff.get(n, 0) > time.time()]
+                    nap = max(1.0, min([15.0] + waits))
+                    self._lane_set(lane, state="waiting" if waits else "idle", until=time.time() + nap)
+                    time.sleep(nap)
+        finally:
+            self.lanes.pop(lane, None)
+            if self._lanes.get(lane) is threading.current_thread():
+                self._lanes.pop(lane, None)
+
+    def pulse(self):
+        """The master status bar: is harvesting running, how fast, and what each lane is doing."""
+        now = time.time()
+        made = list(self._made)                     # a snapshot: the lanes append while this reads
+        recent = [(t, n) for t, n in made if now - t <= 600]
+        last_new = max((t for t, n in made if n), default=None)
+        live = self._thread is not None and self._thread.is_alive()
+        lanes = []
+        for lane, v in sorted(dict(self.lanes).items()):
+            until = v.get("until") or 0
+            lanes.append({"lane": lane, "state": v.get("state", "idle"), "source": v.get("source"), "last": v.get("last"),
+                          "wait_s": round(until - now) if v.get("state") == "waiting" and until > now else 0,
+                          "busy_s": round(now - v["at"]) if v.get("state") == "working" else 0})
+        working = sum(1 for x in lanes if x["state"] == "working")
+        return {"running": live, "heartbeat_s": round(now - self.heartbeat, 1) if self.heartbeat else None,
+                "facts_10min": sum(n for _, n in recent), "facts_per_min": round(sum(n for _, n in recent if now - _ <= 60), 1),
+                "tasks_10min": len(recent), "last_new_s": round(now - last_new) if last_new else None,
+                "lanes": lanes, "working": working, "waiting": sum(1 for x in lanes if x["state"] == "waiting")}
 
     def ensure_running(self):
         """Start the harvesting loop when the master is ON — or restart it when it died."""
@@ -374,6 +451,18 @@ def self_test(tmp=None):
         C.save_campaign({"name": "Rivers", "sources": ["wikidata-rivers", "usgs-earthquakes"], "goal": 10})
         v = C.start_campaign(C.view()["campaigns"][0]["id"])
         ok("a campaign starts its selection and the master switch", v["master"] == "on" and v["active"] == "c1")
+        ok("sources on the same site share a lane; different sites and the generators run side by side",
+           C.lane_of("wikidata-rivers") == C.lane_of("wikidata-countries") != C.lane_of("usgs-earthquakes") and C.lane_of("domain:mathematics") == "local")
+        C._backoff["usgs-earthquakes"] = time.time() + 600
+        ol_fn = ol.HARVESTERS["wikidata-rivers"][6]
+        ol.HARVESTERS["wikidata-rivers"] = ol.HARVESTERS["wikidata-rivers"][:6] + (lambda cur, n: ([], None, "test: nothing"),)
+        try:
+            did = C.step(C.lane_of("wikidata-rivers"))
+        finally:
+            ol.HARVESTERS["wikidata-rivers"] = ol.HARVESTERS["wikidata-rivers"][:6] + (ol_fn,)
+        p = C.pulse()
+        ok("a lane takes only its own site's sources, and the status bar sees it", (did or "").startswith("wikidata-rivers")
+           and C.step("usgs-earthquakes") is None and {"facts_per_min", "lanes", "working", "last_new_s"} <= set(p))
         C.master(False)
         ok("master OFF stops everything", C.view()["master"] == "off" and C.view()["active"] is None and C.step() is None)
     finally:

@@ -26,7 +26,7 @@ Agents are deterministic programs, not AI models: the same inputs always give th
 and facts. Writes use the same safe store as each application (one transaction, WAL, synchronous=FULL,
 checked at start-up, verified backups). Standard library only.
 """
-import json, os, threading, time
+import concurrent.futures, copy, json, os, threading, time
 
 import qbcore as core
 import qbharvest as hv
@@ -57,6 +57,8 @@ VERDICTS = ("supports", "contradicts", "cannot_check")
 POLICIES = {"research": "Research and demonstration: every source, non-commercial ones marked",
             "commercial": "Commercial: sources whose licence forbids commercial use are not harvested"}
 BATCH = 400
+MAX_LANES = 8                       # sites harvested side by side in one turn (each site still one request at a time)
+LANE_BUDGET_S = 30.0                # a site's share of one turn; its remaining tasks wait for the next turn (a turn never hangs on one site)
 AUTO_EVERY_S = 1800
 
 SCHEMA = ["""
@@ -479,38 +481,79 @@ class Team:
             self.state["role"] = "harvester"
             t0 = time.time()
             staged, cursors, failed, deferred = [], {}, 0, 0
-            for tid, t, cls in allowed:
+
+            def run_one(tid, t, cls):
+                """one task → (staged entry, cursor moves, outcome, left out by the filter, on target); never raises"""
                 if ctx.stop():
                     with store.write() as db:
                         db.execute("UPDATE tasks SET status = 'skipped', detail = 'stopped' WHERE id = ?", (tid,))
-                    continue
+                    return None
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = 'running', started = ? WHERE id = ?", (core.now_cs(), tid))
                 ts = time.time()
-                ctx.boost = trules["boost"] if t.get("_targeted") else 1.0
+                tctx = copy.copy(ctx)                       # each task its own boost: tasks of different sites run side by side
+                tctx.boost = trules["boost"] if t.get("_targeted") else 1.0
+                nf = ont = 0
+                cur, outcome = {}, "done"
                 try:
-                    r = (ol.execute(t, ctx) if t["action"].startswith("online:") else self.adapter.execute(t, ctx)) or {}
+                    r = (ol.execute(t, tctx) if t["action"].startswith("online:") else self.adapter.execute(t, tctx)) or {}
                     items = [x for x in (self._policy_filter(i, t.get("source"), reg) for i in r.get("items") or []) if x]
                     items, nf, fwhy = ctl.apply_filter(items, frules, DOMAINS[self.app_id])
-                    filtered += nf
-                    on_target += sum(1 for i in items if ctl.on_target(i, trules))
-                    staged.append((tid, t, cls, items, time.time() - ts, None))
-                    cursors.update(r.get("cursor") or {})
+                    ont = sum(1 for i in items if ctl.on_target(i, trules))
+                    entry = (tid, t, cls, items, time.time() - ts, None)
+                    cur = r.get("cursor") or {}
                     st, detail = "done", (r.get("detail") or "") + (
                         " — %d left out by the Control Panel's filter (e.g. %s)" % (nf, "; ".join(fwhy)) if nf else "") + (
                         " [targeted, budget ×%g]" % trules["boost"] if t.get("_targeted") else "")
                 except ol.RateLimited as e:          # the site asked us to wait: not a failure, the task resumes later
-                    deferred += 1
-                    items, st, detail = [], "waiting", str(e)
-                    staged.append((tid, t, cls, [], time.time() - ts, "deferred: " + str(e)))
+                    items, st, detail, outcome = [], "waiting", str(e), "deferred"
+                    entry = (tid, t, cls, [], time.time() - ts, "deferred: " + str(e))
                 except Exception as e:
-                    failed += 1
-                    items, st, detail = [], "failed", str(e)
-                    staged.append((tid, t, cls, [], time.time() - ts, str(e)))
+                    items, st, detail, outcome = [], "failed", str(e), "failed"
+                    entry = (tid, t, cls, [], time.time() - ts, str(e))
                     self.log("harvest task failed:", t["title"], repr(e))
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = ?, items = ?, finished = ?, detail = ? WHERE id = ?",
                                (st, len(items), core.now_cs(), detail[:1000], tid))
+                return entry, cur, outcome, nf, ont
+
+            # One lane per site: a slow or rate-limited site never holds up the others. Tasks of the same site (and all of
+            # this application's own local tasks) stay one after another. Results are kept in plan order, so what is saved,
+            # and in which order, does not depend on which site answered first.
+            lanes = {}
+            for k, (tid, t, cls) in enumerate(allowed):
+                lane = (t.get("source") or "online") if t["action"].startswith("online:") else "local"
+                lanes.setdefault(lane, []).append(k)
+            results = [None] * len(allowed)
+
+            def run_lane(ks):
+                began = time.time()
+                for k in ks:
+                    if time.time() - began > LANE_BUDGET_S:     # this site has had its share of the turn: the rest waits for the next
+                        tid, t, cls = allowed[k]
+                        why = "this turn's time for %s is used up; continues next turn" % (t.get("source") or "this site")
+                        with store.write() as db:
+                            db.execute("UPDATE tasks SET status = 'waiting', finished = ?, detail = ? WHERE id = ?", (core.now_cs(), why, tid))
+                        results[k] = ((tid, t, cls, [], 0.0, "deferred: " + why), {}, "deferred", 0, 0)
+                        continue
+                    results[k] = run_one(*allowed[k])
+            if len(lanes) > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_LANES, len(lanes)), thread_name_prefix="qb-lane") as pool:
+                    for f in [pool.submit(run_lane, ks) for ks in lanes.values()]:
+                        f.result()
+            else:
+                for ks in lanes.values():
+                    run_lane(ks)
+            for res in results:
+                if res is None:
+                    continue
+                entry, cur, outcome, nf, ont = res
+                staged.append(entry)
+                cursors.update(cur)
+                filtered += nf
+                on_target += ont
+                failed += outcome == "failed"
+                deferred += outcome == "deferred"
             n_staged = sum(len(x[3]) for x in staged)
             out["harvested"] = n_staged
             self._role("harvester", "failed" if failed and failed == len(allowed) else "ok",

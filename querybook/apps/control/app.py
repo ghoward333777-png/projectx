@@ -41,7 +41,7 @@ import qbdirective
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 PORT = 8100
 program_dir = HERE
 
@@ -385,6 +385,59 @@ class Panel:
             t["result"] = json.loads(t["result"] or "null")
         return {"facts": s["facts"], "by_domain": by, "shared": s["shared"], "trend": trend, "turns": turns}
 
+    def pulse(self):
+        """The master harvest status bar: is harvesting running everywhere, how fast, and what each application is doing."""
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        since = lambda minutes: (now - datetime.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+        st = self.commons.store
+        recent = {r["app"]: r for r in st.query("""SELECT app, count(*) AS tasks, sum(coalesce(new, 0)) AS new,
+                       sum(decision = 'deferred') AS deferred, sum(decision = 'failed') AS failed
+                       FROM harvest_log WHERE at >= ? GROUP BY app""", (since(10),))}
+        minute = st.scalar("SELECT sum(coalesce(new, 0)) FROM harvest_log WHERE at >= ?", (since(1),), 0) or 0
+        last_new = st.scalar("SELECT max(at) FROM harvest_log WHERE new > 0", (), None)
+        age = lambda at: round((now - datetime.datetime.strptime(at[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=datetime.timezone.utc)).total_seconds()) if at else None
+        master = cm.control_state(self.commons)["master"]
+        hb = {h["app"]: h for h in self.commons.engine.status()["heartbeats"]}
+        apps = []
+        for a, meta in APPS.items():
+            pr = self.probe(a)
+            on = self.commons.setting("auto:%s" % a, "on") != "off"
+            beat = round(time.time() - hb[a]["at"], 1) if a in hb else None
+            last = st.one("SELECT started, ended, reason FROM engine_turns WHERE app = ? ORDER BY id DESC LIMIT 1", (a,)) or {}
+            lastlog = st.one("SELECT at, decision, title, reason FROM harvest_log WHERE app = ? ORDER BY id DESC LIMIT 1", (a,)) or {}
+            r = recent.get(a) or {}
+            if not pr["running"]:
+                state, why = "off", "not running"
+            elif master != "running" or not on:
+                state, why = "paused", "harvesting switched off"
+            elif last and not last.get("ended") and (beat is None or beat < 90):
+                state, why = "working", lastlog.get("title") or "harvesting"
+            elif age(lastlog.get("at")) is not None and age(lastlog.get("at")) > 600 and age(last.get("started")) is not None and age(last.get("started")) > 600:
+                state, why = "stalled", "no harvest turn for %d min" % (age(last.get("started")) // 60)
+            elif lastlog.get("decision") == "deferred":
+                state, why = "waiting", lastlog.get("reason") or "a source asked us to wait"
+            else:
+                state, why = "waiting", "between turns"
+            apps.append({"app": a, "name": meta["name"], "state": state, "why": str(why)[:160], "new_10min": int(r.get("new") or 0),
+                         "tasks_10min": int(r.get("tasks") or 0), "deferred_10min": int(r.get("deferred") or 0), "failed_10min": int(r.get("failed") or 0),
+                         "heartbeat_s": beat, "url": pr.get("url")})
+        working = sum(1 for x in apps if x["state"] == "working")
+        running = [x for x in apps if x["state"] not in ("off",)]
+        if master != "running":
+            overall = "stopped"
+        elif not running:
+            overall = "no-apps"
+        elif any(x["state"] == "stalled" for x in apps):
+            overall = "stalled"
+        elif working:
+            overall = "harvesting"
+        else:
+            overall = "waiting"
+        return {"master": master, "overall": overall, "facts": self.commons.summary()["facts"], "facts_per_min": int(minute),
+                "facts_10min": sum(x["new_10min"] for x in apps), "tasks_10min": sum(x["tasks_10min"] for x in apps),
+                "last_new_s": age(last_new), "apps": apps}
+
     # ------------------------------------------------------------------ routes
     def _routes(self):
         a = self.api
@@ -392,6 +445,10 @@ class Panel:
         @a.get("/api/status")
         def status(p):
             return {"app": APP_NAME, "version": VERSION, "health": None, "job": None}
+
+        @a.get("/api/panel/pulse")
+        def panel_pulse(p):
+            return self.pulse()
 
         @a.get("/api/panel/status")
         def panel_status(p):

@@ -27,6 +27,14 @@
   .live{margin-left:auto;font-size:12.5px;color:var(--muted)}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--badc);margin-right:6px}
   .dot.on{background:var(--good)}
+  /* master harvest status bar */
+  .hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--line);font-size:12.5px;background:var(--panel2)}
+  .hbar .st{font-weight:700;padding:2px 10px;border-radius:999px;color:#fff;background:#7a8594}
+  .hbar .st.run{background:#1f8a55} .hbar .st.wait{background:#b7791f} .hbar .st.stall{background:#a8322d}
+  .hbar .num{font-weight:650;color:var(--ink)} .hbar .mut{color:var(--muted)}
+  .hbar .lanes{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  .hbar .ln{border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .hbar .ln.working{border-color:#1f8a55;color:var(--good)} .hbar .ln.waiting{border-color:#b7791f;color:var(--warnc)}
   /* run row */
   .run{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel2)}
   .run input{width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px;font-variant-numeric:tabular-nums}
@@ -160,6 +168,7 @@
     <button class="btn ghost" id="campopen">Campaigns &amp; sources</button>
     <span class="runmeta" id="mastermeta"></span>
   </div>
+  <div class="hbar" id="hbar" role="status" aria-live="polite"><span class="st">Harvest: …</span></div>
 </header>
 
 <div class="card" id="campcard" hidden style="margin:12px 0">
@@ -411,6 +420,24 @@
 const cesc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 async function cpost(path, body) { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
   const j = await r.json(); if (!r.ok) { alert(j.error || "failed"); throw new Error(j.error); } return j; }
+function renderPulse(v) {
+  const p = v.pulse || {}, on = v.master === "on", lanes = p.lanes || [];
+  const ago = s => s == null ? "none yet" : s < 90 ? s + " s ago" : s < 5400 ? Math.round(s / 60) + " min ago" : Math.round(s / 3600) + " h ago";
+  let cls = "", label = "Harvest stopped";
+  if (on && !p.running) { cls = "stall"; label = "Harvest stalled — restarting"; }
+  else if (on && p.working) { cls = "run"; label = "Harvesting"; }
+  else if (on && p.last_new_s != null && p.last_new_s > 600) { cls = "stall"; label = "No new facts for " + ago(p.last_new_s).replace(" ago", ""); }
+  else if (on) { cls = "wait"; label = "Harvesting — sources waiting their turn"; }
+  const lane = l => "<span class='ln " + l.state + "' title='" + cesc(l.last || "") + "'>" + cesc(l.lane) +
+    (l.state === "working" ? " ● " + cesc((l.source || "").replace(/^domain:/, "")) : l.state === "waiting" ? " ⏳ " + l.wait_s + " s" : " ·") + "</span>";
+  document.getElementById("hbar").innerHTML = "<span class='st " + cls + "'>" + cesc(label) + "</span>" +
+    (on ? "<span><span class='num'>" + Number(p.facts_per_min || 0).toLocaleString() + "</span> <span class='mut'>facts/min</span></span>" +
+      "<span><span class='num'>" + Number(p.facts_10min || 0).toLocaleString() + "</span> <span class='mut'>in 10 min (" + (p.tasks_10min || 0) + " tasks)</span></span>" +
+      "<span class='mut'>last new fact " + ago(p.last_new_s) + "</span>" +
+      "<span class='mut'>" + (p.working || 0) + " working · " + (p.waiting || 0) + " waiting · " + lanes.length + " sites</span>" +
+      "<span class='lanes'>" + lanes.map(lane).join("") + "</span>"
+      : "<span class='mut'>Press Master to start every switched-on source.</span>");
+}
 async function loadCampaigns(v) {
   v = v || await (await fetch("api/campaigns")).json();
   const on = v.master === "on", mb = document.getElementById("masterbtn");
@@ -418,7 +445,9 @@ async function loadCampaigns(v) {
   mb.style.background = on ? "#1f8a55" : "#a8322d"; mb.dataset.on = on ? "1" : "0";
   const act = v.campaigns.find(c => c.id === v.active);
   document.getElementById("mastermeta").textContent = (act ? "campaign: " + act.name + " · " : "") + v.sources.filter(x => x.on).length + " sources on · " + v.tools.filter(t => t.on).length + " Google tools on";
-  if (document.getElementById("campcard").hidden) return;
+  renderPulse(v);
+  const cc = document.getElementById("campcard"), fe = document.activeElement;
+  if (cc.hidden || (cc.contains(fe) && /^(INPUT|TEXTAREA|SELECT)$/.test(fe.tagName))) return;   // never redraw under someone typing
   document.getElementById("camplist").innerHTML = v.campaigns.length ? "<table><tr><th>Campaign</th><th>Selection</th><th>Status</th><th>New facts</th><th></th></tr>" + v.campaigns.map(c =>
     "<tr><td><b>" + cesc(c.name) + "</b></td><td style='font-size:12px'>" + cesc(c.sources.concat(c.tools).join(", ")) + "</td><td>" + cesc(c.status) + (v.active === c.id ? " ●" : "") + "</td><td>" +
     (c.progress ? c.new_facts + (c.goal ? " of " + c.goal : "") : "—") + "</td><td>" + (c.status === "running" ? "<button class='btn ghost' data-c='stop:" + c.id + "'>Stop</button>" : "<button class='btn' data-c='start:" + c.id + "'>Start</button>") +
@@ -458,7 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (b.dataset.g) { const row = b.closest("tr");
       loadCampaigns(await cpost("api/gtools/switch", { id: b.dataset.g, on: b.textContent !== "On", plan: row.querySelector(".gplan").value, accept_terms: document.getElementById("gterms").checked })); }
   });
-  loadCampaigns().catch(() => {}); setInterval(() => loadCampaigns().catch(() => {}), 10000);
+  loadCampaigns().catch(() => {}); setInterval(() => loadCampaigns().catch(() => {}), 5000);
 });
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));

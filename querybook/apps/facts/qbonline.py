@@ -8,18 +8,24 @@ task for this turn and the engine's backoff gives it time.
 
 Offline: set QB_OFFLINE=1, or switch online harvesting off on the Harvesting page (setting online:<app> = off).
 """
-import json, os, time, urllib.error, urllib.parse, urllib.request
+import json, os, threading, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 UA = "QueryBook-harvester/%s (personal research tool; one request at a time)" % VERSION
 MIN_GAP_S = 1.0                     # pause between requests to the same site
 MAX_GAP_S = 20.0                    # the most a site's pause grows after it asked us to slow down
 WAIT_INLINE_S = 20.0                # a site asking for a wait this short is waited for; longer, the task waits for a later turn
+TASK_BUDGET_S = 12.0                # a task that fetches item by item stops after this long and resumes from there next turn
+HOST_GAP = {                        # sites whose own published limits call for a different pause than MIN_GAP_S
+    "collectionapi.metmuseum.org": 0.25,    # The Met allows 80 requests a second; one object per request
+    "www.wikidata.org": 2.5,                # CirrusSearch (haswbstatement) throttles bursts with a 40-60 s Retry-After
+}
 _last = {}
 _gap = {}                           # host → current pause between requests (grows after HTTP 429/503, eases back after successes)
 _cool = {}                          # host → time before which the site asked not to be called again (Retry-After)
 _waiting = {}                       # harvester → time it may run again (its site asked us to wait)
+_locks, _locks_guard = {}, threading.Lock()     # host → lock: one request at a time per site, however many tasks run at once
 
 
 class SourceBusy(Exception):
@@ -49,22 +55,40 @@ def _retry_after(value, default):
         return default
 
 
+def _floor(host):
+    return HOST_GAP.get(host, MIN_GAP_S)
+
+
+def _bucket(url):
+    """What a rate limit applies to: the site, or one throttled endpoint of it (Wikidata's search is limited on its
+    own — the item lookups keep working while it cools down)."""
+    parts = urllib.parse.urlsplit(url)
+    return parts.netloc + ("#search" if "list=search" in parts.query else "") if parts.netloc else url
+
+
 def cooling(host_or_url):
-    """Seconds the site still asked us to wait (0 when it may be called)."""
-    host = urllib.parse.urlsplit(host_or_url).netloc or host_or_url
-    return max(0.0, _cool.get(host, 0) - time.time())
+    """Seconds the site (or the endpoint) still asked us to wait (0 when it may be called)."""
+    return max(0.0, _cool.get(_bucket(host_or_url), 0) - time.time())
 
 
 def _fetch(url, kind="json", timeout=60, headers=None):
     """One polite request. Waits the site's own pause; on HTTP 429/503 (or Wikimedia's maxlag answer) it honours
     Retry-After — waiting short pauses in place, raising RateLimited for longer ones so the task resumes on a later turn."""
     host = urllib.parse.urlsplit(url).netloc
-    if cooling(host) > 0:
-        raise RateLimited("%s asked us to wait %.0f s more" % (host, cooling(host)), _cool[host])
+    with _locks_guard:
+        lock = _locks.setdefault(host, threading.Lock())
+    with lock:
+        return _fetch_one(host, url, kind, timeout, headers)
+
+
+def _fetch_one(host, url, kind, timeout, headers):
+    b = _bucket(url)
+    if cooling(url) > 0:
+        raise RateLimited("%s asked us to wait %.0f s more" % (host, cooling(url)), _cool[b])
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json" if kind == "json" else "*/*"}, **(headers or {})))
-    busy = 0
+    busy, waited = 0, 0.0
     for attempt in range(1, 6):
-        wait = _gap.get(host, MIN_GAP_S) - (time.time() - _last.get(host, 0))
+        wait = _gap.get(host, _floor(host)) - (time.time() - _last.get(host, 0))
         if wait > 0:
             time.sleep(wait)
         retry = None
@@ -77,10 +101,10 @@ def _fetch(url, kind="json", timeout=60, headers=None):
                 if isinstance(err, dict) and err.get("code") == "maxlag":       # Wikimedia: servers lagging, come back later
                     retry = _retry_after(r.headers.get("Retry-After"), 5.0)
                 else:
-                    _gap[host] = max(MIN_GAP_S, _gap.get(host, MIN_GAP_S) * 0.9)
+                    _gap[host] = max(_floor(host), _gap.get(host, _floor(host)) * 0.9)
                     return data
             else:
-                _gap[host] = max(MIN_GAP_S, _gap.get(host, MIN_GAP_S) * 0.9)
+                _gap[host] = max(_floor(host), _gap.get(host, _floor(host)) * 0.9)
                 return body
         except urllib.error.HTTPError as e:
             if e.code in (429, 503):
@@ -100,10 +124,11 @@ def _fetch(url, kind="json", timeout=60, headers=None):
         finally:
             _last[host] = time.time()
         busy += 1
-        _gap[host] = min(MAX_GAP_S, max(MIN_GAP_S, _gap.get(host, MIN_GAP_S)) * 2)     # slow down for this site from now on
-        if retry > WAIT_INLINE_S or attempt == 5:
-            _cool[host] = time.time() + retry
-            raise RateLimited("%s asked to slow down; resuming after %.0f s" % (host, retry), _cool[host])
+        _gap[host] = min(MAX_GAP_S, max(_floor(host), _gap.get(host, _floor(host))) * 2)     # slow down for this site from now on
+        if waited + retry > WAIT_INLINE_S or attempt == 5:       # all inline waits together stay under WAIT_INLINE_S
+            _cool[b] = time.time() + retry
+            raise RateLimited("%s asked to slow down; resuming after %.0f s" % (host, retry), _cool[b])
+        waited += retry
         time.sleep(retry)
     raise SourceBusy("%s did not answer" % host)
 
@@ -130,13 +155,22 @@ def _wd(params):
     return FETCH(WD_API + urllib.parse.urlencode(dict(params, format="json", maxlag=5)))
 
 
+WD_PAGE = 500                       # ids per search call: one search feeds ten tasks (Wikidata throttles search hardest)
+_wd_pages = {}                      # (statement, first offset) → (ids, total), the most recent pages only
+
+
 def _wd_search(statement, offset, limit):
     """Item ids with a statement, the most linked-to first (the ones people ask about)."""
-    r = _wd({"action": "query", "list": "search", "srsearch": "haswbstatement:" + statement, "srnamespace": 0,
-             "srlimit": limit, "sroffset": offset, "srsort": "incoming_links_desc", "srprop": ""})
-    hits = [h["title"] for h in r.get("query", {}).get("search", [])]
-    total = r.get("query", {}).get("searchinfo", {}).get("totalhits", 0)
-    return hits, total
+    first = offset - offset % WD_PAGE
+    key = (statement, first)
+    if key not in _wd_pages:
+        r = _wd({"action": "query", "list": "search", "srsearch": "haswbstatement:" + statement, "srnamespace": 0,
+                 "srlimit": WD_PAGE, "sroffset": first, "srsort": "incoming_links_desc", "srprop": ""})
+        _wd_pages[key] = ([h["title"] for h in r.get("query", {}).get("search", [])], r.get("query", {}).get("searchinfo", {}).get("totalhits", 0))
+        for old in [k for k in _wd_pages if k[0] == statement and k != key]:
+            del _wd_pages[old]
+    hits, total = _wd_pages[key]
+    return hits[offset - first:offset - first + limit], total
 
 
 def _wd_entities(ids, props="labels|claims"):
@@ -449,8 +483,12 @@ MET = "https://collectionapi.metmuseum.org/public/collection/"
 def _met(cursor, budget):
     n = min(int(budget), 40)
     s = FETCH(MET + "v1.1/search?" + urllib.parse.urlencode({"isHighlight": "true", "q": "*", "offset": cursor, "limit": n}))
-    ids, items = s.get("objectIDs") or [], []
+    ids, items, done = s.get("objectIDs") or [], [], 0
+    stop = time.time() + TASK_BUDGET_S
     for oid in ids:
+        if done and time.time() > stop:
+            break                           # resume from this object next turn: one slow source never holds the others
+        done += 1
         o = FETCH(MET + "v1/objects/%d" % oid)
         title = (o.get("title") or "").strip()
         if not title:
@@ -463,9 +501,9 @@ def _met(cursor, budget):
                             ("department", "museum department")):
             if (o.get(field) or "").strip():
                 items.append(mk(pred, o[field].strip()[:300]))
-    nxt = cursor + len(ids)
+    nxt = cursor + done
     total = s.get("total", 0)
-    return items, (nxt if ids and nxt < total else None), "%d highlighted objects (%d–%d of %d)" % (len(ids), cursor + 1, nxt, total)
+    return items, (nxt if ids and nxt < total else None), "%d highlighted objects (%d–%d of %d)" % (done, cursor + 1, nxt, total)
 
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"

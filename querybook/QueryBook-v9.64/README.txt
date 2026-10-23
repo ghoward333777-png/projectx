@@ -227,6 +227,19 @@ HARVESTING THAT KEEPS GOING (October 23, 2026)
     by hand instead); an agent past its six quick restarts keeps retrying every 10 minutes instead of staying stopped.
 
 
+HARVEST STATUS BAR AND FASTER CAMPAIGN HARVESTING (campaigns 1.2.0, update of 2026-10-23)
+-------------------------------------------------------------------------------------------
+  * Status bar under the Master switch: Harvesting / waiting / stalled / stopped, new facts
+    a minute and in the last 10 minutes, when the last new fact arrived, and one chip per
+    site saying what it is doing (working, or waiting N seconds). Updates every 5 seconds.
+  * Every site now harvests in its own lane, side by side. Before, one slow site (The Met,
+    about 48 s a step) or a rate-limited one (Wikidata) held up every other source.
+    Measured over 4 minutes: about 1,500 online facts before, about 50,000 after.
+  * The built-in generators no longer re-read the whole store after every 2,000 facts
+    (2.7 s a step at 330,000 facts, growing with the store); a step now takes 0.3 s.
+  * The Met finishes a step after 12 s and continues from there; waits for a busy site
+    add up to 20 s at most per request.
+
 HARVEST CAMPAIGNS, THE MASTER SWITCH AND MORE SOURCES
 -----------------------------------------------------
 On the Console (dashboard) there is now a third row:

@@ -327,6 +327,25 @@ def main():
             waited = True
         c.check("fetch: no request reaches a site before its wait is over", waited and answers == [b'{"never": 1}'])
         c.check("fetch: a rate limit is not a failure", issubclass(ol.RateLimited, ol.SourceBusy))
+        keep = ol.WAIT_INLINE_S
+        ol.WAIT_INLINE_S = 2.0
+        answers[:] = [429, 1, 429, 1.5, b'{"late": 1}']
+        try:
+            ol._fetch("https://twice.example/api")
+            capped = False
+        except ol.RateLimited:
+            capped = True
+        ol.WAIT_INLINE_S = keep
+        c.check("fetch: all inline waits of one request together stay under the inline limit", capped and answers == [b'{"late": 1}'])
+        answers[:] = [429, 300, b'{"entities": {}}']
+        try:
+            ol._fetch("https://wd.example/w/api.php?action=query&list=search&srsearch=x")
+        except ol.RateLimited:
+            pass
+        r = ol._fetch("https://wd.example/w/api.php?action=wbgetentities&ids=Q1")
+        c.check("fetch: a throttled search endpoint cools on its own; the site's lookups keep working",
+                r == {"entities": {}} and ol.cooling("https://wd.example/w/api.php?list=search") > 200 and ol.cooling("wd.example") == 0)
+        c.check("fetch: sites with published limits get their own pause", ol._floor("collectionapi.metmuseum.org") < ol.MIN_GAP_S <= ol._floor("www.wikidata.org"))
     finally:
         ol.urllib.request.urlopen = real_urlopen
         ol._cool.clear(); ol._gap.clear()
@@ -392,6 +411,30 @@ def main():
     ol.FETCH = fake
     del os.environ["QB_OFFLINE"]
     try:
+        searches = []
+
+        def paged(url, kind="json", timeout=60, headers=None):
+            if "list=search" in url:
+                searches.append(url)
+                return {"query": {"searchinfo": {"totalhits": 120}, "search": [{"title": "Q%d" % i} for i in range(1, 121)]}}
+            if "v1.1/search" in url:
+                return {"total": 3, "objectIDs": [1, 2, 3]}
+            if "/objects/" in url:
+                return {"title": "Object", "artistDisplayName": "Someone", "objectURL": "https://www.metmuseum.org/x"}
+            raise ol.SourceBusy("no fixture")
+        ol.FETCH = paged
+        ol._wd_pages.clear()
+        a, total = ol._wd_search("P31=Q1", 0, 50)
+        b, _ = ol._wd_search("P31=Q1", 50, 50)
+        c.check("online: one Wikidata search feeds several tasks (search is throttled hardest)",
+                len(searches) == 1 and a[0] == "Q1" and b[0] == "Q51" and total == 120 and "srlimit=500" in searches[0])
+        keep = ol.TASK_BUDGET_S
+        ol.TASK_BUDGET_S = 0.0
+        items, nxt, _ = ol._met(0, 40)
+        ol.TASK_BUDGET_S = keep
+        c.check("online: an item-by-item source stops at its time budget and resumes from there", nxt == 1 and len(items) == 1, (nxt, len(items)))
+        ol._wd_pages.clear()
+        ol.FETCH = fake
         items, nxt, _ = ol._natural_earth(0, 10)
         c.check("online: Natural Earth gives country, coordinates, capital, region — biggest first",
                 {(i["subject"], i["predicate"], i["object"]) for i in items} >= {("city Paris (France)", "is capital of", "France"),

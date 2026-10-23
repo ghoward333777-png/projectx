@@ -26,7 +26,7 @@ import datetime, hashlib, hmac, json, os, secrets
 
 import qbcore as core
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
 
 SCHEMA = """
 CREATE TABLE policy_sources (
@@ -303,6 +303,7 @@ DEFAULT_PARAMS = {
     "rotation.active_window_s": (180, "An application counts as running if it checked in within this time"),
     "rotation.idle_backoff_max_s": (14400, "Longest pause for a domain that is producing nothing new"),
     "rotation.wait_backoff_max_s": (600, "Longest pause for a domain whose sources asked it to slow down (it is not out of work)"),
+    "rotation.age_weight": (1.5, "Fairness: priority an application gains for each turn it sat out, so a slower domain is never starved"),
     "schedule.tick_s": (30, "How often an idle application asks the engine whether it is its turn"),
     "schedule.busy_tick_s": (3, "How often an application asks while harvesting is under way, so turns follow each other without a gap"),
 }
@@ -665,6 +666,7 @@ class Engine:
             w_rep = float(self.reg.param("rotation.repeat_penalty", 5.0))
             back_max = float(self.reg.param("rotation.idle_backoff_max_s", 14400))
             w_back = float(self.reg.param("rotation.wait_backoff_max_s", 600))
+            w_age = float(self.reg.param("rotation.age_weight", 1.5))
             scores, why = {}, {}
             for a in sorted(active):
                 st = self._app_state(db, a)
@@ -686,6 +688,11 @@ class Engine:
                     if since < pause and not checks:
                         s = -1.0; reasons.append("waiting %d s: its sources asked it to slow down or failed (%d turn(s)); not out of work"
                                                  % (pause, st["held_streak"]))
+                if s >= 0 and len(active) > 1:            # fairness: every turn sat out raises the claim, so no application starves
+                    mine = db.execute("SELECT max(id) FROM engine_turns WHERE app = ?", (a,)).fetchone()[0]
+                    waited = db.execute("SELECT count(*) FROM engine_turns WHERE id > ?", (mine or 0,)).fetchone()[0] if mine else 0
+                    if waited >= len(active) - 1:
+                        s += w_age * waited; reasons.append("waited %d turn(s)" % waited)
                 if a == last and len(active) > 1:
                     s -= w_rep; reasons.append("had the last turn (alternate)")
                 scores[a], why[a] = round(s, 2), reasons

@@ -19,6 +19,22 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Faster, steadier harvesting (STEM and History 1.15.0, Language 1.48.2, Control Panel 1.4.0)
+    * Master harvest status bar at the top of every Control Panel page: harvesting / waiting / stalled / stopped, new facts
+      a minute and in the last 10 minutes, when the last new fact arrived, what each application is doing, Start/Stop all.
+    * Each turn harvests its sites side by side (one lane per site, still one request at a time per site); a slow site
+      (The Met) stops after 12 s and resumes next turn; a site gets at most 30 s of a turn, so a turn never hangs.
+    * A request's waits for a rate-limited site add up to 20 s at most, then the task resumes on a later turn.
+    * Fair turns: every turn an application sits out raises its claim, so History is no longer starved by the faster
+      Language and STEM turns. Measured: STEM, Language and History now alternate s-l-f-s-l-f.
+    * Wikidata: one search feeds ten tasks (Wikidata throttles its search hardest), and a throttled search no longer
+      blocks the item lookups.
+  Campaign Manager made usable (Control Panel 1.4.0)
+    * Four steps with one "Next" action at the top; every Get-ready item has its own button (acknowledge the scope, use the
+      default reviewers, consent on file or leave out digital-human tasks, anchor source).
+    * The admin passphrase, the Gemini key and the Google source approval are set right there - no other page needed.
+    * Compile stays disabled, with the reason, until it can run: no more "Not ready to compile" error.
+
   Campaign Manager (Control Panel 1.3.0) - Control Panel -> "Campaign manager"
     * Feed it a directive (Word, Markdown or text) and it designs an executable harvest campaign: waves T0 -> T30 ->
       specialized modeling, every task's camera views and takes as generation requests, the real anchor set, the expert

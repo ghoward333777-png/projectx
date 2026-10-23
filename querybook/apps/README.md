@@ -594,6 +594,22 @@ the same facts each run, and a 24x7 history run carries on with the open online 
 agents that were running when the program closed resume at start-up (`QB_RESUME_AGENTS=0` for the old behaviour), and an
 agent past its six quick restarts keeps retrying every 10 minutes instead of staying stopped.
 
+## Faster, steadier harvesting (engine 1.2, online harvesters 1.2, Control Panel 1.4)
+
+Measured on the live sources before and after (four applications, 3 minutes):
+
+- **Parallel lanes per turn** (`qbcommons.Team.cycle`). A turn's tasks are grouped by site and run side by side (`MAX_LANES` 8);
+  tasks of one site stay one after another and every site keeps its own politeness pause (a per-site lock in `qbonline._fetch`).
+  Results are saved in plan order, so the output is still deterministic. A site gets `LANE_BUDGET_S` (30 s) of a turn; its
+  remaining tasks wait for the next turn.
+- **Bounded waits.** All inline waits of one request add up to `WAIT_INLINE_S` (20 s) at most; item-by-item sources stop at
+  `TASK_BUDGET_S` (12 s) and resume from where they stopped. The Met had taken 48 s per task.
+- **Per-site pacing** (`HOST_GAP`): The Met 0.25 s (it allows 80 requests a second), Wikidata 2.5 s. A throttled endpoint cools on
+  its own (`_bucket`): Wikidata search can wait while item lookups go on. One search returns 500 ids and feeds ten tasks.
+- **Fair turns** (`rotation.age_weight`, 1.5): each turn an application sits out raises its score, so a slower domain is never
+  starved by two fast ones. Before: Language and STEM traded turns and History waited minutes; after: s-l-f-s-l-f.
+- **Master harvest status bar** (`control/ui/pulse.js`, `GET /api/panel/pulse`) on every Control Panel page.
+
 ## Campaign Manager: directives in, executable harvest campaigns out (`_core/qbdirective.py`, Control Panel → Campaign manager)
 
 Open **Campaign manager ↗** in the Control Panel (`/campaigns.html`). Feed it a **directive** — a Word (.docx), Markdown or text

@@ -174,15 +174,41 @@ def main():
         except Exception:
             refused = True
         c.check("launching needs the admin passphrase", refused)
-        com.approvals.set_admin("campaign-admin-1")
+
+        class Routes:                                   # the page's own routes, called the way the HTTP server calls them
+            def __init__(self):
+                self.r = {}
+            def get(self, path):
+                return lambda fn: self.r.__setitem__(path, fn) or fn
+            post = get
+        api = Routes()
+        D.add_routes(api, com, tmp)
+        setup = api.r["/api/directives/setup"]
+        fresh = lst.create("fresh.md", b"# Fresh\n| # | Task | Tier |\n| --- | --- | --- |\n| ROB-01 | Bin picking | T0 |\n")
+        try:
+            api.r["/api/directives/compile"]({"id": fresh["id"]})
+            msg = ""
+        except Exception as e:
+            msg = str(e)
+        c.check("compiling too early explains what is left, by name", msg.startswith("Finish the") and "Scope exclusions acknowledged" in msg, msg)
+        v = setup({"id": camp2["id"], "what": "admin", "new": "campaign-admin-1"})
+        c.check("the Campaign Manager sets the admin passphrase itself", com.approvals.admin_set() and "passphrase" in v["summary"])
         try:
             D.launch(lst, com, camp2["id"], "T0", "campaign-admin-1")
             refused = ""
         except ValueError as e:
             refused = str(e)
         c.check("launching waits for the Google source and a Gemini key", "Google exemplar source" in refused and "Gemini" in refused, refused)
-        com.approvals.admin_source("google-generative-exemplars", "approved", "campaign-admin-1", "test", accept_restriction=True)
-        ol.save_key(com.folder, "gemini", "TESTKEY123")
+        try:
+            setup({"id": camp2["id"], "what": "gemini_key", "key": "TESTKEY123", "passphrase": "wrong-passphrase"})
+            guarded = False
+        except Exception:
+            guarded = True
+        c.check("saving the Gemini key there needs the admin passphrase", guarded and not ol.load_keys(com.folder).get("gemini"))
+        setup({"id": camp2["id"], "what": "approve_source", "passphrase": "campaign-admin-1"})
+        v = setup({"id": camp2["id"], "what": "gemini_key", "key": "TESTKEY123", "passphrase": "campaign-admin-1"})
+        c.check("…and with it, the source approval and the key make the campaign ready to launch",
+                v["checklist"]["ready_to_launch"] and ol.load_keys(com.folder).get("gemini") == "TESTKEY123", v["checklist"]["next"])
         out = D.launch(lst, com, camp2["id"], "T0", "campaign-admin-1")
         import qbcampaign
         tool = next(t for t in qbcampaign.tools(com) if t["id"] == "veo-speech-video")

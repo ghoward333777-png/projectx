@@ -25,7 +25,7 @@ Standard library only. Deterministic: the same directive and settings give the s
 import base64, datetime, io, json, math, os, re, time, urllib.error, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 TASK_ID = re.compile(r"\b([A-Z]{2,4})-(\d{2,3})\b")
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 TIERS = ("T0", "T30", "SM")
@@ -1113,14 +1113,38 @@ def add_routes(api, c, program_dir=None):
     def compile_(q):
         camp = store.get(q.get("id"))
         if not checklist(camp, environment(c))["ready_to_compile"]:
-            raise ValueError("Not ready to compile: " + "; ".join(i["title"] for i in checklist(camp)["items"]
-                                                                   if not i["ok"] and i["needed_for"] != "launch") + ".")
+            raise ValueError("Finish the “Get ready” steps first: " + "; ".join(i["title"] for i in checklist(camp, environment(c))["items"]
+                                                                               if not i["ok"] and i["needed_for"] != "launch") + ".")
         m = compile_plans(camp, store.folder)
         camp["status"] = "compiled" if camp.get("status") in (None, "draft", "compiled") else camp["status"]
         camp.setdefault("audit", []).append({"at": _now(), "by": "admin", "changes": ["compiled %d wave plan(s)" % len(m["waves"])]})
         store.save(camp)
         return dict(view(store, c, camp["id"]), summary="%d wave plan(s) and %d jobs written to %s" % (
             len(m["waves"]), sum(w["items"] for w in m["waves"]), os.path.dirname(m["jobs"])))
+
+    def setup(q):
+        """The three launch requirements, set here so the Campaign Manager never sends you to another page:
+        the admin passphrase, the Gemini key (owner-only file, never the database) and the Google source approval."""
+        camp = store.get(q.get("id"))
+        what = q.get("what")
+        if what == "admin":
+            c.approvals.set_admin(q.get("new") or "", q.get("old") or None)
+            msg = "Admin passphrase set."
+        elif what == "gemini_key":
+            c.approvals._require(q.get("passphrase") or "")
+            import qbonline as ol
+            ol.save_key(c.folder, "gemini", q.get("key") or "")
+            msg = "Gemini key saved (kept only in api-keys.json in the Commons folder, owner-only)."
+        elif what == "approve_source":
+            import qbcampaign
+            c.approvals.admin_source(qbcampaign.SOURCE_KEY, "approved", q.get("passphrase") or "",
+                                     "approved in the Campaign Manager: generated exemplars only, never facts", None, True)
+            msg = "Google exemplar source approved (terms-of-service class, accepted by the admin)."
+        else:
+            raise ValueError("Unknown setup step.")
+        camp.setdefault("audit", []).append({"at": _now(), "by": "admin", "changes": [msg]})
+        store.save(camp)
+        return dict(view(store, c, camp["id"]), summary=msg)
 
     def delete(q):
         cid = q.get("id")
@@ -1135,6 +1159,7 @@ def add_routes(api, c, program_dir=None):
     p("/api/directives/compile")(guard(compile_))
     p("/api/directives/launch")(guard(lambda q: dict(launch(store, c, q.get("id"), q.get("tier"), q.get("passphrase"),
                                                            bool(q.get("start_generator")), program_dir), **view(store, c, q.get("id")))))
+    p("/api/directives/setup")(guard(setup))
     p("/api/directives/delete")(guard(delete))
     return store
 
