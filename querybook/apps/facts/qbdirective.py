@@ -49,7 +49,8 @@ PERSON = ["a woman in her thirties", "a man in his fifties", "a young adult", "a
           "a woman in her forties"]
 DEFAULTS = {"tool": "veo-speech-video", "requests_per_day": None, "clip_seconds": 10, "views": 2,
             "takes": {"T0": 2, "T30": 1, "SM": 1}, "anchor_pct": None, "start": None, "scope_ack": False, "reviewers": {},
-            "reviewers_confirmed": False, "consent_confirmed": False, "anchor_source": "", "exclude": [], "waves": list(TIERS)}
+            "reviewers_confirmed": False, "consent_confirmed": False, "anchor_source": "", "exclude": [], "waves": list(TIERS),
+            "focus_only": False}
 
 
 # ================================================================================================ reader
@@ -149,20 +150,91 @@ def text_blocks(text):
     return blocks
 
 
-def read(name, data):
-    """a directive file (bytes) → its brief"""
+def blocks_of(name, data):
     ext = os.path.splitext(name or "")[1].lower()
     if ext == ".docx":
-        blocks = docx_blocks(data)
-    elif ext in (".md", ".markdown", ".txt", ""):
-        blocks = text_blocks(data.decode("utf-8", "replace"))
-    else:
-        raise ValueError("Upload the directive as a Word (.docx), Markdown (.md) or text (.txt) file.")
-    brief = interpret(blocks, name or "directive")
+        return docx_blocks(data)
+    if ext in (".md", ".markdown", ".txt", ""):
+        return text_blocks(data.decode("utf-8", "replace"))
+    raise ValueError("Upload the directive as a Word (.docx), Markdown (.md) or text (.txt) file.")
+
+
+def read(name, data):
+    """a directive file (bytes) → its brief"""
+    brief = interpret(blocks_of(name, data), name or "directive")
     if not brief["tasks"]:
         raise ValueError("No task register found: the directive needs a table whose first column holds task ids like MED-01, "
                          "with columns for the task and its tier (T0 / T30 / SM).")
     return brief
+
+
+# ------------------------------------------------------------------------------------------------ focus directives
+# A focus directive has no task register: it names the sectors that need the work most and a recommended first move, and
+# re-ranks an existing campaign. Each rule: (sector words in the directive, whole categories, words in a task that match).
+SECTOR_RULES = [
+    ("Defense and intelligence", r"defen[cs]e|military|intelligence", {"MIL"},
+     r"sustainment|logistics|depot receiving|casualty|convoy|refuel|airlift|cargo|ammunition|readiness"),
+    ("Government", r"government|regulator|procurement|benefits?", set(), r"checkpoint|screening|compliance|federal|bridge|tunnel|rail track"),
+    ("Legal and compliance", r"legal|compliance", set(), r"compliance|lockout|tagout|\baml\b|privacy|harassment|\bgmp\b"),
+    ("Pharma, medical and science", r"pharma|medical|science|clinical", {"MED"}, r"pharma|aseptic|medication|\bgmp\b|clinical|fill-finish"),
+    ("Finance and insurance", r"financ|insurance|bank", set(), r"insur|claims|damage assessment|crash|\baml\b|near-miss"),
+    ("Engineering and industry", r"engineering|industry|industrial|energy|aviation|manufactur", {"ENG", "INS", "MFG"},
+     r"maintenance|inspection|torque|lockout|substation|aircraft|well-site|borescope|assembly|cleanroom|welding|changeover"),
+]
+FIRST_MOVE_RULES = [  # (words in the recommended first move, categories, task words) — the first wave's spearhead
+    (r"aviation|aircraft", set(), r"aircraft walkaround|borescope|aviation maintenance|rotor component|flight line"),
+    (r"energy|utilit|power", {"ENG"}, r"substation|turbine|solar|well-site|rig floor|nuclear|pole replacement|storm restoration"),
+    (r"pharma", set(), r"pharmaceutical|aseptic|fill-finish|\bgmp\b"),
+    (r"compliance", set(), r"lockout|tagout|aseptic|\bgmp\b"),
+]
+
+
+def read_focus(name, data):
+    """a focus directive → {title, sectors, first_move, notes}; None when the document is not one"""
+    blocks = blocks_of(name, data)
+    title, sectors, first, notes, sub = "", [], [], [], ""
+    for b in blocks:
+        if b["type"] == "heading":
+            if not title and b["level"] == 1:
+                title = b["text"]
+            else:
+                sub = b["text"].lower()
+        elif b["type"] == "paragraph" and not title and not sectors:
+            title = title or b["text"]                     # a pasted document may start without a heading
+        elif b["type"] == "paragraph" and sub.startswith("recommended first move"):
+            first.append(b["text"])
+        elif b["type"] == "paragraph" and sub.startswith(("what it is missing", "what it's missing", "the catch")):
+            notes.append(b["text"])
+        elif b["type"] == "table":
+            i = _col(b["header"], "sector")
+            if i is not None:
+                for r in b["rows"]:
+                    sectors.append({"sector": _cell(r, i), "need": _cell(r, _col(b["header"], "what hurts")),
+                                    "buy": _cell(r, _col(b["header"], "what they would buy", "what they'd buy", "what they buy"))})
+    text = " ".join(x["text"] for x in blocks if x["type"] in ("paragraph", "heading"))
+    if not first:                                          # pasted as plain text: the heading is a paragraph
+        m = re.search(r"Recommended first move\s*(.+)$", text, re.I)
+        first = [m.group(1).strip()] if m else []
+    if not sectors and not first:
+        return None
+    return {"source": name, "title": title or os.path.splitext(name)[0], "sectors": sectors, "first_move": " ".join(first)[:1000],
+            "notes": notes[:12]}
+
+
+def focus_rank(focus, task):
+    """1 = the recommended first move, 2 = a named sector's work, 3 = everything else; with the reasons"""
+    if not focus:
+        return 3, []
+    hay = " ".join([task["task"], task.get("value", "")]).lower()      # the work itself (buyers' names would add noise: "Home Depot")
+    fm = (focus.get("first_move") or "").lower()
+    why1 = [w for w, cats, kw in FIRST_MOVE_RULES if re.search(w, fm) and (task["category"] in cats or re.search(kw, hay))]
+    if why1:
+        return 1, ["first move: " + focus["first_move"].split("(")[0].strip()[:80]]
+    why2 = []
+    for label, sector_re, cats, kw in SECTOR_RULES:
+        if any(re.search(sector_re, x["sector"], re.I) for x in focus.get("sectors") or []) and (task["category"] in cats or re.search(kw, hay)):
+            why2.append(label)
+    return (2, why2) if why2 else (3, [])
 
 
 def _col(header, *names):
@@ -349,10 +421,10 @@ def held(task):
     return hit.group(0) if hit else None
 
 
-def _priority(brief):
+def _priority(brief, focus=None):
     fast = {t: i for i, t in enumerate(brief.get("fastest_revenue") or [])}
     band = {"A": 0, "B": 1, "C": 2}
-    return lambda t: (0 if t["id"] in fast else 1, fast.get(t["id"], 0), band.get(t["revenue_band"], 3), -t["ease"], t["id"])
+    return lambda t: (focus_rank(focus, t)[0], 0 if t["id"] in fast else 1, fast.get(t["id"], 0), band.get(t["revenue_band"], 3), -t["ease"], t["id"])
 
 
 def prompts_for(task, cap, s):
@@ -393,7 +465,8 @@ def design(camp, today=None):
     day0 = datetime.date.fromisoformat(start)
     special = {x["task"]: x for x in brief["specialized_modeling"]}
     model, budget = VIDEO_TOOLS[s["tool"]][0], s["requests_per_day"]
-    order = _priority(brief)
+    focus = camp.get("focus")
+    order = _priority(brief, focus)
     waves, tasks_out, held_out, cursor = [], [], [], 0
     for tier in TIERS:
         tier_tasks = sorted([t for t in brief["tasks"] if t["tier"] == tier], key=order)
@@ -404,6 +477,9 @@ def design(camp, today=None):
                 held_out.append({"id": t["id"], "task": t["task"], "why": "matched the scope guard (“%s”): kept for a person to decide" % why}); continue
             if t["id"] in s["exclude"] or t["category"] in s["exclude"]:
                 continue
+            rank, why_focus = focus_rank(focus, t)
+            if s["focus_only"] and focus and rank == 3:
+                continue
             cap = capture_for(brief, t)
             pct = s["anchor_pct"] or (rule["max_pct"] if t["category"] in REGULATED else rule["min_pct"])
             req = s["takes"][tier] * s["views"]
@@ -413,7 +489,7 @@ def design(camp, today=None):
                          "reviewer": (s["reviewers"] or {}).get(t["category"]) or REVIEWERS.get(t["category"], "domain expert"),
                          "capture": cap, "prerequisite": (special.get(t["id"], {}).get("modeling") if tier == "SM" else
                                                           "a scene kit, rigged asset or expert-approved procedure script" if tier == "T30" else "none"),
-                         "world_model": t["world_model"], "agent_reasoning": t["agent_reasoning"]})
+                         "world_model": t["world_model"], "agent_reasoning": t["agent_reasoning"], "focus": rank, "focus_why": why_focus})
         if tier not in s["waves"] or not jobs:
             if jobs:
                 waves.append({"tier": tier, "name": WAVE_NAMES[tier], "included": False, "tasks": len(jobs), "requests": 0})
@@ -439,7 +515,9 @@ def design(camp, today=None):
             "totals": {"tasks": len(tasks_out), "requests": sum(j["requests"] for j in tasks_out),
                        "clip_minutes": round(sum(j["clips_seconds"] for j in tasks_out) / 60.0, 1),
                        "days": max([w.get("end_day", 0) for w in waves] + [0]), "categories": len({j["category"] for j in tasks_out}),
-                       "directive_tasks": len(brief["tasks"])},
+                       "directive_tasks": len(brief["tasks"]), "focus_first_move": sum(1 for j in tasks_out if j["focus"] == 1),
+                       "focus_sectors": sum(1 for j in tasks_out if j["focus"] == 2)},
+            "focus": focus,
             "throughput_note": ("The directive plans %d clips a day per %d-GPU pod at T0; this account's %s budget is %d requests a day, so the "
                                 "schedule below uses %d a day. Raise the tool's daily budget (Harvesting → Google tools) or add a second video "
                                 "tool to go faster." % (brief["throughput"]["T0"], brief["throughput"]["pod_gpus"], model, VIDEO_TOOLS[s["tool"]][1], budget))}
@@ -593,6 +671,35 @@ class Store:
         camp["chat"].append({"role": "assistant", "at": _now(), "text": welcome(camp)})
         return self.save(camp)
 
+    def apply_focus(self, cid, name, data, focus=None):
+        """a focus directive re-ranks an existing campaign (the same document twice changes nothing)"""
+        import hashlib
+        sha = hashlib.sha256(data).hexdigest()
+        camp = self.get(cid)
+        if (camp.get("focus") or {}).get("sha256") == sha:
+            return camp
+        focus = focus or read_focus(name, data)
+        if not focus:
+            raise ValueError("This document has neither a task register nor a focus (a Sector table or a recommended first move).")
+        focus.update(sha256=sha, applied=_now())
+        camp["focus"] = focus
+        camp.setdefault("audit", []).append({"at": _now(), "by": "admin (focus directive)", "changes": ["focus: %s" % focus["title"]]})
+        camp.setdefault("chat", []).append({"role": "assistant", "at": _now(), "text": focus_text(camp), "changes": ["focus: " + focus["title"]]})
+        return self.save(camp)
+
+    def ingest(self, name, data, target=None):
+        """a directive with a task register becomes a campaign; a focus directive refines the target campaign (or the only/newest one)"""
+        try:
+            return self.create(name, data)
+        except ValueError:
+            focus = read_focus(name, data)
+            if not focus:
+                raise
+            camps = sorted(self.list(), key=lambda c: c["created"])
+            if not camps:
+                raise ValueError("This is a focus directive: add the campaign's task directive first, then this one refines it.")
+            return self.apply_focus(target or camps[-1]["id"], name, data, focus)
+
 
 # ================================================================================================ assistant
 def welcome(camp):
@@ -609,6 +716,30 @@ def welcome(camp):
                "No task tripped the scope guard.", "please confirm the scope exclusions — say “I acknowledge the scope”."))
 
 
+def focus_text(camp):
+    d = design(camp)
+    f = camp.get("focus") or {}
+    if not f:
+        return "No focus directive applied. Add one (a document with a Sector table and a recommended first move) to re-rank the campaign."
+    first = [j for j in d["tasks"] if j["focus"] == 1]
+    sect = [j for j in d["tasks"] if j["focus"] == 2]
+    by_sector = {}
+    for j in sect:
+        for w in j["focus_why"]:
+            by_sector.setdefault(w, []).append(j["id"])
+    lines = ["Focus applied: “%s”." % f.get("title", ""),
+             "Recommended first move: %s" % (f.get("first_move") or "—"),
+             "→ %d first-move tasks now lead every wave: %s." % (len(first), ", ".join(j["id"] for j in first) or "none"),
+             "→ %d more tasks serve the named sectors:" % len(sect)]
+    lines += ["   • %s: %s" % (k, ", ".join(v)) for k, v in by_sector.items()]
+    lines.append("→ %d other tasks stay in the campaign after them%s." % (len([j for j in d["tasks"] if j["focus"] == 3]),
+                 "" if not d["settings"]["focus_only"] else " — but “focus tasks only” is on, so they are left out"))
+    if f.get("notes"):
+        lines.append("Not harvest tasks, kept as notes: " + " | ".join(n[:140] for n in f["notes"][:4]))
+    lines.append("Say “focus tasks only” to run just the focus, or “all tasks” to keep everything (focus first).")
+    return "\n".join(lines)
+
+
 HELP = ("I can set this campaign up with you. Try:\n"
         "• what's missing / status / show the waves\n"
         "• I acknowledge the scope\n"
@@ -618,6 +749,7 @@ HELP = ("I can set this campaign up with you. Try:\n"
         "• consent is on file  ·  anchor source is our hospital simulation lab recordings  ·  anchor 4%\n"
         "• exclude MED-07  ·  include MED-07  ·  only wave 1\n"
         "• explain ROB-09  ·  compile the plans\n"
+        "• show the focus  ·  focus tasks only  ·  all tasks\n"
         "Launching a wave needs your admin passphrase: use the Launch button (I never take passphrases in chat).")
 
 
@@ -679,6 +811,10 @@ def respond(camp, text, env=None, ai=None):
     m = re.search(r"\bonly wave\s*([123])\b", low)
     if m:
         _set(camp, "waves", [TIERS[int(m.group(1)) - 1]]); ch.append("waves: only %s" % WAVE_NAMES[TIERS[int(m.group(1)) - 1]])
+    if re.search(r"\b(?:focus(?:ed)? (?:tasks )?only|only (?:the )?focus(?:ed)?(?: tasks)?)\b", low):
+        _set(camp, "focus_only", True); ch.append("only the focus tasks")
+    if re.search(r"\ball (?:the )?tasks\b|\bfocus first\b", low):
+        _set(camp, "focus_only", False); ch.append("all tasks, focus first")
     if re.search(r"\ball (?:the )?waves\b", low):
         _set(camp, "waves", list(TIERS)); ch.append("waves: all three")
     for verb, ids in re.findall(r"\b(exclude|skip|drop|include|restore|add back)\s+((?:[A-Za-z]{2,4}(?:-\d{2,3})?(?:\s*,\s*|\s+and\s+|\s+)?)+)", t, re.I):
@@ -707,6 +843,8 @@ def respond(camp, text, env=None, ai=None):
             return "(Claude could not answer: %s.)\n\n%s" % (str(e)[:200], status_text(camp, env)), ch
     if m and m.group(0) in tasks:
         return explain(camp, m.group(0)), ch
+    if re.search(r"\b(the )?focus\b", low) and re.search(r"\b(show|what|which|explain|describe)\b", low):
+        return focus_text(camp), ch
     if re.search(r"\b(missing|status|ready|what next|next step|checklist|left to do|need from me)\b", low):
         return status_text(camp, env), ch
     if re.search(r"\b(waves?|schedule|plan|timeline|how long)\b", low) and "compile" not in low:
@@ -760,6 +898,8 @@ def explain(camp, tid):
         why = next((h["why"] for h in d["held"] if h["id"] == tid), "excluded from this campaign (say “include %s”)" % tid)
         return head + "\n\nNot in the campaign: " + why + "."
     first = prompts_for(t, j["capture"], d["settings"])[0]
+    if j.get("focus", 3) < 3:
+        head += "\nFocus: %s." % "; ".join(j["focus_why"])
     return (head + "\n\nIn the campaign: %d takes × %d views = %d requests, days %d–%d (from %s); anchor set %d%% (%d real clips); reviewer: %s; "
             "prerequisite: %s.\nCameras: %s. Points of view: %s. Overlays added afterwards: %s.\n\nFirst request's prompt:\n%s"
             % (j["takes"], j["views"], j["requests"], j["start_day"], j["end_day"], j["start_date"], j["anchor_pct"], j["anchor_clips"], j["reviewer"],
@@ -903,11 +1043,14 @@ def seed(store, folder):
     made = []
     if not os.path.isdir(folder):
         return made
-    for n in sorted(os.listdir(folder)):
-        if n.lower().endswith((".docx", ".md", ".txt")):
+    names = [n for n in sorted(os.listdir(folder)) if n.lower().endswith((".docx", ".md", ".txt"))]
+    for focus_pass in (False, True):                    # task directives first, then the focus directives that refine them
+        for n in names:
+            if n.lower().startswith("focus") != focus_pass:
+                continue
             try:
                 with open(os.path.join(folder, n), "rb") as f:
-                    made.append(store.create(n, f.read())["id"])
+                    made.append(store.ingest(n, f.read())["id"])
             except (ValueError, OSError):
                 continue
     return made
@@ -940,7 +1083,7 @@ def add_routes(api, c, program_dir=None):
             raise ValueError("Choose a directive file, or paste its text.")
         if len(data) > 20 * 1024 * 1024:
             raise ValueError("The directive is larger than 20 MB.")
-        camp = store.create(name, data)
+        camp = store.ingest(name, data, q.get("target") or None)
         with c.store.write() as db:
             c.agent_log(db, "engine", "Campaign Manager: directive “%s” read (%d tasks)" % (camp["brief"]["title"], len(camp["brief"]["tasks"])))
         return view(store, c, camp["id"])

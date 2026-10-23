@@ -614,6 +614,11 @@ Synthetic-Video Directive** (122 learn-by-example tasks in 19 categories) ships 
   "use omni", "15 requests a day", "3 takes for T0", "2 views", "start on 2026-11-02", "exclude MED-07", "only wave 1",
   "explain ROB-09", "show the waves". It is rule-based; with an Anthropic key (`ANTHROPIC_API_KEY`, or Harvesting → API keys
   → Anthropic) open questions are also answered by Claude — advisory only: Claude never changes, compiles or launches anything.
+* **Focus directives** — a document with a *Sector* table and a *Recommended first move* but no task register (for example
+  `control/directives/Focus-Market-Need-Verifiable-AI-Answers.docx`, applied on first start) refines the open campaign: tasks
+  matching the first move lead every wave, then the tasks serving the named sectors, then the rest — or only the focus
+  ("focus tasks only"). Matching is deterministic (the task's own words and category, never a buyer's name); "show the focus"
+  lists every task's reason.
 * **Compile** — one exemplar plan per wave (`<shared folder>/directives/<id>/plans/wave-t0.json` …, a *scene* plan the exemplar
   generator runs text-to-video) and `jobs.jsonl`: every request with its prompt and the directive's metadata record.
 * **Launch** (admin passphrase) — hands a wave's plan to the chosen Google video tool, switches it on and, if ticked, starts the
@@ -907,7 +912,7 @@ python language/app.py --selftest     # 216 checks
 python stem/app.py --selftest         # 86 checks
 python facts/app.py --selftest        # 44 checks
 python control/app.py --selftest      # Control Panel
-python tools/test_directive.py       # the Campaign Manager: directive → campaign → plans → launch (40 checks)
+python tools/test_directive.py       # the Campaign Manager: directive → campaign → plans → launch (47 checks)
 python tools/run_all_tests.py         # all of the above
 ```
 

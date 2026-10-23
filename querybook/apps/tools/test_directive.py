@@ -132,6 +132,34 @@ def main():
             none = True
         c.check("a document with no task register is refused", none)
 
+        # --- a focus directive refines the campaign
+        with open(os.path.join(ROOT, "control", "directives", "Focus-Market-Need-Verifiable-AI-Answers.docx"), "rb") as f:
+            fdata = f.read()
+        fc = D.Store(os.path.join(tmp, "focus"))
+        base = fc.ingest("directive.docx", data)
+        focused = fc.ingest("Focus-Market-Need.docx", fdata)
+        df = D.design(focused)
+        first = {j["id"] for j in df["tasks"] if j["focus"] == 1}
+        c.check("a focus directive (no task register) refines the existing campaign", focused["id"] == base["id"] and focused["focus"]["sectors"]
+                and len(fc.list()) == 1)
+        c.check("its first move (aviation maintenance, energy, pharma) leads: energy, aircraft, LOTO, aseptic fill-finish",
+                {"ENG-01", "ENG-04", "INS-01", "MFG-04", "MFG-08"} <= first and not {"HOM-01", "ENT-05", "DLY-03"} & {j["id"] for j in df["tasks"] if j["focus"] < 3}, sorted(first))
+        c.check("focus tasks come first in every wave", all([j["focus"] for j in df["tasks"] if j["tier"] == t] ==
+                                                            sorted(j["focus"] for j in df["tasks"] if j["tier"] == t) for t in D.TIERS))
+        c.check("the same focus document again changes nothing", len(fc.ingest("again.docx", fdata).get("audit", [])) == len(focused.get("audit", [])))
+        D.respond(focused, "focus tasks only")
+        only = D.design(focused)
+        c.check("“focus tasks only” keeps just the focus", only["totals"]["tasks"] == df["totals"]["focus_first_move"] + df["totals"]["focus_sectors"]
+                and all(j["focus"] < 3 for j in only["tasks"]))
+        c.check("“show the focus” explains the ranking", "first-move tasks" in D.respond(focused, "show the focus")[0])
+        empty = D.Store(os.path.join(tmp, "nothing-yet"))
+        try:
+            empty.ingest("focus.docx", fdata)
+            alone = False
+        except ValueError:
+            alone = True
+        c.check("a focus directive with no campaign to refine is refused with the reason", alone)
+
         # --- launching (admin) on a real shared folder
         com = cm.Commons(os.path.join(tmp, "commons"), "control")
         lst = D.Store(com.folder)

@@ -51,8 +51,9 @@
   <section class="card">
     <div class="sechead"><h2>Directives</h2><button class="btn quiet" id="refresh">Refresh</button></div>
     <p class="muted small">A directive is a Word (.docx), Markdown (.md) or text file with a task register: a table whose first column holds task ids
-      like <code>MED-01</code>, with the task and its tier (T0 / T30 / SM). Directives placed in the Control Panel's <code>directives</code>
-      folder are set up automatically.</p>
+      like <code>MED-01</code>, with the task and its tier (T0 / T30 / SM). A <b>focus directive</b> — a document with a Sector table and a
+      recommended first move, no task register — refines the open campaign: its tasks are re-ranked so the focus leads every wave.
+      Directives placed in the Control Panel's <code>directives</code> folder are set up automatically (files named <code>Focus…</code> refine).</p>
     <div class="list" id="list"></div>
     <h3>Add a directive</h3>
     <div class="drop" id="drop">Drop a .docx / .md / .txt file here, or <input type="file" id="file" accept=".docx,.md,.markdown,.txt"></div>
@@ -68,6 +69,14 @@
       <p class="muted small" id="c-sub"></p>
       <div class="stats" id="c-stats"></div>
       <p class="note small" id="c-note"></p>
+    </section>
+
+    <section class="card hidden" id="focus-card">
+      <div class="sechead"><h2>Focus</h2><span class="badge" id="f-mode"></span>
+        <button class="btn quiet" id="f-only">Focus tasks only</button><button class="btn quiet" id="f-all">All tasks, focus first</button></div>
+      <p class="small" id="f-text"></p>
+      <div class="stats" id="f-stats"></div>
+      <div class="small" id="f-sectors" style="margin-top:8px"></div>
     </section>
 
     <section class="card">
@@ -142,7 +151,7 @@
 <script>
 "use strict";
 let CID = null, V = null;
-const SUGG = ["what's missing?", "I acknowledge the scope", "use the default reviewers", "consent is on file", "show the waves", "explain ROB-09", "help"];
+const SUGG = ["show the focus", "what's missing?", "I acknowledge the scope", "use the default reviewers", "consent is on file", "show the waves", "explain ROB-09", "help"];
 const fmt = n => (n === null || n === undefined) ? "—" : Number(n).toLocaleString();
 
 async function loadList(select) {
@@ -172,6 +181,15 @@ function render(v) {
     ["Clip minutes", d.totals.clip_minutes], ["Days at budget", d.totals.days], ["Categories", d.totals.categories],
     ["Requests a day · " + d.model, d.requests_per_day]].map(([k, val]) => `<div class="stat"><div class="v">${esc(val)}</div><div class="k">${esc(k)}</div></div>`).join("");
   $("#c-note").textContent = d.throughput_note;
+  const f = d.focus;
+  $("#focus-card").classList.toggle("hidden", !f);
+  if (f) {
+    $("#f-mode").textContent = s.focus_only ? "focus tasks only" : "all tasks, focus first";
+    $("#f-text").innerHTML = "<b>" + esc(f.title) + "</b> — applied " + esc(f.applied || "") + "<br>Recommended first move: " + esc(f.first_move || "—");
+    $("#f-stats").innerHTML = [["First-move tasks", d.totals.focus_first_move], ["Sector tasks", d.totals.focus_sectors],
+      ["Other tasks", d.totals.tasks - d.totals.focus_first_move - d.totals.focus_sectors]].map(([k, val]) => `<div class="stat"><div class="v">${esc(val)}</div><div class="k">${esc(k)}</div></div>`).join("");
+    $("#f-sectors").innerHTML = (f.sectors || []).map(x => `<div style="padding:3px 0"><b>${esc(x.sector)}</b> — ${esc(x.buy || x.need || "")}</div>`).join("");
+  }
   $("#c-ready").textContent = ck.ready_to_launch ? "ready to launch" : ck.ready_to_compile ? "ready to compile" : "not ready";
   $("#c-ready").className = "badge " + (ck.ready_to_launch ? "good" : ck.ready_to_compile ? "warn" : "bad");
   $("#hdr").textContent = b.title + " · " + $("#c-ready").textContent;
@@ -203,10 +221,11 @@ function renderTasks() {
   if (!V) return;
   const w = $("#t-wave").value, q = $("#t-q").value.toLowerCase();
   const rows = V.design.tasks.filter(t => (!w || t.tier === w) && (!q || (t.id + " " + t.task + " " + t.category_name + " " + t.reviewer).toLowerCase().includes(q)));
-  $("#t-table").innerHTML = "<tr><th>#</th><th>Task</th><th>Tier</th><th>Band</th><th class=n>Ease</th><th class=n>Requests</th><th>From</th><th>Anchor</th><th>Reviewer</th></tr>" +
+  $("#t-table").innerHTML = "<tr><th>#</th><th>Task</th><th>Tier</th><th>Band</th><th class=n>Ease</th><th class=n>Requests</th><th>From</th><th>Anchor</th><th>Reviewer</th><th>Focus</th></tr>" +
     rows.map(t => `<tr><td><a href="#" data-explain="${esc(t.id)}">${esc(t.id)}</a></td><td>${esc(t.task)}<br><span class="muted small">${esc(t.category_name)}${t.prerequisite !== "none" ? " · needs " + esc(t.prerequisite) : ""}</span></td>
       <td>${esc(t.tier)}</td><td>${esc(t.revenue_band)}</td><td class=n>${t.ease}</td><td class=n>${t.requests}</td><td>${esc(t.start_date)}</td>
-      <td>${t.anchor_pct}% (${t.anchor_clips})</td><td class="small">${esc(t.reviewer)}</td></tr>`).join("");
+      <td>${t.anchor_pct}% (${t.anchor_clips})</td><td class="small">${esc(t.reviewer)}</td>
+      <td class="small">${t.focus === 1 ? '<span class="badge good">first move</span>' : t.focus === 2 ? '<span class="badge">' + esc(t.focus_why.join(", ")) + "</span>" : ""}</td></tr>`).join("");
   $$("[data-explain]").forEach(a => a.onclick = e => { e.preventDefault(); say("explain " + a.dataset.explain); });
   $("#t-held").innerHTML = V.design.held.length ? '<p class="note small">Held back by the scope guard (kept for a person to decide): ' +
     V.design.held.map(h => esc(h.id + " " + h.task)).join("; ") + "</p>" : "";
@@ -255,6 +274,8 @@ function bind() {
     render(await api("/api/directives/settings", { id: CID, settings })); toast("Settings saved.");
   };
   $("#w-compile").onclick = async () => { const v = await api("/api/directives/compile", { id: CID }); render(v); toast(v.summary); };
+  $("#f-only").onclick = () => say("focus tasks only").catch(() => { });
+  $("#f-all").onclick = () => say("all tasks, focus first").catch(() => { });
   $("#c-delete").onclick = async () => { if (!confirm("Remove this campaign? Its compiled plans stay on disk.")) return;
     await api("/api/directives/delete", { id: CID }); CID = null; $("#camp").classList.add("hidden"); loadList(); };
 }
