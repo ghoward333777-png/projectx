@@ -28,7 +28,7 @@ LICENCE = {"wikidata": ("CC0 1.0", "cc0"), "natural-earth": ("Public domain", "p
            "federal-register": ("US government work; no restrictions on republication", "us-federal"), "pubchem-computed": ("US government work (computed properties)", "us-federal")}
 TRUST = {"cc0": 0.9, "public-domain": 0.9, "us-federal": 0.92}
 GOOGLE_TOOLS = {   # (the same catalogue as the applications' qbcampaign.py)
-    "omni-speech-video": ("Talking-face speech clips — Gemini Omni 1.1 Flash", "gemini-omni-1.1-flash", 20),
+    "omni-speech-video": ("Talking-face speech clips — Gemini Omni 1.1 Flash", "gemini-omni-1.1-flash", 100),
     "veo-speech-video": ("Talking-face and movement clips — Veo 3 Fast", "veo-3.0-fast-generate-001", 10),
     "tts-pronunciation": ("Reference pronunciations — Gemini 3.8 Flash TTS", "gemini-3.8-flash-tts", 100),
     "image-mouth-shapes": ("Mouth-shape stills — Nano Banana 2", "gemini-3.1-flash-image", 1000),

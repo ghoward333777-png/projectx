@@ -22,10 +22,12 @@ named _runner.stop appears in the exemplar folder (the Control Panel's Stop butt
 
 Kinds and the API each uses: video (Gemini Omni, Interactions API; Veo, predictLongRunning), audio (TTS models,
 generateContent), image (image models, generateContent), text (text models, generateContent).
-Daily budgets per model (requests per day) are kept in the library folder and never exceeded; a 429 from Google stops
-that model for the day. The key is read from the key file and never written anywhere.
+Daily budgets per model (requests per day) are kept in the library folder and never exceeded (each request takes its place
+before it is sent). Requests run several at once (--parallel, default 4; run-campaign: per switched-on tool), each on its own
+line. A passing rate limit from Google (spend-based or per minute) waits a minute and tries again; "exceeded your current
+quota" stops that model for the day. The key is read from the key file and never written anywhere.
 """
-import argparse, base64, json, os, re, struct, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import argparse, base64, concurrent.futures, json, os, re, struct, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)                                    # (the suite ships qbexemplar.py beside this file)
@@ -33,8 +35,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "_core"))
 import qbexemplar as X  # noqa: E402
 
 API = "https://generativelanguage.googleapis.com/v1beta"
-# requests per day at the account's current tier (Google AI Studio quota page, October 22, 2026); --budget overrides
-BUDGET = {"gemini-omni-1.1-flash": 20, "gemini-omni-flash-preview": 20, "veo-3.0-generate-001": 10, "veo-3.0-fast-generate-001": 10,
+# requests per day at the account's current tier (Google AI Studio quota page, October 22, 2026); --budget overrides.
+# Omni is limited by Google on spending, not a published count: its cap is the admin's own daily spending guard (100, Oct 23)
+BUDGET = {"gemini-omni-1.1-flash": 100, "gemini-omni-flash-preview": 100, "veo-3.0-generate-001": 10, "veo-3.0-fast-generate-001": 10,
           "gemini-3.8-flash-tts": 100, "gemini-3.1-flash-tts-preview": 100, "gemini-2.5-pro-preview-tts": 50,
           "gemini-3-pro-image": 250, "gemini-3.1-flash-image": 1000, "gemini-3.1-flash-lite-image": 1000,
           "gemini-3.1-pro-preview": 250, "gemini-3.8-flash": 10000, "gemini-3.5-transcribe": 100}
@@ -62,6 +65,8 @@ def _call(key, url, body=None, timeout=900, raw=False):
 class ApiError(RuntimeError):
     def __init__(self, code, msg):
         super().__init__("HTTP %s: %s" % (code, msg)); self.code = code
+        # a spend-based or per-minute rate limit passes in a minute; "exceeded your current quota" is the day's limit
+        self.transient = code == 429 and "current quota" not in str(msg) and bool(re.search(r"rate limit|per minute|try again", str(msg), re.I))
 
 
 def _wav(pcm, rate=24000):
@@ -131,6 +136,8 @@ def generate(key, model, prompt, image=None, voice=None):
 
 # ------------------------------------------------------------------------------------------------ budgets
 class Budget:
+    _lock = threading.Lock()                                # several requests may run at once (--parallel)
+
     def __init__(self, lib, overrides=None):
         self.path = os.path.join(lib.folder, "_budget.json"); self.over = overrides or {}
 
@@ -146,7 +153,27 @@ class Budget:
             return 0
         return max(0, int(self.over.get(model, BUDGET.get(model, 10))) - int(d.get(model, 0)))
 
+    def reserve(self, model):
+        """one request's place in today's budget, taken before the request (so parallel requests never overrun it)"""
+        with self._lock:
+            if self.left(model) <= 0:
+                return False
+            self._spend(model)
+            return True
+
+    def refund(self, model):
+        """a request Google refused for a passing rate limit made nothing: its place is given back"""
+        with self._lock:
+            b = self._load(); d = b.get(time.strftime("%Y-%m-%d", time.gmtime()), {})
+            if d.get(model, 0) > 0:
+                d[model] -= 1
+                json.dump(b, open(self.path, "w"), indent=1, sort_keys=True)
+
     def spend(self, model, stopped=False):
+        with self._lock:
+            self._spend(model, stopped)
+
+    def _spend(self, model, stopped=False):
         b = self._load(); day = time.strftime("%Y-%m-%d", time.gmtime())
         b = {k: v for k, v in b.items() if k >= time.strftime("%Y-%m-%d", time.gmtime(time.time() - 7 * 86400))}
         d = b.setdefault(day, {})
@@ -207,43 +234,68 @@ def cmd_plan(a):
     print(json.dumps(plan_from_script(a.script, a.skill, a.model, a.image, a.subject, a.consent, a.voice), indent=1, ensure_ascii=False))
 
 
+def _request(key, model, prompt, plan, budget, stop, tries=4):
+    """one generation with its place reserved first; a passing rate limit waits a minute and tries again (place refunded)"""
+    for n in range(tries):
+        if stop.is_set() or not budget.reserve(model):
+            return None
+        try:
+            return generate(key, model, prompt, plan.get("image"), plan.get("voice"))
+        except ApiError as e:
+            if e.transient and n + 1 < tries:
+                budget.refund(model); stop.wait(60 * (n + 1)); continue
+            if e.code == 429:
+                budget.spend(model, stopped=True)
+            if e.code in (401, 403, 429):
+                stop.set()
+            raise
+
+
 def cmd_run(a):
     plan = json.load(open(a.plan)); lib = X.Library(a.library)
     budget = Budget(lib, dict(kv.split("=") for kv in (a.budget or "").split(",") if "=" in kv))
     key = None if a.dry_run else json.load(open(a.key_file))["api_key"]
     want = [x for x in (a.only or "").split(",") if x]
-    made = failed = 0
+    jobs = []
     for it in plan["items"]:
         if want and it["item"] not in want:
             continue
         have = [t for t in lib.takes(plan["skill"], it["item"]) if t["origin"].get("model") == plan["model"]]
-        for take in range(len(have), a.takes):
-            prompt = prompt_for(plan, it)
-            if a.dry_run:
-                print("%s take %d: %s" % (it["item"], take + 1, prompt[-120:].replace("\n", " "))); continue
-            if budget.left(plan["model"]) <= 0:
-                print("daily budget for %s reached; run again tomorrow (%d made today in this run)" % (plan["model"], made)); return
-            t0 = time.time()
-            try:
-                data, ext = generate(key, plan["model"], prompt, plan.get("image"), plan.get("voice"))
-                budget.spend(plan["model"])
-            except ApiError as e:
-                budget.spend(plan["model"], stopped=e.code == 429)
-                print("%s take %d: %s" % (it["item"], take + 1, e)); failed += 1
-                if e.code in (401, 403, 429):
-                    return
-                continue
-            except Exception as e:
-                budget.spend(plan["model"]); print("%s take %d failed: %s" % (it["item"], take + 1, e)); failed += 1; continue
-            with tempfile.TemporaryDirectory() as td:
-                f = os.path.join(td, "%s-%d%s" % (it["item"], take + 1, ext)); open(f, "wb").write(data)
-                m = lib.add(f, plan["skill"], it["item"], it["script"],
-                            {"model": plan["model"], "provider": "Google Gemini API (paid tier)", "prompt": prompt,
-                             "created": X._now(), "request_seconds": round(time.time() - t0), "tool": "generate_exemplars.py"},
-                            plan.get("subject"), plan.get("consent"), it.get("covers", ""))
-            made += 1
+        jobs += [(it, take) for take in range(len(have), a.takes)]
+    if a.dry_run:
+        for it, take in jobs:
+            print("%s take %d: %s" % (it["item"], take + 1, prompt_for(plan, it)[-120:].replace("\n", " ")))
+        return
+    stop, lock, counts = threading.Event(), threading.Lock(), {"made": 0, "failed": 0, "skipped": 0}
+
+    def one(job):
+        it, take = job
+        prompt = prompt_for(plan, it); t0 = time.time()
+        try:
+            out = _request(key, plan["model"], prompt, plan, budget, stop)
+        except Exception as e:
+            with lock:
+                counts["failed"] += 1; print("%s take %d failed: %s" % (it["item"], take + 1, e), flush=True)
+            return
+        if out is None:
+            with lock:
+                counts["skipped"] += 1
+            return
+        data, ext = out
+        with lock, tempfile.TemporaryDirectory() as td:          # the library is written one take at a time
+            f = os.path.join(td, "%s-%d%s" % (it["item"], take + 1, ext)); open(f, "wb").write(data)
+            m = lib.add(f, plan["skill"], it["item"], it["script"],
+                        {"model": plan["model"], "provider": "Google Gemini API (paid tier)", "prompt": prompt,
+                         "created": X._now(), "request_seconds": round(time.time() - t0), "tool": "generate_exemplars.py"},
+                        plan.get("subject"), plan.get("consent"), it.get("covers", ""))
+            counts["made"] += 1
             print("%s take %d saved: %s (%d KB, %d s)" % (it["item"], take + 1, m["id"], len(data) // 1024, time.time() - t0), flush=True)
-    print("made %d, failed %d" % (made, failed))
+
+    with concurrent.futures.ThreadPoolExecutor(max(1, a.parallel)) as ex:
+        list(ex.map(one, jobs))
+    if counts["skipped"]:
+        print("daily budget for %s reached or Google stopped the run; %d left for tomorrow" % (plan["model"], counts["skipped"]))
+    print("made %(made)d, failed %(failed)d" % counts)
 
 
 def cmd_import(a):
@@ -363,8 +415,12 @@ def _transcribe(key, model, path):
     return "".join(p.get("text", "") for c in r.get("candidates", []) for p in c.get("content", {}).get("parts", [])).strip()
 
 
+_BUSY, _BUSY_LOCK = set(), threading.Lock()
+
+
 def _one_step(lib, budget, key, tid, model, plan_path, takes):
-    """one request for one switched-on tool; returns what it did (or None when it has nothing to do)"""
+    """one request for one switched-on tool; returns what it did (or None when it has nothing to do). Several may run at once
+    for one tool: each claims its own item (_BUSY) so no line is made twice."""
     if budget.left(model) <= 0:
         return None
     if tid == "transcribe-check":
@@ -386,26 +442,41 @@ def _one_step(lib, budget, key, tid, model, plan_path, takes):
     if plan.get("model") != model:
         plan = dict(plan, model=model, kind=KIND(model))
     for it in plan["items"]:
-        have = [t for t in lib.takes(plan["skill"], it["item"]) if t["origin"].get("model") == model]
-        if len(have) >= takes:
-            continue
-        prompt = prompt_for(plan, it)
-        t0 = time.time()
+        claim = (tid, plan["skill"], it["item"])
+        with _BUSY_LOCK:
+            if claim in _BUSY:
+                continue
+            have = [t for t in lib.takes(plan["skill"], it["item"]) if t["origin"].get("model") == model]
+            if len(have) >= takes:
+                continue
+            _BUSY.add(claim)
         try:
-            data, ext = generate(key, model, prompt, plan.get("image"), plan.get("voice"))
-            budget.spend(model)
-        except ApiError as e:
-            budget.spend(model, stopped=e.code == 429)
-            return "%s %s: %s" % (tid, it["item"], e)
-        except Exception as e:
-            budget.spend(model); return "%s %s failed: %s" % (tid, it["item"], e)
+            return _make(lib, budget, key, tid, model, plan, it)
+        finally:
+            with _BUSY_LOCK:
+                _BUSY.discard(claim)
+    return None
+
+
+def _make(lib, budget, key, tid, model, plan, it):
+    prompt = prompt_for(plan, it)
+    t0 = time.time()
+    try:
+        out = _request(key, model, prompt, plan, budget, threading.Event())
+        if out is None:
+            return None
+        data, ext = out
+    except ApiError as e:
+        return "%s %s: %s" % (tid, it["item"], e)
+    except Exception as e:
+        return "%s %s failed: %s" % (tid, it["item"], e)
+    with _BUSY_LOCK:
         with tempfile.TemporaryDirectory() as td:
             f = os.path.join(td, "%s%s" % (it["item"], ext)); open(f, "wb").write(data)
             lib.add(f, plan["skill"], it["item"], it.get("script", ""), {"model": model, "provider": "Google Gemini API (paid tier)", "prompt": prompt,
                     "created": X._now(), "request_seconds": round(time.time() - t0), "tool": "generate_exemplars.py run-campaign (%s)" % tid},
                     plan.get("subject"), plan.get("consent"), it.get("covers", ""))
         return "%s made %s %s" % (tid, plan["skill"], it["item"])
-    return None
 
 
 def cmd_run_campaign(a):
@@ -430,7 +501,9 @@ def cmd_run_campaign(a):
             elif not key:
                 note = "waiting: save the Gemini key under Harvesting → API keys"
             else:
-                did = [d for d in (_one_step(lib, budget, key, t, TOOL_MODELS[t], st.get("gtool-plan:%s" % t), a.takes) for t in on) if d]
+                calls = [t for t in on for _ in range(1 if t == "transcribe-check" else max(1, a.parallel))]   # up to --parallel requests per tool at once
+                with concurrent.futures.ThreadPoolExecutor(len(calls)) as ex:
+                    did = [d for d in ex.map(lambda t: _one_step(lib, budget, key, t, TOOL_MODELS[t], st.get("gtool-plan:%s" % t), a.takes), calls) if d]
                 note = "; ".join(did) if did else "all switched-on tools are up to date or at their daily budget"
                 last = (did + last)[:20]
         except Exception as e:
@@ -460,6 +533,7 @@ def main(argv=None):
     s.add_argument("--image"); s.add_argument("--subject"); s.add_argument("--consent"); s.add_argument("--voice")
     s = sp.add_parser("run"); s.add_argument("--plan", required=True); s.add_argument("--key-file"); s.add_argument("--takes", type=int, default=1)
     s.add_argument("--only"); s.add_argument("--dry-run", action="store_true"); s.add_argument("--budget", help="model=requests per day,…")
+    s.add_argument("--parallel", type=int, default=4, help="requests at once (default 4)")
     s = sp.add_parser("import"); s.add_argument("--plan", required=True); s.add_argument("--folder", required=True)
     s = sp.add_parser("score"); s.add_argument("--skill"); s.add_argument("--app", default="http://127.0.0.1:8101"); s.add_argument("--plan", help="the plan, for per-item thresholds")
     s.add_argument("--min-words", type=float, default=0.8); s.add_argument("--again", action="store_true")
@@ -467,6 +541,7 @@ def main(argv=None):
     s = sp.add_parser("run-campaign"); s.add_argument("--commons", required=True); s.add_argument("--takes", type=int, default=1)
     s.add_argument("--switches", help="a campaigns.json to read the switches from (QueryBook 9.64) instead of the shared database")
     s.add_argument("--pause", type=float, default=5.0); s.add_argument("--idle", type=float, default=30.0)
+    s.add_argument("--parallel", type=int, default=4, help="requests at once per switched-on tool (default 4)")
     a = ap.parse_args(argv)
     if a.cmd == "run" and not a.dry_run and not a.key_file:
         ap.error("run needs --key-file (or --dry-run)")

@@ -149,6 +149,16 @@ def campaign_tests(c):
                 (K.generator_path(os.path.join(ROOT, "language")) or "").endswith("generate_exemplars.py"))
         src = open(os.path.join(ROOT, "tools", "generate_exemplars.py"), encoding="utf-8").read()
         c.check("Google tools: the generator follows the same tool catalogue", all(("\"%s\"" % k) in src for k in K.GOOGLE_TOOLS))
+        sys.path.insert(0, os.path.join(ROOT, "tools")); import generate_exemplars as GE, threading as _th, tempfile as _tf
+        with _tf.TemporaryDirectory() as gd:
+            bu = GE.Budget(GE.X.Library(gd), {"gemini-omni-1.1-flash": "5"})
+            got = []
+            ths = [_th.Thread(target=lambda: got.append(bu.reserve("gemini-omni-1.1-flash"))) for _ in range(12)]
+            [t.start() for t in ths]; [t.join() for t in ths]
+            c.check("generator: requests at once never overrun the daily budget; Omni's cap is 100; spend-based 429 waits, quota 429 stops",
+                    got.count(True) == 5 and GE.BUDGET["gemini-omni-1.1-flash"] == 100 and K.GOOGLE_TOOLS["omni-speech-video"]["budget"] == 100
+                    and GE.ApiError(429, "You exceeded your spend-based rate limit.").transient
+                    and not GE.ApiError(429, "You exceeded your current quota, please check your plan").transient)
         apps_src = "".join(open(os.path.join(ROOT, a, f), encoding="utf-8").read() for a in ("language", "stem", "facts", "control")
                            for f in os.listdir(os.path.join(ROOT, a)) if f.endswith(".py"))
         camp_src = open(os.path.join(ROOT, "_core", "qbcampaign.py"), encoding="utf-8").read()
