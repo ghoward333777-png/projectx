@@ -41,6 +41,23 @@
   .checks { display: flex; gap: 12px; flex-wrap: wrap; }
   .checks label { font-size: 14px; display: flex; gap: 5px; align-items: center; }
   #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 16px; border-radius: 8px; display: none; z-index: 10; max-width: 90vw; }
+  .ticker { max-width: 1400px; margin: 8px auto 0; padding: 0 16px; }
+  .tk-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 760px) { .tk-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tk { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; min-width: 0; }
+  .tk .nm { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .tk .n { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; transition: color .6s; }
+  .tk .n.up { color: var(--good); }
+  .tk .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tk.total { border-color: var(--accent); }
+  .tk-live { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .tk-live.on { background: var(--good); animation: tkpulse 2s infinite; }
+  @keyframes tkpulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .tk-live.on { animation: none; } .tk-feed span { animation: none !important; } }
+  .tk-feed { margin-top: 6px; overflow: hidden; white-space: nowrap; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+  .tk-feed span { display: inline-block; padding-left: 100%; animation: tkscroll 60s linear infinite; }
+  .tk-feed:hover span { animation-play-state: paused; }
+  @keyframes tkscroll { to { transform: translateX(-100%); } }
 </style>
 </head>
 <body>
@@ -61,6 +78,10 @@
   <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
 </nav>
+<div class="ticker" id="ticker" aria-live="off">
+  <div class="tk-row" id="tk-row"></div>
+  <div class="tk-feed" id="tk-feed" title="The latest facts to land in the shared store (hover to pause)"><span></span></div>
+</div>
 <div class="layout">
 <main>
   <!-- Overview: the applications, alerts and monitoring -->

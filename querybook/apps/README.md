@@ -665,6 +665,11 @@ applications from one page. Each application records its address in the shared d
 (`url:<app>` setting), so the panel finds it; it can also start an application itself (`python app.py --no-browser` in
 the sibling folder) and stop it (`POST /api/control/quit` with the panel's key, a random secret in the shared folder).
 
+* **Live fact ticker (1.3.0):** under the tabs, on every page — the UFCS fact count for each area (Language, STEM,
+  History & News) and all areas together, counted straight from the shared fact store on every poll (every 2 s,
+  `GET /api/panel/ticker`), with arrivals in the last minute and hour, verified/corroborated counts, each running
+  application's own store total (refreshed every 5 s) and the newest facts scrolling past. Paused while the page is hidden.
+
 * **Global rules** live in the Commons settings (`control:target`, `control:filter`) and every application obeys them in
   `Team.cycle()`: targeted tasks are planned first with a budget boost (`Context.boost`), "only targeted" skips the rest
   (logged with the reason), and every harvested fact passes the filter before it is saved (`filtered` and `on_target`

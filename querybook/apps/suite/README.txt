@@ -19,6 +19,10 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.3.0 - live fact ticker
+    * A ticker under the tabs, on every page: the UFCS fact count for Language, Math/Science/Engineering and
+      History & News, and all areas together - updated every 2 seconds, with how many arrived in the last minute and
+      hour, how many are verified or corroborated, each running application's own store, and the newest facts scrolling.
   Harvesting (all applications: STEM and History 1.13.0, Control Panel 1.2.0)
     * Master switch: one ON/OFF button for all harvesting, at the top of the Harvesting page.
     * Harvest campaigns: name a selection of applications, online harvesters and Google tools, start and stop it together,

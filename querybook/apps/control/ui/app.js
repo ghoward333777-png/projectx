@@ -250,5 +250,36 @@ function bind() {
   $$("#c-sugg button").forEach(b => b.onclick = () => say(b.textContent));
 }
 
-tabs(); bind(); load(); loadChat();
+// ---- live fact ticker: UFCS fact counts per area, polled every 2 s; numbers count up to the new value
+const TK = { last: {}, shown: {}, ok: false };
+const fmt = n => n == null ? "—" : Number(n).toLocaleString();
+function tkCount(el, key, to) {
+  const from = TK.shown[key] ?? to; TK.shown[key] = to;
+  if (from === to || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = fmt(to); return; }
+  el.classList.add("up"); const t0 = performance.now(), d = 900;
+  const step = t => { const k = Math.min(1, (t - t0) / d); el.textContent = fmt(Math.round(from + (to - from) * k)); if (k < 1) requestAnimationFrame(step); else setTimeout(() => el.classList.remove("up"), 600); };
+  requestAnimationFrame(step);
+}
+function tkRender(T) {
+  const cells = T.areas.map(a => ({ key: a.app, name: a.area, n: a.facts, live: a.running,
+    sub: `+${fmt(a.last_minute)} last min · +${fmt(a.last_hour)} last hr · ${fmt(a.verified_or_corroborated)} verified/corroborated` +
+         (a.own_store != null ? ` · own store ${fmt(a.own_store)}` : "") }));
+  cells.push({ key: "total", name: "All areas (UFCS facts)", n: T.total, live: T.areas.some(a => a.running), total: true,
+    sub: `+${fmt(T.last_minute)} last min · +${fmt(T.last_hour)} last hr` + (T.other.facts ? ` · other ${fmt(T.other.facts)}` : "") });
+  const row = $("#tk-row");
+  if (row.children.length !== cells.length) row.innerHTML = cells.map(c => `<div class="tk${c.total ? " total" : ""}" data-k="${c.key}"><div class="nm"><i class="tk-live"></i><span></span></div><div class="n">—</div><div class="sub"></div></div>`).join("");
+  cells.forEach(c => { const el = row.querySelector(`[data-k="${c.key}"]`);
+    el.querySelector(".nm span").textContent = c.name; el.querySelector(".tk-live").classList.toggle("on", !!c.live);
+    el.querySelector(".tk-live").title = c.live ? "harvesting application running" : "not running";
+    el.querySelector(".sub").textContent = c.sub; tkCount(el.querySelector(".n"), c.key, c.n); });
+  const feed = T.latest.map(f => `${NAMES[f.origin_app] || f.origin_app}: ${f.subject} — ${f.predicate} — ${f.object} (${f.status})`).join("   •   ");
+  const sp = $("#tk-feed span"); if (sp.dataset.v !== feed) { sp.dataset.v = feed; sp.textContent = feed || "No facts yet — start harvesting to see them arrive."; }
+}
+async function tick() {
+  if (document.visibilityState !== "visible") return;
+  try { tkRender(await (await fetch("/api/panel/ticker")).json()); TK.ok = true; } catch (e) { TK.ok = false; }
+}
+
+tabs(); bind(); load(); loadChat(); tick();
+setInterval(tick, 2000);
 setInterval(() => { if (document.visibilityState === "visible") load(true); }, 10000);

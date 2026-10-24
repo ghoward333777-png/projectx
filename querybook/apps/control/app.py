@@ -40,7 +40,7 @@ import qbcampaign
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PORT = 8100
 program_dir = HERE
 
@@ -48,6 +48,7 @@ APPS = {"language": {"name": "Language Builder", "domain": "language", "port": 8
         "stem": {"name": "Math, Science & Engineering", "domain": "stem", "port": 8102, "folders": ["stem", "QueryBook-STEM"]},
         "facts": {"name": "History & News", "domain": "history", "port": 8103, "folders": ["facts", "QueryBook-History-News"]}}
 MONITOR_S = 20
+TICKER_S = 5                 # how often the applications' own store totals are refreshed for the ticker
 
 SCHEMA = ["""
 CREATE TABLE audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT,
@@ -93,6 +94,7 @@ class Panel:
         self.stopping = set()               # stopped from the panel (not an unexpected stop)
         self.procs = {}
         self.last_check = None
+        self._own, self._own_at = {}, None        # the applications' own store totals for the ticker (start_ticker)
         self._routes()
 
     # ------------------------------------------------------------------ transparency
@@ -294,6 +296,53 @@ class Panel:
         return self.store.query("SELECT * FROM alerts %s ORDER BY CASE level WHEN 'error' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, id DESC LIMIT 200"
                                 % ("" if all_ else "WHERE status = 'open'"))
 
+    # ------------------------------------------------------------------ live fact ticker
+    def ticker(self):
+        """UFCS fact counts per area, live: the shared fact store (every fact packet the three applications harvested, counted
+        straight from the database on each call, so it moves the moment a fact lands) and, beside it, each running
+        application's own store (refreshed every few seconds in the background)."""
+        now = time.time()
+        ago = lambda s: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - s))
+        q = self.commons.store
+        rows = {r["domain"]: r for r in q.query(
+            "SELECT domain, count(*) AS n, sum(created >= ?) AS m, sum(created >= ?) AS h, sum(created >= ?) AS d, "
+            "sum(status IN ('verified', 'corroborated')) AS strong FROM facts GROUP BY domain", (ago(60), ago(3600), ago(86400)))}
+        areas = []
+        for a, meta in APPS.items():
+            r = rows.pop(meta["domain"], None) or {}
+            own = self._own.get(a) or {}
+            areas.append({"app": a, "area": meta["name"], "domain": meta["domain"], "facts": r.get("n") or 0, "last_minute": r.get("m") or 0,
+                          "last_hour": r.get("h") or 0, "today": r.get("d") or 0, "verified_or_corroborated": r.get("strong") or 0,
+                          "own_store": own.get("facts"), "running": own.get("running", False)})
+        other = {"facts": sum(r["n"] for r in rows.values()), "last_minute": sum(r["m"] or 0 for r in rows.values()),
+                 "last_hour": sum(r["h"] or 0 for r in rows.values())}
+        latest = q.query("SELECT id, domain, subject, predicate, object, status, origin_app, created FROM facts ORDER BY id DESC LIMIT 12")
+        return {"at": core.now_iso(), "areas": areas, "other": other,
+                "total": sum(x["facts"] for x in areas) + other["facts"],
+                "last_minute": sum(x["last_minute"] for x in areas) + other["last_minute"],
+                "last_hour": sum(x["last_hour"] for x in areas) + other["last_hour"],
+                "latest": [dict(f, object=str(f["object"])[:80]) for f in latest], "own_refreshed": self._own_at}
+
+    def _refresh_own(self):
+        """each running application's own store total (STEM and History & News keep their own fact tables; Language Builder's
+        facts live in the shared store only)"""
+        out = {}
+        for a in APPS:
+            pr = self.probe(a)
+            st = pr.get("status") or {}
+            out[a] = {"running": pr["running"], "facts": st.get("facts_total") if pr["running"] else None}
+        self._own, self._own_at = out, core.now_iso()
+
+    def start_ticker(self):
+        def loop():
+            while True:
+                try:
+                    self._refresh_own()
+                except Exception as e:
+                    self.log("ticker:", repr(e))
+                time.sleep(TICKER_S)
+        threading.Thread(target=loop, daemon=True, name="qb-control-ticker").start()
+
     def start_monitor(self):
         def loop():
             while True:
@@ -390,6 +439,11 @@ class Panel:
         @a.get("/api/status")
         def status(p):
             return {"app": APP_NAME, "version": VERSION, "health": None, "job": None}
+
+        @a.get("/api/panel/ticker")
+        def panel_ticker(p):
+            """the live fact ticker: polled every 2 s by the page"""
+            return self.ticker()
 
         @a.get("/api/panel/status")
         def panel_status(p):
@@ -635,6 +689,20 @@ def selftest():
         check("routes registered", all(k in p.api.routes for k in [("GET", "/api/panel/status"), ("POST", "/api/panel/chat"), ("POST", "/api/panel/diagnose")]))
         st = p.api.routes[("GET", "/api/panel/status")]({})
         check("status page data complete", all(k in st for k in ("apps", "control", "rules", "alerts", "overview", "harvesters")))
+        t0 = p.api.routes[("GET", "/api/panel/ticker")]({})
+        with co.store.write() as db:
+            for i, dom in enumerate(("language", "stem", "history", "history")):
+                now = core.now_iso()
+                db.execute("INSERT INTO facts(fingerprint, domain, subject, predicate, object, origin_app, created, updated) VALUES(?,?,?,?,?,?,?,?)",
+                           ("tick-%d" % i, dom, "Ticker %d" % i, "is", "counted", {"history": "facts"}.get(dom, dom), now, now))
+        p._refresh_own()
+        t1 = p.ticker()
+        by0, by1 = ({x["app"]: x for x in t["areas"]} for t in (t0, t1))
+        check("live fact ticker: per-area UFCS counts move the moment facts land (language, STEM, history; last minute; newest first)",
+              [x["app"] for x in t1["areas"]] == ["language", "stem", "facts"] and by1["facts"]["facts"] - by0["facts"]["facts"] == 2
+              and by1["language"]["facts"] - by0["language"]["facts"] == 1 and by1["stem"]["last_minute"] >= 1 and t1["total"] - t0["total"] == 4
+              and t1["latest"][0]["subject"] == "Ticker 3" and p._own_at and "/api/panel/ticker" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(),
+              {k: (by1[k]["facts"], by1[k]["last_minute"]) for k in by1})
     print("\n  %d of %d checks passed" % (passed, passed + failed))
     return failed == 0
 
@@ -645,6 +713,7 @@ def main():
         return 0 if selftest() else 1
     panel = open_app()
     panel.start_monitor()
+    panel.start_ticker()
     panel.audit("panel", "Control Panel started", "version %s" % VERSION)
     core.serve(APP_NAME, panel.api, os.path.join(HERE, "ui"), PORT, panel.log, open_browser="--no-browser" not in args)
     return 0
