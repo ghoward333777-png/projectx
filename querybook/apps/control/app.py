@@ -24,7 +24,7 @@ What it does
 The global rules change what all three applications harvest, so changing them needs the admin passphrase once the
 admin has set one (the same passphrase as the harvesting policy).
 """
-import json, os, subprocess, sys, threading, time, urllib.error, urllib.request
+import json, os, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -38,10 +38,11 @@ import qbselfknow
 import qbexemplar
 import qbcampaign
 import qbbulk
+import qbapidoc
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 PORT = 8100
 program_dir = HERE
 
@@ -328,6 +329,54 @@ class Panel:
                 "last_hour": sum(x["last_hour"] for x in areas) + other["last_hour"],
                 "latest": [dict(f, object=str(f["object"])[:80]) for f in latest], "own_refreshed": self._own_at}
 
+    # ------------------------------------------------------------------ the master API page
+    def apis(self):
+        progs = []
+        for key, (name, port) in qbapidoc.PROGRAMS.items():
+            if key == "control":
+                progs.append({"program": key, "name": name, "url": "http://127.0.0.1:%d" % PORT, "running": True, "routes": self.api.catalog()})
+                continue
+            pr = self.probe(key)
+            routes, err = [], None
+            if pr["running"]:
+                try:
+                    routes = _call(pr["url"], "/api/routes", timeout=5).get("routes") or []
+                except Exception as e:
+                    err = str(e)
+            if not routes:                      # not running (or an older version): the documented endpoints every application has
+                routes = [{"method": "GET" if path in ("/api/commons/status", "/api/harvest/status", "/api/campaigns", "/api/self/ask", "/api/routes",
+                                                       "/api/openapi.json") else "POST", "path": path, "params": sorted(d[3]),
+                           "doc": qbapidoc.doc(path), "text": d[2]} for path, d in qbapidoc.DOCS.items() if d[5] in ("apps", "all")]
+            progs.append({"program": key, "name": name, "url": (pr.get("url") or "http://127.0.0.1:%d" % port).rstrip("/"), "running": pr["running"],
+                          "routes": routes, "listed_from": "the program itself" if pr["running"] and not err else "the guide (start the program for its full list)",
+                          "error": err})
+        return {"programs": progs, "recipes": [{"title": t, "program": pg, "method": m, "path": pa, "params": pr_} for t, pg, m, pa, pr_ in qbapidoc.RECIPES],
+                "groups": sorted({d[0] for d in qbapidoc.DOCS.values()}), "version": qbapidoc.VERSION}
+
+    def try_call(self, program, method, path, params):
+        if program not in qbapidoc.PROGRAMS:
+            raise core.UserError("Unknown program: %s" % program)
+        if method not in ("GET", "POST") or not path.startswith("/api/") or path in ("/api/panel/try",):
+            raise core.UserError("Only /api/ endpoints can be tried here.")
+        t0 = time.time()
+        if program == "control":
+            fn = self.api.routes.get((method, path))
+            if fn is None:
+                raise core.UserError("The Control Panel has no %s %s." % (method, path))
+            out = fn(dict(params))
+            if isinstance(out, tuple):
+                out = {"file": "%d bytes (%s)" % (len(out[0]), out[1])}
+        else:
+            pr = self.probe(program)
+            if not pr["running"]:
+                raise core.UserError("%s is not running — start it on the Overview tab first." % qbapidoc.PROGRAMS[program][0])
+            if method == "GET":
+                q = urllib.parse.urlencode({k: v if isinstance(v, str) else json.dumps(v) for k, v in params.items()})
+                out = _call(pr["url"], path + ("?" + q if q else ""), timeout=60)
+            else:
+                out = _call(pr["url"], path, params, timeout=60)
+        return {"ok": True, "ms": int((time.time() - t0) * 1000), "result": out}
+
     def _refresh_own(self):
         """each running application's own store total (STEM and History & News keep their own fact tables; Language Builder's
         facts live in the shared store only)"""
@@ -444,6 +493,19 @@ class Panel:
         @a.get("/api/status")
         def status(p):
             return {"app": APP_NAME, "version": VERSION, "health": None, "job": None}
+
+        @a.get("/api/panel/apis")
+        def panel_apis(p):
+            """the master API page: every program's endpoints (from the program itself), explained, with the recipes"""
+            return self.apis()
+
+        @a.post("/api/panel/try")
+        def panel_try(p):
+            """run one call on any of the four programs from the API page (this computer only)"""
+            prog, method, path = p.get("program") or "control", (p.get("method") or "GET").upper(), p.get("path") or ""
+            return self.act("api page", "%s %s %s" % (prog, method, path), json.dumps({k: v for k, v in (p.get("params") or {}).items()
+                                                                                       if k != "passphrase"})[:300],
+                            lambda: self.try_call(prog, method, path, p.get("params") or {}))
 
         @a.get("/api/panel/ticker")
         def panel_ticker(p):
@@ -713,6 +775,28 @@ def selftest():
               len(bk["datasets"]) >= 8 and all("approved" in d for d in bk["datasets"]) and ("POST", "/api/bulk/start") in p.api.routes
               and all("bulk" in x for x in t1["areas"]) and "/api/bulk" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(),
               [(d["key"], d["approved"]) for d in bk["datasets"]])
+        ap = p.api.routes[("GET", "/api/panel/apis")]({})
+        ctl_routes = {(r["method"], r["path"]) for r in ap["programs"][0]["routes"]}
+        check("API page: the four programs, the Control Panel's own endpoints from itself (with /api/routes and OpenAPI), the recipes",
+              [x["program"] for x in ap["programs"]] == ["control", "language", "stem", "facts"] and ("GET", "/api/routes") in ctl_routes
+              and ("GET", "/api/openapi.json") in ctl_routes and len(ap["recipes"]) >= 6
+              and all((r["method"], r["path"]) in ctl_routes for r in ap["recipes"] if r["program"] == "control")
+              and all(any(x["path"] == r["path"] for x in ap["programs"][3]["routes"]) for r in ap["recipes"] if r["program"] == "facts"),
+              [r["path"] for r in ap["recipes"]])
+        tr = p.api.routes[("POST", "/api/panel/try")]({"program": "control", "method": "GET", "path": "/api/panel/ticker", "params": {}})
+        sr = p.api.routes[("POST", "/api/panel/try")]({"program": "control", "method": "POST", "path": "/api/panel/search", "params": {"q": "Telephone"}})
+        try:
+            p.api.routes[("POST", "/api/panel/try")]({"program": "control", "method": "GET", "path": "/etc/passwd"})
+            bad = False
+        except core.UserError:
+            bad = True
+        check("API page: Try it runs a call and returns its answer; only /api/ endpoints; the call is in the audit trail",
+              tr["ok"] and "areas" in tr["result"] and sr["result"]["facts"] and bad
+              and any(x["action"].startswith("control GET /api/panel/ticker") for x in p.api.routes[("GET", "/api/panel/audit")]({})["audit"]), sr)
+        oa = p.api.routes[("GET", "/api/openapi.json")]({})
+        check("OpenAPI: every endpoint, the explained ones with their summary and example", oa["openapi"].startswith("3")
+              and oa["paths"]["/api/bulk/start"]["post"]["summary"] == "Start bulk agents"
+              and "example" in oa["paths"]["/api/bulk/start"]["post"]["requestBody"]["content"]["application/json"], list(oa["paths"])[:5])
         try:
             p.api.routes[("POST", "/api/bulk/start")]({"datasets": ["calendar-scaffold"], "passphrase": "wrong"})
             check("bulk harvesting: starting needs the admin passphrase", False)

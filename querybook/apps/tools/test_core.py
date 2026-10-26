@@ -149,6 +149,12 @@ def campaign_tests(c):
                 (K.generator_path(os.path.join(ROOT, "language")) or "").endswith("generate_exemplars.py"))
         src = open(os.path.join(ROOT, "tools", "generate_exemplars.py"), encoding="utf-8").read()
         c.check("Google tools: the generator follows the same tool catalogue", all(("\"%s\"" % k) in src for k in K.GOOGLE_TOOLS))
+        import qbapidoc as AD
+        allsrc = "".join(open(os.path.join(ROOT, d, f), encoding="utf-8").read() for d in ("_core", "control") for f in os.listdir(os.path.join(ROOT, d))
+                         if f.endswith(".py"))
+        c.check("API guide: every explained endpoint exists in the code; every recipe is explained",
+                all('"%s"' % path in allsrc for path in AD.DOCS if path not in ("/api/routes", "/api/openapi.json"))
+                and all(r[3] in AD.DOCS for r in AD.RECIPES), [p for p in AD.DOCS if '"%s"' % p not in allsrc])
         sys.path.insert(0, os.path.join(ROOT, "tools")); import generate_exemplars as GE, threading as _th, tempfile as _tf
         with _tf.TemporaryDirectory() as gd:
             bu = GE.Budget(GE.X.Library(gd), {"gemini-omni-1.1-flash": "5"})

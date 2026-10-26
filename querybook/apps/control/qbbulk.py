@@ -119,8 +119,17 @@ def tar_member_lines(url, member_suffix, comp="bz2"):
     with _open(url) as r, tarfile.open(fileobj=r, mode="r|" + comp) as t:
         for m in t:
             if m.name.endswith(member_suffix):
-                for line in io.TextIOWrapper(t.extractfile(m), encoding="utf-8", errors="replace"):
-                    yield line.rstrip("\r\n")
+                f, rest = t.extractfile(m), b""          # a streamed member cannot seek: split lines by hand
+                while True:
+                    chunk = f.read(1 << 20)
+                    if not chunk:
+                        break
+                    lines = (rest + chunk).split(b"\n")
+                    rest = lines.pop()
+                    for line in lines:
+                        yield line.decode("utf-8", "replace").rstrip("\r")
+                if rest:
+                    yield rest.decode("utf-8", "replace").rstrip("\r")
                 return
 
 
@@ -841,6 +850,10 @@ def self_test():
         with open(os.path.join(tmp, "nobel.json"), "w") as f:
             json.dump({"results": {"bindings": [{"year": {"value": "1921"}, "valueLabel": {"value": "Albert Einstein"},
                                                  "item": {"value": "http://www.wikidata.org/entity/Q937"}}]}}, f)
+        with tarfile.open(os.path.join(tmp, "cc0.tar.bz2"), "w:bz2") as t:
+            data = "330998\teng\tChildren who spend more time outdoors have a lower risk of myopia.\t2019-01-12\n1\tfra\tBonjour.\t2019-01-12\n".encode()
+            ti = tarfile.TarInfo("sentences_CC0.csv"); ti.size = len(data)
+            t.addfile(ti, io.BytesIO(data))
         cf = os.path.join(tmp, "commons")
         c = cm.Commons(cf, "stem")
         c.registry.ensure()
@@ -878,6 +891,11 @@ def self_test():
         stn = w.facts("stations", next(text_lines(url("stations.txt"))), {})
         ok("weather: stations get their name, coordinates, elevation and state", ("Weather station USW00094728", "name", "NEW YORK CNTRL PK TWR") in stn
            and ("Weather station USW00094728", "elevation (m)", "39.6") in stn, stn)
+        tt = Tatoeba()
+        rows = [f for line in tar_member_lines(url("cc0.tar.bz2"), "sentences_CC0.csv") for f in tt.facts("sentences", line, {})]
+        ok("Tatoeba: CC0 sentences streamed from the tar.bz2, with their language", rows[:2] == [("Tatoeba sentence 330998", "text",
+           "Children who spend more time outdoors have a lower risk of myopia."), ("Tatoeba sentence 330998", "language (ISO 639-3)", "eng")]
+           and len(rows) == 4, rows)
         se = Series()
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]

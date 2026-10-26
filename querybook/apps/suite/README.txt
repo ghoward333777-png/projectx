@@ -19,6 +19,9 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.5.0 - the master API page
+    * Control Panel -> API: every endpoint of the four programs in one place, the common tasks one click away, Try it from the page,
+      and each call ready to copy as curl, Python or JavaScript. Every program also serves /api/routes and /api/openapi.json.
   Bulk harvesting (all applications; Control Panel 1.4.0)
     * Control Panel -> Bulk harvesting: whole open datasets (PubChem, NCBI Taxonomy, NOAA weather, USGS place names, USDA
       FoodData, Tatoeba CC0) streamed by parallel agents - millions of facts a minute, approved sources only, every fact

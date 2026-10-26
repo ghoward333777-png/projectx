@@ -37,6 +37,21 @@
   .msg .did { display: block; font-size: 12px; opacity: .75; margin-top: 4px; }
   .sugg { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
   .sugg button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .api-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+  .api-row .path { font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 13.5px; word-break: break-all; }
+  .meth { font: 600 11.5px ui-monospace, Consolas, Menlo, monospace; border-radius: 5px; padding: 2px 6px; text-align: center; }
+  .meth.GET { background: var(--good-bg); color: var(--good); } .meth.POST { background: var(--warn-bg); color: var(--warn); }
+  .recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
+  .recipe { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--panel); cursor: pointer; }
+  .recipe:hover { border-color: var(--accent); } .recipe b { display: block; margin-bottom: 4px; }
+  .try { border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px; margin: 10px 0; background: var(--panel); }
+  .try textarea { width: 100%; min-height: 90px; font: 13px ui-monospace, Consolas, Menlo, monospace; box-sizing: border-box; }
+  .try pre, .snip pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow: auto; max-height: 360px;
+    font: 12.5px ui-monospace, Consolas, Menlo, monospace; white-space: pre-wrap; word-break: break-word; margin: 6px 0; }
+  .snip .tabs2 button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 6px; padding: 2px 9px; font-size: 12.5px; cursor: pointer; }
+  .snip .tabs2 button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+  details.prog { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; margin: 8px 0; background: var(--panel); }
+  details.prog > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
   .pill { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); }
   .checks { display: flex; gap: 12px; flex-wrap: wrap; }
   .checks label { font-size: 14px; display: flex; gap: 5px; align-items: center; }
@@ -76,6 +91,7 @@
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="self">Self-knowledge</button>
   <button data-tab="bulk">Bulk harvesting</button>
+  <button data-tab="apis">API</button>
   <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
 </nav>
@@ -234,6 +250,25 @@
   </section>
 
   <!-- Exemplar library: best-in-class examples QueryBook learns from (measured by QueryBook, approved by the admin, never facts) -->
+  <!-- The master API page: every program's endpoints, explained, tried and copied from one place -->
+  <section class="panel" id="apis">
+    <div class="card">
+      <div class="sechead"><h2>API — the whole harvesting suite</h2><button class="btn quiet" id="api-refresh">Check again</button></div>
+      <p class="muted small">Everything the Control Panel and the three applications can do, as web calls on this computer. Pick a task, press
+        <b>Try it</b>, then copy the call as curl, Python or JavaScript. Calls that change something ask first; the ones marked <b>admin</b> need
+        the admin passphrase. Every program also describes itself at <span class="mono">/api/routes</span> and
+        <span class="mono">/api/openapi.json</span> (for Postman, Insomnia and code generators).</p>
+      <div id="api-progs" class="row"></div>
+      <h3>Start here</h3>
+      <div id="api-recipes" class="recipes"></div>
+      <div id="api-try"></div>
+      <h3>Every endpoint</h3>
+      <div class="row"><input id="api-q" placeholder="Filter — e.g. bulk · search · master · campaign · log" style="flex:1">
+        <label class="small"><input type="checkbox" id="api-explained"> explained only</label></div>
+      <div id="api-ref"></div>
+    </div>
+  </section>
+
   <!-- Bulk harvesting: whole open datasets, streamed by parallel agents into fact shards -->
   <section class="panel" id="bulk">
     <div class="card">

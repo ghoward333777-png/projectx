@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") loadBulk().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") loadBulk().catch(e => toast(e.message)); if (id === "apis") loadApis().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -224,6 +224,8 @@ async function loadChat() {
 }
 
 function bind() {
+  $("#api-refresh").onclick = () => loadApis().catch(e => toast(e.message));
+  $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
   $("#bk-refresh").onclick = () => loadBulk().catch(e => toast(e.message));
   $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);
   $("#bk-start").onclick = async () => { try { const r = await api("/api/bulk/start", { datasets: $$("[data-bk]:checked").map(b => b.dataset.bk),
@@ -308,6 +310,89 @@ function tkRender(T) {
 async function tick() {
   if (document.visibilityState !== "visible") return;
   try { tkRender(await (await fetch("/api/panel/ticker")).json()); TK.ok = true; } catch (e) { TK.ok = false; }
+}
+
+// ---- the master API page: recipes, every endpoint, try it, copy as curl / Python / JavaScript
+let APIS = null;
+const KIND_BADGE = { read: ["good", "read"], changes: ["warn", "changes"], admin: ["bad", "admin"] };
+async function loadApis() {
+  APIS = await api("/api/panel/apis");
+  $("#api-progs").innerHTML = APIS.programs.map(p => `<span class="pill"><span class="dot ${p.running ? "on" : "off"}"></span>${esc(p.name)} ·
+    <span class="mono">${esc(p.url)}</span>${p.running ? ` · <a href="${esc(p.url)}/api/openapi.json" target="_blank" rel="noopener">OpenAPI</a>` : " · not running"}</span>`).join(" ");
+  $("#api-recipes").innerHTML = APIS.recipes.map((r, i) => `<div class="recipe" data-recipe="${i}" tabindex="0"><b>${esc(r.title)}</b>
+    <span class="meth ${r.method}">${r.method}</span> <span class="mono small">${esc(r.path)}</span>
+    <div class="small muted">${esc(progName(r.program))}</div></div>`).join("");
+  $$("[data-recipe]").forEach(el => { const go = () => { const r = APIS.recipes[+el.dataset.recipe]; openTry(r.program, r.method, r.path, r.params); };
+    el.onclick = go; el.onkeydown = e => { if (e.key === "Enter") go(); }; });
+  renderRef();
+}
+const progName = k => (APIS.programs.find(p => p.program === k) || {}).name || k;
+const progUrl = k => (APIS.programs.find(p => p.program === k) || {}).url || "";
+function routeDoc(program, method, path) {
+  const p = APIS.programs.find(x => x.program === program);
+  return (p && p.routes.find(r => r.path === path && r.method === method)) || { method, path, params: [], doc: null, text: "" };
+}
+function renderRef() {
+  const q = ($("#api-q").value || "").toLowerCase(), only = $("#api-explained").checked;
+  $("#api-ref").innerHTML = APIS.programs.map(p => {
+    const rows = p.routes.filter(r => (!only || r.doc) && (!q || (r.path + " " + (r.text || "") + " " + ((r.doc || {}).title || "") + " " + ((r.doc || {}).group || "")).toLowerCase().includes(q)));
+    const groups = {};
+    rows.forEach(r => (groups[(r.doc || {}).group || "More: " + r.path.split("/")[2]] ||= []).push(r));
+    const names = Object.keys(groups).sort((a, b) => (a.startsWith("More") - b.startsWith("More")) || a.localeCompare(b));
+    return `<details class="prog" ${q || p.program === "control" ? "open" : ""}><summary>${esc(p.name)} <span class="small muted">· ${rows.length} endpoint(s) ·
+      ${esc(p.url)}${p.running ? "" : " · not running — listed from the guide"}</span></summary>` +
+      names.map(g => `<h4 style="margin:10px 0 2px">${esc(g)}</h4>` + groups[g].map(r => {
+        const k = KIND_BADGE[(r.doc || {}).kind || (r.method === "GET" ? "read" : "changes")];
+        return `<div class="api-row"><span class="meth ${r.method}">${r.method}</span><div><span class="path">${esc(r.path)}</span>
+          ${r.doc ? ` — <b>${esc(r.doc.title)}</b>` : ""}<div class="small muted">${esc(r.text || "")}${r.params.length ? ` <span class="mono">(${r.params.map(esc).join(", ")})</span>` : ""}</div></div>
+          <div><span class="badge ${k[0]}">${k[1]}</span> <button class="btn quiet" data-try="${esc(p.program)}|${r.method}|${esc(r.path)}">Try it</button></div></div>`;
+      }).join("")).join("") + "</details>";
+  }).join("");
+  $$("[data-try]").forEach(b => b.onclick = () => { const [prog, m, path] = b.dataset.try.split("|"); const r = routeDoc(prog, m, path);
+    openTry(prog, m, path, (r.doc && r.doc.example) || Object.fromEntries(r.params.map(n => [n, ""]))); });
+}
+function snippets(program, method, path, params) {
+  const base = progUrl(program), shown = JSON.parse(JSON.stringify(params || {}));
+  if ("passphrase" in shown) shown.passphrase = "<admin passphrase>";
+  const qs = new URLSearchParams(Object.entries(shown).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])).toString();
+  const url = base + path + (method === "GET" && qs ? "?" + qs : ""), body = JSON.stringify(shown);
+  return method === "GET" ? {
+    curl: `curl "${url}"`,
+    Python: `import json, urllib.request\n\nprint(json.load(urllib.request.urlopen("${url}")))`,
+    JavaScript: `const r = await fetch("${url}");\nconsole.log(await r.json());` } : {
+    curl: `curl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -d '${body.replace(/'/g, "'\\''")}'`,
+    Python: `import json, urllib.request\n\nreq = urllib.request.Request("${url}", data=json.dumps(${JSON.stringify(shown, null, 1).replace(/\btrue\b/g, "True").replace(/\bfalse\b/g, "False").replace(/\bnull\b/g, "None")}).encode(),\n                             headers={"Content-Type": "application/json"})\nprint(json.load(urllib.request.urlopen(req)))`,
+    JavaScript: `const r = await fetch("${url}", {\n  method: "POST",\n  headers: { "Content-Type": "application/json" },\n  body: JSON.stringify(${body}),\n});\nconsole.log(await r.json());` };
+}
+function openTry(program, method, path, params) {
+  const r = routeDoc(program, method, path), kind = (r.doc || {}).kind || (method === "GET" ? "read" : "changes");
+  const el = $("#api-try");
+  el.innerHTML = `<div class="try"><div class="sechead"><h3 style="margin:0"><span class="meth ${method}">${method}</span> <span class="mono">${esc(path)}</span></h3>
+      <span class="small muted">${esc(progName(program))}</span><button class="btn quiet" id="try-close">Close</button></div>
+    ${r.doc ? `<p class="small"><b>${esc(r.doc.title)}.</b> ${esc(r.doc.text)}</p>` : r.text ? `<p class="small">${esc(r.text)}</p>` : ""}
+    <label class="small">${method === "GET" ? "Query parameters" : "Body"} (JSON)</label><textarea id="try-params" spellcheck="false">${esc(JSON.stringify(params || {}, null, 2))}</textarea>
+    <div class="row"><button class="btn" id="try-run">▶ Run</button><span class="badge ${KIND_BADGE[kind][0]}">${KIND_BADGE[kind][1]}</span>
+      <span class="small muted" id="try-meta"></span></div>
+    <pre id="try-out" class="small muted">Press Run to see the answer.</pre>
+    <div class="snip"><div class="tabs2 row">${["curl", "Python", "JavaScript"].map((t, i) => `<button data-snip="${t}" aria-selected="${i === 0}">${t}</button>`).join("")}
+      <button class="btn quiet" id="try-copy">Copy</button></div><pre id="try-snip"></pre></div></div>`;
+  let lang = "curl";
+  const params_ = () => { try { return JSON.parse($("#try-params").value || "{}"); } catch (e) { return null; } };
+  const showSnip = () => { const p = params_(); $("#try-snip").textContent = p ? snippets(program, method, path, p)[lang] : "The parameters are not valid JSON."; };
+  $$("[data-snip]").forEach(b => b.onclick = () => { lang = b.dataset.snip; $$("[data-snip]").forEach(x => x.setAttribute("aria-selected", x === b)); showSnip(); });
+  $("#try-params").oninput = showSnip; showSnip();
+  $("#try-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#try-snip").textContent); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } };
+  $("#try-close").onclick = () => { el.innerHTML = ""; };
+  $("#try-run").onclick = async () => {
+    const p = params_();
+    if (!p) return toast("The parameters are not valid JSON.", true);
+    if (kind !== "read" && !confirm(`This ${kind === "admin" ? "admin " : ""}call changes harvesting (${method} ${path} on ${progName(program)}). Run it?`)) return;
+    $("#try-out").textContent = "Running…";
+    try { const r = await api("/api/panel/try", { program, method, path, params: p });
+      $("#try-meta").textContent = `answered in ${r.ms} ms`; $("#try-out").textContent = JSON.stringify(r.result, null, 2).slice(0, 200000);
+    } catch (e) { $("#try-meta").textContent = ""; $("#try-out").textContent = "Error: " + e.message; }
+  };
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 tabs(); bind(); load(); loadChat(); tick();

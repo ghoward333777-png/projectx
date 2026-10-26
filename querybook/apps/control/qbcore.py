@@ -720,10 +720,48 @@ def iter_old_language_models(store):
 
 # ----------------------------------------------------------------------------- web server
 class Api:
-    """Route table: api.get("/api/x")(fn) / api.post("/api/x")(fn). fn(params) -> JSON-able."""
+    """Route table: api.get("/api/x")(fn) / api.post("/api/x")(fn). fn(params) -> JSON-able.
+    Every program also describes itself: GET /api/routes (each endpoint, the parameters its code reads, and the plain-words
+    explanation from qbapidoc where there is one) and GET /api/openapi.json (the same as OpenAPI 3)."""
 
     def __init__(self):
         self.routes = {}
+        self.routes[("GET", "/api/routes")] = lambda p: {"routes": self.catalog()}
+        self.routes[("GET", "/api/openapi.json")] = lambda p: self.openapi(p.get("title") or "QueryBook")
+
+    def catalog(self):
+        import inspect
+        try:
+            import qbapidoc
+        except ImportError:
+            qbapidoc = None
+        out = []
+        for (method, path), fn in sorted(self.routes.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            try:
+                src = inspect.getsource(fn)
+            except (OSError, TypeError):
+                src = ""
+            params = sorted({a or b for a, b in re.findall(r'\b[pq]\.get\(\s*"(\w+)"|\b[pq]\[\s*"(\w+)"\s*\]', src)} - {"_token"})
+            d = qbapidoc.doc(path) if qbapidoc else None
+            if not params and d and d.get("example"):
+                params = sorted(d["example"])                 # wrapped handlers: the documented fields
+            out.append({"method": method, "path": path, "params": params, "doc": d,
+                        "text": (d or {}).get("text") or (inspect.getdoc(fn) or "").split("\n")[0]})
+        return out
+
+    def openapi(self, title="QueryBook"):
+        paths = {}
+        for r in self.catalog():
+            d = r["doc"] or {}
+            op = {"summary": d.get("title") or r["path"], "description": r["text"] or "", "tags": [d.get("group") or r["path"].split("/")[2]],
+                  "responses": {"200": {"description": "JSON"}, "400": {"description": "{\"error\": message}"}}}
+            if r["method"] == "GET":
+                op["parameters"] = [{"name": n, "in": "query", "schema": {"type": "string"}} for n in r["params"]]
+            else:
+                op["requestBody"] = {"content": {"application/json": {"schema": {"type": "object", "properties": {n: {} for n in r["params"]}},
+                                                                     **({"example": d["example"]} if d.get("example") else {})}}}
+            paths.setdefault(r["path"], {})[r["method"].lower()] = op
+        return {"openapi": "3.0.3", "info": {"title": title, "version": "1"}, "paths": paths}
 
     def get(self, path):
         def deco(fn):
@@ -1003,7 +1041,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1875,7 +1913,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):

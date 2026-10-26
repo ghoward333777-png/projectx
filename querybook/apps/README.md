@@ -593,6 +593,20 @@ publish everything as one file (their ceiling is about 665,000 items a week). Th
 * **Disk:** about 110 bytes a fact (100 million facts ≈ 11 GB). The ticker counts the shards per area; **Look up** finds bulk
   facts by subject with their dataset, row and the publisher's page.
 
+## The master API page (Control Panel → API; `_core/qbapidoc.py`)
+
+One page for the whole harvesting suite's API — the Control Panel and the three applications:
+
+* **Start here:** the tasks people actually do (how many facts now, find facts, look up bulk facts, start and stop all
+  harvesting, start bulk agents, run a harvest turn, read the harvest log) — each one click away from **Try it**.
+* **Every endpoint** of every running program, listed by the program itself (`GET /api/routes`, with the parameters its code
+  reads), grouped by task and explained in plain words where it matters; filter by any word. A program that is not running is
+  listed from the guide.
+* **Try it** runs the call from the page (through the Control Panel, this computer only, recorded in the audit trail) and shows
+  the answer; calls that change harvesting ask first, and *admin* ones need the passphrase. **Copy** gives the same call as
+  curl, Python (standard library) or JavaScript (fetch), with the passphrase left as a placeholder.
+* **OpenAPI:** every program serves `GET /api/openapi.json` (OpenAPI 3) for Postman, Insomnia or code generators.
+
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
 Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.
