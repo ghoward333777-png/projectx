@@ -12,7 +12,7 @@ import json, os, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
 VERSION = "1.0.0"
-UA = "QueryBook-harvester/%s (personal research tool; one request at a time)" % VERSION
+UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; one request at a time)" % VERSION
 MIN_GAP_S = 1.0                     # pause between requests to the same site
 _last = {}
 

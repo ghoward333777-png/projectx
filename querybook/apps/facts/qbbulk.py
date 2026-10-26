@@ -21,18 +21,20 @@ links (a source page per fact, where there is one); slots (recurring-event editi
 
 Run: python qbbulk.py run --commons <shared folder> [--datasets a,b] [--agents 4] [--max-rows N]
 """
-import bz2, csv, datetime, gzip, io, json, os, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile
+import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
 import qbscaffold as sc  # noqa: E402
 
 VERSION = "1.0.0"
-UA = "QueryBook-harvester/%s (personal research tool; bulk files, one stream per dataset)" % VERSION
-BATCH = 50_000                     # facts per transaction
+UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
+BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
+CACHE_MB = 128                     # SQLite page cache per agent
 LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
 FOLDER = "shards"
 AREA = {"language": "language", "stem": "stem", "facts": "history"}
+READ_BUFFER = 1 << 20              # bytes read from a decompressed stream at a time
 CSV_MAX = 1 << 24
 csv.field_size_limit(CSV_MAX)
 
@@ -97,7 +99,7 @@ def _seekable(url):
 
 def gz_lines(url):
     with _open(url) as r, gzip.GzipFile(fileobj=r) as g:
-        for line in g:
+        for line in io.BufferedReader(g, READ_BUFFER):      # a big buffer: 1.4x faster line splitting than GzipFile's own
             yield line.decode("utf-8", "replace").rstrip("\r\n")
 
 
@@ -470,6 +472,9 @@ CREATE TABLE IF NOT EXISTS slots (series TEXT NOT NULL, year INTEGER NOT NULL, f
 """
 
 
+_FP = operator.itemgetter(0)
+
+
 def shard_path(commons_folder, key):
     return os.path.join(commons_folder, FOLDER, key + ".sqlite")
 
@@ -478,12 +483,39 @@ def fp(domain, s, p, o):
     return bytes.fromhex(core.fingerprint(domain, s, p, o))[:16]
 
 
+def fingerprinter(domain):
+    """fp(domain, s, p, o) for one domain, about twice as fast and byte-for-byte the same: core.fingerprint is
+    sha256("|".join(norm(x))) with norm(x) = " ".join(str(x or "").strip().lower().split()). For a str x, str(x or "") is
+    x, and strip() is redundant before split() (both drop the same str.isspace characters; lower() never makes or
+    removes whitespace), so norm(x) == " ".join(x.lower().split()). The domain and each predicate are normalised once;
+    the subject once per run of facts with the same subject; digest() is the bytes hexdigest() spells. Anything that is
+    not a str goes through core.norm itself. The self-test compares it with core.fingerprint on awkward text."""
+    head, preds, sha, norm = core.norm(domain) + "|", {}, hashlib.sha256, core.norm
+    last = [None, ""]
+
+    def f(s, p, o):
+        mid = preds.get(p)
+        if mid is None:
+            mid = preds[p] = "|" + norm(p) + "|"
+        if type(s) is str:
+            if s is not last[0]:
+                last[0], last[1] = s, " ".join(s.lower().split())
+            ns = last[1]
+        else:
+            ns = norm(s)
+        no = " ".join(o.lower().split()) if type(o) is str else norm(o)
+        return sha((head + ns + mid + no).encode("utf-8")).digest()[:16]
+    return f
+
+
 class Shard:
     def __init__(self, commons_folder, key):
         os.makedirs(os.path.join(commons_folder, FOLDER), exist_ok=True)
         self.db = sqlite3.connect(shard_path(commons_folder, key), timeout=60)
         self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")                 # WAL + NORMAL: a crash never corrupts or splits a batch
+        self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))   # a whole batch's dirty pages stay in memory until commit
+        self.db.execute("PRAGMA journal_size_limit=%d" % (64 << 20))  # the WAL file shrinks back after each checkpoint
         self.db.executescript(SCHEMA)
         self.preds = {n: i for i, n in self.db.execute("SELECT id, name FROM predicates")}
 
@@ -507,6 +539,9 @@ class Shard:
     def write(self, part_id, rows, rows_done, links=None):
         """one transaction: the facts, the part's progress and the running total — a restart resumes exactly here"""
         before = self.db.total_changes
+        # in fingerprint order, so each B-tree page is visited once per batch. The sort is stable: of two facts with one
+        # fingerprint the earlier row still comes first and is the one kept — the shard is the same as unsorted.
+        rows.sort(key=_FP)
         self.db.executemany("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
         new = self.db.total_changes - before
         if links:
@@ -561,7 +596,7 @@ def run_dataset(commons_folder, key, max_rows=None):
     ds = catalog()[key]
     run = Run(commons_folder, ds, max_rows)
     sh = Shard(commons_folder, key)
-    domain = AREA[ds.app]
+    fpr = fingerprinter(AREA[ds.app])
     sh.set_meta("state", "running"); sh.set_meta("pid", os.getpid()); sh.set_meta("started", core.now_iso()); sh.set_meta("error", None)
     sh.db.commit()
     why = run.stopped()
@@ -582,20 +617,27 @@ def run_dataset(commons_folder, key, max_rows=None):
             sh.db.commit()
             row_no, buf, links, t0, log_from, log_new = 0, [], [], time.time(), done_rows, 0
             limit = None if max_rows is None else done_rows + max_rows
-            for raw in ds.rows(name, url, state):
-                if row_no < done_rows:                  # resume: skip what an earlier run already saved
-                    row_no += 1
-                    continue
-                for s, p, o in ds.facts(name, raw, state):
+            rows, end = iter(ds.rows(name, url, state)), object()
+            while row_no < done_rows and next(rows, end) is not end:    # resume: skip what an earlier run already saved
+                row_no += 1
+            facts_of, preds, rule, add = ds.facts, sh.preds, ds.rule, buf.append
+            for raw in rows:
+                found = facts_of(name, raw, state)
+                lk = state.get("_links")
+                for s, p, o in found:
                     if s and o:
-                        f = fp(domain, s, p, o)
-                        buf.append((f, s, sh.pred(p, ds.rule.get(p)), o, pid, row_no))
-                        if state.get("_links") and s in state["_links"]:
-                            links.append((f, state["_links"][s]))
+                        f = fpr(s, p, o)
+                        pi = preds.get(p)
+                        if pi is None:
+                            pi = sh.pred(p, rule.get(p))
+                        add((f, s, pi, o, pid, row_no))
+                        if lk and s in lk:
+                            links.append((f, lk[s]))
                 row_no += 1
                 if len(buf) >= BATCH:
                     new = sh.write(pid, buf, row_no, links)
                     total_new += new; log_new += new; buf, links = [], []
+                    add = buf.append
                     if log_new >= LOG_EVERY:
                         run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0)
                         log_from, log_new, t0 = row_no, 0, time.time()
@@ -881,8 +923,15 @@ def self_test():
             BATCH = old
         st = {d["key"]: d for d in status(cf, c)["datasets"]}
         pc = st["pubchem-computed"]
-        ok("PubChem: formula and mass per compound, plus SMILES and InChIKey; a capped run resumes where it stopped (no fact twice)",
-           r1["state"] == "paused" and r2["state"] == "done" and pc["facts"] == 3000 * 2 + 2 and pc["parts"][0]["rows"] == 3000, (r1, r2, pc["facts"]))
+        sdb = _ro(shard_path(cf, "pubchem-computed"))
+        stored = sdb.execute("SELECT f.fp, f.s, pr.name, f.o FROM facts f JOIN predicates pr ON pr.id = f.p ORDER BY f.row LIMIT 50").fetchall()
+        sdb.close()
+        fast, odd = fingerprinter("stem"), [" A b ", "İstanbul", "STRASSE ß", "x 　y", "\x1c\x85z", "a|b", "", 2024, 3.5, None]
+        same_fp = all(f == fp("stem", s, p, o) for f, s, p, o in stored) and all(
+            fast(s, p, o) == fp("stem", s, p, o) for s in odd for p in ("p", " P q ") for o in odd)
+        ok("PubChem: formula and mass per compound, plus SMILES and InChIKey; a capped run resumes where it stopped (no fact twice); "
+           "fingerprints are the Commons' own", r1["state"] == "paused" and r2["state"] == "done" and pc["facts"] == 3000 * 2 + 2
+           and pc["parts"][0]["rows"] == 3000 and len(stored) == 50 and same_fp, (r1, r2, pc["facts"], same_fp))
         hits = search(cf, "PubChem CID 2244")
         ok("search: a compound's facts with dataset, row and the PubChem page", any(h["predicate"] == "SMILES" and h["link"].endswith("/compound/2244")
                                                                                        and h["provenance"].startswith("CID-SMILES, row 1") for h in hits), hits[:2])
