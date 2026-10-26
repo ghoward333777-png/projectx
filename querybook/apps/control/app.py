@@ -37,10 +37,11 @@ import assistant
 import qbselfknow
 import qbexemplar
 import qbcampaign
+import qbbulk
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 PORT = 8100
 program_dir = HERE
 
@@ -87,6 +88,7 @@ class Panel:
         self.api = core.Api()
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
+        qbbulk.add_routes(self.api, self.commons, HERE)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
                               lambda: set(ol.HARVESTERS), HERE)
@@ -307,13 +309,16 @@ class Panel:
         rows = {r["domain"]: r for r in q.query(
             "SELECT domain, count(*) AS n, sum(created >= ?) AS m, sum(created >= ?) AS h, sum(created >= ?) AS d, "
             "sum(status IN ('verified', 'corroborated')) AS strong FROM facts GROUP BY domain", (ago(60), ago(3600), ago(86400)))}
+        bulk = qbbulk.by_area(self.commons.folder)          # the bulk shards: whole open datasets (counted from their own totals)
         areas = []
         for a, meta in APPS.items():
             r = rows.pop(meta["domain"], None) or {}
             own = self._own.get(a) or {}
-            areas.append({"app": a, "area": meta["name"], "domain": meta["domain"], "facts": r.get("n") or 0, "last_minute": r.get("m") or 0,
-                          "last_hour": r.get("h") or 0, "today": r.get("d") or 0, "verified_or_corroborated": r.get("strong") or 0,
-                          "own_store": own.get("facts"), "running": own.get("running", False)})
+            b = bulk.get(meta["domain"]) or {}
+            areas.append({"app": a, "area": meta["name"], "domain": meta["domain"], "facts": (r.get("n") or 0) + b.get("facts", 0),
+                          "last_minute": (r.get("m") or 0) + b.get("last_minute", 0), "last_hour": (r.get("h") or 0) + b.get("last_hour", 0),
+                          "today": r.get("d") or 0, "verified_or_corroborated": r.get("strong") or 0, "shared_store": r.get("n") or 0,
+                          "bulk": b.get("facts", 0), "own_store": own.get("facts"), "running": own.get("running", False)})
         other = {"facts": sum(r["n"] for r in rows.values()), "last_minute": sum(r["m"] or 0 for r in rows.values()),
                  "last_hour": sum(r["h"] or 0 for r in rows.values())}
         latest = q.query("SELECT id, domain, subject, predicate, object, status, origin_app, created FROM facts ORDER BY id DESC LIMIT 12")
@@ -703,6 +708,16 @@ def selftest():
               and by1["language"]["facts"] - by0["language"]["facts"] == 1 and by1["stem"]["last_minute"] >= 1 and t1["total"] - t0["total"] == 4
               and t1["latest"][0]["subject"] == "Ticker 3" and p._own_at and "/api/panel/ticker" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(),
               {k: (by1[k]["facts"], by1[k]["last_minute"]) for k in by1})
+        bk = p.api.routes[("GET", "/api/bulk")]({})
+        check("bulk harvesting: every dataset listed with its source's approval; the ticker counts the bulk shards per area",
+              len(bk["datasets"]) >= 8 and all("approved" in d for d in bk["datasets"]) and ("POST", "/api/bulk/start") in p.api.routes
+              and all("bulk" in x for x in t1["areas"]) and "/api/bulk" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(),
+              [(d["key"], d["approved"]) for d in bk["datasets"]])
+        try:
+            p.api.routes[("POST", "/api/bulk/start")]({"datasets": ["calendar-scaffold"], "passphrase": "wrong"})
+            check("bulk harvesting: starting needs the admin passphrase", False)
+        except Exception:
+            check("bulk harvesting: starting needs the admin passphrase", True)
     print("\n  %d of %d checks passed" % (passed, passed + failed))
     return failed == 0
 

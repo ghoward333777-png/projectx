@@ -75,6 +75,7 @@
   <button data-tab="audit">Audit trail</button>
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="self">Self-knowledge</button>
+  <button data-tab="bulk">Bulk harvesting</button>
   <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
 </nav>
@@ -233,6 +234,28 @@
   </section>
 
   <!-- Exemplar library: best-in-class examples QueryBook learns from (measured by QueryBook, approved by the admin, never facts) -->
+  <!-- Bulk harvesting: whole open datasets, streamed by parallel agents into fact shards -->
+  <section class="panel" id="bulk">
+    <div class="card">
+      <div class="sechead"><h2>Bulk harvesting</h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
+      <p class="muted small">The fast lane: each open dataset is one agent that streams the publisher's whole file and turns every row into facts
+        by a fixed rule — no AI model, only sources approved in the policy registry, every fact traceable to its file and row. Agents work in
+        parallel, each into its own shard, and resume where they stopped. The calendar scaffold computes what can be known in advance; the
+        recurring-event slots are filled from Wikidata, one query per series.</p>
+      <div id="bk-summary" class="row"></div>
+      <div id="bk-table"></div>
+      <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="16" value="4" style="width:4em"></label>
+        <input type="password" id="bk-pass" placeholder="Admin passphrase" style="width:14em">
+        <button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
+        <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
+      <h3>Scaffold slots — recurring events</h3><div id="bk-slots" class="small"></div>
+      <h3>Look up bulk facts</h3>
+      <div class="row"><input id="bk-q" placeholder="Subject starts with… e.g. PubChem CID 2244 · Year 2030 · Nobel Prize in Physics 1921" style="flex:1">
+        <button class="btn quiet" id="bk-go">Look up</button></div>
+      <div id="bk-out"></div>
+    </div>
+  </section>
+
   <section class="panel" id="exemplars">
     <div class="card">
       <div class="sechead"><h2>Exemplars</h2><button class="btn quiet" id="ex-refresh">Check again</button><button class="btn quiet" id="ex-verify">Verify files</button></div>

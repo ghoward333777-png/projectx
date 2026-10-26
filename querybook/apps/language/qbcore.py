@@ -1003,7 +1003,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1875,7 +1875,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py"):
+    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):

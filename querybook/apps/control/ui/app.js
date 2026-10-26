@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") loadBulk().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -152,6 +152,26 @@ async function loadExemplars() {
   $$("[data-exok]").forEach(b => b.onclick = () => exApprove([b.dataset.exok]));
   if ($("#ex-okall")) $("#ex-okall").onclick = () => exApprove(p.map(x => x.proposed));
 }
+// ---- bulk harvesting: datasets, agents, scaffold slots
+const BK_STATE = { done: "good", running: "good", paused: "warn", stopped: "warn", failed: "bad", blocked: "bad" };
+const bytes = n => n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB";
+async function loadBulk() {
+  const r = await api("/api/bulk");
+  const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
+  $("#bk-summary").innerHTML = `<span class="pill">${fmt(r.total)} bulk facts</span><span class="pill">+${fmt(r.last_minute)} last min</span>` +
+    `<span class="pill">+${fmt(r.last_hour)} last hr</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
+    `<span class="pill">runner: ${r.runner.alive ? "running · " + esc(r.runner.note || "") : "stopped"}</span>`;
+  $("#bk-table").innerHTML = `<table class="t small"><tr><th></th><th>Dataset</th><th>Area</th><th>Source · licence</th><th>State</th><th>Facts</th><th>Rate</th><th>Parts</th></tr>` +
+    r.datasets.map(d => `<tr><td><input type="checkbox" data-bk="${esc(d.key)}" ${d.approved ? "" : "disabled"} ${picked.has(d.key) ? "checked" : ""}></td>
+      <td><b>${esc(d.title)}</b><div class="small muted">${esc(d.why)} — ${esc(d.approx)}</div></td><td>${esc(d.area)}</td>
+      <td class="small">${esc(d.source)}<br>${esc(d.licence)}${d.approved ? "" : `<br><span class="badge bad">not approved</span> ${esc(d.approval)}`}</td>
+      <td><span class="badge ${BK_STATE[d.state] || ""}">${esc(d.state)}</span>${d.error ? `<div class="small muted">${esc(d.error)}</div>` : ""}</td>
+      <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">+${fmt(d.last_minute)}/min<br>+${fmt(d.last_hour)}/hr</td>
+      <td class="small">${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+  const se = r.datasets.find(d => d.key === "wikidata-series");
+  $("#bk-slots").innerHTML = se && se.slots && se.slots.length ? se.slots.map(x => `${esc(x.series)}: ${fmt(x.filled)} of ${fmt(x.expected)} editions filled`).join(" · ")
+    : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
+}
 async function exApprove(ids) {
   let n = 0;
   try { for (const id of ids) { await api("/api/exemplars/approve", { id, passphrase: $("#ex-pass").value, note: "approved in the Control Panel" }); n++; } toast(n + " approved."); }
@@ -204,6 +224,16 @@ async function loadChat() {
 }
 
 function bind() {
+  $("#bk-refresh").onclick = () => loadBulk().catch(e => toast(e.message));
+  $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);
+  $("#bk-start").onclick = async () => { try { const r = await api("/api/bulk/start", { datasets: $$("[data-bk]:checked").map(b => b.dataset.bk),
+      agents: +$("#bk-agents").value || 4, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
+  $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
+  const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
+    $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>
+      `<tr><td>${f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.subject)}</a>` : esc(f.subject)}</td><td>${esc(f.predicate)}</td><td>${esc(f.object)}</td>
+       <td class="small">${esc(f.dataset)} · ${esc(f.provenance)} · ${esc(f.status)}</td></tr>`).join("") + "</table>" : `<p class="muted small">Nothing starts with that.</p>`; };
+  $("#bk-go").onclick = bkGo; $("#bk-q").onkeydown = e => { if (e.key === "Enter") bkGo(); };
   $("#ex-refresh").onclick = () => loadExemplars(); $("#ex-list").onclick = listTakes;
   $("#ex-gen-start").onclick = async () => { try { const r = await api("/api/gtools/runner", { action: "start", passphrase: $("#ex-pass").value }); toast(r.summary); loadExemplars(); } catch (e) { toast(e.message); } };
   $("#ex-gen-stop").onclick = async () => { const r = await api("/api/gtools/runner", { action: "stop" }); toast(r.summary); loadExemplars(); };
@@ -263,7 +293,7 @@ function tkCount(el, key, to) {
 function tkRender(T) {
   const cells = T.areas.map(a => ({ key: a.app, name: a.area, n: a.facts, live: a.running,
     sub: `+${fmt(a.last_minute)} last min · +${fmt(a.last_hour)} last hr · ${fmt(a.verified_or_corroborated)} verified/corroborated` +
-         (a.own_store != null ? ` · own store ${fmt(a.own_store)}` : "") }));
+         (a.bulk ? ` · bulk ${fmt(a.bulk)}` : "") + (a.own_store != null ? ` · own store ${fmt(a.own_store)}` : "") }));
   cells.push({ key: "total", name: "All areas (UFCS facts)", n: T.total, live: T.areas.some(a => a.running), total: true,
     sub: `+${fmt(T.last_minute)} last min · +${fmt(T.last_hour)} last hr` + (T.other.facts ? ` · other ${fmt(T.other.facts)}` : "") });
   const row = $("#tk-row");
@@ -282,4 +312,5 @@ async function tick() {
 
 tabs(); bind(); load(); loadChat(); tick();
 setInterval(tick, 2000);
+setInterval(() => { if (document.visibilityState === "visible" && $("#bulk").classList.contains("active")) loadBulk().catch(() => {}); }, 5000);
 setInterval(() => { if (document.visibilityState === "visible") load(true); }, 10000);

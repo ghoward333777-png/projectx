@@ -568,6 +568,31 @@ approval is muted until the admin unmutes it.
   recommendation for the admin. Researched and recorded as **blocked**, with the reason: World Bank indicators (CC BY),
   OpenStreetMap (ODbL share-alike), GeoNames (CC BY), Wiktionary (CC BY-SA).
 
+## Bulk harvesting and scaffolds (`_core/qbbulk.py`, `_core/qbscaffold.py`, Control Panel → Bulk harvesting)
+
+The harvest teams ask a site for a page at a time, once a turn — right for live sources, far too slow for open datasets that
+publish everything as one file (their ceiling is about 665,000 items a week). The bulk lane streams those files whole:
+
+* **One agent per dataset**, each its own process writing its own shard (`<commons>/shards/<dataset>.sqlite`), so agents never
+  wait on each other; 4 at once by default (up to 16). Files are streamed — gzip as it downloads, zip members read in place by
+  HTTP ranges, tar in one pass — nothing large is stored first. Measured here: one agent ≈ 80,000 facts/s; four agents together
+  ≈ 5 million facts a minute. 100 million facts a week needs about 10,000 a minute.
+* **Datasets (approved sources only):** PubChem NCBI-computed properties (formula, mass, InChIKey, SMILES); NCBI Taxonomy;
+  NOAA GHCN-Daily weather observations (quality-flagged readings left out) and stations; USGS GNIS place names; USDA
+  FoodData Central foods and nutrients; Tatoeba CC0 sentences. A source blocked or not yet approved in the policy registry is
+  refused (and the refusal logged); the master switch and **Stop all** stop every agent between batches.
+* **Provenance and resume:** every fact records its dataset, file part and row, and each part the file's version
+  (Last-Modified). The rows done are saved in the same transaction as their facts, so a stopped agent resumes exactly there.
+  The harvest log gets an entry for every million facts and at the end of each part.
+* **Scaffolds:** the *calendar scaffold* computes what can be known in advance — every date's weekday and day of the year,
+  leap years, Western and Orthodox Easter, equinoxes and solstices (Meeus ch. 27, to the minute), US federal holidays from the
+  year each rule took effect, and US federal election days — about 450,000 facts for 1600–2200, each naming its rule.
+  *Recurring-event slots* (Nobel Prizes, Olympic Games, FIFA World Cup, Super Bowl, Best Picture, US presidential elections)
+  know which editions to expect; each is filled only from Wikidata (CC0), one query per series, and an edition no source
+  fills stays open — never guessed.
+* **Disk:** about 110 bytes a fact (100 million facts ≈ 11 GB). The ticker counts the shards per area; **Look up** finds bulk
+  facts by subject with their dataset, row and the publisher's page.
+
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
 Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.

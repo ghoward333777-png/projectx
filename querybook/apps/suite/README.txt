@@ -19,6 +19,12 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Bulk harvesting (all applications; Control Panel 1.4.0)
+    * Control Panel -> Bulk harvesting: whole open datasets (PubChem, NCBI Taxonomy, NOAA weather, USGS place names, USDA
+      FoodData, Tatoeba CC0) streamed by parallel agents - millions of facts a minute, approved sources only, every fact
+      traceable to its file and row, resumable.
+    * Scaffolds: computed calendar facts (weekdays, Easter, equinoxes, US holidays and election days) and recurring-event
+      slots (Nobel Prizes, Olympics, World Cup, Super Bowl, Best Picture, US elections) filled from Wikidata.
   Control Panel 1.3.0 - live fact ticker
     * A ticker under the tabs, on every page: the UFCS fact count for Language, Math/Science/Engineering and
       History & News, and all areas together - updated every 2 seconds, with how many arrived in the last minute and
