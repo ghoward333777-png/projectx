@@ -436,8 +436,10 @@ class Series(Dataset):
                         body = json.loads(r.read())
                     break
                 except urllib.error.HTTPError as e:
-                    if e.code not in (429, 503) or attempt == 4:
+                    if e.code not in (429, 503):
                         raise
+                    if attempt == 4:
+                        raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the open slots are filled on the next run" % e.code)
                     time.sleep(max(self.GAP_S, int(e.headers.get("Retry-After") or 0)))
         state["_last"] = time.time()
         return iter(sc.slot_facts(part, body["results"]["bindings"]))
@@ -624,6 +626,10 @@ def run_dataset(commons_folder, key, max_rows=None):
     except _Stop as e:
         sh.set_meta("state", "stopped"); sh.set_meta("error", str(e)); sh.db.commit()
         return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new}
+    except Busy as e:
+        sh.set_meta("state", "paused"); sh.set_meta("error", str(e)); sh.db.commit()
+        run.log("source busy", 0, 0, 0, 0, time.time() - t_start, "failed", str(e))
+        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new}
     except Exception as e:
         sh.set_meta("state", "failed"); sh.set_meta("error", "%s: %s" % (type(e).__name__, str(e)[:300])); sh.db.commit()
         return {"dataset": key, "state": "failed", "why": str(e)[:300], "new": total_new}
@@ -633,6 +639,10 @@ def run_dataset(commons_folder, key, max_rows=None):
 
 class _Stop(Exception):
     pass
+
+
+class Busy(Exception):
+    """the publisher asked us to slow down: the dataset pauses (what is saved stays saved) and resumes on the next run"""
 
 
 def _version(url):
@@ -900,6 +910,20 @@ def self_test():
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]
         ok("series: a slot is filled only from the source's answer", f == [("Nobel Prize in Physics 1921", "laureate", "Albert Einstein")], f)
+        real_open, real_sleep = urllib.request.urlopen, time.sleep
+        def busy(*a, **k):
+            raise urllib.error.HTTPError("https://query.wikidata.org/sparql", 429, "Too Many Requests", {}, None)
+        urllib.request.urlopen, time.sleep = busy, (lambda s: None)
+        try:
+            se2 = Series(); se2.GAP_S = 0
+            try:
+                list(se2.rows("nobel-physics", se2.ENDPOINT, {}))
+                paused = False
+            except Busy:
+                paused = True
+        finally:
+            urllib.request.urlopen, time.sleep = real_open, real_sleep
+        ok("series: when Wikidata keeps refusing (HTTP 429) the dataset pauses to resume later — it does not fail", paused)
         cal = Calendar()
         yf = cal.facts("years", 2024, {})
         ok("calendar: computed facts name their rule", ("Year 2024", "Easter Sunday (Western churches)", "2024-03-31") in yf and cal.rule.get("date"), yf[:3])
