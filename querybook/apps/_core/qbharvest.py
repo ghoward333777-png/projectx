@@ -275,6 +275,42 @@ RESEARCHED_SOURCES = [
      "NIST Standard Reference Data are an exception to federal public domain; NIST notices say they may not be reproduced without permission."),
     ("python-docs", "Python documentation (Python Software Foundation)", "stem", "computer programming", "PSF License Agreement", "attribution",
      "https://docs.python.org/3/license.html", "Permissive, but the PSF notice must be kept: a condition. Code examples are 0BSD but are code, not facts."),
+    # bulk datasets researched on 2026-10-26 (research agents; each publisher's own licence page quoted in the bulk plan)
+    ("openalex", "OpenAlex snapshot (scholarly works, authors, institutions)", "stem,facts", "research publications and their authors", "CC0 1.0",
+     "cc0", "https://openalex.s3.amazonaws.com/LICENSE.txt", "The snapshot's own LICENSE.txt is CC0 1.0. Facts only: titles, years, DOIs, "
+     "authorship, venues, citations. Excluded: abstracts (publishers' text) and the machine-classified topics, keywords and concepts."),
+    ("census-acs", "US Census Bureau — American Community Survey summary files", "facts,stem", "statistics of places (population, income, housing)",
+     "US government work (17 U.S.C. § 105)", "us-federal", "https://www.census.gov/about/policies/citation.html",
+     "Federal statistics; the Bureau asks to be cited as the source (a request, not a condition)."),
+    ("commons-structured-data", "Wikimedia Commons structured data (MediaInfo)", "facts,language", "what files depict, when and where they were made",
+     "CC0 1.0 (structured data only)", "cc0", "https://commons.wikimedia.org/wiki/Commons:Structured_data",
+     "Structured data is CC0; the free text is CC BY-SA and is not used. Excluded: 'depicts' claims added by the machine-suggestion tool."),
+    ("bls-timeseries", "US Bureau of Labor Statistics — time-series flat files", "stem,facts", "employment, prices, wages, productivity",
+     "Public domain (BLS)", "us-federal", "https://www.bls.gov/opub/copyright-information.htm",
+     "'Everything that we publish… is in the public domain', except previously copyrighted photos and illustrations (not used)."),
+    ("ncbi-gene", "NCBI Gene", "stem", "genes: symbols, organisms, chromosomes, orthologs", "US government work (NCBI policy)", "us-federal",
+     "https://www.ncbi.nlm.nih.gov/home/about/policies/", "Same policy as NCBI Taxonomy. Gene Ontology annotations (gene2go, CC BY) are excluded."),
+    ("sec-edgar", "SEC EDGAR — XBRL company facts and filing index", "stem,facts", "companies' reported financial figures and filings",
+     "Public information (SEC)", "us-federal", "https://www.sec.gov/about/privacy-information",
+     "'May be copied or further distributed… without the SEC's permission'; citation requested. A declared User-Agent is required."),
+    ("musicbrainz-core", "MusicBrainz core data", "facts,language", "artists, releases, recordings, works", "CC0 1.0 (core data only)", "cc0",
+     "https://musicbrainz.org/doc/About/Data_License", "Core data only; the derived, edit and editor dumps (CC BY-NC-SA) are excluded."),
+    ("loc-marc", "Library of Congress — MDSConnect catalogue records", "facts,language", "books, authors, subjects", "Free reuse (LoC FAQ)",
+     "facts", "https://www.loc.gov/cds/PDFdownloads/MDSConnect_FAQs.pdf", "Bibliographic facts (title, author, publisher, place, year, "
+     "classification, subjects); 'we encourage you to use the data'; attribution appreciated, not required."),
+    ("dblp", "dblp computer science bibliography", "stem", "computer science publications", "CC0 1.0", "cc0", "https://dblp.org/xml/README.txt",
+     "'Released under the CC0 1.0 Public Domain Dedication… even for commercial purposes'."),
+    ("openfda", "openFDA downloads (devices, drug products, substances)", "stem", "medicines, devices, substances", "CC0 1.0 (openFDA)", "cc0",
+     "https://open.fda.gov/license/", "Product and registration facts only. Excluded: adverse-event reaction terms (licensed MedDRA) and drug label text."),
+    ("itis", "ITIS — Integrated Taxonomic Information System", "stem", "classification of organisms", "CC0 1.0", "cc0", "https://www.itis.gov/privacy.html",
+     "'Free of known copyright restrictions'; citation requested. Skip any page ITIS marks as another's copyright."),
+    ("llm-gathered-web", "Facts found by LLM web search and confirmed on the cited page (fact gatherer)", "language,stem,facts",
+     "recent facts from the open web", "Facts (no wording kept)", "facts", "https://github.com/ghoward333777-png/projectx",
+     "An LLM (Perplexity, Claude, OpenAI or Gemini with web search) only finds the fact and the page; the gatherer fetches that page itself "
+     "(respecting robots.txt) and keeps the fact only when the page states it. The page is the fact's source; the LLM's own text is never "
+     "a source. No wording from the page is stored. Blocked sites (setting gather:blocked_domains) are skipped."),
+    ("cleveland-museum-open-access", "Cleveland Museum of Art Open Access", "facts", "art history", "CC0 1.0", "cc0",
+     "https://github.com/ClevelandMuseumArt/openaccess", "'Has waived all copyright… using Creative Commons Zero… Attribution is not required'."),
 ]
 
 # The admin's own decisions on researched sources, given outside the app (with the date and their words). Applied once
@@ -286,6 +322,9 @@ ADMIN_DECISIONS = [
                   "arxiv-cc0", "tatoeba-cc0", "common-voice-text", "nasa", "noaa", "usda-fooddata-central", "ncbi-taxonomy",
                   "smithsonian-open-access", "nara-catalog", "chronicling-america-pre1931", "frus", "army-cmh", "europeana-metadata",
                   "dpla-metadata", "met-open-access", "rijksmuseum-open-data"]),
+    ("2026-10-27", "yes", "approved", ["openalex", "census-acs", "commons-structured-data", "bls-timeseries", "ncbi-gene", "sec-edgar",
+                                       "musicbrainz-core", "loc-marc", "dblp", "openfda", "itis", "cleveland-museum-open-access"]),
+    ("2026-10-27", "we can use verified facts that are gathered by - and not generated by - LLM", "approved", ["llm-gathered-web"]),
     # held back under the admin's condition: copyright status cannot be checked reliably by a program
     ("2026-10-19", "provided they do not risk copyright issues", "pending", ["fsi-courses", "fhwa-federal-authored"]),
 ]

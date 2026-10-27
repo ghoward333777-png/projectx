@@ -225,6 +225,10 @@ async function loadChat() {
 
 function bind() {
   $("#api-refresh").onclick = () => loadApis().catch(e => toast(e.message));
+  $("#cn-cat").onchange = () => CONNS && renderConns();
+  $("#cn-test-all").onclick = async () => { $("#cn-test-all").disabled = true; toast("Testing every connection…");
+    try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
+    $("#cn-test-all").disabled = false; };
   $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
   $("#bk-refresh").onclick = () => loadBulk().catch(e => toast(e.message));
   $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);
@@ -304,8 +308,34 @@ function tkRender(T) {
     el.querySelector(".nm span").textContent = c.name; el.querySelector(".tk-live").classList.toggle("on", !!c.live);
     el.querySelector(".tk-live").title = c.live ? "harvesting application running" : "not running";
     el.querySelector(".sub").textContent = c.sub; tkCount(el.querySelector(".n"), c.key, c.n); });
+  tkActive(T.active || []);
   const feed = T.latest.map(f => `${NAMES[f.origin_app] || f.origin_app}: ${f.subject} — ${f.predicate} — ${f.object} (${f.status})`).join("   •   ");
   const sp = $("#tk-feed span"); if (sp.dataset.v !== feed) { sp.dataset.v = feed; sp.textContent = feed || "No facts yet — start harvesting to see them arrive."; }
+}
+// ---- harvests in action: one mini bar each, on its own scale (bytes of the publisher's file, rows, tasks or facts)
+function unitFmt(n, unit) {
+  if (n == null) return "—";
+  if (unit === "bytes") return n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB";
+  return fmt(n) + " " + unit;
+}
+const dur = s => s == null ? "" : s < 90 ? Math.round(s) + " s" : s < 5400 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " h";
+function tkActive(list) {
+  const el = $("#tk-active");
+  if (!list.length) { el.innerHTML = ""; return; }
+  el.innerHTML = list.map(h => {
+    const f = h.fraction == null ? null : Math.max(0, Math.min(1, h.fraction)), pc = f == null ? "…" : (f * 100).toFixed(f < 0.1 ? 1 : 0) + "%";
+    const scaleTotal = h.kind === "bulk" && h.parts > 1 ? `${h.parts} files` : unitFmt(h.total, h.unit);
+    const now = h.kind === "bulk"
+      ? `file ${h.part_no} of ${h.parts}: ${esc(h.part || "")} — ${unitFmt(h.done, h.unit)} of ${unitFmt(h.total, h.unit)}` +
+        (h.rate ? ` · ${unitFmt(h.rate, h.unit)}/s` : "") + (h.eta_s ? ` · ${dur(h.eta_s)} left in this file` : "") +
+        ` · +${fmt(h.facts_per_min)} facts/min`
+      : `${unitFmt(h.done, h.unit)} of ${unitFmt(h.total, h.unit)}` + (h.detail ? ` · now: ${esc(h.detail)}` : "");
+    return `<div class="hv" title="${esc(h.title)}"><div class="top"><span class="nm">${esc(h.title)}</span><span class="pct">${pc}</span></div>
+      <div class="bar2 ${h.kind}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${f == null ? 0 : Math.round(f * 100)}"
+        aria-label="${esc(h.title)}"><i style="width:${f == null ? 0 : (f * 100).toFixed(2)}%"></i></div>
+      <div class="scale"><span>0</span><span>25%</span><span>50%</span><span>75%</span><span>${esc(scaleTotal)}</span></div>
+      <div class="sub">${now}</div></div>`;
+  }).join("");
 }
 async function tick() {
   if (document.visibilityState !== "visible") return;
@@ -315,7 +345,33 @@ async function tick() {
 // ---- the master API page: recipes, every endpoint, try it, copy as curl / Python / JavaScript
 let APIS = null;
 const KIND_BADGE = { read: ["good", "read"], changes: ["warn", "changes"], admin: ["bad", "admin"] };
+let CONNS = null, CN_TEST = {};
+async function loadConns() {
+  CONNS = await api("/api/connections");
+  const sel = $("#cn-cat"), keep = sel.value;
+  sel.innerHTML = `<option value="">All kinds</option>` + CONNS.categories.map(c => `<option>${esc(c)}</option>`).join("");
+  sel.value = keep; renderConns();
+}
+function renderConns() {
+  const cat = $("#cn-cat").value, rows = CONNS.connections.filter(c => !cat || c.category === cat);
+  const missing = CONNS.connections.filter(c => c.key_status === "not set").length;
+  $("#cn-summary").textContent = `· ${CONNS.connections.length} services · ${missing} key(s) not set`;
+  const keyBadge = c => c.key_status === "set" ? `<span class="badge good">key set</span>` : c.key_status === "not set" ? `<span class="badge warn">key not set</span>`
+    : c.key_status === "no key needed" ? `<span class="small muted">no key</span>` : `<span class="small muted">${esc(c.key_where)}</span>`;
+  const testCell = c => { const t = CN_TEST[c.id]; return t ? `<span class="badge ${t.reachable ? "good" : "bad"}">${t.reachable ? "reachable" : "unreachable"}</span>
+    <span class="small muted">${t.status || ""} · ${t.ms} ms${t.reachable ? "" : " · " + esc(t.detail)}</span>` : ""; };
+  $("#cn-table").innerHTML = `<table class="t small"><tr><th>Service</th><th>Used by · for</th><th>Key</th><th>Approved</th><th>Last used</th><th></th></tr>` +
+    rows.map(c => `<tr><td><b>${esc(c.name)}</b><div class="muted">${esc(c.category)} · <a href="${esc(c.docs)}" target="_blank" rel="noopener">docs</a></div></td>
+      <td>${esc(c.used_by)}<div class="muted">${esc(c.purpose)}</div></td><td>${keyBadge(c)}${c.key_status === "not set" ? `<div class="muted">${esc(c.key_where)}</div>` : ""}</td>
+      <td>${c.approved == null ? "—" : c.approved ? `<span class="badge good">approved</span>` : `<span class="badge bad">not approved</span>`}</td>
+      <td>${c.last_used ? esc(c.last_used.slice(0, 16).replace("T", " ")) + `<div class="muted">${fmt(c.uses)} harvests</div>` : "—"}</td>
+      <td><button class="btn quiet" data-cn="${esc(c.id)}">Test</button> ${testCell(c)}</td></tr>`).join("") + "</table>";
+  $$("[data-cn]").forEach(b => b.onclick = async () => { b.disabled = true;
+    try { const r = await api("/api/connections/test", { id: b.dataset.cn }); CN_TEST[b.dataset.cn] = r.results[0]; } catch (e) { toast(e.message); }
+    renderConns(); });
+}
 async function loadApis() {
+  loadConns().catch(e => toast(e.message));
   APIS = await api("/api/panel/apis");
   $("#api-progs").innerHTML = APIS.programs.map(p => `<span class="pill"><span class="dot ${p.running ? "on" : "off"}"></span>${esc(p.name)} ·
     <span class="mono">${esc(p.url)}</span>${p.running ? ` · <a href="${esc(p.url)}/api/openapi.json" target="_blank" rel="noopener">OpenAPI</a>` : " · not running"}</span>`).join(" ");

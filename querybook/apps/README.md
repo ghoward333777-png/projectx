@@ -607,6 +607,19 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   curl, Python (standard library) or JavaScript (fetch), with the passphrase left as a placeholder.
 * **OpenAPI:** every program serves `GET /api/openapi.json` (OpenAPI 3) for Postman, Insomnia or code generators.
 
+## Harvests in action and outside connections (Control Panel 1.6.0)
+
+* **Harvests in action:** under the live ticker, one mini progress bar per running harvest, each on its own scale with marks at
+  0, 25, 50 and 75% and the total at the end — a bulk dataset in bytes of the publisher's own file (compressed bytes read of the
+  file's size; zip members by their compressed size) or in rows for computed datasets, with the file it is on (file 2 of 11),
+  speed, time left in the file and facts per minute; an application's harvest turn in tasks of its plan, with the task it is on;
+  a campaign with a goal in new facts of the goal. The meter costs the bulk agents nothing measurable (it is written between
+  batches to a small side file, not committed to the shard).
+* **Outside connections** (API & connections tab, `_core/qbconnections.py`, `GET /api/connections`): every service outside this
+  computer the suite talks to — open-data APIs, bulk-file servers, Google, Gemini, voices and video, the LLM fact gatherers,
+  GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
+  the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
+
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
 Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.

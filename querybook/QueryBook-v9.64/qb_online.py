@@ -445,8 +445,14 @@ def _ncbi(cursor, budget):
 KEY_SERVICES = {
     "api.data.gov": {"title": "api.data.gov (Smithsonian Open Access and USDA FoodData Central)", "how": "Fill in the form at "
                      "https://api.data.gov/signup/ (name and email); the key is shown at once. One key serves both sources."},
-    "gemini": {"title": "Google Gemini API (paid tier) — for the Google exemplar tools only",
-               "how": "Google AI Studio → Get API key (aistudio.google.com/apikey), on a project with billing (the paid tier keeps your prompts out of Google's training). Used only by the exemplar generator, never by the applications."},
+    "gemini": {"title": "Google Gemini API (paid tier) — exemplar tools and the fact gatherer",
+               "how": "Google AI Studio → Get API key (aistudio.google.com/apikey), on a project with billing (the paid tier keeps your prompts out of Google's training). Used only by the exemplar generator and the fact gatherer (separate programs), never by the applications."},
+    "perplexity": {"title": "Perplexity API (Sonar) — fact gatherer", "how": "perplexity.ai → Settings → API → add a payment method → "
+                   "Generate API key. Paid per request. Used only by the fact gatherer; every fact it finds is checked on the cited page."},
+    "anthropic": {"title": "Anthropic Claude API (web search) — fact gatherer", "how": "platform.claude.com → API keys → Create key "
+                  "(with billing). Needs the 'anthropic' Python package (pip install anthropic) on the computer that runs the gatherer."},
+    "openai": {"title": "OpenAI API (web search) — fact gatherer", "how": "platform.openai.com → API keys → Create new secret key "
+               "(with billing). Used only by the fact gatherer."},
     "dpla": {"title": "Digital Public Library of America", "how": "Type your email and press Request: DPLA emails you the key."},
     "nara": {"title": "US National Archives Catalog", "how": "Email Catalog_API@nara.gov with your name and email and ask for a "
              "read-only Catalog API v2 key."},

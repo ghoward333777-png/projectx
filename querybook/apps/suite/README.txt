@@ -19,6 +19,12 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.6.0 - harvests in action, outside connections
+    * A mini progress bar for each harvest running (bulk datasets, harvest turns, campaigns), each with its own scale, speed and
+      time left. API & connections tab: every outside service, its key (set or not), approval, last use, and a free reachability test.
+    * Twelve more bulk sources approved (OpenAlex, Census ACS, Commons structured data, BLS, NCBI Gene, SEC EDGAR, MusicBrainz,
+      Library of Congress, DBLP, openFDA, ITIS, Cleveland Museum of Art) and facts gathered by LLM web search, kept only when the
+      cited page confirms them.
   Control Panel 1.5.0 - the master API page
     * Control Panel -> API: every endpoint of the four programs in one place, the common tasks one click away, Try it from the page,
       and each call ready to copy as curl, Python or JavaScript. Every program also serves /api/routes and /api/openapi.json.

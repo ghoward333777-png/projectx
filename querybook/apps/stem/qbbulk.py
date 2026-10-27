@@ -40,6 +40,41 @@ csv.field_size_limit(CSV_MAX)
 
 
 # ------------------------------------------------------------------------------------------------ reading files
+class Meter:
+    """how far the current part has got, on the publisher's own scale: compressed bytes read of the file's size, or rows of a
+    known count. One per agent process (each agent is its own process), read into the shard's meta with every batch."""
+
+    def __init__(self):
+        self.start(0, "bytes")
+
+    def start(self, total, unit="bytes"):
+        self.total, self.unit, self.done = int(total or 0), unit, 0
+
+
+METER = Meter()
+
+
+class _Count(io.RawIOBase):
+    """a raw stream that counts the bytes read through it into METER"""
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        n = self.raw.readinto(b)
+        METER.done += n or 0
+        return n
+
+
+def _size(r, url):
+    if url.startswith("file://"):
+        return os.fstat(r.fileno()).st_size
+    return int(r.headers.get("Content-Length") or 0)
+
+
 def _req(url, extra=None):
     return urllib.request.Request(url, headers=dict({"User-Agent": UA}, **(extra or {})))
 
@@ -98,27 +133,35 @@ def _seekable(url):
 
 
 def gz_lines(url):
-    with _open(url) as r, gzip.GzipFile(fileobj=r) as g:
+    with _open(url) as r, gzip.GzipFile(fileobj=_Count(r)) as g:
+        METER.start(_size(r, url))
         for line in io.BufferedReader(g, READ_BUFFER):      # a big buffer: 1.4x faster line splitting than GzipFile's own
             yield line.decode("utf-8", "replace").rstrip("\r\n")
 
 
 def text_lines(url):
     with _open(url) as r:
-        for line in io.TextIOWrapper(r, encoding="utf-8", errors="replace"):
+        METER.start(_size(r, url))
+        for line in io.TextIOWrapper(io.BufferedReader(_Count(r)), encoding="utf-8", errors="replace"):
             yield line.rstrip("\r\n")
 
 
 def zip_lines(url, member_suffix):
     with zipfile.ZipFile(_seekable(url)) as z:
         name = next(n for n in z.namelist() if n.endswith(member_suffix))
+        size = z.getinfo(name).compress_size
+        METER.start(size)
         with z.open(name) as f:
-            for line in io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace"):
+            for i, line in enumerate(io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace")):
+                if not i & 0x3FFF:                      # the member's compressed bytes still to read
+                    METER.done = size - getattr(f, "_compress_left", size)
                 yield line.rstrip("\r\n")
+            METER.done = size
 
 
 def tar_member_lines(url, member_suffix, comp="bz2"):
-    with _open(url) as r, tarfile.open(fileobj=r, mode="r|" + comp) as t:
+    with _open(url) as r, tarfile.open(fileobj=_Count(r), mode="r|" + comp) as t:
+        METER.start(_size(r, url))
         for m in t:
             if m.name.endswith(member_suffix):
                 f, rest = t.extractfile(m), b""          # a streamed member cannot seek: split lines by hand
@@ -232,7 +275,9 @@ class Taxonomy(Dataset):
 
     def rows(self, part, url, state):
         if part == "common names":
+            METER.start(len(state["common"]), "rows")
             return iter(state["common"])
+        METER.start(len(state["names"]), "rows")
         def gen():
             with tarfile.open(state["path"], "r:gz") as t:
                 for line in io.TextIOWrapper(t.extractfile("nodes.dmp"), encoding="utf-8", errors="replace"):
@@ -403,6 +448,7 @@ class Calendar(Dataset):
         return [("years", ""), ("dates", "")]
 
     def rows(self, part, url, state):
+        METER.start(sc.LAST_YEAR - sc.FIRST_YEAR + 1, "years")
         return iter(range(sc.FIRST_YEAR, sc.LAST_YEAR + 1))
 
     def facts(self, part, row, state):
@@ -444,7 +490,9 @@ class Series(Dataset):
                         raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the open slots are filled on the next run" % e.code)
                     time.sleep(max(self.GAP_S, int(e.headers.get("Retry-After") or 0)))
         state["_last"] = time.time()
-        return iter(sc.slot_facts(part, body["results"]["bindings"]))
+        found = sc.slot_facts(part, body["results"]["bindings"])
+        METER.start(len(found), "editions")
+        return iter(found)
 
     def facts(self, part, row, state):
         s, p, o, year, url = row
@@ -608,7 +656,8 @@ def run_dataset(commons_folder, key, max_rows=None):
     total_new, t_start = 0, time.time()
     try:
         state = ds.prepare(run)
-        for name, url in ds.parts():
+        plist = ds.parts()
+        for part_no, (name, url) in enumerate(plist, 1):
             url = run.url_override(key, name) or url
             pid, done_rows, pfacts, done = sh.part(name, url)
             if done:
@@ -617,9 +666,13 @@ def run_dataset(commons_folder, key, max_rows=None):
             sh.db.commit()
             row_no, buf, links, t0, log_from, log_new = 0, [], [], time.time(), done_rows, 0
             limit = None if max_rows is None else done_rows + max_rows
+            METER.start(0, "bytes")
             rows, end = iter(ds.rows(name, url, state)), object()
+            pg = {"part": name, "part_no": part_no, "parts": len(plist), "since": time.time(), "done_at_start": None}
             while row_no < done_rows and next(rows, end) is not end:    # resume: skip what an earlier run already saved
                 row_no += 1
+            side = shard_path(commons_folder, key) + ".progress"
+            _mark(sh, pg, row_no, side); sh.db.commit()
             facts_of, preds, rule, add = ds.facts, sh.preds, ds.rule, buf.append
             for raw in rows:
                 found = facts_of(name, raw, state)
@@ -634,7 +687,10 @@ def run_dataset(commons_folder, key, max_rows=None):
                         if lk and s in lk:
                             links.append((f, lk[s]))
                 row_no += 1
+                if not row_no & 0x1FFFF:                # about every 130,000 rows: the meter into a side file (no commit)
+                    _mark(None, pg, row_no, side)
                 if len(buf) >= BATCH:
+                    _mark(sh, pg, row_no, side)
                     new = sh.write(pid, buf, row_no, links)
                     total_new += new; log_new += new; buf, links = [], []
                     add = buf.append
@@ -646,6 +702,7 @@ def run_dataset(commons_folder, key, max_rows=None):
                         raise _Stop(why)
                 if limit is not None and row_no >= limit:
                     break
+            _mark(sh, pg, row_no, side)
             new = sh.write(pid, buf, row_no, links)
             total_new += new; log_new += new
             for series, year in state.pop("_filled", set()):
@@ -677,6 +734,25 @@ def run_dataset(commons_folder, key, max_rows=None):
         return {"dataset": key, "state": "failed", "why": str(e)[:300], "new": total_new}
     finally:
         sh.db.close()
+
+
+def _mark(sh, pg, row_no, side=None):
+    """the part's progress: into the shard's meta (committed with the next batch), or between batches into a small side
+    file — a commit there would cost about 8% of the agent's speed"""
+    if METER.unit != "bytes":
+        METER.done = row_no
+    if pg["done_at_start"] is None:
+        pg["done_at_start"] = METER.done
+    pg.update(done=METER.done, total=METER.total, unit=METER.unit, rows=row_no, at=time.time())
+    if sh is not None:
+        sh.set_meta("progress", pg)
+    if side:
+        try:
+            with open(side + ".tmp", "w") as f:
+                json.dump(pg, f)
+            os.replace(side + ".tmp", side)
+        except OSError:
+            pass
 
 
 class _Stop(Exception):
@@ -757,6 +833,15 @@ def status(commons_folder, commons=None):
                 db = _ro(p)
                 meta = {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta")}
                 row.update(state=meta.get("state", "not started"), facts=meta.get("facts", 0) or 0, error=meta.get("error"))
+                pgm = meta.get("progress")
+                try:                                    # the side file is newer between batches
+                    with open(p + ".progress") as f:
+                        pgs = json.load(f)
+                    if not pgm or (pgs.get("at") or 0) > (pgm.get("at") or 0):
+                        pgm = pgs
+                except (OSError, ValueError):
+                    pass
+                row["progress"] = _progress(pgm, now)
                 for secs, k in ((60, "last_minute"), (3600, "last_hour")):
                     r = db.execute("SELECT facts FROM progress WHERE at <= ? ORDER BY at DESC LIMIT 1", (now - secs,)).fetchone()
                     first = db.execute("SELECT min(at) FROM progress").fetchone()[0]
@@ -764,6 +849,10 @@ def status(commons_folder, commons=None):
                     row[k] = max(0, row["facts"] - base)
                 row["parts"] = [dict(zip(("name", "rows", "facts", "done", "version", "finished"), r))
                                 for r in db.execute("SELECT name, rows, facts, done, version, finished FROM parts ORDER BY id")]
+                pg = row["progress"]
+                if pg:                                  # overall: every finished part counts, plus the share of the current one
+                    others = sum(1 for x in row["parts"] if x["done"] and x["name"] != pg["part"])
+                    pg["overall"] = 1.0 if row["state"] == "done" else round(min(1.0, (others + (pg["fraction"] or 0)) / max(1, pg["parts"])), 4)
                 if key == "wikidata-series":
                     row["slots"] = [dict(zip(("series", "expected", "filled"), r)) for r in
                                     db.execute("SELECT series, count(*), sum(filled) FROM slots GROUP BY series ORDER BY series")]
@@ -783,6 +872,20 @@ def status(commons_folder, commons=None):
     return {"version": VERSION, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "bytes": sum(d["bytes"] for d in out)}
+
+
+def _progress(pg, now):
+    """the saved meter → part and overall fraction, rate and time left (None when nothing is measured yet)"""
+    if not pg:
+        return None
+    total, done = pg.get("total") or 0, pg.get("done") or 0
+    frac = min(1.0, done / total) if total else None
+    secs = max(0.001, (pg.get("at") or now) - (pg.get("since") or now))
+    rate = max(0, done - (pg.get("done_at_start") or 0)) / secs if secs > 1 else None
+    eta = (total - done) / rate if rate and total and done < total else None
+    parts = pg.get("parts") or 1
+    overall = ((pg.get("part_no", 1) - 1) + (frac or 0)) / parts
+    return dict(pg, fraction=frac, overall=round(overall, 4), rate=rate, eta_s=round(eta) if eta else None)
 
 
 def _alive(commons_folder):
@@ -932,6 +1035,10 @@ def self_test():
         ok("PubChem: formula and mass per compound, plus SMILES and InChIKey; a capped run resumes where it stopped (no fact twice); "
            "fingerprints are the Commons' own", r1["state"] == "paused" and r2["state"] == "done" and pc["facts"] == 3000 * 2 + 2
            and pc["parts"][0]["rows"] == 3000 and len(stored) == 50 and same_fp, (r1, r2, pc["facts"], same_fp))
+        pg = pc.get("progress") or {}
+        ok("progress: each part measured on the publisher's own scale (compressed bytes of the file), with the overall share",
+           pg.get("unit") == "bytes" and pg.get("total") == os.path.getsize(os.path.join(tmp, "CID-Mass.gz")) and pg.get("fraction") == 1.0
+           and pg.get("part") == "CID-Mass" and pg.get("overall") == 1.0, pg)
         hits = search(cf, "PubChem CID 2244")
         ok("search: a compound's facts with dataset, row and the PubChem page", any(h["predicate"] == "SMILES" and h["link"].endswith("/compound/2244")
                                                                                        and h["provenance"].startswith("CID-SMILES, row 1") for h in hits), hits[:2])

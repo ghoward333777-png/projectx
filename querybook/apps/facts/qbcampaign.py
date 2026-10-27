@@ -233,7 +233,7 @@ def _progress(c, camp):
         return None
     m = int(camp.get("mark") or 0)
     rows = c.store.query("""SELECT action, app, sum(new) AS new, sum(items) AS items, count(*) AS tasks, sum(decision = 'failed') AS failed
-                            FROM harvest_log WHERE id > ? GROUP BY action, app""", (m,))
+                            FROM harvest_log WHERE id > ? AND action NOT LIKE 'bulk:%' GROUP BY action, app""", (m,))   # bulk agents run outside campaigns
     per_h = {h: {"new": 0, "items": 0, "tasks": 0, "failed": 0} for h in camp["harvesters"]}
     per_a = {a: {"new": 0, "tasks": 0} for a in camp["apps"]}
     for r in rows:

@@ -84,6 +84,12 @@ DOCS = {
                          "API), newest first.", {}, "read", "control"),
     "/api/panel/alerts": ("Audit and logs", "Alerts", "What the monitor found (stopped applications, failing harvests, filters too "
                           "strict).", {}, "read", "control"),
+    # outside connections
+    "/api/connections": ("Outside connections", "Every outside service", "Each service the suite connects to: what for, which "
+                         "program, the key it needs (set or not — never the key), the registry source and when it was last used.",
+                         {}, "read", "control"),
+    "/api/connections/test": ("Outside connections", "Test a connection", "One request to the service's public address, without "
+                              "any key (free): reachable, how fast. all: true tests every one.", {"id": "wikidata-api"}, "read", "control"),
     # about
     "/api/self/ask": ("About QueryBook", "Ask QueryBook about itself", "An answer from its design document, checked against its own "
                       "files, with sources and status (built, partly built, specified).", {"q": "what can you harvest?"}, "read", "all"),

@@ -39,10 +39,11 @@ import qbexemplar
 import qbcampaign
 import qbbulk
 import qbapidoc
+import qbconnections
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 PORT = 8100
 program_dir = HERE
 
@@ -89,7 +90,8 @@ class Panel:
         self.api = core.Api()
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
-        qbbulk.add_routes(self.api, self.commons, HERE)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
+        qbbulk.add_routes(self.api, self.commons, HERE)
+        qbconnections.add_routes(self.api, self.commons)    # every outside service the suite connects to (/api/connections)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
                               lambda: set(ol.HARVESTERS), HERE)
@@ -310,7 +312,12 @@ class Panel:
         rows = {r["domain"]: r for r in q.query(
             "SELECT domain, count(*) AS n, sum(created >= ?) AS m, sum(created >= ?) AS h, sum(created >= ?) AS d, "
             "sum(status IN ('verified', 'corroborated')) AS strong FROM facts GROUP BY domain", (ago(60), ago(3600), ago(86400)))}
-        bulk = qbbulk.by_area(self.commons.folder)          # the bulk shards: whole open datasets (counted from their own totals)
+        bst = qbbulk.status(self.commons.folder)          # the bulk shards: whole open datasets (counted from their own totals)
+        bulk = {}
+        for d in bst["datasets"]:
+            ab = bulk.setdefault(d["area"], {"facts": 0, "last_minute": 0, "last_hour": 0})
+            for k in ab:
+                ab[k] += d[k]
         areas = []
         for a, meta in APPS.items():
             r = rows.pop(meta["domain"], None) or {}
@@ -327,7 +334,42 @@ class Panel:
                 "total": sum(x["facts"] for x in areas) + other["facts"],
                 "last_minute": sum(x["last_minute"] for x in areas) + other["last_minute"],
                 "last_hour": sum(x["last_hour"] for x in areas) + other["last_hour"],
-                "latest": [dict(f, object=str(f["object"])[:80]) for f in latest], "own_refreshed": self._own_at}
+                "latest": [dict(f, object=str(f["object"])[:80]) for f in latest], "own_refreshed": self._own_at,
+                "active": self.active_harvests(bst, now)}
+
+    def active_harvests(self, bst, now):
+        """every harvest in action, each with its own scale: a bulk dataset (bytes of the publisher's file, or rows), an
+        application's harvest turn (tasks of its plan), a campaign with a goal (new facts of the goal)"""
+        out = []
+        for d in bst["datasets"]:
+            pg = d.get("progress")
+            if d["state"] != "running" or not pg:
+                continue
+            out.append({"kind": "bulk", "id": d["key"], "title": d["title"], "area": d["area"], "fraction": pg.get("overall"),
+                        "part": pg.get("part"), "part_no": pg.get("part_no"), "parts": pg.get("parts"), "part_fraction": pg.get("fraction"),
+                        "done": pg.get("done"), "total": pg.get("total"), "unit": pg.get("unit"), "rate": pg.get("rate"), "eta_s": pg.get("eta_s"),
+                        "facts_per_min": d["last_minute"], "facts": d["facts"]})
+        recent = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now - 3 * 3600))
+        for pl in self.commons.store.query("SELECT id, app, created FROM plans WHERE status = 'running' AND created >= ? ORDER BY id", (recent,)):
+            ts = self.commons.store.query("SELECT status, title, started, finished FROM tasks WHERE plan_id = ? ORDER BY step", (pl["id"],))
+            if not ts:
+                continue
+            fin = [t for t in ts if t["status"] in ("done", "failed", "skipped")]
+            cur = next((t["title"] for t in ts if t["status"] == "running"), None)
+            out.append({"kind": "turn", "id": "turn:%s" % pl["app"], "title": "%s — harvest turn" % APPS.get(pl["app"], {}).get("name", pl["app"]),
+                        "area": APPS.get(pl["app"], {}).get("domain"), "fraction": len(fin) / len(ts), "done": len(fin), "total": len(ts),
+                        "unit": "tasks", "detail": cur, "rate": None, "eta_s": None})
+        try:
+            cs = qbcampaign.status(self.commons)
+            for camp in cs.get("campaigns") or []:
+                g, prog = int(camp.get("goal") or 0), camp.get("progress") or {}
+                if camp.get("status") == "running" and g > 0:
+                    n = prog.get("new_facts") or 0
+                    out.append({"kind": "campaign", "id": "campaign:%s" % camp["id"], "title": "Campaign — %s" % camp["name"], "area": None,
+                                "fraction": min(1.0, n / g), "done": n, "total": g, "unit": "facts", "rate": None, "eta_s": None})
+        except Exception as e:
+            self.log("ticker campaigns:", repr(e))
+        return out
 
     # ------------------------------------------------------------------ the master API page
     def apis(self):
@@ -793,6 +835,23 @@ def selftest():
         check("API page: Try it runs a call and returns its answer; only /api/ endpoints; the call is in the audit trail",
               tr["ok"] and "areas" in tr["result"] and sr["result"]["facts"] and bad
               and any(x["action"].startswith("control GET /api/panel/ticker") for x in p.api.routes[("GET", "/api/panel/audit")]({})["audit"]), sr)
+        cn = p.api.routes[("GET", "/api/connections")]({})
+        ids = {c["id"] for c in cn["connections"]}
+        check("connections: every outside service in one list — key set or not (never the key), registry approval, kinds",
+              len(cn["connections"]) >= 30 and {"wikidata-api", "perplexity", "anthropic", "openai", "gemini", "elevenlabs", "github"} <= ids
+              and all(c["key_status"] in ("set", "not set", "no key needed", "kept in the program") for c in cn["connections"])
+              and next(c for c in cn["connections"] if c["id"] == "wikidata-api")["approved"] is True
+              and "connections" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(), sorted(ids)[:5])
+        with co.store.write() as db:
+            pid_ = db.execute("INSERT INTO plans(app, strategy_id, created, status, summary) VALUES('facts', NULL, ?, 'running', '3 tasks')",
+                              (core.now_cs(),)).lastrowid
+            for i, st_ in enumerate(("done", "running", "queued"), 1):
+                db.execute("INSERT INTO tasks(plan_id, app, step, action, title, status) VALUES(?, 'facts', ?, 'x', ?, ?)", (pid_, i, "task %d" % i, st_))
+        act = p.ticker()["active"]
+        turn = next((a for a in act if a["kind"] == "turn"), None)
+        check("harvests in action: a running harvest turn shows its own scale (tasks of its plan) and the task it is on",
+              turn and turn["done"] == 1 and turn["total"] == 3 and turn["unit"] == "tasks" and turn["detail"] == "task 2"
+              and "tkActive" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(), act)
         oa = p.api.routes[("GET", "/api/openapi.json")]({})
         check("OpenAPI: every endpoint, the explained ones with their summary and example", oa["openapi"].startswith("3")
               and oa["paths"]["/api/bulk/start"]["post"]["summary"] == "Start bulk agents"

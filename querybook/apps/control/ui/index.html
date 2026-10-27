@@ -61,7 +61,7 @@
   @media (max-width: 760px) { .tk-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .tk { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; min-width: 0; }
   .tk .nm { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
-  .tk .n { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; transition: color .6s; }
+  .tk .n { font-size: clamp(19px, 5.4vw, 26px); font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; transition: color .6s; }
   .tk .n.up { color: var(--good); }
   .tk .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .tk.total { border-color: var(--accent); }
@@ -69,6 +69,19 @@
   .tk-live.on { background: var(--good); animation: tkpulse 2s infinite; }
   @keyframes tkpulse { 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { .tk-live.on { animation: none; } .tk-feed span { animation: none !important; } }
+  .tk-active { margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 6px 14px; }
+  .tk-active:empty { display: none; }
+  .hv { font-size: 12.5px; min-width: 0; }
+  .hv .top { display: flex; gap: 6px; align-items: baseline; }
+  .hv .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .hv .pct { font-variant-numeric: tabular-nums; font-weight: 650; }
+  .hv .bar2 { position: relative; height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin: 3px 0 1px;
+    background-image: repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+  .hv .bar2 > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .8s ease; }
+  .hv .bar2.turn > i { background: var(--good); } .hv .bar2.campaign > i { background: var(--warn); }
+  .hv .scale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hv .sub { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; line-height: 1.35; }
+  @media (prefers-reduced-motion: reduce) { .hv .bar2 > i { transition: none; } }
   .tk-feed { margin-top: 6px; overflow: hidden; white-space: nowrap; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
   .tk-feed span { display: inline-block; padding-left: 100%; animation: tkscroll 60s linear infinite; }
   .tk-feed:hover span { animation-play-state: paused; }
@@ -91,12 +104,13 @@
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="self">Self-knowledge</button>
   <button data-tab="bulk">Bulk harvesting</button>
-  <button data-tab="apis">API</button>
+  <button data-tab="apis">API &amp; connections</button>
   <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
 </nav>
 <div class="ticker" id="ticker" aria-live="off">
   <div class="tk-row" id="tk-row"></div>
+  <div class="tk-active" id="tk-active" aria-label="Harvests in action"></div>
   <div class="tk-feed" id="tk-feed" title="The latest facts to land in the shared store (hover to pause)"><span></span></div>
 </div>
 <div class="layout">
@@ -259,6 +273,13 @@
         the admin passphrase. Every program also describes itself at <span class="mono">/api/routes</span> and
         <span class="mono">/api/openapi.json</span> (for Postman, Insomnia and code generators).</p>
       <div id="api-progs" class="row"></div>
+      <h3>Outside connections <span class="small muted" id="cn-summary"></span></h3>
+      <p class="muted small">Every service outside this computer the suite talks to — what for, which program, whether its key is set (keys
+        are never shown) and when it was last used. <b>Test</b> sends one request to the service's public address without any key, so it costs
+        nothing.</p>
+      <div class="row"><select id="cn-cat"><option value="">All kinds</option></select>
+        <button class="btn quiet" id="cn-test-all">Test all</button></div>
+      <div id="cn-table"></div>
       <h3>Start here</h3>
       <div id="api-recipes" class="recipes"></div>
       <div id="api-try"></div>

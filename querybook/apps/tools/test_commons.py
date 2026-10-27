@@ -148,10 +148,11 @@ def main():
         reg.ensure("stem", {"constants": 40})
         c.check("registry: seeded sources with licence classes", reg.source("webster-1913")["status"] == "approved"
                 and reg.source("muse-bilingual")["status"] == "blocked" and reg.source("news-headlines")["status"] == "blocked")
-        approved = set(hv.ADMIN_DECISIONS[0][3])
-        held = set(hv.ADMIN_DECISIONS[1][3])
-        c.check("admin decision 2026-10-19: the approved researched sources are approved, with the admin's words and conditions",
-                all(reg.source(k)["status"] == "approved" and reg.source(k)["decided_by"] == "admin" and "2026-10-19" in reg.source(k)["reason"] for k in approved))
+        approved = {k for d in hv.ADMIN_DECISIONS if d[2] == "approved" for k in d[3]}
+        held = {k for d in hv.ADMIN_DECISIONS if d[2] == "pending" for k in d[3]}
+        c.check("admin decisions (2026-10-19, 2026-10-27): the approved researched sources are approved, with the admin's words and date",
+                all(reg.source(k)["status"] == "approved" and reg.source(k)["decided_by"] == "admin" and
+                    next(d[0] for d in hv.ADMIN_DECISIONS if k in d[3]) in reg.source(k)["reason"] for k in approved))
         c.check("admin decision: sources with a copyright risk a program cannot check are held back, with why",
                 all(reg.source(k)["status"] == "pending" and "Held back" in reg.source(k)["reason"] for k in held) and not reg.check("fsi-courses")[0])
         c.check("admin decision: every approval is a policy version", sum(1 for v in reg.versions(200) if v["change"].get("status") == "approved") == len(approved))
@@ -359,7 +360,8 @@ def main():
             c.check("keyed: Europeana keeps named creators, drops link-only ones", ("Europeana record \u201cMap of Europe\u201d (/9200/abc)", "creator", "Abraham Ortelius") in eu
                     and not any(i[2].startswith("http") for i in eu))
             st = ol.key_status(tmp)
-            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st if k["service"] != "gemini") and st[0]["hint"] == "\u20261234" and
+            c.check("keys: stored owner-only, shown only as a hint", all(k["set"] for k in st if k["service"] in ("api.data.gov", "nara", "dpla", "europeana"))
+                    and not any(k["set"] for k in st if k["service"] in ("gemini", "perplexity", "anthropic", "openai")) and st[0]["hint"] == "\u20261234" and
                     (os.name == "nt" or (os.stat(os.path.join(tmp, "api-keys.json")).st_mode & 0o077) == 0))
             ol.save_key(tmp, "api.data.gov", "")
 
