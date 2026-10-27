@@ -620,6 +620,25 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## The fact gatherer: LLM web search, checked on the page (`_core/qbgather.py`)
+
+The admin's rule (27 October 2026): facts *gathered* by an LLM may be used; facts *generated* by one may not. The gatherer
+asks an LLM with web search (Gemini with Google Search; Perplexity, OpenAI and Claude are wired the same way) a question,
+then checks every proposed fact itself: only the pages the provider's search returned count (a URL the model writes never
+does); QueryBook fetches each page (robots.txt respected, admin's blocked sites skipped) and keeps a fact only when the page
+states the value — dates and numbers in their usual written forms — within 600 characters of the subject's main words.
+Each confirming site is a piece of evidence (one site → sourced, two or more → corroborated); the provider, model and
+question go into the reasoning; no page wording is stored; every run is in the harvest log; daily budgets per provider.
+For Gemini it asks in two steps (a grounded answer first, then that answer as short facts) — asked for JSON at once, Gemini
+answered from memory without searching, and the checker rightly kept none of it.
+
+First live test (4 questions, Gemini 3.5 Flash): 24 facts proposed, 21 confirmed and kept (9 corroborated, 12 sourced), 3
+dropped because no returned page stated them. Limit: the check proves the page states the value next to the subject, not
+the exact relation (a swapped winner/loser would pass on a page naming both teams) — facts confirmed by one site only are
+best treated as "sourced, check before relying".
+
+    python qbgather.py ask --commons <shared folder> --provider gemini --area history "Who won Super Bowl LX?"
+
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
 Examples QueryBook learns from, kept in the shared folder (`exemplars/`), each frozen by its SHA-256 with where it came from.
