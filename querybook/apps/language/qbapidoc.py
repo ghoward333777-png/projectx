@@ -54,6 +54,9 @@ DOCS = {
                         {"datasets": ["calendar-scaffold", "usgs-gnis"], "agents": 4, "passphrase": ""}, "admin", "control"),
     "/api/bulk/stop": ("Bulk harvesting", "Stop bulk agents", "Every agent stops after its current batch and resumes there next time.",
                        {}, "changes", "control"),
+    "/api/keystones": ("Bulk harvesting", "Coverage map (keystone domains)", "The 20 keystone domains with the facts held in each "
+                       "(measured), the sources feeding them, novelty from the harvest log, the state (not started, growing, saturated), "
+                       "the priority the bulk runner follows and suggested questions for the fact gatherer.", {}, "read", "control"),
     # campaigns
     "/api/campaigns": ("Campaigns", "Campaigns and Google tools", "Saved campaigns, the master switch, the Google exemplar tools and "
                        "their runner.", {}, "read", "all"),

@@ -26,6 +26,7 @@ import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, re, shutil, sq
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
 import qbscaffold as sc  # noqa: E402
+import qbkeystone as ks  # noqa: E402
 
 VERSION = "1.0.0"
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
@@ -735,6 +736,7 @@ class WikidataDump(Dataset):
         self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
         db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
         db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
         db.commit()
         return {"_labeldb": db, "_labelbuf": []}
 
@@ -749,11 +751,16 @@ class WikidataDump(Dataset):
             self._flush(state)
 
     def _flush(self, state):
-        buf, db = state.get("_labelbuf"), state.get("_labeldb")
-        if buf and db is not None:
+        buf, db, kc = state.get("_labelbuf"), state.get("_labeldb"), state.get("_kc")
+        if db is None:
+            return
+        if buf:
             db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
-            db.commit()
             buf.clear()
+        if kc:
+            db.executemany("INSERT INTO keystones(k, facts) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET facts = facts + excluded.facts", kc.items())
+            kc.clear()
+        db.commit()
 
     @staticmethod
     def value(dv):
@@ -792,8 +799,9 @@ class WikidataDump(Dataset):
         buf.append((int(q[1:]), lab))
         if len(buf) >= 200_000:
             self._flush(state)
+        claims = e.get("claims") or {}
         s, out, props = "%s (%s)" % (lab, q), [], self.PROPS
-        for p, sts in (e.get("claims") or {}).items():
+        for p, sts in claims.items():
             name = props.get(p)
             if not name:
                 continue
@@ -806,11 +814,30 @@ class WikidataDump(Dataset):
                         out.append((s, name, v))
         if out:
             state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
+            cls = {((x.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") for x in claims.get("P31", ())}
+            k = ks.entity_keystone(cls - {None}, claims.keys())
+            if k:                                       # measured coverage per keystone domain (qbkeystone)
+                kc = state.setdefault("_kc", {})
+                kc[k] = kc.get(k, 0) + len(out)
         return out
 
     def link(self, subject):
         m = re.search(r"\((Q\d+)\)$", subject)
         return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
+
+
+def lane_keystones(commons_folder, key):
+    """{keystone: facts} a Wikidata lane has counted (qbkeystone.coverage scales it to the shard's count)"""
+    p = shard_path(commons_folder, key) + ".labels"
+    if not os.path.exists(p):
+        return {}
+    db = _ro(p)
+    try:
+        return dict(db.execute("SELECT k, facts FROM keystones"))
+    except sqlite3.Error:
+        return {}
+    finally:
+        db.close()
 
 
 QID = re.compile(r"\bQ(\d+)\b")
@@ -988,7 +1015,12 @@ def run_dataset(commons_folder, key, max_rows=None):
         if "registry" in why:
             run.log("all parts", 0, 0, 0, 0, 0, "blocked", why)
         return {"dataset": key, "state": "blocked" if "registry" in why else "stopped", "why": why}
-    total_new, t_start = 0, time.time()
+    total_new, t_start, filtered = 0, time.time(), 0
+    import qbcontrol as ctl
+    flt = ctl.get(run.commons, "filter")
+    flt = flt if ctl.active("filter", flt) else None
+    area = AREA[ds.app]
+    ev = [{"licence_class": run.commons.registry.check(ds.source)[1] if ds.source else "computed"}]
     try:
         state = ds.prepare(run)
         plist = ds.parts()
@@ -1011,6 +1043,10 @@ def run_dataset(commons_folder, key, max_rows=None):
             facts_of, preds, rule, add = ds.facts, sh.preds, ds.rule, buf.append
             for raw in rows:
                 found = facts_of(name, raw, state)
+                if flt:                                 # the Control Panel's filter binds bulk facts too
+                    kept = [f for f in found if ctl.check_item({"subject": f[0], "predicate": f[1], "object": f[2], "evidence": ev}, flt, area) is None]
+                    filtered += len(found) - len(kept)
+                    found = kept
                 lk = state.get("_links")
                 for s, p, o in found:
                     if s and o:
@@ -1049,14 +1085,16 @@ def run_dataset(commons_folder, key, max_rows=None):
             if finished:
                 sh.db.execute("UPDATE parts SET done = 1, finished = ? WHERE id = ?", (core.now_iso(), pid))
             sh.db.commit()
-            run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0)
+            run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0,
+                    reason=(ds.why + "; %d facts left out by the Control Panel's filter" % filtered) if filtered else None)
             state.pop("_links", None)
             why = run.stopped()
             if why:
                 raise _Stop(why)
         all_done = all(d for (d,) in sh.db.execute("SELECT done FROM parts"))
         sh.set_meta("state", "done" if all_done else "paused"); sh.set_meta("finished", core.now_iso()); sh.db.commit()
-        return {"dataset": key, "state": "done" if all_done else "paused", "new": total_new, "seconds": round(time.time() - t_start, 1)}
+        return {"dataset": key, "state": "done" if all_done else "paused", "new": total_new, "filtered": filtered,
+                "seconds": round(time.time() - t_start, 1)}
     except _Stop as e:
         sh.set_meta("state", "stopped"); sh.set_meta("error", str(e)); sh.db.commit()
         return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new}
@@ -1318,6 +1356,8 @@ def start(commons, keys, agents, passphrase, program_dir):
     keys = [k for k in (keys or list(catalog())) if k in catalog()]
     if not keys:
         raise ValueError("Choose at least one dataset.")
+    import qbcontrol as ctl, qbkeystone as ks
+    keys = ks.order(keys, commons.folder, commons, ctl.get(commons, "target"))   # the admin's target, then keystone priority
     agents = MAX_AGENTS if not agents or int(agents) <= 0 else max(1, min(int(agents), MAX_AGENTS))   # 0 = full speed
     path = os.path.join(program_dir, "qbbulk.py")
     kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
@@ -1344,13 +1384,19 @@ def add_routes(api, commons, program_dir):
     @api.post("/api/bulk/start")
     def bulk_start(p):
         try:
-            return start(commons, p.get("datasets"), p.get("agents") or 4, p.get("passphrase"), program_dir)
+            return start(commons, p.get("datasets"), p.get("agents", 4), p.get("passphrase"), program_dir)   # 0 = full speed
         except ValueError as e:
             raise core.UserError(str(e))
 
     @api.post("/api/bulk/stop")
     def bulk_stop(p):
         return stop(commons)
+
+    @api.get("/api/keystones")
+    def keystones(p):
+        import qbkeystone as ks
+        cov = ks.coverage(commons.folder, commons)
+        return dict(cov, probes=ks.probes(cov["keystones"]))
 
     @api.get("/api/bulk/search")
     def bulk_search(p):
@@ -1516,6 +1562,29 @@ def self_test():
            dd == {"wikidata-dump-2": 6} and len(search(cf, "Albert Einstein")) == 2 and dedupe(cf) == {}, dd)
         ar = by_area(cf)
         ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5 + 6, ar)   # 5 series + 6 from the dump fixture
+        import qbcontrol as ctl
+        kc = lane_keystones(cf, "wikidata-dump-1")
+        ok("keystones: each Wikidata entity's facts counted under its domain (no class given: a date of birth means a person)",
+           kc == {"human_individuals": 6}, kc)
+        cov = ks.coverage(cf, c)
+        row = {r["key"]: r for r in cov["keystones"]}
+        ok("coverage is measured from the facts held, with each keystone's sources and state",
+           row["human_individuals"]["facts"] == 6 and "wikidata" in row["human_individuals"]["feeds"]
+           and row["chemistry_materials"]["facts"] >= 3000 and row["astronomy"]["state"] == "not started", [(r["key"], r["facts"]) for r in cov["keystones"]][:6])
+        o = ks.order(["usgs-gnis", "pubchem-computed", "calendar-scaffold"], cf, c, {"sources": ["usgs-gnis"]})
+        ok("runner order: the admin's target first, then keystone priority", o[0] == "usgs-gnis" and len(o) == 3, o)
+        for x in ("wikidata-dump-1", "wikidata-dump-2"):
+            for ext in ("", "-wal", "-shm", ".labels", ".progress"):
+                if os.path.exists(shard_path(cf, x) + ext):
+                    os.remove(shard_path(cf, x) + ext)
+        with c.store.write() as db:
+            c.set_setting(ctl.FILTER_KEY, json.dumps({"exclude_words": ["united states"]}), db)
+        r = run_dataset(cf, "wikidata-dump-1")
+        hits = search(cf, "Albert Einstein")
+        ok("the Control Panel's filter binds bulk facts too (and the harvest log says how many it left out)",
+           r["filtered"] == 2 and not search(cf, "United States") and len(hits) == 2
+           and c.store.scalar("SELECT count(*) FROM harvest_log WHERE action = 'bulk:wikidata-dump-1' AND reason LIKE '%left out by the Control Panel%'", default=0) >= 1,
+           (r, hits))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return out

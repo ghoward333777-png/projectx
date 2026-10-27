@@ -19,6 +19,12 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.9.0 - coverage map and priorities (adopted from the UFCS prototype's planner, now measured)
+    * Bulk harvesting -> Coverage map: 20 keystone domains in 5 phases with the facts actually held in each, the sources
+      feeding them, measured novelty and state (growing / saturated). The bulk runner starts datasets in this order - your
+      Control Panel target first. The fact gatherer offers suggested questions for the growing domains.
+    * The Control Panel's fact filter now binds bulk harvesting too (the harvest log says how many facts it left out).
+    * Fix: the Full speed button really uses every core (1.8.0 sent it as 4 agents).
   Control Panel 1.8.0 - the whole of Wikidata, at full speed
     * Bulk harvesting -> Wikidata (16 lanes): the weekly Wikidata dump (157 GB, CC0) read in 1 GB byte ranges by up to 16
       agents at once - people, places, works, organisations, taxa and their dates. Measured: one lane about 10,000 facts a

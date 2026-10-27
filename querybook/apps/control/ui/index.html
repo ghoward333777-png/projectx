@@ -304,6 +304,12 @@
         <input type="password" id="bk-pass" placeholder="Admin passphrase" style="width:14em">
         <button class="btn" id="bk-full" title="Every approved dataset, including all 16 Wikidata lanes, one agent per CPU core">⚡ Full speed</button><button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
         <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
+      <h3>Coverage map — 20 keystone domains</h3>
+      <p class="muted small">What the harvest should cover, measured: facts held per domain (shards and shared facts), the sources feeding it,
+        novelty (new facts per record read, from the harvest log) and the state. Bulk agents start in this order — the Control Panel's target
+        first, then foundational domains (phase 0) and those unlocking the most, the least covered first. Saturated: under 1% new over a million
+        records read.</p>
+      <div id="ks-table" class="small"></div>
       <h3>Scaffold slots — recurring events</h3><div id="bk-slots" class="small"></div>
       <h3>Fact gatherer — LLM web search, checked on the page</h3>
       <p class="muted small">An LLM with web search only <i>finds</i>: QueryBook fetches the pages the search returned and keeps a fact only when
@@ -313,7 +319,7 @@
       <div id="ga-providers" class="row small"></div>
       <div class="row"><select id="ga-provider"></select>
         <select id="ga-area"><option value="history">History &amp; News</option><option value="stem">STEM</option><option value="language">Language</option></select>
-        <input id="ga-q" placeholder="Ask — e.g. Who won the 2026 Nobel Prize in Literature?" style="flex:1"><button class="btn" id="ga-ask">Ask and check</button></div>
+        <select id="ga-probe" style="max-width:16em"><option value="">Suggested questions…</option></select><input id="ga-q" placeholder="Ask — e.g. Who won the 2026 Nobel Prize in Literature?" style="flex:1"><button class="btn" id="ga-ask">Ask and check</button></div>
       <div class="row small"><span>Fill open scaffold slots:</span><select id="ga-series"><option value="">every series, newest first</option></select>
         <label>how many <input type="number" id="ga-limit" min="1" max="50" value="5" style="width:4em"></label><button class="btn quiet" id="ga-slots">Fill slots</button>
         <span class="muted" id="ga-open"></span></div>

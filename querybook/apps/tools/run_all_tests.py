@@ -3,7 +3,7 @@
 import os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUNS = [["tools/test_core.py"], ["tools/test_commons.py"], ["tools/test_devices.py"], ["tools/test_agents.py"], ["tools/test_engineer.py"], ["_core/qbbulk.py", "self-test"], ["_core/qbgather.py", "self-test"], ["language/app.py", "--selftest"], ["stem/app.py", "--selftest"], ["facts/app.py", "--selftest"], ["control/app.py", "--selftest"]]
+RUNS = [["tools/test_core.py"], ["tools/test_commons.py"], ["tools/test_devices.py"], ["tools/test_agents.py"], ["tools/test_engineer.py"], ["_core/qbbulk.py", "self-test"], ["_core/qbgather.py", "self-test"], ["_core/qbkeystone.py"], ["language/app.py", "--selftest"], ["stem/app.py", "--selftest"], ["facts/app.py", "--selftest"], ["control/app.py", "--selftest"]]
 
 if __name__ == "__main__":
     failed = []

@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); } if (id === "apis") loadApis().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); } if (id === "apis") loadApis().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -175,6 +175,16 @@ async function loadBulk() {
     : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
 }
 // ---- the fact gatherer
+async function loadKeystones() {
+  const k = await api("/api/keystones");
+  const st = { "growing": "ok", "saturated": "warn", "not started": "" };
+  $("#ks-table").innerHTML = `<table class="t small"><tr><th>#</th><th>Domain</th><th>Phase</th><th>Facts held</th><th>Fed by</th><th>Novelty</th><th>State</th><th>Unlocks</th></tr>` +
+    k.keystones.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.label)}</td><td>${r.phase ?? ""}</td><td>${fmt(r.facts)}</td><td>${esc(r.feeds.join(", ") || "—")}</td>
+      <td>${r.novelty == null ? "—" : (r.novelty * 100).toFixed(r.novelty < 0.1 ? 2 : 0) + "%"}</td><td><span class="badge ${st[r.state] || ""}">${esc(r.state)}</span></td>
+      <td class="muted">${esc(r.unlocks.join(", "))}</td></tr>`).join("") + `</table>`;
+  const ps = $("#ga-probe");
+  ps.innerHTML = `<option value="">Suggested questions…</option>` + k.probes.map(p => `<option>${esc(p.question)}</option>`).join("");
+}
 async function loadGather() {
   const g = await api("/api/gather"), sel = $("#ga-provider"), keep = sel.value;
   sel.innerHTML = g.providers.map(p => `<option value="${p.id}" ${p.key_set ? "" : "disabled"}>${esc(p.id)} (${esc(p.model)})${p.key_set ? "" : " — no key"}</option>`).join("");
@@ -253,7 +263,8 @@ function bind() {
     try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
     $("#cn-test-all").disabled = false; };
   $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
-  $("#bk-refresh").onclick = () => { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); };
+  $("#bk-refresh").onclick = () => { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); };
+  $("#ga-probe").onchange = () => { if ($("#ga-probe").value) $("#ga-q").value = $("#ga-probe").value; };
   $("#ga-ask").onclick = () => gatherStart({ mode: "ask", area: $("#ga-area").value, question: $("#ga-q").value });
   $("#ga-slots").onclick = () => gatherStart({ mode: "slots", series: $("#ga-series").value, limit: +$("#ga-limit").value || 5 });
   $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);

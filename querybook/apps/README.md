@@ -620,6 +620,31 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## Keystone coverage and priorities (`_core/qbkeystone.py`, Control Panel 1.9.0)
+
+Adopted from the UFCS prototype's planning engine after reading its specification: its 20 keystone domains in five phases
+(phase 0 mathematics, scientific concepts, technology, languages … phase 4 products, food, transport), the "unlocks" graph
+and the priority score (phase weight + 120 per transitive unlock + 60 per direct unlock), and its growth / saturation
+states. What changed, so it complies with UFCS rules and actually steers the harvest:
+
+* **Measured, not estimated.** Facts held per keystone are counted from the shards (each Wikidata entity is classed by its
+  "instance of", else by what it has — coordinates, taxon name, DOI, date of birth; unknown classes stay "other", never
+  guessed) and from the shared facts. Novelty is new facts per record read in the harvest log. A keystone is *saturated*
+  only after a million records read with under 1% new. The prototype's estimated yields and fixed contradiction rates are
+  not used.
+* **It steers collection.** The bulk runner starts datasets in this order (the admin's Control Panel target first; a
+  saturated keystone counts a quarter). The prototype's priorities stayed in the browser and never reached its importer.
+* **One definition** for every program (the prototype kept two copies that could drift). The unlock edges are QueryBook's
+  own (the specification did not list them).
+* **Probe questions** feed the fact gatherer (Control Panel → Fact gatherer → Suggested questions, growing domains
+  first). An LLM finds, the page must confirm: nothing is answered by the planner.
+* **The Control Panel filter now binds bulk facts** (it bound only the harvest teams before). Limit: a word filter sees a
+  Wikidata object as its Q-id, not its label.
+
+Not adopted, by design: the Partner-API importer pattern (no source of its own), a global cursor kept only in memory,
+counting conflict-updates as harvested facts, random IDs for records without one, confidence 1.0 by default (UFCS status
+comes from evidence), and the strategy page's descriptions of sweeps, sketches and reconciliation that had no code behind them.
+
 ## The whole of Wikidata, at full speed (Control Panel 1.8.0)
 
 `wikidata-dump-1` … `wikidata-dump-16`: the weekly entity dump (`latest-all.json.gz`, about 157 GB, CC0) is one gzip file
