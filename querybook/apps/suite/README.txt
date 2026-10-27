@@ -19,6 +19,10 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.7.0 - the fact gatherer, started and watched from the panel
+    * Bulk harvesting -> Fact gatherer: ask a question, or fill the scaffold's open recurring-event slots (Nobel Prizes, Super
+      Bowl, ...). An LLM with web search only finds; QueryBook keeps a fact only when a page it returned states it, now with a
+      relation check (a swapped winner and loser is refused). The run shows as a bar in the live ticker. Admin passphrase required.
   Control Panel 1.6.0 - harvests in action, outside connections
     * A mini progress bar for each harvest running (bulk datasets, harvest turns, campaigns), each with its own scale, speed and
       time left. API & connections tab: every outside service, its key (set or not), approval, last use, and a free reachability test.

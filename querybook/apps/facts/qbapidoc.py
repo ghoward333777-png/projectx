@@ -84,6 +84,14 @@ DOCS = {
                          "API), newest first.", {}, "read", "control"),
     "/api/panel/alerts": ("Audit and logs", "Alerts", "What the monitor found (stopped applications, failing harvests, filters too "
                           "strict).", {}, "read", "control"),
+    # the fact gatherer
+    "/api/gather": ("Fact gatherer", "The fact gatherer", "Providers (key set or not, requests used today), the run in progress, recent runs "
+                    "with each proposed fact and whether its page confirmed it, and the scaffold slots still open.", {}, "read", "control"),
+    "/api/gather/start": ("Fact gatherer", "Ask a question or fill open slots", "mode ask (question, area) or slots (series, limit). "
+                          "An LLM with web search finds; QueryBook keeps only facts the returned pages state. Spends on the provider's "
+                          "account: admin passphrase required.", {"mode": "ask", "provider": "gemini", "area": "history",
+                                                                   "question": "Who won the 2026 Nobel Prize in Literature?", "passphrase": ""},
+                          "admin", "control"),
     # outside connections
     "/api/connections": ("Outside connections", "Every outside service", "Each service the suite connects to: what for, which "
                          "program, the key it needs (set or not — never the key), the registry source and when it was last used.",

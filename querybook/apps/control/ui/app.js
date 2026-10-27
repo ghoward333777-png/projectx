@@ -6,7 +6,7 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") loadBulk().catch(e => toast(e.message)); if (id === "apis") loadApis().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); } if (id === "apis") loadApis().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
   show($("#" + t) ? t : "overview");
@@ -172,6 +172,27 @@ async function loadBulk() {
   $("#bk-slots").innerHTML = se && se.slots && se.slots.length ? se.slots.map(x => `${esc(x.series)}: ${fmt(x.filled)} of ${fmt(x.expected)} editions filled`).join(" · ")
     : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
 }
+// ---- the fact gatherer
+async function loadGather() {
+  const g = await api("/api/gather"), sel = $("#ga-provider"), keep = sel.value;
+  sel.innerHTML = g.providers.map(p => `<option value="${p.id}" ${p.key_set ? "" : "disabled"}>${esc(p.id)} (${esc(p.model)})${p.key_set ? "" : " — no key"}</option>`).join("");
+  sel.value = keep || (g.providers.find(p => p.key_set) || {}).id || "";
+  $("#ga-providers").innerHTML = g.providers.map(p => `<span class="pill">${esc(p.id)}: ${p.key_set ? `key set · ${p.used_today}/${p.budget} today` : "no key"}</span>`).join(" ") +
+    (g.approved ? "" : ` <span class="badge bad">source not approved in the registry</span>`);
+  const ss = $("#ga-series"), keepS = ss.value;
+  ss.innerHTML = `<option value="">every series, newest first</option>` + Object.entries(g.series).map(([k, n]) => `<option value="${k}">${esc(n)} (${g.open_slots[k]} open)</option>`).join("");
+  ss.value = keepS;
+  $("#ga-open").textContent = `${fmt(Object.values(g.open_slots).reduce((a, b) => a + b, 0))} editions still open`;
+  $("#ga-recent").innerHTML = g.recent.length ? `<table class="t small"><tr><th>When</th><th>Question</th><th>Kept</th><th>Facts (✓ confirmed on the page)</th></tr>` +
+    g.recent.map(r => `<tr><td>${esc((r.at || "").slice(0, 16).replace("T", " "))}<div class="muted">${esc(r.provider)}</div></td><td>${esc(r.question)}</td>
+      <td>${r.kept} of ${r.facts.length}<div class="muted">${r.pages.filter(p => p.read).length}/${r.pages.length} pages read</div></td>
+      <td>${r.facts.map(f => `${f.kept ? "✓" : "✗"} ${esc(f.subject)} — ${esc(f.predicate)}: <b>${esc(f.object)}</b>${f.kept ? "" : ` <span class="muted">(${esc(f.why)})</span>`}`).join("<br>")}</td></tr>`).join("") + "</table>"
+    : `<p class="muted small">No gathering runs yet.</p>`;
+}
+async function gatherStart(body) {
+  try { const r = await api("/api/gather/start", Object.assign({ provider: $("#ga-provider").value, passphrase: $("#bk-pass").value }, body)); toast(r.summary); loadGather(); }
+  catch (e) { toast(e.message); }
+}
 async function exApprove(ids) {
   let n = 0;
   try { for (const id of ids) { await api("/api/exemplars/approve", { id, passphrase: $("#ex-pass").value, note: "approved in the Control Panel" }); n++; } toast(n + " approved."); }
@@ -230,7 +251,9 @@ function bind() {
     try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
     $("#cn-test-all").disabled = false; };
   $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
-  $("#bk-refresh").onclick = () => loadBulk().catch(e => toast(e.message));
+  $("#bk-refresh").onclick = () => { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); };
+  $("#ga-ask").onclick = () => gatherStart({ mode: "ask", area: $("#ga-area").value, question: $("#ga-q").value });
+  $("#ga-slots").onclick = () => gatherStart({ mode: "slots", series: $("#ga-series").value, limit: +$("#ga-limit").value || 5 });
   $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);
   $("#bk-start").onclick = async () => { try { const r = await api("/api/bulk/start", { datasets: $$("[data-bk]:checked").map(b => b.dataset.bk),
       agents: +$("#bk-agents").value || 4, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
@@ -453,5 +476,5 @@ function openTry(program, method, path, params) {
 
 tabs(); bind(); load(); loadChat(); tick();
 setInterval(tick, 2000);
-setInterval(() => { if (document.visibilityState === "visible" && $("#bulk").classList.contains("active")) loadBulk().catch(() => {}); }, 5000);
+setInterval(() => { if (document.visibilityState === "visible" && $("#bulk").classList.contains("active")) { loadBulk().catch(() => {}); loadGather().catch(() => {}); } }, 5000);
 setInterval(() => { if (document.visibilityState === "visible") load(true); }, 10000);

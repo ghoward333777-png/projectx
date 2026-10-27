@@ -78,7 +78,7 @@
   .hv .bar2 { position: relative; height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin: 3px 0 1px;
     background-image: repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
   .hv .bar2 > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .8s ease; }
-  .hv .bar2.turn > i { background: var(--good); } .hv .bar2.campaign > i { background: var(--warn); }
+  .hv .bar2.turn > i { background: var(--good); } .hv .bar2.campaign > i { background: var(--warn); } .hv .bar2.gather > i { background: var(--bad); }
   .hv .scale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .hv .sub { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; line-height: 1.35; }
   @media (prefers-reduced-motion: reduce) { .hv .bar2 > i { transition: none; } }
@@ -305,6 +305,19 @@
         <button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
         <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
       <h3>Scaffold slots — recurring events</h3><div id="bk-slots" class="small"></div>
+      <h3>Fact gatherer — LLM web search, checked on the page</h3>
+      <p class="muted small">An LLM with web search only <i>finds</i>: QueryBook fetches the pages the search returned and keeps a fact only when
+        the page itself states it next to its subject (and, for relations like winner or born, with the right words in the right order). Each
+        confirming site is the fact's source; two sites make it corroborated. Runs spend on the provider's account, so starting needs the admin
+        passphrase.</p>
+      <div id="ga-providers" class="row small"></div>
+      <div class="row"><select id="ga-provider"></select>
+        <select id="ga-area"><option value="history">History &amp; News</option><option value="stem">STEM</option><option value="language">Language</option></select>
+        <input id="ga-q" placeholder="Ask — e.g. Who won the 2026 Nobel Prize in Literature?" style="flex:1"><button class="btn" id="ga-ask">Ask and check</button></div>
+      <div class="row small"><span>Fill open scaffold slots:</span><select id="ga-series"><option value="">every series, newest first</option></select>
+        <label>how many <input type="number" id="ga-limit" min="1" max="50" value="5" style="width:4em"></label><button class="btn quiet" id="ga-slots">Fill slots</button>
+        <span class="muted" id="ga-open"></span></div>
+      <div id="ga-recent"></div>
       <h3>Look up bulk facts</h3>
       <div class="row"><input id="bk-q" placeholder="Subject starts with… e.g. PubChem CID 2244 · Year 2030 · Nobel Prize in Physics 1921" style="flex:1">
         <button class="btn quiet" id="bk-go">Look up</button></div>

@@ -40,10 +40,11 @@ import qbcampaign
 import qbbulk
 import qbapidoc
 import qbconnections
+import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 PORT = 8100
 program_dir = HERE
 
@@ -91,7 +92,8 @@ class Panel:
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
         qbbulk.add_routes(self.api, self.commons, HERE)
-        qbconnections.add_routes(self.api, self.commons)    # every outside service the suite connects to (/api/connections)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
+        qbconnections.add_routes(self.api, self.commons)
+        qbgather.add_routes(self.api, self.commons, HERE)      # the fact gatherer: LLM web search, checked on the page (/api/gather)    # every outside service the suite connects to (/api/connections)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
                               lambda: set(ol.HARVESTERS), HERE)
@@ -359,6 +361,20 @@ class Panel:
             out.append({"kind": "turn", "id": "turn:%s" % pl["app"], "title": "%s — harvest turn" % APPS.get(pl["app"], {}).get("name", pl["app"]),
                         "area": APPS.get(pl["app"], {}).get("domain"), "fraction": len(fin) / len(ts), "done": len(fin), "total": len(ts),
                         "unit": "tasks", "detail": cur, "rate": None, "eta_s": None})
+        g = qbgather.running(self.commons.folder)
+        if g and g.get("alive"):
+            if g.get("mode") == "slots":
+                tot = g.get("slots_total") or 0
+                part = (g.get("pages_done") or 0) / g["pages_total"] if g.get("pages_total") else 0
+                frac = ((g.get("slots_done") or 0) + part) / tot if tot else None
+                out.append({"kind": "gather", "id": "gather", "title": "Fact gatherer — filling scaffold slots (%s)" % g.get("provider"), "area": "history",
+                            "fraction": frac, "done": g.get("slots_done") or 0, "total": tot, "unit": "slots",
+                            "detail": "%s — %s" % (g.get("slot") or "", g.get("stage") or ""), "rate": None, "eta_s": None})
+            else:
+                tot = g.get("pages_total") or 0
+                out.append({"kind": "gather", "id": "gather", "title": "Fact gatherer — %s" % (g.get("question") or "")[:80], "area": None,
+                            "fraction": (g.get("pages_done") or 0) / tot if tot else None, "done": g.get("pages_done") or 0, "total": tot,
+                            "unit": "pages checked", "detail": g.get("stage"), "rate": None, "eta_s": None})
         try:
             cs = qbcampaign.status(self.commons)
             for camp in cs.get("campaigns") or []:
@@ -852,6 +868,15 @@ def selftest():
         check("harvests in action: a running harvest turn shows its own scale (tasks of its plan) and the task it is on",
               turn and turn["done"] == 1 and turn["total"] == 3 and turn["unit"] == "tasks" and turn["detail"] == "task 2"
               and "tkActive" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(), act)
+        gs = p.api.routes[("GET", "/api/gather")]({})
+        try:
+            p.api.routes[("POST", "/api/gather/start")]({"question": "Who won Super Bowl LX?", "passphrase": "wrong"})
+            g_refused = False
+        except Exception:
+            g_refused = True
+        check("fact gatherer: four providers with key status and today's use, open scaffold slots counted; starting needs the admin passphrase",
+              [x["id"] for x in gs["providers"]] == ["gemini", "perplexity", "openai", "anthropic"] and gs["approved"] is True
+              and sum(gs["open_slots"].values()) > 500 and g_refused, [(x["id"], x["key_set"]) for x in gs["providers"]])
         oa = p.api.routes[("GET", "/api/openapi.json")]({})
         check("OpenAPI: every endpoint, the explained ones with their summary and example", oa["openapi"].startswith("3")
               and oa["paths"]["/api/bulk/start"]["post"]["summary"] == "Start bulk agents"

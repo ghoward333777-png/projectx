@@ -633,11 +633,27 @@ For Gemini it asks in two steps (a grounded answer first, then that answer as sh
 answered from memory without searching, and the checker rightly kept none of it.
 
 First live test (4 questions, Gemini 3.5 Flash): 24 facts proposed, 21 confirmed and kept (9 corroborated, 12 sourced), 3
-dropped because no returned page stated them. Limit: the check proves the page states the value next to the subject, not
-the exact relation (a swapped winner/loser would pass on a page naming both teams) — facts confirmed by one site only are
-best treated as "sourced, check before relying".
+dropped because no returned page stated them.
+
+**Relation check.** Beyond "the value is near the subject", the page must also support the relation: for directed
+predicates (winner, loser, before, after) the sentence's own structure must put the value on the right side ("X beat Y",
+"Y lost to X", "X won … title"), so a swapped winner and loser on a page naming both teams is refused; other relations need
+one of their cue words (born, died, founded, located, awarded …) within 250 characters. Limit: it is a sentence-pattern
+check, not full parsing — an unusual phrasing can drop a true fact (never keep a false one by design, but not proven).
+
+**Slot mode.** The scaffold's open recurring-event editions (Nobel prizes, Olympics, World Cup, Super Bowl, Best Picture,
+US elections) are asked in the scaffold's own wording, with its exact subject and predicate; an edition is marked filled
+only when a fact was confirmed on the pages. Live test (Gemini): the 2025 Nobel prizes in Physics, Chemistry, Medicine and
+Literature and Super Bowl 2025 — all five filled, every laureate and the winner correct, the winner confirmed by sentence
+direction.
+
+**Control Panel → Bulk harvesting → Fact gatherer:** the four providers (key set or not, requests today), a question box or
+"fill open slots" (series, how many), the run's progress as a bar in the live ticker, and recent runs with each proposed
+fact and whether its page confirmed it. Starting spends on the provider's account, so it needs the admin passphrase.
+`GET /api/gather`, `POST /api/gather/start`.
 
     python qbgather.py ask --commons <shared folder> --provider gemini --area history "Who won Super Bowl LX?"
+    python qbgather.py slots --commons <shared folder> --provider gemini --series nobel-peace --limit 5
 
 ## Exemplars: best-in-class examples (`_core/qbexemplar.py`, Control Panel → Exemplars)
 
