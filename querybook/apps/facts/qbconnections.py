@@ -55,6 +55,9 @@ _C = [
      "https://downloads.tatoeba.org/exports/", "none", None, "tatoeba-cc0", "https://tatoeba.org/en/downloads"),
     ("Bulk datasets", "wikidata-sparql", "Wikidata Query Service (SPARQL)", "Control Panel bulk agents", "recurring-event slots, one query a series",
      "https://query.wikidata.org/sparql?query=ASK%7B%7D&format=json", "none", None, "wikidata", "https://www.mediawiki.org/wiki/Wikidata_Query_Service/User_Manual"),
+    ("Bulk datasets", "mit-learn-api", "MIT Learn API (MIT OpenCourseWare catalog)", "Control Panel bulk agents",
+     "every free MIT course: number, title, department, instructors, term, topics", "https://api.learn.mit.edu/api/v1/courses/?platform=ocw&limit=1",
+     "none", None, "mit-ocw-catalog", "https://ocw.mit.edu/pages/privacy-and-terms-of-use/"),
     ("Bulk datasets", "wikidata-dumps", "Wikidata entity dumps", "bulk agents (planned)", "every Wikidata item, streamed",
      "https://dumps.wikimedia.org/wikidatawiki/entities/", "none", None, "wikidata", "https://www.wikidata.org/wiki/Wikidata:Database_download"),
     # Google Cloud and Gemini

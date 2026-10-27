@@ -19,6 +19,10 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.7.1 - MIT OpenCourseWare course catalog (bulk dataset "mit-ocw")
+    * Every free MIT course (about 2,600): number and cross-listings, title, department, school, instructors, level, term,
+      topics and what it offers (lecture videos, notes, exams) - about 42,000 facts in under a minute, each linked to its OCW page.
+      Catalog facts only: OCW's course materials are CC BY-NC-SA (non-commercial) and stay blocked.
   Control Panel 1.7.0 - the fact gatherer, started and watched from the panel
     * Bulk harvesting -> Fact gatherer: ask a question, or fill the scaffold's open recurring-event slots (Nobel Prizes, Super
       Bowl, ...). An LLM with web search only finds; QueryBook keeps a fact only when a page it returned states it, now with a

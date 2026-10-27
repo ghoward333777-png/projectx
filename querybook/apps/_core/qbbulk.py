@@ -501,8 +501,78 @@ class Series(Dataset):
         return [(s, p, o)]
 
 
+class MitOcw(Dataset):
+    key, title, app, source = "mit-ocw", "MIT OpenCourseWare — the course catalog", "stem", "mit-ocw-catalog"
+    licence = "Facts only (course catalog); OCW's own materials are CC BY-NC-SA 4.0 and are not copied"
+    why = "every free MIT course: its number, title, department, school, instructors, level, term, topics and what it offers"
+    approx = "about 2,600 courses × 15 facts"
+    URL = "https://api.learn.mit.edu/api/v1/courses/?platform=ocw&limit=100"
+    GAP_S = 1.0                        # one page a second: about 26 requests for the whole catalog
+
+    def parts(self):
+        return [("courses", self.URL)]
+
+    def rows(self, part, url, state):
+        if url.startswith("file://"):
+            with _open(url) as r:
+                yield from json.loads(r.read())["results"]
+            return
+        first = True
+        while url:
+            if not first:
+                time.sleep(self.GAP_S)
+            first = False
+            for attempt in range(4):
+                try:
+                    with urllib.request.urlopen(_req(url, {"Accept": "application/json"}), timeout=120) as r:
+                        body = json.loads(r.read())
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code not in (429, 503):
+                        raise
+                    if attempt == 3:
+                        raise Busy("MIT Learn asked us to slow down (HTTP %d); the catalog continues on the next run" % e.code)
+                    time.sleep(max(30, int(e.headers.get("Retry-After") or 0)))
+            if not METER.total:
+                METER.start(int(body.get("count") or 0), "courses")
+            yield from body.get("results") or []
+            url = body.get("next")
+
+    def facts(self, part, c, state):
+        """catalog facts only — never the course description or any course material (MIT's wording, CC BY-NC-SA)"""
+        nums = (c.get("course") or {}).get("course_numbers") or []
+        primary = next((n["value"] for n in nums if n.get("listing_type") == "primary"), nums[0]["value"] if nums else None)
+        run = next((r for r in c.get("runs") or [] if r.get("id") == c.get("best_run_id")), (c.get("runs") or [None])[0]) or {}
+        term = " ".join(str(x) for x in (run.get("semester"), run.get("year")) if x)
+        if not primary or not c.get("title"):
+            return []
+        s = "MIT course %s%s" % (primary, " (%s)" % term if term else "")
+        out = [(s, "title", c["title"].strip()), (s, "offered by", "MIT OpenCourseWare")]
+        if term:
+            out.append((s, "taught in", term))
+        for n in nums:
+            if n["value"] != primary:
+                out.append((s, "also listed as", n["value"]))
+        for d in c.get("departments") or []:
+            out.append((s, "department", d["name"]))
+            if (d.get("school") or {}).get("name"):
+                out.append((s, "school", d["school"]["name"]))
+        for i in run.get("instructors") or []:
+            if i.get("full_name"):
+                out.append((s, "instructor", i["full_name"].strip()))
+        for lv in run.get("level") or []:
+            out.append((s, "level", lv["name"]))
+        for t in c.get("ocw_topics") or []:
+            out.append((s, "topic", t))
+        for f in c.get("course_feature") or []:
+            out.append((s, "includes", f))
+        if c.get("url"):
+            state.setdefault("_links", {})[s] = c["url"]
+        return out
+
+
 def catalog():
-    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series())}
+    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw())}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -1062,6 +1132,16 @@ def self_test():
         ok("Tatoeba: CC0 sentences streamed from the tar.bz2, with their language", rows[:2] == [("Tatoeba sentence 330998", "text",
            "Children who spend more time outdoors have a lower risk of myopia."), ("Tatoeba sentence 330998", "language (ISO 639-3)", "eng")]
            and len(rows) == 4, rows)
+        mo, st = MitOcw(), {}
+        course = {"title": "Linear Algebra", "best_run_id": 1, "url": "https://ocw.mit.edu/courses/18-06-linear-algebra-spring-2010/",
+                  "description": "MIT's own wording, never stored", "course": {"course_numbers": [{"value": "18.06", "listing_type": "primary"}]},
+                  "runs": [{"id": 1, "semester": "Spring", "year": 2010, "instructors": [{"full_name": "Prof. Gilbert Strang"}],
+                            "level": [{"name": "Undergraduate"}]}], "departments": [{"name": "Mathematics", "school": {"name": "School of Science"}}],
+                  "ocw_topics": ["Linear Algebra"], "course_feature": ["Lecture Videos"]}
+        of = mo.facts("courses", course, st)
+        ok("MIT OCW: catalog facts only (number, title, instructor, term, topics), never the description", ("MIT course 18.06 (Spring 2010)",
+           "instructor", "Prof. Gilbert Strang") in of and ("MIT course 18.06 (Spring 2010)", "title", "Linear Algebra") in of
+           and not any("wording" in o for _, _, o in of) and st["_links"]["MIT course 18.06 (Spring 2010)"].startswith("https://ocw.mit.edu/"), of)
         se = Series()
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]

@@ -620,6 +620,15 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## MIT OpenCourseWare course catalog (bulk dataset `mit-ocw`, Control Panel 1.7.1)
+
+Approved by the admin on 27 October 2026 ("MIT offers public information … should be a part of your resource list"), as
+registry source `mit-ocw-catalog`. The bulk agent reads the public MIT Learn API (`api.learn.mit.edu`, one page a second,
+about 26 requests) and keeps catalog facts only: course number and cross-listings, title, department, school, instructors,
+level, term, OCW topics and the kinds of material offered — each linked to the course's OCW page. Course descriptions,
+lecture notes, exams and videos are MIT's own work under CC BY-NC-SA 4.0 (non-commercial, share-alike) and are not copied;
+the older registry entry `mit-ocw` for that content stays blocked. Live run: 2,591 courses, 42,316 facts in 36 seconds.
+
 ## The fact gatherer: LLM web search, checked on the page (`_core/qbgather.py`)
 
 The admin's rule (27 October 2026): facts *gathered* by an LLM may be used; facts *generated* by one may not. The gatherer
