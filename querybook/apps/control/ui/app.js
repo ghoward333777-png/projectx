@@ -158,6 +158,8 @@ const bytes = n => n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : n > 1e6 ? (n / 1e6).
 async function loadBulk() {
   const r = await api("/api/bulk");
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
+  $("#bk-agents").max = r.max_agents || 16;
+  $("#bk-full").textContent = "⚡ Full speed (" + (r.max_agents || 16) + " agents)";
   $("#bk-summary").innerHTML = `<span class="pill">${fmt(r.total)} bulk facts</span><span class="pill">+${fmt(r.last_minute)} last min</span>` +
     `<span class="pill">+${fmt(r.last_hour)} last hr</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
     `<span class="pill">runner: ${r.runner.alive ? "running · " + esc(r.runner.note || "") : "stopped"}</span>`;
@@ -257,6 +259,8 @@ function bind() {
   $("#bk-all").onclick = () => $$("[data-bk]:not(:disabled)").forEach(b => b.checked = true);
   $("#bk-start").onclick = async () => { try { const r = await api("/api/bulk/start", { datasets: $$("[data-bk]:checked").map(b => b.dataset.bk),
       agents: +$("#bk-agents").value || 4, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
+  $("#bk-full").onclick = async () => { try { const ds = $$("[data-bk]:not(:disabled)").map(b => b.dataset.bk);
+      const r = await api("/api/bulk/start", { datasets: ds, agents: 0, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>

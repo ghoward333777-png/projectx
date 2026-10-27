@@ -21,7 +21,7 @@ links (a source page per fact, where there is one); slots (recurring-event editi
 
 Run: python qbbulk.py run --commons <shared folder> [--datasets a,b] [--agents 4] [--max-rows N]
 """
-import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile
+import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, re, shutil, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile, zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
@@ -33,6 +33,8 @@ BATCH = 500_000                    # facts per transaction (bigger batches touch
 CACHE_MB = 128                     # SQLite page cache per agent
 LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
 FOLDER = "shards"
+MAX_AGENTS = min(64, max(16, os.cpu_count() or 1))   # one process per agent: up to every core of the machine
+MIN_FREE_GB = 10                   # every agent stops between batches when the disk has less free than this
 AREA = {"language": "language", "stem": "stem", "facts": "history"}
 READ_BUFFER = 1 << 20              # bytes read from a decompressed stream at a time
 CSV_MAX = 1 << 24
@@ -176,6 +178,113 @@ def tar_member_lines(url, member_suffix, comp="bz2"):
                 if rest:
                     yield rest.decode("utf-8", "replace").rstrip("\r")
                 return
+
+
+# ------------------------------------------------------------------------------------------------ multi-member gzip, by byte range
+GZ_SIG = b"\x1f\x8b\x08\x00\x00\x00\x00\x00"      # a gzip member header as Wikimedia's dumper writes it (no name, no time)
+
+
+def _ranged(url, start, stop):
+    """compressed bytes of url from `start` to the end of the file (local file:// too); reconnects where it broke"""
+    if url.startswith("file://"):
+        with _open(url) as f:
+            f.seek(start)
+            for b in iter(lambda: f.read(1 << 20), b""):
+                if stop["now"]:
+                    return
+                yield b
+        return
+    pos, tries = start, 0
+    while not stop["now"]:
+        try:
+            with urllib.request.urlopen(_req(url, {"Range": "bytes=%d-" % pos}), timeout=120) as r:
+                if r.status != 206 and pos:
+                    raise OSError("the server ignored the byte range")
+                while not stop["now"]:
+                    b = r.read(1 << 20)
+                    if not b:
+                        return
+                    pos += len(b); tries = 0
+                    yield b
+        except (OSError, urllib.error.URLError):
+            tries += 1
+            if tries > 8:
+                raise
+            time.sleep(min(60, 2 ** tries))
+
+
+def _prefetch(chunks, stop, depth=32):
+    """download on a thread so the connection keeps draining while this process parses; stops with the reader"""
+    import queue, threading
+    q = queue.Queue(depth)
+
+    def pump():
+        try:
+            for c in chunks:
+                while not stop["now"]:
+                    try:
+                        q.put(c, timeout=1); break
+                    except queue.Full:
+                        pass
+                if stop["now"]:
+                    return
+        except Exception as e:                  # handed to the reader, which raises it
+            q.put(e)
+        finally:
+            q.put(None)
+    threading.Thread(target=pump, daemon=True).start()
+    while True:
+        c = q.get()
+        if c is None:
+            return
+        if isinstance(c, Exception):
+            raise c
+        yield c
+
+
+def gz_member_lines(url, start, end):
+    """the lines of every gzip member whose header lies in [start, end) — a byte range of a multi-member file decoded on
+    its own, so several agents can share one file; METER counts the compressed bytes of the range"""
+    METER.start(end - start)
+    stop = {"now": False}
+    try:
+        buf, off, d, rest = b"", start, None, b""         # off = the file offset of buf[0]
+        for c in _prefetch(_ranged(url, start, stop), stop):
+            buf += c
+            while True:
+                if d is None:                            # find the next member header (checked: the bytes may occur inside data)
+                    i = buf.find(GZ_SIG)
+                    while i != -1 and len(buf) - i >= 64:
+                        try:
+                            zlib.decompressobj(31).decompress(buf[i:i + 4096]); break
+                        except zlib.error:
+                            i = buf.find(GZ_SIG, i + 1)
+                    if i == -1 or len(buf) - i < 64:
+                        keep = max(0, len(buf) - 64); off += keep; buf = buf[keep:]
+                        break
+                    if off + i >= end:
+                        METER.done = end - start
+                        return
+                    d = zlib.decompressobj(31); off += i; buf = buf[i:]
+                out = d.decompress(buf)
+                if out:
+                    out = rest + out
+                    lines = out.split(b"\n")
+                    rest = lines.pop()
+                    yield from lines
+                if d.eof:
+                    off += len(buf) - len(d.unused_data); buf = d.unused_data; d = None
+                    if rest:
+                        yield rest; rest = b""
+                    METER.done = min(end, off) - start
+                    if off >= end:
+                        return
+                    continue
+                off += len(buf); buf = b""
+                METER.done = min(end, off) - start
+                break
+    finally:
+        stop["now"] = True
 
 
 def cached(url, folder):
@@ -571,8 +680,160 @@ class MitOcw(Dataset):
         return out
 
 
+class WikidataDump(Dataset):
+    """the whole of Wikidata from its weekly entity dump (CC0), read by several agents at once: the dump is one gzip file of
+    many independent members, so it is cut into 1 GiB parts and lane k of n takes every n-th part. Each entity line becomes
+    facts by a fixed rule — truthy statements (preferred rank, else normal; never deprecated) of the properties below.
+    Subjects read "Albert Einstein (Q937)"; an object that is another item is kept as its Q-id and shown with its English
+    label (each lane keeps the labels of its entities beside its shard)."""
+    URL = "https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.gz"
+    PART = 1 << 30
+    LANES = 16                         # 16 datasets; the agents setting decides how many run at once (one CPU core each)
+    PROPS = {
+        "P31": "instance of", "P279": "subclass of", "P21": "sex or gender", "P27": "country of citizenship", "P106": "occupation",
+        "P569": "date of birth", "P570": "date of death", "P19": "place of birth", "P20": "place of death", "P17": "country",
+        "P131": "located in", "P30": "continent", "P36": "capital", "P1376": "capital of", "P625": "coordinates", "P1082": "population",
+        "P2046": "area", "P2044": "elevation (m)", "P571": "inception", "P576": "dissolved", "P577": "publication date", "P50": "author",
+        "P57": "director", "P86": "composer", "P175": "performer", "P112": "founded by", "P159": "headquarters", "P169": "chief executive",
+        "P35": "head of state", "P6": "head of government", "P37": "official language", "P38": "currency", "P166": "award received",
+        "P39": "position held", "P69": "educated at", "P800": "notable work", "P26": "spouse", "P22": "father", "P25": "mother",
+        "P1346": "winner", "P276": "location", "P585": "point in time", "P991": "successful candidate", "P136": "genre",
+        "P495": "country of origin", "P1412": "languages spoken", "P2048": "height", "P1086": "atomic number", "P356": "DOI",
+        "P1433": "published in", "P921": "main subject", "P225": "taxon name", "P171": "parent taxon", "P105": "taxon rank",
+        "P407": "language of work", "P123": "publisher", "P364": "original language", "P1191": "date of first performance"}
+    app, source = "facts", "wikidata"
+    licence = "CC0 1.0 (Wikidata)"
+    approx = "about 115 million items — several hundred million facts"
+
+    def __init__(self, lane=1, lanes=None):
+        self.lane, self.lanes = lane, lanes or self.LANES
+        self.key = "wikidata-dump-%d" % lane
+        self.title = "Wikidata — the full dump, lane %d of %d" % (lane, self.lanes)
+        self.why = ("the prototype's main source: people, places, works, organisations, taxa and their dates — every item of "
+                    "Wikidata, streamed by %d agents side by side" % self.lanes)
+        self.size, self.edition, self.base = None, "", None
+
+    def _head(self, url):
+        if url.startswith("file://"):
+            return os.path.getsize(urllib.request.url2pathname(urllib.parse.urlsplit(url).path)), "local file"
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=60) as r:
+            lm = r.headers.get("Last-Modified") or ""
+            try:
+                ed = datetime.datetime.strptime(lm, "%a, %d %b %Y %H:%M:%S GMT").strftime("%Y-%m-%d")
+            except ValueError:
+                ed = "latest"
+            return int(r.headers["Content-Length"]), ed
+
+    def parts(self):
+        url = self.base or self.URL
+        self.size, self.edition = self._head(url)
+        n = -(-self.size // self.PART)
+        return [("%s part %04d of %04d" % (self.edition, i + 1, n), "%s#%d-%d" % (url, i * self.PART, min(self.size, (i + 1) * self.PART)))
+                for i in range(n) if i % self.lanes == self.lane - 1]
+
+    def prepare(self, run):
+        self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
+        db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
+        db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.commit()
+        return {"_labeldb": db, "_labelbuf": []}
+
+    def rows(self, part, url, state):
+        base, _, rng = url.partition("#")
+        a, b = (int(x) for x in rng.split("-"))
+        try:
+            for line in gz_member_lines(base, a, b):
+                if len(line) > 2 and line[0] == 0x7B:          # '{': an entity (skips "[", "]" and separators)
+                    yield line
+        finally:
+            self._flush(state)
+
+    def _flush(self, state):
+        buf, db = state.get("_labelbuf"), state.get("_labeldb")
+        if buf and db is not None:
+            db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
+            db.commit()
+            buf.clear()
+
+    @staticmethod
+    def value(dv):
+        t, v = dv.get("type"), dv.get("value")
+        if t == "wikibase-entityid":
+            return v.get("id") or "Q%d" % v["numeric-id"]
+        if t == "time":
+            tm, pr = v["time"], v.get("precision", 11)
+            y, m, d = tm[1:].split("T")[0].rsplit("-", 2)
+            y = ("-" if tm[0] == "-" else "") + y.lstrip("0").rjust(4, "0")
+            return "%s-%s-%s" % (y, m, d) if pr >= 11 else "%s-%s" % (y, m) if pr == 10 else y
+        if t == "quantity":
+            unit = v.get("unit", "1").rsplit("/", 1)[-1]
+            return v["amount"].lstrip("+") + ("" if unit == "1" else " " + unit)
+        if t == "globecoordinate":
+            return "%.5f, %.5f" % (v["latitude"], v["longitude"])
+        if t == "monolingualtext":
+            return v["text"] if v.get("language") in ("en", "mul") else None
+        if t == "string":
+            return v
+        return None
+
+    def facts(self, part, line, state):
+        if line.endswith(b","):
+            line = line[:-1]
+        try:
+            e = json.loads(line)
+        except ValueError:
+            return []
+        L = e.get("labels") or {}
+        lab = (L.get("en") or L.get("mul") or {}).get("value")
+        if not lab or e.get("type") != "item":
+            return []
+        q = e["id"]
+        buf = state["_labelbuf"]
+        buf.append((int(q[1:]), lab))
+        if len(buf) >= 200_000:
+            self._flush(state)
+        s, out, props = "%s (%s)" % (lab, q), [], self.PROPS
+        for p, sts in (e.get("claims") or {}).items():
+            name = props.get(p)
+            if not name:
+                continue
+            best = [x for x in sts if x.get("rank") == "preferred"] or [x for x in sts if x.get("rank") == "normal"]
+            for st in best:
+                dv = (st.get("mainsnak") or {}).get("datavalue")
+                if dv:
+                    v = self.value(dv)
+                    if v:
+                        out.append((s, name, v))
+        if out:
+            state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
+        return out
+
+    def link(self, subject):
+        m = re.search(r"\((Q\d+)\)$", subject)
+        return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
+
+
+QID = re.compile(r"\bQ(\d+)\b")
+
+
+def wd_labels(commons_folder, qids):
+    """English labels for Q-numbers, from every lane's label file"""
+    want, out = sorted(set(qids)), {}
+    for lane in range(1, WikidataDump.LANES + 1):
+        p = shard_path(commons_folder, "wikidata-dump-%d" % lane) + ".labels"
+        if not want or not os.path.exists(p):
+            continue
+        db = _ro(p)
+        for i in range(0, len(want), 500):
+            chunk = want[i:i + 500]
+            out.update(db.execute("SELECT q, label FROM labels WHERE q IN (%s)" % ",".join("?" * len(chunk)), chunk).fetchall())
+        db.close()
+        want = [x for x in want if x not in out]
+    return out
+
+
 def catalog():
-    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw())}
+    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1))}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -696,6 +957,10 @@ class Run:
             return "stopped from the Control Panel"
         if not hv.master_running(self.commons):
             return "harvesting switched off (master switch)"
+        keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
+        free = shutil.disk_usage(self.folder).free / 1e9
+        if free < keep:
+            return "the disk is nearly full: %.1f GB free, bulk harvesting keeps at least %g GB (setting bulk:min_free_gb)" % (free, keep)
         if self.ds.source:
             ok, cls, why = self.commons.registry.check(self.ds.source)
             if not ok:
@@ -876,8 +1141,47 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
                 beat("running")
             except StopIteration:
                 break
+    beat("removing duplicates across shards")
+    try:
+        gone = dedupe(commons_folder)
+    except sqlite3.Error as e:
+        gone = {"error": str(e)}
+    results.append({"dedupe": gone})
     beat("finished")
     return results
+
+
+def dedupe(commons_folder):
+    """one fact, one record across every shard: a fingerprint held by an earlier shard (catalog order) is removed from the
+    later ones. Within a shard the fingerprint is the key, so a repeat never enters; across shards a repeat can arrive when
+    a new edition of a file moves a record between agents (a new weekly Wikidata dump shifts items between lanes).
+    The fingerprint includes the area, so only shards of one area can share facts. Runs when every agent has finished."""
+    keys = [k for k in catalog() if os.path.exists(shard_path(commons_folder, k))]
+    removed = {}
+    for j, kj in enumerate(keys):
+        earlier = [k for k in keys[:j] if AREA[catalog()[k].app] == AREA[catalog()[kj].app]]
+        if not earlier:
+            continue
+        sh = Shard(commons_folder, kj)
+        try:
+            gone = 0
+            for ki in earlier:
+                sh.db.execute("ATTACH DATABASE ? AS e", (shard_path(commons_folder, ki),))
+                before = sh.db.total_changes
+                sh.db.execute("DELETE FROM links WHERE fp IN (SELECT fp FROM e.facts)")
+                links = sh.db.total_changes - before
+                sh.db.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM e.facts)")
+                gone += sh.db.total_changes - before - links
+                sh.db.commit()
+                sh.db.execute("DETACH DATABASE e")
+            if gone:
+                sh.set_meta("facts", max(0, (sh.meta("facts", 0) or 0) - gone))
+                sh.set_meta("duplicates_removed", (sh.meta("duplicates_removed", 0) or 0) + gone)
+                sh.db.commit()
+                removed[kj] = gone
+        finally:
+            sh.db.close()
+    return removed
 
 
 # ------------------------------------------------------------------------------------------------ reading shards
@@ -939,7 +1243,7 @@ def status(commons_folder, commons=None):
     except (OSError, ValueError):
         pass
     rs["alive"] = bool(rs) and now - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
-    return {"version": VERSION, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
+    return {"version": VERSION, "cores": os.cpu_count() or 1, "max_agents": MAX_AGENTS, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "bytes": sum(d["bytes"] for d in out)}
 
@@ -995,6 +1299,12 @@ def search(commons_folder, text, limit=50):
                 out.append({"subject": s, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed",
                             "licence": ds.licence, "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s), "status": "computed" if not ds.source else "sourced"})
         db.close()
+    qs = [int(m) for r in out if r["source"] == "wikidata" for m in QID.findall(r["object"])]
+    if qs:
+        lab = wd_labels(commons_folder, qs)
+        for r in out:
+            if r["source"] == "wikidata":
+                r["object"] = QID.sub(lambda m: "%s (Q%s)" % (lab[int(m.group(1))], m.group(1)) if int(m.group(1)) in lab else m.group(0), r["object"])
     return out[:limit]
 
 
@@ -1008,7 +1318,7 @@ def start(commons, keys, agents, passphrase, program_dir):
     keys = [k for k in (keys or list(catalog())) if k in catalog()]
     if not keys:
         raise ValueError("Choose at least one dataset.")
-    agents = max(1, min(int(agents or 4), 16))
+    agents = MAX_AGENTS if not agents or int(agents) <= 0 else max(1, min(int(agents), MAX_AGENTS))   # 0 = full speed
     path = os.path.join(program_dir, "qbbulk.py")
     kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen([sys.executable, path, "run", "--commons", commons.folder, "--datasets", ",".join(keys), "--agents", str(agents)],
@@ -1082,6 +1392,10 @@ def self_test():
         cf = os.path.join(tmp, "commons")
         c = cm.Commons(cf, "stem")
         c.registry.ensure()
+        c.set_setting("bulk:min_free_gb", 1e9)
+        g = run_dataset(cf, "calendar-scaffold", max_rows=1)
+        ok("disk guard: no agent starts when the disk has less free than the setting keeps", g["state"] == "stopped" and "disk" in g["why"], g)
+        c.set_setting("bulk:min_free_gb", 0)
         for k, v in (("bulk:url:pubchem-computed:CID-Mass", url("CID-Mass.gz")), ("bulk:url:pubchem-computed:CID-SMILES", url("CID-SMILES.gz")),
                      ("bulk:url:pubchem-computed:CID-InChI-Key", url("CID-InChI-Key.gz")), ("bulk:url:usgs-gnis:domestic names", url("gnis.zip"))):
             c.set_setting(k, v)
@@ -1142,6 +1456,34 @@ def self_test():
         ok("MIT OCW: catalog facts only (number, title, instructor, term, topics), never the description", ("MIT course 18.06 (Spring 2010)",
            "instructor", "Prof. Gilbert Strang") in of and ("MIT course 18.06 (Spring 2010)", "title", "Linear Algebra") in of
            and not any("wording" in o for _, _, o in of) and st["_links"]["MIT course 18.06 (Spring 2010)"].startswith("https://ocw.mit.edu/"), of)
+        import gzip as _gz
+        ents = [{"type": "item", "id": "Q%d" % q, "labels": {"en": {"value": name}}, "claims": {
+                    "P569": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "time", "value": {"time": "+1879-03-14T00:00:00Z", "precision": 11}}}}],
+                    "P27": [{"rank": "deprecated", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": "Q183"}}}},
+                            {"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": "Q30"}}}}]}}
+                for q, name in ((937, "Albert Einstein"), (30, "United States"), (5, "human"))]
+        dump = os.path.join(tmp, "dump.json.gz")
+        with open(dump, "wb") as f:                     # one gzip member per entity, as Wikimedia writes it
+            f.write(_gz.compress(b"[\n", mtime=0))
+            for i, e in enumerate(ents):
+                f.write(_gz.compress((json.dumps(e) + (",\n" if i < 2 else "\n")).encode(), mtime=0))
+            f.write(_gz.compress(b"]\n", mtime=0))
+        size = os.path.getsize(dump)
+        cut = size // 2
+        both = [x for a_, b_ in ((0, cut), (cut, size)) for x in gz_member_lines("file://" + dump, a_, b_)]
+        ok("Wikidata dump: two byte ranges read on their own give every entity exactly once",
+           sorted(json.loads(x.rstrip(b","))["id"] for x in both if x[:1] == b"{") == ["Q30", "Q5", "Q937"], both)
+        wd = WikidataDump(1, 1)
+        c.set_setting("bulk:url:wikidata-dump", "file://" + dump)
+        WikidataDump.LANES, lanes_was = 1, WikidataDump.LANES
+        try:
+            r = run_dataset(cf, "wikidata-dump-1")
+            hits = search(cf, "Albert Einstein")
+        finally:
+            WikidataDump.LANES = lanes_was
+        ok("Wikidata dump: truthy statements only (a deprecated one is skipped), objects shown with their label",
+           r["state"] == "done" and {(h["predicate"], h["object"]) for h in hits} == {("date of birth", "1879-03-14"),
+           ("country of citizenship", "United States (Q30)")} and hits[0]["link"] == "https://www.wikidata.org/wiki/Q937", (r, hits))
         se = Series()
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]
@@ -1168,8 +1510,12 @@ def self_test():
         b = run_dataset(cf, "usgs-gnis")
         ok("a source blocked in the registry is not harvested (and the refusal is logged)", b["state"] == "blocked"
            and c.store.scalar("SELECT count(*) FROM harvest_log WHERE action = 'bulk:usgs-gnis' AND decision = 'blocked'", default=0) == 1, b)
+        shutil.copy(shard_path(cf, "wikidata-dump-1"), shard_path(cf, "wikidata-dump-2"))   # the same items arriving in another lane
+        dd = dedupe(cf)
+        ok("deduplication: a fact held by one shard is removed from every later one (6 repeats here), and the counts follow",
+           dd == {"wikidata-dump-2": 6} and len(search(cf, "Albert Einstein")) == 2 and dedupe(cf) == {}, dd)
         ar = by_area(cf)
-        ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5, ar)
+        ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5 + 6, ar)   # 5 series + 6 from the dump fixture
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return out
@@ -1182,14 +1528,14 @@ def main(argv=None):
     r = sp.add_parser("run")
     r.add_argument("--commons", required=True)
     r.add_argument("--datasets", default="")
-    r.add_argument("--agents", type=int, default=4)
+    r.add_argument("--agents", type=int, default=4, help="0 = full speed: one agent per CPU core")
     r.add_argument("--max-rows", type=int, default=None)
     s = sp.add_parser("status")
     s.add_argument("--commons", required=True)
     sp.add_parser("self-test")
     a = ap.parse_args(argv)
     if a.cmd == "run":
-        for res in run(a.commons, [k for k in a.datasets.split(",") if k] or None, a.agents, a.max_rows):
+        for res in run(a.commons, [k for k in a.datasets.split(",") if k] or None, a.agents if a.agents > 0 else MAX_AGENTS, a.max_rows):
             print(json.dumps(res))
     elif a.cmd == "status":
         print(json.dumps(status(a.commons), indent=1, default=str))

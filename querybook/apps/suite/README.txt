@@ -19,6 +19,12 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.8.0 - the whole of Wikidata, at full speed
+    * Bulk harvesting -> Wikidata (16 lanes): the weekly Wikidata dump (157 GB, CC0) read in 1 GB byte ranges by up to 16
+      agents at once - people, places, works, organisations, taxa and their dates. Measured: one lane about 10,000 facts a
+      second (1.5 million in 2.5 minutes) on a 40 Mbit link; with a fast connection each extra lane adds about the same.
+    * Full speed button: every approved dataset, one agent per CPU core. Facts are deduplicated across all shards when the
+      agents finish; within a shard a repeat never enters. Agents stop when the disk has less than 10 GB free.
   Control Panel 1.7.1 - MIT OpenCourseWare course catalog (bulk dataset "mit-ocw")
     * Every free MIT course (about 2,600): number and cross-listings, title, department, school, instructors, level, term,
       topics and what it offers (lecture videos, notes, exams) - about 42,000 facts in under a minute, each linked to its OCW page.

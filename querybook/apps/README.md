@@ -620,6 +620,31 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## The whole of Wikidata, at full speed (Control Panel 1.8.0)
+
+`wikidata-dump-1` … `wikidata-dump-16`: the weekly entity dump (`latest-all.json.gz`, about 157 GB, CC0) is one gzip file
+made of many independent members, so it is cut into 1 GiB byte ranges and lane k of 16 takes every 16th range; each range is
+decoded on its own (members whose header lies in it), downloaded on a thread while the agent parses. Each entity with an
+English label becomes facts by a fixed rule: truthy statements (preferred rank, else normal; never deprecated) of about 60
+properties — instance of, occupation, dates and places of birth and death, country, located in, population, inception,
+author, publication date, DOI, taxon … Subjects read "Albert Einstein (Q937)"; an object that is another item is kept as its
+Q-id and shown with its English label from the lanes' label files. Part names carry the dump's date (the edition).
+
+* **Measured** (one lane, a 40 Mbit sandbox link): 1,487,895 facts in 2.5 minutes, about 10,000 a second, about 5 MB/s of
+  the dump. Each lane needs one CPU core and about 5 MB/s; an 800 Mbit line (about 100 MB/s) feeds all 16. The dump's
+  properties give several hundred million facts per edition (about 2 million per GB).
+* **Full speed** (Control Panel → Bulk harvesting → ⚡ Full speed; CLI `--agents 0`): every approved dataset, one agent per
+  CPU core (up to 64).
+* **Deduplication:** within a shard the fact's fingerprint is the key, so a repeat never enters. When every agent has
+  finished, `dedupe()` removes from each shard the facts an earlier shard of the same area already holds (a new weekly dump
+  moves items between lanes); measured 1.49 million repeats removed in 11.5 s.
+* **Disk guard:** every agent stops between batches when the disk has less free than `bulk:min_free_gb` (default 10 GB).
+  About 190 bytes a fact on disk with indexes and source links.
+* More machines: run other lanes on a second computer with its own shared folder (`--datasets wikidata-dump-9,…`) and copy
+  its `shards/*.sqlite*` files into the main folder's `shards/`; the next run's deduplication covers them.
+
+    python qbbulk.py run --commons <shared folder> --datasets wikidata-dump-1,wikidata-dump-2 --agents 0
+
 ## MIT OpenCourseWare course catalog (bulk dataset `mit-ocw`, Control Panel 1.7.1)
 
 Approved by the admin on 27 October 2026 ("MIT offers public information … should be a part of your resource list"), as

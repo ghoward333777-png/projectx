@@ -300,9 +300,9 @@
         recurring-event slots are filled from Wikidata, one query per series.</p>
       <div id="bk-summary" class="row"></div>
       <div id="bk-table"></div>
-      <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="16" value="4" style="width:4em"></label>
+      <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
         <input type="password" id="bk-pass" placeholder="Admin passphrase" style="width:14em">
-        <button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
+        <button class="btn" id="bk-full" title="Every approved dataset, including all 16 Wikidata lanes, one agent per CPU core">⚡ Full speed</button><button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
         <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
       <h3>Scaffold slots — recurring events</h3><div id="bk-slots" class="small"></div>
       <h3>Fact gatherer — LLM web search, checked on the page</h3>

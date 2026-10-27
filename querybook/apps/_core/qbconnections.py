@@ -58,7 +58,7 @@ _C = [
     ("Bulk datasets", "mit-learn-api", "MIT Learn API (MIT OpenCourseWare catalog)", "Control Panel bulk agents",
      "every free MIT course: number, title, department, instructors, term, topics", "https://api.learn.mit.edu/api/v1/courses/?platform=ocw&limit=1",
      "none", None, "mit-ocw-catalog", "https://ocw.mit.edu/pages/privacy-and-terms-of-use/"),
-    ("Bulk datasets", "wikidata-dumps", "Wikidata entity dumps", "bulk agents (planned)", "every Wikidata item, streamed",
+    ("Bulk datasets", "wikidata-dumps", "Wikidata entity dumps", "Control Panel bulk agents (16 lanes)", "every Wikidata item, streamed in byte ranges",
      "https://dumps.wikimedia.org/wikidatawiki/entities/", "none", None, "wikidata", "https://www.wikidata.org/wiki/Wikidata:Database_download"),
     # Google Cloud and Gemini
     ("Google", "google-stt", "Google Speech-to-Text", "Language Builder", "transcripts with word times", "https://speech.googleapis.com/",
