@@ -315,6 +315,11 @@ def check_key(reg_id, key, opener=None):
             text = e.read(4000).decode("utf-8", "replace").lower()
         except Exception:
             text = ""
+        if "missing_permissions" in text or "missing the permission" in text:
+            import re as _re
+            m = _re.search(r"missing the permission ([a-z_]+)", text)
+            return {"id": reg_id, "works": False, "code": code, "ms": round((time.time() - t0) * 1000),
+                    "why": "the key is real but lacks a permission%s — edit the key's permissions on the service's page" % (" (%s)" % m.group(1) if m else "")}
         if any(w in text for w in ("api key not valid", "api_key_invalid", "invalid api key", "invalid_api_key", "incorrect api key")):
             return {"id": reg_id, "works": False, "code": code, "why": "refused the key (HTTP %d: not a valid key)" % code, "ms": round((time.time() - t0) * 1000)}
     except Exception as e:
