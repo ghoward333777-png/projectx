@@ -48,7 +48,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.48.0"
+VERSION = "1.48.1"
 PORT = 8101
 program_dir = HERE
 
@@ -2349,14 +2349,12 @@ def _persona_selftest(c):
             seen["paths"].append(self.path); seen["auth"].append(self.headers.get("xi-api-key") or self.headers.get("X-Api-Key") or self.headers.get("Authorization"))
             if self.path == "/v1/voices/add":
                 return self._send({"voice_id": "VOICE123"} if b"sample.wav" in body else {"detail": "no file"})
-            if self.path == "/v1/talking_photo":
-                return self._send({"data": {"talking_photo_id": "TP1"}})
-            if self.path == "/v1/asset":
-                return self._send({"data": {"id": "AS1"}})
-            if self.path == "/v2/video/generate":
+            if self.path == "/v3/assets":                  # HeyGen v3: one upload endpoint for the photo and the audio
+                return self._send({"data": {"asset_id": "IMG1" if b"image/jpeg" in body[:400] else "AUD1" if b"audio/wav" in body[:400] else "BAD"}})
+            if self.path == "/v3/videos":
                 b = json.loads(body)
-                ok = b["video_inputs"][0]["character"]["talking_photo_id"] == "TP1" and b["video_inputs"][0]["voice"]["audio_asset_id"] == "AS1"
-                return self._send({"data": {"video_id": "VID1" if ok else "BAD"}})
+                ok = b["type"] == "image" and b["image"] == {"type": "asset_id", "asset_id": "IMG1"} and b["audio_asset_id"] == "AUD1"
+                return self._send({"data": {"video_id": "VID1" if ok else "BAD", "status": "waiting"}})
             if self.path in ("/images", "/audios"):
                 return self._send({"url": "s3://stand-in" + self.path})
             if self.path == "/talks":
@@ -2366,7 +2364,7 @@ def _persona_selftest(c):
 
         def do_GET(self):
             seen["paths"].append(self.path)
-            if self.path.startswith("/v1/video_status.get"):
+            if self.path == "/v3/videos/VID1":
                 seen["polls"] = seen.get("polls", 0) + 1
                 return self._send({"data": {"status": "completed", "video_url": base + "/files/v.mp4"} if seen["polls"] > 1 else {"status": "processing"}})
             if self.path == "/talks/TLK1":
@@ -2420,8 +2418,10 @@ def _persona_selftest(c):
             inst.speech.keys.save("did", {"api_key": "did-TESTKEY-0123456789"})
             P.set_face(pe["id"], "heygen")
             n1 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
-            c.check("Author narrator: HeyGen talking-photo video made, polled and saved (stand-in server)",
-                    n1["status"] == "done" and n1["video"] and os.path.getsize(P.file_path(pe["id"], n1["video"])) > 1000 and "/v2/video/generate" in seen["paths"], n1["detail"])
+            c.check("Author narrator: HeyGen video made with the v3 API (photo and audio as assets, an image video), polled and saved (stand-in server)",
+                    n1["status"] == "done" and n1["video"] and os.path.getsize(P.file_path(pe["id"], n1["video"])) > 1000
+                    and seen["paths"].count("/v3/assets") >= 2 and "/v3/videos" in seen["paths"] and "/v3/videos/VID1" in seen["paths"]
+                    and not any(x.startswith(("/v1/", "/v2/")) and "voices" not in x for x in seen["paths"]), n1["detail"])
             n2 = wait(P.narrate(pe["id"], "This chapter is about rivers.", "did")["id"])
             c.check("Author narrator: D-ID talk video made and saved (stand-in server)", n2["status"] == "done" and n2["video"] and "/talks" in seen["paths"], n2["detail"])
             script = os.path.join(d, "fake model.py")

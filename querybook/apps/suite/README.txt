@@ -19,6 +19,9 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Language Builder 1.48.1 - HeyGen's new API
+    * Author narrator videos with HeyGen use its v3 API (the old upload and talking-photo addresses close on 31 October 2026):
+      the photo and the narration are uploaded as files and animated directly, so the plan's photo-avatar limit no longer applies.
   Control Panel 1.12.0 - Wikidata at full depth, the prototype's Hot Map first
     * The Wikidata lanes keep every knowledge property (3,120 of Wikidata's 14,016; external identifiers, media file names
       and Wikimedia housekeeping left out): 1.75x the facts per item, measured.

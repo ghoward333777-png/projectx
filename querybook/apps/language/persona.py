@@ -353,21 +353,25 @@ class Personas:
         raise RuntimeError("the service did not finish within %d s" % limit)
 
     def _heygen(self, photo, wav, note):
+        """HeyGen's v3 API (the v1 upload and talking-photo endpoints were retired on 31 October 2026): the photo and the
+        narration are uploaded as assets, then an "image" video animates the photo to the audio. No photo-avatar slot is
+        used, so a plan's avatar limit does not apply."""
         k = {"X-Api-Key": self.keys.get("heygen")["api_key"]}
-        up = tts._base("heygen_upload", "https://upload.heygen.com")
         api = tts._base("heygen", "https://api.heygen.com")
+
+        def upload(field_name, ctype, blob):
+            body, ct = _multipart({}, [("file", field_name, ctype, blob)])
+            return json.loads(tts._http(api + "/v3/assets", body, dict(k, **{"Content-Type": ct}), timeout=120)[0])["data"]["asset_id"]
         note("uploading the photo")
-        raw, _ = tts._http(up + "/v1/talking_photo", photo, dict(k, **{"Content-Type": "image/jpeg"}), timeout=120)
-        tp = json.loads(raw)["data"]["talking_photo_id"]
+        img = upload("author.jpg", "image/jpeg", photo)
         note("uploading the narration audio")
-        raw, _ = tts._http(up + "/v1/asset", wav, dict(k, **{"Content-Type": "audio/wav"}), timeout=120)
-        aid = json.loads(raw)["data"]["id"]
+        aud = upload("narration.wav", "audio/wav", wav)
         note("asking HeyGen to make the video")
-        body = {"video_inputs": [{"character": {"type": "talking_photo", "talking_photo_id": tp}, "voice": {"type": "audio", "audio_asset_id": aid}}],
-                "dimension": {"width": 1280, "height": 720}, "title": "QueryBook AI narrator"}
-        raw, _ = tts._http(api + "/v2/video/generate", json.dumps(body).encode(), dict(k, **{"Content-Type": "application/json"}))
+        body = {"type": "image", "image": {"type": "asset_id", "asset_id": img}, "audio_asset_id": aud,
+                "resolution": "720p", "aspect_ratio": "auto", "title": "QueryBook AI narrator"}
+        raw, _ = tts._http(api + "/v3/videos", json.dumps(body).encode(), dict(k, **{"Content-Type": "application/json"}))
         vid = json.loads(raw)["data"]["video_id"]
-        r = self._poll(lambda: json.loads(tts._http(api + "/v1/video_status.get?video_id=" + vid, None, k, method="GET")[0])["data"],
+        r = self._poll(lambda: json.loads(tts._http(api + "/v3/videos/" + vid, None, k, method="GET")[0])["data"],
                        lambda d: d.get("status") == "completed", lambda d: d.get("status") == "failed", note)
         note("downloading the video")
         return tts._http(r["video_url"], None, {}, method="GET", timeout=300)[0]
