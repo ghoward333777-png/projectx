@@ -1,0 +1,1035 @@
+{
+ "made": "2026-10-29T20:30:27+00:00",
+ "persona": "the stage performer (new model)",
+ "answers": [
+  {
+   "code": "A01",
+   "question": "What is the capital of France?",
+   "domain": "Places",
+   "line": "The capital of France is Paris.",
+   "caption": "The capital of France is Paris.",
+   "facts": [
+    {
+     "item": "Q142",
+     "property": "P36",
+     "value": "Paris",
+     "value_items": [
+      "Q90"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q142",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A02",
+   "question": "What is the capital of Japan?",
+   "domain": "Places",
+   "line": "The capital of Japan is Tokyo.",
+   "caption": "The capital of Japan is Tokyo.",
+   "facts": [
+    {
+     "item": "Q17",
+     "property": "P36",
+     "value": "Tokyo",
+     "value_items": [
+      "Q1490"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q17",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A03",
+   "question": "What is the capital of Australia?",
+   "domain": "Places",
+   "line": "The capital of Australia is Canberra.",
+   "caption": "The capital of Australia is Canberra.",
+   "facts": [
+    {
+     "item": "Q408",
+     "property": "P36",
+     "value": "Canberra",
+     "value_items": [
+      "Q3114"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q408",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A04",
+   "question": "What is the capital of Canada?",
+   "domain": "Places",
+   "line": "The capital of Canada is Ottawa.",
+   "caption": "The capital of Canada is Ottawa.",
+   "facts": [
+    {
+     "item": "Q16",
+     "property": "P36",
+     "value": "Ottawa",
+     "value_items": [
+      "Q1930"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q16",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A05",
+   "question": "What is the capital of Brazil?",
+   "domain": "Places",
+   "line": "The capital of Brazil is Brasília.",
+   "caption": "The capital of Brazil is Brasília.",
+   "facts": [
+    {
+     "item": "Q155",
+     "property": "P36",
+     "value": "Brasília",
+     "value_items": [
+      "Q2844"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q155",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A06",
+   "question": "What is the capital of Italy?",
+   "domain": "Places",
+   "line": "The capital of Italy is Rome.",
+   "caption": "The capital of Italy is Rome.",
+   "facts": [
+    {
+     "item": "Q38",
+     "property": "P36",
+     "value": "Rome",
+     "value_items": [
+      "Q220"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q38",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A07",
+   "question": "What is the capital of Germany?",
+   "domain": "Places",
+   "line": "The capital of Germany is Berlin.",
+   "caption": "The capital of Germany is Berlin.",
+   "facts": [
+    {
+     "item": "Q183",
+     "property": "P36",
+     "value": "Berlin",
+     "value_items": [
+      "Q64",
+      "Q64"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q183",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A08",
+   "question": "How tall is Mount Everest?",
+   "domain": "Places",
+   "line": "Mount Everest is about 8,849 metres above sea level.",
+   "caption": "Mount Everest is about 8,849 metres above sea level.",
+   "facts": [
+    {
+     "item": "Q513",
+     "property": "P2044",
+     "value": "about 8,849 metres",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q513",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A09",
+   "question": "How long is the Nile?",
+   "domain": "Places",
+   "line": "The Nile is 6,650 kilometres long.",
+   "caption": "The Nile is 6,650 kilometres long.",
+   "facts": [
+    {
+     "item": "Q3392",
+     "property": "P2043",
+     "value": "6,650 kilometres",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q3392",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A10",
+   "question": "Which continent is Kenya in?",
+   "domain": "Places",
+   "line": "Kenya is in Africa.",
+   "caption": "Kenya is in Africa.",
+   "facts": [
+    {
+     "item": "Q114",
+     "property": "P30",
+     "value": "Africa",
+     "value_items": [
+      "Q15"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q114",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A11",
+   "question": "What is the currency of Japan?",
+   "domain": "Countries",
+   "line": "The currency of Japan is the yen.",
+   "caption": "The currency of Japan is the yen.",
+   "facts": [
+    {
+     "item": "Q17",
+     "property": "P38",
+     "value": "yen",
+     "value_items": [
+      "Q8146"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q17",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A12",
+   "question": "What is the currency of the United Kingdom?",
+   "domain": "Countries",
+   "line": "The currency of the United Kingdom is the pound sterling.",
+   "caption": "The currency of the United Kingdom is the pound sterling.",
+   "facts": [
+    {
+     "item": "Q145",
+     "property": "P38",
+     "value": "pound sterling",
+     "value_items": [
+      "Q25224"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q145",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A13",
+   "question": "What language is spoken in Brazil?",
+   "domain": "Languages",
+   "line": "The official language of Brazil is Portuguese.",
+   "caption": "The official language of Brazil is Portuguese.",
+   "facts": [
+    {
+     "item": "Q155",
+     "property": "P37",
+     "value": "Portuguese",
+     "value_items": [
+      "Q5146"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q155",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A14",
+   "question": "What are the official languages of Canada?",
+   "domain": "Languages",
+   "line": "The official languages of Canada are English and French.",
+   "caption": "The official languages of Canada are English and French.",
+   "facts": [
+    {
+     "item": "Q16",
+     "property": "P37",
+     "value": "English and French",
+     "value_items": [
+      "Q1860",
+      "Q150"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q16",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A15",
+   "question": "When was Albert Einstein born?",
+   "domain": "People",
+   "line": "Albert Einstein was born on 14 March 1879, in Ulm.",
+   "caption": "Albert Einstein was born on 14 March 1879, in Ulm.",
+   "facts": [
+    {
+     "item": "Q937",
+     "property": "P569",
+     "value": "14 March 1879",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q937",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q937",
+     "property": "P19",
+     "value": "Ulm",
+     "value_items": [
+      "Q3012"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q937",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A16",
+   "question": "When was Marie Curie born?",
+   "domain": "People",
+   "line": "Marie Curie was born on 7 November 1867, in Warsaw.",
+   "caption": "Marie Curie was born on 7 November 1867, in Warsaw.",
+   "facts": [
+    {
+     "item": "Q7186",
+     "property": "P569",
+     "value": "7 November 1867",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q7186",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q7186",
+     "property": "P19",
+     "value": "Warsaw",
+     "value_items": [
+      "Q270"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q7186",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A17",
+   "question": "When was Martin Luther King Jr. born?",
+   "domain": "People",
+   "line": "Martin Luther King Junior was born on 15 January 1929, in Atlanta.",
+   "caption": "Martin Luther King Junior was born on 15 January 1929, in Atlanta.",
+   "facts": [
+    {
+     "item": "Q8027",
+     "property": "P569",
+     "value": "15 January 1929",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q8027",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q8027",
+     "property": "P19",
+     "value": "Atlanta",
+     "value_items": [
+      "Q23556"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q8027",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A18",
+   "question": "When was Nelson Mandela born?",
+   "domain": "People",
+   "line": "Nelson Mandela was born on 18 July 1918, in Mvezo.",
+   "caption": "Nelson Mandela was born on 18 July 1918, in Mvezo.",
+   "facts": [
+    {
+     "item": "Q8023",
+     "property": "P569",
+     "value": "18 July 1918",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q8023",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q8023",
+     "property": "P19",
+     "value": "Mvezo",
+     "value_items": [
+      "Q1020378"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q8023",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A19",
+   "question": "When was Mahatma Gandhi born?",
+   "domain": "People",
+   "line": "Mahatma Gandhi was born on 2 October 1869, in Porbandar.",
+   "caption": "Mahatma Gandhi was born on 2 October 1869, in Porbandar.",
+   "facts": [
+    {
+     "item": "Q1001",
+     "property": "P569",
+     "value": "2 October 1869",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q1001",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q1001",
+     "property": "P19",
+     "value": "Porbandar",
+     "value_items": [
+      "Q6419912"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q1001",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A20",
+   "question": "When was Wolfgang Amadeus Mozart born?",
+   "domain": "People",
+   "line": "Wolfgang Amadeus Mozart was born on 27 January 1756, in Salzburg.",
+   "caption": "Wolfgang Amadeus Mozart was born on 27 January 1756, in Salzburg.",
+   "facts": [
+    {
+     "item": "Q254",
+     "property": "P569",
+     "value": "27 January 1756",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q254",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q254",
+     "property": "P19",
+     "value": "Salzburg",
+     "value_items": [
+      "Q34713"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q254",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A21",
+   "question": "When was Charles Darwin born?",
+   "domain": "People",
+   "line": "Charles Darwin was born on 12 February 1809, in Shrewsbury.",
+   "caption": "Charles Darwin was born on 12 February 1809, in Shrewsbury.",
+   "facts": [
+    {
+     "item": "Q1035",
+     "property": "P569",
+     "value": "12 February 1809",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q1035",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q1035",
+     "property": "P19",
+     "value": "Shrewsbury",
+     "value_items": [
+      "Q201970"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q1035",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A22",
+   "question": "When was Barack Obama born?",
+   "domain": "People",
+   "line": "Barack Obama was born on 4 August 1961, in Honolulu.",
+   "caption": "Barack Obama was born on 4 August 1961, in Honolulu.",
+   "facts": [
+    {
+     "item": "Q76",
+     "property": "P569",
+     "value": "4 August 1961",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q76",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q76",
+     "property": "P19",
+     "value": "Honolulu",
+     "value_items": [
+      "Q18094"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q76",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A23",
+   "question": "When was Frida Kahlo born?",
+   "domain": "People",
+   "line": "Frida Kahlo was born on 6 July 1907, in Mexico City.",
+   "caption": "Frida Kahlo was born on 6 July 1907, in Mexico City.",
+   "facts": [
+    {
+     "item": "Q5588",
+     "property": "P569",
+     "value": "6 July 1907",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q5588",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q5588",
+     "property": "P19",
+     "value": "Mexico City",
+     "value_items": [
+      "Q1489"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q5588",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A24",
+   "question": "When did Abraham Lincoln die?",
+   "domain": "People",
+   "line": "Abraham Lincoln died on 15 April 1865.",
+   "caption": "Abraham Lincoln died on 15 April 1865.",
+   "facts": [
+    {
+     "item": "Q91",
+     "property": "P570",
+     "value": "15 April 1865",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q91",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A25",
+   "question": "When was George Washington born?",
+   "domain": "People",
+   "line": "George Washington was born on 22 February 1732.",
+   "caption": "George Washington was born on 22 February 1732.",
+   "facts": [
+    {
+     "item": "Q23",
+     "property": "P569",
+     "value": "22 February 1732",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q23",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A26",
+   "question": "Who painted the Mona Lisa?",
+   "domain": "Culture",
+   "line": "The Mona Lisa was painted by Leonardo da Vinci.",
+   "caption": "The Mona Lisa was painted by Leonardo da Vinci.",
+   "facts": [
+    {
+     "item": "Q12418",
+     "property": "P170",
+     "value": "Leonardo da Vinci",
+     "value_items": [
+      "Q762"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q12418",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A27",
+   "question": "Who painted The Starry Night?",
+   "domain": "Culture",
+   "line": "The Starry Night was painted by Vincent van Gogh.",
+   "caption": "The Starry Night was painted by Vincent van Gogh.",
+   "facts": [
+    {
+     "item": "Q45585",
+     "property": "P170",
+     "value": "Vincent van Gogh",
+     "value_items": [
+      "Q5582"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q45585",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A28",
+   "question": "Who wrote Pride and Prejudice?",
+   "domain": "Culture",
+   "line": "Pride and Prejudice was written by Jane Austen, and published on 28 January 1813.",
+   "caption": "Pride and Prejudice was written by Jane Austen, and published on 28 January 1813.",
+   "facts": [
+    {
+     "item": "Q170583",
+     "property": "P50",
+     "value": "Jane Austen",
+     "value_items": [
+      "Q36322"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q170583",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    },
+    {
+     "item": "Q170583",
+     "property": "P577",
+     "value": "28 January 1813",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q170583",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A29",
+   "question": "Who wrote Hamlet?",
+   "domain": "Culture",
+   "line": "Hamlet was written by William Shakespeare.",
+   "caption": "Hamlet was written by William Shakespeare.",
+   "facts": [
+    {
+     "item": "Q41567",
+     "property": "P50",
+     "value": "William Shakespeare",
+     "value_items": [
+      "Q692"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q41567",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A30",
+   "question": "Who directed the film Titanic?",
+   "domain": "Culture",
+   "line": "The film Titanic was directed by James Cameron.",
+   "caption": "The film Titanic was directed by James Cameron.",
+   "facts": [
+    {
+     "item": "Q44578",
+     "property": "P57",
+     "value": "James Cameron",
+     "value_items": [
+      "Q42574"
+     ],
+     "source": "https://www.wikidata.org/wiki/Q44578",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A31",
+   "question": "When did World War Two end?",
+   "domain": "History",
+   "line": "World War Two ended on 2 September 1945.",
+   "caption": "World War Two ended on 2 September 1945.",
+   "facts": [
+    {
+     "item": "Q362",
+     "property": "P582",
+     "value": "2 September 1945",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q362",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A32",
+   "question": "When did World War One begin?",
+   "domain": "History",
+   "line": "World War One began on 28 July 1914.",
+   "caption": "World War One began on 28 July 1914.",
+   "facts": [
+    {
+     "item": "Q361",
+     "property": "P580",
+     "value": "28 July 1914",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q361",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A33",
+   "question": "When was Apollo 11 launched?",
+   "domain": "History",
+   "line": "Apollo 11 was launched on 16 July 1969.",
+   "caption": "Apollo 11 was launched on 16 July 1969.",
+   "facts": [
+    {
+     "item": "Q43653",
+     "property": "P619",
+     "value": "16 July 1969",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q43653",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A34",
+   "question": "How tall is the Eiffel Tower?",
+   "domain": "Places",
+   "line": "The Eiffel Tower is 330 metres tall.",
+   "caption": "The Eiffel Tower is 330 metres tall.",
+   "facts": [
+    {
+     "item": "Q243",
+     "property": "P2048",
+     "value": "330 metres",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q243",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A35",
+   "question": "How long is the Amazon River?",
+   "domain": "Places",
+   "line": "The Amazon River is 6,400 kilometres long.",
+   "caption": "The Amazon River is 6,400 kilometres long.",
+   "facts": [
+    {
+     "item": "Q3783",
+     "property": "P2043",
+     "value": "6,400 kilometres",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q3783",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A36",
+   "question": "What is the chemical symbol for gold?",
+   "domain": "Chemistry",
+   "line": "The chemical symbol for gold is A, U.",
+   "caption": "The chemical symbol for gold is Au.",
+   "facts": [
+    {
+     "item": "Q897",
+     "property": "P246",
+     "value": "Au",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q897",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A37",
+   "question": "What is the atomic number of carbon?",
+   "domain": "Chemistry",
+   "line": "The atomic number of carbon is 6.",
+   "caption": "The atomic number of carbon is 6.",
+   "facts": [
+    {
+     "item": "Q623",
+     "property": "P1086",
+     "value": "6",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q623",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A38",
+   "question": "What is the chemical formula of water?",
+   "domain": "Chemistry",
+   "line": "The chemical formula of water is H two O.",
+   "caption": "The chemical formula of water is H₂O.",
+   "facts": [
+    {
+     "item": "Q283",
+     "property": "P274",
+     "value": "H₂O",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q283",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A39",
+   "question": "What is the chemical symbol for iron?",
+   "domain": "Chemistry",
+   "line": "The chemical symbol for iron is F, E.",
+   "caption": "The chemical symbol for iron is Fe.",
+   "facts": [
+    {
+     "item": "Q677",
+     "property": "P246",
+     "value": "Fe",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q677",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A40",
+   "question": "What is the atomic number of oxygen?",
+   "domain": "Chemistry",
+   "line": "The atomic number of oxygen is 8.",
+   "caption": "The atomic number of oxygen is 8.",
+   "facts": [
+    {
+     "item": "Q629",
+     "property": "P1086",
+     "value": "8",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q629",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A41",
+   "question": "How long is a year on Mars?",
+   "domain": "Astronomy",
+   "line": "A year on Mars lasts about 687 days.",
+   "caption": "A year on Mars lasts about 687 days.",
+   "facts": [
+    {
+     "item": "Q111",
+     "property": "P2146",
+     "value": "about 687 days",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q111",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A42",
+   "question": "How far is the Moon from Earth?",
+   "domain": "Astronomy",
+   "line": "The Moon is, on average, about 385,000 kilometres from Earth.",
+   "caption": "The Moon is, on average, about 385,000 kilometres from Earth.",
+   "facts": [
+    {
+     "item": "Q405",
+     "property": "P2583",
+     "value": "about 385,000 kilometres",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q405",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A43",
+   "question": "How long is a day on Mars?",
+   "domain": "Astronomy",
+   "line": "A day on Mars lasts 24.623 hours.",
+   "caption": "A day on Mars lasts 24.623 hours.",
+   "facts": [
+    {
+     "item": "Q111",
+     "property": "P2147",
+     "value": "24.623 hours",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q111",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A44",
+   "question": "How long is a year on Jupiter?",
+   "domain": "Astronomy",
+   "line": "A year on Jupiter lasts about 4,333 days.",
+   "caption": "A year on Jupiter lasts about 4,333 days.",
+   "facts": [
+    {
+     "item": "Q319",
+     "property": "P2146",
+     "value": "about 4,333 days",
+     "value_items": [],
+     "source": "https://www.wikidata.org/wiki/Q319",
+     "licence": "CC0 1.0 (Wikidata)",
+     "read": "2026-10-29"
+    }
+   ]
+  },
+  {
+   "code": "A45",
+   "question": "What is the square root of 144?",
+   "domain": "Mathematics",
+   "line": "The square root of 144 is 12.",
+   "caption": "The square root of 144 is 12.",
+   "facts": [
+    {
+     "computed": "sqrt",
+     "how": "the square root of an exact square",
+     "args": {
+      "n": 144
+     }
+    }
+   ]
+  },
+  {
+   "code": "A46",
+   "question": "Is 97 a prime number?",
+   "domain": "Mathematics",
+   "line": "Yes, 97 is a prime number: it has no divisors other than 1 and itself.",
+   "caption": "Yes, 97 is a prime number: it has no divisors other than 1 and itself.",
+   "facts": [
+    {
+     "computed": "prime",
+     "how": "trial division",
+     "args": {
+      "n": 97
+     }
+    }
+   ]
+  },
+  {
+   "code": "A47",
+   "question": "How many days are in a leap year?",
+   "domain": "Time",
+   "line": "A leap year has 366 days.",
+   "caption": "A leap year has 366 days.",
+   "facts": [
+    {
+     "computed": "leap-days",
+     "how": "a leap year has 366 days (the Gregorian calendar)",
+     "args": {}
+    }
+   ]
+  },
+  {
+   "code": "A48",
+   "question": "What day of the week was 1 January 2000?",
+   "domain": "Time",
+   "line": "The first of January 2000 was a Saturday.",
+   "caption": "The first of January 2000 was a Saturday.",
+   "facts": [
+    {
+     "computed": "weekday",
+     "how": "the Gregorian calendar",
+     "args": {
+      "date": "2000-01-01"
+     }
+    }
+   ]
+  },
+  {
+   "code": "A49",
+   "question": "What is 100 degrees Fahrenheit in Celsius?",
+   "domain": "Units",
+   "line": "100 degrees Fahrenheit is about 37.8 degrees Celsius.",
+   "caption": "100 degrees Fahrenheit is about 37.8 degrees Celsius.",
+   "facts": [
+    {
+     "computed": "f-to-c",
+     "how": "°C = (°F − 32) × 5/9",
+     "args": {
+      "f": 100
+     }
+    }
+   ]
+  },
+  {
+   "code": "A50",
+   "question": "How many seconds are in a day?",
+   "domain": "Time",
+   "line": "There are 86,400 seconds in a day.",
+   "caption": "There are 86,400 seconds in a day.",
+   "facts": [
+    {
+     "computed": "seconds-day",
+     "how": "24 hours × 60 minutes × 60 seconds",
+     "args": {}
+    }
+   ]
+  }
+ ],
+ "left_out": []
+}
