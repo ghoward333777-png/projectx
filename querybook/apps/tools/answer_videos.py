@@ -218,13 +218,114 @@ def write(answers, problems, base, persona):
                 "## Clips\n\n| Code | Line | Covers |\n|---|---|---|\n%s\n" % (persona, os.path.basename(base), FIXED, rows))
 
 
+# ------------------------------------------------------------------------------------------------ checking a clip
+NUMWORDS = {w: str(i) for i, w in enumerate(WORDS)}
+NUMWORDS.update({w: str(i * 10) for i, w in enumerate(TENS) if w != "_"})
+FILLER = {"about", "the", "a", "an", "and", "of", "on", "in", "is", "was"}
+
+
+def tokens(text):
+    """words for comparing a line with what was heard: numbers as digits ("seven" → 7, "8,849" → 8849, "14th" → 14,
+    "twenty-one" → 21), British and American spellings alike"""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (text or "").lower().replace("’", "'"))
+    t = "".join(c for c in t if not unicodedata.combining(c))       # Brasília → brasilia (heard either way)
+    t = re.sub(r"(?<=\d),(?=\d)", "", t)
+    t = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", t)
+    t = t.replace("metres", "meters").replace("metre", "meter").replace("kilometres", "kilometers")
+    out = []
+    for w in re.findall(r"[a-z0-9.']+", t):
+        w = w.strip(".")
+        parts = w.split("-")
+        if len(parts) == 2 and parts[0] in NUMWORDS and parts[1] in NUMWORDS:
+            w = str(int(NUMWORDS[parts[0]]) + int(NUMWORDS[parts[1]]))
+        out.append(NUMWORDS.get(w, w))
+    return [w for w in out if w]
+
+
+def match(expected, heard):
+    a, b = tokens(expected), tokens(heard)
+    if not a:
+        return 1.0
+    L = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+    for i in range(len(a)):
+        for j in range(len(b)):
+            L[i + 1][j + 1] = L[i][j] + 1 if a[i] == b[j] else max(L[i][j + 1], L[i + 1][j])
+    return L[-1][-1] / len(a)
+
+
+def answer_words(ans):
+    """the words that ARE the answer: every word of each fact's value (as spoken), or the numbers of a computed answer"""
+    vals = [f["value"] for f in ans["facts"] if f.get("value")]
+    if not vals:                                          # computed: its numbers and the words after "is/was a"
+        return [w for w in tokens(ans["line"]) if w.isdigit() or w in ("saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday")]
+    words = []
+    for v in vals:
+        sp, spelled = v, False
+        if v not in ans["line"]:                          # said in a spoken form (a symbol spelled, a formula read out)
+            for kind in ("spell", "formula"):
+                if spoken(kind, v) in ans["line"]:
+                    sp, spelled = spoken(kind, v), True
+        words += [w for w in tokens(sp) if spelled or w not in FILLER]
+    return words
+
+
+def verdict(ans, heard, min_match=0.8):
+    """a clip passes when at least min_match of the line is heard AND every word of the answer is heard"""
+    m = match(ans["line"], heard)
+    have = tokens(heard)
+    missing = [w for w in answer_words(ans) if w not in have]
+    return {"match": round(m, 3), "missing": missing, "pass": m >= min_match and not missing}
+
+
+def check(manifest, clips, google_key, min_match=0.8):
+    """every clip of every answer: what Speech-to-Text heard (the line's names as hints) and the verdict; the best take wins"""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "_core"))
+    import glob, gcloud, shutil, subprocess, tempfile
+    tmp = tempfile.mkdtemp()
+    try:
+        st = gcloud.Settings(tmp)
+        st.save({"api_key": google_key})
+        g = gcloud.Google(st)
+        out = {}
+        for ans in json.load(open(manifest, encoding="utf-8"))["answers"]:
+            takes = []
+            for f in sorted(glob.glob(os.path.join(clips, ans["code"], "*.mp4"))):
+                wav = os.path.join(tmp, "take.wav")
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f, "-vn", "-ac", "1", "-ar", "16000", wav])
+                names = re.findall(r"\b[A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)*", ans["line"])
+                with open(wav, "rb") as fh:
+                    heard = (g.recognize(fh.read(), "en-US", phrases=names) or {}).get("transcript") or ""
+                takes.append(dict(verdict(ans, heard, min_match), file=f, heard=heard))
+            if takes:
+                out[ans["code"]] = max(takes, key=lambda t: (t["pass"], t["match"]))
+        return out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sp = ap.add_subparsers(dest="cmd", required=True)
     b = sp.add_parser("build")
     b.add_argument("--batch", required=True)
     b.add_argument("--out", required=True)
+    c = sp.add_parser("check")
+    c.add_argument("--manifest", required=True)
+    c.add_argument("--clips", required=True, help="folder with one sub-folder per answer code")
+    c.add_argument("--min-match", type=float, default=0.8)
     a = ap.parse_args(argv)
+    if a.cmd == "check":
+        key = os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            sys.exit("set GOOGLE_API_KEY (the Google key that has Speech-to-Text)")
+        res = check(a.manifest, a.clips, key, a.min_match)
+        for code, r in sorted(res.items()):
+            print("%s %s %.2f %s| heard: %s" % (code, "PASS" if r["pass"] else "FAIL", r["match"],
+                                               ("missing %s " % r["missing"]) if r["missing"] else "", r["heard"]))
+        print("\n%d of %d pass" % (sum(r["pass"] for r in res.values()), len(res)))
+        json.dump(res, open(os.path.join(a.clips, "_check.json"), "w"), indent=1, ensure_ascii=False)
+        return 0
     batch = json.load(open(a.batch, encoding="utf-8"))
     answers, problems = build(batch)
     write(answers, problems, a.out, batch.get("persona", "Pamela"))
