@@ -246,7 +246,7 @@ REGISTRATION = {
     "anthropic": ("Anthropic Claude — fact gatherer", "paid per use", "https://platform.claude.com/settings/keys", True, "commons:anthropic",
                   ("GET", "https://api.anthropic.com/v1/models", {"x-api-key": "{k}", "anthropic-version": "2023-06-01"}, None)),
     "perplexity": ("Perplexity — fact gatherer", "paid per use", "https://www.perplexity.ai/account/api", True, "commons:perplexity",
-                   ("POST", "https://api.perplexity.ai/chat/completions", {"Authorization": "Bearer {k}", "Content-Type": "application/json"}, b"{}")),
+                   ("POST", "https://api.perplexity.ai/v1/agent", {"Authorization": "Bearer {k}", "Content-Type": "application/json"}, b"{}")),
     "elevenlabs": ("ElevenLabs — voices", "free tier, then paid", "https://elevenlabs.io/app/settings/api-keys", True, "language:elevenlabs",
                    ("GET", "https://api.elevenlabs.io/v1/voices", {"xi-api-key": "{k}"}, None)),
     "heygen": ("HeyGen — talking-photo video", "paid", "https://app.heygen.com/settings?nav=API", True, "language:heygen",

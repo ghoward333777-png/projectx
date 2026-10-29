@@ -723,6 +723,10 @@ question go into the reasoning; no page wording is stored; every run is in the h
 For Gemini it asks in two steps (a grounded answer first, then that answer as short facts) — asked for JSON at once, Gemini
 answered from memory without searching, and the checker rightly kept none of it.
 
+Perplexity: Sonar chat completions were retired on 27 September 2026; the gatherer calls the Agent API (`POST /v1/agent`,
+effort "fast", which searches the web) and takes the pages from its `search_results` items. Live check: "Who won the 2025
+Nobel Prize in Literature?" — 10 pages read, László Krasznahorkai confirmed on them.
+
 First live test (4 questions, Gemini 3.5 Flash): 24 facts proposed, 21 confirmed and kept (9 corroborated, 12 sourced), 3
 dropped because no returned page stated them.
 

@@ -24,7 +24,7 @@ VERSION = "1.0.0"
 UA = "QueryBook-gatherer/%s (+https://github.com/ghoward333777-png/projectx; checks facts on cited pages)" % VERSION
 SOURCE_KEY = "llm-gathered-web"
 AREAS = {"language": "language", "stem": "stem", "history": "facts"}            # area -> the application that keeps the facts
-MODELS = {"gemini": "gemini-3.5-flash", "perplexity": "sonar-pro", "openai": "gpt-5", "anthropic": "claude-opus-5-5"}
+MODELS = {"gemini": "gemini-3.5-flash", "perplexity": "agent-fast", "openai": "gpt-5", "anthropic": "claude-opus-5-5"}
 BUDGET = {"gemini": 200, "perplexity": 100, "openai": 100, "anthropic": 100}     # requests a day per provider
 PAGE_MAX = 2 << 20
 WINDOW = 600                                                                     # characters around the value to find the subject
@@ -81,12 +81,19 @@ def ask_gemini(key, question, n, model=None):
 
 
 def ask_perplexity(key, question, n, model=None):
-    model = model or MODELS["perplexity"]
-    r = _post("https://api.perplexity.ai/chat/completions", {"model": model, "messages": [{"role": "user", "content": PROMPT.format(q=question, n=n, hint=HINT.get("text", ""))}]},
-              {"Authorization": "Bearer " + key})
-    text = ((r.get("choices") or [{}])[0].get("message") or {}).get("content", "")
-    pages = list(r.get("citations") or []) + [s["url"] for s in r.get("search_results") or [] if s.get("url")]
-    return text, pages, model
+    """Perplexity's Agent API (Sonar chat completions were retired on 27 September 2026): effort "fast" searches the web;
+    the answer is the message items' output_text, the pages are the search_results items' urls"""
+    body = {"effort": "fast", "input": PROMPT.format(q=question, n=n, hint=HINT.get("text", ""))}
+    if model and "/" in model:                # an Agent API model id ("openai/…"); otherwise the effort preset picks it
+        body["model"] = model
+    r = _post("https://api.perplexity.ai/v1/agent", body, {"Authorization": "Bearer " + key})
+    text, pages = [], []
+    for item in r.get("output") or []:
+        if item.get("type") == "message":
+            text += [c.get("text", "") for c in item.get("content") or [] if c.get("type") == "output_text"]
+        elif item.get("type") == "search_results":
+            pages += [x["url"] for x in item.get("results") or [] if x.get("url")]
+    return "\n".join(text), list(dict.fromkeys(pages)), r.get("model") or "perplexity-agent (fast)"
 
 
 def ask_openai(key, question, n, model=None):
