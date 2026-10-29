@@ -407,12 +407,34 @@ def _gemini_key(commons):
         return None
 
 
-def _transcribe(key, model, path):
+def _transcribe(key, model, path, google_key=None, expected=None):
+    """the words spoken in a take: the Gemini transcriber, or Google Speech-to-Text when that returns nothing (it sometimes
+    does) and a Google API key is at hand (google_key, or GOOGLE_API_KEY)"""
     wav = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "-"], capture_output=True).stdout
     body = {"contents": [{"role": "user", "parts": [{"inlineData": {"mimeType": "audio/wav", "data": base64.b64encode(wav).decode()}},
                                                     {"text": "Transcribe exactly the words spoken. Reply with the words only."}]}]}
-    r = _call(key, "%s/models/%s:generateContent" % (API, model), body, timeout=300)
-    return "".join(p.get("text", "") for c in r.get("candidates", []) for p in c.get("content", {}).get("parts", [])).strip()
+    text = ""
+    try:
+        r = _call(key, "%s/models/%s:generateContent" % (API, model), body, timeout=300)
+        text = "".join(p.get("text", "") for c in r.get("candidates", []) for p in c.get("content", {}).get("parts", [])).strip()
+    except Exception:
+        text = ""
+    gk = google_key or os.environ.get("GOOGLE_API_KEY")
+    if not text and gk:
+        import gcloud
+        tmp = tempfile.mkdtemp()
+        st = gcloud.Settings(tmp)
+        st.save({"api_key": gk})
+        f = os.path.join(tmp, "take.wav")                          # a real file: a piped WAV has no length in its header
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", path, "-vn", "-ac", "1", "-ar", "16000", f])
+        try:
+            with open(f, "rb") as fh:
+                names = re.findall(r"\b[A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)*", expected or "")   # the line's proper names as hints
+                text = (gcloud.Google(st).recognize(fh.read(), "en-US", phrases=names) or {}).get("transcript") or ""
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+    return text
 
 
 _BUSY, _BUSY_LOCK = set(), threading.Lock()

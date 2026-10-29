@@ -375,7 +375,7 @@ class Google:
         return json.loads(raw)
 
     # ------------------------------------------------------------------ Speech-to-Text (API key)
-    def recognize(self, wav, lang="en-US", alt_langs=None, alternatives=1, offset_s=0.0):
+    def recognize(self, wav, lang="en-US", alt_langs=None, alternatives=1, offset_s=0.0, phrases=None):
         """Transcribe up to ~55 s of WAV audio. Returns {transcript, confidence, words:[{word, start_s, end_s, confidence}],
         alternatives:[{transcript, confidence}]} — other possible readings of the whole clip when `alternatives` > 1.
         offset_s is added to every word time (a piece of a longer recording)."""
@@ -394,6 +394,8 @@ class Google:
             cfg["alternativeLanguageCodes"] = alt_langs[:3]
         if alternatives > 1:
             cfg["maxAlternatives"] = min(10, int(alternatives))
+        if phrases:                                  # names the speaker is expected to say (places, people): heard, not guessed
+            cfg["speechContexts"] = [{"phrases": [str(x)[:100] for x in phrases][:500], "boost": 10}]
         t0 = time.time()
         try:
             st, raw, _ = self.http("POST", base("speech") + "/v1/speech:recognize", json.dumps({"config": cfg, "audio": {"content": base64.b64encode(pcm).decode()}}).encode(),
