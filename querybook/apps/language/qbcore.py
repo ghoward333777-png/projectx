@@ -1608,7 +1608,7 @@ class CloudLink:
 
 
 def _first_run_google(cloud, diag, program_dir):
-    """A personalised copy may carry google-setup.json next to the program ({"api_key": …} or {"code": "QBSETUP-…"}).
+    """A personalised copy may carry google-setup.json next to the program ({"api_key": …, "youtube_key": …} or {"code": "QBSETUP-…"}).
     On first start it is moved into the private settings of every QueryBook application on this computer and the
     file is deleted, so the key does not stay in the program folder."""
     f = os.path.join(program_dir, "google-setup.json")
@@ -1617,7 +1617,7 @@ def _first_run_google(cloud, diag, program_dir):
     try:
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh) or {}
-        vals = cloud.gc_mod.decode_setup_code(d["code"]) if d.get("code") else {k: d[k] for k in ("api_key", "project_id", "bucket") if d.get(k)}
+        vals = cloud.gc_mod.decode_setup_code(d["code"]) if d.get("code") else {k: d[k] for k in ("api_key", "youtube_key", "project_id", "bucket") if d.get(k)}
         applied = []
         for other in ("language", "stem", "facts"):
             folder = diag.store.folder if other == diag.app_id else data_folder(other, os.path.join(os.path.dirname(program_dir), other))

@@ -70,6 +70,10 @@ class Settings:
     def api_key(self):
         return self.load().get("api_key") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
 
+    def youtube_key(self):
+        """a YouTube-only key when one is set (a key Google created for YouTube alone), else the shared API key"""
+        return self.load().get("youtube_key") or self.api_key()
+
     def service_account(self):
         sa = self.load().get("service_account")
         if not sa and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
@@ -85,6 +89,8 @@ class Settings:
         v = values or {}
         if v.get("api_key"):
             cfg["api_key"] = str(v["api_key"]).strip()
+        if v.get("youtube_key"):
+            cfg["youtube_key"] = str(v["youtube_key"]).strip()
         if v.get("service_account_json"):
             try:
                 sa = json.loads(v["service_account_json"]) if isinstance(v["service_account_json"], str) else v["service_account_json"]
@@ -112,7 +118,7 @@ class Settings:
     def public(self):
         cfg = self.load()
         sa = self.service_account()
-        return {"api_key_set": bool(self.api_key()), "api_key_from_environment": bool(not cfg.get("api_key") and self.api_key()),
+        return {"api_key_set": bool(self.api_key()), "youtube_key_set": bool(cfg.get("youtube_key")), "api_key_from_environment": bool(not cfg.get("api_key") and self.api_key()),
                 "service_account": {"client_email": sa.get("client_email"), "project_id": sa.get("project_id")} if sa else None,
                 "project_id": cfg.get("project_id") or (sa or {}).get("project_id"), "bucket": cfg.get("bucket") or "",
                 "storage_on": bool(cfg.get("storage_on")), "monitoring_on": bool(cfg.get("monitoring_on")),
@@ -120,7 +126,7 @@ class Settings:
 
     def secrets(self):
         sa = self.service_account() or {}
-        return [s for s in (self.api_key(), sa.get("private_key"), sa.get("private_key_id")) if s and len(s) > 6]
+        return [s for s in (self.api_key(), self.load().get("youtube_key"), sa.get("private_key"), sa.get("private_key_id")) if s and len(s) > 6]
 
     def scrub(self, text):
         t = str(text)
@@ -447,7 +453,7 @@ class Google:
 
     # ------------------------------------------------------------------ YouTube Data API v3 (API key)
     def youtube_search(self, q, n=10):
-        key = self.s.api_key()
+        key = self.s.youtube_key()
         if not key:
             raise GoogleError("no Google API key")
         t0 = time.time()
@@ -463,7 +469,7 @@ class Google:
             raise
 
     def youtube_videos(self, ids):
-        key = self.s.api_key()
+        key = self.s.youtube_key()
         st, raw, _ = self.http("GET", base("youtube") + "/youtube/v3/videos?" + urllib.parse.urlencode(
             {"part": "snippet,contentDetails,statistics", "id": ",".join(ids)}), None, {"X-Goog-Api-Key": key}, 30)
         out = []

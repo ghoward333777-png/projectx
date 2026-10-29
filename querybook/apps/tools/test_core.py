@@ -681,7 +681,7 @@ def first_run_tests(c):
         prog = os.path.join(tmp, "prog", "language"); os.makedirs(prog)
         data = os.path.join(tmp, "data"); os.makedirs(data)
         with open(os.path.join(prog, "google-setup.json"), "w") as f:
-            json.dump({"api_key": "AIzaFIRSTRUNTEST000000000000000000000000"}, f)
+            json.dump({"api_key": "AIzaFIRSTRUNTEST000000000000000000000000", "youtube_key": "AIzaYOUTUBEONLY00000000000000000000000"}, f)
         st = core.Store(data, "t", SCHEMA)
         diag = types.SimpleNamespace(store=st, app_id="language", app_name="Test", log=lambda *a: None, started=time.time())
         link = core.CloudLink(st, "language", "Test", lambda *a: None)
@@ -695,7 +695,12 @@ def first_run_tests(c):
         c.check("first run: a key shipped with a personal copy is installed for all three apps and the file is deleted",
                 not os.path.exists(os.path.join(prog, "google-setup.json")) and gcloud.Settings(data).api_key().startswith("AIzaFIRSTRUN")
                 and gcloud.Settings(os.path.join(tmp, "facts")).api_key().startswith("AIzaFIRSTRUN"))
-        c.check("first run: the key is not written to the activity log", "AIzaFIRSTRUN" not in json.dumps(st.activities(50)))
+        c.check("first run: a YouTube-only key is kept beside the shared key and used for YouTube alone",
+                gcloud.Settings(os.path.join(tmp, "facts")).youtube_key().startswith("AIzaYOUTUBEONLY")
+                and gcloud.Settings(os.path.join(tmp, "facts")).api_key().startswith("AIzaFIRSTRUN")
+                and gcloud.Settings(os.path.join(tmp, "stem")).public()["youtube_key_set"])
+        c.check("first run: the key is not written to the activity log", "AIzaFIRSTRUN" not in json.dumps(st.activities(50))
+                and "AIzaYOUTUBEONLY" not in json.dumps(st.activities(50)))
 
 
 def main():
