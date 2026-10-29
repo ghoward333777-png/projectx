@@ -620,6 +620,26 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## One-click Google setup (Control Panel 1.10.0, `gcloud.auto_setup`)
+
+Control Panel → API & connections → **🔑 Set up Google** (admin passphrase). The same steps as the Cloud Shell setup
+script, run on this computer by Google's own command-line tool (gcloud), as a separate process:
+
+1. sign in — `gcloud auth login` opens Google's own consent page; the user chooses the account and presses Allow (no
+   password or token passes through QueryBook; gcloud keeps its own credentials);
+2. the project — the configured one, else the first one, else a new `querybook-xxxxxxxx`;
+3. the APIs — Gemini, YouTube, API Keys, IAM; plus Speech-to-Text, Text-to-Speech, Storage and Monitoring when the project
+   has billing (without it the free ones are switched on and the billing page is linked);
+4. one API key named QueryBook, restricted to exactly the switched-on services (an existing one is updated, so pressing
+   again after adding billing extends it);
+5. with billing: the backup bucket and the `querybook-apps` service account (storage object admin on the bucket,
+   monitoring editor); skipped with a note where the organisation forbids service-account keys;
+6. saved into every application's private Google settings (`google.json`, owner-only) and, if none is set, as the fact
+   gatherer's Gemini key; the key is checked against Google. The result names the project and account, never the key.
+
+Safe to run again. Without gcloud the page links its installer; the Cloud Shell paste-in setup remains in each program's
+Diagnostics.
+
 ## Keystone coverage and priorities (`_core/qbkeystone.py`, Control Panel 1.9.0)
 
 Adopted from the UFCS prototype's planning engine after reading its specification: its 20 keystone domains in five phases

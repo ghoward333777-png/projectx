@@ -19,6 +19,14 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.10.0 - one-click Google setup
+    * API & connections -> Google - one-click setup: enter the admin passphrase and press Set up Google. A Google sign-in page
+      opens on this computer - choose your account and press Allow (Google's own page; your password never reaches QueryBook).
+      Then, by itself: a Google Cloud project (created if you have none), the APIs switched on, a QueryBook key restricted to
+      them, backups and health reports where billing allows - saved into all four programs, and the key checked.
+    * Needs Google's free command-line tool, gcloud, installed once (https://cloud.google.com/sdk/docs/install).
+      Without billing on the project, Gemini and YouTube are connected; Speech, Text-to-Speech and backups need billing -
+      add it and press the button again.
   Control Panel 1.9.0 - coverage map and priorities (adopted from the UFCS prototype's planner, now measured)
     * Bulk harvesting -> Coverage map: 20 keystone domains in 5 phases with the facts actually held in each, the sources
       feeding them, measured novelty and state (growing / saturated). The bulk runner starts datasets in this order - your

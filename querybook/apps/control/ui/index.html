@@ -273,6 +273,14 @@
         the admin passphrase. Every program also describes itself at <span class="mono">/api/routes</span> and
         <span class="mono">/api/openapi.json</span> (for Postman, Insomnia and code generators).</p>
       <div id="api-progs" class="row"></div>
+      <h3>Google — one-click setup</h3>
+      <p class="muted small">Connects all six Google services (Gemini, Speech-to-Text, Text-to-Speech, YouTube, backups, health reports) for every
+        QueryBook application at once. A Google sign-in page opens on this computer: choose your account and press <b>Allow</b> — that is
+        Google's own page, your password never reaches QueryBook. Then it switches on the APIs, creates a QueryBook key restricted to them and
+        saves it everywhere. Safe to press again (after adding billing, for example). Needs Google's free command-line tool (gcloud).</p>
+      <div class="row"><input type="password" id="gs-pass" placeholder="Admin passphrase" style="width:14em">
+        <button class="btn" id="gs-go">🔑 Set up Google</button><span id="gs-state" class="small"></span></div>
+      <div id="gs-out" class="small"></div>
       <h3>Outside connections <span class="small muted" id="cn-summary"></span></h3>
       <p class="muted small">Every service outside this computer the suite talks to — what for, which program, whether its key is set (keys
         are never shown) and when it was last used. <b>Test</b> sends one request to the service's public address without any key, so it costs

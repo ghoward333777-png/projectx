@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 PORT = 8100
 program_dir = HERE
 
@@ -93,6 +93,7 @@ class Panel:
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
         qbbulk.add_routes(self.api, self.commons, HERE)
         qbconnections.add_routes(self.api, self.commons)
+        qbconnections.add_google_setup(self.api, self.commons, HERE, self.folder)   # one-click Google setup (/api/google/setup)
         qbgather.add_routes(self.api, self.commons, HERE)      # the fact gatherer: LLM web search, checked on the page (/api/gather)    # every outside service the suite connects to (/api/connections)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
@@ -868,6 +869,15 @@ def selftest():
         check("harvests in action: a running harvest turn shows its own scale (tasks of its plan) and the task it is on",
               turn and turn["done"] == 1 and turn["total"] == 3 and turn["unit"] == "tasks" and turn["detail"] == "task 2"
               and "tkActive" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(), act)
+        gsu = p.api.routes[("GET", "/api/google/setup")]({})
+        try:
+            p.api.routes[("POST", "/api/google/setup")]({"passphrase": "wrong"})
+            gs_refused = False
+        except Exception:
+            gs_refused = True
+        check("one-click Google setup: each application's Google settings (never the key) and gcloud's presence; starting needs the admin passphrase",
+              set(gsu["apps"]) == {"language", "stem", "facts", "control"} and "gcloud" in gsu and gs_refused
+              and "api_key" not in json.dumps(gsu).replace("api_key_set", ""), gsu)
         gs = p.api.routes[("GET", "/api/gather")]({})
         try:
             p.api.routes[("POST", "/api/gather/start")]({"question": "Who won Super Bowl LX?", "passphrase": "wrong"})

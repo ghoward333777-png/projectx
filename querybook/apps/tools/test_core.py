@@ -542,6 +542,41 @@ def google_tests(c):
             c.check("google: YouTube search returns video, channel, date and link", v and v[0]["channel"] == "A Channel" and v[0]["url"].endswith("dQw4w9WgXcQ"))
             c.check("google: video ids are read from any YouTube link form", gcloud.youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
                     and gcloud.youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3") == "dQw4w9WgXcQ")
+            # one-click setup: a stand-in gcloud (no billing first, then with billing on a second run)
+            gst, gcalls = {"login": False, "key": False, "billing": False}, []
+            def fake_gcloud(args, timeout=300):
+                gcalls.append(args)
+                if args[:2] == ["auth", "list"]: return 0, "me@example.com" if gst["login"] else "", ""
+                if args[:2] == ["auth", "login"]: gst["login"] = True; return 0, "", ""
+                if args[:2] == ["config", "get-value"]: return 0, gst.get("project") or "(unset)", ""
+                if args[:2] == ["config", "set"]: gst["project"] = args[3]; return 0, "", ""
+                if args[:2] == ["projects", "list"]: return 0, "", ""
+                if args[:2] == ["services", "enable"] and "speech.googleapis.com" in args and not gst["billing"]: return 1, "", "Billing account not found"
+                if args[:3] == ["services", "api-keys", "list"]: return 0, "projects/1/locations/global/keys/k1" if gst["key"] else "", ""
+                if args[:3] == ["services", "api-keys", "create"]: gst["key"] = True; return 0, "", ""
+                if args[:3] == ["services", "api-keys", "get-key-string"]: return 0, "AIzaSETUPKEY0000", ""
+                if args[:3] == ["iam", "service-accounts", "keys"]:
+                    with open(args[4], "w") as f: f.write(json.dumps(SA))
+                    return 0, "", ""
+                if args[:2] == ["storage", "buckets"] and args[2] == "describe": return 1, "", "not found"
+                if args[:3] == ["iam", "service-accounts", "describe"]: return 1, "", "not found"
+                return 0, "", ""
+            gfold = {a_: os.path.join(tmp, "gs-" + a_) for a_ in ("language", "stem", "facts")}
+            r1 = gcloud.auto_setup(gfold, tmp, run=fake_gcloud, check_key=lambda k: True)
+            c.check("google one-click: signs in once, creates a project when there is none, a key restricted to the free services, "
+                    "saved to all three applications (never returned)",
+                    r1["ok"] and r1["project_id"].startswith("querybook-") and not r1["billing"] and r1["saved_to"] == ["language", "stem", "facts"]
+                    and gcloud.Settings(gfold["stem"]).api_key() == "AIzaSETUPKEY0000" and "AIzaSETUPKEY0000" not in json.dumps(r1)
+                    and any(a_[:2] == ["auth", "login"] for a_ in gcalls)
+                    and sorted(a_.split("=")[-1] for a_ in next(x for x in gcalls if x[:3] == ["services", "api-keys", "create"]) if a_.startswith("--api-target"))
+                    == ["generativelanguage.googleapis.com", "youtube.googleapis.com"], r1)
+            gst["billing"], gcalls[:] = True, []
+            r2 = gcloud.auto_setup(gfold, tmp, run=fake_gcloud, check_key=lambda k: True)
+            upd = next((x for x in gcalls if x[:3] == ["services", "api-keys", "update"]), [])
+            c.check("google one-click: run again after billing is added — the same key now allows Speech and Text-to-Speech, backups are set up",
+                    r2["billing"] and r2["backups"] and sum(1 for a_ in upd if a_.startswith("--api-target")) == 4
+                    and r2["project_id"] == r1["project_id"] and not any(x[:2] == ["auth", "login"] for x in gcalls)
+                    and gcloud.Settings(gfold["facts"]).service_account(), r2)
             # the application path: every backup goes to the bucket, newest N kept, diagnostics see it
             st = core.Store(tmp, "t", SCHEMA)
             link = core.CloudLink(st, "t", "Test", lambda *a: None)

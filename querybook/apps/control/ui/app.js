@@ -259,6 +259,8 @@ async function loadChat() {
 function bind() {
   $("#api-refresh").onclick = () => loadApis().catch(e => toast(e.message));
   $("#cn-cat").onchange = () => CONNS && renderConns();
+  $("#gs-go").onclick = async () => { try { const r = await api("/api/google/setup", { passphrase: $("#gs-pass").value }); toast(r.summary); loadGoogleSetup(); }
+    catch (e) { toast(e.message); } };
   $("#cn-test-all").onclick = async () => { $("#cn-test-all").disabled = true; toast("Testing every connection…");
     try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
     $("#cn-test-all").disabled = false; };
@@ -408,8 +410,28 @@ function renderConns() {
     try { const r = await api("/api/connections/test", { id: b.dataset.cn }); CN_TEST[b.dataset.cn] = r.results[0]; } catch (e) { toast(e.message); }
     renderConns(); });
 }
+let GS_TIMER = null;
+async function loadGoogleSetup() {
+  const g = await api("/api/google/setup"), r = g.run;
+  const apps = Object.entries(g.apps).map(([a, v]) => `<span class="pill">${esc(a)}: ${v.api_key_set ? "key set" + (v.project_id ? " · " + esc(v.project_id) : "") + (v.backups ? " · backups" : "") : "no key"}</span>`).join(" ");
+  let st = g.gcloud ? "" : `<span class="badge warn">gcloud not installed</span> <a href="${esc(g.install)}" target="_blank" rel="noopener">install it once</a>, then press the button.`;
+  if (r && !r.finished) st = `<span class="badge">step ${r.step || 0} of ${r.of || 6}</span> ${esc(r.text || "")}`;
+  let res = "";
+  if (r && r.finished && r.result) {
+    const x = r.result;
+    res = x.ok ? `<div><span class="badge ok">done</span> ${esc(x.account || "")} · project ${esc(x.project_id || "")} · saved to ${esc((x.saved_to || []).join(", "))}` +
+        ` · key ${x.key_works ? "works" : "activating"}${x.backups ? " · backups on" : ""}</div>`
+      : `<div><span class="badge bad">not finished</span> ${esc(x.why || "")}</div>`;
+    res += (x.notes || []).map(n => `<div class="muted">• ${esc(n).replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')}</div>`).join("");
+  }
+  $("#gs-state").innerHTML = st;
+  $("#gs-out").innerHTML = `<div class="row">${apps}</div>` + res;
+  clearTimeout(GS_TIMER);
+  if (r && r.alive) GS_TIMER = setTimeout(() => loadGoogleSetup().catch(() => {}), 2000);
+}
 async function loadApis() {
   loadConns().catch(e => toast(e.message));
+  loadGoogleSetup().catch(e => toast(e.message));
   APIS = await api("/api/panel/apis");
   $("#api-progs").innerHTML = APIS.programs.map(p => `<span class="pill"><span class="dot ${p.running ? "on" : "off"}"></span>${esc(p.name)} ·
     <span class="mono">${esc(p.url)}</span>${p.running ? ` · <a href="${esc(p.url)}/api/openapi.json" target="_blank" rel="noopener">OpenAPI</a>` : " · not running"}</span>`).join(" ");

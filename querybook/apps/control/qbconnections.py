@@ -167,6 +167,61 @@ def add_routes(api, commons):
             return {"results": list(ex.map(lambda i: test(i), ids))}
 
 
+# ------------------------------------------------------------------------------------------------ one-click Google setup
+def google_folders(program_dir, own_folder=None):
+    """every QueryBook application's data folder on this computer (where its private Google settings live)"""
+    import qbcore as core
+    root = os.path.dirname(program_dir)
+    out = {a: core.data_folder(a, os.path.join(root, a)) for a in ("language", "stem", "facts")}
+    if own_folder:
+        out["control"] = own_folder
+    return out
+
+
+def google_setup_status(commons, program_dir, own_folder=None):
+    import gcloud
+    path = os.path.join(commons.folder, "google-setup-run.json")
+    try:
+        with open(path) as f:
+            run = json.load(f)
+    except (OSError, ValueError):
+        run = None
+    if run:
+        run["alive"] = not run.get("finished") and time.time() - run.get("heartbeat", 0) < 1200
+    apps = {a: gcloud.Settings(f).public() for a, f in google_folders(program_dir, own_folder).items()}
+    return {"gcloud": bool(gcloud.find_gcloud()), "install": gcloud.GCLOUD_INSTALL, "run": run,
+            "apps": {a: {"api_key_set": v["api_key_set"], "project_id": v["project_id"], "backups": bool(v["service_account"])} for a, v in apps.items()}}
+
+
+def google_setup_start(commons, passphrase, program_dir, own_folder=None):
+    """admin: run the one-click setup as its own process (it waits for the user to press Allow on Google's page)"""
+    import subprocess, sys, gcloud
+    commons.approvals._require(passphrase or "")
+    st = google_setup_status(commons, program_dir, own_folder)
+    if st["run"] and st["run"]["alive"]:
+        return dict(st, summary="the Google setup is already running")
+    if not st["gcloud"]:
+        return dict(st, summary="Install Google's command-line tool (gcloud) on this computer first: " + gcloud.GCLOUD_INSTALL)
+    path = os.path.join(commons.folder, "google-setup-run.json")
+    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    subprocess.Popen([sys.executable, os.path.join(program_dir, "gcloud.py"), "--folders", json.dumps(google_folders(program_dir, own_folder)),
+                      "--commons", commons.folder, "--status", path], cwd=program_dir, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    with commons.store.write() as db:
+        commons.agent_log(db, "control", "One-click Google setup started")
+    return dict(st, summary="Google setup started — a Google sign-in page opens on this computer: choose your account and press Allow")
+
+
+def add_google_setup(api, commons, program_dir, own_folder=None):
+    @api.get("/api/google/setup")
+    def gs_status(p):
+        return google_setup_status(commons, program_dir, own_folder)
+
+    @api.post("/api/google/setup")
+    def gs_start(p):
+        return google_setup_start(commons, p.get("passphrase"), program_dir, own_folder)
+
+
 def self_test():
     out = []
     ok = lambda n, c: out.append((n, bool(c)))

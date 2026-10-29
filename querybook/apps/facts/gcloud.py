@@ -569,3 +569,187 @@ def decode_setup_code(code):
     if d.get("service_account"):
         vals.update({"service_account_json": json.dumps(d["service_account"]), "bucket": d.get("bucket") or "", "storage_on": True, "monitoring_on": True})
     return vals
+
+
+# ---------------------------------------------------------------------------- one-click setup (this computer's gcloud)
+# The same steps as SETUP_SCRIPT, run here by Google's own command-line tool: the user approves once on Google's own
+# sign-in page (gcloud's consent screen — no password ever reaches QueryBook), then everything else is automatic.
+# Safe to run again: it reuses the project, key, bucket and service account that already exist.
+SETUP_APIS = ["generativelanguage.googleapis.com", "youtube.googleapis.com", "apikeys.googleapis.com", "iam.googleapis.com",
+              "texttospeech.googleapis.com", "speech.googleapis.com", "storage.googleapis.com", "monitoring.googleapis.com"]
+NO_BILLING = SETUP_APIS[:4]          # these switch on without a billing account; the others need one
+KEY_TARGETS = ["texttospeech.googleapis.com", "speech.googleapis.com", "youtube.googleapis.com", "generativelanguage.googleapis.com"]
+GCLOUD_INSTALL = "https://cloud.google.com/sdk/docs/install"
+
+
+def find_gcloud():
+    import shutil
+    for name in ("gcloud", "gcloud.cmd"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for p in (os.path.expandvars(r"%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"),
+              r"C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
+              os.path.expanduser("~/google-cloud-sdk/bin/gcloud"), "/usr/lib/google-cloud-sdk/bin/gcloud", "/snap/bin/gcloud"):
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _gcloud_runner(exe):
+    import subprocess
+
+    def run(args, timeout=300):
+        r = subprocess.run([exe] + args, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        return r.returncode, (r.stdout or "").strip(), (r.stderr or "").strip()
+    return run
+
+
+def auto_setup(folders, commons_folder=None, run=None, progress=None, check_key=None):
+    """Sign in (once, on Google's page), pick or create a project, switch on the APIs, create a restricted API key,
+    a backup bucket and a service account where billing allows, and save it all into every application's private
+    Google settings (and the Gemini key for the fact gatherer, unless one is set). Returns the summary; never the key."""
+    note = progress or (lambda **kw: None)
+    if run is None:
+        exe = find_gcloud()
+        if not exe:
+            return {"ok": False, "step": "gcloud", "why": "Google's command-line tool (gcloud) is not installed on this computer. "
+                    "Install it once from %s, then press the button again." % GCLOUD_INSTALL, "install": GCLOUD_INSTALL}
+        run = _gcloud_runner(exe)
+    out = {"ok": False, "notes": []}
+
+    def step(n, text):
+        out["step"] = text
+        note(step=n, of=6, text=text)
+
+    step(1, "Signing in to Google (a Google page opens: choose your account and press Allow)")
+    rc, acct, _ = run(["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"])
+    if not acct:
+        rc, _, err = run(["auth", "login", "--brief", "--quiet"], timeout=900)
+        if rc != 0:
+            return dict(out, why="Google sign-in was not completed: " + err[-300:])
+        rc, acct, _ = run(["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"])
+    out["account"] = acct.splitlines()[0] if acct else ""
+
+    step(2, "Choosing the Google Cloud project")
+    rc, p, _ = run(["config", "get-value", "project"])
+    p = "" if p in ("", "(unset)") else p.splitlines()[-1]
+    if not p:
+        rc, p, _ = run(["projects", "list", "--format=value(projectId)", "--limit=1"])
+        p = p.splitlines()[0] if p else ""
+    if not p:
+        p = "querybook-" + os.urandom(4).hex()
+        rc, _, err = run(["projects", "create", p, "--name=QueryBook"], timeout=600)
+        if rc != 0:
+            return dict(out, why="Could not create a Google Cloud project: " + err[-300:])
+        out["notes"].append("created the project %s" % p)
+    run(["config", "set", "project", p])
+    out["project_id"] = p
+
+    step(3, "Switching on the APIs (about a minute)")
+    rc, _, err = run(["services", "enable"] + SETUP_APIS + ["--project", p], timeout=900)
+    billing = rc == 0
+    if not billing:
+        rc2, _, err2 = run(["services", "enable"] + NO_BILLING + ["--project", p], timeout=900)
+        if rc2 != 0:
+            return dict(out, why="Could not switch on the APIs: " + err2[-300:])
+        out["notes"].append("Speech-to-Text, Text-to-Speech and backups need a billing account on the project: "
+                            "https://console.cloud.google.com/billing/linkedaccount?project=" + p)
+    out["billing"] = billing
+    targets = KEY_TARGETS if billing else [t for t in KEY_TARGETS if t in NO_BILLING]
+
+    step(4, "Creating the QueryBook API key (restricted to %d services)" % len(targets))
+    rc, name, _ = run(["services", "api-keys", "list", "--project", p, "--filter=displayName=QueryBook", "--format=value(name)", "--limit=1"])
+    name = name.splitlines()[0] if name else ""
+    if not name:
+        args = ["services", "api-keys", "create", "--project", p, "--display-name=QueryBook"] + ["--api-target=service=" + t for t in targets]
+        rc, _, err = run(args, timeout=300)
+        if rc != 0:
+            return dict(out, why="Could not create the API key: " + err[-300:])
+        rc, name, _ = run(["services", "api-keys", "list", "--project", p, "--filter=displayName=QueryBook", "--format=value(name)", "--limit=1"])
+        name = name.splitlines()[0] if name else ""
+    else:                                       # an existing key: allow exactly the services switched on now (billing may be new)
+        run(["services", "api-keys", "update", name] + ["--api-target=service=" + t for t in targets], timeout=300)
+    rc, key, err = run(["services", "api-keys", "get-key-string", name, "--format=value(keyString)"]) if name else (1, "", "no key")
+    if rc != 0 or not key:
+        return dict(out, why="Could not read the new API key: " + err[-300:])
+
+    vals = {"api_key": key.strip(), "project_id": p}
+    step(5, "Backups and health reports (bucket and service account)")
+    if billing:
+        b = "querybook-backups-" + p
+        if run(["storage", "buckets", "describe", "gs://" + b])[0] != 0:
+            run(["storage", "buckets", "create", "gs://" + b, "--uniform-bucket-level-access", "--project", p], timeout=300)
+        sa = "querybook-apps@%s.iam.gserviceaccount.com" % p
+        if run(["iam", "service-accounts", "describe", sa, "--project", p])[0] != 0:
+            run(["iam", "service-accounts", "create", "querybook-apps", "--display-name=QueryBook apps", "--project", p])
+        run(["storage", "buckets", "add-iam-policy-binding", "gs://" + b, "--member=serviceAccount:" + sa, "--role=roles/storage.objectAdmin"])
+        run(["projects", "add-iam-policy-binding", p, "--member=serviceAccount:" + sa, "--role=roles/monitoring.editor", "--condition=None"])
+        import tempfile
+        fd, kf = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        try:
+            if run(["iam", "service-accounts", "keys", "create", kf, "--iam-account=" + sa, "--project", p])[0] == 0:
+                with open(kf, encoding="utf-8") as f:
+                    vals.update(service_account_json=f.read(), bucket=b, storage_on=True, monitoring_on=True)
+            else:
+                out["notes"].append("your organisation does not allow service-account keys: backups to Google stay off")
+        finally:
+            os.remove(kf)
+    out["backups"] = bool(vals.get("service_account_json"))
+
+    step(6, "Saving into every QueryBook application and checking the key")
+    saved = []
+    for app, folder in folders.items():
+        try:
+            os.makedirs(folder, exist_ok=True)
+            Settings(folder).save(vals)
+            saved.append(app)
+        except (OSError, ValueError) as e:
+            out["notes"].append("%s: %s" % (app, e))
+    out["saved_to"] = saved
+    if commons_folder:
+        import qbonline as ol
+        if not ol.load_keys(commons_folder).get("gemini"):
+            ol.save_key(commons_folder, "gemini", vals["api_key"])
+            out["notes"].append("the key is also the fact gatherer's Gemini key")
+    ok = (check_key or _key_works)(vals["api_key"])
+    out.update(ok=bool(saved), key_works=ok)
+    if not ok:
+        out["notes"].append("Google can take a few minutes to activate a new key; the applications will use it as soon as it does")
+    note(step=6, of=6, text="Finished", finished=True)
+    return out
+
+
+def _key_works(key, tries=6):
+    url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=" + urllib.parse.quote(key)
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=20) as r:
+                return r.status == 200
+        except Exception:
+            time.sleep(10)
+    return False
+
+
+if __name__ == "__main__":
+    import argparse, sys
+    ap = argparse.ArgumentParser(description="QueryBook — one-click Google setup with this computer's gcloud")
+    ap.add_argument("--folders", required=True, help="JSON {app: data folder}")
+    ap.add_argument("--commons")
+    ap.add_argument("--status", required=True, help="progress file")
+    a = ap.parse_args()
+    st = {"started": time.time()}
+
+    def prog(**kw):
+        st.update(kw, heartbeat=time.time())
+        with open(a.status + ".tmp", "w") as f:
+            json.dump(st, f)
+        os.replace(a.status + ".tmp", a.status)
+    prog(step=0, of=6, text="Starting")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        res = auto_setup(json.loads(a.folders), a.commons, progress=prog)
+    except Exception as e:
+        res = {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:300])}
+    prog(result=res, finished=True)

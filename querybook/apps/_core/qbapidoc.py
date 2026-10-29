@@ -101,6 +101,10 @@ DOCS = {
                          {}, "read", "control"),
     "/api/connections/test": ("Outside connections", "Test a connection", "One request to the service's public address, without "
                               "any key (free): reachable, how fast. all: true tests every one.", {"id": "wikidata-api"}, "read", "control"),
+    "/api/google/setup": ("Outside connections", "One-click Google setup", "GET: whether Google's gcloud tool is installed, each "
+                          "application's Google settings (key set, project, backups) and the setup in progress. POST with the admin "
+                          "passphrase: signs in on Google's own page (press Allow), switches on the APIs, creates a restricted key and "
+                          "saves it into every application.", {"passphrase": ""}, "admin", "control"),
     # about
     "/api/self/ask": ("About QueryBook", "Ask QueryBook about itself", "An answer from its design document, checked against its own "
                       "files, with sources and status (built, partly built, specified).", {"q": "what can you harvest?"}, "read", "all"),
