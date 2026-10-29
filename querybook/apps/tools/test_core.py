@@ -681,12 +681,14 @@ def first_run_tests(c):
         prog = os.path.join(tmp, "prog", "language"); os.makedirs(prog)
         data = os.path.join(tmp, "data"); os.makedirs(data)
         with open(os.path.join(prog, "google-setup.json"), "w") as f:
-            json.dump({"api_key": "AIzaFIRSTRUNTEST000000000000000000000000", "youtube_key": "AIzaYOUTUBEONLY00000000000000000000000"}, f)
+            json.dump({"api_key": "AIzaFIRSTRUNTEST000000000000000000000000", "youtube_key": "AIzaYOUTUBEONLY00000000000000000000000",
+                       "api_keys": {"perplexity": "pplx-FIRSTRUN-0001", "nonsense": "x"}, "speech_keys": {"elevenlabs": "sk_FIRSTRUN_0002"}}, f)
         st = core.Store(data, "t", SCHEMA)
         diag = types.SimpleNamespace(store=st, app_id="language", app_name="Test", log=lambda *a: None, started=time.time())
         link = core.CloudLink(st, "language", "Test", lambda *a: None)
-        saved = {k: os.environ.get(k) for k in ("QB_STEM_DATA", "QB_FACTS_DATA")}
+        saved = {k: os.environ.get(k) for k in ("QB_STEM_DATA", "QB_FACTS_DATA", "QB_COMMONS_DATA")}
         os.environ["QB_STEM_DATA"], os.environ["QB_FACTS_DATA"] = os.path.join(tmp, "stem"), os.path.join(tmp, "facts")
+        os.environ["QB_COMMONS_DATA"] = os.path.join(tmp, "commons")
         try:
             core._first_run_google(link, diag, prog)
         finally:
@@ -699,7 +701,12 @@ def first_run_tests(c):
                 gcloud.Settings(os.path.join(tmp, "facts")).youtube_key().startswith("AIzaYOUTUBEONLY")
                 and gcloud.Settings(os.path.join(tmp, "facts")).api_key().startswith("AIzaFIRSTRUN")
                 and gcloud.Settings(os.path.join(tmp, "stem")).public()["youtube_key_set"])
+        import qbonline as ol_
+        c.check("first run: the other services' keys go where their programs read them (shared key file, the Language Builder's voice keys)",
+                ol_.load_keys(os.path.join(tmp, "commons")) == {"perplexity": "pplx-FIRSTRUN-0001"}
+                and json.load(open(os.path.join(data, "speech_keys.json")))["elevenlabs"]["api_key"] == "sk_FIRSTRUN_0002")
         c.check("first run: the key is not written to the activity log", "AIzaFIRSTRUN" not in json.dumps(st.activities(50))
+                and "FIRSTRUN-0001" not in json.dumps(st.activities(50)) and "FIRSTRUN_0002" not in json.dumps(st.activities(50))
                 and "AIzaYOUTUBEONLY" not in json.dumps(st.activities(50)))
 
 

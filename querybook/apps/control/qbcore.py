@@ -1607,6 +1607,41 @@ class CloudLink:
         return out
 
 
+def _first_run_other_keys(d, diag, program_dir):
+    """A personal copy may also carry the other services' keys: "api_keys" {service: key} go to the shared key file
+    (fact gatherer, online harvesters), "speech_keys" {elevenlabs|heygen|did: key} to the Language Builder's voice keys.
+    Only the names of the services are logged, never a key."""
+    done = []
+    keys = {k: v for k, v in (d.get("api_keys") or {}).items() if v}
+    if keys:
+        import qbcommons as cm, qbonline as ol
+        cf = cm.commons_folder(diag.store.folder)
+        os.makedirs(cf, exist_ok=True)
+        for svc, key in keys.items():
+            if svc in ol.KEY_SERVICES:
+                ol.save_key(cf, svc, key)
+                done.append(svc)
+    sp = {k: v for k, v in (d.get("speech_keys") or {}).items() if v and k in ("elevenlabs", "heygen", "did")}
+    if sp:
+        folder = diag.store.folder if diag.app_id == "language" else data_folder("language", os.path.join(os.path.dirname(program_dir), "language"))
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, "speech_keys.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                cfg = json.load(f) or {}
+        except (OSError, ValueError):
+            cfg = {}
+        for prov, key in sp.items():
+            cfg.setdefault(prov, {})["api_key"] = key
+            done.append(prov)
+        fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+        os.replace(path + ".tmp", path)
+    if done:
+        diag.store.activity("Service keys installed from this copy", "ok", ", ".join(done))
+
+
 def _first_run_google(cloud, diag, program_dir):
     """A personalised copy may carry google-setup.json next to the program ({"api_key": …, "youtube_key": …} or {"code": "QBSETUP-…"}).
     On first start it is moved into the private settings of every QueryBook application on this computer and the
@@ -1630,6 +1665,7 @@ def _first_run_google(cloud, diag, program_dir):
             except (OSError, ValueError):
                 pass
         diag.store.activity("Google settings installed from this copy", "ok", "applied to: " + ", ".join(applied))
+        _first_run_other_keys(d, diag, program_dir)
     except Exception as e:
         diag.store.activity("Google settings installed from this copy", "failed", redact(e))
     finally:
