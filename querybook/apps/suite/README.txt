@@ -19,6 +19,10 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.12.0 - Wikidata at full depth, the prototype's Hot Map first
+    * The Wikidata lanes keep every knowledge property (3,120 of Wikidata's 14,016; external identifiers, media file names
+      and Wikimedia housekeeping left out): 1.75x the facts per item, measured.
+    * People, organisations, laws, medical, places and events (the prototype's Hot Map) lead the priorities.
   Control Panel 1.11.0 - API registration
     * API & connections -> API registration: the 12 services that need a key (free: api.data.gov, Europeana, DPLA, National
       Archives, YouTube; paid: Gemini, OpenAI, Claude, Perplexity, ElevenLabs, HeyGen, D-ID). Sign up (G = Sign in with Google

@@ -179,7 +179,7 @@ async function loadKeystones() {
   const k = await api("/api/keystones");
   const st = { "growing": "ok", "saturated": "warn", "not started": "" };
   $("#ks-table").innerHTML = `<table class="t small"><tr><th>#</th><th>Domain</th><th>Phase</th><th>Facts held</th><th>Fed by</th><th>Novelty</th><th>State</th><th>Unlocks</th></tr>` +
-    k.keystones.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.label)}</td><td>${r.phase ?? ""}</td><td>${fmt(r.facts)}</td><td>${esc(r.feeds.join(", ") || "—")}</td>
+    k.keystones.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.label)}${r.hot ? ' <span class="badge warn" title="The prototype\'s Hot Map: harvested first">Hot Map</span>' : ""}</td><td>${r.phase ?? ""}</td><td>${fmt(r.facts)}</td><td>${esc(r.feeds.join(", ") || "—")}</td>
       <td>${r.novelty == null ? "—" : (r.novelty * 100).toFixed(r.novelty < 0.1 ? 2 : 0) + "%"}</td><td><span class="badge ${st[r.state] || ""}">${esc(r.state)}</span></td>
       <td class="muted">${esc(r.unlocks.join(", "))}</td></tr>`).join("") + `</table>`;
   const ps = $("#ga-probe");

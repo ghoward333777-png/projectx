@@ -687,6 +687,15 @@ properties — instance of, occupation, dates and places of birth and death, cou
 author, publication date, DOI, taxon … Subjects read "Albert Einstein (Q937)"; an object that is another item is kept as its
 Q-id and shown with its English label from the lanes' label files. Part names carry the dump's date (the edition).
 
+* **Every knowledge property** (Control Panel 1.12.0): each run reads Wikidata's property catalogue once (14,016 properties)
+  and keeps every property of a knowledge kind — links between items, dates, quantities, text, URLs, coordinates: 3,120 of
+  them. Left out: external identifiers (10,683 catalogue numbers in other databases), media file names, shapes, tables,
+  lexical data, Wikimedia's housekeeping (Commons categories, list and category links) and Wikimedia's own pages
+  (categories, disambiguations, templates, lists); a coordinate on another globe and blank text are not facts. Measured on
+  a 64 MB slice of the dump: 6.1 facts per item instead of 3.5 (1.75×), 45,000 facts a second per lane. Setting
+  `bulk:wikidata:properties` = `core` keeps the 60 named properties only.
+* **The prototype's Hot Map** (people, organisations, laws, medical, places, events) leads the keystone priority (+2500),
+  so the bulk runner, the coverage map and the gatherer's suggested questions put them first.
 * **Measured** (one lane, a 40 Mbit sandbox link): 1,487,895 facts in 2.5 minutes, about 10,000 a second, about 5 MB/s of
   the dump. Each lane needs one CPU core and about 5 MB/s; an 800 Mbit line (about 100 MB/s) feeds all 16. The dump's
   properties give several hundred million facts per edition (about 2 million per GB).

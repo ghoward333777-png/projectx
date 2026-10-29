@@ -702,9 +702,16 @@ class WikidataDump(Dataset):
         "P495": "country of origin", "P1412": "languages spoken", "P2048": "height", "P1086": "atomic number", "P356": "DOI",
         "P1433": "published in", "P921": "main subject", "P225": "taxon name", "P171": "parent taxon", "P105": "taxon rank",
         "P407": "language of work", "P123": "publisher", "P364": "original language", "P1191": "date of first performance"}
+    # every property of these kinds is kept (Wikidata's own catalogue, read once per run); external identifiers (catalogue
+    # numbers in other databases), media file names, shapes, tables and lexical data are cross-references, not knowledge
+    KEEP_TYPES = {"WikibaseItem", "Quantity", "String", "Url", "Time", "Monolingualtext", "GlobeCoordinate"}
+    # Wikimedia's own housekeeping: links between category, list, template and Commons pages, not knowledge
+    SKIP_PROPS = {"P373", "P910", "P301", "P971", "P4224", "P360", "P1753", "P1754", "P1423", "P1424", "P3876", "P2354", "P1204",
+                  "P935", "P1151", "P1465", "P1792", "P1464", "P7084", "P8464", "P5008", "P6104", "P6365", "P3858", "P2559"}
+    PROPS_QUERY = 'SELECT ?p ?t ?l WHERE { ?p wikibase:propertyType ?t . OPTIONAL { ?p rdfs:label ?l FILTER(LANG(?l)="en") } }'
     app, source = "facts", "wikidata"
     licence = "CC0 1.0 (Wikidata)"
-    approx = "about 115 million items — several hundred million facts"
+    approx = "about 115 million items — about a billion facts (every knowledge property)"
 
     def __init__(self, lane=1, lanes=None):
         self.lane, self.lanes = lane, lanes or self.LANES
@@ -712,7 +719,40 @@ class WikidataDump(Dataset):
         self.title = "Wikidata — the full dump, lane %d of %d" % (lane, self.lanes)
         self.why = ("the prototype's main source: people, places, works, organisations, taxa and their dates — every item of "
                     "Wikidata, streamed by %d agents side by side" % self.lanes)
-        self.size, self.edition, self.base = None, "", None
+        self.size, self.edition, self.base, self.props = None, "", None, dict(self.PROPS)
+
+    def catalogue(self, folder, fetch=True):
+        """{property: name} for every property of a kept kind — QueryBook's own names for the ones it named before (so earlier
+        shards keep their predicates), else Wikidata's English label. Read from Wikidata once and kept beside the shards;
+        without it (no network) the lane keeps the named core properties only."""
+        path = os.path.join(folder, FOLDER, "wikidata-properties.json")
+        cat = None
+        try:
+            with open(path, encoding="utf-8") as f:
+                cat = json.load(f)
+            if time.time() - cat.get("read", 0) > 7 * 86400:
+                cat = None if fetch else cat
+        except (OSError, ValueError):
+            cat = None
+        if cat is None and fetch:
+            q = urllib.parse.urlencode({"query": self.PROPS_QUERY, "format": "json"})
+            try:
+                with urllib.request.urlopen(_req("https://query.wikidata.org/sparql?" + q, {"Accept": "application/sparql-results+json"}), timeout=180) as r:
+                    rows = json.loads(r.read())["results"]["bindings"]
+                cat = {"read": time.time(), "props": {b["p"]["value"].rsplit("/", 1)[-1]: [b["t"]["value"].rsplit("#", 1)[-1], (b.get("l") or {}).get("value")]
+                                                     for b in rows}}
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(cat, f)
+                os.replace(path + ".tmp", path)
+            except Exception:
+                cat = None
+        out = dict(self.PROPS)
+        if cat:
+            for pid, (typ, label) in cat["props"].items():
+                if typ in self.KEEP_TYPES and pid not in out and pid not in self.SKIP_PROPS:
+                    out[pid] = label or pid
+        return out
 
     def _head(self, url):
         if url.startswith("file://"):
@@ -734,6 +774,8 @@ class WikidataDump(Dataset):
 
     def prepare(self, run):
         self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
+        if (run.commons.setting("bulk:wikidata:properties") or "all") == "all":
+            self.props = self.catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
         db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
         db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
@@ -775,12 +817,14 @@ class WikidataDump(Dataset):
         if t == "quantity":
             unit = v.get("unit", "1").rsplit("/", 1)[-1]
             return v["amount"].lstrip("+") + ("" if unit == "1" else " " + unit)
-        if t == "globecoordinate":
+        if t == "globecoordinate":                       # places on Earth only (not on the Moon or Mars)
+            if (v.get("globe") or "").rsplit("/", 1)[-1] not in ("Q2", ""):
+                return None
             return "%.5f, %.5f" % (v["latitude"], v["longitude"])
         if t == "monolingualtext":
-            return v["text"] if v.get("language") in ("en", "mul") else None
-        if t == "string":
-            return v
+            return v["text"].strip() or None if v.get("language") in ("en", "mul") else None
+        if t == "string":                                # also URLs; blank values are not facts
+            return v.strip() or None
         return None
 
     def facts(self, part, line, state):
@@ -800,7 +844,10 @@ class WikidataDump(Dataset):
         if len(buf) >= 200_000:
             self._flush(state)
         claims = e.get("claims") or {}
-        s, out, props = "%s (%s)" % (lab, q), [], self.PROPS
+        cls = {((x.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") for x in claims.get("P31", ())}
+        if cls & ks.WIKIMEDIA_INTERNAL:                 # a category, disambiguation, template or list page: Wikimedia's own pages
+            return []
+        s, out, props = "%s (%s)" % (lab, q), [], self.props
         for p, sts in claims.items():
             name = props.get(p)
             if not name:
@@ -814,7 +861,6 @@ class WikidataDump(Dataset):
                         out.append((s, name, v))
         if out:
             state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
-            cls = {((x.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") for x in claims.get("P31", ())}
             k = ks.entity_keystone(cls - {None}, claims.keys())
             if k:                                       # measured coverage per keystone domain (qbkeystone)
                 kc = state.setdefault("_kc", {})
@@ -1530,6 +1576,27 @@ def self_test():
         ok("Wikidata dump: truthy statements only (a deprecated one is skipped), objects shown with their label",
            r["state"] == "done" and {(h["predicate"], h["object"]) for h in hits} == {("date of birth", "1879-03-14"),
            ("country of citizenship", "United States (Q30)")} and hits[0]["link"] == "https://www.wikidata.org/wiki/Q937", (r, hits))
+        wd = WikidataDump(1, 1)
+        os.makedirs(os.path.join(cf, FOLDER), exist_ok=True)
+        with open(os.path.join(cf, FOLDER, "wikidata-properties.json"), "w") as f:
+            json.dump({"read": time.time(), "props": {"P1449": ["Monolingualtext", "nickname"], "P214": ["ExternalId", "VIAF ID"],
+                                                      "P373": ["String", "Commons category"], "P8888": ["WikibaseItem", "favourite thing"]}}, f)
+        wd.props = wd.catalogue(cf, fetch=False)
+        def ent(q, claims, cls="Q5"):
+            c = {"P31": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": cls}}}}]}
+            for pid, dv in claims.items():
+                c[pid] = [{"rank": "normal", "mainsnak": {"datavalue": dv}}]
+            return json.dumps({"type": "item", "id": q, "labels": {"en": {"value": "X"}}, "claims": c}).encode()
+        st_ = {"_labelbuf": [], "_labeldb": None}
+        got = {p_ for _, p_, _ in wd.facts("p", ent("Q1", {"P1449": {"type": "monolingualtext", "value": {"text": "Ace", "language": "en"}},
+                                                        "P214": {"type": "string", "value": "12345"}, "P373": {"type": "string", "value": "X"},
+                                                        "P8888": {"type": "wikibase-entityid", "value": {"id": "Q2"}},
+                                                        "P625": {"type": "globecoordinate", "value": {"latitude": 1, "longitude": 2, "globe": "http://www.wikidata.org/entity/Q405"}}}), st_)}
+        ok("Wikidata: every knowledge property kept by its English name; external identifiers, Wikimedia housekeeping and "
+           "coordinates on other globes left out", got == {"instance of", "nickname", "favourite thing"}, got)
+        ok("Wikidata: Wikimedia's own pages (categories, lists, templates) give no facts",
+           wd.facts("p", ent("Q3", {"P8888": {"type": "wikibase-entityid", "value": {"id": "Q2"}}}, cls="Q4167836"), st_) == [])
+        os.remove(os.path.join(cf, FOLDER, "wikidata-properties.json"))
         se = Series()
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]

@@ -16,6 +16,11 @@ No AI model, no network: fixed rules over local counts.
 import collections, datetime, json, os, re
 
 PHASE_WEIGHT = {0: 2000, 1: 1500, 2: 1000, 3: 500, 4: 100}
+# the UFCS prototype's "Hot Map" (its highest-priority Tier-1 domains: people, organisations, laws, medical, places, events),
+# adopted by the admin on 29 October 2026: these come first wherever QueryBook chooses an order
+HOT = {"human_individuals": "people", "organizations": "organisations", "law_governance": "laws", "medicine_health": "medical",
+       "geographic_entities": "places", "historical_events": "events"}
+HOT_BONUS = 2500
 SATURATED_NOVELTY = 0.01            # under 1% of records read are new …
 SATURATED_MIN_READ = 1_000_000      # … over at least a million records read: the sources have little left to give
 
@@ -191,10 +196,10 @@ def coverage(commons_folder, commons=None):
         state = ("not started" if not facts[k] else
                  "saturated" if read >= SATURATED_MIN_READ and novelty is not None and novelty < SATURATED_NOVELTY else "growing")
         share = facts[k] / biggest if biggest else 0
-        score = PHASE_WEIGHT[phase] + len(ul[k]) * 120 + len(direct) * 60 + round((1 - share) * 300)
+        score = PHASE_WEIGHT[phase] + len(ul[k]) * 120 + len(direct) * 60 + round((1 - share) * 300) + (HOT_BONUS if k in HOT else 0)
         if state == "saturated":
             score //= 4
-        rows.append({"key": k, "label": label, "phase": phase, "unlocks": direct, "unlocks_all": ul[k], "facts": facts[k],
+        rows.append({"key": k, "label": label, "phase": phase, "hot": k in HOT, "unlocks": direct, "unlocks_all": ul[k], "facts": facts[k],
                      "feeds": sorted(feeds[k]), "read": read, "new": new, "novelty": None if novelty is None else round(novelty, 4),
                      "state": state, "score": score})
     if facts.get("other"):
@@ -205,7 +210,8 @@ def coverage(commons_folder, commons=None):
     return {"keystones": rows, "total": sum(facts.values()),
             "rules": {"saturated": "novelty under %g%% over at least %s records read" % (SATURATED_NOVELTY * 100, format(SATURATED_MIN_READ, ",")),
                       "score": "phase weight (2000 … 100) + 120 per keystone it unlocks (transitively) + 60 per direct unlock "
-                               "+ up to 300 for the least-covered; a saturated keystone counts a quarter"}}
+                               "+ up to 300 for the least-covered + 2500 for the prototype's Hot Map (people, organisations, laws, "
+                               "medical, places, events); a saturated keystone counts a quarter"}}
 
 
 def order(keys, commons_folder, commons=None, target=None):
@@ -255,6 +261,7 @@ def self_test():
     ok("probe questions are filled with the month and year", p and all("{" not in x["question"] for x in p)
        and any("October 2026" in x["question"] for x in p), p[:2])
     ok("every dataset maps to a keystone", all(v in KEYSTONES for v in DATASETS.values()))
+    ok("the prototype's Hot Map names six keystones, all known", len(HOT) == 6 and all(k in KEYSTONES for k in HOT))
     return out
 
 
