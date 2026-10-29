@@ -19,6 +19,12 @@ INSTALL
      this one never touches it. To upgrade: close the applications, unzip the new version, start again.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.11.0 - API registration
+    * API & connections -> API registration: the 12 services that need a key (free: api.data.gov, Europeana, DPLA, National
+      Archives, YouTube; paid: Gemini, OpenAI, Claude, Perplexity, ElevenLabs, HeyGen, D-ID). Sign up (G = Sign in with Google
+      offered), paste the key, Save & check: one free request proves the key works before it is saved where every program
+      reads it. DPLA can email you a key from the page. You sign up and accept each service's terms yourself.
+    * A YouTube-only key can sit beside the shared Google key.
   Control Panel 1.10.0 - one-click Google setup
     * API & connections -> Google - one-click setup: enter the admin passphrase and press Set up Google. A Google sign-in page
       opens on this computer - choose your account and press Allow (Google's own page; your password never reaches QueryBook).

@@ -105,6 +105,13 @@ DOCS = {
                           "application's Google settings (key set, project, backups) and the setup in progress. POST with the admin "
                           "passphrase: signs in on Google's own page (press Allow), switches on the APIs, creates a restricted key and "
                           "saves it into every application.", {"passphrase": ""}, "admin", "control"),
+    "/api/registration": ("Outside connections", "API registration", "Every service that needs a key: its sign-up page (and whether "
+                          "it offers Sign in with Google), what it costs, whether a key is saved (its last four characters only).", {}, "read", "control"),
+    "/api/registration/save": ("Outside connections", "Save a key", "Saves a key you created and checks it with one free request "
+                               "(refused keys are not saved unless save_anyway). Admin passphrase once one is set.",
+                               {"id": "openai", "key": "", "passphrase": ""}, "admin", "control"),
+    "/api/registration/test": ("Outside connections", "Check a saved key", "One free request with the saved key: accepted or refused.",
+                               {"id": "youtube"}, "read", "control"),
     # about
     "/api/self/ask": ("About QueryBook", "Ask QueryBook about itself", "An answer from its design document, checked against its own "
                       "files, with sources and status (built, partly built, specified).", {"q": "what can you harvest?"}, "read", "all"),

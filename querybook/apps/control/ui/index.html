@@ -281,6 +281,12 @@
       <div class="row"><input type="password" id="gs-pass" placeholder="Admin passphrase" style="width:14em">
         <button class="btn" id="gs-go">🔑 Set up Google</button><span id="gs-state" class="small"></span></div>
       <div id="gs-out" class="small"></div>
+      <h3>API registration — every service that needs a key</h3>
+      <p class="muted small">For each service: press <b>Sign up</b> (a <span class="badge">G</span> means you can use <i>Sign in with Google</i>
+        there), create a key on its page, paste it here and press <b>Save &amp; check</b>. QueryBook checks the key with one free request and
+        keeps it privately on this computer, where every program reads it. You sign up and accept each service's terms yourself.
+        The admin passphrase (box above) is asked once one is set.</p>
+      <div id="rg-table" class="small"></div>
       <h3>Outside connections <span class="small muted" id="cn-summary"></span></h3>
       <p class="muted small">Every service outside this computer the suite talks to — what for, which program, whether its key is set (keys
         are never shown) and when it was last used. <b>Test</b> sends one request to the service's public address without any key, so it costs

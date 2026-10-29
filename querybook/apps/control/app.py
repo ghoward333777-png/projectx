@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 PORT = 8100
 program_dir = HERE
 
@@ -94,6 +94,7 @@ class Panel:
         qbbulk.add_routes(self.api, self.commons, HERE)
         qbconnections.add_routes(self.api, self.commons)
         qbconnections.add_google_setup(self.api, self.commons, HERE, self.folder)   # one-click Google setup (/api/google/setup)
+        qbconnections.add_registration(self.api, self.commons, HERE, self.folder)  # API registration: sign-up links, keys, checks (/api/registration)
         qbgather.add_routes(self.api, self.commons, HERE)      # the fact gatherer: LLM web search, checked on the page (/api/gather)    # every outside service the suite connects to (/api/connections)    # bulk harvesting: whole open datasets by parallel agents (/api/bulk)
         qbcampaign.add_routes(self.api, self.commons,       # harvest campaigns, the master On/Off, the Google exemplar tools
                               lambda act, sc, ap, hv: self.harvest(act, ap if sc == "selected" else None, hv if sc == "selected" else None),
@@ -878,6 +879,9 @@ def selftest():
         check("one-click Google setup: each application's Google settings (never the key) and gcloud's presence; starting needs the admin passphrase",
               set(gsu["apps"]) == {"language", "stem", "facts", "control"} and "gcloud" in gsu and gs_refused
               and "api_key" not in json.dumps(gsu).replace("api_key_set", ""), gsu)
+        rg = p.api.routes[("GET", "/api/registration")]({})
+        check("API registration: every key-needing service with its sign-up page, cost and status (keys never shown)",
+              len(rg["services"]) == 12 and all(r["signup"] for r in rg["services"]) and not any("key" in r for r in rg["services"]), rg["services"][:2])
         gs = p.api.routes[("GET", "/api/gather")]({})
         try:
             p.api.routes[("POST", "/api/gather/start")]({"question": "Who won Super Bowl LX?", "passphrase": "wrong"})

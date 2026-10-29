@@ -429,9 +429,27 @@ async function loadGoogleSetup() {
   clearTimeout(GS_TIMER);
   if (r && r.alive) GS_TIMER = setTimeout(() => loadGoogleSetup().catch(() => {}), 2000);
 }
+async function loadReg() {
+  const r = await api("/api/registration");
+  $("#rg-table").innerHTML = `<table class="t small"><tr><th>Service</th><th>Cost</th><th>Sign up</th><th>Key</th><th></th></tr>` +
+    r.services.map(x => `<tr><td>${esc(x.title)}</td><td>${esc(x.cost)}</td>
+      <td><a class="btn quiet" href="${esc(x.signup)}" target="_blank" rel="noopener" style="padding:2px 10px">Sign up ↗</a>${x.google_sign_in ? ' <span class="badge" title="Sign in with Google offered">G</span>' : ""}
+        ${x.id === "dpla" ? `<div style="margin-top:4px"><input id="rg-email" placeholder="your email" style="width:12em"> <button class="btn quiet" id="rg-dpla" style="padding:2px 8px">Email me a key</button></div>` : ""}</td>
+      <td>${x.set ? `<span class="badge ok">saved ${esc(x.hint)}</span> <button class="btn quiet" data-rgtest="${x.id}" style="padding:2px 8px">Check</button>` : `<span class="muted">none</span>`}
+        <div id="rg-res-${x.id}" class="muted"></div></td>
+      <td><input type="password" data-rgkey="${x.id}" placeholder="paste key" style="width:11em"> <button class="btn" data-rgsave="${x.id}" style="padding:2px 10px">Save &amp; check</button></td></tr>`).join("") +
+    `</table><div class="muted">${esc(r.google)}</div>`;
+  const show = (id, res) => { const el = $("#rg-res-" + CSS.escape(id)); if (el) el.innerHTML = res.works === false ? `<span class="badge bad">${esc(res.why)}</span>` : esc(res.why); };
+  $$("[data-rgsave]").forEach(b => b.onclick = async () => { const id = b.dataset.rgsave, inp = $(`[data-rgkey="${CSS.escape(id)}"]`);
+    try { const res = await api("/api/registration/save", { id, key: inp.value, passphrase: $("#gs-pass").value });
+      toast(res.saved ? "Saved — " + res.why : "Not saved: " + res.why); if (res.saved) { inp.value = ""; await loadReg(); } show(id, res); } catch (e) { toast(e.message); } });
+  $$("[data-rgtest]").forEach(b => b.onclick = async () => { try { show(b.dataset.rgtest, await api("/api/registration/test", { id: b.dataset.rgtest })); } catch (e) { toast(e.message); } });
+  const d = $("#rg-dpla"); if (d) d.onclick = async () => { try { const res = await api("/api/registration/dpla", { email: $("#rg-email").value, passphrase: $("#gs-pass").value }); toast(res.why); } catch (e) { toast(e.message); } };
+}
 async function loadApis() {
   loadConns().catch(e => toast(e.message));
   loadGoogleSetup().catch(e => toast(e.message));
+  loadReg().catch(e => toast(e.message));
   APIS = await api("/api/panel/apis");
   $("#api-progs").innerHTML = APIS.programs.map(p => `<span class="pill"><span class="dot ${p.running ? "on" : "off"}"></span>${esc(p.name)} ·
     <span class="mono">${esc(p.url)}</span>${p.running ? ` · <a href="${esc(p.url)}/api/openapi.json" target="_blank" rel="noopener">OpenAPI</a>` : " · not running"}</span>`).join(" ");

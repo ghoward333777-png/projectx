@@ -222,6 +222,177 @@ def add_google_setup(api, commons, program_dir, own_folder=None):
         return google_setup_start(commons, p.get("passphrase"), program_dir, own_folder)
 
 
+# ------------------------------------------------------------------------------------------------ API registration
+# For every service that needs a key: where to sign up (and whether "Sign in with Google" is offered there), what it costs,
+# where QueryBook keeps the key, and a check WITH the key that costs nothing (a free read, or a request the service refuses
+# for a missing body — a bad key is refused earlier, with 401/403). The person signs up and accepts each service's terms;
+# QueryBook never signs up for them.
+# id: (title, cost, sign-up page, Google sign-in, store, check: (method, url with {k}, headers with {k}, body))
+REGISTRATION = {
+    "api.data.gov": ("api.data.gov — Smithsonian and USDA FoodData", "free", "https://api.data.gov/signup/", False, "commons:api.data.gov",
+                     ("GET", "https://api.nal.usda.gov/fdc/v1/foods/search?query=apple&pageSize=1&api_key={k}", {}, None)),
+    "europeana": ("Europeana", "free", "https://pro.europeana.eu/pages/get-api", False, "commons:europeana",
+                  ("GET", "https://api.europeana.eu/record/v2/search.json?query=moon&rows=1&wskey={k}", {}, None)),
+    "dpla": ("Digital Public Library of America", "free", "https://pro.dp.la/developers/policies", False, "commons:dpla",
+             ("GET", "https://api.dp.la/v2/items?q=moon&page_size=1&api_key={k}", {}, None)),
+    "nara": ("US National Archives Catalog", "free", "mailto:Catalog_API@nara.gov?subject=Catalog%20API%20v2%20key%20request", False, "commons:nara",
+             None),                                     # the catalog answers without a key too: nothing to check it against
+    "youtube": ("YouTube Data API v3", "free (10,000 units a day)", "https://console.cloud.google.com/apis/credentials", True, "google:youtube_key",
+                ("GET", "https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ&key={k}", {}, None)),
+    "gemini": ("Google Gemini — fact gatherer, exemplar tools", "paid per use", "https://aistudio.google.com/apikey", True, "commons:gemini",
+               ("GET", "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key={k}", {}, None)),
+    "openai": ("OpenAI — fact gatherer", "paid per use", "https://platform.openai.com/api-keys", True, "commons:openai",
+               ("GET", "https://api.openai.com/v1/models", {"Authorization": "Bearer {k}"}, None)),
+    "anthropic": ("Anthropic Claude — fact gatherer", "paid per use", "https://platform.claude.com/settings/keys", True, "commons:anthropic",
+                  ("GET", "https://api.anthropic.com/v1/models", {"x-api-key": "{k}", "anthropic-version": "2023-06-01"}, None)),
+    "perplexity": ("Perplexity — fact gatherer", "paid per use", "https://www.perplexity.ai/account/api", True, "commons:perplexity",
+                   ("POST", "https://api.perplexity.ai/chat/completions", {"Authorization": "Bearer {k}", "Content-Type": "application/json"}, b"{}")),
+    "elevenlabs": ("ElevenLabs — voices", "free tier, then paid", "https://elevenlabs.io/app/settings/api-keys", True, "language:elevenlabs",
+                   ("GET", "https://api.elevenlabs.io/v1/voices", {"xi-api-key": "{k}"}, None)),
+    "heygen": ("HeyGen — talking-photo video", "paid", "https://app.heygen.com/settings?nav=API", True, "language:heygen",
+               ("GET", "https://api.heygen.com/v2/user/remaining_quota", {"X-Api-Key": "{k}"}, None)),
+    "did": ("D-ID — talking-photo video", "free trial, then paid", "https://studio.d-id.com/account-settings", True, "language:did",
+            ("GET", "https://api.d-id.com/credits", {"Authorization": "Basic {k}"}, None)),
+}
+DPLA_REQUEST = "https://api.dp.la/v2/api_key/"
+
+
+def _stored(store, commons, folders):
+    import qbonline as ol, gcloud
+    kind, _, name = store.partition(":")
+    if kind == "commons":
+        return ol.load_keys(commons.folder).get(name) or ""
+    if kind == "google":
+        return gcloud.Settings(folders["facts"]).load().get(name) or ""
+    if kind == "language":
+        try:
+            with open(os.path.join(folders["language"], "speech_keys.json"), encoding="utf-8") as f:
+                return ((json.load(f) or {}).get(name) or {}).get("api_key") or ""
+        except (OSError, ValueError):
+            return ""
+    return ""
+
+
+def _store(store, key, commons, folders):
+    import qbonline as ol, gcloud
+    kind, _, name = store.partition(":")
+    if kind == "commons":
+        ol.save_key(commons.folder, name, key)
+    elif kind == "google":
+        for f in folders.values():
+            os.makedirs(f, exist_ok=True)
+            gcloud.Settings(f).save({name: key})
+    elif kind == "language":
+        path = os.path.join(folders["language"], "speech_keys.json")
+        os.makedirs(folders["language"], exist_ok=True)
+        try:
+            with open(path, encoding="utf-8") as f:
+                cfg = json.load(f) or {}
+        except (OSError, ValueError):
+            cfg = {}
+        cfg.setdefault(name, {})["api_key"] = key
+        fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+        os.replace(path + ".tmp", path)
+
+
+def check_key(reg_id, key, opener=None):
+    """one request WITH the key that costs nothing: works / refused (bad key) / unreachable. Never returns the key."""
+    if REGISTRATION[reg_id][5] is None:
+        return {"id": reg_id, "works": None, "why": "saved — this service answers without a key, so it cannot be checked here"}
+    method, url, headers, body = REGISTRATION[reg_id][5]
+    q = urllib.parse.quote(key, safe="")
+    req = urllib.request.Request(url.replace("{k}", q), data=body, method=method,
+                                 headers=dict({"User-Agent": UA}, **{h: v.replace("{k}", key) for h, v in headers.items()}))
+    t0 = time.time()
+    try:
+        with (opener or urllib.request.urlopen)(req, timeout=20) as r:
+            code = r.status
+    except urllib.error.HTTPError as e:
+        code = e.code
+        try:
+            text = e.read(4000).decode("utf-8", "replace").lower()
+        except Exception:
+            text = ""
+        if any(w in text for w in ("api key not valid", "api_key_invalid", "invalid api key", "invalid_api_key", "incorrect api key")):
+            return {"id": reg_id, "works": False, "code": code, "why": "refused the key (HTTP %d: not a valid key)" % code, "ms": round((time.time() - t0) * 1000)}
+    except Exception as e:
+        return {"id": reg_id, "works": None, "why": "could not reach the service: %s" % type(e).__name__}
+    works = code < 400 or code in (400, 404, 405, 422)       # refused for the request, not for the key
+    why = "accepted" if works else "refused the key (HTTP %d)" % code
+    if code == 429:
+        works, why = True, "accepted (the service says: slow down)"
+    return {"id": reg_id, "works": works, "code": code, "why": why, "ms": round((time.time() - t0) * 1000)}
+
+
+def registration(commons, folders):
+    out = []
+    for rid, (title, cost, signup, google, store, _chk) in REGISTRATION.items():
+        k = _stored(store, commons, folders)
+        out.append({"id": rid, "title": title, "cost": cost, "signup": signup, "google_sign_in": google, "set": bool(k),
+                    "hint": ("…" + k[-4:]) if k else "", "kept": store.split(":")[0]})
+    return out
+
+
+def add_registration(api, commons, program_dir, own_folder=None):
+    folders = google_folders(program_dir, own_folder)
+
+    def _admin(p):
+        if commons.approvals.admin_set():
+            commons.approvals._require(p.get("passphrase") or "")
+
+    @api.get("/api/registration")
+    def reg_list(p):
+        return {"services": registration(commons, folders), "google": "Speech, Text-to-Speech, backups and health reports: "
+                "use Google — one-click setup above"}
+
+    @api.post("/api/registration/save")
+    def reg_save(p):
+        """save a key the person created (admin passphrase once one is set), then check it with one free request"""
+        import qbcore as core
+        rid, key = p.get("id"), "".join(str(p.get("key") or "").split())
+        if rid not in REGISTRATION:
+            raise core.UserError("Unknown service.")
+        if not key:
+            raise core.UserError("Paste the key first.")
+        _admin(p)
+        res = check_key(rid, key)
+        if res["works"] is False and not p.get("save_anyway"):
+            return dict(res, saved=False)
+        _store(REGISTRATION[rid][4], key, commons, folders)
+        with commons.store.write() as db:
+            commons.agent_log(db, "control", "API key saved for %s (%s)" % (REGISTRATION[rid][0], res["why"]))
+        return dict(res, saved=True)
+
+    @api.post("/api/registration/test")
+    def reg_test(p):
+        import qbcore as core
+        rid = p.get("id")
+        if rid not in REGISTRATION:
+            raise core.UserError("Unknown service.")
+        k = _stored(REGISTRATION[rid][4], commons, folders)
+        return check_key(rid, k) if k else {"id": rid, "works": None, "why": "no key saved yet"}
+
+    @api.post("/api/registration/dpla")
+    def reg_dpla(p):
+        """DPLA's own way to issue a key: it is emailed to the address given (sent only at the person's request)"""
+        import qbcore as core, re
+        email = (p.get("email") or "").strip()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            raise core.UserError("Type your email address.")
+        _admin(p)
+        req = urllib.request.Request(DPLA_REQUEST + urllib.parse.quote(email), data=b"", method="POST", headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except Exception as e:
+            return {"ok": False, "why": "could not reach DPLA: %s" % type(e).__name__}
+        return {"ok": code < 400, "why": "DPLA is emailing your key — paste it here when it arrives" if code < 400 else "DPLA refused (HTTP %d)" % code}
+
+
 def self_test():
     out = []
     ok = lambda n, c: out.append((n, bool(c)))
@@ -229,4 +400,47 @@ def self_test():
     ok("every connection has a unique id, a test address and a purpose", len(ids) == len(set(ids)) and all(c["test_url"].startswith("https://")
                                                                                                            and c["purpose"] for c in CATALOG))
     ok("keys are named, never stored here", not any(len(str(c["key"] or "")) > 60 for c in CATALOG))
+    import tempfile, types, shutil, io
+    tmp = tempfile.mkdtemp()
+    try:
+        folders = {a_: os.path.join(tmp, a_) for a_ in ("language", "stem", "facts", "control")}
+        com = types.SimpleNamespace(folder=tmp)
+        for rid, key in (("openai", "sk-TESTKEY-0001"), ("youtube", "AIzaYOUTUBE-TEST-0001"), ("elevenlabs", "el-TEST-0001")):
+            _store(REGISTRATION[rid][4], key, com, folders)
+        import gcloud
+        rows = {r["id"]: r for r in registration(com, folders)}
+        ok("registration: keys kept where each program reads them (shared key file, every app's Google settings, the "
+           "Language Builder's voice keys), shown only as their last four characters",
+           rows["openai"]["hint"] == "…0001" and rows["youtube"]["set"] and rows["elevenlabs"]["set"] and not rows["perplexity"]["set"]
+           and gcloud.Settings(folders["stem"]).youtube_key() == "AIzaYOUTUBE-TEST-0001"
+           and "sk-TESTKEY" not in json.dumps(list(rows.values())))
+        def bad400(req, timeout=20):
+            raise urllib.error.HTTPError(req.full_url, 400, "x", {}, io.BytesIO(b'{"error": {"message": "API key not valid. Please pass a valid API key."}}'))
+        ok("registration: a 400 that says the key is not valid counts as refused; a service that needs no key is saved unchecked",
+           check_key("gemini", "k", bad400)["works"] is False and check_key("nara", "k")["works"] is None)
+        class _R(io.BytesIO):
+            def __init__(self, code): super().__init__(b"{}"); self.status = code
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        def op(code):
+            def f(req, timeout=20):
+                if code >= 400:
+                    raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
+                return _R(code)
+            return f
+        ok("registration: a key is judged by the service's answer — 200 works, 401/403 refused, 400 for an empty request "
+           "still means the key was accepted", check_key("openai", "k", op(200))["works"] and check_key("openai", "k", op(401))["works"] is False
+           and check_key("perplexity", "k", op(400))["works"] and check_key("anthropic", "k", op(403))["works"] is False)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return out
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    res = self_test()
+    for n, g in res:
+        print(("  [OK]   " if g else "  [FAIL] ") + n)
+    print("\n  %d of %d checks passed" % (sum(1 for x in res if x[1]), len(res)))
+    sys.exit(0 if all(x[1] for x in res) else 1)

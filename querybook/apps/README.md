@@ -620,6 +620,18 @@ One page for the whole harvesting suite's API — the Control Panel and the thre
   GitHub — with what it is for, which program uses it, whether its key is set (never the key), its registry approval and when
   the harvest log last used it. **Test** / **Test all** send one keyless request to each public address (free).
 
+## API registration (Control Panel 1.11.0, `qbconnections.REGISTRATION`)
+
+Control Panel → API & connections → **API registration**: every service that needs a key — its sign-up page (and whether it
+offers Sign in with Google), its cost, whether a key is saved (last four characters only), a paste box and **Save & check**.
+The check is one request WITH the key that costs nothing (a free read, or an empty request the service refuses for its
+body — a bad key is refused first with 401/403, or with a 400 saying the key is not valid); a refused key is not saved.
+Keys go where each program reads them: the shared `api-keys.json` (gatherer, online harvesters), every application's
+Google settings (`youtube_key`) or the Language Builder's `speech_keys.json` (ElevenLabs, HeyGen, D-ID). The National
+Archives answers without a key, so its key is saved unchecked. DPLA issues keys by email through its own API: the page's
+"Email me a key" sends the address the person typed, at their request. QueryBook never signs up for anyone: the person
+creates each account and accepts its terms. Saving needs the admin passphrase once one is set.
+
 ## One-click Google setup (Control Panel 1.10.0, `gcloud.auto_setup`)
 
 Control Panel → API & connections → **🔑 Set up Google** (admin passphrase). The same steps as the Cloud Shell setup
