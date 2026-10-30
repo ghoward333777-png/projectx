@@ -37,7 +37,9 @@ import qbexemplar as X  # noqa: E402
 API = "https://generativelanguage.googleapis.com/v1beta"
 # requests per day at the account's current tier (Google AI Studio quota page, October 22, 2026); --budget overrides.
 # Omni is limited by Google on spending, not a published count: its cap is the admin's own daily spending guard (100, Oct 23)
-BUDGET = {"gemini-omni-1.1-flash": 100, "gemini-omni-flash-preview": 100, "veo-3.0-generate-001": 10, "veo-3.0-fast-generate-001": 10,
+# Omni: Google allows 20 videos a day on Tier 1 (October 30, 2026), shared by both Omni models — the budget below is per model,
+# so keep their sum within 20; Veo 3.0 is no longer offered to this key (404), kept for accounts that still have it
+BUDGET = {"gemini-omni-1.1-flash": 20, "gemini-omni-flash-preview": 0, "veo-3.0-generate-001": 10, "veo-3.0-fast-generate-001": 10,
           "gemini-3.8-flash-tts": 100, "gemini-3.1-flash-tts-preview": 100, "gemini-2.5-pro-preview-tts": 50,
           "gemini-3-pro-image": 250, "gemini-3.1-flash-image": 1000, "gemini-3.1-flash-lite-image": 1000,
           "gemini-3.1-pro-preview": 250, "gemini-3.8-flash": 10000, "gemini-3.5-transcribe": 100}
