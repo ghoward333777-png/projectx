@@ -41,9 +41,14 @@ def build_suite():
         _add_tree(z, os.path.join(ROOT, "bridges"), os.path.join("QueryBook", "extras", "device-bridges"))
         # the admin's exemplar generator (Google tools) — a separate program, never part of the applications
         gen = os.path.join("QueryBook", "extras", "exemplar-generator")
-        for f in ("generate_exemplars.py",):
+        for f in ("generate_exemplars.py", "answer_videos.py"):          # clips, and answer videos scripted from facts
             _add_file(z, os.path.join(ROOT, "tools", f), os.path.join(gen, f))
-        _add_file(z, os.path.join(ROOT, "_core", "qbexemplar.py"), os.path.join(gen, "qbexemplar.py"))
+        for f in ("qbexemplar.py", "gcloud.py"):                           # the library; Speech-to-Text for the word check
+            _add_file(z, os.path.join(ROOT, "_core", f), os.path.join(gen, f))
+        docs = os.path.join(os.path.dirname(ROOT), "docs")
+        for f in ("QUESTION-TEMPLATES.md",):                               # the question patterns the answer videos come from
+            if os.path.exists(os.path.join(docs, f)):
+                _add_file(z, os.path.join(docs, f), os.path.join("QueryBook", "extras", f))
         _add_tree(z, os.path.join(ROOT, "tools", "plans"), os.path.join(gen, "plans"))
         vse = os.path.join(os.path.dirname(ROOT), "vse")
         if os.path.isdir(vse):

@@ -280,7 +280,8 @@ def verdict(ans, heard, min_match=0.8):
 
 def check(manifest, clips, google_key, min_match=0.8):
     """every clip of every answer: what Speech-to-Text heard (the line's names as hints) and the verdict; the best take wins"""
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "_core"))
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path[:0] = [here, os.path.join(here, "..", "_core")]       # beside it in the suite's extras, or the source tree
     import glob, gcloud, shutil, subprocess, tempfile
     tmp = tempfile.mkdtemp()
     try:

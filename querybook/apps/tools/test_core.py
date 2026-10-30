@@ -161,8 +161,8 @@ def campaign_tests(c):
             got = []
             ths = [_th.Thread(target=lambda: got.append(bu.reserve("gemini-omni-1.1-flash"))) for _ in range(12)]
             [t.start() for t in ths]; [t.join() for t in ths]
-            c.check("generator: requests at once never overrun the daily budget; Omni's cap is 100; spend-based 429 waits, quota 429 stops",
-                    got.count(True) == 5 and GE.BUDGET["gemini-omni-1.1-flash"] == 100 and K.GOOGLE_TOOLS["omni-speech-video"]["budget"] == 100
+            c.check("generator: requests at once never overrun the daily budget; Omni's cap is Google's 20 a day; spend-based 429 waits, quota 429 stops",
+                    got.count(True) == 5 and GE.BUDGET["gemini-omni-1.1-flash"] == 20 and K.GOOGLE_TOOLS["omni-speech-video"]["budget"] == 20
                     and GE.ApiError(429, "You exceeded your spend-based rate limit.").transient
                     and not GE.ApiError(429, "You exceeded your current quota, please check your plan").transient)
         apps_src = "".join(open(os.path.join(ROOT, a, f), encoding="utf-8").read() for a in ("language", "stem", "facts", "control")

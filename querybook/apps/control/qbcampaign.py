@@ -21,7 +21,7 @@ SOURCE_KEY = "google-generative-exemplars"
 GOOGLE_TOOLS = {
     "omni-speech-video": {"title": "Talking-face speech clips — Gemini Omni 1.1 Flash", "model": "gemini-omni-1.1-flash", "kind": "video",
                           "makes": "10-second videos of an avatar saying one line of the speech test script: her speech motion library and the lip-reading curriculum",
-                          "budget": 100, "plan_hint": "a speech-script plan with the avatar's image (generate_exemplars.py plan --script …)"},
+                          "budget": 20, "plan_hint": "a speech-script plan with the avatar's image (generate_exemplars.py plan --script …)"},
     "veo-speech-video": {"title": "Talking-face and movement clips — Veo 3 Fast", "model": "veo-3.0-fast-generate-001", "kind": "video",
                          "makes": "a second video source when Omni's daily limit is spent; body moves for the motion library",
                          "budget": 10, "plan_hint": "a speech-script or movement plan with the avatar's image"},
