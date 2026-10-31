@@ -30,6 +30,7 @@ import hashlib, json, os, shutil, statistics, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import reuse_bench as rb  # noqa: E402  (ffmpeg helpers, motion curves, the action prompts)
+import qbframes as qf  # noqa: E402  (frame interpolation and upscaling: AI programs when installed, ffmpeg otherwise)
 
 MODEL = rb.MODEL
 DEFAULT_GEN_S = 120.0               # until a generation has been timed here
@@ -90,7 +91,8 @@ class Library:
 
 
 # ------------------------------------------------------------------------------------------------ plan
-def plan(lib, actions, fmt="horizontal", speed=1.0, grade="none", max_seconds=None, look=""):
+def plan(lib, actions, fmt="horizontal", speed=1.0, grade="none", max_seconds=None, look="", fps_out=None, height=None,
+         interp="best", bridges=True):
     """the cheapest route for each action, with its reason and estimated seconds (measured medians where known)"""
     if fmt not in FORMATS:
         raise ValueError("format must be one of %s" % ", ".join(FORMATS))
@@ -113,9 +115,29 @@ def plan(lib, actions, fmt="horizontal", speed=1.0, grade="none", max_seconds=No
                           "estimate_s": None})
     join = len(actions) > 1
     total = sum(s["estimate_s"] or 0 for s in steps) + ((lib.timing("join") or 2.0) if join else 0)
+    # the extra frame work, costed per second of output from earlier runs (defaults: measured on 4 CPU cores, 720p)
+    seconds_out = sum((next((c["duration_s"] for c in lib.data["clips"] if c["id"] == st.get("clip")), 8.0) if st["route"] == "reuse" else 8.0)
+                      for st in steps) / (speed or 1.0)
+    if max_seconds:
+        seconds_out = min(seconds_out, max_seconds * len(actions) / (speed or 1.0))
+    extras = []
+    be = qf.backends()
+    smooth_slow = speed < 1.0 and interp == "best"
+    if smooth_slow or fps_out:
+        per = lib.timing("interp_per_s") or (1.0 if "RIFE" in be["interpolation"] else 14.0)
+        extras.append({"step": "interpolate", "why": ("smooth slow motion" if smooth_slow else "") + (" and " if smooth_slow and fps_out else "") +
+                       ("%s frames per second" % fps_out if fps_out else ""), "backend": be["interpolation"], "estimate_s": round(per * seconds_out, 1)})
+    if join and bridges:
+        extras.append({"step": "bridge joins", "why": "in-between frames at each join when the clips' ends are similar (else a cross-fade)",
+                       "backend": be["interpolation"], "estimate_s": round((lib.timing("bridge") or (1.0 if "RIFE" in be["interpolation"] else 8.0)) * (len(actions) - 1), 1)})
+    if height:
+        per = lib.timing("upscale_per_s") or (1.0 if "ESRGAN" in be["upscaling"] else 2.0)
+        extras.append({"step": "upscale", "why": "to %d pixels high" % height, "backend": be["upscaling"], "estimate_s": round(per * seconds_out, 1)})
+    total += sum(e["estimate_s"] for e in extras)
     all_gen = len(actions) * gen_est
     return {"actions": actions, "format": fmt, "speed": speed, "grade": grade, "max_seconds": max_seconds, "look": look,
-            "steps": steps, "join": join, "estimate_s": round(total, 1),
+            "fps": fps_out, "height": height, "interp": interp, "steps": steps, "frame_work": extras, "backends": be,
+            "join": join, "estimate_s": round(total, 1),
             "estimate_all_generated_s": round(all_gen, 1),
             "reused": sum(1 for s in steps if s["route"] == "reuse"), "generated": sum(1 for s in steps if s["route"] == "generate")}
 
@@ -139,7 +161,7 @@ def _join(parts, dst, fade=0.4):
     """segments into one video with short cross-fades (all segments share size and frame rate after _edit)"""
     if len(parts) == 1:
         shutil.copyfile(parts[0], dst)
-        return
+        return [{"join": 0, "how": "single segment"}]
     durs = [rb.duration(p) for p in parts]
     inputs, fc, prev, off = [], [], "[0:v]", 0.0
     for p in parts:
@@ -150,11 +172,45 @@ def _join(parts, dst, fade=0.4):
         fc.append("%s[%d:v]xfade=transition=fade:duration=%s:offset=%.3f%s" % (prev, i, fade, max(0.0, off), out))
         prev = out
     rb._ff(inputs + ["-filter_complex", ";".join(fc), "-map", prev, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", dst])
+    return [{"join": i, "how": "cross-fade"} for i in range(1, len(parts))]
 
 
-def render(lib, actions, out, fmt="horizontal", speed=1.0, grade="none", max_seconds=None, look="", generator=None):
+def _concat(paths, dst):
+    inputs, ins = [], ""
+    for i, p in enumerate(paths):
+        inputs += ["-i", p]
+        ins += "[%d:v]" % i
+    rb._ff(inputs + ["-filter_complex", "%sconcat=n=%d:v=1[v]" % (ins, len(paths)), "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast",
+                     "-pix_fmt", "yuv420p", dst])
+
+
+def _join_bridged(parts, dst, tmp, lib):
+    """each join: in-between frames when the clips' ends are similar, a cross-fade when they are not"""
+    joins, cur = [], parts[0]
+    for i, nxt in enumerate(parts[1:], 1):
+        t0 = time.time()
+        br = os.path.join(tmp, "bridge-%02d.mp4" % i)
+        backend, diff = qf.bridge(cur, nxt, br)
+        out = os.path.join(tmp, "join-%02d.mp4" % i)
+        if backend:
+            _concat([cur, br, nxt], out)
+            joins.append({"join": i, "how": "bridged with in-between frames", "backend": backend, "difference": diff,
+                          "seconds": round(time.time() - t0, 2)})
+            lib.record("bridge", time.time() - t0)
+        else:
+            _join([cur, nxt], out)
+            joins.append({"join": i, "how": "cross-fade (the ends differ too much for in-between frames)", "difference": diff,
+                          "seconds": round(time.time() - t0, 2)})
+        cur = out
+    shutil.copyfile(cur, dst)
+    return joins
+
+
+def render(lib, actions, out, fmt="horizontal", speed=1.0, grade="none", max_seconds=None, look="", generator=None,
+           fps_out=None, height=None, interp="best", bridges=True):
     """carry out the plan; generator(action, prompt) -> mp4 bytes is called only for actions with no usable clip"""
-    p = plan(lib, actions, fmt, speed, grade, max_seconds, look)
+    p = plan(lib, actions, fmt, speed, grade, max_seconds, look, fps_out, height, interp, bridges)
+    smooth_slow = speed < 1.0 and interp == "best"
     t_all = time.time()
     tmp = tempfile.mkdtemp(prefix="qb-hybrid-")
     report = {"plan": p, "steps": [], "started": _now()}
@@ -186,9 +242,15 @@ def render(lib, actions, out, fmt="horizontal", speed=1.0, grade="none", max_sec
             src = os.path.join(lib.folder, c["file"])
             t0 = time.time()
             seg = os.path.join(tmp, "%02d-%s.mp4" % (len(parts), a))
-            _edit(src, seg, fmt, speed, grade, max_seconds)
+            _edit(src, seg, fmt, 1.0 if smooth_slow else speed, grade, max_seconds)
             esec = time.time() - t0
             lib.record("edit", esec)
+            if smooth_slow:                               # slow motion with new in-between frames, not repeated ones
+                t1 = time.time()
+                slow = os.path.join(tmp, "%02d-%s-slow.mp4" % (len(parts), a))
+                row["interpolation"] = qf.interpolate(seg, slow, slow=speed)
+                lib.record("interp_per_s", (time.time() - t1) / max(0.1, rb.duration(slow)))
+                seg = slow
             ref = rb.motion_curve(src)
             kept = rb._corr(rb.motion_curve(seg), rb._resample(ref, speed) if speed != 1.0 else ref)   # slower = the curve stretched
             row.update(edit_s=round(esec, 2), clip=c["id"], motion_kept=round(kept, 3),
@@ -196,12 +258,32 @@ def render(lib, actions, out, fmt="horizontal", speed=1.0, grade="none", max_sec
             report["steps"].append(row)
             parts.append(seg)
         t0 = time.time()
-        _join(parts, out)
+        joined = os.path.join(tmp, "joined.mp4")
+        report["joins"] = _join_bridged(parts, joined, tmp, lib) if (bridges and len(parts) > 1) else _join(parts, joined)
         if len(parts) > 1:
             lib.record("join", time.time() - t0)
+        cur = joined
+        if fps_out:
+            t1 = time.time()
+            nxt = os.path.join(tmp, "fps.mp4")
+            report["fps_backend"] = qf.interpolate(cur, nxt, target_fps=fps_out, mode=interp)
+            if report["fps_backend"] != "frame duplication":
+                lib.record("interp_per_s", (time.time() - t1) / max(0.1, rb.duration(nxt)))
+            cur = nxt
+        if height:
+            t1 = time.time()
+            nxt = os.path.join(tmp, "up.mp4")
+            report["upscale_backend"] = qf.upscale(cur, nxt, height)
+            lib.record("upscale_per_s", (time.time() - t1) / max(0.1, rb.duration(nxt)))
+            report["upscale_ssim"] = round(qf.ssim(cur, nxt), 4)       # the upscaled video still matches its source
+            cur = nxt
+        shutil.copyfile(cur, out)
         total = time.time() - t_all
+        w_, h_ = qf.size(out)
         report.update(total_s=round(total, 2), output=os.path.abspath(out), duration_s=round(rb.duration(out), 2),
-                      ok=all(s.get("ok") for s in report["steps"]), finished=_now(),
+                      size="%dx%d" % (w_, h_), fps=round(qf.fps(out), 2),
+                      ok=all(s.get("ok") for s in report["steps"]) and (not height or report.get("upscale_ssim", 0) >= 0.85)
+                      and (not fps_out or abs(qf.fps(out) - fps_out) < 0.5), finished=_now(),
                       compared_with_all_generated_s=p["estimate_all_generated_s"])
         lib.record("request", total)
         lib.save()
@@ -284,6 +366,45 @@ def self_test():
         except RuntimeError:
             stored = any(c["action"] == "wave-hello" for c in lib.data["clips"])
         ok("a generated clip with no motion fails its check and is not stored", not stored)
+        # frame work (1.1): in-between frames at joins, smooth slow motion, frames per second, upscaling
+        lib2 = Library(os.path.join(tmp, "lib2"))
+        whole = os.path.join(tmp, "whole.mp4")
+        rb._ff(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=6", "-pix_fmt", "yuv420p", whole])
+        a1, b1 = os.path.join(tmp, "a1.mp4"), os.path.join(tmp, "b1.mp4")
+        rb._ff(["-i", whole, "-t", "3", a1]); rb._ff(["-ss", "3", "-i", whole, a1.replace("a1", "b1")])
+        lib2.add("reach", a1, "filmed", consent="test footage"); lib2.add("grasp", b1, "filmed", consent="test footage")
+        out2 = os.path.join(tmp, "out2.mp4")
+        r3 = render(lib2, ["reach", "grasp"], out2, "horizontal", generator=fake)
+        ok("join: two clips whose ends match are bridged with in-between frames (no generation, no cross-fade)",
+           r3["joins"][0]["how"].startswith("bridged") and abs(rb.duration(out2) - 6.5) < 0.4, r3["joins"])
+        r4 = render(lib2, ["reach"], out2, "horizontal", speed=0.5, fps_out=30, height=1440, generator=fake)
+        ok("smooth slow motion, 30 frames per second, upscaled to 1440 high — and the upscale still matches its source",
+           r4["steps"][0].get("interpolation") == "ffmpeg minterpolate" and r4["fps"] == 30 and r4["size"] == "2560x1440"
+           and r4["upscale_ssim"] >= 0.85 and abs(rb.duration(out2) - 6.0) < 0.4, r4)
+        ok("the plan costs the frame work before it runs", {e["step"] for e in plan(lib2, ["reach", "grasp"], speed=0.5, fps_out=60, height=2160)["frame_work"]}
+           == {"interpolate", "bridge joins", "upscale"})
+        # the AI programs are used when installed (stand-ins here: they copy frames the way the real ones write them)
+        tools = os.path.join(tmp, "ai")
+        os.makedirs(tools)
+        stub = ("#!/usr/bin/env python3\nimport sys, os, glob, shutil\na = sys.argv\ni, o = a[a.index('-i') + 1], a[a.index('-o') + 1]\n"
+                "src = sorted(glob.glob(os.path.join(i, '*.png')))\nn = int(a[a.index('-n') + 1]) if '-n' in a else len(src)\n"
+                "for k in range(n):\n    shutil.copyfile(src[min(len(src) - 1, k * len(src) // n)], os.path.join(o, '%08d.png' % (k + 1)))\n")
+        for nm in qf.TOOLS.values():
+            pth = os.path.join(tools, nm + (".exe" if os.name == "nt" else ""))
+            open(pth, "w").write(stub); os.chmod(pth, 0o755)
+        old = os.environ.get("QB_AI_TOOLS")
+        os.environ["QB_AI_TOOLS"] = tools
+        try:
+            be = qf.backends()
+            r5 = render(lib2, ["reach", "grasp"], out2, "horizontal", fps_out=48, height=360, generator=fake)
+        finally:
+            if old is None:
+                os.environ.pop("QB_AI_TOOLS", None)
+            else:
+                os.environ["QB_AI_TOOLS"] = old
+        ok("installed AI programs (RIFE, Real-ESRGAN) are found and used for joins and frame rate",
+           "RIFE" in be["interpolation"] and "ESRGAN" in be["upscaling"] and r5["joins"][0].get("backend") == "RIFE"
+           and r5["fps_backend"] == "RIFE" and r5["fps"] == 48, (be, r5.get("joins"), r5.get("fps_backend")))
         try:
             plan(lib, ["walk-toward"], "diagonal"); bad = False
         except ValueError:
@@ -303,6 +424,10 @@ def main(argv=None):
     ap.add_argument("--grade", default="none")
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--look", default="")
+    ap.add_argument("--fps", type=float, help="output frames per second (new in-between frames)")
+    ap.add_argument("--height", type=int, help="upscale (or downscale) the result to this many pixels high")
+    ap.add_argument("--interp", default="best", choices=["best", "fast"], help="best = in-between frames; fast = repeated frames")
+    ap.add_argument("--no-bridges", action="store_true", help="cross-fade every join instead of in-between frames")
     ap.add_argument("--out", default="hybrid.mp4")
     ap.add_argument("--key-file")
     ap.add_argument("--budget-folder")
@@ -320,10 +445,12 @@ def main(argv=None):
     lib = Library(a.library)
     acts = [x.strip() for x in a.actions.split(",") if x.strip()]
     if a.cmd == "plan":
-        print(json.dumps(plan(lib, acts, a.format, a.speed, a.grade, a.max_seconds, a.look), indent=1, ensure_ascii=False))
+        print(json.dumps(plan(lib, acts, a.format, a.speed, a.grade, a.max_seconds, a.look, a.fps, a.height, a.interp, not a.no_bridges),
+                         indent=1, ensure_ascii=False))
     elif a.cmd == "render":
         gen = gemini_generator(a.key_file, a.budget_folder or a.library) if a.key_file else None
-        print(json.dumps(render(lib, acts, a.out, a.format, a.speed, a.grade, a.max_seconds, a.look, gen), indent=1, ensure_ascii=False))
+        print(json.dumps(render(lib, acts, a.out, a.format, a.speed, a.grade, a.max_seconds, a.look, gen, a.fps, a.height, a.interp,
+                                not a.no_bridges), indent=1, ensure_ascii=False))
     elif a.cmd == "add":
         if not a.consent:
             print("add: give --consent (the performer's release, or 'no real person')"); return 2

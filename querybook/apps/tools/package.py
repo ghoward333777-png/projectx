@@ -41,7 +41,7 @@ def build_suite():
         _add_tree(z, os.path.join(ROOT, "bridges"), os.path.join("QueryBook", "extras", "device-bridges"))
         # the admin's exemplar generator (Google tools) — a separate program, never part of the applications
         gen = os.path.join("QueryBook", "extras", "exemplar-generator")
-        for f in ("generate_exemplars.py", "answer_videos.py", "reuse_bench.py", "hybrid_video.py"):   # clips, answer videos, hybrid video
+        for f in ("generate_exemplars.py", "answer_videos.py", "reuse_bench.py", "hybrid_video.py", "qbframes.py"):   # clips, answer videos, hybrid video
             _add_file(z, os.path.join(ROOT, "tools", f), os.path.join(gen, f))
         for f in ("qbexemplar.py", "gcloud.py"):                           # the library; Speech-to-Text for the word check
             _add_file(z, os.path.join(ROOT, "_core", f), os.path.join(gen, f))

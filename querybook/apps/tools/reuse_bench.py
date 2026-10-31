@@ -203,6 +203,8 @@ REUSE = [
     ("slowmo", "slow motion, half speed", ["-vf", "setpts=2.0*PTS", "-af", "atempo=0.5"]),
     ("grade", "colour change (warmer, brighter)", ["-vf", "eq=brightness=0.05:saturation=1.3,colorbalance=rs=0.08:bs=-0.06", "-c:a", "copy"]),
     ("trim", "trimmed to the first 4 seconds", ["-t", "4", "-c:a", "copy"]),
+    ("upscale1080", "upscaled to 1080 high (AI upscaler if installed, else Lanczos)", "upscale"),
+    ("smoothslow", "smooth slow motion, half speed (in-between frames)", "interpolate"),
 ]
 
 
@@ -216,7 +218,10 @@ def reuse(bench):
         for name, label, args in REUSE:
             dst = bench.clip(k, name + ".mp4")
             t0 = time.time()
-            if args is None:
+            if args in ("upscale", "interpolate"):
+                import qbframes as qf
+                (qf.upscale(src, dst, 1080) if args == "upscale" else qf.interpolate(src, dst, slow=0.5))
+            elif args is None:
                 # retrieval: find the clip for the action key in the library and hand over a copy
                 found = os.path.join(bench.folder, k, a["stored"])
                 shutil.copyfile(found, dst)
@@ -244,7 +249,7 @@ def check(bench):
         for name, r in (a.get("reuse") or {}).items():
             p = bench.clip(k, r["file"])
             c = motion_curve(p)
-            ref = _resample(base, 0.5) if name == "slowmo" else base
+            ref = _resample(base, 0.5) if name in ("slowmo", "smoothslow") else base
             r["checks"] = {"duration_s": round(duration(p), 2), "motion_kept": round(_corr(c, ref), 3)}
             r["checks"]["ok"] = r["checks"]["duration_s"] > 0.5 and (r["checks"]["motion_kept"] >= 0.8 or name == "trim" and r["checks"]["motion_kept"] >= 0.6)
         # a contact sheet: 8 frames across the stored clip, for a human look
@@ -324,7 +329,7 @@ def self_test():
             b.act(k).update(stored="stored.mp4", scratch_seconds=120.0 if k == "walk-toward" else 150.0, prompt="test")
         b.save()
         n = reuse(b)
-        ok("reuse: five paths per stored clip, each timed", n == 10 and all(len(a["reuse"]) == 5 for a in b.data["actions"].values()))
+        ok("reuse: seven paths per stored clip, each timed", n == 14 and all(len(a["reuse"]) == 7 for a in b.data["actions"].values()))
         check(b)
         a = b.data["actions"]["walk-toward"]
         ok("check: the vertical copy is 9:16, slow motion is twice as long", abs(duration(os.path.join(tmp, "walk-toward", "slowmo.mp4")) - 12) < 0.6)
