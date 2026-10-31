@@ -23,6 +23,7 @@ if exist "%QBD%\language\" set "QB_LANGUAGE_DATA=%QBD%\language"
 if exist "%QBD%\stem\" set "QB_STEM_DATA=%QBD%\stem"
 if exist "%QBD%\facts\" set "QB_FACTS_DATA=%QBD%\facts"
 if exist "%QBD%\control\" set "QB_CONTROL_DATA=%QBD%\control"
+set "QB_VIDEO_DATA=%QBD%\video"
 echo  QueryBook data: %QB_COMMONS_DATA%
 :qbgo
 start "QueryBook Control Panel" cmd /c "QueryBook-Control-Panel\START-WINDOWS.bat"

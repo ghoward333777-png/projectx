@@ -1,5 +1,5 @@
 @echo off
-REM QueryBook - double-click to start all three applications and the Control Panel, each in its own window.
+REM QueryBook - double-click to start the applications (Language, STEM, History, Video Studio) and the Control Panel, each in its own window.
 cd /d "%~dp0"
 REM Optional: a file data-folder.txt beside this one names the folder holding the QueryBook data (e.g. D:\qb, also
 REM on an external drive). The shared facts are used from FOLDER\commons if it holds them, else from FOLDER itself; a
@@ -23,9 +23,11 @@ if exist "%QBD%\language\" set "QB_LANGUAGE_DATA=%QBD%\language"
 if exist "%QBD%\stem\" set "QB_STEM_DATA=%QBD%\stem"
 if exist "%QBD%\facts\" set "QB_FACTS_DATA=%QBD%\facts"
 if exist "%QBD%\control\" set "QB_CONTROL_DATA=%QBD%\control"
+set "QB_VIDEO_DATA=%QBD%\video"
 echo  QueryBook data: %QB_COMMONS_DATA%
 :qbgo
 start "QueryBook Language" cmd /c "QueryBook-Language\START-WINDOWS.bat"
 start "QueryBook Math Science Engineering" cmd /c "QueryBook-STEM\START-WINDOWS.bat"
 start "QueryBook History and News" cmd /c "QueryBook-History-News\START-WINDOWS.bat"
+start "QueryBook Video Studio" cmd /c "QueryBook-Video-Studio\START-WINDOWS.bat"
 start "QueryBook Control Panel" cmd /c "QueryBook-Control-Panel\START-WINDOWS.bat"

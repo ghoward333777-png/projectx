@@ -7,7 +7,7 @@ Run this after editing anything in _core/, then run each app's self-test.
 import os, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APPS = ["language", "stem", "facts", "control"]
+APPS = ["language", "stem", "facts", "control", "video"]
 FILES = [("qbcore.py", "qbcore.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("qbengineer.py", "qbengineer.py"), ("qbcontrol.py", "qbcontrol.py"), ("qbselfknow.py", "qbselfknow.py"), ("qbexemplar.py", "qbexemplar.py"), ("qbcampaign.py", "qbcampaign.py"), ("qbbulk.py", "qbbulk.py"), ("qbscaffold.py", "qbscaffold.py"), ("qbapidoc.py", "qbapidoc.py"), ("qbconnections.py", "qbconnections.py"), ("qbgather.py", "qbgather.py"), ("qbkeystone.py", "qbkeystone.py"), ("gcloud.py", "gcloud.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
          (os.path.join("ui", "qb.js"), os.path.join("ui", "qb.js"))]
 
@@ -19,6 +19,9 @@ if __name__ == "__main__":
         for src, dst in FILES:
             os.makedirs(os.path.dirname(os.path.join(d, dst)) or d, exist_ok=True)
             shutil.copyfile(os.path.join(ROOT, "_core", src), os.path.join(d, dst))
+        if app == "video":                              # the studio carries the renderer it is built on
+            for t in ("hybrid_video.py", "qbframes.py", "reuse_bench.py", "generate_exemplars.py"):
+                shutil.copyfile(os.path.join(ROOT, "tools", t), os.path.join(d, t))
         print("synced", app)
     # QueryBook 9.64 carries the same online harvesters, exemplar library, generator and plans
     v964 = os.path.join(os.path.dirname(ROOT), "QueryBook-v9.64")
