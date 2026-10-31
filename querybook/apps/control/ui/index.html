@@ -313,6 +313,10 @@
         parallel, each into its own shard, and resume where they stopped. The calendar scaffold computes what can be known in advance; the
         recurring-event slots are filled from Wikidata, one query per series.</p>
       <div id="bk-summary" class="row"></div>
+      <div class="row"><button class="btn" id="bk-why">🩺 Why so slow?</button>
+        <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
+        <button class="btn quiet" id="bk-move-go">Move the shared folder</button></div>
+      <div id="bk-diag" class="small"></div>
       <div id="bk-table"></div>
       <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
         <input type="password" id="bk-pass" placeholder="Admin passphrase" style="width:14em">

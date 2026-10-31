@@ -274,6 +274,13 @@ function bind() {
       agents: +$("#bk-agents").value || 4, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
   $("#bk-full").onclick = async () => { try { const ds = $$("[data-bk]:not(:disabled)").map(b => b.dataset.bk);
       const r = await api("/api/bulk/start", { datasets: ds, agents: 0, passphrase: $("#bk-pass").value }); toast(r.summary); loadBulk(); } catch (e) { toast(e.message); } };
+  $("#bk-why").onclick = async () => { $("#bk-diag").innerHTML = "<p class='muted'>Checking…</p>";
+    try { const r = await api("/api/bulk/diagnose");
+      $("#bk-diag").innerHTML = `<table class="t small"><tr><th></th><th>Check</th><th>Found</th><th>What to do</th></tr>` + r.checks.map(c =>
+        `<tr><td>${c.ok ? "✅" : "❌"}</td><td>${esc(c.check)}</td><td>${esc(c.detail)}</td><td>${esc(c.fix)}</td></tr>`).join("") + `</table>`;
+    } catch (e) { $("#bk-diag").textContent = e.message; } };
+  $("#bk-move-go").onclick = async () => { try { const r = await api("/api/bulk/move-folder", { folder: $("#bk-move").value, passphrase: $("#bk-pass").value });
+      toast(r.summary); $("#bk-diag").innerHTML = `<p><b>${esc(r.summary)}</b></p>`; } catch (e) { toast(e.message); } };
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>

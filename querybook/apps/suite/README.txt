@@ -42,6 +42,10 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.13.0 - "Why so slow?"
+    * Bulk harvesting -> 🩺 Why so slow?: one click checks everything that stops the fast bulk agents (no admin passphrase,
+      master switch off, agents not started, too little disk, programs using different folders, dataset errors, blocked
+      downloads) and says what to do. Move the shared folder puts all the facts on a large drive in one step.
   Language Builder 1.48.1 - HeyGen's new API
     * Author narrator videos with HeyGen use its v3 API (the old upload and talking-photo addresses close on 31 October 2026):
       the photo and the narration are uploaded as files and animated directly, so the plan's photo-avatar limit no longer applies.

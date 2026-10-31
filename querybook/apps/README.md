@@ -652,6 +652,16 @@ script, run on this computer by Google's own command-line tool (gcloud), as a se
 Safe to run again. Without gcloud the page links its installer; the Cloud Shell paste-in setup remains in each program's
 Diagnostics.
 
+## "Why so slow?" and moving the shared folder (Control Panel 1.13.0)
+
+Bulk harvesting → **🩺 Why so slow?** checks, each with what to do: the admin passphrase (⚡ Full speed refuses without it),
+the master switch, whether the bulk agents are running, free space where the facts are stored (agents pause under 10 GB;
+a full Wikidata pass needs about 100–200 GB), whether all four programs and the Control Panel use one shared folder, each
+dataset's state and error, registry approvals, facts arriving in the last hour, and whether the download sites can be
+reached. **Move the shared folder** (admin passphrase) points all four programs at a new folder — a large drive — and copies
+the current facts there when it is empty; the programs use it after a restart. `GET /api/bulk/diagnose`,
+`POST /api/bulk/move-folder`.
+
 ## Keystone coverage and priorities (`_core/qbkeystone.py`, Control Panel 1.9.0)
 
 Adopted from the UFCS prototype's planning engine after reading its specification: its 20 keystone domains in five phases

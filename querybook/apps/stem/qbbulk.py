@@ -1444,10 +1444,107 @@ def add_routes(api, commons, program_dir):
         cov = ks.coverage(commons.folder, commons)
         return dict(cov, probes=ks.probes(cov["keystones"]))
 
+    @api.get("/api/bulk/diagnose")
+    def bulk_diagnose(p):
+        import qbconnections as qc
+        own = getattr(api, "own_folder", None)
+        return {"checks": diagnose(commons, qc.google_folders(program_dir, own))}
+
+    @api.post("/api/bulk/move-folder")
+    def bulk_move(p):
+        import qbconnections as qc
+        try:
+            return move_folder(commons, qc.google_folders(program_dir, getattr(api, "own_folder", None)), p.get("folder"), p.get("passphrase"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+
     @api.get("/api/bulk/search")
     def bulk_search(p):
         return {"facts": search(commons.folder, p.get("q") or "", int(p.get("limit") or 50))}
 
+
+# ------------------------------------------------------------------------------------------------ "why so slow?"
+def diagnose(commons, folders=None, probe=True):
+    """every reason the bulk agents might not be running at full speed, each with what to do. folders: {program: data folder}
+    (to check all four programs share one Commons)."""
+    import qbharvest as hv
+    out = []
+
+    def add(name, ok, detail, fix=""):
+        out.append({"check": name, "ok": bool(ok), "detail": detail, "fix": "" if ok else fix})
+    st = status(commons.folder, commons)
+    add("Admin passphrase", commons.approvals.admin_set(), "set" if commons.approvals.admin_set() else "not set — ⚡ Full speed refuses to start",
+        "Set it once: any application → Harvesting tab → Admin → set passphrase (8+ characters). Then type it on the Bulk harvesting tab.")
+    add("Master harvesting switch", hv.master_running(commons), "on" if hv.master_running(commons) else "OFF — every agent stops at once",
+        "Turn harvesting on: Control Panel → Overview → master switch, or the ▶ Start all harvesting button.")
+    rs = st["runner"]
+    alive = rs.get("alive")
+    add("Bulk agents running", alive, ("running: %s" % rs.get("note")) if alive else
+        ("not running (last: %s)" % (rs.get("note") or "never started")),
+        "Bulk harvesting tab → type the admin passphrase → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves.")
+    shards = os.path.join(commons.folder, FOLDER)
+    os.makedirs(shards, exist_ok=True)
+    free = shutil.disk_usage(shards).free / 1e9
+    keep = float(commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
+    add("Free space where the facts are stored", free >= max(keep, 200), "%.0f GB free at %s" % (free, shards),
+        ("Under %g GB the agents pause. " % keep if free < keep else "") +
+        "A full Wikidata pass needs about 100–200 GB. Move the shared folder to a large drive (e.g. your 20 TB drive): "
+        "Bulk harvesting → Move the shared folder.")
+    if folders:
+        import qbcommons as cm
+        where = {app: os.path.abspath(cm.commons_folder(f)) for app, f in folders.items()}
+        where["this Control Panel"] = os.path.abspath(commons.folder)
+        same = len(set(where.values())) == 1
+        add("All programs share one fact store", same, "all use %s" % next(iter(where.values())) if same else
+            "; ".join("%s → %s" % kv for kv in where.items()),
+            "Bulk harvesting → Move the shared folder (it points all four programs at one folder), then restart them.")
+    states = {}
+    for d in st["datasets"]:
+        states.setdefault(d["state"], []).append(d["key"])
+    bad = [(d["key"], d["error"]) for d in st["datasets"] if d["error"] and d["state"] in ("failed", "blocked", "stopped", "paused")]
+    add("Datasets without errors", not bad, ", ".join("%s: %d" % (k, len(v)) for k, v in sorted(states.items())) +
+        ("" if not bad else " — " + "; ".join("%s: %s" % (k, (e or "")[:120]) for k, e in bad[:5])),
+        "Read each error above: 'disk is nearly full' → move the folder; 'not approved' → approve the source on the Harvesting page; "
+        "'switched off' → master switch; a network error → check the server's internet connection or firewall.")
+    blocked = [d["key"] for d in st["datasets"] if not d["approved"]]
+    add("Sources approved in the registry", not blocked, "all approved" if not blocked else "not approved: " + ", ".join(blocked),
+        "Harvesting page → Sources → approve them (admin passphrase).")
+    add("Facts arriving", st["last_hour"] > 0, "%s bulk facts in total, %s in the last hour" % (format(st["total"], ","), format(st["last_hour"], ",")),
+        "If the agents are running but nothing arrives, look at the dataset errors above.")
+    if probe:
+        for name, url in (("Wikidata dumps", WikidataDump.URL), ("NCBI (PubChem, Taxonomy)", "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/")):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=20) as r:
+                    add("Reach " + name, True, "HTTP %d" % r.status)
+            except Exception as e:
+                add("Reach " + name, False, "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "The server cannot download from this site: check its internet connection, proxy or firewall.")
+    add("CPU cores for agents", (os.cpu_count() or 1) >= 4, "%d cores — Full speed runs %d agents" % (os.cpu_count() or 1, MAX_AGENTS), "")
+    return out
+
+
+def move_folder(commons, folders, target, passphrase):
+    """admin: point every program at a new shared folder (e.g. a large drive). The current facts are copied there when the new
+    folder is empty; the programs use it after a restart."""
+    import qbcommons as cm
+    commons.approvals._require(passphrase or "")
+    target = os.path.abspath(os.path.expanduser(target or ""))
+    if not target or target == os.path.abspath(commons.folder):
+        raise ValueError("Give a new folder, e.g. E:\\QueryBook-Data\\commons")
+    if _alive(commons.folder):
+        raise ValueError("Stop the bulk agents first (■ Stop all), then move the folder.")
+    os.makedirs(target, exist_ok=True)
+    copied = False
+    if not os.listdir(target):
+        shutil.copytree(commons.folder, target, dirs_exist_ok=True)
+        copied = True
+    for app, f in folders.items():
+        os.makedirs(f, exist_ok=True)
+        cm.set_commons_folder(f, target)
+    with commons.store.write() as db:
+        commons.agent_log(db, "control", "Shared folder moved to %s for %s" % (target, ", ".join(folders)))
+    return {"folder": target, "copied": copied, "programs": sorted(folders),
+            "summary": "All programs now use %s%s. Close all four programs and start them again (START-ALL)." % (target, " (current facts copied)" if copied else "")}
 
 # ------------------------------------------------------------------------------------------------ self-test
 def self_test():

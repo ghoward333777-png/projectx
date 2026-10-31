@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 PORT = 8100
 program_dir = HERE
 
@@ -91,6 +91,7 @@ class Panel:
         self.api = core.Api()
         qbselfknow.attach(self, APP_ID, VERSION)          # the Self-Knowledge Layer: /api/self, /api/self/ask
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
+        self.api.own_folder = self.folder                # so "why so slow?" can check that all four programs share one Commons
         qbbulk.add_routes(self.api, self.commons, HERE)
         qbconnections.add_routes(self.api, self.commons)
         qbconnections.add_google_setup(self.api, self.commons, HERE, self.folder)   # one-click Google setup (/api/google/setup)
@@ -879,6 +880,12 @@ def selftest():
         check("one-click Google setup: each application's Google settings (never the key) and gcloud's presence; starting needs the admin passphrase",
               set(gsu["apps"]) == {"language", "stem", "facts", "control"} and "gcloud" in gsu and gs_refused
               and "api_key" not in json.dumps(gsu).replace("api_key_set", ""), gsu)
+        dg = qbbulk.diagnose(p.commons, {"control": p.folder}, probe=False)
+        names = {x["check"] for x in dg}
+        check("why so slow?: passphrase, master switch, agents, free space, shared store, dataset errors, approvals, arrivals — each with its fix",
+              {"Admin passphrase", "Master harvesting switch", "Bulk agents running", "Free space where the facts are stored",
+               "All programs share one fact store", "Datasets without errors", "Facts arriving"} <= names
+              and all(x["fix"] for x in dg if not x["ok"] and x["check"] != "CPU cores for agents"), [(x["check"], x["ok"]) for x in dg])
         rg = p.api.routes[("GET", "/api/registration")]({})
         check("API registration: every key-needing service with its sign-up page, cost and status (keys never shown)",
               len(rg["services"]) == 12 and all(r["signup"] for r in rg["services"]) and not any("key" in r for r in rg["services"]), rg["services"][:2])
