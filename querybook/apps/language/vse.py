@@ -213,8 +213,7 @@ def aps(wav_bytes, text, lang="en", lab=None, word_times=None):
 def timing_from_text(text, lang="en", lab=None, syl_per_s=4.5):
     """A visemes.align()-shaped track without audio: words timed from their sounds at a steady speaking rate
     (used for previews and the synthetic benchmark)."""
-    words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)
-    wp = visemes.word_phonemes(words, lang, lab)
+    words, wp = visemes.text_phonemes(text, lang, lab)
     t, rows, wout = 0.15, [], []
     per = 1.0 / (syl_per_s * 1.0)
     for w in wp:
@@ -889,7 +888,7 @@ def _spread(k, st, en):
 
 def align_script(post, ts, script, lang="en", lab=None):
     """Force-align a script's mouth classes to the frames (Viterbi on a left-to-right chain with optional rests)."""
-    wp = visemes.word_phonemes(re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)?", script), lang, lab)
+    wp = visemes.text_phonemes(script, lang, lab, pattern=r"[^\W\d_]+(?:['’][^\W\d_]+)?")[1]
     chain, owner = [], []
     for wi, w in enumerate(wp):
         for c in word_units(w["phonemes"]) or ["DD" if UNIT == "viseme" else "T"]:

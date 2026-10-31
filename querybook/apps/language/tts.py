@@ -23,6 +23,7 @@ import base64, datetime, hashlib, hmac, json, os, platform, re, shutil, subproce
 from xml.sax.saxutils import escape as xml_escape
 
 import dialect
+import pronounce
 import speech
 import voicedsp
 
@@ -330,13 +331,14 @@ def locale(p):
 
 
 def _ssml_body(text, pause_scale, break_tag="<break time='%dms'/>"):
-    """Text → SSML-safe body with breaks after punctuation, scaled by the pause setting."""
-    t = xml_escape(text)
-    if abs(pause_scale - 1.0) < 0.05:
-        return t
-    t = re.sub(r"([,;:])\s+", lambda m: m.group(1) + " " + break_tag % int(250 * pause_scale) + " ", t)
-    t = re.sub(r"([.!?])\s+", lambda m: m.group(1) + " " + break_tag % int(500 * pause_scale) + " ", t)
-    return t
+    """Text → SSML-safe body with breaks after punctuation, scaled by the pause setting, and the pronunciation decisions
+    as <phoneme alphabet="ipa"> / <sub alias> tags (pronounce.py)."""
+    def breaks(t):
+        if abs(pause_scale - 1.0) < 0.05:
+            return t
+        t = re.sub(r"([,;:])\s+", lambda m: m.group(1) + " " + break_tag % int(250 * pause_scale) + " ", t)
+        return re.sub(r"([.!?])\s+", lambda m: m.group(1) + " " + break_tag % int(500 * pause_scale) + " ", t)
+    return pronounce.render(text, "ssml", xml_escape, breaks)
 
 
 def P(key, label, kind, default=None, lo=None, hi=None, step=None, options=None, help=""):
@@ -436,10 +438,11 @@ class Espeak(Engine):
 
     def request(self, text, p, voice, model, keys, adv=None):
         a, e = self.args(p, voice, adv)
-        desc = {"command": "espeak-ng " + " ".join(a) + " -w <file.wav> <text>", "arguments": a}
+        said = pronounce.render(text, "espeak")
+        desc = {"command": "espeak-ng " + " ".join(a) + " -w <file.wav> <text>", "arguments": a, "text": said}
 
         def run():
-            return speech.synth(a, text, 60)          # through a file, never stdout (Windows text mode damages audio)
+            return speech.synth(a, said, 60)          # through a file, never stdout (Windows text mode damages audio)
         return desc, run, {"volume_db": 0.0, "pause_scale": 1.0}   # volume and pauses handled natively
 
 
@@ -452,11 +455,18 @@ class Formant(Engine):
 
     def request(self, text, p, voice, model, keys, adv=None):
         e = effective(p)
-        words = re.findall(r"[^\W\d_]+", text, re.UNICODE)[:40]
+        res = getattr(text, "res", None) or {"items": []}
+        decided = {it["start"]: it for it in res["items"] if it.get("forced") and it.get("ipa") and not it.get("alias")}
+        found = list(re.finditer(r"[^\W\d_]+", text, re.UNICODE))[:40]
+        words = [m.group(0) for m in found]
         ipas, fired = [], []
-        for w in words:
-            a = self.lab.analyze_pronunciation(w, p["lang"]) if self.lab else {"ipa": "/" + w.lower() + "/"}
-            ipa = a.get("ipa") or "/" + w.lower() + "/"
+        for m in found:
+            w = m.group(0)
+            if m.start() in decided:                    # decided by the pronunciation resolver
+                ipa = "/" + decided[m.start()]["ipa"] + "/"
+            else:
+                a = self.lab.analyze_pronunciation(w, p["lang"]) if self.lab else {"ipa": "/" + w.lower() + "/"}
+                ipa = a.get("ipa") or "/" + w.lower() + "/"
             if p["accent"]:
                 ipa, notes = dialect.apply_phonology(ipa, p["accent"])
                 fired += notes
@@ -513,7 +523,8 @@ class Say(Engine):
     def request(self, text, p, voice, model, keys, adv=None):
         e = effective(p)
         a = ["-r", str(int(180 * e["rate"]))] + (["-v", voice] if voice else [])
-        desc = {"command": "say " + " ".join(a) + " -o out.aiff <text>; afconvert -f WAVE -d LEI16"}
+        text = pronounce.render(text, "apple")
+        desc = {"command": "say " + " ".join(a) + " -o out.aiff <text>; afconvert -f WAVE -d LEI16", "text": text}
 
         def run():
             d = tempfile.mkdtemp(prefix="qb-say-")
@@ -557,6 +568,7 @@ class GoogleGemini(Engine):
         adv = adv or {}
         model = model or self.models[0]
         voice = voice or "Kore"
+        text = pronounce.render(text, "respell")          # text only: heteronyms respelled ("liv", "lyve")
         direction = adv.get("direction") or describe(p)
         prompt = (direction + ":\n" + text) if direction else text
         sc = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}
@@ -724,6 +736,7 @@ class ElevenLabs(Engine):
                 settings[key] = float(adv[key])
         if adv.get("use_speaker_boost") not in (None, ""):
             settings["use_speaker_boost"] = str(adv["use_speaker_boost"]).lower() == "true"
+        text = pronounce.render(text, pronounce.mode_for(self.id, model))   # phoneme tags where the model takes them, else respelled
         say = text
         if model == "eleven_v3" and adv.get("audio_tags"):
             say = adv["audio_tags"].strip() + " " + text
@@ -772,7 +785,7 @@ class OpenAI(Engine):
         adv = adv or {}
         model = model or self.models[0]
         e = effective(p)
-        body = {"model": model, "input": text, "voice": voice or "coral", "response_format": "wav",
+        body = {"model": model, "input": pronounce.render(text, "respell"), "voice": voice or "coral", "response_format": "wav",
                 "speed": float(adv["speed"]) if adv.get("speed") not in (None, "") else round(max(0.25, min(4.0, e["rate"])), 2)}
         if model == "gpt-4o-mini-tts":
             ins = adv.get("instructions") or describe(p)
@@ -951,6 +964,8 @@ def plan(text, prof, engine_id, voice="", model="", keys=None, adv=None):
     p = profile(prof)
     eng = BY_ID[engine_id]
     adv = {k: v for k, v in (adv or {}).items() if v not in (None, "")}
+    if not isinstance(text, pronounce.Spoken):     # every word's pronunciation decided before the engine sees the text
+        text = pronounce.spoken(text, pronounce.active_lexicon(), p["lang"])
     desc, run, post_override = eng.request(text, p, voice, model, keys, adv)
     e = effective(p)
     fx = {"tremble": e["tremble"], "hoarse": e["hoarse"], "breath": e["breath"], "age": p["age"], "volume_db": e["volume_db"], "pause_scale": e["pause_scale"],
@@ -963,4 +978,4 @@ def plan(text, prof, engine_id, voice="", model="", keys=None, adv=None):
         if row["how"].startswith("added") and fk in fx and (fx[fk] in (0.0,) or (fk in ("pause_scale", "tempo") and fx[fk] == 1.0)):
             row["how"] = "native" if k in eng.native else ("not needed" if not row["in_use"] else "handled by the engine")
     return {"engine": engine_id, "profile": p, "effective": e, "request": desc, "post_processing": fx, "coverage": cov,
-            "direction": describe(p), "advanced": adv}, run, fx
+            "direction": describe(p), "advanced": adv, "pronunciation": pronounce.report(text, engine_id, model)}, run, fx

@@ -31,6 +31,7 @@ import harvest
 import lab
 import speech
 import speechlab
+import pronounce
 import lipcoach
 import persona
 import avatars
@@ -48,7 +49,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.48.1"
+VERSION = "1.49.0"
 PORT = 8101
 program_dir = HERE
 
@@ -834,6 +835,44 @@ class App:
                                          video=p.get("video") or None, **_gen_args(p))
             except (ValueError, RuntimeError) as e:
                 raise core.UserError(str(e))
+
+        # -- pronunciation: heteronyms and the admin's lexicon, decided before any engine speaks (pronounce.py)
+        @a.post("/api/pronounce/resolve")
+        def pr_resolve(p):
+            text = str(p.get("text") or "")[:4000]
+            sp = pronounce.spoken(text, pronounce.active_lexicon(), p.get("lang") or "en")
+            engine = p.get("engine") or "espeak"
+            if engine not in tts.BY_ID:
+                raise core.UserError("Unknown engine.")
+            rep_ = pronounce.report(sp, engine, p.get("model") or "")
+            mode = pronounce.mode_for(engine, p.get("model") or "")
+            rep_["text_sent"] = pronounce.render(sp, mode, (lambda t: t) if mode == "ssml" else None, (lambda t: t) if mode == "ssml" else None)
+            rep_["clean"] = str(sp)
+            return rep_
+
+        @a.get("/api/pronounce/lexicon")
+        def pr_lexicon(p):
+            return {"entries": pronounce.active_lexicon().entries(), "heteronyms": sorted(pronounce.H)}
+
+        @a.post("/api/pronounce/lexicon")
+        def pr_lexicon_put(p):
+            try:
+                e = pronounce.active_lexicon().put(p)
+            except ValueError as e2:
+                raise core.UserError(str(e2))
+            self.store.activity("Pronunciation lexicon: '%s' saved" % e["term"], "ok", e.get("ipa") or e.get("alias") or "")
+            return {"entry": e, "entries": pronounce.active_lexicon().entries()}
+
+        @a.post("/api/pronounce/lexicon/remove")
+        def pr_lexicon_remove(p):
+            pronounce.active_lexicon().remove(p.get("term") or "")
+            self.store.activity("Pronunciation lexicon: '%s' removed" % (p.get("term") or ""), "ok", "")
+            return {"entries": pronounce.active_lexicon().entries()}
+
+        @a.get("/api/pronounce/benchmark")
+        def pr_bench(p):
+            b = pronounce.benchmark()
+            return {k: v for k, v in b.items() if k != "rows"}
 
         @a.post("/api/speech/keys")
         def sp_keys(p):
@@ -2603,6 +2642,17 @@ def _viseme_selftest(c):
     cs = visemes.csv_text(tr).strip().split("\n")
     c.check("Lip-sync: CSV export has a header and one row per sound", cs[0].startswith("start_s,") and len(cs) - 1 == len(tr["phonemes"]))
     c.check("Face & video: bundled 3D library and face tracker present", not vendor_missing(), ", ".join(vendor_missing()))
+    # pronunciation: heteronyms decided before the engine speaks, and the mouth shapes follow the same decision (1.49)
+    for n_, ok_, d_ in pronounce.self_test():
+        c.check("Pronunciation: " + n_, ok_, d_)
+    pl_, _r, _f = tts.plan("I live in Seattle and love live music.", {}, "espeak", keys=tts.Keys(tempfile.mkdtemp(prefix="qb-pr-")))
+    c.check("Pronunciation: the plan shows each decision and how the engine is told", pl_["request"]["text"] == "I [[l'Iv]] in Seattle and love [[l'aIv]] music."
+            and [d["sense"] for d in pl_["pronunciation"]["decisions"]] == ["verb", "adj"], pl_["pronunciation"])
+    _w, wp_ = visemes.text_phonemes("I live here. The live show.")
+    c.check("Pronunciation: the mouth shapes use the same decisions (lɪv / laɪv)", [w["ipa"] for w in wp_ if w["word"] == "live"] == ["ˈlɪv", "ˈlaɪv"])
+    if speech.find_espeak():
+        a1 = speech.synth(["-v", "en-us"], "[[l'Iv]]"); a2 = speech.synth(["-v", "en-us"], "[[l'aIv]]")
+        c.check("Pronunciation: espeak-ng speaks the two readings differently", a1 and a2 and a1 != a2)
     # lip-reading and sync on frames made from a known track
     import lipread as LR
     BS = {"P": (0.0, {"mouthClose": 0.4}), "F": (0.02, {"mouthRollLower": 0.5}), "W": (0.15, {"mouthPucker": 0.6}), "A": (0.45, {"jawOpen": 0.6}),

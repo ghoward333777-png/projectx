@@ -52,6 +52,17 @@ WHAT'S NEW IN THIS RELEASE
     * Bulk harvesting -> 🩺 Why so slow?: one click checks everything that stops the fast bulk agents (no admin passphrase,
       master switch off, agents not started, too little disk, programs using different folders, dataset errors, blocked
       downloads) and says what to do. Move the shared folder puts all the facts on a large drive in one step.
+  Language Builder 1.49.0 - every word said the way it is meant
+    * Heteronyms (I live / live music, read / read, lead / lead, record / record, bass, tear, wind, wound, bow, row and about
+      90 more) are decided before any voice speaks, from the words around them, by fixed rules — and each engine is told in
+      the form it obeys: SSML phoneme tags (Google Cloud, Azure, Polly, Windows), espeak-ng and macOS phoneme input,
+      ARPABET tags on the ElevenLabs models that take them, respellings ("liv", "lyve", "red") for text-only engines.
+    * Speech -> "How each word will be said" shows every decision, its reason and what was sent. Uncertain ones are left to
+      the engine and can be picked with one click (marked in the text as {read|past}); {word|/ipa/} and {SQL|sequel} work too.
+    * Speech -> Pronunciation lexicon: your own names and terms (company names, people, acronyms), used every time.
+    * The talking face's mouth shapes use the same decisions, so the lips no longer say "lyve" while the voice says "liv".
+    * Measured: 194 tuning sentences 98% right; 70 sentences written afterwards 93% right on first run, 61 of 62 forced
+      decisions right — the rest are left to the engine and flagged.
   Language Builder 1.48.1 - HeyGen's new API
     * Author narrator videos with HeyGen use its v3 API (the old upload and talking-photo addresses close on 31 October 2026):
       the photo and the narration are uploaded as files and animated directly, so the plan's photo-avatar limit no longer applies.

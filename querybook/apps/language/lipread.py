@@ -407,7 +407,7 @@ def analyse(frames, info=None, env=None, env_fps=100, script="", lang="en", voca
 def script_agreement(cls, script, lang="en", lab=None, costs=None):
     """How well the mouth classes seen (100 per second) agree with a script, scored against chance
     (the same classes in scrambled orders): 0 = no better than chance, 100 = perfect."""
-    wp = visemes.word_phonemes(re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)?", script), lang, lab)
+    wp = visemes.text_phonemes(script, lang, lab, pattern=r"[^\W\d_]+(?:['’][^\W\d_]+)?")[1]
     ref = "".join(word_classes(w["phonemes"]) for w in wp)
     ref_c = "".join(c for i, c in enumerate(ref) if i == 0 or ref[i - 1] != c)
     obs = "".join(c for c, _ in runs([c for c in cls if c != "-"], 3))

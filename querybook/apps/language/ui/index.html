@@ -313,6 +313,19 @@ tr.lc-active td { background: #f0fdf4; }
         <h3>Exact request <span class="small muted">(keys removed)</span></h3><pre class="req" id="sp-req"></pre>
         <div id="sp-direction" class="small"></div>
       </div>
+      <div class="card"><h2>How each word will be said <span class="small muted">— heteronyms and your lexicon, decided before the engine speaks</span></h2>
+        <p class="small">Words spelled alike but said differently (<i>I live</i> / <i>live music</i>, <i>read</i> / <i>read</i>, <i>lead</i> / <i>lead</i>) are decided here by fixed rules from the words around them, then given to the engine in the form it obeys. Uncertain ones are left to the engine — pick the right reading and it is marked in the text, e.g. <code>{read|past}</code>. You can also write <code>{word|/ipa/}</code> or <code>{SQL|sequel}</code> yourself.</p>
+        <div id="sp-pron" class="small muted">Type some text above.</div>
+      </div>
+      <div class="card"><h2>Pronunciation lexicon <span class="small muted">— your own names and terms, used every time</span></h2>
+        <p class="small">Company names, people, acronyms: say how each is pronounced once. Give IPA (<code>klɪk</code>), ARPABET (<code>K L IH1 K</code>) or other words to say instead (<i>SQL</i> → <i>sequel</i>). Kept in this app's data folder.</p>
+        <div class="row"><input id="lex-term" placeholder="Word or term (e.g. Qlik)" style="width:12em">
+          <select id="lex-kind" style="width:auto"><option value="ipa">IPA</option><option value="arpa">ARPABET</option><option value="alias">Say instead</option><option value="respell">Respelling</option></select>
+          <input id="lex-val" class="grow" placeholder="klɪk"><input id="lex-note" placeholder="Note (optional)" style="width:12em">
+          <label class="chk"><input type="checkbox" id="lex-case"> match case</label><button class="btn" id="lex-add">Save</button></div>
+        <div id="lex-err" class="small bad"></div>
+        <table class="t small" style="margin-top:8px"><thead><tr><th>Term</th><th>Said as</th><th>Note</th><th></th></tr></thead><tbody id="lex-list"></tbody></table>
+      </div>
     </div>
 
     <div class="sp" id="sp-match" hidden>

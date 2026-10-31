@@ -57,6 +57,7 @@ async function showPlan() {
       r.how.startsWith("approx") ? '<span class="badge warn">approximated</span> <span class="small muted">' + esc(r.how.slice(14)) + "</span>" : r.how === "not needed" ? '<span class="muted">not needed</span>' :
       '<span class="badge bad">not available</span>') + "</td></tr>").join("");
   $("#sp-req").textContent = JSON.stringify(pl.request, null, 2);
+  showPron(pl.pronunciation);
   const pp = Object.entries(pl.post_processing).filter(([k, v]) => (k === "pause_scale" ? v !== 1 : v !== 0));
   $("#sp-direction").innerHTML = (pl.direction ? "<p><b>Performance direction written from the profile:</b> “" + esc(pl.direction) + "”</p>" : "") +
     (pp.length ? "<p><b>Post-processing after the engine:</b> " + pp.map(([k, v]) => esc(k) + " " + esc(FMT[k] ? FMT[k](v) : v)).join(", ") + "</p>" : "<p class=\"muted\">No post-processing needed.</p>");
@@ -617,3 +618,53 @@ async function loadSpeech() {
   SP.loaded = true;
   await refreshEngines();
 }
+
+
+// ---- pronunciation: what each heteronym / lexicon term was decided to be, and the lexicon itself
+function showPron(pr) {
+  const box = $("#sp-pron");
+  if (!box) return;
+  if (!pr || !pr.decisions.length) { box.innerHTML = '<span class="muted">No word here needs deciding (no heteronyms or lexicon terms).</span>'; return; }
+  const seen = {};
+  box.innerHTML = "<p>Sent as: <b>" + esc(pr.method) + "</b>" + (pr.uncertain ? ' · <span class="badge warn">' + pr.uncertain + " uncertain</span>" : "") + "</p>" +
+    '<table class="t"><thead><tr><th>Word</th><th>Decided</th><th>Why</th><th>Sent to the engine</th></tr></thead><tbody>' +
+    pr.decisions.map(d => {
+      const k = d.word.toLowerCase(); const occ = d.source === "inline" ? -1 : (seen[k] = (seen[k] || 0) + 1) - 1;
+      const conf = d.confidence >= 0.995 ? "" : ' <span class="muted">(' + Math.round(100 * d.confidence) + "%)</span>";
+      const alts = (!d.forced || d.confidence < 0.9) && d.alternatives.length && occ >= 0 ? "<div>" + [{ sense: d.sense, ipa: d.ipa, gloss: d.meaning }].concat(d.alternatives).map(a =>
+        '<button class="btn quiet" data-pick="' + esc(d.word) + "|" + occ + "|" + esc(a.sense) + '" title="' + esc(a.gloss || "") + '">' + esc(a.sense) + " /" + esc(a.ipa || "") + "/</button>").join(" ") + "</div>" : "";
+      return "<tr><td><b>" + esc(d.word) + "</b></td><td>" + (d.forced ? '<span class="badge good">' + esc(d.sense) + "</span>" : '<span class="badge warn">' + esc(d.sense) + "?</span>") +
+        " " + esc(d.ipa ? "/" + d.ipa + "/" : d.alias ? "“" + d.alias + "”" : "") + conf + '<div class="muted">' + esc(d.meaning || "") + "</div></td><td>" + esc(d.reason) + alts +
+        '</td><td><code>' + esc(d.sent_as) + "</code></td></tr>";
+    }).join("") + "</tbody></table>";
+  box.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+    const [word, occ, sense] = b.dataset.pick.split("|");
+    const ta = $("#sp-text"); let n = -1;
+    const re = new RegExp("(\\{[^{}]*\\})|(?<![\\p{L}'’])(" + word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")(?![\\p{L}'’])", "gu");
+    ta.value = ta.value.replace(re, (m, mark, w) => { if (mark) return m; n++; return n === +occ ? "{" + w + "|" + sense + "}" : m; });
+    schedulePlan();
+  });
+}
+
+async function lexLoad() {
+  if (!$("#lex-list")) return;
+  const r = await api("/api/pronounce/lexicon");
+  $("#lex-list").innerHTML = r.entries.map(e => "<tr><td><b>" + esc(e.term) + "</b>" + (e.case_sensitive ? ' <span class="muted">(case)</span>' : "") + "</td><td>" +
+    esc(e.alias ? "“" + e.alias + "”" : "/" + (e.ipa || "") + "/") + (e.arpa ? ' <span class="muted">' + esc(e.arpa) + "</span>" : "") + "</td><td>" + esc(e.note || "") +
+    '</td><td><button class="btn quiet" data-lexdel="' + esc(e.term) + '">Remove</button></td></tr>').join("") || '<tr><td colspan="4" class="muted">No terms yet.</td></tr>';
+  $$("[data-lexdel]").forEach(b => b.onclick = async () => { await api("/api/pronounce/lexicon/remove", { term: b.dataset.lexdel }); lexLoad(); schedulePlan(); });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const add = $("#lex-add");
+  if (!add) return;
+  $("#lex-kind").onchange = () => { $("#lex-val").placeholder = { ipa: "klɪk", arpa: "K L IH1 K", alias: "sequel", respell: "klik" }[$("#lex-kind").value]; };
+  add.onclick = async () => {
+    $("#lex-err").textContent = "";
+    const body = { term: $("#lex-term").value, note: $("#lex-note").value, case_sensitive: $("#lex-case").checked };
+    body[$("#lex-kind").value] = $("#lex-val").value;
+    try { await api("/api/pronounce/lexicon", body); $("#lex-term").value = $("#lex-val").value = $("#lex-note").value = ""; lexLoad(); schedulePlan(); }
+    catch (e) { $("#lex-err").textContent = e.message; }
+  };
+  lexLoad().catch(() => {});
+});

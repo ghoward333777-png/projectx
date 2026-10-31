@@ -82,6 +82,7 @@ class SpeechLab:
     def __init__(self, store, lab, log, folder):
         self.store, self.lab, self.log = store, lab, log
         self.keys = tts.Keys(folder)
+        tts.pronounce.set_folder(folder)                   # the pronunciation lexicon lives beside the speech keys
         self.audio_dir = os.path.join(folder, "speech")
         os.makedirs(self.audio_dir, exist_ok=True)
         tts.Formant.lab = lab

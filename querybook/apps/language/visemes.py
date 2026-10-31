@@ -209,17 +209,47 @@ def _measured(wav):
     return _CACHE[k]
 
 
+def _reweight(phs):
+    return [(sym, v, WEIGHT["long"] if (_vowel(sym, v) and sym.endswith("ː")) else WEIGHT["vowel"] if _vowel(sym, v) else WEIGHT["cons"])
+            for sym, v, _ in phs]
+
+
 def _cached_phonemes(words, lang, lab):
     """Pronunciations (remembered), re-weighted with the current WEIGHT so tuned weights take effect."""
     k = ("w", tuple(words), lang)
     if k not in _CACHE:
         _CACHE[k] = word_phonemes(words, lang, lab)
+    return [dict(w, phonemes=_reweight(w["phonemes"])) for w in _CACHE[k]]
+
+
+SCRIPT_WORD = r"[^\W\d_]+(?:'[^\W\d_]+)?"
+
+
+def text_phonemes(text, lang="en", lab=None, pattern=SCRIPT_WORD, cached=False):
+    """(words, pronunciations) for a script IN CONTEXT: heteronyms ("I live" /lɪv/, "live music" /laɪv/), the admin's
+    pronunciation lexicon and inline marks ({live|adj}) are decided by pronounce.py — the same decisions the voice is given —
+    so the mouth shapes match what is said. Inline marks are removed from the words."""
+    import pronounce
+    clean, decided = pronounce.word_ipa_overrides(text or "", None, lang)
+    found = list(re.finditer(pattern, clean, re.UNICODE))
+    words = [m.group(0) for m in found]
+    wp = _cached_phonemes(words, lang, lab) if cached else word_phonemes(words, lang, lab)
+    if not decided:
+        return words, wp
+    fix = _reweight if cached else (lambda x: x)
     out = []
-    for w in _CACHE[k]:
-        ph = [(sym, v, WEIGHT["long"] if (_vowel(sym, v) and sym.endswith("ː")) else WEIGHT["vowel"] if _vowel(sym, v) else WEIGHT["cons"])
-              for sym, v, _ in w["phonemes"]]
-        out.append(dict(w, phonemes=ph))
-    return out
+    for m, w in zip(found, wp):
+        d = decided.get(m.start())
+        if d:
+            ipa, alias, why = d
+            if alias:
+                parts = word_phonemes(re.findall(pattern, alias, re.UNICODE), lang, lab)
+                w = dict(w, ipa=" ".join(x["ipa"] or "" for x in parts), phonemes=fix([q for x in parts for q in x["phonemes"]]),
+                         source="pronunciation lexicon: said as '%s'" % alias)
+            elif ipa:
+                w = dict(w, ipa=ipa, phonemes=fix(phonemes(ipa)), source="pronunciation resolver: " + why)
+        out.append(w)
+    return words, out
 
 
 def fit_word_times(text, heard):
@@ -227,7 +257,8 @@ def fit_word_times(text, heard):
     order (longest common subsequence on letters only: "60" never matches "sixty"); a script word with no match takes its
     share of the gap between the matched words around it, by length. None when fewer than half the words match."""
     norm = lambda w: re.sub(r"[^a-z']", "", str(w).lower())
-    words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)
+    import pronounce
+    words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", pronounce.INLINE.sub(r"\1", text or ""), re.UNICODE)
     a, b = [norm(w) for w in words], [norm(h.get("word")) for h in heard or []]
     if not a or not b:
         return None
@@ -267,10 +298,9 @@ def fit_word_times(text, heard):
 
 def align(text, wav, lang="en", lab=None, word_times=None):
     """Timed visemes for `text` spoken in `wav`. word_times: optional [{word, start_s, end_s}] (e.g. Speech-to-Text)."""
-    words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", text or "", re.UNICODE)
+    words, wp = text_phonemes(text, lang, lab, cached=True)    # heteronyms decided in context, as the voice was told
     m = _measured(wav)
     dur = m["duration_s"]
-    wp = _cached_phonemes(words, lang, lab)
     timed, method = [], ""
     if word_times and len(word_times) >= max(1, len(words) // 2):
         method = "word times from speech recognition"
