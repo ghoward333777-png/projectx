@@ -42,6 +42,15 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Suite launchers - all the data on one drive (an external drive too)
+    * Put a file data-folder.txt next to START-ALL-WINDOWS.bat holding one line, the data folder (e.g. D:\qb). The
+      launchers then point every program at it: the shared facts in that folder (or its "commons" folder), and each
+      program's own data in D:\qb\language, \stem, \facts, \control when those folders exist.
+    * If the drive is not connected, nothing starts and the launcher says so — new facts are never written to C: while
+      the rest are on D:. With the file in place, change the folder by editing the file (it takes precedence over
+      "Move the shared folder").
+    * External drives: press "Stop all harvesting" in the Control Panel and use Windows' "Safely remove" before
+      unplugging — a drive pulled out mid-write can damage the database being written.
   Control Panel 1.15.0 - the recurring-event lattice: every series Wikidata knows, read in batches
     * New bulk dataset "Recurring events — every series Wikidata knows" (wikidata-lattice). Wikidata itself lists every
       series with 5+ editions — about 5,900 league and competition seasons, 3,600 series of dated events (festivals,
