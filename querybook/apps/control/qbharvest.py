@@ -591,6 +591,31 @@ class Approvals:
         if not self.check_admin(passphrase):
             raise core.UserError("Admin passphrase not correct — nothing was changed.")
 
+    def auto_apply(self):
+        """No admin passphrase set → nobody gates the harvest: every waiting recommendation is decided at once.
+        Speed, volume and unrestricted-source approvals are applied; a 'pause the failing task' is declined (harvesting
+        keeps running, failures still show as alerts). Approving a restricted licence class (attribution, share-alike,
+        non-commercial, terms of service, unknown) is never automatic: that is a legal condition, not a speed setting."""
+        if self.admin_set() or getattr(self.store, "read_only", False):
+            return 0
+        done = 0
+        for r in self.list("pending", 1000):
+            ch = r["change"] or {}
+            if ch.get("type") == "source":
+                cls = ch.get("licence_class") or (self.reg.source(ch.get("key")) or {}).get("licence_class")
+                if ch.get("status") == "approved" and (not LICENCE_CLASSES.get(cls, (False,))[0] or ch.get("key") in HELD_REASON):
+                    continue                               # restricted licence, or held back by the admin's own copyright condition
+            elif ch.get("type") != "param":
+                continue                                   # 'classify this licence' needs a person to look it up
+            pause = str(ch.get("key", "")).startswith("disabled.")
+            try:
+                self.decide(r["id"], not pause, None, "decided automatically: no admin passphrase is set"
+                            + (" (kept running)" if pause else ""))
+                done += 1
+            except core.UserError:
+                pass
+        return done
+
     # -- recommendations
     def recommend(self, db, app, kind, title, rationale, evidence, change):
         fp = core.fingerprint(kind, app or "", json.dumps(change, sort_keys=True))
@@ -813,4 +838,5 @@ class Learner:
                                           "Checks waited %.0f s on average before being answered; a higher weight gives the answering "
                                           "application its turn sooner." % waits, {"mean_wait_s": round(waits, 1)},
                                           {"type": "param", "key": "rotation.check_weight", "value": cw + 1})
+        self.ap.auto_apply()
         return made

@@ -368,6 +368,10 @@ class Team:
         self.app_id = commons.app_id
         self.adapter = adapter
         commons.registry.ensure(commons.app_id, dict(adapter.budgets(), **ol.budgets(commons.app_id)))
+        try:
+            commons.approvals.auto_apply()       # no passphrase set → nothing waits for the admin
+        except Exception as e:
+            commons.log("auto-apply:", e)
         self.log = log or (lambda *a: None)
         self._lock = threading.Lock()
         self.state = {"running": False, "role": None, "last": None, "started": None}

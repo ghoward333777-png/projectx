@@ -174,6 +174,23 @@ def main():
         except core.UserError:
             open_without = False
         c.check("approvals: with no passphrase set, admin actions are open (the admin chose not to set one)", open_without)
+        with tempfile.TemporaryDirectory() as tmp2:     # no passphrase set → nothing waits for the admin
+            c2 = cm.Commons(tmp2, "stem")
+            c2.registry.ensure("stem", {"constants": 40})
+            with c2.store.write() as d:
+                for i in range(4):
+                    c2.harvest_log.write(d, "stem", "constants", "b%d" % i, "codata-2018", "facts", "harvested", "t", items=40, new=40, seconds=0.5, budget_key="constants")
+                for i in range(3):
+                    c2.harvest_log.write(d, "stem", "flaky", "f%d" % i, "stem-computed", "computed", "failed", "t")
+            c2.learner.review("stem")
+            left = c2.approvals.list("pending")
+            c.check("approvals: with no passphrase, waiting recommendations are applied at once (bigger batches, unrestricted sources)",
+                    c2.registry.param("budget.stem.constants") == 60 and all(c2.registry.source(k)["status"] == "approved" for k in NEW_147)
+                    and {r["change"]["key"] for r in left} == held, [(r["kind"], r["title"]) for r in left])
+            c.check("approvals: auto-apply never pauses a task, never approves a restricted licence or a source the admin held back",
+                    c2.registry.param("disabled.stem.flaky") is None and c2.registry.source("muse-bilingual")["status"] == "blocked"
+                    and all(c2.registry.source(k)["status"] == "pending" for k in held))
+            c2.store.conn().close()
         ap.set_admin("correct horse")
         try:
             ap._require("wrong horse")
@@ -482,7 +499,9 @@ def main():
         outs = [p.communicate(timeout=600) for p in procs]
         c.check("three applications harvesting at once all finish", all(p.returncode == 0 for p in procs), [o[1][-500:] for o in outs])
         c.check("concurrent harvests leave the database sound", q("PRAGMA integrity_check") == "ok" and
-                q("SELECT count(*) FROM facts WHERE domain = 'language' AND predicate = 'means'") == 1500)
+                q("SELECT count(*) FROM facts WHERE domain = 'language' AND predicate = 'means'") >= 1500,  # no passphrase: the learner's bigger batches apply themselves
+                (q("PRAGMA integrity_check"), q("SELECT count(*) FROM facts WHERE domain = 'language' AND predicate = 'means'"),
+                 q("SELECT value FROM policy_params WHERE key = 'budget.language.definitions'")))
         d.close()
         # determinism: the same inputs, in a separate world, give the same Commons
         commons2, _ = one_world(tmp2)

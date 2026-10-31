@@ -285,6 +285,10 @@ class Panel:
         rules = self.rules()
         if rules["target"]["only"] and res and all(not r.get("on_target") and not r.get("new") for r in res[:3]):
             found["target-empty"] = ("warn", "\"Only targeted\" is on but the last turns harvested nothing — the target may match no source.", None)
+        try:
+            self.commons.approvals.auto_apply()  # no passphrase set → nothing waits for the admin
+        except Exception as e:
+            self.log("auto-apply:", e) if hasattr(self, "log") else None
         pend = len(self.commons.approvals.list("pending"))
         if pend:
             found["pending"] = ("info", "%d harvesting recommendation(s) wait for the admin (open any application → Harvesting)." % pend, None)

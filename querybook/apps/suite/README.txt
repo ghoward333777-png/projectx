@@ -45,6 +45,10 @@ WHAT'S NEW IN THIS RELEASE
   Control Panel 1.13.0 - "Why so slow?", and no passphrase unless you want one
     * With no admin passphrase set, every button works (Full speed, Google setup, keys, approvals); set one later and it is
       required again. The Engineer (QueryBook proposing changes to its own code) still needs one.
+    * Nothing waits for the admin either: with no passphrase, the harvesting recommendations apply themselves
+      (bigger batches, faster cross-checks, new sources with free licences). Only three kinds still wait: sources
+      whose licence carries a condition (attribution, share-alike, non-commercial, unknown), the two the admin held
+      back over copyright, and "pause a failing task" (declined, so harvesting keeps running).
     * Bulk harvesting -> 🩺 Why so slow?: one click checks everything that stops the fast bulk agents (no admin passphrase,
       master switch off, agents not started, too little disk, programs using different folders, dataset errors, blocked
       downloads) and says what to do. Move the shared folder puts all the facts on a large drive in one step.
