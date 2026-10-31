@@ -233,6 +233,8 @@ def tokens(text):
     t = re.sub(r"(?<=\d),(?=\d)", "", t)
     t = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", t)
     t = t.replace("metres", "meters").replace("metre", "meter").replace("kilometres", "kilometers")
+    t = re.sub(r"\b(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)([a-z0-9]{2,8})\b",            # "h2o" → "h 2 o", "co2" → "co 2"
+               lambda m: " ".join(re.findall(r"[a-z]+|\d+", m.group(1))), t)
     out = []
     for w in re.findall(r"[a-z0-9.']+", t):
         w = w.strip(".")
