@@ -14,7 +14,7 @@ import argparse, datetime, json, math, os, re, sys, time, urllib.error, urllib.p
 
 UA = "QueryBook-answer-videos/1.0 (+https://github.com/ghoward333777-png/projectx)"
 ENTITY = "https://www.wikidata.org/wiki/Special:EntityData/%s.json"
-LABELS = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=%s&props=labels&languages=en&format=json"
+LABELS = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=%s&props=labels&languages=en|mul&format=json"
 UNITS = {"Q11573": "metres", "Q828224": "kilometres", "Q573": "days", "Q7727": "minutes", "Q25235": "hours", "Q11574": "seconds",
          "Q712226": "square kilometres", "Q11570": "kilograms"}
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -51,12 +51,18 @@ def entity(qid):
     return _CACHE[qid]
 
 
+def _name(ent):
+    """the English name, else the name Wikidata keeps once for all languages ("mul") — many items now carry only that"""
+    L = ent.get("labels") or {}
+    return (L.get("en") or L.get("mul") or {}).get("value")
+
+
 def labels(qids):
     qids = [q for q in dict.fromkeys(qids) if q]
     out = {}
     for i in range(0, len(qids), 50):
         d = _get(LABELS % "|".join(qids[i:i + 50]))["entities"]
-        out.update({q: ((v.get("labels") or {}).get("en") or {}).get("value") for q, v in d.items()})
+        out.update({q: _name(v) for q, v in d.items()})
     return out
 
 
@@ -199,9 +205,16 @@ def build(batch):
                                   "licence": "CC0 1.0 (Wikidata)", "read": today})
             if any(re.fullmatch(r"Q\d+", x) for v in vals.values() for x in re.split(r", | and ", str(v))):
                 raise ValueError("a value has no English name on Wikidata — never said as an ID")
+            people = []
+            for f in facts:
+                for qid in [f.get("item")] + list(f.get("value_items") or []):
+                    if qid and qid not in people and any(((st.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") == "Q5"
+                                                         for st in best(qid, "P31")):
+                        people.append(qid)
             shown = q["say"].format(**vals)
             line = q["say"].format(**{k: spoken((q.get("speak") or {}).get(k), v) for k, v in vals.items()})
-            out.append({"code": q["code"], "question": q["question"], "domain": q["domain"], "line": line, "caption": shown, "facts": facts})
+            out.append({"code": q["code"], "question": q["question"], "domain": q["domain"], "line": line, "caption": shown, "facts": facts,
+                        "people": [{"item": p_, "name": _name(entity(p_))} for p_ in people]})
         except Exception as e:
             problems.append({"code": q["code"], "question": q["question"], "why": str(e)})
     return out, problems
@@ -307,17 +320,202 @@ def check(manifest, clips, google_key, min_match=0.8):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ------------------------------------------------------------------------------------------------ making the clips
+# Google's video model refuses some lines naming real people ("Input blocked … real people's names or likenesses"); the filter
+# reads the text, not what the video shows. Such an answer is made the voice-driven way instead — a voice reads the line and
+# HeyGen animates our own portrait to it, so no one's likeness is generated — and the refused names are remembered, so the
+# next answer naming them goes straight there without spending a Gemini request.
+REFUSED = re.compile(r"real people|likeness", re.I)
+VOICE = "21m00Tcm4TlvDq8ikWAM"                       # ElevenLabs "Rachel" — the voice the comparison clips used
+
+
+def _http(url, data=None, headers=None, method=None, timeout=180):
+    req = urllib.request.Request(url, data=data, headers=dict({"User-Agent": UA}, **(headers or {})), method=method or ("POST" if data else "GET"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError("HTTP %d %s: %s" % (e.code, url.split("?")[0], e.read()[:300].decode("utf-8", "replace")))
+
+
+def voice_video(line, portrait, keys, poll_s=8, limit_s=900):
+    """ElevenLabs reads the line; HeyGen (v3) animates the portrait to it. Returns the MP4 bytes."""
+    import subprocess, tempfile, uuid
+    mp3 = _http("https://api.elevenlabs.io/v1/text-to-speech/%s?output_format=mp3_44100_128" % VOICE,
+                json.dumps({"text": line, "model_id": "eleven_multilingual_v2"}).encode(), {"xi-api-key": keys["elevenlabs"], "Content-Type": "application/json"})
+    with tempfile.TemporaryDirectory() as td:
+        open(os.path.join(td, "v.mp3"), "wb").write(mp3)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(td, "v.mp3"), "-ar", "44100", "-ac", "1", os.path.join(td, "v.wav")])
+        wav = open(os.path.join(td, "v.wav"), "rb").read()
+
+    def upload(name, ctype, blob):
+        b = uuid.uuid4().hex
+        body = ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n" % (b, name, ctype)).encode() + blob + ("\r\n--%s--\r\n" % b).encode()
+        return json.loads(_http("https://api.heygen.com/v3/assets", body, {"X-Api-Key": keys["heygen"], "Content-Type": "multipart/form-data; boundary=" + b}))["data"]["asset_id"]
+    img = upload("portrait.jpg", "image/jpeg", open(portrait, "rb").read())
+    aud = upload("line.wav", "audio/wav", wav)
+    vid = json.loads(_http("https://api.heygen.com/v3/videos", json.dumps({"type": "image", "image": {"type": "asset_id", "asset_id": img},
+                     "audio_asset_id": aud, "resolution": "720p", "aspect_ratio": "auto", "title": "QueryBook answer"}).encode(),
+                     {"X-Api-Key": keys["heygen"], "Content-Type": "application/json"}))["data"]["video_id"]
+    t0 = time.time()
+    while time.time() - t0 < limit_s:
+        d = json.loads(_http("https://api.heygen.com/v3/videos/" + vid, headers={"X-Api-Key": keys["heygen"]}))["data"]
+        if d["status"] == "completed":
+            return _http(d["video_url"], timeout=300)
+        if d["status"] == "failed":
+            raise RuntimeError("HeyGen: %s" % d.get("failure_message"))
+        time.sleep(poll_s)
+    raise RuntimeError("HeyGen did not finish within %d s" % limit_s)
+
+
+def make(manifest, plan_path, library, gemini_key, keys, only=None, takes=1, gemini=None, voice=None):
+    """one clip per answer (or `takes`): Gemini first; a refusal for a real person's name → the voice-driven route, and the
+    names are remembered for next time. `gemini`/`voice` replace the two makers (tests). Returns one line per answer."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path[:0] = [here, os.path.join(here, "..", "_core")]
+    import tempfile, threading, generate_exemplars as G
+    plan = json.load(open(plan_path, encoding="utf-8"))
+    items = {it["item"]: it for it in plan["items"]}
+    lib = G.X.Library(library)
+    budget = G.Budget(lib, {})
+    os.makedirs(library, exist_ok=True)
+    memo_path = os.path.join(library, "_refused_names.json")
+    try:
+        refused = json.load(open(memo_path, encoding="utf-8"))
+    except (OSError, ValueError):
+        refused = {}
+    gemini = gemini or (lambda prompt: G._request(gemini_key, plan["model"], prompt, plan, budget, threading.Event()))
+    voice = voice or (lambda line: voice_video(line, plan["image"], keys))
+    out = []
+    for ans in json.load(open(manifest, encoding="utf-8"))["answers"]:
+        code = ans["code"]
+        if only and code not in only:
+            continue
+        names = [p["name"] for p in ans.get("people") or [] if p.get("name")]
+        for _ in range(takes):
+            route, data, why = "gemini", None, ""
+            if any(n in refused for n in names):
+                route, why = "voice", "names %s, which Google refused before" % ", ".join(n for n in names if n in refused)
+            else:
+                try:
+                    got = gemini(G.prompt_for(plan, items[code]))
+                    if got is None:
+                        out.append("%s stopped: Gemini's daily limit is spent" % code)
+                        return out
+                    data = got[0]
+                except G.ApiError as e:
+                    if e.code == 400 and REFUSED.search(str(e)):
+                        budget.refund(plan["model"])
+                        for n in names or ["(unnamed)"]:
+                            refused[n] = time.strftime("%Y-%m-%d")
+                        json.dump(refused, open(memo_path, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+                        route, why = "voice", "Google refused the name"
+                    elif e.code == 429:
+                        out.append("%s stopped: %s" % (code, e))
+                        return out
+                    else:
+                        out.append("%s failed: %s" % (code, e))
+                        break
+            origin = {"tool": "answer_videos.py make", "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            if route == "voice":
+                try:
+                    data = voice(ans["line"])
+                except Exception as e:
+                    out.append("%s voice route failed: %s" % (code, e))
+                    break
+                origin.update(provider="ElevenLabs voice + HeyGen v3 image video", model="voice-driven", why=why)
+            else:
+                origin.update(provider="Google Gemini API (paid tier)", model=plan["model"])
+            with tempfile.TemporaryDirectory() as td:
+                f = os.path.join(td, code + ".mp4")
+                open(f, "wb").write(data)
+                lib.add(f, plan["skill"], code, ans["line"], origin, plan.get("subject"), plan.get("consent"), ans["question"])
+            out.append("%s made (%s%s)" % (code, route, (": " + why) if why else ""))
+    return out
+
+
+def self_test():
+    """the answer check and the routing, with stand-ins for Gemini and HeyGen (no network, nothing spent)"""
+    import tempfile, shutil
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path[:0] = [here, os.path.join(here, "..", "_core")]
+    import generate_exemplars as G
+    out = []
+    ok = lambda n, c: out.append((n, bool(c)))
+    berlin = {"line": "The capital of Germany is Berlin.", "facts": [{"value": "Berlin"}]}
+    ok("check: a clip passes only when the answer itself is heard", verdict(berlin, "The capital of Germany is Berlin.")["pass"]
+       and not verdict(berlin, "The capital of Germany is.")["pass"])
+    curie = {"line": "Marie Curie was born on 7 November 1867, in Warsaw.", "facts": [{"value": "7 November 1867"}, {"value": "Warsaw"}]}
+    ok("check: numbers compared as numbers (seven = 7), a wrong number fails", verdict(curie, "Marie Curie was born on seven, November 1867, in Warsaw.")["pass"]
+       and not verdict(curie, "Marie Curie was born on eight November 1867 in Warsaw")["pass"])
+    water = {"line": "The chemical formula of water is H two O.", "facts": [{"value": "H₂O"}]}
+    ok("check: a formula heard as written (H2O) matches its spoken form", verdict(water, "The chemical formula of water is H2O.")["pass"])
+    td = tempfile.mkdtemp()
+    try:
+        json.dump({"answers": [{"code": "A1", "question": "q1", "line": "Nelson Mandela was born in 1918.", "facts": [],
+                                "people": [{"item": "Q8023", "name": "Nelson Mandela"}]},
+                               {"code": "A2", "question": "q2", "line": "The capital of France is Paris.", "facts": [], "people": []}]},
+                  open(os.path.join(td, "m.json"), "w"))
+        img = os.path.join(td, "p.jpg")
+        open(img, "wb").write(b"\xff\xd8\xff")
+        json.dump({"skill": "answer-video:test", "model": "gemini-omni-1.1-flash", "kind": "video", "image": img, "subject": "Test",
+                   "consent": "test", "fixed": "She says exactly:", "items": [{"item": "A1", "script": "Nelson Mandela was born in 1918."},
+                                                                              {"item": "A2", "script": "The capital of France is Paris."}]},
+                  open(os.path.join(td, "plan.json"), "w"))
+        calls = {"gemini": 0, "voice": 0}
+
+        def gem(prompt):
+            calls["gemini"] += 1
+            if "Mandela" in prompt:
+                raise G.ApiError(400, "Input blocked: Sorry, we can't create videos with real people's names or likenesses.")
+            return b"\x00\x00\x00\x18ftypmp42" + b"G" * 2000, ".mp4"
+
+        def voi(line):
+            calls["voice"] += 1
+            return b"\x00\x00\x00\x18ftypmp42" + b"V" * 2000
+        r1 = make(os.path.join(td, "m.json"), os.path.join(td, "plan.json"), os.path.join(td, "lib"), "x", {}, gemini=gem, voice=voi)
+        first = dict(calls)
+        make(os.path.join(td, "m.json"), os.path.join(td, "plan.json"), os.path.join(td, "lib"), "x", {}, only={"A1"}, gemini=gem, voice=voi)
+        ok("make: a name Google refuses is made the voice-driven way at once", first == {"gemini": 2, "voice": 1}
+           and any("A1 made (voice" in x for x in r1) and any("A2 made (gemini)" in x for x in r1))
+        ok("make: the refused name is remembered — next time no Gemini request is spent on it", calls == {"gemini": 2, "voice": 2}
+           and "Nelson Mandela" in json.load(open(os.path.join(td, "lib", "_refused_names.json"))))
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sp = ap.add_subparsers(dest="cmd", required=True)
     b = sp.add_parser("build")
     b.add_argument("--batch", required=True)
     b.add_argument("--out", required=True)
+    m = sp.add_parser("make", help="make the clips: Gemini first, the voice-driven route for names Google refuses")
+    m.add_argument("--manifest", required=True)
+    m.add_argument("--plan", required=True, help="the generator plan (skill, persona image, Gemini model)")
+    m.add_argument("--library", required=True)
+    m.add_argument("--gemini-key-file", required=True)
+    m.add_argument("--keys-file", required=True, help="JSON with the elevenlabs and heygen keys")
+    m.add_argument("--only", default="")
+    m.add_argument("--takes", type=int, default=1)
+    sp.add_parser("self-test")
     c = sp.add_parser("check")
     c.add_argument("--manifest", required=True)
     c.add_argument("--clips", required=True, help="folder with one sub-folder per answer code")
     c.add_argument("--min-match", type=float, default=0.8)
     a = ap.parse_args(argv)
+    if a.cmd == "self-test":
+        res = self_test()
+        for n, g in res:
+            print(("  [OK]   " if g else "  [FAIL] ") + n)
+        print("\n  %d of %d checks passed" % (sum(1 for x in res if x[1]), len(res)))
+        return 0 if all(x[1] for x in res) else 1
+    if a.cmd == "make":
+        gk = json.load(open(a.gemini_key_file))["api_key"]
+        for line in make(a.manifest, a.plan, a.library, gk, json.load(open(a.keys_file)), set(x for x in a.only.split(",") if x) or None, a.takes):
+            print(line)
+        return 0
     if a.cmd == "check":
         key = os.environ.get("GOOGLE_API_KEY")
         if not key:

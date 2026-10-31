@@ -1,5 +1,5 @@
 {
- "made": "2026-10-29T20:30:27+00:00",
+ "made": "2026-10-31T08:20:29+00:00",
  "persona": "the stage performer (new model)",
  "answers": [
   {
@@ -18,9 +18,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q142",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A02",
@@ -38,9 +39,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q17",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A03",
@@ -58,9 +60,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q408",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A04",
@@ -78,9 +81,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q16",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A05",
@@ -98,9 +102,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q155",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A06",
@@ -118,9 +123,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q38",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A07",
@@ -139,9 +145,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q183",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A08",
@@ -157,9 +164,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q513",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A09",
@@ -175,9 +183,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q3392",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A10",
@@ -195,9 +204,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q114",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A11",
@@ -215,9 +225,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q17",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A12",
@@ -235,9 +246,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q145",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A13",
@@ -255,9 +267,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q155",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A14",
@@ -276,9 +289,10 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q16",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A15",
@@ -294,7 +308,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q937",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q937",
@@ -305,7 +319,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q937",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q937",
+     "name": "Albert Einstein"
     }
    ]
   },
@@ -323,7 +343,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q7186",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q7186",
@@ -334,7 +354,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q7186",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q7186",
+     "name": "Marie Curie"
     }
    ]
   },
@@ -352,7 +378,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q8027",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q8027",
@@ -363,7 +389,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q8027",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q8027",
+     "name": "Martin Luther King Jr."
     }
    ]
   },
@@ -381,7 +413,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q8023",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q8023",
@@ -392,7 +424,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q8023",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q8023",
+     "name": "Nelson Mandela"
     }
    ]
   },
@@ -410,7 +448,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q1001",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q1001",
@@ -421,7 +459,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q1001",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q1001",
+     "name": "Mahatma Gandhi"
     }
    ]
   },
@@ -439,7 +483,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q254",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q254",
@@ -450,7 +494,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q254",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q254",
+     "name": "Wolfgang Amadeus Mozart"
     }
    ]
   },
@@ -468,7 +518,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q1035",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q1035",
@@ -479,7 +529,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q1035",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q1035",
+     "name": "Charles Darwin"
     }
    ]
   },
@@ -497,7 +553,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q76",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q76",
@@ -508,7 +564,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q76",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q76",
+     "name": "Barack Obama"
     }
    ]
   },
@@ -526,7 +588,7 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q5588",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q5588",
@@ -537,7 +599,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q5588",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q5588",
+     "name": "Frida Kahlo"
     }
    ]
   },
@@ -555,7 +623,13 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q91",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q91",
+     "name": "Abraham Lincoln"
     }
    ]
   },
@@ -573,7 +647,13 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q23",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q23",
+     "name": "George Washington"
     }
    ]
   },
@@ -593,7 +673,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q12418",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q762",
+     "name": "Leonardo da Vinci"
     }
    ]
   },
@@ -613,7 +699,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q45585",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q5582",
+     "name": "Vincent van Gogh"
     }
    ]
   },
@@ -633,7 +725,7 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q170583",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     },
     {
      "item": "Q170583",
@@ -642,7 +734,13 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q170583",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q36322",
+     "name": "Jane Austen"
     }
    ]
   },
@@ -662,7 +760,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q41567",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q692",
+     "name": "William Shakespeare"
     }
    ]
   },
@@ -682,7 +786,13 @@
      ],
      "source": "https://www.wikidata.org/wiki/Q44578",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
+    }
+   ],
+   "people": [
+    {
+     "item": "Q42574",
+     "name": "James Cameron"
     }
    ]
   },
@@ -700,9 +810,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q362",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A32",
@@ -718,9 +829,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q361",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A33",
@@ -736,9 +848,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q43653",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A34",
@@ -754,9 +867,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q243",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A35",
@@ -772,9 +886,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q3783",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A36",
@@ -790,9 +905,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q897",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A37",
@@ -808,9 +924,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q623",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A38",
@@ -826,9 +943,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q283",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A39",
@@ -844,9 +962,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q677",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A40",
@@ -862,9 +981,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q629",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A41",
@@ -880,9 +1000,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q111",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A42",
@@ -898,9 +1019,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q405",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A43",
@@ -916,9 +1038,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q111",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A44",
@@ -934,9 +1057,10 @@
      "value_items": [],
      "source": "https://www.wikidata.org/wiki/Q319",
      "licence": "CC0 1.0 (Wikidata)",
-     "read": "2026-10-29"
+     "read": "2026-10-31"
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A45",
@@ -952,7 +1076,8 @@
       "n": 144
      }
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A46",
@@ -968,7 +1093,8 @@
       "n": 97
      }
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A47",
@@ -982,7 +1108,8 @@
      "how": "a leap year has 366 days (the Gregorian calendar)",
      "args": {}
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A48",
@@ -998,7 +1125,8 @@
       "date": "2000-01-01"
      }
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A49",
@@ -1014,7 +1142,8 @@
       "f": 100
      }
     }
-   ]
+   ],
+   "people": []
   },
   {
    "code": "A50",
@@ -1028,7 +1157,8 @@
      "how": "24 hours × 60 minutes × 60 seconds",
      "args": {}
     }
-   ]
+   ],
+   "people": []
   }
  ],
  "left_out": []
