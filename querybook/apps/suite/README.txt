@@ -42,6 +42,16 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.14.0 - bulk harvesting no longer stops when a server says "slow down"
+    * Wikimedia answers "HTTP 429 Too Many Requests" when one computer opens too many downloads; 16 agents did, and the
+      Wikidata lanes failed. Now each server gets only a few connections at a time (Wikimedia 2, your.org 4, the Swedish
+      ACC mirror 3), shared by every agent through lock files; extra agents wait their turn instead of failing.
+    * The agents spread over Wikimedia's official mirrors, used only when they hold the identical file (same size and
+      date; checked before every run). Measured here: mirrors 10-24 MB/s, Wikimedia 5 MB/s; byte-for-byte the same.
+    * A refusal is never a failure: the server is left alone for its Retry-After (at least 2 minutes) and the agent moves
+      to another server or waits. Network drops pause a dataset and the runner retries it every 3 minutes (for up to
+      about 10 hours per run); every dataset resumes where it stopped.
+    * Press ⚡ Full speed once to restart the agents: the failed Wikidata lanes resume from their last saved row.
   Control Panel 1.13.0 - "Why so slow?", and no passphrase unless you want one
     * With no admin passphrase set, every button works (Full speed, Google setup, keys, approvals); set one later and it is
       required again. The Engineer (QueryBook proposing changes to its own code) still needs one.

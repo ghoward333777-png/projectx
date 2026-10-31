@@ -35,6 +35,8 @@ CACHE_MB = 128                     # SQLite page cache per agent
 LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
 FOLDER = "shards"
 MAX_AGENTS = min(64, max(16, os.cpu_count() or 1))   # one process per agent: up to every core of the machine
+RETRY_ROUNDS = 200                 # a refused dataset is retried this many times in one run (about 10 hours at RETRY_WAIT_S)
+RETRY_WAIT_S = 180
 MIN_FREE_GB = 10                   # every agent stops between batches when the disk has less free than this
 AREA = {"language": "language", "stem": "stem", "facts": "history"}
 READ_BUFFER = 1 << 20              # bytes read from a decompressed stream at a time
@@ -181,12 +183,109 @@ def tar_member_lines(url, member_suffix, comp="bz2"):
                 return
 
 
+# ------------------------------------------------------------------------------------------------ polite downloading
+# Publishers cap the connections one computer may hold (Wikimedia answers "429 Too Many Requests" beyond a few). Every
+# agent process takes a CONNECTION SLOT for the server before it downloads and gives it back after; a server that says
+# "slow down" (429/503) is left alone for its Retry-After (at least COOL_S) and the agent moves to another server holding
+# the identical file, or waits. A refusal is never a failure.
+COOL_S = 120
+REFUSED = (429, 503)
+
+
+def _host(url):
+    return (urllib.parse.urlsplit(url).hostname or "local").lower()
+
+
+class Slots:
+    """connections per server, shared by every agent process through lock files (the system releases a dead process's lock)"""
+
+    def __init__(self, commons_folder, halt=None):
+        self.dir = os.path.join(commons_folder, FOLDER, "_slots")
+        os.makedirs(self.dir, exist_ok=True)
+        self.halt, self._checked = halt, 0.0
+
+    def _lock(self, host, i):
+        f = open(os.path.join(self.dir, "%s-%d.lock" % (host, i)), "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except OSError:
+            f.close()
+            return None
+
+    def release(self, f):
+        if f is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            f.close()
+
+    def cooling(self, host):
+        try:
+            with open(os.path.join(self.dir, host + ".cool")) as f:
+                return max(0.0, float(f.read() or 0) - time.time())
+        except (OSError, ValueError):
+            return 0.0
+
+    def cool(self, host, seconds):
+        until = time.time() + seconds
+        if self.cooling(host) + time.time() < until:
+            tmp = os.path.join(self.dir, "%s.cool.%d" % (host, os.getpid()))
+            with open(tmp, "w") as f:
+                f.write(str(until))
+            os.replace(tmp, os.path.join(self.dir, host + ".cool"))
+
+    def acquire(self, sources, stop):
+        """(url, lock) on the first server with a free connection that is not cooling down; waits while every one is busy.
+        sources: [(url, connections)]. Raises _Stop when the run is stopped meanwhile."""
+        while not stop["now"]:
+            for url, n in sources:
+                host = _host(url)
+                if self.cooling(host):
+                    continue
+                for i in range(max(1, int(n))):
+                    f = self._lock(host, i)
+                    if f:
+                        return url, f
+            if self.halt and time.time() - self._checked > 15:
+                self._checked = time.time()
+                why = self.halt()
+                if why:
+                    raise _Stop(why)
+            time.sleep(2)
+        return None, None
+
+
+def _retry_after(e):
+    try:
+        return int(e.headers.get("Retry-After") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
 # ------------------------------------------------------------------------------------------------ multi-member gzip, by byte range
 GZ_SIG = b"\x1f\x8b\x08\x00\x00\x00\x00\x00"      # a gzip member header as Wikimedia's dumper writes it (no name, no time)
 
 
-def _ranged(url, start, stop):
-    """compressed bytes of url from `start` to the end of the file (local file:// too); reconnects where it broke"""
+def _ranged(url, start, stop, sources=None, slots=None):
+    """compressed bytes of url from `start` to the end of the file (local file:// too); reconnects where it broke.
+    With sources [(url, connections)] and slots, each connection takes a slot on one of the servers holding the identical
+    file, and a server that refuses (429/503) is left to cool down while another one, or a later turn, carries on."""
     if url.startswith("file://"):
         with _open(url) as f:
             f.seek(start)
@@ -195,23 +294,45 @@ def _ranged(url, start, stop):
                     return
                 yield b
         return
-    pos, tries = start, 0
+    sources = sources or [(url, 1)]
+    pos, tries, refused = start, 0, 0
     while not stop["now"]:
+        src, lock = slots.acquire(sources, stop) if slots else (sources[0][0], None)
+        if src is None:
+            return
         try:
-            with urllib.request.urlopen(_req(url, {"Range": "bytes=%d-" % pos}), timeout=120) as r:
+            with urllib.request.urlopen(_req(src, {"Range": "bytes=%d-" % pos}), timeout=120) as r:
                 if r.status != 206 and pos:
                     raise OSError("the server ignored the byte range")
                 while not stop["now"]:
                     b = r.read(1 << 20)
                     if not b:
                         return
-                    pos += len(b); tries = 0
+                    pos += len(b); tries = 0; refused = 0
                     yield b
+        except urllib.error.HTTPError as e:
+            if e.code in REFUSED:                     # "slow down": not a failure — let that server cool down
+                wait = max(COOL_S, _retry_after(e))
+                refused += 1
+                if slots:
+                    slots.cool(_host(src), wait)
+                else:
+                    if refused > 30:
+                        raise Busy("%s keeps refusing (HTTP %d): paused, resumes on the next run" % (_host(src), e.code))
+                    time.sleep(min(600, wait))
+                continue
+            tries += 1
+            if tries > 8:
+                raise
+            time.sleep(min(60, 2 ** tries))
         except (OSError, urllib.error.URLError):
             tries += 1
             if tries > 8:
                 raise
             time.sleep(min(60, 2 ** tries))
+        finally:
+            if slots:
+                slots.release(lock)
 
 
 def _prefetch(chunks, stop, depth=32):
@@ -243,14 +364,14 @@ def _prefetch(chunks, stop, depth=32):
         yield c
 
 
-def gz_member_lines(url, start, end):
+def gz_member_lines(url, start, end, sources=None, slots=None):
     """the lines of every gzip member whose header lies in [start, end) — a byte range of a multi-member file decoded on
     its own, so several agents can share one file; METER counts the compressed bytes of the range"""
     METER.start(end - start)
     stop = {"now": False}
     try:
         buf, off, d, rest = b"", start, None, b""         # off = the file offset of buf[0]
-        for c in _prefetch(_ranged(url, start, stop), stop):
+        for c in _prefetch(_ranged(url, start, stop, sources, slots), stop):
             buf += c
             while True:
                 if d is None:                            # find the next member header (checked: the bytes may occur inside data)
@@ -720,6 +841,7 @@ class WikidataDump(Dataset):
         self.why = ("the prototype's main source: people, places, works, organisations, taxa and their dates — every item of "
                     "Wikidata, streamed by %d agents side by side" % self.lanes)
         self.size, self.edition, self.base, self.props = None, "", None, dict(self.PROPS)
+        self.mirrors, self.sources, self.slots = list(self.MIRRORS), None, None
 
     def catalogue(self, folder, fetch=True):
         """{property: name} for every property of a kept kind — QueryBook's own names for the ones it named before (so earlier
@@ -754,6 +876,13 @@ class WikidataDump(Dataset):
                     out[pid] = label or pid
         return out
 
+    # servers holding the identical dump file, with the connections each is asked for. Before use each one must report
+    # exactly the same size and Last-Modified as the file the parts are cut from (so the bytes are the same edition).
+    MIRRORS = [("https://dumps.wikimedia.your.org/other/wikibase/wikidatawiki/latest-all.json.gz", 4),
+               ("https://ftp.acc.umu.se/mirror/wikimedia.org/other/wikibase/wikidatawiki/latest-all.json.gz", 3),
+               ("https://dumps.wikimedia.org/other/wikibase/wikidatawiki/latest-all.json.gz", 2)]
+    PRIMARY_CONNECTIONS = 2                 # Wikimedia's own server: a couple of connections per computer
+
     def _head(self, url):
         if url.startswith("file://"):
             return os.path.getsize(urllib.request.url2pathname(urllib.parse.urlsplit(url).path)), "local file"
@@ -765,8 +894,38 @@ class WikidataDump(Dataset):
                 ed = "latest"
             return int(r.headers["Content-Length"]), ed
 
+    def _head_full(self, url):
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=30) as r:
+            return int(r.headers["Content-Length"]), r.headers.get("Last-Modified") or ""
+
+    def _sources(self, url):
+        """(the file the parts are cut from, [(url, connections)] holding identical bytes)"""
+        if url.startswith("file://"):
+            return url, [(url, 1)]
+        cands = [(url, self.PRIMARY_CONNECTIONS)] + [m for m in self.mirrors if m[0] != url]
+        seen, base, ref = [], None, None
+        for u, n in cands:
+            try:
+                size, lm = self._head_full(u)
+            except urllib.error.HTTPError as e:
+                if e.code in REFUSED:
+                    seen.append((u, n, None))             # busy now: usable later if it holds the same file
+                continue
+            except Exception:
+                continue
+            if ref is None:
+                base, ref = u, (size, lm)
+                seen.append((u, n, ref))
+            elif (size, lm) == ref:
+                seen.append((u, n, ref))
+        if ref is None:
+            raise Busy("every server holding the Wikidata dump refused or failed to answer: paused, resumes on the next run")
+        # a server that was busy at the check is only used if it is the official one (same file by definition)
+        return base, [(u, n) for u, n, r in seen if r == ref or (r is None and u in (self.URL, self.MIRRORS[-1][0]))]
+
     def parts(self):
         url = self.base or self.URL
+        url, self.sources = self._sources(url)
         self.size, self.edition = self._head(url)
         n = -(-self.size // self.PART)
         return [("%s part %04d of %04d" % (self.edition, i + 1, n), "%s#%d-%d" % (url, i * self.PART, min(self.size, (i + 1) * self.PART)))
@@ -774,6 +933,11 @@ class WikidataDump(Dataset):
 
     def prepare(self, run):
         self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
+        try:                                                            # bulk:wikidata:mirrors = [[url, connections], ...] replaces the list
+            self.mirrors = [tuple(m) for m in json.loads(run.commons.setting("bulk:wikidata:mirrors") or "null")] or list(self.MIRRORS)
+        except (ValueError, TypeError):
+            self.mirrors = list(self.MIRRORS)
+        self.slots = Slots(run.folder, halt=run.stopped)
         if (run.commons.setting("bulk:wikidata:properties") or "all") == "all":
             self.props = self.catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
         db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
@@ -785,8 +949,9 @@ class WikidataDump(Dataset):
     def rows(self, part, url, state):
         base, _, rng = url.partition("#")
         a, b = (int(x) for x in rng.split("-"))
+        sources = getattr(self, "sources", None) or [(base, self.PRIMARY_CONNECTIONS)]
         try:
-            for line in gz_member_lines(base, a, b):
+            for line in gz_member_lines(base, a, b, sources, getattr(self, "slots", None)):
                 if len(line) > 2 and line[0] == 0x7B:          # '{': an entity (skips "[", "]" and separators)
                     yield line
         finally:
@@ -1147,10 +1312,14 @@ def run_dataset(commons_folder, key, max_rows=None):
     except Busy as e:
         sh.set_meta("state", "paused"); sh.set_meta("error", str(e)); sh.db.commit()
         run.log("source busy", 0, 0, 0, 0, time.time() - t_start, "failed", str(e))
-        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new}
+        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new, "retry": True}
     except Exception as e:
-        sh.set_meta("state", "failed"); sh.set_meta("error", "%s: %s" % (type(e).__name__, str(e)[:300])); sh.db.commit()
-        return {"dataset": key, "state": "failed", "why": str(e)[:300], "new": total_new}
+        import http.client
+        network = isinstance(e, (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError)) and \
+            getattr(e, "errno", None) not in (28,)                      # ENOSPC (disk full) is not the network
+        sh.set_meta("state", "paused" if network else "failed")
+        sh.set_meta("error", "%s: %s%s" % (type(e).__name__, str(e)[:300], " — retried automatically" if network else "")); sh.db.commit()
+        return {"dataset": key, "state": "paused" if network else "failed", "why": str(e)[:300], "new": total_new, "retry": network}
     finally:
         sh.db.close()
 
@@ -1182,15 +1351,23 @@ class Busy(Exception):
     """the publisher asked us to slow down: the dataset pauses (what is saved stays saved) and resumes on the next run"""
 
 
+_VERSIONS = {}
+
+
 def _version(url):
-    """the file's version as its publisher states it (Last-Modified), so every fact can be traced to one edition"""
+    """the file's version as its publisher states it (Last-Modified), so every fact can be traced to one edition
+    (asked once per file per process: many parts share one file)"""
     if not url.startswith("http"):
         return url and "local file"
+    base = url.split("#", 1)[0]
+    if base in _VERSIONS:
+        return _VERSIONS[base]
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=30) as r:
-            return r.headers.get("Last-Modified") or ""
+        with urllib.request.urlopen(urllib.request.Request(base, method="HEAD", headers={"User-Agent": UA}), timeout=30) as r:
+            _VERSIONS[base] = r.headers.get("Last-Modified") or ""
     except Exception:
         return ""
+    return _VERSIONS[base]
 
 
 def _agent(args):
@@ -1215,16 +1392,31 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
             json.dump({"heartbeat": time.time(), "pid": os.getpid(), "agents": agents, "datasets": keys, "note": note, "results": results}, f)
         os.replace(hb + ".tmp", hb)
     beat("starting")
-    with multiprocessing.Pool(max(1, min(agents, len(keys)))) as pool:
-        pending = pool.imap_unordered(_agent, [(commons_folder, k, max_rows) for k in keys])
-        while True:
-            try:
-                results.append(pending.next(timeout=2))
-                beat("%d of %d datasets finished this run" % (len(results), len(keys)))
-            except multiprocessing.TimeoutError:
-                beat("running")
-            except StopIteration:
-                break
+    todo, rounds = list(keys), 0
+    while todo:
+        got = []
+        with multiprocessing.Pool(max(1, min(agents, len(todo)))) as pool:
+            pending = pool.imap_unordered(_agent, [(commons_folder, k, max_rows) for k in todo])
+            while True:
+                try:
+                    got.append(pending.next(timeout=2))
+                    beat("%d of %d datasets finished this run" % (len(results) + len(got), len(keys)))
+                except multiprocessing.TimeoutError:
+                    beat("running")
+                except StopIteration:
+                    break
+        results.extend(got)
+        # datasets a server refused or the network dropped are run again after a pause — they resume where they stopped
+        todo = [r["dataset"] for r in got if r.get("retry")]
+        rounds += 1
+        if not todo or rounds > RETRY_ROUNDS or os.path.exists(stop):
+            break
+        until = time.time() + RETRY_WAIT_S
+        while time.time() < until and not os.path.exists(stop):
+            beat("waiting to retry %d dataset(s) a server refused or the network dropped (round %d)" % (len(todo), rounds))
+            time.sleep(2)
+        if os.path.exists(stop):
+            break
     beat("removing duplicates across shards")
     try:
         gone = dedupe(commons_folder)
@@ -1505,7 +1697,9 @@ def diagnose(commons, folders=None, probe=True):
     add("Datasets without errors", not bad, ", ".join("%s: %d" % (k, len(v)) for k, v in sorted(states.items())) +
         ("" if not bad else " — " + "; ".join("%s: %s" % (k, (e or "")[:120]) for k, e in bad[:5])),
         "Read each error above: 'disk is nearly full' → move the folder; 'not approved' → approve the source on the Harvesting page; "
-        "'switched off' → master switch; a network error → check the server's internet connection or firewall.")
+        "'switched off' → master switch; 'HTTP 429 Too Many Requests' → the server asked to slow down: since 1.14 the agents share a few "
+        "connections per server, spread over the Wikidata mirrors and retry by themselves — press ⚡ Full speed to resume; "
+        "another network error → check the server's internet connection or firewall.")
     blocked = [d["key"] for d in st["datasets"] if not d["approved"]]
     add("Sources approved in the registry", not blocked, "all approved" if not blocked else "not approved: " + ", ".join(blocked),
         "Harvesting page → Sources → approve them (admin passphrase).")
@@ -1712,6 +1906,59 @@ def self_test():
         finally:
             urllib.request.urlopen, time.sleep = real_open, real_sleep
         ok("series: when Wikidata keeps refusing (HTTP 429) the dataset pauses to resume later — it does not fail", paused)
+        # polite downloading (1.14): connection slots per server, a refusing server cools down, identical mirrors carry on
+        sl = Slots(tmp)
+        st0 = {"now": False}
+        a1, a2 = sl.acquire([("https://a.example/f", 2)], st0), sl.acquire([("https://a.example/f", 2)], st0)
+        a3 = sl.acquire([("https://a.example/f", 2), ("https://b.example/f", 1)], st0)
+        ok("slots: at most N connections per server; the next agent takes another server", a1[0] == a2[0] == "https://a.example/f"
+           and a3[0] == "https://b.example/f", (a1[0], a2[0], a3[0]))
+        for x in (a1, a2, a3):
+            sl.release(x[1])
+        blob = bytes(range(256)) * 4096
+        calls = []
+
+        class _R:
+            def __init__(self, data):
+                self.data, self.status = data, 206
+            def read(self, n):
+                d, self.data = self.data[:n], self.data[n:]
+                return d
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        def fake(req, timeout=None):
+            u = req.full_url
+            calls.append(_host(u))
+            if "a.example" in u:
+                raise urllib.error.HTTPError(u, 429, "Too Many Requests", {"Retry-After": "300"}, None)
+            start = int(req.headers["Range"].split("=")[1].split("-")[0])
+            return _R(blob[start:])
+        urllib.request.urlopen, time.sleep = fake, (lambda s: None)
+        try:
+            got = b"".join(_ranged("https://a.example/f", 1000, {"now": False}, [("https://a.example/f", 2), ("https://b.example/f", 1)], Slots(tmp)))
+        finally:
+            urllib.request.urlopen, time.sleep = real_open, real_sleep
+        ok("a server that answers 429 cools down (Retry-After honoured) and a mirror with the same file carries on — same bytes",
+           got == blob[1000:] and calls[:2] == ["a.example", "b.example"] and Slots(tmp).cooling("a.example") > 250, (len(got), calls[:4]))
+        wd = WikidataDump(1)
+        heads = {"https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.gz": (100, "Tue"), "https://m1.example/x.gz": (100, "Tue"),
+                 "https://m2.example/x.gz": (99, "Tue"), "https://m3.example/x.gz": (100, "Mon")}
+        wd.mirrors = [("https://m1.example/x.gz", 3), ("https://m2.example/x.gz", 3), ("https://m3.example/x.gz", 3)]
+        wd._head_full = lambda u: heads[u]
+        base, srcs = wd._sources(wd.URL)
+        ok("mirrors are used only when they hold the identical file (same size and date)", base == wd.URL and
+           [u for u, _ in srcs] == [wd.URL, "https://m1.example/x.gz"], srcs)
+        def refuse(u):
+            raise urllib.error.HTTPError(u, 429, "Too Many Requests", {}, None)
+        wd._head_full = refuse
+        try:
+            wd._sources(wd.URL); held = False
+        except Busy:
+            held = True
+        ok("when every server refuses, the dataset pauses (and the runner retries it) instead of failing", held)
         cal = Calendar()
         yf = cal.facts("years", 2024, {})
         ok("calendar: computed facts name their rule", ("Year 2024", "Easter Sunday (Western churches)", "2024-03-31") in yf and cal.rule.get("date"), yf[:3])
