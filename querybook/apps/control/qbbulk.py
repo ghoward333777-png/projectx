@@ -1473,15 +1473,15 @@ def diagnose(commons, folders=None, probe=True):
     def add(name, ok, detail, fix=""):
         out.append({"check": name, "ok": bool(ok), "detail": detail, "fix": "" if ok else fix})
     st = status(commons.folder, commons)
-    add("Admin passphrase", commons.approvals.admin_set(), "set" if commons.approvals.admin_set() else "not set — ⚡ Full speed refuses to start",
-        "Set it once: any application → Harvesting tab → Admin → set passphrase (8+ characters). Then type it on the Bulk harvesting tab.")
+    add("Admin passphrase", True, "set — type it on the Bulk harvesting tab" if commons.approvals.admin_set()
+        else "none set — every button works without one", "")
     add("Master harvesting switch", hv.master_running(commons), "on" if hv.master_running(commons) else "OFF — every agent stops at once",
         "Turn harvesting on: Control Panel → Overview → master switch, or the ▶ Start all harvesting button.")
     rs = st["runner"]
     alive = rs.get("alive")
     add("Bulk agents running", alive, ("running: %s" % rs.get("note")) if alive else
         ("not running (last: %s)" % (rs.get("note") or "never started")),
-        "Bulk harvesting tab → type the admin passphrase → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves.")
+        "Bulk harvesting tab → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves.")
     shards = os.path.join(commons.folder, FOLDER)
     os.makedirs(shards, exist_ok=True)
     free = shutil.disk_usage(shards).free / 1e9
@@ -1489,7 +1489,7 @@ def diagnose(commons, folders=None, probe=True):
     add("Free space where the facts are stored", free >= max(keep, 200), "%.0f GB free at %s" % (free, shards),
         ("Under %g GB the agents pause. " % keep if free < keep else "") +
         "A full Wikidata pass needs about 100–200 GB. Move the shared folder to a large drive (e.g. your 20 TB drive): "
-        "Bulk harvesting → Move the shared folder.")
+        "Bulk harvesting → type the new folder → Move the shared folder.")
     if folders:
         import qbcommons as cm
         where = {app: os.path.abspath(cm.commons_folder(f)) for app, f in folders.items()}

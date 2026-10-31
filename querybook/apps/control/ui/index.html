@@ -278,7 +278,7 @@
         QueryBook application at once. A Google sign-in page opens on this computer: choose your account and press <b>Allow</b> — that is
         Google's own page, your password never reaches QueryBook. Then it switches on the APIs, creates a QueryBook key restricted to them and
         saves it everywhere. Safe to press again (after adding billing, for example). Needs Google's free command-line tool (gcloud).</p>
-      <div class="row"><input type="password" id="gs-pass" placeholder="Admin passphrase" style="width:14em">
+      <div class="row"><input type="password" id="gs-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">
         <button class="btn" id="gs-go">🔑 Set up Google</button><span id="gs-state" class="small"></span></div>
       <div id="gs-out" class="small"></div>
       <h3>API registration — every service that needs a key</h3>
@@ -319,7 +319,7 @@
       <div id="bk-diag" class="small"></div>
       <div id="bk-table"></div>
       <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
-        <input type="password" id="bk-pass" placeholder="Admin passphrase" style="width:14em">
+        <input type="password" id="bk-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">
         <button class="btn" id="bk-full" title="Every approved dataset, including all 16 Wikidata lanes, one agent per CPU core">⚡ Full speed</button><button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
         <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
       <h3>Coverage map — 20 keystone domains</h3>
@@ -359,7 +359,7 @@
       <div class="row"><b class="small">Exemplar generator (Google tools — a separate program):</b> <span id="ex-gen" class="small"></span>
         <button class="btn quiet" id="ex-gen-start">▶ Start</button><button class="btn quiet" id="ex-gen-stop">■ Stop</button>
         <span class="small muted">Which tools run, their plans and campaigns: any application's Harvesting page.</span></div>
-      <div class="row"><input type="password" id="ex-pass" placeholder="Admin passphrase" style="width:14em"></div>
+      <div class="row"><input type="password" id="ex-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em"></div>
       <h3>Waiting for your approval</h3><div id="ex-proposals"></div>
       <h3>Every take</h3><div class="row"><input id="ex-skill" placeholder="skill (e.g. speech-video-pamela)" style="width:20em"><button class="btn quiet" id="ex-list">Show</button></div>
       <div id="ex-takes"></div>

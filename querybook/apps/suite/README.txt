@@ -23,7 +23,7 @@ HARVESTING — QUICK START (Control Panel, http://127.0.0.1:8100/)
   1. Keys: API & connections -> Google one-click setup (Google's own sign-in page; needs gcloud installed), and
      API registration for the other services (Sign up -> paste key -> Save & check). A personal package installs its keys
      by itself on first start.
-  2. Bulk harvesting -> type the admin passphrase -> ⚡ Full speed: every approved dataset (all of Wikidata in 16 lanes,
+  2. Bulk harvesting -> ⚡ Full speed (no passphrase needed unless you set one): every approved dataset (all of Wikidata in 16 lanes,
      PubChem, NCBI Taxonomy, NOAA weather, USGS places, USDA foods, Tatoeba, MIT OpenCourseWare, the calendar scaffold),
      one agent per CPU core. Duplicates are removed across all shards when the agents finish; agents pause if the disk
      has under 10 GB free.
@@ -42,7 +42,9 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
-  Control Panel 1.13.0 - "Why so slow?"
+  Control Panel 1.13.0 - "Why so slow?", and no passphrase unless you want one
+    * With no admin passphrase set, every button works (Full speed, Google setup, keys, approvals); set one later and it is
+      required again. The Engineer (QueryBook proposing changes to its own code) still needs one.
     * Bulk harvesting -> 🩺 Why so slow?: one click checks everything that stops the fast bulk agents (no admin passphrase,
       master switch off, agents not started, too little disk, programs using different folders, dataset errors, blocked
       downloads) and says what to do. Move the shared folder puts all the facts on a large drive in one step.

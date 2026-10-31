@@ -587,7 +587,7 @@ class Approvals:
 
     def _require(self, passphrase):
         if not self.admin_set():
-            raise core.UserError("Set the admin passphrase first (Harvesting tab → Admin).")
+            return              # the admin chose not to set a passphrase: every admin action is open on this computer
         if not self.check_admin(passphrase):
             raise core.UserError("Admin passphrase not correct — nothing was changed.")
 

@@ -169,13 +169,19 @@ def main():
         ok, cls, why = reg.check("some-new-site")
         c.check("registry: an unknown source is blocked and registered as pending", not ok and reg.source("some-new-site")["status"] == "pending")
         try:
-            ap.decide(1, True, "whatever")
-            no_admin = False
+            ap._require("")
+            open_without = True
         except core.UserError:
-            no_admin = True
-        c.check("approvals: nothing is decided before the admin passphrase is set", no_admin)
+            open_without = False
+        c.check("approvals: with no passphrase set, admin actions are open (the admin chose not to set one)", open_without)
         ap.set_admin("correct horse")
-        c.check("approvals: the passphrase is checked", ap.check_admin("correct horse") and not ap.check_admin("wrong horse"))
+        try:
+            ap._require("wrong horse")
+            enforced = False
+        except core.UserError:
+            enforced = True
+        c.check("approvals: once a passphrase is set it is checked, and a wrong one changes nothing",
+                enforced and ap.check_admin("correct horse") and not ap.check_admin("wrong horse"))
         with com.store.write() as d:
             for i in range(4):
                 hl.write(d, "stem", "constants", "batch %d" % i, "codata-2018", "facts", "harvested", "test", items=40, new=40, seconds=0.5, budget_key="constants")
