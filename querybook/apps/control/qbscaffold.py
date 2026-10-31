@@ -199,37 +199,202 @@ SERIES = {
 }
 
 
+# -- the lattice (1.1): any recurring event Wikidata models, one query per series, every useful property per edition
+# How the editions hang off the series item: P31 (each edition is an instance of it: Super Bowl), P179 (part of the
+# series), P3450 (a season of the league or competition). Each edition gives its winner, place, country, dates, number of
+# participants and its own name; neighbouring editions are linked (previous / next edition), so every slot sits in a lattice.
+EDITION_QUERY = ("SELECT ?item ?itemLabel ?year ?valueLabel ?locationLabel ?countryLabel ?date ?start ?end ?participants WHERE { "
+                 "?item wdt:%s wd:%s. OPTIONAL { ?item wdt:P585 ?date } OPTIONAL { ?item wdt:P580 ?start } OPTIONAL { ?item wdt:P582 ?end } "
+                 "OPTIONAL { ?item wdt:P571 ?inc } BIND(YEAR(COALESCE(?date, ?start, ?inc)) AS ?year) FILTER(BOUND(?year)) "
+                 "OPTIONAL { ?item wdt:P1346 ?value } OPTIONAL { ?item wdt:P276 ?location } OPTIONAL { ?item wdt:P17 ?country } "
+                 "OPTIONAL { ?item wdt:P1132 ?participants } %%s }")
+AWARD_QUERY = "SELECT ?item ?year ?valueLabel WHERE { ?value p:P166 ?st. ?st ps:P166 wd:%s; pq:P585 ?d. BIND(?value AS ?item) BIND(YEAR(?d) AS ?year) %%s }"
+# the columns an edition query returns → the predicate each becomes (valueLabel takes the series' own slot predicate)
+COLUMNS = {"locationLabel": "location", "countryLabel": "country", "date": "date", "start": "start date", "end": "end date",
+           "participants": "number of participants", "itemLabel": "known as"}
+
+
+def editions(name, pred, qid, link, first, step=1, value="P1346"):
+    """step 0: the series has no fixed rhythm (elections called early, cancelled years): no slots are predicted"""
+    return (name, pred, first, step, EDITION_QUERY.replace("wdt:P1346 ?value", "wdt:%s ?value" % value) % (link, qid))
+
+
+def award(name, qid, first, pred="laureate"):
+    return (name, pred, first, 1, AWARD_QUERY % qid)
+
+
+
+# (1.1) 102 more series, each checked live on 31 October 2026: the Wikidata item, how its editions hang off it, the
+# first edition and the rhythm measured from the editions themselves (0 = no fixed rhythm: no slots predicted)
+SERIES.update({
+    'world-series': editions('World Series', 'winner', 'Q265538', 'P3450', 1903, 1),
+    'nba-finals': editions('NBA Finals', 'winner', 'Q842375', 'P31', 1947, 1),
+    'stanley-cup': editions('Stanley Cup', 'winner', 'Q211872', 'P31', 1915, 1),
+    'uefa-cl-final': editions('UEFA Champions League final', 'winner', 'Q80716240', 'P31', 1956, 1),
+    'wimbledon': editions('Wimbledon Championships', 'winner', 'Q41520', 'P31', 1898, 1),
+    'us-open-tennis': editions('US Open (tennis)', 'winner', 'Q123577', 'P31', 1881, 1),
+    'french-open': editions('French Open', 'winner', 'Q43605', 'P31', 1891, 1),
+    'australian-open': editions('Australian Open', 'winner', 'Q60874', 'P31', 1905, 1),
+    'tour-de-france': editions('Tour de France', 'winner', 'Q33881', 'P31', 1903, 1),
+    'giro': editions("Giro d'Italia", 'winner', 'Q33861', 'P31', 1909, 1),
+    'vuelta': editions('Vuelta a España', 'winner', 'Q33937', 'P31', 1935, 1),
+    'commonwealth-games': editions('Commonwealth Games', 'winner', 'Q178340', 'P3450', 1930, 4),
+    'cricket-world-cup': editions('Cricket World Cup', 'winner', 'Q192202', 'P3450', 1975, 4),
+    'rugby-world-cup': editions('Rugby World Cup', 'winner', 'Q16640', 'P3450', 1987, 4),
+    'kentucky-derby': editions('Kentucky Derby', 'winner', 'Q1141795', 'P3450', 1875, 1),
+    'masters': editions('Masters Tournament', 'winner', 'Q280275', 'P31', 1934, 1),
+    'open-championship': editions('The Open Championship', 'winner', 'Q848797', 'P31', 1860, 1),
+    'indy-500': editions('Indianapolis 500', 'winner', 'Q8032', 'P31', 1911, 1),
+    'daytona-500': editions('Daytona 500', 'winner', 'Q841738', 'P31', 1959, 1),
+    'le-mans': editions('24 Hours of Le Mans', 'winner', 'Q187579', 'P3450', 1923, 1),
+    'monaco-gp': editions('Monaco Grand Prix', 'winner', 'Q9102', 'P3450', 1930, 1),
+    'boston-marathon': editions('Boston Marathon', 'winner', 'Q826038', 'P31', 1897, 1),
+    'london-marathon': editions('London Marathon', 'winner', 'Q578794', 'P31', 1981, 1),
+    'nyc-marathon': editions('New York City Marathon', 'winner', 'Q752138', 'P31', 1970, 1),
+    'grand-national': editions('Grand National', 'winner', 'Q1542651', 'P3450', 1836, 1),
+    'melbourne-cup': editions('Melbourne Cup', 'winner', 'Q1311060', 'P3450', 1861, 1),
+    'ryder-cup': editions('Ryder Cup', 'winner', 'Q854376', 'P3450', 1927, 2),
+    'americas-cup': editions("America's Cup", 'winner', 'Q467557', 'P3450', 1851, 0),
+    'davis-cup': editions('Davis Cup', 'winner', 'Q132377', 'P3450', 1900, 1),
+    'world-snooker': editions('World Snooker Championship', 'winner', 'Q502948', 'P3450', 1926, 1),
+    'world-chess': editions('World Chess Championship', 'winner', 'Q190042', 'P3450', 1886, 0),
+    'six-nations': editions('Six Nations Championship', 'winner', 'Q16642', 'P3450', 1882, 1),
+    'super-rugby': editions('Super Rugby', 'winner', 'Q855988', 'P3450', 1996, 0),
+    'copa-america': editions('Copa América', 'winner', 'Q178750', 'P3450', 1916, 0),
+    'euro-championship': editions('UEFA European Championship', 'winner', 'Q260858', 'P3450', 1960, 4),
+    'afcon': editions('Africa Cup of Nations', 'winner', 'Q83145', 'P3450', 1957, 2),
+    'asian-games': editions('Asian Games', 'winner', 'Q483463', 'P3450', 1951, 4),
+    'pan-am-games': editions('Pan American Games', 'winner', 'Q230186', 'P3450', 1951, 4),
+    'ncaa-mens-basketball': editions("NCAA Division I men's basketball tournament", 'winner', 'Q996954', 'P3450', 1939, 1),
+    'cfp-championship': editions('College Football Playoff National Championship', 'winner', 'Q16256406', 'P3450', 2015, 1),
+    'uefa-champions-league': editions('UEFA Champions League season', 'champion', 'Q18756', 'P3450', 1955, 1),
+    'copa-libertadores': editions('Copa Libertadores', 'champion', 'Q184795', 'P3450', 1960, 1),
+    'mlb-season': editions('Major League Baseball season', 'champion', 'Q1163715', 'P3450', 1887, 1),
+    'nba-season': editions('NBA season', 'champion', 'Q155223', 'P3450', 1949, 1),
+    'nfl-season': editions('NFL season', 'champion', 'Q1215884', 'P3450', 1920, 1),
+    'nhl-season': editions('NHL season', 'champion', 'Q1215892', 'P3450', 1941, 1),
+    'wnba-season': editions('WNBA season', 'champion', 'Q2593221', 'P3450', 1997, 1),
+    'mls-season': editions('Major League Soccer season', 'champion', 'Q18543', 'P3450', 1996, 1),
+    'premier-league': editions('Premier League season', 'champion', 'Q9448', 'P3450', 1992, 1),
+    'la-liga': editions('La Liga season', 'champion', 'Q324867', 'P3450', 1929, 1),
+    'bundesliga': editions('Bundesliga season', 'champion', 'Q82595', 'P3450', 1963, 1),
+    'serie-a': editions('Serie A season', 'champion', 'Q15804', 'P3450', 1898, 1),
+    'ligue-1': editions('Ligue 1 season', 'champion', 'Q13394', 'P3450', 1932, 1),
+    'eredivisie': editions('Eredivisie season', 'champion', 'Q167541', 'P3450', 1900, 1),
+    'primeira-liga': editions('Primeira Liga season', 'champion', 'Q182994', 'P3450', 1935, 1),
+    'formula-one': editions('Formula One season', 'champion', 'Q1968', 'P3450', 1950, 1),
+    'indycar': editions('IndyCar Series season', 'champion', 'Q832052', 'P3450', 1996, 1),
+    'nascar-cup': editions('NASCAR Cup Series season', 'champion', 'Q2707177', 'P3450', 1949, 1),
+    'eurovision': editions('Eurovision Song Contest', 'winner', 'Q276', 'P179', 1956, 1),
+    'miss-universe': editions('Miss Universe', 'winner', 'Q161376', 'P179', 1952, 1),
+    'ballon-dor': editions("Ballon d'Or", 'winner', 'Q166177', 'P179', 1956, 1),
+    'uk-general': editions('United Kingdom general election', 'winner', 'Q15283424', 'P31', 1802, 0, value='P991'),
+    'india-general': editions('Indian general election', 'winner', 'Q22696407', 'P31', 1920, 0, value='P991'),
+    'australia-federal': editions('Australian federal election', 'winner', 'Q22284407', 'P31', 1901, 0, value='P991'),
+    'germany-federal': editions('German federal election', 'winner', 'Q1007356', 'P31', 1949, 4, value='P991'),
+    'best-actor': award('Academy Award for Best Actor', 'Q103916', 1929, 'awarded to'),
+    'best-actress': award('Academy Award for Best Actress', 'Q103618', 1929, 'awarded to'),
+    'best-director': award('Academy Award for Best Director', 'Q103360', 1930, 'awarded to'),
+    'best-supporting-actor': award('Academy Award for Best Supporting Actor', 'Q106291', 1937, 'awarded to'),
+    'best-supporting-actress': award('Academy Award for Best Supporting Actress', 'Q106301', 1937, 'awarded to'),
+    'best-animated-feature': award('Academy Award for Best Animated Feature', 'Q106800', 2002, 'awarded to'),
+    'pulitzer-fiction': award('Pulitzer Prize for Fiction', 'Q833633', 1938, 'laureate'),
+    'pulitzer-poetry': award('Pulitzer Prize for Poetry', 'Q2117891', 1918, 'laureate'),
+    'booker': award('Booker Prize', 'Q160082', 1969, 'laureate'),
+    'turing': award('Turing Award', 'Q185667', 1966, 'laureate'),
+    'abel': award('Abel Prize', 'Q188184', 2003, 'laureate'),
+    'mlb-mvp': award('Major League Baseball Most Valuable Player Award', 'Q1514249', 1911, 'awarded to'),
+    'cy-young': award('Cy Young Award', 'Q634857', 1956, 'awarded to'),
+    'nba-mvp': award('NBA Most Valuable Player Award', 'Q222047', 1956, 'awarded to'),
+    'heisman': award('Heisman Trophy', 'Q1035067', 1941, 'awarded to'),
+    'grammy-album': award('Grammy Award for Album of the Year', 'Q904528', 1959, 'awarded to'),
+    'grammy-record': award('Grammy Award for Record of the Year', 'Q843219', 1959, 'awarded to'),
+    'grammy-song': award('Grammy Award for Song of the Year', 'Q1027904', 1959, 'awarded to'),
+    'grammy-new-artist': award('Grammy Award for Best New Artist', 'Q1453643', 1960, 'awarded to'),
+    'emmy-drama': award('Primetime Emmy Award for Outstanding Drama Series', 'Q989438', 1974, 'awarded to'),
+    'tony-musical': award('Tony Award for Best Musical', 'Q1780176', 1949, 'awarded to'),
+    'tony-play': award('Tony Award for Best Play', 'Q1799442', 1948, 'awarded to'),
+    'hugo-novel': award('Hugo Award for Best Novel', 'Q255032', 1953, 'laureate'),
+    'nebula-novel': award('Nebula Award for Best Novel', 'Q266012', 1966, 'laureate'),
+    'newbery': award('Newbery Medal', 'Q622813', 1922, 'laureate'),
+    'caldecott': award('Caldecott Medal', 'Q1026417', 1938, 'laureate'),
+    'time-person': award('Time Person of the Year', 'Q207826', 1927, 'named'),
+    'golden-globe-drama': award('Golden Globe Award for Best Motion Picture – Drama', 'Q1011509', 1954, 'awarded to'),
+    'palme-dor': award("Palme d'Or", 'Q179808', 1946, 'awarded to'),
+    'golden-lion': award('Golden Lion', 'Q209459', 1949, 'awarded to'),
+    'goncourt': award('Prix Goncourt', 'Q187300', 1903, 'laureate'),
+    'wolf-physics': award('Wolf Prize in Physics', 'Q845333', 1978, 'laureate'),
+    'templeton': award('Templeton Prize', 'Q603631', 1974, 'laureate'),
+    'pritzker': award('Pritzker Architecture Prize', 'Q133160', 1979, 'laureate'),
+    'japan-prize': award('Japan Prize', 'Q908745', 1985, 'laureate'),
+    'crafoord': award('Crafoord Prize', 'Q583069', 1982, 'laureate'),
+    'breakthrough-physics': award('Breakthrough Prize in Fundamental Physics', 'Q1314470', 2012, 'laureate'),
+})
+
 def expected_years(series, this_year=None):
     """the editions a series' rule expects up to last year (the current year's may not have happened yet)"""
     name, pred, first, step, q = SERIES[series]
     last = (this_year or datetime.date.today().year) - 1
-    return list(range(first, last + 1, step))
+    return list(range(first, last + 1, step)) if step else []
 
 
 def query(series):
     return SERIES[series][4] % _LABEL
 
 
+def _nameless(v):
+    return not v or (v[0] == "Q" and v[1:].isdigit())
+
+
+def _value(col, raw):
+    v = raw.strip()
+    if col in ("date", "start", "end"):
+        return v[:10] if len(v) >= 10 and v[4] == "-" and not v.startswith("-") else None
+    if col == "participants":
+        try:
+            n = float(v)
+            return str(int(n)) if n == int(n) and n > 0 else None
+        except ValueError:
+            return None
+    return None if _nameless(v) else v
+
+
 def slot_facts(series, bindings):
-    """SPARQL bindings → [(subject, predicate, object, year, wikidata url)]; labels that are bare Q-ids are skipped
-    (Wikidata has no English name for them yet)"""
+    """SPARQL bindings → [(subject, predicate, object, year, wikidata url)]: the slot's own value (winner, laureate...),
+    every other column the edition query returns, and the lattice links between neighbouring editions. Labels that are
+    bare Q-ids are skipped (Wikidata has no English name for them yet); nothing is guessed."""
     name, pred, first, step, q = SERIES[series]
-    out, seen = [], set()
+    out, seen, years, items = [], set(), set(), {}
     for b in bindings:
         try:
             year = int(b["year"]["value"])
-            value = b["valueLabel"]["value"].strip()
         except (KeyError, ValueError):
             continue
-        if not value or (value[0] == "Q" and value[1:].isdigit()):
+        if year < first - step:
             continue
-        item = (b.get("item") or {}).get("value", "")
-        key = (year, value)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(("%s %d" % (name, year), pred, value, year, item.replace("http://", "https://")))
-    return sorted(out, key=lambda r: (r[3], r[2]))
+        item = (b.get("item") or {}).get("value", "").replace("http://", "https://")
+        subj = "%s %d" % (name, year)
+        cols = [("valueLabel", pred)] + [(c, p) for c, p in COLUMNS.items() if c in b]
+        for col, p in cols:
+            if col not in b:
+                continue
+            v = _value(col, b[col]["value"]) if col != "valueLabel" else (None if _nameless(b[col]["value"].strip()) else b[col]["value"].strip())
+            if not v or (col == "itemLabel" and v == subj):
+                continue
+            key = (year, p, v)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((subj, p, v, year, item))
+            years.add(year)
+            items.setdefault(year, item)
+    ys = sorted(years)
+    for a, b2 in zip(ys, ys[1:]):                       # the lattice: each edition linked to its neighbours
+        out.append(("%s %d" % (name, a), "next edition", "%s %d" % (name, b2), a, items[a]))
+        out.append(("%s %d" % (name, b2), "previous edition", "%s %d" % (name, a), b2, items[b2]))
+    for y in ys:
+        out.append(("%s %d" % (name, y), "edition of", name, y, items[y]))
+    return sorted(out, key=lambda r: (r[3], r[1], r[2]))
 
 
 def self_test():
@@ -249,5 +414,16 @@ def self_test():
     ok("dates: 366 dates in 2024, 15 March 2024 a Friday", len(date_facts(2024)) == 732 and ("15 March 2024", "day of the week", "Friday", "Gregorian calendar") in date_facts(2024))
     f = slot_facts("nobel-physics", [{"year": {"value": "1921"}, "valueLabel": {"value": "Albert Einstein"}, "item": {"value": "http://www.wikidata.org/entity/Q937"}},
                                      {"year": {"value": "1921"}, "valueLabel": {"value": "Q123"}}])
-    ok("slots: a filled edition becomes a fact; a nameless Q-id is not guessed", f == [("Nobel Prize in Physics 1921", "laureate", "Albert Einstein", 1921, "https://www.wikidata.org/entity/Q937")])
+    ok("slots: a filled edition becomes a fact; a nameless Q-id is not guessed", f == [("Nobel Prize in Physics 1921", "edition of", "Nobel Prize in Physics", 1921, "https://www.wikidata.org/entity/Q937"),
+                                                                                      ("Nobel Prize in Physics 1921", "laureate", "Albert Einstein", 1921, "https://www.wikidata.org/entity/Q937")])
+    sb = [{"year": {"value": "1967"}, "item": {"value": "http://www.wikidata.org/entity/Q1"}, "itemLabel": {"value": "Super Bowl I"},
+           "valueLabel": {"value": "Green Bay Packers"}, "locationLabel": {"value": "Los Angeles Memorial Coliseum"}, "date": {"value": "1967-01-15T00:00:00Z"},
+           "participants": {"value": "2"}, "countryLabel": {"value": "Q30"}},
+          {"year": {"value": "1968"}, "item": {"value": "http://www.wikidata.org/entity/Q2"}, "valueLabel": {"value": "Green Bay Packers"}}]
+    f = {(a, b, c) for a, b, c, _y, _u in slot_facts("super-bowl", sb)}
+    ok("lattice: every column of an edition becomes a fact, neighbours are linked, nameless values skipped",
+       {("Super Bowl 1967", "winner", "Green Bay Packers"), ("Super Bowl 1967", "known as", "Super Bowl I"), ("Super Bowl 1967", "date", "1967-01-15"),
+        ("Super Bowl 1967", "location", "Los Angeles Memorial Coliseum"), ("Super Bowl 1967", "number of participants", "2"),
+        ("Super Bowl 1967", "next edition", "Super Bowl 1968"), ("Super Bowl 1968", "previous edition", "Super Bowl 1967")} <= f
+       and not any(c == "Q30" for _a, _b, c in f))
     return out

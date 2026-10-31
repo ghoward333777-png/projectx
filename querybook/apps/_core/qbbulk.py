@@ -692,18 +692,23 @@ class Calendar(Dataset):
 class Series(Dataset):
     key, title, app, source = "wikidata-series", "Recurring events — the scaffold's slots filled from Wikidata", "facts", "wikidata"
     licence = "CC0 1.0 (Wikidata)"
-    why = "who won and where it was held, for every edition of the major recurring events — one query per series"
-    approx = "a few thousand facts; the slots show which editions are still open"
+    why = ("every edition of the recurring events Wikidata records — winner, place, country, dates, participants, its own name — "
+           "with each edition linked to the one before and after: one query per series (a lattice of slots)")
+    approx = "tens of thousands of facts; the slots show which editions are still open"
     ENDPOINT = "https://query.wikidata.org/sparql"
-    GAP_S = 60                         # Wikidata's query service: one query a minute at most (its current limit)
+    # Wikidata's query service allows each client a share of query time per minute. The pause after a query is twice the
+    # time the query took (at least GAP_S), so the harvester uses well under half of that share; a 429 doubles the pause.
+    GAP_S = 2.0
+    MAX_GAP_S = 120.0
 
     def parts(self):
         return [(k, self.ENDPOINT) for k in sc.SERIES]
 
     def rows(self, part, url, state):
-        last = state.get("_last", 0)
-        if time.time() - last < self.GAP_S and last:
-            time.sleep(self.GAP_S - (time.time() - last))
+        last, gap = state.get("_last", 0), state.get("_gap", self.GAP_S)
+        if last and time.time() - last < gap:
+            time.sleep(gap - (time.time() - last))
+        t0 = time.time()
         if url.startswith("file://"):
             with _open(url) as r:
                 body = json.loads(r.read())
@@ -719,8 +724,10 @@ class Series(Dataset):
                         raise
                     if attempt == 4:
                         raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the open slots are filled on the next run" % e.code)
-                    time.sleep(max(self.GAP_S, int(e.headers.get("Retry-After") or 0)))
+                    state["_gap"] = gap = min(self.MAX_GAP_S, max(gap * 2, 10))
+                    time.sleep(max(gap, _retry_after(e)))
         state["_last"] = time.time()
+        state["_gap"] = max(self.GAP_S, min(self.MAX_GAP_S, max(2 * (time.time() - t0), state.get("_gap", self.GAP_S) * 0.75)))
         found = sc.slot_facts(part, body["results"]["bindings"])
         METER.start(len(found), "editions")
         return iter(found)
@@ -730,6 +737,209 @@ class Series(Dataset):
         state.setdefault("_links", {})[s] = url
         state.setdefault("_filled", set()).add((part, year))
         return [(s, p, o)]
+
+
+class WikidataLattice(Dataset):
+    """EVERY recurring event series Wikidata knows, found by Wikidata itself and harvested in batches — the lattice.
+
+    Discovery (three grouped queries, about a minute, refreshed weekly) lists every series with at least five editions:
+    league and competition seasons (P3450, about 5,900 series), series of dated events (P179: conferences, festivals,
+    synods, award ceremonies, elections, trade fairs...; about 3,600) and recurring events whose editions are instances of
+    them (about 140). The editions of up to 200 series (at most 1,500 editions) are then read in ONE query: each edition's
+    series, date, start and end, winner, place, country, successful candidate and number of participants, and each edition
+    is linked to the one before and after it in date order. Facts are written exactly as the dump lanes write them (same
+    subject "Name (Q-id)", predicate names, Q-id objects and date precision), so where the two overlap one copy is kept."""
+    key, title, app, source = "wikidata-lattice", "Recurring events — every series Wikidata knows, harvested by batches", "facts", "wikidata"
+    licence = "CC0 1.0 (Wikidata)"
+    why = ("sports seasons, tournaments, elections, festivals, conferences, award ceremonies, synods, trade fairs: every series Wikidata "
+           "records, found automatically and read 200 series per query, each edition linked to the one before and after it")
+    approx = "about 9,700 series, 240,000 editions, 1-2 million facts in roughly 200 queries"
+    ENDPOINT = "https://query.wikidata.org/sparql"
+    LINKS = ("P3450", "P179", "P31")
+    MIN_EDITIONS = 5
+    BATCH_SERIES, BATCH_EDITIONS = 200, 1500
+    GAP_S, MAX_GAP_S = 2.0, 120.0
+    DISCOVER = {
+        "P3450": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P3450 ?s } GROUP BY ?s HAVING(COUNT(?e) >= %d)",
+        "P179": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P179 ?s; wdt:P585|wdt:P580 ?d } GROUP BY ?s HAVING(COUNT(?e) >= %d)",
+        "P31": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P31 ?s. ?s wdt:P31 wd:Q15275719. ?e wdt:P585|wdt:P580 ?d } GROUP BY ?s HAVING(COUNT(?e) >= %d)"}
+    ITEM_PROPS = ("P1346", "P276", "P17", "P991")
+    TIME_PROPS = ("P585", "P580", "P582")
+    NAMES = {"P3450": "sports season of league or competition", "P179": "part of the series", "P31": "instance of", "P1346": "winner",
+             "P276": "location", "P17": "country", "P991": "successful candidate", "P585": "point in time", "P580": "start time",
+             "P582": "end time", "P1132": "number of participants"}
+    # one query per batch: the editions of up to 200 series, every property an OPTIONAL lookup on an edition already found
+    # (index-friendly: about 7 s for 200 series / 1,500-2,000 editions); dates with their precision, best rank only
+    EDITION_Q = ("SELECT ?e ?eLabel ?w ?loc ?cty ?cand ?n ?s ?dt ?dp ?st ?sp ?en ?ep WHERE { VALUES ?s { %s } ?e wdt:%s ?s. "
+                 "OPTIONAL { ?e wdt:P1346 ?w } OPTIONAL { ?e wdt:P276 ?loc } OPTIONAL { ?e wdt:P17 ?cty } OPTIONAL { ?e wdt:P991 ?cand } "
+                 "OPTIONAL { ?e wdt:P1132 ?n } "
+                 "OPTIONAL { ?e p:P585 ?a. ?a a wikibase:BestRank; psv:P585 ?av. ?av wikibase:timeValue ?dt; wikibase:timePrecision ?dp } "
+                 "OPTIONAL { ?e p:P580 ?b. ?b a wikibase:BestRank; psv:P580 ?bv. ?bv wikibase:timeValue ?st; wikibase:timePrecision ?sp } "
+                 "OPTIONAL { ?e p:P582 ?c. ?c a wikibase:BestRank; psv:P582 ?cv. ?cv wikibase:timeValue ?en; wikibase:timePrecision ?ep } "
+                 "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en,mul\". ?e rdfs:label ?eLabel } }")
+    COLS = (("w", "P1346"), ("loc", "P276"), ("cty", "P17"), ("cand", "P991"), ("s", None), ("n", "P1132"),
+            (("dt", "dp"), "P585"), (("st", "sp"), "P580"), (("en", "ep"), "P582"))
+
+    def discovery_path(self, folder):
+        return os.path.join(folder, FOLDER, "wikidata-lattice-series.json")
+
+    def prepare(self, run):
+        self.folder = run.folder
+        self.base = run.commons.setting("bulk:url:wikidata-lattice")       # tests: a local answer file
+        names = WikidataDump(1).catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
+        self.names = {pid: names.get(pid) or default for pid, default in self.NAMES.items()}
+        db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
+        db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.commit()
+        return {"_labeldb": db}
+
+    def _query(self, q, state):
+        """one SPARQL query, paced: the pause after it is 1.2 times its own time (at least GAP_S) — under half of the query
+        service's per-client allowance; a refusal doubles the pause"""
+        last, gap = state.get("_last", 0), state.get("_gap", self.GAP_S)
+        if last and time.time() - last < gap:
+            time.sleep(gap - (time.time() - last))
+        t0 = time.time()
+        for attempt in range(6):
+            try:
+                req = urllib.request.Request(self.ENDPOINT, data=urllib.parse.urlencode({"query": q, "format": "json"}).encode(),
+                                             headers={"User-Agent": UA, "Accept": "application/sparql-results+json"})
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    body = json.loads(r.read())
+                break
+            except urllib.error.HTTPError as e:
+                if e.code not in REFUSED + (502, 504):
+                    raise
+                if attempt == 5:
+                    raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the lattice continues on the next run" % e.code)
+                state["_gap"] = gap = min(self.MAX_GAP_S, max(gap * 2, 10))
+                time.sleep(max(gap, _retry_after(e)))
+        state["_last"] = time.time()
+        state["_gap"] = max(self.GAP_S, min(self.MAX_GAP_S, max(1.2 * (time.time() - t0), state.get("_gap", self.GAP_S) * 0.75)))
+        return body["results"]["bindings"]
+
+    def discover(self, folder, state, fetch=True):
+        """{link: [[series qid, editions], ...]}, kept beside the shards for a week"""
+        path = self.discovery_path(folder)
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            if not fetch or time.time() - d.get("read", 0) < 7 * 86400:
+                return d
+        except (OSError, ValueError):
+            if not fetch:
+                return {"read": 0, "date": "none", "links": {}}
+        d = {"read": time.time(), "date": core.now_iso()[:10], "links": {}}
+        for link, q in self.DISCOVER.items():
+            rows = self._query(q % self.MIN_EDITIONS, state)
+            d["links"][link] = sorted([b["s"]["value"].rsplit("/", 1)[-1], int(b["n"]["value"])] for b in rows)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(path + ".tmp", path)
+        return d
+
+    @classmethod
+    def batches(cls, series):
+        """[[qid, editions], ...] → groups of at most BATCH_SERIES series and BATCH_EDITIONS editions (a giant series alone)"""
+        out, cur, n = [], [], 0
+        for q, k in series:
+            if cur and (len(cur) >= cls.BATCH_SERIES or n + k > cls.BATCH_EDITIONS):
+                out.append(cur); cur, n = [], 0
+            cur.append(q); n += k
+        if cur:
+            out.append(cur)
+        return out
+
+    def parts(self):
+        fetch = not (self.base or "").startswith("file://")
+        d = self.discover(self.folder, {}, fetch)
+        out = []
+        for link in self.LINKS:
+            bs = self.batches(d["links"].get(link, []))
+            for i, b in enumerate(bs, 1):
+                out.append(("%s discovery %s batch %d of %d" % (d["date"], link, i, len(bs)), "%s#%s:%s" % (self.base or self.ENDPOINT, link, ",".join(b))))
+        return out
+
+    def rows(self, part, url, state):
+        base, _, spec = url.partition("#")
+        link, _, qs = spec.partition(":")
+        if base.startswith("file://"):
+            with _open(base) as r:
+                rows = json.loads(r.read())["results"]["bindings"]
+        else:
+            rows = self._query(self.EDITION_Q % (" ".join("wd:" + q for q in qs.split(",")), link), state)
+        METER.start(len(rows), "rows")
+        return iter(self.edition_facts(rows, link, getattr(self, "names", None) or dict(self.NAMES), state))
+
+    @staticmethod
+    def _time(t, prec):
+        tm = t if t[:1] in "+-" else "+" + t
+        y, m, d = tm[1:].split("T")[0].rsplit("-", 2)
+        y = ("-" if tm[0] == "-" else "") + y.lstrip("0").rjust(4, "0")
+        return "%s-%s-%s" % (y, m, d) if prec >= 11 else "%s-%s" % (y, m) if prec == 10 else y
+
+    @classmethod
+    def edition_facts(cls, rows, link, names, state=None):
+        """bindings → [(subject, predicate, object)] in the dump's own form, plus each edition's neighbours in date order"""
+        out, seen, labels, when, series_of = [], set(), {}, {}, {}
+        qid = lambda v: v.rsplit("/", 1)[-1]
+        for b in rows:
+            e = qid(b["e"]["value"])
+            lab = (b.get("eLabel") or {}).get("value", "")
+            if not lab or lab == e:
+                continue
+            labels[e] = lab
+            subj = "%s (%s)" % (lab, e)
+            for col, pid in cls.COLS:
+                if isinstance(col, tuple):
+                    if col[0] not in b:
+                        continue
+                    try:
+                        v = cls._time(b[col[0]]["value"], int(b[col[1]]["value"]))
+                    except (KeyError, ValueError):
+                        continue
+                    if pid in ("P585", "P580"):
+                        when.setdefault(e, b[col[0]]["value"].lstrip("+"))
+                elif col not in b:
+                    continue
+                elif pid == "P1132":
+                    try:
+                        n = float(b[col]["value"])
+                    except ValueError:
+                        continue
+                    v = str(int(n)) if n == int(n) else str(n)
+                else:
+                    v = qid(b[col]["value"])
+                    if not (v[:1] == "Q" and v[1:].isdigit()):
+                        continue
+                    if col == "s":
+                        series_of.setdefault(e, set()).add(v)
+                f = (subj, names.get(pid or link) or (pid or link), v)
+                if f not in seen:
+                    seen.add(f); out.append(f)
+        by_series = {}
+        for e, ss in series_of.items():
+            if e in when:
+                for sq in ss:
+                    by_series.setdefault(sq, []).append((when[e], e))
+        for sq, eds in by_series.items():                  # the lattice: each edition linked to its neighbours in date order
+            eds.sort()
+            for (_, a), (_, b2) in zip(eds, eds[1:]):
+                for f in (("%s (%s)" % (labels[a], a), "next edition (by date)", b2), ("%s (%s)" % (labels[b2], b2), "previous edition (by date)", a)):
+                    if f not in seen:
+                        seen.add(f); out.append(f)
+        if state is not None and state.get("_labeldb") is not None and labels:
+            state["_labeldb"].executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", [(int(q[1:]), l) for q, l in labels.items()])
+            state["_labeldb"].commit()
+        return out
+
+    def facts(self, part, row, state):
+        state.setdefault("_links", {})[row[0]] = "https://www.wikidata.org/wiki/" + row[0].rsplit("(", 1)[-1].rstrip(")")
+        return [row]
+
+    def link(self, subject):
+        m = re.search(r"\((Q\d+)\)$", subject)
+        return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
 
 
 class MitOcw(Dataset):
@@ -1057,8 +1267,8 @@ QID = re.compile(r"\bQ(\d+)\b")
 def wd_labels(commons_folder, qids):
     """English labels for Q-numbers, from every lane's label file"""
     want, out = sorted(set(qids)), {}
-    for lane in range(1, WikidataDump.LANES + 1):
-        p = shard_path(commons_folder, "wikidata-dump-%d" % lane) + ".labels"
+    for lane in list(range(1, WikidataDump.LANES + 1)) + ["lattice"]:
+        p = shard_path(commons_folder, "wikidata-dump-%d" % lane if lane != "lattice" else "wikidata-lattice") + ".labels"
         if not want or not os.path.exists(p):
             continue
         db = _ro(p)
@@ -1071,7 +1281,7 @@ def wd_labels(commons_folder, qids):
 
 
 def catalog():
-    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1))}
+    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -1867,6 +2077,35 @@ def self_test():
         ok("Wikidata dump: truthy statements only (a deprecated one is skipped), objects shown with their label",
            r["state"] == "done" and {(h["predicate"], h["object"]) for h in hits} == {("date of birth", "1879-03-14"),
            ("country of citizenship", "United States (Q30)")} and hits[0]["link"] == "https://www.wikidata.org/wiki/Q937", (r, hits))
+        # the lattice (1.15): every series Wikidata knows, read in batches, written exactly as the dump lanes write facts
+        W = "http://www.wikidata.org/entity/"
+        ans = {"results": {"bindings": [
+            {"e": {"value": W + "Q10"}, "eLabel": {"value": "1999 World Series"}, "s": {"value": W + "Q265538"}, "w": {"value": W + "Q213417"},
+             "dt": {"value": "1999-10-23T00:00:00Z"}, "dp": {"value": "11"}, "cty": {"value": W + "Q30"}},
+            {"e": {"value": W + "Q11"}, "eLabel": {"value": "2000 World Series"}, "s": {"value": W + "Q265538"}, "w": {"value": W + "Q213417"},
+             "st": {"value": "2000-10-21T00:00:00Z"}, "sp": {"value": "9"}, "n": {"value": "2"}},
+            {"e": {"value": W + "Q12"}, "eLabel": {"value": "Q12"}, "s": {"value": W + "Q265538"}}]}}
+        with open(os.path.join(tmp, "lattice.json"), "w") as f:
+            json.dump(ans, f)
+        with open(os.path.join(cf, FOLDER, "wikidata-lattice-series.json"), "w") as f:
+            json.dump({"read": time.time(), "date": "2026-10-31", "links": {"P3450": [["Q265538", 3]], "P179": [], "P31": []}}, f)
+        c.set_setting("bulk:url:wikidata-lattice", url("lattice.json"))
+        rl = run_dataset(cf, "wikidata-lattice")
+        sh_ = sqlite3.connect(shard_path(cf, "wikidata-lattice"))
+        lf = {(a, p_, o) for a, p_, o in sh_.execute("SELECT f.s, pr.name, f.o FROM facts f JOIN predicates pr ON pr.id = f.p")}
+        sh_.close()
+        ok("lattice: editions read in one batch, in the dump's own form (Q-id objects, dates at their precision)",
+           rl["state"] == "done" and {("1999 World Series (Q10)", "winner", "Q213417"), ("1999 World Series (Q10)", "point in time", "1999-10-23"),
+                                      ("2000 World Series (Q11)", "start time", "2000"), ("2000 World Series (Q11)", "number of participants", "2"),
+                                      ("1999 World Series (Q10)", "sports season of league or competition", "Q265538")} <= lf, (rl, sorted(lf)))
+        ok("lattice: each edition is linked to the one before and after it; a nameless edition is skipped",
+           ("1999 World Series (Q10)", "next edition (by date)", "Q11") in lf and ("2000 World Series (Q11)", "previous edition (by date)", "Q10") in lf
+           and not any(a.endswith("(Q12)") for a, _p, _o in lf))
+        fpd = fingerprinter("history")
+        ok("lattice: a fact the dump also holds has the same fingerprint (so one copy is kept)",
+           fpd("1999 World Series (Q10)", "winner", "Q213417") == fp("history", "1999 World Series (Q10)", "winner", "Q213417"))
+        ok("lattice: batches of at most 200 series and 1,500 editions; a giant series alone",
+           WikidataLattice.batches([["Q1", 1000], ["Q2", 600], ["Q3", 5], ["Q4", 3000]]) == [["Q1"], ["Q2", "Q3"], ["Q4"]])
         wd = WikidataDump(1, 1)
         os.makedirs(os.path.join(cf, FOLDER), exist_ok=True)
         with open(os.path.join(cf, FOLDER, "wikidata-properties.json"), "w") as f:
@@ -1891,7 +2130,8 @@ def self_test():
         se = Series()
         se.GAP_S = 0
         f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]
-        ok("series: a slot is filled only from the source's answer", f == [("Nobel Prize in Physics 1921", "laureate", "Albert Einstein")], f)
+        ok("series: a slot is filled only from the source's answer (plus its place in the lattice)",
+           f == [("Nobel Prize in Physics 1921", "edition of", "Nobel Prize in Physics"), ("Nobel Prize in Physics 1921", "laureate", "Albert Einstein")], f)
         real_open, real_sleep = urllib.request.urlopen, time.sleep
         def busy(*a, **k):
             raise urllib.error.HTTPError("https://query.wikidata.org/sparql", 429, "Too Many Requests", {}, None)
@@ -1972,7 +2212,8 @@ def self_test():
         ok("deduplication: a fact held by one shard is removed from every later one (6 repeats here), and the counts follow",
            dd == {"wikidata-dump-2": 6} and len(search(cf, "Albert Einstein")) == 2 and dedupe(cf) == {}, dd)
         ar = by_area(cf)
-        ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5 + 6, ar)   # 5 series + 6 from the dump fixture
+        nlat = sqlite3.connect(shard_path(cf, "wikidata-lattice")).execute("SELECT count(*) FROM facts").fetchone()[0]
+        ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5 + 6 + nlat, ar)   # series + dump fixture + lattice
         import qbcontrol as ctl
         kc = lane_keystones(cf, "wikidata-dump-1")
         ok("keystones: each Wikidata entity's facts counted under its domain (no class given: a date of birth means a person)",

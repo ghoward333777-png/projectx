@@ -42,6 +42,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Control Panel 1.15.0 - the recurring-event lattice: every series Wikidata knows, read in batches
+    * New bulk dataset "Recurring events — every series Wikidata knows" (wikidata-lattice). Wikidata itself lists every
+      series with 5+ editions — about 5,900 league and competition seasons, 3,600 series of dated events (festivals,
+      conferences, synods, elections, award ceremonies, broadcasts, trade fairs) and 140 classic annual events. That is
+      about 9,700 series and 240,000 editions, found by 3 queries and read 200 series per query (161 queries in all).
+    * Each edition gives its series, date, start and end, winner, place, country, successful candidate and number of
+      participants, and is linked to the edition before and after it: the lattice. Facts are written exactly as the dump
+      lanes write them, so where the two overlap one copy is kept.
+    * Measured: about 6,700 facts per query in 5-10 seconds; the whole lattice in about 25 minutes, using under half of
+      Wikidata's query allowance.
+    * The scaffold's named series grow from 12 to 114 (sports finals, league seasons, Grand Slams, Olympics, elections,
+      Oscars, Grammys, Pulitzers, Nobels...), each checked live: these predict which editions are due and show the gaps.
   Control Panel 1.14.0 - bulk harvesting no longer stops when a server says "slow down"
     * Wikimedia answers "HTTP 429 Too Many Requests" when one computer opens too many downloads; 16 agents did, and the
       Wikidata lanes failed. Now each server gets only a few connections at a time (Wikimedia 2, your.org 4, the Swedish
