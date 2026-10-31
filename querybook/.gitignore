@@ -15,3 +15,5 @@ QueryBook-v9.64/qb_admin_credentials.json.bak
 QueryBook-v9.64/mystore/
 *.qc
 *.zip
+fact-auditor/reports/
+fact-auditor/auditor-settings.json
