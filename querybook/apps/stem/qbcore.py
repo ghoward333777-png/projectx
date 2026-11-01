@@ -52,11 +52,16 @@ def app_dir(file):
 
 # ----------------------------------------------------------------------------- data folder
 def data_folder(app_id, program_dir):
-    """Where this application keeps its data. Order: environment variable
-    QB_<APP>_DATA, then config.json in the program folder, then ~/QueryBook-Data/<app>."""
+    """Where this application keeps its data. Order: environment variable QB_<APP>_DATA, then data-folder.txt beside the
+    suite's launchers (FOLDER\\<app>; a missing drive stops the program), then config.json in the program folder, then
+    ~/QueryBook-Data/<app>."""
     env = os.environ.get("QB_%s_DATA" % app_id.upper())
     if env:
         return os.path.abspath(os.path.expanduser(env))
+    import qbdrive                                  # data-folder.txt beside the launchers: ALL data on that drive, always
+    root = qbdrive.root_for(program_dir)
+    if root:
+        return os.path.join(qbdrive.require(root), app_id)
     cfg = os.path.join(program_dir, "config.json")
     try:
         with open(cfg, encoding="utf-8") as f:
@@ -1059,7 +1064,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbdrive.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1967,7 +1972,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py"):
+    for name in ("qbcore.py", "qbdrive.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):
@@ -2086,6 +2091,18 @@ def run_cli(app):
     if args and args[0] == "where":
         print(data_folder(app.APP_ID, app.program_dir))
         return 0
+    import qbdrive
+    root = qbdrive.root_for(app.program_dir)
+    if root and (not args or args[0] == "--no-browser"):
+        qbdrive.require(root)
+        print("  QueryBook data: %s" % root)
+        try:                                          # what earlier versions kept on C: comes onto the data drive by itself
+            r = qbdrive.bring_over(root, app.program_dir)
+            if r["copied"] or r["replaced"]:
+                print("  Brought onto %s: %d file(s), %d database(s) replaced by a bigger old copy (see data-moved.log)"
+                      % (root, r["copied"], r["replaced"]))
+        except Exception as e:
+            print("  Bringing old data onto %s did not finish: %s (tried again on the next start)" % (root, e))
     inst = app.open_app()
     if args and args[0] == "backup":
         print("Backup written:", inst.store.backup("manual", force=True))

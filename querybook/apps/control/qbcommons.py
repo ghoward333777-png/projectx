@@ -107,6 +107,10 @@ def commons_folder(app_folder=None):
     env = os.environ.get("QB_COMMONS_DATA")
     if env:
         return os.path.abspath(os.path.expanduser(env))
+    import qbdrive                                  # data-folder.txt beside the launchers: the shared facts live there too
+    root = qbdrive.root_for(os.path.dirname(os.path.abspath(__file__)))
+    if root:
+        return qbdrive.commons_in(qbdrive.require(root))
     if app_folder:
         try:
             with open(os.path.join(app_folder, "commons.json"), encoding="utf-8") as f:

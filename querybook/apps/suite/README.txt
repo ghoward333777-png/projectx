@@ -43,6 +43,15 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  All data on the data drive - always (Control Panel 1.17.0 and the shared core, every program)
+    * With data-folder.txt beside the launchers (e.g. D:\QB), EVERY program keeps ALL its data there: D:\QB\language,
+      \stem, \facts, \control, \video, and the shared facts in D:\QB\commons. Nothing is created on C: any more - also when
+      a program is started on its own (its START-WINDOWS.bat). If the drive is not connected, nothing starts.
+    * What earlier versions kept on C: (C:\Users\<you>\QueryBook-Data, and any shared folder chosen with "Move the shared
+      folder") is brought onto the data drive by itself when the programs start: whatever the drive lacks is copied;
+      where both hold a database, the one with MORE facts wins and the drive's own copy is kept renamed "...set-aside-<date>".
+      The old copy on C: is never changed or deleted. Each database is copied whole and checked. Everything done is listed
+      in D:\QB\data-moved.log. Large stores take a while the first time; the start-up window shows each file.
   Control Panel 1.16.0 and the shared core - harvesting fixes
     * Bulk agents no longer stop by themselves on Windows: the runner's heartbeat file could not be replaced at the instant
       the Control Panel was reading it, and that one moment ended the whole run ("not running (last: running)", every
