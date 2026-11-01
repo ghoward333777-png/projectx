@@ -132,12 +132,30 @@ class Store:
     def _check(self):
         if not os.path.exists(self.path):
             return
-        try:
-            db = sqlite3.connect(self.path, timeout=30)
-            r = db.execute("PRAGMA quick_check").fetchone()[0]
-            db.close()
-        except sqlite3.DatabaseError as e:
-            r = str(e)
+        r = None
+        for attempt in range(6):
+            try:
+                db = sqlite3.connect(self.path, timeout=30)
+                try:
+                    r = db.execute("PRAGMA quick_check").fetchone()[0]
+                finally:
+                    db.close()
+                break
+            except sqlite3.OperationalError as e:
+                # "database is locked" / "busy": another program is writing (a shared database at start-up, a slow
+                # external drive). That is not damage — wait and look again; never mark the database read-only for it.
+                if "locked" in str(e) or "busy" in str(e):
+                    self.log("database check: %s — trying again (%d)" % (e, attempt + 1))
+                    time.sleep(5)
+                    continue
+                r = str(e)
+                break
+            except sqlite3.DatabaseError as e:
+                r = str(e)
+                break
+        if r is None:
+            self.log("database check skipped: the database stayed busy; it is used normally (SQLite waits for its turn)")
+            return
         if r != "ok":
             self.read_only = True
             self.damage = r

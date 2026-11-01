@@ -196,6 +196,20 @@ def _host(url):
     return (urllib.parse.urlsplit(url).hostname or "local").lower()
 
 
+def _replace(tmp, dst, tries=40):
+    """os.replace that waits out Windows' sharing rule: a file another program is reading at that instant cannot be replaced
+    (PermissionError), so try again for a few seconds instead of failing (the Control Panel reads these files every few seconds)"""
+    for i in range(tries):
+        try:
+            os.replace(tmp, dst)
+            return True
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.05 + 0.05 * i)
+    return False
+
+
 class Slots:
     """connections per server, shared by every agent process through lock files (the system releases a dead process's lock)"""
 
@@ -248,7 +262,7 @@ class Slots:
             tmp = os.path.join(self.dir, "%s.cool.%d" % (host, os.getpid()))
             with open(tmp, "w") as f:
                 f.write(str(until))
-            os.replace(tmp, os.path.join(self.dir, host + ".cool"))
+            _replace(tmp, os.path.join(self.dir, host + ".cool"))
 
     def acquire(self, sources, stop):
         """(url, lock) on the first server with a free connection that is not cooling down; waits while every one is busy.
@@ -1548,7 +1562,7 @@ def _mark(sh, pg, row_no, side=None):
         try:
             with open(side + ".tmp", "w") as f:
                 json.dump(pg, f)
-            os.replace(side + ".tmp", side)
+            _replace(side + ".tmp", side, tries=5)
         except OSError:
             pass
 
@@ -1582,7 +1596,10 @@ def _version(url):
 
 def _agent(args):
     folder, key, max_rows = args
-    return run_dataset(folder, key, max_rows)
+    try:
+        return run_dataset(folder, key, max_rows)
+    except Exception as e:                      # never lets one agent's surprise end the whole run: it is retried later
+        return {"dataset": key, "state": "paused", "why": "%s: %s" % (type(e).__name__, str(e)[:300]), "new": 0, "retry": True}
 
 
 def run(commons_folder, keys=None, agents=4, max_rows=None):
@@ -1598,9 +1615,15 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
     results = []
 
     def beat(note):
-        with open(hb + ".tmp", "w") as f:
-            json.dump({"heartbeat": time.time(), "pid": os.getpid(), "agents": agents, "datasets": keys, "note": note, "results": results}, f)
-        os.replace(hb + ".tmp", hb)
+        # a heartbeat that cannot be written this second (the Control Panel was reading it, or the drive was busy) is
+        # skipped, never fatal: in 1.15 one such moment on Windows ended the whole run
+        try:
+            with open(hb + ".tmp", "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "agents": agents, "datasets": keys, "note": note,
+                           "results": results[-200:]}, f)
+            _replace(hb + ".tmp", hb)
+        except OSError:
+            pass
     beat("starting")
     todo, rounds = list(keys), 0
     while todo:
@@ -1807,13 +1830,54 @@ def start(commons, keys, agents, passphrase, program_dir):
     import qbcontrol as ctl, qbkeystone as ks
     keys = ks.order(keys, commons.folder, commons, ctl.get(commons, "target"))   # the admin's target, then keystone priority
     agents = MAX_AGENTS if not agents or int(agents) <= 0 else max(1, min(int(agents), MAX_AGENTS))   # 0 = full speed
-    path = os.path.join(program_dir, "qbbulk.py")
-    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
-    subprocess.Popen([sys.executable, path, "run", "--commons", commons.folder, "--datasets", ",".join(keys), "--agents", str(agents)],
-                     cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    _launch(commons.folder, keys, agents, program_dir)
     with commons.store.write() as db:
         commons.agent_log(db, "engine", "Bulk harvesting started: %s (%d agents)" % (", ".join(keys), agents))
     return {"summary": "bulk harvesting is starting: %d dataset(s), %d agent(s)" % (len(keys), agents), **status(commons.folder, commons)}
+
+
+def _launch(commons_folder, keys, agents, program_dir):
+    import subprocess
+    path = os.path.join(program_dir, "qbbulk.py")
+    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    subprocess.Popen([sys.executable, path, "run", "--commons", commons_folder, "--datasets", ",".join(keys), "--agents", str(agents)],
+                     cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
+RESUME_GAP_S = 600                 # at most one automatic restart every 10 minutes
+
+
+def resume_if_crashed(commons, program_dir, now=None, launch=None):
+    """the runner ended without finishing (the computer slept, the window was closed, the drive dropped out) and nobody
+    pressed Stop: start it again on the same datasets — every agent resumes where its shard stopped. Only while the master
+    switch is on. Returns what it did, or None."""
+    import qbharvest as hv
+    folder = os.path.join(commons.folder, FOLDER)
+    now = now or time.time()
+    try:
+        with open(os.path.join(folder, "_runner.json")) as f:
+            rs = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if rs.get("note") == "finished" or now - rs.get("heartbeat", now) < 60 or os.path.exists(os.path.join(folder, "_runner.stop")):
+        return None
+    if not hv.master_running(commons):
+        return None
+    mark = os.path.join(folder, "_runner.resumed")
+    try:
+        if now - os.path.getmtime(mark) < RESUME_GAP_S:
+            return None
+    except OSError:
+        pass
+    keys = [k for k in (rs.get("datasets") or []) if k in catalog()]
+    if not keys:
+        return None
+    open(mark, "w").close()
+    (launch or _launch)(commons.folder, keys, int(rs.get("agents") or MAX_AGENTS), program_dir)
+    with commons.store.write() as db:
+        commons.agent_log(db, "engine", "Bulk harvesting resumed by itself: the runner had stopped without finishing (last: %s)"
+                          % (rs.get("note") or "?"))
+    return {"resumed": keys, "agents": int(rs.get("agents") or MAX_AGENTS), "last_note": rs.get("note")}
 
 
 def stop(commons):
@@ -1883,7 +1947,8 @@ def diagnose(commons, folders=None, probe=True):
     alive = rs.get("alive")
     add("Bulk agents running", alive, ("running: %s" % rs.get("note")) if alive else
         ("not running (last: %s)" % (rs.get("note") or "never started")),
-        "Bulk harvesting tab → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves.")
+        "Bulk harvesting tab → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves. Since 1.16 the "
+        "Control Panel restarts agents that ended without finishing (while the master switch is on), within a minute or so.")
     shards = os.path.join(commons.folder, FOLDER)
     os.makedirs(shards, exist_ok=True)
     free = shutil.disk_usage(shards).free / 1e9

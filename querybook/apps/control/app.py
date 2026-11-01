@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.15.0"
+VERSION = "1.16.0"
 PORT = 8100
 program_dir = HERE
 
@@ -259,6 +259,12 @@ class Panel:
     def check(self):
         """One monitoring pass: look at every application and the harvest, raise and resolve alerts."""
         found = {}
+        try:                                       # bulk agents that ended without finishing are started again (master on)
+            r = qbbulk.resume_if_crashed(self.commons, HERE)
+            if r:
+                self.log("bulk runner resumed by itself:", r)
+        except Exception as e:
+            self.log("bulk resume:", repr(e))
         apps = self.apps()
         for a in apps:
             k = a["app"]

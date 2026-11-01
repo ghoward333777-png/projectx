@@ -516,6 +516,75 @@ def main():
         c.check("commercial policy: no non-commercial source harvested", d3.execute("SELECT count(*) FROM evidence WHERE licence LIKE '%NC%'").fetchone()[0] == 0 and r["new"] == 500, r)
         c.check("commercial policy: the Strategist says why translations are held back", any(g["goal"] == "Hold translations back" for g in goals), goals)
         d3.close()
+    # 1.16: a busy shared database is waited for, never marked damaged; a program that could not open it says why on every
+    # shared page (not "No such action") and attaches by itself once it can; a bulk runner that died is restarted
+    import threading, time as _t, qbbulk
+    with tempfile.TemporaryDirectory() as tmpx:
+        st0 = core.Store(tmpx, "busy", ["CREATE TABLE t (x)"])
+        real = sqlite3.connect
+        calls = {"n": 0}
+
+        def flaky(*a, **k):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real(*a, **k)
+        sleep0 = core.time.sleep
+        sqlite3.connect, core.time.sleep = flaky, (lambda s: None)
+        try:
+            st1 = core.Store(tmpx, "busy", ["CREATE TABLE t (x)"])
+        finally:
+            sqlite3.connect, core.time.sleep = real, sleep0
+        c.check("a database that is busy at start-up is waited for, not marked damaged (read-only)", not st1.read_only and calls["n"] >= 2, calls)
+        Real = cm.Commons
+        tries = {"n": 0}
+
+        def broken(*a, **k):
+            tries["n"] += 1
+            if tries["n"] <= 2:
+                raise sqlite3.OperationalError("database is locked")
+            return Real(*a, **k)
+        o = (cm.OPEN_TRIES, cm.OPEN_WAIT_S, cm.RETRY_S)
+        cm.Commons, cm.OPEN_TRIES, cm.OPEN_WAIT_S, cm.RETRY_S = broken, 2, 0, 0.2
+        os.environ["QB_COMMONS_DATA"] = os.path.join(tmpx, "commons")
+        try:
+            LOG = []
+            fake = type("A", (), {})()
+            fake.folder, fake.log, fake.api = tmpx, (lambda *a: LOG.append(a)), core.Api()
+            team = cm.attach(fake, "facts", type("Ad", (), {"budgets": lambda self: {}})())
+            refused = []
+            for key in (("POST", "/api/commons/run"), ("POST", "/api/harvest/master"), ("GET", "/api/campaigns")):
+                try:
+                    fake.api.routes[key]({})
+                except core.UserError as e:
+                    refused.append("could not be opened" in str(e))
+                except KeyError:
+                    refused.append(False)
+            c.check("shared database unavailable: every shared page says why (no 'No such action')", team is None and refused == [True] * 3, refused)
+            t0 = _t.time()
+            while fake.team is None and _t.time() - t0 < 10:
+                _t.sleep(0.1)
+            c.check("…and the program attaches by itself once the database opens", fake.team is not None and fake.commons is not None, LOG[-3:])
+        finally:
+            cm.Commons, (cm.OPEN_TRIES, cm.OPEN_WAIT_S, cm.RETRY_S) = Real, o
+            os.environ.pop("QB_COMMONS_DATA", None)
+        cmx = cm.Commons(os.path.join(tmpx, "c2"), "stem")
+        sh = os.path.join(cmx.folder, qbbulk.FOLDER)
+        os.makedirs(sh, exist_ok=True)
+        with open(os.path.join(sh, "_runner.json"), "w") as f:
+            json.dump({"heartbeat": _t.time() - 600, "agents": 8, "datasets": ["calendar-scaffold", "nope"], "note": "running"}, f)
+        launched = []
+        launch = lambda folder, keys, agents, pd: launched.append((keys, agents))
+        r1 = qbbulk.resume_if_crashed(cmx, ROOT, launch=launch)
+        r2 = qbbulk.resume_if_crashed(cmx, ROOT, launch=launch)
+        c.check("a bulk runner that ended without finishing is started again on its datasets (once per 10 minutes)",
+                r1 and launched == [(["calendar-scaffold"], 8)] and r2 is None, (r1, launched))
+        os.remove(os.path.join(sh, "_runner.resumed"))
+        open(os.path.join(sh, "_runner.stop"), "w").close()
+        c.check("…but not after the admin pressed Stop", qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is None)
+        os.remove(os.path.join(sh, "_runner.stop"))
+        cmx.set_setting("harvest:master", "stopped")
+        c.check("…and not while the master switch is off", qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is None and len(launched) == 1)
     return c.report("Commons (shared database and harvest teams)")
 
 

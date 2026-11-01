@@ -845,24 +845,56 @@ def harvest_status(team):
             "archive_folder": os.path.join(c.folder, "archives")}
 
 
+OPEN_TRIES, OPEN_WAIT_S, RETRY_S = 6, 10, 60
+
+
 def attach(app, app_id, adapter):
     """Give an application its Commons, its team and the shared pages. A Commons that cannot be opened
     never stops the application: its own work goes on and the shared page says why."""
+    def open_():
+        c = Commons(commons_folder(app.folder), app_id, app.log)
+        t = Team(c, adapter, app.log)
+        add_routes(app.api, t, app.folder)
+        ctl.add_routes(app.api, c, core.stop_server)                  # the Control Panel's rules and its stop
+        app.commons, app.team = c, t
+
+    err = None
+    for attempt in range(OPEN_TRIES):              # a shared database busy at start-up (every program opening it at once,
+        try:                                       # a slow external drive) is waited for, not given up on
+            open_()
+            return app.team
+        except Exception as e:
+            err = e
+            app.log("shared database (Commons) not ready (%d of %d):" % (attempt + 1, OPEN_TRIES), repr(e))
+            if attempt + 1 < OPEN_TRIES:
+                time.sleep(OPEN_WAIT_S)
+    app.commons = app.team = None
+    why = str(err)
+
+    def refuse(p):
+        raise core.UserError("The shared database could not be opened (%s). This application works on its own meanwhile; "
+                             "it keeps trying — or close it and start it again." % why)
+    # every shared page answers with the reason instead of "No such action"
+    probe = core.Api()
     try:
-        app.commons = Commons(commons_folder(app.folder), app_id, app.log)
-        app.team = Team(app.commons, adapter, app.log)
-        add_routes(app.api, app.team, app.folder)
-        ctl.add_routes(app.api, app.commons, core.stop_server)        # the Control Panel's rules and its stop
-    except Exception as e:
-        app.log("shared database (Commons) unavailable:", repr(e))
-        app.commons = app.team = None
-        why = str(e)
+        import qbcampaign
+        add_routes(probe, type("T", (), {"commons": None})(), app.folder)
+        ctl.add_routes(probe, None, core.stop_server)
+        qbcampaign.add_routes(probe, None, None, set)
+    except Exception:
+        pass
+    for key in list(probe.routes) + [("GET", "/api/commons/status"), ("GET", "/api/harvest/status")]:
+        app.api.routes.setdefault(key, refuse)
 
-        @app.api.get("/api/commons/status")
-        def unavailable(p):
-            raise core.UserError("The shared database could not be opened (%s). This application works on its own meanwhile." % why)
-
-        @app.api.get("/api/harvest/status")
-        def h_unavailable(p):
-            raise core.UserError("The shared database could not be opened (%s); the harvesting engine needs it." % why)
+    def retry():
+        while app.team is None:
+            time.sleep(RETRY_S)
+            try:
+                open_()
+                import qbcampaign                  # the master switch and campaigns need the Commons too
+                qbcampaign.attach(app, os.path.dirname(os.path.abspath(__file__)))
+                app.log("shared database (Commons) opened after a wait: harvesting works again")
+            except Exception as e:
+                app.log("shared database (Commons) still unavailable:", repr(e))
+    threading.Thread(target=retry, daemon=True, name="qb-commons-retry").start()
     return app.team
