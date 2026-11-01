@@ -38,6 +38,7 @@ FORMATS = {"horizontal": (1280, 720), "vertical": (720, 1280), "square": (1080, 
 GRADES = {"none": None, "warm": "eq=brightness=0.04:saturation=1.25,colorbalance=rs=0.08:bs=-0.06",
           "cool": "eq=saturation=1.1,colorbalance=rs=-0.05:bs=0.08", "mono": "hue=s=0"}
 PROMPTS = dict(rb.ACTIONS)
+MIN_MOTION = 0.25          # mean frame difference: a still picture measures ~0; small hand work (scrolling a phone) ~0.4
 
 
 def _now():
@@ -75,7 +76,7 @@ class Library:
 
     def find(self, action, look=""):
         """the best stored clip of an action: same look first, then the one with the clearest motion"""
-        cands = [c for c in self.data["clips"] if c["action"] == action and c.get("motion", 0) >= 1.0]
+        cands = [c for c in self.data["clips"] if c["action"] == action and c.get("motion", 0) >= MIN_MOTION]
         if look:
             same = [c for c in cands if c.get("look", "").lower() == look.lower()]
             return (same and max(same, key=lambda c: c["motion"])) or None
@@ -230,7 +231,7 @@ def render(lib, actions, out, fmt="horizontal", speed=1.0, grade="none", max_sec
                 raw = os.path.join(tmp, a + "-generated.mp4")
                 open(raw, "wb").write(data)
                 curve = rb.motion_curve(raw)
-                okm = curve and statistics.fmean(curve) >= 1.0 and rb.duration(raw) >= 2.0
+                okm = curve and statistics.fmean(curve) >= MIN_MOTION and rb.duration(raw) >= 2.0
                 row.update(generate_s=round(gsec, 1), checks={"duration_s": round(rb.duration(raw), 2), "motion_present": bool(okm)})
                 if not okm:
                     raise RuntimeError("the generated clip for '%s' failed its checks (too short or no motion): not stored" % a)

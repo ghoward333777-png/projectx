@@ -254,7 +254,7 @@ class App:
                     raise core.UserError("The clip is shorter than a second, or is not a video ffmpeg can read.")
                 c = self.studio.lib.add(action, src, str(p.get("source") or "added by hand").strip()[:200], consent=consent[:300],
                                         look=str(p.get("look") or "").strip()[:80])
-            if c.get("motion", 0) < 1.0:
+            if c.get("motion", 0) < hv.MIN_MOTION:
                 return dict(c, warning="This clip shows almost no motion, so it will not be chosen for the action.")
             return c
 
