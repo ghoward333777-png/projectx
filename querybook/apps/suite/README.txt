@@ -43,6 +43,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Stable start-up (Control Panel 1.21.0 and the shared core, every program)
+    * Bringing old data from C: onto the data drive now happens ONCE, in the START-ALL window, before any program opens
+      the data, with its progress shown ("copying wikidata-1.sqlite: 3.2 of 41.0 GB, 120 MB/s, about 5 min left"). The
+      programs then start in seconds; each only checks its own folder.
+    * Fixed: every program could wait forever ("Another QueryBook program is bringing data onto D:\QB - waiting for it")
+      after a window was closed during a copy. The lock is now released by Windows itself when a window closes; a waiting
+      window says what the other one is doing.
+    * Fixed: a program's own database (e.g. control.sqlite) was "replaced" on every start because the old file on C: is
+      bigger, failing with WinError 32 when the file was in use. Databases are replaced only when the old copy holds MORE
+      FACTS (counted), never by file size; a file in use is left for the next START-ALL with a plain message; what was
+      brought over and has not changed is not looked at again.
+    * A large database (over 512 MB) is checked in the background after start instead of before it.
   Full instrumentation of the harvest (Control Panel 1.20.0 and the shared core, every program)
     * Every bulk agent, every harvest team and every online fetch writes what it did to log files in the shared folder's
       trace\ (D:\QB\commons\trace): the time of every stage a record passes through (read, decompress, parse, rule, filter,

@@ -94,6 +94,9 @@ class DatabaseDamaged(Exception):
     pass
 
 
+BIG_CHECK_BYTES = 512 << 20
+
+
 class Store:
     """One SQLite database with serialized, transactional writes and automatic backups.
 
@@ -113,7 +116,14 @@ class Store:
         self.cloud = None                 # CloudLink, when Google Cloud is configured (off-site copy of every backup)
         os.makedirs(self.backup_dir, exist_ok=True)
         if check:                         # a whole-file check: the programs do it at start; bulk agents skip it
-            self._check()
+            try:
+                big = os.path.getsize(self.path) > BIG_CHECK_BYTES
+            except OSError:
+                big = False
+            if big:                       # a large database on a USB drive takes minutes to read through: the program starts
+                threading.Thread(target=self._check, daemon=True, name="qb-db-check").start()   # and checks it meanwhile
+            else:
+                self._check()
         self.schema_len = len(schema)
         if not self.read_only:
             self._migrate(schema)
@@ -2107,7 +2117,7 @@ def run_cli(app):
         qbdrive.require(root)
         print("  QueryBook data: %s" % root)
         try:                                          # what earlier versions kept on C: comes onto the data drive by itself
-            r = qbdrive.bring_over(root, app.program_dir)
+            r = qbdrive.bring_over(root, app.program_dir, only=[app.APP_ID])   # its own folder; START-ALL brings the rest first
             if r["copied"] or r["replaced"]:
                 print("  Brought onto %s: %d file(s), %d database(s) replaced by a bigger old copy (see data-moved.log)"
                       % (root, r["copied"], r["replaced"]))

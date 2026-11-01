@@ -107,20 +107,48 @@ def _size(path):
     return sum(os.path.getsize(path + x) for x in ("", "-wal") if os.path.exists(path + x))
 
 
-def _bigger(src, dst):
-    a, b = _facts(src), _facts(dst)
-    if a is not None and b is not None:
-        return a > b, a, b
-    return _size(src) > _size(dst), _size(src), _size(dst)
+def _copy_file(src, dst, say, label=None):
+    """copy in 8 MB pieces, telling how far it is every few seconds (a large store takes a while on a USB drive)"""
+    total, done, t0, last = os.path.getsize(src), 0, time.time(), 0.0
+    with open(src, "rb") as a, open(dst, "wb") as b:
+        while True:
+            buf = a.read(8 << 20)
+            if not buf:
+                break
+            b.write(buf)
+            done += len(buf)
+            now = time.time()
+            if total > (256 << 20) and now - last > 5:
+                last = now
+                rate = done / max(0.001, now - t0)
+                msg = "copying %s: %.1f of %.1f GB, %.0f MB/s, about %d min left" % (label or os.path.basename(src), done / 1e9, total / 1e9,
+                                                                                   rate / 1e6, max(0, (total - done) / max(rate, 1)) // 60)
+                say("  " + msg)
+                _progress(msg)
+        b.flush()
+        os.fsync(b.fileno())
 
 
-def _copy_db(src, dst):
+_PROGRESS = [None]
+
+
+def _progress(msg):
+    """what the program holding the lock is doing, for the others waiting for it"""
+    if _PROGRESS[0]:
+        try:
+            with open(_PROGRESS[0], "w", encoding="utf-8") as f:
+                json.dump({"at": time.time(), "pid": os.getpid(), "doing": msg}, f)
+        except OSError:
+            pass
+
+
+def _copy_db(src, dst, say=lambda *a: None):
     """the database and its write-ahead log, folded together on the destination and checked, then put in place"""
     tmp = dst + ".copying"
     for x in ("", "-wal", "-shm"):
         if os.path.exists(tmp + x):
             os.remove(tmp + x)
-    shutil.copyfile(src, tmp)
+    _copy_file(src, tmp, say, os.path.basename(src))
     if os.path.exists(src + "-wal"):
         shutil.copyfile(src + "-wal", tmp + "-wal")
     db = sqlite3.connect(tmp, timeout=60)
@@ -138,10 +166,15 @@ def _copy_db(src, dst):
 
 
 def _set_aside(dst, stamp):
+    """rename the data drive's own copy out of the way. Raises PermissionError when a program has it open (Windows)."""
     to = "%s.set-aside-%s" % (dst, stamp)
-    for x in ("", "-wal", "-shm"):
+    os.replace(dst, to)                                # first: fails (and changes nothing) while the file is in use
+    for x in ("-wal", "-shm"):
         if os.path.exists(dst + x):
-            os.replace(dst + x, to + x)
+            try:
+                os.replace(dst + x, to + x)
+            except OSError:
+                pass
     return to
 
 
@@ -155,60 +188,133 @@ def _busy(folder):
         return False
 
 
-def merge(src, dst, log, stamp):
-    """everything in src that dst lacks, and every database where src holds more; returns (files copied, databases replaced)"""
+def _stamp_of(path):
+    st = os.stat(path)
+    w = path + "-wal"
+    return [st.st_size + (os.path.getsize(w) if os.path.exists(w) else 0), int(st.st_mtime)]
+
+
+def merge(src, dst, log, stamp, done=None, say=lambda *a: None):
+    """everything in src that dst lacks, and every fact database where src holds MORE FACTS (counted, never guessed from the
+    file size). A source already handled and unchanged since (`done`, the manifest) is skipped. Live data first, backups last.
+    Returns (files copied, databases replaced)."""
     copied = replaced = 0
+    done = {} if done is None else done
+    todo = []
     for d, dirs, files in os.walk(src):
         dirs[:] = [x for x in dirs if not x.startswith(".") and x != "__pycache__"]
-        rel = os.path.relpath(d, src)
-        out = os.path.normpath(os.path.join(dst, rel))
         for f in sorted(files):
-            if f.endswith(("-wal", "-shm", ".copying")) or ".set-aside-" in f or f in ("_runner.stop", "_runner.resumed"):
+            if f.endswith(("-wal", "-shm", ".copying", ".progress")) or ".set-aside-" in f or f.startswith("_runner") or f.startswith(".qb-"):
                 continue
-            s, t = os.path.join(d, f), os.path.join(out, f)
-            try:
-                os.makedirs(out, exist_ok=True)
-                if f.endswith(".sqlite"):
-                    if not os.path.exists(t):
-                        log("copy  %s  (%s facts)" % (s, _facts(s)))
-                        _copy_db(s, t)
-                        copied += 1
-                    else:
-                        more, a, b = _bigger(s, t)
-                        if more:
-                            aside = _set_aside(t, stamp)
-                            log("newer %s holds more (%s against %s): it replaces the data drive's copy, kept as %s" % (s, a, b, aside))
-                            _copy_db(s, t)
-                            replaced += 1
-                elif not os.path.exists(t):
-                    shutil.copy2(s, t)
+            rel = os.path.relpath(os.path.join(d, f), src)
+            todo.append((("backups" in rel.replace("\\", "/").split("/")), rel))
+    for _, rel in sorted(todo):
+        s, t = os.path.join(src, rel), os.path.normpath(os.path.join(dst, rel))
+        try:
+            mark = _stamp_of(s)
+            if done.get(s) == mark:
+                continue                                    # handled before and not changed since
+            os.makedirs(os.path.dirname(t), exist_ok=True)
+            if rel.endswith(".sqlite"):
+                if not os.path.exists(t):
+                    log("copy  %s  (%s facts)" % (s, _facts(s)))
+                    _copy_db(s, t, say)
                     copied += 1
-            except Exception as e:                      # one file never stops the rest; it is tried again on the next start
-                log("SKIPPED %s: %s (tried again on the next start)" % (s, e))
+                else:
+                    a, b = _facts(s), _facts(t)
+                    if a is not None and b is not None and a > b:
+                        try:
+                            aside = _set_aside(t, stamp)
+                        except PermissionError:
+                            log("in use: %s is open in a running program, so the bigger old copy (%s facts against %s) waits — "
+                                "it is brought over on the next START-ALL" % (t, a, b))
+                            continue                        # not marked done: tried again next time
+                        log("newer %s holds more facts (%s against %s): it replaces the data drive's copy, kept as %s" % (s, a, b, aside))
+                        _copy_db(s, t, say)
+                        replaced += 1
+            elif not os.path.exists(t):
+                shutil.copy2(s, t)
+                copied += 1
+            done[s] = mark
+        except Exception as e:                      # one file never stops the rest; it is tried again on the next start
+            log("could not copy %s yet (%s: %s) — tried again on the next start" % (s, type(e).__name__, e))
     return copied, replaced
 
 
-def bring_over(root, program_dir=None, home=None, say=print):
-    """bring the old data onto the data drive (see the module text). Safe to run on every start."""
-    require(root)
-    lock = os.path.join(root, LOCK)
-    t0 = time.time()
-    while True:
+class _FileLock:
+    """one program at a time brings data over; the system releases the lock of a program that was closed or crashed"""
+
+    def __init__(self, path):
+        self.path, self.f = path, None
+
+    def try_lock(self):
+        f = open(self.path, "a+b")
         try:
-            os.mkdir(lock)
-            break
-        except FileExistsError:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.f = f
+            return True
+        except OSError:
+            f.close()
+            return False
+
+    def release(self):
+        if self.f:
             try:
-                if time.time() - os.path.getmtime(lock) > STALE_LOCK_S:
-                    os.rmdir(lock)
-                    continue
+                if os.name == "nt":
+                    import msvcrt
+                    self.f.seek(0)
+                    msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.f.fileno(), fcntl.LOCK_UN)
             except OSError:
                 pass
-            if time.time() - t0 < 2:
-                say("  Another QueryBook program is bringing data onto %s — waiting for it." % root)
-            time.sleep(2)
+            self.f.close()
+            self.f = None
+
+
+def bring_over(root, program_dir=None, home=None, say=print, only=None):
+    """bring the old data onto the data drive (see the module text). Safe to run on every start: what was brought over
+    and has not changed since is not looked at again. only: the kinds to handle (a program's own folder at its start;
+    everything — the shared facts too — from START-ALL)."""
+    require(root)
+    try:                                            # the folder lock of 1.17–1.20 could outlive a closed window
+        legacy = os.path.join(root, LOCK)
+        if os.path.isdir(legacy):
+            os.rmdir(legacy)
+    except OSError:
+        pass
+    lock = _FileLock(os.path.join(root, LOCK + ".lock"))
+    prog = os.path.join(root, LOCK + ".json")
+    t_wait = told = 0.0
+    while not lock.try_lock():
+        now = time.time()
+        if not t_wait:
+            t_wait = now
+        if now - told > 15:
+            told = now
+            try:
+                with open(prog, encoding="utf-8") as f:
+                    doing = json.load(f).get("doing")
+            except (OSError, ValueError):
+                doing = None
+            say("  Another QueryBook window is bringing data onto %s%s — this one starts when it is done." % (root, (": " + doing) if doing else ""))
+        time.sleep(2)
+    _PROGRESS[0] = prog
     stamp = time.strftime("%Y%m%d-%H%M%S")
     lines = []
+    man_path = os.path.join(root, ".qb-moved.json")
+    try:
+        with open(man_path, encoding="utf-8") as f:
+            done = json.load(f)
+    except (OSError, ValueError):
+        done = {}
 
     def log(msg):
         lines.append(msg)
@@ -220,6 +326,8 @@ def bring_over(root, program_dir=None, home=None, say=print):
             progs = [os.path.join(suite, d) for d in os.listdir(suite) if os.path.isdir(os.path.join(suite, d))]
         total = [0, 0]
         for kind, src in old_places(home, progs):
+            if only and kind not in only:
+                continue
             dst = commons_in(root) if kind == "commons" else os.path.join(root, kind)
             if not os.path.isdir(src) or os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
                 continue
@@ -229,18 +337,28 @@ def bring_over(root, program_dir=None, home=None, say=print):
                 log("the old shared folder %s is still being written by bulk agents of an older version: close every QueryBook "
                     "window (and its agents) — it is brought over on the next start" % src)
                 continue
-            c, r = merge(src, dst, log, stamp)
+            _progress("bringing over %s" % src)
+            c, r = merge(src, dst, log, stamp, done, say)
             total[0] += c
             total[1] += r
+            try:
+                tmp = man_path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(done, f)
+                os.replace(tmp, man_path)
+            except OSError:
+                pass
         if lines:
             with open(os.path.join(root, "data-moved.log"), "a", encoding="utf-8") as f:
                 f.write("\n%s\n%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), "\n".join(lines)))
         return {"copied": total[0], "replaced": total[1], "log": lines}
     finally:
+        _PROGRESS[0] = None
         try:
-            os.rmdir(lock)
+            os.remove(prog)
         except OSError:
             pass
+        lock.release()
 
 
 def self_test():
@@ -291,6 +409,30 @@ def self_test():
         ok("running again changes nothing (safe on every start)", r2["copied"] == 0 and r2["replaced"] == 0, r2)
         ok("a record of what was brought over", "wikidata-1" in open(os.path.join(root, "data-moved.log"), encoding="utf-8").read())
         ok("no lock left behind", not os.path.exists(os.path.join(root, LOCK)))
+        # 1.21: what stalled every program on 1 Nov 2026
+        os.makedirs(os.path.join(old, "control")); os.makedirs(os.path.join(root, "control"))
+        for p_, n in ((os.path.join(old, "control", "control.sqlite"), 3000), (os.path.join(root, "control", "control.sqlite"), 10)):
+            db = sqlite3.connect(p_); db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+            db.executemany("INSERT INTO meta VALUES (?, ?)", [("k%d" % i, "x" * 50) for i in range(n)]); db.commit(); db.close()
+        r3 = bring_over(root, home=home, say=lambda *a: None)
+        ok("a program's own database (no fact count) on both drives is never replaced because the old file is bigger",
+           r3["replaced"] == 0 and not any(".set-aside-" in f for f in os.listdir(os.path.join(root, "control"))), r3)
+        os.makedirs(os.path.join(root, LOCK))                    # the folder lock a closed 1.20 window left behind
+        r4 = bring_over(root, home=home, say=lambda *a: None)
+        ok("a lock left by a closed window never blocks the start", r4 is not None and not os.path.isdir(os.path.join(root, LOCK)))
+        import threading
+        held = _FileLock(os.path.join(root, LOCK + ".lock")); held.try_lock()
+        with open(os.path.join(root, LOCK + ".json"), "w") as f:
+            json.dump({"doing": "copying wikidata-1.sqlite: 1.0 of 9.0 GB"}, f)
+        said = []
+        threading.Timer(1.5, held.release).start()
+        t0 = time.time()
+        bring_over(root, home=home, say=said.append)
+        ok("while another window brings data over, the waiting window says what it is doing, then starts",
+           time.time() - t0 >= 1.4 and any("wikidata-1" in x for x in said), said)
+        os.makedirs(os.path.join(old, "stem")); open(os.path.join(old, "stem", "a.txt"), "w").write("s")
+        r5 = bring_over(root, home=home, say=lambda *a: None, only=["facts"])
+        ok("a program at its start brings over only its own folder", r5["copied"] == 0 and not os.path.exists(os.path.join(root, "stem", "a.txt")), r5)
         for db in keep[:-2]:
             db.close()
         suite = os.path.join(tmp, "suite")
@@ -312,6 +454,12 @@ if __name__ == "__main__":
             print("  [%s] %s%s" % ("OK" if g else "FAIL", n, "" if g else " — %s" % (d,)))
         print("  %d of %d checks passed" % (sum(1 for _, g, _ in r if g), len(r)))
         sys.exit(0 if all(g for _, g, _ in r) else 1)
-    if len(sys.argv) > 1:
-        r = bring_over(os.path.abspath(sys.argv[1]), say=print)
-        print("  %d file(s) copied, %d database(s) replaced by the bigger old copy" % (r["copied"], r["replaced"]))
+    if len(sys.argv) > 1:                       # START-ALL: python qbdrive.py D:\QB  — everything, before the programs start
+        root = os.path.abspath(sys.argv[1])
+        print("  Checking for QueryBook data still on this computer's own drive to bring onto %s ..." % root)
+        try:
+            r = bring_over(root, os.path.dirname(os.path.abspath(__file__)), say=print)
+        except SystemExit as e:
+            print(e)
+            sys.exit(1)
+        print("  Data on %s is ready: %d file(s) brought over now, %d database(s) replaced by a bigger old copy." % (root, r["copied"], r["replaced"]))

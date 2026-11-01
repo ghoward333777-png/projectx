@@ -26,5 +26,10 @@ set "QB_FACTS_DATA=%QBD%\facts"
 set "QB_CONTROL_DATA=%QBD%\control"
 set "QB_VIDEO_DATA=%QBD%\video"
 echo  QueryBook data: %QB_COMMONS_DATA%
+REM bring what earlier versions kept on C: onto the data drive ONCE, here, before any program opens it (progress is shown)
+set PY=
+where py >nul 2>nul && set PY=py -3
+if not defined PY where python >nul 2>nul && set PY=python
+if defined PY %PY% "%~dp0QueryBook-Control-Panel\qbdrive.py" "%QBD%"
 :qbgo
 start "QueryBook Control Panel" cmd /c "QueryBook-Control-Panel\START-WINDOWS.bat"
