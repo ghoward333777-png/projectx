@@ -1957,7 +1957,7 @@ def start(commons, keys, agents, passphrase, program_dir):
 def _launch(commons_folder, keys, agents, program_dir):
     import subprocess
     path = os.path.join(program_dir, "qbbulk.py")
-    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen([sys.executable, path, "run", "--commons", commons_folder, "--datasets", ",".join(keys), "--agents", str(agents)],
                      cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
 

@@ -203,7 +203,7 @@ def google_setup_start(commons, passphrase, program_dir, own_folder=None):
     if not st["gcloud"]:
         return dict(st, summary="Install Google's command-line tool (gcloud) on this computer first: " + gcloud.GCLOUD_INSTALL)
     path = os.path.join(commons.folder, "google-setup-run.json")
-    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen([sys.executable, os.path.join(program_dir, "gcloud.py"), "--folders", json.dumps(google_folders(program_dir, own_folder)),
                       "--commons", commons.folder, "--status", path], cwd=program_dir, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)

@@ -132,7 +132,7 @@ def runner(c, action, passphrase, program_dir):
     path = generator_path(program_dir)
     if not path:
         raise ValueError("The exemplar generator is not installed beside this application (extras/exemplar-generator).")
-    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen([sys.executable, path, "run-campaign", "--commons", c.folder], cwd=os.path.dirname(path), stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     with c.store.write() as db:

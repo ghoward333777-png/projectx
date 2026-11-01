@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.21.0"
+VERSION = "1.22.0"
 PORT = 8100
 program_dir = HERE
 
@@ -179,7 +179,7 @@ class Panel:
         folder = self.app_folder(app)
         if not folder:
             raise core.UserError("%s is not installed next to the Control Panel." % APPS[app]["name"])
-        kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}   # detached
+        kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}   # detached
         env = dict(os.environ)
         env["QB_COMMONS_DATA"] = self.commons.folder
         self.procs[app] = subprocess.Popen([sys.executable, "app.py", "--no-browser"], cwd=folder, stdin=subprocess.DEVNULL,

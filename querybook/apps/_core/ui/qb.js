@@ -453,8 +453,8 @@ async function renderCommons(el) {
       c.requests.map(r => "<tr><td>" + esc(r.from_app) + "</td><td>" + esc(r.to_app) + "</td><td>" + esc(s.checks[r.kind] || r.kind) + "</td><td>" + esc(r.status === "open" ? "waiting" : r.status) + "</td><td>" + r.n + "</td></tr>").join("") + "</table>" : '<p class="muted">None yet.</p>');
   $("#cm-log", el).innerHTML = s.log.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Application</th><th>Agent</th><th>What it did</th><th>Time</th></tr>' + s.log.map(l => '<tr><td class="mono">' + cmWhen(l.at) +
     "</td><td>" + esc(l.app) + "</td><td>" + esc(l.role) + "</td><td>" + esc(l.message) + '</td><td class="mono">' + (l.ms === null ? "" : (l.ms / 1000).toFixed(2) + " s") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing yet.</p>';
-  clearTimeout(CM_TIMER);
-  if (s.state.running && el.classList.contains("active")) CM_TIMER = setTimeout(() => renderCommons(el), 1500);
+  clearTimeout(CM_TIMER);                       // the state line keeps itself current (cmWatch); the rest is redrawn
+  if (s.state.running && el.classList.contains("active")) CM_TIMER = setTimeout(() => renderCommons(el), 15000);   // at most every 15 s
 }
 
 // ---------------------------------------------------------------- the harvesting engine, policy registry and approvals
@@ -623,8 +623,9 @@ async function renderHarvest(el) {
           (t.result.new || 0) + " new, " + (t.result.checks_answered || 0) + " checks, " + (t.result.blocked || 0) + " blocked") + "</td></tr>").join("") + "</table>" : '<p class="muted">No turns yet.</p>');
   const ct = s.control, running = ct.master === "running";
   const mt = $("#hv-master-toggle", el);
-  mt.setAttribute("aria-pressed", running ? "true" : "false"); mt.textContent = running ? "⏻ Master: ON — press to stop everything" : "⏻ Master: OFF — press to start everything";
-  mt.style.background = running ? "#067647" : "#b42318";
+  // the button says (and is coloured by) what pressing it DOES: red stops, green starts; the state is shown beside it
+  mt.setAttribute("aria-pressed", running ? "true" : "false"); mt.textContent = running ? "■ Stop everything" : "▶ Start everything";
+  mt.style.background = mt.style.borderColor = running ? "#b42318" : "#067647"; mt.style.color = "#fff";
   try { hvCampaigns(el, await api("/api/campaigns"), s, names); } catch (err) { $("#hv-camps", el).innerHTML = '<p class="muted small">Campaigns unavailable: ' + esc(err.message) + "</p>"; }
   const busy = e.turns.find(t => !t.ended);
   $("#hv-master", el).innerHTML = '<div class="note ' + (running ? "good" : "bad") + '" style="font-size:1.1em"><b>' + (running ? "▶ Harvesting is ON" : "■ Harvesting is STOPPED") + "</b> — " +
@@ -1155,3 +1156,18 @@ async function agFeeds(el) {
     (f.error ? "<br>" + cmTag(f.error, "bad") : "") + '</td><td><button class="btn quiet small" data-fp="' + f.id + '">Read now</button><button class="btn quiet small" data-fd="' + f.id + '">Remove</button></td></tr>').join("") + "</table>"
     : '<p class="muted">No live feeds yet.</p>';
 }
+
+// ---------------------------------------------------------------- one meaning per colour: ▶/⚡ starts (green), ■ stops (red)
+function qbColorButtons(root) {
+  $$("button.btn", root || document).forEach(b => {
+    const t = (b._qb ? b._qb.html : b.textContent || "").replace(/<[^>]*>/g, "").trim();
+    const go = /^(▶|⚡)/.test(t) || /^([^\w\s]+\s*)?start\b/i.test(t), halt = /^(■|⏹)/.test(t) || /^([^\w\s]+\s*)?stop\b/i.test(t);
+    b.classList.toggle("go", go); b.classList.toggle("halt", halt);
+  });
+}
+document.addEventListener("DOMContentLoaded", () => {
+  qbColorButtons();
+  let pending = false;
+  new MutationObserver(() => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; qbColorButtons(); }); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+});

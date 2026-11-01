@@ -43,6 +43,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  No more flashing windows; buttons that mean one thing (Control Panel 1.22.0 and the shared core, every program)
+    * Fixed: hundreds of black windows flashing. Background programs (the bulk agents, campaigns, the fact gatherer, the
+      Google tools, programs started from the Control Panel) were started without a console of their own, so Windows gave
+      every agent process a new window - one per dataset, again on every retry round. They now run with a hidden console:
+      no windows. Their work shows in the Control Panel and the trace logs.
+    * One meaning per colour everywhere: green buttons start something, red buttons stop it. The master button says what
+      pressing it does ("Stop everything" in red while harvesting runs, "Start everything" in green when it is off); the
+      state is shown beside it.
+    * A pressed button keeps its colour and shows its outcome with a ring and a check or cross, instead of turning green or
+      red itself.
+    * The harvest page no longer redraws itself every 1.5 seconds while a team works (at most every 15 s; the team's state
+      line updates on its own), so buttons stay put.
   Stable start-up (Control Panel 1.21.0 and the shared core, every program)
     * Bringing old data from C: onto the data drive now happens ONCE, in the START-ALL window, before any program opens
       the data, with its progress shown ("copying wikidata-1.sqlite: 3.2 of 41.0 GB, 120 MB/s, about 5 min left"). The

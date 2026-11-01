@@ -94,8 +94,8 @@ button.busy, a.btn.busy { position: relative; cursor: progress; animation: qbpul
 button.busy::after, a.btn.busy::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 3px; height: 3px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, currentColor, transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: qbbtn 0.9s linear infinite; }
 @keyframes qbbtn { from { background-position: -50% 0; } to { background-position: 150% 0; } }
-button.flash-ok { animation: qbok .9s ease-out 2; background: var(--good) !important; border-color: var(--good) !important; color: #fff !important; }
-button.flash-bad { animation: qbbad .5s ease-out 3; background: var(--bad) !important; border-color: var(--bad) !important; color: #fff !important; }
+button.flash-ok { box-shadow: 0 0 0 3px var(--good); }          /* the outcome of a press: a ring and ✔/✖ — the button keeps its own colour */
+button.flash-bad { box-shadow: 0 0 0 3px var(--bad); }
 @keyframes qbok { 0% { box-shadow: 0 0 0 0 rgba(34, 160, 90, .7); } 100% { box-shadow: 0 0 0 10px rgba(34, 160, 90, 0); } }
 @keyframes qbbad { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 .qb-t { font-variant-numeric: tabular-nums; font-size: .85em; opacity: .9; margin-left: 4px; }
@@ -128,3 +128,7 @@ label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margi
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* one meaning per colour everywhere: green starts something, red stops it */
+button.btn.go { background: #067647; border-color: #067647; color: #fff; }
+button.btn.halt { background: #b42318; border-color: #b42318; color: #fff; }

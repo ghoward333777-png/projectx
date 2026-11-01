@@ -540,7 +540,7 @@ def start(commons, p, program_dir):
         if len(q) < 8:
             raise GatherError("ask a question")
         args += ["ask", "--commons", commons.folder, "--provider", prov, "--area", p.get("area") or "history", q]
-    kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     _running(commons.folder, reset=True, stage="starting", provider=prov)
     subprocess.Popen(args, cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     return {"summary": "the gatherer is starting (%s)" % prov, **status(commons)}
