@@ -768,9 +768,10 @@ def selftest():
         check("filter preview counts what would be kept and why the rest would not", pv["checked"] == 2 and pv["kept"] == 1 and pv["examples"], pv)
         # harvesting switches
         r = p.harvest("stop")
-        check("mass stop stops the master switch", r["control"]["master"] == "stopped")
-        r = p.harvest("start", ["stem"], [])
-        check("starting a selection runs only it", r["control"]["master"] == "running" and [x["app"] for x in r["control"]["apps"] if x["on"]] == ["stem"], r["control"])
+        check("1.23: Stop means the bulk agents (the one red Stop) and never leaves a master switch blocking them",
+              r["control"]["master"] == "running" and os.path.exists(os.path.join(co.folder, "shards", "_runner.stop")), r["summary"])
+        r = p.harvest("start")
+        check("1.23: Start means the bulk agents (the one green Start)", r["control"]["master"] == "running" and "bulk" in r["summary"], r["summary"])
         # applications (none running in the test)
         ap = p.apps()
         check("the three applications are listed and found installed", [x["app"] for x in ap] == ["language", "stem", "facts"] and all(x["installed"] for x in ap), ap)
@@ -830,7 +831,7 @@ def selftest():
         r = say("stop all harvesting")
         check("assistant: asks before stopping", r.get("needs") == "confirm" and cm.hv.master_running(co) is False or r.get("needs") == "confirm", r)
         r2 = say("yes", pending=r.get("pending"))
-        check("assistant: does it after “yes” and says what it did", not cm.hv.master_running(co) and r2.get("did"), r2)
+        check("assistant: does it after “yes” and says what it did", r2.get("did") == "harvest_stop" and "stop" in r2.get("reply", "").lower(), r2)
         r = say("find telephone")
         check("assistant: searches the shared facts", r.get("facts") and r["facts"][0]["subject"] == "Telephone", r)
         r = say("blorp the snargle")
@@ -908,8 +909,8 @@ def selftest():
               and "api_key" not in json.dumps(gsu).replace("api_key_set", ""), gsu)
         dg = qbbulk.diagnose(p.commons, {"control": p.folder}, probe=False)
         names = {x["check"] for x in dg}
-        check("why so slow?: passphrase, master switch, agents, free space, shared store, dataset errors, approvals, arrivals — each with its fix",
-              {"Admin passphrase", "Master harvesting switch", "Bulk agents running", "Free space where the facts are stored",
+        check("why so slow?: passphrase, agents, free space, shared store, dataset errors, approvals, arrivals — each with its fix",
+              {"Admin passphrase", "Bulk agents running", "Free space where the facts are stored",
                "All programs share one fact store", "Datasets without errors", "Facts arriving"} <= names
               and all(x["fix"] for x in dg if not x["ok"] and x["check"] != "CPU cores for agents"), [(x["check"], x["ok"]) for x in dg])
         rg = p.api.routes[("GET", "/api/registration")]({})
