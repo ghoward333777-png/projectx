@@ -602,6 +602,14 @@ def main():
         team_x.state.update(running=True, role="harvester", started="now")
         r_run = team_x.run_in_background("manual")
         c.check("pressing Run while the team is already harvesting says so (no error)", r_run["already_running"] and not r_run["started"], r_run)
+        # 1.18: the master switch's Start all also starts the bulk agents at full speed (the fast lane); Stop all stops them
+        cmx.set_setting("harvest:master", "running")
+        got = []
+        fs = qbbulk.full_speed(cmx, ROOT, launch=lambda folder, keys, agents, pd: got.append((len(keys), agents)))
+        c.check("Start all harvesting starts the bulk agents on every approved dataset, one agent per core",
+                fs.get("bulk") == "started" and got and got[0][0] >= 8 and got[0][1] == qbbulk.MAX_AGENTS, (fs, got))
+        st_ = cm.control_state(cmx)
+        c.check("the master state shows the bulk agents", "bulk" in st_ and "running" in st_["bulk"], st_.get("bulk"))
     return c.report("Commons (shared database and harvest teams)")
 
 

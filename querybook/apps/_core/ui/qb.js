@@ -629,7 +629,9 @@ async function renderHarvest(el) {
   const busy = e.turns.find(t => !t.ended);
   $("#hv-master", el).innerHTML = '<div class="note ' + (running ? "good" : "bad") + '" style="font-size:1.1em"><b>' + (running ? "▶ Harvesting is ON" : "■ Harvesting is STOPPED") + "</b> — " +
     (running ? ct.apps.filter(a => a.on).length + " of 3 applications and " + ct.harvesters.filter(h => h.on).length + " of " + ct.harvesters.length + " online harvesters switched on" +
-      (busy ? "; now harvesting: " + esc(busy.domain) : "; waiting for the next turn") : "no application will start a harvest until you press Start.") + "</div>";
+      (busy ? "; now harvesting: " + esc(busy.domain) : "; waiting for the next turn") : "no application will start a harvest until you press Start.") +
+    (ct.bulk ? '<br><span class="small">Bulk agents (the fast lane: whole open datasets): ' + (ct.bulk.running ? cmTag("running", "good") + " " + (ct.bulk.agents || "") + " agents, " + (ct.bulk.datasets || "") + " datasets — " + esc(ct.bulk.note || "") :
+      cmTag("not running", running ? "bad" : "") + (running ? " — press ▶ Start all harvesting to start them" : "")) + "</span>" : "") + "</div>";
   const tick = (kind, key, label, on, extra) => '<label class="row small" style="margin-right:14px"><input type="checkbox" data-kind="' + kind + '" data-sel="' + esc(key) + '"> ' +
     cmTag(on ? "on" : "off", on ? "good" : "") + " " + esc(label) + (extra ? ' <span class="muted">(' + esc(extra) + ")</span>" : "") + "</label>";
   $("#hv-select", el).innerHTML = "<h3>Applications</h3><div class=\"row\">" + ct.apps.map(a => tick("app", a.app, a.name, a.on)).join("") + "</div>" +

@@ -100,7 +100,7 @@ class Store:
     schema: list of SQL scripts; script i upgrades the database from version i to i+1.
     """
 
-    def __init__(self, folder, app_id, schema, log=None):
+    def __init__(self, folder, app_id, schema, log=None, check=True):
         self.folder = folder
         self.app_id = app_id
         self.path = os.path.join(folder, app_id + ".sqlite")
@@ -112,7 +112,8 @@ class Store:
         self.damage = None
         self.cloud = None                 # CloudLink, when Google Cloud is configured (off-site copy of every backup)
         os.makedirs(self.backup_dir, exist_ok=True)
-        self._check()
+        if check:                         # a whole-file check: the programs do it at start; bulk agents skip it
+            self._check()
         self.schema_len = len(schema)
         if not self.read_only:
             self._migrate(schema)

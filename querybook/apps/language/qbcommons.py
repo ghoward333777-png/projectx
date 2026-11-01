@@ -159,12 +159,12 @@ def fact_status(evidence):
 class Commons:
     """The shared database. Every application opens the same file; SQLite serializes the writers."""
 
-    def __init__(self, folder, app_id, log=None):
+    def __init__(self, folder, app_id, log=None, check=True):
         os.makedirs(folder, exist_ok=True)
         self.folder = folder
         self.app_id = app_id
         self.log = log or (lambda *a: None)
-        self.store = core.Store(folder, "commons", SCHEMA, self.log)
+        self.store = core.Store(folder, "commons", SCHEMA, self.log, check=check)
         self.registry = hv.Registry(self)            # harvesting policy registry
         self.harvest_log = hv.HarvestLog(self)       # every harvest, its source and why (hash-chained, archived)
         self.approvals = hv.Approvals(self, self.registry)
@@ -844,13 +844,27 @@ def harvest_control(team, action, scope="all", apps=(), harvesters=()):
                 c.set_setting("harvester:%s" % h, "off", db)
         c.agent_log(db, "engine", "%s %s%s" % ("Started" if action == "start" else "Stopped", "all harvesting" if scope == "all" else "selected: ",
                                                "" if scope == "all" else ", ".join(apps + harvesters)))
+    if scope == "all":                             # the whole switch includes the bulk agents (the fast lane)
+        try:
+            import qbbulk
+            if action == "start":
+                qbbulk.full_speed(c, os.path.dirname(os.path.abspath(__file__)))
+            else:
+                qbbulk.stop(c)
+        except Exception as e:
+            team.log("bulk agents with the master switch:", repr(e))
     if action == "start" and c.setting("auto:%s" % team.app_id, "on") != "off" and not team.state["running"]:
         team.start_now()
     return control_state(c)
 
 
 def control_state(c):
-    return {"master": "running" if hv.master_running(c) else "stopped",
+    try:
+        import qbbulk
+        bulk = qbbulk.runner_state(c.folder)
+    except Exception:
+        bulk = {"running": False, "note": "unknown"}
+    return {"master": "running" if hv.master_running(c) else "stopped", "bulk": bulk,
             "apps": [{"app": a, "name": APPS[a], "on": c.setting("auto:%s" % a, "on") != "off"} for a in APPS],
             "harvesters": [{"name": k, "app": h[0], "title": h[2], "on": c.setting("harvester:%s" % k, "on") != "off"} for k, h in ol.HARVESTERS.items()]}
 

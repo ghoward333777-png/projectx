@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.18.0"
+VERSION = "1.19.0"
 PORT = 8100
 program_dir = HERE
 
@@ -223,6 +223,14 @@ class Panel:
                 c.set_setting("harvester:%s" % h, on, db)
             c.agent_log(db, "control", "Control Panel: %s %s" % ("started" if action == "start" else "stopped",
                                                                "all harvesting" if not sel else ", ".join(apps + harvesters)))
+        if not sel:                                # the whole switch includes the bulk agents (the fast lane)
+            try:
+                if action == "start":
+                    qbbulk.full_speed(c, HERE, "Control Panel: start all harvesting")
+                else:
+                    qbbulk.stop(c)
+            except Exception as e:
+                self.log("bulk agents with the master switch:", repr(e))
         kicked = []
         if action == "start" and now:
             for a in apps:

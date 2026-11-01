@@ -43,6 +43,14 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Start all harvesting = full speed again (Control Panel 1.19.0 and the shared core, every program)
+    * "Start all harvesting" and "Master: ON" (on any program's Harvesting page and in the Control Panel) now also start
+      the bulk agents at full speed on every approved dataset - the fast lane that brings in millions of facts. "Stop all
+      harvesting" / "Master: OFF" stops them too. The master box shows whether the bulk agents are running.
+    * "Run this team now" runs one application's own short team turn (a few seconds, then the engine gives the next
+      application its turn); that is not the fast lane.
+    * Bulk agents no longer each check the whole shared database before starting (all of them at once on an external
+      drive kept them waiting).
   Harvesting page fix (Control Panel 1.18.0 and the shared core, every program)
     * "Run this team now" no longer fails with "This application's harvest team is already working": when an automatic turn
       is already harvesting, the page says so instead. The team's state (Working / Idle) now updates by itself while the

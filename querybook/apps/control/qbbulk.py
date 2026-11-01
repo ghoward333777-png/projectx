@@ -1404,7 +1404,9 @@ class Run:
     def __init__(self, commons_folder, ds, max_rows=None):
         import qbcommons as cm
         self.folder, self.ds, self.max_rows = commons_folder, ds, max_rows
-        self.commons = cm.Commons(commons_folder, ds.app)
+        # no whole-file check here: every agent (up to one per core) checking a shared database of millions of rows on an
+        # external drive at once kept them all waiting at the start; the programs check it when they start
+        self.commons = cm.Commons(commons_folder, ds.app, check=False)
         self.commons.registry.ensure()            # the researched sources and the admin's decisions (never overrides a decision)
         self.cache = os.path.join(commons_folder, FOLDER, "_cache")
         self.stopfile = os.path.join(commons_folder, FOLDER, "_runner.stop")
@@ -1842,6 +1844,39 @@ def _launch(commons_folder, keys, agents, program_dir):
     kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
     subprocess.Popen([sys.executable, path, "run", "--commons", commons_folder, "--datasets", ",".join(keys), "--agents", str(agents)],
                      cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
+def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
+    """the master switch's own start: every approved dataset, one agent per core (as the Control Panel's ⚡ Full speed) —
+    the path that brings in tens of millions of facts. Nothing to do when the agents already run."""
+    if _alive(commons.folder):
+        return {"bulk": "already running"}
+    if os.environ.get("QB_OFFLINE") and launch is None:      # self-tests never download
+        return {"bulk": "offline"}
+    keys = [k for k, ds in catalog().items() if not ds.source or commons.registry.check(ds.source)[0]]
+    if not keys:
+        return {"bulk": "no approved dataset"}
+    import qbcontrol as ctl, qbkeystone as ks
+    keys = ks.order(keys, commons.folder, commons, ctl.get(commons, "target"))
+    folder = os.path.join(commons.folder, FOLDER)
+    os.makedirs(folder, exist_ok=True)
+    try:
+        os.remove(os.path.join(folder, "_runner.stop"))
+    except OSError:
+        pass
+    (launch or _launch)(commons.folder, keys, MAX_AGENTS, program_dir)
+    with commons.store.write() as db:
+        commons.agent_log(db, "engine", "%s: bulk agents started at full speed (%d datasets, %d agents)" % (why, len(keys), MAX_AGENTS))
+    return {"bulk": "started", "datasets": len(keys), "agents": MAX_AGENTS}
+
+
+def runner_state(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            rs = json.load(f)
+    except (OSError, ValueError):
+        return {"running": False, "note": "never started"}
+    return {"running": _alive(commons_folder), "note": rs.get("note"), "agents": rs.get("agents"), "datasets": len(rs.get("datasets") or [])}
 
 
 RESUME_GAP_S = 600                 # at most one automatic restart every 10 minutes
