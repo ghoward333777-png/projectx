@@ -585,6 +585,23 @@ def main():
         os.remove(os.path.join(sh, "_runner.stop"))
         cmx.set_setting("harvest:master", "stopped")
         c.check("…and not while the master switch is off", qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is None and len(launched) == 1)
+        # 1.18: a slow count is answered from the last one at once; "Run this team now" during an automatic turn is not a failure
+        calls2 = {"n": 0}
+
+        def slow_count():
+            calls2["n"] += 1
+            _t.sleep(0.6)
+            return calls2["n"]
+        cmx.KEEP_S = 0.3
+        v1 = cmx.counted("x", slow_count)
+        t0 = _t.time(); v2 = cmx.counted("x", slow_count); fast = _t.time() - t0
+        _t.sleep(0.4); cmx.counted("x", slow_count); _t.sleep(1.0)
+        c.check("slow counts: the last answer at once, a fresh one counted in the background", v1 == 1 and v2 == 1 and fast < 0.1
+                and cmx.counted("x", slow_count) == 2, (v1, v2, fast, calls2))
+        team_x = cm.Team(cmx, type("Ad", (), {"budgets": lambda self: {}})())
+        team_x.state.update(running=True, role="harvester", started="now")
+        r_run = team_x.run_in_background("manual")
+        c.check("pressing Run while the team is already harvesting says so (no error)", r_run["already_running"] and not r_run["started"], r_run)
     return c.report("Commons (shared database and harvest teams)")
 
 

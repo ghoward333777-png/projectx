@@ -358,6 +358,23 @@ const cmBadge = s => cmTag(s, CM_STATUS[s]);
 const cmWhen = t => t ? esc(String(t).replace("T", " ").replace(/\.\d+Z$|Z$/, "")) : "never";
 let CM_TIMER = null;
 
+function cmStateHtml(s, c) {
+  return '<div class="note' + (s.state.running ? "" : " good") + '">' + (s.state.running ? "<b>Working:</b> the " + esc(s.state.role || "") + " is running" + (s.state.started ? " (since " + esc(s.state.started) + ")" : "") + "." :
+    "<b>Idle.</b> " + (s.state.last ? (s.state.last.error ? "Last cycle failed: " + esc(s.state.last.error) : "Last cycle: " + (s.state.last.new || 0) + " new facts, " + (s.state.last.merged || 0) +
+      " merged, " + (s.state.last.checks_answered || 0) + " checks answered.") : "No cycle in this session yet.")) +
+    '<br><span class="small">Shared database: <span class="mono">' + esc(c.database) + "</span>" + (c.read_only ? ' <span class="badge bad">failed its check — read-only</span>' : "") + "</span></div>";
+}
+// the team's state is kept current while the page is open (an automatic turn can start at any moment)
+function cmWatch(el, s) {
+  const b = $("#cm-run", el);
+  if (b) { b.disabled = !!s.state.running; b.textContent = s.state.running ? "Harvesting now…" : "Run this team now"; }
+  clearTimeout(el._cmWatch);
+  el._cmWatch = setTimeout(async () => {
+    if (!el.isConnected || el.offsetParent === null) return;
+    try { const n = await api("/api/commons/status"); $("#cm-state", el).innerHTML = cmStateHtml(n, n.commons); cmWatch(el, n); } catch (e) { /* shown already */ }
+  }, s.state.running ? 4000 : 15000);
+}
+
 async function renderCommons(el) {
   if (!el.dataset.ready) {
     el.dataset.ready = "1";
@@ -377,7 +394,11 @@ async function renderCommons(el) {
       '<select id="cm-status" aria-label="Status"><option value="">any status</option>' + Object.keys(CM_STATUS).map(s => "<option>" + s + "</option>").join("") + "</select>" +
       '<button class="btn quiet" id="cm-find">Search</button></div><div id="cm-facts"></div><div id="cm-fact"></div></div>' +
       '<div class="card"><h2>Agent log</h2><div id="cm-log"></div></div>';
-    $("#cm-run", el).addEventListener("click", async () => { await api("/api/commons/run", {}); toast("The team has started."); setTimeout(() => renderCommons(el), 800); });
+    $("#cm-run", el).addEventListener("click", async () => {
+      const r = await api("/api/commons/run", {});
+      toast(r.already_running ? "The team is already harvesting (the " + (r.role || "team") + " is working) — nothing to start." : "The team has started.");
+      setTimeout(() => renderCommons(el), 800);
+    });
     $("#cm-auto", el).addEventListener("change", e => api("/api/commons/settings", { auto: e.target.checked ? "on" : "off" }));
     $("#cm-policy", el).addEventListener("change", e => api("/api/commons/settings", { policy: e.target.value }).then(() => toast("Licence policy saved for all three applications.")));
     const find = async () => {
@@ -410,10 +431,8 @@ async function renderCommons(el) {
   const c = s.commons;
   $("#cm-auto", el).checked = s.auto;
   $("#cm-policy", el).innerHTML = Object.entries(c.policies).map(([k, v]) => '<option value="' + k + '"' + (k === c.policy ? " selected" : "") + ">" + esc(v) + "</option>").join("");
-  $("#cm-state", el).innerHTML = '<div class="note' + (s.state.running ? "" : " good") + '">' + (s.state.running ? "<b>Working:</b> the " + esc(s.state.role || "") + " is running." :
-    "<b>Idle.</b> " + (s.state.last ? (s.state.last.error ? "Last cycle failed: " + esc(s.state.last.error) : "Last cycle: " + (s.state.last.new || 0) + " new facts, " + (s.state.last.merged || 0) +
-      " merged, " + (s.state.last.checks_answered || 0) + " checks answered.") : "No cycle in this session yet.")) +
-    '<br><span class="small">Shared database: <span class="mono">' + esc(c.database) + "</span>" + (c.read_only ? ' <span class="badge bad">failed its check — read-only</span>' : "") + "</span></div>";
+  $("#cm-state", el).innerHTML = cmStateHtml(s, c);
+  cmWatch(el, s);
   $("#cm-teams", el).innerHTML = '<table class="t small"><tr><th>Application</th>' + ["Strategist", "Planner", "Harvester", "Curator"].map(x => "<th>" + x + "</th>").join("") + "</tr>" +
     s.teams.map(t => "<tr><td><b>" + esc(t.name) + "</b>" + (t.app === s.app ? " (this one)" : "") + "</td>" + t.agents.map(a => "<td>" + (a.last_run ?
       cmTag(a.last_status, a.last_status === "ok" ? "good" : "bad") + " " + cmWhen(a.last_run) + '<br><span class="muted">' + esc(String(a.last_summary || "").slice(0, 140)) + "</span>" :

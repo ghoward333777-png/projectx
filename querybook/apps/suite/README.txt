@@ -43,6 +43,13 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Harvesting page fix (Control Panel 1.18.0 and the shared core, every program)
+    * "Run this team now" no longer fails with "This application's harvest team is already working": when an automatic turn
+      is already harvesting, the page says so instead. The team's state (Working / Idle) now updates by itself while the
+      page is open, and the button shows "Harvesting now..." while the team works.
+    * The page no longer waits for counts: with a large shared database every status request counted every shared fact
+      (many seconds on an external drive), which held up the buttons. Counts are now taken in the background, at most
+      once a minute, and the last count is shown at once.
   All data on the data drive - always (Control Panel 1.17.0 and the shared core, every program)
     * With data-folder.txt beside the launchers (e.g. D:\QB), EVERY program keeps ALL its data there: D:\QB\language,
       \stem, \facts, \control, \video, and the shared facts in D:\QB\commons. Nothing is created on C: any more - also when

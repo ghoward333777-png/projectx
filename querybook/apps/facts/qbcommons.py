@@ -171,6 +171,35 @@ class Commons:
         self.engine = hv.Engine(self, self.registry)
         self.learner = hv.Learner(self, self.registry, self.approvals)
 
+    # -- counts over the whole shared database: cheap when it is small, kept for a minute once they get slow
+    SLOW_S, KEEP_S = 0.5, 60
+
+    def counted(self, key, fn):
+        """fn() — but once it has taken longer than SLOW_S (a database of many millions of rows on an external drive), the
+        last answer is given at once and a fresh one is counted in the background at most every KEEP_S seconds, so a page
+        never waits for a count (in 1.17 every status poll of the History page counted every shared fact)"""
+        cache = self.__dict__.setdefault("_counted", {})
+        hit = cache.get(key)
+        now = time.time()
+        if hit is None or hit["took"] < self.SLOW_S:
+            t0 = time.time()
+            val = fn()
+            cache[key] = {"val": val, "at": now, "took": time.time() - t0, "busy": False}
+            return val
+        if now - hit["at"] > self.KEEP_S and not hit["busy"]:
+            hit["busy"] = True
+
+            def again():
+                try:
+                    t0 = time.time()
+                    v = fn()
+                    cache[key] = {"val": v, "at": time.time(), "took": time.time() - t0, "busy": False}
+                except Exception as e:
+                    hit["busy"] = False
+                    self.log("count %s:" % key, repr(e))
+            threading.Thread(target=again, daemon=True, name="qb-count").start()
+        return hit["val"]
+
     # -- settings shared by all applications
     def setting(self, key, default=None):
         return self.store.scalar("SELECT value FROM settings WHERE key = ?", (key,), default)
@@ -267,13 +296,15 @@ class Commons:
     # -- reading
     def summary(self):
         q = self.store.query
-        return {"folder": self.folder, "database": self.store.path, "read_only": self.store.read_only, "policy": self.policy(),
-                "policies": POLICIES, "version": COMMONS_VERSION,
-                "facts": self.store.scalar("SELECT count(*) FROM facts", default=0),
-                "by_domain": q("SELECT domain, status, count(*) AS n FROM facts GROUP BY domain, status ORDER BY domain, status"),
-                "evidence_by_app": q("SELECT app, method, count(*) AS n FROM evidence GROUP BY app, method ORDER BY app, method"),
-                "requests": q("SELECT from_app, to_app, kind, status, count(*) AS n FROM requests GROUP BY from_app, to_app, kind, status ORDER BY to_app, kind"),
-                "shared": self.store.scalar("SELECT count(*) FROM (SELECT fact_id FROM evidence GROUP BY fact_id HAVING count(DISTINCT app) > 1)", default=0)}
+
+        def counts():
+            return {"facts": self.store.scalar("SELECT count(*) FROM facts", default=0),
+                    "by_domain": q("SELECT domain, status, count(*) AS n FROM facts GROUP BY domain, status ORDER BY domain, status"),
+                    "evidence_by_app": q("SELECT app, method, count(*) AS n FROM evidence GROUP BY app, method ORDER BY app, method"),
+                    "requests": q("SELECT from_app, to_app, kind, status, count(*) AS n FROM requests GROUP BY from_app, to_app, kind, status ORDER BY to_app, kind"),
+                    "shared": self.store.scalar("SELECT count(*) FROM (SELECT fact_id FROM evidence GROUP BY fact_id HAVING count(DISTINCT app) > 1)", default=0)}
+        return dict({"folder": self.folder, "database": self.store.path, "read_only": self.store.read_only, "policy": self.policy(),
+                     "policies": POLICIES, "version": COMMONS_VERSION}, **self.counted("summary", counts))
 
     def search(self, text="", domain=None, status=None, limit=50):
         where, args = [], []
@@ -602,8 +633,9 @@ class Team:
         return out
 
     def run_in_background(self, trigger="manual"):
-        if self.state["running"]:
-            raise core.UserError("This application's harvest team is already working.")
+        if self.state["running"]:                   # an automatic turn is already harvesting: that is not a failure
+            return {"started": False, "already_running": True, "role": self.state.get("role"), "since": self.state.get("started"),
+                    "summary": "already harvesting (the %s is working, since %s)" % (self.state.get("role") or "team", self.state.get("started") or "?")}
         if not hv.master_running(self.commons):
             raise core.UserError("Harvesting is stopped by the master switch. Press Start all (or Start selected) first.")
 
@@ -827,14 +859,17 @@ def harvest_status(team):
     """Everything the Harvesting page shows: the rotation, approvals, registry, parameters and learning metrics."""
     c = team.commons
     st = c.store
-    metrics = st.query("""SELECT app, domain, count(*) AS tasks, sum(decision = 'harvested') AS harvested, sum(decision = 'blocked') AS blocked,
-                          sum(decision = 'failed') AS failed, sum(items) AS items, sum(new) AS new, sum(merged) AS merged,
-                          round(sum(seconds), 1) AS seconds FROM harvest_log GROUP BY app ORDER BY app""")
-    for m in metrics:
-        m["new_share"] = round((m["new"] or 0) / m["items"], 3) if m["items"] else None
-        m["facts_per_s"] = round((m["new"] or 0) / m["seconds"], 1) if m["seconds"] else None
-    trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
-                        FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
+    def counts():
+        metrics = st.query("""SELECT app, domain, count(*) AS tasks, sum(decision = 'harvested') AS harvested, sum(decision = 'blocked') AS blocked,
+                              sum(decision = 'failed') AS failed, sum(items) AS items, sum(new) AS new, sum(merged) AS merged,
+                              round(sum(seconds), 1) AS seconds FROM harvest_log GROUP BY app ORDER BY app""")
+        for m in metrics:
+            m["new_share"] = round((m["new"] or 0) / m["items"], 3) if m["items"] else None
+            m["facts_per_s"] = round((m["new"] or 0) / m["seconds"], 1) if m["seconds"] else None
+        trend = st.query("""SELECT substr(at, 1, 10) AS day, domain, sum(new) AS new, sum(items) AS items, round(sum(seconds), 1) AS seconds
+                            FROM harvest_log WHERE decision = 'harvested' GROUP BY day, domain ORDER BY day DESC LIMIT 60""")
+        return metrics, trend, st.scalar("SELECT count(*) FROM harvest_log", default=0)
+    metrics, trend, log_entries = c.counted("harvest_metrics", counts)
     return {"app": team.app_id, "auto": team.auto(), "running": team.state["running"], "engine": c.engine.status(), "control": control_state(c),
             "online": c.setting("online:%s" % team.app_id, "on") != "off", "keys": ol.key_status(c.folder), "offline_env": bool(os.environ.get("QB_OFFLINE")),
             "harvesters": [{"name": k, "app": h[0], "source": h[1], "title": h[2], "why": h[3],
@@ -845,7 +880,7 @@ def harvest_status(team):
             "admin_set": c.approvals.admin_set(), "pending": c.approvals.list("pending"), "decided": c.approvals.list(None, 40),
             "sources": c.registry.sources(), "classes": {k: {"allowed": v[0], "why": v[1]} for k, v in hv.LICENCE_CLASSES.items()},
             "params": c.registry.params(), "versions": c.registry.versions(40), "policy_version": c.registry.version(),
-            "metrics": metrics, "trend": trend, "log_entries": st.scalar("SELECT count(*) FROM harvest_log", default=0),
+            "metrics": metrics, "trend": trend, "log_entries": log_entries,
             "archive_folder": os.path.join(c.folder, "archives")}
 
 
