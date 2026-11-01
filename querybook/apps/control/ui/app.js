@@ -30,7 +30,7 @@ function renderApps() {
       <b>Facts</b><span>${a.facts.toLocaleString()} (${esc(a.domain)})</span>
       <b>Last turn</b><span class="small">${a.last_turn ? esc(a.last_turn.started) + (lt ? ` — ${lt.new || 0} new, ${lt.merged || 0} merged${lt.filtered ? ", " + lt.filtered + " filtered out" : ""}${lt.on_target ? ", " + lt.on_target + " on target" : ""}` : " (running)") : "—"}</span></div>
       <div class="btns">${a.running ? `<a class="btn quiet" href="${esc(a.url)}" target="_blank" rel="noopener" style="padding:6px 11px;font-size:14px;border-radius:8px;text-decoration:none">Open</a>
-        <button class="btn quiet" data-app="${a.app}" data-act="harvest">Harvest now</button><button class="btn secondary" data-app="${a.app}" data-act="stop">Stop</button>`
+        <button class="btn secondary" data-app="${a.app}" data-act="stop">Stop</button>`
         : `<button class="btn" data-app="${a.app}" data-act="start" ${a.installed ? "" : "disabled"}>Start</button>`}</div></div>`;
   }).join("");
   $$("#apps [data-act]").forEach(b => b.onclick = async () => {
@@ -291,6 +291,8 @@ function bind() {
       `sync write ${d.fsync_ms_median} ms (p95 ${d.fsync_ms_p95}) · agents' database pattern ${Number(d.sqlite_rows_s).toLocaleString()} rows/s (slowest commit ${d.sqlite_commit_ms_max} ms) · free ${d.free_gb} GB`).join("\n\n") +
       (r.fastest_for_facts ? `\n\nFaster for the agents' writes: ${r.fastest_for_facts}` + (r.ratio ? ` (×${r.ratio})` : "") : ""); };
   $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
+  $("#bk-go-top").onclick = () => $("#bk-full").click();       // the one Start: every approved dataset, full speed
+  $("#bk-stop-top").onclick = () => $("#bk-stop").click();     // the one Stop
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>

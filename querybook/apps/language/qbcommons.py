@@ -641,6 +641,8 @@ class Team:
         return out
 
     def run_in_background(self, trigger="manual"):
+        if not TEAMS_HARVEST:
+            raise core.UserError("Harvesting runs in one place now: the Control Panel → Harvesting tab (⚡ Start / ■ Stop).")
         if self.state["running"]:                   # an automatic turn is already harvesting: that is not a failure
             return {"started": False, "already_running": True, "role": self.state.get("role"), "since": self.state.get("started"),
                     "summary": "already harvesting (the %s is working, since %s)" % (self.state.get("role") or "team", self.state.get("started") or "?")}
@@ -671,6 +673,11 @@ class Team:
         return self.commons.setting("auto:%s" % self.app_id, "on") == "on"
 
     def start_schedule(self, first_delay=20, every=None):
+        if not TEAMS_HARVEST:                       # 1.23: harvesting runs only from the Control Panel (bulk agents)
+            return
+        self._start_schedule(first_delay, every)
+
+    def _start_schedule(self, first_delay=20, every=None):
         """Automatic harvesting: every few seconds (schedule.tick_s) ask the harvesting engine whose turn it is; the
         engine alternates language, STEM and history across the running applications."""
         def tick(delay):
@@ -834,6 +841,16 @@ def harvest_control(team, action, scope="all", apps=(), harvesters=()):
         raise core.UserError("Tick at least one application or harvester first.")
     if scope == "selected" and action == "start":              # a harvester runs inside its application's turn
         apps = sorted(set(apps) | {ol.HARVESTERS[h][0] for h in harvesters})
+    if not TEAMS_HARVEST:                          # 1.23: start/stop means the bulk agents, nothing else
+        import qbbulk
+        if action == "start":
+            r = qbbulk.full_speed(c, os.path.dirname(os.path.abspath(__file__)))
+        else:
+            r = qbbulk.stop(c)
+        with c.store.write() as db:
+            c.set_setting("harvest:master", "running", db)          # the old switch can never block the agents again
+            c.agent_log(db, "engine", "%s the bulk agents" % ("Started" if action == "start" else "Stopped"))
+        return dict(control_state(c), bulk_result={k: v for k, v in r.items() if k in ("bulk", "summary", "datasets", "agents")})
     on = "on" if action == "start" else "off"
     with c.store.write() as db:
         if scope == "all":
@@ -907,6 +924,10 @@ def harvest_status(team):
 
 
 OPEN_TRIES, OPEN_WAIT_S, RETRY_S = 6, 10, 60
+# 1.23 "trim the suite": the per-program harvest teams (and the online harvesters and campaigns that run inside them) no
+# longer harvest on their own; harvesting is the Control Panel's bulk agents only — one Start, one Stop. The team code stays
+# (tests, and a manual cycle from the command line) but nothing starts it.
+TEAMS_HARVEST = False
 
 
 def attach(app, app_id, adapter):

@@ -104,7 +104,7 @@ function setupTabs(onShow) {
   }
   tabs.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
   let start = tabs[0].dataset.tab;
-  try { const s = localStorage.getItem(document.title + ":tab"); if (s && $("#" + s)) start = s; } catch (e) { /* ignore */ }
+  try { const s = localStorage.getItem(document.title + ":tab"); if (s && $("#" + s) && tabs.some(b => b.dataset.tab === s)) start = s; } catch (e) { /* ignore */ }
   show(start);
   return show;
 }
@@ -359,6 +359,10 @@ const cmWhen = t => t ? esc(String(t).replace("T", " ").replace(/\.\d+Z$|Z$/, ""
 let CM_TIMER = null;
 
 function cmStateHtml(s, c) {
+  return '<div class="small">Shared database: <span class="mono">' + esc(c.database) + "</span> · " + Number(c.facts || 0).toLocaleString() + " shared facts" +
+    (c.read_only ? ' <span class="badge bad">failed its check — read-only</span>' : "") + "</div>";
+}
+function cmStateHtmlTeams(s, c) {                // the retired team view (kept for reference)
   return '<div class="note' + (s.state.running ? "" : " good") + '">' + (s.state.running ? "<b>Working:</b> the " + esc(s.state.role || "") + " is running" + (s.state.started ? " (since " + esc(s.state.started) + ")" : "") + "." :
     "<b>Idle.</b> " + (s.state.last ? (s.state.last.error ? "Last cycle failed: " + esc(s.state.last.error) : "Last cycle: " + (s.state.last.new || 0) + " new facts, " + (s.state.last.merged || 0) +
       " merged, " + (s.state.last.checks_answered || 0) + " checks answered.") : "No cycle in this session yet.")) +
@@ -379,15 +383,15 @@ async function renderCommons(el) {
   if (!el.dataset.ready) {
     el.dataset.ready = "1";
     el.innerHTML =
-      '<div class="card"><h2>Shared facts and the harvest teams</h2><p class="small muted">All three QueryBook applications keep the facts they stand behind in one shared database, the Commons. ' +
-      "Each application has a team of four agents — a Strategist, a Planner, a Harvester and a Curator — that devise a harvest strategy, plan it, carry it out and save and manage what was found. " +
-      "The applications check each other's facts: each kind of check is answered by the application able to answer it, and the answer is kept with the fact as evidence, with its reasoning. " +
-      "The agents are deterministic programs, not AI models.</p>" +
-      '<div class="row"><button class="btn" id="cm-run">Run this team now</button><label class="row small"><input type="checkbox" id="cm-auto"> Harvest automatically (the engine gives each application its turn)</label>' +
-      '<label class="row small">Licence policy <select id="cm-policy"></select></label></div><div id="cm-state" aria-live="polite"></div></div>' +
-      '<div id="hv"></div>' +
-      '<div class="card"><h2>The teams</h2><div id="cm-teams"></div></div>' +
-      '<div class="card"><h2>This team\'s strategy and plan</h2><div id="cm-plan"></div></div>' +
+      // since 1.23 harvesting happens in ONE place — the Control Panel's Harvesting tab; this page shows the shared facts
+      '<div class="card"><h2>Shared facts</h2><div class="note"><b>Harvesting runs in one place:</b> the Control Panel → <b>Harvesting</b> tab ' +
+      '(<a href="http://127.0.0.1:8100/" target="_blank" rel="noopener">http://127.0.0.1:8100/</a>) — one green ⚡ Start, one red ■ Stop. ' +
+      "This page shows the facts all the programs share and lets you search them.</div>" +
+      '<button id="cm-run" hidden></button><input type="checkbox" id="cm-auto" hidden>' +
+      '<div class="row"><label class="row small">Licence policy <select id="cm-policy"></select></label></div><div id="cm-state" aria-live="polite"></div></div>' +
+      '<div id="hv" hidden></div>' +
+      '<div class="card" hidden><h2>The teams</h2><div id="cm-teams"></div></div>' +
+      '<div class="card" hidden><h2>This team\'s strategy and plan</h2><div id="cm-plan"></div></div>' +
       '<div class="card"><h2>The shared database</h2><div id="cm-db"></div></div>' +
       '<div class="card"><h2>Browse shared facts</h2><div class="row"><input id="cm-q" class="grow" type="text" placeholder="Search subject or value" aria-label="Search shared facts">' +
       '<select id="cm-domain" aria-label="Domain"><option value="">all domains</option><option>language</option><option>stem</option><option>history</option></select>' +
@@ -426,7 +430,7 @@ async function renderCommons(el) {
             "</td><td>" + esc(x.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">None.</p>');
     });
   }
-  renderHarvest($("#hv", el));
+  // the per-program harvest page (teams, online harvesters, campaigns, master switch) is retired: see the Control Panel
   const s = await api("/api/commons/status");
   const c = s.commons;
   $("#cm-auto", el).checked = s.auto;

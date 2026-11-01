@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.22.0"
+VERSION = "1.23.0"
 PORT = 8100
 program_dir = HERE
 
@@ -207,6 +207,11 @@ class Panel:
         """Start or stop harvesting: everything, or the selected applications and online harvesters."""
         if action not in ("start", "stop"):
             raise core.UserError("action must be start or stop")
+        if not cm.TEAMS_HARVEST:                   # 1.23: one Start, one Stop — the bulk agents
+            r = qbbulk.full_speed(self.commons, HERE, "Control Panel: start") if action == "start" else qbbulk.stop(self.commons)
+            with self.commons.store.write() as db:
+                self.commons.set_setting("harvest:master", "running", db)
+            return {"summary": (r.get("summary") or ("bulk agents: %s" % r.get("bulk", "stopping"))), "control": self.control()}
         sel = bool(apps or harvesters)
         apps = [a for a in (apps or []) if a in APPS] if sel else list(APPS)
         harvesters = [h for h in (harvesters or []) if h in ol.HARVESTERS] if sel else list(ol.HARVESTERS)

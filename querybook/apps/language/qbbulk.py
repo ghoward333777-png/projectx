@@ -1449,8 +1449,6 @@ class Run:
         import qbharvest as hv
         if os.path.exists(self.stopfile):
             return "stopped from the Control Panel"
-        if not hv.master_running(self.commons):
-            return "harvesting switched off (master switch)"
         keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
         free = shutil.disk_usage(self.folder).free / 1e9
         if free < keep:
@@ -2000,8 +1998,8 @@ RESUME_GAP_S = 600                 # at most one automatic restart every 10 minu
 
 def resume_if_crashed(commons, program_dir, now=None, launch=None):
     """the runner ended without finishing (the computer slept, the window was closed, the drive dropped out) and nobody
-    pressed Stop: start it again on the same datasets — every agent resumes where its shard stopped. Only while the master
-    switch is on. Returns what it did, or None."""
+    pressed Stop: start it again on the same datasets — every agent resumes where its shard stopped. Returns what it did,
+    or None. (Since 1.23 the red Stop is the only way to stop the agents; the old master switch no longer applies.)"""
     import qbharvest as hv
     folder = os.path.join(commons.folder, FOLDER)
     now = now or time.time()
@@ -2011,8 +2009,6 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
     except (OSError, ValueError):
         return None
     if rs.get("note") == "finished" or now - rs.get("heartbeat", now) < 60 or os.path.exists(os.path.join(folder, "_runner.stop")):
-        return None
-    if not hv.master_running(commons):
         return None
     mark = os.path.join(folder, "_runner.resumed")
     try:
@@ -2135,8 +2131,6 @@ def diagnose(commons, folders=None, probe=True):
     st = status(commons.folder, commons)
     add("Admin passphrase", True, "set — type it on the Bulk harvesting tab" if commons.approvals.admin_set()
         else "none set — every button works without one", "")
-    add("Master harvesting switch", hv.master_running(commons), "on" if hv.master_running(commons) else "OFF — every agent stops at once",
-        "Turn harvesting on: Control Panel → Overview → master switch, or the ▶ Start all harvesting button.")
     rs = st["runner"]
     alive = rs.get("alive")
     add("Bulk agents running", alive, ("running: %s" % rs.get("note")) if alive else

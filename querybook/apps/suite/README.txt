@@ -43,6 +43,17 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  A simpler suite: harvesting in ONE place (Control Panel 1.23.0 and the shared core, every program)
+    * Harvesting runs only from the Control Panel -> Harvesting tab: one green "Start harvesting", one red "Stop
+      harvesting". That is the fast lane (bulk agents on every approved dataset, one per processor core).
+    * Retired, because they collided with each other and with the bulk agents: the per-program harvest teams and their
+      automatic turns, the online harvesters that ran inside them, campaigns, the master switch and the per-program
+      "Run this team now" / "Start all" / "Stop all" buttons, and the Control Panel's "Mass harvesting" tab.
+    * Each program's "Harvesting & shared facts" page now shows and searches the shared facts, and points to the
+      Control Panel for harvesting.
+    * The red Stop is the only way to stop the agents; an old "master off" setting can no longer stop or block them.
+    * Kept: all five programs and everything else they do, Targeting and Filtering (they apply to the bulk agents),
+      instrumentation, the drive comparison, and all data on D:\QB.
   No more flashing windows; buttons that mean one thing (Control Panel 1.22.0 and the shared core, every program)
     * Fixed: hundreds of black windows flashing. Background programs (the bulk agents, campaigns, the fact gatherer, the
       Google tools, programs started from the Control Panel) were started without a console of their own, so Windows gave

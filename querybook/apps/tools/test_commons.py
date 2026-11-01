@@ -73,6 +73,7 @@ def snapshot(commons):
 
 def main():
     c = core.Checks()
+    cm.TEAMS_HARVEST = True                 # the team machinery itself is still tested; 1.23 switches it off in use (below)
     # status rules
     S = cm.fact_status
     c.check("status: recomputed fact is verified", S([{"verdict": "supports", "method": "recompute", "source": "x", "app": "stem"}]) == "verified")
@@ -584,7 +585,10 @@ def main():
         c.check("…but not after the admin pressed Stop", qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is None)
         os.remove(os.path.join(sh, "_runner.stop"))
         cmx.set_setting("harvest:master", "stopped")
-        c.check("…and not while the master switch is off", qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is None and len(launched) == 1)
+        if os.path.exists(os.path.join(sh, "_runner.resumed")):
+            os.remove(os.path.join(sh, "_runner.resumed"))
+        c.check("1.23: the old master switch no longer stops or blocks the agents (only the red Stop does)",
+                qbbulk.resume_if_crashed(cmx, ROOT, launch=launch) is not None and len(launched) == 2)
         # 1.18: a slow count is answered from the last one at once; "Run this team now" during an automatic turn is not a failure
         calls2 = {"n": 0}
 
@@ -600,8 +604,14 @@ def main():
                 and cmx.counted("x", slow_count) == 2, (v1, v2, fast, calls2))
         team_x = cm.Team(cmx, type("Ad", (), {"budgets": lambda self: {}})())
         team_x.state.update(running=True, role="harvester", started="now")
-        r_run = team_x.run_in_background("manual")
-        c.check("pressing Run while the team is already harvesting says so (no error)", r_run["already_running"] and not r_run["started"], r_run)
+        cm.TEAMS_HARVEST = False
+        try:
+            team_x.run_in_background("manual"); said = ""
+        except core.UserError as e:
+            said = str(e)
+        c.check("1.23: a program's own team no longer harvests — it points to the Control Panel's one Start", "Control Panel" in said, said)
+        team_x.start_schedule()
+        c.check("1.23: nothing starts a team's automatic turns", not any(t.name.startswith("qb-") and "schedule" in t.name for t in threading.enumerate()))
         # 1.18: the master switch's Start all also starts the bulk agents at full speed (the fast lane); Stop all stops them
         cmx.set_setting("harvest:master", "running")
         got = []

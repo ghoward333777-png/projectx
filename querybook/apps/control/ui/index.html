@@ -96,14 +96,13 @@
 </header>
 <nav class="tabs" aria-label="Sections">
   <button data-tab="overview">Overview</button>
-  <button data-tab="harvest">Mass harvesting</button>
+  <button data-tab="bulk">Harvesting</button>
   <button data-tab="target">Targeting</button>
   <button data-tab="filter">Filtering</button>
   <button data-tab="facts">Shared facts</button>
   <button data-tab="audit">Audit trail</button>
   <button data-tab="diag">Diagnostics</button>
   <button data-tab="self">Self-knowledge</button>
-  <button data-tab="bulk">Bulk harvesting</button>
   <button data-tab="apis">API &amp; connections</button>
   <button data-tab="exemplars">Exemplars</button>
   <button data-tab="help">Help</button>
@@ -143,7 +142,7 @@
   </section>
 
   <!-- Mass harvesting -->
-  <section class="panel" id="harvest">
+  <section class="panel" id="harvest" hidden>
     <div class="card">
       <div class="sechead"><h2>Mass harvesting</h2>
         <button class="btn quiet" data-diag="harvest">Diagnose</button></div>
@@ -307,11 +306,13 @@
   <!-- Bulk harvesting: whole open datasets, streamed by parallel agents into fact shards -->
   <section class="panel" id="bulk">
     <div class="card">
-      <div class="sechead"><h2>Bulk harvesting</h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
+      <div class="sechead"><h2>Harvesting</h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
       <p class="muted small">The fast lane: each open dataset is one agent that streams the publisher's whole file and turns every row into facts
         by a fixed rule — no AI model, only sources approved in the policy registry, every fact traceable to its file and row. Agents work in
         parallel, each into its own shard, and resume where they stopped. The calendar scaffold computes what can be known in advance; the
         recurring-event slots are filled from Wikidata, one query per series.</p>
+      <div class="row" style="margin:10px 0 14px"><button class="btn" id="bk-go-top" style="font-size:1.25em;padding:12px 28px">⚡ Start harvesting</button>
+        <button class="btn" id="bk-stop-top" style="font-size:1.25em;padding:12px 28px">■ Stop harvesting</button></div>
       <div id="bk-summary" class="row"></div>
       <div class="row"><button class="btn" id="bk-why">🩺 Why so slow?</button>
         <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
