@@ -17,6 +17,9 @@ MIN_GAP_S = 1.0                     # pause between requests to the same site
 _last = {}
 
 
+from qbtrace import TR  # noqa: E402  (every online request and failure into the trace log)
+
+
 class SourceBusy(Exception):
     """The site asked us to slow down (HTTP 429/503) or is unreachable; try again on a later turn."""
 
@@ -25,20 +28,28 @@ def _fetch(url, kind="json", timeout=60, headers=None):
     host = urllib.parse.urlsplit(url).netloc
     wait = MIN_GAP_S - (time.time() - _last.get(host, 0))
     if wait > 0:
+        TR.add("polite_gap", int(wait * 1e9))           # our own pause between requests to one site
         time.sleep(wait)
     req = urllib.request.Request(url, headers=dict({"User-Agent": UA, "Accept": "application/json" if kind == "json" else "*/*"}, **(headers or {})))
     for attempt in (1, 2):
+        t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
+                ttfb = time.time() - t0
                 body = r.read()
+                TR.io(host, r.status, time.time() - t0, len(body), ttfb, kind="online")
             break
         except urllib.error.HTTPError as e:
+            TR.io(host, e.code, time.time() - t0, 0, None, kind="online")
+            TR.fail("online fetch", e, retried=False, host=host, code=e.code)
             if e.code in (429, 503):
                 raise SourceBusy("%s asked to slow down (HTTP %d)" % (host, e.code))
             if e.code in (401, 403):
                 raise SourceBusy("%s refused the API key (HTTP %d): check it on the Harvesting page" % (host, e.code))
             raise SourceBusy("%s answered HTTP %d" % (host, e.code))    # never the URL: it may carry an API key
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            TR.io(host, None, time.time() - t0, 0, None, kind="online")
+            TR.fail("online fetch", e, retried=attempt == 1, host=host)
             if attempt == 2:
                 raise SourceBusy("%s unreachable: %s" % (host, e))
             time.sleep(3)

@@ -43,6 +43,22 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Full instrumentation of the harvest (Control Panel 1.20.0 and the shared core, every program)
+    * Every bulk agent, every harvest team and every online fetch writes what it did to log files in the shared folder's
+      trace\ (D:\QB\commons\trace): the time of every stage a record passes through (read, decompress, parse, rule, filter,
+      fingerprint, buffer, sort, database insert, commit, progress, stop checks, harvest log), every network exchange (server,
+      status, time to first byte, bytes, speed), every wait (connection slots, the parser waiting for the network, the shared
+      database's write lock, our own pauses between requests), every batch's timeline, and EVERY failure (where, what, the
+      traceback, retried or not).
+    * One record in 10,000 (chosen by its fingerprint, so the same records every run) is followed end to end with a
+      timestamp at each step, from the arrival of its bytes to the commit to disk, and whether it was new or a duplicate.
+      Control Panel -> Bulk harvesting -> Instrumentation: "Follow 1 record in N" (1 = every record, for short tests only).
+    * Analyse the logs: the bottleneck of each dataset (network, connection slots, CPU, disk), every congestion point, slow
+      I/O per server, the step-by-step latency of the followed records, all failures grouped, and what to change.
+    * Export logs for analysis: one zip of the logs (D:\QB\commons\trace-export-<date>.zip) to send for analysis.
+    * Compare drives: the internal drive (C:) against the data drive (D:\QB) - sequential write and read, synced-write
+      latency and the agents' own database write pattern - written to the logs too.
+    * Cost measured: 0-7% (within run-to-run noise) at 1 record in 1,000; the logs grow by about 100 MB a day at full speed.
   Start all harvesting = full speed again (Control Panel 1.19.0 and the shared core, every program)
     * "Start all harvesting" and "Master: ON" (on any program's Harvesting page and in the Control Panel) now also start
       the bulk agents at full speed on every approved dataset - the fast lane that brings in millions of facts. "Stop all

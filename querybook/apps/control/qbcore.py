@@ -199,9 +199,18 @@ class Store:
         if self.read_only:
             raise DatabaseDamaged("The database failed its check (%s). Nothing was written. "
                                   "Run: python app.py restore" % self.damage)
+        t_wait = time.perf_counter_ns()
         with self._lock:
             db = self.conn()
             db.execute("BEGIN IMMEDIATE")
+            waited = time.perf_counter_ns() - t_wait     # time spent queueing for the database (congestion between writers)
+            try:
+                import qbtrace
+                qbtrace.TR.add("db_lock_wait:%s" % self.app_id, waited)
+                if waited > 2e9:
+                    qbtrace.TR.event("congestion", what="database write lock", db=self.path, waited_s=round(waited / 1e9, 2))
+            except ImportError:
+                pass
             try:
                 yield db
                 db.execute("COMMIT")
@@ -1065,7 +1074,7 @@ class Jobs:
 
 
 # ----------------------------------------------------------------------------- internal diagnostics
-REQUIRED_FILES = ("app.py", "qbcore.py", "qbdrive.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
+REQUIRED_FILES = ("app.py", "qbcore.py", "qbdrive.py", "qbtrace.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py", "gcloud.py", os.path.join("ui", "index.html"), os.path.join("ui", "app.js"),
                   os.path.join("ui", "qb.js"), os.path.join("ui", "qb.css"))
 
 
@@ -1973,7 +1982,7 @@ class Checks:
 
 def core_matches_master(program_dir):
     """True when this app's shared modules match the master copies in ../_core (or no master is present)."""
-    for name in ("qbcore.py", "qbdrive.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py"):
+    for name in ("qbcore.py", "qbdrive.py", "qbtrace.py", "qbcommons.py", "qbharvest.py", "qbonline.py", "qbdevices.py", "qbagents.py", "qbartifact.py", "qbengineer.py", "qbcontrol.py", "qbselfknow.py", "qbexemplar.py", "qbcampaign.py", "qbbulk.py", "qbscaffold.py", "qbapidoc.py", "qbconnections.py", "qbgather.py", "qbkeystone.py"):
         master = os.path.join(os.path.dirname(program_dir), "_core", name)
         mine = os.path.join(program_dir, name)
         if not os.path.exists(master):

@@ -27,6 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
 import qbscaffold as sc  # noqa: E402
 import qbkeystone as ks  # noqa: E402
+import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
+TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
 VERSION = "1.0.0"
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
@@ -69,7 +71,10 @@ class _Count(io.RawIOBase):
         return True
 
     def readinto(self, b):
+        t = _NS()
         n = self.raw.readinto(b)
+        TR.add("net_read", _NS() - t, 1, n or 0)
+        TR.chunk_wall = _WALL()
         METER.done += n or 0
         return n
 
@@ -311,20 +316,32 @@ def _ranged(url, start, stop, sources=None, slots=None):
     sources = sources or [(url, 1)]
     pos, tries, refused = start, 0, 0
     while not stop["now"]:
+        t = _NS()
         src, lock = slots.acquire(sources, stop) if slots else (sources[0][0], None)
+        TR.add("net_wait", _NS() - t)                 # waiting for a free connection slot (congestion at our end)
         if src is None:
             return
+        t_conn, got = _NS(), 0
         try:
             with urllib.request.urlopen(_req(src, {"Range": "bytes=%d-" % pos}), timeout=120) as r:
+                ttfb = (_NS() - t_conn) / 1e9
+                TR.add("net_connect", _NS() - t_conn)
                 if r.status != 206 and pos:
                     raise OSError("the server ignored the byte range")
                 while not stop["now"]:
+                    t = _NS()
                     b = r.read(1 << 20)
+                    TR.add("net_read", _NS() - t, 1, len(b))
+                    TR.chunk_wall = _WALL()
                     if not b:
+                        TR.io(_host(src), r.status, (_NS() - t_conn) / 1e9, got, ttfb, url=src[-80:], end="complete")
                         return
-                    pos += len(b); tries = 0; refused = 0
+                    pos += len(b); tries = 0; refused = 0; got += len(b)
                     yield b
+                TR.io(_host(src), r.status, (_NS() - t_conn) / 1e9, got, ttfb, url=src[-80:], end="stopped")
         except urllib.error.HTTPError as e:
+            TR.io(_host(src), e.code, (_NS() - t_conn) / 1e9, got, None, url=src[-80:], end="refused" if e.code in REFUSED else "error")
+            TR.fail("network", e, retried=True, host=_host(src), code=e.code, offset=pos)
             if e.code in REFUSED:                     # "slow down": not a failure — let that server cool down
                 wait = max(COOL_S, _retry_after(e))
                 refused += 1
@@ -339,7 +356,9 @@ def _ranged(url, start, stop, sources=None, slots=None):
             if tries > 8:
                 raise
             time.sleep(min(60, 2 ** tries))
-        except (OSError, urllib.error.URLError):
+        except (OSError, urllib.error.URLError) as e:
+            TR.io(_host(src), None, (_NS() - t_conn) / 1e9, got, None, url=src[-80:], end="broken")
+            TR.fail("network", e, retried=tries < 8, host=_host(src), offset=pos)
             tries += 1
             if tries > 8:
                 raise
@@ -370,7 +389,9 @@ def _prefetch(chunks, stop, depth=32):
             q.put(None)
     threading.Thread(target=pump, daemon=True).start()
     while True:
+        t = _NS()
         c = q.get()
+        TR.add("starved", _NS() - t)              # the parser waited for the network (network-bound when large)
         if c is None:
             return
         if isinstance(c, Exception):
@@ -402,7 +423,10 @@ def gz_member_lines(url, start, end, sources=None, slots=None):
                         METER.done = end - start
                         return
                     d = zlib.decompressobj(31); off += i; buf = buf[i:]
+                t = _NS()
                 out = d.decompress(buf)
+                TR.add("decompress", _NS() - t, 1, len(out))
+                TR.decomp_wall = _WALL()
                 if out:
                     out = rest + out
                     lines = out.split(b"\n")
@@ -1382,18 +1406,24 @@ class Shard:
         before = self.db.total_changes
         # in fingerprint order, so each B-tree page is visited once per batch. The sort is stable: of two facts with one
         # fingerprint the earlier row still comes first and is the one kept — the shard is the same as unsorted.
+        t = _NS()
         rows.sort(key=_FP)
+        t1 = _NS(); TR.add("sort", t1 - t, len(rows)); self.walls = {"sorted": _WALL()}
         self.db.executemany("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
         new = self.db.total_changes - before
+        t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
         if links:
             self.db.executemany("INSERT OR IGNORE INTO links(fp, url) VALUES(?, ?)", links)
+        t3 = _NS(); TR.add("db_links", t3 - t2, len(links or ()))
         self.db.execute("UPDATE parts SET rows = ?, facts = facts + ? WHERE id = ?", (rows_done, new, part_id))
         total = (self.meta("facts", 0) or 0) + new
         self.set_meta("facts", total)
         now = time.time()
         self.db.execute("INSERT OR REPLACE INTO progress(at, facts) VALUES(?, ?)", (now, total))
         self.db.execute("DELETE FROM progress WHERE at < ?", (now - 2 * 86400,))
-        self.db.commit()
+        t4 = _NS(); TR.add("db_progress", t4 - t3)
+        self.db.commit()                                              # the disk: WAL append (+ checkpoint now and then)
+        TR.add("db_commit", _NS() - t4, 1, len(rows)); self.walls["committed"] = _WALL()
         return new
 
 
@@ -1441,8 +1471,14 @@ class Run:
 def run_dataset(commons_folder, key, max_rows=None):
     """One agent: stream every part of one dataset into its shard. Returns a summary."""
     ds = catalog()[key]
+    t_open = _NS()
     run = Run(commons_folder, ds, max_rows)
+    TR.from_commons(run.commons, "bulk-%s-%d" % (key, os.getpid()), dataset=key)
+    TR.add("open_commons", _NS() - t_open)
+    t = _NS()
     sh = Shard(commons_folder, key)
+    TR.add("open_shard", _NS() - t)
+    TR.event("run", phase="start", dataset=key, app=ds.app, sample=TR.sample, max_rows=max_rows, folder=commons_folder)
     fpr = fingerprinter(AREA[ds.app])
     sh.set_meta("state", "running"); sh.set_meta("pid", os.getpid()); sh.set_meta("started", core.now_iso()); sh.set_meta("error", None)
     sh.db.commit()
@@ -1451,6 +1487,8 @@ def run_dataset(commons_folder, key, max_rows=None):
         sh.set_meta("state", "blocked" if "registry" in why else "stopped"); sh.set_meta("error", why); sh.db.commit()
         if "registry" in why:
             run.log("all parts", 0, 0, 0, 0, 0, "blocked", why)
+        TR.event("run", phase="end", dataset=key, state="blocked" if "registry" in why else "stopped", why=why)
+        TR.close()
         return {"dataset": key, "state": "blocked" if "registry" in why else "stopped", "why": why}
     total_new, t_start, filtered = 0, time.time(), 0
     import qbcontrol as ctl
@@ -1471,48 +1509,84 @@ def run_dataset(commons_folder, key, max_rows=None):
             row_no, buf, links, t0, log_from, log_new = 0, [], [], time.time(), done_rows, 0
             limit = None if max_rows is None else done_rows + max_rows
             METER.start(0, "bytes")
+            t = _NS()
             rows, end = iter(ds.rows(name, url, state)), object()
             pg = {"part": name, "part_no": part_no, "parts": len(plist), "since": time.time(), "done_at_start": None}
             while row_no < done_rows and next(rows, end) is not end:    # resume: skip what an earlier run already saved
                 row_no += 1
+            TR.add("resume_skip", _NS() - t, max(0, row_no))
+            TR.event("part", phase="start", dataset=key, part=name, part_no=part_no, parts=len(plist), resume_row=row_no, url=str(url)[-120:])
             side = shard_path(commons_folder, key) + ".progress"
             _mark(sh, pg, row_no, side); sh.db.commit()
             facts_of, preds, rule, add = ds.facts, sh.preds, ds.rule, buf.append
+            tr_on, sampled, pending = TR.on, TR.sampled, []
+            bt = {"first_row": None, "row_from": row_no, "net0": METER.done}
+            t_src = _NS()
             for raw in rows:
-                found = facts_of(name, raw, state)
+                t_row = _NS()
+                TR.add("source", t_row - t_src)       # read + decompress + parse of this row (network waits included)
+                if bt["first_row"] is None:
+                    bt["first_row"] = _WALL()
+                try:
+                    found = facts_of(name, raw, state)
+                except Exception as e:                 # one bad row is reported and skipped, never the whole part
+                    TR.fail("rule", e, dataset=key, part=name, row=row_no, raw=str(raw)[:300])
+                    found = ()
+                t_rule = _NS()
+                TR.add("rule", t_rule - t_row, 1, len(found))
                 if flt:                                 # the Control Panel's filter binds bulk facts too
                     kept = [f for f in found if ctl.check_item({"subject": f[0], "predicate": f[1], "object": f[2], "evidence": ev}, flt, area) is None]
                     filtered += len(found) - len(kept)
                     found = kept
+                    TR.add("filter", _NS() - t_rule, len(found))
                 lk = state.get("_links")
+                t_fp = 0
                 for s, p, o in found:
                     if s and o:
+                        t1 = _NS()
                         f = fpr(s, p, o)
+                        t_fp += _NS() - t1
                         pi = preds.get(p)
                         if pi is None:
                             pi = sh.pred(p, rule.get(p))
                         add((f, s, pi, o, pid, row_no))
                         if lk and s in lk:
                             links.append((f, lk[s]))
+                        if tr_on and sampled(f):        # this record is followed from the first byte to the commit
+                            w = _WALL()
+                            pending.append({"fp": f.hex(), "dataset": key, "part": name, "row": row_no, "s": str(s)[:120], "p": p,
+                                            "o": str(o)[:120], "w": {"chunk": TR.chunk_wall or None, "decompressed": TR.decomp_wall or None,
+                                                                    "row": w - (_NS() - t_row), "rule": w - (_NS() - t_rule), "buffered": w}})
+                t_src = _NS()
+                TR.add("fingerprint", t_fp, len(found))
+                TR.add("buffer", t_src - t_rule - t_fp)
                 row_no += 1
                 if not row_no & 0x1FFFF:                # about every 130,000 rows: the meter into a side file (no commit)
-                    _mark(None, pg, row_no, side)
+                    with qt.timed("progress_mark"):
+                        _mark(None, pg, row_no, side)
                 if len(buf) >= BATCH:
-                    _mark(sh, pg, row_no, side)
-                    new = sh.write(pid, buf, row_no, links)
-                    total_new += new; log_new += new; buf, links = [], []
+                    with qt.timed("progress_mark"):
+                        _mark(sh, pg, row_no, side)
+                    new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
+                    total_new += new; log_new += new; buf, links, pending = [], [], []
                     add = buf.append
+                    bt = {"first_row": None, "row_from": row_no, "net0": METER.done}
                     if log_new >= LOG_EVERY:
-                        run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0)
+                        with qt.timed("harvest_log"):
+                            run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0)
                         log_from, log_new, t0 = row_no, 0, time.time()
-                    why = run.stopped()
+                    with qt.timed("stop_check"):
+                        why = run.stopped()
                     if why:
                         raise _Stop(why)
+                    t_src = _NS()
                 if limit is not None and row_no >= limit:
                     break
-            _mark(sh, pg, row_no, side)
-            new = sh.write(pid, buf, row_no, links)
+            with qt.timed("progress_mark"):
+                _mark(sh, pg, row_no, side)
+            new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
             total_new += new; log_new += new
+            TR.event("part", phase="end", dataset=key, part=name, rows=row_no, new=total_new)
             for series, year in state.pop("_filled", set()):
                 sh.db.execute("INSERT INTO slots(series, year, filled) VALUES(?, ?, 1) ON CONFLICT(series, year) DO UPDATE SET filled = 1", (series, year))
             if key == "wikidata-series":
@@ -1530,24 +1604,56 @@ def run_dataset(commons_folder, key, max_rows=None):
                 raise _Stop(why)
         all_done = all(d for (d,) in sh.db.execute("SELECT done FROM parts"))
         sh.set_meta("state", "done" if all_done else "paused"); sh.set_meta("finished", core.now_iso()); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="done" if all_done else "paused", new=total_new, filtered=filtered,
+                 seconds=round(time.time() - t_start, 2))
         return {"dataset": key, "state": "done" if all_done else "paused", "new": total_new, "filtered": filtered,
                 "seconds": round(time.time() - t_start, 1)}
     except _Stop as e:
         sh.set_meta("state", "stopped"); sh.set_meta("error", str(e)); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="stopped", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
         return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new}
     except Busy as e:
         sh.set_meta("state", "paused"); sh.set_meta("error", str(e)); sh.db.commit()
         run.log("source busy", 0, 0, 0, 0, time.time() - t_start, "failed", str(e))
+        TR.fail("source busy", e, retried=True, dataset=key)
+        TR.event("run", phase="end", dataset=key, state="paused", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
         return {"dataset": key, "state": "paused", "why": str(e), "new": total_new, "retry": True}
     except Exception as e:
+        TR.fail("agent", e, dataset=key)
         import http.client
         network = isinstance(e, (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError)) and \
             getattr(e, "errno", None) not in (28,)                      # ENOSPC (disk full) is not the network
         sh.set_meta("state", "paused" if network else "failed")
         sh.set_meta("error", "%s: %s%s" % (type(e).__name__, str(e)[:300], " — retried automatically" if network else "")); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="paused" if network else "failed", why=str(e)[:300], new=total_new,
+                 seconds=round(time.time() - t_start, 2))
         return {"dataset": key, "state": "paused" if network else "failed", "why": str(e)[:300], "new": total_new, "retry": network}
     finally:
+        TR.flush_stages(dataset=key)
+        TR.close()
         sh.db.close()
+
+
+def _batch(sh, pid, buf, row_no, links, pending, bt, key, part):
+    """write one batch, then log its timeline, the stage totals since the last batch and the records followed in it"""
+    n_offered = len(buf)
+    new = sh.write(pid, buf, row_no, links)
+    if not TR.on:
+        return new
+    w = getattr(sh, "walls", {})
+    if pending:
+        got = dict(sh.db.execute("SELECT fp, part || ':' || row FROM facts WHERE fp IN (%s)" % ",".join("?" * len(pending)),
+                                 [bytes.fromhex(r["fp"]) for r in pending]))
+        for r in pending:
+            r["w"].update(w)
+            here = got.get(bytes.fromhex(r["fp"]))
+            r["outcome"] = "new" if here == "%d:%d" % (pid, r["row"]) else "duplicate" if here else "missing"
+            TR.record(r)
+    TR.event("batch", dataset=key, part=part, row_from=bt["row_from"], row_to=row_no, offered=n_offered, new=new,
+             first_row=bt["first_row"], last_row=_WALL(), **{k: w.get(k) for k in ("sorted", "inserted", "committed")},
+             source_progress=METER.done - bt["net0"], unit=METER.unit)
+    TR.flush_stages(dataset=key, part=part, row=row_no)
+    return new
 
 
 def _mark(sh, pg, row_no, side=None):
@@ -1615,6 +1721,8 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         os.remove(stop)
     hb = os.path.join(folder, "_runner.json")
     results = []
+    TR.configure(os.path.join(commons_folder, "trace"), "runner-%d" % os.getpid(), on=True)
+    TR.event("run", phase="start", role="runner", agents=agents, datasets=keys, cores=os.cpu_count())
 
     def beat(note):
         # a heartbeat that cannot be written this second (the Control Panel was reading it, or the drive was busy) is
@@ -1624,8 +1732,8 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
                 json.dump({"heartbeat": time.time(), "pid": os.getpid(), "agents": agents, "datasets": keys, "note": note,
                            "results": results[-200:]}, f)
             _replace(hb + ".tmp", hb)
-        except OSError:
-            pass
+        except OSError as e:
+            TR.fail("heartbeat", e, retried=True)
     beat("starting")
     todo, rounds = list(keys), 0
     while todo:
@@ -1644,6 +1752,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         # datasets a server refused or the network dropped are run again after a pause — they resume where they stopped
         todo = [r["dataset"] for r in got if r.get("retry")]
         rounds += 1
+        TR.event("round", round=rounds, finished={r["dataset"]: r.get("state") for r in got}, retry=todo)
         if not todo or rounds > RETRY_ROUNDS or os.path.exists(stop):
             break
         until = time.time() + RETRY_WAIT_S
@@ -1653,10 +1762,15 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         if os.path.exists(stop):
             break
     beat("removing duplicates across shards")
+    t = time.time()
     try:
         gone = dedupe(commons_folder)
     except sqlite3.Error as e:
+        TR.fail("dedupe", e)
         gone = {"error": str(e)}
+    TR.event("dedupe", seconds=round(time.time() - t, 2), removed=gone)
+    TR.event("run", phase="end", role="runner", rounds=rounds, results=[{k: r.get(k) for k in ("dataset", "state", "new", "why")} for r in results if "dataset" in r])
+    TR.close()
     results.append({"dedupe": gone})
     beat("finished")
     return results
@@ -1678,12 +1792,14 @@ def dedupe(commons_folder):
             gone = 0
             for ki in earlier:
                 sh.db.execute("ATTACH DATABASE ? AS e", (shard_path(commons_folder, ki),))
+                t_d = time.time()
                 before = sh.db.total_changes
                 sh.db.execute("DELETE FROM links WHERE fp IN (SELECT fp FROM e.facts)")
                 links = sh.db.total_changes - before
                 sh.db.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM e.facts)")
                 gone += sh.db.total_changes - before - links
                 sh.db.commit()
+                TR.event("dedupe_pair", shard=kj, against=ki, removed=sh.db.total_changes - before - links, seconds=round(time.time() - t_d, 3))
                 sh.db.execute("DETACH DATABASE e")
             if gone:
                 sh.set_meta("facts", max(0, (sh.meta("facts", 0) or 0) - gone))
@@ -1959,6 +2075,49 @@ def add_routes(api, commons, program_dir):
         except ValueError as e:
             raise core.UserError(str(e))
 
+    # -- instrumentation: the trace logs analysed, exported, the drives compared
+    tfolder = lambda: os.path.join(commons.folder, "trace")
+
+    @api.get("/api/trace/report")
+    def trace_report(p):
+        days = float(p.get("days") or 0)
+        files = []
+        if os.path.isdir(tfolder()):
+            cut = time.time() - days * 86400 if days else 0
+            files = [os.path.join(tfolder(), f) for f in sorted(os.listdir(tfolder()))
+                     if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(tfolder(), f)) >= cut]
+        o = qt.analyze(qt.read_lines(files))
+        return {"report": o, "text": qt.text_report(o), "files": len(files), "folder": tfolder(),
+                "settings": {"on": (commons.setting("trace:on", "on") or "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0)}}
+
+    @api.post("/api/trace/export")
+    def trace_export(p):
+        path, n, raw = qt.export(tfolder(), days=float(p.get("days") or 0) or None)
+        return {"zip": path, "files": n, "mb": round(raw / 1e6, 1), "zip_mb": round(os.path.getsize(path) / 1e6, 1),
+                "summary": "%d log file(s) packed into %s — send this file for analysis" % (n, path)}
+
+    @api.post("/api/trace/settings")
+    def trace_settings(p):
+        if "on" in p:
+            commons.set_setting("trace:on", "on" if p.get("on") in (True, "true", "on", 1) else "off")
+        if p.get("sample") is not None:
+            commons.set_setting("trace:sample", max(0, int(p["sample"])))
+        return {"on": commons.setting("trace:on", "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0),
+                "summary": "applies to agents started from now on"}
+
+    @api.post("/api/trace/drives")
+    def trace_drives(p):
+        """the internal drive (the user's home folder, C: on Windows) against the data folder's drive (e.g. D:\\QB)"""
+        folders = {"internal drive (%s)" % os.path.splitdrive(os.path.expanduser("~"))[0] or os.path.expanduser("~"): os.path.expanduser("~"),
+                   "data drive (%s)" % (os.path.splitdrive(commons.folder)[0] or commons.folder): os.path.dirname(commons.folder)}
+        for extra in (p.get("folders") or []):
+            folders[extra] = extra
+        r = qt.compare_storage(folders, mb=int(p.get("mb") or 256), rows=int(p.get("rows") or 300_000))
+        t = qt.Tracer().configure(tfolder(), "drives-%d" % os.getpid())
+        t._line(dict(r, ev="storage", proc=t.proc), now=True)
+        t.close()
+        return r
+
     @api.get("/api/bulk/search")
     def bulk_search(p):
         return {"facts": search(commons.folder, p.get("q") or "", int(p.get("limit") or 50))}
@@ -2096,11 +2255,19 @@ def self_test():
             ok("dataset source %s is approved in the registry" % s, c.registry.check(s)[0])
         global BATCH
         old, BATCH = BATCH, 1000
+        c.set_setting("trace:sample", 7)
         try:
             r1 = run_dataset(cf, "pubchem-computed", max_rows=1500)
             r2 = run_dataset(cf, "pubchem-computed")
         finally:
             BATCH = old
+        tl = list(qt.read_lines([os.path.join(cf, "trace")]))
+        an = qt.analyze(tl)
+        pc = next((d for d in an["datasets"] if d["dataset"] == "pubchem-computed"), None)
+        ok("instrumentation: every batch, its stage times and the records followed end to end are logged and analysed",
+           pc and pc["batches"] >= 3 and {"source", "rule", "fingerprint", "db_insert", "db_commit"} <= {x["stage"] for x in pc["stages"]}
+           and an["records"] and an["records"]["followed"] > 0 and all(r.get("w", {}).get("committed") for r in tl if r["ev"] == "record"),
+           (pc and pc["stages"], an["records"]))
         st = {d["key"]: d for d in status(cf, c)["datasets"]}
         pc = st["pubchem-computed"]
         sdb = _ro(shard_path(cf, "pubchem-computed"))

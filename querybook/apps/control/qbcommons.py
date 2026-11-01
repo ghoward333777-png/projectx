@@ -32,6 +32,7 @@ import qbcore as core
 import qbharvest as hv
 import qbonline as ol
 import qbcontrol as ctl
+from qbtrace import TR
 
 COMMONS_VERSION = "1.0.0"
 APPS = {"language": "Language Builder", "stem": "Math, Science & Engineering", "facts": "History & News"}
@@ -413,6 +414,7 @@ class Team:
         self._timer = None
 
     def _role(self, role, status, summary, ms):
+        TR.span("team:%s:%s" % (self.app_id, role), (ms or 0) / 1000.0, status == "ok", summary=str(summary)[:300])
         with self.commons.store.write() as db:
             db.execute("""INSERT INTO team(app, role, last_run, last_status, last_summary, last_ms, runs) VALUES(?,?,?,?,?,?,1)
                           ON CONFLICT(app, role) DO UPDATE SET last_run=excluded.last_run, last_status=excluded.last_status,
@@ -534,6 +536,8 @@ class Team:
                     items, st, detail = [], "failed", str(e)
                     staged.append((tid, t, cls, [], time.time() - ts, str(e)))
                     self.log("harvest task failed:", t["title"], repr(e))
+                    TR.fail("harvest task", e, app=self.app_id, action=t["action"], title=t["title"], source=t.get("source"))
+                TR.span("task:%s" % t["action"], time.time() - ts, st == "done", app=self.app_id, source=t.get("source"), items=len(items))
                 with store.write() as db:
                     db.execute("UPDATE tasks SET status = ?, items = ?, finished = ?, detail = ? WHERE id = ?",
                                (st, len(items), core.now_cs(), detail[:1000], tid))
@@ -610,6 +614,7 @@ class Team:
             self.state["last"] = dict(out, finished=core.now_cs())
             return out
         except Exception as e:
+            TR.fail("team cycle", e, app=self.app_id, role=self.state.get("role"))
             self.state["last"] = {"error": str(e), "finished": core.now_cs()}
             try:
                 self._role(self.state["role"] or "strategist", "failed", str(e), None)
@@ -617,6 +622,9 @@ class Team:
                 pass
             raise
         finally:
+            TR.span("cycle:%s" % self.app_id, time.time() - t_cycle, "error" not in (self.state.get("last") or {}), trigger=trigger,
+                    new=out.get("new"), merged=out.get("merged"))
+            TR.flush_stages(app=self.app_id)              # this program's database waits and fetch pauses since the last cycle
             self.state.update(running=False, role=None)
             self._lock.release()
 
@@ -906,6 +914,7 @@ def attach(app, app_id, adapter):
     never stops the application: its own work goes on and the shared page says why."""
     def open_():
         c = Commons(commons_folder(app.folder), app_id, app.log)
+        TR.from_commons(c, "%s-%d" % (app_id, os.getpid()), app=app_id)
         t = Team(c, adapter, app.log)
         add_routes(app.api, t, app.folder)
         ctl.add_routes(app.api, c, core.stop_server)                  # the Control Panel's rules and its stop

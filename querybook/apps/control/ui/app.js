@@ -281,6 +281,16 @@ function bind() {
     } catch (e) { $("#bk-diag").textContent = e.message; } };
   $("#bk-move-go").onclick = async () => { try { const r = await api("/api/bulk/move-folder", { folder: $("#bk-move").value, passphrase: $("#bk-pass").value });
       toast(r.summary); $("#bk-diag").innerHTML = `<p><b>${esc(r.summary)}</b></p>`; } catch (e) { toast(e.message); } };
+  const trLoad = async () => { const r = await api("/api/trace/report"); $("#tr-sample").value = r.settings.sample; $("#tr-on").checked = r.settings.on;
+    $("#tr-out").textContent = r.files ? r.text : "No logs yet: they appear while agents and programs harvest (" + r.folder + ")."; };
+  $("#tr-run").onclick = () => trLoad().catch(e => toast(e.message));
+  $("#tr-export").onclick = async () => { const r = await api("/api/trace/export", {}); toast(r.summary); $("#tr-out").textContent = r.summary + " (" + r.zip_mb + " MB)"; };
+  $("#tr-drives").onclick = async () => { $("#tr-out").textContent = "Measuring both drives (about a minute)…";
+    const r = await api("/api/trace/drives", {});
+    $("#tr-out").textContent = r.drives.map(d => d.error ? d.label + ": " + d.error : `${d.label}  ${d.folder}\n  sequential write ${d.seq_write_mb_s} MB/s · read ${d.seq_read_mb_s} MB/s · ` +
+      `sync write ${d.fsync_ms_median} ms (p95 ${d.fsync_ms_p95}) · agents' database pattern ${Number(d.sqlite_rows_s).toLocaleString()} rows/s (slowest commit ${d.sqlite_commit_ms_max} ms) · free ${d.free_gb} GB`).join("\n\n") +
+      (r.fastest_for_facts ? `\n\nFaster for the agents' writes: ${r.fastest_for_facts}` + (r.ratio ? ` (×${r.ratio})` : "") : ""); };
+  $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>

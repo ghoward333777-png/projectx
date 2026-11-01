@@ -317,6 +317,16 @@
         <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
         <button class="btn quiet" id="bk-move-go">Move the shared folder</button></div>
       <div id="bk-diag" class="small"></div>
+      <details id="tr-box"><summary><b>Instrumentation</b> — every stage, every I/O, every failure of every record (logs in the shared folder's trace\)</summary>
+        <p class="muted small">Each agent and program writes what it did, how long each step took, every network exchange and every failure to
+          log files. <b>Analyse</b> finds the bottleneck of each dataset, every congestion point (connection slots, network, the shared database's
+          lock, the disk) and the slow I/O; <b>Export</b> packs the logs into one zip to send for analysis; <b>Compare drives</b> measures the
+          internal drive against the data drive with the agents' own write pattern (about a minute).</p>
+        <div class="row"><button class="btn" id="tr-run">📈 Analyse the logs</button><button class="btn quiet" id="tr-export">📦 Export logs for analysis</button>
+          <button class="btn quiet" id="tr-drives">💽 Compare drives (internal vs data drive)</button>
+          <label class="small">Follow 1 record in <input type="number" id="tr-sample" min="0" style="width:7em"> (0 = none)</label>
+          <label class="small"><input type="checkbox" id="tr-on"> logging on</label><button class="btn quiet" id="tr-save">Save</button></div>
+        <pre id="tr-out" class="small" style="white-space:pre-wrap;max-height:36em;overflow:auto"></pre></details>
       <div id="bk-table"></div>
       <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
         <input type="password" id="bk-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">
