@@ -132,3 +132,10 @@ label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margi
 /* one meaning per colour everywhere: green starts something, red stops it */
 button.btn.go { background: #067647; border-color: #067647; color: #fff; }
 button.btn.halt { background: #b42318; border-color: #b42318; color: #fff; }
+
+/* the one progress bar (QB.bar): percentage on the bar, plain text under it */
+.qb-bar { position: relative; height: 22px; background: var(--chip); border-radius: 999px; overflow: hidden; margin: 6px 0 2px; }
+.qb-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #067647, #22a06b); transition: width .6s ease; }
+.qb-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--ink); }
+.qb-bar-text { font-size: 13px; color: var(--muted); }
+.qb-t { font-variant-numeric: tabular-nums; opacity: .85; }

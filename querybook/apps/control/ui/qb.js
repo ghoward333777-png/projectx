@@ -1,5 +1,32 @@
 // QueryBook dedicated applications — shared page helpers (no libraries).
 "use strict";
+// ---------------------------------------------------------------- ONE way to show numbers, times, rates and progress (every page)
+//   facts / counts   1,234,567           (always whole, with thousands separators)
+//   rates            12,345 facts/min    (facts always per minute; downloads in MB/s)
+//   durations        8.4 s · 42 s · 3 min 05 s · 2 h 07 min
+//   time left        about 3 min 05 s left
+//   percentages      42.3%               (always one decimal, 0.0%–100.0%)
+//   sizes            850 KB · 12.4 MB · 3.27 GB
+const QB = {
+  num: n => n == null || n === "" || isNaN(n) ? "—" : Math.round(Number(n)).toLocaleString("en-US"),
+  rate: perMin => QB.num(perMin) + " facts/min",
+  dur: s => {
+    if (s == null || isNaN(s)) return "—";
+    s = Math.max(0, Number(s));
+    if (s < 10) return s.toFixed(1) + " s";
+    if (s < 60) return Math.round(s) + " s";
+    if (s < 3600) { const m = Math.floor(s / 60); return m + " min " + String(Math.round(s - m * 60)).padStart(2, "0") + " s"; }
+    const h = Math.floor(s / 3600); return h + " h " + String(Math.round((s - h * 3600) / 60)).padStart(2, "0") + " min";
+  },
+  left: s => s == null || isNaN(s) ? "" : "about " + QB.dur(s) + " left",
+  pct: f => f == null || isNaN(f) ? "—" : (Math.max(0, Math.min(1, Number(f))) * 100).toFixed(1) + "%",
+  bytes: n => n == null || isNaN(n) ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB",
+  // one progress bar: a filled bar with its percentage on it, and a line of plain text under it
+  bar: (f, text) => '<div class="qb-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + (f == null ? 0 : Math.round(f * 100)) +
+    '"><i style="width:' + (f == null ? 0 : (Math.max(0, Math.min(1, f)) * 100).toFixed(1)) + '%"></i><b>' + (f == null ? "working…" : QB.pct(f)) + "</b></div>" +
+    (text ? '<div class="qb-bar-text">' + text + "</div>" : ""),
+};
+
 const $ = (sel, root) => (root || document).querySelector(sel);
 const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -31,7 +58,7 @@ function busyStart(label) {
   BUSY.n++; BUSY.label = label;
   clearTimeout(BUSY.hide);
   el.className = "show working";
-  const tick = () => { el.querySelector(".qb-busy-text").textContent = "⏳ " + BUSY.label + " · " + ((performance.now() - BUSY.t0) / 1000).toFixed(2) + " s"; };
+  const tick = () => { el.querySelector(".qb-busy-text").textContent = "⏳ " + BUSY.label + " · " + QB.dur((performance.now() - BUSY.t0) / 1000); };
   tick(); clearInterval(BUSY.timer); BUSY.timer = setInterval(tick, 50);
 }
 function busyEnd(label, ok, serverMs) {
@@ -40,7 +67,7 @@ function busyEnd(label, ok, serverMs) {
   clearInterval(BUSY.timer);
   const el = busyBar(), secs = ((performance.now() - BUSY.t0) / 1000).toFixed(2);
   el.className = "show " + (ok ? "done" : "failed");
-  el.querySelector(".qb-busy-text").textContent = (ok ? "✔ " : "✖ Failed: ") + label + " · " + secs + " s" + (serverMs ? " (server " + (serverMs / 1000).toFixed(2) + " s)" : "");
+  el.querySelector(".qb-busy-text").textContent = (ok ? "✔ " : "✖ Failed: ") + label + " · " + QB.dur(Number(secs)) + (serverMs ? " (server " + QB.dur(serverMs / 1000) + ")" : "");
   BUSY.hide = setTimeout(() => { el.className = ""; }, ok ? 2500 : 6000);
 }
 
@@ -50,8 +77,8 @@ function buttonStart(btn) {
   const st = { html: btn.innerHTML, t0: performance.now(), timer: null, restore: null };
   btn._qb = st;
   btn.classList.remove("flash-ok", "flash-bad"); btn.classList.add("busy"); btn.setAttribute("aria-busy", "true");
-  const tick = () => { btn.innerHTML = '<span class="qb-spin" aria-hidden="true"></span>' + st.html + ' <span class="qb-t">' + ((performance.now() - st.t0) / 1000).toFixed(2) + " s</span>"; };
-  tick(); st.timer = setInterval(tick, 50);
+  const tick = () => { btn.innerHTML = '<span class="qb-spin" aria-hidden="true"></span>' + st.html + ' <span class="qb-t">' + QB.dur((performance.now() - st.t0) / 1000) + "</span>"; };
+  tick(); st.timer = setInterval(tick, 100);
 }
 function buttonEnd(btn, ok) {
   const st = btn._qb; if (!st) return;
@@ -59,7 +86,7 @@ function buttonEnd(btn, ok) {
   const secs = ((performance.now() - st.t0) / 1000).toFixed(2);
   btn.classList.remove("busy"); btn.removeAttribute("aria-busy");
   btn.classList.add(ok ? "flash-ok" : "flash-bad");
-  btn.innerHTML = (ok ? "✔ " : "✖ ") + st.html + ' <span class="qb-t">' + secs + " s</span>";
+  btn.innerHTML = (ok ? "✔ " : "✖ ") + st.html + ' <span class="qb-t">' + QB.dur(Number(secs)) + "</span>";
   st.restore = setTimeout(() => { btn.classList.remove("flash-ok", "flash-bad"); if (btn._qb === st) { btn.innerHTML = st.html; btn._qb = null; } }, ok ? 1800 : 4000);
 }
 
@@ -131,13 +158,10 @@ function onEnter(input, fn) {
 async function pollJob(el, onDone) {
   const j = await api("/api/job");
   if (j.state === "idle") { el.innerHTML = ""; return; }
-  const pct = j.total ? Math.min(100, Math.round(100 * j.done / j.total)) : null;
-  const fmtS = s => s === null || s === undefined ? "" : s < 60 ? Number(s).toFixed(2) + " s" : Math.floor(s / 60) + " min " + (s % 60).toFixed(2) + " s";
-  el.innerHTML = '<div class="small"><b>' + esc(j.name) + "</b> — " + esc(j.state) + (j.message ? " — " + esc(j.message) : "") +
-    " (" + Number(j.done || 0).toLocaleString() + (j.total ? " of " + Number(j.total).toLocaleString() : "") + ")</div>" +
-    (j.state === "running" ? '<div class="meter tall live"><i style="width:' + (pct !== null ? pct : 100) + '%"></i></div>' : "") +
-    '<div class="small muted">' + [pct !== null ? pct + "%" : "", "elapsed " + fmtS(j.elapsed), j.rate ? "speed " + Number(j.rate).toLocaleString() + " per second" : "",
-      j.eta_s !== undefined && j.eta_s !== null ? "about " + fmtS(j.eta_s) + " left in this step" : "", j.updates_per_s ? j.updates_per_s + " updates/s" : ""].filter(Boolean).join(" · ") + "</div>";
+  const f = j.total ? Math.min(1, j.done / j.total) : null;
+  el.innerHTML = '<div class="small"><b>' + esc(j.name) + "</b> — " + esc(j.state) + (j.message ? " — " + esc(j.message) : "") + "</div>" +
+    (j.state === "running" ? QB.bar(f, [QB.num(j.done) + (j.total ? " of " + QB.num(j.total) : ""), "running for " + QB.dur(j.elapsed),
+      j.rate ? QB.num(j.rate) + " per second" : "", j.eta_s != null ? QB.left(j.eta_s) : ""].filter(Boolean).join(" · ")) : "");
   if (j.state !== "running" && j.result && typeof j.result === "object") {
     const nice = k => k.replace(/_/g, " ");
     el.innerHTML = '<div class="note ' + (j.state === "finished" ? "good" : "") + '"><b>' + esc(j.name) + "</b> — " + esc(j.state) + '<ul class="small" style="margin:6px 0 0">' +
@@ -277,13 +301,13 @@ async function renderDiagnostics(el, rerun) {
     $("#gc-test").onclick = async () => {
       const r = await api("/api/gcloud/test", {});
       $("#gc-out").innerHTML = '<table class="t small"><tr><th>Service</th><th>Result</th><th>Seconds</th><th>Detail</th></tr>' + r.results.map(x => "<tr><td>" + esc(x.service) + "</td><td>" +
-        (x.ok ? '<span class="badge good">✔ works</span>' : '<span class="badge bad">✖ failed</span>') + "</td><td>" + Number(x.seconds).toFixed(2) + "</td><td>" + esc(x.detail) + "</td></tr>").join("") + "</table>";
+        (x.ok ? '<span class="badge good">✔ works</span>' : '<span class="badge bad">✖ failed</span>') + "</td><td>" + QB.dur(x.seconds) + "</td><td>" + esc(x.detail) + "</td></tr>").join("") + "</table>";
     };
     $("#gc-up").onclick = async () => { await api("/api/gcloud/backup-now", {}); pollJob($("#gc-job"), () => gcShow()); };
     $("#gc-list").onclick = async () => {
       const r = await api("/api/gcloud/backups");
       $("#gc-out").innerHTML = r.backups.length ? '<table class="t small"><tr><th>Cloud backup</th><th>Size</th><th>Stored</th><th></th></tr>' + r.backups.map(x => '<tr><td class="mono">' + esc(x.name.split("/").pop()) +
-        "</td><td>" + (x.bytes / 1048576).toFixed(2) + " MB</td><td>" + esc(x.updated || "") + '</td><td><button class="btn quiet" data-gcfetch="' + esc(x.name) + '">Download to this computer</button></td></tr>').join("") + "</table>" : '<p class="muted">No backups in the bucket yet.</p>';
+        "</td><td>" + QB.bytes(x.bytes) + "</td><td>" + esc(x.updated || "") + '</td><td><button class="btn quiet" data-gcfetch="' + esc(x.name) + '">Download to this computer</button></td></tr>').join("") + "</table>" : '<p class="muted">No backups in the bucket yet.</p>';
       $$("[data-gcfetch]").forEach(b => b.onclick = async () => { const r2 = await api("/api/gcloud/fetch", { name: b.dataset.gcfetch }); toast(r2.saved + " saved. " + r2.note); });
     };
     $("#gc-alert").onclick = async () => { const r = await api("/api/gcloud/alert", {}); toast("Alert created: " + r.display_name + ". Add your e-mail as a notification channel in Cloud Monitoring → Alerting."); };
@@ -335,7 +359,7 @@ async function showActivity(el) {
     (s === "warn" || s === "refused" || s === "stopped") ? '<span class="badge warn">' + esc(s) + "</span>" : '<span class="badge bad">' + esc(s) + "</span>";
   $("#act-out", el).innerHTML = r.activity.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Task</th><th>Result</th><th>Time</th><th>Detail</th></tr>' + r.activity.map(a =>
     '<tr><td class="mono">' + esc(a.at.replace("T", " ").replace("Z", "")) + "</td><td>" + esc(a.task) + "</td><td>" + badge(a.status) + '</td><td class="mono">' +
-    (a.ms === null ? "" : (a.ms / 1000).toFixed(2) + " s") + "</td><td>" + esc(a.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
+    (a.ms === null ? "" : QB.dur(a.ms / 1000)) + "</td><td>" + esc(a.detail || "") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
 }
 
 function showMonitor(el, m) {
@@ -456,7 +480,7 @@ async function renderCommons(el) {
     "<h3>Checks between applications</h3>" + (c.requests.length ? '<table class="t small"><tr><th>Asked by</th><th>Answered by</th><th>Check</th><th>Status</th><th>Count</th></tr>' +
       c.requests.map(r => "<tr><td>" + esc(r.from_app) + "</td><td>" + esc(r.to_app) + "</td><td>" + esc(s.checks[r.kind] || r.kind) + "</td><td>" + esc(r.status === "open" ? "waiting" : r.status) + "</td><td>" + r.n + "</td></tr>").join("") + "</table>" : '<p class="muted">None yet.</p>');
   $("#cm-log", el).innerHTML = s.log.length ? '<table class="t small"><tr><th>When (UTC)</th><th>Application</th><th>Agent</th><th>What it did</th><th>Time</th></tr>' + s.log.map(l => '<tr><td class="mono">' + cmWhen(l.at) +
-    "</td><td>" + esc(l.app) + "</td><td>" + esc(l.role) + "</td><td>" + esc(l.message) + '</td><td class="mono">' + (l.ms === null ? "" : (l.ms / 1000).toFixed(2) + " s") + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing yet.</p>';
+    "</td><td>" + esc(l.app) + "</td><td>" + esc(l.role) + "</td><td>" + esc(l.message) + '</td><td class="mono">' + (l.ms === null ? "" : QB.dur(l.ms / 1000)) + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing yet.</p>';
   clearTimeout(CM_TIMER);                       // the state line keeps itself current (cmWatch); the rest is redrawn
   if (s.state.running && el.classList.contains("active")) CM_TIMER = setTimeout(() => renderCommons(el), 15000);   // at most every 15 s
 }
@@ -518,7 +542,7 @@ async function renderHarvest(el) {
       HV_LOG = r.log;
       $("#hv-log", el).innerHTML = r.log.length ? '<table class="t small"><tr><th>#</th><th>When (UTC)</th><th>Domain</th><th>Task</th><th>Source</th><th>Class</th><th>Decision</th><th>Items</th><th>New</th><th>Time</th><th>Why</th></tr>' +
         r.log.map(h => "<tr><td>" + h.id + '</td><td class="mono">' + cmWhen(h.at) + "</td><td>" + esc(h.domain) + "</td><td>" + esc(h.title) + '</td><td class="mono">' + esc(h.source_key || "") +
-          "</td><td>" + esc(h.licence_class || "") + "</td><td>" + hvState(h.decision) + "</td><td>" + h.items + "</td><td>" + h.new + '</td><td class="mono">' + (h.seconds || 0).toFixed(2) +
+          "</td><td>" + esc(h.licence_class || "") + "</td><td>" + hvState(h.decision) + "</td><td>" + h.items + "</td><td>" + h.new + '</td><td class="mono">' + QB.dur(h.seconds || 0) +
           " s</td><td>" + esc(h.reason) + "</td></tr>").join("") + "</table>" : '<p class="muted">Nothing logged yet.</p>';
     };
     el._showLog = showLog;

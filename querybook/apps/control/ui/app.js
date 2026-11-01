@@ -27,7 +27,7 @@ function renderApps() {
       <div class="kv"><b>State</b><span>${a.running ? "running" + (a.version ? " · v" + esc(a.version) : "") : (a.installed ? "not running" : "not installed here")}</span>
       <b>Health</b><span>${a.health ? `<span class="badge ${level(a.health === "fail" ? "error" : a.health === "warn" ? "warn" : "ok")}">${esc(a.health)}</span>` : "—"}</span>
       <b>Harvesting</b><span>${a.harvest_on ? "on" : "off"}${a.heartbeat_s !== null ? " · checked in " + Math.round(a.heartbeat_s) + " s ago" : ""}</span>
-      <b>Facts</b><span>${a.facts.toLocaleString()} (${esc(a.domain)})</span>
+      <b>Facts</b><span>${fmt(a.facts)} (${esc(a.domain)})</span>
       <b>Last turn</b><span class="small">${a.last_turn ? esc(a.last_turn.started) + (lt ? ` — ${lt.new || 0} new, ${lt.merged || 0} merged${lt.filtered ? ", " + lt.filtered + " filtered out" : ""}${lt.on_target ? ", " + lt.on_target + " on target" : ""}` : " (running)") : "—"}</span></div>
       <div class="btns">${a.running ? `<a class="btn quiet" href="${esc(a.url)}" target="_blank" rel="noopener" style="padding:6px 11px;font-size:14px;border-radius:8px;text-decoration:none">Open</a>
         <button class="btn secondary" data-app="${a.app}" data-act="stop">Stop</button>`
@@ -53,13 +53,13 @@ function bindDismiss() { $$("[data-dismiss]").forEach(b => b.onclick = async () 
 function renderMonitor() {
   const o = S.overview, run = S.apps.filter(a => a.running).length;
   $("#last-check").textContent = S.last_check ? "last check " + S.last_check : "first check in a few seconds";
-  $("#stats").innerHTML = [["Applications running", run + " / 3"], ["Harvesting", S.control.master], ["Shared facts", o.facts.toLocaleString()],
-    ["Confirmed by 2+ apps", o.shared.toLocaleString()], ["Open alerts", S.alerts.length], ["Target", S.rules.target_text === "none (everything)" ? "none" : "set"],
+  $("#stats").innerHTML = [["Applications running", run + " / 3"], ["Harvesting", S.control.master], ["Shared facts", fmt(o.facts)],
+    ["Confirmed by 2+ apps", fmt(o.shared)], ["Open alerts", S.alerts.length], ["Target", S.rules.target_text === "none (everything)" ? "none" : "set"],
     ["Filter", S.rules.filter_text === "none (everything)" ? "none" : "set"]].map(([k, v]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
   const doms = Object.entries(o.by_domain), max = Math.max(1, ...doms.map(([, v]) => Object.values(v).reduce((a, b) => a + b, 0)));
   $("#domains").innerHTML = doms.length ? doms.map(([d, v]) => { const n = Object.values(v).reduce((a, b) => a + b, 0);
     return `<div class="row small" style="margin:4px 0"><span style="width:90px">${esc(d)}</span><div class="bar grow"><i style="width:${100 * n / max}%"></i></div>
-      <span style="width:240px" class="muted">${n.toLocaleString()} — ${Object.entries(v).map(([s, k]) => esc(s) + " " + k).join(", ")}</span></div>`; }).join("") : `<p class="muted">No shared facts yet.</p>`;
+      <span style="width:240px" class="muted">${fmt(n)} — ${Object.entries(v).map(([s, k]) => esc(s) + " " + k).join(", ")}</span></div>`; }).join("") : `<p class="muted">No shared facts yet.</p>`;
   $("#turns").innerHTML = o.turns.length ? `<table class="t"><tr><th>When</th><th>App</th><th>Result</th><th>Why its turn</th></tr>` + o.turns.map(t => {
     const r = t.result || {};
     return `<tr><td class="small">${esc(t.started)}</td><td>${esc(NAMES[t.app] || t.app)}</td><td class="small">${t.ended ? (r.timeout ? "timed out" : `${r.new || 0} new, ${r.merged || 0} merged` +
@@ -154,22 +154,22 @@ async function loadExemplars() {
 }
 // ---- bulk harvesting: datasets, agents, scaffold slots
 const BK_STATE = { done: "good", running: "good", paused: "warn", stopped: "warn", failed: "bad", blocked: "bad" };
-const bytes = n => n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB";
+const bytes = n => QB.bytes(n);            // the one standard (qb.js)
 async function loadBulk() {
   const r = await api("/api/bulk");
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
   $("#bk-agents").max = r.max_agents || 16;
   $("#bk-full").textContent = "⚡ Full speed (" + (r.max_agents || 16) + " agents)";
-  $("#bk-summary").innerHTML = `<span class="pill">${fmt(r.total)} bulk facts</span><span class="pill">+${fmt(r.last_minute)} last min</span>` +
-    `<span class="pill">+${fmt(r.last_hour)} last hr</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
-    `<span class="pill">runner: ${r.runner.alive ? "running · " + esc(r.runner.note || "") : "stopped"}</span>`;
+  $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total)}</b> facts</span><span class="pill">+${fmt(r.last_minute)} in the last minute</span>` +
+    `<span class="pill">+${fmt(r.last_hour)} in the last hour</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
+    `<span class="pill">${r.runner.alive ? '<span class="badge good">● harvesting</span> ' + esc(r.runner.note || "") : '<span class="badge">○ stopped</span>'}</span>`;
   $("#bk-table").innerHTML = `<table class="t small"><tr><th></th><th>Dataset</th><th>Area</th><th>Source · licence</th><th>State</th><th>Facts</th><th>Rate</th><th>Parts</th></tr>` +
     r.datasets.map(d => `<tr><td><input type="checkbox" data-bk="${esc(d.key)}" ${d.approved ? "" : "disabled"} ${picked.has(d.key) ? "checked" : ""}></td>
       <td><b>${esc(d.title)}</b><div class="small muted">${esc(d.why)} — ${esc(d.approx)}</div></td><td>${esc(d.area)}</td>
       <td class="small">${esc(d.source)}<br>${esc(d.licence)}${d.approved ? "" : `<br><span class="badge bad">not approved</span> ${esc(d.approval)}`}</td>
       <td><span class="badge ${BK_STATE[d.state] || ""}">${esc(d.state)}</span>${d.error ? `<div class="small muted">${esc(d.error)}</div>` : ""}</td>
-      <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">+${fmt(d.last_minute)}/min<br>+${fmt(d.last_hour)}/hr</td>
-      <td class="small">${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+      <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_minute)}<br>+${fmt(d.last_hour)} in the last hour</td>
+      <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
   const se = r.datasets.find(d => d.key === "wikidata-series");
   $("#bk-slots").innerHTML = se && se.slots && se.slots.length ? se.slots.map(x => `${esc(x.series)}: ${fmt(x.filled)} of ${fmt(x.expected)} editions filled`).join(" · ")
     : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
@@ -180,7 +180,7 @@ async function loadKeystones() {
   const st = { "growing": "ok", "saturated": "warn", "not started": "" };
   $("#ks-table").innerHTML = `<table class="t small"><tr><th>#</th><th>Domain</th><th>Phase</th><th>Facts held</th><th>Fed by</th><th>Novelty</th><th>State</th><th>Unlocks</th></tr>` +
     k.keystones.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.label)}${r.hot ? ' <span class="badge warn" title="The prototype\'s Hot Map: harvested first">Hot Map</span>' : ""}</td><td>${r.phase ?? ""}</td><td>${fmt(r.facts)}</td><td>${esc(r.feeds.join(", ") || "—")}</td>
-      <td>${r.novelty == null ? "—" : (r.novelty * 100).toFixed(r.novelty < 0.1 ? 2 : 0) + "%"}</td><td><span class="badge ${st[r.state] || ""}">${esc(r.state)}</span></td>
+      <td>${QB.pct(r.novelty)}</td><td><span class="badge ${st[r.state] || ""}">${esc(r.state)}</span></td>
       <td class="muted">${esc(r.unlocks.join(", "))}</td></tr>`).join("") + `</table>`;
   const ps = $("#ga-probe");
   ps.innerHTML = `<option value="">Suggested questions…</option>` + k.probes.map(p => `<option>${esc(p.question)}</option>`).join("");
@@ -288,7 +288,7 @@ function bind() {
   $("#tr-drives").onclick = async () => { $("#tr-out").textContent = "Measuring both drives (about a minute)…";
     const r = await api("/api/trace/drives", {});
     $("#tr-out").textContent = r.drives.map(d => d.error ? d.label + ": " + d.error : `${d.label}  ${d.folder}\n  sequential write ${d.seq_write_mb_s} MB/s · read ${d.seq_read_mb_s} MB/s · ` +
-      `sync write ${d.fsync_ms_median} ms (p95 ${d.fsync_ms_p95}) · agents' database pattern ${Number(d.sqlite_rows_s).toLocaleString()} rows/s (slowest commit ${d.sqlite_commit_ms_max} ms) · free ${d.free_gb} GB`).join("\n\n") +
+      `sync write ${d.fsync_ms_median} ms (p95 ${d.fsync_ms_p95}) · agents' database pattern ${fmt(d.sqlite_rows_s)} rows/s (slowest commit ${d.sqlite_commit_ms_max} ms) · free ${d.free_gb} GB`).join("\n\n") +
       (r.fastest_for_facts ? `\n\nFaster for the agents' writes: ${r.fastest_for_facts}` + (r.ratio ? ` (×${r.ratio})` : "") : ""); };
   $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
   $("#bk-go-top").onclick = () => $("#bk-full").click();       // the one Start: every approved dataset, full speed
@@ -347,7 +347,7 @@ function bind() {
 
 // ---- live fact ticker: UFCS fact counts per area, polled every 2 s; numbers count up to the new value
 const TK = { last: {}, shown: {}, ok: false };
-const fmt = n => n == null ? "—" : Number(n).toLocaleString();
+const fmt = n => QB.num(n);
 function tkCount(el, key, to) {
   const from = TK.shown[key] ?? to; TK.shown[key] = to;
   if (from === to || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = fmt(to); return; }
@@ -357,10 +357,10 @@ function tkCount(el, key, to) {
 }
 function tkRender(T) {
   const cells = T.areas.map(a => ({ key: a.app, name: a.area, n: a.facts, live: a.running,
-    sub: `+${fmt(a.last_minute)} last min · +${fmt(a.last_hour)} last hr · ${fmt(a.verified_or_corroborated)} verified/corroborated` +
-         (a.bulk ? ` · bulk ${fmt(a.bulk)}` : "") + (a.own_store != null ? ` · own store ${fmt(a.own_store)}` : "") }));
+    sub: `+${fmt(a.last_minute)} in the last minute · +${fmt(a.last_hour)} in the last hour` +
+         (a.bulk ? ` · ${fmt(a.bulk)} from bulk datasets` : "") + (a.verified_or_corroborated ? ` · ${fmt(a.verified_or_corroborated)} confirmed` : "") }));
   cells.push({ key: "total", name: "All areas (UFCS facts)", n: T.total, live: T.areas.some(a => a.running), total: true,
-    sub: `+${fmt(T.last_minute)} last min · +${fmt(T.last_hour)} last hr` + (T.other.facts ? ` · other ${fmt(T.other.facts)}` : "") });
+    sub: `+${fmt(T.last_minute)} in the last minute · +${fmt(T.last_hour)} in the last hour` + (T.other.facts ? ` · ${fmt(T.other.facts)} other` : "") });
   const row = $("#tk-row");
   if (row.children.length !== cells.length) row.innerHTML = cells.map(c => `<div class="tk${c.total ? " total" : ""}" data-k="${c.key}"><div class="nm"><i class="tk-live"></i><span></span></div><div class="n">—</div><div class="sub"></div></div>`).join("");
   cells.forEach(c => { const el = row.querySelector(`[data-k="${c.key}"]`);
@@ -374,20 +374,20 @@ function tkRender(T) {
 // ---- harvests in action: one mini bar each, on its own scale (bytes of the publisher's file, rows, tasks or facts)
 function unitFmt(n, unit) {
   if (n == null) return "—";
-  if (unit === "bytes") return n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.round(n / 1e3) + " KB";
+  if (unit === "bytes") return QB.bytes(n);
   return fmt(n) + " " + unit;
 }
-const dur = s => s == null ? "" : s < 90 ? Math.round(s) + " s" : s < 5400 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " h";
+const dur = s => QB.dur(s);
 function tkActive(list) {
   const el = $("#tk-active");
   if (!list.length) { el.innerHTML = ""; return; }
   el.innerHTML = list.map(h => {
-    const f = h.fraction == null ? null : Math.max(0, Math.min(1, h.fraction)), pc = f == null ? "…" : (f * 100).toFixed(f < 0.1 ? 1 : 0) + "%";
+    const f = h.fraction == null ? null : Math.max(0, Math.min(1, h.fraction)), pc = f == null ? "working…" : QB.pct(f);
     const scaleTotal = h.kind === "bulk" && h.parts > 1 ? `${h.parts} files` : unitFmt(h.total, h.unit);
     const now = h.kind === "bulk"
       ? `file ${h.part_no} of ${h.parts}: ${esc(h.part || "")} — ${unitFmt(h.done, h.unit)} of ${unitFmt(h.total, h.unit)}` +
-        (h.rate ? ` · ${unitFmt(h.rate, h.unit)}/s` : "") + (h.eta_s ? ` · ${dur(h.eta_s)} left in this file` : "") +
-        ` · +${fmt(h.facts_per_min)} facts/min`
+        (h.rate ? ` · ${unitFmt(h.rate, h.unit)}/s` : "") + (h.eta_s ? ` · ${QB.left(h.eta_s)} in this file` : "") +
+        ` · ${QB.rate(h.facts_per_min)}`
       : `${unitFmt(h.done, h.unit)} of ${unitFmt(h.total, h.unit)}` + (h.detail ? ` · now: ${esc(h.detail)}` : "");
     return `<div class="hv" title="${esc(h.title)}"><div class="top"><span class="nm">${esc(h.title)}</span><span class="pct">${pc}</span></div>
       <div class="bar2 ${h.kind}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${f == null ? 0 : Math.round(f * 100)}"

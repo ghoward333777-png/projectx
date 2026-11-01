@@ -43,6 +43,13 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  One way to show numbers, times and progress (Control Panel 1.24.0 and every program's shared pages)
+    * Facts and counts: whole numbers with separators (1,234,567). Rates: facts per minute ("12,345 facts/min").
+      Durations: "8.4 s", "42 s", "3 min 05 s", "2 h 07 min"; time left: "about 3 min 05 s left". Percentages: one decimal
+      ("42.3%"). Sizes: KB / MB / GB. The same wording on every counter: "+N in the last minute", "+N in the last hour".
+    * One progress bar everywhere: the percentage on the bar, plain text under it (how much of how much, time left).
+    * Button timers and the busy bar use the same durations; the harvesting state reads "harvesting" or "stopped".
+    * The Harvesting tab opens with one big green Start and one big red Stop.
   A simpler suite: harvesting in ONE place (Control Panel 1.23.0 and the shared core, every program)
     * Harvesting runs only from the Control Panel -> Harvesting tab: one green "Start harvesting", one red "Stop
       harvesting". That is the fast lane (bulk agents on every approved dataset, one per processor core).
