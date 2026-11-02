@@ -361,6 +361,78 @@ def bring_over(root, program_dir=None, home=None, say=print, only=None):
         lock.release()
 
 
+def old_copies(root, program_dir=None, home=None):
+    """every file the old place (C:) still holds, checked against the data drive: SAFE to delete only when the data drive
+    holds the same file — a fact database with at least as many facts (counted), any other file present with at least the
+    same size. Nothing is deleted here. Returns {"safe": [...], "keep": [...], "safe_bytes", "keep_bytes"}."""
+    progs = []
+    if program_dir:
+        suite = os.path.dirname(os.path.abspath(program_dir))
+        progs = [os.path.join(suite, d) for d in os.listdir(suite) if os.path.isdir(os.path.join(suite, d))]
+    safe, keep = [], []
+    for kind, src in old_places(home, progs):
+        dst_root = commons_in(root) if kind == "commons" else os.path.join(root, kind)
+        if not os.path.isdir(src) or os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst_root)):
+            continue
+        if os.path.normcase(os.path.abspath(dst_root)).startswith(os.path.normcase(os.path.abspath(src)) + os.sep):
+            continue
+        for d, dirs, files in os.walk(src):
+            for f in files:
+                s_ = os.path.join(d, f)
+                rel = os.path.relpath(s_, src)
+                t = os.path.join(dst_root, rel)
+                try:
+                    size = os.path.getsize(s_)
+                except OSError:
+                    continue
+                row = {"path": s_, "on_data_drive": t, "bytes": size}
+                if f.endswith(("-wal", "-shm")):
+                    base = s_[:-4]
+                    row["why"] = "goes with %s" % os.path.basename(base)
+                    (safe if os.path.exists(t[:-4]) and _db_safe(base, t[:-4])[0] else keep).append(row)
+                    continue
+                if f.endswith(".sqlite"):
+                    ok, why = _db_safe(s_, t)
+                else:
+                    ok = os.path.exists(t) and os.path.getsize(t) >= size
+                    why = "the data drive has it" if ok else "not on the data drive (or smaller there)"
+                row["why"] = why
+                (safe if ok else keep).append(row)
+    return {"safe": safe, "keep": keep, "safe_bytes": sum(r["bytes"] for r in safe), "keep_bytes": sum(r["bytes"] for r in keep)}
+
+
+def _db_safe(src, dst):
+    if not os.path.exists(dst):
+        return False, "not on the data drive"
+    a, b = _facts(src), _facts(dst)
+    if a is not None and b is not None:
+        return (b >= a, "the data drive holds %s facts, this copy %s" % (format(b, ","), format(a, ",")))
+    return False, "cannot count its facts on both drives — kept to be safe"
+
+
+def delete_old(root, program_dir=None, home=None, say=print):
+    """delete the old copies on C: that the data drive holds (each one checked again just before it goes)"""
+    rep = old_copies(root, program_dir, home)
+    freed, gone, lines = 0, 0, []
+    for r in sorted(rep["safe"], key=lambda r: r["path"].endswith(("-wal", "-shm"))):   # the databases first, then their logs
+        p = r["path"]
+        if p.endswith(".sqlite") and not _db_safe(p, r["on_data_drive"])[0]:
+            continue
+        try:
+            os.remove(p)
+            freed += r["bytes"]; gone += 1
+            lines.append("deleted old copy %s (%s)" % (p, r["why"]))
+        except OSError as e:
+            lines.append("could not delete %s: %s" % (p, e))
+    if lines:
+        with open(os.path.join(root, "data-moved.log"), "a", encoding="utf-8") as f:
+            f.write("\n%s — freeing the computer's own drive\n%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), "\n".join(lines)))
+    say("  %d old file(s) deleted, %.1f GB freed; %d kept (%.1f GB) because the data drive could not be shown to hold them"
+        % (gone, freed / 1e9, len(rep["keep"]), rep["keep_bytes"] / 1e9))
+    return {"deleted": gone, "freed_bytes": freed, "kept": len(rep["keep"]), "kept_bytes": rep["keep_bytes"],
+            "kept_examples": [{"path": r["path"], "why": r["why"]} for r in rep["keep"][:20]]}
+
+
 def self_test():
     import tempfile
     res = []
@@ -433,8 +505,16 @@ def self_test():
         os.makedirs(os.path.join(old, "stem")); open(os.path.join(old, "stem", "a.txt"), "w").write("s")
         r5 = bring_over(root, home=home, say=lambda *a: None, only=["facts"])
         ok("a program at its start brings over only its own folder", r5["copied"] == 0 and not os.path.exists(os.path.join(root, "stem", "a.txt")), r5)
+        oc = old_copies(root, home=home)
+        safe_names = {os.path.basename(r["path"]) for r in oc["safe"]}
+        ok("old copies on C:: a database the data drive holds as many facts of is safe to delete; the program's own database"
+           " it cannot count is kept", "wikidata-1.sqlite" in safe_names and "facts.sqlite" in safe_names and "control.sqlite" not in safe_names,
+           (sorted(safe_names), [(os.path.basename(r["path"]), r["why"]) for r in oc["keep"]]))
         for db in keep[:-2]:
             db.close()
+        dl = delete_old(root, home=home, say=lambda *a: None)
+        ok("deleting frees exactly the safe ones and leaves the rest", dl["deleted"] > 0 and not os.path.exists(os.path.join(old, "commons", "shards", "wikidata-1.sqlite"))
+           and os.path.exists(os.path.join(old, "control", "control.sqlite")) and _facts(os.path.join(root, "commons", "shards", "wikidata-1.sqlite")) == 5000, dl)
         suite = os.path.join(tmp, "suite")
         os.makedirs(os.path.join(suite, "QueryBook-STEM"))
         open(os.path.join(suite, "data-folder.txt"), "w").write("%s\r\n" % root)

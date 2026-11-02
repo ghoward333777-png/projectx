@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.27.0"
+VERSION = "1.28.0"
 PORT = 8100
 program_dir = HERE
 

@@ -313,6 +313,7 @@
         recurring-event slots are filled from Wikidata, one query per series.</p>
       <div class="row" style="margin:10px 0 14px"><button class="btn" id="bk-go-top" style="font-size:1.25em;padding:12px 28px">⚡ Start harvesting</button>
         <button class="btn" id="bk-stop-top" style="font-size:1.25em;padding:12px 28px">■ Stop harvesting</button></div>
+      <div id="bk-where"></div>
       <div id="bk-summary" class="row"></div>
       <div class="row"><button class="btn" id="bk-why">🩺 Why so slow?</button>
         <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
@@ -328,6 +329,11 @@
           <label class="small">Follow 1 record in <input type="number" id="tr-sample" min="0" style="width:7em"> (0 = none)</label>
           <label class="small"><input type="checkbox" id="tr-on"> logging on</label><button class="btn quiet" id="tr-save">Save</button></div>
         <pre id="tr-out" class="small" style="white-space:pre-wrap;max-height:36em;overflow:auto"></pre></details>
+      <details id="oc-box"><summary><b>Old copies on C:</b> — what earlier versions left on this computer's own drive after copying it to D:\QB</summary>
+        <p class="muted small">Every old file is checked against D:\QB (databases by their fact counts). Only files D:\QB is shown to hold can be
+          deleted, and only when you confirm. Anything that cannot be checked is kept.</p>
+        <div class="row"><button class="btn quiet" id="oc-check">💾 Check old copies on C:</button><button class="btn quiet" id="oc-del" disabled>🗑 Delete the old copies D:\QB holds</button></div>
+        <div id="oc-out" class="small"></div></details>
       <div id="bk-table"></div>
       <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
         <input type="password" id="bk-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">

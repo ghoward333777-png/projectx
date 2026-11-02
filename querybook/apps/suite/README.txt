@@ -43,6 +43,15 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  See the copy to C:, consistent words everywhere (Control Panel 1.28.0 and the shared core)
+    * The Harvesting tab shows the copy of a dataset to C: while it runs ("Copying wikidata-dump-3 to C: - 3.20 GB of
+      9.00 GB", a bar, the speed and the time left), then "Writing on C: (fast): N dataset(s)", the free space on C:, and any
+      dataset writing straight to D: (slow) in red.
+    * Old copies on C:: checks what earlier versions left in C:\Users\<you>\QueryBook-Data against D:\QB (databases by
+      fact counts) and, only when you confirm, deletes what D:\QB is shown to hold. Anything it cannot check is kept.
+    * The logs go to C: only while C: has more than 5 GB free.
+    * The same words and formats in every header, footer and counter: "Programs: 3 of 3 running · Alerts: 1"; the footer
+      "Data · Database: OK · Health · Last backup: 3 h 05 min ago · Version"; every number 1,234,567 on every page.
   Analysis that always answers (Control Panel 1.27.0 and the shared core)
     * The instrumentation logs are written beside the working copies on C: (C:\Users\<you>\QueryBook-Work\...\trace), so
       logging never waits for the external disk; "Export logs" still puts the zip in D:\QB\commons.

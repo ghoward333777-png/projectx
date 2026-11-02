@@ -119,7 +119,7 @@ let page = 0;
 async function loadSaved() {
   const r = await api("/api/facts?limit=50&offset=" + page * 50 + "&q=" + encodeURIComponent($("#sq").value) + "&status=" + $("#sst").value);
   const badge = s => s === "verified" ? '<span class="badge good">verified</span>' : s === "mismatch" ? '<span class="badge bad">mismatch</span>' : '<span class="badge warn">' + esc(s) + "</span>";
-  $("#slist").innerHTML = '<p class="small muted">' + Number(r.total).toLocaleString() + " saved</p>" +
+  $("#slist").innerHTML = '<p class="small muted">' + QB.num(r.total) + " saved</p>" +
     '<table class="t"><tr><th>Question</th><th>Answer</th><th>Status</th><th>Source</th><th></th></tr>' + r.facts.map(f =>
       "<tr><td>" + esc(f.question) + '</td><td class="mono">' + esc(f.answer) + "</td><td>" + badge(f.status) + '</td><td class="small muted">' + esc(f.source) +
       '</td><td><button class="btn quiet" data-del="' + f.id + '">Delete</button></td></tr>').join("") + "</table>" +
@@ -135,8 +135,8 @@ async function loadData() {
   const s = await api("/api/status");
   const st = s.store;
   $("#dstatus").innerHTML = '<div class="stats">' +
-    stat(Number(s.facts_total).toLocaleString(), "saved answers") + stat(Number(s.facts.verified || 0).toLocaleString(), "verified") +
-    stat(Number(s.facts.mismatch || 0).toLocaleString(), "mismatches") + stat(st.backups, "backups kept") + "</div>" +
+    stat(QB.num(s.facts_total), "saved answers") + stat(QB.num(s.facts.verified || 0), "verified") +
+    stat(QB.num(s.facts.mismatch || 0), "mismatches") + stat(st.backups, "backups kept") + "</div>" +
     '<p class="small">Database: <span class="mono">' + esc(st.database) + "</span> (" + Math.round(st.bytes / 1024) + " KB)</p>" +
     (st.read_only ? '<div class="note bad">The database failed its check (' + esc(st.damage) + '). Nothing will be written. Close the app and run <span class="mono">python app.py restore</span>.</div>'
       : '<div class="note good">The database passed its check when the application started.</div>');
@@ -149,7 +149,7 @@ async function loadData() {
   pollJob($("#ijob"));
 }
 const stat = (v, k) => '<div class="stat"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + "</div></div>";
-const fmt = n => n === null || n === undefined ? "" : Number(n).toLocaleString();
+const fmt = n => n === null || n === undefined ? "" : QB.num(n);
 
 async function loadHelp() {
   if ($("#htab").innerHTML) return;
@@ -189,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#oldcheck").onclick = async () => {
     const r = await api("/api/old-store?folder=" + encodeURIComponent($("#oldf").value));
     $("#oldinfo").innerHTML = "Found the old store at <span class=\"mono\">" + esc(r.folder) + "</span> — " + r.blocks + " block file(s)" +
-      (r.manifest && r.manifest.facts ? ", about " + Number(r.manifest.facts).toLocaleString() + " facts in total (all subjects)" : "") + ".";
+      (r.manifest && r.manifest.facts ? ", about " + QB.num(r.manifest.facts) + " facts in total (all subjects)" : "") + ".";
   };
   $("#oldgo").onclick = async () => { await api("/api/import-old", { folder: $("#oldf").value }); pollJob($("#ijob"), () => loadData()); };
   $("#jobstop").onclick = () => api("/api/job/stop", {});

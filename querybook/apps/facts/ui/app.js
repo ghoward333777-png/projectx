@@ -2,7 +2,7 @@
 let OPT = null, page = 0, lastQuery = {};
 
 const statusBadge = s => s === "sourced" ? '<span class="badge good">sourced</span>' : s === "needs checking" ? '<span class="badge warn">needs checking</span>' : '<span class="badge bad">needs source</span>';
-const fmt = n => n === null || n === undefined ? "" : Number(n).toLocaleString();
+const fmt = n => n === null || n === undefined ? "" : QB.num(n);
 const stat = (v, k) => '<div class="stat"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + "</div></div>";
 
 async function options() {

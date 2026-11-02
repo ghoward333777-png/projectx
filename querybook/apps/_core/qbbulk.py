@@ -1423,14 +1423,58 @@ def pull(commons_folder, key):
                 c.close()
             except sqlite3.Error:
                 pass
-            shutil.copyfile(src, wp + sfx + ".pulling")
+            _copy_progress(src, wp + sfx + ".pulling", commons_folder, key)
             os.replace(wp + sfx + ".pulling", wp + sfx)
         if os.path.exists(hp + ".progress"):
             shutil.copyfile(hp + ".progress", wp + ".progress")
         TR.event("work_copy", dataset=key, action="made", seconds=round(time.time() - t, 1), mb=round(_sizes(wp) / 1e6, 1))
         return True
     finally:
+        try:
+            os.remove(os.path.join(work_dir(commons_folder), "_copying.json"))
+        except OSError:
+            pass
         sl.release(lk)
+
+
+def _copy_progress(src, dst, commons_folder, key):
+    """copy in 8 MB pieces, writing how far it is (for the Harvesting tab) every 2 seconds"""
+    total, done, t0, last = os.path.getsize(src), 0, time.time(), 0.0
+    note = os.path.join(work_dir(commons_folder), "_copying.json")
+    with open(src, "rb") as a, open(dst, "wb") as b:
+        while True:
+            buf = a.read(8 << 20)
+            if not buf:
+                break
+            b.write(buf)
+            done += len(buf)
+            if time.time() - last > 2:
+                last = time.time()
+                try:
+                    with open(note + ".tmp", "w") as f:
+                        json.dump({"dataset": key, "file": os.path.basename(src), "done": done, "total": total,
+                                   "since": t0, "at": last}, f)
+                    _replace(note + ".tmp", note, tries=3)
+                except OSError:
+                    pass
+
+
+def copying(commons_folder):
+    """the copy to C: in progress, if any: {dataset, done, total, rate (bytes/s), eta_s}"""
+    w = work_dir(commons_folder)
+    if not w:
+        return None
+    try:
+        with open(os.path.join(w, "_copying.json")) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if time.time() - c.get("at", 0) > 60:
+        return None
+    el = max(0.001, c["at"] - c["since"])
+    c["rate"] = c["done"] / el
+    c["eta_s"] = (c["total"] - c["done"]) / c["rate"] if c["rate"] > 0 else None
+    return c
 
 
 def _drained_path(commons_folder):
@@ -2137,7 +2181,13 @@ def status(commons_folder, commons=None):
     except (OSError, ValueError):
         pass
     rs["alive"] = bool(rs) and now - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
+    w = work_dir(commons_folder)
+    try:
+        free_c = shutil.disk_usage(w if os.path.isdir(w) else os.path.dirname(w) if os.path.isdir(os.path.dirname(w)) else os.path.expanduser("~")).free if w else None
+    except OSError:
+        free_c = None
     return {"version": VERSION, "cores": os.cpu_count() or 1, "max_agents": MAX_AGENTS, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
+            "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c,
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "bytes": sum(d["bytes"] for d in out)}
 
@@ -2401,6 +2451,27 @@ def add_routes(api, commons, program_dir):
         if AN["state"] == "working":
             out["text"] = "Analysing… %s lines read so far (%s)" % (format(AN["lines"], ","), qt.fmt_dur(time.time() - AN["started"]))
         return out
+
+    @api.get("/api/drive/old-copies")
+    def old_copies_route(p):
+        """the copies of earlier versions still on C: that the data drive holds (safe to delete) and those it cannot vouch for"""
+        import qbdrive
+        root = qbdrive.root_for(program_dir)
+        if not root:
+            raise core.UserError("No data drive is set (data-folder.txt beside the launchers).")
+        r = qbdrive.old_copies(root, program_dir)
+        return {"safe_files": len(r["safe"]), "safe_bytes": r["safe_bytes"], "keep_files": len(r["keep"]), "keep_bytes": r["keep_bytes"],
+                "keep_examples": [{"path": x["path"], "why": x["why"]} for x in r["keep"][:15]], "root": root}
+
+    @api.post("/api/drive/delete-old-copies")
+    def delete_old_route(p):
+        import qbdrive
+        if p.get("confirm") != "yes":
+            raise core.UserError("Confirm first.")
+        root = qbdrive.root_for(program_dir)
+        if not root:
+            raise core.UserError("No data drive is set (data-folder.txt beside the launchers).")
+        return qbdrive.delete_old(root, program_dir, say=lambda *a: None)
 
     @api.post("/api/trace/export")
     def trace_export(p):

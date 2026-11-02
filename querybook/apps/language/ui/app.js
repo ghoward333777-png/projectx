@@ -1,6 +1,6 @@
 "use strict";
 // QueryBook Language Builder — one automated build of every language, shown step by step.
-const fmt = n => Number(n || 0).toLocaleString();
+const fmt = n => QB.num(n || 0);
 const stat = (v, k) => '<div class="stat"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + "</div></div>";
 const NAMES = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", nl: "Dutch", sv: "Swedish", da: "Danish",
   no: "Norwegian", fi: "Finnish", pl: "Polish", cs: "Czech", el: "Greek", ro: "Romanian", hu: "Hungarian", ca: "Catalan" };

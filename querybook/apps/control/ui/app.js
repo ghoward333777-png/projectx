@@ -17,7 +17,7 @@ async function load(quiet) {
   if (!S || !S.apps) return;
   renderApps(); renderAlerts(); renderMonitor(); renderHarvest(); renderRules();
   const run = S.apps.filter(a => a.running).length;
-  $("#hdr-state").textContent = run + " of 3 running · harvesting " + S.control.master + " · " + S.alerts.length + " alert(s)";
+  $("#hdr-state").textContent = "Programs: " + run + " of 3 running · Alerts: " + S.alerts.length;
 }
 
 function renderApps() {
@@ -171,6 +171,14 @@ async function loadBulk() {
         ? `<div class="small muted">working on C:, ${d.saved_to_data_drive ? "saved to D: " + QB.dur(Date.now() / 1000 - d.saved_to_data_drive) + " ago" : "not yet saved to D:"}</div>` : ""}</td>
       <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_minute)}<br>+${fmt(d.last_hour)} in the last hour</td>
       <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+  // where the agents write, and the copy to C: in progress (one line, the standard bar)
+  const onC = r.datasets.filter(d => d.working_copy).length, direct = r.datasets.filter(d => d.state === "running" && !d.working_copy).length;
+  $("#bk-where").innerHTML = r.copying
+    ? `<div class="note"><b>Copying ${esc(r.copying.dataset)} to C:</b> before it resumes there — ${QB.bytes(r.copying.done)} of ${QB.bytes(r.copying.total)}` +
+      QB.bar(r.copying.done / Math.max(1, r.copying.total), `${QB.bytes(r.copying.rate)}/s · ${QB.left(r.copying.eta_s)}`) + `</div>`
+    : r.working_copies ? `<p class="small">Writing on C: (fast): <b>${QB.num(onC)}</b> dataset(s) · saved to D:\QB every 10 min` +
+      (direct ? ` · <span class="badge bad">${QB.num(direct)} writing straight to D: (slow)</span>` : "") +
+      (r.work_free_bytes != null ? ` · ${QB.bytes(r.work_free_bytes)} free on C:` : "") + `</p>` : "";
   const se = r.datasets.find(d => d.key === "wikidata-series");
   $("#bk-slots").innerHTML = se && se.slots && se.slots.length ? se.slots.map(x => `${esc(x.series)}: ${fmt(x.filled)} of ${fmt(x.expected)} editions filled`).join(" · ")
     : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
@@ -296,6 +304,17 @@ function bind() {
   $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
   $("#bk-go-top").onclick = () => $("#bk-full").click();       // the one Start: every approved dataset, full speed
   $("#bk-stop-top").onclick = () => $("#bk-stop").click();     // the one Stop
+  $("#oc-check").onclick = async () => { $("#oc-out").textContent = "Checking every old file against D:\\QB…";
+    const r = await api("/api/drive/old-copies");
+    $("#oc-out").innerHTML = `<p><b>${QB.num(r.safe_files)}</b> old file(s), <b>${QB.bytes(r.safe_bytes)}</b>, are held on D:\\QB and can be deleted from C:. ` +
+      `${QB.num(r.keep_files)} file(s), ${QB.bytes(r.keep_bytes)}, are kept (D:\\QB could not be shown to hold them).</p>` +
+      (r.keep_examples.length ? `<ul>${r.keep_examples.map(x => `<li class="mono">${esc(x.path)} — ${esc(x.why)}</li>`).join("")}</ul>` : "");
+    $("#oc-del").disabled = !r.safe_files; };
+  $("#oc-del").onclick = async () => {
+    if (!confirm("Delete the old copies on C: that D:\\QB holds? Each file is checked again just before it is deleted. Files that cannot be checked are kept.")) return;
+    const r = await api("/api/drive/delete-old-copies", { confirm: "yes" });
+    $("#oc-out").innerHTML = `<p><b>${QB.num(r.deleted)}</b> old file(s) deleted, <b>${QB.bytes(r.freed_bytes)}</b> freed on C:. ${QB.num(r.kept)} kept (${QB.bytes(r.kept_bytes)}).</p>`;
+    $("#oc-del").disabled = true; };
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>

@@ -140,11 +140,14 @@ async function refreshFooter() {
   try {
     const s = await api("/api/status");
     const db = s.store || {};
+    // the last backup's local time is in its name (…-YYYYMMDD-HHMMSS…); shown as "3 h 05 min ago" like every other time
+    const m = /(\d{8})-(\d{6})/.exec(db.last_backup || "");
+    const age = m ? (Date.now() - new Date(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2].slice(0, 2), +m[2].slice(2, 4), +m[2].slice(4, 6)).getTime()) / 1000 : null;
     const parts = [
       "Data: " + esc(db.folder || ""),
-      db.read_only ? '<span class="badge bad">Database check failed — read-only</span>' : '<span class="badge good">Database OK</span>',
+      db.read_only ? '<span class="badge bad">Database: check failed — read-only</span>' : '<span class="badge good">Database: OK</span>',
       s.health ? "Health: " + DIAG_BADGE[s.health] : "",
-      "Last backup: " + esc(db.last_backup || "none yet"),
+      "Last backup: " + (age != null ? QB.dur(Math.max(0, age)) + " ago" : "none yet"),
       "Version " + esc(s.version || ""),
     ];
     $("footer.status").innerHTML = parts.filter(Boolean).map(p => "<span>" + p + "</span>").join("");
@@ -166,7 +169,7 @@ async function pollJob(el, onDone) {
     const nice = k => k.replace(/_/g, " ");
     el.innerHTML = '<div class="note ' + (j.state === "finished" ? "good" : "") + '"><b>' + esc(j.name) + "</b> — " + esc(j.state) + '<ul class="small" style="margin:6px 0 0">' +
       Object.entries(j.result).filter(([k, v]) => k !== "old_store" && typeof v !== "object").map(([k, v]) =>
-        "<li>" + esc(nice(k)) + ": <b>" + esc(typeof v === "number" ? v.toLocaleString() : v) + "</b></li>").join("") + "</ul></div>";
+        "<li>" + esc(nice(k)) + ": <b>" + esc(typeof v === "number" ? QB.num(v) : v) + "</b></li>").join("") + "</ul></div>";
   } else if (j.state === "failed") {
     el.innerHTML = '<div class="note bad"><b>' + esc(j.name) + "</b> failed: " + esc(j.message) + "</div>";
   }
@@ -383,7 +386,7 @@ const cmWhen = t => t ? esc(String(t).replace("T", " ").replace(/\.\d+Z$|Z$/, ""
 let CM_TIMER = null;
 
 function cmStateHtml(s, c) {
-  return '<div class="small">Shared database: <span class="mono">' + esc(c.database) + "</span> · " + Number(c.facts || 0).toLocaleString() + " shared facts" +
+  return '<div class="small">Shared database: <span class="mono">' + esc(c.database) + "</span> · " + QB.num(c.facts || 0) + " shared facts" +
     (c.read_only ? ' <span class="badge bad">failed its check — read-only</span>' : "") + "</div>";
 }
 function cmStateHtmlTeams(s, c) {                // the retired team view (kept for reference)
@@ -473,8 +476,8 @@ async function renderCommons(el) {
       s.plan.tasks.map(t => "<tr><td>" + t.step + "</td><td>" + esc(t.title) + "</td><td>" + esc(t.status) + "</td><td>" + (t.items === null ? "" : t.items) + "</td><td>" + esc(t.detail || "") + "</td></tr>").join("") + "</table>" : "");
   const doms = {};
   c.by_domain.forEach(r => { (doms[r.domain] = doms[r.domain] || {})[r.status] = r.n; });
-  $("#cm-db", el).innerHTML = '<div class="stats"><div class="stat"><div class="v">' + c.facts.toLocaleString() + '</div><div class="k">shared facts</div></div><div class="stat"><div class="v">' +
-    c.shared.toLocaleString() + '</div><div class="k">facts with evidence from more than one application</div></div></div>' +
+  $("#cm-db", el).innerHTML = '<div class="stats"><div class="stat"><div class="v">' + QB.num(c.facts) + '</div><div class="k">shared facts</div></div><div class="stat"><div class="v">' +
+    QB.num(c.shared) + '</div><div class="k">facts with evidence from more than one application</div></div></div>' +
     '<table class="t small" style="margin-top:10px"><tr><th>Domain</th>' + Object.keys(CM_STATUS).map(x => "<th>" + x + "</th>").join("") + "</tr>" +
     Object.entries(doms).map(([d, v]) => "<tr><td>" + esc(d) + "</td>" + Object.keys(CM_STATUS).map(x => "<td>" + (v[x] || "") + "</td>").join("") + "</tr>").join("") + "</table>" +
     "<h3>Checks between applications</h3>" + (c.requests.length ? '<table class="t small"><tr><th>Asked by</th><th>Answered by</th><th>Check</th><th>Status</th><th>Count</th></tr>' +
@@ -642,7 +645,7 @@ async function renderHarvest(el) {
   const names = { language: "Language", stem: "Math & Science", facts: "History & News" };
   const e = s.engine;
   $("#hv-engine", el).innerHTML = '<div class="note' + (s.auto ? " good" : "") + '">' + (s.auto ? "<b>Automatic harvesting is on</b> for this application." : "<b>Automatic harvesting is off</b> for this application — tick the box below to let the engine give it turns.") +
-    ' <span class="small">Engine ' + esc(e.version) + " · policy version " + s.policy_version + " · " + s.log_entries.toLocaleString() + " log entries</span></div>" +
+    ' <span class="small">Engine ' + esc(e.version) + " · policy version " + s.policy_version + " · " + QB.num(s.log_entries) + " log entries</span></div>" +
     '<table class="t small"><tr><th>Application</th><th>Last heard</th></tr>' + e.heartbeats.map(h => "<tr><td>" + esc(names[h.app] || h.app) + "</td><td>" +
       (h.seconds_ago < 180 ? cmTag("running", "good") : cmTag("not running")) + " " + Math.round(h.seconds_ago) + " s ago</td></tr>").join("") + "</table>" +
     "<h3>Recent turns</h3>" + (e.turns.length ? '<table class="t small"><tr><th>#</th><th>Started (UTC)</th><th>Domain</th><th>Why this turn</th><th>Result</th></tr>' + e.turns.map(t => "<tr><td>" + t.id +
@@ -694,7 +697,7 @@ async function renderHarvest(el) {
     '<button class="btn quiet" data-hv="src:' + esc(x.key) + '">Save</button></td></tr>').join("") + "</table>";
   $("#hv-classes", el).innerHTML = '<table class="t small"><tr><th>Class</th><th>Harvested?</th><th>Why</th></tr>' + Object.entries(classes).map(([k, v]) => "<tr><td>" + esc(k) + "</td><td>" + (v.allowed ? cmTag("yes", "good") : cmTag("blocked", "bad")) + "</td><td>" + esc(v.why) + "</td></tr>").join("") + "</table>";
   $("#hv-metrics", el).innerHTML = s.metrics.length ? '<table class="t small"><tr><th>Application</th><th>Tasks</th><th>Harvested</th><th>Blocked</th><th>Failed</th><th>Items</th><th>New</th><th>New share</th><th>New facts / s</th></tr>' +
-    s.metrics.map(m => "<tr><td>" + esc(names[m.app] || m.app) + "</td><td>" + m.tasks + "</td><td>" + m.harvested + "</td><td>" + m.blocked + "</td><td>" + m.failed + "</td><td>" + (m.items || 0).toLocaleString() + "</td><td>" + (m.new || 0).toLocaleString() +
+    s.metrics.map(m => "<tr><td>" + esc(names[m.app] || m.app) + "</td><td>" + m.tasks + "</td><td>" + m.harvested + "</td><td>" + m.blocked + "</td><td>" + m.failed + "</td><td>" + QB.num(m.items || 0) + "</td><td>" + QB.num(m.new || 0) +
       "</td><td>" + (m.new_share === null ? "" : Math.round(100 * m.new_share) + "%") + "</td><td>" + (m.facts_per_s === null ? "" : m.facts_per_s) + "</td></tr>").join("") + "</table>" +
     (s.trend.length ? "<h3>By day</h3>" + '<table class="t small"><tr><th>Day</th><th>Domain</th><th>New</th><th>Items</th><th>Seconds</th></tr>' + s.trend.map(t => '<tr><td class="mono">' + esc(t.day) + "</td><td>" + esc(t.domain) + "</td><td>" + t.new + "</td><td>" + t.items + "</td><td>" + t.seconds + "</td></tr>").join("") + "</table>" : "") :
     '<p class="muted">No harvests logged yet.</p>';
@@ -709,7 +712,7 @@ function hvCampaigns(el, cs, s, names) {
   const toolName = Object.fromEntries(cs.tools.map(t => [t.id, t.title])), hvName = Object.fromEntries(s.harvesters.map(h => [h.name, h.title]));
   $("#hv-camps", el).innerHTML = cs.campaigns.length ? '<table class="t small"><tr><th>Campaign</th><th>Selection</th><th>Status</th><th>Progress since it started</th><th></th></tr>' + cs.campaigns.map(c => {
     const p = c.progress, sel = c.apps.map(a => names[a] || a).concat(c.harvesters.map(h => hvName[h] || h), c.tools.map(t => toolName[t] || t));
-    const prog = !p ? '<span class="muted">not started</span>' : "<b>" + p.new_facts.toLocaleString() + "</b> new facts" + (c.goal ? " of " + c.goal.toLocaleString() + (p.goal_reached ? " " + cmTag("goal reached", "good") : "") : "") +
+    const prog = !p ? '<span class="muted">not started</span>' : "<b>" + QB.num(p.new_facts) + "</b> new facts" + (c.goal ? " of " + QB.num(c.goal) + (p.goal_reached ? " " + cmTag("goal reached", "good") : "") : "") +
       (c.tools.length ? " · " + p.exemplar_takes + " exemplar takes" : "") + (c.harvesters.length ? '<br><span class="muted">' + c.harvesters.map(h => esc(hvName[h] || h) + ": " + (p.harvesters[h] || {}).new).join(" · ") + "</span>" : "");
     return "<tr><td><b>" + esc(c.name) + "</b>" + (cs.active === c.id ? " " + cmTag("active", "good") : "") + '</td><td>' + esc(sel.join(", ")) + "</td><td>" + cmTag(c.status, c.status === "running" ? "good" : "") +
       (c.started ? '<br><span class="muted">' + cmWhen(c.started) + "</span>" : "") + "</td><td>" + prog + "</td><td>" +

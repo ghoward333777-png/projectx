@@ -162,6 +162,13 @@ def trace_dir(commons_folder):
         w = qbbulk.work_dir(commons_folder)
     except Exception:
         w = None
+    if w:
+        try:                                     # only while the internal drive has room to spare
+            probe = w if os.path.isdir(w) else os.path.expanduser("~")
+            if __import__("shutil").disk_usage(probe).free < 5e9:
+                w = None
+        except OSError:
+            w = None
     return os.path.join(w, "trace") if w else os.path.join(commons_folder, "trace")
 
 
