@@ -1961,7 +1961,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         os.remove(stop)
     hb = os.path.join(folder, "_runner.json")
     results = []
-    TR.configure(os.path.join(commons_folder, "trace"), "runner-%d" % os.getpid(), on=True)
+    TR.configure(qt.trace_dir(commons_folder), "runner-%d" % os.getpid(), on=True)
     TR.event("run", phase="start", role="runner", agents=agents, datasets=keys, cores=os.cpu_count())
 
     def beat(note):
@@ -2361,25 +2361,51 @@ def add_routes(api, commons, program_dir):
             raise core.UserError(str(e))
 
     # -- instrumentation: the trace logs analysed, exported, the drives compared
-    tfolder = lambda: os.path.join(commons.folder, "trace")
+    tfolder = lambda: qt.trace_dir(commons.folder)
+    AN = {"state": "idle", "result": None, "started": None, "lines": 0}
+
+    def analyse(hours):
+        """in the background: the page never waits for the logs (a busy drive made the answer take longer than people wait)"""
+        try:
+            cut = time.time() - hours * 3600
+            files = []
+            for d in qt.trace_dirs(commons.folder):
+                if os.path.isdir(d):
+                    files += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                              if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(d, f)) >= cut]
+            t0 = time.time()
+
+            def counted():
+                for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=120):
+                    AN["lines"] += 1
+                    yield l
+            o = qt.analyze(counted())
+            AN["result"] = {"report": o, "files": len(files), "folder": tfolder(),
+                            "text": "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (
+                                hours, len(files), format(AN["lines"], ","), qt.fmt_dur(time.time() - t0)) + qt.text_report(o)}
+        except Exception as e:
+            AN["result"] = {"text": "The analysis failed: %s" % e, "files": 0, "folder": tfolder()}
+        finally:
+            AN["state"] = "done"
 
     @api.get("/api/trace/report")
     def trace_report(p):
-        hours = float(p.get("hours") or 2)              # the last 2 hours by default: hours of logs from 28 agents are big
-        files = []
-        cut = time.time() - hours * 3600
-        if os.path.isdir(tfolder()):
-            files = [os.path.join(tfolder(), f) for f in sorted(os.listdir(tfolder()))
-                     if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(tfolder(), f)) >= cut]
-        t0 = time.time()
-        o = qt.analyze(l for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=90))
-        return {"report": o, "text": "Last %g hour(s) of logs, %d file(s), analysed in %s s\n\n" % (hours, len(files), round(time.time() - t0, 1))
-                + qt.text_report(o), "files": len(files), "folder": tfolder(),
-                "settings": {"on": (commons.setting("trace:on", "on") or "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0)}}
+        """starts an analysis (the last `hours`, default 2) unless one is running; answers at once with its state —
+        the page asks again until it is done"""
+        settings = {"on": (commons.setting("trace:on", "on") or "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0)}
+        if p.get("start") and AN["state"] != "working":
+            import threading
+            AN.update(state="working", result=None, started=time.time(), lines=0)
+            threading.Thread(target=analyse, args=(float(p.get("hours") or 2),), daemon=True, name="qb-analyse").start()
+        out = dict(AN["result"] or {}, state=AN["state"], settings=settings, folder=tfolder())
+        if AN["state"] == "working":
+            out["text"] = "Analysing… %s lines read so far (%s)" % (format(AN["lines"], ","), qt.fmt_dur(time.time() - AN["started"]))
+        return out
 
     @api.post("/api/trace/export")
     def trace_export(p):
-        path, n, raw = qt.export(tfolder(), days=float(p.get("days") or 0) or None)
+        path, n, raw = qt.export(tfolder(), days=float(p.get("days") or 1),
+                                 out_zip=os.path.join(commons.folder, "trace-export-%s.zip" % time.strftime("%Y%m%d-%H%M%S")))
         return {"zip": path, "files": n, "mb": round(raw / 1e6, 1), "zip_mb": round(os.path.getsize(path) / 1e6, 1),
                 "summary": "%d log file(s) packed into %s — send this file for analysis" % (n, path)}
 
@@ -2473,6 +2499,10 @@ def diagnose(commons, folders=None, probe=True):
         dr = drained(commons.folder)
         ages = [time.time() - (dr.get(k) or {}).get("at", 0) for k in wk]
         freec = shutil.disk_usage(os.path.dirname(w) if not os.path.isdir(w) else w).free / 1e9 if os.path.isdir(os.path.dirname(w)) else None
+        direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy")]
+        add("Datasets writing straight to the data drive (slow)", not direct,
+            ", ".join(direct) if direct else "none — every running dataset writes to its fast working copy",
+            "These had no room on the internal drive (%d GB are kept free there). Free space on C: and press Stop, then Start." % WORK_MIN_FREE_GB)
         add("Fast working copies on the internal drive", True,
             "%d dataset(s) at %s; %s; saved to the data drive every %d min (oldest copy there: %s)" % (
                 len(wk), w, ("%.0f GB free there" % freec) if freec is not None else "free space unknown", DRAIN_S // 60,

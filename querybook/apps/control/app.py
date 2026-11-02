@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.26.0"
+VERSION = "1.27.0"
 PORT = 8100
 program_dir = HERE
 
@@ -856,7 +856,12 @@ def selftest():
               and t1["latest"][0]["subject"] == "Ticker 3" and p._own_at and "/api/panel/ticker" in open(os.path.join(HERE, "ui", "app.js"), encoding="utf-8").read(),
               {k: (by1[k]["facts"], by1[k]["last_minute"]) for k in by1})
         bk = p.api.routes[("GET", "/api/bulk")]({})
-        tr = p.api.routes[("GET", "/api/trace/report")]({})
+        tr = p.api.routes[("GET", "/api/trace/report")]({"start": "1"})
+        for _ in range(100):
+            if tr.get("state") == "done":
+                break
+            time.sleep(0.1)
+            tr = p.api.routes[("GET", "/api/trace/report")]({})
         check("instrumentation: the trace logs are analysed, exported and the drives compared from the Control Panel",
               "text" in tr and all(k in p.api.routes for k in (("POST", "/api/trace/export"), ("POST", "/api/trace/drives"), ("POST", "/api/trace/settings"))), tr.get("files"))
         check("bulk harvesting: every dataset listed with its source's approval; the ticker counts the bulk shards per area",

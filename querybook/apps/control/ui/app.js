@@ -282,9 +282,11 @@ function bind() {
     } catch (e) { $("#bk-diag").textContent = e.message; } };
   $("#bk-move-go").onclick = async () => { try { const r = await api("/api/bulk/move-folder", { folder: $("#bk-move").value, passphrase: $("#bk-pass").value });
       toast(r.summary); $("#bk-diag").innerHTML = `<p><b>${esc(r.summary)}</b></p>`; } catch (e) { toast(e.message); } };
-  const trLoad = async () => { const r = await api("/api/trace/report"); $("#tr-sample").value = r.settings.sample; $("#tr-on").checked = r.settings.on;
-    $("#tr-out").textContent = r.files ? r.text : "No logs yet: they appear while agents and programs harvest (" + r.folder + ")."; };
-  $("#tr-run").onclick = () => trLoad().catch(e => toast(e.message));
+  // the analysis runs in the background; the page asks every 2 s and shows how far it has got
+  const trLoad = async (start) => { const r = await api("/api/trace/report" + (start ? "?start=1" : "")); $("#tr-sample").value = r.settings.sample; $("#tr-on").checked = r.settings.on;
+    $("#tr-out").textContent = r.state === "working" ? r.text : r.text ? (r.files ? r.text : "No logs yet: they appear while agents harvest (" + r.folder + ").") : "";
+    if (r.state === "working") setTimeout(() => trLoad(false).catch(() => {}), 2000); };
+  $("#tr-run").onclick = () => trLoad(true).catch(e => toast(e.message));
   $("#tr-export").onclick = async () => { const r = await api("/api/trace/export", {}); toast(r.summary); $("#tr-out").textContent = r.summary + " (" + r.zip_mb + " MB)"; };
   $("#tr-drives").onclick = async () => { $("#tr-out").textContent = "Measuring both drives (about a minute)…";
     const r = await api("/api/trace/drives", {});

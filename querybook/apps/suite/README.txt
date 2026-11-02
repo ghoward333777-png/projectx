@@ -43,6 +43,12 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Analysis that always answers (Control Panel 1.27.0 and the shared core)
+    * The instrumentation logs are written beside the working copies on C: (C:\Users\<you>\QueryBook-Work\...\trace), so
+      logging never waits for the external disk; "Export logs" still puts the zip in D:\QB\commons.
+    * "Analyse the logs" runs in the background: the page shows how far it has got ("Analysing... 1,234,567 lines read")
+      and the report as soon as it is ready (at most about 2 minutes of reading).
+    * "Why so slow?" lists any dataset writing straight to D: (no room on C:) - those are the slow ones.
   Fast again: harvest on the computer's own drive, saved to the data drive (Control Panel 1.26.0 and the shared core)
     * The fast runs (millions of facts a minute) wrote to C:. D:\QB is a USB hard disk: with every agent writing to it at
       once it fell to about 1 MB/s. Now each dataset being harvested has a WORKING COPY on C: (C:\Users\<you>\QueryBook-Work)

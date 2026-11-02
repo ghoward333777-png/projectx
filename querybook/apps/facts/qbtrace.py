@@ -57,7 +57,7 @@ class Tracer:
             sample = int(commons.setting("trace:sample", DEFAULT_SAMPLE) or 0)
         except Exception:
             on, sample = True, DEFAULT_SAMPLE
-        return self.configure(os.path.join(commons.folder, "trace"), proc, sample, on, **ctx)
+        return self.configure(trace_dir(commons.folder), proc, sample, on, **ctx)
 
     # -- measuring
     def add(self, stage, ns, n=1, nbytes=0):
@@ -154,6 +154,23 @@ class Tracer:
 TR = Tracer()                                     # one per process (every bulk agent is its own process)
 
 
+def trace_dir(commons_folder):
+    """where the logs are written: beside the working copies on the computer's own drive when they are in use (logging
+    must never wait for a busy external disk), else in the shared folder"""
+    try:
+        import qbbulk
+        w = qbbulk.work_dir(commons_folder)
+    except Exception:
+        w = None
+    return os.path.join(w, "trace") if w else os.path.join(commons_folder, "trace")
+
+
+def trace_dirs(commons_folder):
+    """every folder that may hold logs (the shared folder's too: logs from before 1.27)"""
+    out = [trace_dir(commons_folder), os.path.join(commons_folder, "trace")]
+    return [d for i, d in enumerate(out) if d not in out[:i]]
+
+
 class timed:
     """with timed("stage"): ...  — adds the time to the stage"""
     __slots__ = ("stage", "t", "nbytes")
@@ -246,6 +263,15 @@ WAITS = {"net_wait": "waiting for a free connection slot (our own limit per serv
          "polite_gap": "our pause between requests to one site",
          "net_connect": "connecting to the server and waiting for its first byte"}
 STEPS = ["chunk", "decompressed", "row", "rule", "buffered", "sorted", "inserted", "committed"]
+
+
+def fmt_dur(s):
+    s = max(0.0, float(s))
+    if s < 60:
+        return "%.1f s" % s if s < 10 else "%d s" % round(s)
+    if s < 3600:
+        return "%d min %02d s" % (s // 60, round(s % 60))
+    return "%d h %02d min" % (s // 3600, round(s % 3600 / 60))
 
 
 def _pct(v, q):
