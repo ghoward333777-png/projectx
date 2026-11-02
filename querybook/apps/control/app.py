@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.28.0"
+VERSION = "1.29.0"
 PORT = 8100
 program_dir = HERE
 
@@ -272,6 +272,10 @@ class Panel:
     def check(self):
         """One monitoring pass: look at every application and the harvest, raise and resolve alerts."""
         found = {}
+        try:                                       # the analysis by email, when it is due
+            qbbulk.email_due(self.commons, HERE)
+        except Exception as e:
+            self.log("analysis email:", repr(e))
         try:                                       # bulk agents that ended without finishing are started again (master on)
             r = qbbulk.resume_if_crashed(self.commons, HERE)
             if r:

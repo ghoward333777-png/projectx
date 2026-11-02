@@ -43,6 +43,15 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Stop that stops, one sentence, the analysis by email (Control Panel 1.29.0 and the shared core)
+    * Since 1.22 the harvesting engine runs without a window, so closing the windows did not stop it - an engine from an
+      older version could keep running with old code. Now Stop ends every agent: each finishes its batch, and any still
+      running a minute later is ended (its unfinished batch is read again next time). Start replaces an engine of an
+      older version by itself.
+    * The Harvesting tab says what is happening in one sentence, e.g. "Harvesting: 2,450,000 facts a minute (last 10
+      minutes)" - or why it is slow. Rates are the average of the last 10 minutes (batches land every few minutes).
+    * Email the analysis: to your address from your Gmail account (a Gmail app password, kept on this computer), now or
+      every N hours. The email starts with the one sentence; the full report is in the body and attached.
   See the copy to C:, consistent words everywhere (Control Panel 1.28.0 and the shared core)
     * The Harvesting tab shows the copy of a dataset to C: while it runs ("Copying wikidata-dump-3 to C: - 3.20 GB of
       9.00 GB", a bar, the speed and the time left), then "Writing on C: (fast): N dataset(s)", the free space on C:, and any

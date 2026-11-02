@@ -30,7 +30,7 @@ import qbkeystone as ks  # noqa: E402
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.0.0"
+VERSION = "1.29.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -2013,7 +2013,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         # skipped, never fatal: in 1.15 one such moment on Windows ended the whole run
         try:
             with open(hb + ".tmp", "w") as f:
-                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "agents": agents, "datasets": keys, "note": note,
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys, "note": note,
                            "results": results[-200:]}, f)
             _replace(hb + ".tmp", hb)
         except OSError as e:
@@ -2133,7 +2133,7 @@ def status(commons_folder, commons=None):
             approved, cls, why = commons.registry.check(ds.source)
         row = {"key": key, "title": ds.title, "app": ds.app, "area": AREA[ds.app], "source": ds.source or "computed", "licence": ds.licence,
                "why": ds.why, "approx": ds.approx, "approved": approved, "approval": why, "state": "not started", "facts": 0,
-               "last_minute": 0, "last_hour": 0, "bytes": 0, "parts": [], "error": None}
+               "last_minute": 0, "last_10min": 0, "last_hour": 0, "bytes": 0, "parts": [], "error": None}
         p = shard_path(commons_folder, key)
         if p != home_path(commons_folder, key):
             dr = drained(commons_folder).get(key) or {}
@@ -2154,7 +2154,7 @@ def status(commons_folder, commons=None):
                 except (OSError, ValueError):
                     pass
                 row["progress"] = _progress(pgm, now)
-                for secs, k in ((60, "last_minute"), (3600, "last_hour")):
+                for secs, k in ((60, "last_minute"), (600, "last_10min"), (3600, "last_hour")):
                     r = db.execute("SELECT facts FROM progress WHERE at <= ? ORDER BY at DESC LIMIT 1", (now - secs,)).fetchone()
                     first = db.execute("SELECT min(at) FROM progress").fetchone()[0]
                     base = r[0] if r else (0 if first is None or first > now - secs else row["facts"])
@@ -2170,7 +2170,8 @@ def status(commons_folder, commons=None):
                                     db.execute("SELECT series, count(*), sum(filled) FROM slots GROUP BY series ORDER BY series")]
                 db.close()
             except sqlite3.Error as e:
-                row["error"] = "shard unreadable: %s" % e
+                row["error"] = None if "locked" in str(e) else "shard unreadable: %s" % e
+                row["busy"] = "locked" in str(e)
             if row["state"] == "running" and not _alive(commons_folder):
                 row["state"] = "paused"
         out.append(row)
@@ -2187,8 +2188,9 @@ def status(commons_folder, commons=None):
     except OSError:
         free_c = None
     return {"version": VERSION, "cores": os.cpu_count() or 1, "max_agents": MAX_AGENTS, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
-            "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c,
+            "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c, "engine_version": VERSION,
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
+            "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
             "bytes": sum(d["bytes"] for d in out)}
 
 
@@ -2210,6 +2212,31 @@ def status_cached(commons_folder, commons=None, max_age=10.0):
         return val
     finally:
         _STATUS_LOCK.release()
+
+
+def headline(st):
+    """the harvest in one sentence: what it is doing, how fast (the last 10 minutes), and the main reason when it is slow"""
+    rs = st.get("runner") or {}
+    if st.get("copying"):
+        c = st["copying"]
+        return {"state": "copying", "text": "Getting ready: copying %s to C: (%d%%) before it resumes there." % (
+            c["dataset"], 100 * c["done"] / max(1, c["total"]))}
+    if not rs.get("alive"):
+        return {"state": "stopped", "text": "Stopped. Press ⚡ Start harvesting."}
+    if rs.get("version") != VERSION:
+        return {"state": "old", "text": "An older harvesting engine is running. Press ■ Stop harvesting, then ⚡ Start harvesting."}
+    fpm = st.get("facts_per_min") or 0
+    direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
+    why = ""
+    if direct:
+        why = " Slow because %d dataset(s) write straight to D: (no room on C:)." % len(direct)
+    elif fpm < 1_000_000:
+        running = [d for d in st["datasets"] if d["state"] == "running"]
+        idle = [d for d in running if not d["last_10min"]]
+        if running and len(idle) > len(running) / 2:
+            why = " %d of %d running datasets added nothing in 10 minutes — most are waiting for a download connection " \
+                  "(the servers allow only a few at a time) or still finishing their first batch." % (len(idle), len(running))
+    return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
 
 
 def _progress(pg, now):
@@ -2278,6 +2305,9 @@ def start(commons, keys, agents, passphrase, program_dir):
     import subprocess
     commons.approvals._require(passphrase or "")
     if _alive(commons.folder):
+        if runner_version(commons.folder) != VERSION:
+            r = full_speed(commons, program_dir, "Start")
+            return {"summary": r.get("summary") or "replacing an older engine", **status(commons.folder, commons)}
         return {"summary": "bulk harvesting is already running", **status(commons.folder, commons)}
     keys = [k for k in (keys or list(catalog())) if k in catalog()]
     if not keys:
@@ -2303,7 +2333,19 @@ def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
     """the master switch's own start: every approved dataset, one agent per core (as the Control Panel's ⚡ Full speed) —
     the path that brings in tens of millions of facts. Nothing to do when the agents already run."""
     if _alive(commons.folder):
-        return {"bulk": "already running"}
+        if runner_version(commons.folder) == VERSION:
+            return {"bulk": "already running"}
+        # an engine from an older version is still running (it has no window): stop it, then start this one
+        import threading
+        stop(commons, grace=60)
+
+        def later():
+            t0 = time.time()
+            while (_alive(commons.folder) or _pids(commons.folder)) and time.time() - t0 < 180:
+                time.sleep(2)
+            full_speed(commons, program_dir, why + " (replacing an older engine)", launch)
+        threading.Thread(target=later, daemon=True, name="qb-replace").start()
+        return {"bulk": "replacing an older engine", "summary": "an older harvesting engine was still running: it is stopped and this version starts in about a minute"}
     if os.environ.get("QB_OFFLINE") and launch is None:      # self-tests never download
         return {"bulk": "offline"}
     keys = [k for k, ds in catalog().items() if not ds.source or commons.registry.check(ds.source)[0]]
@@ -2366,18 +2408,196 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
     return {"resumed": keys, "agents": int(rs.get("agents") or MAX_AGENTS), "last_note": rs.get("note")}
 
 
-def stop(commons):
+def _pids(commons_folder):
+    """the runner's process and every agent process still marked running in a shard"""
+    pids = set()
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            pids.add(int(json.load(f).get("pid") or 0))
+    except (OSError, ValueError, TypeError):
+        pass
+    for key in catalog():
+        p = shard_path(commons_folder, key)
+        if not os.path.exists(p):
+            continue
+        try:
+            db = _ro(p)
+            meta = dict(db.execute("SELECT key, value FROM meta WHERE key IN ('state', 'pid')").fetchall())
+            db.close()
+            if json.loads(meta.get("state", '""')) == "running":
+                pids.add(int(json.loads(meta.get("pid", "0")) or 0))
+        except (sqlite3.Error, ValueError, TypeError):
+            pass
+    pids.discard(0); pids.discard(os.getpid())
+    return pids
+
+
+def _kill(pid):
+    """end a process and everything it started (Windows: taskkill /T; elsewhere its process group)"""
+    import subprocess, signal
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30, creationflags=0x08000000)
+        else:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except (OSError, AttributeError):
+                os.kill(pid, signal.SIGTERM)
+        return True
+    except Exception:
+        return False
+
+
+STOP_GRACE_S = 60
+
+
+def stop(commons, grace=None, wait=False):
+    """every agent stops after its current batch; any still running after `grace` seconds (an agent from an older version, or
+    one waiting hours for a slow disk) is ended — SQLite undoes its unfinished batch, which is read again next time"""
+    import threading
     folder = os.path.join(commons.folder, FOLDER)
     os.makedirs(folder, exist_ok=True)
     open(os.path.join(folder, "_runner.stop"), "w").close()
-    return {"summary": "every bulk agent stops after its current batch (it resumes there next time)", **status(commons.folder, commons)}
+    grace = STOP_GRACE_S if grace is None else grace
+
+    def enforce():
+        t0 = time.time()
+        while time.time() - t0 < grace and (_alive(commons.folder) or _pids(commons.folder)):
+            time.sleep(1)
+        left = _pids(commons.folder)
+        for pid in left:
+            _kill(pid)
+        if left:
+            TR.event("stop", ended=sorted(left), why="still running %d s after Stop" % grace)
+    th = threading.Thread(target=enforce, daemon=True, name="qb-stop")
+    th.start()
+    if wait:
+        th.join()
+    return {"summary": "harvesting stops: every agent finishes its current batch, and any still running after %d s is ended" % grace,
+            **status(commons.folder, commons)}
+
+
+def runner_version(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return json.load(f).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+# ------------------------------------------------------------------------------------------------ the analysis, by email
+def analysis_text(commons, hours=2, max_seconds=120, counter=None):
+    """the instrumentation report of the last `hours`, with the one-sentence headline on top"""
+    cut = time.time() - hours * 3600
+    files = []
+    for d in qt.trace_dirs(commons.folder):
+        if os.path.isdir(d):
+            files += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                      if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(d, f)) >= cut]
+    t0, n = time.time(), [0]
+
+    def counted():
+        for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=max_seconds):
+            n[0] += 1
+            if counter is not None:
+                counter["lines"] = n[0]
+            yield l
+    o = qt.analyze(counted())
+    st = status_cached(commons.folder, commons)
+    hl = headline(st)["text"]
+    text = ("IN ONE SENTENCE: %s\n\nFacts held: %s · last hour: +%s · last 10 minutes: +%s\n\n" % (
+                hl, format(st["total"], ","), format(st["last_hour"], ","), format(st["last_10min"], ",")) +
+            "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (hours, len(files), format(n[0], ","), qt.fmt_dur(time.time() - t0))
+            + qt.text_report(o))
+    return text, o, hl, len(files)
+
+
+def _email_path(commons):
+    return os.path.join(commons.folder, "report-email.json")
+
+
+def email_settings(commons, program_dir=None):
+    try:
+        with open(_email_path(commons), encoding="utf-8") as f:
+            e = json.load(f)
+    except (OSError, ValueError):
+        e = {}
+    if not e.get("to") and program_dir:                # a personal package may name the address beside the launchers
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(program_dir)), "report-email.txt"), encoding="utf-8-sig") as f:
+                e["to"] = f.read().strip()
+        except OSError:
+            pass
+    return e
+
+
+def save_email_settings(commons, to=None, user=None, password=None, every_hours=None):
+    e = email_settings(commons)
+    if to is not None:
+        e["to"] = to.strip()
+    if user is not None:
+        e["user"] = user.strip()
+    if password:
+        e["password"] = password.replace(" ", "").strip()     # Google shows app passwords in groups of four
+    if every_hours is not None:
+        e["every_hours"] = max(0.0, float(every_hours))
+    with open(_email_path(commons) + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(e, f)
+    _replace(_email_path(commons) + ".tmp", _email_path(commons))
+    try:
+        os.chmod(_email_path(commons), 0o600)
+    except OSError:
+        pass
+    return e
+
+
+def send_report(commons, program_dir=None, hours=2, smtp=None):
+    """analyse and email the report (Gmail: smtp.gmail.com with an app password). Returns what was sent."""
+    import smtplib
+    from email.message import EmailMessage
+    e = email_settings(commons, program_dir)
+    to, user, pw = e.get("to"), e.get("user") or e.get("to"), e.get("password")
+    if not to or not pw:
+        raise ValueError("Set the address and the Gmail app password first (Harvesting → Email the analysis).")
+    text, o, hl, nfiles = analysis_text(commons, hours)
+    m = EmailMessage()
+    m["Subject"] = "QueryBook harvest %s — %s" % (time.strftime("%Y-%m-%d %H:%M"), hl[:120])
+    m["From"], m["To"] = user, to
+    m.set_content(text)
+    m.add_attachment(text.encode("utf-8"), maintype="text", subtype="plain", filename="querybook-analysis-%s.txt" % time.strftime("%Y%m%d-%H%M"))
+    if smtp is not None:                                 # tests
+        smtp(m)
+    else:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=60) as sm:
+            sm.starttls()
+            sm.login(user, pw)
+            sm.send_message(m)
+    e["last_sent"] = time.time()
+    save_email_settings(commons)
+    with open(_email_path(commons), encoding="utf-8") as f:
+        cur = json.load(f)
+    cur["last_sent"] = e["last_sent"]
+    with open(_email_path(commons), "w", encoding="utf-8") as f:
+        json.dump(cur, f)
+    return {"sent_to": to, "headline": hl, "lines": len(text.splitlines()), "summary": "the analysis was emailed to %s" % to}
+
+
+def email_due(commons, program_dir=None, now=None):
+    """the Control Panel's monitor calls this: sends the analysis every `every_hours` (0 = never)"""
+    e = email_settings(commons, program_dir)
+    every = float(e.get("every_hours") or 0)
+    now = now or time.time()
+    if not every or not e.get("password") or not e.get("to") or now - float(e.get("last_sent") or 0) < every * 3600:
+        return None
+    return send_report(commons, program_dir)
 
 
 def add_routes(api, commons, program_dir):
     commons.registry.ensure()
     @api.get("/api/bulk")
     def bulk_status(p):
-        return status_cached(commons.folder, commons)
+        st = status_cached(commons.folder, commons)
+        return dict(st, headline=headline(st))
 
     @api.post("/api/bulk/start")
     def bulk_start(p):
@@ -2417,22 +2637,8 @@ def add_routes(api, commons, program_dir):
     def analyse(hours):
         """in the background: the page never waits for the logs (a busy drive made the answer take longer than people wait)"""
         try:
-            cut = time.time() - hours * 3600
-            files = []
-            for d in qt.trace_dirs(commons.folder):
-                if os.path.isdir(d):
-                    files += [os.path.join(d, f) for f in sorted(os.listdir(d))
-                              if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(d, f)) >= cut]
-            t0 = time.time()
-
-            def counted():
-                for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=120):
-                    AN["lines"] += 1
-                    yield l
-            o = qt.analyze(counted())
-            AN["result"] = {"report": o, "files": len(files), "folder": tfolder(),
-                            "text": "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (
-                                hours, len(files), format(AN["lines"], ","), qt.fmt_dur(time.time() - t0)) + qt.text_report(o)}
+            text, o, hl, nfiles = analysis_text(commons, hours, counter=AN)
+            AN["result"] = {"report": o, "files": nfiles, "folder": tfolder(), "text": text}
         except Exception as e:
             AN["result"] = {"text": "The analysis failed: %s" % e, "files": 0, "folder": tfolder()}
         finally:
@@ -2451,6 +2657,27 @@ def add_routes(api, commons, program_dir):
         if AN["state"] == "working":
             out["text"] = "Analysing… %s lines read so far (%s)" % (format(AN["lines"], ","), qt.fmt_dur(time.time() - AN["started"]))
         return out
+
+    @api.get("/api/report/email-settings")
+    def email_get(p):
+        e = email_settings(commons, program_dir)
+        return {"to": e.get("to") or "", "user": e.get("user") or "", "password_set": bool(e.get("password")),
+                "every_hours": e.get("every_hours") or 0, "last_sent": e.get("last_sent")}
+
+    @api.post("/api/report/email-settings")
+    def email_set(p):
+        e = save_email_settings(commons, p.get("to"), p.get("user"), p.get("password") or None, p.get("every_hours"))
+        return {"to": e.get("to"), "password_set": bool(e.get("password")), "every_hours": e.get("every_hours") or 0,
+                "summary": "saved" + (" — the analysis is emailed every %g hour(s)" % e["every_hours"] if e.get("every_hours") else "")}
+
+    @api.post("/api/report/email-now")
+    def email_now(p):
+        try:
+            return send_report(commons, program_dir, float(p.get("hours") or 2))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        except Exception as e:
+            raise core.UserError("The email could not be sent: %s. Check the address and the Gmail app password." % e)
 
     @api.get("/api/drive/old-copies")
     def old_copies_route(p):
@@ -2702,6 +2929,28 @@ def self_test():
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
+        # 1.29: Stop really stops — an engine that does not stop by itself (an older version, a batch stuck on a slow disk) is ended
+        import subprocess as _sp
+        sleeper = _sp.Popen([sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True)
+        hbp = os.path.join(cf, FOLDER, "_runner.json")
+        with open(hbp, "w") as f:
+            json.dump({"heartbeat": time.time() + 3600, "pid": sleeper.pid, "note": "running", "datasets": ["calendar-scaffold"]}, f)
+        ok("an engine of an older version is noticed (it has no version)", runner_version(cf) is None and _alive(cf))
+        stop(c, grace=1, wait=True)
+        try:
+            sleeper.wait(10); ended = True
+        except _sp.TimeoutExpired:
+            ended = False; sleeper.kill()
+        ok("Stop ends whatever is still running after the grace time", ended)
+        os.remove(hbp)
+        os.remove(os.path.join(cf, FOLDER, "_runner.stop"))
+        sent = []
+        save_email_settings(c, to="me@example.org", user="me@example.org", password="abcd efgh ijkl mnop", every_hours=6)
+        r_em = send_report(c, smtp=sent.append)
+        ok("the analysis is emailed: one sentence first, the report in the body and attached",
+           sent and sent[0]["To"] == "me@example.org" and "IN ONE SENTENCE" in sent[0].get_body().get_content()
+           and any(a.get_filename().endswith(".txt") for a in sent[0].iter_attachments()), r_em)
+        ok("…and again only when it is due (every 6 hours here)", email_due(c) is None and email_settings(c).get("password") == "abcdefghijklmnop")
         import threading as _th
         ws = WriteSlots(cf, 1)
         a = ws.take(); got = []

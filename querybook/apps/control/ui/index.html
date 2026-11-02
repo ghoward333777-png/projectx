@@ -313,6 +313,7 @@
         recurring-event slots are filled from Wikidata, one query per series.</p>
       <div class="row" style="margin:10px 0 14px"><button class="btn" id="bk-go-top" style="font-size:1.25em;padding:12px 28px">⚡ Start harvesting</button>
         <button class="btn" id="bk-stop-top" style="font-size:1.25em;padding:12px 28px">■ Stop harvesting</button></div>
+      <div id="bk-headline" class="note" style="font-size:1.15em"></div>
       <div id="bk-where"></div>
       <div id="bk-summary" class="row"></div>
       <div class="row"><button class="btn" id="bk-why">🩺 Why so slow?</button>
@@ -329,6 +330,15 @@
           <label class="small">Follow 1 record in <input type="number" id="tr-sample" min="0" style="width:7em"> (0 = none)</label>
           <label class="small"><input type="checkbox" id="tr-on"> logging on</label><button class="btn quiet" id="tr-save">Save</button></div>
         <pre id="tr-out" class="small" style="white-space:pre-wrap;max-height:36em;overflow:auto"></pre></details>
+      <details id="em-box" open><summary><b>📧 Email the analysis</b> — the report in your inbox, now or every few hours</summary>
+        <p class="muted small">Sent from your Gmail account to the address below. Gmail needs an <b>app password</b> for this (your normal
+          password does not work): <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>
+          → name it "QueryBook" → Create → copy the 16 letters here. (It needs 2-Step Verification switched on.) The password stays on this computer.</p>
+        <div class="row"><label class="small">Send to <input id="em-to" type="email" style="width:18em"></label>
+          <label class="small">Gmail app password <input id="em-pw" type="password" placeholder="16 letters" style="width:12em" autocomplete="off"></label>
+          <label class="small">Every <input id="em-every" type="number" min="0" step="1" style="width:4em"> hours (0 = only when I press)</label>
+          <button class="btn quiet" id="em-save">Save</button><button class="btn" id="em-now">📧 Email the analysis now</button></div>
+        <div id="em-out" class="small muted"></div></details>
       <details id="oc-box"><summary><b>Old copies on C:</b> — what earlier versions left on this computer's own drive after copying it to D:\QB</summary>
         <p class="muted small">Every old file is checked against D:\QB (databases by their fact counts). Only files D:\QB is shown to hold can be
           deleted, and only when you confirm. Anything that cannot be checked is kept.</p>

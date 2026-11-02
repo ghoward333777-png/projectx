@@ -160,7 +160,7 @@ async function loadBulk() {
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
   $("#bk-agents").max = r.max_agents || 16;
   $("#bk-full").textContent = "⚡ Full speed (" + (r.max_agents || 16) + " agents)";
-  $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total)}</b> facts</span><span class="pill">+${fmt(r.last_minute)} in the last minute</span>` +
+  $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total)}</b> facts</span><span class="pill">${QB.rate(r.facts_per_min)} (last 10 min)</span>` +
     `<span class="pill">+${fmt(r.last_hour)} in the last hour</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
     `<span class="pill">${r.runner.alive ? '<span class="badge good">● harvesting</span> ' + esc(r.runner.note || "") : '<span class="badge">○ stopped</span>'}</span>`;
   $("#bk-table").innerHTML = `<table class="t small"><tr><th></th><th>Dataset</th><th>Area</th><th>Source · licence</th><th>State</th><th>Facts</th><th>Rate</th><th>Parts</th></tr>` +
@@ -169,8 +169,12 @@ async function loadBulk() {
       <td class="small">${esc(d.source)}<br>${esc(d.licence)}${d.approved ? "" : `<br><span class="badge bad">not approved</span> ${esc(d.approval)}`}</td>
       <td><span class="badge ${BK_STATE[d.state] || ""}">${esc(d.state)}</span>${d.error ? `<div class="small muted">${esc(d.error)}</div>` : ""}${d.working_copy
         ? `<div class="small muted">working on C:, ${d.saved_to_data_drive ? "saved to D: " + QB.dur(Date.now() / 1000 - d.saved_to_data_drive) + " ago" : "not yet saved to D:"}</div>` : ""}</td>
-      <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_minute)}<br>+${fmt(d.last_hour)} in the last hour</td>
+      <td>${fmt(d.facts)}<div class="small muted">${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_10min / 10)}<br>+${fmt(d.last_hour)} in the last hour</td>
       <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+  // the harvest in one sentence
+  const hl = r.headline || {}; const hb = $("#bk-headline");
+  hb.className = "note " + (hl.state === "harvesting" ? "good" : hl.state === "old" ? "bad" : "");
+  hb.innerHTML = "<b>" + esc(hl.text || "") + "</b>";
   // where the agents write, and the copy to C: in progress (one line, the standard bar)
   const onC = r.datasets.filter(d => d.working_copy).length, direct = r.datasets.filter(d => d.state === "running" && !d.working_copy).length;
   $("#bk-where").innerHTML = r.copying
@@ -304,6 +308,15 @@ function bind() {
   $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
   $("#bk-go-top").onclick = () => $("#bk-full").click();       // the one Start: every approved dataset, full speed
   $("#bk-stop-top").onclick = () => $("#bk-stop").click();     // the one Stop
+  const emLoad = async () => { const e = await api("/api/report/email-settings"); $("#em-to").value = e.to; $("#em-every").value = e.every_hours;
+    $("#em-pw").placeholder = e.password_set ? "saved — type to change" : "16 letters";
+    $("#em-out").textContent = e.last_sent ? "Last sent " + QB.dur(Date.now() / 1000 - e.last_sent) + " ago." : "Not sent yet."; };
+  emLoad().catch(() => {});
+  $("#em-save").onclick = async () => { const r = await api("/api/report/email-settings", { to: $("#em-to").value, user: $("#em-to").value,
+    password: $("#em-pw").value, every_hours: +$("#em-every").value || 0 }); $("#em-pw").value = ""; toast(r.summary); emLoad(); };
+  $("#em-now").onclick = async () => { $("#em-out").textContent = "Analysing and sending (up to about 2 minutes)…";
+    try { const r = await api("/api/report/email-now", {}); $("#em-out").textContent = "Sent to " + r.sent_to + ": " + r.headline; }
+    catch (e) { $("#em-out").textContent = e.message; } };
   $("#oc-check").onclick = async () => { $("#oc-out").textContent = "Checking every old file against D:\\QB…";
     const r = await api("/api/drive/old-copies");
     $("#oc-out").innerHTML = `<p><b>${QB.num(r.safe_files)}</b> old file(s), <b>${QB.bytes(r.safe_bytes)}</b>, are held on D:\\QB and can be deleted from C:. ` +
