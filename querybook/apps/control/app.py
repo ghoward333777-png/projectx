@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.24.0"
+VERSION = "1.25.0"
 PORT = 8100
 program_dir = HERE
 
@@ -340,7 +340,7 @@ class Panel:
         rows = {r["domain"]: r for r in q.query(
             "SELECT domain, count(*) AS n, sum(created >= ?) AS m, sum(created >= ?) AS h, sum(created >= ?) AS d, "
             "sum(status IN ('verified', 'corroborated')) AS strong FROM facts GROUP BY domain", (ago(60), ago(3600), ago(86400)))}
-        bst = qbbulk.status(self.commons.folder)          # the bulk shards: whole open datasets (counted from their own totals)
+        bst = qbbulk.status_cached(self.commons.folder)          # the bulk shards: whole open datasets (counted from their own totals)
         bulk = {}
         for d in bst["datasets"]:
             ab = bulk.setdefault(d["area"], {"facts": 0, "last_minute": 0, "last_hour": 0})

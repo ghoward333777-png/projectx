@@ -1373,14 +1373,50 @@ def fingerprinter(domain):
     return f
 
 
+class WriteSlots(Slots):
+    """at most N agents write to the data drive at once. Many agents writing to one hard disk at the same time make it
+    seek between them all the time (1 Nov 2026: a USB disk fell to about 1 MB/s with 28 writers); the others go on reading
+    and parsing meanwhile and write when a slot is free. 0 = no limit (an internal SSD)."""
+
+    def __init__(self, commons_folder, n):
+        super().__init__(commons_folder)
+        self.n = max(0, int(n or 0))
+
+    def take(self):
+        if not self.n:
+            return None
+        t = _NS()
+        while True:
+            for i in range(self.n):
+                f = self._lock("disk-write", i)
+                if f:
+                    TR.add("disk_wait", _NS() - t)    # congestion at the drive, measured
+                    return f
+            time.sleep(0.05)
+
+
+def write_slots(commons):
+    """the setting bulk:write_slots, else automatic: 2 when the shared folder is on another drive than the system's own
+    (an external disk), no limit on the system drive"""
+    v = commons.setting("bulk:write_slots")
+    if v not in (None, ""):
+        return int(v)
+    drive = os.path.splitdrive(os.path.abspath(commons.folder))[0].upper()
+    system = (os.environ.get("SystemDrive") or "").upper()
+    return 2 if drive and system and drive != system else 0
+
+
 class Shard:
+    wslots = None
+
     def __init__(self, commons_folder, key):
         os.makedirs(os.path.join(commons_folder, FOLDER), exist_ok=True)
         self.db = sqlite3.connect(shard_path(commons_folder, key), timeout=60)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")                 # WAL + NORMAL: a crash never corrupts or splits a batch
         self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))   # a whole batch's dirty pages stay in memory until commit
-        self.db.execute("PRAGMA journal_size_limit=%d" % (64 << 20))  # the WAL file shrinks back after each checkpoint
+        self.db.execute("PRAGMA journal_size_limit=%d" % (256 << 20))  # the WAL file shrinks back after each checkpoint
+        self.db.execute("PRAGMA wal_autocheckpoint=20000")           # fewer, larger checkpoints: far fewer seeks on a hard disk
         self.db.executescript(SCHEMA)
         self.preds = {n: i for i, n in self.db.execute("SELECT id, name FROM predicates")}
 
@@ -1409,6 +1445,14 @@ class Shard:
         t = _NS()
         rows.sort(key=_FP)
         t1 = _NS(); TR.add("sort", t1 - t, len(rows)); self.walls = {"sorted": _WALL()}
+        slot = self.wslots.take() if self.wslots else None
+        try:
+            return self._write(part_id, rows, rows_done, links, before, t1)
+        finally:
+            if slot is not None:
+                self.wslots.release(slot)
+
+    def _write(self, part_id, rows, rows_done, links, before, t1):
         self.db.executemany("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
         new = self.db.total_changes - before
         t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
@@ -1475,6 +1519,7 @@ def run_dataset(commons_folder, key, max_rows=None):
     TR.add("open_commons", _NS() - t_open)
     t = _NS()
     sh = Shard(commons_folder, key)
+    sh.wslots = WriteSlots(commons_folder, write_slots(run.commons))
     TR.add("open_shard", _NS() - t)
     TR.event("run", phase="start", dataset=key, app=ds.app, sample=TR.sample, max_rows=max_rows, folder=commons_folder)
     fpr = fingerprinter(AREA[ds.app])
@@ -1873,6 +1918,26 @@ def status(commons_folder, commons=None):
             "bytes": sum(d["bytes"] for d in out)}
 
 
+_STATUS = {}
+_STATUS_LOCK = __import__("threading").Lock()
+
+
+def status_cached(commons_folder, commons=None, max_age=10.0):
+    """status(), at most every max_age seconds; while one is being computed (a busy drive) the last one is given at once.
+    The Control Panel asks every 2 seconds — on a saturated drive each full status took longer than that and piled up."""
+    hit = _STATUS.get(commons_folder)
+    if hit and time.time() - hit[0] < max_age:
+        return hit[1]
+    if not _STATUS_LOCK.acquire(blocking=hit is None):
+        return hit[1]
+    try:
+        val = status(commons_folder, commons)
+        _STATUS[commons_folder] = (time.time(), val)
+        return val
+    finally:
+        _STATUS_LOCK.release()
+
+
 def _progress(pg, now):
     """the saved meter → part and overall fraction, rate and time left (None when nothing is measured yet)"""
     if not pg:
@@ -2038,7 +2103,7 @@ def add_routes(api, commons, program_dir):
     commons.registry.ensure()
     @api.get("/api/bulk")
     def bulk_status(p):
-        return status(commons.folder, commons)
+        return status_cached(commons.folder, commons)
 
     @api.post("/api/bulk/start")
     def bulk_start(p):
@@ -2076,14 +2141,16 @@ def add_routes(api, commons, program_dir):
 
     @api.get("/api/trace/report")
     def trace_report(p):
-        days = float(p.get("days") or 0)
+        hours = float(p.get("hours") or 2)              # the last 2 hours by default: hours of logs from 28 agents are big
         files = []
+        cut = time.time() - hours * 3600
         if os.path.isdir(tfolder()):
-            cut = time.time() - days * 86400 if days else 0
             files = [os.path.join(tfolder(), f) for f in sorted(os.listdir(tfolder()))
                      if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(tfolder(), f)) >= cut]
-        o = qt.analyze(qt.read_lines(files))
-        return {"report": o, "text": qt.text_report(o), "files": len(files), "folder": tfolder(),
+        t0 = time.time()
+        o = qt.analyze(l for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=90))
+        return {"report": o, "text": "Last %g hour(s) of logs, %d file(s), analysed in %s s\n\n" % (hours, len(files), round(time.time() - t0, 1))
+                + qt.text_report(o), "files": len(files), "folder": tfolder(),
                 "settings": {"on": (commons.setting("trace:on", "on") or "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0)}}
 
     @api.post("/api/trace/export")
@@ -2176,6 +2243,11 @@ def diagnose(commons, folders=None, probe=True):
             except Exception as e:
                 add("Reach " + name, False, "%s: %s" % (type(e).__name__, str(e)[:120]),
                     "The server cannot download from this site: check its internet connection, proxy or firewall.")
+    ws = write_slots(commons)
+    add("Agents writing to the data drive at once", True,
+        ("%d at a time (the shared folder is on another drive than the system's: an external disk slows down badly when many "
+         "agents write at once; the others keep reading and parsing meanwhile)" % ws) if ws else "no limit (system drive)",
+        "Setting bulk:write_slots (0 = no limit).")
     add("CPU cores for agents", (os.cpu_count() or 1) >= 4, "%d cores — Full speed runs %d agents" % (os.cpu_count() or 1, MAX_AGENTS), "")
     return out
 
@@ -2255,6 +2327,19 @@ def self_test():
             r2 = run_dataset(cf, "pubchem-computed")
         finally:
             BATCH = old
+        import threading as _th
+        ws = WriteSlots(cf, 1)
+        a = ws.take(); got = []
+        th = _th.Thread(target=lambda: got.append(ws.take())); th.start(); time.sleep(0.4)
+        waited = not got
+        ws.release(a); th.join(5); ws.release(got[0] if got else None)
+        c.set_setting("bulk:write_slots", 3)
+        ok("write slots: with 1 slot a second agent waits for the drive until the first has written; the setting is read",
+           waited and got and write_slots(c) == 3)
+        t0 = time.time(); s1 = status_cached(cf, c); s2 = status_cached(cf, c)
+        ok("the Control Panel's status is computed at most every 10 s (the second ask is instant)", s1 is s2 and time.time() - t0 < 30)
+        old_ns = int((time.time() + 3600) * 1e9)
+        ok("analysis reads only the hours asked for", list(qt.read_lines([os.path.join(cf, "trace")], since_ns=old_ns)) == [])
         tl = list(qt.read_lines([os.path.join(cf, "trace")]))
         an = qt.analyze(tl)
         pc = next((d for d in an["datasets"] if d["dataset"] == "pubchem-computed"), None)

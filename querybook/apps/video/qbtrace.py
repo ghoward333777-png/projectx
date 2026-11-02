@@ -106,6 +106,21 @@ class Tracer:
                         ttfb=None if ttfb is None else round(ttfb, 4)))
 
     def fail(self, where, exc, retried=False, **ctx):
+        key = (where, type(exc).__name__ if isinstance(exc, BaseException) else str(exc))
+        minute = int(time.time() // 60)
+        fl = self.__dict__.setdefault("_flood", {})
+        m, n, dropped = fl.get(key, (minute, 0, 0))
+        if m != minute:
+            if dropped:
+                self._line({"ev": "fail_suppressed", "proc": self.proc, "where": key[0], "kind": key[1], "count": dropped, "minute": m}, now=True)
+            m, n, dropped = minute, 0, 0
+        if n >= 20:                                # the same failure again and again: counted, not written each time
+            fl[key] = (m, n, dropped + 1)
+            return
+        fl[key] = (m, n + 1, dropped)
+        self._fail(where, exc, retried, **ctx)
+
+    def _fail(self, where, exc, retried=False, **ctx):
         tb = traceback.format_exception(type(exc), exc, exc.__traceback__) if isinstance(exc, BaseException) else []
         self._line(dict(ctx, ev="fail", proc=self.proc, where=where, kind=type(exc).__name__ if isinstance(exc, BaseException) else str(exc),
                         msg=str(exc)[:500], retried=bool(retried), tb=[l.strip() for l in "".join(tb).strip().splitlines()[-6:]]), now=True)
@@ -269,11 +284,11 @@ def analyze(lines):
                 h["ttfb"].append(l["ttfb"])
             h["status"][str(l.get("status"))] = h["status"].get(str(l.get("status")), 0) + 1
             h["ends"][str(l.get("end"))] = h["ends"].get(str(l.get("end")), 0) + 1
-        elif ev == "fail":
+        elif ev in ("fail", "fail_suppressed"):
             k = (l.get("where"), l.get("kind"), l.get("host") or l.get("dataset") or l.get("app") or "", l.get("code"))
             f = fails.setdefault(k, {"where": k[0], "kind": k[1], "about": k[2], "code": k[3], "count": 0, "retried": 0,
                                      "first": t, "last": t, "example": l.get("msg"), "tb": l.get("tb")})
-            f["count"] += 1; f["retried"] += bool(l.get("retried")); f["last"] = t
+            f["count"] += l.get("count", 1) if ev == "fail_suppressed" else 1; f["retried"] += bool(l.get("retried")); f["last"] = t
         elif ev == "span":
             sp = spans.setdefault(l["name"], {"s": [], "failed": 0})
             sp["s"].append(l.get("s") or 0); sp["failed"] += not l.get("ok", True)
@@ -441,28 +456,50 @@ def export(trace_folder, out_zip=None, days=None):
     return out_zip, len(files), raw
 
 
-def read_lines(paths):
-    """every log line from files, folders or exported zips"""
+def read_lines(paths, since_ns=0, max_seconds=None):
+    """every log line from files, folders or exported zips — read line by line (never a whole file at once); lines older
+    than since_ns are skipped; reading stops after max_seconds (a partial answer beats none)"""
+    t_end = time.time() + max_seconds if max_seconds else None
+
+    def parse(name, it):
+        for raw in it:
+            if t_end and time.time() > t_end:
+                return
+            line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+            if not line.strip():
+                continue
+            if since_ns:
+                k = line.rfind('"t":')
+                if k != -1:
+                    try:
+                        if int(line[k + 4:].split(",")[0].split("}")[0]) < since_ns:
+                            continue
+                    except ValueError:
+                        pass
+            try:
+                yield json.loads(line)
+            except ValueError:
+                yield {"ev": "fail", "where": "trace log", "kind": "unreadable line", "msg": line[:200], "proc": name}
+
     def from_bytes(name, data):
         if name.endswith(".gz"):
             data = gzip.decompress(data)
-        for line in data.decode("utf-8", "replace").splitlines():
-            if line.strip():
-                try:
-                    yield json.loads(line)
-                except ValueError:
-                    yield {"ev": "fail", "where": "trace log", "kind": "unreadable line", "msg": line[:200], "proc": name}
+        yield from parse(name, data.splitlines())
     for p in paths:
         if os.path.isdir(p):
-            yield from read_lines([os.path.join(p, f) for f in sorted(os.listdir(p)) if f.endswith((".jsonl", ".jsonl.gz", ".zip"))])
+            yield from read_lines([os.path.join(p, f) for f in sorted(os.listdir(p)) if f.endswith((".jsonl", ".jsonl.gz", ".zip"))],
+                                  since_ns, max_seconds)
         elif p.endswith(".zip"):
             with zipfile.ZipFile(p) as z:
                 for n in sorted(z.namelist()):
                     if n.endswith((".jsonl", ".jsonl.gz")):
                         yield from from_bytes(n, z.read(n))
+        elif p.endswith(".gz") and os.path.isfile(p):
+            with gzip.open(p, "rb") as f:
+                yield from parse(p, f)
         elif os.path.isfile(p):
             with open(p, "rb") as f:
-                yield from from_bytes(p, f.read())
+                yield from parse(p, f)
 
 
 def self_test():
@@ -495,6 +532,13 @@ def self_test():
         ok("storage benchmark: write, read, fsync and the agents' SQLite pattern measured per drive",
            sb["fastest_for_facts"] and all(k in sb["drives"][0] for k in ("seq_write_mb_s", "fsync_ms_median", "sqlite_rows_s"))
            and not os.listdir(tmp + "/trace") == [], sb)
+        fl = Tracer().configure(os.path.join(tmp, "flood"), "flood")
+        for i in range(500):
+            fl.fail("rule", ValueError("same bad row %d" % i), dataset="x")
+        fl.close()
+        lines_fl = list(read_lines([os.path.join(tmp, "flood")]))
+        ok("a failure repeated 500 times in a minute is written 20 times (the rest counted later), not 500",
+           sum(1 for l in lines_fl if l["ev"] == "fail") == 20, len(lines_fl))
         off = Tracer().configure(os.path.join(tmp, "off"), "x", on=False)
         off.event("run"); off.close()
         ok("switched off: nothing is written", not os.path.exists(os.path.join(tmp, "off")))

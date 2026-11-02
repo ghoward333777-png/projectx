@@ -43,6 +43,17 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  An external drive that is not overwhelmed (Control Panel 1.25.0 and the shared core)
+    * On 1 Nov 2026 the data drive (an external USB disk) fell to about 1 MB/s: 28 bulk agents were all writing to it at
+      once, so the disk spent its time moving between them. A 433 MB backup took 6 min; pages timed out; harvesting fell to
+      about 41,000 facts a minute.
+    * Now at most 2 agents write to an external drive at the same time (on the system drive: no limit). The others keep
+      downloading and parsing and write when a slot is free; the waiting is measured ("disk_wait" in the instrumentation).
+      Setting bulk:write_slots changes the number. Each shard also checkpoints less often and in larger pieces.
+    * The Control Panel asks for the harvest status at most every 10 seconds and never twice at once (a busy drive made
+      these asks pile up - the "ConnectionAbortedError" errors).
+    * "Analyse the logs" reads only the last 2 hours, line by line, and answers within about 90 seconds even with huge logs.
+    * A failure repeated many times a minute is written 20 times and the rest counted, so logs cannot flood the drive.
   One way to show numbers, times and progress (Control Panel 1.24.0 and every program's shared pages)
     * Facts and counts: whole numbers with separators (1,234,567). Rates: facts per minute ("12,345 facts/min").
       Durations: "8.4 s", "42 s", "3 min 05 s", "2 h 07 min"; time left: "about 3 min 05 s left". Percentages: one decimal
