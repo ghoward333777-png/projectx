@@ -1340,8 +1340,197 @@ CREATE TABLE IF NOT EXISTS slots (series TEXT NOT NULL, year INTEGER NOT NULL, f
 _FP = operator.itemgetter(0)
 
 
-def shard_path(commons_folder, key):
+def home_path(commons_folder, key):
+    """where a dataset's facts live for good: the shared folder (D:\\QB\\commons\\shards)"""
     return os.path.join(commons_folder, FOLDER, key + ".sqlite")
+
+
+# ------------------------------------------------------------------------------------------------ fast working copies (C:) → home (D:)
+# The agents write fastest to the computer's own drive (C:): with an external hard disk as home they all wait for it. So a
+# dataset being harvested has a WORKING COPY on C: (~/QueryBook-Work); every DRAIN_S seconds one copier writes each working
+# copy to its home on D: as one compacted, sequential file (VACUUM INTO — the kind of write a hard disk does fast), one at a
+# time. A finished dataset's working copy is removed once its home copy holds the same facts. Readers find the working copy
+# first (it is the newest). Off when the shared folder is on the system drive, or with QB_WORK_FOLDER=off.
+DRAIN_S = 600
+WORK_MIN_FREE_GB = 20
+
+
+def work_dir(commons_folder):
+    env = os.environ.get("QB_WORK_FOLDER")
+    if env == "off":
+        return None
+    if env:
+        base = env
+    else:
+        drive = os.path.splitdrive(os.path.abspath(commons_folder))[0].upper()
+        system = (os.environ.get("SystemDrive") or "").upper()
+        if not (drive and system and drive != system):
+            return None
+        base = os.path.join(os.path.expanduser("~"), "QueryBook-Work")
+    return os.path.join(base, hashlib.sha256(os.path.abspath(commons_folder).lower().encode()).hexdigest()[:10])
+
+
+def work_path(commons_folder, key):
+    w = work_dir(commons_folder)
+    return os.path.join(w, key + ".sqlite") if w else None
+
+
+def shard_path(commons_folder, key):
+    """the newest copy of a dataset: its working copy on C: while one exists, else its home on D:"""
+    wp = work_path(commons_folder, key)
+    if wp and os.path.exists(wp):
+        return wp
+    return home_path(commons_folder, key)
+
+
+def _sizes(p):
+    return sum(os.path.getsize(p + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(p + x))
+
+
+def pull(commons_folder, key):
+    """make the dataset's working copy on C: (copying its home copy there first, one dataset at a time). False when
+    working copies are off or C: has not room enough — the agent then writes to D: itself."""
+    wp = work_path(commons_folder, key)
+    if not wp:
+        return False
+    if os.path.exists(wp):
+        return True
+    os.makedirs(os.path.dirname(wp), exist_ok=True)
+    hp = home_path(commons_folder, key)
+    need = _sizes(hp) * 1.3
+    free = shutil.disk_usage(os.path.dirname(wp)).free
+    keep = float(os.environ.get("QB_WORK_MIN_FREE_GB") or WORK_MIN_FREE_GB) * 1e9
+    if free - need < keep:
+        TR.event("work_copy", dataset=key, action="skipped", why="the internal drive has %.0f GB free; working copies keep %.0f GB" % (free / 1e9, keep / 1e9))
+        return False
+    sl = Slots(commons_folder)
+    while True:                                   # one copy at a time: the home disk reads one file in a long run
+        lk = sl._lock("work-copy", 0)
+        if lk:
+            break
+        time.sleep(0.5)
+    try:
+        if os.path.exists(wp):
+            return True
+        t = time.time()
+        for sfx in ("", ".labels"):
+            src = hp + sfx
+            if not os.path.exists(src):
+                continue
+            try:
+                c = sqlite3.connect(src, timeout=60)
+                c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                c.close()
+            except sqlite3.Error:
+                pass
+            shutil.copyfile(src, wp + sfx + ".pulling")
+            os.replace(wp + sfx + ".pulling", wp + sfx)
+        if os.path.exists(hp + ".progress"):
+            shutil.copyfile(hp + ".progress", wp + ".progress")
+        TR.event("work_copy", dataset=key, action="made", seconds=round(time.time() - t, 1), mb=round(_sizes(wp) / 1e6, 1))
+        return True
+    finally:
+        sl.release(lk)
+
+
+def _drained_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_drained.json")
+
+
+def drained(commons_folder):
+    try:
+        with open(_drained_path(commons_folder)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def drain(commons_folder, key):
+    """write the working copy to its home on D: as one compacted, sequential file; returns the facts it holds (None when
+    there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet)"""
+    wp = work_path(commons_folder, key)
+    if not wp or not os.path.exists(wp):
+        return None
+    hp = home_path(commons_folder, key)
+    os.makedirs(os.path.dirname(hp), exist_ok=True)
+    t, facts = time.time(), None
+    for sfx in ("", ".labels"):
+        src, dst = wp + sfx, hp + sfx
+        if not os.path.exists(src):
+            continue
+        tmp = dst + ".draining"
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        c = sqlite3.connect(src, timeout=120)
+        try:
+            c.execute("VACUUM INTO ?", (tmp,))          # one consistent snapshot, written front to back
+        finally:
+            c.close()
+        if not sfx:
+            v = sqlite3.connect(tmp)
+            try:
+                r = v.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
+                facts = int(json.loads(r[0]) or 0) if r else 0
+            finally:
+                v.close()
+        try:
+            for x in ("-wal", "-shm"):                   # an old log beside the home copy must never be applied to the new one
+                if os.path.exists(dst + x):
+                    os.remove(dst + x)
+            _replace(tmp, dst, tries=10)
+        except PermissionError:
+            os.remove(tmp)
+            TR.event("drain", dataset=key, result="busy", why="the home copy is open in a program; tried again next round")
+            return "busy"
+    if os.path.exists(wp + ".progress"):
+        try:
+            shutil.copyfile(wp + ".progress", hp + ".progress")
+        except OSError:
+            pass
+    d = drained(commons_folder)
+    d[key] = {"at": time.time(), "facts": facts, "seconds": round(time.time() - t, 1)}
+    try:
+        with open(_drained_path(commons_folder) + ".tmp", "w") as f:
+            json.dump(d, f)
+        _replace(_drained_path(commons_folder) + ".tmp", _drained_path(commons_folder))
+    except OSError:
+        pass
+    TR.event("drain", dataset=key, result="saved", facts=facts, seconds=round(time.time() - t, 1), mb=round(os.path.getsize(hp) / 1e6, 1))
+    return facts
+
+
+def work_keys(commons_folder):
+    w = work_dir(commons_folder)
+    if not w or not os.path.isdir(w):
+        return []
+    return sorted(f[:-7] for f in os.listdir(w) if f.endswith(".sqlite"))
+
+
+def finish_work(commons_folder):
+    """after the run: every working copy saved to D:; those of finished datasets removed from C: once D: holds the same
+    facts. Returns {dataset: what happened}."""
+    out = {}
+    for key in work_keys(commons_folder):
+        try:
+            facts = drain(commons_folder, key)
+            wp = work_path(commons_folder, key)
+            st = sqlite3.connect(wp)
+            try:
+                r = dict(st.execute("SELECT key, value FROM meta WHERE key IN ('facts', 'state')").fetchall())
+            finally:
+                st.close()
+            done = json.loads(r.get("state", '""')) == "done"
+            if done and facts is not None and facts != "busy" and facts == int(json.loads(r.get("facts", "0")) or 0):
+                for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(wp + x):
+                        os.remove(wp + x)
+                out[key] = "saved to D: and removed from C:"
+            else:
+                out[key] = "saved to D: (working copy kept: the dataset is not finished)" if facts not in (None, "busy") else str(facts)
+        except Exception as e:
+            TR.fail("finish working copy", e, dataset=key)
+            out[key] = "error: %s" % e
+    return out
 
 
 def fp(domain, s, p, o):
@@ -1409,9 +1598,11 @@ def write_slots(commons):
 class Shard:
     wslots = None
 
-    def __init__(self, commons_folder, key):
+    def __init__(self, commons_folder, key, path=None):
         os.makedirs(os.path.join(commons_folder, FOLDER), exist_ok=True)
-        self.db = sqlite3.connect(shard_path(commons_folder, key), timeout=60)
+        self.path = path or shard_path(commons_folder, key)
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.db = sqlite3.connect(self.path, timeout=60)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")                 # WAL + NORMAL: a crash never corrupts or splits a batch
         self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))   # a whole batch's dirty pages stay in memory until commit
@@ -1494,6 +1685,9 @@ class Run:
         if os.path.exists(self.stopfile):
             return "stopped from the Control Panel"
         keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
+        w = work_dir(self.folder)
+        if w and os.path.isdir(w) and shutil.disk_usage(w).free / 1e9 < keep:
+            return "the internal drive (working copies) is nearly full: %.1f GB free — the working copies are saved to the data drive" % (shutil.disk_usage(w).free / 1e9)
         free = shutil.disk_usage(self.folder).free / 1e9
         if free < keep:
             return "the disk is nearly full: %.1f GB free, bulk harvesting keeps at least %g GB (setting bulk:min_free_gb)" % (free, keep)
@@ -1518,8 +1712,11 @@ def run_dataset(commons_folder, key, max_rows=None):
     TR.from_commons(run.commons, "bulk-%s-%d" % (key, os.getpid()), dataset=key)
     TR.add("open_commons", _NS() - t_open)
     t = _NS()
-    sh = Shard(commons_folder, key)
-    sh.wslots = WriteSlots(commons_folder, write_slots(run.commons))
+    on_c = pull(commons_folder, key)                  # the fast working copy on C: (or D: itself when C: has no room)
+    TR.add("work_copy", _NS() - t)
+    t = _NS()
+    sh = Shard(commons_folder, key, work_path(commons_folder, key) if on_c else None)
+    sh.wslots = None if on_c else WriteSlots(commons_folder, write_slots(run.commons))
     TR.add("open_shard", _NS() - t)
     TR.event("run", phase="start", dataset=key, app=ds.app, sample=TR.sample, max_rows=max_rows, folder=commons_folder)
     fpr = fingerprinter(AREA[ds.app])
@@ -1778,6 +1975,23 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         except OSError as e:
             TR.fail("heartbeat", e, retried=True)
     beat("starting")
+    import threading
+    drain_stop = threading.Event()
+
+    def drainer():                                    # one copier: working copies on C: → their home on D:, in turn
+        wait = min(120, DRAIN_S)
+        while not drain_stop.wait(wait):
+            wait = DRAIN_S
+            for k in work_keys(commons_folder):
+                if drain_stop.is_set():
+                    break
+                try:
+                    drain(commons_folder, k)
+                except Exception as e:
+                    TR.fail("drain", e, retried=True, dataset=k)
+    dthread = threading.Thread(target=drainer, daemon=True, name="qb-drain")
+    if work_dir(commons_folder):
+        dthread.start()
     todo, rounds = list(keys), 0
     while todo:
         got = []
@@ -1812,6 +2026,12 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
         TR.fail("dedupe", e)
         gone = {"error": str(e)}
     TR.event("dedupe", seconds=round(time.time() - t, 2), removed=gone)
+    drain_stop.set()
+    if dthread.is_alive():
+        dthread.join()
+    if work_dir(commons_folder):
+        beat("saving the working copies to the data drive")
+        results.append({"saved_to_data_drive": finish_work(commons_folder)})
     TR.event("run", phase="end", role="runner", rounds=rounds, results=[{k: r.get(k) for k in ("dataset", "state", "new", "why")} for r in results if "dataset" in r])
     TR.close()
     results.append({"dedupe": gone})
@@ -1871,6 +2091,10 @@ def status(commons_folder, commons=None):
                "why": ds.why, "approx": ds.approx, "approved": approved, "approval": why, "state": "not started", "facts": 0,
                "last_minute": 0, "last_hour": 0, "bytes": 0, "parts": [], "error": None}
         p = shard_path(commons_folder, key)
+        if p != home_path(commons_folder, key):
+            dr = drained(commons_folder).get(key) or {}
+            row["working_copy"] = True
+            row["saved_to_data_drive"] = dr.get("at")
         if os.path.exists(p):
             row["bytes"] = sum(os.path.getsize(p + x) for x in ("", "-wal") if os.path.exists(p + x))
             try:
@@ -2243,6 +2467,16 @@ def diagnose(commons, folders=None, probe=True):
             except Exception as e:
                 add("Reach " + name, False, "%s: %s" % (type(e).__name__, str(e)[:120]),
                     "The server cannot download from this site: check its internet connection, proxy or firewall.")
+    w = work_dir(commons.folder)
+    if w:
+        wk = work_keys(commons.folder)
+        dr = drained(commons.folder)
+        ages = [time.time() - (dr.get(k) or {}).get("at", 0) for k in wk]
+        freec = shutil.disk_usage(os.path.dirname(w) if not os.path.isdir(w) else w).free / 1e9 if os.path.isdir(os.path.dirname(w)) else None
+        add("Fast working copies on the internal drive", True,
+            "%d dataset(s) at %s; %s; saved to the data drive every %d min (oldest copy there: %s)" % (
+                len(wk), w, ("%.0f GB free there" % freec) if freec is not None else "free space unknown", DRAIN_S // 60,
+                ("%d min old" % (max(ages) / 60)) if ages and max(ages) < 1e8 else "not yet saved" if wk else "—"), "")
     ws = write_slots(commons)
     add("Agents writing to the data drive at once", True,
         ("%d at a time (the shared folder is on another drive than the system's: an external disk slows down badly when many "
@@ -2327,6 +2561,46 @@ def self_test():
             r2 = run_dataset(cf, "pubchem-computed")
         finally:
             BATCH = old
+        # 1.26: working copies on the internal drive, saved to the data drive
+        cf2 = os.path.join(tmp, "commons-d")
+        c2 = cm.Commons(cf2, "stem"); c2.registry.ensure(); c2.set_setting("bulk:min_free_gb", 0)
+        for k, v in (("bulk:url:pubchem-computed:CID-Mass", url("CID-Mass.gz")), ("bulk:url:pubchem-computed:CID-SMILES", url("CID-SMILES.gz")),
+                     ("bulk:url:pubchem-computed:CID-InChI-Key", url("CID-InChI-Key.gz"))):
+            c2.set_setting(k, v)
+        old_env = {k: os.environ.get(k) for k in ("QB_WORK_FOLDER", "QB_WORK_MIN_FREE_GB")}
+        os.environ["QB_WORK_FOLDER"] = os.path.join(tmp, "internal"); os.environ["QB_WORK_MIN_FREE_GB"] = "0"
+        old_b, BATCH = BATCH, 1000
+        try:
+            w1 = run_dataset(cf2, "pubchem-computed", max_rows=1500)
+            wp, hp = work_path(cf2, "pubchem-computed"), home_path(cf2, "pubchem-computed")
+            ok("working copy: the agent writes to the internal drive, not the data drive",
+               os.path.exists(wp) and not os.path.exists(hp) and shard_path(cf2, "pubchem-computed") == wp, w1)
+            n1 = drain(cf2, "pubchem-computed")
+            hn = sqlite3.connect(hp).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("the copier saves it to the data drive whole (the same facts)", n1 == hn == w1["new"] and os.path.exists(wp), (n1, hn, w1))
+            st2 = status(cf2, c2)
+            ok("the status says where each dataset is and when it was last saved to the data drive",
+               any(d["key"] == "pubchem-computed" and d.get("working_copy") and d.get("saved_to_data_drive") for d in st2["datasets"]))
+            fw = finish_work(cf2)
+            ok("an unfinished dataset keeps its working copy after the run (it resumes there)", os.path.exists(wp) and "kept" in fw["pubchem-computed"], fw)
+            w2 = run_dataset(cf2, "pubchem-computed")
+            fw2 = finish_work(cf2)
+            hn2 = sqlite3.connect(hp).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("a finished dataset is saved to the data drive and its working copy removed once the facts match",
+               w2["state"] == "done" and not os.path.exists(wp) and hn2 == hn + w2["new"] and "removed" in fw2["pubchem-computed"], (w2, fw2, hn2))
+            ok("with no working copy, readers find the home copy", shard_path(cf2, "pubchem-computed") == hp)
+            ok("a dataset already on the data drive gets its working copy from there before it resumes",
+               pull(cf2, "pubchem-computed") and sqlite3.connect(wp).execute("SELECT count(*) FROM facts").fetchone()[0] == hn2)
+            os.environ["QB_WORK_MIN_FREE_GB"] = "1e12"
+            os.remove(wp)
+            ok("too little room on the internal drive: the agent writes to the data drive itself", pull(cf2, "pubchem-computed") is False)
+        finally:
+            BATCH = old_b
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
         import threading as _th
         ws = WriteSlots(cf, 1)
         a = ws.take(); got = []

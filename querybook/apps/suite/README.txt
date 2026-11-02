@@ -43,6 +43,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Fast again: harvest on the computer's own drive, saved to the data drive (Control Panel 1.26.0 and the shared core)
+    * The fast runs (millions of facts a minute) wrote to C:. D:\QB is a USB hard disk: with every agent writing to it at
+      once it fell to about 1 MB/s. Now each dataset being harvested has a WORKING COPY on C: (C:\Users\<you>\QueryBook-Work)
+      that the agents write to at full speed, and one copier saves every working copy to its home on D:\QB every 10
+      minutes as one compacted file written front to back - the kind of write a hard disk does fast. One copy at a time.
+    * D:\QB stays the home of everything. At most the last ~10 minutes of a dataset's work exist only on C:; after a crash
+      the working copy is saved to D: on the next start. A finished dataset is saved one last time and its working copy is
+      removed from C: once D: holds the same facts. An unfinished one keeps its working copy (it resumes there).
+    * Starting a dataset that is already on D: copies it to C: first (one at a time). If C: has less than 20 GB to spare
+      after that, the dataset writes to D: itself (at most 2 agents at a time).
+    * The Harvesting tab shows, for each dataset, "working on C:, saved to D: 4 min ago"; "Why so slow?" shows the working
+      copies, the free space on C: and how old the newest copy on D: is. The copies are in the instrumentation logs.
   An external drive that is not overwhelmed (Control Panel 1.25.0 and the shared core)
     * On 1 Nov 2026 the data drive (an external USB disk) fell to about 1 MB/s: 28 bulk agents were all writing to it at
       once, so the disk spent its time moving between them. A 433 MB backup took 6 min; pages timed out; harvesting fell to
