@@ -43,6 +43,23 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  A harvest that does not stop; a plain health report; counts you can trust (Control Panel 1.30.0 and the shared core)
+    * Every dataset is its own watched agent. One that fails is tried again after 1, 2, 5, 10, then every 15 minutes -
+      never given up. One that shows no sign of life for 3 minutes, or makes no progress for 15, is ended and restarted
+      where it stopped. One that waits more than 10 minutes for a download connection gives its place to another
+      dataset. A finished dataset is looked at again daily. The red Stop is the only way to stop the harvest.
+    * Re-routes: C: filling up - the dataset's working copy is saved to D: and it carries on writing to D:. D: full -
+      the agents keep writing on C: and the copy to D: waits for room (never half a file). D: unplugged - the harvest
+      looks for it every minute and carries on when it is back. Only one engine can run at a time.
+    * Every open QueryBook program restarts the engine within about 3 minutes if it ended without Stop (a crash, sleep,
+      a closed window). New option on the Harvesting tab: "Start QueryBook by itself when Windows starts".
+    * Health report (Harvesting tab, and the email): a few plain lines - health, speed now, the main delay and what
+      QueryBook does about it, what recovered by itself, and what (if anything) you need to do. The technical details
+      are below it, for support.
+    * Counts: a dataset that is busy for a moment keeps its last count (the total no longer dips). Every fall in a
+      count is written down with its cause (shards\_count-drops.jsonl) and shown in the health report - usually
+      duplicates removed (the same fact already held by another dataset; one copy is kept). Saving a working copy to D:
+      never overwrites facts that only the D: copy holds: they are merged in first.
   Stop that stops, one sentence, the analysis by email (Control Panel 1.29.0 and the shared core)
     * Since 1.22 the harvesting engine runs without a window, so closing the windows did not stop it - an engine from an
       older version could keep running with old code. Now Stop ends every agent: each finishes its batch, and any still

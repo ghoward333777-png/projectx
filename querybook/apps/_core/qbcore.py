@@ -2070,6 +2070,28 @@ def _harvest_cli(inst, cmd, a):
         return 1
 
 
+WATCHDOG_S = 120
+
+
+def engine_watchdog(inst, every=None, rounds=None):
+    """every open program looks after the harvesting engine: when it ended without the red Stop (a crash, the computer
+    slept, its window was closed, the drive dropped out) it is started again where it stopped (at most once per 3 min)"""
+    import qbbulk
+    n = 0
+    while rounds is None or n < rounds:
+        n += 1
+        time.sleep(WATCHDOG_S if every is None else every)
+        try:
+            r = qbbulk.resume_if_crashed(inst.commons, os.path.dirname(os.path.abspath(qbbulk.__file__)))
+            if r:
+                inst.log("engine watchdog:", r)
+        except Exception as e:                    # the watchdog itself never stops
+            try:
+                inst.log("engine watchdog:", e)
+            except Exception:
+                pass
+
+
 def run_cli(app):
     """Common command line for every application.
 
@@ -2189,6 +2211,8 @@ def run_cli(app):
     if getattr(inst, "diag", None):
         inst.diag.power = power
     threading.Thread(target=lambda: power.system_check(), daemon=True, name="qb-system-check").start()
+    if getattr(inst, "commons", None) and not os.environ.get("QB_OFFLINE"):
+        threading.Thread(target=engine_watchdog, args=(inst,), daemon=True, name="qb-engine-watchdog").start()
     inst.store.activity("Application started", "ok", "version %s" % app.VERSION)
 
     def started(url):                                         # the Control Panel finds the application here

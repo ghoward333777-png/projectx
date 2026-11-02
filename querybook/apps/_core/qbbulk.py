@@ -30,7 +30,7 @@ import qbkeystone as ks  # noqa: E402
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.29.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.30.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -272,6 +272,7 @@ class Slots:
     def acquire(self, sources, stop):
         """(url, lock) on the first server with a free connection that is not cooling down; waits while every one is busy.
         sources: [(url, connections)]. Raises _Stop when the run is stopped meanwhile."""
+        t_wait = time.time()
         while not stop["now"]:
             for url, n in sources:
                 host = _host(url)
@@ -280,7 +281,13 @@ class Slots:
                 for i in range(max(1, int(n))):
                     f = self._lock(host, i)
                     if f:
+                        AGENT["waiting"] = None
                         return url, f
+            AGENT["waiting"] = "a download connection"
+            if time.time() - t_wait > SLOT_MAX_WAIT_S:   # re-route: give this agent's place to another dataset, come back later
+                AGENT["waiting"] = None
+                raise Busy("waited %d min for a download connection (the servers allow only a few at a time): another dataset "
+                           "takes this place, this one comes back in a few minutes" % (SLOT_MAX_WAIT_S // 60))
             if self.halt and time.time() - self._checked > 15:
                 self._checked = time.time()
                 why = self.halt()
@@ -1383,6 +1390,13 @@ def shard_path(commons_folder, key):
     return home_path(commons_folder, key)
 
 
+def _free(folder):
+    try:
+        return shutil.disk_usage(folder).free
+    except OSError:
+        return 0
+
+
 def _sizes(p):
     return sum(os.path.getsize(p + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(p + x))
 
@@ -1393,13 +1407,25 @@ def pull(commons_folder, key):
     wp = work_path(commons_folder, key)
     if not wp:
         return False
+    keep = float(os.environ.get("QB_WORK_MIN_FREE_GB") or WORK_MIN_FREE_GB) * 1e9
     if os.path.exists(wp):
-        return True
+        if _free(os.path.dirname(wp)) >= keep / 2:
+            return True
+        # re-route: the internal drive is filling up — this dataset's working copy goes home and the agent writes to D:
+        try:
+            if drain(commons_folder, key) not in (None, "busy", "no room"):
+                for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(wp + x):
+                        os.remove(wp + x)
+                TR.event("work_copy", dataset=key, action="moved home", why="the internal drive is nearly full")
+                return False
+        except Exception as e:
+            TR.fail("work copy home", e, dataset=key, retried=True)
+        return True                               # could not move it yet: keep using it (the agent pauses if C: is full)
     os.makedirs(os.path.dirname(wp), exist_ok=True)
     hp = home_path(commons_folder, key)
     need = _sizes(hp) * 1.3
-    free = shutil.disk_usage(os.path.dirname(wp)).free
-    keep = float(os.environ.get("QB_WORK_MIN_FREE_GB") or WORK_MIN_FREE_GB) * 1e9
+    free = _free(os.path.dirname(wp))
     if free - need < keep:
         TR.event("work_copy", dataset=key, action="skipped", why="the internal drive has %.0f GB free; working copies keep %.0f GB" % (free / 1e9, keep / 1e9))
         return False
@@ -1489,6 +1515,42 @@ def drained(commons_folder):
         return {}
 
 
+def _meta_of(path):
+    try:
+        db = _ro(path)
+        try:
+            return {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta WHERE key IN ('facts', 'duplicates_removed')")}
+        finally:
+            db.close()
+    except (sqlite3.Error, ValueError):
+        return None
+
+
+def merge_into(dst_path, src_path):
+    """every fact of src that dst lacks is added to dst (predicates matched by name); returns how many were added"""
+    db = sqlite3.connect(dst_path, timeout=120)
+    try:
+        db.executescript(SCHEMA)
+        db.execute("ATTACH DATABASE ? AS h", (src_path,))
+        db.execute("INSERT OR IGNORE INTO predicates(name, rule) SELECT name, rule FROM h.predicates")
+        db.execute("INSERT OR IGNORE INTO parts(name, url, version) SELECT name, url, version FROM h.parts")
+        before = db.total_changes
+        db.execute("""INSERT OR IGNORE INTO facts(fp, s, p, o, part, row)
+                      SELECT f.fp, f.s, mp.id, f.o, coalesce(mpt.id, f.part), f.row FROM h.facts f
+                      JOIN h.predicates hp ON hp.id = f.p JOIN main.predicates mp ON mp.name = hp.name
+                      LEFT JOIN h.parts hpt ON hpt.id = f.part LEFT JOIN main.parts mpt ON mpt.name = hpt.name""")
+        added = db.total_changes - before
+        db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT fp, url FROM h.links")
+        r = db.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
+        db.execute("INSERT INTO meta(key, value) VALUES('facts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                   (json.dumps((json.loads(r[0]) if r else 0) + added),))
+        db.commit()
+        db.execute("DETACH DATABASE h")
+        return added
+    finally:
+        db.close()
+
+
 def drain(commons_folder, key):
     """write the working copy to its home on D: as one compacted, sequential file; returns the facts it holds (None when
     there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet)"""
@@ -1496,7 +1558,20 @@ def drain(commons_folder, key):
     if not wp or not os.path.exists(wp):
         return None
     hp = home_path(commons_folder, key)
+    if not os.path.isdir(commons_folder):
+        TR.event("drain", dataset=key, result="waiting", why="the data drive is not connected; the working copy keeps every fact")
+        return "busy"
     os.makedirs(os.path.dirname(hp), exist_ok=True)
+    if _free(os.path.dirname(hp)) < _sizes(wp) * 1.1 + 1e9:
+        TR.event("drain", dataset=key, result="no room", why="the data drive is nearly full; the working copy keeps every fact")
+        return "no room"
+    hm, wm = _meta_of(hp) if os.path.exists(hp) else None, _meta_of(wp)
+    if hm and wm:                                  # never replace a home copy holding facts the working copy lacks (an
+        expect = (wm.get("facts") or 0) + (wm.get("duplicates_removed") or 0) - (hm.get("duplicates_removed") or 0)
+        if (hm.get("facts") or 0) > expect:        # older engine wrote to D: meanwhile): those facts are merged in first
+            added = merge_into(wp, hp)
+            TR.event("drain", dataset=key, result="merged", added=added,
+                     why="the copy on the data drive held %d facts the working copy lacked; merged before saving" % added)
     t, facts = time.time(), None
     for sfx in ("", ".labels"):
         src, dst = wp + sfx, hp + sfx
@@ -1508,6 +1583,12 @@ def drain(commons_folder, key):
         c = sqlite3.connect(src, timeout=120)
         try:
             c.execute("VACUUM INTO ?", (tmp,))          # one consistent snapshot, written front to back
+        except sqlite3.Error:
+            try:
+                os.remove(tmp)                          # never leave half a copy behind (a full disk, the drive gone)
+            except OSError:
+                pass
+            raise
         finally:
             c.close()
         if not sfx:
@@ -1564,13 +1645,13 @@ def finish_work(commons_folder):
             finally:
                 st.close()
             done = json.loads(r.get("state", '""')) == "done"
-            if done and facts is not None and facts != "busy" and facts == int(json.loads(r.get("facts", "0")) or 0):
+            if done and facts not in (None, "busy", "no room") and facts == int(json.loads(r.get("facts", "0")) or 0):
                 for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
                     if os.path.exists(wp + x):
                         os.remove(wp + x)
                 out[key] = "saved to D: and removed from C:"
             else:
-                out[key] = "saved to D: (working copy kept: the dataset is not finished)" if facts not in (None, "busy") else str(facts)
+                out[key] = "saved to D: (working copy kept: the dataset is not finished)" if facts not in (None, "busy", "no room") else str(facts)
         except Exception as e:
             TR.fail("finish working copy", e, dataset=key)
             out[key] = "error: %s" % e
@@ -1719,6 +1800,7 @@ class Run:
         self.commons.registry.ensure()            # the researched sources and the admin's decisions (never overrides a decision)
         self.cache = os.path.join(commons_folder, FOLDER, "_cache")
         self.stopfile = os.path.join(commons_folder, FOLDER, "_runner.stop")
+        self.on_c = False
 
     def url_override(self, key, part):
         """tests and mirrors: the setting bulk:url:<dataset>:<part> replaces the publisher's address"""
@@ -1729,11 +1811,11 @@ class Run:
         if os.path.exists(self.stopfile):
             return "stopped from the Control Panel"
         keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
-        w = work_dir(self.folder)
-        if w and os.path.isdir(w) and shutil.disk_usage(w).free / 1e9 < keep:
-            return "the internal drive (working copies) is nearly full: %.1f GB free — the working copies are saved to the data drive" % (shutil.disk_usage(w).free / 1e9)
-        free = shutil.disk_usage(self.folder).free / 1e9
-        if free < keep:
+        w = work_dir(self.folder) if self.on_c else None
+        if w and os.path.isdir(w) and _free(w) / 1e9 < keep:
+            return "the internal drive (working copies) is nearly full: %.1f GB free — this dataset moves to the data drive and carries on" % (_free(w) / 1e9)
+        free = _free(self.folder) / 1e9
+        if free < (1 if self.on_c else keep):         # writing on C:, the data drive only needs room for the log
             return "the disk is nearly full: %.1f GB free, bulk harvesting keeps at least %g GB (setting bulk:min_free_gb)" % (free, keep)
         if self.ds.source:
             ok, cls, why = self.commons.registry.check(self.ds.source)
@@ -1756,7 +1838,7 @@ def run_dataset(commons_folder, key, max_rows=None):
     TR.from_commons(run.commons, "bulk-%s-%d" % (key, os.getpid()), dataset=key)
     TR.add("open_commons", _NS() - t_open)
     t = _NS()
-    on_c = pull(commons_folder, key)                  # the fast working copy on C: (or D: itself when C: has no room)
+    on_c = run.on_c = pull(commons_folder, key)       # the fast working copy on C: (or D: itself when C: has no room)
     TR.add("work_copy", _NS() - t)
     t = _NS()
     sh = Shard(commons_folder, key, work_path(commons_folder, key) if on_c else None)
@@ -1798,6 +1880,7 @@ def run_dataset(commons_folder, key, max_rows=None):
             pg = {"part": name, "part_no": part_no, "parts": len(plist), "since": time.time(), "done_at_start": None}
             while row_no < done_rows and next(rows, end) is not end:    # resume: skip what an earlier run already saved
                 row_no += 1
+                AGENT["rows"] = row_no                  # the supervisor sees the skip moving (it is progress, not a stall)
             TR.add("resume_skip", _NS() - t, max(0, row_no))
             TR.event("part", phase="start", dataset=key, part=name, part_no=part_no, parts=len(plist), resume_row=row_no, url=str(url)[-120:])
             side = shard_path(commons_folder, key) + ".progress"
@@ -1845,6 +1928,7 @@ def run_dataset(commons_folder, key, max_rows=None):
                 TR.add("fingerprint", t_fp, len(found))
                 TR.add("buffer", t_src - t_rule - t_fp)
                 row_no += 1
+                AGENT["rows"] = row_no
                 if not row_no & 0x1FFFF:                # about every 130,000 rows: the meter into a side file (no commit)
                     with qt.timed("progress_mark"):
                         _mark(None, pg, row_no, side)
@@ -1988,33 +2072,201 @@ def _version(url):
 
 def _agent(args):
     folder, key, max_rows = args
+    if not os.path.isdir(folder):
+        return {"dataset": key, "state": "paused", "why": "the data drive is not connected (%s)" % folder, "new": 0, "retry": True}
     try:
         return run_dataset(folder, key, max_rows)
     except Exception as e:                      # never lets one agent's surprise end the whole run: it is retried later
         return {"dataset": key, "state": "paused", "why": "%s: %s" % (type(e).__name__, str(e)[:300]), "new": 0, "retry": True}
 
 
-def run(commons_folder, keys=None, agents=4, max_rows=None):
-    """the runner: up to `agents` datasets at once, one process each; heartbeat in shards/_runner.json"""
-    import multiprocessing
+# ------------------------------------------------------------------------------------------------ the supervisor (1.30)
+# Every dataset is its own watched process. The supervisor restarts what ends, ends what stalls, re-routes what waits too
+# long, and never gives up: the red Stop is the only way to end it.
+AGENT = {"rows": 0, "waiting": None}            # in each agent process: how far it is, and whether it is waiting on purpose
+SLOT_MAX_WAIT_S = 600                           # a lane waiting longer than this for a download connection gives its place up
+STALL_S = 900                                   # no progress for this long (and not waiting on purpose): ended and restarted
+SILENT_S = 180                                  # no sign of life for this long: ended and restarted
+BACKOFF_S = (60, 120, 300, 600, 900)          # waits before the next try after the 1st, 2nd, ... failure in a row
+DRIVE_RETRY_S = 60                              # the data drive unplugged: looked for every minute
+RECHECK_DONE_S = 24 * 3600                      # a finished dataset is looked at again daily (new editions of the files)
+SUPERVISE_TICK_S = 2
+
+
+def _alive_dir(commons_folder):
+    d = os.path.join(commons_folder, FOLDER, "_agents")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _agent_main(commons_folder, key, max_rows, result_path):
+    """one agent process: a heartbeat thread, the dataset, its result in a file"""
+    import threading
+    alive = os.path.join(_alive_dir(commons_folder), key + ".json")
+    done = threading.Event()
+
+    def heartbeat():
+        while not done.wait(15):
+            try:
+                with open(alive + ".tmp", "w") as f:
+                    json.dump({"at": time.time(), "pid": os.getpid(), "meter": METER.done, "rows": AGENT["rows"],
+                               "waiting": AGENT["waiting"]}, f)
+                _replace(alive + ".tmp", alive, tries=5)
+            except OSError:
+                pass
+    threading.Thread(target=heartbeat, daemon=True).start()
+    if os.name == "nt":                         # keep the computer awake while agents work, windows open or not
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+        except Exception:
+            pass
+    r = _agent((commons_folder, key, max_rows))
+    done.set()
+    with open(result_path + ".tmp", "w") as f:
+        json.dump(r, f)
+    os.replace(result_path + ".tmp", result_path)
+
+
+def next_try(r, fails):
+    """seconds until a dataset is started again, from how it ended (None: not again in this run)"""
+    st = (r or {}).get("state")
+    if st == "done":
+        return RECHECK_DONE_S
+    if st == "stopped" and "Control Panel" in str(r.get("why") or ""):
+        return None                              # the red Stop
+    if st == "blocked":
+        return 3600                              # not approved in the registry: looked at again hourly
+    if "not connected" in str(r.get("why") or ""):
+        return DRIVE_RETRY_S
+    return BACKOFF_S[min(fails, len(BACKOFF_S) - 1)]
+
+
+class Supervisor:
+    def __init__(self, commons_folder, keys, agents, max_rows=None, mp=None, kill=None):
+        import multiprocessing
+        self.cf, self.keys, self.agents, self.max_rows = commons_folder, list(keys), max(1, int(agents)), max_rows
+        self.mp = mp or multiprocessing.get_context("spawn")
+        self.kill = kill or _kill
+        self.queue = {k: 0.0 for k in self.keys}            # dataset → when it may start
+        self.fails = {k: 0 for k in self.keys}
+        self.running = {}                                    # dataset → {proc, started, result, last progress, last change}
+        self.events = []
+        self.res_dir = os.path.join(commons_folder, FOLDER, "_results")
+        os.makedirs(self.res_dir, exist_ok=True)
+
+    def note(self, what, key, **kw):
+        e = dict(kw, what=what, dataset=key, at=time.time())
+        self.events.append(e)
+        self.events = self.events[-300:]
+        TR.event("supervisor", **e)
+
+    def launch(self, key):
+        rp = os.path.join(self.res_dir, key + ".json")
+        for p in (rp, os.path.join(_alive_dir(self.cf), key + ".json")):
+            if os.path.exists(p):
+                os.remove(p)
+        pr = self.mp.Process(target=_agent_main, args=(self.cf, key, self.max_rows, rp), daemon=False)
+        pr.start()
+        self.running[key] = {"proc": pr, "started": time.time(), "result": rp, "progress": None, "changed": time.time()}
+        self.note("started", key, pid=pr.pid, attempt=self.fails[key] + 1)
+
+    def _finish(self, key, r, how):
+        info = self.running.pop(key)
+        if r is None:
+            r = {"dataset": key, "state": "paused", "why": how}
+        ok = r.get("state") in ("done",)
+        self.fails[key] = 0 if ok or r.get("new") else self.fails[key] + 1
+        wait = next_try(r, max(0, self.fails[key] - 1))
+        if wait is None:
+            self.queue.pop(key, None)
+        else:
+            self.queue[key] = time.time() + wait
+        self.note("ended", key, state=r.get("state"), why=str(r.get("why") or how or "")[:200], new=r.get("new"),
+                  next_in_s=wait, ran_s=round(time.time() - info["started"]))
+        return r
+
+    def check(self, now=None):
+        """one look at every agent: collect the ended, end the stalled and the silent, start what may start"""
+        now = now or time.time()
+        for key in list(self.running):
+            info = self.running[key]
+            pr = info["proc"]
+            if not pr.is_alive():
+                try:
+                    with open(info["result"]) as f:
+                        r = json.load(f)
+                except (OSError, ValueError):
+                    r = None
+                self._finish(key, r, None if r else "the agent ended without a result (exit %s)" % pr.exitcode)
+                continue
+            try:
+                with open(os.path.join(_alive_dir(self.cf), key + ".json")) as f:
+                    a = json.load(f)
+            except (OSError, ValueError):
+                a = None
+            if a:
+                prog = (a.get("meter"), a.get("rows"))
+                if prog != info["progress"] or a.get("waiting"):
+                    info["progress"], info["changed"] = prog, now
+            silent = (now - (a or {}).get("at", info["started"])) > SILENT_S
+            stalled = (now - info["changed"]) > STALL_S
+            if silent or stalled:
+                why = ("no sign of life for %d min" % (SILENT_S // 60)) if silent else ("no progress for %d min" % (STALL_S // 60))
+                self.kill(pr.pid)
+                pr.join(10)
+                self._finish(key, None, why + " — ended and restarted where it stopped")
+        free = self.agents - len(self.running)
+        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running), key=lambda k: self.keys.index(k)):
+            if free <= 0:
+                break
+            self.launch(key)
+            free -= 1
+
+    def stop_all(self, grace=None):
+        grace = STOP_GRACE_S if grace is None else grace
+        t0 = time.time()
+        self.queue = {}
+        while self.running and time.time() - t0 < grace:
+            self.check()
+            self.queue = {}
+            time.sleep(1)
+        for key, info in list(self.running.items()):
+            self.kill(info["proc"].pid)
+            self._finish(key, None, "ended by Stop")
+        self.queue = {}
+
+
+def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
+    """the runner: a supervisor that keeps every dataset going (see Supervisor) until the red Stop. Only one at a time.
+    until: tests only — a function that ends the run when it returns True."""
     keys = keys or list(catalog())
     folder = os.path.join(commons_folder, FOLDER)
     os.makedirs(folder, exist_ok=True)
+    one = Slots(commons_folder)._lock("runner", 0)          # only one engine at a time (released if this process dies)
+    if not one:
+        return [{"error": "another harvesting engine is already running"}]
     stop = os.path.join(folder, "_runner.stop")
     if os.path.exists(stop):
         os.remove(stop)
     hb = os.path.join(folder, "_runner.json")
-    results = []
     TR.configure(qt.trace_dir(commons_folder), "runner-%d" % os.getpid(), on=True)
     TR.event("run", phase="start", role="runner", agents=agents, datasets=keys, cores=os.cpu_count())
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)   # the computer stays awake while the engine runs
+        except Exception:
+            pass
+    sup = Supervisor(commons_folder, keys, agents, max_rows)
 
     def beat(note):
-        # a heartbeat that cannot be written this second (the Control Panel was reading it, or the drive was busy) is
-        # skipped, never fatal: in 1.15 one such moment on Windows ended the whole run
         try:
             with open(hb + ".tmp", "w") as f:
-                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys, "note": note,
-                           "results": results[-200:]}, f)
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys,
+                           "note": note, "running": sorted(sup.running), "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
+                                                                                  if k not in sup.running and t > time.time()},
+                           "events": sup.events[-60:]}, f)
             _replace(hb + ".tmp", hb)
         except OSError as e:
             TR.fail("heartbeat", e, retried=True)
@@ -2036,51 +2288,42 @@ def run(commons_folder, keys=None, agents=4, max_rows=None):
     dthread = threading.Thread(target=drainer, daemon=True, name="qb-drain")
     if work_dir(commons_folder):
         dthread.start()
-    todo, rounds = list(keys), 0
-    while todo:
-        got = []
-        with multiprocessing.Pool(max(1, min(agents, len(todo)))) as pool:
-            pending = pool.imap_unordered(_agent, [(commons_folder, k, max_rows) for k in todo])
-            while True:
-                try:
-                    got.append(pending.next(timeout=2))
-                    beat("%d of %d datasets finished this run" % (len(results) + len(got), len(keys)))
-                except multiprocessing.TimeoutError:
-                    beat("running")
-                except StopIteration:
-                    break
-        results.extend(got)
-        # datasets a server refused or the network dropped are run again after a pause — they resume where they stopped
-        todo = [r["dataset"] for r in got if r.get("retry")]
-        rounds += 1
-        TR.event("round", round=rounds, finished={r["dataset"]: r.get("state") for r in got}, retry=todo)
-        if not todo or rounds > RETRY_ROUNDS or os.path.exists(stop):
-            break
-        until = time.time() + RETRY_WAIT_S
-        while time.time() < until and not os.path.exists(stop):
-            beat("waiting to retry %d dataset(s) a server refused or the network dropped (round %d)" % (len(todo), rounds))
-            time.sleep(2)
-        if os.path.exists(stop):
-            break
-    beat("removing duplicates across shards")
-    t = time.time()
+    last_upkeep = time.time()
     try:
-        gone = dedupe(commons_folder)
-    except sqlite3.Error as e:
-        TR.fail("dedupe", e)
-        gone = {"error": str(e)}
-    TR.event("dedupe", seconds=round(time.time() - t, 2), removed=gone)
-    drain_stop.set()
-    if dthread.is_alive():
-        dthread.join()
-    if work_dir(commons_folder):
-        beat("saving the working copies to the data drive")
-        results.append({"saved_to_data_drive": finish_work(commons_folder)})
-    TR.event("run", phase="end", role="runner", rounds=rounds, results=[{k: r.get(k) for k in ("dataset", "state", "new", "why")} for r in results if "dataset" in r])
-    TR.close()
-    results.append({"dedupe": gone})
-    beat("finished")
-    return results
+        while not os.path.exists(stop) and not (until and until(sup)):
+            try:
+                sup.check()
+            except Exception as e:                        # the supervisor itself never stops on a surprise
+                TR.fail("supervisor", e, retried=True)
+            idle = not sup.running
+            beat("running: %d agent(s)" % len(sup.running) if sup.running else
+                 "waiting: every dataset is finished or waiting for its next try")
+            if idle and time.time() - last_upkeep > 3600:    # quiet moments: duplicates across shards, finished copies home
+                last_upkeep = time.time()
+                try:
+                    TR.event("dedupe", removed=dedupe(commons_folder))
+                    if work_dir(commons_folder):
+                        finish_work(commons_folder)
+                except Exception as e:
+                    TR.fail("upkeep", e, retried=True)
+            time.sleep(SUPERVISE_TICK_S)
+        beat("stopping")
+        sup.stop_all()
+        try:
+            gone = dedupe(commons_folder)
+        except sqlite3.Error as e:
+            TR.fail("dedupe", e)
+            gone = {"error": str(e)}
+        drain_stop.set()
+        if dthread.is_alive():
+            dthread.join()
+        saved = finish_work(commons_folder) if work_dir(commons_folder) else {}
+        TR.event("run", phase="end", role="runner", events=sup.events[-50:])
+        beat("finished")
+        return [{"events": sup.events, "dedupe": gone, "saved_to_data_drive": saved}]
+    finally:
+        TR.close()
+        Slots(commons_folder).release(one)
 
 
 def dedupe(commons_folder):
@@ -2172,9 +2415,15 @@ def status(commons_folder, commons=None):
             except sqlite3.Error as e:
                 row["error"] = None if "locked" in str(e) else "shard unreadable: %s" % e
                 row["busy"] = "locked" in str(e)
+                last = _LAST_COUNT.get((commons_folder, key))
+                if last:                                # busy for a moment (being copied, being written): the last count
+                    row["facts"], row["count_from"] = last, "last known (the file is busy right now)"
             if row["state"] == "running" and not _alive(commons_folder):
                 row["state"] = "paused"
+        if row["facts"] and not row.get("count_from"):
+            _LAST_COUNT[(commons_folder, key)] = row["facts"]
         out.append(row)
+    _count_ledger(commons_folder, out, now)
     rs = {}
     try:
         with open(os.path.join(folder, "_runner.json")) as f:
@@ -2191,7 +2440,69 @@ def status(commons_folder, commons=None):
             "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c, "engine_version": VERSION,
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
+            "drops": count_drops(commons_folder, now - 7200),
+            "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
+                                 for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
+            "duplicates_removed": sum((_LAST_DUPS.get((commons_folder, d["key"])) or 0) for d in out),
             "bytes": sum(d["bytes"] for d in out)}
+
+
+_LAST_COUNT = {}
+_LAST_DUPS = {}
+_LEDGER = {}
+
+
+def _ledger_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_count-drops.jsonl")
+
+
+def _count_ledger(commons_folder, rows, now):
+    """every fall in a dataset's count, written down with its cause: duplicates removed (the same fact held by an earlier
+    dataset), the working copy swapped, or unexplained — so a lower total is never a mystery"""
+    prev = _LEDGER.get(commons_folder)
+    cur = {}
+    for r in rows:
+        p = shard_path(commons_folder, r["key"])
+        dups = None
+        if os.path.exists(p) and not r.get("count_from"):
+            dups = (_meta_of(p) or {}).get("duplicates_removed") or 0
+        cur[r["key"]] = (r["facts"], dups, p)
+        if dups is not None:
+            _LAST_DUPS[(commons_folder, r["key"])] = dups
+    _LEDGER[commons_folder] = cur
+    if not prev:
+        return
+    for k, (f, dups, p) in cur.items():
+        if k not in prev or f >= prev[k][0]:
+            continue
+        pf, pdups, pp = prev[k]
+        fell = pf - f
+        dd = (dups or 0) - (pdups or 0) if dups is not None and pdups is not None else 0
+        cause = ("duplicates removed: the same facts are held by an earlier dataset (one copy is kept)" if dd >= fell * 0.95 else
+                 "the working copy and the data-drive copy were swapped (%s → %s)" % (pp, p) if p != pp else
+                 "unexplained — please send the health report")
+        try:
+            with open(_ledger_path(commons_folder), "a") as fh:
+                fh.write(json.dumps({"at": now, "dataset": k, "from": pf, "to": f, "fell": fell, "duplicates": dd, "cause": cause}) + "\n")
+        except OSError:
+            pass
+        TR.event("count_drop", dataset=k, before=pf, after=f, duplicates=dd, cause=cause)
+
+
+def count_drops(commons_folder, since=0):
+    out = []
+    try:
+        with open(_ledger_path(commons_folder)) as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("at", 0) >= since:
+                    out.append(e)
+    except OSError:
+        pass
+    return out
 
 
 _STATUS = {}
@@ -2374,7 +2685,7 @@ def runner_state(commons_folder):
     return {"running": _alive(commons_folder), "note": rs.get("note"), "agents": rs.get("agents"), "datasets": len(rs.get("datasets") or [])}
 
 
-RESUME_GAP_S = 600                 # at most one automatic restart every 10 minutes
+RESUME_GAP_S = 180                 # at most one automatic restart every 3 minutes
 
 
 def resume_if_crashed(commons, program_dir, now=None, launch=None):
@@ -2391,6 +2702,8 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
         return None
     if rs.get("note") == "finished" or now - rs.get("heartbeat", now) < 60 or os.path.exists(os.path.join(folder, "_runner.stop")):
         return None
+    if now - rs.get("heartbeat", now) > 300 and rs.get("pid"):
+        _kill(int(rs["pid"]))                     # hung: its lock would keep a new engine out
     mark = os.path.join(folder, "_runner.resumed")
     try:
         if now - os.path.getmtime(mark) < RESUME_GAP_S:
@@ -2486,6 +2799,96 @@ def runner_version(commons_folder):
 
 
 # ------------------------------------------------------------------------------------------------ the analysis, by email
+DELAYS = [   # (words in the measured bottleneck, the delay in plain words, what QueryBook does about it)
+    (("connection-slot", "net_wait", "refused", "429", "503", "slow down"),
+     "waiting for download connections (each server lets only a few downloads in at a time)",
+     "an agent that waits more than 10 minutes gives its place to another dataset and comes back; mirror servers are used when they hold the same file"),
+    (("network",), "download speed (the internet connection or the server)",
+     "every connection the servers allow is kept busy; nothing to fix on this computer"),
+    (("disk", "commit", "drive"), "writing to the drive",
+     "facts are written on C: first and copied to D: in the background; when C: fills up, a dataset moves to D: and carries on"),
+    (("CPU",), "the processor (every core is busy — the best case)", "nothing needed"),
+]
+
+
+def _runner_events(commons_folder, since):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return [e for e in (json.load(f).get("events") or []) if e.get("at", 0) >= since]
+    except (OSError, ValueError):
+        return []
+
+
+def plain_summary(st, o=None, events=(), hours=2):
+    """the harvest for a person, in a few short lines: health, speed, the main delay and what is done about it,
+    what recovered by itself, and what (if anything) to do"""
+    rs = st.get("runner") or {}
+    fpm = st.get("facts_per_min") or 0
+    alive = rs.get("alive")
+    old = alive and rs.get("version") not in (None, VERSION)
+    if not alive:
+        health = "STOPPED"
+    elif fpm >= 1_000_000:
+        health = "GOOD"
+    elif fpm > 0:
+        health = "WORKING, BUT SLOW"
+    else:
+        health = "RUNNING — NO NEW FACTS IN THE LAST 10 MINUTES"
+    L = ["QueryBook harvest — %s" % time.strftime("%d %b %Y %H:%M"), "",
+         "Health:      %s" % health,
+         "Speed now:   %s facts a minute (%s in the last hour)" % (format(fpm, ","), format(st.get("last_hour") or 0, ",")),
+         "Facts held:  %s" % format(st.get("total") or 0, ",")]
+    if st.get("working_copies") and st.get("on_data_drive") is not None:
+        L.append("             %s already saved on the data drive (D:); the rest is in the working copies on C:, saved to D: every 10 minutes"
+                 % format(st["on_data_drive"], ","))
+    # the main delay, weighed by how long each dataset ran
+    weight = {}
+    for d in (o or {}).get("datasets") or []:
+        b = d.get("bottleneck") or ""
+        for i, (words, _, _) in enumerate(DELAYS):
+            if any(w.lower() in b.lower() for w in words):
+                weight[i] = weight.get(i, 0) + (d.get("wall_s") or 0)
+                break
+    for c in ((o or {}).get("congestion") or [])[:3]:
+        for i, (words, _, _) in enumerate(DELAYS):
+            if any(w.lower() in str(c.get("what")).lower() for w in words):
+                weight[i] = weight.get(i, 0) + (c.get("total_s") or 0)
+                break
+    if weight:
+        i = max(weight, key=weight.get)
+        L += ["Main delay:  %s" % DELAYS[i][1], "             QueryBook: %s." % DELAYS[i][2]]
+    else:
+        L.append("Main delay:  none measured yet")
+    ends = [e for e in events if e.get("what") == "ended" and e.get("state") != "done" and "Stop" not in str(e.get("why"))]
+    L.append("Recovered by itself (last %g h): %s" % (hours, ("%d time(s)" % len(ends)) if ends else "nothing needed"))
+    for e in ends[-5:]:
+        nxt = e.get("next_in_s")
+        L.append("  %s  %s — %s%s" % (time.strftime("%H:%M", time.localtime(e.get("at", 0))), e.get("dataset"),
+                                       str(e.get("why") or e.get("state"))[:110],
+                                       ("; tried again after %s" % qt.fmt_dur(nxt)) if nxt else ""))
+    drops = st.get("drops") or []
+    if drops:
+        dup = sum(d["fell"] for d in drops if d["cause"].startswith("duplicates"))
+        other = [d for d in drops if not d["cause"].startswith("duplicates")]
+        if dup:
+            L.append("Duplicates removed (last %g h): %s — the same facts already held by another dataset; nothing is lost" % (hours, format(dup, ",")))
+        for d in other[-3:]:
+            L.append("Count fell: %s %s → %s — %s" % (d["dataset"], format(d["from"], ","), format(d["to"], ","), d["cause"]))
+    fails = ((o or {}).get("failures") or [])[:3]
+    if fails:
+        L.append("Problems seen (all retried): " + "; ".join("%s %s ×%d" % (f["where"], f["kind"], f["count"]) for f in fails))
+    if not alive:
+        todo = "press ⚡ Start harvesting (and tick \"Start QueryBook when Windows starts\" so it never stays stopped)"
+    elif old:
+        todo = "press ■ Stop harvesting, wait a minute, then ⚡ Start harvesting (an older engine is still running)"
+    elif any("not connected" in str(e.get("why")) for e in ends[-3:]):
+        todo = "connect the data drive (D:) — the harvest resumes by itself within a minute"
+    else:
+        todo = "nothing — QueryBook restarts, re-routes and retries by itself"
+    L += ["", "What you need to do: " + todo]
+    return "\n".join(L)
+
+
 def analysis_text(commons, hours=2, max_seconds=120, counter=None):
     """the instrumentation report of the last `hours`, with the one-sentence headline on top"""
     cut = time.time() - hours * 3600
@@ -2504,9 +2907,8 @@ def analysis_text(commons, hours=2, max_seconds=120, counter=None):
             yield l
     o = qt.analyze(counted())
     st = status_cached(commons.folder, commons)
-    hl = headline(st)["text"]
-    text = ("IN ONE SENTENCE: %s\n\nFacts held: %s · last hour: +%s · last 10 minutes: +%s\n\n" % (
-                hl, format(st["total"], ","), format(st["last_hour"], ","), format(st["last_10min"], ",")) +
+    hl = plain_summary(st, o, _runner_events(commons.folder, cut), hours)
+    text = (hl + "\n\n\n" + "-" * 70 + "\nTECHNICAL DETAILS (for support — you do not need to read these)\n" +
             "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (hours, len(files), format(n[0], ","), qt.fmt_dur(time.time() - t0))
             + qt.text_report(o))
     return text, o, hl, len(files)
@@ -2561,7 +2963,8 @@ def send_report(commons, program_dir=None, hours=2, smtp=None):
         raise ValueError("Set the address and the Gmail app password first (Harvesting → Email the analysis).")
     text, o, hl, nfiles = analysis_text(commons, hours)
     m = EmailMessage()
-    m["Subject"] = "QueryBook harvest %s — %s" % (time.strftime("%Y-%m-%d %H:%M"), hl[:120])
+    lines = {l.split(":", 1)[0].strip(): l.split(":", 1)[1].strip() for l in hl.splitlines() if ":" in l}
+    m["Subject"] = "QueryBook harvest %s — %s, %s" % (time.strftime("%Y-%m-%d %H:%M"), lines.get("Health", "?"), lines.get("Speed now", "")[:60])
     m["From"], m["To"] = user, to
     m.set_content(text)
     m.add_attachment(text.encode("utf-8"), maintype="text", subtype="plain", filename="querybook-analysis-%s.txt" % time.strftime("%Y%m%d-%H%M"))
@@ -2592,8 +2995,48 @@ def email_due(commons, program_dir=None, now=None):
     return send_report(commons, program_dir)
 
 
+# ------------------------------------------------------------------------------------------------ start with Windows
+AUTOSTART_NAME = "QueryBook-start.cmd"
+
+
+def _startup_folder():
+    env = os.environ.get("QB_STARTUP_FOLDER")             # tests
+    if env:
+        return env
+    if os.name != "nt" or not os.environ.get("APPDATA"):
+        return None
+    return os.path.join(os.environ["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+
+def autostart(program_dir, on=None):
+    """Windows starts QueryBook by itself after a restart (a small file in the Startup folder): the harvest carries on
+    after an update, a power cut or a reboot. on=None: just say whether it is set."""
+    folder = _startup_folder()
+    if not folder:
+        return {"available": False, "on": False, "why": "only on Windows"}
+    path = os.path.join(folder, AUTOSTART_NAME)
+    suite = os.path.dirname(os.path.abspath(program_dir))
+    start_all = os.path.join(suite, "START-ALL-WINDOWS.bat")
+    if on is True:
+        os.makedirs(folder, exist_ok=True)
+        with open(path, "w", newline="") as f:              # waits a little first: an external drive is often found late
+            f.write("@echo off\r\nREM QueryBook: start after Windows starts (turn off in the Control Panel, Harvesting tab)\r\n"
+                    "timeout /t 60 /nobreak >nul\r\nstart \"QueryBook\" /min cmd /c \"%s\"\r\n" % start_all)
+    elif on is False and os.path.exists(path):
+        os.remove(path)
+    return {"available": True, "on": os.path.exists(path), "file": path, "starts": start_all}
+
+
 def add_routes(api, commons, program_dir):
     commons.registry.ensure()
+
+    @api.get("/api/autostart")
+    def autostart_get(p):
+        return autostart(program_dir)
+
+    @api.post("/api/autostart")
+    def autostart_set(p):
+        return autostart(program_dir, bool(p.get("on")))
     @api.get("/api/bulk")
     def bulk_status(p):
         st = status_cached(commons.folder, commons)
@@ -2638,7 +3081,7 @@ def add_routes(api, commons, program_dir):
         """in the background: the page never waits for the logs (a busy drive made the answer take longer than people wait)"""
         try:
             text, o, hl, nfiles = analysis_text(commons, hours, counter=AN)
-            AN["result"] = {"report": o, "files": nfiles, "folder": tfolder(), "text": text}
+            AN["result"] = {"report": o, "files": nfiles, "folder": tfolder(), "text": text, "summary": hl, "at": time.time()}
         except Exception as e:
             AN["result"] = {"text": "The analysis failed: %s" % e, "files": 0, "folder": tfolder()}
         finally:
@@ -2657,6 +3100,19 @@ def add_routes(api, commons, program_dir):
         if AN["state"] == "working":
             out["text"] = "Analysing… %s lines read so far (%s)" % (format(AN["lines"], ","), qt.fmt_dur(time.time() - AN["started"]))
         return out
+
+    @api.get("/api/report/plain")
+    def report_plain(p):
+        """the few-line health report, at once (the main delay comes from the last analysis of the logs, when there is one;
+        one is started in the background otherwise)"""
+        st = status_cached(commons.folder, commons)
+        last = AN["result"] if AN["result"] and time.time() - (AN["result"].get("at") or 0) < 3 * 3600 else None
+        if not last and AN["state"] != "working":
+            import threading
+            AN.update(state="working", result=None, started=time.time(), lines=0)
+            threading.Thread(target=analyse, args=(2.0,), daemon=True, name="qb-analyse").start()
+        return {"text": plain_summary(st, (last or {}).get("report"), _runner_events(commons.folder, time.time() - 7200)),
+                "analysing": AN["state"] == "working"}
 
     @api.get("/api/report/email-settings")
     def email_get(p):
@@ -2947,8 +3403,9 @@ def self_test():
         sent = []
         save_email_settings(c, to="me@example.org", user="me@example.org", password="abcd efgh ijkl mnop", every_hours=6)
         r_em = send_report(c, smtp=sent.append)
-        ok("the analysis is emailed: one sentence first, the report in the body and attached",
-           sent and sent[0]["To"] == "me@example.org" and "IN ONE SENTENCE" in sent[0].get_body().get_content()
+        ok("the analysis is emailed: the plain health report first (health in the subject), details below and attached",
+           sent and sent[0]["To"] == "me@example.org" and sent[0].get_body().get_content().startswith("QueryBook harvest")
+           and "Health:" in sent[0].get_body().get_content().split("TECHNICAL DETAILS")[0] and "STOPPED" in sent[0]["Subject"]
            and any(a.get_filename().endswith(".txt") for a in sent[0].iter_attachments()), r_em)
         ok("…and again only when it is due (every 6 hours here)", email_due(c) is None and email_settings(c).get("password") == "abcdefghijklmnop")
         import threading as _th
@@ -3209,6 +3666,188 @@ def self_test():
            (r, hits))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    out += _supervisor_tests()
+    return out
+
+
+def _supervisor_tests():
+    """the never-stop supervisor, with scripted agents (threads standing in for processes) and a moving clock"""
+    import shutil, tempfile, threading
+    out = []
+    ok = lambda n, c, d="": out.append((n, bool(c), d))
+    cf = tempfile.mkdtemp()
+    script = {}                                     # dataset → what its agent does: fail / stall / silent / done / work
+
+    class P:
+        n = 1000
+
+        def __init__(self, target, args, daemon=False):
+            self.args, self.ended, self.exitcode = args, threading.Event(), None
+            P.n += 1
+            self.pid = P.n
+            ALL[self.pid] = self
+
+        def start(self):
+            cf_, key, _, rp = self.args
+            alive = os.path.join(_alive_dir(cf_), key + ".json")
+            how = script[key]
+            if how in ("fail", "done"):
+                with open(rp, "w") as f:
+                    json.dump({"dataset": key, "state": "paused" if how == "fail" else "done", "why": "test", "new": 0}, f)
+                self.ended.set()
+                self.exitcode = 0
+            else:                                       # stall: alive, same progress · silent: no heartbeat · work: moving
+                if how != "silent":
+                    with open(alive, "w") as f:
+                        json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": None}, f)
+
+        def is_alive(self):
+            if script.get(self.args[1]) == "work" and not self.ended.is_set():
+                with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
+                    json.dump({"at": CLOCK[0], "pid": self.pid, "meter": CLOCK[0], "rows": CLOCK[0], "waiting": None}, f)
+            elif script.get(self.args[1]) == "stall" and not self.ended.is_set():
+                with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
+                    json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": None}, f)
+            return not self.ended.is_set()
+
+        def join(self, t=None):
+            self.ended.wait(t)
+
+    class MP:
+        Process = P
+    ALL, CLOCK = {}, [time.time()]
+
+    def kill(pid):
+        ALL[pid].exitcode = -9
+        ALL[pid].ended.set()
+    try:
+        script.update({"a": "fail", "b": "stall", "c": "silent", "d": "work", "e": "done"})
+        sup = Supervisor(cf, list(script), 5, mp=MP, kill=kill)
+        sup.check(CLOCK[0])
+        ok("supervisor: every dataset gets its own agent", sorted(sup.running) == ["b", "c", "d"] or len(sup.events) >= 5,
+           [e["what"] + ":" + e["dataset"] for e in sup.events])
+        CLOCK[0] += 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: a dataset that fails is tried again after a wait (1 min, then 2, 5, 10, 15 — never given up)",
+           ends.get("a", {}).get("next_in_s") == BACKOFF_S[0] and "a" in sup.queue, ends.get("a"))
+        ok("supervisor: a finished dataset is looked at again the next day (new editions)",
+           ends.get("e", {}).get("next_in_s") == RECHECK_DONE_S, ends.get("e"))
+        CLOCK[0] += SILENT_S + 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: an agent with no sign of life for 3 minutes is ended and restarted later",
+           "c" in ends and "no sign of life" in ends["c"]["why"]
+           and sum(1 for e in sup.events if e["what"] == "started" and e["dataset"] == "c") == 2, ends.get("c"))
+        ok("supervisor: an agent that keeps moving is left alone", "d" in sup.running and "d" not in ends)
+        CLOCK[0] += STALL_S + 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: an agent alive but making no progress for 15 minutes is ended and restarted later",
+           "b" in ends and "no progress" in ends["b"]["why"] and "b" in sup.queue, ends.get("b"))
+        ok("supervisor: the failing dataset was started again after its wait",
+           sum(1 for e in sup.events if e["what"] == "started" and e["dataset"] == "a") >= 2)
+        fails_before = sup.fails["a"]
+        for _ in range(8):
+            CLOCK[0] += 3700
+            sup.check(CLOCK[0])
+        ok("supervisor: repeated failures wait longer each time but never stop (15 minutes at most)",
+           sup.fails["a"] > fails_before and "a" in sup.queue and sup.queue["a"] - time.time() <= BACKOFF_S[-1] + 1, sup.fails["a"])
+        sup.stop_all(grace=0)
+        ok("supervisor: Stop ends every agent and starts nothing new", not sup.running and not sup.queue)
+        ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
+           next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
+        # re-routes between the internal drive (working copies) and the data drive
+        old_env = {k: os.environ.get(k) for k in ("QB_WORK_FOLDER", "QB_WORK_MIN_FREE_GB")}
+        os.environ["QB_WORK_FOLDER"] = os.path.join(cf, "work")
+        try:
+            wp = work_path(cf, "x")
+            os.makedirs(os.path.dirname(wp), exist_ok=True)
+            db = sqlite3.connect(wp)
+            db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+            db.execute("INSERT INTO meta VALUES ('facts', '3'), ('state', '\"running\"')")
+            db.commit(); db.close()
+            real_free = _free
+            globals()["_free"] = lambda folder: 0 if os.path.abspath(folder).startswith(os.path.abspath(cf)) and "work" not in folder else real_free(folder)
+            try:
+                ok("the data drive full: the working copy keeps every fact and is not copied over (no half files)",
+                   drain(cf, "x") == "no room" and not os.path.exists(home_path(cf, "x") + ".draining") and os.path.exists(wp))
+            finally:
+                globals()["_free"] = real_free
+            os.environ["QB_WORK_MIN_FREE_GB"] = "1e12"
+            ok("the internal drive full: the dataset's working copy is saved home and the agent carries on writing to the data drive",
+               pull(cf, "x") is False and not os.path.exists(wp) and os.path.exists(home_path(cf, "x")))
+        finally:
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        os.environ["QB_STARTUP_FOLDER"] = os.path.join(cf, "Startup")
+        try:
+            pd = os.path.join(cf, "suite", "QueryBook-Control-Panel")
+            a1 = autostart(pd, True)
+            with open(a1["file"], newline="") as f:
+                body = f.read()
+            a2 = autostart(pd, False)
+            ok("start with Windows: one small file in the Startup folder starts the whole suite (and is removed when turned off)",
+               a1["on"] and "START-ALL-WINDOWS.bat" in body and "\r\n" in body and not a2["on"], body)
+        finally:
+            os.environ.pop("QB_STARTUP_FOLDER", None)
+        # counts: a busy shard keeps its last count; a home copy with facts the working copy lacks is merged, never overwritten
+        key0 = list(catalog())[0]
+        os.environ["QB_WORK_FOLDER"] = os.path.join(cf, "work2")
+        try:
+            def mk(path, fps, dups=0):
+                sh = Shard(cf, key0, path)
+                pid = sh.pred("name")
+                sh.db.execute("INSERT OR IGNORE INTO parts(name, url) VALUES('p1', 'u')")
+                sh.db.executemany("INSERT OR IGNORE INTO facts VALUES (?,?,?,?,1,1)", [(bytes([i]) * 16, "s%d" % i, pid, "o") for i in fps])
+                sh.set_meta("facts", len(fps)); sh.set_meta("duplicates_removed", dups); sh.set_meta("state", "running")
+                sh.db.commit(); sh.db.close()
+            hp0, wp0 = home_path(cf, key0), work_path(cf, key0)
+            mk(hp0, range(1, 11))                         # D: holds 10 facts (an older engine kept writing there)
+            mk(wp0, range(1, 6))                          # the working copy on C: holds only 5 of them
+            n = drain(cf, key0)
+            db = sqlite3.connect(hp0)
+            held = db.execute("SELECT count(*) FROM facts").fetchone()[0]; db.close()
+            ok("saving to D: never overwrites facts only the D: copy holds — they are merged in first", n == 10 and held == 10, (n, held))
+            st1 = status(cf)
+            r1 = [d for d in st1["datasets"] if d["key"] == key0][0]
+            sh = Shard(cf, key0, wp0)
+            sh.db.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM facts LIMIT 4)")
+            sh.set_meta("facts", 6); sh.set_meta("duplicates_removed", 4); sh.db.commit(); sh.db.close()
+            status(cf)
+            dr = count_drops(cf)
+            ok("a lower count is written down with its cause (here: duplicates held by an earlier dataset — nothing lost)",
+               r1["facts"] == 10 and dr and dr[-1]["fell"] == 4 and dr[-1]["cause"].startswith("duplicates"), dr)
+            real_ro = _ro
+            globals()["_ro"] = lambda path: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")) if key0 in path else real_ro(path)
+            try:
+                r2 = [d for d in status(cf)["datasets"] if d["key"] == key0][0]
+            finally:
+                globals()["_ro"] = real_ro
+            ok("a dataset busy for a moment keeps its last count (the total never dips to a wrong number)",
+               r2["facts"] == 6 and r2.get("count_from"), r2.get("facts"))
+        finally:
+            os.environ.pop("QB_WORK_FOLDER", None)
+        st = {"runner": {"alive": True, "version": VERSION}, "facts_per_min": 250_000, "last_hour": 15_000_000, "total": 900_000_000}
+        o = {"datasets": [{"dataset": "x", "wall_s": 600, "bottleneck": "connection-slot congestion: agents queue"},
+                          {"dataset": "y", "wall_s": 100, "bottleneck": "disk-bound: writing the shard"}],
+             "congestion": [], "failures": [{"where": "x", "kind": "HTTPError", "count": 4}]}
+        ev = [{"what": "ended", "dataset": "b", "state": "paused", "why": "no progress for 15 min — ended and restarted", "next_in_s": 60, "at": time.time()}]
+        t = plain_summary(st, o, ev)
+        ok("the health report is a few plain lines: health, speed, the main delay and what is done about it, recoveries, what to do",
+           len(t.splitlines()) <= 14 and "WORKING, BUT SLOW" in t and "download connections" in t and "restarted" in t
+           and "What you need to do: nothing" in t, t)
+        t2 = plain_summary({"runner": {"alive": False}}, None, [])
+        ok("the health report says what to press when the harvest is stopped", "STOPPED" in t2 and "Start harvesting" in t2, t2)
+        one = Slots(cf)._lock("runner", 0)
+        r = run(cf, ["a"], 1, until=lambda s: True)
+        ok("only one harvesting engine at a time: a second one is refused", r and "already running" in str(r[0].get("error")), r)
+        Slots(cf).release(one)
+    finally:
+        shutil.rmtree(cf, ignore_errors=True)
     return out
 
 

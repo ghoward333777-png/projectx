@@ -313,14 +313,18 @@
         recurring-event slots are filled from Wikidata, one query per series.</p>
       <div class="row" style="margin:10px 0 14px"><button class="btn" id="bk-go-top" style="font-size:1.25em;padding:12px 28px">⚡ Start harvesting</button>
         <button class="btn" id="bk-stop-top" style="font-size:1.25em;padding:12px 28px">■ Stop harvesting</button></div>
+      <label class="small" style="display:block;margin:-6px 0 10px"><input type="checkbox" id="as-on"> Start QueryBook by itself when Windows starts
+        (after an update, a power cut or a restart the harvest carries on)</label>
       <div id="bk-headline" class="note" style="font-size:1.15em"></div>
+      <div class="row"><button class="btn" id="hr-run">📋 Health report</button><span class="small muted">a few plain lines: health, speed, the main delay and what QueryBook does about it, what recovered by itself</span></div>
+      <pre id="hr-out" style="white-space:pre-wrap;font-size:1.05em;line-height:1.45;display:none;padding:12px;border-radius:8px;background:var(--panel2,rgba(127,127,127,.08))"></pre>
       <div id="bk-where"></div>
       <div id="bk-summary" class="row"></div>
-      <div class="row"><button class="btn" id="bk-why">🩺 Why so slow?</button>
+      <div class="row"><button class="btn quiet" id="bk-why">🩺 Detailed checks</button>
         <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
         <button class="btn quiet" id="bk-move-go">Move the shared folder</button></div>
       <div id="bk-diag" class="small"></div>
-      <details id="tr-box"><summary><b>Instrumentation</b> — every stage, every I/O, every failure of every record (logs in the shared folder's trace\)</summary>
+      <details id="tr-box"><summary><b>Technical details</b> — for support: every stage, every I/O, every failure (the plain report is on top)</summary>
         <p class="muted small">Each agent and program writes what it did, how long each step took, every network exchange and every failure to
           log files. <b>Analyse</b> finds the bottleneck of each dataset, every congestion point (connection slots, network, the shared database's
           lock, the disk) and the slow I/O; <b>Export</b> packs the logs into one zip to send for analysis; <b>Compare drives</b> measures the
@@ -338,7 +342,7 @@
           <label class="small">Gmail app password <input id="em-pw" type="password" placeholder="16 letters" style="width:12em" autocomplete="off"></label>
           <label class="small">Every <input id="em-every" type="number" min="0" step="1" style="width:4em"> hours (0 = only when I press)</label>
           <button class="btn quiet" id="em-save">Save</button><button class="btn" id="em-now">📧 Email the analysis now</button></div>
-        <div id="em-out" class="small muted"></div></details>
+        <div id="em-out" class="small muted" style="white-space:pre-wrap"></div></details>
       <details id="oc-box"><summary><b>Old copies on C:</b> — what earlier versions left on this computer's own drive after copying it to D:\QB</summary>
         <p class="muted small">Every old file is checked against D:\QB (databases by their fact counts). Only files D:\QB is shown to hold can be
           deleted, and only when you confirm. Anything that cannot be checked is kept.</p>

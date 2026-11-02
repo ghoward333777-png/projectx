@@ -306,6 +306,15 @@ function bind() {
       `sync write ${d.fsync_ms_median} ms (p95 ${d.fsync_ms_p95}) · agents' database pattern ${fmt(d.sqlite_rows_s)} rows/s (slowest commit ${d.sqlite_commit_ms_max} ms) · free ${d.free_gb} GB`).join("\n\n") +
       (r.fastest_for_facts ? `\n\nFaster for the agents' writes: ${r.fastest_for_facts}` + (r.ratio ? ` (×${r.ratio})` : "") : ""); };
   $("#tr-save").onclick = async () => { const r = await api("/api/trace/settings", { on: $("#tr-on").checked, sample: +$("#tr-sample").value }); toast(r.summary); };
+  const hrLoad = async () => { const r = await api("/api/report/plain"); const o = $("#hr-out"); o.style.display = "block";
+    o.textContent = r.text + (r.analysing ? "\n\n(reading the logs for the main delay — this report fills in by itself)" : "");
+    if (r.analysing) setTimeout(() => hrLoad().catch(() => {}), 5000); };
+  $("#hr-run").onclick = () => hrLoad().catch(e => toast(e.message));
+  const asLoad = async () => { const a = await api("/api/autostart"); $("#as-on").checked = a.on; $("#as-on").disabled = !a.available;
+    if (!a.available) $("#as-on").parentNode.title = a.why; };
+  asLoad().catch(() => {});
+  $("#as-on").onchange = async () => { const a = await api("/api/autostart", { on: $("#as-on").checked });
+    toast(a.on ? "QueryBook now starts by itself when Windows starts" : "QueryBook no longer starts with Windows"); };
   $("#bk-go-top").onclick = () => $("#bk-full").click();       // the one Start: every approved dataset, full speed
   $("#bk-stop-top").onclick = () => $("#bk-stop").click();     // the one Stop
   const emLoad = async () => { const e = await api("/api/report/email-settings"); $("#em-to").value = e.to; $("#em-every").value = e.every_hours;
@@ -315,7 +324,7 @@ function bind() {
   $("#em-save").onclick = async () => { const r = await api("/api/report/email-settings", { to: $("#em-to").value, user: $("#em-to").value,
     password: $("#em-pw").value, every_hours: +$("#em-every").value || 0 }); $("#em-pw").value = ""; toast(r.summary); emLoad(); };
   $("#em-now").onclick = async () => { $("#em-out").textContent = "Analysing and sending (up to about 2 minutes)…";
-    try { const r = await api("/api/report/email-now", {}); $("#em-out").textContent = "Sent to " + r.sent_to + ": " + r.headline; }
+    try { const r = await api("/api/report/email-now", {}); $("#em-out").textContent = "Sent to " + r.sent_to + ".\n\n" + r.headline; }
     catch (e) { $("#em-out").textContent = e.message; } };
   $("#oc-check").onclick = async () => { $("#oc-out").textContent = "Checking every old file against D:\\QB…";
     const r = await api("/api/drive/old-copies");
