@@ -281,7 +281,7 @@ async function loadData() {
 let CURRENT = "build";
 function refreshTab() {
   clearTimeout(POLL);
-  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), agents: () => renderAgents($("#agents")), devices: () => renderDevices($("#devices")), help: () => {}, translate: () => { const f = $("#tr-frame"); if (f && !f.src) f.src = f.dataset.src; }, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
+  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), agents: () => renderAgents($("#agents")), devices: () => renderDevices($("#devices")), help: () => {}, science: () => { if (window.scInit) { scInit(); scAvatars(); } }, translate: () => { const f = $("#tr-frame"); if (f && !f.src) f.src = f.dataset.src; }, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

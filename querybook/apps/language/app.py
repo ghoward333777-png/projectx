@@ -36,6 +36,7 @@ import lipcoach
 import persona
 import avatars
 import qualitylab
+import speechsci
 import photoreal
 import silent
 import lipread
@@ -49,7 +50,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.50.0"
+VERSION = "1.51.0"
 PORT = 8101
 program_dir = HERE
 
@@ -114,6 +115,7 @@ class App:
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
         self.motionlib = motionlib.Libraries(self.avatars.folder)                        # speech motion libraries (1.47): her own mouth movement
+        self.science = speechsci.Corpus(self.store.folder)                               # Speech Science Protocol (1.51): measured deliveries and reports
         try:                                                                             # 1.50: the classic mouth model speaks unless the admin chose a library
             back = self.motionlib.keep_chosen_only()
             if back:
@@ -189,6 +191,58 @@ class App:
                 self.log("speech motion not used: %r" % e)
             return r
         return run
+
+    def _science_read(self, p):
+        """lips (always) + the sound → the words and the best timing for them: 1 Speech-to-Text fitted to the script,
+        2 Speech-to-Text alone, 3 the script fitted to the sound, 4 the script aligned to the lips, 5 the lips read alone"""
+        lang = p.get("lang") or "en"
+        script = (p.get("script") or "").strip()
+        an = self.speech.video_analysis(dict(p, read_lips=True, script=script))
+        v = an.get("vse") or {}
+        lips_words = [w for s in ((v.get("lipread") or {}).get("segments") or []) for w in s.get("words") or []]
+        lips = {"text": (v.get("lipread") or {}).get("text") or "", "words": lips_words, "error": v.get("error") or an.get("vse_error")}
+        stt, wav = None, None
+        if p.get("wav_b64"):
+            try:
+                wav = base64.b64decode(str(p["wav_b64"]).split(",", 1)[-1])
+            except Exception:
+                wav = None
+        if wav and p.get("use_stt", True) not in (False, "false"):
+            try:
+                r = self.speech.transcribe(wav, lang)
+                stt = r if r and not r.get("error") else ({"error": r.get("error")} if r else {"error": "Speech-to-Text is not set up (Connections → Google)"})
+            except Exception as e:
+                stt = {"error": str(e)}
+        heard = [{"word": w["word"], "start_s": w["start_s"], "end_s": w["end_s"]} for w in (stt or {}).get("words") or []]
+        timed, source = [], ""
+        if heard and script:
+            ft = visemes.fit_word_times(script, heard)
+            if ft:
+                timed, source = [{"word": w["word"], "start": w["start_s"], "end": w["end_s"]} for w in ft], "Speech-to-Text word times fitted to the script"
+        if not timed and heard:
+            timed, source = [{"word": w["word"], "start": w["start_s"], "end": w["end_s"]} for w in heard], "Speech-to-Text word times"
+        if not timed and script and wav:
+            try:
+                al = visemes.align(script, wav, lang, self.lab)
+                timed = [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in al["words"]]
+                source = "the script fitted to the sound (speech stretches and syllable peaks)"
+            except Exception as e:
+                self.log("science: script not fitted to the sound: %r" % e)
+        if not timed and script and (v.get("script") or {}).get("words"):
+            timed = [{"word": w["word"], "start": w["from_s"], "end": w["to_s"]} for w in v["script"]["words"] if w.get("from_s") is not None]
+            source = "the script aligned to the lips (Viterbi)"
+        if not timed and lips_words:
+            timed = [{"word": w["word"], "start": w["from_s"], "end": w["to_s"]} for w in lips_words if w.get("from_s") is not None]
+            source = "words read from the lips"
+        for w in timed:
+            w["source"] = source
+            if w["end"] <= w["start"]:
+                w["end"] = w["start"] + 0.08
+        final_text = script or (stt or {}).get("transcript") or lips["text"]
+        intel = (v.get("script") or {}).get("agreement") if script else None
+        return {"analysis": {k: an.get(k) for k in ("quality", "sync", "script", "expression") if an.get(k) is not None},
+                "lips": lips, "stt": stt, "final": {"text": final_text, "source": "your script" if script else ("Speech-to-Text" if (stt or {}).get("transcript") else "the lips")},
+                "timing": {"source": source, "words": timed}, "intelligibility": intel, "vse_script": v.get("script")}
 
     def _starter_motion(self, aid, spec, folder):
         """a starter avatar that comes with its person's speech motion library: the library is installed, ready to choose —
@@ -1308,6 +1362,113 @@ class App:
             return self.vse.submit("lip_sync", self._with_mouth(self.vse.lip_sync_job(wav, text, p.get("lang") or "en", p.get("word_times"), int(p.get("fps") or 30),
                                                                      p.get("emotion"), p.get("personal", True) not in (False, "false")), p.get("avatar")))
 
+        # ---- Speech science (1.51): any-language speech, lip reading of an uploaded talking head, the Speech Science Protocol
+        @a.get("/api/science/voices")
+        def sci_voices(p):
+            v = speech.voices()
+            return {"voices": v, "count": len(v), "with_dictionary": sum(1 for x in v if x["dict"]), "espeak": speech.status()}
+
+        @a.get("/api/science/detect")
+        def sci_detect(p):
+            code, how = speech.detect_voice(p.get("text") or "")
+            return {"voice": code, "how": how}
+
+        @a.post("/api/science/speak")
+        def sci_speak(p):
+            text = str(p.get("text") or "").strip()
+            if not text:
+                raise core.UserError("Type what should be said.")
+            voice = p.get("voice") or speech.detect_voice(text)[0] or "en"
+            if voice not in {x["code"] for x in speech.voices()}:
+                raise core.UserError("espeak-ng has no voice called %s here." % voice)
+            wav = speech.speak_any(text, voice, int(p.get("rate") or 160), int(p.get("pitch") or 50), str(p.get("variant") or "")[:12])
+            if not wav:
+                raise core.UserError("No voice is available. " + (speech.status().get("hint") or ""))
+            return wav, "audio/wav"
+
+        @a.get("/api/science/ipa")
+        def sci_ipa(p):
+            return {"ipa": speech.ipa(p.get("text") or "", p.get("voice") or "en")}
+
+        @a.post("/api/science/read")
+        def sci_read(p):
+            """an uploaded talking head: the words from the lips, and from the sound when Speech-to-Text is set up"""
+            return self._science_read(p)
+
+        @a.post("/api/science/measure")
+        def sci_measure(p):
+            """the Speech Science Protocol on one delivery (a video of a person, or an avatar recorded from its canvas)"""
+            r = self._science_read(p)
+            if not r["timing"]["words"]:
+                raise core.UserError("No words could be timed: give the script, or set up Speech-to-Text, or use a clearer view of the mouth.")
+            sync = r["analysis"].get("sync") or {}
+            inputs = {"capture_quality": (r["analysis"].get("quality") or {}).get("score"), "sync_ms": sync.get("offset_ms") if sync.get("ok") else None,
+                      "intelligibility": r.get("intelligibility"), "timing": r["timing"]["source"]}
+            labels = {k: str(v)[:60] for k, v in (p.get("labels") or {}).items() if v not in (None, "")}
+            d = speechsci.measure(p.get("frames") or [], r["timing"]["words"], p.get("lang") or "en", self.lab, labels,
+                                  p.get("script") or r["final"]["text"], inputs, self.science.calibration(), p.get("info") or {})
+            d["id"] = self.science.add(d)
+            d["report"] = self.science.save_report("delivery", speechsci.report_delivery(d), d)
+            d["reading"] = {"lips": r["lips"], "stt": r["stt"], "final": r["final"]}
+            return d
+
+        @a.get("/api/science/deliveries")
+        def sci_list(p):
+            return {"deliveries": self.science.list(), "protocol": speechsci.PROTOCOL}
+
+        @a.get("/api/science/delivery")
+        def sci_get(p):
+            d = self.science.get(p.get("id"))
+            if not d:
+                raise core.UserError("No such delivery.")
+            return d
+
+        @a.post("/api/science/label")
+        def sci_label(p):
+            try:
+                d = self.science.label(p.get("id"), p.get("labels") or {})
+            except ValueError as e:
+                raise core.UserError(str(e))
+            return {"id": int(p.get("id")), "labels": d["labels"]}
+
+        @a.post("/api/science/delete")
+        def sci_delete(p):
+            self.science.delete(p.get("id"))
+            return {"deleted": int(p.get("id"))}
+
+        @a.post("/api/science/compare")
+        def sci_compare(p):
+            by = p.get("by") or "emotion"
+            if by not in ("dialect", "accent", "emotion", "language", "speaker", "source", "role"):
+                raise core.UserError("Compare by dialect, accent, emotion, language, speaker, source or role.")
+            ids = {int(x) for x in (p.get("ids") or [])} or None
+            c = speechsci.compare(self.science.all(ids), by, p.get("baseline") or None, (p.get("word") or "").strip() or None)
+            if len(c["groups"]) < 2:
+                raise core.UserError("Fewer than two groups have the label “%s”. Label the deliveries first (each needs a %s)." % (by, by))
+            c["report"] = self.science.save_report("compare-" + by, speechsci.report_compare(c), c)
+            return c
+
+        @a.get("/api/science/reports")
+        def sci_reports(p):
+            return {"reports": self.science.reports()}
+
+        @a.get("/api/science/report")
+        def sci_report(p):
+            try:
+                t = self.science.report(p.get("name"), p.get("fmt") or "md")
+            except OSError:
+                raise core.UserError("No such report.")
+            return t.encode("utf-8"), ("application/json" if p.get("fmt") == "json" else "text/markdown; charset=utf-8")
+
+        @a.get("/api/science/protocol")
+        def sci_protocol(p):
+            return {"protocol": speechsci.PROTOCOL, "methods": speechsci.methods_text(),
+                    "factors": {k: {"name": v[0], "definition": v[1]} for k, v in speechsci.FACTORS.items()},
+                    "dynamics": {k: {"name": v[0], "definition": v[1]} for k, v in speechsci.DYNAMICS.items()},
+                    "criteria": [{"criterion": c[0], "rule": c[1]} for c in speechsci.CRITERIA],
+                    "human_limits": [{"check": c[0], "rule": c[1]} for c in speechsci.HUMAN_LIMITS],
+                    "calibration": self.science.calibration()}
+
         # ---- speech motion libraries (1.47): a person's own mouth movement, sound by sound, from exemplar clips
         @a.get("/api/motionlib")
         def ml_list(p):
@@ -2037,6 +2198,14 @@ def selftest():
                 and tg("O", "gap") < 0.65 * tg("aa", "gap") and tg("RR", "gap") < 0.3 * tg("aa", "gap") and tg("O", "mouthPucker") >= 0.65
                 and qualitylab.BOUNDS["rest_round"] == (0.0, 0.6) and qualitylab.DEFAULTS["rest_round"] == 0.0, "targets")
         # 1.47: her own speech movement (speech motion library from exemplar clips), teeth by the jaw, the lip-reading curriculum
+        sst = speechsci.self_test()
+        c.check("Speech Science Protocol (1.51): factors, formula, human limits, verdict, group statistics and reports", all(g for _, g, _ in sst),
+                [n for n, g, _ in sst if not g])
+        vv = speech.voices()
+        c.check("any language (1.51): espeak-ng lists its languages and speaks one that is not among the 17 (Swahili)",
+                len(vv) >= 100 and any(v["code"] == "sw" for v in vv) and (speech.speak_any("habari", "sw") or b"")[:4] == b"RIFF", len(vv))
+        c.check("Speech science routes (1.51)", all((m, r) in app.api.routes for m, r in (("GET", "/api/science/voices"), ("POST", "/api/science/speak"),
+                ("POST", "/api/science/read"), ("POST", "/api/science/measure"), ("POST", "/api/science/compare"), ("GET", "/api/science/report"))))
         c.check("speech motion library (1.47): analysis, Viterbi joining and synthesis are deterministic and correct", all(g for _, g in motionlib.self_test()),
                 [n for n, g in motionlib.self_test() if not g])
         c.check("lip-reading curriculum (1.47): five stages, look-alike credit", all(g for _, g in curriculum.self_test()) and len(curriculum.STAGES) == 5)

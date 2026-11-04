@@ -152,6 +152,7 @@ tr.lc-active td { background: #f0fdf4; }
   <button data-tab="speech">Speech</button>
   <button data-tab="photoreal">Photo Real Lab</button>
   <button data-tab="verify">Verify (proof)</button>
+  <button data-tab="science">Speech science</button>
   <button data-tab="translate">Translate</button>
   <button data-tab="lookup">Look up</button>
   <button data-tab="data">Data &amp; backups</button>
@@ -707,6 +708,56 @@ tr.lc-active td { background: #f0fdf4; }
     </div>
   </section>
 
+  <section class="panel" id="science">
+    <div class="card">
+      <h2>1 · Speak any language</h2>
+      <p class="small muted" id="sc-vcount">Loading the languages…</p>
+      <textarea id="sc-text" rows="3" style="width:100%" aria-label="Text to speak">Habari ya asubuhi. こんにちは。Bonjour tout le monde.</textarea>
+      <div class="row"><label class="small">Language <select id="sc-voice" style="max-width:22em"></select></label>
+        <label class="small">Voice <select id="sc-variant"><option value="">standard</option><option value="f1">female 1</option><option value="f2">female 2</option><option value="f3">female 3</option>
+          <option value="f4">female 4</option><option value="m1">male 1</option><option value="m2">male 2</option><option value="m3">male 3</option><option value="m4">male 4</option>
+          <option value="klatt">klatt</option><option value="whisper">whisper</option></select></label>
+        <label class="small">Speed <input id="sc-rate" type="range" min="80" max="300" value="160"></label>
+        <label class="small">Pitch <input id="sc-pitch" type="range" min="0" max="99" value="50"></label>
+        <button class="btn bigbtn" id="sc-say">🔊 Speak</button></div>
+      <div id="sc-player" class="row"></div><div class="small mono" id="sc-ipa"></div><div class="small muted" id="sc-detected"></div>
+      <p class="small muted">Offline: espeak-ng speaks every language listed. The Speak tab has the natural cloud voices (Google, ElevenLabs, Azure …) for the languages they cover.</p>
+    </div>
+    <div class="card">
+      <h2>2 · Read the lips of a talking head &nbsp;·&nbsp; 3 · Measure the delivery</h2>
+      <p class="small">Choose a video of one person speaking (face to the camera, mouth visible) — or let an avatar say the script and be recorded from its own picture.
+        <b>Read the words</b> gives the words from the lips (and from the sound, when Speech-to-Text is set up). <b>Measure this delivery</b> runs the
+        Speech Science Protocol: every word and sound measured against what is said, a verdict against fixed criteria, and a report.</p>
+      <div class="row"><input id="sc-file" type="file" accept="video/*" aria-label="Video of a talking head">
+        <label class="small">Language spoken <select id="sc-lang"></select></label>
+        <label class="small"><input type="checkbox" id="sc-stt" checked> use Speech-to-Text too (when set up)</label></div>
+      <textarea id="sc-script" rows="2" style="width:100%" placeholder="The script — what is said (optional for reading, needed for an avatar; it makes the timing and the verdict exact)"></textarea>
+      <div class="row small"><b>Labels</b> (for comparisons):
+        <input id="sc-l-speaker" placeholder="speaker" style="width:8em"><select id="sc-l-role"><option value="test">role: test</option><option value="reference">role: reference (calibrates)</option></select>
+        <input id="sc-l-dialect" placeholder="dialect, e.g. en-GB-scot" style="width:12em"><input id="sc-l-accent" placeholder="accent" style="width:8em">
+        <select id="sc-l-emotion"><option value="">emotion: —</option><option>neutral</option><option>joy</option><option>sadness</option><option>anger</option><option>fear</option><option>surprise</option><option>disgust</option><option>calm</option><option>excited</option></select></div>
+      <div class="row"><button class="btn" id="sc-read" disabled>👄 Read the words</button><button class="btn" id="sc-measure" disabled>📐 Measure this delivery</button>
+        <span class="muted small">or</span> <select id="sc-av" aria-label="Avatar"></select><button class="btn quiet" id="sc-avatar">🧑 Measure an avatar saying the script</button></div>
+      <div class="bar"><div id="sc-prog" style="width:0"></div></div><div class="small muted" id="sc-state"></div>
+      <div class="grid2"><div><video id="sc-video" controls playsinline hidden style="max-width:100%;max-height:360px"></video><div id="sc-stage" hidden style="width:640px;max-width:100%"></div></div><div id="sc-out"></div></div>
+    </div>
+    <div class="card">
+      <h2>4 · Compare dialects, accents and emotions</h2>
+      <p class="small">Every measured delivery is kept with its labels. Compare groups — clip by clip, with confidence intervals, effect sizes and corrected tests —
+        to document how the lips, mouth and face move for a dialect, an accent or an emotion; optionally for one word spoken in every group.</p>
+      <div id="sc-list"></div>
+      <div class="row"><label class="small">Compare by <select id="sc-by"><option>emotion</option><option>dialect</option><option>accent</option><option>language</option><option>speaker</option><option>source</option><option>role</option></select></label>
+        <input id="sc-base" placeholder="baseline group (e.g. neutral)" style="width:14em"><input id="sc-word" placeholder="one word only (optional)" style="width:12em">
+        <button class="btn" id="sc-cmpgo">📊 Compare and write the report</button></div>
+      <div id="sc-cmp"></div>
+    </div>
+    <div class="card">
+      <h2>5 · Reports and the protocol</h2>
+      <div class="row"><button class="btn quiet" id="sc-proto">📘 The protocol: factors, formula, criteria</button></div>
+      <div id="sc-reps"></div><div id="sc-repview" style="margin-top:12px"></div>
+    </div>
+  </section>
+
   <section class="panel" id="translate">
     <div class="card" style="padding:0;overflow:hidden">
       <iframe id="tr-frame" title="QueryBook Translate" data-src="translate/index.html" style="width:100%;height:calc(100vh - 150px);min-height:640px;border:0;display:block"></iframe>
@@ -836,5 +887,6 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="motionlib.js"></script>
 <script src="qualitylab.js"></script>
 <script src="transcribe.js"></script>
+<script src="science.js"></script>
 </body>
 </html>
