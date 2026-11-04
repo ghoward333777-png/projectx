@@ -146,3 +146,67 @@ def ipa_many(words, voice, chunk=400):
         else:
             out += [ipa(w, voice) for w in part]
     return out
+
+
+_VOICES = {}
+
+
+def voices():
+    """every language espeak-ng can speak here: [{code, name, file, dict}] (dict: its pronunciation dictionary is present;
+    without one espeak-ng spells words letter by letter in that language's sounds)"""
+    exe = find_espeak()
+    if not exe:
+        return []
+    if exe in _VOICES:
+        return _VOICES[exe]
+    out = _run(["--voices"], 20)
+    rows = []
+    data = os.path.join(BUNDLED, "espeak-ng-data") if bundled_in_use() else None
+    have = {f[:-5] for f in os.listdir(data) if f.endswith("_dict")} if data and os.path.isdir(data) else None
+    for line in (out or b"").decode("utf-8", "replace").splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        code, name, fil = parts[1], parts[3].replace("_", " "), parts[4]
+        base = code.split("-")[0]
+        rows.append({"code": code, "name": name, "file": fil,
+                     "dict": True if have is None else (base in have or code.replace("-", "_") in have or fil.split("/")[-1] in have)})
+    rows.sort(key=lambda r: r["name"].lower())
+    _VOICES[exe] = rows
+    return rows
+
+
+SCRIPTS = [("ja", r"[぀-ヿ]"), ("ko", r"[가-힯]"), ("cmn", r"[一-鿿]"), ("ru", r"[Ѐ-ӿ]"),
+           ("el", r"[Ͱ-Ͽ]"), ("he", r"[֐-׿]"), ("ar", r"[؀-ۿ]"), ("hi", r"[ऀ-ॿ]"),
+           ("bn", r"[ঀ-৿]"), ("ta", r"[஀-௿]"), ("th", r"[฀-๿]"), ("ka", r"[Ⴀ-ჿ]"),
+           ("hy", r"[԰-֏]"), ("am", r"[ሀ-፿]")]
+
+
+def detect_voice(text):
+    """a likely espeak-ng language for the text: by its writing system, then by its small grammar words (17 languages)"""
+    import re as _re
+    for code, pat in SCRIPTS:
+        if _re.search(pat, text or ""):
+            return code, "writing system"
+    try:
+        import function_words as fw
+        votes = {}
+        for w in _re.findall(r"[^\W\d_]+", (text or "").lower()):
+            for lang in fw.INDEX.get(w, ()):
+                votes[lang] = votes.get(lang, 0) + 1
+        if votes:
+            best = max(sorted(votes), key=lambda k: votes[k])
+            import vocab
+            return vocab.LANGUAGES.get(best, {}).get("espeak", best), "grammar words"
+    except Exception:
+        pass
+    return None, None
+
+
+def speak_any(text, voice, rate=160, pitch=50, variant=""):
+    """WAV bytes for longer texts in any espeak-ng language (voice + optional variant such as f3 or m2)"""
+    text = " ".join(str(text or "").split())[:5000]
+    if not text:
+        return None
+    v = voice + ("+" + variant if variant else "")
+    return synth(["-v", v, "-s", str(int(rate)), "-p", str(int(pitch))], text, 120)

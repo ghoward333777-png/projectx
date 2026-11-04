@@ -29,7 +29,7 @@ import vocab
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE_FILES = ["lab_core.py", "lab.py", "vocab.py", "speech.py", "verify.py"]
-OWN_MODULES = {"lab_core", "lab", "vocab", "speech", "verify", "qbcore"}
+OWN_MODULES = {"lab_core", "lab", "vocab", "speech", "verify", "qbcore", "function_words"}
 # The standard library modules the builder's code may use (anything else fails the check).
 ALLOWED = {"ast", "gzip", "hashlib", "json", "os", "platform", "re", "shutil", "socket", "subprocess", "sys", "tempfile", "time",
            "unicodedata"}
