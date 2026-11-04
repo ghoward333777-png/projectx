@@ -1,0 +1,366 @@
+{
+ "format": "qbt-catalog/1",
+ "packs": [
+  {
+   "bytes": 12432,
+   "domain": "base",
+   "entries": 126,
+   "id": "ar/base",
+   "lang": "ar",
+   "sha256": "19ea9a56ebfcb195d9268d14c6b27a8e8032c633073dbce07cbb8deb588ffaf9",
+   "url": "packs/ar/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 3684,
+   "domain": "medical",
+   "entries": 33,
+   "id": "ar/medical",
+   "lang": "ar",
+   "sha256": "918cdee4d419420c00ef38bf9d16681a55ac00d806403104bb6131fd7681d1a6",
+   "url": "packs/ar/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5911,
+   "domain": "travel",
+   "entries": 53,
+   "id": "ar/travel",
+   "lang": "ar",
+   "sha256": "c280616b1e0bc8c858205f67a2a84d68c5ef99fba19d3906246ad23a44875200",
+   "url": "packs/ar/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5379,
+   "domain": "base",
+   "entries": 126,
+   "id": "de/base",
+   "lang": "de",
+   "sha256": "64701627459f8ab76e69b38d67256e719bc0f31ada731c70a353e667d439f061",
+   "url": "packs/de/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1822,
+   "domain": "medical",
+   "entries": 33,
+   "id": "de/medical",
+   "lang": "de",
+   "sha256": "89bff15690c68005814542cc9d6afdbc11473627becf548f2a7be2aabf3af3ae",
+   "url": "packs/de/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2610,
+   "domain": "travel",
+   "entries": 53,
+   "id": "de/travel",
+   "lang": "de",
+   "sha256": "89eb717f13384977919ec5f62dd43b9b96512dc35c904137f13b1e0f4d47246e",
+   "url": "packs/de/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 4830,
+   "domain": "base",
+   "entries": 126,
+   "id": "en/base",
+   "lang": "en",
+   "sha256": "b97a35f01e393ef5b3b3be7c4ff69dca5a677f2d21a5041f2adb8fa119a0b693",
+   "url": "packs/en/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1537,
+   "domain": "medical",
+   "entries": 33,
+   "id": "en/medical",
+   "lang": "en",
+   "sha256": "6f322e007bf7e3e0c0e05f359576cf48a90564484e854414d9dd2edc4193be0d",
+   "url": "packs/en/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2577,
+   "domain": "travel",
+   "entries": 53,
+   "id": "en/travel",
+   "lang": "en",
+   "sha256": "27c749a8cf8e74a6dd0edb3085233c628fe0d3d076e4bfbcdceeb4936cb8ff83",
+   "url": "packs/en/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5499,
+   "domain": "base",
+   "entries": 126,
+   "id": "es/base",
+   "lang": "es",
+   "sha256": "dcee827a4161f7ccc593bae9bbb309afd551b8cc49c44c2a990244b0bb833adf",
+   "url": "packs/es/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1713,
+   "domain": "medical",
+   "entries": 33,
+   "id": "es/medical",
+   "lang": "es",
+   "sha256": "e9103e4c3f1c7140d07693f4b24eb4f6ad4a0a1918e6ce1d0219e5d8b2365d5b",
+   "url": "packs/es/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2842,
+   "domain": "travel",
+   "entries": 53,
+   "id": "es/travel",
+   "lang": "es",
+   "sha256": "6262ef126556227222fcf5ae6a399129b128642290a3720d16652e8321d88b2f",
+   "url": "packs/es/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5398,
+   "domain": "base",
+   "entries": 126,
+   "id": "fr/base",
+   "lang": "fr",
+   "sha256": "14a91f329dc1fcce7de0b35c8250c7aacfc9cba166befa81532786b9c26a6fd2",
+   "url": "packs/fr/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1728,
+   "domain": "medical",
+   "entries": 33,
+   "id": "fr/medical",
+   "lang": "fr",
+   "sha256": "16dcdbadfa749447c97b2b298c47dc68a0afd7a7394e81cf8dce8c49b02156ce",
+   "url": "packs/fr/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2864,
+   "domain": "travel",
+   "entries": 53,
+   "id": "fr/travel",
+   "lang": "fr",
+   "sha256": "9e7172754511716cd24406f730496ac42e38c63a2e041e646dd17e12d8a25791",
+   "url": "packs/fr/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 7262,
+   "domain": "base",
+   "entries": 126,
+   "id": "hi/base",
+   "lang": "hi",
+   "sha256": "71c653f1d003aba7f6753703168c5369b8e347b705b649d574dee3f826a1a110",
+   "url": "packs/hi/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2279,
+   "domain": "medical",
+   "entries": 33,
+   "id": "hi/medical",
+   "lang": "hi",
+   "sha256": "45f63c8c1c11fd4fe9a6b38ab3a251559d91232ce45f24715f85f7660f7eec65",
+   "url": "packs/hi/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 3360,
+   "domain": "travel",
+   "entries": 53,
+   "id": "hi/travel",
+   "lang": "hi",
+   "sha256": "589dad02217c0b7aac9c0916a80f13a6c26561e331a085eb4b6c8ed7db5ddf61",
+   "url": "packs/hi/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 4842,
+   "domain": "base",
+   "entries": 126,
+   "id": "it/base",
+   "lang": "it",
+   "sha256": "fee2b82d0d8ba9fa0988b782e39e83e89b7801c4217635884002ef82a21174e1",
+   "url": "packs/it/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1652,
+   "domain": "medical",
+   "entries": 33,
+   "id": "it/medical",
+   "lang": "it",
+   "sha256": "beb0bdfba16be063ffd3a0ae7a314c360b9d8b1f6a771683c5eb7e64b33fc9da",
+   "url": "packs/it/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2318,
+   "domain": "travel",
+   "entries": 53,
+   "id": "it/travel",
+   "lang": "it",
+   "sha256": "ceccc713e0a113450abda115bbefa704e24eb142e062c878b26658a7375260ec",
+   "url": "packs/it/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 9897,
+   "domain": "base",
+   "entries": 126,
+   "id": "ja/base",
+   "lang": "ja",
+   "sha256": "32f30367a20e134315a25c37fa3ae7840103b63c8b03ba3d849b7b9fc2a0ca89",
+   "url": "packs/ja/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2778,
+   "domain": "medical",
+   "entries": 33,
+   "id": "ja/medical",
+   "lang": "ja",
+   "sha256": "85c34ed7e8dd924e2702b0db49d9f744649d354f933dce9dbecdc5cebb261d6e",
+   "url": "packs/ja/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 4301,
+   "domain": "travel",
+   "entries": 53,
+   "id": "ja/travel",
+   "lang": "ja",
+   "sha256": "a3dbafb973a592af92a0f8431a625558b666e0bb4330e48043340ec2097fcc3a",
+   "url": "packs/ja/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5669,
+   "domain": "base",
+   "entries": 126,
+   "id": "ko/base",
+   "lang": "ko",
+   "sha256": "a9717aa9fb3f8202361e1cad5c650813a41583c36a8484fbca5ff233ace2fe91",
+   "url": "packs/ko/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1627,
+   "domain": "medical",
+   "entries": 33,
+   "id": "ko/medical",
+   "lang": "ko",
+   "sha256": "1166e2d6fc5e19e59fb18e06872f852d4d155235875c7fd3bc0d9d6295d96c9a",
+   "url": "packs/ko/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2423,
+   "domain": "travel",
+   "entries": 53,
+   "id": "ko/travel",
+   "lang": "ko",
+   "sha256": "2352a0e8e561e060c82e153ede5d2036599796d1a275b993dd0488f350dc1ff1",
+   "url": "packs/ko/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 5636,
+   "domain": "base",
+   "entries": 126,
+   "id": "pt/base",
+   "lang": "pt",
+   "sha256": "317aa48271b850140c23ea0bafc71f1df9f7a23253057f25e41a2f25bec5616f",
+   "url": "packs/pt/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 1738,
+   "domain": "medical",
+   "entries": 33,
+   "id": "pt/medical",
+   "lang": "pt",
+   "sha256": "38965ec9e584e8e58df783f416562e9b379f04a13e1591288c09e20ba92a8a45",
+   "url": "packs/pt/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2787,
+   "domain": "travel",
+   "entries": 53,
+   "id": "pt/travel",
+   "lang": "pt",
+   "sha256": "0a9c39b4f24a83c6444c8281094ee950592ef15bba6f281a0006e58b1088d551",
+   "url": "packs/pt/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 6250,
+   "domain": "base",
+   "entries": 126,
+   "id": "ru/base",
+   "lang": "ru",
+   "sha256": "da23874537c90831ffb6ecf23f7a97a76d0e85b160860ea31a9ebc9ab5290b4a",
+   "url": "packs/ru/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2077,
+   "domain": "medical",
+   "entries": 33,
+   "id": "ru/medical",
+   "lang": "ru",
+   "sha256": "5a413455d539b878c757e9bc1fb283d9adbe98cc87ad168f13bc0b72ade2a011",
+   "url": "packs/ru/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 2765,
+   "domain": "travel",
+   "entries": 53,
+   "id": "ru/travel",
+   "lang": "ru",
+   "sha256": "e78bd09276d53a75df95dbadc690b4c879ea0bfbec44e820db9b755d59d4cf04",
+   "url": "packs/ru/travel.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 13349,
+   "domain": "base",
+   "entries": 126,
+   "id": "zh/base",
+   "lang": "zh",
+   "sha256": "5cc6c2edfe30e525095265a5d7a6b5ed2f6fc8486f9ce180abbe5385ac320f3c",
+   "url": "packs/zh/base.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 4073,
+   "domain": "medical",
+   "entries": 33,
+   "id": "zh/medical",
+   "lang": "zh",
+   "sha256": "a260ee0534fa1abcbd46cefa52b6663cae40efac153ebb9c0e3b90103d5dedc1",
+   "url": "packs/zh/medical.json",
+   "version": "1.0.0"
+  },
+  {
+   "bytes": 6427,
+   "domain": "travel",
+   "entries": 53,
+   "id": "zh/travel",
+   "lang": "zh",
+   "sha256": "fe09aaeefd1ba30e957cb40e585cdbbf26ce4cc9695c22eb34ee37aa25f8c6c7",
+   "url": "packs/zh/travel.json",
+   "version": "1.0.0"
+  }
+ ],
+ "registryVersion": 1
+}

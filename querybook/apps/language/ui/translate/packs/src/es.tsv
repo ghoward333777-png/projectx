@@ -1,0 +1,217 @@
+# Spanish seed lexicon — QueryBook Translate v1
+@rules {"invertedQuestion": true, "suffixes": ["es", "s"]}
+@norm pa'	para
+@norm q	que
+@norm xq	porque
+hello	hola
+goodbye	adiós ; hasta luego ; chao | es-AR: chau ; adiós ; hasta luego
+good_morning	buenos días
+good_afternoon	buenas tardes
+good_evening	buenas noches ; buenas tardes
+good_night	buenas noches
+please	por favor
+thank_you	gracias
+thank_you_very_much	muchas gracias ; mil gracias
+youre_welcome	de nada ; no hay de qué
+sorry	lo siento ; perdón ; disculpe
+excuse_me	disculpe ; perdone ; con permiso
+yes	sí
+no	no
+ok	de acuerdo ; está bien | es-ES: vale ; de acuerdo ; está bien | es-MX: está bien ; de acuerdo ; órale
+how_are_you	cómo está ; cómo estás ; qué tal
+im_fine	estoy bien
+nice_to_meet_you	mucho gusto ; encantado ; encantada
+what_is_your_name	cómo se llama ; cómo te llamas
+my_name_is	me llamo ; mi nombre es
+i_dont_understand	no entiendo
+i_understand	entiendo
+do_you_speak_english	habla inglés ; hablas inglés
+speak_slowly	hable despacio por favor ; hable más despacio ; habla despacio
+repeat_please	repita por favor ; puede repetir
+i_dont_know	no sé
+i	yo
+you	usted ; tú ; ustedes ; vosotros | es-AR: vos ; usted ; ustedes
+he	él
+she	ella
+we	nosotros ; nosotras
+they	ellos ; ellas
+my	mi ; mis
+your	su ; tu ; sus ; tus
+the	el ; la ; los ; las
+a	un ; una
+this	esto ; este ; esta
+that	eso ; ese ; esa ; aquel
+be	es ; está ; son ; están ; soy ; estoy ; eres ; estás ; ser ; estar
+not	no
+and	y ; e
+or	o ; u
+with	con
+without	sin
+very	muy
+what	qué
+where	dónde
+when	cuándo
+who	quién ; quiénes
+why	por qué
+how	cómo
+how_much	cuánto ; cuánta
+how_many	cuántos ; cuántas
+which	cuál ; cuáles
+where_is	dónde está ; dónde están ; dónde queda
+i_want	quiero
+i_would_like	quisiera ; me gustaría
+i_need	necesito
+i_have	tengo
+do_you_have	tiene ; tienes ; tienen
+is_there	hay
+want	querer
+need	necesitar
+have	tener
+go	ir
+come	venir
+eat	comer
+drink	beber ; tomar | es-MX: tomar ; beber
+speak	hablar
+understand	entender ; comprender
+know	saber
+like	gustar
+see	ver
+wait	esperar
+buy	comprar
+pay	pagar
+help	ayuda ; ayudar ; socorro
+water	agua
+food	comida
+bread	pan
+coffee	café
+tea	té
+beer	cerveza
+wine	vino
+milk	leche
+money	dinero | es-AR: plata ; dinero | es-CO: plata ; dinero
+day	día
+today	hoy
+tomorrow	mañana
+yesterday	ayer
+now	ahora | es-MX: ahorita ; ahora
+later	más tarde ; luego
+here	aquí ; acá
+there	allí ; ahí ; allá
+man	hombre
+woman	mujer
+child	niño ; niña
+friend	amigo ; amiga
+family	familia
+house	casa
+name	nombre
+phone	teléfono ; celular ; móvil | es-ES: móvil ; teléfono | es-MX: celular ; teléfono | es-AR: celular ; teléfono | es-CO: celular ; teléfono
+bathroom	baño ; servicio ; aseo
+door	puerta
+language	idioma ; lengua
+good	bueno ; buena ; bien
+bad	malo ; mala ; mal
+big	grande
+small	pequeño ; pequeña ; chico | es-MX: chico ; pequeño
+hot	caliente ; calor
+cold	frío ; fría
+open	abierto ; abierta
+closed	cerrado ; cerrada
+new	nuevo ; nueva
+one	uno ; una
+two	dos
+three	tres
+four	cuatro
+five	cinco
+six	seis
+seven	siete
+eight	ocho
+nine	nueve
+ten	diez
+hundred	cien ; ciento
+thousand	mil
+airport	aeropuerto
+train_station	estación de tren ; estación de ferrocarril
+bus_stop	parada de autobús | es-MX: parada del camión ; parada de autobús | es-AR: parada del colectivo | es-CO: paradero ; parada de bus
+bus	autobús | es-MX: camión ; autobús | es-AR: colectivo ; autobús | es-CO: bus ; buseta
+train	tren
+taxi	taxi
+ticket	boleto ; billete | es-ES: billete ; entrada
+passport	pasaporte
+hotel	hotel
+room	habitación ; cuarto
+reservation	reserva ; reservación | es-MX: reservación ; reserva
+restaurant	restaurante
+menu	menú ; carta
+the_bill_please	la cuenta por favor
+table_for_two	una mesa para dos ; mesa para dos
+how_much_is_this	cuánto cuesta esto ; cuánto cuesta ; cuánto es
+too_expensive	demasiado caro ; muy caro
+cheap	barato ; barata
+expensive	caro ; cara
+left	izquierda
+right	derecha
+straight_ahead	todo recto ; derecho | es-MX: derecho ; todo recto | es-AR: derecho ; todo recto
+near	cerca
+far	lejos
+street	calle
+map	mapa
+city	ciudad
+beach	playa
+museum	museo
+bank	banco
+atm	cajero automático ; cajero
+pharmacy	farmacia
+market	mercado
+shop	tienda
+entrance	entrada
+exit	salida
+luggage	equipaje ; maletas
+i_am_lost	estoy perdido ; estoy perdida
+where_is_the_bathroom	dónde está el baño ; dónde están los servicios
+call_the_police	llame a la policía
+police	policía
+wifi	wifi ; wi-fi
+password	contraseña ; clave
+credit_card	tarjeta de crédito
+cash	efectivo ; en efectivo
+vegetarian	vegetariano ; vegetariana
+breakfast	desayuno
+lunch	almuerzo ; comida | es-ES: comida ; almuerzo | es-MX: comida ; almuerzo
+dinner	cena
+chicken	pollo
+fish	pescado
+meat	carne
+rice	arroz
+doctor	médico ; doctor ; médica ; doctora
+hospital	hospital
+emergency	emergencia ; urgencia
+ambulance	ambulancia
+i_need_a_doctor	necesito un médico ; necesito un doctor
+call_an_ambulance	llame a una ambulancia
+pain	dolor
+it_hurts_here	me duele aquí
+headache	dolor de cabeza
+fever	fiebre
+cold_illness	resfriado ; catarro | es-MX: resfriado ; gripa
+cough	tos
+nausea	náuseas
+diarrhea	diarrea
+allergy	alergia
+i_am_allergic_to	soy alérgico a ; soy alérgica a
+penicillin	penicilina
+medicine	medicina ; medicamento
+prescription	receta ; receta médica
+blood	sangre
+heart	corazón
+stomach	estómago
+head	cabeza
+chest	pecho
+pregnant	embarazada
+diabetes	diabetes
+asthma	asma
+dizzy	mareado ; mareada
+i_cant_breathe	no puedo respirar
+sick	enfermo ; enferma
+insurance	seguro ; seguro médico
+nurse	enfermero ; enfermera
+pill	pastilla ; comprimido ; pastillas

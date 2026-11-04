@@ -5,7 +5,7 @@ It is rule-based — a fixed set of requests recognised by their words, no langu
 never invents an answer: it reports what the panel measures, says exactly what it changed (every change also goes
 to the audit trail), asks before stopping anything, and asks for the admin passphrase when a global rule needs it.
 """
-import re
+import re, time
 
 APP_WORDS = [("language", r"language(?: builder)?|lang\b|words?|vocabulary|speech"),
              ("stem", r"stem|math(?:s|ematics)?|science|engineering"),
@@ -23,6 +23,8 @@ RULES = [  # (intent, pattern) — the first match wins; order matters
              r"(?:section|sec\.?)\s*\d|§\s*\d|neuro\w*morphic|neomorphic|world[- ]?(?:view|model)|predictive|hypothes\w*|simulat\w*|recursive|\brsi\b|"
              r"self[- ]?(?:improv\w*|knowledge)|determinis\w*|fact units?|atomic|what can'?t you|your limit\w*|deduc\w*|abduc\w*|feedback loops?)"),
     ("alerts_clear", r"\b(?:clear|dismiss)\b.*\balerts?\b"),
+    ("harvest_health", r"\b(?:congest\w*|bottleneck\w*|slow\w*|stall\w*|stuck|speed|fast|rate|efficien\w*|delay\w*|"
+                       r"health report|why (?:is|are) (?:it|the harvest|harvest\w*|facts?|records?)|not (?:being )?added|ufcs)\b"),
     ("alerts", r"\b(?:alerts?|problems?|issues?|anything wrong|warnings?)\b"),
     ("diagnose", r"\b(?:diagnos\w*|health ?check|run (?:the )?checks?|self[- ]?check)\b"),
     ("target_clear", r"\b(?:clear|remove|reset|drop)\b.*\btarget\w*|\bstop targeting\b|\bno target\b"),
@@ -43,7 +45,7 @@ SELF_TEST = [("stop all harvesting", "harvest_stop"), ("start harvesting for ste
              ("focus on volcanoes in history", "target_set"), ("exclude football", "filter_exclude"), ("only keep facts about Rome", "filter_require"),
              ("years 1800 to 1950", "filter_years"), ("clear the filter", "filter_clear"), ("find Marie Curie", "search"),
              ("start the language builder", "app_start"), ("stop stem", "app_stop"), ("any alerts?", "alerts"), ("how is everything?", "status"),
-             ("run diagnostics", "diagnose"), ("yes", "yes"),
+             ("run diagnostics", "diagnose"), ("yes", "yes"), ("What is the point of congestion now?", "harvest_health"), ("why is it so slow?", "harvest_health"),
              ("are you neuromorphic?", "self"), ("what is section 21?", "self"), ("can you improve yourself recursively?", "self")]
 
 
@@ -148,6 +150,11 @@ def _do(panel, intent, a, pw):
         src = (" Sources: " + r["source_text"] + ".") if r["source_text"] else ""
         secs = (" Design: " + ", ".join(r["sections"]) + ".") if r["sections"] else ""
         return {"reply": r["answer"] + src + secs, "label": r["label"]}
+    if intent == "harvest_health":
+        import qbbulk
+        st = qbbulk.status_cached(panel.commons.folder, panel.commons)
+        return {"reply": qbbulk.plain_summary(st, None, qbbulk._runner_events(panel.commons.folder, time.time() - 7200)) +
+                         "\n\n(The main delay is measured from the logs: Harvesting tab → 📋 Health report.)"}
     if intent == "status":
         apps = panel.apps()
         lines = []
@@ -160,7 +167,10 @@ def _do(panel, intent, a, pw):
         r = panel.rules()
         al = panel.alerts()
         ov = panel.overview()
-        lines.append("Harvesting is %s. %d shared facts in all (%d confirmed by more than one application)." % (ctl_["master"], ov["facts"], ov["shared"]))
+        b = ov.get("bulk") or {}
+        lines.append("Harvesting engine: %s%s. Facts: %s in the datasets, %s in the shared database (%d confirmed by more than one application)."
+                     % ("running" if b.get("running") else "stopped", (", %s facts a minute" % format(b.get("per_min") or 0, ",")) if b.get("running") else "",
+                        format(b.get("facts") or 0, ","), format(ov["facts"], ","), ov["shared"]))
         lines.append("Target: %s. Filter: %s." % (r["target_text"], r["filter_text"]))
         lines.append("%d open alert(s)%s" % (len(al), (": " + "; ".join(x["text"] for x in al[:3])) if al else "."))
         return {"reply": "\n".join(lines)}

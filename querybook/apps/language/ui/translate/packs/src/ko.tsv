@@ -1,0 +1,215 @@
+# Korean seed lexicon — QueryBook Translate v1
+# "split" lets a word segment into stem + particle (저는 → 저 + 는) when both are known.
+@rules {"split": true, "minPart": 1, "particles": ["는", "은", "이", "가", "을", "를", "에", "도", "의", "와", "과", "요"]}
+hello	안녕하세요 ; 안녕
+goodbye	안녕히 계세요 ; 안녕히 가세요 ; 안녕
+good_morning	좋은 아침입니다 ; 안녕하세요
+good_afternoon	안녕하세요
+good_evening	안녕하세요 ; 좋은 저녁입니다
+good_night	안녕히 주무세요 ; 잘 자요
+please	주세요 ; 제발
+thank_you	감사합니다 ; 고맙습니다 ; 고마워요
+thank_you_very_much	정말 감사합니다 ; 대단히 감사합니다
+youre_welcome	천만에요 ; 별말씀을요
+sorry	죄송합니다 ; 미안합니다 ; 미안해요
+excuse_me	실례합니다 ; 저기요
+yes	네 ; 예
+no	아니요 ; 아뇨
+ok	괜찮아요 ; 좋아요 ; 알겠습니다
+how_are_you	잘 지내세요 ; 어떻게 지내세요
+im_fine	잘 지내요 ; 저는 괜찮아요
+nice_to_meet_you	만나서 반갑습니다 ; 반갑습니다
+what_is_your_name	이름이 뭐예요 ; 성함이 어떻게 되세요
+my_name_is	제 이름은
+i_dont_understand	이해가 안 돼요 ; 모르겠어요 ; 이해하지 못했어요
+i_understand	알겠어요 ; 이해해요
+do_you_speak_english	영어 할 줄 아세요 ; 영어 하세요
+speak_slowly	천천히 말해 주세요
+repeat_please	다시 말해 주세요 ; 한 번 더 말해 주세요
+i_dont_know	몰라요 ; 모르겠어요
+i	저 ; 나 ; 제가
+you	당신 ; 너
+he	그 ; 그 사람
+she	그녀
+we	우리 ; 저희
+they	그들
+my	제 ; 내 ; 저의
+your	당신의 ; 네
+the	∅
+a	∅
+this	이것 ; 이거 ; 이
+that	그것 ; 저것 ; 그거
+be	입니다 ; 이에요 ; 예요 ; 이다
+not	안 ; 않다 ; 아니다
+and	그리고 ; 와 ; 과 ; 하고
+or	또는 ; 아니면
+with	와 함께 ; 하고 같이
+without	없이
+very	아주 ; 매우 ; 정말
+what	무엇 ; 뭐
+where	어디
+when	언제
+who	누구
+why	왜
+how	어떻게
+how_much	얼마
+how_many	몇 개 ; 몇
+which	어느 ; 어떤
+where_is	어디예요 ; 어디에 있어요 ; 어디 있어요
+i_want	원해요 ; 갖고 싶어요
+i_would_like	주세요
+i_need	필요해요
+i_have	있어요 ; 가지고 있어요
+do_you_have	있어요 ; 있나요
+is_there	있어요 ; 있나요
+want	원하다
+need	필요하다
+have	있다 ; 가지다
+go	가다
+come	오다
+eat	먹다
+drink	마시다
+speak	말하다
+understand	이해하다
+know	알다
+like	좋아하다
+see	보다
+wait	기다리다 ; 기다려 주세요
+buy	사다
+pay	지불하다 ; 계산하다
+help	도와주세요 ; 도움 ; 돕다
+water	물
+food	음식
+bread	빵
+coffee	커피
+tea	차
+beer	맥주
+wine	와인 ; 포도주
+milk	우유
+money	돈
+day	날 ; 일
+today	오늘
+tomorrow	내일
+yesterday	어제
+now	지금
+later	나중에
+here	여기
+there	거기 ; 저기
+man	남자
+woman	여자
+child	아이 ; 어린이
+friend	친구
+family	가족
+house	집
+name	이름
+phone	전화 ; 휴대폰 ; 핸드폰
+bathroom	화장실
+door	문
+language	언어 ; 말
+good	좋다 ; 좋은
+bad	나쁘다 ; 나쁜
+big	크다 ; 큰
+small	작다 ; 작은
+hot	뜨겁다 ; 덥다 ; 뜨거운
+cold	차갑다 ; 춥다 ; 차가운
+open	열려 있다 ; 영업 중
+closed	닫혀 있다 ; 영업 종료
+new	새로운 ; 새
+one	하나 ; 일 ; 한
+two	둘 ; 이 ; 두
+three	셋 ; 삼 ; 세
+four	넷 ; 사 ; 네
+five	다섯 ; 오
+six	여섯 ; 육
+seven	일곱 ; 칠
+eight	여덟 ; 팔
+nine	아홉 ; 구
+ten	열 ; 십
+hundred	백
+thousand	천
+airport	공항
+train_station	기차역 ; 역
+bus_stop	버스 정류장 ; 정류장
+bus	버스
+train	기차 ; 열차
+taxi	택시
+ticket	표 ; 티켓
+passport	여권
+hotel	호텔
+room	방 ; 객실
+reservation	예약
+restaurant	식당 ; 레스토랑
+menu	메뉴 ; 메뉴판
+the_bill_please	계산서 주세요 ; 계산해 주세요
+table_for_two	두 명이요 ; 두 사람 자리
+how_much_is_this	이거 얼마예요 ; 얼마예요
+too_expensive	너무 비싸요
+cheap	싸다 ; 싼
+expensive	비싸다 ; 비싼
+left	왼쪽
+right	오른쪽
+straight_ahead	똑바로 ; 직진
+near	가깝다 ; 근처
+far	멀다
+street	거리 ; 길
+map	지도
+city	도시
+beach	해변 ; 바닷가
+museum	박물관
+bank	은행
+atm	현금인출기 ; ATM
+pharmacy	약국
+market	시장
+shop	가게 ; 상점
+entrance	입구
+exit	출구
+luggage	짐 ; 수하물
+i_am_lost	길을 잃었어요
+where_is_the_bathroom	화장실이 어디예요 ; 화장실 어디예요
+call_the_police	경찰을 불러 주세요
+police	경찰
+wifi	와이파이
+password	비밀번호
+credit_card	신용카드
+cash	현금
+vegetarian	채식주의자 ; 채식
+breakfast	아침 식사 ; 아침
+lunch	점심 식사 ; 점심
+dinner	저녁 식사 ; 저녁
+chicken	닭고기 ; 치킨
+fish	생선
+meat	고기
+rice	밥
+doctor	의사
+hospital	병원
+emergency	응급 ; 응급 상황
+ambulance	구급차
+i_need_a_doctor	의사가 필요해요
+call_an_ambulance	구급차를 불러 주세요
+pain	통증 ; 아픔
+it_hurts_here	여기가 아파요
+headache	두통
+fever	열
+cold_illness	감기
+cough	기침
+nausea	메스꺼움 ; 구역질
+diarrhea	설사
+allergy	알레르기
+i_am_allergic_to	알레르기가 있어요
+penicillin	페니실린
+medicine	약
+prescription	처방전
+blood	피 ; 혈액
+heart	심장
+stomach	위 ; 배
+head	머리
+chest	가슴
+pregnant	임신했어요 ; 임신 중
+diabetes	당뇨병
+asthma	천식
+dizzy	어지러워요 ; 어지럽다
+i_cant_breathe	숨을 쉴 수 없어요 ; 숨을 못 쉬겠어요
+sick	아프다 ; 아파요
+insurance	보험
+nurse	간호사
+pill	알약

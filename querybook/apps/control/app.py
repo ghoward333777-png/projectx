@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.30.0"
+VERSION = "1.31.0"
 PORT = 8100
 program_dir = HERE
 
@@ -291,7 +291,7 @@ class Panel:
                 self.stopping.discard(k)
                 if a["health"] == "fail":
                     found["health:" + k] = ("error", "%s's own diagnostics report a failure — open it and see Diagnostics." % a["name"], k)
-                if a["harvest_on"] and a["heartbeat_s"] is not None and a["heartbeat_s"] > 600:
+                if cm.TEAMS_HARVEST and a["harvest_on"] and a["heartbeat_s"] is not None and a["heartbeat_s"] > 600:   # (retired teams: no check-ins)
                     found["stale:" + k] = ("warn", "%s is running but has not checked in with the harvesting engine for %d min." % (a["name"], a["heartbeat_s"] // 60), k)
             self.seen[k] = a["running"]
         q = self.commons.store
@@ -572,7 +572,12 @@ class Panel:
         turns = self.commons.store.query("SELECT id, app, started, ended, reason, result FROM engine_turns ORDER BY id DESC LIMIT 15")
         for t in turns:
             t["result"] = json.loads(t["result"] or "null")
-        return {"facts": s["facts"], "by_domain": by, "shared": s["shared"], "trend": trend, "turns": turns}
+        try:
+            bst = qbbulk.status_cached(self.commons.folder)
+            bulk = {"facts": bst["total"], "per_min": bst.get("facts_per_min") or 0, "running": bool((bst.get("runner") or {}).get("alive"))}
+        except Exception:
+            bulk = {"facts": 0, "per_min": 0, "running": False}
+        return {"facts": s["facts"], "by_domain": by, "shared": s["shared"], "trend": trend, "turns": turns, "bulk": bulk}
 
     # ------------------------------------------------------------------ routes
     def _routes(self):

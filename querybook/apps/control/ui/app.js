@@ -26,7 +26,7 @@ function renderApps() {
     return `<div class="appcard"><h3><span class="dot ${a.running ? (a.health === "fail" ? "bad" : "on") : "off"}"></span>${esc(a.name)}</h3>
       <div class="kv"><b>State</b><span>${a.running ? "running" + (a.version ? " · v" + esc(a.version) : "") : (a.installed ? "not running" : "not installed here")}</span>
       <b>Health</b><span>${a.health ? `<span class="badge ${level(a.health === "fail" ? "error" : a.health === "warn" ? "warn" : "ok")}">${esc(a.health)}</span>` : "—"}</span>
-      <b>Harvesting</b><span>${a.harvest_on ? "on" : "off"}${a.heartbeat_s !== null ? " · checked in " + Math.round(a.heartbeat_s) + " s ago" : ""}</span>
+      <b>Harvesting</b><span>${S.overview && S.overview.bulk ? (S.overview.bulk.running ? "by the harvesting engine (running)" : "by the harvesting engine (stopped — Harvesting tab)") : "—"}</span>
       <b>Facts</b><span>${fmt(a.facts)} (${esc(a.domain)})</span>
       <b>Last turn</b><span class="small">${a.last_turn ? esc(a.last_turn.started) + (lt ? ` — ${lt.new || 0} new, ${lt.merged || 0} merged${lt.filtered ? ", " + lt.filtered + " filtered out" : ""}${lt.on_target ? ", " + lt.on_target + " on target" : ""}` : " (running)") : "—"}</span></div>
       <div class="btns">${a.running ? `<a class="btn quiet" href="${esc(a.url)}" target="_blank" rel="noopener" style="padding:6px 11px;font-size:14px;border-radius:8px;text-decoration:none">Open</a>
@@ -53,7 +53,7 @@ function bindDismiss() { $$("[data-dismiss]").forEach(b => b.onclick = async () 
 function renderMonitor() {
   const o = S.overview, run = S.apps.filter(a => a.running).length;
   $("#last-check").textContent = S.last_check ? "last check " + S.last_check : "first check in a few seconds";
-  $("#stats").innerHTML = [["Applications running", run + " / 3"], ["Harvesting", S.control.master], ["Shared facts", fmt(o.facts)],
+  $("#stats").innerHTML = [["Applications running", run + " / 3"], ["Harvesting", o.bulk ? (o.bulk.running ? "running · " + fmt(o.bulk.per_min) + "/min" : "stopped") : "—"], ["Facts (all)", fmt((o.bulk ? o.bulk.facts : 0) + o.facts)],
     ["Confirmed by 2+ apps", fmt(o.shared)], ["Open alerts", S.alerts.length], ["Target", S.rules.target_text === "none (everything)" ? "none" : "set"],
     ["Filter", S.rules.filter_text === "none (everything)" ? "none" : "set"]].map(([k, v]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
   const doms = Object.entries(o.by_domain), max = Math.max(1, ...doms.map(([, v]) => Object.values(v).reduce((a, b) => a + b, 0)));

@@ -43,6 +43,19 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  The natural speaking avatar is back; the translator is back (Language Builder 1.50.0, Control Panel 1.31.0)
+    * Avatars speak with the 1.46 mouth model again (before exemplar learning). Since 1.47 the Pamela avatars used a
+      "learned" speech movement by default, which kept the lips pressed and looked unnatural. That learned movement is
+      now off unless the admin chooses it for an avatar (Avatar studio: "Speak with this movement (experimental)").
+      Speech timing is again fitted to the sound, as in 1.46 (Speech-to-Text word timing is off).
+    * Translate tab in the Language Builder: QueryBook Translate (the offline translator of 1 October) restored as it
+      was - typed or spoken text, Converse (two people, two languages), Phrasebook, language packs, a coverage meter and
+      the pronunciation; every word from its dictionaries, unknown words marked, never guessed.
+    * Control Panel: the false alerts "... has not checked in with the harvesting engine for N min" are gone (they
+      came from the retired per-application teams). The application cards and the Monitoring tiles show the harvesting
+      engine itself: running or stopped, facts a minute, and all facts (datasets + shared database).
+    * Assistant: questions such as "What is the point of congestion now?" or "why is it so slow?" get the plain health
+      report.
   A harvest that does not stop; a plain health report; counts you can trust (Control Panel 1.30.0 and the shared core)
     * Every dataset is its own watched agent. One that fails is tried again after 1, 2, 5, 10, then every 15 minutes -
       never given up. One that shows no sign of life for 3 minutes, or makes no progress for 15, is ended and restarted

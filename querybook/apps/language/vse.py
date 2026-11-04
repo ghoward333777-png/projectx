@@ -1143,7 +1143,7 @@ class Engine:
         self._lock = threading.Lock()
         self.human = None                     # the human motion model (Quality lab), set by the app
         self.real = None                      # (1.48) viseme models measured on real faces, set by the app
-        self.stt_timing = True                # (1.48) time speech by Speech-to-Text word times when Google is set up
+        self.stt_timing = False               # (1.48) Speech-to-Text word times; off since 1.50 (timing fitted to the sound, as in 1.46)
 
     def _learned(self):
         return lipread.ACTIVE.get("model") if isinstance(lipread.ACTIVE.get("model"), dict) else None

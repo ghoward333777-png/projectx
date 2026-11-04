@@ -281,7 +281,7 @@ async function loadData() {
 let CURRENT = "build";
 function refreshTab() {
   clearTimeout(POLL);
-  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), agents: () => renderAgents($("#agents")), devices: () => renderDevices($("#devices")), help: () => {}, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
+  ({ build: refreshBuild, speech: loadSpeech, verify: loadVerify, lookup: () => $("#q").focus(), data: loadData, diag: () => renderDiagnostics($("#diag")), commons: () => renderCommons($("#commons")), agents: () => renderAgents($("#agents")), devices: () => renderDevices($("#devices")), help: () => {}, translate: () => { const f = $("#tr-frame"); if (f && !f.src) f.src = f.dataset.src; }, photoreal: () => { if (window.prInit) prInit(); } })[CURRENT]();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -307,3 +307,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   api("/api/status").then(s => { $("#srcs").innerHTML = "Links between languages: " + esc(s.sources.bilingual) + ".<br>Meanings: " + esc(s.sources.dictionary) + "."; });
   refreshFooter();
 });
+
+// Translate tab: QueryBook Translate, loaded the first time the tab is opened
+(() => {
+  const b = document.querySelector('nav.tabs button[data-tab="translate"]'), f = document.getElementById("tr-frame");
+  const load = () => { if (f && !f.src) f.src = f.dataset.src; };
+  if (b) b.addEventListener("click", load);
+  try { if (localStorage.getItem(document.title + ":tab") === "translate") load(); } catch (e) { /* ignore */ }
+})();

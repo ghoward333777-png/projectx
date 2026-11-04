@@ -49,7 +49,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.49.0"
+VERSION = "1.50.0"
 PORT = 8101
 program_dir = HERE
 
@@ -114,6 +114,12 @@ class App:
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
         self.motionlib = motionlib.Libraries(self.avatars.folder)                        # speech motion libraries (1.47): her own mouth movement
+        try:                                                                             # 1.50: the classic mouth model speaks unless the admin chose a library
+            back = self.motionlib.keep_chosen_only()
+            if back:
+                self.log("avatars back on the mouth model (speech motion libraries are now chosen by the admin only): %s" % ", ".join(back))
+        except Exception as e:
+            self.log("speech motion assignments not checked: %s" % e)
         self.curriculum = curriculum.Curriculum(self.folder, os.path.join(HERE, "data", "lipread-curriculum.json"))   # lip-reading curriculum test
         try:
             self.avatars.install_starter(os.path.join(HERE, "avatars_starter"), self._starter_motion)   # the bundled faces, ready to talk
@@ -185,14 +191,13 @@ class App:
         return run
 
     def _starter_motion(self, aid, spec, folder):
-        """a starter avatar that comes with its person's speech motion library: install it and speak with it"""
+        """a starter avatar that comes with its person's speech motion library: the library is installed, ready to choose —
+        the avatar keeps speaking with the mouth model (1.50: a library is used only when the admin chooses it)"""
         src = os.path.join(folder, os.path.basename(spec["file"]))
         if not os.path.isfile(src):
             return
         if not os.path.isfile(self.motionlib.path(spec["person"])):
             self.motionlib.install(src, spec["person"])
-        if str(int(aid)) not in self.motionlib.assignments():
-            self.motionlib.assign(aid, spec["person"])
 
     def _cli_build(self, args):
         """python app.py build [--again]: build every language in this window, with progress."""
@@ -2042,9 +2047,14 @@ def selftest():
                 and ("POST", "/api/motionlib/assign") in app.api.routes and ("POST", "/api/vse/curriculum/run") in app.api.routes, "routes")
         pams = [a for a in st if a["name"].startswith("Pamela")]
         asg = app.motionlib.assignments()
-        mo = app.motionlib.motion_for(pams[0]["id"]) if pams else None
-        c.check("Pamela's avatars speak with her own movement out of the box (bundled library from her exemplar clips)",
-                len(pams) == 4 and all(asg.get(str(a["id"])) == "pamela" for a in pams) and mo is not None and len(mo.lib["clips"]) >= 40, (len(pams), asg))
+        c.check("avatars speak with the classic mouth model by default (1.50); her movement library is installed, ready to choose",
+                len(pams) == 4 and not any(str(a["id"]) in asg for a in pams) and os.path.isfile(app.motionlib.path("pamela"))
+                and app.motionlib.motion_for(pams[0]["id"]) is None, (len(pams), asg))
+        app.motionlib.assign(pams[0]["id"], "pamela")
+        mo = app.motionlib.motion_for(pams[0]["id"])
+        c.check("…and an avatar the admin chooses it for keeps it (it is not reset on the next start)",
+                mo is not None and len(mo.lib["clips"]) >= 40 and app.motionlib.keep_chosen_only() == [], len(mo.lib["clips"]) if mo else None)
+        app.motionlib.assign(pams[0]["id"], None)
         if mo is not None:
             tr = vse.timing_from_text("Who knew the blue moon would move through the room so soon?", "en", app.lab)
             ph = [{"viseme": v["v"], "start_time": v["start"], "end_time": v["end"]} for v in tr["visemes"]]
@@ -2070,7 +2080,7 @@ def selftest():
                                                                     {"word": "60", "start_s": 1.0, "end_s": 1.4}, {"word": "seashells", "start_s": 1.4, "end_s": 2.0}])
         c.check("lip sync (1.48): Speech-to-Text word times are fitted to the script's words (unheard words placed between their neighbours)",
                 ft and [w["word"] for w in ft] == ["She", "sells", "sixty", "seashells"] and ft[2]["start_s"] == 1.0 and ft[2]["end_s"] == 1.4
-                and visemes.fit_word_times("one two three four", [{"word": "five", "start_s": 0, "end_s": 1}]) is None and app.vse.stt_timing, ft)
+                and visemes.fit_word_times("one two three four", [{"word": "five", "start_s": 0, "end_s": 1}]) is None and not app.vse.stt_timing, ft)
         bodies = [a for a in st if a["kind"] == "body"]
         c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
                 len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)

@@ -1,0 +1,215 @@
+# Mandarin Chinese seed lexicon — QueryBook Translate v1
+# Default forms are Simplified (zh-CN); zh-TW variants carry Traditional characters and Taiwan usage.
+@rules {}
+hello	你好{nǐ hǎo} ; 您好{nín hǎo} | zh-TW: 你好{nǐ hǎo} ; 您好{nín hǎo}
+goodbye	再见{zàijiàn} ; 拜拜{báibái} | zh-TW: 再見{zàijiàn} ; 掰掰{bāibāi}
+good_morning	早上好{zǎoshang hǎo} ; 早{zǎo} | zh-TW: 早安{zǎo'ān} ; 早{zǎo}
+good_afternoon	下午好{xiàwǔ hǎo} | zh-TW: 午安{wǔ'ān}
+good_evening	晚上好{wǎnshang hǎo} | zh-TW: 晚安{wǎn'ān}
+good_night	晚安{wǎn'ān}
+please	请{qǐng} | zh-TW: 請{qǐng}
+thank_you	谢谢{xièxie} | zh-TW: 謝謝{xièxie}
+thank_you_very_much	非常感谢{fēicháng gǎnxiè} ; 多谢{duōxiè} | zh-TW: 非常感謝{fēicháng gǎnxiè} ; 多謝{duōxiè}
+youre_welcome	不客气{bú kèqi} ; 不用谢{bú yòng xiè} | zh-TW: 不客氣{bú kèqi} ; 不用謝{bú yòng xiè}
+sorry	对不起{duìbuqǐ} ; 抱歉{bàoqiàn} | zh-TW: 對不起{duìbuqǐ} ; 抱歉{bàoqiàn}
+excuse_me	请问{qǐngwèn} ; 打扰一下{dǎrǎo yíxià} | zh-TW: 請問{qǐngwèn} ; 打擾一下{dǎrǎo yíxià}
+yes	是{shì} ; 对{duì} | zh-TW: 是{shì} ; 對{duì}
+no	不{bù} ; 不是{búshì} ; 没有{méiyǒu} | zh-TW: 不{bù} ; 不是{búshì} ; 沒有{méiyǒu}
+ok	好的{hǎo de} ; 可以{kěyǐ} ; 行{xíng} | zh-TW: 好的{hǎo de} ; 可以{kěyǐ}
+how_are_you	你好吗{nǐ hǎo ma} ; 您好吗{nín hǎo ma} | zh-TW: 你好嗎{nǐ hǎo ma} ; 您好嗎{nín hǎo ma}
+im_fine	我很好{wǒ hěn hǎo}
+nice_to_meet_you	很高兴认识你{hěn gāoxìng rènshi nǐ} ; 幸会{xìnghuì} | zh-TW: 很高興認識你{hěn gāoxìng rènshi nǐ} ; 幸會{xìnghuì}
+what_is_your_name	你叫什么名字{nǐ jiào shénme míngzi} ; 您贵姓{nín guìxìng} | zh-TW: 你叫什麼名字{nǐ jiào shénme míngzi} ; 您貴姓{nín guìxìng}
+my_name_is	我叫{wǒ jiào} ; 我的名字是{wǒ de míngzi shì}
+i_dont_understand	我不明白{wǒ bù míngbai} ; 我听不懂{wǒ tīng bù dǒng} | zh-TW: 我不明白{wǒ bù míngbai} ; 我聽不懂{wǒ tīng bù dǒng}
+i_understand	我明白{wǒ míngbai} ; 我懂{wǒ dǒng}
+do_you_speak_english	你会说英语吗{nǐ huì shuō yīngyǔ ma} ; 您会说英语吗{nín huì shuō yīngyǔ ma} | zh-TW: 你會說英語嗎{nǐ huì shuō yīngyǔ ma} ; 你會說英文嗎{nǐ huì shuō yīngwén ma}
+speak_slowly	请说慢一点{qǐng shuō màn yìdiǎn} | zh-TW: 請說慢一點{qǐng shuō màn yìdiǎn}
+repeat_please	请再说一遍{qǐng zài shuō yí biàn} | zh-TW: 請再說一遍{qǐng zài shuō yí biàn}
+i_dont_know	我不知道{wǒ bù zhīdào}
+i	我{wǒ}
+you	您{nín} ; 你{nǐ} ; 你们{nǐmen} | zh-TW: 您{nín} ; 你{nǐ} ; 你們{nǐmen}
+he	他{tā}
+she	她{tā}
+we	我们{wǒmen} ; 咱们{zánmen} | zh-TW: 我們{wǒmen} ; 咱們{zánmen}
+they	他们{tāmen} ; 她们{tāmen} | zh-TW: 他們{tāmen} ; 她們{tāmen}
+my	我的{wǒ de}
+your	您的{nín de} ; 你的{nǐ de}
+the	∅
+a	∅ ; 一个{yí ge} | zh-TW: ∅ ; 一個{yí ge}
+this	这个{zhège} ; 这{zhè} | zh-TW: 這個{zhège} ; 這{zhè}
+that	那个{nàge} ; 那{nà} | zh-TW: 那個{nàge} ; 那{nà}
+be	是{shì}
+not	不{bù} ; 没{méi} | zh-TW: 不{bù} ; 沒{méi}
+and	和{hé} ; 跟{gēn}
+or	或者{huòzhě} ; 还是{háishi} | zh-TW: 或者{huòzhě} ; 還是{háishi}
+with	和{hé} ; 跟{gēn}
+without	没有{méiyǒu} ; 不要{búyào} | zh-TW: 沒有{méiyǒu} ; 不要{búyào}
+very	很{hěn} ; 非常{fēicháng}
+what	什么{shénme} | zh-TW: 什麼{shénme}
+where	哪里{nǎlǐ} ; 哪儿{nǎr} | zh-TW: 哪裡{nǎlǐ} ; 哪裏{nǎlǐ}
+when	什么时候{shénme shíhou} | zh-TW: 什麼時候{shénme shíhou}
+who	谁{shéi} | zh-TW: 誰{shéi}
+why	为什么{wèishénme} | zh-TW: 為什麼{wèishénme}
+how	怎么{zěnme} ; 怎样{zěnyàng} | zh-TW: 怎麼{zěnme} ; 怎樣{zěnyàng}
+how_much	多少{duōshao} ; 多少钱{duōshao qián} | zh-TW: 多少{duōshao} ; 多少錢{duōshao qián}
+how_many	几个{jǐ ge} ; 多少{duōshao} | zh-TW: 幾個{jǐ ge} ; 多少{duōshao}
+which	哪个{nǎge} ; 哪{nǎ} | zh-TW: 哪個{nǎge} ; 哪{nǎ}
+where_is	在哪里{zài nǎlǐ} ; 在哪儿{zài nǎr} | zh-TW: 在哪裡{zài nǎlǐ}
+i_want	我要{wǒ yào} ; 我想要{wǒ xiǎng yào}
+i_would_like	我想要{wǒ xiǎng yào} ; 我想{wǒ xiǎng}
+i_need	我需要{wǒ xūyào}
+i_have	我有{wǒ yǒu}
+do_you_have	你有{nǐ yǒu} ; 有没有{yǒu méiyǒu} | zh-TW: 你有{nǐ yǒu} ; 有沒有{yǒu méiyǒu}
+is_there	有没有{yǒu méiyǒu} ; 有{yǒu} | zh-TW: 有沒有{yǒu méiyǒu} ; 有{yǒu}
+want	要{yào} ; 想要{xiǎng yào}
+need	需要{xūyào}
+have	有{yǒu}
+go	去{qù}
+come	来{lái} | zh-TW: 來{lái}
+eat	吃{chī}
+drink	喝{hē}
+speak	说{shuō} ; 讲{jiǎng} | zh-TW: 說{shuō} ; 講{jiǎng}
+understand	明白{míngbai} ; 懂{dǒng}
+know	知道{zhīdào}
+like	喜欢{xǐhuan} | zh-TW: 喜歡{xǐhuan}
+see	看{kàn} ; 看见{kànjiàn} | zh-TW: 看{kàn} ; 看見{kànjiàn}
+wait	等{děng}
+buy	买{mǎi} | zh-TW: 買{mǎi}
+pay	付钱{fù qián} ; 付款{fùkuǎn} | zh-TW: 付錢{fù qián} ; 付款{fùkuǎn}
+help	帮助{bāngzhù} ; 救命{jiùmìng} ; 帮忙{bāngmáng} | zh-TW: 幫助{bāngzhù} ; 救命{jiùmìng} ; 幫忙{bāngmáng}
+water	水{shuǐ}
+food	食物{shíwù} ; 吃的{chī de}
+bread	面包{miànbāo} | zh-TW: 麵包{miànbāo}
+coffee	咖啡{kāfēi}
+tea	茶{chá}
+beer	啤酒{píjiǔ}
+wine	葡萄酒{pútaojiǔ} ; 红酒{hóngjiǔ} | zh-TW: 葡萄酒{pútaojiǔ} ; 紅酒{hóngjiǔ}
+milk	牛奶{niúnǎi}
+money	钱{qián} | zh-TW: 錢{qián}
+day	天{tiān}
+today	今天{jīntiān}
+tomorrow	明天{míngtiān}
+yesterday	昨天{zuótiān}
+now	现在{xiànzài} | zh-TW: 現在{xiànzài}
+later	以后{yǐhòu} ; 等一下{děng yíxià} | zh-TW: 以後{yǐhòu} ; 等一下{děng yíxià}
+here	这里{zhèlǐ} ; 这儿{zhèr} | zh-TW: 這裡{zhèlǐ} ; 這邊{zhèbiān}
+there	那里{nàlǐ} ; 那儿{nàr} | zh-TW: 那裡{nàlǐ} ; 那邊{nàbiān}
+man	男人{nánrén}
+woman	女人{nǚrén}
+child	孩子{háizi} ; 小孩{xiǎohái}
+friend	朋友{péngyou}
+family	家人{jiārén} ; 家庭{jiātíng}
+house	房子{fángzi} ; 家{jiā}
+name	名字{míngzi}
+phone	电话{diànhuà} ; 手机{shǒujī} | zh-TW: 電話{diànhuà} ; 手機{shǒujī}
+bathroom	洗手间{xǐshǒujiān} ; 厕所{cèsuǒ} ; 卫生间{wèishēngjiān} | zh-TW: 洗手間{xǐshǒujiān} ; 廁所{cèsuǒ}
+door	门{mén} | zh-TW: 門{mén}
+language	语言{yǔyán} | zh-TW: 語言{yǔyán}
+good	好{hǎo}
+bad	坏{huài} ; 不好{bù hǎo} | zh-TW: 壞{huài} ; 不好{bù hǎo}
+big	大{dà}
+small	小{xiǎo}
+hot	热{rè} ; 烫{tàng} | zh-TW: 熱{rè} ; 燙{tàng}
+cold	冷{lěng} ; 凉{liáng} | zh-TW: 冷{lěng} ; 涼{liáng}
+open	开着{kāizhe} ; 营业{yíngyè} | zh-TW: 開著{kāizhe} ; 營業{yíngyè}
+closed	关着{guānzhe} ; 关门{guānmén} | zh-TW: 關著{guānzhe} ; 關門{guānmén}
+new	新{xīn} ; 新的{xīn de}
+one	一{yī}
+two	二{èr} ; 两{liǎng} | zh-TW: 二{èr} ; 兩{liǎng}
+three	三{sān}
+four	四{sì}
+five	五{wǔ}
+six	六{liù}
+seven	七{qī}
+eight	八{bā}
+nine	九{jiǔ}
+ten	十{shí}
+hundred	百{bǎi} ; 一百{yìbǎi}
+thousand	千{qiān} ; 一千{yìqiān}
+airport	机场{jīchǎng} | zh-TW: 機場{jīchǎng}
+train_station	火车站{huǒchēzhàn} | zh-TW: 火車站{huǒchēzhàn}
+bus_stop	公交车站{gōngjiāo chēzhàn} ; 公交站{gōngjiāo zhàn} | zh-TW: 公車站{gōngchē zhàn}
+bus	公交车{gōngjiāochē} ; 公共汽车{gōnggòng qìchē} ; 巴士{bāshì} | zh-TW: 公車{gōngchē} ; 巴士{bāshì}
+train	火车{huǒchē} | zh-TW: 火車{huǒchē}
+taxi	出租车{chūzūchē} ; 的士{dīshì} | zh-TW: 計程車{jìchéngchē}
+ticket	票{piào} ; 车票{chēpiào} | zh-TW: 票{piào} ; 車票{chēpiào}
+passport	护照{hùzhào} | zh-TW: 護照{hùzhào}
+hotel	酒店{jiǔdiàn} ; 宾馆{bīnguǎn} | zh-TW: 飯店{fàndiàn} ; 酒店{jiǔdiàn}
+room	房间{fángjiān} | zh-TW: 房間{fángjiān}
+reservation	预订{yùdìng} ; 预约{yùyuē} | zh-TW: 預訂{yùdìng} ; 預約{yùyuē}
+restaurant	餐厅{cāntīng} ; 饭店{fàndiàn} | zh-TW: 餐廳{cāntīng}
+menu	菜单{càidān} | zh-TW: 菜單{càidān}
+the_bill_please	买单{mǎidān} ; 请结账{qǐng jiézhàng} | zh-TW: 買單{mǎidān} ; 請結帳{qǐng jiézhàng}
+table_for_two	两位{liǎng wèi} ; 两个人的桌子{liǎng ge rén de zhuōzi} | zh-TW: 兩位{liǎng wèi}
+how_much_is_this	这个多少钱{zhège duōshao qián} ; 多少钱{duōshao qián} | zh-TW: 這個多少錢{zhège duōshao qián} ; 多少錢{duōshao qián}
+too_expensive	太贵了{tài guì le} | zh-TW: 太貴了{tài guì le}
+cheap	便宜{piányi}
+expensive	贵{guì} | zh-TW: 貴{guì}
+left	左{zuǒ} ; 左边{zuǒbiān} | zh-TW: 左{zuǒ} ; 左邊{zuǒbiān}
+right	右{yòu} ; 右边{yòubiān} | zh-TW: 右{yòu} ; 右邊{yòubiān}
+straight_ahead	一直走{yìzhí zǒu} ; 直走{zhí zǒu}
+near	近{jìn} ; 附近{fùjìn}
+far	远{yuǎn} | zh-TW: 遠{yuǎn}
+street	街{jiē} ; 街道{jiēdào}
+map	地图{dìtú} | zh-TW: 地圖{dìtú}
+city	城市{chéngshì}
+beach	海滩{hǎitān} | zh-TW: 海灘{hǎitān}
+museum	博物馆{bówùguǎn} | zh-TW: 博物館{bówùguǎn}
+bank	银行{yínháng} | zh-TW: 銀行{yínháng}
+atm	取款机{qǔkuǎnjī} ; 自动取款机{zìdòng qǔkuǎnjī} | zh-TW: 提款機{tíkuǎnjī}
+pharmacy	药店{yàodiàn} ; 药房{yàofáng} | zh-TW: 藥局{yàojú} ; 藥房{yàofáng}
+market	市场{shìchǎng} | zh-TW: 市場{shìchǎng}
+shop	商店{shāngdiàn}
+entrance	入口{rùkǒu}
+exit	出口{chūkǒu}
+luggage	行李{xíngli}
+i_am_lost	我迷路了{wǒ mílù le}
+where_is_the_bathroom	洗手间在哪里{xǐshǒujiān zài nǎlǐ} ; 厕所在哪里{cèsuǒ zài nǎlǐ} | zh-TW: 洗手間在哪裡{xǐshǒujiān zài nǎlǐ}
+call_the_police	报警{bàojǐng} ; 叫警察{jiào jǐngchá} | zh-TW: 報警{bàojǐng} ; 叫警察{jiào jǐngchá}
+police	警察{jǐngchá}
+wifi	无线网{wúxiàn wǎng} ; WiFi | zh-TW: 無線網路{wúxiàn wǎnglù} ; WiFi
+password	密码{mìmǎ} | zh-TW: 密碼{mìmǎ}
+credit_card	信用卡{xìnyòngkǎ}
+cash	现金{xiànjīn} | zh-TW: 現金{xiànjīn}
+vegetarian	素食{sùshí} ; 吃素{chī sù}
+breakfast	早饭{zǎofàn} ; 早餐{zǎocān} | zh-TW: 早餐{zǎocān}
+lunch	午饭{wǔfàn} ; 午餐{wǔcān} | zh-TW: 午餐{wǔcān}
+dinner	晚饭{wǎnfàn} ; 晚餐{wǎncān} | zh-TW: 晚餐{wǎncān}
+chicken	鸡肉{jīròu} | zh-TW: 雞肉{jīròu}
+fish	鱼{yú} | zh-TW: 魚{yú}
+meat	肉{ròu}
+rice	米饭{mǐfàn} | zh-TW: 白飯{báifàn} ; 米飯{mǐfàn}
+doctor	医生{yīshēng} ; 大夫{dàifu} | zh-TW: 醫生{yīshēng}
+hospital	医院{yīyuàn} | zh-TW: 醫院{yīyuàn}
+emergency	急诊{jízhěn} ; 紧急情况{jǐnjí qíngkuàng} | zh-TW: 急診{jízhěn} ; 緊急情況{jǐnjí qíngkuàng}
+ambulance	救护车{jiùhùchē} | zh-TW: 救護車{jiùhùchē}
+i_need_a_doctor	我需要医生{wǒ xūyào yīshēng} | zh-TW: 我需要醫生{wǒ xūyào yīshēng}
+call_an_ambulance	叫救护车{jiào jiùhùchē} | zh-TW: 叫救護車{jiào jiùhùchē}
+pain	疼{téng} ; 痛{tòng}
+it_hurts_here	这里疼{zhèlǐ téng} | zh-TW: 這裡痛{zhèlǐ tòng}
+headache	头疼{tóuténg} ; 头痛{tóutòng} | zh-TW: 頭痛{tóutòng}
+fever	发烧{fāshāo} | zh-TW: 發燒{fāshāo}
+cold_illness	感冒{gǎnmào}
+cough	咳嗽{késou}
+nausea	恶心{ěxin} | zh-TW: 噁心{ěxin}
+diarrhea	拉肚子{lā dùzi} ; 腹泻{fùxiè} | zh-TW: 拉肚子{lā dùzi} ; 腹瀉{fùxiè}
+allergy	过敏{guòmǐn} | zh-TW: 過敏{guòmǐn}
+i_am_allergic_to	我过敏{wǒ guòmǐn} | zh-TW: 我過敏{wǒ guòmǐn}
+penicillin	青霉素{qīngméisù} | zh-TW: 盤尼西林{pánníxīlín} ; 青黴素{qīngméisù}
+medicine	药{yào} ; 药物{yàowù} | zh-TW: 藥{yào} ; 藥物{yàowù}
+prescription	处方{chǔfāng} | zh-TW: 處方{chǔfāng}
+blood	血{xuè}
+heart	心脏{xīnzàng} | zh-TW: 心臟{xīnzàng}
+stomach	胃{wèi} ; 肚子{dùzi}
+head	头{tóu} | zh-TW: 頭{tóu}
+chest	胸口{xiōngkǒu} ; 胸{xiōng}
+pregnant	怀孕{huáiyùn} | zh-TW: 懷孕{huáiyùn}
+diabetes	糖尿病{tángniàobìng}
+asthma	哮喘{xiàochuǎn} | zh-TW: 氣喘{qìchuǎn} ; 哮喘{xiàochuǎn}
+dizzy	头晕{tóuyūn} | zh-TW: 頭暈{tóuyūn}
+i_cant_breathe	我不能呼吸{wǒ bù néng hūxī} ; 我喘不过气{wǒ chuǎn bú guò qì} | zh-TW: 我不能呼吸{wǒ bù néng hūxī} ; 我喘不過氣{wǒ chuǎn bú guò qì}
+sick	生病{shēngbìng} ; 病了{bìng le}
+insurance	保险{bǎoxiǎn} | zh-TW: 保險{bǎoxiǎn}
+nurse	护士{hùshi} | zh-TW: 護士{hùshi}
+pill	药片{yàopiàn} | zh-TW: 藥片{yàopiàn}

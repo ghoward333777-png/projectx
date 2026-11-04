@@ -1,0 +1,214 @@
+# Hindi seed lexicon — QueryBook Translate v1
+@rules {}
+hello	नमस्ते ; नमस्कार ; हैलो
+goodbye	अलविदा ; फिर मिलेंगे ; नमस्ते
+good_morning	सुप्रभात ; गुड मॉर्निंग
+good_afternoon	नमस्ते ; शुभ दोपहर
+good_evening	शुभ संध्या ; नमस्ते
+good_night	शुभ रात्रि
+please	कृपया
+thank_you	धन्यवाद ; शुक्रिया
+thank_you_very_much	बहुत धन्यवाद ; बहुत शुक्रिया
+youre_welcome	कोई बात नहीं ; आपका स्वागत है
+sorry	माफ़ कीजिए ; क्षमा कीजिए ; सॉरी
+excuse_me	सुनिए ; माफ़ कीजिए
+yes	हाँ ; जी हाँ
+no	नहीं ; जी नहीं
+ok	ठीक है
+how_are_you	आप कैसे हैं ; आप कैसी हैं ; क्या हाल है
+im_fine	मैं ठीक हूँ
+nice_to_meet_you	आपसे मिलकर खुशी हुई
+what_is_your_name	आपका नाम क्या है
+my_name_is	मेरा नाम
+i_dont_understand	मैं नहीं समझा ; मैं नहीं समझी ; मुझे समझ नहीं आया
+i_understand	मैं समझता हूँ ; मैं समझती हूँ ; समझ गया
+do_you_speak_english	क्या आप अंग्रेज़ी बोलते हैं ; क्या आप अंग्रेज़ी बोलती हैं
+speak_slowly	कृपया धीरे बोलिए ; धीरे बोलिए
+repeat_please	कृपया दोहराइए ; फिर से बोलिए
+i_dont_know	मुझे नहीं पता ; मालूम नहीं
+i	मैं ; मुझे ; मुझ
+you	आप ; तुम ; तू ; आपको ; तुम्हें
+he	वह ; वो ; उसे
+she	वह ; वो
+we	हम ; हमें
+they	वे ; वो ; उन्हें
+my	मेरा ; मेरी ; मेरे
+your	आपका ; आपकी ; आपके ; तुम्हारा
+the	∅
+a	∅ ; एक
+this	यह ; ये
+that	वह ; वो
+be	है ; हैं ; हूँ ; हो
+not	नहीं ; न ; मत
+and	और ; तथा
+or	या
+with	के साथ ; साथ
+without	के बिना ; बिना
+very	बहुत
+what	क्या
+where	कहाँ
+when	कब
+who	कौन
+why	क्यों
+how	कैसे
+how_much	कितना ; कितनी
+how_many	कितने
+which	कौन सा ; कौन सी
+where_is	कहाँ है
+i_want	मुझे चाहिए ; मैं चाहता हूँ ; मैं चाहती हूँ
+i_would_like	मुझे चाहिए ; मैं लेना चाहूँगा ; मैं लेना चाहूँगी
+i_need	मुझे चाहिए ; मुझे ज़रूरत है
+i_have	मेरे पास है
+do_you_have	क्या आपके पास है
+is_there	क्या यहाँ है ; क्या है
+want	चाहना
+need	ज़रूरत होना
+have	रखना ; होना
+go	जाना
+come	आना
+eat	खाना
+drink	पीना
+speak	बोलना
+understand	समझना
+know	जानना
+like	पसंद करना
+see	देखना
+wait	इंतज़ार करना ; रुकिए
+buy	ख़रीदना
+pay	भुगतान करना ; पैसे देना
+help	मदद ; सहायता ; बचाओ
+water	पानी ; जल
+food	खाना ; भोजन
+bread	रोटी ; ब्रेड
+coffee	कॉफ़ी
+tea	चाय
+beer	बियर
+wine	वाइन ; शराब
+milk	दूध
+money	पैसा ; पैसे ; रुपये
+day	दिन
+today	आज
+tomorrow	कल
+yesterday	कल
+now	अभी ; अब
+later	बाद में
+here	यहाँ
+there	वहाँ
+man	आदमी ; पुरुष
+woman	औरत ; महिला
+child	बच्चा ; बच्ची
+friend	दोस्त ; मित्र
+family	परिवार
+house	घर ; मकान
+name	नाम
+phone	फ़ोन ; मोबाइल
+bathroom	शौचालय ; टॉयलेट ; बाथरूम
+door	दरवाज़ा
+language	भाषा
+good	अच्छा ; अच्छी ; अच्छे
+bad	बुरा ; बुरी ; ख़राब
+big	बड़ा ; बड़ी
+small	छोटा ; छोटी
+hot	गरम ; गर्म
+cold	ठंडा ; ठंडी
+open	खुला ; खुली
+closed	बंद
+new	नया ; नई
+one	एक
+two	दो
+three	तीन
+four	चार
+five	पाँच
+six	छह
+seven	सात
+eight	आठ
+nine	नौ
+ten	दस
+hundred	सौ
+thousand	हज़ार
+airport	हवाई अड्डा ; एयरपोर्ट
+train_station	रेलवे स्टेशन ; स्टेशन
+bus_stop	बस स्टॉप ; बस अड्डा
+bus	बस
+train	ट्रेन ; रेलगाड़ी
+taxi	टैक्सी
+ticket	टिकट
+passport	पासपोर्ट
+hotel	होटल
+room	कमरा
+reservation	आरक्षण ; बुकिंग
+restaurant	रेस्टोरेंट ; भोजनालय
+menu	मेन्यू
+the_bill_please	बिल दीजिए ; कृपया बिल लाइए
+table_for_two	दो लोगों के लिए टेबल
+how_much_is_this	यह कितने का है ; इसका दाम क्या है
+too_expensive	बहुत महँगा
+cheap	सस्ता ; सस्ती
+expensive	महँगा ; महँगी
+left	बाएँ ; बायाँ
+right	दाएँ ; दायाँ
+straight_ahead	सीधे
+near	पास ; नज़दीक
+far	दूर
+street	सड़क ; गली
+map	नक़्शा
+city	शहर
+beach	समुद्र तट ; बीच
+museum	संग्रहालय ; म्यूज़ियम
+bank	बैंक
+atm	एटीएम
+pharmacy	दवा की दुकान ; फ़ार्मेसी ; केमिस्ट
+market	बाज़ार
+shop	दुकान
+entrance	प्रवेश ; एंट्री
+exit	निकास ; बाहर
+luggage	सामान
+i_am_lost	मैं रास्ता भूल गया ; मैं रास्ता भूल गई
+where_is_the_bathroom	शौचालय कहाँ है ; बाथरूम कहाँ है
+call_the_police	पुलिस को बुलाइए
+police	पुलिस
+wifi	वाई-फ़ाई
+password	पासवर्ड
+credit_card	क्रेडिट कार्ड
+cash	नक़द ; कैश
+vegetarian	शाकाहारी
+breakfast	नाश्ता
+lunch	दोपहर का खाना
+dinner	रात का खाना
+chicken	चिकन ; मुर्ग़ा
+fish	मछली
+meat	मांस ; गोश्त
+rice	चावल
+doctor	डॉक्टर ; चिकित्सक
+hospital	अस्पताल
+emergency	आपातकाल ; इमरजेंसी
+ambulance	एम्बुलेंस
+i_need_a_doctor	मुझे डॉक्टर चाहिए
+call_an_ambulance	एम्बुलेंस बुलाइए
+pain	दर्द
+it_hurts_here	यहाँ दर्द होता है ; यहाँ दर्द है
+headache	सिरदर्द ; सिर दर्द
+fever	बुख़ार
+cold_illness	ज़ुकाम ; सर्दी
+cough	खाँसी
+nausea	मतली ; जी मिचलाना
+diarrhea	दस्त
+allergy	एलर्जी
+i_am_allergic_to	मुझे एलर्जी है
+penicillin	पेनिसिलिन
+medicine	दवा ; दवाई
+prescription	पर्चा ; नुस्ख़ा
+blood	ख़ून ; रक्त
+heart	दिल ; हृदय
+stomach	पेट
+head	सिर
+chest	छाती ; सीना
+pregnant	गर्भवती
+diabetes	मधुमेह ; डायबिटीज़
+asthma	दमा ; अस्थमा
+dizzy	चक्कर आना ; चक्कर आ रहे हैं
+i_cant_breathe	मैं साँस नहीं ले पा रहा ; मैं साँस नहीं ले पा रही
+sick	बीमार
+insurance	बीमा
+nurse	नर्स
+pill	गोली ; टैबलेट

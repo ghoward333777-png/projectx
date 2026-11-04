@@ -68,7 +68,7 @@ async function mlSection(box, a) {
     '<input data-mlskill placeholder="exemplar skill" value="speech-video-' + esc(guess.toLowerCase()) + '" style="width:16em">' +
     '<button class="btn" data-mlbuild>Build from exemplars</button><span class="muted" data-mln></span></div>' +
     '<div class="row"><input type="password" data-mlpass placeholder="admin passphrase" style="width:12em">' +
-    '<button class="btn quiet" data-mluse>Speak with this movement</button><button class="btn quiet" data-mloff>Back to the mouth model</button></div><div data-mlout class="small"></div>';
+    '<button class="btn quiet" data-mluse>Speak with this movement (experimental)</button><button class="btn quiet" data-mloff>Back to the mouth model</button></div><div data-mlout class="small"></div>';
   const note = m => { box.querySelector("[data-mln]").textContent = m; }, $p = () => box.querySelector("[data-mlperson]").value.trim();
   const show = async () => {
     const r = await api("/api/motionlib"), mine = r.assignments[String(a.id)];

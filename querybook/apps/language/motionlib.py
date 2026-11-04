@@ -396,14 +396,39 @@ class Libraries:
         except (OSError, ValueError):
             return {}
 
+    def _chosen_path(self):
+        return os.path.join(self.folder, "assign-chosen.json")
+
+    def chosen(self):
+        try:
+            return set(load(self._chosen_path()))
+        except (OSError, ValueError, TypeError):
+            return set()
+
+    def keep_chosen_only(self):
+        """1.50: an avatar speaks with a speech motion library only when the admin chose it for that avatar. The starter
+        set used to assign Pamela's library by itself (1.47-1.49); those assignments are removed — the classic mouth model
+        (as in 1.46) speaks again. Returns the avatars put back on the mouth model."""
+        a, keep = self.assignments(), self.chosen()
+        gone = [k for k in a if k not in keep]
+        if gone:
+            for k in gone:
+                a.pop(k, None)
+            save(a, self._assign_path())
+        return gone
+
     def assign(self, avatar_id, person):
         a = self.assignments()
+        ch = self.chosen()
         if person:
             if not os.path.isfile(self.path(person)):
                 raise ValueError("There is no speech motion library for %s yet." % person)
             a[str(int(avatar_id))] = self.slug(person)
+            ch.add(str(int(avatar_id)))
         else:
             a.pop(str(int(avatar_id)), None)
+            ch.discard(str(int(avatar_id)))
+        save(sorted(ch), self._chosen_path())
         save(a, self._assign_path())
         return {"avatar": int(avatar_id), "person": a.get(str(int(avatar_id)))}
 
