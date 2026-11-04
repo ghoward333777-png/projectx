@@ -236,14 +236,33 @@ def cmd_plan(a):
     print(json.dumps(plan_from_script(a.script, a.skill, a.model, a.image, a.subject, a.consent, a.voice), indent=1, ensure_ascii=False))
 
 
+def _usage(budget, model, secs, error=None):
+    """each generation into the shared AI-usage ledger (Control Panel → API registration → LLM subscriptions & usage)"""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "_core"))
+        import qbusage
+        folder = os.path.dirname(os.path.abspath(budget.path))
+        while folder and not os.path.exists(os.path.join(folder, "commons.sqlite")) and os.path.dirname(folder) != folder:
+            folder = os.path.dirname(folder)
+        if os.path.exists(os.path.join(folder, "commons.sqlite")):
+            qbusage.record("veo" if KIND(model) == "video" else "gemini", model, "exemplar generator", "exemplar %s" % KIND(model),
+                           seconds=secs, ok=error is None, error=error, folder=folder)
+    except Exception:
+        pass
+
+
 def _request(key, model, prompt, plan, budget, stop, tries=4):
     """one generation with its place reserved first; a passing rate limit waits a minute and tries again (place refunded)"""
     for n in range(tries):
         if stop.is_set() or not budget.reserve(model):
             return None
+        t0 = time.time()
         try:
-            return generate(key, model, prompt, plan.get("image"), plan.get("voice"))
+            out = generate(key, model, prompt, plan.get("image"), plan.get("voice"))
+            _usage(budget, model, time.time() - t0)
+            return out
         except ApiError as e:
+            _usage(budget, model, time.time() - t0, "HTTP %s" % e.code)
             if e.transient and n + 1 < tries:
                 budget.refund(model); stop.wait(60 * (n + 1)); continue
             if e.code == 429:

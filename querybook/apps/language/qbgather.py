@@ -53,11 +53,27 @@ class GatherError(Exception):
 # ------------------------------------------------------------------------------------------------ providers
 def _post(url, body, headers, timeout=120):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=dict({"Content-Type": "application/json", "User-Agent": UA}, **headers))
+    host = urllib.parse.urlsplit(url).netloc
+    prov = "gemini" if "generativelanguage" in host else "openai" if "openai" in host else "perplexity" if "perplexity" in host else host
+    model = body.get("model") or (url.split("/models/")[1].split(":")[0] if "/models/" in url else "")
+    t0 = time.time()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read())
+            out = json.loads(r.read())
+        try:                                       # the shared AI-usage ledger: tokens as the provider reported them
+            import qbusage
+            ti, to = qbusage.tokens_from(prov, out)
+            qbusage.record(prov, out.get("model") or model, purpose="fact gathering (web-grounded)", input_tokens=ti, output_tokens=to, seconds=time.time() - t0)
+        except Exception:
+            pass
+        return out
     except urllib.error.HTTPError as e:
-        raise GatherError("%s answered HTTP %d: %s" % (urllib.parse.urlsplit(url).netloc, e.code, e.read()[:300].decode("utf-8", "replace")))
+        try:
+            import qbusage
+            qbusage.record(prov, model, purpose="fact gathering (web-grounded)", seconds=time.time() - t0, ok=False, error="HTTP %d" % e.code)
+        except Exception:
+            pass
+        raise GatherError("%s answered HTTP %d: %s" % (host, e.code, e.read()[:300].decode("utf-8", "replace")))
 
 
 def ask_gemini(key, question, n, model=None):
@@ -122,7 +138,15 @@ def ask_anthropic(key, question, n, model=None):
     messages = [{"role": "user", "content": PROMPT.format(q=question, n=n, hint=HINT.get("text", ""))}]
     tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
     for _ in range(4):                                  # server-side search may pause a long turn: resume it
+        t_a = time.time()
         resp = client.messages.create(model=model, max_tokens=16000, messages=messages, tools=tools)
+        try:
+            import qbusage
+            u = getattr(resp, "usage", None)
+            qbusage.record("anthropic", model, purpose="fact gathering (web-grounded)", input_tokens=getattr(u, "input_tokens", None),
+                           output_tokens=getattr(u, "output_tokens", None), seconds=time.time() - t_a)
+        except Exception:
+            pass
         if resp.stop_reason != "pause_turn":
             break
         messages = messages[:1] + [{"role": "assistant", "content": resp.content}]

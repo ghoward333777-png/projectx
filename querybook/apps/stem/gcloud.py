@@ -402,6 +402,12 @@ class Google:
                                    {"Content-Type": "application/json", "X-Goog-Api-Key": key}, 90)
             out = _speech_results(json.loads(raw).get("results", []), lang, alternatives, offset_s)
             out["seconds"] = round(time.time() - t0, 2)
+            try:
+                import qbusage
+                qbusage.record("google-stt", cfg.get("model"), purpose="speech-to-text (%s)" % lang, units=round(len(pcm) / (2.0 * sr * max(1, ch)) / 60, 4),
+                               unit="minutes", seconds=time.time() - t0)
+            except Exception:
+                pass
             words = out["words"]
             self._note("speech", True, t0, "%d words" % len(words))
             return out

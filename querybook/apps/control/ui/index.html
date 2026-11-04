@@ -285,7 +285,22 @@
         there), create a key on its page, paste it here and press <b>Save &amp; check</b>. QueryBook checks the key with one free request and
         keeps it privately on this computer, where every program reads it. You sign up and accept each service's terms yourself.
         The admin passphrase (box above) is asked once one is set.</p>
+      <div class="row subtabs" id="rg-menu" style="margin:6px 0 10px">
+        <button class="btn" data-rgview="keys">🔑 API keys</button>
+        <button class="btn quiet" data-rgview="ai">💳 LLM subscriptions &amp; usage</button></div>
       <div id="rg-table" class="small"></div>
+      <div id="ai-box" hidden>
+        <p class="muted small">Every call any QueryBook program makes to an LLM or another paid AI service — when, which program, what for,
+          the model, tokens in and out (as the provider reported them), characters or minutes for voices and speech recognition, how long
+          it took — with its estimated charge, and the subscriptions it bills to. Charges are estimates from list prices (editable
+          below); the provider's own bill is authoritative (each row links to it). No key, prompt or answer is stored.</p>
+        <div id="ai-totals" class="stats"></div>
+        <div id="ai-table" class="small" style="overflow-x:auto"></div>
+        <h4>Last 30 days</h4><div id="ai-days" class="small"></div>
+        <h4>Every call <a class="btn quiet" href="/api/ai-usage.csv" download="querybook-ai-usage.csv" style="padding:2px 10px">⬇ CSV</a></h4>
+        <div id="ai-calls" class="small" style="max-height:28em;overflow:auto"></div>
+        <details><summary><b>Prices</b> — used for the estimates (USD)</summary><p class="muted small" id="ai-pnote"></p><div id="ai-prices" class="small"></div></details>
+      </div>
       <h3>Outside connections <span class="small muted" id="cn-summary"></span></h3>
       <p class="muted small">Every service outside this computer the suite talks to — what for, which program, whether its key is set (keys
         are never shown) and when it was last used. <b>Test</b> sends one request to the service's public address without any key, so it costs
@@ -451,5 +466,6 @@
 <div id="toast" role="status"></div>
 <script src="qb.js"></script>
 <script src="app.js"></script>
+<script src="aiusage.js"></script>
 </body>
 </html>

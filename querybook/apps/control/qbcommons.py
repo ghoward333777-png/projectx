@@ -165,6 +165,12 @@ class Commons:
         self.folder = folder
         self.app_id = app_id
         self.log = log or (lambda *a: None)
+        try:                                           # every LLM / AI call this program makes is kept in the shared folder
+            import qbusage
+            qbusage.configure(folder)
+            os.environ.setdefault("QB_APP_ID", str(app_id))
+        except Exception:
+            pass
         self.store = core.Store(folder, "commons", SCHEMA, self.log, check=check)
         self.registry = hv.Registry(self)            # harvesting policy registry
         self.harvest_log = hv.HarvestLog(self)       # every harvest, its source and why (hash-chained, archived)

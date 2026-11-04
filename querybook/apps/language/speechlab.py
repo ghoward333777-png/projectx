@@ -78,6 +78,25 @@ class Clock:
         return [{k: v for k, v in s.items() if not k.startswith("_")} for s in self.stages], round(now - self.t0, 2)
 
 
+USAGE_PROVIDER = {"google_gemini": "gemini", "google_cloud": "google-tts", "elevenlabs": "elevenlabs", "openai": "openai", "azure": "azure-tts", "polly": "polly"}
+
+
+def _usage(eid, voice, model, text, secs, error=None):
+    """a cloud voice call into the shared AI-usage ledger (characters spoken, time, result); offline voices cost nothing"""
+    prov = USAGE_PROVIDER.get(eid)
+    if not prov:
+        return
+    try:
+        import qbusage
+        mdl = (model or voice or eid) if prov != "openai" else "tts"
+        if prov == "google-tts":
+            v = (voice or "").lower()
+            mdl = next((k for k in ("chirp", "neural2", "wavenet", "standard") if k in v), "")
+        qbusage.record(prov, mdl, purpose="text-to-speech", units=len(text or ""), unit="characters", seconds=secs, ok=error is None, error=error)
+    except Exception:
+        pass
+
+
 class SpeechLab:
     def __init__(self, store, lab, log, folder):
         self.store, self.lab, self.log = store, lab, log
@@ -510,11 +529,13 @@ class SpeechLab:
                 if not voicedsp.is_wav(data):
                     raise RuntimeError("the engine returned audio that is not WAV")
                 attempts.append({"engine": eid, "result": "ok", "seconds": round(time.time() - t_try, 2)})
+                _usage(eid, voice if eid == engine else alt_voice, model, text, time.time() - t_try)
                 used = eid
                 break
             except Exception as e:
                 reason = tts.scrub(e, self.keys)
                 attempts.append({"engine": eid, "result": "failed", "reason": reason, "seconds": round(time.time() - t_try, 2)})
+                _usage(eid, voice, model, text, time.time() - t_try, reason)
                 data = None
         fx = fx_used
         if used != engine:

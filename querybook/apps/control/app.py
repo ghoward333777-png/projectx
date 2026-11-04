@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.31.0"
+VERSION = "1.32.0"
 PORT = 8100
 program_dir = HERE
 
@@ -587,6 +587,43 @@ class Panel:
         def status(p):
             return {"app": APP_NAME, "version": VERSION, "health": None, "job": None}
 
+        # ---- LLM and AI subscriptions: every call's time, tokens and estimated charge; the plans they bill to
+        @a.get("/api/ai-usage")
+        def ai_usage(p):
+            import qbusage, qbconnections
+            try:
+                reg = {x["id"]: x["set"] for x in qbconnections.registration(self.commons, qbconnections.google_folders(HERE, self.folder))}
+            except Exception:
+                reg = {}
+            keys = {"gemini": reg.get("gemini"), "openai": reg.get("openai"), "anthropic": reg.get("anthropic"), "perplexity": reg.get("perplexity"),
+                    "elevenlabs": reg.get("elevenlabs"), "heygen": reg.get("heygen"), "d-id": reg.get("did"), "veo": reg.get("gemini")}
+            out = qbusage.overview(self.commons.folder, keys)
+            out["calls"] = qbusage.calls(self.commons.folder, 0, int(p.get("limit") or 300))
+            return out
+
+        @a.post("/api/ai-usage/subscription")
+        def ai_sub(p):
+            import qbusage
+            if self.commons.approvals.admin_set():
+                self.commons.approvals._require(p.get("passphrase") or "")
+            try:
+                return {"saved": qbusage.save_subscription(p.get("provider"), p.get("plan"), p.get("monthly_usd"), p.get("renews"), p.get("budget_usd"),
+                                                           p.get("notes"), self.commons.folder)}
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.post("/api/ai-usage/prices")
+        def ai_prices(p):
+            import qbusage
+            if self.commons.approvals.admin_set():
+                self.commons.approvals._require(p.get("passphrase") or "")
+            return {"prices": qbusage.save_prices(p.get("prices") or {}, self.commons.folder)}
+
+        @a.get("/api/ai-usage.csv")
+        def ai_csv(p):
+            import qbusage
+            return qbusage.csv_text(self.commons.folder).encode("utf-8"), "text/csv; charset=utf-8"
+
         @a.get("/api/panel/apis")
         def panel_apis(p):
             """the master API page: every program's endpoints (from the program itself), explained, with the recipes"""
@@ -817,6 +854,14 @@ def selftest():
         check("diagnostics cover the panel, applications, harvest, target, filter and assistant",
               all(k in names for k in ("Shared database", "Language Builder installed", "hash chain", "Target rules", "Filter rules", "Assistant understands")), names)
         check("the assistant passes its own understanding checks", all(x["status"] == "ok" for x in d["checks"] if x["name"].startswith("Assistant")))
+        # LLM subscriptions & usage (1.32): a call recorded by any program appears on the page with its tokens, time and charge
+        import qbusage
+        qbusage.record("gemini", "gemini-2.5-flash", "facts", "selftest", 1000, 500, seconds=1.5, folder=p.commons.folder)
+        au = p.api.routes[("GET", "/api/ai-usage")]({})
+        gm = next(x for x in au["rows"] if x["provider"] == "gemini")
+        check("LLM usage page: every call's tokens, time and estimated charge, per service and month",
+              gm["month"]["calls"] >= 1 and gm["month"]["input_tokens"] >= 1000 and gm["month"]["cost_usd"] > 0 and au["calls"] and ("GET", "/api/ai-usage.csv") in p.api.routes, gm)
+        check("qbusage self-test", all(g for _, g, _ in qbusage.self_test()), [n for n, g, _ in qbusage.self_test() if not g])
         # the assistant at work
         say = lambda m, **k: assistant.respond(p, m, k.get("pw", ""), k.get("pending"))
         r = say("how is everything?")
