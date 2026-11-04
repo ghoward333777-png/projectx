@@ -43,6 +43,30 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Speech science; any language; LLM subscriptions & usage (Language Builder 1.51.0, Control Panel 1.32.0)
+    * Speak any language: Language Builder → Speech science → 1. The bundled espeak-ng now has all 112 pronunciation
+      dictionaries (was 17): type text, the language is detected from its writing system or grammar words (or pick it),
+      Speak, Download WAV, with the pronunciation (IPA) shown. Offline.
+    * Read the lips of a talking head: choose a video → Read the words. The lips are read (with the look-alike words for
+      each), the sound too when Speech-to-Text is set up. Every frame of the file is read by seeking, so a slow computer
+      never skips frames and the same file always gives the same frames.
+    * Measure a delivery (Speech Science Protocol SSP-1): about 20 movement factors of the lips, jaw, brows, cheeks,
+      eyes and head, measured for every sound and word against what is said; Articulation Conformance (a z-score
+      formula per sound), Naturalness (human-limit checks: lips that stay shut, move faster than human lips, open
+      wider than a mouth can ...), A/V sync, intelligibility, and one Delivery Index. Pass/fail against criteria fixed
+      in advance; a criterion whose instrument is not yet validated is reported as exploratory and does not decide the
+      verdict. An avatar can be measured the same way (recorded from its own picture). Each delivery gets a report
+      (Markdown + JSON) with the words, sounds, factors, why it failed, methods and limitations.
+    * Compare dialects, accents and emotions: label deliveries, then compare groups clip by clip - 95% confidence
+      intervals, Hedges' g, Welch's t-test with Holm correction, a leave-one-clip-out check that the difference is real;
+      groups with fewer than 5 clips are reported but not interpreted. Deliveries marked "reference" calibrate the
+      expectations for their language.
+    * Control Panel → API & connections → API registration → 💳 LLM subscriptions & usage: every call any program
+      makes to an LLM or paid AI service (Gemini, OpenAI, Anthropic, Perplexity, cloud voices, Speech-to-Text, video
+      generation) with its time, tokens in/out, characters or minutes, result and estimated charge; per service this
+      month; your plan, monthly fee, renewal date and budget per service (budget used in %); the last 30 days; every
+      call, exported as CSV; editable prices. Charges are estimates from list prices - the provider's bill is
+      authoritative (linked). No key, prompt or answer is stored.
   The natural speaking avatar is back; the translator is back (Language Builder 1.50.0, Control Panel 1.31.0)
     * Avatars speak with the 1.46 mouth model again (before exemplar learning). Since 1.47 the Pamela avatars used a
       "learned" speech movement by default, which kept the lips pressed and looked unnatural. That learned movement is

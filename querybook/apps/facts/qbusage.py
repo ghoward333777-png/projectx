@@ -249,7 +249,7 @@ def overview(folder=None, keys_set=None, now=None):
     for p, (title, kind, billing) in PROVIDERS.items():
         u = month.get(p, {"calls": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0, "seconds": 0.0, "cost_usd": 0.0, "unpriced_calls": 0, "units": {}})
         sub = subs.get(p, {})
-        total = round(u["cost_usd"] + float(sub.get("monthly_usd") or 0), 2)
+        total = round(u["cost_usd"] + float(sub.get("monthly_usd") or 0), 4)
         bud = sub.get("budget_usd")
         rows.append({"provider": p, "title": title, "kind": kind, "billing": billing, "key_set": (keys_set or {}).get(p), "subscription": sub,
                      "month": u, "month_total_usd": total, "budget_used": round(100 * total / bud, 1) if bud else None})

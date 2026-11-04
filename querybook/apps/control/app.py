@@ -769,7 +769,7 @@ def selftest():
             failed += 1
             print("  [FAIL]", name, detail)
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:   # a background writer may still be finishing
         p = Panel(os.path.join(tmp, "panel"), os.path.join(tmp, "commons"))
         co = p.commons
         # rules: validation, persistence, the admin gate
