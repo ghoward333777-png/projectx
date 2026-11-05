@@ -227,7 +227,7 @@ def _apps_root(here):
 
 
 _APP_DIRS = {"language": ("language", "QueryBook-Language"), "stem": ("stem", "QueryBook-STEM"), "facts": ("facts", "QueryBook-History-News"),
-             "control": ("control", "QueryBook-Control-Panel"), "bridges": ("bridges",)}
+             "control": ("control", "QueryBook-Control-Panel"), "bridges": ("bridges", os.path.join("extras", "device-bridges"))}
 
 
 def _resolve(rel, cb, here):
