@@ -6,9 +6,10 @@ A PROJECT is an ordered list of shots and how the result should look:
                 stored clip exists, generated once by the video model and stored for reuse. It can carry a VOICE-OVER: the
                 text is spoken by Language Builder (its voices, its pronunciation resolver) and the shot is held on its last
                 frame if the speech runs longer than the action.
-  talk shot     a narrator (an author persona in Language Builder) saying a text, LIP-SYNCED by the face method chosen
-                there (HeyGen, D-ID or a local lip-sync model). The finished narration is stored in the library, so the
-                same narrator saying the same text again is a reuse, not a new request.
+  talk shot     a narrator (an author persona in Language Builder) saying a text, in a video made by a video model:
+                Gemini performs it (HeyGen when Gemini cannot), or HeyGen or D-ID animate the photo to the persona's voice.
+                Nothing animates a face on this computer. The finished narration is stored in the library, so the same
+                narrator saying the same text again is a reuse, not a new request.
 
 The studio then joins the shots (in-between frames where two ends match, else a cut), applies frames-per-second and
 upscaling if asked, lays every voice under its shot, writes captions from the word timings Language Builder measures
@@ -23,7 +24,7 @@ import qbframes as qf
 import reuse_bench as rb
 
 ENGINES = ["espeak", "google_cloud", "google_gemini", "elevenlabs", "openai", "azure", "polly", "sapi", "say", "formant"]
-FACE_METHODS = {"heygen": "HeyGen (cloud)", "did": "D-ID (cloud)", "local": "local lip-sync model (Wav2Lip / SadTalker)"}
+FACE_METHODS = {"gemini": "Gemini (HeyGen when Gemini cannot)", "heygen": "HeyGen (cloud)", "did": "D-ID (cloud)"}
 
 
 class LanguageError(Exception):
@@ -79,15 +80,13 @@ class Language:
 
     def narrate(self, pid, text, face_method, emotion="", progress=None, stop=None, timeout=1800):
         r = self._req("/api/persona/narrate", {"id": pid, "text": text, "face_method": face_method, "emotion": emotion or None})
-        if r.get("face_method") == "photo":
-            raise LanguageError("this narrator's face method animates the photo in Language Builder's own page; choose HeyGen, D-ID or "
-                                "a local lip-sync model for a video")
         nid, t0 = r["id"], time.time()
         while True:
             n = self._req("/api/persona/narration?id=%s" % nid)
             if n.get("status") == "done" and n.get("video"):
                 mp4 = self._req("/api/persona/video?narration=%s" % nid, raw=True, timeout=600)
-                return mp4, {"narration": nid, "track": r.get("track"), "engine_used": r.get("engine_used"), "face_method": r.get("face_method")}
+                # made by: the narration's own record (a Gemini request that HeyGen finished says "heygen")
+                return mp4, {"narration": nid, "track": r.get("track"), "engine_used": r.get("engine_used"), "face_method": n.get("face_method") or r.get("face_method")}
             if n.get("status") == "failed":
                 raise LanguageError("the narration failed: %s" % (n.get("detail") or "no detail"))
             if stop and stop():
@@ -196,7 +195,7 @@ class Studio:
                 c = self.talk_clip(self.talk_key(s))
                 row = {"shot": i, "type": "talk", "what": "narrator %s: “%s”" % (s.get("persona"), str(s.get("text"))[:60]),
                        "route": "reuse" if c else "narrate", "why": "this narrator already said this text (stored)" if c else
-                       "lip-synced by %s in Language Builder, then stored for reuse" % FACE_METHODS.get(s.get("face_method"), s.get("face_method")),
+                       "made by %s through Language Builder, then stored for reuse" % FACE_METHODS.get(s.get("face_method"), s.get("face_method")),
                        "estimate_s": 2.0 if c else (self.lib.timing("narrate") or 120.0)}
             rows.append(row)
             total += row["estimate_s"] or 0
@@ -219,7 +218,7 @@ class Studio:
             if s["type"] == "talk" and not (s.get("persona") and str(s.get("text") or "").strip()):
                 raise ValueError("A talk shot needs a narrator and what they say.")
             if s["type"] == "talk" and s.get("face_method") not in FACE_METHODS:
-                raise ValueError("A talk shot needs a lip-sync method: %s." % ", ".join(FACE_METHODS))
+                raise ValueError("A talk shot needs a way to make the video: %s." % ", ".join(FACE_METHODS))
         return shots
 
     # -- rendering
@@ -268,10 +267,15 @@ class Studio:
                                                lambda m: progress(i - 1, len(shots), "shot %d: %s" % (i, m)), stop)
                         raw = os.path.join(tmp, "talk%02d.mp4" % i)
                         open(raw, "wb").write(mp4)
-                        c = self.lib.add(key, raw, "lip-synced narration by %s (Language Builder)" % FACE_METHODS[s["face_method"]],
+                        made = info.get("face_method") or s["face_method"]
+                        c = self.lib.add(key, raw, "narration video by %s (Language Builder)" % FACE_METHODS.get(made, made),
                                          consent="the narrator's consent is recorded with the persona in Language Builder", prompt=s["text"])
-                        track = info.get("track") or {}
+                        # word times for captions: the narration's own speech — except when Gemini spoke with its own voice,
+                        # whose timing is not known here (no captions rather than wrong ones)
+                        track = (info.get("track") or {}) if made != "gemini" else {}
                         json.dump(track.get("words") or [], open(os.path.join(self.lib.folder, key, c["id"] + ".words.json"), "w"))
+                        if made == "gemini":
+                            row["captions"] = "none for this shot: Gemini spoke with its own voice, so the word times are not known"
                         self.lib.record("narrate", time.time() - t0)
                         self.lib.save()
                         row["route"] = "narrate"

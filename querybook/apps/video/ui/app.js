@@ -32,7 +32,7 @@ function drawShots() {
     if (s.type === "talk") {
       const ps = PERSONAS.length ? PERSONAS.map(p => opt(p.id, p.name || p.id, p.id === s.persona)).join("") : opt("", "no narrators — create one in Language Builder");
       return '<div class="shot">' + head + '<div class="grid3"><div><label class="f">Narrator</label><select data-k="persona" data-i="' + i + '">' + ps + "</select></div>" +
-        '<div><label class="f">Lip-sync</label><select data-k="face_method" data-i="' + i + '">' + Object.entries(INFO.face_methods).map(([k, v]) => opt(k, v, k === s.face_method)).join("") + "</select></div>" +
+        '<div><label class="f">Made by</label><select data-k="face_method" data-i="' + i + '">' + Object.entries(INFO.face_methods).map(([k, v]) => opt(k, v, k === s.face_method)).join("") + "</select></div>" +
         '<div><label class="f">Emotion (optional)</label><input type="text" data-k="emotion" data-i="' + i + '" value="' + esc(s.emotion || "") + '"></div></div>' +
         '<label class="f">What the narrator says</label><textarea data-k="text" data-i="' + i + '">' + esc(s.text || "") + "</textarea></div>";
     }
@@ -142,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (id === "diag") renderDiagnostics($("#diag"));
   });
   $("#add-action").onclick = () => { SHOTS.push({ type: "action", action: (INFO && INFO.stored_actions[0]) || "walk-toward", say: "" }); drawShots(); };
-  $("#add-talk").onclick = () => { SHOTS.push({ type: "talk", persona: PERSONAS[0] ? PERSONAS[0].id : "", face_method: "heygen", text: "" }); drawShots(); };
+  $("#add-talk").onclick = () => { SHOTS.push({ type: "talk", persona: PERSONAS[0] ? PERSONAS[0].id : "", face_method: "gemini", text: "" }); drawShots(); };
   $("#plan").onclick = showPlan;
   $("#render").onclick = render;
   $("#stop").onclick = () => api("/api/job/stop", {});

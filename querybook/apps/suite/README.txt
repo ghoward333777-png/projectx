@@ -43,6 +43,24 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Talking faces are made by Gemini again, as on October 29; the local face animation is gone (Language Builder 1.52.0, Video Studio 1.1.0)
+    * Every speaking face is now a video made by a video model. Language Builder → Speech → 🎬 Talking clips: choose a
+      portrait (Pamela and the other starter faces, or any picture), type the line, Make the clip. Gemini performs it
+      from the portrait - face, lips and voice together - with exactly the instructions that made the October 29
+      answer videos (A14 "official languages of Canada", A16 "Marie Curie"). When Gemini cannot - it refuses some
+      names of real people, the day's 20 Gemini videos are used up (shared with the exemplar generator), or no Gemini
+      key is set - the line is spoken by the Speak page's voice (ElevenLabs "Rachel" when nothing is chosen, as for
+      A01) and HeyGen animates the same portrait to it. Each clip says who made it and why; with Speech-to-Text set up,
+      the words it says are checked against the line. Every request is in the LLM subscriptions & usage ledger.
+    * Removed, because the faces it drew were not acceptable: the drawn 2D/3D talking face, the depth avatars moved by
+      52 face channels, the photo-driven author face, the speech motion library, the Quality Lab and calibration bench,
+      the delivery review, the lip-sync motion maker and its rig exports, the local Wav2Lip/SadTalker option, and the
+      live mirror avatar. The Speak page now speaks the voice and offers "Make a talking clip of this".
+    * Kept, because they read real video rather than draw a face: lip reading, Face & video, overdub, the lip-reading
+      benchmark and curriculum, the Photo Real Lab's perfect sample and release gate, and Speech science (it now
+      measures talking clips instead of avatars).
+    * Author narrators (Photo Real Lab) and Video Studio narrator shots: Gemini (HeyGen with the persona's own voice
+      when Gemini cannot), HeyGen or D-ID. A narrator set to the old photo face is made by Gemini.
   Speech science; any language; LLM subscriptions & usage (Language Builder 1.51.0, Control Panel 1.32.0)
     * Speak any language: Language Builder → Speech science → 1. The bundled espeak-ng now has all 112 pronunciation
       dictionaries (was 17): type text, the language is detected from its writing system or grammar words (or pick it),
@@ -55,7 +73,7 @@ WHAT'S NEW IN THIS RELEASE
       formula per sound), Naturalness (human-limit checks: lips that stay shut, move faster than human lips, open
       wider than a mouth can ...), A/V sync, intelligibility, and one Delivery Index. Pass/fail against criteria fixed
       in advance; a criterion whose instrument is not yet validated is reported as exploratory and does not decide the
-      verdict. An avatar can be measured the same way (recorded from its own picture). Each delivery gets a report
+      verdict. (1.52: talking clips are measured the same way.) Each delivery gets a report
       (Markdown + JSON) with the words, sounds, factors, why it failed, methods and limitations.
     * Compare dialects, accents and emotions: label deliveries, then compare groups clip by clip - 95% confidence
       intervals, Hedges' g, Welch's t-test with Holm correction, a leave-one-clip-out check that the difference is real;

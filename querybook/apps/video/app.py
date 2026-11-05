@@ -2,7 +2,7 @@
 """QueryBook Video Studio — a separate application that makes finished videos.
 
 Shots in, one video out. Common human actions come from the clip library (reused and re-timed locally; generated once
-by the video model only when no stored clip exists). Speech, pronunciation and lip-synced narrators come from
+by the video model only when no stored clip exists). Speech, pronunciation and narrator videos (made by Gemini or HeyGen) come from
 Language Builder, which must be running for voices and talk shots (START-ALL starts it). Joins get in-between frames
 where the ends match, captions come from the measured word timings, and every result is checked before it is kept.
 
@@ -24,7 +24,7 @@ import qbframes as qf
 
 APP_ID = "video"
 APP_NAME = "QueryBook Video Studio"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PORT = 8104
 program_dir = HERE
 
@@ -143,7 +143,7 @@ class App:
         except (OSError, subprocess.SubprocessError):
             out.append(C("ffmpeg", "ffmpeg (video editing) installed", "fail", "install ffmpeg and put it on PATH"))
         lb = self.studio.language().status()
-        out.append(C("language", "Language Builder reachable (voices, narrators, lip-sync)", "ok" if lb["ok"] else "warn",
+        out.append(C("language", "Language Builder reachable (voices, narrators)", "ok" if lb["ok"] else "warn",
                      ("version %s at %s" % (lb.get("version"), lb["url"])) if lb["ok"] else "not running — action shots still work"))
         b = qf.backends()
         out.append(C("frames", "Frame interpolation and upscaling", "ok", "%s; %s" % (b["interpolation"], b["upscaling"])))
@@ -404,10 +404,10 @@ def selftest():
         c.check("plan: stored action reused, the narrator narrates, with an estimate",
                 [r["route"] for r in pl["shots"]] == ["reuse", "narrate"] and pl["estimate_s"] > 0 and pl["language"]["ok"], pl["shots"])
         try:
-            app.studio.plan({"shots": [{"type": "talk", "persona": "p1", "text": "hi", "face_method": "photo"}]})
-            c.check("a talk shot needs a video lip-sync method", False)
+            app.studio.plan({"shots": [{"type": "talk", "persona": "p1", "text": "hi", "face_method": "local"}]})
+            c.check("a talk shot is made by a video model (Gemini, HeyGen or D-ID), never animated here", False)
         except ValueError:
-            c.check("a talk shot needs a video lip-sync method", True)
+            c.check("a talk shot is made by a video model (Gemini, HeyGen or D-ID), never animated here", set(st.FACE_METHODS) == {"gemini", "heygen", "did"})
         r = app.studio.render(proj)
         out = os.path.join(app.studio.out_dir, r["output"])
         c.check("render: one checked video with sound under both shots", r["ok"] and os.path.exists(out) and st._has_audio(out), r)

@@ -25,7 +25,6 @@ import qbengineer
 import qbselfknow
 import qbexemplar
 import qbcampaign
-import motionlib
 import curriculum
 import harvest
 import lab
@@ -35,7 +34,7 @@ import pronounce
 import lipcoach
 import persona
 import avatars
-import qualitylab
+import talkclip
 import speechsci
 import photoreal
 import silent
@@ -50,7 +49,7 @@ import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.51.0"
+VERSION = "1.52.0"
 PORT = 8101
 program_dir = HERE
 
@@ -114,24 +113,19 @@ class App:
         self.coach = self.speech.coach = lipcoach.LipCoach(self.store, self.speech)   # the ingestion reservoir and its learner
         self.personas = persona.Personas(self.store, self.speech, self.store.folder)    # Author Narrator (consent-gated)
         self.avatars = avatars.Library(self.folder, self.log)                             # avatar library (synthetic or consented faces)
-        self.motionlib = motionlib.Libraries(self.avatars.folder)                        # speech motion libraries (1.47): her own mouth movement
         self.science = speechsci.Corpus(self.store.folder)                               # Speech Science Protocol (1.51): measured deliveries and reports
-        try:                                                                             # 1.50: the classic mouth model speaks unless the admin chose a library
-            back = self.motionlib.keep_chosen_only()
-            if back:
-                self.log("avatars back on the mouth model (speech motion libraries are now chosen by the admin only): %s" % ", ".join(back))
-        except Exception as e:
-            self.log("speech motion assignments not checked: %s" % e)
         self.curriculum = curriculum.Curriculum(self.folder, os.path.join(HERE, "data", "lipread-curriculum.json"))   # lip-reading curriculum test
         try:
-            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"), self._starter_motion)   # the bundled faces, ready to talk
+            self.avatars.install_starter(os.path.join(HERE, "avatars_starter"))         # the bundled portraits (faces for talking clips)
         except Exception as e:
             self.log("starter avatars not installed: %s" % e)
-        self.qlab = qualitylab.QualityLab(self.folder, lambda: getattr(getattr(self, "commons", None), "approvals", None), HERE, self.log)   # Quality Lab
         self.prlab = photoreal.Lab(self.store, self.personas, self.lab)                 # Photo Real Lab
         self.scan = self.speech.scan = objscan.Scan(self.store, self.log)                # object scan: what the camera saw
-        self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip sync, lip reading)
-        self.vse.human = self.qlab.human_model                                          # learned from real speakers in the Quality lab
+        self.vse = vse.Engine(self.speech, self.lab, self.coach)                          # Visual Speech Engine (lip reading)
+        self.talk = talkclip.TalkClips(self.store.folder, self.speech.keys, qbexemplar.default_folder(self.store.folder),   # 1.52: talking clips
+                                       speak=self._talk_voice, hear=self._talk_hear, log=self.log, usage=self._talk_usage,
+                                       hear_ready=self.speech.stt_ready)
+        self.personas.talk = self.talk
         try:                                                                            # (1.48) the lip reader's viseme models from real faces
             with open(os.path.join(HERE, "data", "lipread-real-model.json"), encoding="utf-8") as f:
                 self.vse.real = json.load(f)
@@ -177,20 +171,46 @@ class App:
             except core.UserError:
                 pass
 
-    def _with_mouth(self, fn, avatar_id):
-        """a lip-sync job that also carries the avatar's own speech movement, when it has a speech motion library"""
-        def run(progress):
-            r = fn(progress)
+    # ------------------------------------------------------------------ talking clips (1.52): made by Gemini or HeyGen
+    def _talk_voice(self, line, lang, voice):
+        """the voice for the HeyGen route: the voice chosen on the Speak page, else ElevenLabs "Rachel" (the October 29 voice
+        clips), else Google Cloud, else the built-in voice"""
+        v = dict(voice or {})
+        if not v.get("engine"):
+            if self.speech.keys.configured("elevenlabs"):
+                v = {"engine": "elevenlabs", "voice": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_multilingual_v2"}
+            elif self.speech.keys.configured("google_cloud"):
+                v = {"engine": "google_cloud"}
+            else:
+                v = {"engine": "espeak"}
+        prof = dict(v.get("profile") or {}, lang=lang or "en")
+        g = self.speech.generate(line, prof, v["engine"], v.get("voice") or "", v.get("model") or "", None, measure=False, quiet_label="talking clip: ")
+        with open(self.speech.audio_path(g["audio"]), "rb") as f:
+            return f.read()
+
+    def _talk_hear(self, wav, lang):
+        if not self.speech.stt_ready():
+            return None
+        r = self.speech.transcribe(wav, lang or "en")
+        return (r or {}).get("transcript") if r and not r.get("error") else None
+
+    def _talk_usage(self, provider, model, purpose, seconds=None, ok=True, error=None):
+        try:
+            import qbusage
+            qbusage.record(provider, model, purpose=purpose, units=1, unit="videos", seconds=seconds, ok=ok, error=error)
+        except Exception:
+            pass
+
+    def _talk_face(self, p):
+        """the portrait for a clip: a face from the library (id) or a picture sent with the request (data URL / base64)"""
+        if p.get("image"):
             try:
-                m = self.motionlib.motion_for(avatar_id)
-                if m is not None:
-                    ph = r.get("phonemes") or []
-                    ph = ph.get("phonemes", []) if isinstance(ph, dict) else ph
-                    r["mouth"] = m.synthesize(ph, float(r.get("duration") or 0) or max([float(x["end_time"]) for x in ph] + [0]) + 0.3)
-            except Exception as e:
-                self.log("speech motion not used: %r" % e)
-            return r
-        return run
+                return base64.b64decode(str(p["image"]).split(",", 1)[-1]), p.get("face_name") or "your picture"
+            except Exception:
+                raise core.UserError("The picture could not be read.")
+        av = self.avatars.get(p.get("face"))
+        with open(self.avatars.image_path(av["id"]), "rb") as f:
+            return f.read(), av["name"]
 
     def _science_read(self, p):
         """lips (always) + the sound → the words and the best timing for them: 1 Speech-to-Text fitted to the script,
@@ -243,15 +263,6 @@ class App:
         return {"analysis": {k: an.get(k) for k in ("quality", "sync", "script", "expression") if an.get(k) is not None},
                 "lips": lips, "stt": stt, "final": {"text": final_text, "source": "your script" if script else ("Speech-to-Text" if (stt or {}).get("transcript") else "the lips")},
                 "timing": {"source": source, "words": timed}, "intelligibility": intel, "vse_script": v.get("script")}
-
-    def _starter_motion(self, aid, spec, folder):
-        """a starter avatar that comes with its person's speech motion library: the library is installed, ready to choose —
-        the avatar keeps speaking with the mouth model (1.50: a library is used only when the admin chooses it)"""
-        src = os.path.join(folder, os.path.basename(spec["file"]))
-        if not os.path.isfile(src):
-            return
-        if not os.path.isfile(self.motionlib.path(spec["person"])):
-            self.motionlib.install(src, spec["person"])
 
     def _cli_build(self, args):
         """python app.py build [--again]: build every language in this window, with progress."""
@@ -678,7 +689,7 @@ class App:
                          "%d recordings; %s" % (st["total"], ("version %s in use" % st["active_version"]) if st["active_version"] else "built-in rules in use")))
         vm = vendor_missing()
         out.append(C("face_video", "Face & video (3D/VR face, face tracker)", "fail" if vm else "ok",
-                     ("missing: " + ", ".join(vm)) if vm else "three.js r160 and MediaPipe Face Landmarker 0.10.14 present (%d files)" % len(VENDOR)))
+                     ("missing: " + ", ".join(vm)) if vm else "MediaPipe Face Landmarker 0.10.14 present (%d files)" % len(VENDOR)))
         out.append(C("voice_bundle", "Bundled espeak-ng files", "fail" if miss else "ok", ("missing: " + ", ".join(miss[:6])) if miss else "program, runtime and 17 languages present"))
         return out
 
@@ -1015,7 +1026,7 @@ class App:
             return {"version": vse.VERSION, "params": vse.PARAMS, "visemes": list(vse.TARGETS), "unit": vse.UNIT,
                     "subsystems": {"APS": "phonemes, prosody, emotion, voice fingerprint", "VPS": "head pose, camera motion, lighting (SH1), face geometry",
                                    "LSG/FMS": "coarticulated full-face motion (dominance model)", "LRE": "HMM word decoding / script alignment",
-                                   "COL": "jobs: lip_sync, lip_read, benchmark"},
+                                   "COL": "jobs: lip_read, curriculum, benchmark"},
                     "learned_model_active": isinstance(lipread.ACTIVE.get("model"), dict)}
 
         # ---------------------------------------------------------------- avatar library
@@ -1046,157 +1057,12 @@ class App:
             return self.avatars.add(data, p.get("name"), p.get("source") or "synthetic", bool(p.get("attest")), p.get("tags"),
                                     p.get("subject"), bool(p.get("consent")), p.get("filename"))
 
-        @a.get("/api/avatars/anatomy")
-        def av_anatomy(p):
-            return {"anatomy": self.avatars.anatomy(p.get("id"))}
-
-        @a.post("/api/avatars/anatomy")
-        def av_anatomy_set(p):
-            return self.avatars.set_anatomy(p.get("id"), p.get("anatomy") or {})
-
         # the delivery check, flags (with their picture) and the person's reference clips
-        @a.get("/api/avatars/flags")
-        def av_flags(p):
-            return {"flags": self.avatars.flags(p.get("id") or None, p.get("status") or None), "reasons": avatars.FLAG_REASONS}
-
-        @a.post("/api/avatars/flag")
-        def av_flag(p):
-            thumb = None
-            if p.get("thumb"):
-                try:
-                    thumb = base64.b64decode(str(p["thumb"]).split(",")[-1])
-                except Exception:
-                    raise core.UserError("The flag's picture could not be read.")
-                if thumb[:3] != b"\xff\xd8\xff" or len(thumb) > 2_000_000:
-                    raise core.UserError("The flag's picture must be a JPEG under 2 MB.")
-            return self.avatars.flag_add(p.get("id"), p, thumb)
-
-        @a.post("/api/avatars/flag_set")
-        def av_flag_set(p):
-            return self.avatars.flag_set(p.get("flag"), p.get("status") or None, p.get("note"), p.get("recheck"))
-
-        @a.post("/api/avatars/flag_delete")
-        def av_flag_delete(p):
-            return self.avatars.flag_delete(p.get("flag"))
-
-        @a.get("/api/avatars/flag_thumb")
-        def av_flag_thumb(p):
-            f = self.avatars.flag(p.get("flag"))
-            path = self.avatars.flag_thumb(f["avatar_id"], f["id"])
-            if not os.path.isfile(path):
-                raise core.UserError("This flag has no picture.")
-            with open(path, "rb") as fh:
-                return fh.read(), "image/jpeg"
-
-        @a.post("/api/avatars/check")
-        def av_check(p):
-            return self.avatars.check_add(p.get("id"), p)
-
-        @a.get("/api/avatars/checks")
-        def av_checks(p):
-            return {"checks": self.avatars.checks(p.get("id"))}
-
-        @a.get("/api/avatars/reference")
-        def av_reference(p):
-            return {"reference": self.avatars.reference(p.get("id")), "keys": avatars.REFERENCE_KEYS}
-
-        @a.post("/api/avatars/reference")
-        def av_reference_add(p):
-            return {"reference": self.avatars.reference_add(p.get("id"), p.get("clip") or "clip", p.get("stats") or {}, p.get("frames") or 0)}
-
-        @a.post("/api/avatars/reference_remove")
-        def av_reference_remove(p):
-            return {"reference": self.avatars.reference_remove(p.get("id"), p.get("clip") or "")}
-
-        @a.get("/api/avatars/motions")
-        def av_motions(p):
-            return {"motions": self.avatars.motions(p.get("id"))}
-
-        @a.get("/api/avatars/motion_frame")
-        def av_motion_frame(p):
-            with open(self.avatars.motion_frame(p.get("id"), p.get("slug"), p.get("i") or 0), "rb") as f:
-                return f.read(), "image/jpeg"
-
-        @a.post("/api/avatars/motion_put")
-        def av_motion_put(p):
-            return self.avatars.motion_put(p.get("id"), p.get("slug"), p.get("i"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
-
-        @a.post("/api/avatars/motion_set")
-        def av_motion_set(p):
-            return self.avatars.motion_set(p.get("id"), p.get("slug"), p.get("meta") or {})
-
-        @a.post("/api/avatars/motion_delete")
-        def av_motion_delete(p):
-            return self.avatars.motion_delete(p.get("id"), p.get("slug"))
-
-        @a.get("/api/avatars/turn")
-        def av_turn(p):
-            return {"turn": self.avatars.turn(p.get("id"))}
-
-        @a.get("/api/avatars/turn_frame")
-        def av_turn_frame(p):
-            with open(self.avatars.turn_frame(p.get("id"), p.get("i") or 0), "rb") as f:
-                return f.read(), "image/jpeg"
-
-        @a.post("/api/avatars/turn_put")
-        def av_turn_put(p):
-            return self.avatars.turn_put(p.get("id"), p.get("i"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
-
-        @a.post("/api/avatars/turn_set")
-        def av_turn_set(p):
-            return self.avatars.turn_set(p.get("id"), p.get("meta") or {})
-
-        @a.post("/api/avatars/turn_delete")
-        def av_turn_delete(p):
-            return self.avatars.turn_delete(p.get("id"))
-
         @a.post("/api/avatars/landmarks")
         def av_landmarks(p):
             return self.avatars.set_landmarks(p.get("id"), p.get("landmarks"))
 
         # -- Quality Lab: recorded avatar tests, human references, calibration approved by the admin
-        @a.get("/api/qlab/status")
-        def ql_status(p):
-            return self.qlab.status()
-
-        @a.get("/api/qlab/active")
-        def ql_active(p):
-            return self.qlab.active(lab=p.get("lab") == "1")
-
-        @a.get("/api/qlab/calibration")
-        def ql_cal(p):
-            return self.qlab.calibration()
-
-        @a.post("/api/qlab/candidate")
-        def ql_candidate(p):
-            return self.qlab.save_candidate(p.get("params") or {}, p.get("origin") or "admin", p.get("note") or "")
-
-        @a.post("/api/qlab/approve")
-        def ql_approve(p):
-            return self.qlab.approve(p.get("version"), p.get("passphrase") or "", p.get("level") or "production", p.get("note") or "")
-
-        @a.post("/api/qlab/ship")
-        def ql_ship(p):
-            return self.qlab.ship(p.get("passphrase") or "")
-
-        @a.get("/api/qlab/export")
-        def ql_export(p):
-            return self.qlab.export()
-
-        @a.post("/api/qlab/sample")
-        def ql_sample(p):
-            data = base64.b64decode(str(p.get("video_b64") or "").split(",", 1)[-1])
-            return self.qlab.add(p.get("kind") or "avatar", data, p)
-
-        @a.post("/api/qlab/fetch")
-        def ql_fetch(p):
-            return self.qlab.fetch_reference(p.get("url"), p.get("source") or "", p.get("licence") or "", p.get("transcript") or "")
-
-        @a.post("/api/qlab/learn")
-        def ql_learn(p):
-            return self.qlab.learn(p.get("id"), p.get("frames") or [], p.get("segments") or [], p.get("transcript") or "",
-                                   p.get("words") or [], p.get("emotion") or {}, p.get("lang") or "")
-
         @a.post("/api/media/mp4")
         def media_mp4(p):
             """A recorded WebM → MP4 (H.264 + AAC), when ffmpeg is on this computer."""
@@ -1241,60 +1107,6 @@ class App:
                 with open(dst, "rb") as f:
                     return {"b64": {"wav": "data:audio/wav;base64,", "mp4": "data:video/mp4;base64,"}.get(to, "data:video/webm;base64,") + base64.b64encode(f.read()).decode("ascii")}
 
-        @a.get("/api/qlab/sources")
-        def ql_sources(p):
-            return self.qlab.sources()
-
-        @a.post("/api/qlab/ingest")
-        def ql_ingest(p):
-            return self.qlab.ingest(int(p.get("n") or 6), int(p.get("max_mb") or 60))
-
-        @a.get("/api/qlab/ingest_status")
-        def ql_ingest_status(p):
-            return self.qlab.ingest_status(p.get("id"))
-
-        @a.get("/api/qlab/pending")
-        def ql_pending(p):
-            return {"pending": self.qlab.pending()}
-
-        @a.get("/api/qlab/graph")
-        def ql_graph(p):
-            return self.qlab.graph(p.get("node") or None)
-
-        @a.post("/api/qlab/shape")
-        def ql_shape(p):
-            return {"shape_error": self.qlab.shape_error(p.get("frames") or [], p.get("segments") or [])}
-
-        @a.get("/api/qlab/human")
-        def ql_human(p):
-            return self.qlab.human_model()
-
-        @a.post("/api/qlab/metrics")
-        def ql_metrics(p):
-            return self.qlab.set_metrics(p.get("id"), p.get("metrics") or {})
-
-        @a.get("/api/qlab/list")
-        def ql_list(p):
-            return {"samples": self.qlab.list(p.get("kind") or None)}
-
-        @a.get("/api/qlab/video")
-        def ql_video(p):
-            path = self.qlab.video_path(p.get("id"))
-            with open(path, "rb") as f:
-                return f.read(), "video/mp4" if path.endswith(".mp4") else "video/webm"
-
-        @a.post("/api/qlab/verdict")
-        def ql_verdict(p):
-            return self.qlab.verdict(p.get("id"), p.get("verdict") or "pending", p.get("note") or "")
-
-        @a.post("/api/qlab/delete")
-        def ql_delete(p):
-            return self.qlab.delete(p.get("id"))
-
-        @a.post("/api/avatars/qc")
-        def av_qc(p):
-            return self.avatars.set_qc(p.get("id"), p.get("qc") or {})
-
         @a.post("/api/avatars/crop")
         def av_crop(p):
             return self.avatars.crop(p.get("id"), base64.b64decode(str(p.get("data_b64") or "").split(",", 1)[-1]))
@@ -1306,61 +1118,6 @@ class App:
         @a.post("/api/avatars/delete")
         def av_delete(p):
             return self.avatars.delete(p.get("id"))
-
-        @a.post("/api/avatars/speak")
-        def av_speak(p):
-            """The avatar says a text: speech in its voice, then the full 52-channel face motion (a VSE job to poll)."""
-            av = self.avatars.get(p.get("id"))
-            text = " ".join(str(p.get("text") or "").split())
-            if not text:
-                raise core.UserError("Type what the avatar should say.")
-            v = av.get("voice") or {}
-            prof = {k: x for k, x in (p.get("profile") or {}).items() if k in ("emotion", "lang") and x}
-            prof["lang"] = v.get("lang") or prof.get("lang") or p.get("lang") or "en"
-            for k in ("pitch_hz", "rate"):
-                if v.get(k):
-                    prof[k] = v[k]
-            if p.get("emotion"):
-                prof["emotion"] = p["emotion"]
-            g = self.speech.generate(text, prof, v.get("engine") or p.get("engine") or "espeak", v.get("voice") or p.get("voice") or "",
-                                     v.get("model") or "", None, measure=False, quiet_label="avatar %s: " % av["name"])
-            with open(self.speech.audio_path(g["audio"]), "rb") as f:
-                wav = f.read()
-            job = self.vse.submit("lip_sync", self._with_mouth(self.vse.lip_sync_job(wav, text, prof["lang"], None, 30, None, False), av["id"]))
-            return {"audio": g["audio"], "job": job, "label": av["label"], "engine_used": g["summary"]["engine_used"]}
-
-        @a.post("/api/vse/lip_sync")
-        def vse_lip_sync(p):
-            text = (p.get("text") or "").strip()
-            wav = None
-            if p.get("audio_name"):                                   # a file the Speech lab made
-                try:
-                    ap = self.speech.audio_path(str(p["audio_name"]))      # e.g. 20261019/out-….wav; audio_path keeps it inside the folder
-                except FileNotFoundError:
-                    raise core.UserError("That audio file is not kept here.")
-                with open(ap, "rb") as f:
-                    wav = f.read()
-            elif p.get("audio_b64"):
-                wav = _audio(p)
-            elif p.get("log_id"):
-                row = self.store.one("SELECT request, result, audio FROM speech_log WHERE id = ?", (int(p["log_id"]),))
-                if not row or not row["audio"]:
-                    raise core.UserError("That speech log entry has no recording.")
-                with open(self.speech.audio_path(row["audio"]), "rb") as f:
-                    wav = f.read()
-                if not text:
-                    req = json.loads(row["request"] or "{}"); res = json.loads(row["result"] or "{}")
-                    text = req.get("text") or res.get("transcript") or ""
-            if not text:
-                raise core.UserError("Give the words that are spoken.")
-            if wav is not None and not voicedsp_is_wav(wav):
-                raise core.UserError("Send the audio as WAV (the page converts MP3 and other formats before sending).")
-            if wav is None:
-                tr = vse.timing_from_text(text, p.get("lang") or "en", self.lab)
-                return self.vse.submit("lip_sync", lambda prog: dict(vse.lip_sync(tr, None, p.get("emotion"), int(p.get("fps") or 30), seed=text),
-                                                                      note="timed from the text (no audio)"))
-            return self.vse.submit("lip_sync", self._with_mouth(self.vse.lip_sync_job(wav, text, p.get("lang") or "en", p.get("word_times"), int(p.get("fps") or 30),
-                                                                     p.get("emotion"), p.get("personal", True) not in (False, "false")), p.get("avatar")))
 
         # ---- Speech science (1.51): any-language speech, lip reading of an uploaded talking head, the Speech Science Protocol
         @a.get("/api/science/voices")
@@ -1470,43 +1227,6 @@ class App:
                     "calibration": self.science.calibration()}
 
         # ---- speech motion libraries (1.47): a person's own mouth movement, sound by sound, from exemplar clips
-        @a.get("/api/motionlib")
-        def ml_list(p):
-            return self.motionlib.list()
-
-        @a.post("/api/motionlib/clip")
-        def ml_clip(p):
-            """one exemplar clip, tracked in the page (478 points per frame, in pixels) with its own sounds: analysed here"""
-            frames = [None if not f else [(float(q[0]), float(q[1])) for q in f] for f in (p.get("frames") or [])]
-            if len(frames) < 12 or sum(1 for f in frames if f and len(f) >= 468) < len(frames) // 2:
-                raise core.UserError("Too few tracked frames in this clip (the face must be in view).")
-            ph = p.get("phonemes") or []
-            ph = ph.get("phonemes", []) if isinstance(ph, dict) else ph
-            try:
-                clip = motionlib.analyse_clip(frames, int(p.get("fps") or 24), ph, p.get("exemplar"), p.get("script") or "")
-                return self.motionlib.add_clip(p.get("person"), clip)
-            except ValueError as e:
-                raise core.UserError(str(e))
-
-        @a.post("/api/motionlib/build")
-        def ml_build(p):
-            try:
-                return self.motionlib.build(p.get("person"), p.get("note") or "")
-            except ValueError as e:
-                raise core.UserError(str(e))
-
-        @a.post("/api/motionlib/assign")
-        def ml_assign(p):
-            """which avatars speak with whose movement: it changes how an avatar moves, so the admin decides"""
-            ap = getattr(getattr(self, "commons", None), "approvals", None)
-            if ap is None:
-                raise core.UserError("The admin approvals are not available.")
-            ap._require(p.get("passphrase") or "")
-            try:
-                return self.motionlib.assign(int(p.get("avatar")), p.get("person") or None)
-            except ValueError as e:
-                raise core.UserError(str(e))
-
         @a.post("/api/vse/lip_read")
         def vse_lip_read(p):
             words = [w for w in re.split(r"[\s,;]+", p.get("words") or "") if w] if isinstance(p.get("words"), str) else list(p.get("words") or [])
@@ -1530,14 +1250,8 @@ class App:
         def vse_curr_run(p):
             """the lip reader through the five stages of the curriculum (a job to poll): scored stage by stage"""
             def job(prog):
-                # the reader with its shipped models, and — where a speech motion library gives frame labels — with real-face
-                # models trained without the clip being read (k-fold), so the score is honest
+                # the reader with its shipped models (the real-face viseme models measured on her clips, data/lipread-real-model.json)
                 r = self.curriculum.run(self.lab, self.vse._learned(), self.vse._targets(), prog, real=self.vse.real)
-                lib_path = next((self.motionlib.path(p) for p in self.motionlib.assignments().values() if os.path.isfile(self.motionlib.path(p))), None)
-                if lib_path:
-                    with open(lib_path, encoding="utf-8") as f:
-                        cv = curriculum.cross_validate(self.curriculum, json.load(f), lab=self.lab, targets=self.vse._targets())
-                    r["held_out"] = {"stages": cv["stages"], "about": "real-face viseme models, each clip read by models trained without it (5-fold)"}
                 r["models"] = (self.vse.real or {}).get("about") or "built from the lip-sync targets (synthetic)"
                 return r
             return self.vse.submit("curriculum", job)
@@ -1580,12 +1294,53 @@ class App:
             self.speech._record(process, desc(r) if callable(desc) else desc, engine, "ok", clk)
             return r
 
+        # ---------------------------------------------------------------- talking clips (1.52): Gemini first, HeyGen when Gemini cannot
+        @a.get("/api/talk/status")
+        def talk_status(p):
+            return self.talk.status()
+
+        @a.post("/api/talk/make")
+        def talk_make(p):
+            img, name = self._talk_face(p)
+            try:
+                return self.talk.make(p.get("text") or "", img, name, p.get("lang") or "en", p.get("person") or "woman",
+                                      p.get("route") or "auto", p.get("voice") or None)
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.get("/api/talk/clip")
+        def talk_clip(p):
+            try:
+                return self.talk.get(p.get("id"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+
+        @a.get("/api/talk/list")
+        def talk_list(p):
+            return {"clips": self.talk.list(int(p.get("limit") or 50))}
+
+        @a.get("/api/talk/video")
+        def talk_video(p):
+            try:
+                path = self.talk.video_path(p.get("id"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+            with open(path, "rb") as f:
+                return f.read(), "video/mp4"
+
+        @a.post("/api/talk/delete")
+        def talk_delete(p):
+            try:
+                return self.talk.delete(p.get("id"))
+            except ValueError as e:
+                raise core.UserError(str(e))
+
         @a.get("/api/persona")
         def pe_list(p):
             k = self.speech.keys
             return {"personas": self.personas.list(), "voice_methods": persona.VOICE_METHODS, "face_methods": persona.FACE_METHODS,
-                    "consent_text": persona.CONSENT_TEXT, "local_presets": persona.LOCAL_PRESETS, "label": persona.LABEL,
-                    "keys": {x: k.configured(x) for x in ("heygen", "did", "elevenlabs", "google_cloud")}, "dimensions": {d: v[0] for d, v in photoreal.DIMENSIONS.items()},
+                    "consent_text": persona.CONSENT_TEXT, "label": persona.LABEL,
+                    "keys": {x: k.configured(x) for x in ("heygen", "did", "elevenlabs", "google_cloud", "google_gemini")}, "dimensions": {d: v[0] for d, v in photoreal.DIMENSIONS.items()},
                     "gate": {"overall": photoreal.PASS_OVERALL, "critical": photoreal.PASS_CRITICAL}, "passage": photoreal.REFERENCE_PASSAGE}
 
         @a.get("/api/persona/get")
@@ -1619,21 +1374,6 @@ class App:
             return _logged("persona", lambda r: "persona “%s” created (consent signed by %s)" % (r["name"], r["consent"]["signer"]),
                            lambda: self.personas.create(p.get("name"), p.get("signer"), p.get("consent") in (True, "true"), photo, _audio(p, "sample_b64"),
                                                         p.get("lang") or "en", p.get("landmarks"), p.get("on_behalf") in (True, "true")))
-
-        @a.post("/api/persona/library")
-        def pe_library(p):
-            return _logged("persona", lambda r: "real-mouth library: %d frames of the author's own mouth" % r["count"],
-                           lambda: self.personas.set_library(p.get("id"), p.get("items") or []))
-
-        @a.get("/api/persona/lib")
-        def pe_lib(p):
-            try:
-                pe = self.personas.get(p.get("id"))
-                ent = ((pe.get("reference") or {}).get("library") or {}).get(p.get("v") or "")
-                with open(self.personas.file_path(pe["id"], ent["file"]), "rb") as f:
-                    return f.read(), "image/jpeg"
-            except (ValueError, FileNotFoundError, TypeError, KeyError):
-                raise core.UserError("No such frame.")
 
         @a.post("/api/persona/landmarks")
         def pe_landmarks(p):
@@ -1686,13 +1426,6 @@ class App:
             return _logged("photoreal", lambda r: "%s measured: %.0f/100 — %s" % (p.get("method"), r["score"]["overall"], r["score"]["verdict"]),
                            lambda: self.prlab.measure(p.get("persona"), p.get("frames") or [], wav, p.get("text") or "", p.get("method") or "photo",
                                                       p.get("lang") or "en", p.get("info") or {}, p.get("narration"), p.get("params")), "photoreal")
-
-        @a.post("/api/photoreal/calibrate")
-        def pr_calibrate(p):
-            wav = _wav_of(p)
-            return _logged("photoreal", lambda r: "calibration round %d: %.0f/100 %s" % (r["round"], r["score"]["overall"], "PASS" if r["passed"] else "→ corrected"),
-                           lambda: self.prlab.calibrate(p.get("persona"), p.get("frames") or [], wav, p.get("text") or "", p.get("params") or photoreal.DEFAULT_PARAMS,
-                                                        p.get("lang") or "en", p.get("info") or {}, int(p.get("round") or 1)), "photoreal")
 
         @a.get("/api/photoreal/findings")
         def pr_findings(p):
@@ -1956,7 +1689,7 @@ def _fetch_text(url):
 _fetch = _fetch_text
 
 
-VENDOR = ["three/three.module.min.js", "three/VRButton.js", "three/LICENSE", "mediapipe/vision_bundle.mjs", "mediapipe/wasm/vision_wasm_internal.js",
+VENDOR = ["mediapipe/vision_bundle.mjs", "mediapipe/wasm/vision_wasm_internal.js",
           "mediapipe/wasm/vision_wasm_internal.wasm", "mediapipe/face_landmarker.task", "mediapipe/LICENSE"]
 
 
@@ -1971,7 +1704,7 @@ def lipread_active_version():
 
 
 def vendor_missing():
-    """Bundled browser libraries (3D face, face tracker) that are missing or empty."""
+    """Bundled browser libraries (the face tracker, for lip reading and measuring videos) that are missing or empty."""
     d = os.path.join(HERE, "ui", "vendor")
     return [f for f in VENDOR if not os.path.isfile(os.path.join(d, f)) or os.path.getsize(os.path.join(d, f)) < 100]
 
@@ -2040,7 +1773,7 @@ def selftest():
         c.check("harvest team attached to the shared database (Commons)", app.team is not None and ("GET", "/api/commons/status") in app.api.routes and ("GET", "/api/harvest/status") in app.api.routes and app.commons.registry.source("webster-1913") is not None
                 and app.devices is not None and ("GET", "/api/devices/openapi.json") in app.api.routes
                 and app.commons.store.path.startswith(os.environ.get("QB_COMMONS_DATA", "?")))
-        # avatar library and the 52-channel face
+        # the face library: portraits only (1.52: a face speaks only in a clip made by Gemini or HeyGen — see talkclip.py)
         import base64 as b64, struct as st, zlib as zl
         def png(w, h, rgb):
             raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
@@ -2078,126 +1811,21 @@ def selftest():
         cr = app.avatars.crop(a1["id"], png(6, 7, (9, 9, 9)))
         c.check("avatars: a full-length photo is cropped to the face, original kept", cr["width"] == 6 and app.avatars.get(a1["id"])["landmarks"] is None
                 and os.path.isfile(os.path.join(app.avatars.folder, str(a1["id"]), "original.png")) and app.avatars.image_path(a1["id"]).endswith("face.png"))
-        g = app.speech.generate("Hello there.", {"lang": "en"}, measure=False)
-        jj = app.api.routes[("POST", "/api/vse/lip_sync")]({"audio_name": g["audio"], "text": "Hello there.", "lang": "en"})
-        c.check("avatars: the face motion job finds speech the lab made (dated sub-folder)", "/" in g["audio"] and bool(jj.get("job_id")), g["audio"])
-        qc = app.avatars.set_qc(a1["id"], {"ok": False, "issues": ["aa: 1 folded triangle(s)"], "tuned": {"jawOpen": 0.9}, "poses": 18})
-        c.check("avatars: the movement check is kept with the face and cleared when it is re-analysed",
-                qc["tuned"]["jawOpen"] == 0.9 and app.avatars.get(a1["id"])["qc"]["issues"] and app.avatars.set_landmarks(a1["id"], fake) and app.avatars.get(a1["id"])["qc"] is None)
-        ql = app.qlab
-        c.check("quality lab: faces speak with the default until the admin approves a calibration", ql.active()["status"].startswith("default"))
-        webm = b"\x1aE\xdf\xa3" + b"\x00" * 64
-        try:
-            ql.add("reference", webm, {"source": ""}); ref_ok = False
-        except core.UserError:
-            ref_ok = True
-        smp = ql.add("avatar", webm, {"avatar_id": 1, "avatar_name": "T", "script": "a b c", "words_text": 3, "words_timed": 3, "duration": 2.0, "audio_duration": 1.98})
-        short = ql.add("avatar", webm + b"x", {"script": "a b c", "words_text": 3, "words_timed": 2, "duration": 1.0, "audio_duration": 2.0})
-        c.check("quality lab: a test video is complete only with every word and the whole audio; references need a source",
-                ref_ok and smp["complete"] and not short["complete"])
-        mets = {"aperture_mean": 0.5, "aperture_p90": 0.9, "width_var": 0.08, "upper_thick_cv": 0.3, "lower_thick_cv": 0.1, "velocity_p90": 6,
-                "jerk_rms": 10, "closure_rate": 0.1, "av_lag_ms": 90}
-        r1, r2 = ql.set_metrics(smp["id"], mets), ql.set_metrics(smp["id"], mets)
-        c.check("quality lab: scored against human ranges, and the next calibration is proposed the same way every time",
-                r1["score"] < 90 and r1["proposal"] == r2["proposal"] and r1["proposal"]["jaw"] < 1 and r1["proposal"]["lead_ms"] > 40
-                and r1["proposal"]["smooth_ms"] > 20 and r1["scores"]["width_var"]["score"] == 100, r1["proposal"])
-        ql.add("reference", webm + b"r", {"source": "own recording"})
-        ql.set_metrics(ql.list("reference")[0]["id"], dict(mets, aperture_mean=0.2))
-        cand = ql.save_candidate(r1["proposal"], "test")
-        ap = app.commons.approvals
-        if not ap.admin_set():
-            ap.set_admin("selftest-admin-pass")
-        try:
-            ql.approve(cand["version"], "wrong passphrase"); deny = False
-        except core.UserError:
-            deny = True
-        okp = ap.check_admin("selftest-admin-pass")
-        if okp:
-            ql.approve(cand["version"], "selftest-admin-pass", "production")
-        c.check("quality lab: human references replace the provisional ranges; only the admin approves; approved is what faces use",
-                ql.human_ranges()[1].startswith("from 1") and deny and (not okp or (ql.active()["status"] == "approved" and ql.active()["params"]["jaw"] == cand["params"]["jaw"])))
-        cues = qualitylab.srt_cues("1\n00:00:01,000 --> 00:00:03,500\nHello there, [music] world.\n\n2\n00:00:04,000 --> 00:00:05,000\n<i>Good</i> day\n")
-        tr3 = vse.timing_from_text(" ".join(["We can see the moon and the stars tonight."] * 12), "en", app.lab)
-        jaw_end = max(f["bs"][vse.ARKIT52.index("jawOpen")] for f in vse.lip_sync(tr3, None, None, fps=30, seed="x")["motion"]["frames"][-60:])
-        c.check("speech: captions become timed lines; the mouth keeps moving to the very end of long speech; lip sync analyses the whole recording",
-                cues == [{"start": 1.0, "end": 3.5, "text": "Hello there, world."}, {"start": 4.0, "end": 5.0, "text": "Good day"}] and jaw_end > 0.2
-                and "max_s" in voicedsp.measure.__code__.co_varnames)
-        # lip rounding: er (bird, her) rounds like r, the short oo of book rounds less than food, and the speaking smile
-        # relaxes while the lips round
-        ph = {w["word"]: w["phonemes"] for w in visemes.word_phonemes(["bird", "book", "food"], "en", app.lab)}
-        peak = lambda w: max(f["bs"][vse.ARKIT52.index("mouthPucker")] for f in vse.lip_sync(vse.timing_from_text(w, "en", app.lab), fps=30, seed="r")["motion"]["frames"])
-        oo = max(vse.lip_sync(vse.timing_from_text("food", "en", app.lab), fps=30, seed="r")["motion"]["frames"], key=lambda f: f["bs"][vse.ARKIT52.index("mouthPucker")])
-        c.check("lips: er rounds like r (a vowel's length kept); short oo rounds less than long oo; the smile relaxes on a pucker",
-                any(v == "RR" and w >= 1.0 for _, v, w in ph["bird"]) and peak("food") > 0.6 and 0.25 < peak("book") < 0.75 * peak("food")
-                and oo["bs"][vse.ARKIT52.index("mouthSmileLeft")] < 0.05, (ph["bird"], peak("food"), peak("book")))
-        rid = ql.list("reference")[0]["id"]
-        frs = [{"t": i / 30, "face": True, "gap": 0.4, "bs": {"jawOpen": 0.45, "eyeBlinkLeft": 1.0 if i % 60 == 0 else 0.0, "browInnerUp": 0.05 * (i % 3)},
-                "pose": [0.5 * (i % 5), 1.0 * (i % 7) - 3, 0.2]} for i in range(600)]
-        segs = [{"v": "aa" if (i // 30) % 2 else "PP", "start": i * 0.5, "end": i * 0.5 + 0.5} for i in range(40)]
-        hm = ql.learn(rid, frs, segs, "a test", [{"word": "Water", "start": 0.0, "end": 1.0}, {"word": "moon", "start": 1.0, "end": 2.0}], {"joy": 0.7, "sadness": 0.1}, "en-US")
-        g = ql.graph("word:en:water")
-        c.check("quality lab: the motion graph links words, sounds, emotions and languages to measured movement",
-                any(e["rel"] == "moves_mouth" and abs(e["stats"]["mouth"]["gap"] - 0.4) < 1e-6 for e in g["edges"])
-                and any(e["rel"] == "articulated_as" for e in g["edges"]) and g["languages"] == ["en"]
-                and any(e["src"] == "emotion:joy" for e in ql.graph()["edges"]), g["edges"][:3])
-        try:
-            ql.fetch_reference("https://ftp.example.org/x.mp4"); other = False
-        except core.UserError as e:
-            other = "allowed list" in str(e)
-        c.check("quality lab: Voice of America and US-government hosts are allowed sources; other sites are not",
-                other and bool(qualitylab.VOA_HOST.search("www.voanews.com")) and bool(qualitylab.VOA_HOST.search("www.voachinese.com"))
-                and not qualitylab.VOA_HOST.search("evilvoa.example.com"))
-        c.check("quality lab: real speakers teach the mouth shape of each sound and their blink rate and head movement",
-                abs(hm["targets"]["aa"][0] - 0.4) < 1e-6 and abs(hm["targets"]["aa"][1] - 0.45) < 1e-6 and abs(hm["style"]["blink_per_min"] - 30) < 0.5
-                and hm["style"]["pitch_sd"] > 1.5 and hm["style"]["yaw_sd"] < 1, hm["style"])
-        try:
-            ql.fetch_reference("https://www.youtube.com/watch?v=x"); yt = False
-        except core.UserError as e:
-            yt = "forbid" in str(e)
-        tr2 = vse.timing_from_text("We can see the moon and the stars tonight, and then we sleep until the morning comes.", "en", app.lab)
-        b0 = len(vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"]["blinks_s"]) if "blinks_s" in vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"] else None
-        mo_fast = vse.lip_sync(tr2, None, None, fps=30, seed="s", style={"blink_per_min": 40, "yaw_sd": 3.2})["motion"]
-        mo_def = vse.lip_sync(tr2, None, None, fps=30, seed="s")["motion"]
-        yaw = lambda mo: max(abs(f["head_pose_deg"][0]) for f in mo["frames"])
-        c.check("quality lab: YouTube and broadcasters are refused; the learned style drives the speech engine's head and blinks",
-                yt and yaw(mo_fast) > 2 * yaw(mo_def) and app.vse.human() and app.vse.human()["version"] >= 1)
-        st = [a for a in app.avatars.list() if "starter" in a["tags"]]
-        c.check("avatars: the 28 bundled starter avatars are installed and analysed, once", len(st) == 28 and all(a["analysed"] and a["source"] == "synthetic" for a in st)
-                and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(st))
-        # delivery review: Pamela ships with her reference clips; flags keep their moment, box and picture; checks are kept
-        pam = next(a for a in st if a["name"] == "Pamela — track")
-        ref = app.avatars.reference(pam["id"])
-        jpg = b"\xff\xd8\xff\xe0" + b"0" * 64
-        fl = app.api.routes[("POST", "/api/avatars/flag")]({"id": pam["id"], "t": 1.5, "box": [10, 20, 30, 40], "reason": "region", "note": "forehead jumps",
-                                                           "state": {"chan": [0.0] * 52, "head": [0, 0, 0], "t": 1.5}, "thumb": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
-        fl2 = app.avatars.flag_set(fl["id"], recheck={"badness": 0.4})
-        fl3 = app.avatars.flag_set(fl["id"], "fixed", "looks right now")
-        try:
-            app.avatars.flag_add(pam["id"], {"reason": "lips", "box": [1, 2]}); badbox = False
-        except core.UserError:
-            badbox = True
-        app.avatars.check_add(pam["id"], {"script": "x", "duration": 2.0, "score": 97, "spans": [{"kind": "lips"}]})
-        r2 = app.avatars.reference_add(pam["id"], "test clip", {k: 0.5 for k in avatars.REFERENCE_KEYS}, 100)
-        c.check("review: Pamela ships with her own reference clips; flags keep moment, box, picture and history; checks are kept; references average",
-                ref and len(ref["clips"]) >= 2 and fl["measured"] and fl["has_thumb"] and fl2["history"][-1]["recheck"]["badness"] == 0.4 and fl3["status"] == "fixed"
-                and badbox and app.avatars.checks(pam["id"])[0]["score"] == 97 and len(r2["clips"]) == len(ref["clips"]) + 1
-                and abs(r2["stats"]["brow_inner_sd"] - (sum(x["stats"]["brow_inner_sd"] * x["frames"] for x in r2["clips"]) / r2["frames"])) < 1e-3,
-                (ref, fl, r2.get("stats")))
-        app.avatars.reference_remove(pam["id"], "test clip"); app.avatars.flag_delete(fl["id"])
-        # calibration bench (1.45): the side-by-side page is shipped and wired; rounded sounds open less than "ah" and round
-        # more; the rounding-at-rest knob exists with sane bounds; recordings can be converted to MP4
-        bench = open(os.path.join(HERE, "ui", "bench.js"), encoding="utf-8").read()
-        idx = open(os.path.join(HERE, "ui", "index.html"), encoding="utf-8").read()
-        T = vse.TARGETS
-        tg = lambda v, k: T[v][vse.PARAMS.index(k)] if hasattr(vse, "PARAMS") else T[v][k]
-        af = open(os.path.join(HERE, "ui", "avatarface.js"), encoding="utf-8").read()
-        c.check("mouth shape (1.46): full-body openings taper into the corners, rounded sounds lift the top middle and drop the lower lip, lower teeth show",
-                all(x in af for x in ("taper: 1.3", "lift: 0.6", "restLevel:", "liftBand", "dropBand", "lower_teeth: 0.3", "pucker: -0.32")), "avatarface.js")
-        c.check("bench: side-by-side calibration bench is wired; oh/oo/r open less than ah and round more; rest rounding is a bounded knob",
-                "function bnSection" in bench and "bench.js" in idx and "bnSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read()
-                and tg("O", "gap") < 0.65 * tg("aa", "gap") and tg("RR", "gap") < 0.3 * tg("aa", "gap") and tg("O", "mouthPucker") >= 0.65
-                and qualitylab.BOUNDS["rest_round"] == (0.0, 0.6) and qualitylab.DEFAULTS["rest_round"] == 0.0, "targets")
-        # 1.47: her own speech movement (speech motion library from exemplar clips), teeth by the jaw, the lip-reading curriculum
+        starters = [a for a in app.avatars.list() if "starter" in a["tags"]]
+        c.check("faces: the 28 bundled starter portraits are installed, once", len(starters) == 28 and all(a["source"] == "synthetic" for a in starters)
+                and app.avatars.install_starter(os.path.join(HERE, "avatars_starter"))["installed"] == 0, len(starters))
+        tcs = talkclip.self_test()
+        c.check("talking clips (1.52): Gemini first with the October 29 instructions, HeyGen when Gemini cannot, the shared daily budget",
+                all(x["ok"] for x in tcs), [x["name"] for x in tcs if not x["ok"]])
+        ui = "".join(open(os.path.join(HERE, "ui", f), encoding="utf-8").read() for f in ("index.html", "speech.js", "talk.js", "science.js", "photoreal.js", "video.js"))
+        gone = [f for f in ("avatarface.js", "photoface.js", "face.js", "face3d.mjs", "avatars.js", "qualitylab.js", "bench.js", "review.js", "motionlib.js")
+                if os.path.exists(os.path.join(HERE, "ui", f)) or f in ui] + [w for w in ("vseLipSync", "TalkingFace", "faceCard(") if w in ui]
+        c.check("no face is animated on this computer (1.52): the animation pages, routes and modules are gone",
+                not gone and not any(r.startswith(("/api/qlab", "/api/motionlib", "/api/avatars/speak", "/api/vse/lip_sync", "/api/photoreal/calibrate"))
+                                     for _, r in app.api.routes) and "photo" not in persona.FACE_METHODS and "local" not in persona.FACE_METHODS
+                and not any(os.path.exists(os.path.join(HERE, m)) for m in ("motionlib.py", "qualitylab.py")), gone)
+        c.check("talking-clip routes (1.52)", all((m, r) in app.api.routes for m, r in (("GET", "/api/talk/status"), ("POST", "/api/talk/make"),
+                ("GET", "/api/talk/clip"), ("GET", "/api/talk/video"), ("GET", "/api/talk/list"), ("POST", "/api/talk/delete"))))
         sst = speechsci.self_test()
         c.check("Speech Science Protocol (1.51): factors, formula, human limits, verdict, group statistics and reports", all(g for _, g, _ in sst),
                 [n for n, g, _ in sst if not g])
@@ -2206,79 +1834,21 @@ def selftest():
                 len(vv) >= 100 and any(v["code"] == "sw" for v in vv) and (speech.speak_any("habari", "sw") or b"")[:4] == b"RIFF", len(vv))
         c.check("Speech science routes (1.51)", all((m, r) in app.api.routes for m, r in (("GET", "/api/science/voices"), ("POST", "/api/science/speak"),
                 ("POST", "/api/science/read"), ("POST", "/api/science/measure"), ("POST", "/api/science/compare"), ("GET", "/api/science/report"))))
-        c.check("speech motion library (1.47): analysis, Viterbi joining and synthesis are deterministic and correct", all(g for _, g in motionlib.self_test()),
-                [n for n, g in motionlib.self_test() if not g])
         c.check("lip-reading curriculum (1.47): five stages, look-alike credit", all(g for _, g in curriculum.self_test()) and len(curriculum.STAGES) == 5)
-        mlj = open(os.path.join(HERE, "ui", "motionlib.js"), encoding="utf-8").read()
-        c.check("speech motion library is wired: Avatar studio builds it from exemplars, the renderer plays it, teeth follow the jaw",
-                "motionlib.js" in idx and "mlSection" in open(os.path.join(HERE, "ui", "review.js"), encoding="utf-8").read() and "function mlAnalyse" in mlj
-                and all(x in af for x in ("_mouthAt(track, t)", "_jawTeeth()", "MOUTH_CH")) and ("POST", "/api/motionlib/clip") in app.api.routes
-                and ("POST", "/api/motionlib/assign") in app.api.routes and ("POST", "/api/vse/curriculum/run") in app.api.routes, "routes")
-        pams = [a for a in st if a["name"].startswith("Pamela")]
-        asg = app.motionlib.assignments()
-        c.check("avatars speak with the classic mouth model by default (1.50); her movement library is installed, ready to choose",
-                len(pams) == 4 and not any(str(a["id"]) in asg for a in pams) and os.path.isfile(app.motionlib.path("pamela"))
-                and app.motionlib.motion_for(pams[0]["id"]) is None, (len(pams), asg))
-        app.motionlib.assign(pams[0]["id"], "pamela")
-        mo = app.motionlib.motion_for(pams[0]["id"])
-        c.check("…and an avatar the admin chooses it for keeps it (it is not reset on the next start)",
-                mo is not None and len(mo.lib["clips"]) >= 40 and app.motionlib.keep_chosen_only() == [], len(mo.lib["clips"]) if mo else None)
-        app.motionlib.assign(pams[0]["id"], None)
-        if mo is not None:
-            tr = vse.timing_from_text("Who knew the blue moon would move through the room so soon?", "en", app.lab)
-            ph = [{"viseme": v["v"], "start_time": v["start"], "end_time": v["end"]} for v in tr["visemes"]]
-            sy = mo.synthesize(ph, tr["duration"])
-            c.check("her movement covers new speech: every sound finds a unit of her own, many joined as she said them",
-                    sy["units"]["covered"] == sy["units"]["sounds"] and sy["units"]["joined_as_recorded"] >= 3 and sy == mo.synthesize(ph, tr["duration"]), sy["units"])
         cl = app.curriculum.clips()
         c.check("the lip-reading curriculum ships with her clips for all five stages", len(cl) >= 40 and {curriculum.STAGE_OF[x["item"]] for x in cl} == {1, 2, 3, 4, 5}, len(cl))
         # 1.48: the lip reader's mouth shapes measured on her real face (held-out check), Speech-to-Text word times for new speech
         rm = app.vse.real or {}
         c.check("lip reader (1.48): viseme models measured on real faces ship and are loaded", len(rm.get("visemes") or {}) >= 12 and rm.get("frames", 0) >= 3000,
                 (len(rm.get("visemes") or {}), rm.get("frames")))
-        s1 = [x["item"] for x in cl if curriculum.STAGE_OF[x["item"]] == 1]
-        lp = app.motionlib.path("pamela")
-        if os.path.isfile(lp):
-            with open(lp, encoding="utf-8") as f:
-                cv = curriculum.cross_validate(app.curriculum, json.load(f), lab=app.lab, only=s1)
-            sy1 = app.curriculum.run(app.lab, None, None, only=s1)
-            a1, b1 = cv["stages"][0]["strict"] or 0, sy1["stages"][0]["strict"] or 0
-            c.check("lip reader (1.48): held-out real-face models read stage 1 better than the synthetic models (no clip read by a model trained on it)",
-                    a1 > b1 and cv == curriculum.cross_validate(app.curriculum, json.load(open(lp, encoding="utf-8")), lab=app.lab, only=s1), (a1, b1))
+        rm = app.vse.real or {}
+        c.check("lip reader (1.48): viseme models measured on real faces ship and are loaded", len(rm.get("visemes") or {}) >= 12 and rm.get("frames", 0) >= 3000,
+                (len(rm.get("visemes") or {}), rm.get("frames")))
         ft = visemes.fit_word_times("She sells sixty seashells.", [{"word": "she", "start_s": 0.5, "end_s": 0.7}, {"word": "sells", "start_s": 0.7, "end_s": 1.0},
                                                                     {"word": "60", "start_s": 1.0, "end_s": 1.4}, {"word": "seashells", "start_s": 1.4, "end_s": 2.0}])
-        c.check("lip sync (1.48): Speech-to-Text word times are fitted to the script's words (unheard words placed between their neighbours)",
+        c.check("word timing (1.48): Speech-to-Text word times are fitted to the script's words (unheard words placed between their neighbours)",
                 ft and [w["word"] for w in ft] == ["She", "sells", "sixty", "seashells"] and ft[2]["start_s"] == 1.0 and ft[2]["end_s"] == 1.4
                 and visemes.fit_word_times("one two three four", [{"word": "five", "start_s": 0, "end_s": 1}]) is None and not app.vse.stt_timing, ft)
-        bodies = [a for a in st if a["kind"] == "body"]
-        c.check("avatars: full-body avatars (Pamela ×3) are kept whole — tagged, analysed, not marked down for a small face",
-                len(bodies) == 3 and all("body" in a["tags"] and not any("small" in q for q in a["quality"] or []) for a in bodies)
-                and any(a["name"] == "Pamela" and a["kind"] == "face" for a in st), [a["name"] for a in bodies])
-        stad = next((a for a in bodies if a["name"] == "Pamela — stadium"), None)
-        tm = stad and app.avatars.turn(stad["id"])
-        c.check("avatars: Pamela's turnaround (her own side and back views) comes with her stadium avatar, aligned and timed",
-                bool(tm) and tm["frames"] == 81 and tm["end"] == 80 and os.path.isfile(app.avatars.turn_frame(stad["id"], 40)) and stad["turn"], tm and tm["frames"])
-        trk = next((a for a in bodies if a["name"] == "Pamela — track"), None)
-        tt = trk and app.avatars.turn(trk["id"])
-        c.check("avatars: her full-length turnaround comes with the track avatar (face found by zooming on the head)",
-                bool(tt) and tt["frames"] == 97 and trk["turn"] and sum(1 for y in tt["yaw"] if y is not None) >= 40, tt and tt["frames"])
-        mv = trk and app.avatars.motions(trk["id"])
-        c.check("avatars: Pamela's motion library — turn around, arm swings, boxing, side kick, cartwheel, walk, high knee, water break, swimming — each with its words",
-                bool(mv) and {m["slug"] for m in mv} == {"turn-around", "arm-swings", "boxing", "side-kick", "cartwheel", "walk-to-you", "high-knee", "water-break", "swimming", "swimming-2"}
-                and all(m["words"] and m["frames"] >= 10 for m in mv) and trk["motions"][0] == "turn-around"
-                and os.path.isfile(app.avatars.motion_frame(trk["id"], "swimming", 0)), [m["slug"] for m in mv or []])
-        an = trk and app.avatars.anatomy(trk["id"])
-        c.check("avatars: a second swimming take (she alternates) and her body proportions learned from her standing footage",
-                bool(an) and abs(an["face_per_width"] - 0.294) < 0.01 and app.avatars.motion(trk["id"], "swimming-2")["take_of"] == "swimming", an)
-        tr = vse.timing_from_text("Peter thinks the blue boat is lovely.", "en", app.lab)
-        mo = vse.lip_sync(tr, None, {"joy": 0.4}, fps=30, seed="t")["motion"]
-        bs = mo["frames"][len(mo["frames"]) // 2]["bs"]
-        col = lambda k: [f["bs"][vse.ARKIT52.index(k)] for f in mo["frames"]]
-        c.check("face: all 52 ARKit channels per frame, in range", len(vse.ARKIT52) == 52 == len(set(vse.ARKIT52)) == len(bs) and all(0 <= x <= 1 for x in bs)
-                and mo["bs_names"] == vse.ARKIT52)
-        c.check("face: lips close on p/b, tongue shows on th, eyes blink, smile lifts the cheeks",
-                max(col("mouthPressLeft")) > 0.3 and max(col("tongueOut")) > 0.3 and max(col("eyeBlinkLeft")) > 0.5 and max(col("cheekSquintLeft")) > 0.1)
-        c.check("face: 52-channel CSV for Live Link Face / Blender / Unreal", vse.arkit52_csv(mo).splitlines()[0].split(",")[1:53] == vse.ARKIT52)
         app.set_settings("es", 5)
         s = app.session("es", "type")
         c.check("first session offers 5 new words", s["new"] == 5 and s["due"] == 0 and len(s["items"]) == 5, s["new"])
@@ -2424,7 +1994,7 @@ def selftest():
 
 
 def _vse_selftest(c):
-    """Visual Speech Engine (stage 1): audio analysis, lip-sync motion, lip reading, face analysis, determinism."""
+    """Visual Speech Engine (stage 1): audio analysis, the mouth model the lip reader uses, lip reading, face analysis, determinism."""
     import voicedsp
     wav = voicedsp.formant_wav(["pæt", "mɛt", "bʌb"])
     a = vse.aps(wav, "pat met bob")
@@ -2439,12 +2009,11 @@ def _vse_selftest(c):
     fr = ls["motion"]["frames"]
     pp = [s_ for s_ in tr["visemes"] if s_["v"] == "PP"]
     mid = lambda s_: fr[int((s_["start"] + s_["end"]) / 2 * 100)]["mouth"]
-    c.check("VSE lip sync: every p, b and m closes the lips", pp and all(mid(s_)[0] < 0.02 for s_ in pp), [round(mid(s_)[0], 3) for s_ in pp])
+    c.check("VSE mouth model (for lip reading): every p, b and m closes the lips", pp and all(mid(s_)[0] < 0.02 for s_ in pp), [round(mid(s_)[0], 3) for s_ in pp])
     u = next(s_ for s_ in tr["visemes"] if s_["v"] == "U")
     pk = vse.PARAMS.index("mouthPucker")
-    c.check("VSE lip sync: lips round ahead of 'oo' (coarticulation)", fr[int((u["start"] - 0.03) * 100)]["mouth"][pk] > 0.3 * vse.TARGETS["U"][pk])
-    c.check("VSE lip sync: deterministic", json.dumps(vse.lip_sync(tr, None, None, fps=100, seed="t")) == json.dumps(ls))
-    c.check("VSE lip sync: ARKit blendshape export", vse.arkit_csv(ls["motion"]).startswith("time_s,jawOpen,mouthClose"))
+    c.check("VSE mouth model (for lip reading): lips round ahead of 'oo' (coarticulation)", fr[int((u["start"] - 0.03) * 100)]["mouth"][pk] > 0.3 * vse.TARGETS["U"][pk])
+    c.check("VSE mouth model (for lip reading): deterministic", json.dumps(vse.lip_sync(tr, None, None, fps=100, seed="t")) == json.dumps(ls))
     rnd = vse._rng("selftest")
     spk = {"scale": 1.0, "offset": [0.0] * len(vse.PARAMS), "rate": 4.5, "noise": 0.02, "jitter": 0.0, "fps": 30}
     frames, truth, _ = vse.synthetic_frames("please open the window", spk, rnd)
@@ -2459,12 +2028,12 @@ def _vse_selftest(c):
     c.check("VSE face analysis: pose, camera, lighting, identity", v["head_pose_deg"]["yaw"]["mean"] == 5 and v["camera_motion"]["verdict"] == "steady"
             and v["lighting_sh1"]["from"] == "front" and v["identity"]["same_face_throughout"] is True, v)
     eng = vse.Engine()
-    j = eng.submit("lip_sync", lambda prog: vse.lip_sync(vse.timing_from_text("hello there"), fps=30))
+    j = eng.submit("lip_read", eng.lip_read_job(frames, "en", (), "please open the window"))
     for _ in range(200):
         if eng.status(j["job_id"])["status"] in ("completed", "failed"):
             break
         time.sleep(0.02)
-    c.check("VSE jobs: a lip-sync job runs in the background and completes", eng.status(j["job_id"])["status"] == "completed")
+    c.check("VSE jobs: a lip-reading job runs in the background and completes", eng.status(j["job_id"])["status"] == "completed")
 
 
 def _coach_selftest(c):
@@ -2544,7 +2113,7 @@ def _coach_selftest(c):
 
 
 def _persona_selftest(c):
-    """Author Narrator: consent rules, voice by clone or offline match, video by HeyGen, D-ID or a local model —
+    """Author Narrator: consent rules, voice by clone or offline match, video by Gemini, HeyGen or D-ID —
     every cloud request checked against a stand-in server; keys never logged."""
     import http.server, threading as _th
     if not speech.find_espeak():
@@ -2622,8 +2191,6 @@ def _persona_selftest(c):
             v = P.set_voice(pe["id"], "elevenlabs")
             c.check("Author narrator: ElevenLabs voice clone made from the sample (stand-in server)", v["voice"] == "VOICE123" and "/v1/voices/add" in seen["paths"])
             P.set_voice(pe["id"], "offline")
-            r = P.narrate(pe["id"], "Welcome to my book. Let me read the first chapter to you.")
-            c.check("Author narrator: photo narration returns the voice and the timed mouth track at once", r["status"] == "done" and r["audio"] and len(r["track"]["visemes"]) > 10 and "AI narrator" in r["label"])
 
             def wait(nid):
                 for _ in range(200):
@@ -2642,22 +2209,16 @@ def _persona_selftest(c):
                     and not any(x.startswith(("/v1/", "/v2/")) and "voices" not in x for x in seen["paths"]), n1["detail"])
             n2 = wait(P.narrate(pe["id"], "This chapter is about rivers.", "did")["id"])
             c.check("Author narrator: D-ID talk video made and saved (stand-in server)", n2["status"] == "done" and n2["video"] and "/talks" in seen["paths"], n2["detail"])
-            script = os.path.join(d, "fake model.py")
-            with open(script, "w") as f:
-                f.write("import sys, os\nface, audio, out = sys.argv[1:4]\nassert os.path.getsize(face) > 0 and os.path.getsize(audio) > 0\n"
-                        "open(out, 'wb').write(bytes(5000))\n")
-            P.set_face(pe["id"], "local", {"command": '"%s" "%s" {face} {audio} {out}' % (sys.executable, script)})
-            n3 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
-            c.check("Author narrator: a local model (Wav2Lip-style command, paths with spaces) makes the video", n3["status"] == "done" and n3["video"], n3["detail"])
-            script2 = os.path.join(d, "folder_model.py")
-            with open(script2, "w") as f:
-                f.write("import sys, os\nd = os.path.join(sys.argv[1], 'run'); os.makedirs(d)\nopen(os.path.join(d, 'result.mp4'), 'wb').write(bytes(5000))\n")
-            P.set_face(pe["id"], "local", {"command": '"%s" "%s" {outdir}' % (sys.executable, script2)})
-            n4 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
-            c.check("Author narrator: a model that writes into a folder (SadTalker-style) is found", n4["status"] == "done", n4["detail"])
-            P.set_face(pe["id"], "local", {"command": '"%s" -c "import sys; sys.exit(3)"' % sys.executable})
-            n5 = wait(P.narrate(pe["id"], "This chapter is about rivers.")["id"])
-            c.check("Author narrator: a failing model is reported, not hidden", n5["status"] == "failed" and "exit 3" in n5["detail"])
+            P.set_face(pe["id"], "gemini")
+            n3 = wait(P.narrate(pe["id"], "Welcome to my book. Let me read the first chapter to you.")["id"])
+            c.check("Author narrator (1.52): the default face is Gemini; without a Gemini key HeyGen makes it with the persona's voice",
+                    n3["status"] == "done" and n3["video"] and n3["face_method"] == "heygen" and "made by HeyGen" in n3["detail"], n3["detail"])
+            try:
+                P.set_face(pe["id"], "local"); local_ok = True
+            except ValueError:
+                local_ok = False
+            c.check("Author narrator (1.52): no face is animated on this computer (photo and local methods are gone)",
+                    not local_ok and set(persona.FACE_METHODS) == {"gemini", "heygen", "did"})
             logs = json.dumps(inst.store.query("SELECT * FROM qb_activity")) + json.dumps(inst.speech.history(500)) + json.dumps(inst.store.query("SELECT * FROM narrations"))
             c.check("Author narrator: no provider key appears in any log", not any(k in logs for k in ("el-TESTKEY", "hg-TESTKEY", "did-TESTKEY")))
             dl = P.delete(pe["id"])
@@ -2673,7 +2234,7 @@ def _persona_selftest(c):
 
 def _photoreal_selftest(c):
     """Photo Real Lab: one perfect sample → the author's mouth model → any rendering measured against what the
-    author would do for the same words; the gate catches bad sync and wrong shapes; calibration converges; the
+    author would do for the same words; the gate catches bad sync and wrong shapes; the
     proven settings hold for new text; findings are QueryBook (UFCS) fact packets."""
     import math as _m, random as _r
     if not speech.find_espeak():
@@ -2725,19 +2286,11 @@ def _photoreal_selftest(c):
         flat = L.measure(pe["id"], render(dict(author, gap_gain=0.35), track, 4), wav, text, "flat mouth", "en", info)["score"]
         c.check("Photo Real Lab: bad sync and a flat mouth fail, each on the right dimension",
                 not bad["passed"] and any("timing" in f for f in bad["failed"]) and not flat["passed"] and any("lip opening" in f for f in flat["failed"]))
-        params = dict(photoreal.DEFAULT_PARAMS, shapes={v: {"gap": x["gap"] * 0.6, "width": x["width"] * 1.15} for v, x in author["shapes"].items()}, lead_ms=0, smooth_ms=120)
-        rounds = 0
-        for rounds in range(1, 7):
-            r = L.calibrate(pe["id"], render(params, track, 10 + rounds), wav, text, params, "en", info, rounds)
-            if r["passed"]:
-                break
-            params = r["next_params"]
-        c.check("Photo Real Lab: calibration takes a wrongly set renderer to PASS (closed loop)", r["passed"] and rounds <= 4, "%d rounds" % rounds)
         new = "Please bring the big map to the meeting tomorrow morning, and thank you for your help."
         w2 = speech.speak_wav(new, "en-us")
         t2 = visemes.align(new, w2, "en")
-        nt = L.measure(pe["id"], render(params, t2, 21), w2, new, "photo", "en", info)["score"]
-        c.check("Photo Real Lab: the proven settings pass on new words never seen in the reference", nt["passed"], nt["verdict"])
+        nt = L.measure(pe["id"], render(author, t2, 21), w2, new, "real footage (new words)", "en", info)["score"]
+        c.check("Photo Real Lab: the author's own delivery passes on new words never seen in the reference", nt["passed"], nt["verdict"])
         f = L.findings(pe["id"])
         c.check("Photo Real Lab: findings rank the methods by pass rate and name their failures",
                 f["methods"][0]["pass_rate"] >= f["methods"][-1]["pass_rate"] and any(m["most_common_failures"] for m in f["methods"]))
@@ -2746,23 +2299,6 @@ def _photoreal_selftest(c):
         fp = _h.sha256("|".join([" ".join(str(x).strip().lower().split()) for x in (row["subject"], row["predicate"], row["object"])] + ["+"]).encode()).hexdigest()
         lines = L.export_ufcs().strip().split("\n")
         pk = json.loads(lines[0])
-        kf = inst.personas.get(pe["id"])["reference"]["keyframes"]
-        mdl_g = md["gap"]
-        frames_ref = render(author, track, 1)
-        lead = md["lead_ms"] / 1000.0
-        good = 0
-        for v_, t_ in kf.items():
-            if v_ in ("rest", "blink"):
-                continue
-            f_ = min(frames_ref, key=lambda f: abs(f["t"] - t_))
-            seg = [x for x in track["visemes"] if x["v"] == v_ and x["start"] <= t_ + lead <= x["end"]]
-            good += bool(seg) and abs(f_["gap"] - mdl_g[v_]) < 0.08
-        c.check("Photo Real Lab: the real-mouth library picks, for each sound, a frame inside that sound that matches the author's model",
-                "rest" in kf and good >= 0.8 * (len(kf) - 1 - ("blink" in kf)), "%d of %d" % (good, len(kf)))
-        lm = [[0.5, 0.5]] * 478
-        jpg = "data:image/jpeg;base64," + __import__("base64").b64encode(b"\xff\xd8\xff\xe0" + bytes(500)).decode()
-        lib = P.set_library(pe["id"], [{"v": v_, "image_b64": jpg, "landmarks": lm} for v_ in kf] + [{"v": "nonsense", "image_b64": jpg, "landmarks": lm}])
-        c.check("Photo Real Lab: the library stores the author's own frames (only the chosen ones)", lib["count"] == len(kf) and "nonsense" not in lib["frames"])
         closed = [[0.5, 0.5]] * 478
         closed[13], closed[14], closed[61], closed[291], closed[1], closed[234], closed[454] = [0.5, 0.60], [0.5, 0.605], [0.4, 0.6], [0.6, 0.6], [0.5, 0.45], [0.3, 0.45], [0.7, 0.45]
         opened = [list(x) for x in closed]; opened[14] = [0.5, 0.66]
