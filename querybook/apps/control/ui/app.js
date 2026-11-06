@@ -183,9 +183,34 @@ async function loadBulk() {
     : r.working_copies ? `<p class="small">Writing on C: (fast): <b>${QB.num(onC)}</b> dataset(s) · saved to D:\QB every 10 min` +
       (direct ? ` · <span class="badge bad">${QB.num(direct)} writing straight to D: (slow)</span>` : "") +
       (r.work_free_bytes != null ? ` · ${QB.bytes(r.work_free_bytes)} free on C:` : "") + `</p>` : "";
+  bkDownload(r.download);
   const se = r.datasets.find(d => d.key === "wikidata-series");
   $("#bk-slots").innerHTML = se && se.slots && se.slots.length ? se.slots.map(x => `${esc(x.series)}: ${fmt(x.filled)} of ${fmt(x.expected)} editions filled`).join(" · ")
     : "Not filled yet — start “Recurring events” (Wikidata answers one query a minute).";
+}
+// ---- download once, read locally (bulk engine 1.31)
+function bkDownload(d) {
+  if (!d || !$("#bk-dl")) return;
+  const u = d.under_way, rd = d.ready, bits = [];
+  if (!d.on) bits.push('<span class="badge warn">off</span> the lanes stream the dump over the internet (slow)');
+  else if (u) bits.push(`<b>${u.phase === "checking" ? "Checking" : "Downloading"} the ${esc(u.edition)} edition</b> — ` +
+    (u.phase === "checking" ? `${QB.bytes(u.checked_bytes || 0)} of ${QB.bytes(u.size)} checked against Wikimedia's published checksum`
+      : `${QB.bytes(u.bytes)} of ${QB.bytes(u.size)}` + QB.bar(u.share, (u.rate_mb_s ? u.rate_mb_s + " MB/s" : "") + (u.eta_s ? " · " + QB.left(u.eta_s) : ""))) +
+    (u.sources ? `<div class="muted">From ${u.sources.map(s => `${esc(s.host)} (${s.connections} connection${s.connections > 1 ? "s" : ""}, ${QB.bytes(s.bytes)})`).join(" · ")}</div>` : "") +
+    `<div class="muted">The lanes start by themselves when the file is ready${rd ? "; until then they read the " + esc(rd.edition) + " copy" : ""}.</div>`);
+  if (rd) bits.push(`<span class="badge good">ready</span> edition <b>${esc(rd.edition)}</b>, ${QB.bytes(rd.size)} — ${esc(rd.checked || "")}` +
+    (rd.seconds ? ` · downloaded in ${QB.dur(rd.seconds)}` : ""));
+  else if (d.on && !u) bits.push("Not downloaded yet: press ⚡ Start harvesting — the download runs first, then the lanes.");
+  bits.push(`<span class="muted">Folder: ${esc(d.folder)}${d.free_bytes != null ? " · " + QB.bytes(d.free_bytes) + " free" : ""}</span>`);
+  $("#bk-dl").innerHTML = bits.map(b => `<div>${b}</div>`).join("");
+  $("#bk-dl-on").checked = !!d.on;
+  if (document.activeElement !== $("#bk-dl-folder") && !$("#bk-dl-folder").dataset.typed) $("#bk-dl-folder").value = d.folder_setting || "";
+}
+async function bkDownloadSave() {
+  try {
+    const d = await api("/api/bulk/download-settings", { folder: $("#bk-dl-folder").value, on: $("#bk-dl-on").checked, passphrase: $("#bk-pass").value });
+    $("#bk-dl-folder").dataset.typed = ""; toast("Saved — the dump is kept in " + d.folder); bkDownload(d);
+  } catch (e) { toast(e.message); }
 }
 // ---- the fact gatherer
 async function loadKeystones() {
@@ -278,6 +303,9 @@ function bind() {
     try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
     $("#cn-test-all").disabled = false; };
   $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
+  $("#bk-dl-save").onclick = bkDownloadSave;
+  $("#bk-dl-on").onchange = bkDownloadSave;
+  $("#bk-dl-folder").oninput = () => { $("#bk-dl-folder").dataset.typed = "1"; };
   $("#bk-refresh").onclick = () => { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); };
   $("#ga-probe").onchange = () => { if ($("#ga-probe").value) $("#ga-q").value = $("#ga-probe").value; };
   $("#ga-ask").onclick = () => gatherStart({ mode: "ask", area: $("#ga-area").value, question: $("#ga-q").value });

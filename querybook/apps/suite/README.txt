@@ -43,6 +43,22 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Download once, read locally: the Wikidata harvest without the wait (Control Panel 1.33.0, bulk engine 1.31.0)
+    * The weekly Wikidata dump (about 157 GB) is now downloaded ONCE to a drive, then all 16 lanes read it from there at
+      disk speed. Before, each lane fetched its own part over the internet; the servers allow only a few connections
+      per computer, so 13 of 16 lanes waited and a restarted lane began its part again (about 1 million facts an hour).
+    * The download is the first agent when you press ⚡ Start harvesting. It uses Wikimedia's server and the official
+      mirrors at once (only those holding the identical file, each within its own connection limit: Wikimedia 2, the
+      mirrors 3-4), in 64 MB pieces; a server that says "slow down" rests while the others carry on. It resumes after a
+      stop, a crash or an unplugged drive, and the finished file is checked against the MD5 Wikimedia publishes; a file
+      that does not match is never used.
+    * The lanes wait for it (they look again every 2 minutes), then read the copy. Work already done while streaming the
+      same edition is kept (the parts have the same names). Every fact still names the publisher's edition date.
+    * Control Panel → Harvesting → ⬇ Download once: progress, speed, time left, bytes from each server, the ready edition
+      and how it was checked, and the folder. Two weekly editions are kept (about 320 GB). To use a new large drive
+      (e.g. a 40 TB OWC Gemini RAID), type a folder on it and Save: the next download goes there. Untick the box to
+      stream as before.
+    * Not built yet: several computers sharing the work, and the daily change files (keeping up between weekly dumps).
   Talking faces are made by Gemini again, as on October 29; the local face animation is gone (Language Builder 1.52.0, Video Studio 1.1.0)
     * Every speaking face is now a video made by a video model. Language Builder → Speech → 🎬 Talking clips: choose a
       portrait (Pamela and the other starter faces, or any picture), type the line, Make the clip. Gemini performs it

@@ -334,6 +334,12 @@
       <div class="row"><button class="btn" id="hr-run">📋 Health report</button><span class="small muted">a few plain lines: health, speed, the main delay and what QueryBook does about it, what recovered by itself</span></div>
       <pre id="hr-out" style="white-space:pre-wrap;font-size:1.05em;line-height:1.45;display:none;padding:12px;border-radius:8px;background:var(--panel2,rgba(127,127,127,.08))"></pre>
       <div id="bk-where"></div>
+      <div class="card" id="bk-dl-card" style="margin:8px 0"><h3 style="margin-top:0">⬇ Download once, read locally <span class="small muted">— the Wikidata dump fetched once to a drive, then all 16 lanes read it from there</span></h3>
+        <div id="bk-dl" class="small"></div>
+        <div class="row small" style="margin-top:6px"><label><input type="checkbox" id="bk-dl-on" checked> Lanes read the downloaded copy (off: they stream over the internet as before)</label></div>
+        <div class="row small"><input id="bk-dl-folder" placeholder="Folder for the dump (about 160 GB a week, two weeks kept), e.g. E:\QB-dumps" style="flex:1;min-width:18em">
+          <button class="btn quiet" id="bk-dl-save">Save</button></div>
+        <p class="small muted">Empty = the shared folder's <i>dumps</i> folder. For a new large drive (e.g. the OWC Gemini), type a folder on it and Save; the next download goes there.</p></div>
       <div id="bk-summary" class="row"></div>
       <div class="row"><button class="btn quiet" id="bk-why">🩺 Detailed checks</button>
         <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">

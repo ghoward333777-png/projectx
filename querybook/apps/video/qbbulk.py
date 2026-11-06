@@ -27,10 +27,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
 import qbscaffold as sc  # noqa: E402
 import qbkeystone as ks  # noqa: E402
+import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on the data drive)
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.30.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.31.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -1096,7 +1097,7 @@ class WikidataDump(Dataset):
         self.why = ("the prototype's main source: people, places, works, organisations, taxa and their dates — every item of "
                     "Wikidata, streamed by %d agents side by side" % self.lanes)
         self.size, self.edition, self.base, self.props = None, "", None, dict(self.PROPS)
-        self.mirrors, self.sources, self.slots = list(self.MIRRORS), None, None
+        self.mirrors, self.sources, self.slots, self.local = list(self.MIRRORS), None, None, None
 
     def catalogue(self, folder, fetch=True):
         """{property: name} for every property of a kept kind — QueryBook's own names for the ones it named before (so earlier
@@ -1182,6 +1183,8 @@ class WikidataDump(Dataset):
         url = self.base or self.URL
         url, self.sources = self._sources(url)
         self.size, self.edition = self._head(url)
+        if self.local:                         # the downloaded copy: named by its own edition, so parts done while
+            self.edition = self.local["edition"]   # streaming the same edition are not read again
         n = -(-self.size // self.PART)
         return [("%s part %04d of %04d" % (self.edition, i + 1, n), "%s#%d-%d" % (url, i * self.PART, min(self.size, (i + 1) * self.PART)))
                 for i in range(n) if i % self.lanes == self.lane - 1]
@@ -1192,6 +1195,14 @@ class WikidataDump(Dataset):
             self.mirrors = [tuple(m) for m in json.loads(run.commons.setting("bulk:wikidata:mirrors") or "null")] or list(self.MIRRORS)
         except (ValueError, TypeError):
             self.mirrors = list(self.MIRRORS)
+        if not self.base and local_mode(run.commons):                 # 1.31: download once, read locally
+            dumps = dumps_folder(run.folder, run.commons)
+            r = qbdump.ready(dumps)
+            if not r:
+                pg = qbdump.progress(dumps)
+                raise Busy(WAITING + (" (%d%% downloaded%s)" % (round(100 * pg["share"]), ", about %d min left" % (pg["eta_s"] // 60)
+                                                                       if pg.get("eta_s") else "") if pg else " (starting)"))
+            self.local, self.base = r, "file://" + urllib.request.pathname2url(r["path"])
         self.slots = Slots(run.folder, halt=run.stopped)
         if (run.commons.setting("bulk:wikidata:properties") or "all") == "all":
             self.props = self.catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
@@ -1292,6 +1303,65 @@ class WikidataDump(Dataset):
         return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
 
 
+WAITING = "waiting for the one download of the Wikidata dump to the data drive"
+
+
+def local_mode(commons):
+    """download once, read locally (on unless the admin sets bulk:wikidata:local to off, which streams as before 1.31)"""
+    return (commons.setting("bulk:wikidata:local") or "on") != "off"
+
+
+def dumps_folder(commons_folder, commons=None):
+    return qbdump.folder_for(commons_folder, commons.setting("bulk:dumps:folder") if commons is not None else None)
+
+
+class WikidataDownload(Dataset):
+    """the weekly Wikidata dump downloaded ONCE to the data drive (qbdump): every server holding the identical file at
+    once, each within its own connection limit, checked against Wikimedia's published MD5. The 16 lanes then read that
+    copy at disk speed. No facts of its own; finished, it looks for a new weekly edition once a day."""
+    key, app, source = "wikidata-download", "facts", "wikidata"
+    title = "Wikidata — one download of the dump to the data drive (the lanes read it from there)"
+    licence = "CC0 1.0 (Wikidata)"
+    why = "the dump fetched once instead of by 16 lanes over the internet: no lane waits for a connection"
+    approx = "about 157 GB, once a week"
+    standalone = True
+
+    def sources(self, commons):
+        try:
+            mirrors = [tuple(m) for m in json.loads(commons.setting("bulk:wikidata:mirrors") or "null")] or list(WikidataDump.MIRRORS)
+        except (ValueError, TypeError):
+            mirrors = list(WikidataDump.MIRRORS)
+        out, hosts = [], {}
+        for u, n in [(WikidataDump.URL, WikidataDump.PRIMARY_CONNECTIONS)] + mirrors:
+            h = _host(u)                                   # one server, one limit: two addresses on one host share it
+            if h in hosts:
+                out[hosts[h]] = (out[hosts[h]][0], max(out[hosts[h]][1], int(n)))
+            else:
+                hosts[h] = len(out); out.append((u, int(n)))
+        return out
+
+    def run_alone(self, run):
+        if not local_mode(run.commons) or run.commons.setting("bulk:url:wikidata-dump"):
+            return {"dataset": self.key, "state": "done", "new": 0, "why": "not used: the lanes stream the dump (bulk:wikidata:local is off)"}
+        why = run.stopped()
+        if why:
+            return {"dataset": self.key, "state": "blocked" if "registry" in why else "stopped", "why": why, "new": 0}
+        dumps = dumps_folder(run.folder, run.commons)
+
+        def meter(n):
+            METER.done += n
+        log = lambda *a: TR.event("download", note=" ".join(str(x) for x in a))
+        try:
+            r = qbdump.Download(dumps, self.sources(run.commons), meter=meter, stop=run.stopped, log=log,
+                                min_free_gb=float(run.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)).fetch()
+        except qbdump.Busy as e:
+            stop = "Control Panel" in str(e)
+            return {"dataset": self.key, "state": "stopped" if stop else "paused", "why": str(e), "new": 0, "retry": not stop}
+        if not r.get("already"):
+            run.log("edition %s" % r["edition"], 0, 0, 0, 0, r.get("seconds") or 0, reason="downloaded to %s; %s" % (dumps, r["checked"]))
+        return {"dataset": self.key, "state": "done", "new": 0, "edition": r["edition"], "why": "ready: %s" % r["checked"]}
+
+
 def lane_keystones(commons_folder, key):
     """{keystone: facts} a Wikidata lane has counted (qbkeystone.coverage scales it to the shard's count)"""
     p = shard_path(commons_folder, key) + ".labels"
@@ -1326,7 +1396,7 @@ def wd_labels(commons_folder, qids):
 
 
 def catalog():
-    return {d.key: d for d in (PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -1837,6 +1907,13 @@ def run_dataset(commons_folder, key, max_rows=None):
     run = Run(commons_folder, ds, max_rows)
     TR.from_commons(run.commons, "bulk-%s-%d" % (key, os.getpid()), dataset=key)
     TR.add("open_commons", _NS() - t_open)
+    if getattr(ds, "standalone", False):              # a job with no shard of its own (the one dump download)
+        try:
+            r = ds.run_alone(run)
+            TR.event("run", phase="end", dataset=key, state=r.get("state"), why=str(r.get("why") or "")[:300])
+            return r
+        finally:
+            TR.close()
     t = _NS()
     on_c = run.on_c = pull(commons_folder, key)       # the fast working copy on C: (or D: itself when C: has no room)
     TR.add("work_copy", _NS() - t)
@@ -2058,6 +2135,13 @@ def _version(url):
     """the file's version as its publisher states it (Last-Modified), so every fact can be traced to one edition
     (asked once per file per process: many parts share one file)"""
     if not url.startswith("http"):
+        if url and url.startswith("file://"):            # the downloaded dump: the publisher's date, kept in ready.json
+            try:
+                p = os.path.join(os.path.dirname(urllib.request.url2pathname(urllib.parse.urlsplit(url.split("#", 1)[0]).path)), "ready.json")
+                with open(p, encoding="utf-8") as f:
+                    return json.load(f).get("last_modified") or "local file"
+            except (OSError, ValueError):
+                pass
         return url and "local file"
     base = url.split("#", 1)[0]
     if base in _VERSIONS:
@@ -2139,6 +2223,8 @@ def next_try(r, fails):
         return 3600                              # not approved in the registry: looked at again hourly
     if "not connected" in str(r.get("why") or ""):
         return DRIVE_RETRY_S
+    if WAITING in str(r.get("why") or ""):
+        return 120                               # a lane waiting for the dump download: looks again in 2 minutes
     return BACKOFF_S[min(fails, len(BACKOFF_S) - 1)]
 
 
@@ -2420,6 +2506,8 @@ def status(commons_folder, commons=None):
                     row["facts"], row["count_from"] = last, "last known (the file is busy right now)"
             if row["state"] == "running" and not _alive(commons_folder):
                 row["state"] = "paused"
+        if getattr(ds, "standalone", False):          # the one dump download: its own progress, no shard
+            row.update(download_status(commons_folder, commons))
         if row["facts"] and not row.get("count_from"):
             _LAST_COUNT[(commons_folder, key)] = row["facts"]
         out.append(row)
@@ -2444,7 +2532,43 @@ def status(commons_folder, commons=None):
             "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
                                  for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
             "duplicates_removed": sum((_LAST_DUPS.get((commons_folder, d["key"])) or 0) for d in out),
-            "bytes": sum(d["bytes"] for d in out)}
+            "bytes": sum(d["bytes"] for d in out), "download": download_status(commons_folder, commons)["download"]}
+
+
+def save_download_settings(commons, folder=None, on=None, passphrase=None):
+    """the admin chooses where the dump is kept (a folder on any drive: it is created) and whether the lanes read it"""
+    commons.approvals._require(passphrase or "")
+    if folder is not None:
+        folder = str(folder).strip().strip('"')
+        if folder:
+            if not os.path.isabs(os.path.expanduser(folder)):
+                raise ValueError("Give the whole folder, with its drive — e.g. E:\\QB-dumps")
+            drive = os.path.splitdrive(os.path.abspath(os.path.expanduser(folder)))[0] or os.sep
+            if not os.path.exists(drive + os.sep if drive != os.sep else os.sep):
+                raise ValueError("The drive %s is not connected." % drive)
+            os.makedirs(os.path.expanduser(folder), exist_ok=True)
+        commons.set_setting("bulk:dumps:folder", folder)
+    if on is not None:
+        commons.set_setting("bulk:wikidata:local", "on" if on in (True, "on", "true", 1, "1") else "off")
+    return download_status(commons.folder, commons)["download"]
+
+
+def download_status(commons_folder, commons=None):
+    """the one dump download for the page: where, what is ready, what is under way (with speed and time left)"""
+    on = local_mode(commons) if commons is not None else True
+    d = dumps_folder(commons_folder, commons)
+    r, pg = qbdump.ready(d), qbdump.progress(d)
+    try:
+        free = shutil.disk_usage(d if os.path.isdir(d) else commons_folder).free
+    except OSError:
+        free = None
+    state = "not used" if not on else "running" if pg and _alive(commons_folder) else "paused" if pg else "done" if r else "not started"
+    out = {"on": on, "folder": d, "folder_setting": (commons.setting("bulk:dumps:folder") or "") if commons is not None else "", "free_bytes": free, "ready": {k: r.get(k) for k in ("edition", "size", "checked", "seconds", "finished", "md5")} if r else None,
+           "under_way": pg, "state": state}
+    if pg:
+        out["progress"] = {"part": "download %s" % pg.get("edition"), "fraction": pg["share"], "overall": pg["share"], "parts": 1,
+                           "eta_s": pg.get("eta_s"), "rate": pg.get("rate_mb_s")}
+    return {"download": out, "state": state if on else "done"}
 
 
 _LAST_COUNT = {}
@@ -3053,6 +3177,14 @@ def add_routes(api, commons, program_dir):
     def bulk_stop(p):
         return stop(commons)
 
+    @api.post("/api/bulk/download-settings")
+    def bulk_download_settings(p):
+        """download once (1.31): on/off, and the folder the dump is kept in (e.g. the large external drive)"""
+        try:
+            return save_download_settings(commons, p.get("folder"), p.get("on"), p.get("passphrase"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+
     @api.get("/api/keystones")
     def keystones(p):
         import qbkeystone as ks
@@ -3214,7 +3346,8 @@ def diagnose(commons, folders=None, probe=True):
     keep = float(commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
     add("Free space where the facts are stored", free >= max(keep, 200), "%.0f GB free at %s" % (free, shards),
         ("Under %g GB the agents pause. " % keep if free < keep else "") +
-        "A full Wikidata pass needs about 100–200 GB. Move the shared folder to a large drive (e.g. your 20 TB drive): "
+        "A full Wikidata pass needs about 100–200 GB for the facts, plus about 160 GB for each downloaded weekly dump (two are "
+        "kept; Bulk harvesting → Download once → folder puts them on any drive). Move the shared folder to a large drive (e.g. your 20 TB drive): "
         "Bulk harvesting → type the new folder → Move the shared folder.")
     if folders:
         import qbcommons as cm
@@ -3504,6 +3637,44 @@ def self_test():
         ok("Wikidata dump: truthy statements only (a deprecated one is skipped), objects shown with their label",
            r["state"] == "done" and {(h["predicate"], h["object"]) for h in hits} == {("date of birth", "1879-03-14"),
            ("country of citizenship", "United States (Q30)")} and hits[0]["link"] == "https://www.wikidata.org/wiki/Q937", (r, hits))
+        # 1.31 download once, read locally: without a ready copy a lane waits for the download; with one it reads it, named by
+        # the copy's own edition (so parts streamed before are not read again), its version the publisher's date
+        c.set_setting("bulk:url:wikidata-dump", "")
+        dumps = os.path.join(tmp, "dumps")
+        c.set_setting("bulk:dumps:folder", dumps)
+        WikidataDump.LANES = 1
+        try:
+            rw = run_dataset(cf, "wikidata-dump-1")
+            ok("download once: a lane waits for the one download (looked at again in 2 minutes), it never streams by itself",
+               rw["state"] == "paused" and WAITING in rw["why"] and next_try(rw, 3) == 120, rw)
+            ed_dir = os.path.join(dumps, "wikidata", "2026-11-02")
+            os.makedirs(ed_dir)
+            shutil.copy(dump, os.path.join(ed_dir, qbdump.FILE))
+            with open(os.path.join(ed_dir, "ready.json"), "w") as f:
+                json.dump({"edition": "2026-11-02", "size": size, "last_modified": "Mon, 02 Nov 2026 10:00:00 GMT", "checked": "test"}, f)
+            for ext in ("", "-wal", "-shm", ".labels", ".progress"):     # the lane from a clean slate: read once from the copy
+                if os.path.exists(shard_path(cf, "wikidata-dump-1") + ext):
+                    os.remove(shard_path(cf, "wikidata-dump-1") + ext)
+            r2 = run_dataset(cf, "wikidata-dump-1")
+            sh_ = sqlite3.connect(shard_path(cf, "wikidata-dump-1"))
+            pn = sh_.execute("SELECT name, version FROM parts").fetchall()
+            sh_.close()
+            ok("download once: the lane reads the ready copy from the drive, named by its edition, versioned by the publisher's date",
+               r2["state"] == "done" and pn == [("2026-11-02 part 0001 of 0001", "Mon, 02 Nov 2026 10:00:00 GMT")], (r2, pn))
+            dsr = status(cf, c)["download"]
+            ok("download once: the status page shows the ready edition and where it is kept",
+               dsr["ready"]["edition"] == "2026-11-02" and dsr["folder"] == dumps and dsr["on"], dsr)
+            src = WikidataDownload().sources(c)
+            ok("download once: one server, one connection limit (Wikimedia's two addresses share theirs)",
+               len({_host(u) for u, _ in src}) == len(src) and dict((_host(u), n) for u, n in src)["dumps.wikimedia.org"] == WikidataDump.PRIMARY_CONNECTIONS, src)
+            c.set_setting("bulk:wikidata:local", "off")
+            off = run_dataset(cf, "wikidata-download")
+            ok("download once can be switched off (bulk:wikidata:local = off: the lanes stream as before)", off["state"] == "done" and "not used" in off["why"], off)
+            c.set_setting("bulk:wikidata:local", "")
+        finally:
+            WikidataDump.LANES = lanes_was
+            c.set_setting("bulk:dumps:folder", "")
+            c.set_setting("bulk:url:wikidata-dump", "file://" + dump)      # the tests below read the dump file as before
         # the lattice (1.15): every series Wikidata knows, read in batches, written exactly as the dump lanes write facts
         W = "http://www.wikidata.org/entity/"
         ans = {"results": {"bindings": [
@@ -3795,7 +3966,7 @@ def _supervisor_tests():
         finally:
             os.environ.pop("QB_STARTUP_FOLDER", None)
         # counts: a busy shard keeps its last count; a home copy with facts the working copy lacks is merged, never overwritten
-        key0 = list(catalog())[0]
+        key0 = next(k for k, d in catalog().items() if not getattr(d, "standalone", False))
         os.environ["QB_WORK_FOLDER"] = os.path.join(cf, "work2")
         try:
             def mk(path, fps, dups=0):
