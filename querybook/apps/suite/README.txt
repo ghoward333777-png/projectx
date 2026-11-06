@@ -43,6 +43,21 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Stop that stops, Start that waits, and missing facts found and restored (Control Panel 1.33.2, bulk engine 1.31.2)
+    * Stop: the agents end after their current batch (any still running after a minute is ended, the Wikidata download
+      too); then only the copies that CHANGED are saved to D:, with "◐ stopping: saving … (n of N)" on the page. Before,
+      Stop gave everything 60 seconds and then ended the engine in the middle of saving and of the duplicate check, which
+      on a USB drive takes far longer. The duplicate check no longer runs at Stop (it runs in quiet hours). The button
+      answers at once, even when D: is busy.
+    * Start while a stop is still saving: harvesting starts by itself as soon as the save is done. It no longer clears
+      the Stop signal under agents that are still running, so old and new agents never work side by side.
+    * 🔎 Find and restore missing facts (Harvesting page, and by itself at every Start): every copy of every dataset is
+      compared — the working copy on C:, the copy on D:, and the shared folders of earlier versions — and every fact a
+      copy holds that the live one lacks is added back. Nothing is ever deleted. (The drop from 864.8 to 734.8 million was
+      three whole datasets — NOAA 89.5 M, USDA FoodData 31.4 M, NCBI Taxonomy 8.9 M — no longer counted; if their facts
+      are on any of these drives, this brings them back.)
+    * A dataset whose file is busy at the moment the page restarts is shown with its last count (kept on disk), never 0.
+    * The Download once panel shows the last try and why (it said "not started" even when a try had failed).
   The data drive no longer holds the harvest up (Control Panel 1.33.1, bulk engine 1.31.1)
     * Found: every 10 minutes the copier rewrote EVERY working copy on C: to D: in full (338 GB in all, PubChem alone
       51 GB), even copies that had not changed. A USB hard drive needs far longer than 10 minutes for that, so D: never

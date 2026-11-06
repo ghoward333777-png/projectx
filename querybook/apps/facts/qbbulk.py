@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.31.1"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.31.2"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -1367,6 +1367,15 @@ class WikidataDownload(Dataset):
         return out
 
     def run_alone(self, run):
+        r = self._run_alone(run)
+        try:                                           # the page shows the last try and why (1.31.2: it said "not started")
+            with open(os.path.join(run.folder, FOLDER, "_download_last.json"), "w") as f:
+                json.dump(dict(r, at=time.time()), f)
+        except OSError:
+            pass
+        return r
+
+    def _run_alone(self, run):
         if not local_mode(run.commons) or run.commons.setting("bulk:url:wikidata-dump"):
             return {"dataset": self.key, "state": "done", "new": 0, "why": "not used: the lanes stream the dump (bulk:wikidata:local is off)"}
         why = run.stopped()
@@ -1659,7 +1668,7 @@ def _changed_at(wp):
     return max((os.path.getmtime(wp + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(wp + x)), default=0)
 
 
-def drain(commons_folder, key, force=False):
+def drain(commons_folder, key, force=False, pace=True):
     """write the working copy to its home on D: as one compacted, sequential file; returns the facts it holds (None when
     there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet, "later" when
     it was saved recently enough for its size). 1.31.1: a copy unchanged since its last save is not written again, and a
@@ -1672,7 +1681,7 @@ def drain(commons_folder, key, force=False):
         rec = drained(commons_folder).get(key) or {}
         if rec.get("snap") and _changed_at(wp) <= rec["snap"] and os.path.exists(home_path(commons_folder, key)):
             return rec.get("facts")                    # nothing new since the copy on D: was taken
-        if rec.get("at") and time.time() - rec["at"] < max(DRAIN_S, DRAIN_PACE * float(rec.get("seconds") or 0)):
+        if pace and rec.get("at") and time.time() - rec["at"] < max(DRAIN_S, DRAIN_PACE * float(rec.get("seconds") or 0)):
             return "later"
     hp = home_path(commons_folder, key)
     if not os.path.isdir(commons_folder):
@@ -1742,6 +1751,57 @@ def drain(commons_folder, key, force=False):
     return facts
 
 
+def other_copies(commons_folder, key):
+    """every other copy of a dataset that exists: the home copy on D:, the working copy on C:, and the shared folders of
+    earlier versions (~/QueryBook-Data/commons, a folder chosen with "Move the shared folder")"""
+    cands = [work_path(commons_folder, key), home_path(commons_folder, key)]
+    try:
+        import qbdrive
+        for kind, folder in qbdrive.old_places():
+            if kind == "commons":
+                cands.append(os.path.join(folder, FOLDER, key + ".sqlite"))
+    except Exception:
+        pass
+    live = os.path.normcase(os.path.abspath(shard_path(commons_folder, key)))
+    out, seen = [], {live}
+    for p in cands:
+        if p and os.path.exists(p) and os.path.normcase(os.path.abspath(p)) not in seen:
+            seen.add(os.path.normcase(os.path.abspath(p)))
+            out.append(p)
+    return out
+
+
+def restore_missing(commons_folder, say=None):
+    """1.31.2: for every dataset, every other copy is compared with the live one; when a copy holds more facts than the live
+    one can account for (its count, plus the duplicates removed from it since), every fact it holds that the live copy lacks
+    is added back (merge — nothing is ever deleted). Runs before the agents start, and from the Control Panel.
+    Returns {dataset: {"from": path, "added": n}} for each dataset that got facts back."""
+    out = {}
+    for key, ds in catalog().items():
+        if getattr(ds, "standalone", False):
+            continue
+        live = shard_path(commons_folder, key)
+        for other in other_copies(commons_folder, key):
+            lm = _meta_of(live) or {} if os.path.exists(live) else {}
+            om = _meta_of(other) or {}
+            expect = (lm.get("facts") or 0) + (lm.get("duplicates_removed") or 0) - (om.get("duplicates_removed") or 0)
+            if (om.get("facts") or 0) <= expect:
+                continue
+            if say:
+                say("restoring %s: %s holds %s facts, the live copy %s" % (key, other, format(om.get("facts") or 0, ","), format(lm.get("facts") or 0, ",")))
+            if not os.path.exists(live):                    # no live copy at all: the fuller copy becomes the home copy
+                os.makedirs(os.path.dirname(home_path(commons_folder, key)), exist_ok=True)
+                shutil.copyfile(other, home_path(commons_folder, key))
+                added = om.get("facts") or 0
+            else:
+                added = merge_into(live, other)
+            r = out.setdefault(key, {"added": 0, "from": []})
+            r["added"] += added
+            r["from"].append(other)
+            TR.event("restore", dataset=key, source=other, added=added)
+    return out
+
+
 def work_keys(commons_folder):
     w = work_dir(commons_folder)
     if not w or not os.path.isdir(w):
@@ -1749,13 +1809,17 @@ def work_keys(commons_folder):
     return sorted(f[:-7] for f in os.listdir(w) if f.endswith(".sqlite"))
 
 
-def finish_work(commons_folder):
+def finish_work(commons_folder, only_changed=False, note=None):
     """after the run: every working copy saved to D:; those of finished datasets removed from C: once D: holds the same
-    facts. Returns {dataset: what happened}."""
+    facts. Returns {dataset: what happened}. only_changed (1.31.2: Stop and the hourly upkeep): a copy unchanged since its
+    last save is not written again — Stop no longer rewrites hundreds of GB. note(i, n, key): progress for the page."""
     out = {}
-    for key in work_keys(commons_folder):
+    keys = work_keys(commons_folder)
+    for i, key in enumerate(keys, 1):
+        if note:
+            note(i, len(keys), key)
         try:
-            facts = drain(commons_folder, key, force=True)
+            facts = drain(commons_folder, key, force=not only_changed, pace=False)
             wp = work_path(commons_folder, key)
             st = sqlite3.connect(wp)
             try:
@@ -2417,6 +2481,19 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
             TR.fail("heartbeat", e, retried=True)
     beat("starting")
     import threading
+    rnote = {"text": "starting: checking every copy of every dataset for facts to add back"}
+    r_done = threading.Event()
+
+    def restore_beat():
+        while not r_done.wait(10):
+            beat(rnote["text"])
+    threading.Thread(target=restore_beat, daemon=True, name="qb-restore-beat").start()
+    try:                                              # 1.31.2: facts held in any other copy are added back first
+        TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text="starting: " + t)))
+    except Exception as e:
+        TR.fail("restore", e, retried=True)
+    finally:
+        r_done.set()
     drain_stop = threading.Event()
 
     def drainer():                                    # one copier: working copies on C: → their home on D:, in turn
@@ -2449,24 +2526,37 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
                 try:
                     TR.event("dedupe", removed=dedupe(commons_folder))
                     if work_dir(commons_folder):
-                        finish_work(commons_folder)
+                        finish_work(commons_folder, only_changed=True)
                 except Exception as e:
                     TR.fail("upkeep", e, retried=True)
             time.sleep(SUPERVISE_TICK_S)
-        beat("stopping")
-        sup.stop_all()
+        # 1.31.2 Stop: the agents end after their batch; then only the copies that changed are saved to D: (no duplicate
+        # check here — it runs in quiet hours), with a heartbeat every 10 s so the page shows "stopping: saving …" and nothing
+        # ends this process halfway through a save
+        note = {"text": "stopping: every agent finishes its current batch"}
+        hb_stop = threading.Event()
+
+        def stop_beat():
+            while not hb_stop.wait(10):
+                beat(note["text"])
+        beat(note["text"])
+        threading.Thread(target=stop_beat, daemon=True, name="qb-stop-beat").start()
         try:
-            gone = dedupe(commons_folder)
-        except sqlite3.Error as e:
-            TR.fail("dedupe", e)
-            gone = {"error": str(e)}
-        drain_stop.set()
-        if dthread.is_alive():
-            dthread.join()
-        saved = finish_work(commons_folder) if work_dir(commons_folder) else {}
+            sup.stop_all()
+            drain_stop.set()
+            if dthread.is_alive():
+                note["text"] = "stopping: the copier finishes the save it is doing"
+                dthread.join()
+
+            def say(i, n, k):
+                note["text"] = "stopping: saving what changed to the data drive — %s (%d of %d)" % (k, i, n)
+                beat(note["text"])
+            saved = finish_work(commons_folder, only_changed=True, note=say) if work_dir(commons_folder) else {}
+        finally:
+            hb_stop.set()
         TR.event("run", phase="end", role="runner", events=sup.events[-50:])
         beat("finished")
-        return [{"events": sup.events, "dedupe": gone, "saved_to_data_drive": saved}]
+        return [{"events": sup.events, "saved_to_data_drive": saved}]
     finally:
         TR.close()
         Slots(commons_folder).release(one)
@@ -2561,7 +2651,7 @@ def status(commons_folder, commons=None):
             except sqlite3.Error as e:
                 row["error"] = None if "locked" in str(e) else "shard unreadable: %s" % e
                 row["busy"] = "locked" in str(e)
-                last = _LAST_COUNT.get((commons_folder, key))
+                last = _LAST_COUNT.get((commons_folder, key)) or _saved_counts(commons_folder).get(key)
                 if last:                                # busy for a moment (being copied, being written): the last count
                     row["facts"], row["count_from"] = last, "last known (the file is busy right now)"
             if row["state"] == "running" and not _alive(commons_folder):
@@ -2572,6 +2662,7 @@ def status(commons_folder, commons=None):
             _LAST_COUNT[(commons_folder, key)] = row["facts"]
         out.append(row)
     _count_ledger(commons_folder, out, now)
+    _save_counts(commons_folder, out)
     rs = {}
     try:
         with open(os.path.join(folder, "_runner.json")) as f:
@@ -2622,9 +2713,15 @@ def download_status(commons_folder, commons=None):
         free = shutil.disk_usage(d if os.path.isdir(d) else commons_folder).free
     except OSError:
         free = None
-    state = "not used" if not on else "running" if pg and _alive(commons_folder) else "paused" if pg else "done" if r else "not started"
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_download_last.json")) as f:
+            last = json.load(f)
+    except (OSError, ValueError):
+        last = None
+    state = ("not used" if not on else "running" if pg and _alive(commons_folder) else "paused" if pg else "done" if r else
+             (last.get("state") or "not started") if last else "not started")
     out = {"on": on, "folder": d, "folder_setting": (commons.setting("bulk:dumps:folder") or "") if commons is not None else "", "free_bytes": free, "ready": {k: r.get(k) for k in ("edition", "size", "checked", "seconds", "finished", "md5")} if r else None,
-           "under_way": pg, "state": state}
+           "under_way": pg, "state": state, "last_try": last}
     if pg:
         out["progress"] = {"part": "download %s" % pg.get("edition"), "fraction": pg["share"], "overall": pg["share"], "parts": 1,
                            "eta_s": pg.get("eta_s"), "rate": pg.get("rate_mb_s")}
@@ -2633,6 +2730,36 @@ def download_status(commons_folder, commons=None):
 
 _LAST_COUNT = {}
 _LAST_DUPS = {}
+_SAVED = {}
+
+
+def _counts_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_counts.json")
+
+
+def _saved_counts(commons_folder):
+    """the last good count of every dataset, kept on disk (1.31.2): a file busy at the moment the page restarts is shown with
+    it, never as 0"""
+    if commons_folder not in _SAVED:
+        try:
+            with open(_counts_path(commons_folder)) as f:
+                _SAVED[commons_folder] = json.load(f)
+        except (OSError, ValueError):
+            _SAVED[commons_folder] = {}
+    return _SAVED[commons_folder]
+
+
+def _save_counts(commons_folder, rows):
+    saved = _saved_counts(commons_folder)
+    new = {r["key"]: r["facts"] for r in rows if r["facts"] and not r.get("count_from")}
+    if new and any(saved.get(k) != v for k, v in new.items()):
+        saved.update(new)
+        try:
+            with open(_counts_path(commons_folder) + ".tmp", "w") as f:
+                json.dump(saved, f)
+            _replace(_counts_path(commons_folder) + ".tmp", _counts_path(commons_folder), tries=5)
+        except OSError:
+            pass
 _LEDGER = {}
 
 
@@ -2799,11 +2926,13 @@ def start(commons, keys, agents, passphrase, program_dir):
     """start the bulk runner (admin): a separate program, so the applications stay responsive"""
     import subprocess
     commons.approvals._require(passphrase or "")
+    if stopping(commons.folder):
+        raise ValueError("The last Stop is still saving to the data drive — press Start again in a minute (⚡ Start harvesting waits by itself).")
     if _alive(commons.folder):
         if runner_version(commons.folder) != VERSION:
             r = full_speed(commons, program_dir, "Start")
             return {"summary": r.get("summary") or "replacing an older engine", **status(commons.folder, commons)}
-        return {"summary": "bulk harvesting is already running", **status(commons.folder, commons)}
+        return {"summary": "bulk harvesting is already running", **status_cached(commons.folder, commons)}
     keys = [k for k in (keys or list(catalog())) if k in catalog()]
     if not keys:
         raise ValueError("Choose at least one dataset.")
@@ -2813,7 +2942,7 @@ def start(commons, keys, agents, passphrase, program_dir):
     _launch(commons.folder, keys, agents, program_dir)
     with commons.store.write() as db:
         commons.agent_log(db, "engine", "Bulk harvesting started: %s (%d agents)" % (", ".join(keys), agents))
-    return {"summary": "bulk harvesting is starting: %d dataset(s), %d agent(s)" % (len(keys), agents), **status(commons.folder, commons)}
+    return {"summary": "bulk harvesting is starting: %d dataset(s), %d agent(s)" % (len(keys), agents), **status_cached(commons.folder, commons)}
 
 
 def _launch(commons_folder, keys, agents, program_dir):
@@ -2827,6 +2956,17 @@ def _launch(commons_folder, keys, agents, program_dir):
 def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
     """the master switch's own start: every approved dataset, one agent per core (as the Control Panel's ⚡ Full speed) —
     the path that brings in tens of millions of facts. Nothing to do when the agents already run."""
+    if stopping(commons.folder):                       # 1.31.2: the stop finishes saving first, then this start runs
+        import threading
+
+        def after_stop():
+            t0 = time.time()
+            while stopping(commons.folder) and time.time() - t0 < STOP_SAVE_S:
+                time.sleep(5)
+            full_speed(commons, program_dir, why + " (after the stop finished saving)", launch)
+        threading.Thread(target=after_stop, daemon=True, name="qb-start-after-stop").start()
+        return {"bulk": "starting after the stop", "summary": "the last stop is still saving to the data drive; harvesting starts "
+                                                             "by itself as soon as that is done"}
     if _alive(commons.folder):
         if runner_version(commons.folder) == VERSION:
             return {"bulk": "already running"}
@@ -2959,19 +3099,97 @@ def stop(commons, grace=None, wait=False):
 
     def enforce():
         t0 = time.time()
-        while time.time() - t0 < grace and (_alive(commons.folder) or _pids(commons.folder)):
+        while time.time() - t0 < grace and _agent_pids(commons.folder):
             time.sleep(1)
-        left = _pids(commons.folder)
-        for pid in left:
+        left = _agent_pids(commons.folder)
+        for pid in left:                              # agents only: the runner is saving what changed to D:
             _kill(pid)
         if left:
-            TR.event("stop", ended=sorted(left), why="still running %d s after Stop" % grace)
+            TR.event("stop", ended=sorted(left), why="agent still running %d s after Stop" % grace)
+        rp = _runner_pid(commons.folder)              # the runner ends by itself; it is ended only if it ignores Stop or hangs
+        t1 = time.time()
+        while rp and time.time() - t0 < STOP_SAVE_S:
+            hb = _runner_heartbeat(commons.folder)
+            if hb.get("note") == "finished" or not _pid_alive(rp):
+                return
+            if not str(hb.get("note") or "").startswith("stopping") and time.time() - t1 > 30:
+                break                                 # it does not react to Stop (an older version, or stuck)
+            if time.time() - hb.get("heartbeat", 0) > 120:
+                break                                 # it stopped beating while saving: hung
+            time.sleep(2)
+        if rp and _pid_alive(rp) and _runner_heartbeat(commons.folder).get("note") != "finished":
+            _kill(rp)
+            TR.event("stop", ended=[rp], why="the runner gave no sign of life for 2 min while stopping")
     th = threading.Thread(target=enforce, daemon=True, name="qb-stop")
     th.start()
     if wait:
         th.join()
-    return {"summary": "harvesting stops: every agent finishes its current batch, and any still running after %d s is ended" % grace,
-            **status(commons.folder, commons)}
+    out = {"summary": "harvesting stops: every agent finishes its current batch (any still running after %d s is ended), then what "
+                      "changed is saved to the data drive" % grace, **status_cached(commons.folder, commons)}
+    _STATUS.pop(commons.folder, None)                 # the next look is fresh: it shows the stop
+    return out
+
+
+STOP_SAVE_S = 3 * 3600             # the longest a stop may spend saving to D: before the runner is ended anyway
+
+
+def _runner_heartbeat(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _runner_pid(commons_folder):
+    try:
+        return int(_runner_heartbeat(commons_folder).get("pid") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
+
+def _pid_alive(pid):
+    if not pid:
+        return False
+    if os.name == "nt":
+        import subprocess
+        try:
+            r = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+            return str(pid) in r.stdout
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _agent_pids(commons_folder):
+    """every agent process still alive: from its heartbeat file (every agent, the download too) and from its shard"""
+    pids = set()
+    d = os.path.join(commons_folder, FOLDER, "_agents")
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(d, f)) as fh:
+                        a = json.load(fh)
+                    if time.time() - a.get("at", 0) < 60 and a.get("pid"):
+                        pids.add(int(a["pid"]))
+                except (OSError, ValueError, TypeError):
+                    pass
+    pids |= {p for p in _pids(commons_folder) if _pid_alive(p)}    # a shard can still say "running" after a crash
+    rp = _runner_pid(commons_folder)
+    pids.discard(rp or 0); pids.discard(0); pids.discard(os.getpid())
+    return pids
+
+
+def stopping(commons_folder):
+    """a stop still under way: the runner saving to D:, or agents not yet ended"""
+    hb = _runner_heartbeat(commons_folder)
+    return (str(hb.get("note") or "").startswith("stopping") and time.time() - hb.get("heartbeat", 0) < 120) or \
+        bool(os.path.exists(os.path.join(commons_folder, FOLDER, "_runner.stop")) and _agent_pids(commons_folder))
 
 
 def runner_version(commons_folder):
@@ -3236,6 +3454,17 @@ def add_routes(api, commons, program_dir):
     @api.post("/api/bulk/stop")
     def bulk_stop(p):
         return stop(commons)
+
+    @api.post("/api/bulk/restore")
+    def bulk_restore(p):
+        """find and restore missing facts (1.31.2): every copy of every dataset compared; nothing is deleted"""
+        if _alive(commons.folder) or stopping(commons.folder):
+            raise core.UserError("Stop harvesting first (and let the stop finish saving). This check also runs by itself at every Start.")
+        r = restore_missing(commons.folder)
+        _STATUS.pop(commons.folder, None)
+        n = sum(v["added"] for v in r.values())
+        return {"restored": r, "summary": ("%s facts added back to %d dataset(s)" % (format(n, ","), len(r))) if r else
+                "every copy was checked: no dataset was missing facts that another copy holds"}
 
     @api.post("/api/bulk/download-settings")
     def bulk_download_settings(p):
@@ -4068,10 +4297,58 @@ def _supervisor_tests():
                 globals()["_ro"] = real_ro
             ok("a dataset busy for a moment keeps its last count (the total never dips to a wrong number)",
                r2["facts"] == 6 and r2.get("count_from"), r2.get("facts"))
-            # 1.31.1: the dump beside the working copies on the internal drive (when it has room), never on the USB drive by default
-            global INTERNAL_DUMP_ROOM
+            # 1.31.2: facts held by another copy are added back; a busy file keeps its saved count across a restart
             import qbcommons as cm
             c = cm.Commons(cf, "stem")
+            k2 = "ncbi-taxonomy"
+            mk(home_path(cf, k2), range(1, 21))          # D: holds 20 facts
+            mk(work_path(cf, k2), range(1, 6))           # the live copy on C: only 5
+            import qbdrive
+            oldcf = os.path.join(cf, "old-version")
+            os.makedirs(os.path.join(oldcf, FOLDER))
+            mk(os.path.join(oldcf, FOLDER, "%s.sqlite" % "noaa-ghcn-daily"), range(30, 60))   # an earlier version's folder holds NOAA facts
+            mk(work_path(cf, "noaa-ghcn-daily"), range(30, 40))
+            places0 = qbdrive.old_places
+            qbdrive.old_places = lambda *a, **k: [("commons", oldcf)]
+            try:
+                rr = restore_missing(cf)
+            finally:
+                qbdrive.old_places = places0
+            cnt = lambda p_: sqlite3.connect(p_).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("1.31.2: facts the live copy lacks are added back from the data drive's copy and from an earlier version's folder",
+               rr.get(k2, {}).get("added") == 15 and cnt(work_path(cf, k2)) == 20 and rr.get("noaa-ghcn-daily", {}).get("added") == 20
+               and cnt(work_path(cf, "noaa-ghcn-daily")) == 30 and cnt(home_path(cf, k2)) == 20, rr)
+            ok("1.31.2: run again, nothing more is added (and nothing is ever deleted)", restore_missing(cf) == {} and cnt(home_path(cf, k2)) == 20)
+            status(cf)
+            _LAST_COUNT.clear(); _SAVED.clear()
+            globals()["_ro"] = lambda path: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")) if k2 in path else real_ro(path)
+            try:
+                r3 = [d for d in status(cf)["datasets"] if d["key"] == k2][0]
+            finally:
+                globals()["_ro"] = real_ro
+            ok("1.31.2: a file busy just after the page restarts shows its saved count, never 0", r3["facts"] == 20 and r3.get("count_from"), r3.get("facts"))
+            # Stop saves only what changed; Start during a stop waits for it
+            drain(cf, k2, force=True)
+            at2 = drained(cf)[k2]["at"]
+            fw = finish_work(cf, only_changed=True)
+            ok("1.31.2: Stop saves only what changed (an unchanged copy is not rewritten)", drained(cf)[k2]["at"] == at2, fw)
+            hb2 = os.path.join(cf, FOLDER, "_runner.json")
+            with open(hb2, "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "note": "stopping: saving what changed to the data drive — noaa (1 of 2)"}, f)
+            launched = []
+            fs = full_speed(c, os.path.dirname(os.path.abspath(__file__)), "test", launch=lambda *a: launched.append(a))
+            ok("1.31.2: Start while a stop is still saving waits for it (no second engine, the Stop signal is not cleared early)",
+               fs["bulk"] == "starting after the stop" and not launched and stopping(cf), fs)
+            with open(hb2, "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": 0, "note": "finished"}, f)
+            for _ in range(30):
+                if launched:
+                    break
+                time.sleep(0.5)
+            ok("1.31.2: …and starts by itself as soon as the stop has finished", bool(launched) and not stopping(cf))
+            os.remove(hb2)
+            # 1.31.1: the dump beside the working copies on the internal drive (when it has room), never on the USB drive by default
+            global INTERNAL_DUMP_ROOM
             room0, INTERNAL_DUMP_ROOM = INTERNAL_DUMP_ROOM, 0
             try:
                 internal = dumps_folder(cf, c)

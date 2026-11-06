@@ -162,7 +162,8 @@ async function loadBulk() {
   $("#bk-full").textContent = "⚡ Full speed (" + (r.max_agents || 16) + " agents)";
   $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total)}</b> facts</span><span class="pill">${QB.rate(r.facts_per_min)} (last 10 min)</span>` +
     `<span class="pill">+${fmt(r.last_hour)} in the last hour</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
-    `<span class="pill">${r.runner.alive ? '<span class="badge good">● harvesting</span> ' + esc(r.runner.note || "") : '<span class="badge">○ stopped</span>'}</span>`;
+    `<span class="pill">${r.runner.alive && String(r.runner.note || "").startsWith("stopping") ? '<span class="badge warn">◐ stopping</span> ' + esc(r.runner.note.replace(/^stopping: /, ""))
+      : r.runner.alive ? '<span class="badge good">● harvesting</span> ' + esc(r.runner.note || "") : '<span class="badge">○ stopped</span>'}</span>`;
   $("#bk-table").innerHTML = `<table class="t small"><tr><th></th><th>Dataset</th><th>Area</th><th>Source · licence</th><th>State</th><th>Facts</th><th>Rate</th><th>Parts</th></tr>` +
     r.datasets.map(d => `<tr><td><input type="checkbox" data-bk="${esc(d.key)}" ${d.approved ? "" : "disabled"} ${picked.has(d.key) ? "checked" : ""}></td>
       <td><b>${esc(d.title)}</b><div class="small muted">${esc(d.why)} — ${esc(d.approx)}</div></td><td>${esc(d.area)}</td>
@@ -200,6 +201,7 @@ function bkDownload(d) {
     `<div class="muted">The lanes start by themselves when the file is ready${rd ? "; until then they read the " + esc(rd.edition) + " copy" : ""}.</div>`);
   if (rd) bits.push(`<span class="badge good">ready</span> edition <b>${esc(rd.edition)}</b>, ${QB.bytes(rd.size)} — ${esc(rd.checked || "")}` +
     (rd.seconds ? ` · downloaded in ${QB.dur(rd.seconds)}` : ""));
+  else if (d.on && !u && d.last_try && d.last_try.why) bits.push(`<span class="badge warn">${esc(d.last_try.state || "paused")}</span> last try ${QB.dur(Date.now() / 1000 - d.last_try.at)} ago: ${esc(d.last_try.why)} — it tries again by itself`);
   else if (d.on && !u) bits.push("Not downloaded yet: press ⚡ Start harvesting — the download runs first, then the lanes.");
   bits.push(`<span class="muted">Folder: ${esc(d.folder)}${d.free_bytes != null ? " · " + QB.bytes(d.free_bytes) + " free" : ""}</span>`);
   $("#bk-dl").innerHTML = bits.map(b => `<div>${b}</div>`).join("");
@@ -303,6 +305,12 @@ function bind() {
     try { (await api("/api/connections/test", { all: true })).results.forEach(r => CN_TEST[r.id] = r); renderConns(); } catch (e) { toast(e.message); }
     $("#cn-test-all").disabled = false; };
   $("#api-q").oninput = () => APIS && renderRef(); $("#api-explained").onchange = () => APIS && renderRef();
+  $("#bk-restore").onclick = async () => {
+    const b = $("#bk-restore"); b.disabled = true; $("#bk-restore-out").textContent = "Comparing every copy of every dataset… (this can take a while)";
+    try { const r = await api("/api/bulk/restore", {}); $("#bk-restore-out").textContent = r.summary; loadBulk().catch(() => {}); }
+    catch (e) { $("#bk-restore-out").textContent = e.message; }
+    finally { b.disabled = false; }
+  };
   $("#bk-dl-save").onclick = bkDownloadSave;
   $("#bk-dl-on").onchange = bkDownloadSave;
   $("#bk-dl-folder").oninput = () => { $("#bk-dl-folder").dataset.typed = "1"; };
