@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.31.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.31.1"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -1197,7 +1197,7 @@ class WikidataDump(Dataset):
             self.mirrors = list(self.MIRRORS)
         if not self.base and local_mode(run.commons):                 # 1.31: download once, read locally
             dumps = dumps_folder(run.folder, run.commons)
-            r = qbdump.ready(dumps)
+            r = dumps_ready(run.folder, run.commons)
             if not r:
                 pg = qbdump.progress(dumps)
                 raise Busy(WAITING + (" (%d%% downloaded%s)" % (round(100 * pg["share"]), ", about %d min left" % (pg["eta_s"] // 60)
@@ -1311,8 +1311,34 @@ def local_mode(commons):
     return (commons.setting("bulk:wikidata:local") or "on") != "off"
 
 
+INTERNAL_DUMP_ROOM = 450e9          # the internal drive holds the dump when it has this much free (two editions + the working copies)
+
+
 def dumps_folder(commons_folder, commons=None):
-    return qbdump.folder_for(commons_folder, commons.setting("bulk:dumps:folder") if commons is not None else None)
+    """where the dump is kept: the admin's choice (bulk:dumps:folder); else, when the working copies are on the internal
+    drive (C:), beside them there if it has room — reading a 157 GB file with 16 lanes at once from a USB hard drive would
+    make the data drive the slowest part again; else <shared folder>/dumps"""
+    chosen = commons.setting("bulk:dumps:folder") if commons is not None else None
+    if chosen:
+        return qbdump.folder_for(commons_folder, chosen)
+    w = work_dir(commons_folder)
+    if w:
+        internal = os.path.join(os.path.dirname(w), "dumps")
+        if os.path.isdir(os.path.join(internal, "wikidata")):
+            return internal
+        try:
+            base = next(p for p in (os.path.dirname(w), os.path.expanduser("~")) if os.path.isdir(p))
+            if shutil.disk_usage(base).free >= INTERNAL_DUMP_ROOM:
+                return internal
+        except (OSError, StopIteration):
+            pass
+    return qbdump.folder_for(commons_folder)
+
+
+def dumps_ready(commons_folder, commons=None):
+    """the newest ready copy in the chosen folder or in <shared folder>/dumps (a copy made before the folder changed)"""
+    rs = [r for r in (qbdump.ready(f) for f in dict.fromkeys((dumps_folder(commons_folder, commons), qbdump.folder_for(commons_folder)))) if r]
+    return max(rs, key=lambda r: r.get("edition") or "") if rs else None
 
 
 class WikidataDownload(Dataset):
@@ -1347,6 +1373,11 @@ class WikidataDownload(Dataset):
         if why:
             return {"dataset": self.key, "state": "blocked" if "registry" in why else "stopped", "why": why, "new": 0}
         dumps = dumps_folder(run.folder, run.commons)
+        legacy = qbdump.folder_for(run.folder)
+        if os.path.abspath(dumps) != os.path.abspath(legacy):     # a half download left on the data drive by 1.33.0: removed
+            gone = qbdump.discard_partials(legacy)
+            if gone:
+                TR.event("download", note="half download on the data drive removed (now kept in %s): %s" % (dumps, ", ".join(gone)))
 
         def meter(n):
             METER.done += n
@@ -1429,6 +1460,8 @@ def home_path(commons_folder, key):
 # time. A finished dataset's working copy is removed once its home copy holds the same facts. Readers find the working copy
 # first (it is the newest). Off when the shared folder is on the system drive, or with QB_WORK_FOLDER=off.
 DRAIN_S = 600
+DRAIN_PACE = 3                    # 1.31.1: a working copy is saved at most once per 3x the time its last save took (D: stays
+                                  # free for the agents at least two thirds of the time); an unchanged copy is not saved again
 WORK_MIN_FREE_GB = 20
 
 
@@ -1483,7 +1516,7 @@ def pull(commons_folder, key):
             return True
         # re-route: the internal drive is filling up — this dataset's working copy goes home and the agent writes to D:
         try:
-            if drain(commons_folder, key) not in (None, "busy", "no room"):
+            if drain(commons_folder, key, force=True) not in (None, "busy", "no room", "later"):
                 for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
                     if os.path.exists(wp + x):
                         os.remove(wp + x)
@@ -1621,12 +1654,26 @@ def merge_into(dst_path, src_path):
         db.close()
 
 
-def drain(commons_folder, key):
+def _changed_at(wp):
+    """the last time anything of a working copy was written (the file, its log, its labels)"""
+    return max((os.path.getmtime(wp + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(wp + x)), default=0)
+
+
+def drain(commons_folder, key, force=False):
     """write the working copy to its home on D: as one compacted, sequential file; returns the facts it holds (None when
-    there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet)"""
+    there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet, "later" when
+    it was saved recently enough for its size). 1.31.1: a copy unchanged since its last save is not written again, and a
+    big one is saved less often (DRAIN_PACE) — before, every copy (338 GB in all) was rewritten every 10 minutes, so the
+    data drive never rested and every agent queued behind it. force=True (Stop, the end of a run) always saves."""
     wp = work_path(commons_folder, key)
     if not wp or not os.path.exists(wp):
         return None
+    if not force:
+        rec = drained(commons_folder).get(key) or {}
+        if rec.get("snap") and _changed_at(wp) <= rec["snap"] and os.path.exists(home_path(commons_folder, key)):
+            return rec.get("facts")                    # nothing new since the copy on D: was taken
+        if rec.get("at") and time.time() - rec["at"] < max(DRAIN_S, DRAIN_PACE * float(rec.get("seconds") or 0)):
+            return "later"
     hp = home_path(commons_folder, key)
     if not os.path.isdir(commons_folder):
         TR.event("drain", dataset=key, result="waiting", why="the data drive is not connected; the working copy keeps every fact")
@@ -1643,6 +1690,7 @@ def drain(commons_folder, key):
             TR.event("drain", dataset=key, result="merged", added=added,
                      why="the copy on the data drive held %d facts the working copy lacked; merged before saving" % added)
     t, facts = time.time(), None
+    snap = time.time()                                 # the copy holds everything written before this moment
     for sfx in ("", ".labels"):
         src, dst = wp + sfx, hp + sfx
         if not os.path.exists(src):
@@ -1683,7 +1731,7 @@ def drain(commons_folder, key):
         except OSError:
             pass
     d = drained(commons_folder)
-    d[key] = {"at": time.time(), "facts": facts, "seconds": round(time.time() - t, 1)}
+    d[key] = {"at": time.time(), "snap": snap, "facts": facts, "seconds": round(time.time() - t, 1)}
     try:
         with open(_drained_path(commons_folder) + ".tmp", "w") as f:
             json.dump(d, f)
@@ -1707,7 +1755,7 @@ def finish_work(commons_folder):
     out = {}
     for key in work_keys(commons_folder):
         try:
-            facts = drain(commons_folder, key)
+            facts = drain(commons_folder, key, force=True)
             wp = work_path(commons_folder, key)
             st = sqlite3.connect(wp)
             try:
@@ -1871,15 +1919,26 @@ class Run:
         self.cache = os.path.join(commons_folder, FOLDER, "_cache")
         self.stopfile = os.path.join(commons_folder, FOLDER, "_runner.stop")
         self.on_c = False
+        self._chk_at, self._chk = 0.0, None
 
     def url_override(self, key, part):
         """tests and mirrors: the setting bulk:url:<dataset>:<part> replaces the publisher's address"""
         return self.commons.setting("bulk:url:%s:%s" % (key, part))
 
+    STOP_CHECK_S = 30               # 1.31.1: the registry, the settings and the free space (all on D:) re-read every 30 s,
+                                    # not before every batch: a busy data drive no longer holds every agent up
+
     def stopped(self):
-        import qbharvest as hv
         if os.path.exists(self.stopfile):
             return "stopped from the Control Panel"
+        now = time.time()
+        if now - self._chk_at < self.STOP_CHECK_S:
+            return self._chk
+        self._chk = self._stopped_now()
+        self._chk_at = time.time()
+        return self._chk
+
+    def _stopped_now(self):
         keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
         w = work_dir(self.folder) if self.on_c else None
         if w and os.path.isdir(w) and _free(w) / 1e9 < keep:
@@ -2363,7 +2422,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
     def drainer():                                    # one copier: working copies on C: → their home on D:, in turn
         wait = min(120, DRAIN_S)
         while not drain_stop.wait(wait):
-            wait = DRAIN_S
+            t_round = time.time()
             for k in work_keys(commons_folder):
                 if drain_stop.is_set():
                     break
@@ -2371,6 +2430,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
                     drain(commons_folder, k)
                 except Exception as e:
                     TR.fail("drain", e, retried=True, dataset=k)
+            wait = max(DRAIN_S, 2 * (time.time() - t_round))   # the copier rests twice as long as it worked
     dthread = threading.Thread(target=drainer, daemon=True, name="qb-drain")
     if work_dir(commons_folder):
         dthread.start()
@@ -2557,7 +2617,7 @@ def download_status(commons_folder, commons=None):
     """the one dump download for the page: where, what is ready, what is under way (with speed and time left)"""
     on = local_mode(commons) if commons is not None else True
     d = dumps_folder(commons_folder, commons)
-    r, pg = qbdump.ready(d), qbdump.progress(d)
+    r, pg = dumps_ready(commons_folder, commons), qbdump.progress(d)
     try:
         free = shutil.disk_usage(d if os.path.isdir(d) else commons_folder).free
     except OSError:
@@ -3495,6 +3555,14 @@ def self_test():
             n1 = drain(cf2, "pubchem-computed")
             hn = sqlite3.connect(hp).execute("SELECT count(*) FROM facts").fetchone()[0]
             ok("the copier saves it to the data drive whole (the same facts)", n1 == hn == w1["new"] and os.path.exists(wp), (n1, hn, w1))
+            at1 = drained(cf2)["pubchem-computed"]["at"]
+            ok("1.31.1: an unchanged working copy is not written to the data drive again",
+               drain(cf2, "pubchem-computed") == n1 and drained(cf2)["pubchem-computed"]["at"] == at1)
+            os.utime(wp, (time.time() + 5, time.time() + 5))           # new facts were written to the working copy
+            ok("1.31.1: a changed copy waits its turn (saved at most once per 3x its last saving time, and at least 10 min apart)",
+               drain(cf2, "pubchem-computed") == "later" and drained(cf2)["pubchem-computed"]["at"] == at1)
+            ok("1.31.1: Stop (or the end of a run) always saves", drain(cf2, "pubchem-computed", force=True) == n1
+               and drained(cf2)["pubchem-computed"]["at"] > at1)
             st2 = status(cf2, c2)
             ok("the status says where each dataset is and when it was last saved to the data drive",
                any(d["key"] == "pubchem-computed" and d.get("working_copy") and d.get("saved_to_data_drive") for d in st2["datasets"]))
@@ -4000,6 +4068,39 @@ def _supervisor_tests():
                 globals()["_ro"] = real_ro
             ok("a dataset busy for a moment keeps its last count (the total never dips to a wrong number)",
                r2["facts"] == 6 and r2.get("count_from"), r2.get("facts"))
+            # 1.31.1: the dump beside the working copies on the internal drive (when it has room), never on the USB drive by default
+            global INTERNAL_DUMP_ROOM
+            import qbcommons as cm
+            c = cm.Commons(cf, "stem")
+            room0, INTERNAL_DUMP_ROOM = INTERNAL_DUMP_ROOM, 0
+            try:
+                internal = dumps_folder(cf, c)
+                ok("1.31.1: with working copies on the internal drive and room there, the dump is kept there",
+                   internal == os.path.join(os.path.dirname(work_dir(cf)), "dumps"), internal)
+                INTERNAL_DUMP_ROOM = 1e18
+                ok("1.31.1: no room on the internal drive: the dump goes to the shared folder", dumps_folder(cf, c) == os.path.join(cf, "dumps"))
+                c.set_setting("bulk:dumps:folder", os.path.join(cf, "big-drive"))
+                ok("1.31.1: the admin's folder always wins", dumps_folder(cf, c) == os.path.join(cf, "big-drive"))
+                c.set_setting("bulk:dumps:folder", "")
+                INTERNAL_DUMP_ROOM = 0
+                old = os.path.join(cf, "dumps", "wikidata", "2026-10-26")
+                os.makedirs(old, exist_ok=True)
+                open(os.path.join(old, qbdump.FILE), "wb").write(b"x")
+                json.dump({"edition": "2026-10-26", "size": 1}, open(os.path.join(old, "ready.json"), "w"))
+                ok("1.31.1: a copy made before the folder changed is still read until a newer one is ready",
+                   (dumps_ready(cf, c) or {}).get("edition") == "2026-10-26")
+            finally:
+                INTERNAL_DUMP_ROOM = room0
+            c.set_setting("bulk:min_free_gb", "0")
+            rn = Run(cf, catalog()["pubchem-computed"])
+            first = rn.stopped()
+            c.set_setting("bulk:min_free_gb", "1e15")
+            cached_ = rn.stopped()
+            rn._chk_at = 0
+            later = rn.stopped()
+            c.set_setting("bulk:min_free_gb", "")
+            ok("1.31.1: the checks between batches (on the data drive) are re-read every 30 s, not before every batch",
+               first is None and cached_ is None and later and "nearly full" in later, (first, cached_, later))
         finally:
             os.environ.pop("QB_WORK_FOLDER", None)
         st = {"runner": {"alive": True, "version": VERSION}, "facts_per_min": 250_000, "last_hour": 15_000_000, "total": 900_000_000}

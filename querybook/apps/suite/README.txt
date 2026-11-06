@@ -43,6 +43,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  The data drive no longer holds the harvest up (Control Panel 1.33.1, bulk engine 1.31.1)
+    * Found: every 10 minutes the copier rewrote EVERY working copy on C: to D: in full (338 GB in all, PubChem alone
+      51 GB), even copies that had not changed. A USB hard drive needs far longer than 10 minutes for that, so D: never
+      rested, and every agent, which reads the shared database on D: between batches, queued behind it: hours with D:
+      working and no new facts.
+    * Now a copy that has not changed is not written again; a changed one is saved at most once per three times its last
+      saving time (at least 10 minutes apart), and the copier rests twice as long as it worked. Stop still saves everything.
+    * The agents re-read their checks on D: (the Stop switch is still immediate; the source approvals, settings and free
+      space) every 30 seconds instead of before every batch.
+    * The downloaded Wikidata dump is kept beside the working copies on the internal drive (C:) when it has 450 GB free,
+      instead of on the USB drive; a half download left on D: by 1.33.0 is removed and fetched again on C:. A folder you
+      chose yourself (Download once → folder) always wins.
   Download once, read locally: the Wikidata harvest without the wait (Control Panel 1.33.0, bulk engine 1.31.0)
     * The weekly Wikidata dump (about 157 GB) is now downloaded ONCE to a drive, then all 16 lanes read it from there at
       disk speed. Before, each lane fetched its own part over the internet; the servers allow only a few connections

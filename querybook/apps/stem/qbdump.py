@@ -110,6 +110,18 @@ def progress(dumps_folder):
     return out
 
 
+def discard_partials(dumps_folder):
+    """remove downloads under way (no ready.json) from a folder no longer used; returns their editions"""
+    base, gone = os.path.join(dumps_folder, "wikidata"), []
+    if os.path.isdir(base):
+        for d in os.listdir(base):
+            p = os.path.join(base, d)
+            if os.path.isdir(p) and not os.path.exists(os.path.join(p, "ready.json")):
+                shutil.rmtree(p, ignore_errors=True)
+                gone.append(d)
+    return gone
+
+
 def prune(dumps_folder, keep=KEEP):
     """only the newest `keep` ready editions stay (an older one is no longer read by any lane)"""
     gone = []
@@ -456,6 +468,11 @@ def self_test():
                 os.makedirs(p, exist_ok=True)
                 open(os.path.join(p, FILE), "wb").write(b"x")
                 json.dump({"edition": ed, "size": 1}, open(os.path.join(p, "ready.json"), "w"))
+            half = os.path.join(td, "old-place", "wikidata", "2026-11-09")
+            os.makedirs(half)
+            open(os.path.join(half, FILE + ".part"), "wb").write(b"x")
+            ok("a half download left in a folder no longer used is removed (a ready copy there is kept)",
+               discard_partials(os.path.join(td, "old-place")) == ["2026-11-09"] and not os.path.exists(half))
             gone = prune(dumps)
             ok("only the two newest ready editions are kept", gone == ["2026-10-19"] and [e["edition"] for e in editions(dumps)] == ["2026-11-02", "2026-10-26"], gone)
             ok("the dumps folder is the setting, else <shared>/dumps", folder_for("/x") == os.path.join("/x", "dumps") and folder_for("/x", "/big/qb").endswith("qb"))
