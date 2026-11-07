@@ -43,6 +43,19 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Network memory: learning connections between agents (Control Panel 1.35.0; also in the QueryBook 9.64 prototype)
+    * The relationships between agents are now a layer of memory (shared module qbsynapse). Each synapse records its
+      type, strength, activation threshold (higher when it has been unreliable), the contexts it formed in, good and
+      bad outcomes, the last evidence and its history. Joint success strengthens it, joint failure weakens it, unused
+      synapses fade and are removed, long-proven ones are consolidated; a new one starts weak.
+    * Agents bound by strong synapses form assemblies; assemblies linked through their members form networks of
+      networks; each kind of problem keeps its engram (the agents active when it was solved).
+    * Where it learns: dataset stores that answer the same lookup (and the DSN asks a strong store's assembly partners
+      first when its pathways find nothing); checks one application's team asks of another (a directed relationship,
+      strengthened by an answer, weakened by "cannot check"). In the prototype: the specialists whose facts answer a
+      question, and harvesting agents that succeed together — see its new Network page.
+    * Control Panel: Harvesting -> Answer routing shows both networks (assemblies, strongest synapses); the health
+      report adds a Network memory line. Answers and facts are never changed by the network.
   Answer routing: Central, Shadow or DSN (Control Panel 1.34.0; the bulk engine is unchanged at 1.31.2)
     * Bulk harvesting -> Answer routing (below Look up bulk facts) has three settings:
         Central  every store is asked in turn — the default, and the fastest on one computer in the stress test.

@@ -79,6 +79,7 @@ class AgentManager:
         self.threads = {}       # id -> Thread
         self.stop = {}          # id -> bool
         self._sup = None        # self-heal supervisor thread
+        self.network = None     # qb_synapse.Network, set by qb_api: agents that succeed together get linked
         self._load()
 
     MAX_RESTARTS = 6            # per agent before it stays errored for a human to look at
@@ -273,6 +274,16 @@ class AgentManager:
                 return p
         return provs[0] if provs else None
 
+    def _synaptic(self, a, gained):
+        """the synaptic network: this agent was active; it is linked with the agents that succeeded within the window"""
+        if self.network is None:
+            return
+        try:
+            ctx = "harvest:" + ((a.get("target") or a.get("kind") or "general").strip().lower()[:40])
+            self.network.activate("agent:" + a.get("name", a["id"]), ctx, gained > 0, "%s +%d facts" % (a.get("kind"), gained))
+        except Exception as e:
+            _ev("warn", "agent:" + a.get("name", "?"), "synaptic network not updated: %s" % e)
+
     def _loop(self, aid):
         if qb_keepawake:                       # keep the PC awake while this agent runs
             qb_keepawake.acquire("agent:" + aid)
@@ -291,6 +302,7 @@ class AgentManager:
                 time.sleep(1); continue
             if a["status"] != "running":
                 break
+            facts_before = a.get("facts", 0)
             try:
                 if a["kind"] == "deterministic":
                     # RESUMING per-domain harvest adds NEW facts every cycle. chunk<=0 = 24x7.
@@ -910,6 +922,7 @@ class AgentManager:
                     a["error"] = "unknown kind"; a["status"] = "error"; self._save(); break
                 a["cycles"] += 1; a["last_run"] = time.time(); a["error"] = None
                 a["retries"] = 0                      # a clean cycle resets the retry budget
+                self._synaptic(a, a.get("facts", 0) - facts_before)
                 self._save()
             except Exception as e:
                 a["error"] = str(e); a["_last_err"] = str(e)

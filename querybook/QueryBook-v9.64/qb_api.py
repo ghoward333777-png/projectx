@@ -129,6 +129,12 @@ def _resolve_data_dir():
 DATA_DIR, DATA_DIR_WHY = _resolve_data_dir()
 BIND = os.environ.get("QB_BIND", "127.0.0.1:8099")
 AGENTS = qb_agents.AgentManager(DATA_DIR)
+try:                                           # the synaptic network: relationships between agents as memory
+    import qb_synapse
+    NETWORK = qb_synapse.Network(os.path.join(DATA_DIR, "synapses.json"), "QueryBook prototype")
+    AGENTS.network = NETWORK
+except Exception:
+    NETWORK = None
 START_TIME = time.time()   # server start, for the System Monitor uptime
 
 # No security: the app is always open (no password, no login). Bind to 0.0.0.0 to reach
@@ -1252,7 +1258,7 @@ class H(BaseHTTPRequestHandler):
                 res = qb_chat.answer(st, question,
                                      float(body.get("trust_min", 0.5) or 0.5),
                                      int(body.get("limit", 8) or 8),
-                                     provider=prov)
+                                     provider=prov, network=NETWORK)
                 self._send(200, res)
             finally:
                 st.db.close()
@@ -1392,6 +1398,8 @@ class H(BaseHTTPRequestHandler):
             return self._send_static("qb-ui.js", "application/javascript; charset=utf-8")
         if u.path in ("/", "/home", "/home.html"):
             return self._send_html(self._asset_path("QB_HOME_HTML", "home.html"))
+        if u.path in ("/network", "/network.html"):
+            return self._send_html(self._asset_path("QB_NETWORK_HTML", "network.html"))
         if u.path in ("/chat", "/chat.html"):
             return self._send_html(self._asset_path("QB_CHAT_HTML", "chat.html"))
         if u.path in ("/ingest", "/ingest.html", "/ingestion"):
@@ -1537,6 +1545,16 @@ class H(BaseHTTPRequestHandler):
                     self._send(200, qb_keepawake.status())
                 elif u.path == "/api/agents":
                     self._send(200, AGENTS.snapshot())
+                elif u.path == "/api/network":
+                    if NETWORK is None:
+                        self._send(503, {"error": "synaptic network unavailable (qb_synapse.py missing)"})
+                    else:
+                        NETWORK.decay()
+                        out = NETWORK.summary(top=int(q.get("top", 15) or 15))
+                        out["health"] = NETWORK.health_line()
+                        if q.get("a") and q.get("b"):
+                            out["explain"] = NETWORK.explain(q["a"], q["b"])
+                        self._send(200, out)
                 elif u.path == "/api/agent_roles":
                     self._send(200, {"roles": AGENTS.roles()})
                 elif u.path == "/api/selftest":

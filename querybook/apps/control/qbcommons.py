@@ -298,7 +298,24 @@ class Commons:
                        (req["fact_id"], self.app_id, "curator", i, str(text)[:1000], core.now_iso()))
         db.execute("UPDATE requests SET status = 'answered', verdict = ?, detail = ?, answered = ? WHERE id = ?",
                    (verdict, (result.get("detail") or "")[:1000], core.now_iso(), req["id"]))
+        self._synapse(req, verdict)
         return self.restatus(db, req["fact_id"])
+
+    def network(self):
+        """this application's synaptic network: the teams that ask it for checks, and how useful its answers were"""
+        if getattr(self, "_net", None) is None:
+            import qbsynapse
+            self._net = qbsynapse.Network(os.path.join(self.folder, "synapses-%s.json" % self.app_id), "checks answered by %s" % APPS.get(self.app_id, self.app_id))
+        return self._net
+
+    def _synapse(self, req, verdict):
+        """a check asked by one team and answered by another is a directed relationship: an answer either way (supports
+        or contradicts) strengthens it; "cannot check" weakens it. Never allowed to stop the Curator."""
+        try:
+            self.network().link("team:" + str(req["from_app"]), "team:" + self.app_id, "checks", req["kind"], verdict != "cannot_check",
+                                "%s on fact %s: %s" % (req["kind"], req["fact_id"], verdict))
+        except Exception:
+            pass
 
     # -- reading
     def summary(self):

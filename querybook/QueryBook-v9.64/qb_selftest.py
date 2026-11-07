@@ -86,6 +86,29 @@ def run_all(store_dir=None):
             shutil.rmtree(d, ignore_errors=True)
     checks.append(_check("Unknown-fact honesty", c_verify_unknown))
 
+    def c_synapse():
+        """the synaptic network: answers co-activate their specialists; repeated success forms an assembly;
+        the answer itself is unchanged by the network"""
+        import qb_chat, qb_synapse
+        d = tempfile.mkdtemp()
+        try:
+            st = s.UFCSStore(d)
+            for subj, pred, obj in (("QCland", "has_capital", "QCcity"), ("QCland", "uses_currency", "QCcoin"), ("QCland", "on_continent", "QCcontinent")):
+                st.add(s.make_packet(subj, pred, obj, domain="qc", trust=0.95))
+            st.flush()
+            net = qb_synapse.Network(os.path.join(d, "synapses.json"), "selftest")
+            plain = qb_chat.answer(st, "QCland", 0.5, 8)
+            for _ in range(6):
+                res = qb_chat.answer(st, "QCland", 0.5, 8, network=net)
+            st.db.close()
+            asm = net.assemblies()
+            same = res["answer"] == plain["answer"] and res["verdict"] == plain["verdict"]
+            good = bool(asm) and len(asm[0]["members"]) >= 2 and same and res["network"]["assembly"]
+            return (good, "assembly %s; answer unchanged=%s" % (asm[0]["members"] if asm else None, same))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    checks.append(_check("Synaptic network: specialists that answer together form an assembly", c_synapse))
+
     # v9.64 modules: each proves itself in a throwaway sandbox (no network, live data untouched).
     def _module_qc(modname, label):
         def fn():

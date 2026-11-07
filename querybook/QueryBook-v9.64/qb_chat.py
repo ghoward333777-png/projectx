@@ -419,7 +419,25 @@ def check(draft, facts, use_llm):
 
 
 # ---------- orchestration ----------
-def answer(st, question, min_trust=0.5, limit=8, provider=None):
+def network_experience(network, question, plans, verdict, gated):
+    """Synaptic network (qb_synapse): the specialists whose facts answered this question were active together.
+    Each predicate is a specialist; a verified answer strengthens the synapses between them, a contradiction weakens
+    them, and the question's kind keeps its engram. The answer itself is never changed by this — it only reports
+    the assembly the specialists belong to and who else the network would activate next."""
+    nodes = sorted({"spec:" + str(f["predicate"]) for f in gated})[:8]
+    preds = sorted({str(p.get("predicate")) for p in plans if p.get("predicate")})
+    words = (question or "").strip().split()
+    context = "ask:" + (",".join(preds) if preds else (words[0].lower().strip("?") if words else "?"))
+    if verdict in ("VERIFIED", "CONTRADICTED") and len(nodes) >= 2:
+        network.experience(nodes, context, verdict == "VERIFIED", evidence=(question or "")[:100])
+    elif verdict == "VERIFIED" and nodes:
+        network.experience(nodes, context, True, evidence=(question or "")[:100])
+    asm = next((a for a in network.assemblies() if set(nodes) & set(a["members"])), None)
+    related = [n for n, v in network.spread(nodes) if n not in nodes][:5]
+    return {"specialists": nodes, "context": context, "assembly": asm, "related": related}
+
+
+def answer(st, question, min_trust=0.5, limit=8, provider=None, network=None):
     global _ACTIVE_PROVIDER, _LLM_ERRORS
     _ACTIVE_PROVIDER = provider
     _LLM_ERRORS = []
@@ -450,6 +468,11 @@ def answer(st, question, min_trust=0.5, limit=8, provider=None):
         "plans": plans,
         "elapsed_ms": int((time.time() - t0) * 1000),
     }
+    if network is not None:
+        try:
+            res["network"] = network_experience(network, question, plans, verdict, gated)
+        except Exception as e:                  # the network must never stop an answer
+            res["network"] = {"error": str(e)}
     _ACTIVE_PROVIDER = None
     return res
 

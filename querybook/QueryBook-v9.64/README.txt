@@ -265,3 +265,18 @@ guide.html                              the online user guide
 
 Nothing here needs the internet, an account, or an API key. Everything
 runs locally on your own machine.
+
+NETWORK MEMORY (synaptic network)
+---------------------------------
+Open  http://127.0.0.1:8099/network  (Network, on the Home page menu).
+QueryBook now learns the relationships between its agents, not only facts:
+  * every answered question co-activates the specialists (predicates) whose facts answered it;
+    harvesting agents that succeed close together in time are linked too;
+  * repeated joint success strengthens a synapse, joint failure weakens it, unused synapses
+    fade and are removed, and long-proven ones are consolidated;
+  * strongly bound agents form assemblies, assemblies linked through their members form
+    networks of networks, and each kind of problem keeps its engram (the agents active when
+    it was solved);
+  * every synapse shows its record: strength, threshold, contexts, reliability, evidence, history.
+Answers are never changed by the network: each answer reports the assembly its specialists
+belong to and who else the network would activate next. Saved in <store>/synapses.json.

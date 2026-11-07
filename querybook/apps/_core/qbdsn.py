@@ -30,6 +30,30 @@ LOG_MAX = 5_000_000
 VERDICT_MIN = 50
 
 _LOCK = threading.RLock()
+_NETS = {}
+
+
+def network(commons):
+    """the synaptic network of the dataset stores: stores that answer the same lookup are active together"""
+    import qbsynapse
+    p = os.path.join(_folder(commons), "_synapses.json")
+    with _LOCK:
+        if p not in _NETS:
+            _NETS[p] = qbsynapse.Network(p, "dataset stores")
+        return _NETS[p]
+
+
+def check_networks(commons):
+    """the cross-application check networks, one file per application, read together"""
+    import glob, qbsynapse
+    merged = qbsynapse.Network(None, "checks between applications")
+    for f in sorted(glob.glob(os.path.join(commons.folder, "synapses-*.json"))):
+        n = qbsynapse.Network(f)
+        merged.syn.update(n.syn)
+        for k, v in n.counters.items():
+            merged.counters[k] = merged.counters.get(k, 0) + v
+    merged._reindex()
+    return merged
 _QUEUE = []
 _WORKER = {"t": None}
 
@@ -119,7 +143,7 @@ def dsn_search(commons, text, limit=50, learn=True):
     held = bk.stores(commons.folder)
     if not text:
         return [], 0, len(held), False
-    k = kind(text)
+    k = k_ = kind(text)
     with _LOCK:
         d = _load(commons)
         syn = d["kinds"].setdefault(k, {})
@@ -159,8 +183,20 @@ def dsn_search(commons, text, limit=50, learn=True):
         ask(strong)
         if not out and weak:                             # nothing on the strong pathways: ask everyone, and learn
             fell_back = True
+            try:                                         # spreading activation: the strong stores' assembly partners first
+                act = dict(network(commons).spread(["store:" + k for k, _ in strong]))
+                weak.sort(key=lambda kd: (-act.get("store:" + kd[0], 0), -syn[kd[0]]["s"], kd[0]))
+            except Exception:
+                pass
             ask(weak)
         _save(commons, d)
+        if learn and out:                                # the stores that answered this lookup were active together
+            try:
+                answered = sorted({f["dataset"] for f in out})
+                keys = [k for k, ds in held if ds.title in answered]
+                network(commons).experience(["store:" + k for k in keys], "lookup:" + k_, True, text[:100])
+            except Exception:
+                pass
     return out[:limit], asked, len(held), fell_back
 
 
@@ -329,6 +365,15 @@ def health_lines(commons, hours=24):
         L.append("Shadow verdict: " + s["verdict"])
     elif m == "shadow":
         L.append("Shadow test: no lookups yet — use Look up bulk facts; every lookup is compared")
+    try:
+        net = network(commons)
+        if net.syn:
+            L.append(net.health_line().replace("Network memory:", "Network memory (dataset stores):"))
+        chk = check_networks(commons)
+        if chk.syn:
+            L.append(chk.health_line().replace("Network memory:", "Network memory (checks between applications):"))
+    except Exception:
+        pass
     if s["dsn_answered"]:
         L.append("DSN answered (last %d h): %s lookups · %.1f store(s) asked on average · every store asked in %d (strong pathways found nothing)"
                  % (hours, format(s["dsn_answered"], ","), s["dsn_asked_alone"], s["dsn_fell_back"]))
@@ -378,6 +423,8 @@ def self_test():
                              "CREATE TABLE predicates(id INTEGER PRIMARY KEY, name TEXT); CREATE TABLE parts(id INTEGER PRIMARY KEY, name TEXT);"
                              "INSERT INTO predicates VALUES(1, 'value'); INSERT INTO parts VALUES(1, 'part1');")
             db.executemany("INSERT INTO facts VALUES(?, 1, ?, 1, ?)", [("%s %d" % (pre, i), "v%d" % i, i) for i in range(200)])
+            if k == "b":                                 # a second store shares some Gamma subjects: lookups answered by two
+                db.executemany("INSERT INTO facts VALUES(?, 1, ?, 1, ?)", [("Gamma %d" % i, "b-v", 500 + i) for i in range(20)])
             if k == "a":                                 # one store also holds a few Gamma subjects
                 db.executemany("INSERT INTO facts VALUES(?, 1, ?, 1, ?)", [("Gamma extra %d" % i, "x", 900 + i) for i in range(3)])
             db.commit(); db.close()
@@ -415,6 +462,11 @@ def self_test():
         ok("switching the DSN back on re-checks what it learned (pathways pulled toward neutral)", "re-checked" in r["summary"], r)
         hl = health_lines(c)
         ok("the health report counts the lookups the DSN answered", any(x.startswith("DSN answered") for x in hl), hl)
+        net = network(c)
+        asm = net.assemblies(min_strength=0.3)
+        ok("synaptic network: stores that answer the same lookups are linked, with their engram per kind of lookup",
+           net.syn and any(e["context"] == "lookup:gamma" for e in net.engrams()), net.summary(top=3))
+        ok("the health report carries the network memory line", any(x.startswith("Network memory (dataset stores)") for x in health_lines(c)), health_lines(c))
         ok("kinds: first word, lower case, digits dropped", kind("PubChem CID 2244") == "pubchem" and kind("2030 events") == "#" and kind("") == "")
     finally:
         bk.catalog, bk.wd_labels = saved

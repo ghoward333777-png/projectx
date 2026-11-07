@@ -487,6 +487,11 @@ def main():
                 [tuple(r) for r in d.execute("SELECT kind, to_app, status FROM requests WHERE status='open' LIMIT 5")])
         c.check("checks crossed between all three applications",
                 {tuple(r) for r in d.execute("SELECT DISTINCT from_app, to_app FROM requests")} >= {("facts", "stem"), ("stem", "language")})
+        import qbsynapse
+        sn = qbsynapse.Network(os.path.join(commons, "synapses-stem.json"))
+        ls = sn.synapse("team:facts", "team:stem", "checks", True)
+        c.check("synaptic network: a check asked by one team and answered by another is a directed, learning relationship",
+                ls is not None and ls["ok"] >= 1 and ls["contexts"] and ls["provenance"], ls)
         c.check("harvest cursors advanced", q("SELECT value FROM settings WHERE key = 'cursor:language:definitions'") == "500")
         c.check("shared database passes its integrity check", q("PRAGMA integrity_check") == "ok")
         c.check("shared database is backed up", len([n for n in os.listdir(os.path.join(commons, "backups")) if n.endswith(".sqlite")]) >= 1)

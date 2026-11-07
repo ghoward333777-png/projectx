@@ -166,6 +166,12 @@ async function loadDsn() {
     `<table class="t small"><tr><th>Lookups starting with</th><th>Times</th><th>Stores it asks (strength · facts found · empty)</th><th>Stores it skips</th></tr>` +
     pw.rows.map(x => `<tr><td>${esc(x.kind)}</td><td>${fmt(x.lookups)}</td><td>${x.strong.map(t => `${esc(t.store)} (${t.strength} · ${fmt(t.facts_found)} · ${fmt(t.empty)})`).join(", ") || "—"}</td><td>${fmt(x.weak)}</td></tr>`).join("") +
     `</table></details>`;
+  const net = (title, n) => !n || !n.synapses ? "" : `<details><summary class="small">Network memory — ${esc(title)}: ${fmt(n.agents)} agent(s), ${fmt(n.synapses)} synapse(s), ${n.assemblies.length} assembl${n.assemblies.length === 1 ? "y" : "ies"}, ${n.assembly_links.length} link(s) between assemblies</summary>` +
+    (n.assemblies.length ? `<table class="t small"><tr><th>Assembly</th><th>Members</th><th>Cohesion</th><th>Solves</th></tr>` +
+      n.assemblies.map(a => `<tr><td>${esc(a.id)}</td><td>${a.members.map(esc).join(", ")}</td><td>${a.cohesion}</td><td>${a.contexts.map(esc).join(", ")}</td></tr>`).join("") + `</table>` : "") +
+    `<table class="t small"><tr><th>Strongest synapses</th><th>Type</th><th>Strength · threshold</th><th>Good / bad</th><th>Contexts</th></tr>` +
+    n.strongest.map(s => `<tr><td>${esc(s.a)} ${s.directed ? "→" : "↔"} ${esc(s.b)}</td><td>${esc(s.type)}</td><td>${s.strength} · ${s.threshold}${s.consolidated ? " · consolidated" : ""}</td><td>${s.ok} / ${s.bad}</td><td>${Object.keys(s.contexts).map(esc).join(", ")}</td></tr>`).join("") + `</table></details>`;
+  if (r.network) h += net("dataset stores (lookups)", r.network.stores) + net("checks between applications", r.network.checks);
   $("#dsn-out").innerHTML = h;
 }
 

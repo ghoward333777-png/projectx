@@ -3650,8 +3650,10 @@ def add_routes(api, commons, program_dir):
         """the Answer routing setting, the Shadow comparison of the last 24 hours and the learned pathways"""
         import qbdsn
         m = qbdsn.mode(commons)
+        net, chk = qbdsn.network(commons), qbdsn.check_networks(commons)
         return {"mode": m, "modes": [{"id": k, "text": qbdsn.MODE_TEXT[k]} for k in qbdsn.MODES],
-                "shadow": qbdsn.shadow_summary(commons), "pathways": qbdsn.pathways(commons), "health": qbdsn.health_lines(commons)}
+                "shadow": qbdsn.shadow_summary(commons), "pathways": qbdsn.pathways(commons), "health": qbdsn.health_lines(commons),
+                "network": {"stores": net.summary(top=8), "checks": chk.summary(top=8)}}
 
     @api.post("/api/dsn/mode")
     def dsn_mode(p):
