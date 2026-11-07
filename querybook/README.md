@@ -15,6 +15,7 @@ Run it on Windows by double-clicking `START_QUERYBOOK.bat`. Plain-language notes
 | Tamper-evident security log: hash chain, Merkle checkpoints, write-once files, mirror, blockchain anchoring and proofs | `qb_seclog.py` | `/security` |
 | **Harvest campaigns and the master On/Off**: named selections of sources and Google tools started and stopped together with progress; one master switch; 23 open online sources (Wikidata CC0, USGS, Federal Register, PubChem, NCBI, NARA, Natural Earth, The Met, Smithsonian, DPLA, Europeana, USDA) each switched on its own; Google exemplar tools run by the separate generator | `qb_campaign.py`, `qb_online.py` (same file as `apps/_core/qbonline.py`), `generate_exemplars.py` | `/dashboard` → Campaigns & sources |
 | **Self-Knowledge Layer (SKL)**: QueryBook describes itself accurately, with sources — every Overview section and twelve reasoning aspects (deterministic, atomic, world model, predictive, neuromorphic, hypothesis, simulation, deduction, feedback, self-improvement, RSI, self-knowledge) labelled built / partly built / specified / not planned, checked against its own code, with a contradiction check and a gap agenda (Registry 383–391) | `qb_selfknow.py` (same file as `apps/_core/qbselfknow.py`), `/api/self`, `/api/self/ask` | `/self` |
+| **Digital Synaptic Network (DSN) and network memory**: answer routing (Central, Shadow, DSN) with learned store pathways, a Shadow comparison and a health-report verdict; and learning, auditable relationships between agents — digital synapses with strength, threshold, contexts, reliability, evidence and history; plasticity, forgetting and consolidation; engrams, assemblies and networks of networks; spreading activation. Answers are never changed. | `apps/_core/qbdsn.py`, `apps/_core/qbsynapse.py`, `QueryBook-v9.64/qb_synapse.py`, `sim/dsn_stress.py` | `/network`; Control Panel → Answer routing |
 
 The specification, with requirement-to-code-to-test traceability and the live attack test, is in
 [`QueryBook-v9.64/SECURITY-SPEC.md`](QueryBook-v9.64/SECURITY-SPEC.md).
@@ -28,9 +29,15 @@ The specification, with requirement-to-code-to-test traceability and the live at
 | Composite Feature Registry v70 (391 features; SKL 383–391, ALG-20/21, FIG. 57) | [`patent/registry/QueryBook_Composite_Feature_Registry_v70.xlsx`](patent/registry/) |
 | Provisional, synchronized, with the self-knowledge layer (FIG. 57, claims 358–362), clean and changes-highlighted | [`patent/prov_oct9/Prov_Patent_Oct9_SYNCED_SelfKnowledge_*`](patent/prov_oct9/) |
 | Drawings FIG. 1–57 and their description | [`patent/prov_oct9/QueryBook_Drawings_FIG1-57_SelfKnowledge.pdf`](patent/prov_oct9/), `QueryBook_Drawings_Description_FIG1-57.*` |
+| **QueryBook Bible v2.1, Pass 120** (Chapter 131 The Digital Synaptic Network and Network Memory added to Pass 119) | [`docs/QueryBook_Bible_v2.1_Pass_120_DSN_NetworkMemory.docx`](docs/) (+ `.pdf`) |
+| **Composite Feature Registry v71** (407 features; DSN 392–398, network memory 399–407, ALG-22–25, FIG. 58–59) | [`patent/registry/QueryBook_Composite_Feature_Registry_v71.xlsx`](patent/registry/) |
+| **Provisional**, synchronized, with the digital synaptic network and network memory (FIG. 58–59, claims 363–374), clean and changes-highlighted | [`patent/prov_oct9/Prov_Patent_Oct9_SYNCED_DSN_SynapticNetwork_*`](patent/prov_oct9/) |
+| **Drawings FIG. 1–59** and their description | [`patent/prov_oct9/QueryBook_Drawings_FIG1-59_DSN_SynapticNetwork.pdf`](patent/prov_oct9/), `QueryBook_Drawings_Description_FIG1-59.*` |
 
 All SKL wording comes from one file, [`docs/source/skl_text.py`](docs/source/skl_text.py); the build scripts beside it
 (and `patent/registry/source/build_v70.py`, `patent/prov_oct9/source/self_knowledge/`) only add — no earlier text changes.
+All DSN and network-memory wording comes from [`docs/source/dsn_text.py`](docs/source/dsn_text.py), built the same way
+(`docs/source/build_bible_p120.py`, `patent/registry/source/build_v71.py`, `patent/prov_oct9/source/dsn_synaptic/`).
 
 ## Checks
 

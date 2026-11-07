@@ -138,6 +138,9 @@ FEATURES = [
     {"id": "platform.self_knowledge", "title": "Self-Knowledge Layer (SKL) — accurate self-description with sources",
      "system": "platform", "registry": "[383]-[391] (v70)", "module": "qb_selfknow",
      "endpoints": ["/api/self", "/api/self/ask"], "page": "/self", "status": "built"},
+    {"id": "platform.network_memory", "title": "Network memory (synaptic network) — learning, auditable relationships between agents",
+     "system": "platform", "registry": "[399]-[407] (v71)", "module": "qb_synapse",
+     "endpoints": ["/api/network"], "page": "/network", "status": "built"},
     {"id": "platform.campaigns", "title": "Harvest campaigns, master On/Off, 23 open online sources, Google exemplar tools",
      "system": "platform", "registry": "online harvesters (v71)", "module": "qb_campaign,qb_online",
      "endpoints": ["/api/campaigns"], "page": "/dashboard", "status": "built"},
@@ -168,7 +171,7 @@ def _page_ok(spec):
              "/language": "language.html", "/voice": "voice.html", "/director": "director.html",
              "/reconstructor": "reconstructor.html", "/dashboard": "dashboard.html",
              "/learn": "learn.html", "/educator": "educator.html", "/collab": "collab.html",
-             "/admin": "admin.html", "/openclaw": "openclaw.html", "/security": "security.html", "/self": "self.html"}.get(page)
+             "/admin": "admin.html", "/openclaw": "openclaw.html", "/security": "security.html", "/self": "self.html", "/network": "network.html"}.get(page)
     return bool(fname) and _os.path.exists(_os.path.join(_HERE, fname))
 
 def catalog():

@@ -777,6 +777,25 @@ exemplar only when the admin approves it — the others are kept as "also ran", 
 Outside opinions (a second transcript) are kept beside the scores and never change them. `tools/generate_exemplars.py`
 plans, generates (within budget), imports, scores and reports.
 
+## Answer routing and network memory: the Digital Synaptic Network (`_core/qbdsn.py`, `_core/qbsynapse.py`)
+
+**Answer routing** (Control Panel → Harvesting → Answer routing) decides how *Look up bulk facts* finds its facts:
+**Central** asks every store in turn (the default — the fastest on one computer in the stress test); **DSN** asks only the
+stores its learned pathways point to for that kind of lookup, and every store when those find nothing; **Shadow** answers
+with Central and runs the DSN beside it, logging every difference (`shards/_dsn-shadow.jsonl`). The health report states the
+routing and, for the last 24 hours, agreement, missed facts, stores asked, time and a verdict (after 50 lookups). Switching the
+DSN back on pulls every learned pathway halfway back to neutral, so stale routes are re-checked.
+
+**Network memory** makes the relationships between agents a layer of memory. Stores that answer the same lookup, and the
+teams of two applications exchanging a check, form digital synapses: each with its type, strength, threshold (rising when
+unreliable), contexts, good and bad outcomes, evidence, history and consolidation. Joint success strengthens a synapse,
+joint failure weakens it, unused ones fade and are removed; strongly bound agents form **assemblies**, assemblies linked
+through their members form **networks of networks**, and each kind of problem keeps its **engram**. Spreading activation
+orders the stores asked when the strong pathways find nothing. `GET /api/dsn/status` returns the routing, the Shadow
+summary, the pathways and both networks; the health report carries a network-memory line for each. Synapses hold
+relationships, never facts, and never change an answer. Prototype v9.64 has the same network (`qb_synapse.py`, `/network`).
+Documents: Bible Pass 120 Chapter 131, Registry v71 features 392–407, provisional FIG. 58–59 and claims 363–374.
+
 ## Self-knowledge: the Self-Knowledge Layer (`_core/qbselfknow.py`, all four applications)
 
 QueryBook describes itself accurately, with sources — never from generated text. Three layers: the **specification**
@@ -1065,7 +1084,7 @@ python tools/run_all_tests.py         # all of the above
 ## For developers
 
 * `_core/qbcore.py` (database, backups, web server, old-store reader), `_core/qbcommons.py` (the
-  Commons and the agent teams), `_core/qbharvest.py` (registry, engine, log, approvals, learner), `_core/qbselfknow.py` (the Self-Knowledge Layer) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
+  Commons and the agent teams), `_core/qbharvest.py` (registry, engine, log, approvals, learner), `_core/qbselfknow.py` (the Self-Knowledge Layer), `_core/qbdsn.py` (answer routing), `_core/qbsynapse.py` (network memory) and `_core/ui/qb.css`, `qb.js` are shared. Each application's team
   is its `harvest.py`. Each application carries its **own copy** so it can be shipped alone; after editing
   `_core/`, run `python tools/sync_core.py`. The self-tests fail if a copy differs from the master.
 * `python tools/package.py` builds one zip per application in `dist/`.
