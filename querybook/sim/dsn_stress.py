@@ -33,7 +33,7 @@ Standard library only. Writes a Markdown report and a JSON file with every numbe
 import argparse, hashlib, json, math, os, random, shutil, statistics, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------------------------------------- the prototype's code
@@ -677,5 +677,34 @@ def self_test(a):
     return 0 if all(ok) else 1
 
 
+def _console_utf8():
+    """a Windows console that cannot show "—" or "·" must never stop the test: unknown characters become "?" """
+    for st in (sys.stdout, sys.stderr):
+        try:
+            st.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    _console_utf8()
+    print("QueryBook stress test %s starting: Python %s on %s, %s CPU cores" % (VERSION, sys.version.split()[0], sys.platform, os.cpu_count()), flush=True)
+    if sys.version_info < (3, 8):
+        print("Python 3.8 or newer is needed (this is %s). Install it from python.org." % sys.version.split()[0])
+        sys.exit(2)
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        err = traceback.format_exc()
+        print("\nTHE TEST STOPPED WITH AN ERROR:\n" + err, flush=True)
+        try:
+            os.makedirs("dsn-results", exist_ok=True)
+            with open(os.path.join("dsn-results", "error.txt"), "w", encoding="utf-8") as f:
+                f.write(err)
+            print("The error is also saved in dsn-results\\error.txt — please send that file.")
+        except OSError:
+            pass
+        sys.exit(1)

@@ -17,6 +17,15 @@ What you need
   Python 3.8 or newer (python.org; on Windows tick "Add python.exe to PATH"). Nothing else: standard library only.
   The folder must hold dsn_stress.py, qb_chat.py and ufcs_store.py (the last two are the prototype's own files).
 
+FIRST: extract the ZIP
+  Right-click QueryBook-StressTest.zip → "Extract All..." → open the extracted folder. Double-clicking a launcher while
+  it is still inside the ZIP makes Windows copy only that one file, and the test cannot start (the launcher now says so).
+
+How long it takes, and what you see
+  The window shows a line for every scenario and engine. The quick run takes about 2–10 minutes; if a window closes or
+  ends within seconds, it shows why (Python missing, files not extracted, or an error — also saved in
+  dsn-results\error.txt). Send that text.
+
 Run it (Windows: double-click; any system: the command shown)
   RUN-QUICK.bat     python dsn_stress.py quick      a few minutes — check it works
   RUN-STRESS.bat    python dsn_stress.py stress     30–60 minutes
