@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.31.2"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.32.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
 CACHE_MB = 128                     # SQLite page cache per agent
@@ -1200,9 +1200,16 @@ class WikidataDump(Dataset):
             r = dumps_ready(run.folder, run.commons)
             if not r:
                 pg = qbdump.progress(dumps)
-                raise Busy(WAITING + (" (%d%% downloaded%s)" % (round(100 * pg["share"]), ", about %d min left" % (pg["eta_s"] // 60)
-                                                                       if pg.get("eta_s") else "") if pg else " (starting)"))
-            self.local, self.base = r, "file://" + urllib.request.pathname2url(r["path"])
+                state = WAITING + (" (%d%% downloaded%s)" % (round(100 * pg["share"]), ", about %d min left" % (pg["eta_s"] // 60)
+                                                                    if pg.get("eta_s") else "") if pg else " (starting)")
+                if not stream_while_downloading(run.commons):
+                    raise Busy(state)
+                # 1.32: the lane streams meanwhile instead of waiting (it waited, idle, for the whole 157 GB before);
+                # the download and the lanes share each server's connections (Slots), and parts streamed now are
+                # not read again from the copy, which is named by the same edition
+                TR.event("download", note="%s: streaming over the internet while %s" % (self.key, state.replace(WAITING, "the download runs")))
+            else:
+                self.local, self.base = r, "file://" + urllib.request.pathname2url(r["path"])
         self.slots = Slots(run.folder, halt=run.stopped)
         if (run.commons.setting("bulk:wikidata:properties") or "all") == "all":
             self.props = self.catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
@@ -1306,6 +1313,12 @@ class WikidataDump(Dataset):
 WAITING = "waiting for the one download of the Wikidata dump to the data drive"
 
 
+def stream_while_downloading(commons):
+    """1.32: while the one download is not ready, the Wikidata lanes stream (sharing connections with it); the admin can
+    set bulk:wikidata:while_downloading to wait, as 1.31 did"""
+    return (commons.setting("bulk:wikidata:while_downloading") or "stream") != "wait"
+
+
 def local_mode(commons):
     """download once, read locally (on unless the admin sets bulk:wikidata:local to off, which streams as before 1.31)"""
     return (commons.setting("bulk:wikidata:local") or "on") != "off"
@@ -1393,7 +1406,8 @@ class WikidataDownload(Dataset):
         log = lambda *a: TR.event("download", note=" ".join(str(x) for x in a))
         try:
             r = qbdump.Download(dumps, self.sources(run.commons), meter=meter, stop=run.stopped, log=log,
-                                min_free_gb=float(run.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)).fetch()
+                                min_free_gb=float(run.commons.setting("bulk:min_free_gb") or MIN_FREE_GB),
+                                slots=Slots(run.folder, halt=run.stopped)).fetch()
         except qbdump.Busy as e:
             stop = "Control Panel" in str(e)
             return {"dataset": self.key, "state": "stopped" if stop else "paused", "why": str(e), "new": 0, "retry": not stop}
@@ -3998,8 +4012,11 @@ def self_test():
         c.set_setting("bulk:dumps:folder", dumps)
         WikidataDump.LANES = 1
         try:
+            ok("1.32: by default the lanes stream while the download runs (they no longer wait idle for 157 GB)",
+               stream_while_downloading(c))
+            c.set_setting("bulk:wikidata:while_downloading", "wait")      # the 1.31 behaviour, kept as an option (and offline here)
             rw = run_dataset(cf, "wikidata-dump-1")
-            ok("download once: a lane waits for the one download (looked at again in 2 minutes), it never streams by itself",
+            ok("download once, set to wait: a lane waits for the one download (looked at again in 2 minutes)",
                rw["state"] == "paused" and WAITING in rw["why"] and next_try(rw, 3) == 120, rw)
             ed_dir = os.path.join(dumps, "wikidata", "2026-11-02")
             os.makedirs(ed_dir)
@@ -4028,6 +4045,7 @@ def self_test():
         finally:
             WikidataDump.LANES = lanes_was
             c.set_setting("bulk:dumps:folder", "")
+            c.set_setting("bulk:wikidata:while_downloading", "")
             c.set_setting("bulk:url:wikidata-dump", "file://" + dump)      # the tests below read the dump file as before
         # the lattice (1.15): every series Wikidata knows, read in batches, written exactly as the dump lanes write facts
         W = "http://www.wikidata.org/entity/"

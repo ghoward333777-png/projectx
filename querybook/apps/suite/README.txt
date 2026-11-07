@@ -43,6 +43,15 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  The Wikidata lanes no longer sit idle while the dump downloads (Control Panel 1.35.1, bulk engine 1.32.0)
+    * Since 1.31 all 16 Wikidata lanes waited, producing nothing, until the whole 157 GB dump had downloaded and passed
+      its checksum. When the download was slow or kept being refused, the harvest fell to a trickle. Now the lanes
+      stream over the internet meanwhile and switch to the downloaded copy once it is ready; parts already done while
+      streaming are not read again.
+    * The download and the streaming lanes share each server's connection limit (Wikimedia two, the mirrors three or
+      four), so together they never pass it, and a server's "slow down" rests both.
+    * To wait for the download as before: setting bulk:wikidata:while_downloading = wait.
+    * The engine version changed: press ⚡ Start harvesting once after installing, so the new engine replaces the old one.
   Network memory: learning connections between agents (Control Panel 1.35.0; also in the QueryBook 9.64 prototype)
     * The relationships between agents are now a layer of memory (shared module qbsynapse). Each synapse records its
       type, strength, activation threshold (higher when it has been unreliable), the contexts it formed in, good and

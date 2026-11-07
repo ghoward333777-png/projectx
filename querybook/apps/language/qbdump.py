@@ -177,7 +177,10 @@ class Download:
     """fetch(): the dump into <dumps>/wikidata/<edition>/, piece by piece over every server holding it. Returns ready.json.
     meter(n): called with every byte count written or checked (the agent's progress); stop(): a reason to stop, or None."""
 
-    def __init__(self, dumps_folder, sources, meter=None, stop=None, log=None, piece=PIECE, md5_index=MD5_INDEX, min_free_gb=10):
+    def __init__(self, dumps_folder, sources, meter=None, stop=None, log=None, piece=PIECE, md5_index=MD5_INDEX, min_free_gb=10, slots=None):
+        """slots: the connection slots the harvesting agents use (qbbulk.Slots). With them the download and the lanes that
+        stream meanwhile share each server's limit, and a server's "slow down" rests both."""
+        self.slots = slots
         self.folder, self.sources = dumps_folder, [(u, max(1, int(n))) for u, n in sources]
         self.meter, self.stop, self.log = meter or (lambda n: None), stop or (lambda: None), log or (lambda *a: None)
         self.piece, self.md5_index, self.min_free = piece, md5_index, min_free_gb * 1e9
@@ -241,7 +244,7 @@ class Download:
         self.log("download: %s, %d of %d pieces to fetch from %s" % (ed, todo.qsize(), n, ", ".join(_host(u) for u, _ in sources)))
 
         def worker(src_i):
-            url = sources[src_i][0]
+            url, conns = sources[src_i]
             host = _host(url)
             fh = open(part, "r+b")
             try:
@@ -249,11 +252,18 @@ class Download:
                     why = self.stop()
                     if why:
                         fail.append(Busy(why)); return
-                    if cool.get(host, 0) > time.time():
+                    if cool.get(host, 0) > time.time() or (self.slots and self.slots.cooling(host)):
                         time.sleep(1); continue
+                    lk = None
+                    if self.slots:                        # one of this server's shared connections, or wait for one
+                        lk = next((f for f in (self.slots._lock(host, j) for j in range(conns)) if f), None)
+                        if lk is None:
+                            time.sleep(1); continue
                     try:
                         i = todo.get_nowait()
                     except queue.Empty:
+                        if self.slots:
+                            self.slots.release(lk)
                         return
                     a = i * self.piece
                     b = min(size, a + self.piece) - 1
@@ -289,6 +299,8 @@ class Download:
                             except (TypeError, ValueError):
                                 wait = 0
                             cool[host] = time.time() + max(COOL_S, wait)
+                            if self.slots:
+                                self.slots.cool(host, max(COOL_S, wait))
                         else:
                             self._failed(i, tries, fail, "%s HTTP %d" % (host, e.code))
                             time.sleep(5)
@@ -296,6 +308,9 @@ class Download:
                         todo.put(i)
                         self._failed(i, tries, fail, "%s: %s" % (host, str(e)[:120]))
                         time.sleep(5)
+                    finally:
+                        if self.slots:
+                            self.slots.release(lk)
             finally:
                 fh.close()
         threads = [threading.Thread(target=worker, args=(k,), daemon=True, name="dump-%s-%d" % (_host(u), j))
@@ -447,6 +462,34 @@ def self_test():
             ok("a stopped download keeps its finished pieces", stopped and pg and 0 < pg["done_pieces"] < pg["pieces"], pg)
             r2 = Download(dumps2, srcs[:1], piece=512, md5_index=base + "/entities/", min_free_gb=0).fetch()
             ok("…and resumes at the next missing piece", r2["md5"] == md5 and progress(dumps2) is None)
+            # 1.32: shared connection slots — a lane holds one of the server's two connections; the download uses the other
+
+            class FakeSlots:
+                def __init__(self):
+                    self.held, self.most, self.lk = set(), 0, threading.Lock()
+
+                def _lock(self, host, i):
+                    with self.lk:
+                        if (host, i) in self.held:
+                            return None
+                        self.held.add((host, i))
+                        self.most = max(self.most, sum(1 for h, _ in self.held if h == host))
+                        return (host, i)
+
+                def release(self, f):
+                    with self.lk:
+                        self.held.discard(f)
+
+                def cooling(self, host):
+                    return 0.0
+
+                def cool(self, host, seconds):
+                    pass
+            fs = FakeSlots()
+            lane = fs._lock("127.0.0.1", 0)
+            r5 = Download(os.path.join(td, "d5"), srcs[:1], piece=512, md5_index=base + "/entities/", min_free_gb=0, slots=fs).fetch()
+            ok("1.32: the download shares the lanes' connection slots: with a lane on one of two, it never uses more than the other",
+               r5["md5"] == md5 and fs.most == 2 and fs.held == {lane}, (fs.most, fs.held))
             # a wrong checksum: never used
             WANT[0] = "0" * 32
             dumps3 = os.path.join(td, "dumps3")
