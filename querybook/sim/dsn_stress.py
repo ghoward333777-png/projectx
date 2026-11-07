@@ -33,7 +33,7 @@ Standard library only. Writes a Markdown report and a JSON file with every numbe
 import argparse, hashlib, json, math, os, random, shutil, statistics, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-VERSION = "1.0.2"
+VERSION = "1.1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------------------------------------- the prototype's code
@@ -125,6 +125,14 @@ class World:
         self.by_pred = {}
         for (s, p) in self.facts:
             self.by_pred.setdefault(p, []).append(s)
+        self.objs = {p: sorted(set(v)) for p, v in objs.items()}
+
+    def truth_of(self, start, chain):
+        """the real-world answer, whether or not the store holds it (used by the learning-over-time study)"""
+        s = start
+        for p in chain:
+            s = self.truth[(s, p)]
+        return s
 
     @staticmethod
     def _other(rnd, pool, o):
@@ -238,19 +246,23 @@ def msg_ms(nbytes):
 class AgentPool:
     """one agent per (predicate, shard, replica): replicas hold the same facts. Faulty agents: liar / dead / slow."""
 
-    def __init__(self, world, shards=8, replicas=3, liar=0.0, dead=0.0, slow=0.0, seed=7):
+    def __init__(self, world, shards=8, replicas=3, liar=0.0, dead=0.0, slow=0.0, seed=7, biased=0.0):
         self.w, self.S, self.R = world, shards, replicas
         self.preds = sorted({p for (_, p) in world.facts})
         self.ids = [(p, s, r) for p in self.preds for s in range(shards) for r in range(replicas)]
         self.seed = seed
-        self.set_faults(liar, dead, slow, seed)
+        self.moved = {}                       # (predicate, declared shard) -> the shard whose agents really hold those facts
+        self.set_faults(liar, dead, slow, seed, biased)
 
-    def set_faults(self, liar, dead, slow, seed):
+    def set_faults(self, liar, dead, slow, seed, biased=0.0):
+        """liar: invents a fact (caught when its FU id is resolved) · dead · slow · biased: reports only the wrong,
+        high-trust value when the store holds one (its FU ids resolve correctly, so resolution cannot catch it)"""
         rnd = random.Random(seed)
         self.fault = {}
         for a in self.ids:
             x = rnd.random()
-            self.fault[a] = "liar" if x < liar else "dead" if x < liar + dead else "slow" if x < liar + dead + slow else "ok"
+            self.fault[a] = ("liar" if x < liar else "dead" if x < liar + dead else "slow" if x < liar + dead + slow
+                             else "biased" if x < liar + dead + slow + biased else "ok")
         self.n_dead = sum(1 for v in self.fault.values() if v == "dead")
         self.n_slow = sum(1 for v in self.fault.values() if v == "slow")
 
@@ -259,6 +271,20 @@ class AgentPool:
 
     def holds(self, agent, subject):
         return self.shard(subject) == agent[1]
+
+    def misplace(self, share, seed):
+        """re-sharding nobody told the network about: for `share` of the (predicate, shard) areas, the facts now live with
+        the agents of another shard, so the subscriptions (dendrites) point at agents that no longer hold them"""
+        rnd = random.Random(seed)
+        self.moved = {}
+        for p in self.preds:
+            for k in range(self.S):
+                if rnd.random() < share:
+                    self.moved[(p, k)] = (k + 1 + rnd.randrange(self.S - 1)) % self.S
+
+    def home(self, predicate, subject):
+        k = self.shard(subject)
+        return self.moved.get((predicate, k), k)
 
     def reply(self, agent, subject, predicate, rnd):
         """the facts this agent reports for (subject, predicate): [(o, claimed_trust, fuid)] — None if dead"""
@@ -272,6 +298,12 @@ class AgentPool:
             lie = self.w.facts.get((other, predicate)) or [("nothing", 0.9, "k", "0" * 16)]
             o, _t, _k, fid = lie[0]
             return [(o, 0.95, fid)]
+        if self.moved and agent[1] != self.home(predicate, subject):
+            return []                         # an honest agent that does not hold this area (any more)
+        if f == "biased":
+            adv = [(o, t, fid) for o, t, k, fid in self.w.facts.get((subject, predicate), []) if k == "adv"]
+            if adv:
+                return adv
         return facts
 
 
@@ -567,6 +599,465 @@ def scale_runs(base, qbmods, folder, log):
     return out
 
 
+# ---------------------------------------------------------------------------------------------- learning over time
+VERIFY_MS, VERIFY_B, VERIFY_ACC = 300.0, 200, 0.97
+
+
+def new_cost():
+    return {"lookups": 0, "messages": 0, "bytes": 0, "agents": 0, "comm_ms": 0.0, "verifies": 0}
+
+
+class Verifier:
+    """an outside check: a harvest from the original source, a document, a person. Slow (300 ms) and right 97% of the
+    time, so nothing is learned from a single check"""
+
+    def __init__(self, world, seed):
+        self.w, self.rnd = world, random.Random(seed)
+
+    def check(self, s, p):
+        t = self.w.truth.get((s, p))
+        if t is None or self.rnd.random() < VERIFY_ACC:
+            return t
+        return World._other(self.rnd, self.w.objs[p], t)
+
+
+class FactLearner:
+    """new verified knowledge written back to the shared graph: a fact is learned after two outside checks agree.
+    An audit that finds a store Fact Unit wrong marks it, and readers skip it from then on."""
+    NEED = 2
+
+    def __init__(self, verifier):
+        self.v, self.known, self.pending, self.bad_fu = verifier, {}, {}, set()
+
+    def get(self, s, p):
+        return self.known.get((s, p))
+
+    def check(self, s, p, cost):
+        """one outside check: (what the check said, the confirmed value or None)"""
+        cost["messages"] += 2; cost["bytes"] += 12 + VERIFY_B; cost["comm_ms"] += VERIFY_MS; cost["verifies"] += 1
+        raw = self.v.check(s, p)
+        if raw is None:
+            return None, None
+        pv, n = self.pending.get((s, p), (None, 0))
+        n = n + 1 if pv == raw else 1
+        if n >= self.NEED:
+            self.known[(s, p)] = raw
+            self.pending.pop((s, p), None)
+            return raw, raw
+        self.pending[(s, p)] = (raw, n)
+        return raw, None
+
+
+class CentralReader:
+    """the chained central pipeline (A2's logic) reading the store directly; optionally with the same fact learning and
+    audits the upgraded DSN gets, so the comparison stays fair"""
+    AUDIT = 0.05
+
+    def __init__(self, world, learner=None, seed=13):
+        self.w, self.L, self.rnd = world, learner, random.Random(seed)
+
+    def answer(self, q, rnd):
+        cost = new_cost()
+        s = q["start"]
+        for p in q["chain"]:
+            cost["lookups"] += 1
+            if self.L:
+                k = self.L.get(s, p)
+                if k is not None:
+                    s = k
+                    continue
+            usable = [f for f in self.w.facts.get((s, p), []) if f[1] >= 0.5 and not (self.L and f[3] in self.L.bad_fu)]
+            vals = {f[0] for f in usable}
+            if len(vals) == 1:
+                if self.L and self.rnd.random() < self.AUDIT:
+                    raw, conf = self.L.check(s, p, cost)
+                    if raw is not None and raw != usable[0][0] and conf is None:
+                        raw, conf = self.L.check(s, p, cost)        # never mark a fact on a single check
+                    if conf is not None and conf != usable[0][0]:
+                        self.L.bad_fu.add(usable[0][3])
+                        s = conf
+                        continue
+                s = usable[0][0]
+                continue
+            if self.L:
+                raw, conf = self.L.check(s, p, cost)
+                if conf is not None:
+                    s = conf
+                    continue
+            return ("CONTRADICTED" if vals else "UNKNOWN"), None, cost
+        return "VERIFIED", s, cost
+
+
+class DSNPlus(DSN):
+    """the DSN with the three upgrades, each switchable:
+    facts  — agents learn: new verified facts written back to the graph, and combined facts (shortcuts) for chains the
+             network keeps answering
+    paths  — new pathways: when the subscribed agents know nothing, probe the same predicate's other agents once and
+             form a lasting pathway to the ones that answer (and drop it when it stops working)
+    audit  — feedback on accuracy, not just usefulness: a sample of answers is checked from outside; an agent caught
+             withholding the true value is inhibited on every synapse into it, and that signal cannot be poisoned"""
+    AUDIT, SHORTCUT_AFTER = 0.05, 3
+
+    def __init__(self, pool, learn=True, poison=0.0, seed=11, facts=False, paths=False, audit=False, verifier=None):
+        super().__init__(pool, learn=learn, poison=poison, seed=seed)
+        self.facts, self.paths, self.audit_on = facts, paths, audit
+        self.L = FactLearner(verifier) if (facts or audit) else None
+        self.route, self.probe_fail, self.chains, self.shortcuts, self.by_dst = {}, {}, {}, {}, {}
+        self.arnd = random.Random(seed + 5)
+
+    def _s(self, src, dst):
+        k = (src, dst)
+        s = self.syn.get(k)
+        if s is None:
+            with self.lock:
+                s = self.syn.setdefault(k, Synapse("%s -> %s" % (src, dst[0])))
+                self.by_dst.setdefault(dst, []).append(s)
+        return s
+
+    def _adjust(self, syn, good, kind=None, trusted=False):
+        if not self.learn:
+            return
+        if self.poison and not trusted and self.rnd.random() < self.poison:
+            good = not good
+        if good:
+            syn.strength += self.ETA * (1 - syn.strength); syn.evidence += 1; syn.last = self.t
+        elif kind == "silence":
+            syn.strength -= self.SILENCE * syn.strength; syn.silences += 1
+        else:
+            syn.strength -= self.INHIB * syn.strength; syn.inhibitions += 1
+
+    def _ask(self, a, s, p, rnd, cost):
+        cost["messages"] += 1; cost["bytes"] += self.EVENT_B; cost["agents"] += 1
+        r = self.p.reply(a, s, p, rnd)
+        if r is None:
+            return "dead", [], TIMEOUT_MS
+        cost["messages"] += 1; cost["bytes"] += self.FU_B * max(1, len(r))
+        ms = msg_ms(self.EVENT_B) + msg_ms(self.FU_B * max(1, len(r))) + (SLOW_MS if self.p.fault[a] == "slow" else 0)
+        bad_fu = self.L.bad_fu if self.L else ()
+        resolved, bad = [], False
+        for o, claimed, fid in r:
+            cost["lookups"] += 1
+            f = self.p.w.fu.get(fid)
+            if not f or f[0] != s or f[1] != p:
+                bad = True
+                continue
+            if fid not in bad_fu and f[3] >= 0.5:
+                resolved.append((f[2], fid))
+        return ("lie" if bad and not resolved else "ok"), resolved, ms
+
+    def _hop(self, src, s, p, rnd, cost):
+        """(verdict, value, fid, agent) for one step, from the agents subscribed to this area (or a learned pathway)"""
+        k = self.p.shard(s)
+        home = self.route.get((p, k), k) if self.paths else k
+        field = [a for a in self.p.ids if a[0] == p and a[1] == home]
+        syns = sorted(((self._s(src, a), a) for a in field), key=lambda x: -x[0].strength)
+        if self.learn:
+            for sy, _ in syns:
+                sy.strength += self.DRIFT * (0.5 - sy.strength) if sy.strength < 0.5 else 0
+        order = [x for x in syns if x[0].strength >= self.THETA or (self.learn and rnd.random() < self.EXPLORE)]
+        order += [x for x in syns if x not in order]
+        verdict, used = "UNKNOWN", None
+        for sy, a in order:
+            st, res, ms = self._ask(a, s, p, rnd, cost)
+            cost["comm_ms"] += ms
+            if st == "dead":
+                self._adjust(sy, False, "silence")
+                continue
+            if st == "lie":
+                self._adjust(sy, False)
+                continue
+            if not res:
+                used = (sy, a)
+                if sy.strength >= self.THETA:
+                    break
+                continue
+            if len({v for v, _ in res}) > 1:
+                self._adjust(sy, True)
+                return "CONTRADICTED", None, None, a
+            self._adjust(sy, True)
+            return "VERIFIED", res[0][0], res[0][1], a
+        if self.paths and home != k and used is not None:
+            self.route.pop((p, k), None)                                # the learned pathway stopped working
+        return verdict, None, None, None
+
+    def _probe(self, src, s, p, rnd, cost):
+        """a new pathway: ask one agent of every other shard for this predicate, in parallel; keep the one that knows"""
+        k = self.p.shard(s)
+        n = self.probe_fail.get((p, k), 0)
+        if self.arnd.random() > max(0.1, 1.0 / (1 + n)):
+            return None
+        home = self.route.get((p, k), k)
+        wave, found = 0.0, None
+        for k2 in range(self.p.S):
+            if k2 == home:
+                continue
+            a = (p, k2, (self.t + k2) % self.p.R)
+            st, res, ms = self._ask(a, s, p, rnd, cost)
+            wave = max(wave, ms)
+            if st == "ok" and res and len({v for v, _ in res}) == 1 and not found:
+                found = (k2, res[0][0], res[0][1], a)
+        cost["comm_ms"] += wave
+        if found:
+            self.route[(p, k)] = found[0]
+            self.probe_fail.pop((p, k), None)
+            self._adjust(self._s(src, found[3]), True)
+            return found
+        self.probe_fail[(p, k)] = n + 1
+        return None
+
+    def _audit_hop(self, s, p, value, fid, agent, cost):
+        """check one answered step from outside: (value to use or None, still trusted)"""
+        raw, conf = self.L.check(s, p, cost)
+        if raw is not None and raw != value and conf is None:
+            raw, conf = self.L.check(s, p, cost)            # one check can be wrong: never mark a fact on a single check
+        if raw is None or raw == value or conf is None:
+            if agent is not None and raw == value:
+                self._adjust(self._s("audit", agent), True, trusted=True)
+            return value, True
+        if fid and not fid.startswith("L|"):
+            self.L.bad_fu.add(fid)
+            withheld = agent is not None and any(f[0] == raw and f[1] >= 0.5 for f in self.p.w.facts.get((s, p), []))
+            if withheld:                                                # the graph holds the value the agent left out
+                for sy in self.by_dst.get(agent, []):
+                    self._adjust(sy, False, trusted=True)
+        return conf, False
+
+    def answer(self, q, rnd):
+        cost = new_cost()
+        self.t += 1
+        chain = q["chain"]
+        key = (q["start"], tuple(chain))
+        sc = self.shortcuts.get(key) if self.facts else None
+        if sc and self._shortcut_valid(sc, chain):
+            cost["messages"] += 2; cost["bytes"] += 24; cost["lookups"] += len(chain); cost["comm_ms"] += 2 * msg_ms(12)
+            if not (self.audit_on and self.arnd.random() < self.AUDIT):
+                return "VERIFIED", sc["ans"], cost
+            i = self.arnd.randrange(len(chain))
+            v, ok = self._audit_hop(sc["path"][i], chain[i], sc["path"][i + 1], sc["fids"][i], None, cost)
+            if ok:
+                return "VERIFIED", sc["ans"], cost
+            self.shortcuts.pop(key, None)
+        src, s, path, fids = "router", q["start"], [q["start"]], []
+        for p in chain:
+            if self.facts:
+                kv = self.L.get(s, p)
+                if kv is not None:                                      # learned knowledge, read from the graph
+                    cost["messages"] += 2; cost["bytes"] += 24; cost["lookups"] += 1; cost["comm_ms"] += 2 * msg_ms(12)
+                    path.append(kv); fids.append("L|%s|%s" % (s, p)); src, s = p, kv
+                    continue
+            verdict, value, fid, agent = self._hop(src, s, p, rnd, cost)
+            if verdict == "UNKNOWN" and self.paths:
+                f = self._probe(src, s, p, rnd, cost)
+                if f:
+                    verdict, value, fid, agent = "VERIFIED", f[1], f[2], f[3]
+            if verdict == "VERIFIED" and self.audit_on and self.arnd.random() < self.AUDIT:
+                v, ok = self._audit_hop(s, p, value, fid, agent, cost)
+                if not ok:
+                    verdict, value, fid = ("VERIFIED", v, "L|%s|%s" % (s, p)) if v is not None else ("UNKNOWN", None, None)
+            if verdict != "VERIFIED" and self.facts:
+                raw, conf = self.L.check(s, p, cost)
+                if conf is not None:
+                    verdict, value, fid = "VERIFIED", conf, "L|%s|%s" % (s, p)
+            if verdict != "VERIFIED":
+                return verdict, None, cost
+            path.append(value); fids.append(fid); src, s = p, value
+        if self.facts and len(chain) > 1:
+            prev = self.chains.get(key)
+            n = prev["n"] + 1 if prev and prev["ans"] == s else 1
+            self.chains[key] = {"ans": s, "n": n, "path": path, "fids": fids}
+            if n >= self.SHORTCUT_AFTER and self.audit_on:       # check every step from outside before caching it
+                for i, (pp, fid) in enumerate(zip(chain, fids)):
+                    if not fid.startswith("L|"):
+                        v, ok = self._audit_hop(path[i], pp, path[i + 1], fid, None, cost)
+                        if not ok:
+                            self.chains.pop(key, None)
+                            return self._redo(q, rnd, cost)
+            if n >= self.SHORTCUT_AFTER:
+                self.shortcuts[key] = self.chains[key]
+        return "VERIFIED", s, cost
+
+    def _redo(self, q, rnd, cost):
+        """a step failed its check: answer again now that the wrong Fact Unit is marked (costs add up)"""
+        v, ans, c2 = self.answer(q, rnd)
+        for k in cost:
+            cost[k] += c2.get(k, 0)
+        return v, ans, cost
+
+    def _shortcut_valid(self, sc, chain):
+        for i, fid in enumerate(sc["fids"]):
+            if fid.startswith("L|"):
+                if self.L.get(sc["path"][i], chain[i]) != sc["path"][i + 1]:
+                    return False
+            elif fid in self.L.bad_fu:
+                return False
+        return True
+
+    def state(self):
+        return {"synapses": len(self.syn), "learned_facts": len(self.L.known) if self.L else 0,
+                "shortcuts": len(self.shortcuts), "pathways": len(self.route), "facts_marked_wrong": len(self.L.bad_fu) if self.L else 0}
+
+
+def score_truth(q, verdict, ans):
+    """scored against the real world, not against the store: learning can only show up this way"""
+    if verdict == "VERIFIED":
+        return "correct" if ans == q["truth"] else "wrong answer"
+    return "no answer"
+
+
+STUDY = dict(noise=0.5, adv=0.10, missing=0.15, liar=0.15, dead=0.10, slow=0.10, biased=0.15, misplaced=0.15, poison=0.20)
+STUDY_SIZE = {"quick": dict(facts=20_000, queries=3000, distinct=1500), "stress": dict(facts=200_000, queries=10_000, distinct=3000),
+              "extreme": dict(facts=1_000_000, queries=20_000, distinct=6000), "learning": dict(facts=200_000, queries=10_000, distinct=3000)}
+BLOCK = 500
+
+
+def study_engines(w, pool, seed):
+    V = lambda: Verifier(w, seed + 31)
+    kw = dict(poison=STUDY["poison"])
+    return [
+        ("Central pipeline (A2 logic), no learning", CentralReader(w)),
+        ("Central pipeline + learns facts and audits", CentralReader(w, FactLearner(V()))),
+        ("C0 DSN, no learning", DSNPlus(pool, learn=False)),
+        ("C  DSN, learning synapses (today)", DSNPlus(pool, **kw)),
+        ("C+1 + agents learn facts", DSNPlus(pool, facts=True, verifier=V(), **kw)),
+        ("C+2 + new pathways", DSNPlus(pool, facts=True, paths=True, verifier=V(), **kw)),
+        ("C+3 + accuracy feedback (all three)", DSNPlus(pool, facts=True, paths=True, audit=True, verifier=V(), **kw)),
+    ]
+
+
+def learning_study(size, seed, log, block=BLOCK):
+    """one long stream of questions, popular ones recurring (as in real use), reported every `block` questions.
+    Half-way the faulty agents change; at three quarters the agents' areas are re-sharded again."""
+    log("\n== Learning over time: %s questions in blocks of %d" % (format(size["queries"], ","), block))
+    t0 = time.time()
+    st = STUDY
+    w = World(size["facts"], seed=seed, noise=st["noise"], adv=st["adv"], missing=st["missing"])
+    base = w.questions(size["distinct"], seed + 1)
+    for q in base:
+        q["truth"] = w.truth_of(q["start"], q["chain"])
+    rnd = random.Random(seed + 3)
+    cum, acc = [], 0.0
+    for i in range(len(base)):
+        acc += 1.0 / (i + 1)
+        cum.append(acc)
+    qs = [dict(base[j], id=i) for i, j in enumerate(rnd.choices(range(len(base)), cum_weights=cum, k=size["queries"]))]
+    n = len(qs)
+    shift_at, reshard_at = n // 2, (3 * n) // 4
+    pool = AgentPool(w, 8, 3, seed=seed + 2)
+    ceiling = round(100.0 * sum(1 for q in qs if w.expected(q["start"], q["chain"]) == ("VERIFIED", q["truth"])) / n, 1)
+    log("   world: %s facts · %s agents · %s distinct questions · built in %.1f s · a perfect reader of the store gets %.1f%% right"
+        % (format(w.n, ","), format(len(pool.ids), ","), format(len(base), ","), time.time() - t0, ceiling))
+    faults = lambda sd: pool.set_faults(st["liar"], st["dead"], st["slow"], sd, st["biased"])
+    rows = []
+    for name, eng in study_engines(w, pool, seed):
+        faults(seed + 2); pool.misplace(st["misplaced"], seed + 4)
+        res = []
+        t1 = time.time()
+        for i, q in enumerate(qs):
+            if i == shift_at:
+                faults(seed + 99)
+            if i == reshard_at:
+                pool.misplace(st["misplaced"], seed + 77)
+            r = random.Random(1000 + i)
+            t = time.perf_counter()
+            v, a, c = eng.answer(q, r)
+            c["wall_ms"] = (time.perf_counter() - t) * 1000
+            res.append((score_truth(q, v, a), c))
+        blocks = []
+        for b in range(0, n, block):
+            part = res[b:b + block]
+            m = len(part)
+            tot = [x[1]["wall_ms"] + x[1]["comm_ms"] for x in part]
+            blocks.append({"from": b + 1, "to": b + m,
+                           "correct": round(100.0 * sum(1 for x in part if x[0] == "correct") / m, 1),
+                           "wrong": round(100.0 * sum(1 for x in part if x[0] == "wrong answer") / m, 1),
+                           "messages": round(sum(x[1]["messages"] for x in part) / m, 1),
+                           "verifies": round(sum(x[1].get("verifies", 0) for x in part) / m, 3),
+                           "mean_ms": round(statistics.mean(tot), 2), "p99_ms": round(pct(tot, 0.99), 1)})
+        row = {"engine": name, "blocks": blocks, "state": eng.state() if hasattr(eng, "state") else {},
+               "correct": round(100.0 * sum(1 for x in res if x[0] == "correct") / n, 1),
+               "wrong": round(100.0 * sum(1 for x in res if x[0] == "wrong answer") / n, 1)}
+        if isinstance(eng, CentralReader) and eng.L:
+            row["state"] = {"learned_facts": len(eng.L.known), "facts_marked_wrong": len(eng.L.bad_fu)}
+        rows.append(row)
+        f, l = blocks[0], blocks[-1]
+        log("   %-42s first block %5.1f%% right, %7.1f ms avg · last block %5.1f%% right, %7.1f ms avg · wrong overall %4.1f%% (%.0f s)"
+            % (name, f["correct"], f["mean_ms"], l["correct"], l["mean_ms"], row["wrong"], time.time() - t1))
+    return {"questions": n, "block": block, "distinct": len(base), "facts": w.n, "agents": len(pool.ids), "stress": st,
+            "ceiling": ceiling, "events": {"faults change": shift_at + 1, "areas re-sharded": reshard_at + 1}, "engines": rows,
+            "verify": {"ms": VERIFY_MS, "accuracy": VERIFY_ACC}}
+
+
+def study_md(S):
+    nb = len(S["engines"][0]["blocks"])
+    g = max(1, -(-nb // 10))                                   # at most 10 columns: merge neighbouring blocks
+    cols = [list(range(i, min(nb, i + g))) for i in range(0, nb, g)]
+    ev = S["events"]
+
+    def head():
+        h = []
+        for c in cols:
+            a, b = S["engines"][0]["blocks"][c[0]]["from"], S["engines"][0]["blocks"][c[-1]]["to"]
+            mark = ("F" if a <= ev["faults change"] <= b else "") + ("R" if a <= ev["areas re-sharded"] <= b else "")
+            h.append("%s–%s%s" % (format(a, ","), format(b, ","), (" " + mark) if mark else ""))
+        return "| Engine | " + " | ".join(h) + " |\n|---|" + "---|" * len(cols)
+
+    def table(key, fmt):
+        L = [head()]
+        for e in S["engines"]:
+            vals = []
+            for c in cols:
+                xs = [e["blocks"][i][key] for i in c]
+                vals.append(fmt % (max(xs) if key == "p99_ms" else sum(xs) / len(xs)))
+            L.append("| %s | %s |" % (e["engine"], " | ".join(vals)))
+        return "\n".join(L)
+    E = {e["engine"]: e for e in S["engines"]}
+    def last(e, k):
+        return e["blocks"][-1][k]
+    def first(e, k):
+        return e["blocks"][0][k]
+    find = lambda pre: next(e for e in S["engines"] if e["engine"].startswith(pre))
+    c, c3, c0, cen, cenl = find("C  "), find("C+3"), find("C0"), find("Central pipeline (A2"), find("Central pipeline +")
+    L = ["## Learning over time", "",
+         "One long stream of %s questions drawn from %s distinct ones, popular questions recurring as in real use, reported every %d "
+         "questions. Scored against the **real world**, not the store, so learning new facts can show up. World: %s facts with bad "
+         "knowledge (wrong, missing and contradicted facts) · %s agents, of them liars, dead, slow and **biased** agents (they report "
+         "only the wrong high-trust value, and pass the Fact-Unit check) · %d%% of agent areas **re-sharded** without telling the "
+         "network · %d%% of learning feedback poisoned. **F** = the faulty agents change; **R** = the areas are re-sharded again. "
+         "The outside check used for learning and audits takes %d ms and is right %d%% of the time."
+         % (format(S["questions"], ","), format(S["distinct"], ","), S["block"], format(S["facts"], ","), format(S["agents"], ","),
+            int(S["stress"]["misplaced"] * 100), int(S["stress"]["poison"] * 100), S["verify"]["ms"], int(S["verify"]["accuracy"] * 100)), "",
+         "A perfect reader of the store, with no learning, gets **%.1f%%** right: that is the ceiling for anything that only routes better." % S["ceiling"], "",
+         "**Read this first**", "",
+         "- Today's DSN (C): %.1f%% right in the first block, %.1f%% in the last; average time %.1f → %.1f ms. Learning synapses only "
+         "(no learning: C0 %.1f%% → %.1f%%)." % (first(c, "correct"), last(c, "correct"), first(c, "mean_ms"), last(c, "mean_ms"),
+                                                 first(c0, "correct"), last(c0, "correct")),
+         "- With all three upgrades (C+3): %.1f%% → %.1f%% right, average time %.1f → %.1f ms, wrong answers %.1f%% overall (C: %.1f%%)."
+         % (first(c3, "correct"), last(c3, "correct"), first(c3, "mean_ms"), last(c3, "mean_ms"), c3["wrong"], c["wrong"]),
+         "- The central pipeline given the same fact learning: %.1f%% → %.1f%% right, average time %.1f → %.1f ms (without it: %.1f%% flat)."
+         % (first(cenl, "correct"), last(cenl, "correct"), first(cenl, "mean_ms"), last(cenl, "mean_ms"), cen["correct"]),
+         "- Learning without accuracy checks caches mistakes: wrong answers overall C %.1f%% · C+1 %.1f%% · C+2 %.1f%% · C+3 %.1f%%. "
+         "A wrong fact turned into a shortcut is repeated every time a popular question comes back."
+         % (c["wrong"], find("C+1")["wrong"], find("C+2")["wrong"], c3["wrong"]), "",
+         "### Correct answers (% of questions)", "", table("correct", "%.1f"), "",
+         "### Wrong answers (% of questions)", "", table("wrong", "%.1f"), "",
+         "### Average time per question (ms, compute + modelled communication + outside checks)", "", table("mean_ms", "%.1f"), "",
+         "### Worst 1% time per question (ms)", "", table("p99_ms", "%.0f"), "",
+         "### Messages per question", "", table("messages", "%.1f"), "",
+         "### What each engine had built by the end", "",
+         "| Engine | Correct overall | Wrong overall | Learned facts | Shortcuts | Pathways | Fact Units found wrong | Synapses |", "|---|---|---|---|---|---|---|---|"]
+    for e in S["engines"]:
+        s = e["state"]
+        L.append("| %s | %.1f%% | %.1f%% | %s | %s | %s | %s | %s |" % (e["engine"], e["correct"], e["wrong"], s.get("learned_facts", "–"),
+                 s.get("shortcuts", "–"), s.get("pathways", "–"), s.get("facts_marked_wrong", "–"), s.get("synapses", "–")))
+    L += ["", "Upgrades: **C+1** agents learn — a fact the store lacks or contradicts is checked from outside and learned once two "
+          "checks agree; chains answered the same way 3 times become one-step shortcuts. **C+2** adds new pathways — when the "
+          "subscribed agents know nothing, one agent per other shard is asked once and a lasting pathway forms to the one that "
+          "knows (dropped when it stops working). **C+3** adds feedback on accuracy — 5% of answers are checked from outside, and "
+          "every step of a chain is checked before it becomes a shortcut; a wrong Fact Unit is marked, and an agent caught withholding the true value is inhibited on every synapse into it (a signal "
+          "poisoned feedback cannot flip).", ""]
+    return "\n".join(L)
+
+
 def report_md(meta, runs):
     L = ["# QueryBook stress test: current design vs Digital Synaptic Network", "",
          "Version %s · preset **%s** · seed %d · %s · prototype code from `%s`" % (VERSION, meta["preset"], meta["seed"], meta["when"], meta["qb"]), "",
@@ -596,20 +1087,29 @@ def report_md(meta, runs):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="QueryBook current design vs Digital Synaptic Network — stress test")
-    ap.add_argument("preset", choices=["quick", "stress", "extreme", "self-test"])
+    ap.add_argument("preset", choices=["quick", "stress", "extreme", "learning", "self-test"],
+                    help="learning = only the learning-over-time study (about 5-15 minutes)")
     ap.add_argument("--qb"); ap.add_argument("--out", default="dsn-results")
     ap.add_argument("--threads", type=int); ap.add_argument("--queries", type=int); ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--no-current", action="store_true", help="skip the prototype engines (A0-A2)")
+    ap.add_argument("--no-learning", action="store_true", help="skip the learning-over-time study")
+    ap.add_argument("--study-queries", type=int, help="questions in the learning-over-time study")
     a = ap.parse_args(argv)
     if a.preset == "self-test":
         return self_test(a)
-    base = dict(PRESETS[a.preset], seed=a.seed)
+    only_study = a.preset == "learning"
+    base = dict(PRESETS["quick" if only_study else a.preset], seed=a.seed)
+    if only_study:
+        base["scenarios"], base["scale"] = [], []
+    size = dict(STUDY_SIZE[a.preset])
+    if a.study_queries:
+        size["queries"] = a.study_queries
     if a.queries:
         base["queries"] = a.queries
     if a.threads:
         base["threads"] = a.threads
     qbmods, qbdir = (None, "skipped")
-    if not a.no_current:
+    if not a.no_current and not only_study:
         qc, us, qbdir = load_prototype(a.qb)
         qbmods = (qc, us)
     os.makedirs(a.out, exist_ok=True)
@@ -623,13 +1123,14 @@ def main(argv=None):
     when = time.strftime("%Y-%m-%d %H:%M")
     log("QueryBook stress test %s — preset %s, %s CPU cores, prototype: %s" % (VERSION, a.preset, os.cpu_count(), qbdir))
     runs = [scenario(n, {}, base, qbmods, folder, log) for n in base["scenarios"]] + scale_runs(base, qbmods, folder, log)
+    study = None if a.no_learning else learning_study(size, a.seed, log)
     meta = {"preset": a.preset, "seed": a.seed, "when": when, "qb": qbdir, "cores": os.cpu_count(), "version": VERSION, "base": base}
     stamp = time.strftime("%Y%m%d-%H%M%S")
     with open(os.path.join(a.out, "dsn-stress-%s-%s.json" % (a.preset, stamp)), "w", encoding="utf-8") as f:
-        json.dump({"meta": meta, "runs": runs}, f, indent=1)
+        json.dump({"meta": meta, "runs": runs, "learning_over_time": study}, f, indent=1)
     md = os.path.join(a.out, "dsn-stress-%s-%s.md" % (a.preset, stamp))
     with open(md, "w", encoding="utf-8") as f:
-        f.write(report_md(meta, runs))
+        f.write(report_md(meta, runs) + ("\n" + study_md(study) if study else ""))
     log("\nReport: %s" % os.path.abspath(md))
     return 0
 
@@ -660,6 +1161,20 @@ def self_test(a):
     dsn = DSN(p3); run_engine("C", dsn.answer, qs)
     weak = dsn.audit()["weakest"][0]
     check("every synapse is auditable: strength, evidence, inhibitions, silences", weak["inhibitions"] + weak["silences"] > 0 and weak["strength"] < 0.3, weak)
+    cw = World(3000, seed=3)
+    cq = cw.questions(200, 4)
+    for q in cq:
+        q["truth"] = cw.truth_of(q["start"], q["chain"])
+    cp = AgentPool(cw, 4, 3)
+    bad = [n for n, e in study_engines(cw, cp, 3) if any(score_truth(q, *e.answer(q, random.Random(i))[:2]) != "correct" for i, q in enumerate(cq))]
+    check("learning study: every engine answers a clean world correctly", not bad, bad)
+    S = learning_study(dict(facts=20_000, queries=3000, distinct=1500), 1, lambda *x: None)
+    E = {e["engine"][:3]: e for e in S["engines"]}
+    check("learning study: agents that learn facts raise accuracy over time (C+1 last block above C)",
+          E["C+1"]["blocks"][-1]["correct"] > E["C  "]["blocks"][-1]["correct"] + 10, (E["C+1"]["blocks"][-1], E["C  "]["blocks"][-1]))
+    check("learning study: accuracy feedback cuts the wrong answers that learning alone caches (C+3 below C+2)",
+          E["C+3"]["wrong"] < E["C+2"]["wrong"], (E["C+3"]["wrong"], E["C+2"]["wrong"]))
+    check("learning study: the report renders", "## Learning over time" in study_md(S))
     try:
         qc, us, d = load_prototype(a.qb)
         tmp = tempfile.mkdtemp()

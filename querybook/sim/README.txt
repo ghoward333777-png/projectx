@@ -10,6 +10,10 @@ What it does
     B   conventional multi-agent: a coordinator asks every agent, text messages
     C0  DSN without learning: subscriptions, synapses, Fact-Unit-ID messages, thresholds, inhibition
     C   DSN with learning synapses
+  Every preset ends with a LEARNING OVER TIME study: one long stream of questions (popular ones recur, as in real use),
+  reported every 500 questions, scored against the real world. It compares today's DSN with three upgrades —
+  C+1 agents learn facts, C+2 new pathways, C+3 feedback on accuracy — and the central pipeline with the same learning.
+  Half-way the faulty agents change (F); at three quarters the agents' areas are re-sharded (R).
   Stresses: wrong and missing facts, lying / dead / slow agents, up to 10,560 agents, up to 1 million facts, poisoned
   learning feedback, the faulty agents changing mid-run, 32 requests at once — alone, and all at once.
 
@@ -32,6 +36,7 @@ Run it (Windows: double-click; Mac/Linux: the command shown)
   RUN-QUICK.bat     python dsn_stress.py quick      a few minutes — check it works
   RUN-STRESS.bat    python dsn_stress.py stress     30–60 minutes
   RUN-EXTREME.bat   python dsn_stress.py extreme    several hours: 1 million facts, 10,000 questions, every stress
+  RUN-LEARNING.bat  python dsn_stress.py learning   about 1 minute: only the learning-over-time study
   Self-check:       python dsn_stress.py self-test
 
   Free disk space needed: about 2 GB (quick, stress) or about 8 GB (extreme), for the fact stores it builds.
