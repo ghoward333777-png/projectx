@@ -44,7 +44,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.33.2"
+VERSION = "1.34.0"
 PORT = 8100
 program_dir = HERE
 
@@ -841,6 +841,25 @@ def selftest():
         check("a failing harvest raises a warning", any(x["key"] == "fail:facts" for x in p.alerts()))
         p.api.routes[("POST", "/api/panel/alerts_clear")]({})
         check("clear dismisses every open alert", not p.alerts())
+        # answer routing (1.34.0): the three-way setting and the Shadow comparison in the health report
+        ds = p.api.routes[("GET", "/api/dsn/status")]({})
+        check("Answer routing: Central by default, three settings offered", ds["mode"] == "central" and [m["id"] for m in ds["modes"]] == ["central", "shadow", "dsn"], ds)
+        try:
+            p.api.routes[("POST", "/api/dsn/mode")]({"mode": "dsn", "passphrase": "wrong"})
+            gated = False
+        except core.UserError:
+            gated = True
+        check("changing the routing needs the admin passphrase", gated and p.api.routes[("GET", "/api/dsn/status")]({})["mode"] == "central")
+        r = p.api.routes[("POST", "/api/dsn/mode")]({"mode": "shadow", "passphrase": "admin-pass-1"})
+        hr = p.api.routes[("GET", "/api/report/plain")]({})["text"]
+        check("switching to Shadow is recorded and the health report says so", r["mode"] == "shadow" and "Answer routing: SHADOW" in hr, hr)
+        try:
+            p.api.routes[("POST", "/api/dsn/mode")]({"mode": "sideways", "passphrase": "admin-pass-1"})
+            bad = False
+        except core.UserError:
+            bad = True
+        p.api.routes[("POST", "/api/dsn/mode")]({"mode": "central", "passphrase": "admin-pass-1"})
+        check("an unknown routing is refused and Central restored", bad and p.api.routes[("GET", "/api/dsn/status")]({})["mode"] == "central")
         # transparency
         p.api.routes[("POST", "/api/panel/harvest")]({"action": "stop"})
         au = p.api.routes[("GET", "/api/panel/audit")]({})

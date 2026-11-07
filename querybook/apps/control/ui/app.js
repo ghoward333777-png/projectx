@@ -155,7 +155,22 @@ async function loadExemplars() {
 // ---- bulk harvesting: datasets, agents, scaffold slots
 const BK_STATE = { done: "good", running: "good", paused: "warn", stopped: "warn", failed: "bad", blocked: "bad" };
 const bytes = n => QB.bytes(n);            // the one standard (qb.js)
+async function loadDsn() {
+  let r; try { r = await api("/api/dsn/status"); } catch (e) { $("#dsn-out").textContent = e.message; return; }
+  $("#dsn-mode").innerHTML = r.modes.map(m => `<option value="${m.id}"${m.id === r.mode ? " selected" : ""}>${esc(m.text)}</option>`).join("");
+  const s = r.shadow, pw = r.pathways;
+  let h = `<pre class="small" style="white-space:pre-wrap">${esc(r.health.join("\n"))}</pre>`;
+  if (s.examples && s.examples.length) h += `<p class="small"><b>Lookups where the DSN missed facts</b> (Central found them): ` +
+    s.examples.map(x => `${esc(x.q)} — Central ${x.central}, DSN ${x.dsn}`).join(" · ") + `</p>`;
+  if (pw.rows.length) h += `<details><summary class="small">Learned pathways: ${fmt(pw.kinds)} kind(s) of lookup, ${fmt(pw.lookups)} DSN lookup(s)</summary>` +
+    `<table class="t small"><tr><th>Lookups starting with</th><th>Times</th><th>Stores it asks (strength · facts found · empty)</th><th>Stores it skips</th></tr>` +
+    pw.rows.map(x => `<tr><td>${esc(x.kind)}</td><td>${fmt(x.lookups)}</td><td>${x.strong.map(t => `${esc(t.store)} (${t.strength} · ${fmt(t.facts_found)} · ${fmt(t.empty)})`).join(", ") || "—"}</td><td>${fmt(x.weak)}</td></tr>`).join("") +
+    `</table></details>`;
+  $("#dsn-out").innerHTML = h;
+}
+
 async function loadBulk() {
+  loadDsn();
   const r = await api("/api/bulk");
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
   $("#bk-agents").max = r.max_agents || 16;
@@ -375,9 +390,13 @@ function bind() {
     $("#oc-del").disabled = true; };
   $("#bk-stop").onclick = async () => { const r = await api("/api/bulk/stop", {}); toast(r.summary); loadBulk(); };
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
-    $("#bk-out").innerHTML = r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>
+    $("#bk-out").innerHTML = (r.summary ? `<p class="muted small">${esc(r.summary)}</p>` : "") + (r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>
       `<tr><td>${f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.subject)}</a>` : esc(f.subject)}</td><td>${esc(f.predicate)}</td><td>${esc(f.object)}</td>
-       <td class="small">${esc(f.dataset)} · ${esc(f.provenance)} · ${esc(f.status)}</td></tr>`).join("") + "</table>" : `<p class="muted small">Nothing starts with that.</p>`; };
+       <td class="small">${esc(f.dataset)} · ${esc(f.provenance)} · ${esc(f.status)}</td></tr>`).join("") + "</table>" : `<p class="muted small">Nothing starts with that.</p>`);
+    if (r.routing === "shadow") setTimeout(loadDsn, 1500); };
+  $("#dsn-refresh").onclick = () => loadDsn();
+  $("#dsn-save").onclick = async () => { try { const r = await api("/api/dsn/mode", { mode: $("#dsn-mode").value, passphrase: $("#bk-pass").value });
+    toast(r.summary); loadDsn(); } catch (e) { toast(e.message); } };
   $("#bk-go").onclick = bkGo; $("#bk-q").onkeydown = e => { if (e.key === "Enter") bkGo(); };
   $("#ex-refresh").onclick = () => loadExemplars(); $("#ex-list").onclick = listTakes;
   $("#ex-gen-start").onclick = async () => { try { const r = await api("/api/gtools/runner", { action: "start", passphrase: $("#ex-pass").value }); toast(r.summary); loadExemplars(); } catch (e) { toast(e.message); } };

@@ -400,6 +400,15 @@
       <div class="row"><input id="bk-q" placeholder="Subject starts with… e.g. PubChem CID 2244 · Year 2030 · Nobel Prize in Physics 1921" style="flex:1">
         <button class="btn quiet" id="bk-go">Look up</button></div>
       <div id="bk-out"></div>
+      <h3>Answer routing</h3>
+      <p class="muted small">How lookups find their facts. <b>Central</b> asks every store in turn (the default, and the fastest on one
+        computer in the stress test). <b>Shadow</b> answers with Central while the Digital Synaptic Network (DSN) answers the same lookup
+        beside it; every difference goes to the Shadow comparison log, summarised in the health report. <b>DSN</b> asks only the stores its
+        learned pathways point to, and every store when those find nothing. Switch to DSN only when Shadow says it is safe. Learned
+        pathways hold routes, never facts; switching the DSN back on re-checks them.</p>
+      <div class="row"><select id="dsn-mode" style="width:auto"></select><button class="btn quiet" id="dsn-save">Apply</button>
+        <button class="btn quiet" id="dsn-refresh">Check again</button><span class="muted small">uses the admin passphrase above</span></div>
+      <div id="dsn-out"></div>
     </div>
   </section>
 

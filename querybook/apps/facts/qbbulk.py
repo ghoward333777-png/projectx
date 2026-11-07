@@ -2894,31 +2894,58 @@ def by_area(commons_folder):
     return out
 
 
-def search(commons_folder, text, limit=50):
-    """facts whose subject starts with `text` (exact case first, then capitalised), across every shard"""
+def stores(commons_folder):
+    """the dataset stores (shards) that exist, in catalogue order: [(key, dataset)]"""
+    return [(k, ds) for k, ds in catalog().items() if os.path.exists(shard_path(commons_folder, k))]
+
+
+def search_store(commons_folder, key, ds, text, limit):
+    """facts whose subject starts with `text` (exact case first, then capitalised) in ONE store"""
     out = []
-    text = (text or "").strip()
-    if not text:
-        return out
-    for key, ds in catalog().items():
-        p = shard_path(commons_folder, key)
-        if not os.path.exists(p) or len(out) >= limit:
-            continue
-        db = _ro(p)
+    db = _ro(shard_path(commons_folder, key))
+    try:
         for t in dict.fromkeys((text, text[:1].upper() + text[1:])):
+            if len(out) >= limit:
+                break
             for s, pr, o, part, row in db.execute(
                     "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
-                    "WHERE f.s >= ? AND f.s < ? LIMIT ?", (t, t + "￿", limit - len(out))):
+                    "WHERE f.s >= ? AND f.s < ? LIMIT ?", (t, t + "\uffff", limit - len(out))):
                 out.append({"subject": s, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed",
                             "licence": ds.licence, "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s), "status": "computed" if not ds.source else "sourced"})
+    finally:
         db.close()
+    return out
+
+
+def label_wikidata(commons_folder, out):
+    """Wikidata item numbers in the values shown with their labels"""
     qs = [int(m) for r in out if r["source"] == "wikidata" for m in QID.findall(r["object"])]
     if qs:
         lab = wd_labels(commons_folder, qs)
         for r in out:
             if r["source"] == "wikidata":
                 r["object"] = QID.sub(lambda m: "%s (Q%s)" % (lab[int(m.group(1))], m.group(1)) if int(m.group(1)) in lab else m.group(0), r["object"])
-    return out[:limit]
+    return out
+
+
+def search_central(commons_folder, text, limit=50):
+    """the central lookup: every store in turn until `limit` facts are found — (facts, stores asked, stores held)"""
+    out, asked = [], 0
+    text = (text or "").strip()
+    held = stores(commons_folder)
+    if not text:
+        return out, 0, len(held)
+    for key, ds in held:
+        if len(out) >= limit:
+            break
+        asked += 1
+        out += search_store(commons_folder, key, ds, text, limit - len(out))
+    return out[:limit], asked, len(held)
+
+
+def search(commons_folder, text, limit=50):
+    """facts whose subject starts with `text` (exact case first, then capitalised), across every shard"""
+    return label_wikidata(commons_folder, search_central(commons_folder, text, limit)[0])[:limit]
 
 
 # ------------------------------------------------------------------------------------------------ control (the Control Panel)
@@ -3221,7 +3248,7 @@ def _runner_events(commons_folder, since):
         return []
 
 
-def plain_summary(st, o=None, events=(), hours=2):
+def plain_summary(st, o=None, events=(), hours=2, commons=None):
     """the harvest for a person, in a few short lines: health, speed, the main delay and what is done about it,
     what recovered by itself, and what (if anything) to do"""
     rs = st.get("runner") or {}
@@ -3287,6 +3314,12 @@ def plain_summary(st, o=None, events=(), hours=2):
         todo = "connect the data drive (D:) — the harvest resumes by itself within a minute"
     else:
         todo = "nothing — QueryBook restarts, re-routes and retries by itself"
+    if commons is not None:                            # Control Panel 1.34: answer routing and the Shadow comparison
+        try:
+            import qbdsn
+            L += qbdsn.health_lines(commons)
+        except Exception as e:                         # the health report must never fail because of this section
+            L.append("Answer routing: could not be read (%s)" % e)
     L += ["", "What you need to do: " + todo]
     return "\n".join(L)
 
@@ -3309,7 +3342,7 @@ def analysis_text(commons, hours=2, max_seconds=120, counter=None):
             yield l
     o = qt.analyze(counted())
     st = status_cached(commons.folder, commons)
-    hl = plain_summary(st, o, _runner_events(commons.folder, cut), hours)
+    hl = plain_summary(st, o, _runner_events(commons.folder, cut), hours, commons)
     text = (hl + "\n\n\n" + "-" * 70 + "\nTECHNICAL DETAILS (for support — you do not need to read these)\n" +
             "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (hours, len(files), format(n[0], ","), qt.fmt_dur(time.time() - t0))
             + qt.text_report(o))
@@ -3532,7 +3565,7 @@ def add_routes(api, commons, program_dir):
             import threading
             AN.update(state="working", result=None, started=time.time(), lines=0)
             threading.Thread(target=analyse, args=(2.0,), daemon=True, name="qb-analyse").start()
-        return {"text": plain_summary(st, (last or {}).get("report"), _runner_events(commons.folder, time.time() - 7200)),
+        return {"text": plain_summary(st, (last or {}).get("report"), _runner_events(commons.folder, time.time() - 7200), 2, commons),
                 "analysing": AN["state"] == "working"}
 
     @api.get("/api/report/email-settings")
@@ -3608,7 +3641,29 @@ def add_routes(api, commons, program_dir):
 
     @api.get("/api/bulk/search")
     def bulk_search(p):
-        return {"facts": search(commons.folder, p.get("q") or "", int(p.get("limit") or 50))}
+        """answered as the Control Panel's Answer routing says: Central, DSN, or Shadow (Central answers, the DSN is compared)"""
+        import qbdsn
+        return qbdsn.lookup(commons, p.get("q") or "", int(p.get("limit") or 50))
+
+    @api.get("/api/dsn/status")
+    def dsn_status(p):
+        """the Answer routing setting, the Shadow comparison of the last 24 hours and the learned pathways"""
+        import qbdsn
+        m = qbdsn.mode(commons)
+        return {"mode": m, "modes": [{"id": k, "text": qbdsn.MODE_TEXT[k]} for k in qbdsn.MODES],
+                "shadow": qbdsn.shadow_summary(commons), "pathways": qbdsn.pathways(commons), "health": qbdsn.health_lines(commons)}
+
+    @api.post("/api/dsn/mode")
+    def dsn_mode(p):
+        import qbdsn
+        commons.approvals._require(p.get("passphrase") or "")
+        try:
+            r = qbdsn.set_mode(commons, p.get("mode"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        with commons.store.write() as db:
+            commons.agent_log(db, "engine", r["summary"])
+        return r
 
 
 # ------------------------------------------------------------------------------------------------ "why so slow?"

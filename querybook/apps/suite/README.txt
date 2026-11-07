@@ -43,6 +43,19 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Answer routing: Central, Shadow or DSN (Control Panel 1.34.0; the bulk engine is unchanged at 1.31.2)
+    * Bulk harvesting -> Answer routing (below Look up bulk facts) has three settings:
+        Central  every store is asked in turn — the default, and the fastest on one computer in the stress test.
+        Shadow   Central answers; the Digital Synaptic Network (DSN) answers the same lookup in the background and every
+                 difference is written to the Shadow comparison log (shards/_dsn-shadow.jsonl).
+        DSN      only the stores its learned pathways point to are asked; when those find nothing, every store is asked,
+                 so routing never hides a fact.
+    * The health report (📋 Health report, and the emailed one) now says which routing is on and, for the last 24 hours,
+      how many lookups Shadow compared, how often the DSN agreed, where it missed facts, how many stores each asked and
+      how long each took — with a verdict: keep Central, or DSN is safe to try (only after 50 lookups or more).
+    * Learned pathways hold routes, never facts (shards/_dsn.json), and each one shows its strength, facts found and empty
+      answers. Switching the DSN back on after Central pulls every pathway halfway back to neutral, so routes learned on
+      an older set of stores are re-checked rather than trusted. Changing the setting uses the admin passphrase (if set).
   Stop that stops, Start that waits, and missing facts found and restored (Control Panel 1.33.2, bulk engine 1.31.2)
     * Stop: the agents end after their current batch (any still running after a minute is ended, the Wikidata download
       too); then only the copies that CHANGED are saved to D:, with "◐ stopping: saving … (n of N)" on the page. Before,
