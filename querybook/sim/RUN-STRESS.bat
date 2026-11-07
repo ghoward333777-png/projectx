@@ -9,15 +9,17 @@ if not exist "%~dp0dsn_stress.py" goto notunzipped
 if not exist "%~dp0qb_chat.py" goto notunzipped
 if not exist "%~dp0ufcs_store.py" goto notunzipped
 set "PY="
+rem The bundled Python (in the python folder beside this file) needs nothing installed.
+if exist "%~dp0python\python.exe" set PY="%~dp0python\python.exe"
+if defined PY goto run
 py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>nul
 if not errorlevel 1 set "PY=py -3"
 if defined PY goto run
 python -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>nul
 if not errorlevel 1 set "PY=python"
 if defined PY goto run
-echo Python 3.8 or newer was not found on this computer.
-echo Install it from https://www.python.org/downloads/ and tick "Add python.exe to PATH" in the installer,
-echo then run this file again. (The "python" that opens the Microsoft Store does not count.)
+echo The bundled Python folder is missing and no Python 3.8 or newer was found on this computer.
+echo Extract the whole ZIP again (it includes the python folder), or install Python from python.org.
 goto end
 :run
 echo Using: %PY%

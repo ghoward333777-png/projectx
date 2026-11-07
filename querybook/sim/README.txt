@@ -14,7 +14,9 @@ What it does
   learning feedback, the faulty agents changing mid-run, 32 requests at once — alone, and all at once.
 
 What you need
-  Python 3.8 or newer (python.org; on Windows tick "Add python.exe to PATH"). Nothing else: standard library only.
+  Nothing to install on Windows: the ZIP carries its own Python (python folder, the official 64-bit embeddable
+  Python 3.12.10 from python.org, about 11 MB) and the launchers use it. On a Mac or Linux, or if the python folder is
+  removed, Python 3.8 or newer is used instead (standard library only).
   The folder must hold dsn_stress.py, qb_chat.py and ufcs_store.py (the last two are the prototype's own files).
 
 FIRST: extract the ZIP
@@ -26,7 +28,7 @@ How long it takes, and what you see
   ends within seconds, it shows why (Python missing, files not extracted, or an error — also saved in
   dsn-results\error.txt). Send that text.
 
-Run it (Windows: double-click; any system: the command shown)
+Run it (Windows: double-click; Mac/Linux: the command shown)
   RUN-QUICK.bat     python dsn_stress.py quick      a few minutes — check it works
   RUN-STRESS.bat    python dsn_stress.py stress     30–60 minutes
   RUN-EXTREME.bat   python dsn_stress.py extreme    several hours: 1 million facts, 10,000 questions, every stress

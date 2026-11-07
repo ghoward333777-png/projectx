@@ -33,7 +33,7 @@ Standard library only. Writes a Markdown report and a JSON file with every numbe
 import argparse, hashlib, json, math, os, random, shutil, statistics, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------------------------------------- the prototype's code
