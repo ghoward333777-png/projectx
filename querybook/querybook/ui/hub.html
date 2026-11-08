@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Hub</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { display: block; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-top: 4px solid var(--c); border-radius: var(--radius); padding: 14px 16px; }
+.tile:hover { border-color: var(--c); }
+.tile b { font-size: 17px; } .tile .n { font: 700 26px var(--mono); color: var(--c); display: block; margin-top: 6px; }
+.tile .n small { font: 13px var(--sans); color: var(--muted); }
+.answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.answers .card { border-left: 4px solid var(--c); margin: 0; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+textarea, select, .in { width: 100%; font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); }
+textarea.code { font: 13.5px/1.5 var(--mono); min-height: 92px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+pre.out { font: 12.5px/1.45 var(--mono); background: var(--surface-2); padding: 10px; border-radius: 8px; max-height: 360px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; }
+ul.feed { list-style: none; margin: 0; padding: 0; max-height: 330px; overflow: auto; font-size: 13.5px; }
+ul.feed li { padding: 6px 0; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: baseline; }
+ul.feed li:first-child { border-top: 0; }
+.type { font: 11px var(--mono); color: var(--muted); width: 48px; flex: none; }
+.c-language { --c: #6b46a8; } .c-stem { --c: #0e7a6c; } .c-history { --c: #9a5424; } .c-video { --c: #2f6690; }
+@keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+ul.feed li.new { animation: flash 2s ease-out; }
+</style>
+</head>
+<body class="hub">
+<main>
+  <h1>QueryBook</h1>
+  <p class="tag">Four apps, one FQL database, harvested continuously. Ask once to see how each app would answer, or open an app for its full view.</p>
+  <form class="ask" id="ask"><input autocomplete="off" autofocus placeholder="Ask anything — e.g. printing press, kinetic energy, etymology" aria-label="Ask every app"><button>Ask every app</button></form>
+  <div class="answers" id="answers"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <h2>FQL console</h2>
+        <textarea class="code" id="fql" spellcheck="false">History.all().order(.start_year).take(5) { title, start_year, era }</textarea>
+        <div class="row">
+          <button id="runFql" type="button">Run</button>
+          <label class="small"><input type="checkbox" id="write"> allow writes</label>
+          <span class="muted small" id="fqlTime"></span>
+        </div>
+        <div class="chips" id="fqlExamples" style="margin:10px 0 0"></div>
+        <pre class="out" id="fqlOut" hidden></pre>
+      </div>
+      <div class="card">
+        <h2>Push a document (real-time ingestion)</h2>
+        <input class="in" id="inTitle" placeholder="Title">
+        <textarea id="inBody" rows="4" placeholder="Text — an article, a glossary entry, a lab note, a script…" style="margin-top:8px"></textarea>
+        <div class="row">
+          <select id="inDomain" style="width:auto"><option value="">Auto-classify</option><option>language</option><option>stem</option><option>history</option><option>video</option></select>
+          <button id="push" type="button">Ingest</button>
+          <span class="small" id="pushOut"></span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card"><h2>Live change feed</h2><ul class="feed" id="feed"><li class="muted">Waiting for changes…</li></ul></div>
+      <div class="card"><h2>Harvesters</h2><div id="harvest" class="small muted">Loading…</div></div>
+    </div>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const { el, api } = qb;
+const COLL = { Language: "language", Stem: "stem", History: "history", Video: "video" };
+let apps = [];
+
+async function refreshStats() {
+  const s = await api("/api/stats");
+  document.getElementById("tiles").replaceChildren(...apps.map((a) =>
+    el("a", { class: "tile c-" + a.key, href: "/" + a.key }, el("b", {}, a.title), el("div", { class: "muted small" }, a.tagline),
+      el("span", { class: "n" }, String(s.collections[a.collection] || 0), el("small", {}, " documents")))));
+  const h = s.harvester;
+  const box = document.getElementById("harvest");
+  if (!h) { box.textContent = "No harvester in this process (run: python -m querybook harvest)."; return; }
+  box.replaceChildren(el("table", {}, el("tr", {}, el("th", {}, "Source"), el("th", {}, "Every"), el("th", {}, "Added"), el("th", {}, "Status")),
+    h.sources.map((src) => el("tr", {}, el("td", {}, `${src.kind}: ${src.name.split(/[\\/]/).slice(-2).join("/")}`), el("td", {}, src.interval_s + "s"),
+      el("td", {}, String(src.added)), el("td", { class: src.last_error ? "err" : "" }, src.last_error || (src.last_poll ? "ok" : "waiting"))))),
+    el("p", { class: "small" }, `Totals this session — added ${h.totals.added || 0}, duplicates skipped ${h.totals.duplicate || 0}. `,
+      "Add a feed from the console: ", el("code", {}, 'Source.create({ kind: "feed", url: "…", domain: "history", interval: 600 })')));
+}
+
+async function askAll(q) {
+  const box = document.getElementById("answers");
+  const readers = apps.filter((a) => a.key !== "video");
+  box.replaceChildren(...readers.map((a) => el("div", { class: "card c-" + a.key, id: "ans-" + a.key }, el("b", {}, a.title), el("p", { class: "muted small" }, "…"))));
+  await Promise.all(readers.map(async (a) => {
+    const r = await api(`/api/${a.key}/query?q=${encodeURIComponent(q)}`);
+    document.getElementById("ans-" + a.key).replaceChildren(el("b", {}, a.title), el("p", { class: "small" }, r.summary || ""),
+      el("a", { href: `/${a.key}?q=${encodeURIComponent(q)}`, class: "small" }, "Open full answer →"));
+  }));
+  if (apps.some((a) => a.key === "video")) box.append(el("div", { class: "card c-video" }, el("b", {}, "Video Studio"),
+    el("p", { class: "small" }, "Storyboard a short explainer from everything above."),
+    el("a", { href: `/video?q=${encodeURIComponent(q)}`, class: "small" }, "Make a storyboard →")));
+}
+
+async function runFql() {
+  const out = document.getElementById("fqlOut");
+  const res = await api("/api/fql", { method: "POST", body: { query: document.getElementById("fql").value, write: document.getElementById("write").checked } });
+  out.hidden = false;
+  out.className = "out" + (res.ok ? "" : " err");
+  out.textContent = res.ok ? JSON.stringify(res.data, null, 2) : `${res.error.code}: ${res.error.message}${res.error.pos != null ? " (at " + res.error.pos + ")" : ""}`;
+  document.getElementById("fqlTime").textContent = res.took_ms != null ? res.took_ms + " ms" : "";
+}
+
+function addFeed(ev) {
+  const feed = document.getElementById("feed");
+  if (feed.firstChild && feed.firstChild.classList.contains("muted")) feed.replaceChildren();
+  const domain = COLL[ev.coll];
+  const link = domain ? el("a", { href: `/${domain}?q=${encodeURIComponent(ev.title)}` }, ev.title || ev.id) : ev.title || ev.id;
+  feed.prepend(el("li", { class: "new" }, el("span", { class: "type" }, ev.type), el("span", { class: "coll" }, ev.coll), link));
+  while (feed.children.length > 40) feed.lastChild.remove();
+}
+
+(async () => {
+  const { info, live } = await qb.header("hub");
+  apps = info.apps;
+  refreshStats();
+  setInterval(refreshStats, 5000);
+  const ex = ['Collection.all()', 'Language.where(.pos == "noun") { term, definition }', 'Stem.all().flatMap(.formulas).map(.expr)',
+              'History.where(.start_year < 0) { title, start_year }', 'Video.where(.kind == "render_job") { title, status, duration_s }'];
+  document.getElementById("fqlExamples").replaceChildren(...ex.map((q) => el("button", { class: "chip", type: "button", onclick: () => { document.getElementById("fql").value = q; runFql(); } }, q)));
+  document.getElementById("runFql").onclick = runFql;
+  document.getElementById("fql").addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") runFql(); });
+  document.getElementById("ask").addEventListener("submit", (e) => { e.preventDefault(); const q = e.target.querySelector("input").value.trim(); if (q) askAll(q); });
+  document.getElementById("push").onclick = async () => {
+    const body = { title: document.getElementById("inTitle").value, body: document.getElementById("inBody").value, domain: document.getElementById("inDomain").value || null, source: "hub" };
+    const res = await api("/api/ingest", { method: "POST", body });
+    const r = res.results && res.results[0];
+    document.getElementById("pushOut").textContent = r ? `${r.status}${r.coll ? " → " + r.coll : ""}${r.reason ? " (" + r.reason + ")" : ""}` : (res.error && res.error.message) || "";
+    if (r && r.status === "added") { document.getElementById("inTitle").value = ""; document.getElementById("inBody").value = ""; }
+  };
+  let t;
+  qb.stream(null, (ev) => { addFeed(ev); clearTimeout(t); t = setTimeout(refreshStats, 400); }, live);
+})();
+</script>
+</body>
+</html>

@@ -67,3 +67,14 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+
+## QueryBook (`querybook/`)
+
+Separate Python product, not part of the PHP app or its hosting zip: four domain
+apps (Language, STEM, History, Video) on one embedded FQL store with continuous
+and real-time ingestion. Standard library only, Python 3.10+, Windows/macOS.
+Run `python3 -m unittest discover -s tests -t .` from `querybook/` and
+`cargo test --release` in `querybook/rust/querybook-core` before shipping. The
+text kernel and FQL lexer are mirrored in Rust: any change to `core/text.py`,
+`core/lexicons.txt` or `core/fql/lexer.py` must be ported and
+`contracts/golden_text.tsv` regenerated so both suites stay green.

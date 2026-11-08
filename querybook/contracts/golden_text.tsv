@@ -1,0 +1,14 @@
+# QueryBook text-kernel golden vectors. Generated from the Python core; the Rust crate must match.
+# columns: input (escaped: \t \n \r \\ \uXXXX) | normalize | content_hash | classify domain | scores l,s,h,v
+Hello   World	Hello World	779a65e7023cd2e7	language	0,0,0,0
+  tabs\tand\nnewlines\r\n  everywhere  	tabs and newlines everywhere	25f4736cd5c05d79	language	0,0,0,0
+zero\u200bwidth\u00adsoft\ufeffhyphen\u2060x	zerowidthsofthyphenx	7f68bec72077dfbb	language	0,0,0,0
+Newton's second law: F = m * a, measured in newtons.	Newton's second law: F = m * a, measured in newtons.	8b8662fbb40f5dea	stem	0,1,0,0
+The Roman Republic fell; Caesar was assassinated in 44 BC and the empire began in 27 BC.	The Roman Republic fell; Caesar was assassinated in 44 BC and the empire began in 27 BC.	ae27c86dcc25e398	history	0,0,2,0
+In 1440 the printing press arrived; by 1500 presses ran in 200 towns.	In 1440 the printing press arrived; by 1500 presses ran in 200 towns.	c9ddda2bb98fee85	history	0,0,2,0
+ephemeral (adjective): lasting a very short time. The word comes from Greek.	ephemeral (adjective): lasting a very short time. The word comes from Greek.	3ac150d8727c07e8	language	3,0,0,0
+Scene 1: wide shot, slow zoom, fade to the storyboard narration and subtitles.	Scene 1: wide shot, slow zoom, fade to the storyboard narration and subtitles.	f342cc1cfd6d7896	video	0,0,0,7
+		cbf29ce484222325	language	0,0,0,0
+plain text with nothing special	plain text with nothing special	06b7c7999af7b514	language	0,0,0,0
+Equation, formula, theorem, proof: mathematics!	Equation, formula, theorem, proof: mathematics!	4a159fd877e74b46	stem	0,5,0,0
+1066 1215 1776 1914 9999 0042	1066 1215 1776 1914 9999 0042	36b63d32d2c6e767	history	0,0,4,0

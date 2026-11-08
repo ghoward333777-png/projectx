@@ -1,0 +1,7 @@
+# QueryBook domain lexicons. Shared verbatim by the Python core and the Rust
+# crate (rust/querybook-core embeds this file with include_str!).
+# Format: <domain>: word word word ...   (lowercase, one domain per line)
+language: word words grammar verb verbs noun nouns adjective adverb pronoun syntax vocabulary meaning means definition synonym synonyms antonym etymology phrase idiom pronunciation spelling translation translate language languages dialect prefix suffix plural tense phonetic latin greek lexicon linguistics morpheme clause semantics conjugation derived borrowed
+stem: equation formula energy force mass velocity acceleration atom atoms molecule cell gene protein algorithm derivative integral theorem proof physics chemistry biology mathematics math engineering circuit voltage current electron photon gravity matrix vector probability statistics experiment hypothesis reaction compound newton joule calculus quantum orbit wavelength frequency
+history: war empire king queen dynasty revolution century ancient medieval treaty battle reign kingdom republic colony colonial independence civilization era emperor pharaoh monarchy parliament constitution invasion conquest archaeology historian historical history founded crusade renaissance dynasties pope bce siege
+video: video scene scenes shot shots camera footage clip clips frame frames storyboard narration narrator voiceover render editing transition montage subtitle subtitles caption pan zoom fade animation animated resolution fps codec mp4 director cinematic lighting soundtrack visuals episode

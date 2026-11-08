@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook · Video Studio</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+
+.strip { display: flex; height: 14px; border-radius: 6px; overflow: hidden; margin: 0 0 16px; }
+.strip span { display: block; height: 100%; border-right: 2px solid var(--surface); }
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.scene { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); display: flex; flex-direction: column; }
+.frame { aspect-ratio: 16 / 9; color: #fff; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; font-size: 13px; }
+.frame b { font-size: 15px; line-height: 1.25; }
+.scene .body { padding: 10px 12px; font-size: 13.5px; }
+.scene .vis { color: var(--muted); font-size: 12.5px; margin-top: 6px; font-style: italic; }
+.tc { font: 12px var(--mono); opacity: .9; }
+video { width: 100%; border-radius: 8px; background: #000; margin-top: 8px; }
+.status { font-weight: 700; text-transform: capitalize; }
+</style>
+</head>
+<body class="video">
+<main>
+  <h1>Video Studio</h1>
+  <p class="tag" id="tagline"></p>
+  <form class="ask" id="ask"><input name="q" autocomplete="off" autofocus aria-label="Video Studio query"><button>Storyboard</button></form>
+  <div class="chips" id="examples"></div>
+  <div class="banner" id="banner" role="status"></div>
+  <div class="layout">
+    <section id="result"><div class="empty">Give a topic to storyboard a short explainer from the whole library.</div></section>
+    <aside class="side">
+      <div class="card"><h2>Render job</h2><div id="job"><p class="muted small">No job yet.</p></div></div>
+      <div class="card"><h2>Sources</h2><div id="sources"></div></div>
+      <div class="card"><h2>FQL used <span id="timing" class="small"></span></h2><div id="fql"></div></div>
+    </aside>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const { el, highlight } = qb;
+
+const hex = (c) => "#" + String(c || "0x2F4858").slice(2);
+const tc = (s) => { const m = Math.floor(s / 60), r = (s % 60).toFixed(1).padStart(4, "0"); return `${m}:${r}`; };
+let job = null;
+function renderJob() {
+  const box = document.getElementById("job");
+  if (!job) return;
+  const status = job.status || "storyboarded";
+  const kids = [el("p", {}, "Status: ", el("span", { class: "status" }, status.replace("_", " ")))];
+  if (status === "storyboarded" || status === "failed" || status === "needs_ffmpeg") {
+    kids.push(el("button", { type: "button", onclick: startRender }, status === "failed" ? "Retry render" : "Render MP4"));
+  }
+  if (status === "rendering") kids.push(el("p", { class: "muted small" }, "Rendering with ffmpeg… this updates live."));
+  if (job.error) kids.push(el("p", { class: "err small" }, job.error));
+  if (job.video_file) kids.push(el("video", { src: "/renders/" + job.video_file, controls: true }), el("a", { href: "/renders/" + job.video_file, download: true, class: "small" }, "Download MP4"));
+  box.replaceChildren(...kids);
+}
+async function startRender() {
+  const res = await qb.api("/api/video/render", { method: "POST", body: { id: job.id } });
+  if (!res.ok) { job.error = res.error && (res.error.message || res.error); }
+  else job.status = "rendering";
+  renderJob();
+}
+function render(res) {
+  const out = document.getElementById("result");
+  if (res.kind !== "storyboard") { out.replaceChildren(el("div", { class: "empty" }, res.summary || "")); return; }
+  job = { ...res.job };
+  const total = res.duration_s || 1;
+  const card = el("div", { class: "card" }, el("p", { class: "summary" }, res.summary),
+    el("div", { class: "strip", title: "Scene timing" }, res.scenes.map((s) => el("span", { style: `width:${(s.duration / total) * 100}%;background:${hex(s.color)}`, title: s.heading }))),
+    el("div", { class: "board" }, res.scenes.map((s) => el("div", { class: "scene" },
+      el("div", { class: "frame", style: `background:${hex(s.color)}` }, el("span", { class: "tc" }, `#${s.n} · ${tc(s.start)}–${tc(s.end)}`), el("b", {}, s.heading)),
+      el("div", { class: "body" }, s.narration, el("div", { class: "vis" }, s.visual))))));
+  if (!res.renderer.ffmpeg) card.append(el("p", { class: "muted small" }, "Install ffmpeg to render MP4s (Windows: winget install ffmpeg · macOS: brew install ffmpeg). Storyboards and captions work without it."));
+  card.append(el("details", {}, el("summary", { class: "small" }, "Captions (.srt)"), el("pre", { class: "fql" }, res.srt)));
+  out.replaceChildren(card);
+  renderJob();
+}
+qb.domainPage({ key: "video", collection: "Video", render }).then(() => {
+  // Job status changes arrive through the same real-time feed.
+  qb.stream("Video", async (ev) => {
+    if (!job || ev.id !== job.id || ev.type !== "update") return;
+    const doc = await qb.api(`/api/doc/Video/${job.id}`);
+    if (doc) { job = { id: doc.id, status: doc.status, video_file: doc.video_file, error: doc.error }; renderJob(); }
+  });
+});
+</script>
+</body>
+</html>

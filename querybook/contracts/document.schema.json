@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "querybook/document",
+  "title": "Document",
+  "description": "A stored document as returned by FQL and the API. Fields beyond id/coll/ts are schemaless; ingested documents carry the common fields below plus their domain's enrichment.",
+  "type": "object",
+  "required": ["id", "coll", "ts"],
+  "properties": {
+    "id": { "type": "string", "description": "Decimal id derived from collection + content hash (deterministic)." },
+    "coll": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9_]{0,63}$" },
+    "ts": { "type": "integer", "description": "Last write, microseconds since the Unix epoch." },
+    "title": { "type": "string" },
+    "body": { "type": "string" },
+    "source": { "type": "string", "examples": ["folder:history/a.txt", "feed:https://…", "push", "sample:stem.json"] },
+    "url": { "type": "string" },
+    "domain": { "enum": ["language", "stem", "history", "video"] },
+    "classified": {
+      "type": "object",
+      "properties": { "auto": { "type": "boolean" }, "scores": { "type": "object", "additionalProperties": { "type": "integer" } } }
+    },
+    "ingested_us": { "type": "integer" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "LanguageEnrichment": { "properties": { "term": {}, "pos": {}, "definition": {}, "definitions": { "type": "array" }, "keywords": { "type": "array" }, "lang": {} } },
+    "StemEnrichment": { "properties": { "subject": {}, "formulas": { "type": "array" }, "quantities": { "type": "array" } } },
+    "HistoryEnrichment": { "properties": { "events": { "type": "array" }, "entities": { "type": "array" }, "start_year": { "type": "integer" }, "end_year": { "type": "integer" }, "era": {} } },
+    "VideoRenderJob": { "properties": { "kind": { "const": "render_job" }, "status": { "enum": ["storyboarded", "rendering", "rendered", "failed", "needs_ffmpeg"] }, "scenes": { "type": "array" }, "duration_s": {}, "srt": {}, "video_file": {} } }
+  }
+}

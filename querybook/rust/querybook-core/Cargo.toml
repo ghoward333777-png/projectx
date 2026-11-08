@@ -1,0 +1,28 @@
+[package]
+name = "querybook-core"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the QueryBook core (text kernel, FQL lexer, contracts). std-only."
+license = "MIT"
+
+[lib]
+name = "querybook_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "querybook-core"
+path = "src/main.rs"
+
+# Next stage (see docs/DESIGN.md, "Rust migration"): enable these to ship the
+# crate as a Python extension module that replaces querybook.core.* in place.
+# [lib] crate-type = ["cdylib", "rlib"]
+# [dependencies]
+# pyo3 = { version = "0.22", features = ["extension-module"] }
+# serde = { version = "1", features = ["derive"] }
+# serde_json = "1"
+# unicode-normalization = "0.1"
+# rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
+lto = true

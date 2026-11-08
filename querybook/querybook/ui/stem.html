@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook · STEM</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+
+.answer { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.answer .expr { font: 18px var(--mono); color: var(--muted); }
+.answer .value { font: 700 42px/1.1 var(--mono); color: var(--accent); }
+ol.steps { font: 15px/1.9 var(--mono); margin: 6px 0 0; padding-left: 1.6em; }
+ol.steps li::marker { color: var(--muted); }
+td.f { font-family: var(--mono); white-space: nowrap; }
+.subjects { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+</style>
+</head>
+<body class="stem">
+<main>
+  <h1>STEM</h1>
+  <p class="tag" id="tagline"></p>
+  <form class="ask" id="ask"><input name="q" autocomplete="off" autofocus aria-label="STEM query"><button>Solve</button></form>
+  <div class="chips" id="examples"></div>
+  <div class="banner" id="banner" role="status"></div>
+  <div class="layout">
+    <section id="result"><div class="empty">Enter an expression, or a formula with values.</div></section>
+    <aside class="side">
+      <div class="card"><h2>Sources</h2><div id="sources"></div></div>
+      <div class="card"><h2>FQL used <span id="timing" class="small"></span></h2><div id="fql"></div></div>
+    </aside>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const { el, highlight } = qb;
+
+const fmtVal = (q) => `${q.value} ${q.unit}`;
+function render(res) {
+  const out = document.getElementById("result");
+  const blocks = [];
+  if (res.solution) {
+    const s = res.solution;
+    blocks.push(el("div", { class: "card" },
+      el("div", { class: "answer" }, el("span", { class: "expr" }, (s.target ? s.target + " = " : "") + s.expression + " ="), el("span", { class: "value" }, s.display)),
+      s.steps.length ? el("h2", { style: "margin-top:14px" }, "Worked steps") : null,
+      s.steps.length ? el("ol", { class: "steps" }, s.steps.map((st) => el("li", {}, st))) : null));
+  } else {
+    blocks.push(el("div", { class: "card" }, el("p", { class: res.error ? "err" : "summary" }, res.summary)));
+  }
+  if (res.formulas && res.formulas.length) blocks.push(el("div", { class: "card" }, el("h2", {}, "Formulas in the library"),
+    el("table", {}, el("tr", {}, el("th", {}, "Formula"), el("th", {}, "Variables"), el("th", {}, "From")),
+      res.formulas.map((f) => el("tr", {}, el("td", { class: "f" }, f.expr), el("td", {}, f.vars.join(", ")), el("td", { class: "muted" }, f.source))))));
+  if (res.quantities && res.quantities.length) blocks.push(el("div", { class: "card" }, el("h2", {}, "Quantities mentioned"),
+    el("table", {}, res.quantities.map((q) => el("tr", {}, el("td", { class: "f" }, fmtVal(q)), el("td", { class: "muted" }, q.source))))));
+  if (res.subjects && res.subjects.length) blocks.push(el("div", { class: "subjects" }, res.subjects.map((s) => el("span", { class: "coll" }, s))));
+  out.replaceChildren(...blocks);
+}
+qb.domainPage({ key: "stem", collection: "Stem", render });
+</script>
+</body>
+</html>

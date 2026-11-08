@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "querybook/ingest-item",
+  "title": "IngestItem",
+  "description": "Body of POST /api/ingest (one object or an array of up to 1000), and the object shape accepted in inbox .json/.jsonl files.",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "body": { "type": "string", "description": "Aliases accepted: text, content, description." },
+    "domain": { "enum": ["language", "stem", "history", "video", null], "description": "Omit to auto-classify." },
+    "source": { "type": "string" },
+    "url": { "type": "string" },
+    "fields": { "type": "object", "description": "Extra fields stored on the document (override enrichment)." }
+  },
+  "anyOf": [{ "required": ["body"] }, { "required": ["title"] }]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "querybook/change-event",
+  "title": "ChangeEvent",
+  "description": "One entry of the change journal, delivered on GET /api/stream as `event: change` with `id: <seq>`.",
+  "type": "object",
+  "required": ["seq", "type", "coll", "id", "ts"],
+  "properties": {
+    "seq": { "type": "integer", "description": "Monotonic per database; resume with ?since=<seq> or Last-Event-ID." },
+    "type": { "enum": ["add", "update", "remove"] },
+    "coll": { "type": "string" },
+    "id": { "type": "string" },
+    "ts": { "type": "integer" },
+    "title": { "type": "string" }
+  }
+}

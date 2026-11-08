@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "querybook/domain-response",
+  "title": "DomainResponse",
+  "description": "GET /api/<domain>/query?q=… — a shared envelope with a domain-specific payload selected by `kind`.",
+  "type": "object",
+  "required": ["domain", "query", "kind", "summary", "fql", "sources", "took_ms"],
+  "properties": {
+    "domain": { "enum": ["language", "stem", "history", "video"] },
+    "app": { "type": "string" },
+    "query": { "type": "string" },
+    "kind": { "enum": ["lexicon", "solution", "timeline", "storyboard", "empty", "error"] },
+    "summary": { "type": "string" },
+    "fql": { "type": "array", "items": { "type": "string" }, "description": "Every FQL query the app ran, shown in the UI." },
+    "sources": { "type": "array", "items": { "type": "object", "properties": { "id": {}, "coll": {}, "title": {}, "source": {}, "url": {} } } },
+    "took_ms": { "type": "number" }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "lexicon" } } },
+      "then": { "required": ["headword", "senses", "examples", "related"] } },
+    { "if": { "properties": { "kind": { "const": "solution" } } },
+      "then": { "required": ["solution", "formulas", "quantities", "subjects"],
+                "properties": { "solution": { "type": ["object", "null"], "properties": { "target": {}, "expression": {}, "value": { "type": "number" }, "display": {}, "steps": { "type": "array" }, "variables": {} } } } } },
+    { "if": { "properties": { "kind": { "const": "timeline" } } },
+      "then": { "required": ["range", "events", "eras"] } },
+    { "if": { "properties": { "kind": { "const": "storyboard" } } },
+      "then": { "required": ["job", "scenes", "duration_s", "srt", "renderer"] } }
+  ]
+}

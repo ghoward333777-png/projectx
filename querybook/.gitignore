@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+rust/querybook-core/target/
+*.fqldb
+*.fqldb-wal
+*.fqldb-shm

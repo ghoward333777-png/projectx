@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook · Language</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+
+.entry { font-family: var(--serif); }
+.entry .hw { font-size: 40px; font-weight: 700; margin: 0; letter-spacing: .3px; }
+.entry .pos { font-style: italic; color: var(--accent); font-size: 17px; margin-right: 8px; }
+.senses { margin: 14px 0 0; padding-left: 1.4em; font-size: 18px; }
+.senses li { margin-bottom: 8px; } .senses .from { font-family: var(--sans); font-size: 12.5px; color: var(--muted); }
+.examples { list-style: none; margin: 0; padding: 0; }
+.examples li { font-family: var(--serif); font-size: 16.5px; border-left: 3px solid var(--accent-soft); padding: 4px 0 4px 12px; margin-bottom: 10px; }
+.related { display: flex; flex-wrap: wrap; gap: 6px; }
+</style>
+</head>
+<body class="language">
+<main>
+  <h1>Language</h1>
+  <p class="tag" id="tagline"></p>
+  <form class="ask" id="ask"><input name="q" autocomplete="off" autofocus aria-label="Language query"><button>Look up</button></form>
+  <div class="chips" id="examples"></div>
+  <div class="banner" id="banner" role="status"></div>
+  <div class="layout">
+    <section id="result"><div class="empty">Look up a word to see its entry.</div></section>
+    <aside class="side">
+      <div class="card"><h2>Sources</h2><div id="sources"></div></div>
+      <div class="card"><h2>FQL used <span id="timing" class="small"></span></h2><div id="fql"></div></div>
+    </aside>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const { el, highlight } = qb;
+
+let page;
+function render(res) {
+  const out = document.getElementById("result");
+  if (res.kind !== "lexicon") { out.replaceChildren(el("div", { class: "empty" }, res.summary || "")); return; }
+  const card = el("article", { class: "card entry" },
+    el("p", { class: "hw" }, res.headword),
+    el("p", { class: "summary" }, res.summary));
+  if (res.senses.length) card.append(el("ol", { class: "senses" }, res.senses.map((s) =>
+    el("li", {}, s.pos ? el("span", { class: "pos" }, s.pos) : null, s.definition, " ", el("span", { class: "from" }, "— " + s.source)))));
+  const blocks = [card];
+  if (res.examples.length) blocks.push(el("div", { class: "card" }, el("h2", {}, "In use"),
+    el("ul", { class: "examples" }, res.examples.map((e) => el("li", {}, highlight(e.text, res.headword), " ", el("span", { class: "coll" }, e.coll))))));
+  if (res.related.length) blocks.push(el("div", { class: "card" }, el("h2", {}, "Related words"),
+    el("div", { class: "related" }, res.related.map((w) => el("button", { class: "chip", type: "button", onclick: () => { page.input.value = w; page.run(); } }, w)))));
+  out.replaceChildren(...blocks);
+}
+qb.domainPage({ key: "language", collection: "Language", render }).then((p) => (page = p));
+</script>
+</body>
+</html>
