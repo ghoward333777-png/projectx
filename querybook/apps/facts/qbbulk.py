@@ -38,6 +38,8 @@ BATCH = 500_000                    # facts per transaction: appended to the shar
 STAGE_MIN = 5_000_000              # 1.33: staged facts are folded into the keyed tables once at least this many wait, or half
                                    # the shard's own size, whichever is more — and at the end of every part
 CACHE_MB = 128                     # SQLite page cache per agent
+MERGE_CACHE_MB = 1024              # 1.33: the page cache while a stage is folded in (the subject index cannot be visited in
+                                   # order, so it must stay in memory or every insert reads a page); back to CACHE_MB after
 LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
 FOLDER = "shards"
 MAX_AGENTS = min(64, max(16, os.cpu_count() or 1))   # one process per agent: up to every core of the machine
@@ -2013,6 +2015,17 @@ class Shard:
         replaced — the shard is exactly what inserting batch by batch made. Parts in the order they were staged."""
         t = _NS()
         new = 0
+        self.db.execute("PRAGMA cache_size=-%d" % (MERGE_CACHE_MB * 1024))
+        try:
+            new = self._fold()
+        finally:
+            self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))
+            self.db.execute("PRAGMA shrink_memory")
+        TR.add("db_merge", _NS() - t, 1, new)
+        return new
+
+    def _fold(self):
+        new = 0
         for pid, in self.db.execute("SELECT part FROM stage GROUP BY part ORDER BY min(rowid)").fetchall():
             before = self.db.total_changes
             self.db.execute("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) SELECT fp, s, p, o, part, row FROM stage "
@@ -2027,7 +2040,6 @@ class Shard:
         self.set_meta("staged", 0)
         self._progress()
         self.db.commit()
-        TR.add("db_merge", _NS() - t, 1, new)
         return new
 
 
