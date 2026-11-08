@@ -15,6 +15,7 @@ The fingerprint functions are mirrored in rust/querybook-core (golden vectors in
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -72,6 +73,8 @@ def work_dir(commons: Path, *, env: dict[str, str] | None = None) -> Path | None
 
 
 def _ro(path: Path) -> sqlite3.Connection:
+    """A read-only connection. Callers must close it (contextlib.closing): on Windows an open
+    handle locks the file, and the suite's copier must be able to replace its working copies."""
     conn = sqlite3.connect("file:%s?mode=ro" % urllib.request.pathname2url(str(path)), uri=True, timeout=5,
                            check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -136,7 +139,7 @@ class LegacyStore:
             path = self.shard_path(key)
             facts, state = 0, "unknown"
             try:
-                with _ro(path) as db:
+                with contextlib.closing(_ro(path)) as db:
                     meta = {r["key"]: r["value"] for r in db.execute("SELECT key, value FROM meta")}
                 facts = int(json.loads(meta.get("facts", "0")) or 0)
                 state = str(json.loads(meta.get("state", '"unknown"')))
@@ -173,7 +176,7 @@ class LegacyStore:
             if keys and info.key not in keys:
                 continue
             try:
-                with _ro(info.path) as db:
+                with contextlib.closing(_ro(info.path)) as db:
                     for v in variants:
                         for row in db.execute("SELECT * FROM facts WHERE s = ? LIMIT ?", (v, limit - len(out))):
                             out.append(self._fact(info, db, row))
@@ -191,7 +194,7 @@ class LegacyStore:
             if info.area != norm(area):
                 continue
             try:
-                with _ro(info.path) as db:
+                with contextlib.closing(_ro(info.path)) as db:
                     if db.execute("SELECT 1 FROM facts WHERE fp = ?", (fp,)).fetchone():
                         hits.append(info.key)
             except sqlite3.Error:

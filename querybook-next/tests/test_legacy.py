@@ -100,6 +100,38 @@ class SuiteStoreTest(unittest.TestCase):
         stem = build_apps(["stem"])["stem"].answer("water", ctx)
         self.assertIn("H2O", {f["object"] for f in stem["store_facts"]})
 
+    def test_every_suite_connection_is_closed(self):
+        """On Windows an open handle locks the file and the suite's copier could not replace it."""
+        import querybook.core.legacy as legacy_mod
+        opened, real = [], legacy_mod._ro
+
+        class Tracked:
+            def __init__(self, conn):
+                self.conn, self.closed = conn, False
+            def __getitem__(self, k):
+                raise TypeError
+            def execute(self, *a):
+                return self.conn.execute(*a)
+            def close(self):
+                self.closed = True
+                self.conn.close()
+
+        def tracking(path):
+            t = Tracked(real(path))
+            opened.append(t)
+            return t
+
+        legacy_mod._ro = tracking
+        try:
+            lg = LegacyStore(self.folder / "commons")
+            lg.shards(); lg.facts_by_subject("Water"); lg.fact_exists("stem", "Water", "molecular formula", "H2O")
+            lg.commons_by_subject("Marie Curie"); lg.commons_get("1"); lg.commons_count()
+            list(lg.scan_facts()); list(lg.scan_commons())
+        finally:
+            legacy_mod._ro = real
+        self.assertTrue(opened)
+        self.assertTrue(all(t.closed for t in opened), f"{sum(not t.closed for t in opened)} left open")
+
     def test_prefers_newer_working_copy(self):
         wdir = Path(tempfile.mkdtemp())
         lg = LegacyStore(self.folder / "commons", env={"QB_WORK_FOLDER": str(wdir)})
