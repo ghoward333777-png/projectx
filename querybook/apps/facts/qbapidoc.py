@@ -54,6 +54,14 @@ DOCS = {
                         {"datasets": ["calendar-scaffold", "usgs-gnis"], "agents": 4, "passphrase": ""}, "admin", "control"),
     "/api/bulk/stop": ("Bulk harvesting", "Stop bulk agents", "Every agent stops after its current batch and resumes there next time.",
                        {}, "changes", "control"),
+    "/api/backup": ("Backups", "Backup state", "The backup drive's folder and whether it is connected, the newest backups with their "
+                    "fact counts and warnings, free space, and the backup running now.", {}, "read", "control"),
+    "/api/backup/settings": ("Backups", "Backup settings", "The backup folder (on another drive), how many backups to keep and how "
+                             "often to back up automatically. Admin passphrase if one is set.",
+                             {"folder": "F:\\QB-Backup", "keep": 7, "every_hours": 24, "on": True, "passphrase": ""}, "admin", "control"),
+    "/api/backup/now": ("Backups", "Back up now", "Starts a checked backup of every saved fact in the background.", {}, "changes", "control"),
+    "/api/backup/restore": ("Backups", "Add back from a backup", "Facts the backup holds that the live datasets lack are added back; "
+                            "missing files are copied back. Nothing is deleted. Harvesting must be stopped.", {"generation": ""}, "changes", "control"),
     "/api/keystones": ("Bulk harvesting", "Coverage map (keystone domains)", "The 20 keystone domains with the facts held in each "
                        "(measured), the sources feeding them, novelty from the harvest log, the state (not started, growing, saturated), "
                        "the priority the bulk runner follows and suggested questions for the fact gatherer.", {}, "read", "control"),

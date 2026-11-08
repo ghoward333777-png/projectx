@@ -176,7 +176,7 @@ async function loadDsn() {
 }
 
 async function loadBulk() {
-  loadDsn();
+  loadDsn(); loadBackup().catch(() => {});
   const r = await api("/api/bulk");
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
   $("#bk-agents").max = r.max_agents || 16;
@@ -228,6 +228,34 @@ function bkDownload(d) {
   $("#bk-dl").innerHTML = bits.map(b => `<div>${b}</div>`).join("");
   $("#bk-dl-on").checked = !!d.on;
   if (document.activeElement !== $("#bk-dl-folder") && !$("#bk-dl-folder").dataset.typed) $("#bk-dl-folder").value = d.folder_setting || "";
+}
+// ---- backups (qbvault): the backup drive
+const GB = n => (n / 1e9).toFixed(n >= 1e11 ? 0 : 1) + " GB";
+async function loadBackup() {
+  const b = await api("/api/backup"), c = b.config, L = b.last || {}, g = b.generations || [];
+  const f = $("#vb-folder"); if (!f.dataset.typed) { f.value = c.folder || ""; $("#vb-keep").value = c.keep; $("#vb-every").value = c.every_hours; $("#vb-on").checked = c.on; }
+  let t = !c.folder ? "No backup folder yet: connect the backup drive, type a folder on it and Save." :
+    !b.connected ? `⚠ The backup drive is not connected (${esc(c.folder)}). Your facts are not being backed up.` :
+    g.length ? `Newest backup: <b>${esc((g[0].created || g[0].generation).replace("T", " "))}</b> — ${fmt(g[0].facts || 0)} facts in ${g[0].files} files · ${g.length} kept · ${GB(b.free_bytes)} free of ${GB(b.total_bytes)}` :
+    "Connected — no backup yet.";
+  if (L.state === "running") t += `<br>⏳ Backing up: ${esc(L.step || "")} — ${esc(L.file || "")}`;
+  else if (L.state === "failed") t += `<br>⚠ The last backup did not finish: ${esc(L.why || "")}`;
+  const w = g.length ? g[0].warnings : [];
+  if (w && w.length) t += "<br>" + w.map(x => "⚠ " + esc(x)).join("<br>");
+  $("#vb-state").innerHTML = t;
+  $("#vb-now").disabled = !b.connected || b.running;
+}
+async function vbSave() {
+  try { await api("/api/backup/settings", { folder: $("#vb-folder").value, keep: +$("#vb-keep").value, every_hours: +$("#vb-every").value,
+                                          on: $("#vb-on").checked, passphrase: $("#bk-pass").value });
+        $("#vb-folder").dataset.typed = ""; toast("Backup settings saved"); loadBackup(); } catch (e) { toast(e.message); }
+}
+async function vbNow() {
+  try { await api("/api/backup/now", {}); toast("Backup started"); setTimeout(() => loadBackup().catch(() => {}), 1500); } catch (e) { toast(e.message); }
+}
+async function vbRestore() {
+  const o = $("#vb-out"); o.textContent = "Comparing with the newest backup… (this can take a while)";
+  try { o.textContent = (await api("/api/backup/restore", {})).summary; loadBulk().catch(() => {}); } catch (e) { o.textContent = e.message; }
 }
 async function bkDownloadSave() {
   try {
@@ -333,6 +361,8 @@ function bind() {
     finally { b.disabled = false; }
   };
   $("#bk-dl-save").onclick = bkDownloadSave;
+  $("#vb-save").onclick = vbSave; $("#vb-now").onclick = vbNow; $("#vb-restore").onclick = vbRestore;
+  $("#vb-folder").oninput = () => { $("#vb-folder").dataset.typed = "1"; };
   $("#bk-dl-on").onchange = bkDownloadSave;
   $("#bk-dl-folder").oninput = () => { $("#bk-dl-folder").dataset.typed = "1"; };
   $("#bk-refresh").onclick = () => { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); };

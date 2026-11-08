@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.33.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.34.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1744,8 +1744,17 @@ def drain(commons_folder, key, force=False, pace=True):
             try:
                 r = v.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
                 facts = int(json.loads(r[0]) or 0) if r else 0
+                rd = v.execute("SELECT value FROM meta WHERE key = 'duplicates_removed'").fetchone()
+                tdups = int(json.loads(rd[0]) or 0) if rd else 0
             finally:
                 v.close()
+            hm2 = _meta_of(hp) if os.path.exists(hp) else None
+            floor = ((hm2 or {}).get("facts") or 0) - max(0, tdups - ((hm2 or {}).get("duplicates_removed") or 0))
+            if facts < floor:                           # 1.33 safeguard: the home copy is never replaced by a smaller one
+                os.remove(tmp)
+                TR.event("drain", dataset=key, result="refused", facts=facts, home_facts=(hm2 or {}).get("facts"),
+                         why="the copy would hold fewer facts than the one on the data drive; the data drive's copy is kept")
+                return "busy"
         try:
             for x in ("-wal", "-shm"):                   # an old log beside the home copy must never be applied to the new one
                 if os.path.exists(dst + x):
@@ -1783,6 +1792,11 @@ def other_copies(commons_folder, key):
                 cands.append(os.path.join(folder, FOLDER, key + ".sqlite"))
     except Exception:
         pass
+    try:                                              # 1.33: the newest backup on the backup drive, when it is connected
+        import qbvault
+        cands.append(qbvault.latest_copy(commons_folder, "commons/%s/%s.sqlite" % (FOLDER, key)))
+    except Exception:
+        pass
     live = os.path.normcase(os.path.abspath(shard_path(commons_folder, key)))
     out, seen = [], {live}
     for p in cands:
@@ -1815,12 +1829,69 @@ def restore_missing(commons_folder, say=None):
                 shutil.copyfile(other, home_path(commons_folder, key))
                 added = om.get("facts") or 0
             else:
-                added = merge_into(live, other)
+                _restoring(commons_folder, {"key": key, "from": other, "facts": om.get("facts") or 0, "live": lm.get("facts") or 0})
+                try:
+                    added = merge_into(live, other)
+                finally:
+                    _restoring(commons_folder, None)
             r = out.setdefault(key, {"added": 0, "from": []})
             r["added"] += added
             r["from"].append(other)
             TR.event("restore", dataset=key, source=other, added=added)
     return out
+
+
+def _restoring_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_restoring.json")
+
+
+def _restoring(commons_folder, what):
+    """1.33: which dataset is having facts added back right now (the page shows the fuller copy's count meanwhile, never a
+    fall: the live copy's own count only changes when the whole merge is done)"""
+    p = _restoring_path(commons_folder)
+    try:
+        if what is None:
+            if os.path.exists(p):
+                os.remove(p)
+        else:
+            with open(p + ".tmp", "w") as f:
+                json.dump(dict(what, at=time.time(), pid=os.getpid()), f)
+            _replace(p + ".tmp", p)
+    except OSError:
+        pass
+
+
+def restoring_now(commons_folder):
+    try:
+        with open(_restoring_path(commons_folder)) as f:
+            r = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return r if _pid_alive(r.get("pid")) else None
+
+
+def _pid_alive(pid):
+    if not pid:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            h = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+            if not h:
+                return False
+            code = ctypes.c_ulong()
+            ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+            ctypes.windll.kernel32.CloseHandle(h)
+            return code.value == 259                  # STILL_ACTIVE
+        except Exception:
+            return True
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
 
 
 def work_keys(commons_folder):
@@ -2595,6 +2666,17 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
                     TR.fail("drain", e, retried=True, dataset=k)
             wait = max(DRAIN_S, 2 * (time.time() - t_round))   # the copier rests twice as long as it worked
     dthread = threading.Thread(target=drainer, daemon=True, name="qb-drain")
+
+    def backer():                                     # 1.33: a checked backup to the backup drive, once a day while harvesting
+        import qbvault
+        while not drain_stop.wait(600):
+            try:
+                if qbvault.due(commons_folder) and not qbvault.running(commons_folder):
+                    TR.event("backup", result=qbvault.backup(commons_folder, reason="automatic",
+                                                             stop=lambda: "Stop pressed" if os.path.exists(stop) else None))
+            except Exception as e:
+                TR.fail("backup", e, retried=True)
+    threading.Thread(target=backer, daemon=True, name="qb-backup").start()
     if work_dir(commons_folder):
         dthread.start()
     last_upkeep = time.time()
@@ -2752,6 +2834,10 @@ def status(commons_folder, commons=None):
                     row["facts"], row["count_from"] = last, "last known (the file is busy right now)"
             if row["state"] == "running" and not _alive(commons_folder):
                 row["state"] = "paused"
+        rn = restoring_now(commons_folder)
+        if rn and rn.get("key") == key and (rn.get("facts") or 0) > row["facts"]:
+            row["facts"], row["count_from"] = rn["facts"], "restoring: facts are being added back from %s" % rn.get("from")
+            row["restoring"] = rn
         if getattr(ds, "standalone", False):          # the one dump download: its own progress, no shard
             row.update(download_status(commons_folder, commons))
         if row["facts"] and not row.get("count_from"):
@@ -3597,6 +3683,54 @@ def add_routes(api, commons, program_dir):
         n = sum(v["added"] for v in r.values())
         return {"restored": r, "summary": ("%s facts added back to %d dataset(s)" % (format(n, ","), len(r))) if r else
                 "every copy was checked: no dataset was missing facts that another copy holds"}
+
+    @api.get("/api/backup")
+    def backup_status(p):
+        import qbvault
+        return qbvault.status(commons.folder)
+
+    @api.post("/api/backup/settings")
+    def backup_settings(p):
+        """the backup drive's folder, how many generations to keep, how often (admin)"""
+        import qbvault
+        commons.approvals._require(p.get("passphrase") or "")
+        try:
+            qbvault.save_config(commons.folder, p.get("folder"), p.get("keep"), p.get("every_hours"), p.get("on"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        return qbvault.status(commons.folder)
+
+    @api.post("/api/backup/now")
+    def backup_now(p):
+        """a backup in the background (the page follows backup-status.json); refused while one runs"""
+        import qbvault, threading
+        if not qbvault.vault_dir(commons.folder):
+            raise core.UserError("Choose a backup folder on a connected drive first.")
+        if qbvault.running(commons.folder):
+            raise core.UserError("A backup is already running.")
+
+        def go():
+            try:
+                qbvault.backup(commons.folder, reason="manual")
+            except Exception:
+                pass                                    # the reason is in backup-status.json
+        threading.Thread(target=go, daemon=True, name="qb-backup-now").start()
+        return {"started": True}
+
+    @api.post("/api/backup/restore")
+    def backup_restore(p):
+        """add back from a backup every fact the live datasets lack; copy back missing files. Nothing is deleted."""
+        import qbvault
+        if _alive(commons.folder) or stopping(commons.folder):
+            raise core.UserError("Stop harvesting first (and let the stop finish saving).")
+        try:
+            r = qbvault.restore(commons.folder, p.get("generation"))
+        except RuntimeError as e:
+            raise core.UserError(str(e))
+        _STATUS.pop(commons.folder, None)
+        n = sum(v.get("added", 0) for v in r.values())
+        return {"restored": r, "summary": ("%s facts added back, %d file(s) copied back" % (format(n, ","), sum(1 for v in r.values() if v.get("copied"))))
+                if r else "the live data already holds everything in that backup"}
 
     @api.post("/api/bulk/download-settings")
     def bulk_download_settings(p):
@@ -4585,6 +4719,44 @@ def _supervisor_tests():
         sh.db.close()
     finally:
         shutil.rmtree(cf, ignore_errors=True)
+    # 1.34 safeguards: the copier never shrinks the home copy; a restore shows the full count; the backup is a copy at Start
+    root = tempfile.mkdtemp()
+    try:
+        cf = os.path.join(root, "commons"); os.makedirs(cf)
+        os.environ["QB_WORK_FOLDER"] = os.path.join(root, "work")
+        key = "pubchem-computed"
+        sh = Shard(cf, key, home_path(cf, key)); pid = sh.part("p", "file://x")[0]; pr = sh.pred("mass")
+        k = lambda n: hashlib.sha256(str(n).encode()).digest()[:16]
+        sh.write(pid, [(k(i), "s%d" % i, pr, "o", pid, i) for i in range(40)], 40); sh.merge(); sh.db.close()
+        wp = work_path(cf, key); os.makedirs(os.path.dirname(wp), exist_ok=True)
+        shutil.copyfile(home_path(cf, key), wp)
+        w = sqlite3.connect(wp); w.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM facts LIMIT 10)")
+        w.execute("UPDATE meta SET value = '30' WHERE key = 'facts'"); w.commit(); w.close()      # the working copy lost 10
+        g = globals(); real = g["merge_into"]; g["merge_into"] = lambda dst, src: 0                # ...and adding back fails
+        try:
+            r2 = drain(cf, key, force=True)
+        finally:
+            g["merge_into"] = real
+        hn2 = sqlite3.connect(home_path(cf, key)).execute("SELECT count(*) FROM facts").fetchone()[0]
+        r = drain(cf, key, force=True)                                                             # adding back works again
+        hn = sqlite3.connect(home_path(cf, key)).execute("SELECT count(*) FROM facts").fetchone()[0]
+        ok("1.34: the copier never replaces the data drive's copy with one holding fewer facts", r2 == "busy" and hn2 == 40 and r == 40 and hn == 40, (r, r2, hn, hn2))
+        _restoring(cf, {"key": key, "from": "F:\\QB-Backup", "facts": 206_000_000, "live": 30})
+        row = next(d for d in status(cf)["datasets"] if d["key"] == key)
+        _restoring(cf, None)
+        row2 = next(d for d in status(cf)["datasets"] if d["key"] == key)
+        ok("1.34: while facts are being added back the page shows the full count with a note, never a drop",
+           row["facts"] == 206_000_000 and "restoring" in row.get("count_from", "") and row2["facts"] == 40, (row["facts"], row2["facts"]))
+        import qbvault
+        bk = os.path.join(root, "backup"); os.makedirs(bk)
+        with open(os.path.join(cf, "backup.json"), "w") as f:
+            json.dump({"folder": bk}, f)
+        qbvault.backup(cf, reason="test")
+        ok("1.34: the newest backup is one of the copies checked at Start",
+           any(qbvault.NAME in p_ for p_ in other_copies(cf, key)), other_copies(cf, key))
+    finally:
+        os.environ.pop("QB_WORK_FOLDER", None)
+        shutil.rmtree(root, ignore_errors=True)
     pg = {"total": 1000, "done": 600, "done_at_start": 0, "since": 1000.0, "at": 1060.0, "part": "2026-11-06 part 0049 of 0147",
           "part_no": 4, "parts": 10}
     ok("1.33: a running agent's speed is measured up to now — one that stopped moving shows its speed falling",

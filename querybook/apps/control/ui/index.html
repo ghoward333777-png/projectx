@@ -340,6 +340,17 @@
         <div class="row small"><input id="bk-dl-folder" placeholder="Folder for the dump (about 160 GB a week, two weeks kept), e.g. E:\QB-dumps" style="flex:1;min-width:18em">
           <button class="btn quiet" id="bk-dl-save">Save</button></div>
         <p class="small muted">Empty = the shared folder's <i>dumps</i> folder. For a new large drive (e.g. the OWC Gemini), type a folder on it and Save; the next download goes there.</p></div>
+      <div class="card" id="vb-card" style="margin:8px 0"><h3 style="margin-top:0">🛟 Backups <span class="small muted">— every saved fact copied to another drive, checked, kept by date</span></h3>
+        <div id="vb-state" class="small"></div>
+        <div class="row small" style="margin-top:6px"><input id="vb-folder" placeholder="Backup folder on ANOTHER drive, e.g. F:\QB-Backup" style="flex:1;min-width:18em">
+          <label>keep <input id="vb-keep" type="number" min="2" max="365" value="7" style="width:4em"> backups</label>
+          <label>every <input id="vb-every" type="number" min="1" max="720" value="24" style="width:4em"> h</label>
+          <label><input type="checkbox" id="vb-on" checked> automatic</label>
+          <button class="btn quiet" id="vb-save">Save</button></div>
+        <div class="row small"><button class="btn" id="vb-now">🛟 Back up now</button>
+          <button class="btn quiet" id="vb-restore" title="Facts a backup holds that the live datasets lack are added back; missing files are copied back. Nothing is deleted. Stop harvesting first.">↩ Add back from the newest backup</button>
+          <span id="vb-out"></span></div>
+        <p class="small muted">Unchanged datasets are not copied again. The newest backups are kept, and so is the fullest copy each dataset ever had, so a dataset that shrinks can always be brought back. The newest backup is also checked at every Start: missing facts come back by themselves.</p></div>
       <div id="bk-summary" class="row"></div>
       <div class="row"><button class="btn quiet" id="bk-restore" title="Every copy of every dataset (C:, D:, earlier versions) compared; facts the live copy lacks are added back. Nothing is deleted. Also runs by itself at every Start.">🔎 Find and restore missing facts</button>
         <span id="bk-restore-out" class="small"></span></div>

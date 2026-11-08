@@ -43,6 +43,19 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Backups to another drive, and safeguards for the saved facts (Control Panel 1.36.0, bulk engine 1.34.0)
+    * Bulk harvesting -> Backups: type a folder on another drive (e.g. the new 40 TB drive) and Save. Every saved fact is then
+      copied there once a day while harvesting (or press Back up now): every bulk dataset, the shared folder and the
+      applications' own data. Each database copy is checked before the backup counts; a backup that did not finish never
+      counts as one. Datasets that have not changed since the last backup are not copied again.
+    * The newest 7 backups are kept, and so is the fullest copy each dataset ever had: a dataset that shrinks can always be
+      brought back. A backup that finds a dataset smaller than last time says so on the page.
+    * "Add back from the newest backup" adds back every fact the live datasets lack (nothing is deleted). The newest backup is
+      also one of the copies checked at every Start, so missing facts come back by themselves while the drive is connected.
+    * The copier never replaces the data drive's copy of a dataset with one holding fewer facts.
+    * While facts are being added back at Start, the page shows the dataset's full count with a note, never a drop
+      (on 8 November the page showed 206 million facts "lost" for a while: they were being restored, nothing was deleted).
+    * Command line: python _core/qbvault.py backup --commons <shared folder> --to F:\QB-Backup
   Bulk harvesting no longer slows to a stop as the shards grow (Control Panel 1.35.2, bulk engine 1.33.0)
     * Each batch of 500,000 facts used to go straight into the shard's fingerprint index. Once a Wikidata lane held tens
       of millions of facts, every batch read and rewrote gigabytes; the writes outlasted the 15-minute stall limit, the
