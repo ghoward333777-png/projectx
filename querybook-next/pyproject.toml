@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "querybook-next"
+version = "0.2.0"
+description = "Language, STEM, History and Video-generation apps on one shared FQL database with continuous, real-time ingestion."
+requires-python = ">=3.10"
+dependencies = []          # standard library only
+classifiers = [
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+querybook = "querybook.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["querybook*"]
+
+[tool.setuptools.package-data]
+querybook = ["ui/*", "samples/*.json", "core/lexicons.txt"]

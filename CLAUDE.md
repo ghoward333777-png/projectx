@@ -68,13 +68,26 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
 
-## QueryBook (`querybook/`)
+## QueryBook Next (`querybook-next/`)
 
-Separate Python product, not part of the PHP app or its hosting zip: four domain
-apps (Language, STEM, History, Video) on one embedded FQL store with continuous
-and real-time ingestion. Standard library only, Python 3.10+, Windows/macOS.
-Run `python3 -m unittest discover -s tests -t .` from `querybook/` and
-`cargo test --release` in `querybook/rust/querybook-core` before shipping. The
-text kernel and FQL lexer are mirrored in Rust: any change to `core/text.py`,
-`core/lexicons.txt` or `core/fql/lexer.py` must be ported and
-`contracts/golden_text.tsv` regenerated so both suites stay green.
+The new, Rust-compatible Python version of QueryBook. It is NOT the QueryBook
+suite: the suite (Language Builder, STEM, History & News, Video Studio, Control
+Panel; 50+ versions) lives on branch `claude/lucid-brahmagupta-ak4f6m` under
+`querybook/`. Always check that branch and the user's earlier sessions before
+building QueryBook features.
+
+- The user's real data is the suite's store on `D:\QB`: `commons\commons.sqlite`
+  and `commons\shards\<dataset>.sqlite`, about 1 billion facts. QueryBook Next
+  reads it in place and read-only (`core/legacy.py`, FQL `Facts`/`Commons`), and
+  writes only to `D:\QB\querybook-next`. Never copy or modify the suite's store.
+- Fact identity must match the suite's `qbcore.fingerprint` (verified by
+  `contracts/golden_fingerprints.tsv`, generated from the suite's own code).
+- Standard library only, Python 3.10+, Windows/macOS.
+  `tests/test_rust_compat.py` enforces the Rust rules: no reflection, no
+  `**kwargs`, full annotations in `core/` and `ingest/`, frozen dataclasses at
+  boundaries.
+- Before shipping, run `python3 -m unittest discover -s tests -t .` from
+  `querybook-next/` and `cargo test --release` in
+  `querybook-next/rust/querybook-core`. Changes to `core/text.py`,
+  `core/lexicons.txt`, `core/fql/lexer.py` or `core/legacy.py` must be ported
+  to Rust and their golden vectors regenerated.

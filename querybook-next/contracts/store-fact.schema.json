@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "querybook/store-fact",
+  "title": "StoreFact",
+  "description": "A fact read from the QueryBook suite's store (D:\\QB), as returned by the FQL collections Facts and Commons. Read-only.",
+  "oneOf": [
+    {
+      "title": "ShardFact (Facts)",
+      "type": "object",
+      "required": ["id", "coll", "dataset", "subject", "predicate", "object"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-f]{32}$", "description": "facts.fp: first 16 bytes of sha256(norm(area)|norm(s)|norm(p)|norm(o)), hex" },
+        "coll": { "const": "Facts" },
+        "dataset": { "type": "string", "examples": ["wikidata-dump-3", "pubchem-computed"] },
+        "app": { "enum": ["language", "stem", "facts"] },
+        "domain": { "enum": ["language", "stem", "history"] },
+        "subject": { "type": "string" },
+        "predicate": { "type": "string", "description": "predicates.name for facts.p" },
+        "object": { "type": "string" },
+        "part": { "type": "integer" },
+        "row": { "type": "integer" }
+      }
+    },
+    {
+      "title": "CommonsFact (Commons)",
+      "type": "object",
+      "required": ["id", "coll", "fingerprint", "domain", "subject", "predicate", "object", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "coll": { "const": "Commons" },
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "domain": { "type": "string" },
+        "subject": { "type": "string" }, "predicate": { "type": "string" }, "object": { "type": "string" },
+        "statement": { "type": ["string", "null"] },
+        "origin_app": { "type": "string" },
+        "status": { "enum": ["verified", "corroborated", "sourced", "reported", "unsourced", "disputed", "rejected"] },
+        "confidence": { "type": "number" },
+        "created": { "type": "string" }, "updated": { "type": "string" },
+        "evidence": { "type": "array", "description": "Present on Commons.byId()", "items": { "type": "object" } }
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Fact fingerprints computed by the QueryBook suite's own qbcore.fingerprint (sha256 of norm-joined parts).
+# columns: area | subject | predicate | object | fingerprint (hex) | shard key = first 16 bytes (hex)
+# Inputs are escaped like golden_text.tsv (backslash-t, backslash-uXXXX).
+history	Marie Curie	date of birth	1867-11-07	41d8f82584066daae7f20ebf904bec1f36cb0e972e4e1b891dd203f29bb963f7	41d8f82584066daae7f20ebf904bec1f
+stem	  Water 	molecular formula	H2O	abbeaffa806e4d5048896fb6d786c3ee9c08f1de5fe7d40bb81e28650748aabe	abbeaffa806e4d5048896fb6d786c3ee
+language	Bonjour	translation (en)	hello	7161646b7a01a44a7f97f1eebe9f1c4bc0f5d81c329c82b825dd8bb017390797	7161646b7a01a44a7f97f1eebe9f1c4b
+history	Paris	country	France	f9aa85dc2eacdded2933b1a2998dba89f3f933c7456259650d0766e3d2be0123	f9aa85dc2eacdded2933b1a2998dba89
+history	Caf\u00e9\tDe  Flore	located in	Paris	7f107b372286b842853e379342e4855f89b7cd202498ecd473c20d586f606b0b	7f107b372286b842853e379342e4855f
+stem				2316be8181785a9a704a1d851026152374b440c6afa1f3bb1b2c6db84ef6580f	2316be8181785a9a704a1d8510261523
+HISTORY	\u00c9COLE	Name	\u00c9cole Normale	8a8c24c6bc4b90e408346fdf526920219d0e72c8140cec11e18a9244892ef2df	8a8c24c6bc4b90e408346fdf52692021
+history	Q42	P31	Q5	29ceb7475d1ea0c50794a7bec02d904ac9db907e815d971bd466aba39824d63c	29ceb7475d1ea0c50794a7bec02d904a
+stem	pi	value	3.14159	dca14000d383e89ed8c22b6557934dcd2744ada95c038215d1ff04cbbafce645	dca14000d383e89ed8c22b6557934dcd
+language	na\u00efve	part of speech	adjective	5f2ee43e36627264fb428803fa4d73afc1d34027315a38b8e59dc1c369d71fd3	5f2ee43e36627264fb428803fa4d73af
