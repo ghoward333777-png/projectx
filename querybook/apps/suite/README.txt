@@ -43,6 +43,18 @@ EXTRAS (QueryBook/extras)
   * device-bridges, visual-speech-engine-stage2 — as before.
 
 WHAT'S NEW IN THIS RELEASE
+  Bulk harvesting no longer slows to a stop as the shards grow (Control Panel 1.35.2, bulk engine 1.33.0)
+    * Each batch of 500,000 facts used to go straight into the shard's fingerprint index. Once a Wikidata lane held tens
+      of millions of facts, every batch read and rewrote gigabytes; the writes outlasted the 15-minute stall limit, the
+      agent was ended, its batch lost and its part read again from the start, over and over: most lanes showed
+      0 facts/min. Now a batch is appended in about a third of a second, and the facts join the index in one sorted pass
+      at the end of each part (or sooner when many are waiting). Measured on 25 million facts: about a sixth of the disk
+      reading and writing.
+    * An agent busy writing is no longer taken for stalled and restarted.
+    * The facts-per-minute figures count facts the moment they are written; Look up finds them after each part's pass.
+    * The speed shown for a running lane is measured up to now (a stuck lane no longer shows its last "10 MB/s"), and
+      the overall percentage counts only the current dump edition (lanes no longer read 100% on file 5 of 9).
+    * The engine version changed: press ⚡ Start harvesting once after installing, so the new engine replaces the old one.
   The Wikidata lanes no longer sit idle while the dump downloads (Control Panel 1.35.1, bulk engine 1.32.0)
     * Since 1.31 all 16 Wikidata lanes waited, producing nothing, until the whole 157 GB dump had downloaded and passed
       its checksum. When the download was slow or kept being refused, the harvest fell to a trickle. Now the lanes
