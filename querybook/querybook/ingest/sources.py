@@ -65,9 +65,11 @@ class FolderSource:
 
     MAX_FILE_BYTES = 20_000_000
 
-    def __init__(self, root: Path, name: str = "inbox", settle_seconds: float = 0.4):
+    def __init__(self, root: Path, name: str = "inbox", settle_seconds: float = 0.4,
+                 exclude: tuple[Path, ...] = ()):
         self.root = Path(root)
         self.name = name
+        self.exclude = tuple(Path(e).resolve() for e in exclude)  # e.g. QueryBook's own inbox/renders
         self.settle = settle_seconds
         self.seen: dict[str, tuple[int, int]] = {}
 
@@ -78,6 +80,8 @@ class FolderSource:
         now = time.time()
         for path in sorted(self.root.rglob("*")):
             if not path.is_file() or path.name.startswith(".") or path.suffix.lower() not in TEXT_SUFFIXES | DATA_SUFFIXES:
+                continue
+            if self.exclude and any(ex == path.resolve() or ex in path.resolve().parents for ex in self.exclude):
                 continue
             st = path.stat()
             sig = (st.st_mtime_ns, st.st_size)

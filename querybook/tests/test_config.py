@@ -12,9 +12,10 @@ class ConfigTest(unittest.TestCase):
         (d / "querybook.ini").write_text(text, encoding="utf-8-sig")
         return d / "querybook.ini"
 
-    def test_shipped_settings_point_at_d_drive_on_windows(self):
+    def test_shipped_settings_keep_querybook_out_of_the_existing_store(self):
         st = load_settings(SETTINGS_FILE, windows=True)
         self.assertEqual(str(st.data_folder).replace("/", "\\"), "D:\\QueryBook")
+        self.assertEqual(st.watch_folders, ())  # D:\\qb is far too large to re-scan; it needs a connector
 
     def test_windows_default_prefers_d_drive(self):
         self.assertEqual(str(windows_default(lambda p: p == "D:\\")).replace("/", "\\"), "D:\\QueryBook")
@@ -44,6 +45,16 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual((items[0].title, items[0].domain), ("Hastings", "history"))
         self.assertEqual(f.stat().st_mtime_ns, before)
         self.assertEqual(sorted(p.name for p in store.rglob("*")), ["history", "note.txt"])
+
+    def test_watching_the_data_folder_skips_querybooks_own_files(self):
+        home = Path(tempfile.mkdtemp())
+        (home / "renders" / "job-1").mkdir(parents=True)
+        (home / "renders" / "job-1" / "scene0.txt").write_text("Title card\nnot a document")
+        (home / "inbox" / "history").mkdir(parents=True)
+        (home / "inbox" / "history" / "dropped.txt").write_text("Dropped\nhandled by the inbox source")
+        (home / "existing.md").write_text("# Existing note\nAlready on D: before QueryBook.")
+        src = FolderSource(home, settle_seconds=0, exclude=(home / "inbox", home / "renders"))
+        self.assertEqual([i.title for i in src.poll()], ["Existing note"])
 
     def test_explicit_home_wins(self):
         home = Path(tempfile.mkdtemp()) / "qb"

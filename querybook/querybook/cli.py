@@ -32,7 +32,9 @@ class Runtime:
         sources = [(FolderSource(self.paths.inbox), 1.0)]
         st = self.paths.settings
         for folder in st.watch_folders:  # existing stores, read-only
-            sources.append((FolderSource(folder, name=f"watch:{folder}"), st.watch_interval))
+            # A watch folder may be the data folder itself (e.g. D:\\qb): skip QueryBook's own output.
+            own = (self.paths.inbox, self.paths.renders)
+            sources.append((FolderSource(folder, name=f"watch:{folder}", exclude=own), st.watch_interval))
         return Harvester(self.pipeline, sources)
 
     def seed(self) -> dict[str, int]:
