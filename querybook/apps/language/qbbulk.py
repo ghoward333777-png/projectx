@@ -31,9 +31,12 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.32.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.33.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
-BATCH = 500_000                    # facts per transaction (bigger batches touch each page of the fingerprint B-tree less often)
+BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
+                                   # whatever the shard's size
+STAGE_MIN = 5_000_000              # 1.33: staged facts are folded into the keyed tables once at least this many wait, or half
+                                   # the shard's own size, whichever is more — and at the end of every part
 CACHE_MB = 128                     # SQLite page cache per agent
 LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
 FOLDER = "shards"
@@ -1465,6 +1468,8 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS progress (at REAL PRIMARY KEY, facts INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS links (fp BLOB PRIMARY KEY, url TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS slots (series TEXT NOT NULL, year INTEGER NOT NULL, filled INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (series, year)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS stage (fp BLOB NOT NULL, s TEXT NOT NULL, p INTEGER NOT NULL, o TEXT NOT NULL, part INTEGER NOT NULL, row INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS stage_links (fp BLOB NOT NULL, url TEXT NOT NULL);
 """
 
 
@@ -1950,36 +1955,79 @@ class Shard:
         return self.preds[name]
 
     def write(self, part_id, rows, rows_done, links=None):
-        """one transaction: the facts, the part's progress and the running total — a restart resumes exactly here"""
-        before = self.db.total_changes
-        # in fingerprint order, so each B-tree page is visited once per batch. The sort is stable: of two facts with one
-        # fingerprint the earlier row still comes first and is the one kept — the shard is the same as unsorted.
+        """one transaction: the facts, the part's progress and the running total — a restart resumes exactly here.
+        1.33: the facts are APPENDED to the stage (a plain table, written front to back) instead of being inserted into the
+        keyed tables. Inserting 500,000 random fingerprints into a keyed table of tens of millions touches nearly every
+        page of it, so each batch cost more than the one before (a 40-million-fact lane read and rewrote gigabytes per
+        batch, the commits outlasted the supervisor's patience, the agent was ended and its batch lost). The stage is
+        folded in by merge(): rarely, sorted, each page once. Returns the new facts merged meanwhile (0 when none was)."""
         t = _NS()
-        rows.sort(key=_FP)
-        t1 = _NS(); TR.add("sort", t1 - t, len(rows)); self.walls = {"sorted": _WALL()}
+        AGENT["waiting"] = "writing to the disk"        # a long write is progress, not a stall (the supervisor reads this)
         slot = self.wslots.take() if self.wslots else None
         try:
-            return self._write(part_id, rows, rows_done, links, before, t1)
+            t1 = _NS(); self.walls = {"sorted": _WALL()}
+            self.db.executemany("INSERT INTO stage(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
+            t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
+            if links:
+                self.db.executemany("INSERT INTO stage_links(fp, url) VALUES(?, ?)", links)
+            t3 = _NS(); TR.add("db_links", t3 - t2, len(links or ()))
+            self.db.execute("UPDATE parts SET rows = ? WHERE id = ?", (rows_done, part_id))
+            staged = (self.meta("staged", 0) or 0) + len(rows)
+            self.set_meta("staged", staged)
+            self._progress()
+            t4 = _NS(); TR.add("db_progress", t4 - t3)
+            self.db.commit()                                          # the disk: one sequential WAL append
+            TR.add("db_commit", _NS() - t4, 1, len(rows)); self.walls["committed"] = _WALL()
+            if staged >= max(STAGE_MIN, (self.meta("facts", 0) or 0) // 2):
+                return self._merge()
+            return 0
         finally:
             if slot is not None:
                 self.wslots.release(slot)
+            AGENT["waiting"] = None
+            TR.add("write", _NS() - t)
 
-    def _write(self, part_id, rows, rows_done, links, before, t1):
-        self.db.executemany("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
-        new = self.db.total_changes - before
-        t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
-        if links:
-            self.db.executemany("INSERT OR IGNORE INTO links(fp, url) VALUES(?, ?)", links)
-        t3 = _NS(); TR.add("db_links", t3 - t2, len(links or ()))
-        self.db.execute("UPDATE parts SET rows = ?, facts = facts + ? WHERE id = ?", (rows_done, new, part_id))
-        total = (self.meta("facts", 0) or 0) + new
-        self.set_meta("facts", total)
+    def _progress(self):
+        """the running total for the rate: facts kept plus facts staged (the stage is counted the moment it is written)"""
         now = time.time()
-        self.db.execute("INSERT OR REPLACE INTO progress(at, facts) VALUES(?, ?)", (now, total))
+        self.db.execute("INSERT OR REPLACE INTO progress(at, facts) VALUES(?, ?)",
+                        (now, (self.meta("facts", 0) or 0) + (self.meta("staged", 0) or 0)))
         self.db.execute("DELETE FROM progress WHERE at < ?", (now - 2 * 86400,))
-        t4 = _NS(); TR.add("db_progress", t4 - t3)
-        self.db.commit()                                              # the disk: WAL append (+ checkpoint now and then)
-        TR.add("db_commit", _NS() - t4, 1, len(rows)); self.walls["committed"] = _WALL()
+
+    def merge(self):
+        """fold every staged fact into the keyed tables (the end of a part, before dedupe); returns the new facts"""
+        if not self.db.execute("SELECT 1 FROM stage LIMIT 1").fetchone() and not self.meta("staged", 0):
+            return 0
+        AGENT["waiting"] = "writing to the disk"
+        slot = self.wslots.take() if self.wslots else None
+        try:
+            return self._merge()
+        finally:
+            if slot is not None:
+                self.wslots.release(slot)
+            AGENT["waiting"] = None
+
+    def _merge(self):
+        """one transaction, in fingerprint order so each page of the keyed tables is visited once. Of two staged facts with
+        one fingerprint the earlier (lower rowid) is offered first and kept, and a fact the shard already holds is never
+        replaced — the shard is exactly what inserting batch by batch made. Parts in the order they were staged."""
+        t = _NS()
+        new = 0
+        for pid, in self.db.execute("SELECT part FROM stage GROUP BY part ORDER BY min(rowid)").fetchall():
+            before = self.db.total_changes
+            self.db.execute("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) SELECT fp, s, p, o, part, row FROM stage "
+                            "WHERE part = ? ORDER BY fp, rowid", (pid,))
+            n = self.db.total_changes - before
+            self.db.execute("UPDATE parts SET facts = facts + ? WHERE id = ?", (n, pid))
+            new += n
+        self.db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT fp, url FROM stage_links ORDER BY fp, rowid")
+        self.db.execute("DELETE FROM stage")
+        self.db.execute("DELETE FROM stage_links")
+        self.set_meta("facts", (self.meta("facts", 0) or 0) + new)
+        self.set_meta("staged", 0)
+        self._progress()
+        self.db.commit()
+        TR.add("db_merge", _NS() - t, 1, new)
         return new
 
 
@@ -2070,7 +2118,7 @@ def run_dataset(commons_folder, key, max_rows=None):
         TR.event("run", phase="end", dataset=key, state="blocked" if "registry" in why else "stopped", why=why)
         TR.close()
         return {"dataset": key, "state": "blocked" if "registry" in why else "stopped", "why": why}
-    total_new, t_start, filtered = 0, time.time(), 0
+    total_new, t_start, filtered, written = 0, time.time(), 0, 0
     import qbcontrol as ctl
     flt = ctl.get(run.commons, "filter")
     flt = flt if ctl.active("filter", flt) else None
@@ -2149,6 +2197,7 @@ def run_dataset(commons_folder, key, max_rows=None):
                 if len(buf) >= BATCH:
                     with qt.timed("progress_mark"):
                         _mark(sh, pg, row_no, side)
+                    written += len(buf)
                     new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
                     total_new += new; log_new += new; buf, links, pending = [], [], []
                     add = buf.append
@@ -2166,15 +2215,20 @@ def run_dataset(commons_folder, key, max_rows=None):
                     break
             with qt.timed("progress_mark"):
                 _mark(sh, pg, row_no, side)
+            written += len(buf)
             new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
             total_new += new; log_new += new
+            finished = limit is None or row_no < limit
+            if finished:                                # the part's staged facts join the keyed tables before it is done
+                with qt.timed("merge"):
+                    new = sh.merge()
+                total_new += new; log_new += new
             TR.event("part", phase="end", dataset=key, part=name, rows=row_no, new=total_new)
             for series, year in state.pop("_filled", set()):
                 sh.db.execute("INSERT INTO slots(series, year, filled) VALUES(?, ?, 1) ON CONFLICT(series, year) DO UPDATE SET filled = 1", (series, year))
             if key == "wikidata-series":
                 for y in sc.expected_years(name):
                     sh.db.execute("INSERT OR IGNORE INTO slots(series, year, filled) VALUES(?, ?, 0)", (name, y))
-            finished = limit is None or row_no < limit
             if finished:
                 sh.db.execute("UPDATE parts SET done = 1, finished = ? WHERE id = ?", (core.now_iso(), pid))
             sh.db.commit()
@@ -2193,13 +2247,13 @@ def run_dataset(commons_folder, key, max_rows=None):
     except _Stop as e:
         sh.set_meta("state", "stopped"); sh.set_meta("error", str(e)); sh.db.commit()
         TR.event("run", phase="end", dataset=key, state="stopped", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
-        return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new}
+        return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new, "written": written}
     except Busy as e:
         sh.set_meta("state", "paused"); sh.set_meta("error", str(e)); sh.db.commit()
         run.log("source busy", 0, 0, 0, 0, time.time() - t_start, "failed", str(e))
         TR.fail("source busy", e, retried=True, dataset=key)
         TR.event("run", phase="end", dataset=key, state="paused", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
-        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new, "retry": True}
+        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new, "written": written, "retry": True}
     except Exception as e:
         TR.fail("agent", e, dataset=key)
         import http.client
@@ -2209,7 +2263,8 @@ def run_dataset(commons_folder, key, max_rows=None):
         sh.set_meta("error", "%s: %s%s" % (type(e).__name__, str(e)[:300], " — retried automatically" if network else "")); sh.db.commit()
         TR.event("run", phase="end", dataset=key, state="paused" if network else "failed", why=str(e)[:300], new=total_new,
                  seconds=round(time.time() - t_start, 2))
-        return {"dataset": key, "state": "paused" if network else "failed", "why": str(e)[:300], "new": total_new, "retry": network}
+        return {"dataset": key, "state": "paused" if network else "failed", "why": str(e)[:300], "new": total_new, "written": written,
+                "retry": network}
     finally:
         TR.flush_stages(dataset=key)
         TR.close()
@@ -2220,16 +2275,21 @@ def _batch(sh, pid, buf, row_no, links, pending, bt, key, part):
     """write one batch, then log its timeline, the stage totals since the last batch and the records followed in it"""
     n_offered = len(buf)
     new = sh.write(pid, buf, row_no, links)
+    staged = sh.meta("staged", 0) or 0
     if not TR.on:
         return new
     w = getattr(sh, "walls", {})
     if pending:
-        got = dict(sh.db.execute("SELECT fp, part || ':' || row FROM facts WHERE fp IN (%s)" % ",".join("?" * len(pending)),
-                                 [bytes.fromhex(r["fp"]) for r in pending]))
+        fps = [bytes.fromhex(r["fp"]) for r in pending]
+        marks = ",".join("?" * len(pending))
+        got = dict(sh.db.execute("SELECT fp, part || ':' || row FROM facts WHERE fp IN (%s)" % marks, fps))
+        held = {f for f, in sh.db.execute("SELECT fp FROM stage WHERE fp IN (%s)" % marks, fps)} if staged else set()
         for r in pending:
             r["w"].update(w)
-            here = got.get(bytes.fromhex(r["fp"]))
-            r["outcome"] = "new" if here == "%d:%d" % (pid, r["row"]) else "duplicate" if here else "missing"
+            f = bytes.fromhex(r["fp"])
+            here = got.get(f)
+            r["outcome"] = ("new" if here == "%d:%d" % (pid, r["row"]) else "duplicate" if here else
+                            "staged" if f in held else "missing")
             TR.record(r)
     TR.event("batch", dataset=key, part=part, row_from=bt["row_from"], row_to=row_no, offered=n_offered, new=new,
              first_row=bt["first_row"], last_row=_WALL(), **{k: w.get(k) for k in ("sorted", "inserted", "committed")},
@@ -2399,7 +2459,7 @@ class Supervisor:
         if r is None:
             r = {"dataset": key, "state": "paused", "why": how}
         ok = r.get("state") in ("done",)
-        self.fails[key] = 0 if ok or r.get("new") else self.fails[key] + 1
+        self.fails[key] = 0 if ok or r.get("new") or r.get("written") else self.fails[key] + 1   # staged facts are progress too
         wait = next_try(r, max(0, self.fails[key] - 1))
         if wait is None:
             self.queue.pop(key, None)
@@ -2583,6 +2643,12 @@ def dedupe(commons_folder):
     The fingerprint includes the area, so only shards of one area can share facts. Runs when every agent has finished."""
     keys = [k for k in catalog() if os.path.exists(shard_path(commons_folder, k))]
     removed = {}
+    for k in keys:                                     # 1.33: a stage left by a stopped agent joins its shard first
+        sh = Shard(commons_folder, k)
+        try:
+            sh.merge()
+        finally:
+            sh.db.close()
     for j, kj in enumerate(keys):
         earlier = [k for k in keys[:j] if AREA[catalog()[k].app] == AREA[catalog()[kj].app]]
         if not earlier:
@@ -2637,7 +2703,8 @@ def status(commons_folder, commons=None):
             try:
                 db = _ro(p)
                 meta = {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta")}
-                row.update(state=meta.get("state", "not started"), facts=meta.get("facts", 0) or 0, error=meta.get("error"))
+                row.update(state=meta.get("state", "not started"), facts=meta.get("facts", 0) or 0, error=meta.get("error"),
+                           staged=meta.get("staged", 0) or 0)
                 pgm = meta.get("progress")
                 try:                                    # the side file is newer between batches
                     with open(p + ".progress") as f:
@@ -2646,17 +2713,20 @@ def status(commons_folder, commons=None):
                         pgm = pgs
                 except (OSError, ValueError):
                     pass
-                row["progress"] = _progress(pgm, now)
+                row["progress"] = _progress(pgm, now, live=row["state"] == "running")
+                last = db.execute("SELECT facts FROM progress ORDER BY at DESC LIMIT 1").fetchone()
+                cur = last[0] if last else row["facts"]          # facts kept + staged, as the progress table counts them
                 for secs, k in ((60, "last_minute"), (600, "last_10min"), (3600, "last_hour")):
                     r = db.execute("SELECT facts FROM progress WHERE at <= ? ORDER BY at DESC LIMIT 1", (now - secs,)).fetchone()
                     first = db.execute("SELECT min(at) FROM progress").fetchone()[0]
-                    base = r[0] if r else (0 if first is None or first > now - secs else row["facts"])
-                    row[k] = max(0, row["facts"] - base)
+                    base = r[0] if r else (0 if first is None or first > now - secs else cur)
+                    row[k] = max(0, cur - base)
                 row["parts"] = [dict(zip(("name", "rows", "facts", "done", "version", "finished"), r))
                                 for r in db.execute("SELECT name, rows, facts, done, version, finished FROM parts ORDER BY id")]
                 pg = row["progress"]
                 if pg:                                  # overall: every finished part counts, plus the share of the current one
-                    others = sum(1 for x in row["parts"] if x["done"] and x["name"] != pg["part"])
+                    ed = pg["part"].split(" part ")[0] + " part " if " part " in (pg.get("part") or "") else ""
+                    others = sum(1 for x in row["parts"] if x["done"] and x["name"] != pg["part"] and x["name"].startswith(ed))
                     pg["overall"] = 1.0 if row["state"] == "done" else round(min(1.0, (others + (pg["fraction"] or 0)) / max(1, pg["parts"])), 4)
                 if key == "wikidata-series":
                     row["slots"] = [dict(zip(("series", "expected", "filled"), r)) for r in
@@ -2875,13 +2945,16 @@ def headline(st):
     return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
 
 
-def _progress(pg, now):
-    """the saved meter → part and overall fraction, rate and time left (None when nothing is measured yet)"""
+def _progress(pg, now, live=False):
+    """the saved meter → part and overall fraction, rate and time left (None when nothing is measured yet). live (the agent
+    is running): the rate is measured up to now, not up to the last mark, so an agent that has stopped moving shows its
+    speed falling instead of the speed it last had (1.33: lanes stuck for an hour still read "10 MB/s")"""
     if not pg:
         return None
     total, done = pg.get("total") or 0, pg.get("done") or 0
     frac = min(1.0, done / total) if total else None
-    secs = max(0.001, (pg.get("at") or now) - (pg.get("since") or now))
+    end = max(now, pg.get("at") or now) if live else (pg.get("at") or now)
+    secs = max(0.001, end - (pg.get("since") or now))
     rate = max(0, done - (pg.get("done_at_start") or 0)) / secs if secs > 1 else None
     eta = (total - done) / rate if rate and total and done < total else None
     parts = pg.get("parts") or 1
@@ -4472,6 +4545,39 @@ def _supervisor_tests():
         Slots(cf).release(one)
     finally:
         shutil.rmtree(cf, ignore_errors=True)
+    # 1.33: staged writes — a batch is appended, the keyed tables are folded in rarely and sorted, the result is the same
+    cf = tempfile.mkdtemp()
+    try:
+        sh = Shard(cf, "stage-test")
+        p1 = sh.part("p1", "file://x")[0]; p2 = sh.part("p2", "file://y")[0]
+        k = lambda n: hashlib.sha256(str(n).encode()).digest()[:16]
+        sh.write(p1, [(k(1), "a", 1, "first", p1, 0), (k(2), "b", 1, "x", p1, 1)], 2)
+        ok("1.33: a batch goes to the stage, not into the keyed tables (its cost does not grow with the shard)",
+           sh.db.execute("SELECT count(*) FROM facts").fetchone()[0] == 0 and sh.meta("staged") == 2
+           and sh.db.execute("SELECT rows FROM parts WHERE id = ?", (p1,)).fetchone()[0] == 2)
+        sh.write(p1, [(k(1), "a", 1, "second", p1, 2), (k(3), "c", 1, "y", p1, 3)], 4, [(k(3), "https://c")])
+        n1 = sh.merge()
+        sh.write(p2, [(k(3), "c", 1, "later", p2, 0), (k(4), "d", 1, "z", p2, 1)], 2)
+        n2 = sh.merge()
+        got = dict(sh.db.execute("SELECT fp, o FROM facts"))
+        pf = dict(sh.db.execute("SELECT name, facts FROM parts"))
+        ok("1.33: merging keeps the earliest of two staged facts with one fingerprint and never replaces a fact already held",
+           n1 == 3 and n2 == 1 and got.get(k(1)) == "first" and got.get(k(3)) == "y" and len(got) == 4, (n1, n2, got))
+        ok("1.33: after a merge the counts, parts and links are as batch-by-batch inserts made them, and the stage is empty",
+           sh.meta("facts") == 4 and sh.meta("staged") == 0 and pf == {"p1": 3, "p2": 1}
+           and sh.db.execute("SELECT count(*) FROM stage").fetchone()[0] == 0
+           and sh.db.execute("SELECT url FROM links WHERE fp = ?", (k(3),)).fetchone() == ("https://c",), (pf, sh.meta("facts")))
+        ok("1.33: merging an empty stage does nothing", sh.merge() == 0 and sh.meta("facts") == 4)
+        ok("1.33: the rate counts staged facts the moment they are written",
+           sh.db.execute("SELECT facts FROM progress ORDER BY at DESC LIMIT 1").fetchone()[0] == 4)
+        sh.db.close()
+    finally:
+        shutil.rmtree(cf, ignore_errors=True)
+    pg = {"total": 1000, "done": 600, "done_at_start": 0, "since": 1000.0, "at": 1060.0, "part": "2026-11-06 part 0049 of 0147",
+          "part_no": 4, "parts": 10}
+    ok("1.33: a running agent's speed is measured up to now — one that stopped moving shows its speed falling",
+       abs(_progress(pg, 1060.0, live=True)["rate"] - 10) < 1e-9 and abs(_progress(pg, 1120.0, live=True)["rate"] - 5) < 1e-9
+       and abs(_progress(pg, 1120.0)["rate"] - 10) < 1e-9)
     return out
 
 

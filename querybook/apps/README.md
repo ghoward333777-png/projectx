@@ -584,6 +584,13 @@ publish everything as one file (their ceiling is about 665,000 items a week). Th
 * **Provenance and resume:** every fact records its dataset, file part and row, and each part the file's version
   (Last-Modified). The rows done are saved in the same transaction as their facts, so a stopped agent resumes exactly there.
   The harvest log gets an entry for every million facts and at the end of each part.
+* **Staged writes (engine 1.33):** each batch is appended to the shard's *stage* (a plain table written front to back), so a
+  batch costs the same however big the shard is. The stage is folded into the keyed tables in one sorted pass at the end of
+  every part, or sooner once it holds 5 million facts or half the shard. Before 1.33 every batch went straight into the
+  fingerprint B-tree: once a lane held tens of millions of facts, each 500,000-fact batch read and rewrote gigabytes, commits
+  took longer than the supervisor's 15-minute stall limit, and the agent was ended and its batch lost, over and over. Long
+  writes now count as progress, not a stall. Facts in the stage are counted in the rates right away; **Look up** sees them
+  after the fold.
 * **Scaffolds:** the *calendar scaffold* computes what can be known in advance — every date's weekday and day of the year,
   leap years, Western and Orthodox Easter, equinoxes and solstices (Meeus ch. 27, to the minute), US federal holidays from the
   year each rule took effect, and US federal election days — about 450,000 facts for 1600–2200, each naming its rule.
