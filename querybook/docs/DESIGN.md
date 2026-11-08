@@ -213,11 +213,15 @@ area in the middle is built for that domain's answer:
 - **Pure standard library**, Python 3.10 or newer (tested on 3.10 to 3.13).
   The same code runs on Windows 10/11 and on macOS on Apple silicon or Intel.
   There are no compiled dependencies to install.
-- **Data folder** follows each OS's convention (override with `--home` or
-  `QUERYBOOK_HOME`):
-  - Windows: `%LOCALAPPDATA%\QueryBook`
-  - macOS: `~/Library/Application Support/QueryBook`
-  - Linux: `~/.local/share/querybook`
+- **Data folder:** set by `data_folder` in `querybook.ini`, next to the
+  launchers. It ships set to `D:\QueryBook`. If it is left blank, Windows uses
+  `D:\QueryBook` when a D: drive exists, otherwise `%LOCALAPPDATA%\QueryBook`;
+  macOS uses `~/Library/Application Support/QueryBook`. `--home` and
+  `QUERYBOOK_HOME` override all of these.
+- **Existing data stores:** `watch_folders` in `querybook.ini` lists folders
+  that already hold your material (for example on D:). The harvester reads them
+  continuously and read-only: it never writes, moves or deletes anything there,
+  and it skips files over 20 MB.
 - **Launchers:** `run_windows.bat` (uses `py -3` or `python`) and
   `run_mac.command` (double-click in Finder). Both start the hub and open the
   browser.

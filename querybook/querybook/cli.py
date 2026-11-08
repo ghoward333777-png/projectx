@@ -29,7 +29,11 @@ class Runtime:
         self.pipeline = IngestPipeline(self.store, self.all_apps)
 
     def harvester(self) -> Harvester:
-        return Harvester(self.pipeline, [(FolderSource(self.paths.inbox), 1.0)])
+        sources = [(FolderSource(self.paths.inbox), 1.0)]
+        st = self.paths.settings
+        for folder in st.watch_folders:  # existing stores, read-only
+            sources.append((FolderSource(folder, name=f"watch:{folder}"), st.watch_interval))
+        return Harvester(self.pipeline, sources)
 
     def seed(self) -> dict[str, int]:
         counts = {"added": 0, "duplicate": 0, "rejected": 0}
@@ -56,6 +60,8 @@ def _serve(rt: Runtime, args, apps: dict, mode: str, port: int) -> int:
     print(f"  database  {rt.paths.db}")
     if harvester:
         print(f"  inbox     {rt.paths.inbox}  (drop .txt/.md/.json/.csv files; subfolders pick the domain)")
+        for folder in rt.paths.settings.watch_folders:
+            print(f"  watching  {folder}" + ("" if folder.is_dir() else "   (not found — check querybook.ini)"))
     print("  Ctrl+C to stop")
     if args.open:
         webbrowser.open(server.url)
@@ -150,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "info":
         _print({"version": __version__, "home": str(rt.paths.home), "database": str(rt.paths.db),
                 "inbox": str(rt.paths.inbox), "renders": str(rt.paths.renders), "fts5": rt.store.fts,
+                "settings_file": str(rt.paths.settings.source) if rt.paths.settings.source else None,
+                "watch_folders": [str(f) for f in rt.paths.settings.watch_folders],
                 "collections": rt.store.collections(), "python": sys.version.split()[0]})
         return 0
     return 2

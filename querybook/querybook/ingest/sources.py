@@ -63,6 +63,8 @@ class FolderSource:
 
     kind = "folder"
 
+    MAX_FILE_BYTES = 20_000_000
+
     def __init__(self, root: Path, name: str = "inbox", settle_seconds: float = 0.4):
         self.root = Path(root)
         self.name = name
@@ -80,7 +82,7 @@ class FolderSource:
             st = path.stat()
             sig = (st.st_mtime_ns, st.st_size)
             key = str(path)
-            if self.seen.get(key) == sig or now - st.st_mtime < self.settle:
+            if self.seen.get(key) == sig or now - st.st_mtime < self.settle or st.st_size > self.MAX_FILE_BYTES:
                 continue
             rel = path.relative_to(self.root)
             hint = rel.parts[0] if len(rel.parts) > 1 and rel.parts[0] in DOMAINS else None

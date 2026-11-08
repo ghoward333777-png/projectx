@@ -30,6 +30,13 @@ into the inbox (`python3 -m querybook info` prints where it is). Use
 `inbox/history/`, `inbox/stem/` and so on to choose the domain, or leave files
 at the top level to auto-classify them. Open pages update live.
 
+## Where the data lives (D: drive)
+
+Edit `querybook.ini` next to the launchers. `data_folder` is where QueryBook
+keeps its database; it ships set to `D:\QueryBook`. `watch_folders` lists
+existing folders, such as a store already on D:, that QueryBook reads
+continuously and never modifies.
+
 ## Run an app on its own
 
 Each app can run in its own process on its own port, sharing the same database:
