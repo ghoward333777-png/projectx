@@ -4,3 +4,4 @@ rust/querybook-core/target/
 *.fqldb
 *.fqldb-wal
 *.fqldb-shm
+dist/

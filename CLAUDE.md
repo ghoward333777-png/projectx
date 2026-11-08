@@ -86,6 +86,10 @@ building QueryBook features.
   `tests/test_rust_compat.py` enforces the Rust rules: no reflection, no
   `**kwargs`, full annotations in `core/` and `ingest/`, frozen dataclasses at
   boundaries.
+- Lean 4 specs in `querybook-next/lean/` (classifier, billion-row guard) are
+  checked by `lake build` in `.github/workflows/querybook-next.yml`;
+  `tests/test_lean_spec.py` keeps their examples equal to the Python behaviour.
+  The single-file build is `python tools/build_pyz.py` (deterministic).
 - Before shipping, run `python3 -m unittest discover -s tests -t .` from
   `querybook-next/` and `cargo test --release` in
   `querybook-next/rust/querybook-core`. Changes to `core/text.py`,

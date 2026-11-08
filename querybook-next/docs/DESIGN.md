@@ -118,7 +118,7 @@ querybook/
   querybook/samples/     starter library, loaded on first run
   contracts/             JSON Schemas for every wire shape + golden text vectors
   rust/querybook-core/   Rust port: text kernel, FQL lexer, contract types/traits
-  tests/                 unittest suite (57 tests)
+  tests/                 unittest suite (63 tests)
 ```
 
 ## 2. The common FQL database
@@ -343,6 +343,28 @@ Ship as a PyO3/maturin extension (`cdylib`). The dependency block is already
 written into `Cargo.toml`, commented out. If `import querybook_core` fails, the
 Python reference implementation stays as the fallback. The NFC step is the one
 kernel function waiting on a crate (`unicode-normalization`).
+
+## 6a. Lean 4 specification (`lean/`)
+
+The rules that decide what QueryBook answers are stated and proved in Lean 4
+(core Lean only, no Mathlib, toolchain `v4.15.0`):
+
+| File | Mirrors | Proved |
+|---|---|---|
+| `QueryBookSpec/Classify.lean` | `text.pick` / `text.classify`, Rust `text::classify` | `classify_max`: the chosen domain has the highest score; `classify_tie_language`: equal scores give language; the golden-vector rows as `decide` examples |
+| `QueryBookSpec/Guard.lean` | `FSet.bounded`, `WHOLE_SET_METHODS`, `call_sequence` | `guard_refuses` / `guard_allows`: a whole-set method on an unbounded set is refused, and nothing else is; `bounded_total`; `take_first`: `take(n)` first makes any pipeline safe |
+
+How the proofs are kept honest:
+- `tests/test_lean_spec.py` parses every Lean `example` and runs it against
+  the Python code (the classifier and the real FQL evaluator on a miniature
+  `D:\QB`). It also checks that the Lean list of whole-set methods equals
+  `WHOLE_SET_METHODS`.
+- The proofs themselves are checked by `lake build`, which the workflow
+  `.github/workflows/querybook-next.yml` runs on every push. The same workflow
+  runs the Python tests on Windows, macOS and Linux.
+
+Next candidates for Lean: `norm`/fingerprint idempotence, fact-status rules,
+and the FQL parser's newline rule.
 
 ## 7. Security and safety
 

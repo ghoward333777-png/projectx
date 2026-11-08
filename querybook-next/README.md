@@ -13,6 +13,17 @@ subject.
 
 Full design: [docs/DESIGN.md](docs/DESIGN.md).
 
+## The single file: `querybook-next.pyz`
+
+The whole app is also one Python file, built by `python tools/build_pyz.py`.
+
+- Windows: put `querybook-next.pyz` anywhere and double-click it.
+- Mac: run `python3 querybook-next.pyz`.
+
+It opens the hub in your browser. It uses `D:\QB` unless a `data-folder.txt`
+next to it names another folder. It accepts the same commands as below, for
+example `python querybook-next.pyz fql "Facts.datasets()"`.
+
 ## Start
 
 1. Check `data-folder.txt`. It holds one line, the QueryBook data folder,
@@ -67,6 +78,20 @@ full pass reads about a billion rows.
 
 Install ffmpeg to render MP4s (`winget install ffmpeg` on Windows,
 `brew install ffmpeg` on Mac). Storyboards and captions work without it.
+
+## Rust ready and Lean equipped
+
+- **Rust:** `rust/querybook-core` is a dependency-free Rust port of the core. It
+  covers the text kernel, the FQL lexer, the suite's fact fingerprints with
+  SHA-256, and the record types and traits. `tests/test_rust_compat.py`
+  enforces the Python rules that make a line-for-line port possible.
+- **Lean 4:** `lean/` holds machine-checked proofs of the core rules: domain
+  classification always picks the highest score, with ties going to the
+  earlier domain, and the billion-row guard refuses exactly the queries that
+  would read the whole store. `tests/test_lean_spec.py` re-runs every Lean
+  example against the Python code, so the proofs describe the real program.
+  Check the proofs with `lake build` in `lean/`; the GitHub workflow does this
+  on every push.
 
 ## Tests
 

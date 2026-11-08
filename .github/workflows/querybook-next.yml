@@ -1,0 +1,64 @@
+name: QueryBook Next
+
+on:
+  push:
+    paths: ["querybook-next/**", ".github/workflows/querybook-next.yml"]
+  pull_request:
+    paths: ["querybook-next/**", ".github/workflows/querybook-next.yml"]
+  workflow_dispatch:
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        working-directory: querybook-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests (standard library only, nothing to install)
+        run: python -m unittest discover -s tests -t . -v
+      - name: Build the single-file program
+        run: python tools/build_pyz.py
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        with:
+          name: querybook-next-pyz
+          path: querybook-next/dist/querybook-next.pyz
+
+  rust:
+    name: Rust core
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: querybook-next/rust/querybook-core
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --release
+      - run: cargo build --release
+      - name: Python/Rust parity through the binary
+        working-directory: querybook-next
+        run: python3 -m unittest tests.test_text -v
+
+  lean:
+    name: Lean 4 specification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: querybook-next/lean
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan (the Lean toolchain manager)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Check every proof (lake build)
+        run: lake build

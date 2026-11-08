@@ -96,11 +96,16 @@ def classify(text: str, lexicons: dict[str, frozenset[str]] | None = None) -> tu
                 scores[d] += 1
         if len(tok) == 4 and tok.isascii() and tok.isdigit() and 1000 <= int(tok) <= 2100:
             scores["history"] += 1
+    return pick(scores), scores
+
+
+def pick(scores: dict[str, int]) -> str:
+    """The highest score; on a tie the earlier domain (proved in lean/QueryBookSpec/Classify.lean)."""
     best = DOMAINS[0]
     for d in DOMAINS:
         if scores[d] > scores[best]:
             best = d
-    return best, scores
+    return best
 
 
 def keywords(text: str, limit: int = 10) -> list[str]:
