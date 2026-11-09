@@ -392,7 +392,10 @@ def self_test():
                 "for k in range(n):\n    shutil.copyfile(src[min(len(src) - 1, k * len(src) // n)], os.path.join(o, '%08d.png' % (k + 1)))\n")
         for nm in qf.TOOLS.values():
             pth = os.path.join(tools, nm + (".exe" if os.name == "nt" else ""))
-            open(pth, "w").write(stub); os.chmod(pth, 0o755)
+            if os.name == "nt":
+                _windows_stub(pth, stub)
+            else:
+                open(pth, "w").write(stub); os.chmod(pth, 0o755)
         old = os.environ.get("QB_AI_TOOLS")
         os.environ["QB_AI_TOOLS"] = tools
         try:
@@ -412,6 +415,20 @@ def self_test():
             bad = True
         ok("unknown formats are refused", bad)
     return res
+
+
+def _windows_stub(path, script):
+    """Windows runs only real programs, so a stand-in is made the way pip makes its command-line programs: pip's own
+    small launcher, followed by the line naming this Python and the script in a zip (test use only)."""
+    import io, zipfile
+    import pip._vendor.distlib as dl
+    with open(os.path.join(os.path.dirname(dl.__file__), "t64.exe"), "rb") as f:
+        launcher = f.read()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("__main__.py", script)
+    with open(path, "wb") as f:
+        f.write(launcher + ("#!\"%s\"\n" % sys.executable).encode("utf-8") + buf.getvalue())
 
 
 def main(argv=None):

@@ -4210,11 +4210,11 @@ def self_test():
             f.write(_gz.compress(b"]\n", mtime=0))
         size = os.path.getsize(dump)
         cut = size // 2
-        both = [x for a_, b_ in ((0, cut), (cut, size)) for x in gz_member_lines("file://" + dump, a_, b_)]
+        both = [x for a_, b_ in ((0, cut), (cut, size)) for x in gz_member_lines("file://" + urllib.request.pathname2url(dump), a_, b_)]
         ok("Wikidata dump: two byte ranges read on their own give every entity exactly once",
            sorted(json.loads(x.rstrip(b","))["id"] for x in both if x[:1] == b"{") == ["Q30", "Q5", "Q937"], both)
         wd = WikidataDump(1, 1)
-        c.set_setting("bulk:url:wikidata-dump", "file://" + dump)
+        c.set_setting("bulk:url:wikidata-dump", "file://" + urllib.request.pathname2url(dump))
         WikidataDump.LANES, lanes_was = 1, WikidataDump.LANES
         try:
             r = run_dataset(cf, "wikidata-dump-1")
@@ -4265,7 +4265,7 @@ def self_test():
             WikidataDump.LANES = lanes_was
             c.set_setting("bulk:dumps:folder", "")
             c.set_setting("bulk:wikidata:while_downloading", "")
-            c.set_setting("bulk:url:wikidata-dump", "file://" + dump)      # the tests below read the dump file as before
+            c.set_setting("bulk:url:wikidata-dump", "file://" + urllib.request.pathname2url(dump))      # the tests below read the dump file as before
         # the lattice (1.15): every series Wikidata knows, read in batches, written exactly as the dump lanes write facts
         W = "http://www.wikidata.org/entity/"
         ans = {"results": {"bindings": [

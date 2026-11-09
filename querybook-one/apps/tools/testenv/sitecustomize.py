@@ -3,8 +3,8 @@
 On Windows a file that is still open cannot be deleted. The tests often read a database with a one-line connection
 (sqlite3.connect(p).execute(...)) that Python closes only at its next garbage collection, so a later delete in the
 same test can find the file still open: an error in the test's tidying, not in what it tested. On Windows only:
-  * a delete or rename refused that way collects garbage (closing those connections) and tries again; a file that
-    is really still open is still refused, so the applications' own "file busy" handling is tested as before;
+  * a delete or rename refused that way collects garbage (closing those connections) and tries again (a file that
+    closing removed counts as deleted); a file that is really still open is still refused, so the applications' own "file busy" handling is tested as before;
   * temporary folders ignore clean-up errors (Python 3.10+).
 Nothing changes on macOS or Linux.
 """
@@ -15,20 +15,25 @@ import tempfile
 import time
 
 if os.name == "nt":
-    def _retrying(fn):
+    def _retrying(fn, deleting):
         def call(*a, **kw):
             try:
                 return fn(*a, **kw)
             except PermissionError:
                 gc.collect()
                 time.sleep(0.05)
-                return fn(*a, **kw)
+                try:
+                    return fn(*a, **kw)
+                except FileNotFoundError:
+                    if deleting:            # closing the connection removed it (SQLite deletes its -wal/-shm files)
+                        return None
+                    raise
         return call
 
-    os.remove = _retrying(os.remove)
-    os.unlink = _retrying(os.unlink)
-    os.replace = _retrying(os.replace)
-    os.rename = _retrying(os.rename)
+    os.remove = _retrying(os.remove, True)
+    os.unlink = _retrying(os.unlink, True)
+    os.replace = _retrying(os.replace, False)
+    os.rename = _retrying(os.rename, False)
 
 if os.name == "nt" and sys.version_info >= (3, 10):
     _original_init = tempfile.TemporaryDirectory.__init__
