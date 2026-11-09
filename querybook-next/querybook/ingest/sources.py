@@ -86,7 +86,9 @@ class FolderSource:
             st = path.stat()
             sig = (st.st_mtime_ns, st.st_size)
             key = str(path)
-            if self.seen.get(key) == sig or now - st.st_mtime < self.settle or st.st_size > self.MAX_FILE_BYTES:
+            # On Windows a just-written file's mtime can be a hair ahead of time.time(); with settle 0 accept it.
+            settling = self.settle > 0 and now - st.st_mtime < self.settle
+            if self.seen.get(key) == sig or settling or st.st_size > self.MAX_FILE_BYTES:
                 continue
             rel = path.relative_to(self.root)
             hint = rel.parts[0] if len(rel.parts) > 1 and rel.parts[0] in DOMAINS else None
