@@ -2,9 +2,9 @@ name: VeriWave
 
 on:
   push:
-    paths: ["veriwave/**", "querybook-one/apps/shell/**", "docs/querybook-rebuild/**", ".github/workflows/veriwave.yml"]
+    paths: ["veriwave/**", "querybook-one/**", "docs/querybook-rebuild/**", ".github/workflows/veriwave.yml"]
   pull_request:
-    paths: ["veriwave/**", "querybook-one/apps/shell/**", "docs/querybook-rebuild/**", ".github/workflows/veriwave.yml"]
+    paths: ["veriwave/**", "querybook-one/**", "docs/querybook-rebuild/**", ".github/workflows/veriwave.yml"]
   workflow_dispatch:
 
 jobs:
@@ -55,3 +55,51 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m unittest discover -s tests -t .
+
+  windows-bundle:
+    name: VeriWave.zip on Windows (Python inside, nothing installed)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build VeriWave.zip (downloads python.org's embeddable Python, checks its SHA-256)
+        working-directory: veriwave
+        run: python tools/build_bundle.py
+      - name: Unzip it like a user would; point the data folder at a test folder
+        run: |
+          Expand-Archive veriwave/dist/VeriWave.zip -DestinationPath $env:RUNNER_TEMP\user
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
+          Set-Content -Path "$env:RUNNER_TEMP\user\VeriWave\app\querybook-one\apps\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
+      - name: Start with the bundled Python only, then chat, code and draw
+        run: |
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $app = "$env:RUNNER_TEMP\user\VeriWave"
+          $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\app\veriwave\veriwave.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\vw.log" -RedirectStandardError "$env:RUNNER_TEMP\vw.err"
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 3
+            try {
+              $s = Invoke-RestMethod http://127.0.0.1:8095/api/vw/status
+              $states = ($s.querybook.programs | ForEach-Object { "$($_.id)=$($_.state)" }) -join " "
+              Write-Host $states
+              if ($s.querybook.programs.Count -eq 5 -and ($s.querybook.programs | Where-Object { $_.state -ne "running" }).Count -eq 0) { $ok = $true; break }
+            } catch { Write-Host "waiting for VeriWave…" }
+          }
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP\vw.log", "$env:RUNNER_TEMP\vw.err"; throw "VeriWave or a QueryBook application did not start" }
+          if ($s.registry.total -ne 407) { throw "Feature Registry not loaded" }
+          foreach ($pair in @(@("What does obsequious mean?", "answer", "obedient"), @("60 mph to km/h", "answer", "96.56064"), @("Build me a to-do app", "code", ""), @("Draw a lighthouse at sunset", "image", ""), @("Compose a calm melody", "audio", ""))) {
+            $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8095/api/vw/chat -ContentType "application/json" -Body (@{ message = $pair[0] } | ConvertTo-Json)
+            Write-Host "$($pair[0]) -> $($r.route): $($r.reply)"
+            if ($r.route -ne $pair[1]) { throw "wrong route for $($pair[0])" }
+            if ($pair[2] -and -not ($r.reply -match $pair[2])) { throw "unexpected answer for $($pair[0])" }
+          }
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VeriWave-windows
+          path: veriwave/dist/VeriWave.zip
