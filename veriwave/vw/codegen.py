@@ -738,7 +738,7 @@ def pick_entry(asked: str, paths: list[str]) -> str:
         def pickEntry (asked : String) (paths : List String) : String :=
           if paths.contains asked then asked else if paths.contains "index.html" then "index.html" else paths.headD ""
         theorem pickEntry_asked (a : String) (ps : List String) (h : ps.contains a = true) : pickEntry a ps = a := by
-          simp [pickEntry, h]
+          unfold pickEntry; rw [if_pos h]
         #guard pickEntry "" ["a.py"] == "a.py"                            -- py: pick_entry("", ["a.py"]) == "a.py"
     """
     if asked in paths:
