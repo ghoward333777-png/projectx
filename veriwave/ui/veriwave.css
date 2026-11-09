@@ -102,7 +102,7 @@ pre.code { background: var(--code); border: 1px solid var(--line); border-radius
 .iface { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
 .iface label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; font-weight: 600; }
 .iface p { margin: 0; font-size: 13px; color: var(--muted); flex: 1; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; flex: none; margin-top: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; flex: none; margin-top: 7px; align-self: flex-start; }
 .dot.ok { background: var(--good); } .dot.wait { background: var(--warn); } .dot.err { background: var(--bad); }
 .apps { display: flex; flex-wrap: wrap; gap: 8px; }
 .app { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; }

@@ -12,6 +12,7 @@ import VeriWave.Audiogen
 import VeriWave.Videogen
 import VeriWave.Backends
 import VeriWave.Store
+import VeriWave.Factstore
 import VeriWave.Querybook
 import VeriWave.Model
 import VeriWave.Server

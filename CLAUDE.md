@@ -122,5 +122,8 @@ screen on demand (QueryBook page + Workspace) and the 407-feature registry brows
 - Changes to `vw/core.py`, `vw/router.py` or `vw/verdict.py` must be ported to `rust/vwcore` and the vectors
   regenerated (`python tools/gen_vectors.py`); `cargo test --release` must pass.
 - Answers stay cite-or-refuse: no fact, no answer (UNKNOWN). Claude may only reword cited facts there.
+- Default fact connection (`vw/factstore.py`): UFCS stores, Commons and bulk shards under `$VERIWAVE_FACTS` /
+  QueryBook's data-folder.txt / `D:\QB`, opened SQLite `mode=ro` only. Never write to, move or copy the store.
+- The download is `python tools/build_bundle.py` → `dist/VeriWave.zip` (embeddable Python inside; CI tests it on Windows).
 - Before shipping, from `veriwave/`: `python -m unittest discover -s tests -t .`, and `cargo test --release` in
   `rust/vwcore`. CI (`.github/workflows/veriwave.yml`) also runs `lake build`.

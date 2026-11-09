@@ -21,8 +21,9 @@ import shutil
 import subprocess
 import tempfile
 
-from . import answer, audiogen, codegen, imagegen, interfaces, registry, router, textgen, videogen
+from . import answer, audiogen, codegen, core, imagegen, interfaces, registry, router, textgen, videogen
 from .backends import BackendError, Claude, parse_json_reply, strip_fence
+from .factstore import FactStore, dedupe
 from .querybook import Connection, import_ask
 from .store import Store
 
@@ -78,6 +79,52 @@ def greeting() -> str:
             "\"draw a lighthouse at sunset\", \"compose a calm melody\", \"make a video about bees\", \"open the Language Lab\".")
 
 
+def understand_fallback(question: str) -> dict:
+    """a question's subject when QueryBook's ask module is not beside VeriWave: its words, lower case
+
+    Lean:
+        def fallbackSubject (q : String) : String := " ".intercalate (words q)
+        #guard fallbackSubject "" == ""                                      -- py: understand_fallback("")["kind"] == "empty"
+    """
+    ws = core.words(question)
+    subject = " ".join(ws)
+    return {"question": question, "kind": "fact" if ws else "empty", "subject": subject, "variants": [subject] if ws else [], "hints": []}
+
+
+def merge_facts(qb: dict, intent: dict, facts: list[dict]) -> dict:
+    """QueryBook's answer with the data drive's facts added to its facts section (each fact once), and 'ufcs' asked
+
+    Lean:
+        def mergeCount (fromApps fromDrive : List Hit) : Nat := (dedupeHits (fromApps ++ fromDrive)).length
+        #guard mergeCount [] [] == 0                                         -- py: merge_facts({}, {"kind": "fact"}, [])["asked"] == []
+    """
+    out = dict(qb)
+    out["understood"] = dict(qb.get("understood") or intent)
+    out["asked"] = list(qb.get("asked") or [])
+    out["unavailable"] = list(qb.get("unavailable") or [])
+    sections = [dict(sec) for sec in (qb.get("sections") or [])]
+    if facts:
+        out["asked"].append("ufcs")
+        found = False
+        for sec in sections:
+            if sec.get("kind") == "facts":
+                sec["items"] = factstore_dedupe(list(sec.get("items") or []) + facts)
+                found = True
+        if not found:
+            sections.append({"source": "Facts", "app": "ufcs", "kind": "facts", "items": factstore_dedupe(facts)})
+    out["sections"] = sections
+    return out
+
+
+def factstore_dedupe(facts: list[dict]) -> list[dict]:
+    """vw.factstore.dedupe, kept by name here so the merge reads on its own
+
+    Lean:
+        #guard (dedupeHits []).length == 0                                   -- py: factstore_dedupe([]) == []
+    """
+    return dedupe(facts)
+
+
 def zip_name(iid: str) -> str:
     """the download name of a code project
 
@@ -97,14 +144,50 @@ class VeriWave:
           appsRunning : Bool
     """
 
-    def __init__(self, conn: Connection, store: Store, claude: Claude) -> None:
+    def __init__(self, conn: Connection, store: Store, claude: Claude, facts: FactStore) -> None:
         """Lean:
             def Model.new (c a : Bool) : Model := ⟨c, a⟩
         """
         self.conn = conn
         self.store = store
         self.claude = claude
+        self.facts = facts
         self.ask_mod: object | None = import_ask()
+
+    def understand(self, question: str) -> dict:
+        """what a question asks about (QueryBook's own ask.understand: kind, subject, variants, predicate hints)
+
+        Lean:
+            #guard fallbackSubject "Marie Curie?" == "marie curie"          -- py: understand_fallback("Marie Curie?")["subject"] == "marie curie"
+        """
+        if self.ask_mod is not None:
+            return dict(self.ask_mod.understand(question))  # type: ignore[attr-defined]
+        return understand_fallback(question)
+
+    def direct_facts(self, intent: dict) -> list[dict]:
+        """facts about the question's subject read straight from the data drive (UFCS, Commons, bulk shards)
+
+        Lean:
+            def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word"
+            #guard wantsFacts "fact" && !wantsFacts "math"                  -- py: VeriWave.wants_facts("fact") and not VeriWave.wants_facts("math")
+        """
+        if not VeriWave.wants_facts(str(intent.get("kind") or "")):
+            return []
+        found: list[dict] = []
+        for v in [str(x) for x in (intent.get("variants") or [intent.get("subject") or ""])][:3]:
+            found += self.facts.lookup(v, 40)
+            if len(found) >= 40:
+                break
+        return found
+
+    @staticmethod
+    def wants_facts(kind: str) -> bool:
+        """questions that facts can answer (not calculations, not empty)
+
+        Lean:
+            #guard !wantsFacts "empty"                                       -- py: not VeriWave.wants_facts("empty")
+        """
+        return kind in ("fact", "word")
 
     # ------------------------------------------------------------------ Answer
     def ask(self, question: str, min_trust: int, last_subject: str, engine: str) -> dict:
@@ -119,7 +202,9 @@ class VeriWave:
         qb: dict = {}
         if self.ask_mod is not None and urls:
             qb = self.ask_mod.answer(resolved, urls)  # type: ignore[attr-defined]
-        res = answer.compose(question, qb, min_trust, last_subject, bool(urls))
+        intent = dict(qb.get("understood") or self.understand(resolved))
+        qb = merge_facts(qb, intent, self.direct_facts(intent))
+        res = answer.compose(question, qb, min_trust, last_subject, bool(urls) or bool(self.facts.status()["connected"]))
         res["engine"] = "local"
         if res["citations"] and engine_for("answer", self.claude.available, engine) == "local+claude":
             try:
@@ -137,12 +222,15 @@ class VeriWave:
             theorem takeFacts_le (n : Nat) (xs : List String) : (takeFacts n xs).length ≤ n := List.length_take_le _ _
         """
         urls = self.conn.app_urls()
-        if not subject or self.ask_mod is None or not urls:
+        if not subject:
             return [], []
-        try:
-            qb = self.ask_mod.answer(subject, urls)  # type: ignore[attr-defined]
-        except Exception:
-            return [], []
+        qb: dict = {}
+        if self.ask_mod is not None and urls:
+            try:
+                qb = self.ask_mod.answer(subject, urls)  # type: ignore[attr-defined]
+            except Exception:
+                qb = {}
+        qb = merge_facts(qb, {"kind": "fact", "subject": subject, "variants": [subject], "hints": []}, self.facts.lookup(subject, 12))
         cites, _, _ = answer.citations_from(qb, answer.verdict.MIN_TRUST)
         cites = [c for c in cites if c["kind"] in ("fact", "word")][:8]
         return [str(c["text"]) for c in cites], [str(c["where"]) for c in cites]
@@ -362,7 +450,7 @@ class VeriWave:
             it["url"] = interfaces.url_for(it, urls)
         return {"version": VERSION, "engine": {"claude": self.claude.available, "model": self.claude.model if self.claude.available else ""},
                 "querybook": self.conn.status(), "registry": registry.summary(), "interfaces": items,
-                "espeak": bool(VeriWave.find_espeak()), "data": self.store.root}
+                "espeak": bool(VeriWave.find_espeak()), "data": self.store.root, "facts": self.facts.status()}
 
 
 VERSION = "0.1.0"

@@ -28,6 +28,11 @@ Or double-click `START-VeriWave-WINDOWS.bat` or `START-VeriWave-MAC.command`. It
   itself with QueryBook's own launcher, so `data-folder.txt` (e.g. `D:\QB`) and the ports are QueryBook's.
 - The Book Intelligence Studio (this repository's PHP app) is started with `php -S` when PHP is installed.
 - Options: `--no-querybook` (run alone), `--attach`, `--start`, `--no-books`, `--no-browser`, `--port N`.
+- **Facts (default connection):** VeriWave reads QueryBook's facts on the data drive directly and read-only: every
+  UFCS store (QueryBook v9.64 `index.sqlite`, at the root, in `store`/`mystore`/… or up to two folders down), the suite's
+  Commons (`commons/commons.sqlite`) and its bulk shards (`commons/shards/*.sqlite`). The root is `$VERIWAVE_FACTS`, else
+  QueryBook's `data-folder.txt` (`D:\QB` in the download), else `D:\QB`. Lookups use the stores' own indexes (about 0.3 ms
+  per subject on a 1.2-million-fact UFCS store), so answers work even when QueryBook's applications are not running.
 - Creations are kept in `$VERIWAVE_DATA`, else `<QueryBook data folder>/veriwave`, else `veriwave/data-local/`.
 
 ### Engines
@@ -89,6 +94,7 @@ cd lean && lake build
 | `vw/codegen.py`, `vw/textgen.py`, `vw/imagegen.py`, `vw/videogen.py`, `vw/audiogen.py` | The generators |
 | `vw/interfaces.py`, `vw/registry.py` | Every QueryBook screen, and the 407-feature registry |
 | `vw/querybook.py` | Attaching to, or starting, QueryBook one and the Book Studio |
+| `vw/factstore.py` | The default fact connection: UFCS stores, Commons and bulk shards on D:\QB, read-only |
 | `vw/backends.py` | The optional Claude engine (Messages API over `urllib`) |
 | `vw/store.py`, `vw/server.py` | Creations folder; HTTP window and API |
 | `ui/` | The window |

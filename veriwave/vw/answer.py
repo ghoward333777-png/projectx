@@ -175,6 +175,20 @@ def citations_from(qb: dict, min_trust: int) -> tuple[list[dict], int, list[dict
     return cites, withheld, (focus if focus else offered[:12])
 
 
+def hinted_short(focus: list[dict], hints: list[str]) -> str:
+    """the one-line answer: the first offered fact whose predicate is what the question asks for ('when' -> a date…)
+
+    Lean:
+        def hinted (hints : List String) (pred : String) : Bool := hints.any (fun h => (lower pred |>.splitOn h).length > 1)
+        #guard hinted ["date", "time", "invention"] "time of discovery or invention"   -- py: hinted_short([{"subject": "printing press", "predicate": "time of discovery or invention", "object": "c. 1440"}], ["time"]) == "printing press — time of discovery or invention: c. 1440"
+        #guard !hinted [] "inventor"                                        -- py: hinted_short([{"subject": "a", "predicate": "inventor", "object": "b"}], []) == ""
+    """
+    for f in focus:
+        if hints and any(h in core.lower(str(f.get("predicate") or "")) for h in hints):
+            return fact_text(f)
+    return ""
+
+
 def provenance_input(question: str, cites: list[dict]) -> str:
     """the canonical text the provenance hash covers: the question, then one line per citation
 
@@ -251,7 +265,7 @@ def compose(question: str, qb: dict, min_trust: int, last_subject: str, apps_run
     out["unavailable"] = list(qb.get("unavailable") or [])
     out["subject"] = str((qb.get("understood") or {}).get("subject") or "")
     out["sections"] = list(qb.get("sections") or [])
-    out["short"] = str(qb.get("short") or "")
+    out["short"] = str(qb.get("short") or "") or hinted_short(focus, [str(h) for h in ((qb.get("understood") or {}).get("hints") or [])])
     out["conflicts"] = verdict.conflicts(focus)
     if not any(c["kind"] == "calculation" for c in cites):
         calc = verdict.calculate(resolved or q)

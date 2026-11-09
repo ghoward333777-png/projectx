@@ -16,6 +16,7 @@ sys.path.insert(0, ROOT)
 from vw import answer, audiogen, codegen, imagegen, interfaces, registry, router, store, textgen, verdict, videogen  # noqa: E402
 from vw.backends import BackendError, Claude, extract_text, parse_json_reply  # noqa: E402
 from vw.model import VeriWave  # noqa: E402
+from vw.factstore import FactStore  # noqa: E402
 from vw.querybook import Connection  # noqa: E402
 from vw.server import App  # noqa: E402
 
@@ -158,7 +159,7 @@ class ServerTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         conn = Connection("none", False)
         conn.start()
-        self.app = App(conn, VeriWave(conn, store.Store(self.dir), Claude("", None)))
+        self.app = App(conn, VeriWave(conn, store.Store(self.dir), Claude("", None), FactStore("")))
 
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -206,3 +207,81 @@ class VectorsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FactStoreTest(unittest.TestCase):
+    """VeriWave reads QueryBook's facts on the data drive directly and read-only (UFCS, Commons, bulk shards)."""
+
+    def setUp(self):
+        import sqlite3
+        self.root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.root, "store"))
+        db = sqlite3.connect(os.path.join(self.root, "store", "index.sqlite"))       # ufcs_store.py's schema
+        db.execute("CREATE TABLE fp (fingerprint TEXT PRIMARY KEY, block INTEGER)")
+        db.execute("CREATE TABLE nuc (fp TEXT PRIMARY KEY, subject TEXT, predicate TEXT, object TEXT, trust REAL, block INTEGER)")
+        db.execute("CREATE INDEX nuc_sp ON nuc(subject, predicate)")
+        rows = [("f%d" % i, "%d²" % i, "equals", str(i * i), 0.99, 0) for i in range(1, 3001)]
+        rows += [("pp1", "printing press", "inventor", "Johannes Gutenberg", 0.93, 0),
+                 ("pp2", "printing press", "time of discovery or invention", "c. 1440", 0.9, 0),
+                 ("r1", "rome", "inception", "753 BC", 0.9, 0), ("r2", "rome", "inception", "752 BC", 0.6, 0)]
+        db.executemany("INSERT INTO nuc VALUES (?,?,?,?,?,?)", rows)
+        db.commit()
+        db.close()
+        os.makedirs(os.path.join(self.root, "commons", "shards"))
+        db = sqlite3.connect(os.path.join(self.root, "commons", "commons.sqlite"))   # qbcommons.py's schema (facts columns used)
+        db.execute("CREATE TABLE facts (id INTEGER PRIMARY KEY, fingerprint TEXT, domain TEXT, subject TEXT, predicate TEXT, object TEXT, "
+                   "statement TEXT, origin_app TEXT, status TEXT, confidence REAL, created TEXT, updated TEXT)")
+        db.execute("INSERT INTO facts VALUES (1,'x','history','Marie Curie','award received','Nobel Prize in Physics',NULL,'facts','verified',0.9,'','')")
+        db.commit()
+        db.close()
+        db = sqlite3.connect(os.path.join(self.root, "commons", "shards", "wikidata-lattice.sqlite"))   # qbbulk.py's shard schema
+        db.executescript("CREATE TABLE facts (fp BLOB PRIMARY KEY, s TEXT NOT NULL, p INTEGER NOT NULL, o TEXT NOT NULL, part INTEGER NOT NULL,"
+                         " row INTEGER NOT NULL) WITHOUT ROWID; CREATE INDEX facts_s ON facts(s);"
+                         "CREATE TABLE predicates (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, rule TEXT);"
+                         "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+        db.execute("INSERT INTO predicates VALUES (1, 'country', NULL)")
+        db.execute("INSERT INTO facts VALUES (x'01', 'Paris (Q90)', 1, 'France (Q142)', 0, 0)")
+        db.execute("INSERT INTO meta VALUES ('facts', '1')")
+        db.commit()
+        db.close()
+        self.before = {os.path.join(d, f): os.path.getmtime(os.path.join(d, f)) for d, _, fs in os.walk(self.root) for f in fs}
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_status_counts_every_store(self):
+        st = FactStore(self.root).status()
+        self.assertTrue(st["connected"])
+        self.assertEqual(st["facts"], 3004 + 1 + 1)
+        self.assertEqual([os.path.basename(u["path"]) for u in st["ufcs"]], ["store"])
+
+    def test_lookup_every_store(self):
+        fs = FactStore(self.root)
+        self.assertEqual([(f["predicate"], f["object"], f["trust"]) for f in fs.lookup("Printing Press", 5)],
+                         [("inventor", "Johannes Gutenberg", 93), ("time of discovery or invention", "c. 1440", 90)])
+        self.assertEqual(fs.lookup("Marie Curie", 5)[0]["object"], "Nobel Prize in Physics")
+        self.assertEqual(fs.lookup("Paris", 5)[0]["object"], "France (Q142)")       # 'Name (Q…)' labels by prefix
+        self.assertEqual(fs.lookup("Nobody", 5), [])
+
+    def test_answers_from_the_drive_without_apps(self):
+        d = tempfile.mkdtemp()
+        try:
+            conn = Connection("none", False)
+            conn.start()
+            app = App(conn, VeriWave(conn, store.Store(d), Claude("", None), FactStore(self.root)))
+            code, r, _ = app.post("/api/vw/answer", {"q": "When was the printing press invented?"})
+            self.assertEqual((code, r["verdict"]), (200, "VERIFIED"))
+            self.assertEqual(r["short"], "printing press — time of discovery or invention: c. 1440")
+            self.assertIn("ufcs", r["asked"])
+            r = app.post("/api/vw/answer", {"q": "When was Rome founded?"})[1]
+            self.assertEqual(r["verdict"], "CONTRADICTED")
+            self.assertEqual(app.get("/api/vw/status", {})[1]["facts"]["facts"], 3006)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_never_writes(self):
+        fs = FactStore(self.root)
+        fs.status()
+        fs.lookup("rome", 10)
+        after = {os.path.join(d, f): os.path.getmtime(os.path.join(d, f)) for d, _, fs_ in os.walk(self.root) for f in fs_}
+        self.assertEqual(after, self.before)

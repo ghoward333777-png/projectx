@@ -202,6 +202,19 @@ function audioCard(r) {
       el("a", { class: "btn small", href: r.url, download: (r.id || "audio") + ".wav" }, "Download WAV")));
 }
 
+function factsLine(f) {
+  if (!f) return null;
+  if (f.connected) {
+    const parts = (f.ufcs || []).map(u => "UFCS " + u.path + " (" + u.facts.toLocaleString() + ")");
+    if (f.commons) parts.push("Commons (" + f.commons.facts.toLocaleString() + ")");
+    if ((f.shards || []).length) parts.push(f.shards.length + " bulk shard(s)");
+    return el("div", { class: "row small", style: "margin:6px 0" }, el("span", { class: "dot ok" }),
+      el("span", { style: "flex:1;min-width:0;overflow-wrap:anywhere" }, el("b", {}, f.facts.toLocaleString() + " facts"), " connected directly from " + f.root + " (read-only): " + parts.join(" · ")));
+  }
+  return el("div", { class: "row small", style: "margin:6px 0" }, el("span", { class: "dot err" }),
+    el("span", { style: "flex:1;min-width:0" }, f.root ? (f.root_exists ? "No fact store found in " + f.root + "." : f.root + " is not connected — plug in the drive and restart VeriWave.") : "No data folder set."));
+}
+
 /* ------------------------------------------------------------------ Answer */
 let lastAnswer = null;
 function answerView() {
@@ -219,6 +232,7 @@ function answerView() {
   };
   v.append(el("div", { class: "card" }, el("h2", {}, "Answer"),
     el("p", { class: "small muted" }, "Cite-or-refuse (QueryBook registry #1): every line comes from a QueryBook fact or an exact calculation, with its source and trust. Below the trust threshold a fact is held back; with nothing left, the answer is UNKNOWN."),
+    factsLine(state.status?.facts),
     el("form", { class: "row", onsubmit: e => { e.preventDefault(); go(); } }, q, el("button", { class: "btn", type: "submit" }, "Ask")),
     el("div", { class: "row", style: "margin-top:8px" }, el("label", { class: "small muted" }, "Minimum trust "), trust, tv)), out);
   if (lastAnswer) out.append(answerCard(lastAnswer));
@@ -301,6 +315,7 @@ function querybookView() {
   const qb = st.querybook;
   v.append(el("div", { class: "card" }, el("h2", {}, "QueryBook — every screen, on demand"),
     el("p", { class: "small muted" }, qb.note + " Tick any screens and open them together in the Workspace, or open one on its own."),
+    factsLine(st.facts),
     el("div", { class: "apps" }, (qb.programs || []).map(p => el("span", { class: "app" }, el("span", { class: "dot " + (p.state === "running" ? "ok" : p.state === "starting" ? "wait" : "err") }), p.name, " · ", p.state,
       p.state !== "running" && p.state !== "starting" && qb.mode !== "none" ? el("button", { class: "btn ghost small", type: "button", onclick: async () => { try { await api("/api/vw/querybook/restart", { id: p.id }); toast("Starting " + p.name); setTimeout(refresh, 1500); } catch (e) { toast(e.message); } } }, "Start") : null)),
       st.querybook.books_url ? el("span", { class: "app" }, el("span", { class: "dot ok" }), "Book Intelligence Studio") : el("span", { class: "app" }, el("span", { class: "dot err" }), "Book Studio (needs PHP)")),

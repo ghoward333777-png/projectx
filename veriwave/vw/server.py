@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import registry, store
 from .backends import Claude
+from .factstore import FactStore, default_root
 from .model import VERSION, VeriWave
 from .querybook import Connection, port_free
 
@@ -358,7 +359,11 @@ def main(argv: list[str]) -> int:
     st = store.Store(store.data_root())
     claude = Claude(None, None)
     print("  Engine: " + ("local + Claude (" + claude.model + ")" if claude.available else "local (set ANTHROPIC_API_KEY to add Claude)"))
-    app = App(conn, VeriWave(conn, st, claude))
+    facts = FactStore(default_root())
+    fs = facts.status()
+    print("  Facts: " + (("%s facts read directly from %s" % (format(fs["facts"], ","), fs["root"])) if fs["connected"]
+                         else ("no fact store found in " + (fs["root"] or "(no data folder)"))))
+    app = App(conn, VeriWave(conn, st, claude, facts))
     port = free_port(int(args["port"]))
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
     httpd.daemon_threads = True

@@ -12,8 +12,9 @@ import VeriWave.Audiogen
 import VeriWave.Videogen
 import VeriWave.Backends
 import VeriWave.Store
+import VeriWave.Factstore
 
-open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store
+open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore
 
 namespace VeriWave.Querybook
 

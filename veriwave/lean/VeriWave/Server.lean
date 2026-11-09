@@ -12,10 +12,11 @@ import VeriWave.Audiogen
 import VeriWave.Videogen
 import VeriWave.Backends
 import VeriWave.Store
+import VeriWave.Factstore
 import VeriWave.Querybook
 import VeriWave.Model
 
-open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Querybook VeriWave.Model
+open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore VeriWave.Querybook VeriWave.Model
 
 namespace VeriWave.Server
 
@@ -24,7 +25,7 @@ inductive Handler where
   | page | status | features | feature | items | zip | out | chat | answer | code | create | restart | notFound
 deriving Repr, BEq, DecidableEq
 
--- dispatch (vw/server.py:44)
+-- dispatch (vw/server.py:45)
 def dispatch (m p : String) : Handler :=
   if m == "GET" then
     if p == "/" || p == "/index.html" || p == "/veriwave.css" || p == "/veriwave.js" then .page
@@ -41,74 +42,74 @@ theorem post_never_serves_files (p : String) : dispatch "POST" p ≠ .out ∧ di
 #guard dispatch "POST" "/api/vw/chat" == .chat                     -- py: dispatch("POST", "/api/vw/chat") == "chat"
 #guard dispatch "DELETE" "/" == .notFound                          -- py: dispatch("DELETE", "/") == "notFound"
 
--- content_type (vw/server.py:79)
+-- content_type (vw/server.py:80)
 def extOf (name : String) : String := match name.splitOn "." with
   | [] => "" | [_] => "" | parts => "." ++ parts.getLast!
 #guard extOf "a/b.svg" == ".svg"                                    -- py: content_type("a/b.svg") == "image/svg+xml"
 #guard extOf "README" == ""                                         -- py: content_type("README") == "application/octet-stream"
 
--- int_param (vw/server.py:92)
+-- int_param (vw/server.py:93)
 def intParam (v : Option Int) (dflt lo hi : Int) : Int := clamp lo hi (v.getD dflt)
 theorem intParam_in (v : Option Int) (d lo hi : Int) (h : lo ≤ hi) : lo ≤ intParam v d lo hi ∧ intParam v d lo hi ≤ hi :=
   clamp_in lo hi _ h
 #guard intParam (some 900) 50 0 100 == 100                           -- py: int_param("900", 50, 0, 100) == 100
 #guard intParam none 50 0 100 == 50                                  -- py: int_param("x", 50, 0, 100) == 50
 
--- core_clamp (vw/server.py:110)
+-- core_clamp (vw/server.py:111)
 #guard clamp 0 10 (-3) == 0                                          -- py: core_clamp(0, 10, -3) == 0
 
--- engine_param (vw/server.py:119)
+-- engine_param (vw/server.py:120)
 def engineParam (v : String) : String := if v == "local" then "local" else ""
 #guard engineParam "claude" == ""                                    -- py: engine_param("claude") == ""
 
--- App (vw/server.py:129)
+-- App (vw/server.py:130)
 structure AppState where
   port : Nat
 
--- App.__init__ (vw/server.py:137)
+-- App.__init__ (vw/server.py:138)
 def AppState.default : AppState := ⟨8095⟩
 
--- App.get (vw/server.py:144)
+-- App.get (vw/server.py:145)
 def statusOf (h : Handler) : Nat := if h == .notFound then 404 else 200
 #guard statusOf .notFound == 404                                  -- py: dispatch("GET", "/nope") == "notFound"
 
--- App.post (vw/server.py:191)
+-- App.post (vw/server.py:192)
 def createKind (k : String) : Bool := ["text", "image", "video", "audio"].contains k
 #guard createKind "video" && !createKind "smell"                  -- py: dispatch("POST", "/api/vw/create") == "create"
 
--- make_handler (vw/server.py:236)
+-- make_handler (vw/server.py:237)
 def jsonType : String := "application/json; charset=utf-8"
 #guard jsonType.startsWith "application/json"                         -- py: content_type("x.json").startswith("application/json")
 
--- make_handler.Handler (vw/server.py:244)
+-- make_handler.Handler (vw/server.py:245)
 def noStore : String := "no-store"
 
--- make_handler.Handler.log_message (vw/server.py:249)
+-- make_handler.Handler.log_message (vw/server.py:250)
 def quiet : Bool := true
 
--- make_handler.Handler.reply (vw/server.py:257)
+-- make_handler.Handler.reply (vw/server.py:258)
 def isJson (ctype : String) : Bool := ctype == ""
 #guard isJson ""                                              -- py: content_type("x.json") == TYPES[".json"]
 
--- make_handler.Handler.do_GET (vw/server.py:273)
+-- make_handler.Handler.do_GET (vw/server.py:274)
 #guard dispatch "GET" "/api/vw/status" == .status             -- py: dispatch("GET", "/api/vw/status") == "status"
 
--- make_handler.Handler.do_POST (vw/server.py:287)
+-- make_handler.Handler.do_POST (vw/server.py:288)
 #guard dispatch "POST" "/api/vw/code" == .code                -- py: dispatch("POST", "/api/vw/code") == "code"
 
--- free_port (vw/server.py:313)
+-- free_port (vw/server.py:314)
 def candidates (p : Nat) : List Nat := (List.range 20).map (p + ·)
 theorem candidates_len (p : Nat) : (candidates p).length = 20 := by simp [candidates]
 #guard (candidates 8095).head? == some 8095                           -- py: free_port(8095) >= 8095
 
--- parse_args (vw/server.py:327)
+-- parse_args (vw/server.py:328)
 def modeOfArgs (args : List String) : String :=
   if args.contains "--no-querybook" then "none" else if args.contains "--attach" then "attach"
   else if args.contains "--start" then "start" else "auto"
 #guard modeOfArgs ["--no-querybook"] == "none"                        -- py: parse_args(["--no-querybook"])["mode"] == "none"
 #guard modeOfArgs [] == "auto"                                         -- py: parse_args([])["mode"] == "auto"
 
--- main (vw/server.py:346)
+-- main (vw/server.py:347)
 def exitCode (ok : Bool) : Nat := if ok then 0 else 1
 #guard exitCode true == 0                                              -- py: parse_args(["--port", "9000"])["port"] == 9000
 
