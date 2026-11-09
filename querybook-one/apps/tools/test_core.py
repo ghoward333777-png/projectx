@@ -617,8 +617,8 @@ def google_tests(c):
 def setup_script_tests(c):
     """The one-paste Cloud Shell setup, run against a stand-in gcloud that records every call."""
     import shutil, subprocess, gcloud
-    if not shutil.which("bash"):
-        c.check("setup script: skipped (no bash on this computer — it runs in Google Cloud Shell)", True)
+    if not shutil.which("bash") or os.name == "nt":
+        c.check("setup script: skipped (no Linux bash on this computer — it runs in Google Cloud Shell)", True)
         return
     pem, n, e = _rsa_test_key()
     sa = {"type": "service_account", "project_id": "fleet-test", "private_key_id": "k1", "private_key": pem,
