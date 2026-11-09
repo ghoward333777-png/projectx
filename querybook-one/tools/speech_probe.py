@@ -110,7 +110,8 @@ def feature_probe() -> None:
                     if not w:
                         continue
                     m = V.measure(w)
-                    row = {"voice": v, "mode": mode, "rate": r, "text": t[:12], "label": m["vocal_mode"]["label"]}
+                    row = {"voice": v, "mode": mode, "rate": r, "text": t[:12], "label": m["vocal_mode"]["label"],
+                           "scores": [(x["mode"], x["score"]) for x in m["vocal_mode"].get("scores", [])][:3]}
                     for name, sec, key in FEATURES:
                         val = (m.get(sec) or {}).get(key)
                         row[name] = round(val, 3) if isinstance(val, (int, float)) else None
@@ -133,6 +134,14 @@ def feature_probe() -> None:
     say("")
     say("**Whispers called whispering by today's rule:** %d of %d; **plain speech called whispering:** %d of %d" % (
         wl.count("whispering"), len(wl), sum(r["label"] == "whispering" for r in rows if r["mode"] == "plain"), sum(r["mode"] == "plain" for r in rows)))
+    wrong = [r for r in rows if (r["mode"] != "plain") != (r["label"] == "whispering")]
+    if wrong:
+        say("")
+        say("| missed / wrong | rate | sentence | called | scores | voiced | jitter | hnr_db | zcr |")
+        say("|---|---|---|---|---|---|---|---|---|")
+        for r in wrong:
+            say("| %s %s | %d | %s | %s | %s | %s | %s | %s | %s |" % (r["voice"], r["mode"], r["rate"], r["text"], r["label"], r["scores"],
+                                                                r["voiced"], r["jitter"], r["hnr_db"], r["zcr"]))
     say("")
 
 
