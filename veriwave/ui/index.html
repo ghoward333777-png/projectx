@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VeriWave</title>
+<link rel="stylesheet" href="veriwave.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#chat" aria-label="VeriWave home"><span class="wave" aria-hidden="true">≈</span>VeriWave</a>
+  <nav class="modes" id="modes" aria-label="Screens"></nav>
+  <div class="right">
+    <label class="eng" title="Which engine VeriWave uses">
+      <span class="small muted">Engine</span>
+      <select id="engine" aria-label="Engine">
+        <option value="">Automatic</option>
+        <option value="local">Local only</option>
+      </select>
+    </label>
+    <span class="badge" id="engineBadge">…</span>
+    <div class="roles" id="roles" role="group" aria-label="Show screens for"></div>
+  </div>
+</header>
+<main id="main"></main>
+<section id="wsPanes" class="panes tabs" aria-label="Workspace screens" hidden></section>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="veriwave.js"></script>
+</body>
+</html>
