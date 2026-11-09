@@ -2435,6 +2435,12 @@ def _speech_selftest(c):
         c.check("Speech: a whisper is recognised as whispering", wm["vocal_mode"]["label"] == "whispering",
                 {"espeak": speech.version(), "voice": speech.resolve_voice("en-us+whisper"), "voiced": wm["vocal"]["voiced_ratio"],
                  "zcr": wm["vocal"]["zcr_speech"], "dbfs": wm["volume"]["mean_dbfs"], "scores": [(x["mode"], x["score"]) for x in wm["vocal_mode"].get("scores", [])]})
+        sents = ("Hello there. This is a short test of the voice.", "The quick brown fox jumps over the lazy dog.", "Please call me back when you get home tonight.")
+        judged = [(o or "plain", t[:10], rt, V.measure(speech.speak_wav(t, "en-us" + o, rt))["vocal_mode"]["label"])
+                  for o in ("", "+whisper", "+whisperf") for t in sents for rt in (120, 260)]
+        wrong = [j for j in judged if (j[0] != "plain") != (j[3] == "whispering")]
+        c.check("Speech: whispers (male and female, 3 sentences, slow and fast) are all recognised, and plain speech never is", not wrong,
+                {"misjudged": wrong, "espeak": speech.version()})
         same = [b + "+" + o for b in ("en-gb", "en-us", "en") for o in ("whisper", "whisperf")
                 if speech.speak_wav("hello there", b) == speech.speak_wav("hello there", b + "+" + o)]
         c.check("Speech: asking any English voice to whisper changes its sound (espeak-ng never drops the variant silently)", not same,

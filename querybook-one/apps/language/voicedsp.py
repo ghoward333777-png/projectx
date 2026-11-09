@@ -326,11 +326,11 @@ def vocal_mode(r):
         add("whispering", 25, "noise-like sound (zero-crossing rate %.2f)" % v["zcr_speech"])
     if vol["mean_dbfs"] < -28 and v["voiced_ratio"] < 0.5:
         add("whispering", 15, "quiet (%.0f dBFS)" % vol["mean_dbfs"])
-    # breathy whisper: partly voiced, but the "pitch" jumps wildly from cycle to cycle and the sound is mostly noise —
+    # breathy whisper: (partly) "voiced", but the "pitch" jumps wildly from cycle to cycle and the sound is mostly noise —
     # the pitch tracker is latching onto breath noise (espeak-ng 1.52's whisper, and many real whispers). Speech,
     # even hoarse or crying, stays below ~6 % jitter. In this case pitch-based evidence (high, rough, quavering) is
-    # unreliable and is not counted toward crying.
-    breathy = bool(p) and v["voiced_ratio"] < 0.72 and q["jitter_pct"] > 8.0 and q["hnr_db"] < 8
+    # unreliable and is not counted toward crying, nor the voiced share toward speaking.
+    breathy = bool(p) and v["voiced_ratio"] < 0.9 and q["jitter_pct"] > 8.0 and q["hnr_db"] < 8
     if breathy:
         add("whispering", 55, "breathy: the 'pitch' jumps %.0f %% between cycles (speech < 6 %%) and the sound is mostly noise (HNR %.0f dB)"
             % (q["jitter_pct"], q["hnr_db"]))
@@ -372,7 +372,7 @@ def vocal_mode(r):
         if v["pitch_within_burst_st"] < 0.6 and v["burst_mean_s"] > 0.4:
             add("singing", 30, "steady pitch within each stretch (%.2f st)" % v["pitch_within_burst_st"])
         # speaking: the ordinary pattern
-        if 0.55 <= v["voiced_ratio"] <= 0.95:
+        if 0.55 <= v["voiced_ratio"] <= 0.95 and not breathy:      # a breathy whisper's "voicing" is breath noise
             add("speaking", 30, "normal share of voiced sound (%.0f%%)" % (100 * v["voiced_ratio"]))
         if 3.0 <= r["rate"]["articulation_rate_syl_s"] <= 7.0:
             add("speaking", 30, "normal syllable rate (%.1f per second)" % r["rate"]["articulation_rate_syl_s"])
