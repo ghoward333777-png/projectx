@@ -217,9 +217,10 @@ def dedupe(facts: list[dict]) -> list[dict]:
 
     Lean:
         def factKey (h : Hit) : String × String × String := (norm h.subj, lower h.pred, norm h.obj)
-        def dedupeHits : List Hit → List Hit
-          | [] => []
-          | h :: hs => h :: dedupeHits (hs.filter (fun g => factKey g != factKey h))
+        def dedupeAux : List (String × String × String) → List Hit → List Hit
+          | _, [] => []
+          | seen, h :: hs => if seen.contains (factKey h) then dedupeAux seen hs else h :: dedupeAux (factKey h :: seen) hs
+        def dedupeHits (hs : List Hit) : List Hit := dedupeAux [] hs
         #guard (dedupeHits [⟨"Rome", "inception", "753 BC", 90⟩, ⟨"rome (Q220)", "Inception", "753 bc", 70⟩]).length == 1   -- py: len(dedupe([{"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "rome (Q220)", "predicate": "Inception", "object": "753 bc"}])) == 1
     """
     seen: list[tuple[str, str, str]] = []
