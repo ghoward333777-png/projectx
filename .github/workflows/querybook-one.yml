@@ -109,3 +109,36 @@ jobs:
       - name: Every application's self-test
         working-directory: querybook-one/apps
         run: python -B tools/run_all_tests.py
+
+  speech-probe:
+    # Report only (never fails the build): changes one thing at a time — voice name, voice option, sentence, speed,
+    # server concurrency, pieces at once, recording length — and tabulates which change moves the outcome.
+    name: Speech probe on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: querybook-one
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install espeak-ng (Windows uses the bundled copy)
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then brew install espeak-ng; fi
+      - name: Probe
+        env:
+          PYTHONUTF8: "1"
+        run: python -B tools/speech_probe.py all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speech-probe-${{ matrix.os }}
+          path: querybook-one/speech-probe.json

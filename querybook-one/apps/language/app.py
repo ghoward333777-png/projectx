@@ -2435,7 +2435,8 @@ def _speech_selftest(c):
         c.check("Speech: a whisper is recognised as whispering", wm["vocal_mode"]["label"] == "whispering",
                 {"espeak": speech.version(), "voice": speech.resolve_voice("en-us+whisper"), "voiced": wm["vocal"]["voiced_ratio"],
                  "zcr": wm["vocal"]["zcr_speech"], "dbfs": wm["volume"]["mean_dbfs"], "scores": [(x["mode"], x["score"]) for x in wm["vocal_mode"].get("scores", [])]})
-        same = [b for b in ("en-gb", "en-us", "en") if speech.speak_wav("hello there", b) == speech.speak_wav("hello there", b + "+whisper")]
+        same = [b + "+" + o for b in ("en-gb", "en-us", "en") for o in ("whisper", "whisperf")
+                if speech.speak_wav("hello there", b) == speech.speak_wav("hello there", b + "+" + o)]
         c.check("Speech: asking any English voice to whisper changes its sound (espeak-ng never drops the variant silently)", not same,
                 {"variant dropped for": same, "espeak": speech.version()})
         w = speech.speak_wav("Hello there. This is a short test of the voice.", "en-us")

@@ -403,8 +403,11 @@ class Espeak(Engine):
         return (bool(speech.find_espeak()), "" if speech.find_espeak() else "espeak-ng not found — " + speech.status()["hint"])
 
     def voices(self, keys, lang="en"):
+        # ids are espeak-ng's variant FILE names (it looks variants up by file and silently ignores an unknown one);
+        # the female whisper's file is "whisperf" — "female_whisper" is only the name written inside it
         return [{"id": "", "name": "Language default"}] + [{"id": v, "name": v} for v in
-                ("f1", "f2", "f3", "f4", "f5", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "klatt", "klatt2", "klatt3", "grandpa", "croak", "whisper", "female_whisper")]
+                ("f1", "f2", "f3", "f4", "f5", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "klatt", "klatt2", "klatt3", "grandpa", "croak", "whisper")] + [
+                {"id": "whisperf", "name": "female_whisper"}]
 
     def args(self, p, voice, adv=None):
         adv = adv or {}
@@ -419,7 +422,7 @@ class Espeak(Engine):
             pitch += (o.get("pitch") or 50) - 50
         variant = voice or ""
         if p["whisper"]:
-            variant = "female_whisper" if p["gender"] == "female" else "whisper"
+            variant = "whisperf" if p["gender"] == "female" else "whisper"           # whisperf: the female whisper's file name
         elif not variant and p["gender"] in ("female", "male"):
             variant = "f3" if p["gender"] == "female" else "m3"
         if not voice and e["hoarse"] >= 0.6 and not p["whisper"]:
