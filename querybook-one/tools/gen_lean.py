@@ -166,10 +166,7 @@ PROOFS = {
   have hb : 1 < (1 : ℝ) + rate / n := by linarith [show (0 : ℝ) < rate / n by positivity]
   have hl := (Real.log_pos hb).ne'
   have hn := h_n.ne'
-  rw [Real.rpow_def_of_pos (by linarith),
-      show Real.log (1 + rate / n) * (n * (Real.log (Amt / P) / (n * Real.log (1 + rate / n)))) = Real.log (Amt / P) by
-        qb_field,
-      Real.exp_log (by positivity)]
+  rw [Real.rpow_def_of_pos (by linarith), log_ratio_cancel _ _ _ hl hn, Real.exp_log (by positivity)]
   qb_field""",
 }
 DEFAULT_PROOF = """

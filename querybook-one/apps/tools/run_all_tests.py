@@ -7,8 +7,10 @@ RUNS = [["tools/test_core.py"], ["tools/test_commons.py"], ["tools/test_devices.
 
 if __name__ == "__main__":
     failed = []
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",           # tests print ≥, emoji, accents
+               PYTHONPATH=os.pathsep.join(p for p in (os.path.join(ROOT, "tools", "testenv"), os.environ.get("PYTHONPATH")) if p))
     for r in RUNS:
-        p = subprocess.run([sys.executable, "-B"] + r, cwd=ROOT, capture_output=True, text=True)
+        p = subprocess.run([sys.executable, "-B"] + r, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         last = [l for l in p.stdout.splitlines() if "checks passed" in l]
         print("%-28s %s" % (r[0], last[-1].strip() if last else "no result"))
         if p.returncode != 0:

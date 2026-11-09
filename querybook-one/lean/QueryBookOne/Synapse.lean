@@ -15,6 +15,8 @@ The Python code also rounds each result to 4 decimals; the bounds proved here ho
 4 decimals keeps a value in [0, 1] because 0 and 1 are themselves 4-decimal numbers.
 -/
 
+noncomputable section
+
 namespace QueryBookOne.Synapse
 
 def INIT : ℝ := 1 / 5
@@ -26,8 +28,8 @@ def CONSOLIDATED_DECAY : ℝ := 1 / 100
 
 def potentiate (s : ℝ) : ℝ := s + ETA * (1 - s)
 def depress (s : ℝ) : ℝ := s - DEPRESS * s
-noncomputable def fade (rate days s : ℝ) : ℝ := s * (1 - rate) ^ days
-noncomputable def threshold (good bad : ℕ) : ℝ :=
+def fade (rate days s : ℝ) : ℝ := s * (1 - rate) ^ days
+def threshold (good bad : ℕ) : ℝ :=
   if good + bad = 0 then THETA else THETA + 2 / 5 * ((bad : ℝ) / ((good : ℝ) + (bad : ℝ)))
 def consolidated (good bad : ℕ) : Prop := 20 ≤ good ∧ 4 * bad ≤ good
 
@@ -80,7 +82,7 @@ inductive Event where
   | failure
   | idle (rate days : ℝ)
 
-noncomputable def step : Event → ℝ → ℝ
+def step : Event → ℝ → ℝ
   | .success, s => potentiate s
   | .failure, s => depress s
   | .idle rate days, s => fade rate days s
@@ -92,9 +94,16 @@ def valid : Event → Prop
 theorem step_in_unit (e : Event) (he : valid e) (s : ℝ) (h0 : 0 ≤ s) (h1 : s ≤ 1) :
     0 ≤ step e s ∧ step e s ≤ 1 := by
   cases e with
-  | success => have h := potentiate_bounds s h0 h1; exact ⟨by linarith [h.1], h.2⟩
-  | failure => have h := depress_bounds s h0; exact ⟨h.1, by linarith [h.2]⟩
+  | success =>
+    simp only [step]
+    have h := potentiate_bounds s h0 h1
+    exact ⟨by linarith [h.1], h.2⟩
+  | failure =>
+    simp only [step]
+    have h := depress_bounds s h0
+    exact ⟨h.1, by linarith [h.2]⟩
   | idle rate days =>
+    simp only [step]
     obtain ⟨hr0, hr1, hd⟩ := he
     have h := fade_bounds rate days s hr0 hr1 hd h0
     exact ⟨h.1, by linarith [h.2]⟩
@@ -110,3 +119,5 @@ theorem strength_stays_in_unit (es : List Event) (hes : ∀ e ∈ es, valid e) (
     exact ih (fun x hx => hes x (by simp [hx])) _ h.1 h.2
 
 end QueryBookOne.Synapse
+
+end

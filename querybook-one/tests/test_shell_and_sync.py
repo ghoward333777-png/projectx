@@ -39,8 +39,9 @@ class AskUnderstandingTest(unittest.TestCase):
 
 class LeanSyncTest(unittest.TestCase):
     def test_generated_lean_matches_python(self):
-        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gen_lean.py"), "--check"], capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for tool in ("gen_lean.py", "gen_rust.py"):
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", tool), "--check"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, tool + ": " + r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

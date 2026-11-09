@@ -1,0 +1,8 @@
+[package]
+name = "qbcore"
+version = "0.1.0"
+edition = "2021"
+description = "QueryBook's formula math in Rust: STEM formulas, network memory and answer routing. std-only."
+license = "MIT"
+
+[dependencies]

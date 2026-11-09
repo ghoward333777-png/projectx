@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+from typing import Callable
 import urllib.parse
 import urllib.request
 
@@ -105,12 +106,12 @@ def short_answer(intent: dict, facts: list[dict]) -> str:
 
 
 # --------------------------------------------------------------------------- asking the applications (I/O)
-def _get(url: str, timeout: float = 6.0):
+def _get(url: str, timeout: float = 6.0) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
-def _post(url: str, body: dict, timeout: float = 6.0):
+def _post(url: str, body: dict, timeout: float = 6.0) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
@@ -124,7 +125,7 @@ def answer(question: str, urls: dict[str, str]) -> dict:
     results: dict[str, object] = {}
     jobs = []
 
-    def run(name: str, fn) -> None:
+    def run(name: str, fn: Callable[[], object]) -> None:
         try:
             results[name] = fn()
         except Exception as e:                       # one application being slow or stopped never blocks the others

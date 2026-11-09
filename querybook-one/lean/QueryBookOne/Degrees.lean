@@ -29,4 +29,8 @@ theorem sind_asind (y : ℝ) (h1 : -1 ≤ y) (h2 : y ≤ 1) : sind (asind y) = y
   rw [show Real.arcsin y * 180 / Real.pi * Real.pi / 180 = Real.arcsin y by qb_field]
   exact Real.sin_arcsin h1 h2
 
+/-- The cancellation behind solving compound interest for time: L · (n · (M / (n · L))) = M. -/
+theorem log_ratio_cancel (L M n : ℝ) (hL : L ≠ 0) (hn : n ≠ 0) : L * (n * (M / (n * L))) = M := by
+  qb_field
+
 end QueryBookOne.Degrees

@@ -13,6 +13,8 @@ a new pathway starts at 0.5.
 A pathway is asked first when s ≥ THETA. Python rounds to 4 decimals after each update; see Synapse.lean on rounding.
 -/
 
+noncomputable section
+
 namespace QueryBookOne.Routing
 
 def START : ℝ := 1 / 2
@@ -23,7 +25,7 @@ def DRIFT : ℝ := 1 / 500
 
 def hit (s : ℝ) : ℝ := s + ETA * (1 - s)
 def miss (s : ℝ) : ℝ := s - SILENCE * s
-noncomputable def recover (s : ℝ) : ℝ := if s < 1 / 2 then s + DRIFT * (1 / 2 - s) else s
+def recover (s : ℝ) : ℝ := if s < 1 / 2 then s + DRIFT * (1 / 2 - s) else s
 
 /-- Every new pathway is strong enough to be asked. -/
 theorem new_pathway_is_asked : THETA ≤ START := by unfold THETA START; norm_num
@@ -51,7 +53,7 @@ inductive Event where
   | empty
   | lookup
 
-noncomputable def step : Event → ℝ → ℝ
+def step : Event → ℝ → ℝ
   | .answered, s => hit s
   | .empty, s => miss s
   | .lookup, s => recover s
@@ -67,10 +69,12 @@ theorem strength_stays_in_unit (es : List Event) (s : ℝ) (h0 : 0 ≤ s) (h1 : 
     · cases e with
       | answered => have := hit_bounds s h0 h1; simp only [step]; linarith [this.1]
       | empty => have := miss_bounds s h0; simp only [step]; exact this.1
-      | lookup => exact (recover_bounds s h0 h1).1
+      | lookup => simp only [step]; exact (recover_bounds s h0 h1).1
     · cases e with
-      | answered => exact (hit_bounds s h0 h1).2
+      | answered => simp only [step]; exact (hit_bounds s h0 h1).2
       | empty => have := miss_bounds s h0; simp only [step]; linarith [this.2]
-      | lookup => exact (recover_bounds s h0 h1).2
+      | lookup => simp only [step]; exact (recover_bounds s h0 h1).2
 
 end QueryBookOne.Routing
+
+end
