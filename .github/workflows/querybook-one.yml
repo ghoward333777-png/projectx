@@ -73,6 +73,43 @@ jobs:
           name: QueryBook-windows
           path: querybook-one/dist/QueryBook.zip
 
+  windows-harvest:
+    # The user's report: harvesting runs about a minute, then stops. Reproduced as the user runs it: QueryBook.zip,
+    # the bundled Python only, one window, Start pressed in the Control Panel — then watched for 6 minutes.
+    name: Harvesting keeps going on Windows (QueryBook.zip, 6 min)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build and unzip QueryBook.zip
+        run: |
+          python querybook-one/tools/build_bundle.py
+          Expand-Archive querybook-one/dist/QueryBook.zip -DestinationPath $env:RUNNER_TEMP\user
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
+          Set-Content -Path "$env:RUNNER_TEMP\user\QueryBook\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n="FreeGB";e={[math]::Round($_.Free/1GB,1)}}
+      - name: Start QueryBook, press Start harvesting, watch for 6 minutes
+        run: |
+          $app = "$env:RUNNER_TEMP\user\QueryBook"
+          $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\QueryBook-Shell\shell.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\shell.log" -RedirectStandardError "$env:RUNNER_TEMP\shell.err"
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 3
+            try { $s = Invoke-RestMethod http://127.0.0.1:8090/api/shell/status; if (($s.programs | Where-Object { $_.state -ne "running" }).Count -eq 0) { break } } catch { }
+          }
+          $s.programs | ForEach-Object { Write-Host "$($_.id) $($_.state) $($_.url)" }
+          python querybook-one/tools/harvest_watch.py --start --minutes 6 --every 20 --data "$env:RUNNER_TEMP\QB"
+          $code = $LASTEXITCODE
+          Write-Host "--- python processes"; Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ForEach-Object { Write-Host $_.ProcessId $_.CommandLine.Substring(0, [math]::Min(220, $_.CommandLine.Length)) }
+          Write-Host "--- shell status"; (Invoke-RestMethod http://127.0.0.1:8090/api/shell/status).programs | ForEach-Object { Write-Host $_.id $_.state; $_.output }
+          Get-ChildItem -Recurse "$env:RUNNER_TEMP\QB" -Filter "*.jsonl" | Sort-Object LastWriteTime | Select-Object -Last 6 | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 15 }
+          Stop-Process -Id $p.Id -Force
+          exit $code
+
   rust:
     name: Rust port (matches the Python exactly)
     runs-on: ubuntu-latest
