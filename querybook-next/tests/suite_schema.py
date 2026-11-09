@@ -1,6 +1,6 @@
 """Verbatim table definitions from the QueryBook suite (claude/lucid-brahmagupta-ak4f6m, querybook/apps/_core:
 qbbulk.SCHEMA for a bulk shard, the first part of qbcommons.SCHEMA for commons.sqlite), used to build a miniature
-D:\QB for tests. Regenerate if the suite's schema changes."""
+D:\\QB for tests. Regenerate if the suite's schema changes."""
 
 SHARD_SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (fp BLOB PRIMARY KEY, s TEXT NOT NULL, p INTEGER NOT NULL, o TEXT NOT NULL, part INTEGER NOT NULL,
