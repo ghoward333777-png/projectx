@@ -2937,6 +2937,19 @@ def status(commons_folder, commons=None):
         # filed and skipped — a re-read of the dump on a store of a billion showed 1,004 M, then 1,001 M. Never again:
         # gathered only counts facts that will be kept.
         row["gathered"] = (row["facts"] or 0) + min(row.get("staged_new") or 0, row.get("staged") or 0)
+        # 1.35: a dataset changing hands (its agent paused and restarted, its working copy moving between C: and D:) can
+        # be unreadable or absent for a moment; it then read as "not started", 0 facts, and the total dipped by millions
+        # for one look (Windows, 25-minute test: 56.3 M -> 52.8 M -> 57.8 M). The facts were never gone: show the last
+        # count read, and say why, instead of zero.
+        lk = (commons_folder, key)
+        prev_g = _LAST_GATHERED.get(lk)
+        unreadable = row.get("busy") or (row["state"] == "not started" and not os.path.exists(p))
+        if prev_g and (unreadable or row["gathered"] < prev_g["gathered"] and not row["facts"] and not row.get("staged")):
+            for f_ in ("facts", "staged", "staged_new", "gathered"):
+                row[f_] = prev_g.get(f_, row.get(f_))
+            row["count_from"] = row.get("count_from") or "last known — the dataset is changing hands (paused, restarting or being moved), its facts are kept"
+        elif row["gathered"]:
+            _LAST_GATHERED[lk] = {f_: row.get(f_) for f_ in ("facts", "staged", "staged_new", "gathered")}
         al = _agent_alive_info(commons_folder, key)
         if al and al.get("waiting") and row["state"] == "running":
             row["doing"] = al["waiting"]                   # "filing 20,000,000 facts into the dataset", "a download connection"…
@@ -3010,6 +3023,7 @@ def download_status(commons_folder, commons=None):
 
 
 _LAST_COUNT = {}
+_LAST_GATHERED = {}                # 1.35: the last full count of each dataset, shown while it changes hands
 _LAST_DUPS = {}
 _SAVED = {}
 
@@ -4861,6 +4875,15 @@ def _supervisor_tests():
         ok("1.35: facts already held, read again, are not counted as new (sampled); only the new ones are, and filing them "
            "never makes the total fall", held_ == 3 and r2_["staged"] == 5 and r2_["gathered"] == 5 and after_ == 5
            and r3_["gathered"] == 5 and r3_["gathered"] >= r2_["gathered"], (held_, r2_.get("staged"), r2_.get("gathered"), after_))
+        # 1.35: a dataset changing hands (file moved for a moment) keeps its count on the screen
+        sp_ = shard_path(cf, "calendar-scaffold")
+        os.replace(sp_, sp_ + ".moving")
+        r4_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+        os.replace(sp_ + ".moving", sp_)
+        r5_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+        ok("1.35: a dataset whose file is moving for a moment keeps its last count on the screen (the total never dips), "
+           "and reads its own file again once it is back", r4_["gathered"] == 5 and "changing hands" in str(r4_.get("count_from"))
+           and r5_["gathered"] == 5 and not r5_.get("count_from"), (r4_.get("gathered"), r4_.get("count_from"), r5_.get("gathered")))
         # 1.35: filing waits its turn in its own pool and never blocks an agent's next batch
         global STAGE_MIN, STAGE_CAP
         old_min, old_cap = STAGE_MIN, STAGE_CAP
