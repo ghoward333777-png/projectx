@@ -106,3 +106,21 @@ STEM's `science.py`/`units.py`) with Lean proofs (`querybook-one/lean`, Mathlib,
 port (`querybook-one/rust/qbcore`); `tools/gen_lean.py` / `tools/gen_rust.py` regenerate them and their
 `--check` runs in the tests, so a formula changed in Python must have its proofs and Rust regenerated.
 The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-folder.txt = D:\QB).
+
+## VeriWave (`veriwave/`) — the QueryBook AI model
+
+Chat-first AI built on QueryBook one: Chat plus Answer, Code, Create (text/image/video/audio), every QueryBook
+screen on demand (QueryBook page + Workspace) and the 407-feature registry browser. `python veriwave.py`
+(port 8095) attaches to a running QueryBook window or starts QueryBook's apps through `querybook-one/apps/shell`.
+
+- **Python ready for Rust**: stdlib only, full annotations, no reflection, no `*args/**kwargs`, no `re` in `vw/`
+  (`tests/test_rust_compat.py`). Trust is an integer percentage; arithmetic is exact rationals bounded by 2^62.
+- **Every function carries embedded Lean**: a `Lean:` section in each docstring (module, class, method, function)
+  with the Lean 4 mirror, theorems and `#guard` lines, each ending `-- py: <expr>` (its Python twin). Core Lean
+  only, no `sorry`/`admit`/`native_decide`, no Mathlib. After changing any `vw/` function, update its Lean, then
+  `python tools/gen_lean.py`. The Lean is read from the raw source, so write Lean escapes as Lean wants them.
+- Changes to `vw/core.py`, `vw/router.py` or `vw/verdict.py` must be ported to `rust/vwcore` and the vectors
+  regenerated (`python tools/gen_vectors.py`); `cargo test --release` must pass.
+- Answers stay cite-or-refuse: no fact, no answer (UNKNOWN). Claude may only reword cited facts there.
+- Before shipping, from `veriwave/`: `python -m unittest discover -s tests -t .`, and `cargo test --release` in
+  `rust/vwcore`. CI (`.github/workflows/veriwave.yml`) also runs `lake build`.
