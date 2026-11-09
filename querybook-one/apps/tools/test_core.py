@@ -747,6 +747,7 @@ def main():
         good = st.backups()[0]["path"]
         st.conn().close()
         st._local.db = None
+        import gc; gc.collect()     # close any connection the test dropped earlier, so none writes over the damage below
         # damage the database file
         with open(st.path, "r+b") as f:
             f.seek(0)
