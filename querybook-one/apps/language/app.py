@@ -44,6 +44,7 @@ import vse
 import voicedsp
 import tts
 import visemes
+import labtext
 import verify
 import vocab
 
@@ -826,6 +827,53 @@ class App:
         def _gen_args(p):
             return dict(prof=p.get("profile") or {}, engine=p.get("engine") or "espeak", voice=p.get("voice") or "",
                         model=p.get("model") or "", adv=p.get("advanced") or {})
+
+        # ---- Language Lab screen: one text through words, translation, speech out, speech in and lip-sync
+        @a.get("/api/lablang/deck")
+        def lablang_deck(p):
+            lang = self._lang(p.get("lang"))
+            q = " ".join(str(p.get("q") or "").lower().split())
+            lim, off = max(1, min(200, int(p.get("limit") or 60))), max(0, int(p.get("offset") or 0))
+            if lang == "en":
+                rows = [{"en": w, "tr": [w], "rank": r} for w, r in sorted(vocab.rank().items(), key=lambda x: x[1])]
+            else:
+                rows = vocab.deck(lang)
+            if q:
+                rows = [w for w in rows if w["en"].lower().startswith(q) or any(t.lower().startswith(q) for t in w["tr"])]
+            return {"lang": lang, "total": len(rows), "words": rows[off:off + lim]}
+
+        @a.post("/api/lablang/fill")
+        def lablang_fill(p):
+            return labtext.fill(p.get("src") or "en", p.get("tgt") or "es", p.get("words") or [])
+
+        @a.post("/api/lablang/say")
+        def lablang_say(p):
+            lang = p.get("lang") if p.get("lang") in vocab.LANGUAGES else "en"
+            text = " ".join(str(p.get("text") or "").split())[:300]
+            if not text:
+                raise core.UserError("There is nothing to say yet — type, pick a word or translate first.")
+            voice = labtext.voice_name(vocab.LANGUAGES[lang]["espeak"], p.get("voice") or "")
+            rate = max(80, min(260, int(p.get("rate") or 150)))
+            wav = speech.speak_wav(text, voice, rate)
+            if not wav:
+                raise core.UserError("No voice is available here: espeak-ng is missing (" + speech.status()["hint"] + ")")
+            track = visemes.align(text, wav, lang, self.lab)
+            return {"audio": "data:audio/wav;base64," + _b64.b64encode(wav).decode("ascii"), "track": track,
+                    "voice": voice, "rate": rate, "ipa": speech.ipa(text, vocab.LANGUAGES[lang]["espeak"])}
+
+        @a.post("/api/lablang/hear")
+        def lablang_hear(p):
+            wav = _audio(p)
+            if not wav:
+                raise core.UserError("No recording arrived.")
+            lang = p.get("lang") if p.get("lang") in vocab.LANGUAGES else "en"
+            if not self.speech.stt_ready():
+                raise core.UserError("This browser has no speech recognition, and Google Speech-to-Text is not set up. "
+                                     "Use Chrome or Edge, or add a Google key under Speech → Keys.")
+            r = self.speech.transcribe(wav, lang)
+            if not r or r.get("error"):
+                raise core.UserError("Speech-to-Text could not hear words: %s" % ((r or {}).get("error") or "no answer"))
+            return {"text": r.get("transcript") or "", "confidence": r.get("confidence"), "by": "Google Speech-to-Text"}
 
         @a.get("/api/speech/engines")
         def sp_engines(p):
@@ -2441,6 +2489,13 @@ def _speech_selftest(c):
         wrong = [j for j in judged if (j[0] != "plain") != (j[3] == "whispering")]
         c.check("Speech: whispers (male and female, 3 sentences, slow and fast) are all recognised, and plain speech never is", not wrong,
                 {"misjudged": wrong, "espeak": speech.version()})
+        ui = open(os.path.join(HERE, "ui", "index.html"), encoding="utf-8").read()
+        c.check("Language Lab screen: first tab, with words, translation, speech in and out, and the lip-synced face",
+                ui.index('data-tab="learn"') < ui.index('data-tab="build"') and all(x in ui for x in ('id="ll-wlist"', 'id="ll-tr"', 'id="ll-mic"', 'id="ll-play"', 'id="ll-mouth"', 'id="ll-practice"')))
+        lw = speech.speak_wav("Buenos días", labtext.voice_name("es", "whisper-female"), 150)
+        ltr = visemes.align("Buenos días", lw, "es", None) if lw else {}
+        c.check("Language Lab: a sentence is spoken (female whisper) with its mouth shapes and word times for the face",
+                bool(lw) and len(ltr.get("visemes", [])) >= 6 and [w["word"] for w in ltr.get("words", [])] == ["Buenos", "días"])
         same = [b + "+" + o for b in ("en-gb", "en-us", "en") for o in ("whisper", "whisperf")
                 if speech.speak_wav("hello there", b) == speech.speak_wav("hello there", b + "+" + o)]
         c.check("Speech: asking any English voice to whisper changes its sound (espeak-ng never drops the variant silently)", not same,

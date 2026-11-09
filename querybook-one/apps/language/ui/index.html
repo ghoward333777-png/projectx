@@ -140,6 +140,52 @@ tr.lc-active td { background: #f0fdf4; }
   details.card[open] > summary { margin-bottom: 12px; }
   .speakbtn { padding: 2px 8px !important; }
   @media (max-width: 640px) { .banner .btitle { font-size: 24px; } table.steps .hide-s { display: none; } .gate { grid-template-columns: 1fr; } table.langs .hide-s { display: none; } .hero .big { font-size: 22px; } }
+  /* Language Lab */
+  :root { --ll-skin: #f2d2bd; --ll-hair: #4a3426; --ll-lip: #c8616c; }
+  .ll-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .ll-pick { display: flex; flex-direction: column; gap: 4px; }
+  .ll-pick select { font-size: 17px; padding: 8px 10px; min-width: 200px; }
+  .ll-swapbtn { font-size: 20px; padding: 6px 14px !important; }
+  .ll-caps { flex: 1 1 260px; text-align: right; }
+  .ll-caps .chip.ok { background: var(--good-bg); color: var(--good); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .ll-grid { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 16px; align-items: start; }
+  .ll-words { position: sticky; top: 8px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; }
+  .ll-words input { width: 100%; font-size: 16px; padding: 8px 10px; }
+  .ll-wlist { list-style: none; padding: 0; margin: 0 0 8px; overflow-y: auto; flex: 1 1 auto; min-height: 120px; }
+  .ll-wlist li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+  .ll-word { flex: 1; text-align: left; background: none; border: 0; padding: 8px 6px; cursor: pointer; color: inherit; display: flex; flex-direction: column; border-radius: 6px; }
+  .ll-word:hover, .ll-word:focus-visible { background: var(--chip); }
+  .ll-word b { font-size: 17px; }
+  .ll-word .muted { font-size: 13px; }
+  .icon { background: none; border: 0; cursor: pointer; font-size: 18px; padding: 6px; border-radius: 6px; }
+  .icon:hover { background: var(--chip); }
+  .ll-tip { margin: 4px 0 0; }
+  #ll-text { width: 100%; font-size: 19px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); resize: vertical; background: var(--panel); color: var(--ink); }
+  .ll-actions { margin-top: 10px; }
+  .ll-examples { margin-top: 8px; }
+  .ll-out { font-size: 24px; line-height: 1.7; min-height: 44px; }
+  .ll-empty { font-size: 15px; }
+  .ll-tok { font: inherit; background: none; border: 0; padding: 0 1px; cursor: pointer; color: inherit; border-radius: 4px; }
+  .ll-tok:hover { background: var(--chip); }
+  .ll-tok.wl { border-bottom: 2px dotted var(--accent); }
+  .ll-tok.unk { border-bottom: 2px solid var(--bad); color: var(--bad); }
+  .ll-notes { margin-top: 6px; }
+  .ll-stagegrid { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: center; }
+  .ll-face { width: 200px; height: 220px; }
+  .ll-karaoke { font-size: 22px; line-height: 1.6; min-height: 36px; }
+  .ll-karaoke span { padding: 0 2px; border-radius: 4px; }
+  .ll-karaoke span.on { background: var(--accent); color: var(--accent-ink); }
+  .ipa { font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", serif; font-size: 17px; }
+  .ll-playrow { margin: 10px 0 6px; }
+  .ll-practice { font-size: 22px; }
+  .ll-practice span.hit { color: var(--good); font-weight: 600; }
+  .ll-practice span.miss { color: var(--bad); text-decoration: underline; }
+  button.rec { background: var(--bad) !important; color: #fff !important; }
+  #ll-tr.pulse { box-shadow: 0 0 0 3px var(--accent); }
+  @media (prefers-color-scheme: dark) { :root { --ll-skin: #d9b39a; --ll-hair: #2d2019; --ll-lip: #b3505b; } }
+  @media (max-width: 860px) { .ll-grid { grid-template-columns: 1fr; } .ll-words { position: static; max-height: none; } .ll-wlist { flex: none; max-height: 290px; } .ll-caps { text-align: left; } }
+  @media (max-width: 520px) { .ll-stagegrid { grid-template-columns: 1fr; justify-items: center; } .ll-pick select { min-width: 0; width: 100%; } .ll-pick { flex: 1 1 140px; } }
 </style>
 </head>
 <body>
@@ -148,6 +194,7 @@ tr.lc-active td { background: #f0fdf4; }
   <span class="tag">Builds 17 languages by itself — and speaks, listens and measures speech</span>
 </header>
 <nav class="tabs" aria-label="Sections">
+  <button data-tab="learn">🌍 Language Lab</button>
   <button data-tab="build">Build</button>
   <button data-tab="speech">Speech</button>
   <button data-tab="photoreal">Photo Real Lab</button>
@@ -163,6 +210,90 @@ tr.lc-active td { background: #f0fdf4; }
   <button data-tab="help">Help</button>
 </nav>
 <main>
+  <section class="panel" id="learn" aria-label="Language Lab">
+    <div class="card ll-bar">
+      <label class="ll-pick"><span class="small muted">I speak</span><select id="ll-from" aria-label="The language I speak"></select></label>
+      <button class="btn secondary ll-swapbtn" id="ll-swap" title="Swap the two languages" aria-label="Swap languages">⇄</button>
+      <label class="ll-pick"><span class="small muted">I'm learning</span><select id="ll-to" aria-label="The language I am learning"></select></label>
+      <div class="ll-caps small" id="ll-caps"></div>
+    </div>
+
+    <div class="ll-grid">
+      <aside class="card ll-words" aria-label="Words">
+        <h2><span class="step">1</span> Words in <span class="ll-toname"></span></h2>
+        <input id="ll-wq" type="search" placeholder="Find a word, in either language…" aria-label="Find a word" autocomplete="off">
+        <p class="small muted" id="ll-wcount"></p>
+        <ul id="ll-wlist" class="ll-wlist"></ul>
+        <button class="btn secondary small" id="ll-wmore" hidden>More words</button>
+        <p class="small muted ll-tip">Tap a word to hear it and watch how it is said. 🔊 just plays it.</p>
+      </aside>
+
+      <div class="ll-main">
+        <div class="card">
+          <h2><span class="step">2</span> Write or say it in <span class="ll-fromname"></span></h2>
+          <textarea id="ll-text" rows="3" placeholder="Type a sentence and press Enter — or press 🎙 Say it and speak"></textarea>
+          <div class="row ll-actions">
+            <button class="btn secondary" id="ll-mic" title="Speak instead of typing">🎙 Say it</button>
+            <button class="btn" id="ll-tr">Translate →</button>
+            <button class="btn secondary small" id="ll-clear" title="Start again">Clear</button>
+            <span class="small muted" id="ll-micstate" aria-live="polite"></span>
+          </div>
+          <div class="row small ll-examples" id="ll-examples"><span class="muted">Try:</span>
+            <button class="btn secondary small" data-say="Good morning">Good morning</button>
+            <button class="btn secondary small" data-say="Thank you very much">Thank you very much</button>
+            <button class="btn secondary small" data-say="Where is the train station?">Where is the train station?</button>
+            <button class="btn secondary small" data-say="I would like a glass of water, please.">A glass of water, please</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2><span class="step">3</span> In <span class="ll-toname"></span></h2>
+          <div id="ll-out" class="ll-out" aria-live="polite"></div>
+          <div class="ll-notes small" id="ll-notes"></div>
+          <div id="ll-why"></div>
+        </div>
+
+        <div class="card ll-stage">
+          <h2><span class="step">4</span> Hear it and watch the mouth</h2>
+          <div class="ll-stagegrid">
+            <svg class="ll-face" viewBox="0 0 200 220" role="img" aria-label="A face that mouths the words as they are spoken">
+              <ellipse cx="100" cy="112" rx="74" ry="92" fill="var(--ll-skin)"/>
+              <path d="M30 92 C34 30 166 30 170 92 C160 58 120 44 100 46 C80 44 40 58 30 92Z" fill="var(--ll-hair)"/>
+              <ellipse cx="72" cy="98" rx="9" ry="10" fill="#fff"/><ellipse cx="128" cy="98" rx="9" ry="10" fill="#fff"/>
+              <circle cx="73" cy="100" r="5" fill="#2b2f3a"/><circle cx="129" cy="100" r="5" fill="#2b2f3a"/>
+              <path d="M60 82 Q72 76 84 82" stroke="#5b4636" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M116 82 Q128 76 140 82" stroke="#5b4636" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M100 104 Q94 124 100 128 Q106 129 108 126" stroke="#b9876d" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <g id="ll-mouth"></g>
+            </svg>
+            <div class="ll-controls">
+              <div id="ll-karaoke" class="ll-karaoke" aria-live="off"></div>
+              <div id="ll-ipa" class="small"></div>
+              <div class="row ll-playrow">
+                <button class="btn" id="ll-play" disabled>▶ Hear <span class="ll-toname"></span></button>
+                <button class="btn secondary" id="ll-play-src">▶ Hear <span class="ll-fromname"></span></button>
+                <button class="btn secondary small" id="ll-stop" title="Stop">■</button>
+              </div>
+              <div class="row small">
+                <label>Speed <select id="ll-speed"><option value="105">Slow</option><option value="150" selected>Normal</option><option value="200">Fast</option></select></label>
+                <label>Voice <select id="ll-voice"><option value="">Standard</option><option value="female">Female</option><option value="male">Male</option><option value="whisper">Whisper</option><option value="whisper-female">Whisper (female)</option><option value="slow-old">Older</option></select></label>
+                <label><input type="checkbox" id="ll-repeat"> Repeat</label>
+              </div>
+              <div id="ll-mouthnow" class="small muted" aria-live="off"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2><span class="step">5</span> Now you say it</h2>
+          <p class="small muted">Press the button, say the <span class="ll-toname"></span> sentence above, then press again. Each word turns green when it is heard.</p>
+          <div class="row"><button class="btn" id="ll-practice" disabled>🎙 Start</button></div>
+          <div id="ll-score" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="build">
     <div class="banner" id="banner" aria-live="polite">
       <div class="bicon" id="bicon">…</div>
@@ -883,5 +1014,6 @@ tr.lc-active td { background: #f0fdf4; }
 <script src="transcribe.js"></script>
 <script src="talk.js"></script>
 <script src="science.js"></script>
+<script src="lablang.js"></script>
 </body>
 </html>

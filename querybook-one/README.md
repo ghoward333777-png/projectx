@@ -34,6 +34,15 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
 
 ## Changes made to the suite's code
 
+- **Language Lab** (the Language area's first tab, `#learn`): one screen and one text, in five steps:
+  1. Pick the two languages, then a word from the 4,500-word lists.
+  2. Type or say a sentence.
+  3. Translate it. Phrases come from the offline dictionaries and any remaining word from the word lists, and every word shows where it came from.
+  4. Hear it (any voice, speed, whisper) while a face mouths it in time and each word lights up.
+  5. Say it yourself and see which words were heard.
+
+  Server side: `language/labtext.py` and `/api/lablang/*`.
+- Speech: voice options (whisper, female, croak, grandpa) now apply to every language. British voices used to drop them. The female whisper is espeak-ng's `whisperf`. Breathy whispers are recognised on every espeak-ng version. `tools/speech_probe.py` tabulates what changes the outcome on each system.
 - The Control Panel's tabs can be opened by link (`#bulk`, `#facts`), so the window's areas land on the right tab.
 - Language Builder falls back to the whole of Webster's 1913 for words outside its 5,052 common words. It holds 101,080 headwords and is built by `apps/tools/build_webster_full.py` from Project Gutenberg #29765; "obsequious" now has a meaning.
 - `qbsynapse` and `qbdsn` compute through `qbmath.py`. The results are identical and their self-tests pass.
