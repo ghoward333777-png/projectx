@@ -73,6 +73,7 @@ def synth(args, text, timeout=60):
     turns speech into noise. A file is written in binary on every system (as the prototype did)."""
     if not find_espeak():
         return None
+    args = [resolve_voice(a) if i and args[i - 1] == "-v" else a for i, a in enumerate(args)]
     import tempfile
     fd, path = tempfile.mkstemp(prefix="qb-voice-", suffix=".wav")
     os.close(fd)
@@ -174,6 +175,19 @@ def voices():
     rows.sort(key=lambda r: r["name"].lower())
     _VOICES[exe] = rows
     return rows
+
+
+def resolve_voice(voice):
+    """`language+variant` -> `voice-file+variant`. espeak-ng silently drops the variant (whisper, f3, croak, grandpa …)
+    when the language name is looked up a certain way: with espeak-ng 1.51, `en-gb+whisper` gives exactly the audio of
+    plain `en-gb`, while `gmw/en+whisper` whispers. Naming the voice by its file always keeps the variant. Names that
+    are already files, have no variant, or are not in espeak-ng's list are left as they are."""
+    voice = str(voice or "")
+    name, plus, variant = voice.partition("+")
+    if not plus or not variant or "/" in name:
+        return voice
+    files = [r["file"] for r in voices() if r["code"].lower() == name.lower() and not r["file"].startswith("mb/")]
+    return files[0] + "+" + variant if len(files) == 1 else voice
 
 
 SCRIPTS = [("ja", r"[぀-ヿ]"), ("ko", r"[가-힯]"), ("cmn", r"[一-鿿]"), ("ru", r"[Ѐ-ӿ]"),

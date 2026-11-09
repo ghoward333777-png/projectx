@@ -2431,7 +2431,13 @@ def _speech_selftest(c):
     c.check("Speech: pauses found where they are (2 pauses, ~0.8 s)", ps["count"] == 2 and abs(ps["total_s"] - 0.8) < 0.15, ps["total_s"])
     if speech.find_espeak():
         w = speech.speak_wav("Hello there. This is a short test of the voice.", "en-us+whisper")
-        c.check("Speech: a whisper is recognised as whispering", V.measure(w)["vocal_mode"]["label"] == "whispering")
+        wm = V.measure(w)
+        c.check("Speech: a whisper is recognised as whispering", wm["vocal_mode"]["label"] == "whispering",
+                {"espeak": speech.version(), "voice": speech.resolve_voice("en-us+whisper"), "voiced": wm["vocal"]["voiced_ratio"],
+                 "zcr": wm["vocal"]["zcr_speech"], "dbfs": wm["volume"]["mean_dbfs"], "scores": [(x["mode"], x["score"]) for x in wm["vocal_mode"].get("scores", [])]})
+        same = [b for b in ("en-gb", "en-us", "en") if speech.speak_wav("hello there", b) == speech.speak_wav("hello there", b + "+whisper")]
+        c.check("Speech: asking any English voice to whisper changes its sound (espeak-ng never drops the variant silently)", not same,
+                {"variant dropped for": same, "espeak": speech.version()})
         w = speech.speak_wav("Hello there. This is a short test of the voice.", "en-us")
         c.check("Speech: ordinary speech is recognised as speaking", V.measure(w)["vocal_mode"]["label"] == "speaking")
     with tempfile.TemporaryDirectory() as d:
@@ -2514,7 +2520,8 @@ def _speech_selftest(c):
                     out, ct = wav, "audio/wav"
                 self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(out))); self.end_headers()
                 self.wfile.write(out)
-        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)        # concurrent, like the real services: long recordings send 4 pieces at once
+        srv.daemon_threads = True
         _th.Thread(target=srv.serve_forever, daemon=True).start()
         base = "http://127.0.0.1:%d" % srv.server_address[1]
         saved = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy")}
@@ -2554,7 +2561,8 @@ def _speech_selftest(c):
                     lr.get("pieces", 0) >= 3 and all(b - a <= 50.01 for a, b in pt) and len(lr["words"]) == 2 * len(pt)
                     and [round(w_["start_s"], 2) for w_ in lr["words"][::2]] == [round(a + 0.2, 2) for a, _ in pt], lr.get("method"))
             auto = S.transcribe(long_w, "en")
-            c.check("Speech: recordings over 50 s are transcribed whole automatically (no 55-second cut-off)", auto.get("pieces", 0) >= 3 and auto["duration_s"] > 120)
+            c.check("Speech: recordings over 50 s are transcribed whole automatically (no 55-second cut-off)", auto.get("pieces", 0) >= 3 and auto.get("duration_s", 0) > 120,
+                    {k: auto.get(k) for k in ("error", "pieces", "duration_s", "method")})
             tk = S.start_transcription(long_w, "en", "pieces")["task"]
             for _ in range(400):
                 st_ = S.transcription(tk)
