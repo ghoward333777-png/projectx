@@ -326,13 +326,21 @@ def vocal_mode(r):
         add("whispering", 25, "noise-like sound (zero-crossing rate %.2f)" % v["zcr_speech"])
     if vol["mean_dbfs"] < -28 and v["voiced_ratio"] < 0.5:
         add("whispering", 15, "quiet (%.0f dBFS)" % vol["mean_dbfs"])
+    # breathy whisper: partly voiced, but the "pitch" jumps wildly from cycle to cycle and the sound is mostly noise —
+    # the pitch tracker is latching onto breath noise (espeak-ng 1.52's whisper, and many real whispers). Speech,
+    # even hoarse or crying, stays below ~6 % jitter. In this case pitch-based evidence (high, rough, quavering) is
+    # unreliable and is not counted toward crying.
+    breathy = bool(p) and v["voiced_ratio"] < 0.72 and q["jitter_pct"] > 8.0 and q["hnr_db"] < 8
+    if breathy:
+        add("whispering", 55, "breathy: the 'pitch' jumps %.0f %% between cycles (speech < 6 %%) and the sound is mostly noise (HNR %.0f dB)"
+            % (q["jitter_pct"], q["hnr_db"]))
     if p:
         # crying: high, unstable pitch; rough voice; voicing broken into sobs with breathy gaps
-        if p["mean_hz"] > 300:
+        if p["mean_hz"] > 300 and not breathy:
             add("crying", 15, "raised pitch (%.0f Hz)" % p["mean_hz"])
-        if q["jitter_pct"] > 2.0 and q["hnr_db"] < 10:
+        if q["jitter_pct"] > 2.0 and q["hnr_db"] < 10 and not breathy:
             add("crying", 15, "irregular, rough voicing (jitter %.1f %%, HNR %.0f dB)" % (q["jitter_pct"], q["hnr_db"]))
-        if q["tremor_pitch"].get("detected") or (0.5 <= v["pitch_within_burst_st"] and p["mean_hz"] > 300 and v["burst_mean_s"] >= 0.3):
+        if not breathy and (q["tremor_pitch"].get("detected") or (0.5 <= v["pitch_within_burst_st"] and p["mean_hz"] > 300 and v["burst_mean_s"] >= 0.3)):
             add("crying", 20, "quavering pitch inside long voiced bursts (%.1f st)" % v["pitch_within_burst_st"])
         sob = 0.4 <= v["burst_rate_hz"] <= 2.0 and v["burst_mean_s"] >= 0.3 and v["burst_mean_s"] < 0.9 and (v["burst_regularity_cv"] or 1) < 0.5
         if sob:

@@ -167,7 +167,7 @@ def long_probe() -> None:
     say("|---|---|---|---|---|---|")
     rows = []
     wavs = {s: V.tone_wav(f0=140, seconds=s, gaps=tuple((k * 10 - 0.6, k * 10) for k in range(1, int(s // 10) + 1))) for s in lengths}
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         S = app.App(d).speech
         S.google.s.save({"api_key": "AIzaPROBE-123456"})
         for sname, cls in servers.items():
