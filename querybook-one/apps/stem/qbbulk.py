@@ -2842,6 +2842,10 @@ def status(commons_folder, commons=None):
             row.update(download_status(commons_folder, commons))
         if row["facts"] and not row.get("count_from"):
             _LAST_COUNT[(commons_folder, key)] = row["facts"]
+        # gathered = filed + staged. Staged facts are folded into the keyed tables only at the end of a part (a Wikidata
+        # part is 1 GB, a long while), so a count of filed facts alone stands still for minutes on end and harvesting
+        # looks stopped while millions of facts are being gathered. Every count the screen shows uses gathered.
+        row["gathered"] = (row["facts"] or 0) + (row.get("staged") or 0)
         out.append(row)
     _count_ledger(commons_folder, out, now)
     _save_counts(commons_folder, out)
@@ -2858,6 +2862,7 @@ def status(commons_folder, commons=None):
     except OSError:
         free_c = None
     return {"version": VERSION, "cores": os.cpu_count() or 1, "max_agents": MAX_AGENTS, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
+            "total_gathered": sum(d["gathered"] for d in out), "staged": sum(d.get("staged") or 0 for d in out),
             "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c, "engine_version": VERSION,
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
@@ -4717,6 +4722,15 @@ def _supervisor_tests():
         ok("1.33: the rate counts staged facts the moment they are written",
            sh.db.execute("SELECT facts FROM progress ORDER BY at DESC LIMIT 1").fetchone()[0] == 4)
         sh.db.close()
+        # one window: staged facts are shown as gathered at once, so harvesting never looks stopped during a long part
+        sg = Shard(cf, "calendar-scaffold")
+        pg_ = sg.part("p1", "file://z")[0]
+        sg.write(pg_, [(k(10 + i), "s%d" % i, 1, "o", pg_, i) for i in range(3)], 3)
+        sg.db.close()
+        st_ = status(cf)
+        row_ = next(d for d in st_["datasets"] if d["key"] == "calendar-scaffold")
+        ok("staged facts count as gathered on the screen the moment they are read (filed stays the keyed count)",
+           row_["facts"] == 0 and row_["staged"] == 3 and row_["gathered"] == 3 and st_["total_gathered"] == 3 and st_["total"] == 0, row_)
     finally:
         shutil.rmtree(cf, ignore_errors=True)
     # 1.34 safeguards: the copier never shrinks the home copy; a restore shows the full count; the backup is a copy at Start

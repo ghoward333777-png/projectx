@@ -93,7 +93,7 @@ jobs:
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
           Set-Content -Path "$env:RUNNER_TEMP\user\QueryBook\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n="FreeGB";e={[math]::Round($_.Free/1GB,1)}}
-      - name: Start QueryBook, press Start harvesting, watch for 6 minutes
+      - name: Start QueryBook, press Start harvesting, watch for 10 minutes
         run: |
           $app = "$env:RUNNER_TEMP\user\QueryBook"
           $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\QueryBook-Shell\shell.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\shell.log" -RedirectStandardError "$env:RUNNER_TEMP\shell.err"

@@ -349,7 +349,7 @@ class Panel:
         for d in bst["datasets"]:
             ab = bulk.setdefault(d["area"], {"facts": 0, "last_minute": 0, "last_hour": 0})
             for k in ab:
-                ab[k] += d[k]
+                ab[k] += d.get("gathered", d["facts"]) if k == "facts" else d[k]      # gathered = filed + staged (moves as facts arrive)
         areas = []
         for a, meta in APPS.items():
             r = rows.pop(meta["domain"], None) or {}
@@ -380,7 +380,7 @@ class Panel:
             out.append({"kind": "bulk", "id": d["key"], "title": d["title"], "area": d["area"], "fraction": pg.get("overall"),
                         "part": pg.get("part"), "part_no": pg.get("part_no"), "parts": pg.get("parts"), "part_fraction": pg.get("fraction"),
                         "done": pg.get("done"), "total": pg.get("total"), "unit": pg.get("unit"), "rate": pg.get("rate"), "eta_s": pg.get("eta_s"),
-                        "facts_per_min": d["last_minute"], "facts": d["facts"]})
+                        "facts_per_min": d["last_minute"], "facts": d.get("gathered", d["facts"])})
         recent = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now - 3 * 3600))
         for pl in self.commons.store.query("SELECT id, app, created FROM plans WHERE status = 'running' AND created >= ? ORDER BY id", (recent,)):
             ts = self.commons.store.query("SELECT status, title, started, finished FROM tasks WHERE plan_id = ? ORDER BY step", (pl["id"],))
@@ -574,7 +574,7 @@ class Panel:
             t["result"] = json.loads(t["result"] or "null")
         try:
             bst = qbbulk.status_cached(self.commons.folder)
-            bulk = {"facts": bst["total"], "per_min": bst.get("facts_per_min") or 0, "running": bool((bst.get("runner") or {}).get("alive"))}
+            bulk = {"facts": bst.get("total_gathered", bst["total"]), "per_min": bst.get("facts_per_min") or 0, "running": bool((bst.get("runner") or {}).get("alive"))}
         except Exception:
             bulk = {"facts": 0, "per_min": 0, "running": False}
         return {"facts": s["facts"], "by_domain": by, "shared": s["shared"], "trend": trend, "turns": turns, "bulk": bulk}

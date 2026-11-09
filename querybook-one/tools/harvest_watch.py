@@ -34,6 +34,10 @@ def arg(name: str, default: str) -> str:
 
 
 def main() -> int:
+    try:                                            # the screen's text has ⚡ and accents; a Windows console may not
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     panel = arg("--panel", "http://127.0.0.1:8100").rstrip("/")
     minutes, every = float(arg("--minutes", "6")), float(arg("--every", "20"))
     data = arg("--data", "")
@@ -52,7 +56,7 @@ def main() -> int:
         rs = b.get("runner") or {}
         age = time.time() - float(rs.get("heartbeat") or 0) if rs.get("heartbeat") else None
         running = rs.get("running") or []
-        facts = b.get("total") if isinstance(b.get("total"), (int, float)) else (b.get("total") or {}).get("facts") if isinstance(b.get("total"), dict) else None
+        facts = b.get("total_gathered", b.get("total"))            # gathered = filed + staged (what the screen counts)
         facts0 = facts if facts0 is None else facts0
         alive = age is not None and age < 60
         alive_samples += alive
@@ -91,9 +95,11 @@ def main() -> int:
                         print("   ", line.rstrip()[:300])
             except OSError:
                 pass
-    ok = bool(last.get("alive"))
-    print("VERDICT: harvesting %s after %.0f min — runner beating in %d samples, agents running in %d; facts %s -> %s" % (
-        "is still RUNNING" if ok else "has STOPPED", minutes, alive_samples, agent_samples, facts0, last.get("facts")))
+    grew = (last.get("facts") or 0) > (facts0 or 0)
+    ok = bool(last.get("alive")) and grew
+    print("VERDICT: harvesting %s after %.0f min — runner beating in %d samples, agents running in %d; facts gathered %s -> %s" % (
+        "is still RUNNING and gathering" if ok else "has STOPPED" if not last.get("alive") else "is running but GATHERED NOTHING",
+        minutes, alive_samples, agent_samples, facts0, last.get("facts")))
     return 0 if ok else 1
 
 
