@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Language Builder</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+.step{display:inline-flex;width:28px;height:28px;border-radius:50%;background:var(--accent,#1f6feb);color:#fff;align-items:center;justify-content:center;font-size:16px;margin-right:6px}
+.fp-wrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.fp-now{flex:0 0 180px;text-align:center}
+.fp-now img,.fp-now .fp-ico{width:180px;height:180px;object-fit:cover;border-radius:14px;border:3px solid var(--accent,#1f6feb);display:flex;align-items:center;justify-content:center;font-size:80px;background:rgba(127,127,127,.12)}
+.fp-now b{display:block;margin-top:6px;font-size:16px}
+.fp-strip{display:flex;gap:8px;flex-wrap:wrap;padding:4px 2px 8px}
+.face-card .fp-strip{flex-wrap:nowrap;overflow-x:auto}
+.fp-tile{flex:0 0 auto;width:84px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:2px solid transparent;border-radius:10px;background:none;cursor:pointer;font-size:12px;color:inherit}
+.fp-tile img,.fp-tile .fp-ico{width:72px;height:72px;object-fit:cover;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:34px;background:rgba(127,127,127,.12)}
+.fp-tile span:last-child{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-tile.on{border-color:var(--accent,#1f6feb);background:rgba(31,111,235,.12);font-weight:700}
+.fp-tile:hover{border-color:rgba(31,111,235,.45)}
+.fp-head{margin:2px 0 0 2px}
+.fp-bodies .fp-tile{width:118px}.fp-bodies .fp-tile img{width:106px;height:118px;object-position:50% 20%}.fp-bodies .fp-tile span:last-child{max-width:114px}
+.fp-now img.fp-bodyimg{height:240px;object-position:50% 15%}
+.vd-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-top: 10px; }
+@media (max-width: 800px) { .vd-grid { grid-template-columns: 1fr; } }
+.vd-wrap { position: relative; background: #0f172a; border-radius: 10px; min-height: 200px; overflow: hidden; align-self: start; }
+.vd-wrap video { display: block; width: 100%; height: auto; }
+.vd-wrap canvas { position: absolute; left: 0; top: 0; width: 100%; height: auto; pointer-events: none; }
+#vd-empty[hidden] { display: none; }
+#vd-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #cbd5e1; padding: 16px; text-align: center; }
+.vd-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vd-chip { padding: 4px 9px; border-radius: 999px; font-size: 13px; background: #e2e8f0; color: #0f172a; }
+.vd-chip.ok, .vd-word.ok { background: #dcfce7; color: #14532d; } .vd-chip.warn, .vd-word.warn { background: #fef3c7; color: #78350f; } .vd-chip.bad, .vd-word.bad { background: #fee2e2; color: #7f1d1d; }
+.vd-word { display: inline-block; padding: 3px 8px; border-radius: 6px; margin: 2px; }
+.vd-strip { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: 6px 0; }
+.vd-strip i { display: block; min-width: 1px; }
+.vd-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+tr.ok td:first-child { color: #15803d; } tr.warn td:first-child { color: #b45309; } tr.bad td:first-child { color: #b91c1c; }
+.vd-guide { margin: 10px 0 4px; }
+.good-t { color: #15803d; } .bad-t { color: #b91c1c; }
+.tr-live { font-size: 22px; line-height: 1.5; min-height: 2.6em; padding: 10px 14px; margin-top: 10px; border-radius: 10px; background: #0f172a; color: #e2e8f0; }
+.tr-live .tr-now { color: #fde047; }
+.tr-live .tr-draft { color: #94a3b8; font-style: italic; }
+.tr-live .tr-mic { color: #ef4444; animation: qb-pulse 1s infinite; }
+@keyframes qb-pulse { 50% { opacity: .3; } }
+.tr-text { max-height: 420px; overflow-y: auto; margin-top: 6px; }
+.tr-text p { margin: 4px 0; }
+.tr-t { font-family: monospace; font-size: 12px; color: #7c3aed; cursor: pointer; margin-right: 6px; }
+.si-pick { font-size: 18px; margin: 4px; }
+.si-alt { margin: 2px; }
+.pr-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.pr-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px; width: 170px; cursor: pointer; background: var(--card, #fff); }
+.pr-card.sel { outline: 3px solid #7c3aed; }
+.pr-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
+.pr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.pr-bars { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin: 8px 0; }
+.pr-bars div { flex: 1; background: #7c3aed; border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
+.pr-bars span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 10px; color: #475569; }
+.lc-sentence { font-size: 22px; font-weight: 600; padding: 14px 16px; margin: 8px 0; border-radius: 10px; background: #f5f3ff; color: #3b0764; }
+tr.lc-active td { background: #f0fdf4; }
+.face-evidence { border-left: 4px solid #7c3aed; }
+
+  :root { --accent: #5b3c9e; }
+  @media (prefers-color-scheme: dark) { :root { --accent: #7d5cc4; } }
+  .banner { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; border-radius: var(--radius); padding: 22px 24px; margin: 0 0 16px;
+    border: 2px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+  .banner .bicon { font-size: 44px; line-height: 1; width: 56px; text-align: center; }
+  .banner .btext { flex: 1 1 360px; }
+  .banner .btitle { font-size: 30px; font-weight: 800; line-height: 1.15; }
+  .banner .bwhat { font-size: 17px; margin-top: 6px; }
+  .banner .bbtns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .banner.run { border-color: var(--accent); }
+  .banner.run .btitle { color: var(--accent); }
+  .banner.ok { border-color: var(--good); background: var(--good-bg); }
+  .banner.ok .btitle { color: var(--good); }
+  .banner.bad { border-color: var(--bad); background: var(--bad-bg); }
+  .banner.bad .btitle { color: var(--bad); }
+  .banner.warn { border-color: var(--warn); background: var(--warn-bg); }
+  .banner.warn .btitle { color: var(--warn); }
+  .lbl { display: flex; justify-content: space-between; font-weight: 700; font-size: 17px; }
+  .nowcard { border: 2px solid var(--accent); }
+  .nowstep { font-size: 20px; }
+  table.steps td, table.steps th { padding: 7px 8px; font-size: 14px; }
+  table.steps tr.now td { background: var(--chip); font-weight: 650; }
+  .fp { font-size: 15px; word-break: break-all; background: var(--chip); padding: 10px 12px; border-radius: 8px; }
+  .chk { list-style: none; padding: 0; margin: 0; }
+  .chk li { padding: 8px 0 8px 34px; position: relative; border-bottom: 1px solid var(--line); }
+  .chk li::before { position: absolute; left: 4px; top: 6px; font-size: 18px; }
+  .chk li.y::before { content: "✅"; } .chk li.n::before { content: "❌"; }
+  svg.curve { width: 100%; height: 220px; }
+  .voicepick { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+  .voicepick button { font: inherit; text-align: left; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .voicepick button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(125,92,196,.18); }
+  .voicepick .vn { font-weight: 700; display: block; }
+  .voicepick .vs { font-size: 12px; color: var(--muted); }
+  .subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .subtabs button { font: inherit; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .subtabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+  .ctlgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .ctlgrid fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 12px; margin: 0; }
+  .ctlgrid legend { font-weight: 700; padding: 0 6px; }
+  .ctlgrid input[type=range] { width: 100%; accent-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chips button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .presets button { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px dashed var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; margin-top: 8px; }
+  details.adv { margin-top: 12px; } details.adv > summary { cursor: pointer; font-weight: 650; }
+  .advgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .advgrid textarea { min-height: 70px; }
+  pre.req { background: var(--chip); padding: 10px; border-radius: 8px; overflow: auto; max-height: 280px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 14px; }
+  .tgrid label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .tgrid input[type=number] { width: 100px; }
+  .scorebar { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font-size: 14px; margin: 4px 0; }
+  .ind { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .ind .stat .v { font-size: 19px; }
+  .modebig { font-size: 30px; font-weight: 800; }
+  svg.chart { width: 100%; height: 190px; background: var(--chip); border-radius: 8px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  ul.log { list-style: none; margin: 0; padding: 10px 12px; max-height: 300px; overflow: auto; background: var(--chip); border-radius: 8px; font-size: 13px; }
+  ul.log li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  ul.log li:last-child { border-bottom: 0; }
+  .bigbtn { font-size: 18px !important; padding: 14px 26px !important; }
+  .meter.tall { height: 26px; border-radius: 13px; margin: 10px 0 8px; }
+  .meter.tall > i { transition: width .6s ease; }
+  .facts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; color: var(--muted); }
+  .facts b { color: var(--ink); }
+  table.langs td, table.langs th { padding: 7px 8px; }
+  table.langs td.bar { width: 34%; }
+  .st { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .st.ok { color: var(--good); } .st.run { color: var(--accent); } .st.wait { color: var(--muted); } .st.warn { color: var(--warn); }
+  .gate { display: grid; grid-template-columns: 220px 1fr 150px; gap: 8px 12px; align-items: center; font-size: 14px; }
+  .spark { display: flex; align-items: flex-end; gap: 1px; height: 46px; border-bottom: 1px solid var(--line); margin-top: 6px; }
+  .spark div { flex: 1; background: var(--accent); min-height: 1px; }
+  .spark div.open { background: var(--good); }
+  details.card > summary { cursor: pointer; font-weight: 650; font-size: 17px; }
+  details.card[open] > summary { margin-bottom: 12px; }
+  .speakbtn { padding: 2px 8px !important; }
+  @media (max-width: 640px) { .banner .btitle { font-size: 24px; } table.steps .hide-s { display: none; } .gate { grid-template-columns: 1fr; } table.langs .hide-s { display: none; } .hero .big { font-size: 22px; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Language Builder</h1>
+  <span class="tag">Builds 17 languages by itself — and speaks, listens and measures speech</span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="build">Build</button>
+  <button data-tab="speech">Speech</button>
+  <button data-tab="photoreal">Photo Real Lab</button>
+  <button data-tab="verify">Verify (proof)</button>
+  <button data-tab="science">Speech science</button>
+  <button data-tab="translate">Translate</button>
+  <button data-tab="lookup">Look up</button>
+  <button data-tab="data">Data &amp; backups</button>
+  <button data-tab="commons">Harvesting &amp; shared facts</button>
+  <button data-tab="agents">Agents</button>
+  <button data-tab="devices">Devices</button>
+  <button data-tab="diag">Diagnostics</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+  <section class="panel" id="build">
+    <div class="banner" id="banner" aria-live="polite">
+      <div class="bicon" id="bicon">…</div>
+      <div class="btext">
+        <div class="btitle" id="bhead">Checking the build…</div>
+        <div class="bwhat" id="bsub"></div>
+      </div>
+      <div class="bbtns">
+        <button class="btn bigbtn" id="bgo">Build all languages</button>
+        <button class="btn quiet bigbtn" id="bstop" style="display:none">Stop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl"><span>Whole build</span><span id="ballpct"></span></div>
+      <div class="meter tall"><i id="bbar" style="width:0"></i></div>
+      <div class="facts" id="bfacts"></div>
+    </div>
+
+    <div class="card nowcard" id="nowcard" style="display:none">
+      <h2>Doing now</h2>
+      <div class="nowstep" id="nowstep"></div>
+      <div class="meter tall"><i id="nowbar" style="width:0"></i></div>
+      <div class="facts" id="nowfacts"></div>
+    </div>
+
+    <div class="card">
+      <h2>Build steps <span class="small muted" id="stepcount"></span></h2>
+      <p class="small muted">The build always runs these 20 steps in this order. English comes first — its sub-language (sounds, syllables, word patterns) before any meaning — and every other language is built on English.</p>
+      <table class="t steps">
+        <thead><tr><th>#</th><th>Step</th><th>Status</th><th class="hide-s">Started</th><th>Time taken</th><th class="hide-s">Last result</th></tr></thead>
+        <tbody id="bsteps"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Languages <span class="small muted" id="langcount"></span></h2>
+      <p class="small muted"><b>Words learned</b>: words of that language the builder now knows. <b>Pronunciations</b>: words with a worked-out sound (phonics rules / espeak-ng). <b>Links to English</b>: learned English words connected to that language.</p>
+      <table class="t langs">
+        <thead><tr><th>Language</th><th>Status</th><th>Progress</th><th>Words learned</th><th class="hide-s">Pronunciations</th><th class="hide-s">Links to English</th></tr></thead>
+        <tbody id="blangs"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Build log</h2>
+      <p class="small muted">Newest first. Every build is also recorded in Diagnostics → Activity log.</p>
+      <ul class="log mono" id="blog"></ul>
+    </div>
+
+    <details class="card">
+      <summary>How English was learned — the Transition Gate</summary>
+      <div id="bgate"></div>
+    </details>
+
+    <details class="card">
+      <summary>Give it more English to read (optional)</summary>
+      <p class="small muted">Not needed — the build includes its own starter text. Extra text or a web page is read for structure only (Phase 1).</p>
+      <textarea id="labtext" rows="4" placeholder="English text" aria-label="English text"></textarea>
+      <div class="row" style="margin-top:6px"><input id="laburl" class="grow" type="text" placeholder="or https://… (a web page)" aria-label="Web address">
+        <button class="btn quiet" id="labfeed">Read it</button></div>
+      <ul class="small" id="labsrc" style="margin-top:8px"></ul>
+    </details>
+  </section>
+
+  <section class="panel" id="speech">
+    <nav class="subtabs" id="sptabs" aria-label="Speech sections">
+      <button data-sp="speak" aria-pressed="true">🔊 Speak</button>
+      <button data-sp="match">🎯 Match a target</button>
+      <button data-sp="listen">🎙 Listen &amp; analyse</button>
+      <button data-sp="ask">💬 Ask by voice</button>
+      <button data-sp="video">🎥 Face &amp; video</button>
+      <button data-sp="talk">🎬 Talking clips</button>
+      <button data-sp="providers">🔑 Voice providers</button>
+      <button data-sp="log">⏱ Speech log</button>
+    </nav>
+
+    <!-- shared: text, engine and the voice profile -->
+    <div id="sp-shared">
+      <div class="card">
+        <h2><span class="step">1</span> Choose the voice</h2>
+        <div class="voicepick" id="sp-quick"></div>
+      </div>
+      <div class="card">
+        <div class="grid2">
+          <div>
+            <h2><span class="step">2</span> Type what to say</h2>
+            <textarea id="sp-text" rows="3">Good morning. I have something important to tell you, so please listen carefully.</textarea>
+          </div>
+          <div>
+            <label class="f" for="sp-engine">Voice engine</label>
+            <select id="sp-engine"></select>
+            <div class="small muted" id="sp-engine-note" style="margin-top:4px"></div>
+            <div class="row" style="margin-top:6px">
+              <div class="grow"><label class="f" for="sp-voice">Voice</label><select id="sp-voice"></select></div>
+              <div class="grow"><label class="f" for="sp-model">Model / engine type</label><select id="sp-model"></select></div>
+            </div>
+          </div>
+        </div>
+        <div class="presets" id="sp-presets"></div>
+      </div>
+
+      <div class="card">
+        <h2>Voice profile <span class="small muted">— every engine receives these; see “How each control is handled” below</span></h2>
+        <div class="ctlgrid">
+          <fieldset><legend>Feeling</legend>
+            <label class="f">Emotion</label><div class="chips" id="pf-emotion"></div>
+            <label class="f" for="pf-intensity">Emotion strength <b id="pf-intensity-v"></b></label><input type="range" id="pf-intensity" min="0" max="1" step="0.05">
+            <label class="f" for="pf-tone">Tone</label><select id="pf-tone"></select>
+          </fieldset>
+          <fieldset><legend>Delivery</legend>
+            <label class="f" for="pf-rate">Speed <b id="pf-rate-v"></b></label><input type="range" id="pf-rate" min="0.5" max="2" step="0.05">
+            <label class="f" for="pf-pitch_st">Pitch <b id="pf-pitch_st-v"></b></label><input type="range" id="pf-pitch_st" min="-12" max="12" step="0.5">
+            <label class="f" for="pf-volume_db">Volume <b id="pf-volume_db-v"></b></label><input type="range" id="pf-volume_db" min="-30" max="12" step="0.5">
+            <label class="f" for="pf-pause_scale">Pauses <b id="pf-pause_scale-v"></b></label><input type="range" id="pf-pause_scale" min="0.25" max="4" step="0.05">
+            <label class="f">Articulation</label><div class="chips" id="pf-articulation"></div>
+          </fieldset>
+          <fieldset><legend>Voice condition</legend>
+            <label class="f" for="pf-tremble">Tremble <b id="pf-tremble-v"></b></label><input type="range" id="pf-tremble" min="0" max="1" step="0.05">
+            <label class="f" for="pf-hoarse">Hoarseness <b id="pf-hoarse-v"></b></label><input type="range" id="pf-hoarse" min="0" max="1" step="0.05">
+            <label class="f" for="pf-breath">Breathiness <b id="pf-breath-v"></b></label><input type="range" id="pf-breath" min="0" max="1" step="0.05">
+            <label class="f" for="pf-age">Voice age <b id="pf-age-v"></b></label><input type="range" id="pf-age" min="0" max="1" step="0.05">
+            <label class="chk"><input type="checkbox" id="pf-whisper"> Whisper</label>
+          </fieldset>
+          <fieldset><legend>Language &amp; accent</legend>
+            <label class="f" for="pf-lang">Language</label><select id="pf-lang"></select>
+            <label class="f" for="pf-accent">Accent (dialect)</label><select id="pf-accent"></select>
+            <div class="small muted" id="pf-accent-note"></div>
+            <label class="f" for="pf-gender">Voice</label><select id="pf-gender"><option value="any">any</option><option value="female">female</option><option value="male">male</option></select>
+          </fieldset>
+        </div>
+        <details class="adv" id="sp-adv-box"><summary id="sp-adv-title">Advanced engine parameters</summary>
+          <p class="small muted">Leave a field blank to use the value the voice profile gives. A value here is sent exactly as typed.</p>
+          <div class="advgrid" id="sp-adv"></div></details>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-speak">
+      <div class="card">
+        <h2><span class="step">3</span> Speak</h2>
+        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Speak</button>
+          <button class="btn" id="sp-to-talk" title="A face says these words: made by Gemini (HeyGen when Gemini cannot)">🎬 Make a talking clip of this</button>
+          <label class="chk"><input type="checkbox" id="sp-fallback" checked> If the engine fails, use the offline voice</label></div>
+        <div id="sp-out" style="margin-top:12px"></div>
+      </div>
+      <div class="card"><h2>How each control is handled by <span id="sp-cov-engine"></span></h2>
+        <table class="t small"><thead><tr><th>Control</th><th>Value</th><th>How</th></tr></thead><tbody id="sp-cov"></tbody></table>
+        <h3>Exact request <span class="small muted">(keys removed)</span></h3><pre class="req" id="sp-req"></pre>
+        <div id="sp-direction" class="small"></div>
+      </div>
+      <div class="card"><h2>How each word will be said <span class="small muted">— heteronyms and your lexicon, decided before the engine speaks</span></h2>
+        <p class="small">Words spelled alike but said differently (<i>I live</i> / <i>live music</i>, <i>read</i> / <i>read</i>, <i>lead</i> / <i>lead</i>) are decided here by fixed rules from the words around them, then given to the engine in the form it obeys. Uncertain ones are left to the engine — pick the right reading and it is marked in the text, e.g. <code>{read|past}</code>. You can also write <code>{word|/ipa/}</code> or <code>{SQL|sequel}</code> yourself.</p>
+        <div id="sp-pron" class="small muted">Type some text above.</div>
+      </div>
+      <div class="card"><h2>Pronunciation lexicon <span class="small muted">— your own names and terms, used every time</span></h2>
+        <p class="small">Company names, people, acronyms: say how each is pronounced once. Give IPA (<code>klɪk</code>), ARPABET (<code>K L IH1 K</code>) or other words to say instead (<i>SQL</i> → <i>sequel</i>). Kept in this app's data folder.</p>
+        <div class="row"><input id="lex-term" placeholder="Word or term (e.g. Qlik)" style="width:12em">
+          <select id="lex-kind" style="width:auto"><option value="ipa">IPA</option><option value="arpa">ARPABET</option><option value="alias">Say instead</option><option value="respell">Respelling</option></select>
+          <input id="lex-val" class="grow" placeholder="klɪk"><input id="lex-note" placeholder="Note (optional)" style="width:12em">
+          <label class="chk"><input type="checkbox" id="lex-case"> match case</label><button class="btn" id="lex-add">Save</button></div>
+        <div id="lex-err" class="small bad"></div>
+        <table class="t small" style="margin-top:8px"><thead><tr><th>Term</th><th>Said as</th><th>Note</th><th></th></tr></thead><tbody id="lex-list"></tbody></table>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-match" hidden>
+      <div class="card">
+        <h2>Match a required output</h2>
+        <p class="small">Set the output you need. The app generates the speech, <b>measures</b> what actually came out, adjusts the engine’s parameters and tries again — until the measurements are within tolerance or the rounds run out. Each round with a cloud engine is one paid request.</p>
+        <div class="tgrid" id="mt-targets"></div>
+        <div class="row" style="margin-top:10px"><label>Rounds at most <input type="number" id="mt-rounds" value="5" min="1" max="10" style="width:70px"></label>
+          <button class="btn bigbtn" id="mt-go">🎯 Match</button></div>
+        <div id="mt-job" style="margin-top:10px"></div>
+        <div id="mt-out"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-listen" hidden>
+      <div class="card">
+        <h2>Listen &amp; analyse</h2>
+        <p class="small">Record or upload speech. The app measures how it was said — volume, pauses, speed, pitch and tone, tremble, hoarseness, breath — recognises the <b>vocal mode</b> (whispering, crying, laughing, shouting, singing or speaking) and links the words to what the builder has learned.</p>
+        <div class="row">
+          <select id="ls-kind" style="width:auto"><option value="speech">Connected speech (a sentence or more)</option><option value="vowel">Voice-condition test: say “aaah” for 3 seconds</option></select>
+          <button class="btn" id="ls-rec">🎙 Record</button><span id="ls-recstate" class="small"></span>
+          <label class="btn quiet" style="cursor:pointer">📁 Upload audio (MP3, WAV…)<input type="file" id="ls-file" accept="audio/*,.mp3,.m4a,.ogg,.wav,.flac" hidden></label>
+          <label class="chk"><input type="checkbox" id="ls-cam"> 📷 Camera too (face + lips)</label>
+        </div>
+        <div id="ls-cam-view" hidden style="margin-top:8px"></div>
+        <div class="meter" style="margin-top:8px"><i id="ls-level" style="width:0"></i></div>
+        <div class="row" style="margin-top:8px">
+          <input id="ls-transcript" class="grow" type="text" placeholder="What was said (filled in by the browser's speech recognition when it can; or type it)">
+          <input id="ls-expected" class="grow" type="text" placeholder="Expected text (optional — for pronunciation practice)">
+        </div>
+        <div class="row" style="margin-top:8px"><label class="small">Words recognised by
+          <select id="ls-recog" style="width:auto"><option value="auto">automatic — the browser, else Google Speech-to-Text</option><option value="google">Google Speech-to-Text (word timings and confidence)</option><option value="browser">the browser only</option></select></label>
+          <span class="small muted" id="ls-recog-note"></span></div>
+        <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="ls-go" disabled>🔬 Analyse</button><audio id="ls-audio" controls hidden></audio></div>
+      </div>
+      <div id="ls-out"></div>
+      <div class="card">
+        <h2>🎧 Live captions and audio files</h2>
+        <p class="small"><b>Microphone</b>: speak and the words appear as you talk — a quick grey draft from the browser where it can, replaced by Google Speech-to-Text a moment later (the speech is cut at your pauses, at most every 6 seconds). When you stop, the recording and its transcript can be downloaded or ingested. <b>Audio files</b>: MP3, M4A, OGG, WAV — any length. <b>Live captions</b> play the file while Google Speech-to-Text hears it in short pieces cut at pauses, sent ahead of the voice so each word lights up as it is spoken. <b>Whole file</b> transcribes everything in the background: in pieces with your Google key, or — for long recordings with the service account and bucket set up — with Google's long-audio recognition through Cloud Storage.</p>
+        <div class="row">
+          <button class="btn" id="tr-mic-go">🎙 Live captions from the microphone</button>
+          <label class="btn" style="cursor:pointer">📁 Choose an audio file<input type="file" id="tr-file" accept="audio/*,.mp3,.m4a,.ogg,.oga,.wav,.flac,.aac,.webm" hidden></label>
+          <span class="small" id="tr-state"></span>
+        </div>
+        <audio id="tr-audio" controls hidden style="width:100%;margin-top:8px"></audio>
+        <div class="row" style="margin-top:8px">
+          <button class="btn bigbtn" id="tr-live-go" disabled>▶ Play with live captions</button>
+          <button class="btn" id="tr-file-go" disabled>📝 Transcribe the whole file</button>
+          <label class="small">using <select id="tr-mode" style="width:auto"><option value="auto">automatic</option><option value="pieces">pieces (Google key)</option><option value="storage">long-audio (Cloud Storage)</option></select></label>
+          <button class="btn quiet" id="tr-ingest" disabled>📥 Ingest (words + how it was said)</button>
+        </div>
+        <div class="meter" style="margin-top:8px"><i id="tr-prog" style="width:0"></i></div>
+        <div class="tr-live" id="tr-live"></div>
+        <div class="small muted" id="tr-lag"></div>
+        <div id="tr-out"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-ask" hidden>
+      <div class="card">
+        <h2>Ask by voice</h2>
+        <p class="small">Ask a question out loud (or type it) — for example “how do you say house in Spanish”, “what does tree mean”, “translate good morning to French”. The app understands the words <b>and how you said them</b>, answers from what the builder learned, and speaks the answer with the voice profile above. With “respond to the mood” on, a whispered question is answered in a whisper and a tearful one gently.</p>
+        <div class="row"><button class="btn bigbtn" id="ak-rec">🎙 Ask</button><span id="ak-state" class="small"></span></div>
+        <div class="row" style="margin-top:8px"><input id="ak-text" class="grow" type="text" placeholder="…or type the question"><button class="btn" id="ak-go">Answer</button>
+          <label class="chk"><input type="checkbox" id="ak-mood" checked> Respond to the mood</label>
+          <label class="chk"><input type="checkbox" id="ak-cam"> 📷 Use the camera too (lips choose the right words; the face shows the mood)</label>
+          <label class="small">Answer as <select id="ak-as" style="width:auto"><option value="">the talking face</option></select></label></div>
+        <div id="ak-cam-view" hidden style="margin-top:8px"></div>
+        <details id="si-box" style="margin-top:10px"><summary><b>🤫 Silent question — lips only</b> <span class="small muted">for people who cannot speak aloud</span></summary>
+          <p class="small">Face the camera and mouth the question without sound. Lips show only part of speech, so the app matches them to the questions it answers and shows the best readings — tap the right one. <b>Guided</b> is the most reliable: tap the kind of question and the language, then mouth just the word.</p>
+          <div class="row">
+            <label class="chk"><input type="radio" name="si-mode" value="question" checked> Whole question</label>
+            <label class="chk"><input type="radio" name="si-mode" value="word"> Guided</label>
+            <span id="si-guided" hidden><select id="si-pattern" style="width:auto"></select> <select id="si-lang" style="width:auto"></select></span>
+          </div>
+          <div class="row" style="margin-top:6px"><button class="btn bigbtn" id="si-go">📷 Start — mouth the question</button><span class="small" id="si-state"></span></div>
+          <div id="si-cam" hidden style="margin-top:6px"></div>
+          <div id="si-out" style="margin-top:8px"></div>
+        </details>
+        <div id="ak-out" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-video" hidden>
+      <div class="card">
+        <h2>1 · Capture a speaking face</h2>
+        <p class="small">Use the camera, share a screen or browser tab that is playing a video, or open a video file. The face is tracked on this computer (MediaPipe Face Landmarker, bundled — nothing is uploaded).</p>
+        <div class="row">
+          <button class="btn" id="vd-cam">📷 Camera</button>
+          <button class="btn" id="vd-screen">🖥 Screen or tab</button>
+          <label class="btn quiet" style="cursor:pointer">📁 Video file<input type="file" id="vd-file" accept="video/*" hidden></label>
+          <label class="small">Camera size <select id="vd-res" style="width:auto"><option value="1080" selected>1080p (best)</option><option value="720">720p</option><option value="2160">4K (not needed)</option></select></label>
+          <label class="small">Frames <select id="vd-fps" style="width:auto"><option value="60" selected>60 per second (best)</option><option value="30">30 per second (minimum)</option></select></label>
+        </div>
+        <details class="vd-guide" open><summary><b>Best way to film for lip-sync and lip-reading</b></summary><ul id="vd-guide" class="small"></ul></details>
+        <div class="vd-grid">
+          <div class="vd-wrap"><video id="vd-video" playsinline muted></video><canvas id="vd-overlay"></canvas><canvas id="sc-overlay"></canvas><div id="vd-empty" class="muted small">No picture yet — choose Camera, Screen or a Video file.</div></div>
+          <div>
+            <div id="vd-live" class="vd-chips"></div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn" id="vd-rec" disabled>⏺ Record</button>
+              <button class="btn quiet" id="vd-stop" disabled>⏹ Stop camera / sharing</button>
+              <span id="vd-state" class="small"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="vse-card">
+        <h2>Lip reading — how accurate is it? <span class="small muted">— speech science, no AI model, same answer every time</span></h2>
+        <p class="small">Measures lip-reading by this engine against lip-reading v1 — on synthetic speakers (each with their own mouth shapes, speed and tracking noise) and on your own held-out recordings from the reservoir.</p>
+        <div class="row"><button class="btn quiet" id="vse-bench">📏 Run the benchmark</button></div>
+        <div id="vse-bench-out"></div>
+        <h3>Lip-reading curriculum</h3>
+        <p class="small">The lip reader examined like a speechreading course examines a learner, on real clips of a person saying the speech test script: single mouth shapes, look-alike consonants, words in context, sentences at natural pace, harder conditions. Scored stage by stage — the exact word, and the right look-alike set (pat / bat / mat look the same on the lips).</p>
+        <div class="row"><button class="btn quiet" id="vse-curr">🎓 Run the curriculum test</button></div>
+        <div id="vse-curr-out"></div>
+      </div>
+      <div class="card" id="sc-card">
+        <h2>Object scan — recognize, follow and zoom <span class="small muted">— for ingestion and questions</span></h2>
+        <p class="small">Recognizes 80 kinds of everyday object in the picture above — people, cars, cups, phones, books, dogs… — on this computer (MediaPipe Object Detector, EfficientDet-Lite0, bundled; nothing is uploaded). Each object is followed from frame to frame. <b>Click a box</b> (or name a kind) to follow it and see it enlarged. What was seen is saved as numbers — what, when, how sure, where in the picture — never the picture itself, and you can ask about it later. Recognized objects are observations, not facts.</p>
+        <div class="row">
+          <label class="small"><input type="checkbox" id="sc-on"> Scan</label>
+          <label class="small">Checks per second <select id="sc-fps" style="width:auto"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="30">30</option></select></label>
+          <label class="small">Sure at least <select id="sc-min" style="width:auto"><option value="0.3">30%</option><option value="0.4" selected>40%</option><option value="0.5">50%</option><option value="0.6">60%</option></select></label>
+          <input id="sc-kind" type="text" placeholder="follow a kind: person, dog, car…" style="max-width:220px" aria-label="Kind of object to follow">
+          <span id="sc-state" class="small"></span>
+        </div>
+        <div class="vd-grid">
+          <div>
+            <canvas id="sc-zoom" width="640" height="480" style="width:100%;background:#0f172a;border-radius:10px;display:block" aria-label="Enlarged view of the followed object"></canvas>
+            <div class="small" id="sc-zinfo" style="margin-top:4px"></div>
+            <div class="row" style="margin-top:6px">
+              <button class="btn quiet" id="sc-unfollow">Stop following</button>
+              <button class="btn" id="sc-zrec" disabled>⏺ Record the enlarged view</button>
+            </div>
+            <label class="small" id="sc-consent-row" style="display:block;margin-top:6px"><input type="checkbox" id="sc-consent"> When following a person: they know they are being recorded and agree, or this is a public talk or broadcast. (Needed to record an enlarged face, e.g. through a telephoto lens, for lip-reading.)</label>
+            <p class="small muted">The recording opens in steps 2–4 below, so its face can be lip-read and ingested. Lip-reading from far away is rough: expect a few words from a short list of expected words, not whole conversations. A steady phone (tripod or rest) helps most.</p>
+          </div>
+          <div>
+            <div id="sc-live"></div>
+            <div class="row" style="margin-top:8px">
+              <input id="sc-label" class="grow" type="text" placeholder="Name this scan (optional)">
+              <button class="btn" id="sc-save">💾 Save what was seen</button>
+            </div>
+            <div id="sc-saved" class="small"></div>
+          </div>
+        </div>
+        <h3>Ask about what the camera saw</h3>
+        <div class="row">
+          <input id="sc-q" class="grow" type="text" placeholder="What is this in Spanish? · When did I last see a cup? · What did I see today? · How many people did I see?" aria-label="Question about what was seen">
+          <button class="btn quiet" id="sc-mic" title="Ask by voice">🎤</button>
+          <button class="btn" id="sc-ask">Ask</button>
+          <label class="small"><input type="checkbox" id="sc-speak" checked> speak the answer</label>
+        </div>
+        <div id="sc-answer"></div>
+        <details style="margin-top:8px"><summary class="small"><b>Saved scans</b></summary><div id="sc-sessions"></div></details>
+      </div>
+      <div class="card">
+        <h2>2 · Analyse: sync check and lip-reading</h2>
+        <p class="small">Plays the recording or file once through the face tracker, then checks the picture against the recommended set-up, measures whether sound and lips are in sync, and reads the lips. A script makes the check far more reliable: lips show only about a third of speech.</p>
+        <textarea id="vd-script" rows="2" placeholder="What is said (optional — the app checks the lips against it; a mismatch suggests dubbing or a different speaker)"></textarea>
+        <div class="row" style="margin-top:6px">
+          <input id="vd-words" class="grow" type="text" placeholder="Expected words for lip-reading (optional, e.g. yes, no, stop, start)">
+          <label class="small"><input type="checkbox" id="vd-read" checked> read the lips</label>
+          <button class="btn bigbtn" id="vd-go" disabled>🔬 Analyse video</button>
+        </div>
+        <div class="meter" style="margin-top:8px"><i id="vd-prog" style="width:0"></i></div>
+        <div id="vd-out"></div>
+      </div>
+      <div class="card">
+        <h2>3 · Overdub: new words in the speaker's timing</h2>
+        <p class="small">Speaks new words with the voice chosen on the <b>Speak</b> tab and fits them into the speaking time of the video, phrase by phrase, without changing the pitch. Every result is labelled <b>SYNTHETIC VOICE</b>.</p>
+        <textarea id="vd-dub-text" rows="2" placeholder="The new words"></textarea>
+        <label class="small" style="display:block;margin:6px 0"><input type="checkbox" id="vd-consent"> I am the person in this video, or I have their permission, and the result will be shown as altered.</label>
+        <div class="row"><button class="btn bigbtn" id="vd-dub" disabled>🎬 Overdub</button></div>
+        <div id="vd-dub-out"></div>
+      </div>
+      <div class="card">
+        <h2>4 · Ingest into QueryBook (sound + face)</h2>
+        <p class="small">Takes in the analysed video the way QueryBook takes in speech — words, meaning, how it was said — and adds what the camera sees: the lips choose between possible readings of the words, the face settles whether it is crying or laughing, and a speaker check says whether the voice belongs to this face. The script above, if given, is one of the readings.</p>
+        <div class="row"><button class="btn bigbtn" id="vd-ingest" disabled>📥 Ingest this video</button></div>
+        <div id="vd-ingest-out"></div>
+      </div>
+      <div class="card" id="lc-card">
+        <h2>5 · Teach and improve <span class="small muted">— the ingestion reservoir (speech-visual domain)</span></h2>
+        <p class="small">Every recording with a face and known words goes into the reservoir of the ingestion domain (numbers only — never the picture). The app learns from it: how <b>this</b> camera sees <b>these</b> mouths, which shapes they confuse, this computer's camera/microphone delay and the lip-sync timing (all for reading lips; no face is animated here). About one recording in four is held back for testing; a learned version is switched on <b>only when it beats the current one on those held-back recordings</b>. Every version is kept and can be rolled back.</p>
+        <div id="lc-stats" class="stats"></div>
+        <h3>Teach it (about 2 minutes)</h3>
+        <p class="small">Face the camera as in the guide above, press the button, read the sentence aloud, press again. Twelve sentences cover every mouth shape. With Google Speech-to-Text connected, each sentence also gets exact word times, which tune the lip-sync timing.</p>
+        <div class="lc-sentence" id="lc-sentence"></div>
+        <div class="row">
+          <button class="btn bigbtn" id="lc-rec">🎙📷 Record this sentence</button>
+          <button class="btn quiet" id="lc-skip">Next sentence ›</button>
+          <input id="lc-own" class="grow" type="text" placeholder="…or type your own sentence (any language) and record it">
+        </div>
+        <div id="lc-cam-view" hidden style="margin-top:8px"></div>
+        <div id="lc-last" class="small" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:10px">
+          <label class="chk"><input type="checkbox" id="lc-auto"> Learn from camera recordings automatically (when the words are certain: a script you gave, or Google Speech-to-Text ≥ 85%)</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="lc-train">🧠 Learn now</button>
+          <button class="btn quiet" id="lc-rules">Use the built-in rules only</button>
+          <a class="btn quiet" id="lc-export" href="/api/lipcoach/export" download="querybook-ingest-reservoir.json">⬇ Export the reservoir</a>
+          <label class="btn quiet" style="cursor:pointer">⬆ Import a reservoir<input type="file" id="lc-import" accept=".json,application/json" hidden></label>
+        </div>
+        <h3>Progress</h3>
+        <div id="lc-chart"></div>
+        <div id="lc-versions"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-talk" hidden>
+      <div class="card">
+        <h2>Talking clips <span class="small muted">— a face says your words, made by a video model</span></h2>
+        <p class="small">Gemini performs the line from the portrait — face, lips and voice together — with the same instructions that made the October 29 answer videos.
+          When Gemini cannot (it refuses some names of real people, the day's videos are used up, or no Gemini key is set), the line is spoken by the voice chosen on
+          the <b>Speak</b> page and HeyGen animates the same portrait to it. Nothing animates a face on this computer.</p>
+        <div id="tk-status" class="small"></div>
+        <h3>1 · Choose the face</h3>
+        <div id="tk-faces" class="fp-strip"></div>
+        <div class="row small" style="margin-top:6px"><label class="btn quiet" style="cursor:pointer">📁 Use another picture<input type="file" id="tk-file" accept="image/*" hidden></label>
+          <span id="tk-file-name" class="muted"></span>
+          <label>The face is a <select id="tk-person"><option value="woman">woman</option><option value="man">man</option><option value="person">person (not stated)</option></select></label></div>
+        <h3>2 · What the face says</h3>
+        <textarea id="tk-text" rows="3" style="width:100%">The capital of France is Paris.</textarea>
+        <div class="row"><label class="small">Language <select id="tk-lang"></select></label>
+          <label class="small">Made by <select id="tk-route"><option value="auto">Gemini, then HeyGen if Gemini cannot (recommended)</option><option value="gemini">Gemini only</option><option value="heygen">HeyGen only (the Speak page's voice)</option></select></label>
+          <button class="btn bigbtn" id="tk-go">🎬 Make the clip</button></div>
+        <div id="tk-out" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>Clips made</h2>
+        <div id="tk-list"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-providers" hidden>
+      <div class="card">
+        <h2>Keys from the old QueryBook</h2>
+        <p class="small">The prototype kept its Google and ElevenLabs keys in <span class="mono">qb_tts_keys.json</span> next to its program. This finds that file on this computer and copies the keys (and any Google custom voices) into this app. The keys are never shown.</p>
+        <div class="row"><input id="ik-f" class="grow" type="text" placeholder="Old QueryBook folder (optional — leave empty to search this computer)"><button class="btn" id="ik-go">🔑 Find and import keys</button></div>
+        <div id="ik-out" class="small" style="margin-top:8px"></div>
+      </div>
+      <div id="pv-list"></div>
+      <div class="card">
+        <h2>Google custom voice (voice cloning)</h2>
+        <p class="small">Builds a Google Cloud custom voice from a voice sample. <b>Only with the speaker’s explicit consent.</b> The speaker must read: <i>“I am the owner of this voice and I consent to Google using this sample to create a synthetic version of my voice.”</i></p>
+        <div class="row"><input id="cv-name" type="text" placeholder="Name for the voice" class="grow"><input id="cv-lang" type="text" value="en-US" style="width:100px">
+          <label class="btn quiet" style="cursor:pointer">📁 Voice sample (WAV)<input type="file" id="cv-file" accept=".wav,audio/wav" hidden></label></div>
+        <label class="chk"><input type="checkbox" id="cv-consent"> The speaker has given explicit consent and read the consent sentence in the sample</label>
+        <button class="btn" id="cv-go" style="margin-top:8px">Build custom voice</button><div id="cv-out" class="small"></div>
+      </div>
+    </div>
+
+    <div class="sp" id="sp-log" hidden>
+      <div class="card"><h2>Time statistics <span class="small muted">(seconds, to 0.01 s)</span></h2><div id="lg-stats"></div></div>
+      <div class="card"><h2>Every speech process</h2>
+        <div class="row"><select id="lg-proc" style="width:auto"><option value="">All processes</option><option>generate</option><option>match</option><option>ingest</option><option>query</option><option>custom-voice</option></select>
+          <button class="btn quiet" id="lg-go">Refresh</button><a class="btn quiet" style="text-decoration:none" href="/api/speech/log.csv" download>Download CSV</a></div>
+        <div id="lg-out" style="margin-top:10px"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="photoreal">
+    <div class="card">
+      <h2>Photo Real Lab — an AI narrator that looks and sounds like the author</h2>
+      <p class="small">The method: record <b>one perfect sample</b> — the author reading the reference passage on camera. The lab fits a model of the author's own mouth to it (how far the lips lead the sound, how fast they move, the exact shape for every sound) — the measured reason it looks right. Every narration, from any face method, is then measured frame by frame against what the author's mouth would do for the same words, and released only if it passes. Narrator videos are made by Gemini (HeyGen or D-ID when chosen, or when Gemini cannot) — nothing animates the photo on this computer. Every result is a QueryBook fact in the <b>photoreal</b> graph domain.</p>
+      <p class="small muted">Only with the author's consent. Everything produced is labelled “AI narrator”.</p>
+    </div>
+    <div class="card">
+      <h2>Author personas</h2>
+      <div id="pr-list" class="pr-list"></div>
+      <details id="pr-new"><summary><b>＋ New author persona</b></summary>
+        <div class="pr-grid">
+          <label>Author's name <input id="pr-name" type="text" placeholder="e.g. Ada Author"></label>
+          <label>Language <select id="pr-lang"></select></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="btn quiet" style="cursor:pointer">🖼 Photo of the author<input type="file" id="pr-photo" accept="image/*" hidden></label>
+          <button class="btn quiet" id="pr-snap">📷 Take the photo now</button>
+          <span class="small muted">Front-facing, mouth closed, even light, face filling about half the picture.</span>
+        </div>
+        <div id="pr-photo-prev" class="small"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn quiet" id="pr-rec">🎙 Record a voice sample</button>
+          <label class="btn quiet" style="cursor:pointer">📁 WAV file<input type="file" id="pr-wav" accept=".wav,audio/wav" hidden></label>
+          <span class="small" id="pr-wav-state">30–120 seconds of the author reading aloud (10 s minimum).</span>
+        </div>
+        <div class="note" id="pr-consent-text" style="margin-top:10px"></div>
+        <div class="row">
+          <label>Signed (full name) <input id="pr-signer" type="text"></label>
+          <label class="chk"><input type="checkbox" id="pr-consent"> I agree to the statement above</label>
+          <label class="chk"><input type="checkbox" id="pr-behalf"> I hold the author's written permission (signing for them)</label>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn bigbtn" id="pr-create">Create the persona</button></div>
+      </details>
+    </div>
+    <div id="pr-detail" hidden>
+      <div class="card">
+        <h2 id="pr-title"></h2>
+        <div class="pr-grid">
+          <div>
+            <h3>Voice</h3>
+            <select id="pr-voice"></select> <button class="btn" id="pr-voice-go">Set up this voice</button>
+            <p class="small" id="pr-voice-now"></p>
+          </div>
+          <div>
+            <h3>Face</h3>
+            <select id="pr-face"></select> <button class="btn" id="pr-face-go">Use this face</button>
+            <div id="pr-face-opts" class="small"></div>
+            <p class="small" id="pr-face-now"></p>
+          </div>
+        </div>
+        <p class="small"><button class="btn quiet small" id="pr-delete">Delete this persona</button> <span class="muted">— removes the photo, sample, narrations and local voice key.</span></p>
+      </div>
+      <div class="card">
+        <h2>1 · The perfect sample</h2>
+        <p class="small">The author reads this passage on camera (about 30 seconds; it shows every mouth shape several times). Follow the capture guide: whole face, 1080p, 60 fps if possible, even front light.</p>
+        <div class="lc-sentence" id="pr-passage"></div>
+        <div class="row">
+          <button class="btn bigbtn" id="pr-ref-rec">🎙📷 Record the perfect sample</button>
+          <label class="btn quiet" style="cursor:pointer">📁 …or a video of the author reading it<input type="file" id="pr-ref-file" accept="video/*" hidden></label>
+        </div>
+        <div id="pr-ref-cam" hidden style="margin-top:8px"></div>
+        <div id="pr-ref-out"></div>
+      </div>
+      <div class="card">
+        <h2>2 · Narrate, measure, gate</h2>
+        <textarea id="pr-text" rows="3" placeholder="What the narrator should say — e.g. the opening of a chapter or the answer to a question"></textarea>
+        <div class="row" style="margin-top:6px">
+          <label class="small">Face <select id="pr-nface"></select></label>
+          <button class="btn bigbtn" id="pr-narrate">🎬 Narrate</button>
+          <button class="btn" id="pr-measure" disabled>📏 Measure against the author</button>
+        </div>
+        <div class="pr-grid" style="margin-top:10px">
+          <div><div id="pr-stage" style="max-width:480px"></div><div id="pr-player"></div></div>
+          <div id="pr-score"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>3 · Findings — the photoreal graph</h2>
+        <div id="pr-findings"></div>
+        <div class="row" style="margin-top:6px">
+          <input id="pr-gq" class="grow" type="text" placeholder="Filter facts (subject or predicate words)">
+          <a class="btn quiet" href="/api/photoreal/export.ufcs" download="photoreal-graph.ufcs.jsonl">⬇ Export as QueryBook (UFCS) packets</a>
+        </div>
+        <div id="pr-graph"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="verify">
+    <div class="banner" id="vbanner">
+      <div class="bicon" id="vicon">🔍</div>
+      <div class="btext">
+        <div class="btitle" id="vhead">Proof that it learns from scratch</div>
+        <div class="bwhat" id="vsub">Rebuilds every language in a sealed, empty database with the network switched off, and checks the result.</div>
+      </div>
+      <div class="bbtns"><button class="btn bigbtn" id="vgo">Verify from scratch</button></div>
+    </div>
+    <div class="card" id="vjobcard" style="display:none"><h2>Verifying now</h2><div id="vjob"></div></div>
+    <div class="card">
+      <h2>What the verification proves</h2>
+      <ol class="small">
+        <li><b>It starts from nothing</b> — a brand-new empty database: 0 facts, 0 words read.</li>
+        <li><b>Nothing comes from outside</b> — every network connection is blocked for the whole run; the code may import only the Python standard library (checked line by line).</li>
+        <li><b>Sub-language before language</b> — asking for meanings before Phase 1 must be refused.</li>
+        <li><b>It learns step by step</b> — the learning curve is recorded after every reading, from the first word.</li>
+        <li><b>Same inputs, same result</b> — everything learned is reduced to one SHA-256 fingerprint. It must equal this computer's own build, and anyone who runs the same program gets the same fingerprint.</li>
+      </ol>
+      <p class="small muted"><b>Limits, stated plainly:</b> English structure (Phase 1) is learned from raw text alone. Meanings and the other 16 languages are taken from the declared reference files — Webster's 1913 dictionary and the MUSE bilingual word lists (published by Meta AI researchers) — so the proof shows that everything is computed only from those files, not who compiled them. Their hashes are listed below so anyone can obtain and compare the same files.</p>
+    </div>
+    <div id="vresult"></div>
+    <div class="card">
+      <h2>How a third party checks it</h2>
+      <ol class="small">
+        <li>Give them the program zip (or this repository) and the report (<b>Download report</b> above).</li>
+        <li>They check the SHA-256 of each input file against the report's <i>Inputs</i> table.</li>
+        <li>They run <span class="mono">python app.py verify</span> on their own computer (Python 3.8+, nothing to install, can be fully offline).</li>
+        <li>Their fingerprint must be identical to yours. Any change to the code, the starter text or the word lists changes it.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="panel" id="science">
+    <div class="card">
+      <h2>1 · Speak any language</h2>
+      <p class="small muted" id="sc-vcount">Loading the languages…</p>
+      <textarea id="sc-text" rows="3" style="width:100%" aria-label="Text to speak">Habari ya asubuhi. こんにちは。Bonjour tout le monde.</textarea>
+      <div class="row"><label class="small">Language <select id="sc-voice" style="max-width:22em"></select></label>
+        <label class="small">Voice <select id="sc-variant"><option value="">standard</option><option value="f1">female 1</option><option value="f2">female 2</option><option value="f3">female 3</option>
+          <option value="f4">female 4</option><option value="m1">male 1</option><option value="m2">male 2</option><option value="m3">male 3</option><option value="m4">male 4</option>
+          <option value="klatt">klatt</option><option value="whisper">whisper</option></select></label>
+        <label class="small">Speed <input id="sc-rate" type="range" min="80" max="300" value="160"></label>
+        <label class="small">Pitch <input id="sc-pitch" type="range" min="0" max="99" value="50"></label>
+        <button class="btn bigbtn" id="sc-say">🔊 Speak</button></div>
+      <div id="sc-player" class="row"></div><div class="small mono" id="sc-ipa"></div><div class="small muted" id="sc-detected"></div>
+      <p class="small muted">Offline: espeak-ng speaks every language listed. The Speak tab has the natural cloud voices (Google, ElevenLabs, Azure …) for the languages they cover.</p>
+    </div>
+    <div class="card">
+      <h2>2 · Read the lips of a talking head &nbsp;·&nbsp; 3 · Measure the delivery</h2>
+      <p class="small">Choose a video of one person speaking (face to the camera, mouth visible) — or one of the talking clips made on Speech → Talking clips.
+        <b>Read the words</b> gives the words from the lips (and from the sound, when Speech-to-Text is set up). <b>Measure this delivery</b> runs the
+        Speech Science Protocol: every word and sound measured against what is said, a verdict against fixed criteria, and a report.</p>
+      <div class="row"><input id="sc-file" type="file" accept="video/*" aria-label="Video of a talking head">
+        <label class="small">Language spoken <select id="sc-lang"></select></label>
+        <label class="small"><input type="checkbox" id="sc-stt" checked> use Speech-to-Text too (when set up)</label></div>
+      <textarea id="sc-script" rows="2" style="width:100%" placeholder="The script — what is said (optional for reading; it makes the timing and the verdict exact)"></textarea>
+      <div class="row small"><b>Labels</b> (for comparisons):
+        <input id="sc-l-speaker" placeholder="speaker" style="width:8em"><select id="sc-l-role"><option value="test">role: test</option><option value="reference">role: reference (calibrates)</option></select>
+        <input id="sc-l-dialect" placeholder="dialect, e.g. en-GB-scot" style="width:12em"><input id="sc-l-accent" placeholder="accent" style="width:8em">
+        <select id="sc-l-emotion"><option value="">emotion: —</option><option>neutral</option><option>joy</option><option>sadness</option><option>anger</option><option>fear</option><option>surprise</option><option>disgust</option><option>calm</option><option>excited</option></select></div>
+      <div class="row"><button class="btn" id="sc-read" disabled>👄 Read the words</button><button class="btn" id="sc-measure" disabled>📐 Measure this delivery</button>
+        <span class="muted small">or</span> <select id="sc-clip" aria-label="Talking clip"></select></div>
+      <div class="bar"><div id="sc-prog" style="width:0"></div></div><div class="small muted" id="sc-state"></div>
+      <div class="grid2"><div><video id="sc-video" controls playsinline hidden style="max-width:100%;max-height:360px"></video></div><div id="sc-out"></div></div>
+    </div>
+    <div class="card">
+      <h2>4 · Compare dialects, accents and emotions</h2>
+      <p class="small">Every measured delivery is kept with its labels. Compare groups — clip by clip, with confidence intervals, effect sizes and corrected tests —
+        to document how the lips, mouth and face move for a dialect, an accent or an emotion; optionally for one word spoken in every group.</p>
+      <div id="sc-list"></div>
+      <div class="row"><label class="small">Compare by <select id="sc-by"><option>emotion</option><option>dialect</option><option>accent</option><option>language</option><option>speaker</option><option>source</option><option>role</option></select></label>
+        <input id="sc-base" placeholder="baseline group (e.g. neutral)" style="width:14em"><input id="sc-word" placeholder="one word only (optional)" style="width:12em">
+        <button class="btn" id="sc-cmpgo">📊 Compare and write the report</button></div>
+      <div id="sc-cmp"></div>
+    </div>
+    <div class="card">
+      <h2>5 · Reports and the protocol</h2>
+      <div class="row"><button class="btn quiet" id="sc-proto">📘 The protocol: factors, formula, criteria</button></div>
+      <div id="sc-reps"></div><div id="sc-repview" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="translate">
+    <div class="card" style="padding:0;overflow:hidden">
+      <iframe id="tr-frame" title="QueryBook Translate" data-src="translate/index.html" style="width:100%;height:calc(100vh - 150px);min-height:640px;border:0;display:block"></iframe>
+    </div>
+    <p class="small muted">QueryBook Translate — offline, every word from its dictionaries with its source shown; unknown words are passed through and marked, never guessed. <a href="translate/index.html" target="_blank" rel="noopener">Open in its own window</a></p>
+  </section>
+
+  <section class="panel" id="lookup">
+    <div class="card">
+      <div class="row">
+        <input id="q" class="grow" type="text" placeholder="Any word, in English or any of the 16 other languages" aria-label="Word">
+        <button class="btn" id="qgo">Look up</button>
+      </div>
+      <div id="qout" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="data">
+    <div class="card"><h2>Your data</h2><div id="dstatus"></div></div>
+    <div class="card">
+      <h2>Backups</h2>
+      <p class="small muted">A checked backup is taken at start-up (if anything changed) and before a rebuild from scratch. The newest 10 are kept.</p>
+      <button class="btn quiet" id="bnow">Back up now</button>
+      <div id="blist" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Bring in the old QueryBook language model</h2>
+      <p class="small">Point to the old store folder (the one with <span class="mono">language_model.json</span>). It is only <b>read</b>, and only used when nothing has been built yet.</p>
+      <div class="row">
+        <input id="oldf" class="grow" type="text" placeholder="e.g. E:\QB\mystore" aria-label="Old store folder">
+        <button class="btn quiet" id="oldgo">Import</button>
+      </div>
+      <div id="ijob" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Rebuild from scratch</h2>
+      <p class="small muted">Forgets everything that was built and builds all languages again. A backup is taken first.</p>
+      <button class="btn quiet" id="forget">Forget and rebuild</button>
+    </div>
+  </section>
+
+  <section class="panel" id="commons"></section>
+  <section class="panel" id="agents"></section>
+  <section class="panel" id="devices"></section>
+  <section class="panel" id="diag"></section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>What this does</h2>
+      <p>This is the administrator's tool that builds QueryBook's languages before anyone runs queries. It is <b>automatic</b>: the first time it starts, it builds every language by itself. <b>Build all languages</b> runs the whole build again; nothing has to be chosen.</p>
+      <h2>How the languages are learned</h2>
+      <ol>
+        <li><b>English sub-language (Phase 1).</b> It reads English for structure only — letters, sounds by phonics rules, syllables, rhythm, which words recur and which go together — with meanings switched off.</li>
+        <li><b>Transition Gate.</b> A one-way gate opens only when sounds found ≥ 0.80, common words settled ≥ 0.70, word pairs ≥ 1.5 per word and new patterns &lt; 0.20.</li>
+        <li><b>Meanings (Phase 2)</b> from Webster's Unabridged Dictionary (1913, public domain).</li>
+        <li><b>Links (Phase 3)</b> from each learned English word into the 16 other languages.</li>
+        <li><b>Pronunciation (Phase 4)</b> by phonics rules (and espeak-ng when installed).</li>
+        <li><b>Each other language</b> — Spanish, French, German, Italian, Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Greek, Romanian, Hungarian, Catalan — its words, sounds and links.</li>
+      </ol>
+      <p class="small">No AI model is used. Every learned fact keeps its source. The same inputs always give the same result.</p>
+      <h2>Speech</h2>
+      <ul>
+        <li><b>Speak</b> — one voice profile (emotion and strength, tone, accent, speed, pitch, volume, pauses, articulation, tremble, hoarseness, breathiness, whisper, voice age) is sent to any engine: espeak-ng, the prototype's formant voice, Windows or macOS voices (all offline), Google Gemini TTS, Google Cloud Text-to-Speech, ElevenLabs, OpenAI, Microsoft Azure or Amazon Polly. <b>Advanced</b> shows every parameter of the chosen engine. The table “How each control is handled” says, for each control, whether the engine does it natively, QueryBook adds it afterwards, or it is not available; the exact request is shown with keys removed.</li>
+        <li><b>Match a target</b> — give the output you need (pitch, speed, loudness, pauses, tremble, breath). The app generates, measures the result, adjusts and repeats until it matches.</li>
+        <li><b>Live captions from the microphone</b> — speak and the words appear as you talk (a grey draft from the browser, replaced by Google Speech-to-Text about a second or two later); stop to download or ingest the recording and transcript.</li>
+        <li><b>Transcribe an audio file</b> — MP3, M4A, OGG or WAV of any length: live captions while it plays (Google Speech-to-Text hears it in pieces cut at pauses, ahead of the voice), or the whole file in the background — in pieces with the Google key, or by Google's long-audio recognition through Cloud Storage. Click a time to jump there; download TXT, SRT, VTT or JSON; ingest it.</li>
+        <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
+        <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
+        <li><b>Talking clips</b> — a portrait says your words in a video made by Gemini, with the instructions that made the October 29 answer videos; when Gemini cannot (a refused name, the day's 20 videos used up, no key), the Speak page's voice speaks the line and HeyGen animates the same portrait to it. Nothing animates a face on this computer. Each clip is checked with Speech-to-Text when it is set up.</li>
+        <li><b>Teach and improve</b> — Face &amp; video, step 5. Recordings with a face and known words go into the ingestion reservoir (numbers only, never pictures). The app learns this camera's and this speaker's mouth shapes, the shapes they confuse, the computer's camera/microphone delay and the lip-sync timing (all for reading lips; no face is animated here). A new version is used only when it does better on held-back recordings; all versions are kept and can be rolled back; the reservoir can be exported and imported to pool learning between computers.</li>
+        <li><b>Camera with the voice</b> — in <b>Ask by voice</b> and <b>Listen &amp; analyse</b>, tick the camera box: the lips choose between the recognizer's possible readings of your words, the face settles close calls (crying and laughing sound alike but look opposite), the answer's voice follows the face's mood, and a speaker check says whether the voice belongs to the face.</li>
+        <li><b>Face &amp; video</b> — camera, screen or video file. Live face tracking with a quality check, a sync check (how many milliseconds sound and lips are apart), lip-reading with look-alike words, checking the lips against a script, an avatar that copies the mouth, and overdubbing (with consent; always labelled synthetic).</li>
+        <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>
+        <li><b>Honest limits:</b> cloud engines need your own keys; their requests follow each provider's published format and are tested against a stand-in server, not against the live services. The vocal-mode rules are tested on real normal speech and on synthetic whispering, laughing, sobbing and singing; real crying and laughing recordings vary, so close calls are marked “uncertain”.</li>
+      </ul>
+      <h2>Photo Real Lab and the author's AI narrator</h2>
+      <ul>
+        <li><b>Author persona</b> — a photo, a voice sample and the author's signed consent (fingerprints of both samples are kept). Voice: Google custom (cloned) voice, ElevenLabs clone, or the offline voice tuned to the sample. Face: a video made by Gemini (HeyGen when Gemini cannot), or by HeyGen or D-ID with the persona's own voice. Everything it makes is labelled “AI narrator”.</li>
+        <li><b>The perfect sample</b> — the author reads the reference passage on camera. The lab fits the author's own mouth model to it (lip lead, response time, the shape for every sound); every narrator video is measured against it.</li>
+        <li><b>Measure and gate</b> — every narration, from any face method, is tracked and compared frame by frame with what the author's mouth would do for the same words. It passes only when the overall score is 85+ and every critical part is 70+; the page says which part failed.</li>
+        <li><b>The photoreal graph</b> — every measurement and setting is a QueryBook fact (UFCS 1.0 packet) in the “photoreal” domain; export it to the QueryBook store.</li>
+        <li><b>Answer as the author</b> — in Ask by voice choose the narrator under “Answer as”.</li>
+      </ul>
+      <h2>Silent questions (lips only)</h2>
+      <p class="small">In Ask by voice, open <b>Silent question</b>: mouth the question without sound and tap the right reading. <b>Guided</b> is the most reliable: tap the kind of question and the language, then mouth only the word; words that look the same on the lips are shown together. Teaching the app your mouth (Face &amp; video → Teach and improve) makes it read you better.</p>
+      <h2>Filming for lip-sync and lip-reading</h2>
+      <ul class="small">
+        <li><b>What to capture:</b> the whole face, forehead to chin, filling 40–60% of the picture's height — not just the mouth. The jaw, cheeks and chin carry speech too, and the tracker needs the whole face to find the lips.</li>
+        <li><b>Mouth size:</b> at least 150 pixels wide in the picture.</li>
+        <li><b>HD or 4K?</b> 1080p is best; 720p works. 4K adds file size, not accuracy (the tracker works on a small copy of each frame).</li>
+        <li><b>Frame rate:</b> 60 per second is best — lips move in 50–100 ms; 30 is the minimum.</li>
+        <li><b>Angle:</b> face the camera, within about 20° left/right and 15° up/down.</li>
+        <li><b>Light:</b> even, from the front (window or lamp behind the camera); nothing bright behind the head.</li>
+        <li><b>Nothing over the mouth:</b> no hand, microphone or mask.</li>
+        <li><b>Screen capture:</b> play the video full size at normal speed and share the tab with its audio.</li>
+        <li><b>Sound:</b> microphone 20–30 cm away in a quiet room.</li>
+      </ul>
+      <h2>Transparency</h2>
+      <ul>
+        <li>The build shows one progress bar for the whole job, the current step, speed and time left.</li>
+        <li>Every button shows a working bar at the top and how long it took.</li>
+        <li>Every major task is written to <b>Diagnostics → Activity log</b> with its result and duration.</li>
+      </ul>
+      <h2>Command line</h2>
+      <p class="small"><span class="mono">python app.py build</span> builds everything in the window with progress; <span class="mono">python app.py build --again</span> rebuilds.</p>
+      <h2>Word lists</h2>
+      <p class="small" id="srcs"></p>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<footer class="status"></footer>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+<script src="speech.js"></script>
+<script src="video.js"></script>
+<script src="scan.js"></script>
+<script src="vse.js"></script>
+<script src="photoreal.js"></script>
+<script src="transcribe.js"></script>
+<script src="talk.js"></script>
+<script src="science.js"></script>
+</body>
+</html>

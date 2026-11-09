@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# per-computer setting written by "python app.py set-data FOLDER"
+config.json

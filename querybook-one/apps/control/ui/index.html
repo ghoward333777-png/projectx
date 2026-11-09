@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Control Panel</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #3b3f8f; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; max-width: 1400px; margin: 0 auto; padding: 16px; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  main { max-width: none; padding: 0; margin: 0; }
+  .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .appcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: var(--panel); }
+  .appcard h3 { margin: 0 0 6px; font-size: 16px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.on { background: var(--good); } .dot.off { background: var(--muted); } .dot.bad { background: var(--bad); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; margin: 8px 0; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .btns .btn { padding: 6px 11px; font-size: 14px; }
+  .sechead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sechead h2 { margin: 0; flex: 1; }
+  .alert { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; margin: 6px 0; }
+  .alert.error { background: var(--bad-bg); } .alert.warn { background: var(--warn-bg); } .alert.info { background: var(--chip); }
+  .alert .txt { flex: 1; }
+  .diag { margin-top: 10px; }
+  .diag .ck { display: flex; gap: 8px; font-size: 14px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .bar { height: 10px; background: var(--chip); border-radius: 5px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  aside.chat { position: sticky; top: 12px; align-self: start; display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 420px; }
+  @media (max-width: 980px) { aside.chat { position: static; height: 520px; } }
+  .chatlog { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .msg { margin: 6px 0; padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; font-size: 14px; max-width: 92%; }
+  .msg.you { background: var(--accent); color: var(--accent-ink); margin-left: auto; }
+  .msg.assistant { background: var(--panel); border: 1px solid var(--line); }
+  .msg .did { display: block; font-size: 12px; opacity: .75; margin-top: 4px; }
+  .sugg { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+  .sugg button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .api-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+  .api-row .path { font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 13.5px; word-break: break-all; }
+  .meth { font: 600 11.5px ui-monospace, Consolas, Menlo, monospace; border-radius: 5px; padding: 2px 6px; text-align: center; }
+  .meth.GET { background: var(--good-bg); color: var(--good); } .meth.POST { background: var(--warn-bg); color: var(--warn); }
+  .recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
+  .recipe { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--panel); cursor: pointer; }
+  .recipe:hover { border-color: var(--accent); } .recipe b { display: block; margin-bottom: 4px; }
+  .try { border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px; margin: 10px 0; background: var(--panel); }
+  .try textarea { width: 100%; min-height: 90px; font: 13px ui-monospace, Consolas, Menlo, monospace; box-sizing: border-box; }
+  .try pre, .snip pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow: auto; max-height: 360px;
+    font: 12.5px ui-monospace, Consolas, Menlo, monospace; white-space: pre-wrap; word-break: break-word; margin: 6px 0; }
+  .snip .tabs2 button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 6px; padding: 2px 9px; font-size: 12.5px; cursor: pointer; }
+  .snip .tabs2 button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+  details.prog { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; margin: 8px 0; background: var(--panel); }
+  details.prog > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); }
+  .checks { display: flex; gap: 12px; flex-wrap: wrap; }
+  .checks label { font-size: 14px; display: flex; gap: 5px; align-items: center; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 16px; border-radius: 8px; display: none; z-index: 10; max-width: 90vw; }
+  .ticker { max-width: 1400px; margin: 8px auto 0; padding: 0 16px; }
+  .tk-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 760px) { .tk-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tk { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; min-width: 0; }
+  .tk .nm { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .tk .n { font-size: clamp(19px, 5.4vw, 26px); font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; transition: color .6s; }
+  .tk .n.up { color: var(--good); }
+  .tk .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tk.total { border-color: var(--accent); }
+  .tk-live { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .tk-live.on { background: var(--good); animation: tkpulse 2s infinite; }
+  @keyframes tkpulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .tk-live.on { animation: none; } .tk-feed span { animation: none !important; } }
+  .tk-active { margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 6px 14px; }
+  .tk-active:empty { display: none; }
+  .hv { font-size: 12.5px; min-width: 0; }
+  .hv .top { display: flex; gap: 6px; align-items: baseline; }
+  .hv .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .hv .pct { font-variant-numeric: tabular-nums; font-weight: 650; }
+  .hv .bar2 { position: relative; height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin: 3px 0 1px;
+    background-image: repeating-linear-gradient(to right, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+  .hv .bar2 > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .8s ease; }
+  .hv .bar2.turn > i { background: var(--good); } .hv .bar2.campaign > i { background: var(--warn); } .hv .bar2.gather > i { background: var(--bad); }
+  .hv .scale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hv .sub { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; line-height: 1.35; }
+  @media (prefers-reduced-motion: reduce) { .hv .bar2 > i { transition: none; } }
+  .tk-feed { margin-top: 6px; overflow: hidden; white-space: nowrap; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+  .tk-feed span { display: inline-block; padding-left: 100%; animation: tkscroll 60s linear infinite; }
+  .tk-feed:hover span { animation-play-state: paused; }
+  @keyframes tkscroll { to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Control Panel</h1>
+  <span class="tag">Language · Math, Science &amp; Engineering · History &amp; News — one place to run, steer and watch all three</span>
+  <span class="tag" id="hdr-state"></span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="overview">Overview</button>
+  <button data-tab="bulk">Harvesting</button>
+  <button data-tab="target">Targeting</button>
+  <button data-tab="filter">Filtering</button>
+  <button data-tab="facts">Shared facts</button>
+  <button data-tab="audit">Audit trail</button>
+  <button data-tab="diag">Diagnostics</button>
+  <button data-tab="self">Self-knowledge</button>
+  <button data-tab="apis">API &amp; connections</button>
+  <button data-tab="exemplars">Exemplars</button>
+  <button data-tab="help">Help</button>
+</nav>
+<div class="ticker" id="ticker" aria-live="off">
+  <div class="tk-row" id="tk-row"></div>
+  <div class="tk-active" id="tk-active" aria-label="Harvests in action"></div>
+  <div class="tk-feed" id="tk-feed" title="The latest facts to land in the shared store (hover to pause)"><span></span></div>
+</div>
+<div class="layout">
+<main>
+  <!-- Overview: the applications, alerts and monitoring -->
+  <section class="panel" id="overview">
+    <div class="card">
+      <div class="sechead"><h2>Applications</h2>
+        <button class="btn quiet" data-diag="apps">Diagnose</button>
+        <button class="btn quiet" id="refresh">Refresh now</button></div>
+      <p class="muted small">Each application records its address when it starts. Start, stop, open and harvest each one from here.</p>
+      <div class="apps" id="apps"></div>
+      <div class="diag" id="diag-apps"></div>
+    </div>
+    <div class="card">
+      <div class="sechead"><h2>Alerts <span class="pill" id="alert-n">0</span></h2>
+        <label class="small"><input type="checkbox" id="alerts-all"> show resolved and dismissed</label>
+        <button class="btn quiet" id="alerts-clear">Clear all alerts</button></div>
+      <p class="muted small">Checked every 20 seconds. An alert clears itself when its cause ends; "clear" dismisses it until it happens again.</p>
+      <div id="alerts"></div>
+    </div>
+    <div class="card">
+      <div class="sechead"><h2>Monitoring</h2><span class="muted small" id="last-check"></span></div>
+      <div class="stats" id="stats"></div>
+      <h3>Shared facts by domain</h3>
+      <div id="domains"></div>
+      <h3>Last harvest turns (all applications)</h3>
+      <div id="turns"></div>
+    </div>
+  </section>
+
+  <!-- Mass harvesting -->
+  <section class="panel" id="harvest" hidden>
+    <div class="card">
+      <div class="sechead"><h2>Mass harvesting</h2>
+        <button class="btn quiet" data-diag="harvest">Diagnose</button></div>
+      <p class="muted small">One switch for all three applications. Harvesting only uses sources the admin approved (licence policy) and obeys the
+        target and filter below.</p>
+      <div class="row">
+        <button class="btn" id="h-start-all">Start all harvesting</button>
+        <button class="btn" id="h-now">Start all and harvest now</button>
+        <button class="btn secondary" id="h-stop-all">Stop all harvesting</button>
+        <span id="h-master" class="badge"></span>
+      </div>
+      <h3>Or a selection</h3>
+      <div class="checks" id="h-apps"></div>
+      <h3>Online harvesters</h3>
+      <div class="checks" id="h-harvesters"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="h-start-sel">Start selected only</button>
+        <button class="btn secondary" id="h-stop-sel">Stop selected</button>
+        <button class="btn quiet" id="h-clear-sel">Clear selection</button>
+      </div>
+      <div class="diag" id="diag-harvest"></div>
+    </div>
+  </section>
+
+  <!-- Targeting -->
+  <section class="panel" id="target">
+    <div class="card">
+      <div class="sechead"><h2>Special targeting</h2>
+        <button class="btn quiet" data-diag="target">Diagnose</button>
+        <button class="btn quiet" id="t-clear">Clear target</button></div>
+      <p class="muted small">What harvesting concentrates on. Matching tasks run first and harvest more per turn (budget boost); with
+        "only targeted", everything else waits. Now: <b id="t-now"></b></p>
+      <label class="f" for="t-topics">Topics (words, comma-separated — matched against each harvest task)</label>
+      <input type="text" id="t-topics" placeholder="volcanoes, Roman Empire, prime numbers">
+      <label class="f">Applications</label><div class="checks" id="t-apps"></div>
+      <label class="f">Online harvesters</label><div class="checks" id="t-harvesters"></div>
+      <label class="f" for="t-sources">Sources (registry keys, comma-separated)</label>
+      <input type="text" id="t-sources" placeholder="wikidata, loc">
+      <div class="row" style="margin-top:10px">
+        <label class="small"><input type="checkbox" id="t-only"> only targeted (nothing else is harvested)</label>
+        <label class="small">budget boost × <input type="number" id="t-boost" min="1" max="5" step="0.5" value="2" style="width:80px"></label>
+      </div>
+      <label class="f" for="t-pass">Admin passphrase (needed once the admin has set one)</label>
+      <input type="password" id="t-pass" autocomplete="off">
+      <div class="row" style="margin-top:10px"><button class="btn" id="t-save">Apply target to all three</button></div>
+      <div class="diag" id="diag-target"></div>
+    </div>
+  </section>
+
+  <!-- Filtering -->
+  <section class="panel" id="filter">
+    <div class="card">
+      <div class="sechead"><h2>Special filtering</h2>
+        <button class="btn quiet" data-diag="filter">Diagnose</button>
+        <button class="btn quiet" id="f-clear">Clear filter</button></div>
+      <p class="muted small">What may enter the shared facts. A harvested fact that fails a rule is not saved, and the harvest log says how
+        many were left out and why. Now: <b id="f-now"></b></p>
+      <label class="f" for="f-ex">Leave out facts mentioning (comma-separated)</label>
+      <input type="text" id="f-ex" placeholder="football, celebrity">
+      <label class="f" for="f-req">Keep only facts mentioning one of (comma-separated; empty = no requirement)</label>
+      <input type="text" id="f-req" placeholder="">
+      <div class="row">
+        <div class="grow"><label class="f" for="f-y1">Years from</label><input type="number" id="f-y1" placeholder="e.g. 1800"></div>
+        <div class="grow"><label class="f" for="f-y2">to</label><input type="number" id="f-y2" placeholder="e.g. 1950"></div>
+      </div>
+      <p class="muted small">Facts without any year in them always pass the year range.</p>
+      <label class="f">Domains allowed (none ticked = all)</label><div class="checks" id="f-domains"></div>
+      <label class="f">Licence classes allowed (none ticked = every approved class)</label><div class="checks" id="f-lic"></div>
+      <label class="f" for="f-pass">Admin passphrase (needed once the admin has set one)</label>
+      <input type="password" id="f-pass" autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button class="btn secondary" id="f-preview">Preview (dry run on shared facts)</button>
+        <button class="btn" id="f-save">Apply filter to all three</button>
+      </div>
+      <div id="f-out"></div>
+      <div class="diag" id="diag-filter"></div>
+    </div>
+  </section>
+
+  <!-- Shared facts -->
+  <section class="panel" id="facts">
+    <div class="card">
+      <div class="sechead"><h2>Shared facts (all three applications)</h2><button class="btn quiet" id="s-clear">Clear</button></div>
+      <div class="row">
+        <input type="text" id="s-q" class="grow" placeholder="Search subjects and values">
+        <select id="s-domain" style="width:auto"><option value="">all domains</option><option>language</option><option>stem</option><option>history</option></select>
+        <button class="btn" id="s-go">Search</button>
+      </div>
+      <div id="s-out"></div>
+    </div>
+  </section>
+
+  <!-- Audit trail -->
+  <section class="panel" id="audit">
+    <div class="card">
+      <div class="sechead"><h2>Audit trail</h2>
+        <button class="btn quiet" id="a-refresh">Refresh</button>
+        <button class="btn quiet" id="a-clear">Clear view</button>
+        <button class="btn quiet" id="a-all">Show all</button></div>
+      <p class="muted small">Every action taken here — by a button or by the assistant — with what changed and the outcome. "Clear view"
+        starts the list afresh; the trail itself is kept (show all brings it back).</p>
+      <div id="a-out"></div>
+    </div>
+  </section>
+
+  <!-- Diagnostics -->
+  <section class="panel" id="diag">
+    <div class="card">
+      <div class="sechead"><h2>Diagnostics</h2><button class="btn" data-diag="all">Run all diagnostics</button>
+        <button class="btn quiet" id="d-clear">Clear results</button></div>
+      <p class="muted small">Every section has its own Diagnose button; this runs them all: the panel, each application (with its own
+        diagnostics), harvesting, targeting, filtering and the assistant.</p>
+      <div class="row">
+        <button class="btn quiet" data-diag="panel">Panel</button><button class="btn quiet" data-diag="assistant">Assistant</button>
+      </div>
+      <div class="diag" id="diag-all"></div>
+    </div>
+  </section>
+
+  <!-- Exemplar library: best-in-class examples QueryBook learns from (measured by QueryBook, approved by the admin, never facts) -->
+  <!-- The master API page: every program's endpoints, explained, tried and copied from one place -->
+  <section class="panel" id="apis">
+    <div class="card">
+      <div class="sechead"><h2>API — the whole harvesting suite</h2><button class="btn quiet" id="api-refresh">Check again</button></div>
+      <p class="muted small">Everything the Control Panel and the three applications can do, as web calls on this computer. Pick a task, press
+        <b>Try it</b>, then copy the call as curl, Python or JavaScript. Calls that change something ask first; the ones marked <b>admin</b> need
+        the admin passphrase. Every program also describes itself at <span class="mono">/api/routes</span> and
+        <span class="mono">/api/openapi.json</span> (for Postman, Insomnia and code generators).</p>
+      <div id="api-progs" class="row"></div>
+      <h3>Google — one-click setup</h3>
+      <p class="muted small">Connects all six Google services (Gemini, Speech-to-Text, Text-to-Speech, YouTube, backups, health reports) for every
+        QueryBook application at once. A Google sign-in page opens on this computer: choose your account and press <b>Allow</b> — that is
+        Google's own page, your password never reaches QueryBook. Then it switches on the APIs, creates a QueryBook key restricted to them and
+        saves it everywhere. Safe to press again (after adding billing, for example). Needs Google's free command-line tool (gcloud).</p>
+      <div class="row"><input type="password" id="gs-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">
+        <button class="btn" id="gs-go">🔑 Set up Google</button><span id="gs-state" class="small"></span></div>
+      <div id="gs-out" class="small"></div>
+      <h3>API registration — every service that needs a key</h3>
+      <p class="muted small">For each service: press <b>Sign up</b> (a <span class="badge">G</span> means you can use <i>Sign in with Google</i>
+        there), create a key on its page, paste it here and press <b>Save &amp; check</b>. QueryBook checks the key with one free request and
+        keeps it privately on this computer, where every program reads it. You sign up and accept each service's terms yourself.
+        The admin passphrase (box above) is asked once one is set.</p>
+      <div class="row subtabs" id="rg-menu" style="margin:6px 0 10px">
+        <button class="btn" data-rgview="keys">🔑 API keys</button>
+        <button class="btn quiet" data-rgview="ai">💳 LLM subscriptions &amp; usage</button></div>
+      <div id="rg-table" class="small"></div>
+      <div id="ai-box" hidden>
+        <p class="muted small">Every call any QueryBook program makes to an LLM or another paid AI service — when, which program, what for,
+          the model, tokens in and out (as the provider reported them), characters or minutes for voices and speech recognition, how long
+          it took — with its estimated charge, and the subscriptions it bills to. Charges are estimates from list prices (editable
+          below); the provider's own bill is authoritative (each row links to it). No key, prompt or answer is stored.</p>
+        <div id="ai-totals" class="stats"></div>
+        <div id="ai-table" class="small" style="overflow-x:auto"></div>
+        <h4>Last 30 days</h4><div id="ai-days" class="small"></div>
+        <h4>Every call <a class="btn quiet" href="/api/ai-usage.csv" download="querybook-ai-usage.csv" style="padding:2px 10px">⬇ CSV</a></h4>
+        <div id="ai-calls" class="small" style="max-height:28em;overflow:auto"></div>
+        <details><summary><b>Prices</b> — used for the estimates (USD)</summary><p class="muted small" id="ai-pnote"></p><div id="ai-prices" class="small"></div></details>
+      </div>
+      <h3>Outside connections <span class="small muted" id="cn-summary"></span></h3>
+      <p class="muted small">Every service outside this computer the suite talks to — what for, which program, whether its key is set (keys
+        are never shown) and when it was last used. <b>Test</b> sends one request to the service's public address without any key, so it costs
+        nothing.</p>
+      <div class="row"><select id="cn-cat"><option value="">All kinds</option></select>
+        <button class="btn quiet" id="cn-test-all">Test all</button></div>
+      <div id="cn-table"></div>
+      <h3>Start here</h3>
+      <div id="api-recipes" class="recipes"></div>
+      <div id="api-try"></div>
+      <h3>Every endpoint</h3>
+      <div class="row"><input id="api-q" placeholder="Filter — e.g. bulk · search · master · campaign · log" style="flex:1">
+        <label class="small"><input type="checkbox" id="api-explained"> explained only</label></div>
+      <div id="api-ref"></div>
+    </div>
+  </section>
+
+  <!-- Bulk harvesting: whole open datasets, streamed by parallel agents into fact shards -->
+  <section class="panel" id="bulk">
+    <div class="card">
+      <div class="sechead"><h2>Harvesting</h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
+      <p class="muted small">The fast lane: each open dataset is one agent that streams the publisher's whole file and turns every row into facts
+        by a fixed rule — no AI model, only sources approved in the policy registry, every fact traceable to its file and row. Agents work in
+        parallel, each into its own shard, and resume where they stopped. The calendar scaffold computes what can be known in advance; the
+        recurring-event slots are filled from Wikidata, one query per series.</p>
+      <div class="row" style="margin:10px 0 14px"><button class="btn" id="bk-go-top" style="font-size:1.25em;padding:12px 28px">⚡ Start harvesting</button>
+        <button class="btn" id="bk-stop-top" style="font-size:1.25em;padding:12px 28px">■ Stop harvesting</button></div>
+      <label class="small" style="display:block;margin:-6px 0 10px"><input type="checkbox" id="as-on"> Start QueryBook by itself when Windows starts
+        (after an update, a power cut or a restart the harvest carries on)</label>
+      <div id="bk-headline" class="note" style="font-size:1.15em"></div>
+      <div class="row"><button class="btn" id="hr-run">📋 Health report</button><span class="small muted">a few plain lines: health, speed, the main delay and what QueryBook does about it, what recovered by itself</span></div>
+      <pre id="hr-out" style="white-space:pre-wrap;font-size:1.05em;line-height:1.45;display:none;padding:12px;border-radius:8px;background:var(--panel2,rgba(127,127,127,.08))"></pre>
+      <div id="bk-where"></div>
+      <div class="card" id="bk-dl-card" style="margin:8px 0"><h3 style="margin-top:0">⬇ Download once, read locally <span class="small muted">— the Wikidata dump fetched once to a drive, then all 16 lanes read it from there</span></h3>
+        <div id="bk-dl" class="small"></div>
+        <div class="row small" style="margin-top:6px"><label><input type="checkbox" id="bk-dl-on" checked> Lanes read the downloaded copy (off: they stream over the internet as before)</label></div>
+        <div class="row small"><input id="bk-dl-folder" placeholder="Folder for the dump (about 160 GB a week, two weeks kept), e.g. E:\QB-dumps" style="flex:1;min-width:18em">
+          <button class="btn quiet" id="bk-dl-save">Save</button></div>
+        <p class="small muted">Empty = the shared folder's <i>dumps</i> folder. For a new large drive (e.g. the OWC Gemini), type a folder on it and Save; the next download goes there.</p></div>
+      <div class="card" id="vb-card" style="margin:8px 0"><h3 style="margin-top:0">🛟 Backups <span class="small muted">— every saved fact copied to another drive, checked, kept by date</span></h3>
+        <div id="vb-state" class="small"></div>
+        <div class="row small" style="margin-top:6px"><input id="vb-folder" placeholder="Backup folder on ANOTHER drive, e.g. F:\QB-Backup" style="flex:1;min-width:18em">
+          <label>keep <input id="vb-keep" type="number" min="2" max="365" value="7" style="width:4em"> backups</label>
+          <label>every <input id="vb-every" type="number" min="1" max="720" value="24" style="width:4em"> h</label>
+          <label><input type="checkbox" id="vb-on" checked> automatic</label>
+          <button class="btn quiet" id="vb-save">Save</button></div>
+        <div class="row small"><button class="btn" id="vb-now">🛟 Back up now</button>
+          <button class="btn quiet" id="vb-restore" title="Facts a backup holds that the live datasets lack are added back; missing files are copied back. Nothing is deleted. Stop harvesting first.">↩ Add back from the newest backup</button>
+          <span id="vb-out"></span></div>
+        <p class="small muted">Unchanged datasets are not copied again. The newest backups are kept, and so is the fullest copy each dataset ever had, so a dataset that shrinks can always be brought back. The newest backup is also checked at every Start: missing facts come back by themselves.</p></div>
+      <div id="bk-summary" class="row"></div>
+      <div class="row"><button class="btn quiet" id="bk-restore" title="Every copy of every dataset (C:, D:, earlier versions) compared; facts the live copy lacks are added back. Nothing is deleted. Also runs by itself at every Start.">🔎 Find and restore missing facts</button>
+        <span id="bk-restore-out" class="small"></span></div>
+      <div class="row"><button class="btn quiet" id="bk-why">🩺 Detailed checks</button>
+        <input id="bk-move" placeholder="New shared folder, e.g. E:\QueryBook-Data\commons" style="flex:1;min-width:16em">
+        <button class="btn quiet" id="bk-move-go">Move the shared folder</button></div>
+      <div id="bk-diag" class="small"></div>
+      <details id="tr-box"><summary><b>Technical details</b> — for support: every stage, every I/O, every failure (the plain report is on top)</summary>
+        <p class="muted small">Each agent and program writes what it did, how long each step took, every network exchange and every failure to
+          log files. <b>Analyse</b> finds the bottleneck of each dataset, every congestion point (connection slots, network, the shared database's
+          lock, the disk) and the slow I/O; <b>Export</b> packs the logs into one zip to send for analysis; <b>Compare drives</b> measures the
+          internal drive against the data drive with the agents' own write pattern (about a minute).</p>
+        <div class="row"><button class="btn" id="tr-run">📈 Analyse the logs</button><button class="btn quiet" id="tr-export">📦 Export logs for analysis</button>
+          <button class="btn quiet" id="tr-drives">💽 Compare drives (internal vs data drive)</button>
+          <label class="small">Follow 1 record in <input type="number" id="tr-sample" min="0" style="width:7em"> (0 = none)</label>
+          <label class="small"><input type="checkbox" id="tr-on"> logging on</label><button class="btn quiet" id="tr-save">Save</button></div>
+        <pre id="tr-out" class="small" style="white-space:pre-wrap;max-height:36em;overflow:auto"></pre></details>
+      <details id="em-box" open><summary><b>📧 Email the analysis</b> — the report in your inbox, now or every few hours</summary>
+        <p class="muted small">Sent from your Gmail account to the address below. Gmail needs an <b>app password</b> for this (your normal
+          password does not work): <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>
+          → name it "QueryBook" → Create → copy the 16 letters here. (It needs 2-Step Verification switched on.) The password stays on this computer.</p>
+        <div class="row"><label class="small">Send to <input id="em-to" type="email" style="width:18em"></label>
+          <label class="small">Gmail app password <input id="em-pw" type="password" placeholder="16 letters" style="width:12em" autocomplete="off"></label>
+          <label class="small">Every <input id="em-every" type="number" min="0" step="1" style="width:4em"> hours (0 = only when I press)</label>
+          <button class="btn quiet" id="em-save">Save</button><button class="btn" id="em-now">📧 Email the analysis now</button></div>
+        <div id="em-out" class="small muted" style="white-space:pre-wrap"></div></details>
+      <details id="oc-box"><summary><b>Old copies on C:</b> — what earlier versions left on this computer's own drive after copying it to D:\QB</summary>
+        <p class="muted small">Every old file is checked against D:\QB (databases by their fact counts). Only files D:\QB is shown to hold can be
+          deleted, and only when you confirm. Anything that cannot be checked is kept.</p>
+        <div class="row"><button class="btn quiet" id="oc-check">💾 Check old copies on C:</button><button class="btn quiet" id="oc-del" disabled>🗑 Delete the old copies D:\QB holds</button></div>
+        <div id="oc-out" class="small"></div></details>
+      <div id="bk-table"></div>
+      <div class="row"><label class="small">Agents at once <input type="number" id="bk-agents" min="1" max="64" value="4" style="width:4em"></label>
+        <input type="password" id="bk-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em">
+        <button class="btn" id="bk-full" title="Every approved dataset, including all 16 Wikidata lanes, one agent per CPU core">⚡ Full speed</button><button class="btn" id="bk-start">▶ Start selected</button><button class="btn quiet" id="bk-all">Select all approved</button>
+        <button class="btn quiet" id="bk-stop">■ Stop all</button></div>
+      <h3>Coverage map — 20 keystone domains</h3>
+      <p class="muted small">What the harvest should cover, measured: facts held per domain (shards and shared facts), the sources feeding it,
+        novelty (new facts per record read, from the harvest log) and the state. Bulk agents start in this order — the Control Panel's target
+        first, then foundational domains (phase 0) and those unlocking the most, the least covered first. Saturated: under 1% new over a million
+        records read.</p>
+      <div id="ks-table" class="small"></div>
+      <h3>Scaffold slots — recurring events</h3><div id="bk-slots" class="small"></div>
+      <h3>Fact gatherer — LLM web search, checked on the page</h3>
+      <p class="muted small">An LLM with web search only <i>finds</i>: QueryBook fetches the pages the search returned and keeps a fact only when
+        the page itself states it next to its subject (and, for relations like winner or born, with the right words in the right order). Each
+        confirming site is the fact's source; two sites make it corroborated. Runs spend on the provider's account, so starting needs the admin
+        passphrase.</p>
+      <div id="ga-providers" class="row small"></div>
+      <div class="row"><select id="ga-provider"></select>
+        <select id="ga-area"><option value="history">History &amp; News</option><option value="stem">STEM</option><option value="language">Language</option></select>
+        <select id="ga-probe" style="max-width:16em"><option value="">Suggested questions…</option></select><input id="ga-q" placeholder="Ask — e.g. Who won the 2026 Nobel Prize in Literature?" style="flex:1"><button class="btn" id="ga-ask">Ask and check</button></div>
+      <div class="row small"><span>Fill open scaffold slots:</span><select id="ga-series"><option value="">every series, newest first</option></select>
+        <label>how many <input type="number" id="ga-limit" min="1" max="50" value="5" style="width:4em"></label><button class="btn quiet" id="ga-slots">Fill slots</button>
+        <span class="muted" id="ga-open"></span></div>
+      <div id="ga-recent"></div>
+      <h3>Look up bulk facts</h3>
+      <div class="row"><input id="bk-q" placeholder="Subject starts with… e.g. PubChem CID 2244 · Year 2030 · Nobel Prize in Physics 1921" style="flex:1">
+        <button class="btn quiet" id="bk-go">Look up</button></div>
+      <div id="bk-out"></div>
+      <h3>Answer routing</h3>
+      <p class="muted small">How lookups find their facts. <b>Central</b> asks every store in turn (the default, and the fastest on one
+        computer in the stress test). <b>Shadow</b> answers with Central while the Digital Synaptic Network (DSN) answers the same lookup
+        beside it; every difference goes to the Shadow comparison log, summarised in the health report. <b>DSN</b> asks only the stores its
+        learned pathways point to, and every store when those find nothing. Switch to DSN only when Shadow says it is safe. Learned
+        pathways hold routes, never facts; switching the DSN back on re-checks them.</p>
+      <div class="row"><select id="dsn-mode" style="width:auto"></select><button class="btn quiet" id="dsn-save">Apply</button>
+        <button class="btn quiet" id="dsn-refresh">Check again</button><span class="muted small">uses the admin passphrase above</span></div>
+      <div id="dsn-out"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="exemplars">
+    <div class="card">
+      <div class="sechead"><h2>Exemplars</h2><button class="btn quiet" id="ex-refresh">Check again</button><button class="btn quiet" id="ex-verify">Verify files</button></div>
+      <p class="muted small">Examples QueryBook learns from — videos, sounds, images and drill texts, made by the admin's generator tool
+        (outside the applications) or recorded. QueryBook measures every take itself; the best passing take of each item is proposed here,
+        and becomes the exemplar only when you approve it. Exemplars are learning objects, never facts.</p>
+      <div id="ex-summary"></div>
+      <div class="row"><b class="small">Exemplar generator (Google tools — a separate program):</b> <span id="ex-gen" class="small"></span>
+        <button class="btn quiet" id="ex-gen-start">▶ Start</button><button class="btn quiet" id="ex-gen-stop">■ Stop</button>
+        <span class="small muted">Which tools run, their plans and campaigns: any application's Harvesting page.</span></div>
+      <div class="row"><input type="password" id="ex-pass" placeholder="Admin passphrase (only if you set one)" style="width:14em"></div>
+      <h3>Waiting for your approval</h3><div id="ex-proposals"></div>
+      <h3>Every take</h3><div class="row"><input id="ex-skill" placeholder="skill (e.g. speech-video-pamela)" style="width:20em"><button class="btn quiet" id="ex-list">Show</button></div>
+      <div id="ex-takes"></div>
+    </div>
+  </section>
+
+  <!-- Self-Knowledge Layer (SKL): QueryBook's accurate self-description, with sources -->
+  <section class="panel" id="self">
+    <div class="card">
+      <div class="sechead"><h2>Self-knowledge</h2><button class="btn quiet" id="sk-refresh">Check again</button></div>
+      <p class="muted small">What QueryBook can say about itself — only from its design document (the Core Technology Overview), checked
+        against its own program files right now. Every statement is labelled <b>built and tested</b>, <b>partly built</b>,
+        <b>specified, not yet built</b>, <b>not planned</b> or <b>not in this application</b>, with its sources. Nothing specified is ever
+        described as built.</p>
+      <div id="sk-counts" class="row"></div>
+      <div class="row"><input id="sk-q" placeholder="Ask about QueryBook — e.g. are you neuromorphic? · section 21 · what can't you do?" style="flex:1">
+        <select id="sk-level" aria-label="Detail"><option value="brief">Brief</option><option value="user" selected>Everyday</option><option value="engineer">Engineer</option></select>
+        <button class="btn" id="sk-ask">Ask</button><button class="btn quiet" id="sk-clear">Clear</button></div>
+      <div id="sk-answer"></div>
+      <div id="sk-contra"></div>
+      <h3>How QueryBook reasons</h3><div id="sk-aspects"></div>
+      <h3>How it works</h3><div id="sk-process"></div>
+      <h3>Every section of its design</h3><div id="sk-sections"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>Help</h2>
+      <p>Start the panel with <span class="mono">START-CONTROL-PANEL</span> (or <span class="mono">python app.py</span> in its folder). It finds
+        the three applications on this computer and can start them.</p>
+      <ul>
+        <li><b>Overview</b> — each application's state, version, health, harvest switch, facts and last harvest turn; alerts and monitoring.</li>
+        <li><b>Mass harvesting</b> — start or stop harvesting everywhere, or a selection of applications and online harvesters.</li>
+        <li><b>Targeting / Filtering</b> — global rules every application obeys from its next harvest turn. They need the admin passphrase
+          once the admin has set one.</li>
+        <li><b>Assistant</b> — type plain requests ("stop all harvesting", "focus on volcanoes in history", "exclude football", "find
+          Marie Curie", "any alerts?"). It works by fixed rules (no AI model): it does only what it recognises, says what it changed, and asks
+          before stopping anything.</li>
+        <li><b>Transparency</b> — every action is in the audit trail; every harvest turn reports how many facts the filter left out and
+          which tasks the target moved first.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<aside class="chat card" aria-label="Assistant">
+  <div class="sechead"><h2>Assistant</h2><button class="btn quiet" id="c-clear">Clear chat</button></div>
+  <div class="sugg" id="c-sugg"></div>
+  <div class="chatlog" id="c-log" aria-live="polite"></div>
+  <div class="row" style="margin-top:8px">
+    <input type="text" id="c-in" class="grow" placeholder="Ask, or tell me what to do" autocomplete="off">
+    <button class="btn" id="c-send">Send</button>
+  </div>
+  <input type="password" id="c-pass" placeholder="admin passphrase (only for target / filter changes)" autocomplete="off" style="margin-top:6px">
+</aside>
+</div>
+<div id="toast" role="status"></div>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+<script src="aiusage.js"></script>
+</body>
+</html>

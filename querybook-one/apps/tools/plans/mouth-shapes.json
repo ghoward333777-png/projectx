@@ -1,0 +1,96 @@
+{
+ "skill": "mouth-shape-AVATAR",
+ "model": "gemini-3.1-flash-image",
+ "kind": "image",
+ "image": "",
+ "subject": "AVATAR",
+ "consent": "the avatar's own approved image",
+ "voice": null,
+ "fixed": "Use the attached image: the same person, same face, hair, lighting and framing, head and shoulders, facing the camera. Change only the mouth. No text in the picture.",
+ "items": [
+  {
+   "item": "PP",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips pressed together, as for 'p' in 'pea'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "PP"
+  },
+  {
+   "item": "FF",
+   "script": "",
+   "prompt": "The mouth holds this shape: lower lip tucked under the upper front teeth, as for 'f' in 'fee'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "FF"
+  },
+  {
+   "item": "TH",
+   "script": "",
+   "prompt": "The mouth holds this shape: tongue tip just between the teeth, as for 'th' in 'theme'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "TH"
+  },
+  {
+   "item": "SS",
+   "script": "",
+   "prompt": "The mouth holds this shape: teeth together, lips apart, as for 's' in 'see'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "SS"
+  },
+  {
+   "item": "CH",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips pushed forward, teeth close, as for 'sh' in 'she'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "CH"
+  },
+  {
+   "item": "aa",
+   "script": "",
+   "prompt": "The mouth holds this shape: jaw open wide, as for 'a' in 'father'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "aa"
+  },
+  {
+   "item": "E",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips spread, as for 'e' in 'bed'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "E"
+  },
+  {
+   "item": "I",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips spread wide, corners back, as for 'ee' in 'see'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "I"
+  },
+  {
+   "item": "O",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips rounded and open, as for 'o' in 'go'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "O"
+  },
+  {
+   "item": "U",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips tightly rounded and pushed forward, as for 'oo' in 'food'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "U"
+  },
+  {
+   "item": "RR",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips slightly rounded, as for 'r' in 'red'. Neutral expression otherwise.",
+   "style": "",
+   "covers": "RR"
+  },
+  {
+   "item": "rest",
+   "script": "",
+   "prompt": "The mouth holds this shape: lips gently closed, relaxed, the resting face. Neutral expression otherwise.",
+   "style": "",
+   "covers": "rest"
+  }
+ ]
+}

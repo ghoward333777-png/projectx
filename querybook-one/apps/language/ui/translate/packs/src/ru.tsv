@@ -1,0 +1,214 @@
+# Russian seed lexicon — QueryBook Translate v1
+@rules {}
+hello	здравствуйте ; привет
+goodbye	до свидания ; пока
+good_morning	доброе утро
+good_afternoon	добрый день
+good_evening	добрый вечер
+good_night	спокойной ночи
+please	пожалуйста
+thank_you	спасибо
+thank_you_very_much	большое спасибо ; спасибо большое
+youre_welcome	пожалуйста ; не за что
+sorry	извините ; простите ; извини
+excuse_me	извините ; простите
+yes	да
+no	нет
+ok	хорошо ; ладно ; окей
+how_are_you	как дела ; как вы ; как поживаете
+im_fine	у меня всё хорошо ; хорошо ; всё хорошо
+nice_to_meet_you	приятно познакомиться ; очень приятно
+what_is_your_name	как вас зовут ; как тебя зовут
+my_name_is	меня зовут
+i_dont_understand	я не понимаю
+i_understand	я понимаю ; понятно
+do_you_speak_english	вы говорите по-английски ; ты говоришь по-английски
+speak_slowly	говорите медленнее пожалуйста ; говорите медленно
+repeat_please	повторите пожалуйста ; повторите
+i_dont_know	я не знаю ; не знаю
+i	я ; меня ; мне
+you	вы ; ты ; вас ; вам ; тебя ; тебе
+he	он ; его ; ему
+she	она ; её ; ей
+we	мы ; нас ; нам
+they	они ; их ; им
+my	мой ; моя ; моё ; мои
+your	ваш ; ваша ; ваше ; ваши ; твой ; твоя
+the	∅
+a	∅
+this	это ; этот ; эта
+that	то ; тот ; та
+be	∅ ; является
+not	не
+and	и ; а
+or	или
+with	с ; со
+without	без
+very	очень
+what	что
+where	где ; куда
+when	когда
+who	кто
+why	почему ; зачем
+how	как
+how_much	сколько
+how_many	сколько
+which	какой ; какая ; какое ; какие ; который
+where_is	где находится ; где
+i_want	я хочу ; хочу
+i_would_like	я хотел бы ; я хотела бы
+i_need	мне нужно ; мне нужен ; мне нужна
+i_have	у меня есть
+do_you_have	у вас есть ; у тебя есть
+is_there	есть ли ; здесь есть
+want	хотеть
+need	нуждаться
+have	иметь
+go	идти ; ехать
+come	прийти ; приходить
+eat	есть ; кушать
+drink	пить
+speak	говорить
+understand	понимать ; понять
+know	знать
+like	нравиться ; любить
+see	видеть
+wait	ждать
+buy	купить ; покупать
+pay	платить ; заплатить
+help	помощь ; помогите ; помочь
+water	вода ; воду ; воды
+food	еда ; еду
+bread	хлеб
+coffee	кофе
+tea	чай
+beer	пиво
+wine	вино
+milk	молоко
+money	деньги
+day	день
+today	сегодня
+tomorrow	завтра
+yesterday	вчера
+now	сейчас
+later	позже ; потом
+here	здесь ; тут
+there	там
+man	мужчина
+woman	женщина
+child	ребёнок
+friend	друг ; подруга
+family	семья
+house	дом
+name	имя
+phone	телефон
+bathroom	туалет
+door	дверь
+language	язык
+good	хороший ; хорошо ; хорошая
+bad	плохой ; плохо ; плохая
+big	большой ; большая
+small	маленький ; маленькая
+hot	горячий ; жарко
+cold	холодный ; холодно
+open	открыто ; открытый
+closed	закрыто ; закрытый
+new	новый ; новая
+one	один ; одна ; одно
+two	два ; две
+three	три
+four	четыре
+five	пять
+six	шесть
+seven	семь
+eight	восемь
+nine	девять
+ten	десять
+hundred	сто
+thousand	тысяча
+airport	аэропорт
+train_station	вокзал ; железнодорожный вокзал
+bus_stop	автобусная остановка ; остановка
+bus	автобус
+train	поезд
+taxi	такси
+ticket	билет
+passport	паспорт
+hotel	гостиница ; отель
+room	номер ; комната
+reservation	бронь ; бронирование
+restaurant	ресторан
+menu	меню
+the_bill_please	счёт пожалуйста
+table_for_two	столик на двоих
+how_much_is_this	сколько это стоит ; сколько стоит
+too_expensive	слишком дорого
+cheap	дешёвый ; дёшево
+expensive	дорогой ; дорого
+left	налево ; слева
+right	направо ; справа
+straight_ahead	прямо
+near	близко ; рядом
+far	далеко
+street	улица
+map	карта
+city	город
+beach	пляж
+museum	музей
+bank	банк
+atm	банкомат
+pharmacy	аптека
+market	рынок
+shop	магазин
+entrance	вход
+exit	выход
+luggage	багаж
+i_am_lost	я заблудился ; я заблудилась
+where_is_the_bathroom	где туалет
+call_the_police	вызовите полицию
+police	полиция
+wifi	вайфай ; Wi-Fi
+password	пароль
+credit_card	кредитная карта ; кредитка
+cash	наличные
+vegetarian	вегетарианец ; вегетарианка ; вегетарианский
+breakfast	завтрак
+lunch	обед
+dinner	ужин
+chicken	курица
+fish	рыба
+meat	мясо
+rice	рис
+doctor	врач ; доктор
+hospital	больница
+emergency	экстренный случай ; скорая помощь
+ambulance	скорая помощь ; скорая
+i_need_a_doctor	мне нужен врач
+call_an_ambulance	вызовите скорую ; вызовите скорую помощь
+pain	боль
+it_hurts_here	здесь болит ; болит здесь
+headache	головная боль
+fever	температура ; жар
+cold_illness	простуда
+cough	кашель
+nausea	тошнота
+diarrhea	понос ; диарея
+allergy	аллергия
+i_am_allergic_to	у меня аллергия на
+penicillin	пенициллин
+medicine	лекарство
+prescription	рецепт
+blood	кровь
+heart	сердце
+stomach	желудок ; живот
+head	голова
+chest	грудь
+pregnant	беременна ; беременная
+diabetes	диабет
+asthma	астма
+dizzy	кружится голова ; головокружение
+i_cant_breathe	я не могу дышать
+sick	больной ; больна ; болен
+insurance	страховка ; медицинская страховка
+nurse	медсестра ; медбрат
+pill	таблетка

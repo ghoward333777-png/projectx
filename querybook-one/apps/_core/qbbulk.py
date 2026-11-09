@@ -1,0 +1,4795 @@
+"""qbbulk — bulk harvesting: whole open datasets, streamed by parallel agents into fact shards. The fast lane beside the
+harvest teams.
+
+The harvest teams ask sites for a page of items at a time, politely, once a turn — right for live sources, far too slow
+for the open datasets that publish everything as one file. Here each dataset is one agent (its own process): it streams
+the publisher's file — gzip, zip (read in place over HTTP ranges, nothing downloaded first), tar — row by row, turns
+every row into facts by a fixed rule, and writes them into its own shard (one SQLite file per dataset in the Commons
+folder's shards/), so agents never wait on each other. One agent writes about 80,000 facts a second; four run at once.
+
+Rules kept, as everywhere in QueryBook:
+  * only sources the admin approved in the policy registry (checked at the start and between batches); the master
+    harvesting switch and the Stop button stop every agent between batches;
+  * every fact names its dataset, the file part and the row it came from (provenance), and the file's version;
+  * the harvest log (hash-chained) gets an entry for every million facts and at the end of each part;
+  * no AI model: rows become facts by a written rule; computed facts (qbscaffold) name the rule they follow;
+  * resumable: each part records the rows done in the same transaction as their facts; a stopped agent continues there.
+
+Shard layout (compact — about 110 bytes a fact): facts(fp, s, p, o, part, row) keyed by the first 16 bytes of the same
+SHA-256 fingerprint the Commons uses; predicates; parts (file, version, rows, facts, done); progress (for the rate);
+links (a source page per fact, where there is one); slots (recurring-event editions expected and filled).
+
+Run: python qbbulk.py run --commons <shared folder> [--datasets a,b] [--agents 4] [--max-rows N]
+"""
+import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, re, shutil, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile, zlib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import qbcore as core  # noqa: E402
+import qbscaffold as sc  # noqa: E402
+import qbkeystone as ks  # noqa: E402
+import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on the data drive)
+import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
+TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
+
+VERSION = "1.34.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
+BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
+                                   # whatever the shard's size
+STAGE_MIN = 5_000_000              # 1.33: staged facts are folded into the keyed tables once at least this many wait, or half
+                                   # the shard's own size, whichever is more — and at the end of every part
+CACHE_MB = 128                     # SQLite page cache per agent
+MERGE_CACHE_MB = 1024              # 1.33: the page cache while a stage is folded in (the subject index cannot be visited in
+                                   # order, so it must stay in memory or every insert reads a page); back to CACHE_MB after
+LOG_EVERY = 1_000_000              # a harvest-log entry per million new facts (and at the end of each part)
+FOLDER = "shards"
+MAX_AGENTS = min(64, max(16, os.cpu_count() or 1))   # one process per agent: up to every core of the machine
+RETRY_ROUNDS = 200                 # a refused dataset is retried this many times in one run (about 10 hours at RETRY_WAIT_S)
+RETRY_WAIT_S = 180
+MIN_FREE_GB = 10                   # every agent stops between batches when the disk has less free than this
+AREA = {"language": "language", "stem": "stem", "facts": "history"}
+READ_BUFFER = 1 << 20              # bytes read from a decompressed stream at a time
+CSV_MAX = 1 << 24
+csv.field_size_limit(CSV_MAX)
+
+
+# ------------------------------------------------------------------------------------------------ reading files
+class Meter:
+    """how far the current part has got, on the publisher's own scale: compressed bytes read of the file's size, or rows of a
+    known count. One per agent process (each agent is its own process), read into the shard's meta with every batch."""
+
+    def __init__(self):
+        self.start(0, "bytes")
+
+    def start(self, total, unit="bytes"):
+        self.total, self.unit, self.done = int(total or 0), unit, 0
+
+
+METER = Meter()
+
+
+class _Count(io.RawIOBase):
+    """a raw stream that counts the bytes read through it into METER"""
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        t = _NS()
+        n = self.raw.readinto(b)
+        TR.add("net_read", _NS() - t, 1, n or 0)
+        TR.chunk_wall = _WALL()
+        METER.done += n or 0
+        return n
+
+
+def _size(r, url):
+    if url.startswith("file://"):
+        return os.fstat(r.fileno()).st_size
+    return int(r.headers.get("Content-Length") or 0)
+
+
+def _req(url, extra=None):
+    return urllib.request.Request(url, headers=dict({"User-Agent": UA}, **(extra or {})))
+
+
+def _open(url, timeout=120):
+    """a streaming response (http/https) or a local file (file://, for tests)"""
+    if url.startswith("file://"):
+        return open(urllib.request.url2pathname(urllib.parse.urlsplit(url).path), "rb")
+    return urllib.request.urlopen(_req(url), timeout=timeout)
+
+
+class RangeFile(io.RawIOBase):
+    """a remote file read by HTTP byte ranges, so a zip's members can be streamed without downloading the whole file"""
+
+    def __init__(self, url):
+        self.url, self.pos = url, 0
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=60) as r:
+            self.size = int(r.headers["Content-Length"])
+            self.version = r.headers.get("Last-Modified") or ""
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def tell(self):
+        return self.pos
+
+    def seek(self, off, whence=0):
+        self.pos = off if whence == 0 else self.pos + off if whence == 1 else self.size + off
+        return self.pos
+
+    def readinto(self, b):
+        if self.pos >= self.size:
+            return 0
+        end = min(self.size, self.pos + len(b)) - 1
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(_req(self.url, {"Range": "bytes=%d-%d" % (self.pos, end)}), timeout=120) as r:
+                    data = r.read()
+                break
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+        b[:len(data)] = data
+        self.pos += len(data)
+        return len(data)
+
+
+def _seekable(url):
+    if url.startswith("file://"):
+        return open(urllib.request.url2pathname(urllib.parse.urlsplit(url).path), "rb")
+    return io.BufferedReader(RangeFile(url), buffer_size=4 << 20)
+
+
+def gz_lines(url):
+    with _open(url) as r, gzip.GzipFile(fileobj=_Count(r)) as g:
+        METER.start(_size(r, url))
+        for line in io.BufferedReader(g, READ_BUFFER):      # a big buffer: 1.4x faster line splitting than GzipFile's own
+            yield line.decode("utf-8", "replace").rstrip("\r\n")
+
+
+def text_lines(url):
+    with _open(url) as r:
+        METER.start(_size(r, url))
+        for line in io.TextIOWrapper(io.BufferedReader(_Count(r)), encoding="utf-8", errors="replace"):
+            yield line.rstrip("\r\n")
+
+
+def zip_lines(url, member_suffix):
+    with zipfile.ZipFile(_seekable(url)) as z:
+        name = next(n for n in z.namelist() if n.endswith(member_suffix))
+        size = z.getinfo(name).compress_size
+        METER.start(size)
+        with z.open(name) as f:
+            for i, line in enumerate(io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace")):
+                if not i & 0x3FFF:                      # the member's compressed bytes still to read
+                    METER.done = size - getattr(f, "_compress_left", size)
+                yield line.rstrip("\r\n")
+            METER.done = size
+
+
+def tar_member_lines(url, member_suffix, comp="bz2"):
+    with _open(url) as r, tarfile.open(fileobj=_Count(r), mode="r|" + comp) as t:
+        METER.start(_size(r, url))
+        for m in t:
+            if m.name.endswith(member_suffix):
+                f, rest = t.extractfile(m), b""          # a streamed member cannot seek: split lines by hand
+                while True:
+                    chunk = f.read(1 << 20)
+                    if not chunk:
+                        break
+                    lines = (rest + chunk).split(b"\n")
+                    rest = lines.pop()
+                    for line in lines:
+                        yield line.decode("utf-8", "replace").rstrip("\r")
+                if rest:
+                    yield rest.decode("utf-8", "replace").rstrip("\r")
+                return
+
+
+# ------------------------------------------------------------------------------------------------ polite downloading
+# Publishers cap the connections one computer may hold (Wikimedia answers "429 Too Many Requests" beyond a few). Every
+# agent process takes a CONNECTION SLOT for the server before it downloads and gives it back after; a server that says
+# "slow down" (429/503) is left alone for its Retry-After (at least COOL_S) and the agent moves to another server holding
+# the identical file, or waits. A refusal is never a failure.
+COOL_S = 120
+REFUSED = (429, 503)
+
+
+def _host(url):
+    return (urllib.parse.urlsplit(url).hostname or "local").lower()
+
+
+def _replace(tmp, dst, tries=40):
+    """os.replace that waits out Windows' sharing rule: a file another program is reading at that instant cannot be replaced
+    (PermissionError), so try again for a few seconds instead of failing (the Control Panel reads these files every few seconds)"""
+    for i in range(tries):
+        try:
+            os.replace(tmp, dst)
+            return True
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.05 + 0.05 * i)
+    return False
+
+
+class Slots:
+    """connections per server, shared by every agent process through lock files (the system releases a dead process's lock)"""
+
+    def __init__(self, commons_folder, halt=None):
+        self.dir = os.path.join(commons_folder, FOLDER, "_slots")
+        os.makedirs(self.dir, exist_ok=True)
+        self.halt, self._checked = halt, 0.0
+
+    def _lock(self, host, i):
+        f = open(os.path.join(self.dir, "%s-%d.lock" % (host, i)), "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except OSError:
+            f.close()
+            return None
+
+    def release(self, f):
+        if f is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            f.close()
+
+    def cooling(self, host):
+        try:
+            with open(os.path.join(self.dir, host + ".cool")) as f:
+                return max(0.0, float(f.read() or 0) - time.time())
+        except (OSError, ValueError):
+            return 0.0
+
+    def cool(self, host, seconds):
+        until = time.time() + seconds
+        if self.cooling(host) + time.time() < until:
+            tmp = os.path.join(self.dir, "%s.cool.%d" % (host, os.getpid()))
+            with open(tmp, "w") as f:
+                f.write(str(until))
+            _replace(tmp, os.path.join(self.dir, host + ".cool"))
+
+    def acquire(self, sources, stop):
+        """(url, lock) on the first server with a free connection that is not cooling down; waits while every one is busy.
+        sources: [(url, connections)]. Raises _Stop when the run is stopped meanwhile."""
+        t_wait = time.time()
+        while not stop["now"]:
+            for url, n in sources:
+                host = _host(url)
+                if self.cooling(host):
+                    continue
+                for i in range(max(1, int(n))):
+                    f = self._lock(host, i)
+                    if f:
+                        AGENT["waiting"] = None
+                        return url, f
+            AGENT["waiting"] = "a download connection"
+            if time.time() - t_wait > SLOT_MAX_WAIT_S:   # re-route: give this agent's place to another dataset, come back later
+                AGENT["waiting"] = None
+                raise Busy("waited %d min for a download connection (the servers allow only a few at a time): another dataset "
+                           "takes this place, this one comes back in a few minutes" % (SLOT_MAX_WAIT_S // 60))
+            if self.halt and time.time() - self._checked > 15:
+                self._checked = time.time()
+                why = self.halt()
+                if why:
+                    raise _Stop(why)
+            time.sleep(2)
+        return None, None
+
+
+def _retry_after(e):
+    try:
+        return int(e.headers.get("Retry-After") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+# ------------------------------------------------------------------------------------------------ multi-member gzip, by byte range
+GZ_SIG = b"\x1f\x8b\x08\x00\x00\x00\x00\x00"      # a gzip member header as Wikimedia's dumper writes it (no name, no time)
+
+
+def _ranged(url, start, stop, sources=None, slots=None):
+    """compressed bytes of url from `start` to the end of the file (local file:// too); reconnects where it broke.
+    With sources [(url, connections)] and slots, each connection takes a slot on one of the servers holding the identical
+    file, and a server that refuses (429/503) is left to cool down while another one, or a later turn, carries on."""
+    if url.startswith("file://"):
+        with _open(url) as f:
+            f.seek(start)
+            for b in iter(lambda: f.read(1 << 20), b""):
+                if stop["now"]:
+                    return
+                yield b
+        return
+    sources = sources or [(url, 1)]
+    pos, tries, refused = start, 0, 0
+    while not stop["now"]:
+        t = _NS()
+        src, lock = slots.acquire(sources, stop) if slots else (sources[0][0], None)
+        TR.add("net_wait", _NS() - t)                 # waiting for a free connection slot (congestion at our end)
+        if src is None:
+            return
+        t_conn, got = _NS(), 0
+        try:
+            with urllib.request.urlopen(_req(src, {"Range": "bytes=%d-" % pos}), timeout=120) as r:
+                ttfb = (_NS() - t_conn) / 1e9
+                TR.add("net_connect", _NS() - t_conn)
+                if r.status != 206 and pos:
+                    raise OSError("the server ignored the byte range")
+                while not stop["now"]:
+                    t = _NS()
+                    b = r.read(1 << 20)
+                    TR.add("net_read", _NS() - t, 1, len(b))
+                    TR.chunk_wall = _WALL()
+                    if not b:
+                        TR.io(_host(src), r.status, (_NS() - t_conn) / 1e9, got, ttfb, url=src[-80:], end="complete")
+                        return
+                    pos += len(b); tries = 0; refused = 0; got += len(b)
+                    yield b
+                TR.io(_host(src), r.status, (_NS() - t_conn) / 1e9, got, ttfb, url=src[-80:], end="stopped")
+        except urllib.error.HTTPError as e:
+            TR.io(_host(src), e.code, (_NS() - t_conn) / 1e9, got, None, url=src[-80:], end="refused" if e.code in REFUSED else "error")
+            TR.fail("network", e, retried=True, host=_host(src), code=e.code, offset=pos)
+            if e.code in REFUSED:                     # "slow down": not a failure — let that server cool down
+                wait = max(COOL_S, _retry_after(e))
+                refused += 1
+                if slots:
+                    slots.cool(_host(src), wait)
+                else:
+                    if refused > 30:
+                        raise Busy("%s keeps refusing (HTTP %d): paused, resumes on the next run" % (_host(src), e.code))
+                    time.sleep(min(600, wait))
+                continue
+            tries += 1
+            if tries > 8:
+                raise
+            time.sleep(min(60, 2 ** tries))
+        except (OSError, urllib.error.URLError) as e:
+            TR.io(_host(src), None, (_NS() - t_conn) / 1e9, got, None, url=src[-80:], end="broken")
+            TR.fail("network", e, retried=tries < 8, host=_host(src), offset=pos)
+            tries += 1
+            if tries > 8:
+                raise
+            time.sleep(min(60, 2 ** tries))
+        finally:
+            if slots:
+                slots.release(lock)
+
+
+def _prefetch(chunks, stop, depth=32):
+    """download on a thread so the connection keeps draining while this process parses; stops with the reader"""
+    import queue, threading
+    q = queue.Queue(depth)
+
+    def pump():
+        try:
+            for c in chunks:
+                while not stop["now"]:
+                    try:
+                        q.put(c, timeout=1); break
+                    except queue.Full:
+                        pass
+                if stop["now"]:
+                    return
+        except Exception as e:                  # handed to the reader, which raises it
+            q.put(e)
+        finally:
+            q.put(None)
+    threading.Thread(target=pump, daemon=True).start()
+    while True:
+        t = _NS()
+        c = q.get()
+        TR.add("starved", _NS() - t)              # the parser waited for the network (network-bound when large)
+        if c is None:
+            return
+        if isinstance(c, Exception):
+            raise c
+        yield c
+
+
+def gz_member_lines(url, start, end, sources=None, slots=None):
+    """the lines of every gzip member whose header lies in [start, end) — a byte range of a multi-member file decoded on
+    its own, so several agents can share one file; METER counts the compressed bytes of the range"""
+    METER.start(end - start)
+    stop = {"now": False}
+    try:
+        buf, off, d, rest = b"", start, None, b""         # off = the file offset of buf[0]
+        for c in _prefetch(_ranged(url, start, stop, sources, slots), stop):
+            buf += c
+            while True:
+                if d is None:                            # find the next member header (checked: the bytes may occur inside data)
+                    i = buf.find(GZ_SIG)
+                    while i != -1 and len(buf) - i >= 64:
+                        try:
+                            zlib.decompressobj(31).decompress(buf[i:i + 4096]); break
+                        except zlib.error:
+                            i = buf.find(GZ_SIG, i + 1)
+                    if i == -1 or len(buf) - i < 64:
+                        keep = max(0, len(buf) - 64); off += keep; buf = buf[keep:]
+                        break
+                    if off + i >= end:
+                        METER.done = end - start
+                        return
+                    d = zlib.decompressobj(31); off += i; buf = buf[i:]
+                t = _NS()
+                out = d.decompress(buf)
+                TR.add("decompress", _NS() - t, 1, len(out))
+                TR.decomp_wall = _WALL()
+                if out:
+                    out = rest + out
+                    lines = out.split(b"\n")
+                    rest = lines.pop()
+                    yield from lines
+                if d.eof:
+                    off += len(buf) - len(d.unused_data); buf = d.unused_data; d = None
+                    if rest:
+                        yield rest; rest = b""
+                    METER.done = min(end, off) - start
+                    if off >= end:
+                        return
+                    continue
+                off += len(buf); buf = b""
+                METER.done = min(end, off) - start
+                break
+    finally:
+        stop["now"] = True
+
+
+def cached(url, folder):
+    """a whole file kept in the shard cache (for archives that must be read twice); resumed by byte range"""
+    if url.startswith("file://"):
+        return urllib.request.url2pathname(urllib.parse.urlsplit(url).path)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, os.path.basename(urllib.parse.urlsplit(url).path))
+    if os.path.exists(path):
+        return path
+    part = path + ".part"
+    have = os.path.getsize(part) if os.path.exists(part) else 0
+    with urllib.request.urlopen(_req(url, {"Range": "bytes=%d-" % have} if have else None), timeout=120) as r, open(part, "ab" if have else "wb") as f:
+        while True:
+            b = r.read(1 << 20)
+            if not b:
+                break
+            f.write(b)
+    os.replace(part, path)
+    return path
+
+
+# ------------------------------------------------------------------------------------------------ datasets
+class Dataset:
+    """One open dataset. parts(): [(name, url)]; rows(part, url, state) yields raw rows; facts(part, row, state) turns one
+    row into [(subject, predicate, object)]. Everything is a fixed rule: the same file gives the same facts."""
+    key = title = app = source = licence = why = ""
+    approx = ""
+    rule = {}                    # predicate -> the rule it follows (computed datasets)
+
+    def parts(self):
+        return []
+
+    def prepare(self, run):
+        return {}
+
+    def rows(self, part, url, state):
+        return gz_lines(url)
+
+    def facts(self, part, row, state):
+        return []
+
+    def link(self, subject):
+        return None
+
+
+class PubChem(Dataset):
+    key, title, app, source = "pubchem-computed", "PubChem — NCBI-computed compound properties", "stem", "pubchem-computed"
+    licence = "US government work (NLM); NCBI-computed properties only"
+    why = "every compound's formula, mass and identifiers, computed by NCBI — the backbone of chemistry questions"
+    approx = "about 120 million compounds × 4 properties"
+    BASE = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/"
+
+    def parts(self):
+        return [("CID-Mass", self.BASE + "CID-Mass.gz"), ("CID-InChI-Key", self.BASE + "CID-InChI-Key.gz"), ("CID-SMILES", self.BASE + "CID-SMILES.gz")]
+
+    def facts(self, part, row, state):
+        c = row.split("\t")
+        s = "PubChem CID " + c[0]
+        if part == "CID-Mass" and len(c) >= 3:
+            return [(s, "molecular formula", c[1]), (s, "monoisotopic mass (Da)", c[2])]
+        if part == "CID-InChI-Key" and len(c) >= 3:
+            return [(s, "InChIKey", c[2])]
+        if part == "CID-SMILES" and len(c) >= 2:
+            return [(s, "SMILES", c[1])]
+        return []
+
+    def link(self, subject):
+        return "https://pubchem.ncbi.nlm.nih.gov/compound/" + subject.rsplit(" ", 1)[-1]
+
+
+class Taxonomy(Dataset):
+    key, title, app, source = "ncbi-taxonomy", "NCBI Taxonomy — every named organism", "stem", "ncbi-taxonomy"
+    licence = "US government work (NCBI)"
+    why = "the classification of life: each organism's rank, its parent group and its common names"
+    approx = "about 2.7 million taxa, about 10 million facts"
+    URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz"
+
+    def parts(self):
+        return [("nodes", self.URL), ("common names", self.URL)]
+
+    def prepare(self, run):
+        path = cached(self.url_for("nodes"), run.cache)
+        names, common = {}, []
+        with tarfile.open(path, "r:gz") as t:
+            for line in io.TextIOWrapper(t.extractfile("names.dmp"), encoding="utf-8", errors="replace"):
+                c = [x.strip() for x in line.split("|")]
+                if len(c) >= 4:
+                    if c[3] == "scientific name":
+                        names[c[0]] = c[2] or c[1]          # the unique name when the name is shared ("Morus <angiosperm>")
+                    elif c[3] in ("genbank common name", "common name"):
+                        common.append((c[0], c[1]))
+        return {"path": path, "names": names, "common": common}
+
+    def url_for(self, part):
+        return self.URL
+
+    def rows(self, part, url, state):
+        if part == "common names":
+            METER.start(len(state["common"]), "rows")
+            return iter(state["common"])
+        METER.start(len(state["names"]), "rows")
+        def gen():
+            with tarfile.open(state["path"], "r:gz") as t:
+                for line in io.TextIOWrapper(t.extractfile("nodes.dmp"), encoding="utf-8", errors="replace"):
+                    yield line
+        return gen()
+
+    def facts(self, part, row, state):
+        names = state["names"]
+        if part == "common names":
+            tid, name = row
+            return [(names[tid], "common name", name)] if tid in names else []
+        c = [x.strip() for x in row.split("|")]
+        if len(c) < 3 or c[0] not in names:
+            return []
+        s = names[c[0]]
+        out = [(s, "NCBI Taxonomy ID", c[0])]
+        if c[2] and c[2] != "no rank":
+            out.append((s, "taxonomic rank", c[2]))
+        if c[1] != c[0] and c[1] in names:
+            out.append((s, "parent taxon", names[c[1]]))
+        return out
+
+
+class Weather(Dataset):
+    key, title, app, source = "noaa-ghcn-daily", "NOAA GHCN-Daily — weather station observations", "stem", "noaa"
+    licence = "Public domain (NOAA)"
+    why = "measured daily temperatures, rain and snow at about 100,000 stations — quality-flagged readings left out"
+    approx = "about 30–40 million observations a year"
+    BASE = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/"
+    ELEMENTS = {"TMAX": ("maximum temperature (°C)", 10), "TMIN": ("minimum temperature (°C)", 10), "PRCP": ("precipitation (mm)", 10),
+                "SNOW": ("snowfall (mm)", 1), "SNWD": ("snow depth (mm)", 1)}
+
+    def __init__(self, years=None):
+        this = datetime.date.today().year
+        self.years = years or list(range(this - 1, this - 11, -1))     # the last ten complete years, newest first
+
+    def parts(self):
+        return [("stations", self.BASE + "ghcnd-stations.txt")] + [("year %d" % y, self.BASE + "by_year/%d.csv.gz" % y) for y in self.years]
+
+    def rows(self, part, url, state):
+        return text_lines(url) if part == "stations" else gz_lines(url)
+
+    def facts(self, part, row, state):
+        if part == "stations":
+            sid = row[0:11].strip()
+            if not sid:
+                return []
+            s = "Weather station " + sid
+            out = [(s, "name", row[41:71].strip()), (s, "latitude", row[12:20].strip()), (s, "longitude", row[21:30].strip())]
+            if row[31:37].strip() not in ("", "-999.9"):
+                out.append((s, "elevation (m)", row[31:37].strip()))
+            if row[38:40].strip():
+                out.append((s, "US state or Canadian province", row[38:40].strip()))
+            return out
+        c = row.split(",")
+        if len(c) < 6 or c[2] not in self.ELEMENTS or c[5]:          # c[5]: quality flag — flagged readings are left out
+            return []
+        pred, div = self.ELEMENTS[c[2]]
+        d = c[1]
+        try:
+            v = int(c[3])
+        except ValueError:
+            return []
+        val = ("%.1f" % (v / div)) if div != 1 else str(v)
+        return [("Weather station %s on %s-%s-%s" % (c[0], d[:4], d[4:6], d[6:8]), pred, val)]
+
+    def link(self, subject):
+        return "https://www.ncei.noaa.gov/cdo-web/datasets/GHCND/stations/GHCND:%s/detail" % subject.split()[2]
+
+
+class GNIS(Dataset):
+    key, title, app, source = "usgs-gnis", "USGS GNIS — official US place and feature names", "facts", "usgs-gnis"
+    licence = "Public domain (USGS)"
+    why = "every named place, stream, summit and building in the United States, with its state, county and coordinates"
+    approx = "about 1 million features × 5 facts"
+    URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames/DomesticNames/DomesticNames_National_Text.zip"
+
+    def parts(self):
+        return [("domestic names", self.URL)]
+
+    def rows(self, part, url, state):
+        return zip_lines(url, "DomesticNames_National.txt")
+
+    def facts(self, part, row, state):
+        c = row.split("|")
+        if len(c) < 17 or not c[0].isdigit():
+            return []
+        s = "%s (GNIS %s)" % (c[1], c[0])
+        out = [(s, "feature class", c[2]), (s, "state", c[3])]
+        if c[5]:
+            out.append((s, "county", c[5]))
+        if c[15] and c[16] and c[15] != "0":
+            out += [(s, "latitude", c[15]), (s, "longitude", c[16])]
+        return out
+
+    def link(self, subject):
+        return "https://edits.nationalmap.gov/apps/gaz-domestic/public/summary/" + subject.rsplit(" ", 1)[-1].rstrip(")")
+
+
+class FoodData(Dataset):
+    key, title, app, source = "usda-fooddata-central", "USDA FoodData Central — foods and their nutrients", "stem", "usda-fooddata-central"
+    licence = "CC0 1.0 (USDA)"
+    why = "what is in food: nutrients per 100 g for about two million foods"
+    approx = "about 2 million foods, about 26 million nutrient values"
+    URL = "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_csv_2026-04-30.zip"
+
+    def parts(self):
+        return [("foods", self.URL), ("nutrients", self.URL)]
+
+    def prepare(self, run):
+        nut = {}
+        for i, r in enumerate(csv.reader(zip_lines(self.URL if not run.url_override(self.key, "nutrients") else run.url_override(self.key, "nutrients"), "/nutrient.csv"))):
+            if i and len(r) >= 3:
+                nut[r[0]] = "%s (%s per 100 g or 100 ml)" % (r[1], r[2].lower())
+        return {"nutrients": nut}
+
+    def rows(self, part, url, state):
+        return csv.reader(zip_lines(url, "/food.csv" if part == "foods" else "/food_nutrient.csv"))
+
+    def facts(self, part, row, state):
+        if not row or not row[0].strip('"').isdigit():
+            return []
+        if part == "foods":
+            s = "FoodData Central food %s" % row[0]
+            out = [(s, "description", row[2])] if len(row) > 2 and row[2] else []
+            if len(row) > 1 and row[1]:
+                out.append((s, "data type", row[1].replace("_", " ")))
+            return out
+        if len(row) < 4 or row[2] not in state["nutrients"] or row[3] == "":
+            return []
+        return [("FoodData Central food %s" % row[1], state["nutrients"][row[2]], row[3])]
+
+    def link(self, subject):
+        return "https://fdc.nal.usda.gov/food-details/%s/nutrients" % subject.rsplit(" ", 1)[-1]
+
+
+class Tatoeba(Dataset):
+    key, title, app, source = "tatoeba-cc0", "Tatoeba — example sentences marked CC0", "language", "tatoeba-cc0"
+    licence = "CC0 1.0 (only the sentences their authors marked CC0)"
+    why = "real example sentences in hundreds of languages, for the Language Builder"
+    approx = "about 560,000 sentences"
+    URL = "https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2"
+
+    def parts(self):
+        return [("sentences", self.URL)]
+
+    def rows(self, part, url, state):
+        return tar_member_lines(url, "sentences_CC0.csv")
+
+    def facts(self, part, row, state):
+        c = row.split("\t")
+        if len(c) < 3 or not c[0].isdigit() or not c[2]:
+            return []
+        s = "Tatoeba sentence " + c[0]
+        return [(s, "text", c[2]), (s, "language (ISO 639-3)", c[1])]
+
+    def link(self, subject):
+        return "https://tatoeba.org/en/sentences/show/" + subject.rsplit(" ", 1)[-1]
+
+
+class Calendar(Dataset):
+    key, title, app, source = "calendar-scaffold", "Calendar scaffold — computed dates, holidays, seasons, election days", "facts", None
+    licence = "QueryBook's own computation from published rules"
+    why = "what can be known in advance: every date's weekday, Easter, equinoxes and solstices, US holidays and election days"
+    approx = "about 450,000 facts for 1600–2200"
+
+    def parts(self):
+        return [("years", ""), ("dates", "")]
+
+    def rows(self, part, url, state):
+        METER.start(sc.LAST_YEAR - sc.FIRST_YEAR + 1, "years")
+        return iter(range(sc.FIRST_YEAR, sc.LAST_YEAR + 1))
+
+    def facts(self, part, row, state):
+        out = sc.year_facts(row) if part == "years" else sc.date_facts(row)
+        for s, p, o, rule in out:
+            self.rule.setdefault(p, rule)
+        return [(s, p, o) for s, p, o, rule in out]
+
+
+class Series(Dataset):
+    key, title, app, source = "wikidata-series", "Recurring events — the scaffold's slots filled from Wikidata", "facts", "wikidata"
+    licence = "CC0 1.0 (Wikidata)"
+    why = ("every edition of the recurring events Wikidata records — winner, place, country, dates, participants, its own name — "
+           "with each edition linked to the one before and after: one query per series (a lattice of slots)")
+    approx = "tens of thousands of facts; the slots show which editions are still open"
+    ENDPOINT = "https://query.wikidata.org/sparql"
+    # Wikidata's query service allows each client a share of query time per minute. The pause after a query is twice the
+    # time the query took (at least GAP_S), so the harvester uses well under half of that share; a 429 doubles the pause.
+    GAP_S = 2.0
+    MAX_GAP_S = 120.0
+
+    def parts(self):
+        return [(k, self.ENDPOINT) for k in sc.SERIES]
+
+    def rows(self, part, url, state):
+        last, gap = state.get("_last", 0), state.get("_gap", self.GAP_S)
+        if last and time.time() - last < gap:
+            time.sleep(gap - (time.time() - last))
+        t0 = time.time()
+        if url.startswith("file://"):
+            with _open(url) as r:
+                body = json.loads(r.read())
+        else:
+            q = urllib.parse.urlencode({"query": sc.query(part), "format": "json"})
+            for attempt in range(5):
+                try:
+                    with urllib.request.urlopen(_req(url + "?" + q, {"Accept": "application/sparql-results+json"}), timeout=120) as r:
+                        body = json.loads(r.read())
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code not in (429, 503):
+                        raise
+                    if attempt == 4:
+                        raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the open slots are filled on the next run" % e.code)
+                    state["_gap"] = gap = min(self.MAX_GAP_S, max(gap * 2, 10))
+                    time.sleep(max(gap, _retry_after(e)))
+        state["_last"] = time.time()
+        state["_gap"] = max(self.GAP_S, min(self.MAX_GAP_S, max(2 * (time.time() - t0), state.get("_gap", self.GAP_S) * 0.75)))
+        found = sc.slot_facts(part, body["results"]["bindings"])
+        METER.start(len(found), "editions")
+        return iter(found)
+
+    def facts(self, part, row, state):
+        s, p, o, year, url = row
+        state.setdefault("_links", {})[s] = url
+        state.setdefault("_filled", set()).add((part, year))
+        return [(s, p, o)]
+
+
+class WikidataLattice(Dataset):
+    """EVERY recurring event series Wikidata knows, found by Wikidata itself and harvested in batches — the lattice.
+
+    Discovery (three grouped queries, about a minute, refreshed weekly) lists every series with at least five editions:
+    league and competition seasons (P3450, about 5,900 series), series of dated events (P179: conferences, festivals,
+    synods, award ceremonies, elections, trade fairs...; about 3,600) and recurring events whose editions are instances of
+    them (about 140). The editions of up to 200 series (at most 1,500 editions) are then read in ONE query: each edition's
+    series, date, start and end, winner, place, country, successful candidate and number of participants, and each edition
+    is linked to the one before and after it in date order. Facts are written exactly as the dump lanes write them (same
+    subject "Name (Q-id)", predicate names, Q-id objects and date precision), so where the two overlap one copy is kept."""
+    key, title, app, source = "wikidata-lattice", "Recurring events — every series Wikidata knows, harvested by batches", "facts", "wikidata"
+    licence = "CC0 1.0 (Wikidata)"
+    why = ("sports seasons, tournaments, elections, festivals, conferences, award ceremonies, synods, trade fairs: every series Wikidata "
+           "records, found automatically and read 200 series per query, each edition linked to the one before and after it")
+    approx = "about 9,700 series, 240,000 editions, 1-2 million facts in roughly 200 queries"
+    ENDPOINT = "https://query.wikidata.org/sparql"
+    LINKS = ("P3450", "P179", "P31")
+    MIN_EDITIONS = 5
+    BATCH_SERIES, BATCH_EDITIONS = 200, 1500
+    GAP_S, MAX_GAP_S = 2.0, 120.0
+    DISCOVER = {
+        "P3450": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P3450 ?s } GROUP BY ?s HAVING(COUNT(?e) >= %d)",
+        "P179": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P179 ?s; wdt:P585|wdt:P580 ?d } GROUP BY ?s HAVING(COUNT(?e) >= %d)",
+        "P31": "SELECT ?s (COUNT(?e) AS ?n) WHERE { ?e wdt:P31 ?s. ?s wdt:P31 wd:Q15275719. ?e wdt:P585|wdt:P580 ?d } GROUP BY ?s HAVING(COUNT(?e) >= %d)"}
+    ITEM_PROPS = ("P1346", "P276", "P17", "P991")
+    TIME_PROPS = ("P585", "P580", "P582")
+    NAMES = {"P3450": "sports season of league or competition", "P179": "part of the series", "P31": "instance of", "P1346": "winner",
+             "P276": "location", "P17": "country", "P991": "successful candidate", "P585": "point in time", "P580": "start time",
+             "P582": "end time", "P1132": "number of participants"}
+    # one query per batch: the editions of up to 200 series, every property an OPTIONAL lookup on an edition already found
+    # (index-friendly: about 7 s for 200 series / 1,500-2,000 editions); dates with their precision, best rank only
+    EDITION_Q = ("SELECT ?e ?eLabel ?w ?loc ?cty ?cand ?n ?s ?dt ?dp ?st ?sp ?en ?ep WHERE { VALUES ?s { %s } ?e wdt:%s ?s. "
+                 "OPTIONAL { ?e wdt:P1346 ?w } OPTIONAL { ?e wdt:P276 ?loc } OPTIONAL { ?e wdt:P17 ?cty } OPTIONAL { ?e wdt:P991 ?cand } "
+                 "OPTIONAL { ?e wdt:P1132 ?n } "
+                 "OPTIONAL { ?e p:P585 ?a. ?a a wikibase:BestRank; psv:P585 ?av. ?av wikibase:timeValue ?dt; wikibase:timePrecision ?dp } "
+                 "OPTIONAL { ?e p:P580 ?b. ?b a wikibase:BestRank; psv:P580 ?bv. ?bv wikibase:timeValue ?st; wikibase:timePrecision ?sp } "
+                 "OPTIONAL { ?e p:P582 ?c. ?c a wikibase:BestRank; psv:P582 ?cv. ?cv wikibase:timeValue ?en; wikibase:timePrecision ?ep } "
+                 "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en,mul\". ?e rdfs:label ?eLabel } }")
+    COLS = (("w", "P1346"), ("loc", "P276"), ("cty", "P17"), ("cand", "P991"), ("s", None), ("n", "P1132"),
+            (("dt", "dp"), "P585"), (("st", "sp"), "P580"), (("en", "ep"), "P582"))
+
+    def discovery_path(self, folder):
+        return os.path.join(folder, FOLDER, "wikidata-lattice-series.json")
+
+    def prepare(self, run):
+        self.folder = run.folder
+        self.base = run.commons.setting("bulk:url:wikidata-lattice")       # tests: a local answer file
+        names = WikidataDump(1).catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
+        self.names = {pid: names.get(pid) or default for pid, default in self.NAMES.items()}
+        db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
+        db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.commit()
+        return {"_labeldb": db}
+
+    def _query(self, q, state):
+        """one SPARQL query, paced: the pause after it is 1.2 times its own time (at least GAP_S) — under half of the query
+        service's per-client allowance; a refusal doubles the pause"""
+        last, gap = state.get("_last", 0), state.get("_gap", self.GAP_S)
+        if last and time.time() - last < gap:
+            time.sleep(gap - (time.time() - last))
+        t0 = time.time()
+        for attempt in range(6):
+            try:
+                req = urllib.request.Request(self.ENDPOINT, data=urllib.parse.urlencode({"query": q, "format": "json"}).encode(),
+                                             headers={"User-Agent": UA, "Accept": "application/sparql-results+json"})
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    body = json.loads(r.read())
+                break
+            except urllib.error.HTTPError as e:
+                if e.code not in REFUSED + (502, 504):
+                    raise
+                if attempt == 5:
+                    raise Busy("Wikidata's query service asked us to slow down (HTTP %d); the lattice continues on the next run" % e.code)
+                state["_gap"] = gap = min(self.MAX_GAP_S, max(gap * 2, 10))
+                time.sleep(max(gap, _retry_after(e)))
+        state["_last"] = time.time()
+        state["_gap"] = max(self.GAP_S, min(self.MAX_GAP_S, max(1.2 * (time.time() - t0), state.get("_gap", self.GAP_S) * 0.75)))
+        return body["results"]["bindings"]
+
+    def discover(self, folder, state, fetch=True):
+        """{link: [[series qid, editions], ...]}, kept beside the shards for a week"""
+        path = self.discovery_path(folder)
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            if not fetch or time.time() - d.get("read", 0) < 7 * 86400:
+                return d
+        except (OSError, ValueError):
+            if not fetch:
+                return {"read": 0, "date": "none", "links": {}}
+        d = {"read": time.time(), "date": core.now_iso()[:10], "links": {}}
+        for link, q in self.DISCOVER.items():
+            rows = self._query(q % self.MIN_EDITIONS, state)
+            d["links"][link] = sorted([b["s"]["value"].rsplit("/", 1)[-1], int(b["n"]["value"])] for b in rows)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(path + ".tmp", path)
+        return d
+
+    @classmethod
+    def batches(cls, series):
+        """[[qid, editions], ...] → groups of at most BATCH_SERIES series and BATCH_EDITIONS editions (a giant series alone)"""
+        out, cur, n = [], [], 0
+        for q, k in series:
+            if cur and (len(cur) >= cls.BATCH_SERIES or n + k > cls.BATCH_EDITIONS):
+                out.append(cur); cur, n = [], 0
+            cur.append(q); n += k
+        if cur:
+            out.append(cur)
+        return out
+
+    def parts(self):
+        fetch = not (self.base or "").startswith("file://")
+        d = self.discover(self.folder, {}, fetch)
+        out = []
+        for link in self.LINKS:
+            bs = self.batches(d["links"].get(link, []))
+            for i, b in enumerate(bs, 1):
+                out.append(("%s discovery %s batch %d of %d" % (d["date"], link, i, len(bs)), "%s#%s:%s" % (self.base or self.ENDPOINT, link, ",".join(b))))
+        return out
+
+    def rows(self, part, url, state):
+        base, _, spec = url.partition("#")
+        link, _, qs = spec.partition(":")
+        if base.startswith("file://"):
+            with _open(base) as r:
+                rows = json.loads(r.read())["results"]["bindings"]
+        else:
+            rows = self._query(self.EDITION_Q % (" ".join("wd:" + q for q in qs.split(",")), link), state)
+        METER.start(len(rows), "rows")
+        return iter(self.edition_facts(rows, link, getattr(self, "names", None) or dict(self.NAMES), state))
+
+    @staticmethod
+    def _time(t, prec):
+        tm = t if t[:1] in "+-" else "+" + t
+        y, m, d = tm[1:].split("T")[0].rsplit("-", 2)
+        y = ("-" if tm[0] == "-" else "") + y.lstrip("0").rjust(4, "0")
+        return "%s-%s-%s" % (y, m, d) if prec >= 11 else "%s-%s" % (y, m) if prec == 10 else y
+
+    @classmethod
+    def edition_facts(cls, rows, link, names, state=None):
+        """bindings → [(subject, predicate, object)] in the dump's own form, plus each edition's neighbours in date order"""
+        out, seen, labels, when, series_of = [], set(), {}, {}, {}
+        qid = lambda v: v.rsplit("/", 1)[-1]
+        for b in rows:
+            e = qid(b["e"]["value"])
+            lab = (b.get("eLabel") or {}).get("value", "")
+            if not lab or lab == e:
+                continue
+            labels[e] = lab
+            subj = "%s (%s)" % (lab, e)
+            for col, pid in cls.COLS:
+                if isinstance(col, tuple):
+                    if col[0] not in b:
+                        continue
+                    try:
+                        v = cls._time(b[col[0]]["value"], int(b[col[1]]["value"]))
+                    except (KeyError, ValueError):
+                        continue
+                    if pid in ("P585", "P580"):
+                        when.setdefault(e, b[col[0]]["value"].lstrip("+"))
+                elif col not in b:
+                    continue
+                elif pid == "P1132":
+                    try:
+                        n = float(b[col]["value"])
+                    except ValueError:
+                        continue
+                    v = str(int(n)) if n == int(n) else str(n)
+                else:
+                    v = qid(b[col]["value"])
+                    if not (v[:1] == "Q" and v[1:].isdigit()):
+                        continue
+                    if col == "s":
+                        series_of.setdefault(e, set()).add(v)
+                f = (subj, names.get(pid or link) or (pid or link), v)
+                if f not in seen:
+                    seen.add(f); out.append(f)
+        by_series = {}
+        for e, ss in series_of.items():
+            if e in when:
+                for sq in ss:
+                    by_series.setdefault(sq, []).append((when[e], e))
+        for sq, eds in by_series.items():                  # the lattice: each edition linked to its neighbours in date order
+            eds.sort()
+            for (_, a), (_, b2) in zip(eds, eds[1:]):
+                for f in (("%s (%s)" % (labels[a], a), "next edition (by date)", b2), ("%s (%s)" % (labels[b2], b2), "previous edition (by date)", a)):
+                    if f not in seen:
+                        seen.add(f); out.append(f)
+        if state is not None and state.get("_labeldb") is not None and labels:
+            state["_labeldb"].executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", [(int(q[1:]), l) for q, l in labels.items()])
+            state["_labeldb"].commit()
+        return out
+
+    def facts(self, part, row, state):
+        state.setdefault("_links", {})[row[0]] = "https://www.wikidata.org/wiki/" + row[0].rsplit("(", 1)[-1].rstrip(")")
+        return [row]
+
+    def link(self, subject):
+        m = re.search(r"\((Q\d+)\)$", subject)
+        return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
+
+
+class MitOcw(Dataset):
+    key, title, app, source = "mit-ocw", "MIT OpenCourseWare — the course catalog", "stem", "mit-ocw-catalog"
+    licence = "Facts only (course catalog); OCW's own materials are CC BY-NC-SA 4.0 and are not copied"
+    why = "every free MIT course: its number, title, department, school, instructors, level, term, topics and what it offers"
+    approx = "about 2,600 courses × 15 facts"
+    URL = "https://api.learn.mit.edu/api/v1/courses/?platform=ocw&limit=100"
+    GAP_S = 1.0                        # one page a second: about 26 requests for the whole catalog
+
+    def parts(self):
+        return [("courses", self.URL)]
+
+    def rows(self, part, url, state):
+        if url.startswith("file://"):
+            with _open(url) as r:
+                yield from json.loads(r.read())["results"]
+            return
+        first = True
+        while url:
+            if not first:
+                time.sleep(self.GAP_S)
+            first = False
+            for attempt in range(4):
+                try:
+                    with urllib.request.urlopen(_req(url, {"Accept": "application/json"}), timeout=120) as r:
+                        body = json.loads(r.read())
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code not in (429, 503):
+                        raise
+                    if attempt == 3:
+                        raise Busy("MIT Learn asked us to slow down (HTTP %d); the catalog continues on the next run" % e.code)
+                    time.sleep(max(30, int(e.headers.get("Retry-After") or 0)))
+            if not METER.total:
+                METER.start(int(body.get("count") or 0), "courses")
+            yield from body.get("results") or []
+            url = body.get("next")
+
+    def facts(self, part, c, state):
+        """catalog facts only — never the course description or any course material (MIT's wording, CC BY-NC-SA)"""
+        nums = (c.get("course") or {}).get("course_numbers") or []
+        primary = next((n["value"] for n in nums if n.get("listing_type") == "primary"), nums[0]["value"] if nums else None)
+        run = next((r for r in c.get("runs") or [] if r.get("id") == c.get("best_run_id")), (c.get("runs") or [None])[0]) or {}
+        term = " ".join(str(x) for x in (run.get("semester"), run.get("year")) if x)
+        if not primary or not c.get("title"):
+            return []
+        s = "MIT course %s%s" % (primary, " (%s)" % term if term else "")
+        out = [(s, "title", c["title"].strip()), (s, "offered by", "MIT OpenCourseWare")]
+        if term:
+            out.append((s, "taught in", term))
+        for n in nums:
+            if n["value"] != primary:
+                out.append((s, "also listed as", n["value"]))
+        for d in c.get("departments") or []:
+            out.append((s, "department", d["name"]))
+            if (d.get("school") or {}).get("name"):
+                out.append((s, "school", d["school"]["name"]))
+        for i in run.get("instructors") or []:
+            if i.get("full_name"):
+                out.append((s, "instructor", i["full_name"].strip()))
+        for lv in run.get("level") or []:
+            out.append((s, "level", lv["name"]))
+        for t in c.get("ocw_topics") or []:
+            out.append((s, "topic", t))
+        for f in c.get("course_feature") or []:
+            out.append((s, "includes", f))
+        if c.get("url"):
+            state.setdefault("_links", {})[s] = c["url"]
+        return out
+
+
+class WikidataDump(Dataset):
+    """the whole of Wikidata from its weekly entity dump (CC0), read by several agents at once: the dump is one gzip file of
+    many independent members, so it is cut into 1 GiB parts and lane k of n takes every n-th part. Each entity line becomes
+    facts by a fixed rule — truthy statements (preferred rank, else normal; never deprecated) of the properties below.
+    Subjects read "Albert Einstein (Q937)"; an object that is another item is kept as its Q-id and shown with its English
+    label (each lane keeps the labels of its entities beside its shard)."""
+    URL = "https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.gz"
+    PART = 1 << 30
+    LANES = 16                         # 16 datasets; the agents setting decides how many run at once (one CPU core each)
+    PROPS = {
+        "P31": "instance of", "P279": "subclass of", "P21": "sex or gender", "P27": "country of citizenship", "P106": "occupation",
+        "P569": "date of birth", "P570": "date of death", "P19": "place of birth", "P20": "place of death", "P17": "country",
+        "P131": "located in", "P30": "continent", "P36": "capital", "P1376": "capital of", "P625": "coordinates", "P1082": "population",
+        "P2046": "area", "P2044": "elevation (m)", "P571": "inception", "P576": "dissolved", "P577": "publication date", "P50": "author",
+        "P57": "director", "P86": "composer", "P175": "performer", "P112": "founded by", "P159": "headquarters", "P169": "chief executive",
+        "P35": "head of state", "P6": "head of government", "P37": "official language", "P38": "currency", "P166": "award received",
+        "P39": "position held", "P69": "educated at", "P800": "notable work", "P26": "spouse", "P22": "father", "P25": "mother",
+        "P1346": "winner", "P276": "location", "P585": "point in time", "P991": "successful candidate", "P136": "genre",
+        "P495": "country of origin", "P1412": "languages spoken", "P2048": "height", "P1086": "atomic number", "P356": "DOI",
+        "P1433": "published in", "P921": "main subject", "P225": "taxon name", "P171": "parent taxon", "P105": "taxon rank",
+        "P407": "language of work", "P123": "publisher", "P364": "original language", "P1191": "date of first performance"}
+    # every property of these kinds is kept (Wikidata's own catalogue, read once per run); external identifiers (catalogue
+    # numbers in other databases), media file names, shapes, tables and lexical data are cross-references, not knowledge
+    KEEP_TYPES = {"WikibaseItem", "Quantity", "String", "Url", "Time", "Monolingualtext", "GlobeCoordinate"}
+    # Wikimedia's own housekeeping: links between category, list, template and Commons pages, not knowledge
+    SKIP_PROPS = {"P373", "P910", "P301", "P971", "P4224", "P360", "P1753", "P1754", "P1423", "P1424", "P3876", "P2354", "P1204",
+                  "P935", "P1151", "P1465", "P1792", "P1464", "P7084", "P8464", "P5008", "P6104", "P6365", "P3858", "P2559"}
+    PROPS_QUERY = 'SELECT ?p ?t ?l WHERE { ?p wikibase:propertyType ?t . OPTIONAL { ?p rdfs:label ?l FILTER(LANG(?l)="en") } }'
+    app, source = "facts", "wikidata"
+    licence = "CC0 1.0 (Wikidata)"
+    approx = "about 115 million items — about a billion facts (every knowledge property)"
+
+    def __init__(self, lane=1, lanes=None):
+        self.lane, self.lanes = lane, lanes or self.LANES
+        self.key = "wikidata-dump-%d" % lane
+        self.title = "Wikidata — the full dump, lane %d of %d" % (lane, self.lanes)
+        self.why = ("the prototype's main source: people, places, works, organisations, taxa and their dates — every item of "
+                    "Wikidata, streamed by %d agents side by side" % self.lanes)
+        self.size, self.edition, self.base, self.props = None, "", None, dict(self.PROPS)
+        self.mirrors, self.sources, self.slots, self.local = list(self.MIRRORS), None, None, None
+
+    def catalogue(self, folder, fetch=True):
+        """{property: name} for every property of a kept kind — QueryBook's own names for the ones it named before (so earlier
+        shards keep their predicates), else Wikidata's English label. Read from Wikidata once and kept beside the shards;
+        without it (no network) the lane keeps the named core properties only."""
+        path = os.path.join(folder, FOLDER, "wikidata-properties.json")
+        cat = None
+        try:
+            with open(path, encoding="utf-8") as f:
+                cat = json.load(f)
+            if time.time() - cat.get("read", 0) > 7 * 86400:
+                cat = None if fetch else cat
+        except (OSError, ValueError):
+            cat = None
+        if cat is None and fetch:
+            q = urllib.parse.urlencode({"query": self.PROPS_QUERY, "format": "json"})
+            try:
+                with urllib.request.urlopen(_req("https://query.wikidata.org/sparql?" + q, {"Accept": "application/sparql-results+json"}), timeout=180) as r:
+                    rows = json.loads(r.read())["results"]["bindings"]
+                cat = {"read": time.time(), "props": {b["p"]["value"].rsplit("/", 1)[-1]: [b["t"]["value"].rsplit("#", 1)[-1], (b.get("l") or {}).get("value")]
+                                                     for b in rows}}
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(cat, f)
+                os.replace(path + ".tmp", path)
+            except Exception:
+                cat = None
+        out = dict(self.PROPS)
+        if cat:
+            for pid, (typ, label) in cat["props"].items():
+                if typ in self.KEEP_TYPES and pid not in out and pid not in self.SKIP_PROPS:
+                    out[pid] = label or pid
+        return out
+
+    # servers holding the identical dump file, with the connections each is asked for. Before use each one must report
+    # exactly the same size and Last-Modified as the file the parts are cut from (so the bytes are the same edition).
+    MIRRORS = [("https://dumps.wikimedia.your.org/other/wikibase/wikidatawiki/latest-all.json.gz", 4),
+               ("https://ftp.acc.umu.se/mirror/wikimedia.org/other/wikibase/wikidatawiki/latest-all.json.gz", 3),
+               ("https://dumps.wikimedia.org/other/wikibase/wikidatawiki/latest-all.json.gz", 2)]
+    PRIMARY_CONNECTIONS = 2                 # Wikimedia's own server: a couple of connections per computer
+
+    def _head(self, url):
+        if url.startswith("file://"):
+            return os.path.getsize(urllib.request.url2pathname(urllib.parse.urlsplit(url).path)), "local file"
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=60) as r:
+            lm = r.headers.get("Last-Modified") or ""
+            try:
+                ed = datetime.datetime.strptime(lm, "%a, %d %b %Y %H:%M:%S GMT").strftime("%Y-%m-%d")
+            except ValueError:
+                ed = "latest"
+            return int(r.headers["Content-Length"]), ed
+
+    def _head_full(self, url):
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=30) as r:
+            return int(r.headers["Content-Length"]), r.headers.get("Last-Modified") or ""
+
+    def _sources(self, url):
+        """(the file the parts are cut from, [(url, connections)] holding identical bytes)"""
+        if url.startswith("file://"):
+            return url, [(url, 1)]
+        cands = [(url, self.PRIMARY_CONNECTIONS)] + [m for m in self.mirrors if m[0] != url]
+        seen, base, ref = [], None, None
+        for u, n in cands:
+            try:
+                size, lm = self._head_full(u)
+            except urllib.error.HTTPError as e:
+                if e.code in REFUSED:
+                    seen.append((u, n, None))             # busy now: usable later if it holds the same file
+                continue
+            except Exception:
+                continue
+            if ref is None:
+                base, ref = u, (size, lm)
+                seen.append((u, n, ref))
+            elif (size, lm) == ref:
+                seen.append((u, n, ref))
+        if ref is None:
+            raise Busy("every server holding the Wikidata dump refused or failed to answer: paused, resumes on the next run")
+        # a server that was busy at the check is only used if it is the official one (same file by definition)
+        return base, [(u, n) for u, n, r in seen if r == ref or (r is None and u in (self.URL, self.MIRRORS[-1][0]))]
+
+    def parts(self):
+        url = self.base or self.URL
+        url, self.sources = self._sources(url)
+        self.size, self.edition = self._head(url)
+        if self.local:                         # the downloaded copy: named by its own edition, so parts done while
+            self.edition = self.local["edition"]   # streaming the same edition are not read again
+        n = -(-self.size // self.PART)
+        return [("%s part %04d of %04d" % (self.edition, i + 1, n), "%s#%d-%d" % (url, i * self.PART, min(self.size, (i + 1) * self.PART)))
+                for i in range(n) if i % self.lanes == self.lane - 1]
+
+    def prepare(self, run):
+        self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
+        try:                                                            # bulk:wikidata:mirrors = [[url, connections], ...] replaces the list
+            self.mirrors = [tuple(m) for m in json.loads(run.commons.setting("bulk:wikidata:mirrors") or "null")] or list(self.MIRRORS)
+        except (ValueError, TypeError):
+            self.mirrors = list(self.MIRRORS)
+        if not self.base and local_mode(run.commons):                 # 1.31: download once, read locally
+            dumps = dumps_folder(run.folder, run.commons)
+            r = dumps_ready(run.folder, run.commons)
+            if not r:
+                pg = qbdump.progress(dumps)
+                state = WAITING + (" (%d%% downloaded%s)" % (round(100 * pg["share"]), ", about %d min left" % (pg["eta_s"] // 60)
+                                                                    if pg.get("eta_s") else "") if pg else " (starting)")
+                if not stream_while_downloading(run.commons):
+                    raise Busy(state)
+                # 1.32: the lane streams meanwhile instead of waiting (it waited, idle, for the whole 157 GB before);
+                # the download and the lanes share each server's connections (Slots), and parts streamed now are
+                # not read again from the copy, which is named by the same edition
+                TR.event("download", note="%s: streaming over the internet while %s" % (self.key, state.replace(WAITING, "the download runs")))
+            else:
+                self.local, self.base = r, "file://" + urllib.request.pathname2url(r["path"])
+        self.slots = Slots(run.folder, halt=run.stopped)
+        if (run.commons.setting("bulk:wikidata:properties") or "all") == "all":
+            self.props = self.catalogue(run.folder, fetch=not (self.base or "").startswith("file://"))
+        db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
+        db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
+        db.commit()
+        return {"_labeldb": db, "_labelbuf": []}
+
+    def rows(self, part, url, state):
+        base, _, rng = url.partition("#")
+        a, b = (int(x) for x in rng.split("-"))
+        sources = getattr(self, "sources", None) or [(base, self.PRIMARY_CONNECTIONS)]
+        try:
+            for line in gz_member_lines(base, a, b, sources, getattr(self, "slots", None)):
+                if len(line) > 2 and line[0] == 0x7B:          # '{': an entity (skips "[", "]" and separators)
+                    yield line
+        finally:
+            self._flush(state)
+
+    def _flush(self, state):
+        buf, db, kc = state.get("_labelbuf"), state.get("_labeldb"), state.get("_kc")
+        if db is None:
+            return
+        if buf:
+            db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
+            buf.clear()
+        if kc:
+            db.executemany("INSERT INTO keystones(k, facts) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET facts = facts + excluded.facts", kc.items())
+            kc.clear()
+        db.commit()
+
+    @staticmethod
+    def value(dv):
+        t, v = dv.get("type"), dv.get("value")
+        if t == "wikibase-entityid":
+            return v.get("id") or "Q%d" % v["numeric-id"]
+        if t == "time":
+            tm, pr = v["time"], v.get("precision", 11)
+            y, m, d = tm[1:].split("T")[0].rsplit("-", 2)
+            y = ("-" if tm[0] == "-" else "") + y.lstrip("0").rjust(4, "0")
+            return "%s-%s-%s" % (y, m, d) if pr >= 11 else "%s-%s" % (y, m) if pr == 10 else y
+        if t == "quantity":
+            unit = v.get("unit", "1").rsplit("/", 1)[-1]
+            return v["amount"].lstrip("+") + ("" if unit == "1" else " " + unit)
+        if t == "globecoordinate":                       # places on Earth only (not on the Moon or Mars)
+            if (v.get("globe") or "").rsplit("/", 1)[-1] not in ("Q2", ""):
+                return None
+            return "%.5f, %.5f" % (v["latitude"], v["longitude"])
+        if t == "monolingualtext":
+            return v["text"].strip() or None if v.get("language") in ("en", "mul") else None
+        if t == "string":                                # also URLs; blank values are not facts
+            return v.strip() or None
+        return None
+
+    def facts(self, part, line, state):
+        if line.endswith(b","):
+            line = line[:-1]
+        try:
+            e = json.loads(line)
+        except ValueError:
+            return []
+        L = e.get("labels") or {}
+        lab = (L.get("en") or L.get("mul") or {}).get("value")
+        if not lab or e.get("type") != "item":
+            return []
+        q = e["id"]
+        buf = state["_labelbuf"]
+        buf.append((int(q[1:]), lab))
+        if len(buf) >= 200_000:
+            self._flush(state)
+        claims = e.get("claims") or {}
+        cls = {((x.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") for x in claims.get("P31", ())}
+        if cls & ks.WIKIMEDIA_INTERNAL:                 # a category, disambiguation, template or list page: Wikimedia's own pages
+            return []
+        s, out, props = "%s (%s)" % (lab, q), [], self.props
+        for p, sts in claims.items():
+            name = props.get(p)
+            if not name:
+                continue
+            best = [x for x in sts if x.get("rank") == "preferred"] or [x for x in sts if x.get("rank") == "normal"]
+            for st in best:
+                dv = (st.get("mainsnak") or {}).get("datavalue")
+                if dv:
+                    v = self.value(dv)
+                    if v:
+                        out.append((s, name, v))
+        if out:
+            state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
+            k = ks.entity_keystone(cls - {None}, claims.keys())
+            if k:                                       # measured coverage per keystone domain (qbkeystone)
+                kc = state.setdefault("_kc", {})
+                kc[k] = kc.get(k, 0) + len(out)
+        return out
+
+    def link(self, subject):
+        m = re.search(r"\((Q\d+)\)$", subject)
+        return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
+
+
+WAITING = "waiting for the one download of the Wikidata dump to the data drive"
+
+
+def stream_while_downloading(commons):
+    """1.32: while the one download is not ready, the Wikidata lanes stream (sharing connections with it); the admin can
+    set bulk:wikidata:while_downloading to wait, as 1.31 did"""
+    return (commons.setting("bulk:wikidata:while_downloading") or "stream") != "wait"
+
+
+def local_mode(commons):
+    """download once, read locally (on unless the admin sets bulk:wikidata:local to off, which streams as before 1.31)"""
+    return (commons.setting("bulk:wikidata:local") or "on") != "off"
+
+
+INTERNAL_DUMP_ROOM = 450e9          # the internal drive holds the dump when it has this much free (two editions + the working copies)
+
+
+def dumps_folder(commons_folder, commons=None):
+    """where the dump is kept: the admin's choice (bulk:dumps:folder); else, when the working copies are on the internal
+    drive (C:), beside them there if it has room — reading a 157 GB file with 16 lanes at once from a USB hard drive would
+    make the data drive the slowest part again; else <shared folder>/dumps"""
+    chosen = commons.setting("bulk:dumps:folder") if commons is not None else None
+    if chosen:
+        return qbdump.folder_for(commons_folder, chosen)
+    w = work_dir(commons_folder)
+    if w:
+        internal = os.path.join(os.path.dirname(w), "dumps")
+        if os.path.isdir(os.path.join(internal, "wikidata")):
+            return internal
+        try:
+            base = next(p for p in (os.path.dirname(w), os.path.expanduser("~")) if os.path.isdir(p))
+            if shutil.disk_usage(base).free >= INTERNAL_DUMP_ROOM:
+                return internal
+        except (OSError, StopIteration):
+            pass
+    return qbdump.folder_for(commons_folder)
+
+
+def dumps_ready(commons_folder, commons=None):
+    """the newest ready copy in the chosen folder or in <shared folder>/dumps (a copy made before the folder changed)"""
+    rs = [r for r in (qbdump.ready(f) for f in dict.fromkeys((dumps_folder(commons_folder, commons), qbdump.folder_for(commons_folder)))) if r]
+    return max(rs, key=lambda r: r.get("edition") or "") if rs else None
+
+
+class WikidataDownload(Dataset):
+    """the weekly Wikidata dump downloaded ONCE to the data drive (qbdump): every server holding the identical file at
+    once, each within its own connection limit, checked against Wikimedia's published MD5. The 16 lanes then read that
+    copy at disk speed. No facts of its own; finished, it looks for a new weekly edition once a day."""
+    key, app, source = "wikidata-download", "facts", "wikidata"
+    title = "Wikidata — one download of the dump to the data drive (the lanes read it from there)"
+    licence = "CC0 1.0 (Wikidata)"
+    why = "the dump fetched once instead of by 16 lanes over the internet: no lane waits for a connection"
+    approx = "about 157 GB, once a week"
+    standalone = True
+
+    def sources(self, commons):
+        try:
+            mirrors = [tuple(m) for m in json.loads(commons.setting("bulk:wikidata:mirrors") or "null")] or list(WikidataDump.MIRRORS)
+        except (ValueError, TypeError):
+            mirrors = list(WikidataDump.MIRRORS)
+        out, hosts = [], {}
+        for u, n in [(WikidataDump.URL, WikidataDump.PRIMARY_CONNECTIONS)] + mirrors:
+            h = _host(u)                                   # one server, one limit: two addresses on one host share it
+            if h in hosts:
+                out[hosts[h]] = (out[hosts[h]][0], max(out[hosts[h]][1], int(n)))
+            else:
+                hosts[h] = len(out); out.append((u, int(n)))
+        return out
+
+    def run_alone(self, run):
+        r = self._run_alone(run)
+        try:                                           # the page shows the last try and why (1.31.2: it said "not started")
+            with open(os.path.join(run.folder, FOLDER, "_download_last.json"), "w") as f:
+                json.dump(dict(r, at=time.time()), f)
+        except OSError:
+            pass
+        return r
+
+    def _run_alone(self, run):
+        if not local_mode(run.commons) or run.commons.setting("bulk:url:wikidata-dump"):
+            return {"dataset": self.key, "state": "done", "new": 0, "why": "not used: the lanes stream the dump (bulk:wikidata:local is off)"}
+        why = run.stopped()
+        if why:
+            return {"dataset": self.key, "state": "blocked" if "registry" in why else "stopped", "why": why, "new": 0}
+        dumps = dumps_folder(run.folder, run.commons)
+        legacy = qbdump.folder_for(run.folder)
+        if os.path.abspath(dumps) != os.path.abspath(legacy):     # a half download left on the data drive by 1.33.0: removed
+            gone = qbdump.discard_partials(legacy)
+            if gone:
+                TR.event("download", note="half download on the data drive removed (now kept in %s): %s" % (dumps, ", ".join(gone)))
+
+        def meter(n):
+            METER.done += n
+        log = lambda *a: TR.event("download", note=" ".join(str(x) for x in a))
+        try:
+            r = qbdump.Download(dumps, self.sources(run.commons), meter=meter, stop=run.stopped, log=log,
+                                min_free_gb=float(run.commons.setting("bulk:min_free_gb") or MIN_FREE_GB),
+                                slots=Slots(run.folder, halt=run.stopped)).fetch()
+        except qbdump.Busy as e:
+            stop = "Control Panel" in str(e)
+            return {"dataset": self.key, "state": "stopped" if stop else "paused", "why": str(e), "new": 0, "retry": not stop}
+        if not r.get("already"):
+            run.log("edition %s" % r["edition"], 0, 0, 0, 0, r.get("seconds") or 0, reason="downloaded to %s; %s" % (dumps, r["checked"]))
+        return {"dataset": self.key, "state": "done", "new": 0, "edition": r["edition"], "why": "ready: %s" % r["checked"]}
+
+
+def lane_keystones(commons_folder, key):
+    """{keystone: facts} a Wikidata lane has counted (qbkeystone.coverage scales it to the shard's count)"""
+    p = shard_path(commons_folder, key) + ".labels"
+    if not os.path.exists(p):
+        return {}
+    db = _ro(p)
+    try:
+        return dict(db.execute("SELECT k, facts FROM keystones"))
+    except sqlite3.Error:
+        return {}
+    finally:
+        db.close()
+
+
+QID = re.compile(r"\bQ(\d+)\b")
+
+
+def wd_labels(commons_folder, qids):
+    """English labels for Q-numbers, from every lane's label file"""
+    want, out = sorted(set(qids)), {}
+    for lane in list(range(1, WikidataDump.LANES + 1)) + ["lattice"]:
+        p = shard_path(commons_folder, "wikidata-dump-%d" % lane if lane != "lattice" else "wikidata-lattice") + ".labels"
+        if not want or not os.path.exists(p):
+            continue
+        db = _ro(p)
+        for i in range(0, len(want), 500):
+            chunk = want[i:i + 500]
+            out.update(db.execute("SELECT q, label FROM labels WHERE q IN (%s)" % ",".join("?" * len(chunk)), chunk).fetchall())
+        db.close()
+        want = [x for x in want if x not in out]
+    return out
+
+
+def catalog():
+    return {d.key: d for d in (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+
+
+# ------------------------------------------------------------------------------------------------ the shard
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS facts (fp BLOB PRIMARY KEY, s TEXT NOT NULL, p INTEGER NOT NULL, o TEXT NOT NULL, part INTEGER NOT NULL,
+  row INTEGER NOT NULL) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS facts_s ON facts(s);
+CREATE TABLE IF NOT EXISTS predicates (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, rule TEXT);
+CREATE TABLE IF NOT EXISTS parts (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, url TEXT, version TEXT, rows INTEGER NOT NULL DEFAULT 0,
+  facts INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, started TEXT, finished TEXT);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS progress (at REAL PRIMARY KEY, facts INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS links (fp BLOB PRIMARY KEY, url TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS slots (series TEXT NOT NULL, year INTEGER NOT NULL, filled INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (series, year)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS stage (fp BLOB NOT NULL, s TEXT NOT NULL, p INTEGER NOT NULL, o TEXT NOT NULL, part INTEGER NOT NULL, row INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS stage_links (fp BLOB NOT NULL, url TEXT NOT NULL);
+"""
+
+
+_FP = operator.itemgetter(0)
+
+
+def home_path(commons_folder, key):
+    """where a dataset's facts live for good: the shared folder (D:\\QB\\commons\\shards)"""
+    return os.path.join(commons_folder, FOLDER, key + ".sqlite")
+
+
+# ------------------------------------------------------------------------------------------------ fast working copies (C:) → home (D:)
+# The agents write fastest to the computer's own drive (C:): with an external hard disk as home they all wait for it. So a
+# dataset being harvested has a WORKING COPY on C: (~/QueryBook-Work); every DRAIN_S seconds one copier writes each working
+# copy to its home on D: as one compacted, sequential file (VACUUM INTO — the kind of write a hard disk does fast), one at a
+# time. A finished dataset's working copy is removed once its home copy holds the same facts. Readers find the working copy
+# first (it is the newest). Off when the shared folder is on the system drive, or with QB_WORK_FOLDER=off.
+DRAIN_S = 600
+DRAIN_PACE = 3                    # 1.31.1: a working copy is saved at most once per 3x the time its last save took (D: stays
+                                  # free for the agents at least two thirds of the time); an unchanged copy is not saved again
+WORK_MIN_FREE_GB = 20
+
+
+def work_dir(commons_folder):
+    env = os.environ.get("QB_WORK_FOLDER")
+    if env == "off":
+        return None
+    if env:
+        base = env
+    else:
+        drive = os.path.splitdrive(os.path.abspath(commons_folder))[0].upper()
+        system = (os.environ.get("SystemDrive") or "").upper()
+        if not (drive and system and drive != system):
+            return None
+        base = os.path.join(os.path.expanduser("~"), "QueryBook-Work")
+    return os.path.join(base, hashlib.sha256(os.path.abspath(commons_folder).lower().encode()).hexdigest()[:10])
+
+
+def work_path(commons_folder, key):
+    w = work_dir(commons_folder)
+    return os.path.join(w, key + ".sqlite") if w else None
+
+
+def shard_path(commons_folder, key):
+    """the newest copy of a dataset: its working copy on C: while one exists, else its home on D:"""
+    wp = work_path(commons_folder, key)
+    if wp and os.path.exists(wp):
+        return wp
+    return home_path(commons_folder, key)
+
+
+def _free(folder):
+    try:
+        return shutil.disk_usage(folder).free
+    except OSError:
+        return 0
+
+
+def _sizes(p):
+    return sum(os.path.getsize(p + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(p + x))
+
+
+def pull(commons_folder, key):
+    """make the dataset's working copy on C: (copying its home copy there first, one dataset at a time). False when
+    working copies are off or C: has not room enough — the agent then writes to D: itself."""
+    wp = work_path(commons_folder, key)
+    if not wp:
+        return False
+    keep = float(os.environ.get("QB_WORK_MIN_FREE_GB") or WORK_MIN_FREE_GB) * 1e9
+    if os.path.exists(wp):
+        if _free(os.path.dirname(wp)) >= keep / 2:
+            return True
+        # re-route: the internal drive is filling up — this dataset's working copy goes home and the agent writes to D:
+        try:
+            if drain(commons_folder, key, force=True) not in (None, "busy", "no room", "later"):
+                for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(wp + x):
+                        os.remove(wp + x)
+                TR.event("work_copy", dataset=key, action="moved home", why="the internal drive is nearly full")
+                return False
+        except Exception as e:
+            TR.fail("work copy home", e, dataset=key, retried=True)
+        return True                               # could not move it yet: keep using it (the agent pauses if C: is full)
+    os.makedirs(os.path.dirname(wp), exist_ok=True)
+    hp = home_path(commons_folder, key)
+    need = _sizes(hp) * 1.3
+    free = _free(os.path.dirname(wp))
+    if free - need < keep:
+        TR.event("work_copy", dataset=key, action="skipped", why="the internal drive has %.0f GB free; working copies keep %.0f GB" % (free / 1e9, keep / 1e9))
+        return False
+    sl = Slots(commons_folder)
+    while True:                                   # one copy at a time: the home disk reads one file in a long run
+        lk = sl._lock("work-copy", 0)
+        if lk:
+            break
+        time.sleep(0.5)
+    try:
+        if os.path.exists(wp):
+            return True
+        t = time.time()
+        for sfx in ("", ".labels"):
+            src = hp + sfx
+            if not os.path.exists(src):
+                continue
+            try:
+                c = sqlite3.connect(src, timeout=60)
+                c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                c.close()
+            except sqlite3.Error:
+                pass
+            _copy_progress(src, wp + sfx + ".pulling", commons_folder, key)
+            os.replace(wp + sfx + ".pulling", wp + sfx)
+        if os.path.exists(hp + ".progress"):
+            shutil.copyfile(hp + ".progress", wp + ".progress")
+        TR.event("work_copy", dataset=key, action="made", seconds=round(time.time() - t, 1), mb=round(_sizes(wp) / 1e6, 1))
+        return True
+    finally:
+        try:
+            os.remove(os.path.join(work_dir(commons_folder), "_copying.json"))
+        except OSError:
+            pass
+        sl.release(lk)
+
+
+def _copy_progress(src, dst, commons_folder, key):
+    """copy in 8 MB pieces, writing how far it is (for the Harvesting tab) every 2 seconds"""
+    total, done, t0, last = os.path.getsize(src), 0, time.time(), 0.0
+    note = os.path.join(work_dir(commons_folder), "_copying.json")
+    with open(src, "rb") as a, open(dst, "wb") as b:
+        while True:
+            buf = a.read(8 << 20)
+            if not buf:
+                break
+            b.write(buf)
+            done += len(buf)
+            if time.time() - last > 2:
+                last = time.time()
+                try:
+                    with open(note + ".tmp", "w") as f:
+                        json.dump({"dataset": key, "file": os.path.basename(src), "done": done, "total": total,
+                                   "since": t0, "at": last}, f)
+                    _replace(note + ".tmp", note, tries=3)
+                except OSError:
+                    pass
+
+
+def copying(commons_folder):
+    """the copy to C: in progress, if any: {dataset, done, total, rate (bytes/s), eta_s}"""
+    w = work_dir(commons_folder)
+    if not w:
+        return None
+    try:
+        with open(os.path.join(w, "_copying.json")) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if time.time() - c.get("at", 0) > 60:
+        return None
+    el = max(0.001, c["at"] - c["since"])
+    c["rate"] = c["done"] / el
+    c["eta_s"] = (c["total"] - c["done"]) / c["rate"] if c["rate"] > 0 else None
+    return c
+
+
+def _drained_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_drained.json")
+
+
+def drained(commons_folder):
+    try:
+        with open(_drained_path(commons_folder)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _meta_of(path):
+    try:
+        db = _ro(path)
+        try:
+            return {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta WHERE key IN ('facts', 'duplicates_removed')")}
+        finally:
+            db.close()
+    except (sqlite3.Error, ValueError):
+        return None
+
+
+def merge_into(dst_path, src_path):
+    """every fact of src that dst lacks is added to dst (predicates matched by name); returns how many were added"""
+    db = sqlite3.connect(dst_path, timeout=120)
+    try:
+        db.executescript(SCHEMA)
+        db.execute("ATTACH DATABASE ? AS h", (src_path,))
+        db.execute("INSERT OR IGNORE INTO predicates(name, rule) SELECT name, rule FROM h.predicates")
+        db.execute("INSERT OR IGNORE INTO parts(name, url, version) SELECT name, url, version FROM h.parts")
+        before = db.total_changes
+        db.execute("""INSERT OR IGNORE INTO facts(fp, s, p, o, part, row)
+                      SELECT f.fp, f.s, mp.id, f.o, coalesce(mpt.id, f.part), f.row FROM h.facts f
+                      JOIN h.predicates hp ON hp.id = f.p JOIN main.predicates mp ON mp.name = hp.name
+                      LEFT JOIN h.parts hpt ON hpt.id = f.part LEFT JOIN main.parts mpt ON mpt.name = hpt.name""")
+        added = db.total_changes - before
+        db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT fp, url FROM h.links")
+        r = db.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
+        db.execute("INSERT INTO meta(key, value) VALUES('facts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                   (json.dumps((json.loads(r[0]) if r else 0) + added),))
+        db.commit()
+        db.execute("DETACH DATABASE h")
+        return added
+    finally:
+        db.close()
+
+
+def _changed_at(wp):
+    """the last time anything of a working copy was written (the file, its log, its labels)"""
+    return max((os.path.getmtime(wp + x) for x in ("", "-wal", ".labels", ".labels-wal") if os.path.exists(wp + x)), default=0)
+
+
+def drain(commons_folder, key, force=False, pace=True):
+    """write the working copy to its home on D: as one compacted, sequential file; returns the facts it holds (None when
+    there is no working copy, "busy" when the home copy is open in a program and cannot be replaced yet, "later" when
+    it was saved recently enough for its size). 1.31.1: a copy unchanged since its last save is not written again, and a
+    big one is saved less often (DRAIN_PACE) — before, every copy (338 GB in all) was rewritten every 10 minutes, so the
+    data drive never rested and every agent queued behind it. force=True (Stop, the end of a run) always saves."""
+    wp = work_path(commons_folder, key)
+    if not wp or not os.path.exists(wp):
+        return None
+    if not force:
+        rec = drained(commons_folder).get(key) or {}
+        if rec.get("snap") and _changed_at(wp) <= rec["snap"] and os.path.exists(home_path(commons_folder, key)):
+            return rec.get("facts")                    # nothing new since the copy on D: was taken
+        if pace and rec.get("at") and time.time() - rec["at"] < max(DRAIN_S, DRAIN_PACE * float(rec.get("seconds") or 0)):
+            return "later"
+    hp = home_path(commons_folder, key)
+    if not os.path.isdir(commons_folder):
+        TR.event("drain", dataset=key, result="waiting", why="the data drive is not connected; the working copy keeps every fact")
+        return "busy"
+    os.makedirs(os.path.dirname(hp), exist_ok=True)
+    if _free(os.path.dirname(hp)) < _sizes(wp) * 1.1 + 1e9:
+        TR.event("drain", dataset=key, result="no room", why="the data drive is nearly full; the working copy keeps every fact")
+        return "no room"
+    hm, wm = _meta_of(hp) if os.path.exists(hp) else None, _meta_of(wp)
+    if hm and wm:                                  # never replace a home copy holding facts the working copy lacks (an
+        expect = (wm.get("facts") or 0) + (wm.get("duplicates_removed") or 0) - (hm.get("duplicates_removed") or 0)
+        if (hm.get("facts") or 0) > expect:        # older engine wrote to D: meanwhile): those facts are merged in first
+            added = merge_into(wp, hp)
+            TR.event("drain", dataset=key, result="merged", added=added,
+                     why="the copy on the data drive held %d facts the working copy lacked; merged before saving" % added)
+    t, facts = time.time(), None
+    snap = time.time()                                 # the copy holds everything written before this moment
+    for sfx in ("", ".labels"):
+        src, dst = wp + sfx, hp + sfx
+        if not os.path.exists(src):
+            continue
+        tmp = dst + ".draining"
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        c = sqlite3.connect(src, timeout=120)
+        try:
+            c.execute("VACUUM INTO ?", (tmp,))          # one consistent snapshot, written front to back
+        except sqlite3.Error:
+            try:
+                os.remove(tmp)                          # never leave half a copy behind (a full disk, the drive gone)
+            except OSError:
+                pass
+            raise
+        finally:
+            c.close()
+        if not sfx:
+            v = sqlite3.connect(tmp)
+            try:
+                r = v.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
+                facts = int(json.loads(r[0]) or 0) if r else 0
+                rd = v.execute("SELECT value FROM meta WHERE key = 'duplicates_removed'").fetchone()
+                tdups = int(json.loads(rd[0]) or 0) if rd else 0
+            finally:
+                v.close()
+            hm2 = _meta_of(hp) if os.path.exists(hp) else None
+            floor = ((hm2 or {}).get("facts") or 0) - max(0, tdups - ((hm2 or {}).get("duplicates_removed") or 0))
+            if facts < floor:                           # 1.33 safeguard: the home copy is never replaced by a smaller one
+                os.remove(tmp)
+                TR.event("drain", dataset=key, result="refused", facts=facts, home_facts=(hm2 or {}).get("facts"),
+                         why="the copy would hold fewer facts than the one on the data drive; the data drive's copy is kept")
+                return "busy"
+        try:
+            for x in ("-wal", "-shm"):                   # an old log beside the home copy must never be applied to the new one
+                if os.path.exists(dst + x):
+                    os.remove(dst + x)
+            _replace(tmp, dst, tries=10)
+        except PermissionError:
+            os.remove(tmp)
+            TR.event("drain", dataset=key, result="busy", why="the home copy is open in a program; tried again next round")
+            return "busy"
+    if os.path.exists(wp + ".progress"):
+        try:
+            shutil.copyfile(wp + ".progress", hp + ".progress")
+        except OSError:
+            pass
+    d = drained(commons_folder)
+    d[key] = {"at": time.time(), "snap": snap, "facts": facts, "seconds": round(time.time() - t, 1)}
+    try:
+        with open(_drained_path(commons_folder) + ".tmp", "w") as f:
+            json.dump(d, f)
+        _replace(_drained_path(commons_folder) + ".tmp", _drained_path(commons_folder))
+    except OSError:
+        pass
+    TR.event("drain", dataset=key, result="saved", facts=facts, seconds=round(time.time() - t, 1), mb=round(os.path.getsize(hp) / 1e6, 1))
+    return facts
+
+
+def other_copies(commons_folder, key):
+    """every other copy of a dataset that exists: the home copy on D:, the working copy on C:, and the shared folders of
+    earlier versions (~/QueryBook-Data/commons, a folder chosen with "Move the shared folder")"""
+    cands = [work_path(commons_folder, key), home_path(commons_folder, key)]
+    try:
+        import qbdrive
+        for kind, folder in qbdrive.old_places():
+            if kind == "commons":
+                cands.append(os.path.join(folder, FOLDER, key + ".sqlite"))
+    except Exception:
+        pass
+    try:                                              # 1.33: the newest backup on the backup drive, when it is connected
+        import qbvault
+        cands.append(qbvault.latest_copy(commons_folder, "commons/%s/%s.sqlite" % (FOLDER, key)))
+    except Exception:
+        pass
+    live = os.path.normcase(os.path.abspath(shard_path(commons_folder, key)))
+    out, seen = [], {live}
+    for p in cands:
+        if p and os.path.exists(p) and os.path.normcase(os.path.abspath(p)) not in seen:
+            seen.add(os.path.normcase(os.path.abspath(p)))
+            out.append(p)
+    return out
+
+
+def restore_missing(commons_folder, say=None):
+    """1.31.2: for every dataset, every other copy is compared with the live one; when a copy holds more facts than the live
+    one can account for (its count, plus the duplicates removed from it since), every fact it holds that the live copy lacks
+    is added back (merge — nothing is ever deleted). Runs before the agents start, and from the Control Panel.
+    Returns {dataset: {"from": path, "added": n}} for each dataset that got facts back."""
+    out = {}
+    for key, ds in catalog().items():
+        if getattr(ds, "standalone", False):
+            continue
+        live = shard_path(commons_folder, key)
+        for other in other_copies(commons_folder, key):
+            lm = _meta_of(live) or {} if os.path.exists(live) else {}
+            om = _meta_of(other) or {}
+            expect = (lm.get("facts") or 0) + (lm.get("duplicates_removed") or 0) - (om.get("duplicates_removed") or 0)
+            if (om.get("facts") or 0) <= expect:
+                continue
+            if say:
+                say("restoring %s: %s holds %s facts, the live copy %s" % (key, other, format(om.get("facts") or 0, ","), format(lm.get("facts") or 0, ",")))
+            if not os.path.exists(live):                    # no live copy at all: the fuller copy becomes the home copy
+                os.makedirs(os.path.dirname(home_path(commons_folder, key)), exist_ok=True)
+                shutil.copyfile(other, home_path(commons_folder, key))
+                added = om.get("facts") or 0
+            else:
+                _restoring(commons_folder, {"key": key, "from": other, "facts": om.get("facts") or 0, "live": lm.get("facts") or 0})
+                try:
+                    added = merge_into(live, other)
+                finally:
+                    _restoring(commons_folder, None)
+            r = out.setdefault(key, {"added": 0, "from": []})
+            r["added"] += added
+            r["from"].append(other)
+            TR.event("restore", dataset=key, source=other, added=added)
+    return out
+
+
+def _restoring_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_restoring.json")
+
+
+def _restoring(commons_folder, what):
+    """1.33: which dataset is having facts added back right now (the page shows the fuller copy's count meanwhile, never a
+    fall: the live copy's own count only changes when the whole merge is done)"""
+    p = _restoring_path(commons_folder)
+    try:
+        if what is None:
+            if os.path.exists(p):
+                os.remove(p)
+        else:
+            with open(p + ".tmp", "w") as f:
+                json.dump(dict(what, at=time.time(), pid=os.getpid()), f)
+            _replace(p + ".tmp", p)
+    except OSError:
+        pass
+
+
+def restoring_now(commons_folder):
+    try:
+        with open(_restoring_path(commons_folder)) as f:
+            r = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return r if _pid_alive(r.get("pid")) else None
+
+
+def _pid_alive(pid):
+    if not pid:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            h = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+            if not h:
+                return False
+            code = ctypes.c_ulong()
+            ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+            ctypes.windll.kernel32.CloseHandle(h)
+            return code.value == 259                  # STILL_ACTIVE
+        except Exception:
+            return True
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+
+
+def work_keys(commons_folder):
+    w = work_dir(commons_folder)
+    if not w or not os.path.isdir(w):
+        return []
+    return sorted(f[:-7] for f in os.listdir(w) if f.endswith(".sqlite"))
+
+
+def finish_work(commons_folder, only_changed=False, note=None):
+    """after the run: every working copy saved to D:; those of finished datasets removed from C: once D: holds the same
+    facts. Returns {dataset: what happened}. only_changed (1.31.2: Stop and the hourly upkeep): a copy unchanged since its
+    last save is not written again — Stop no longer rewrites hundreds of GB. note(i, n, key): progress for the page."""
+    out = {}
+    keys = work_keys(commons_folder)
+    for i, key in enumerate(keys, 1):
+        if note:
+            note(i, len(keys), key)
+        try:
+            facts = drain(commons_folder, key, force=not only_changed, pace=False)
+            wp = work_path(commons_folder, key)
+            st = sqlite3.connect(wp)
+            try:
+                r = dict(st.execute("SELECT key, value FROM meta WHERE key IN ('facts', 'state')").fetchall())
+            finally:
+                st.close()
+            done = json.loads(r.get("state", '""')) == "done"
+            if done and facts not in (None, "busy", "no room") and facts == int(json.loads(r.get("facts", "0")) or 0):
+                for x in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(wp + x):
+                        os.remove(wp + x)
+                out[key] = "saved to D: and removed from C:"
+            else:
+                out[key] = "saved to D: (working copy kept: the dataset is not finished)" if facts not in (None, "busy", "no room") else str(facts)
+        except Exception as e:
+            TR.fail("finish working copy", e, dataset=key)
+            out[key] = "error: %s" % e
+    return out
+
+
+def fp(domain, s, p, o):
+    return bytes.fromhex(core.fingerprint(domain, s, p, o))[:16]
+
+
+def fingerprinter(domain):
+    """fp(domain, s, p, o) for one domain, about twice as fast and byte-for-byte the same: core.fingerprint is
+    sha256("|".join(norm(x))) with norm(x) = " ".join(str(x or "").strip().lower().split()). For a str x, str(x or "") is
+    x, and strip() is redundant before split() (both drop the same str.isspace characters; lower() never makes or
+    removes whitespace), so norm(x) == " ".join(x.lower().split()). The domain and each predicate are normalised once;
+    the subject once per run of facts with the same subject; digest() is the bytes hexdigest() spells. Anything that is
+    not a str goes through core.norm itself. The self-test compares it with core.fingerprint on awkward text."""
+    head, preds, sha, norm = core.norm(domain) + "|", {}, hashlib.sha256, core.norm
+    last = [None, ""]
+
+    def f(s, p, o):
+        mid = preds.get(p)
+        if mid is None:
+            mid = preds[p] = "|" + norm(p) + "|"
+        if type(s) is str:
+            if s is not last[0]:
+                last[0], last[1] = s, " ".join(s.lower().split())
+            ns = last[1]
+        else:
+            ns = norm(s)
+        no = " ".join(o.lower().split()) if type(o) is str else norm(o)
+        return sha((head + ns + mid + no).encode("utf-8")).digest()[:16]
+    return f
+
+
+class WriteSlots(Slots):
+    """at most N agents write to the data drive at once. Many agents writing to one hard disk at the same time make it
+    seek between them all the time (1 Nov 2026: a USB disk fell to about 1 MB/s with 28 writers); the others go on reading
+    and parsing meanwhile and write when a slot is free. 0 = no limit (an internal SSD)."""
+
+    def __init__(self, commons_folder, n):
+        super().__init__(commons_folder)
+        self.n = max(0, int(n or 0))
+
+    def take(self):
+        if not self.n:
+            return None
+        t = _NS()
+        while True:
+            for i in range(self.n):
+                f = self._lock("disk-write", i)
+                if f:
+                    TR.add("disk_wait", _NS() - t)    # congestion at the drive, measured
+                    return f
+            time.sleep(0.05)
+
+
+def write_slots(commons):
+    """the setting bulk:write_slots, else automatic: 2 when the shared folder is on another drive than the system's own
+    (an external disk), no limit on the system drive"""
+    v = commons.setting("bulk:write_slots")
+    if v not in (None, ""):
+        return int(v)
+    drive = os.path.splitdrive(os.path.abspath(commons.folder))[0].upper()
+    system = (os.environ.get("SystemDrive") or "").upper()
+    return 2 if drive and system and drive != system else 0
+
+
+class Shard:
+    wslots = None
+
+    def __init__(self, commons_folder, key, path=None):
+        os.makedirs(os.path.join(commons_folder, FOLDER), exist_ok=True)
+        self.path = path or shard_path(commons_folder, key)
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.db = sqlite3.connect(self.path, timeout=60)
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")                 # WAL + NORMAL: a crash never corrupts or splits a batch
+        self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))   # a whole batch's dirty pages stay in memory until commit
+        self.db.execute("PRAGMA journal_size_limit=%d" % (256 << 20))  # the WAL file shrinks back after each checkpoint
+        self.db.execute("PRAGMA wal_autocheckpoint=20000")           # fewer, larger checkpoints: far fewer seeks on a hard disk
+        self.db.executescript(SCHEMA)
+        self.preds = {n: i for i, n in self.db.execute("SELECT id, name FROM predicates")}
+
+    def meta(self, key, default=None):
+        r = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return json.loads(r[0]) if r else default
+
+    def set_meta(self, key, value):
+        self.db.execute("INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, json.dumps(value)))
+
+    def part(self, name, url):
+        self.db.execute("INSERT OR IGNORE INTO parts(name, url) VALUES(?, ?)", (name, url))
+        return self.db.execute("SELECT id, rows, facts, done FROM parts WHERE name = ?", (name,)).fetchone()
+
+    def pred(self, name, rule=None):
+        if name not in self.preds:
+            self.db.execute("INSERT OR IGNORE INTO predicates(name, rule) VALUES(?, ?)", (name, rule))
+            self.preds[name] = self.db.execute("SELECT id FROM predicates WHERE name = ?", (name,)).fetchone()[0]
+        return self.preds[name]
+
+    def write(self, part_id, rows, rows_done, links=None):
+        """one transaction: the facts, the part's progress and the running total — a restart resumes exactly here.
+        1.33: the facts are APPENDED to the stage (a plain table, written front to back) instead of being inserted into the
+        keyed tables. Inserting 500,000 random fingerprints into a keyed table of tens of millions touches nearly every
+        page of it, so each batch cost more than the one before (a 40-million-fact lane read and rewrote gigabytes per
+        batch, the commits outlasted the supervisor's patience, the agent was ended and its batch lost). The stage is
+        folded in by merge(): rarely, sorted, each page once. Returns the new facts merged meanwhile (0 when none was)."""
+        t = _NS()
+        AGENT["waiting"] = "writing to the disk"        # a long write is progress, not a stall (the supervisor reads this)
+        slot = self.wslots.take() if self.wslots else None
+        try:
+            t1 = _NS(); self.walls = {"sorted": _WALL()}
+            self.db.executemany("INSERT INTO stage(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
+            t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
+            if links:
+                self.db.executemany("INSERT INTO stage_links(fp, url) VALUES(?, ?)", links)
+            t3 = _NS(); TR.add("db_links", t3 - t2, len(links or ()))
+            self.db.execute("UPDATE parts SET rows = ? WHERE id = ?", (rows_done, part_id))
+            staged = (self.meta("staged", 0) or 0) + len(rows)
+            self.set_meta("staged", staged)
+            self._progress()
+            t4 = _NS(); TR.add("db_progress", t4 - t3)
+            self.db.commit()                                          # the disk: one sequential WAL append
+            TR.add("db_commit", _NS() - t4, 1, len(rows)); self.walls["committed"] = _WALL()
+            if staged >= max(STAGE_MIN, (self.meta("facts", 0) or 0) // 2):
+                return self._merge()
+            return 0
+        finally:
+            if slot is not None:
+                self.wslots.release(slot)
+            AGENT["waiting"] = None
+            TR.add("write", _NS() - t)
+
+    def _progress(self):
+        """the running total for the rate: facts kept plus facts staged (the stage is counted the moment it is written)"""
+        now = time.time()
+        self.db.execute("INSERT OR REPLACE INTO progress(at, facts) VALUES(?, ?)",
+                        (now, (self.meta("facts", 0) or 0) + (self.meta("staged", 0) or 0)))
+        self.db.execute("DELETE FROM progress WHERE at < ?", (now - 2 * 86400,))
+
+    def merge(self):
+        """fold every staged fact into the keyed tables (the end of a part, before dedupe); returns the new facts"""
+        if not self.db.execute("SELECT 1 FROM stage LIMIT 1").fetchone() and not self.meta("staged", 0):
+            return 0
+        AGENT["waiting"] = "writing to the disk"
+        slot = self.wslots.take() if self.wslots else None
+        try:
+            return self._merge()
+        finally:
+            if slot is not None:
+                self.wslots.release(slot)
+            AGENT["waiting"] = None
+
+    def _merge(self):
+        """one transaction, in fingerprint order so each page of the keyed tables is visited once. Of two staged facts with
+        one fingerprint the earlier (lower rowid) is offered first and kept, and a fact the shard already holds is never
+        replaced — the shard is exactly what inserting batch by batch made. Parts in the order they were staged."""
+        t = _NS()
+        new = 0
+        self.db.execute("PRAGMA cache_size=-%d" % (MERGE_CACHE_MB * 1024))
+        try:
+            new = self._fold()
+        finally:
+            self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))
+            self.db.execute("PRAGMA shrink_memory")
+        TR.add("db_merge", _NS() - t, 1, new)
+        return new
+
+    def _fold(self):
+        new = 0
+        for pid, in self.db.execute("SELECT part FROM stage GROUP BY part ORDER BY min(rowid)").fetchall():
+            before = self.db.total_changes
+            self.db.execute("INSERT OR IGNORE INTO facts(fp, s, p, o, part, row) SELECT fp, s, p, o, part, row FROM stage "
+                            "WHERE part = ? ORDER BY fp, rowid", (pid,))
+            n = self.db.total_changes - before
+            self.db.execute("UPDATE parts SET facts = facts + ? WHERE id = ?", (n, pid))
+            new += n
+        self.db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT fp, url FROM stage_links ORDER BY fp, rowid")
+        self.db.execute("DELETE FROM stage")
+        self.db.execute("DELETE FROM stage_links")
+        self.set_meta("facts", (self.meta("facts", 0) or 0) + new)
+        self.set_meta("staged", 0)
+        self._progress()
+        self.db.commit()
+        return new
+
+
+# ------------------------------------------------------------------------------------------------ one agent
+class Run:
+    """what an agent needs: the Commons (registry, master switch, harvest log), its shard, the stop signals"""
+
+    def __init__(self, commons_folder, ds, max_rows=None):
+        import qbcommons as cm
+        self.folder, self.ds, self.max_rows = commons_folder, ds, max_rows
+        # no whole-file check here: every agent (up to one per core) checking a shared database of millions of rows on an
+        # external drive at once kept them all waiting at the start; the programs check it when they start
+        self.commons = cm.Commons(commons_folder, ds.app, check=False)
+        self.commons.registry.ensure()            # the researched sources and the admin's decisions (never overrides a decision)
+        self.cache = os.path.join(commons_folder, FOLDER, "_cache")
+        self.stopfile = os.path.join(commons_folder, FOLDER, "_runner.stop")
+        self.on_c = False
+        self._chk_at, self._chk = 0.0, None
+
+    def url_override(self, key, part):
+        """tests and mirrors: the setting bulk:url:<dataset>:<part> replaces the publisher's address"""
+        return self.commons.setting("bulk:url:%s:%s" % (key, part))
+
+    STOP_CHECK_S = 30               # 1.31.1: the registry, the settings and the free space (all on D:) re-read every 30 s,
+                                    # not before every batch: a busy data drive no longer holds every agent up
+
+    def stopped(self):
+        if os.path.exists(self.stopfile):
+            return "stopped from the Control Panel"
+        now = time.time()
+        if now - self._chk_at < self.STOP_CHECK_S:
+            return self._chk
+        self._chk = self._stopped_now()
+        self._chk_at = time.time()
+        return self._chk
+
+    def _stopped_now(self):
+        keep = float(self.commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
+        w = work_dir(self.folder) if self.on_c else None
+        if w and os.path.isdir(w) and _free(w) / 1e9 < keep:
+            return "the internal drive (working copies) is nearly full: %.1f GB free — this dataset moves to the data drive and carries on" % (_free(w) / 1e9)
+        free = _free(self.folder) / 1e9
+        if free < (1 if self.on_c else keep):         # writing on C:, the data drive only needs room for the log
+            return "the disk is nearly full: %.1f GB free, bulk harvesting keeps at least %g GB (setting bulk:min_free_gb)" % (free, keep)
+        if self.ds.source:
+            ok, cls, why = self.commons.registry.check(self.ds.source)
+            if not ok:
+                return "source not approved in the policy registry: " + why
+        return None
+
+    def log(self, part, a, b, items, new, secs, decision="harvested", reason=None):
+        cls = self.commons.registry.check(self.ds.source)[1] if self.ds.source else "own-computation"
+        with self.commons.store.write() as db:
+            self.commons.harvest_log.write(db, self.ds.app, "bulk:" + self.ds.key, "%s — %s: rows %d–%d" % (self.ds.title, part, a + 1, b),
+                                           self.ds.source or "computed", cls, decision, reason or self.ds.why, items, new, max(0, items - new), round(secs, 2))
+
+
+def run_dataset(commons_folder, key, max_rows=None):
+    """One agent: stream every part of one dataset into its shard. Returns a summary."""
+    ds = catalog()[key]
+    t_open = _NS()
+    run = Run(commons_folder, ds, max_rows)
+    TR.from_commons(run.commons, "bulk-%s-%d" % (key, os.getpid()), dataset=key)
+    TR.add("open_commons", _NS() - t_open)
+    if getattr(ds, "standalone", False):              # a job with no shard of its own (the one dump download)
+        try:
+            r = ds.run_alone(run)
+            TR.event("run", phase="end", dataset=key, state=r.get("state"), why=str(r.get("why") or "")[:300])
+            return r
+        finally:
+            TR.close()
+    t = _NS()
+    on_c = run.on_c = pull(commons_folder, key)       # the fast working copy on C: (or D: itself when C: has no room)
+    TR.add("work_copy", _NS() - t)
+    t = _NS()
+    sh = Shard(commons_folder, key, work_path(commons_folder, key) if on_c else None)
+    sh.wslots = None if on_c else WriteSlots(commons_folder, write_slots(run.commons))
+    TR.add("open_shard", _NS() - t)
+    TR.event("run", phase="start", dataset=key, app=ds.app, sample=TR.sample, max_rows=max_rows, folder=commons_folder)
+    fpr = fingerprinter(AREA[ds.app])
+    sh.set_meta("state", "running"); sh.set_meta("pid", os.getpid()); sh.set_meta("started", core.now_iso()); sh.set_meta("error", None)
+    sh.db.commit()
+    why = run.stopped()
+    if why:
+        sh.set_meta("state", "blocked" if "registry" in why else "stopped"); sh.set_meta("error", why); sh.db.commit()
+        if "registry" in why:
+            run.log("all parts", 0, 0, 0, 0, 0, "blocked", why)
+        TR.event("run", phase="end", dataset=key, state="blocked" if "registry" in why else "stopped", why=why)
+        TR.close()
+        return {"dataset": key, "state": "blocked" if "registry" in why else "stopped", "why": why}
+    total_new, t_start, filtered, written = 0, time.time(), 0, 0
+    import qbcontrol as ctl
+    flt = ctl.get(run.commons, "filter")
+    flt = flt if ctl.active("filter", flt) else None
+    area = AREA[ds.app]
+    ev = [{"licence_class": run.commons.registry.check(ds.source)[1] if ds.source else "computed"}]
+    try:
+        state = ds.prepare(run)
+        plist = ds.parts()
+        for part_no, (name, url) in enumerate(plist, 1):
+            url = run.url_override(key, name) or url
+            pid, done_rows, pfacts, done = sh.part(name, url)
+            if done:
+                continue
+            sh.db.execute("UPDATE parts SET started = coalesce(started, ?), version = ? WHERE id = ?", (core.now_iso(), _version(url), pid))
+            sh.db.commit()
+            row_no, buf, links, t0, log_from, log_new = 0, [], [], time.time(), done_rows, 0
+            limit = None if max_rows is None else done_rows + max_rows
+            METER.start(0, "bytes")
+            t = _NS()
+            rows, end = iter(ds.rows(name, url, state)), object()
+            pg = {"part": name, "part_no": part_no, "parts": len(plist), "since": time.time(), "done_at_start": None}
+            while row_no < done_rows and next(rows, end) is not end:    # resume: skip what an earlier run already saved
+                row_no += 1
+                AGENT["rows"] = row_no                  # the supervisor sees the skip moving (it is progress, not a stall)
+            TR.add("resume_skip", _NS() - t, max(0, row_no))
+            TR.event("part", phase="start", dataset=key, part=name, part_no=part_no, parts=len(plist), resume_row=row_no, url=str(url)[-120:])
+            side = shard_path(commons_folder, key) + ".progress"
+            _mark(sh, pg, row_no, side); sh.db.commit()
+            facts_of, preds, rule, add = ds.facts, sh.preds, ds.rule, buf.append
+            tr_on, sampled, pending = TR.on, TR.sampled, []
+            bt = {"first_row": None, "row_from": row_no, "net0": METER.done}
+            t_src = _NS()
+            for raw in rows:
+                t_row = _NS()
+                TR.add("source", t_row - t_src)       # read + decompress + parse of this row (network waits included)
+                if bt["first_row"] is None:
+                    bt["first_row"] = _WALL()
+                try:
+                    found = facts_of(name, raw, state)
+                except Exception as e:                 # one bad row is reported and skipped, never the whole part
+                    TR.fail("rule", e, dataset=key, part=name, row=row_no, raw=str(raw)[:300])
+                    found = ()
+                t_rule = _NS()
+                TR.add("rule", t_rule - t_row, 1, len(found))
+                if flt:                                 # the Control Panel's filter binds bulk facts too
+                    kept = [f for f in found if ctl.check_item({"subject": f[0], "predicate": f[1], "object": f[2], "evidence": ev}, flt, area) is None]
+                    filtered += len(found) - len(kept)
+                    found = kept
+                    TR.add("filter", _NS() - t_rule, len(found))
+                lk = state.get("_links")
+                t_fp = 0
+                for s, p, o in found:
+                    if s and o:
+                        t1 = _NS()
+                        f = fpr(s, p, o)
+                        t_fp += _NS() - t1
+                        pi = preds.get(p)
+                        if pi is None:
+                            pi = sh.pred(p, rule.get(p))
+                        add((f, s, pi, o, pid, row_no))
+                        if lk and s in lk:
+                            links.append((f, lk[s]))
+                        if tr_on and sampled(f):        # this record is followed from the first byte to the commit
+                            w = _WALL()
+                            pending.append({"fp": f.hex(), "dataset": key, "part": name, "row": row_no, "s": str(s)[:120], "p": p,
+                                            "o": str(o)[:120], "w": {"chunk": TR.chunk_wall or None, "decompressed": TR.decomp_wall or None,
+                                                                    "row": w - (_NS() - t_row), "rule": w - (_NS() - t_rule), "buffered": w}})
+                t_src = _NS()
+                TR.add("fingerprint", t_fp, len(found))
+                TR.add("buffer", t_src - t_rule - t_fp)
+                row_no += 1
+                AGENT["rows"] = row_no
+                if not row_no & 0x1FFFF:                # about every 130,000 rows: the meter into a side file (no commit)
+                    with qt.timed("progress_mark"):
+                        _mark(None, pg, row_no, side)
+                if len(buf) >= BATCH:
+                    with qt.timed("progress_mark"):
+                        _mark(sh, pg, row_no, side)
+                    written += len(buf)
+                    new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
+                    total_new += new; log_new += new; buf, links, pending = [], [], []
+                    add = buf.append
+                    bt = {"first_row": None, "row_from": row_no, "net0": METER.done}
+                    if log_new >= LOG_EVERY:
+                        with qt.timed("harvest_log"):
+                            run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0)
+                        log_from, log_new, t0 = row_no, 0, time.time()
+                    with qt.timed("stop_check"):
+                        why = run.stopped()
+                    if why:
+                        raise _Stop(why)
+                    t_src = _NS()
+                if limit is not None and row_no >= limit:
+                    break
+            with qt.timed("progress_mark"):
+                _mark(sh, pg, row_no, side)
+            written += len(buf)
+            new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
+            total_new += new; log_new += new
+            finished = limit is None or row_no < limit
+            if finished:                                # the part's staged facts join the keyed tables before it is done
+                with qt.timed("merge"):
+                    new = sh.merge()
+                total_new += new; log_new += new
+            TR.event("part", phase="end", dataset=key, part=name, rows=row_no, new=total_new)
+            for series, year in state.pop("_filled", set()):
+                sh.db.execute("INSERT INTO slots(series, year, filled) VALUES(?, ?, 1) ON CONFLICT(series, year) DO UPDATE SET filled = 1", (series, year))
+            if key == "wikidata-series":
+                for y in sc.expected_years(name):
+                    sh.db.execute("INSERT OR IGNORE INTO slots(series, year, filled) VALUES(?, ?, 0)", (name, y))
+            if finished:
+                sh.db.execute("UPDATE parts SET done = 1, finished = ? WHERE id = ?", (core.now_iso(), pid))
+            sh.db.commit()
+            run.log(name, log_from, row_no, row_no - log_from, log_new, time.time() - t0,
+                    reason=(ds.why + "; %d facts left out by the Control Panel's filter" % filtered) if filtered else None)
+            state.pop("_links", None)
+            why = run.stopped()
+            if why:
+                raise _Stop(why)
+        all_done = all(d for (d,) in sh.db.execute("SELECT done FROM parts"))
+        sh.set_meta("state", "done" if all_done else "paused"); sh.set_meta("finished", core.now_iso()); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="done" if all_done else "paused", new=total_new, filtered=filtered,
+                 seconds=round(time.time() - t_start, 2))
+        return {"dataset": key, "state": "done" if all_done else "paused", "new": total_new, "filtered": filtered,
+                "seconds": round(time.time() - t_start, 1)}
+    except _Stop as e:
+        sh.set_meta("state", "stopped"); sh.set_meta("error", str(e)); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="stopped", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
+        return {"dataset": key, "state": "stopped", "why": str(e), "new": total_new, "written": written}
+    except Busy as e:
+        sh.set_meta("state", "paused"); sh.set_meta("error", str(e)); sh.db.commit()
+        run.log("source busy", 0, 0, 0, 0, time.time() - t_start, "failed", str(e))
+        TR.fail("source busy", e, retried=True, dataset=key)
+        TR.event("run", phase="end", dataset=key, state="paused", why=str(e), new=total_new, seconds=round(time.time() - t_start, 2))
+        return {"dataset": key, "state": "paused", "why": str(e), "new": total_new, "written": written, "retry": True}
+    except Exception as e:
+        TR.fail("agent", e, dataset=key)
+        import http.client
+        network = isinstance(e, (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError)) and \
+            getattr(e, "errno", None) not in (28,)                      # ENOSPC (disk full) is not the network
+        sh.set_meta("state", "paused" if network else "failed")
+        sh.set_meta("error", "%s: %s%s" % (type(e).__name__, str(e)[:300], " — retried automatically" if network else "")); sh.db.commit()
+        TR.event("run", phase="end", dataset=key, state="paused" if network else "failed", why=str(e)[:300], new=total_new,
+                 seconds=round(time.time() - t_start, 2))
+        return {"dataset": key, "state": "paused" if network else "failed", "why": str(e)[:300], "new": total_new, "written": written,
+                "retry": network}
+    finally:
+        TR.flush_stages(dataset=key)
+        TR.close()
+        sh.db.close()
+
+
+def _batch(sh, pid, buf, row_no, links, pending, bt, key, part):
+    """write one batch, then log its timeline, the stage totals since the last batch and the records followed in it"""
+    n_offered = len(buf)
+    new = sh.write(pid, buf, row_no, links)
+    staged = sh.meta("staged", 0) or 0
+    if not TR.on:
+        return new
+    w = getattr(sh, "walls", {})
+    if pending:
+        fps = [bytes.fromhex(r["fp"]) for r in pending]
+        marks = ",".join("?" * len(pending))
+        got = dict(sh.db.execute("SELECT fp, part || ':' || row FROM facts WHERE fp IN (%s)" % marks, fps))
+        held = {f for f, in sh.db.execute("SELECT fp FROM stage WHERE fp IN (%s)" % marks, fps)} if staged else set()
+        for r in pending:
+            r["w"].update(w)
+            f = bytes.fromhex(r["fp"])
+            here = got.get(f)
+            r["outcome"] = ("new" if here == "%d:%d" % (pid, r["row"]) else "duplicate" if here else
+                            "staged" if f in held else "missing")
+            TR.record(r)
+    TR.event("batch", dataset=key, part=part, row_from=bt["row_from"], row_to=row_no, offered=n_offered, new=new,
+             first_row=bt["first_row"], last_row=_WALL(), **{k: w.get(k) for k in ("sorted", "inserted", "committed")},
+             source_progress=METER.done - bt["net0"], unit=METER.unit)
+    TR.flush_stages(dataset=key, part=part, row=row_no)
+    return new
+
+
+def _mark(sh, pg, row_no, side=None):
+    """the part's progress: into the shard's meta (committed with the next batch), or between batches into a small side
+    file — a commit there would cost about 8% of the agent's speed"""
+    if METER.unit != "bytes":
+        METER.done = row_no
+    if pg["done_at_start"] is None:
+        pg["done_at_start"] = METER.done
+    pg.update(done=METER.done, total=METER.total, unit=METER.unit, rows=row_no, at=time.time())
+    if sh is not None:
+        sh.set_meta("progress", pg)
+    if side:
+        try:
+            with open(side + ".tmp", "w") as f:
+                json.dump(pg, f)
+            _replace(side + ".tmp", side, tries=5)
+        except OSError:
+            pass
+
+
+class _Stop(Exception):
+    pass
+
+
+class Busy(Exception):
+    """the publisher asked us to slow down: the dataset pauses (what is saved stays saved) and resumes on the next run"""
+
+
+_VERSIONS = {}
+
+
+def _version(url):
+    """the file's version as its publisher states it (Last-Modified), so every fact can be traced to one edition
+    (asked once per file per process: many parts share one file)"""
+    if not url.startswith("http"):
+        if url and url.startswith("file://"):            # the downloaded dump: the publisher's date, kept in ready.json
+            try:
+                p = os.path.join(os.path.dirname(urllib.request.url2pathname(urllib.parse.urlsplit(url.split("#", 1)[0]).path)), "ready.json")
+                with open(p, encoding="utf-8") as f:
+                    return json.load(f).get("last_modified") or "local file"
+            except (OSError, ValueError):
+                pass
+        return url and "local file"
+    base = url.split("#", 1)[0]
+    if base in _VERSIONS:
+        return _VERSIONS[base]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(base, method="HEAD", headers={"User-Agent": UA}), timeout=30) as r:
+            _VERSIONS[base] = r.headers.get("Last-Modified") or ""
+    except Exception:
+        return ""
+    return _VERSIONS[base]
+
+
+def _agent(args):
+    folder, key, max_rows = args
+    if not os.path.isdir(folder):
+        return {"dataset": key, "state": "paused", "why": "the data drive is not connected (%s)" % folder, "new": 0, "retry": True}
+    try:
+        return run_dataset(folder, key, max_rows)
+    except Exception as e:                      # never lets one agent's surprise end the whole run: it is retried later
+        return {"dataset": key, "state": "paused", "why": "%s: %s" % (type(e).__name__, str(e)[:300]), "new": 0, "retry": True}
+
+
+# ------------------------------------------------------------------------------------------------ the supervisor (1.30)
+# Every dataset is its own watched process. The supervisor restarts what ends, ends what stalls, re-routes what waits too
+# long, and never gives up: the red Stop is the only way to end it.
+AGENT = {"rows": 0, "waiting": None}            # in each agent process: how far it is, and whether it is waiting on purpose
+SLOT_MAX_WAIT_S = 600                           # a lane waiting longer than this for a download connection gives its place up
+STALL_S = 900                                   # no progress for this long (and not waiting on purpose): ended and restarted
+SILENT_S = 180                                  # no sign of life for this long: ended and restarted
+BACKOFF_S = (60, 120, 300, 600, 900)          # waits before the next try after the 1st, 2nd, ... failure in a row
+DRIVE_RETRY_S = 60                              # the data drive unplugged: looked for every minute
+RECHECK_DONE_S = 24 * 3600                      # a finished dataset is looked at again daily (new editions of the files)
+SUPERVISE_TICK_S = 2
+
+
+def _alive_dir(commons_folder):
+    d = os.path.join(commons_folder, FOLDER, "_agents")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _agent_main(commons_folder, key, max_rows, result_path):
+    """one agent process: a heartbeat thread, the dataset, its result in a file"""
+    import threading
+    alive = os.path.join(_alive_dir(commons_folder), key + ".json")
+    done = threading.Event()
+
+    def heartbeat():
+        while not done.wait(15):
+            try:
+                with open(alive + ".tmp", "w") as f:
+                    json.dump({"at": time.time(), "pid": os.getpid(), "meter": METER.done, "rows": AGENT["rows"],
+                               "waiting": AGENT["waiting"]}, f)
+                _replace(alive + ".tmp", alive, tries=5)
+            except OSError:
+                pass
+    threading.Thread(target=heartbeat, daemon=True).start()
+    if os.name == "nt":                         # keep the computer awake while agents work, windows open or not
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+        except Exception:
+            pass
+    r = _agent((commons_folder, key, max_rows))
+    done.set()
+    with open(result_path + ".tmp", "w") as f:
+        json.dump(r, f)
+    os.replace(result_path + ".tmp", result_path)
+
+
+def next_try(r, fails):
+    """seconds until a dataset is started again, from how it ended (None: not again in this run)"""
+    st = (r or {}).get("state")
+    if st == "done":
+        return RECHECK_DONE_S
+    if st == "stopped" and "Control Panel" in str(r.get("why") or ""):
+        return None                              # the red Stop
+    if st == "blocked":
+        return 3600                              # not approved in the registry: looked at again hourly
+    if "not connected" in str(r.get("why") or ""):
+        return DRIVE_RETRY_S
+    if WAITING in str(r.get("why") or ""):
+        return 120                               # a lane waiting for the dump download: looks again in 2 minutes
+    return BACKOFF_S[min(fails, len(BACKOFF_S) - 1)]
+
+
+class Supervisor:
+    def __init__(self, commons_folder, keys, agents, max_rows=None, mp=None, kill=None):
+        import multiprocessing
+        self.cf, self.keys, self.agents, self.max_rows = commons_folder, list(keys), max(1, int(agents)), max_rows
+        self.mp = mp or multiprocessing.get_context("spawn")
+        self.kill = kill or _kill
+        self.queue = {k: 0.0 for k in self.keys}            # dataset → when it may start
+        self.fails = {k: 0 for k in self.keys}
+        self.running = {}                                    # dataset → {proc, started, result, last progress, last change}
+        self.events = []
+        self.res_dir = os.path.join(commons_folder, FOLDER, "_results")
+        os.makedirs(self.res_dir, exist_ok=True)
+
+    def note(self, what, key, **kw):
+        e = dict(kw, what=what, dataset=key, at=time.time())
+        self.events.append(e)
+        self.events = self.events[-300:]
+        TR.event("supervisor", **e)
+
+    def launch(self, key):
+        rp = os.path.join(self.res_dir, key + ".json")
+        for p in (rp, os.path.join(_alive_dir(self.cf), key + ".json")):
+            if os.path.exists(p):
+                os.remove(p)
+        pr = self.mp.Process(target=_agent_main, args=(self.cf, key, self.max_rows, rp), daemon=False)
+        pr.start()
+        self.running[key] = {"proc": pr, "started": time.time(), "result": rp, "progress": None, "changed": time.time()}
+        self.note("started", key, pid=pr.pid, attempt=self.fails[key] + 1)
+
+    def _finish(self, key, r, how):
+        info = self.running.pop(key)
+        if r is None:
+            r = {"dataset": key, "state": "paused", "why": how}
+        ok = r.get("state") in ("done",)
+        self.fails[key] = 0 if ok or r.get("new") or r.get("written") else self.fails[key] + 1   # staged facts are progress too
+        wait = next_try(r, max(0, self.fails[key] - 1))
+        if wait is None:
+            self.queue.pop(key, None)
+        else:
+            self.queue[key] = time.time() + wait
+        self.note("ended", key, state=r.get("state"), why=str(r.get("why") or how or "")[:200], new=r.get("new"),
+                  next_in_s=wait, ran_s=round(time.time() - info["started"]))
+        return r
+
+    def check(self, now=None):
+        """one look at every agent: collect the ended, end the stalled and the silent, start what may start"""
+        now = now or time.time()
+        for key in list(self.running):
+            info = self.running[key]
+            pr = info["proc"]
+            if not pr.is_alive():
+                try:
+                    with open(info["result"]) as f:
+                        r = json.load(f)
+                except (OSError, ValueError):
+                    r = None
+                self._finish(key, r, None if r else "the agent ended without a result (exit %s)" % pr.exitcode)
+                continue
+            try:
+                with open(os.path.join(_alive_dir(self.cf), key + ".json")) as f:
+                    a = json.load(f)
+            except (OSError, ValueError):
+                a = None
+            if a:
+                prog = (a.get("meter"), a.get("rows"))
+                if prog != info["progress"] or a.get("waiting"):
+                    info["progress"], info["changed"] = prog, now
+            silent = (now - (a or {}).get("at", info["started"])) > SILENT_S
+            stalled = (now - info["changed"]) > STALL_S
+            if silent or stalled:
+                why = ("no sign of life for %d min" % (SILENT_S // 60)) if silent else ("no progress for %d min" % (STALL_S // 60))
+                self.kill(pr.pid)
+                pr.join(10)
+                self._finish(key, None, why + " — ended and restarted where it stopped")
+        free = self.agents - len(self.running)
+        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running), key=lambda k: self.keys.index(k)):
+            if free <= 0:
+                break
+            self.launch(key)
+            free -= 1
+
+    def stop_all(self, grace=None):
+        grace = STOP_GRACE_S if grace is None else grace
+        t0 = time.time()
+        self.queue = {}
+        while self.running and time.time() - t0 < grace:
+            self.check()
+            self.queue = {}
+            time.sleep(1)
+        for key, info in list(self.running.items()):
+            self.kill(info["proc"].pid)
+            self._finish(key, None, "ended by Stop")
+        self.queue = {}
+
+
+def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
+    """the runner: a supervisor that keeps every dataset going (see Supervisor) until the red Stop. Only one at a time.
+    until: tests only — a function that ends the run when it returns True."""
+    keys = keys or list(catalog())
+    folder = os.path.join(commons_folder, FOLDER)
+    os.makedirs(folder, exist_ok=True)
+    one = Slots(commons_folder)._lock("runner", 0)          # only one engine at a time (released if this process dies)
+    if not one:
+        return [{"error": "another harvesting engine is already running"}]
+    stop = os.path.join(folder, "_runner.stop")
+    if os.path.exists(stop):
+        os.remove(stop)
+    hb = os.path.join(folder, "_runner.json")
+    TR.configure(qt.trace_dir(commons_folder), "runner-%d" % os.getpid(), on=True)
+    TR.event("run", phase="start", role="runner", agents=agents, datasets=keys, cores=os.cpu_count())
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)   # the computer stays awake while the engine runs
+        except Exception:
+            pass
+    sup = Supervisor(commons_folder, keys, agents, max_rows)
+
+    def beat(note):
+        try:
+            with open(hb + ".tmp", "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys,
+                           "note": note, "running": sorted(sup.running), "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
+                                                                                  if k not in sup.running and t > time.time()},
+                           "events": sup.events[-60:]}, f)
+            _replace(hb + ".tmp", hb)
+        except OSError as e:
+            TR.fail("heartbeat", e, retried=True)
+    beat("starting")
+    import threading
+    rnote = {"text": "starting: checking every copy of every dataset for facts to add back"}
+    r_done = threading.Event()
+
+    def restore_beat():
+        while not r_done.wait(10):
+            beat(rnote["text"])
+    threading.Thread(target=restore_beat, daemon=True, name="qb-restore-beat").start()
+    try:                                              # 1.31.2: facts held in any other copy are added back first
+        TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text="starting: " + t)))
+    except Exception as e:
+        TR.fail("restore", e, retried=True)
+    finally:
+        r_done.set()
+    drain_stop = threading.Event()
+
+    def drainer():                                    # one copier: working copies on C: → their home on D:, in turn
+        wait = min(120, DRAIN_S)
+        while not drain_stop.wait(wait):
+            t_round = time.time()
+            for k in work_keys(commons_folder):
+                if drain_stop.is_set():
+                    break
+                try:
+                    drain(commons_folder, k)
+                except Exception as e:
+                    TR.fail("drain", e, retried=True, dataset=k)
+            wait = max(DRAIN_S, 2 * (time.time() - t_round))   # the copier rests twice as long as it worked
+    dthread = threading.Thread(target=drainer, daemon=True, name="qb-drain")
+
+    def backer():                                     # 1.33: a checked backup to the backup drive, once a day while harvesting
+        import qbvault
+        while not drain_stop.wait(600):
+            try:
+                if qbvault.due(commons_folder) and not qbvault.running(commons_folder):
+                    TR.event("backup", result=qbvault.backup(commons_folder, reason="automatic",
+                                                             stop=lambda: "Stop pressed" if os.path.exists(stop) else None))
+            except Exception as e:
+                TR.fail("backup", e, retried=True)
+    threading.Thread(target=backer, daemon=True, name="qb-backup").start()
+    if work_dir(commons_folder):
+        dthread.start()
+    last_upkeep = time.time()
+    try:
+        while not os.path.exists(stop) and not (until and until(sup)):
+            try:
+                sup.check()
+            except Exception as e:                        # the supervisor itself never stops on a surprise
+                TR.fail("supervisor", e, retried=True)
+            idle = not sup.running
+            beat("running: %d agent(s)" % len(sup.running) if sup.running else
+                 "waiting: every dataset is finished or waiting for its next try")
+            if idle and time.time() - last_upkeep > 3600:    # quiet moments: duplicates across shards, finished copies home
+                last_upkeep = time.time()
+                try:
+                    TR.event("dedupe", removed=dedupe(commons_folder))
+                    if work_dir(commons_folder):
+                        finish_work(commons_folder, only_changed=True)
+                except Exception as e:
+                    TR.fail("upkeep", e, retried=True)
+            time.sleep(SUPERVISE_TICK_S)
+        # 1.31.2 Stop: the agents end after their batch; then only the copies that changed are saved to D: (no duplicate
+        # check here — it runs in quiet hours), with a heartbeat every 10 s so the page shows "stopping: saving …" and nothing
+        # ends this process halfway through a save
+        note = {"text": "stopping: every agent finishes its current batch"}
+        hb_stop = threading.Event()
+
+        def stop_beat():
+            while not hb_stop.wait(10):
+                beat(note["text"])
+        beat(note["text"])
+        threading.Thread(target=stop_beat, daemon=True, name="qb-stop-beat").start()
+        try:
+            sup.stop_all()
+            drain_stop.set()
+            if dthread.is_alive():
+                note["text"] = "stopping: the copier finishes the save it is doing"
+                dthread.join()
+
+            def say(i, n, k):
+                note["text"] = "stopping: saving what changed to the data drive — %s (%d of %d)" % (k, i, n)
+                beat(note["text"])
+            saved = finish_work(commons_folder, only_changed=True, note=say) if work_dir(commons_folder) else {}
+        finally:
+            hb_stop.set()
+        TR.event("run", phase="end", role="runner", events=sup.events[-50:])
+        beat("finished")
+        return [{"events": sup.events, "saved_to_data_drive": saved}]
+    finally:
+        TR.close()
+        Slots(commons_folder).release(one)
+
+
+def dedupe(commons_folder):
+    """one fact, one record across every shard: a fingerprint held by an earlier shard (catalog order) is removed from the
+    later ones. Within a shard the fingerprint is the key, so a repeat never enters; across shards a repeat can arrive when
+    a new edition of a file moves a record between agents (a new weekly Wikidata dump shifts items between lanes).
+    The fingerprint includes the area, so only shards of one area can share facts. Runs when every agent has finished."""
+    keys = [k for k in catalog() if os.path.exists(shard_path(commons_folder, k))]
+    removed = {}
+    for k in keys:                                     # 1.33: a stage left by a stopped agent joins its shard first
+        sh = Shard(commons_folder, k)
+        try:
+            sh.merge()
+        finally:
+            sh.db.close()
+    for j, kj in enumerate(keys):
+        earlier = [k for k in keys[:j] if AREA[catalog()[k].app] == AREA[catalog()[kj].app]]
+        if not earlier:
+            continue
+        sh = Shard(commons_folder, kj)
+        try:
+            gone = 0
+            for ki in earlier:
+                sh.db.execute("ATTACH DATABASE ? AS e", (shard_path(commons_folder, ki),))
+                t_d = time.time()
+                before = sh.db.total_changes
+                sh.db.execute("DELETE FROM links WHERE fp IN (SELECT fp FROM e.facts)")
+                links = sh.db.total_changes - before
+                sh.db.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM e.facts)")
+                gone += sh.db.total_changes - before - links
+                sh.db.commit()
+                TR.event("dedupe_pair", shard=kj, against=ki, removed=sh.db.total_changes - before - links, seconds=round(time.time() - t_d, 3))
+                sh.db.execute("DETACH DATABASE e")
+            if gone:
+                sh.set_meta("facts", max(0, (sh.meta("facts", 0) or 0) - gone))
+                sh.set_meta("duplicates_removed", (sh.meta("duplicates_removed", 0) or 0) + gone)
+                sh.db.commit()
+                removed[kj] = gone
+        finally:
+            sh.db.close()
+    return removed
+
+
+# ------------------------------------------------------------------------------------------------ reading shards
+def _ro(path):
+    return sqlite3.connect("file:%s?mode=ro" % urllib.request.pathname2url(path), uri=True, timeout=5)
+
+
+def status(commons_folder, commons=None):
+    """every dataset: approval, state, facts, rows per part, rate, size; the runner's heartbeat"""
+    out, folder = [], os.path.join(commons_folder, FOLDER)
+    now = time.time()
+    for key, ds in catalog().items():
+        approved, why = True, ""
+        if ds.source and commons is not None:
+            approved, cls, why = commons.registry.check(ds.source)
+        row = {"key": key, "title": ds.title, "app": ds.app, "area": AREA[ds.app], "source": ds.source or "computed", "licence": ds.licence,
+               "why": ds.why, "approx": ds.approx, "approved": approved, "approval": why, "state": "not started", "facts": 0,
+               "last_minute": 0, "last_10min": 0, "last_hour": 0, "bytes": 0, "parts": [], "error": None}
+        p = shard_path(commons_folder, key)
+        if p != home_path(commons_folder, key):
+            dr = drained(commons_folder).get(key) or {}
+            row["working_copy"] = True
+            row["saved_to_data_drive"] = dr.get("at")
+        if os.path.exists(p):
+            row["bytes"] = sum(os.path.getsize(p + x) for x in ("", "-wal") if os.path.exists(p + x))
+            try:
+                db = _ro(p)
+                meta = {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta")}
+                row.update(state=meta.get("state", "not started"), facts=meta.get("facts", 0) or 0, error=meta.get("error"),
+                           staged=meta.get("staged", 0) or 0)
+                pgm = meta.get("progress")
+                try:                                    # the side file is newer between batches
+                    with open(p + ".progress") as f:
+                        pgs = json.load(f)
+                    if not pgm or (pgs.get("at") or 0) > (pgm.get("at") or 0):
+                        pgm = pgs
+                except (OSError, ValueError):
+                    pass
+                row["progress"] = _progress(pgm, now, live=row["state"] == "running")
+                last = db.execute("SELECT facts FROM progress ORDER BY at DESC LIMIT 1").fetchone()
+                cur = last[0] if last else row["facts"]          # facts kept + staged, as the progress table counts them
+                for secs, k in ((60, "last_minute"), (600, "last_10min"), (3600, "last_hour")):
+                    r = db.execute("SELECT facts FROM progress WHERE at <= ? ORDER BY at DESC LIMIT 1", (now - secs,)).fetchone()
+                    first = db.execute("SELECT min(at) FROM progress").fetchone()[0]
+                    base = r[0] if r else (0 if first is None or first > now - secs else cur)
+                    row[k] = max(0, cur - base)
+                row["parts"] = [dict(zip(("name", "rows", "facts", "done", "version", "finished"), r))
+                                for r in db.execute("SELECT name, rows, facts, done, version, finished FROM parts ORDER BY id")]
+                pg = row["progress"]
+                if pg:                                  # overall: every finished part counts, plus the share of the current one
+                    ed = pg["part"].split(" part ")[0] + " part " if " part " in (pg.get("part") or "") else ""
+                    others = sum(1 for x in row["parts"] if x["done"] and x["name"] != pg["part"] and x["name"].startswith(ed))
+                    pg["overall"] = 1.0 if row["state"] == "done" else round(min(1.0, (others + (pg["fraction"] or 0)) / max(1, pg["parts"])), 4)
+                if key == "wikidata-series":
+                    row["slots"] = [dict(zip(("series", "expected", "filled"), r)) for r in
+                                    db.execute("SELECT series, count(*), sum(filled) FROM slots GROUP BY series ORDER BY series")]
+                db.close()
+            except sqlite3.Error as e:
+                row["error"] = None if "locked" in str(e) else "shard unreadable: %s" % e
+                row["busy"] = "locked" in str(e)
+                last = _LAST_COUNT.get((commons_folder, key)) or _saved_counts(commons_folder).get(key)
+                if last:                                # busy for a moment (being copied, being written): the last count
+                    row["facts"], row["count_from"] = last, "last known (the file is busy right now)"
+            if row["state"] == "running" and not _alive(commons_folder):
+                row["state"] = "paused"
+        rn = restoring_now(commons_folder)
+        if rn and rn.get("key") == key and (rn.get("facts") or 0) > row["facts"]:
+            row["facts"], row["count_from"] = rn["facts"], "restoring: facts are being added back from %s" % rn.get("from")
+            row["restoring"] = rn
+        if getattr(ds, "standalone", False):          # the one dump download: its own progress, no shard
+            row.update(download_status(commons_folder, commons))
+        if row["facts"] and not row.get("count_from"):
+            _LAST_COUNT[(commons_folder, key)] = row["facts"]
+        out.append(row)
+    _count_ledger(commons_folder, out, now)
+    _save_counts(commons_folder, out)
+    rs = {}
+    try:
+        with open(os.path.join(folder, "_runner.json")) as f:
+            rs = json.load(f)
+    except (OSError, ValueError):
+        pass
+    rs["alive"] = bool(rs) and now - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
+    w = work_dir(commons_folder)
+    try:
+        free_c = shutil.disk_usage(w if os.path.isdir(w) else os.path.dirname(w) if os.path.isdir(os.path.dirname(w)) else os.path.expanduser("~")).free if w else None
+    except OSError:
+        free_c = None
+    return {"version": VERSION, "cores": os.cpu_count() or 1, "max_agents": MAX_AGENTS, "datasets": out, "runner": rs, "total": sum(d["facts"] for d in out),
+            "copying": copying(commons_folder), "working_copies": bool(w), "work_folder": w, "work_free_bytes": free_c, "engine_version": VERSION,
+            "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
+            "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
+            "drops": count_drops(commons_folder, now - 7200),
+            "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
+                                 for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
+            "duplicates_removed": sum((_LAST_DUPS.get((commons_folder, d["key"])) or 0) for d in out),
+            "bytes": sum(d["bytes"] for d in out), "download": download_status(commons_folder, commons)["download"]}
+
+
+def save_download_settings(commons, folder=None, on=None, passphrase=None):
+    """the admin chooses where the dump is kept (a folder on any drive: it is created) and whether the lanes read it"""
+    commons.approvals._require(passphrase or "")
+    if folder is not None:
+        folder = str(folder).strip().strip('"')
+        if folder:
+            if not os.path.isabs(os.path.expanduser(folder)):
+                raise ValueError("Give the whole folder, with its drive — e.g. E:\\QB-dumps")
+            drive = os.path.splitdrive(os.path.abspath(os.path.expanduser(folder)))[0] or os.sep
+            if not os.path.exists(drive + os.sep if drive != os.sep else os.sep):
+                raise ValueError("The drive %s is not connected." % drive)
+            os.makedirs(os.path.expanduser(folder), exist_ok=True)
+        commons.set_setting("bulk:dumps:folder", folder)
+    if on is not None:
+        commons.set_setting("bulk:wikidata:local", "on" if on in (True, "on", "true", 1, "1") else "off")
+    return download_status(commons.folder, commons)["download"]
+
+
+def download_status(commons_folder, commons=None):
+    """the one dump download for the page: where, what is ready, what is under way (with speed and time left)"""
+    on = local_mode(commons) if commons is not None else True
+    d = dumps_folder(commons_folder, commons)
+    r, pg = dumps_ready(commons_folder, commons), qbdump.progress(d)
+    try:
+        free = shutil.disk_usage(d if os.path.isdir(d) else commons_folder).free
+    except OSError:
+        free = None
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_download_last.json")) as f:
+            last = json.load(f)
+    except (OSError, ValueError):
+        last = None
+    state = ("not used" if not on else "running" if pg and _alive(commons_folder) else "paused" if pg else "done" if r else
+             (last.get("state") or "not started") if last else "not started")
+    out = {"on": on, "folder": d, "folder_setting": (commons.setting("bulk:dumps:folder") or "") if commons is not None else "", "free_bytes": free, "ready": {k: r.get(k) for k in ("edition", "size", "checked", "seconds", "finished", "md5")} if r else None,
+           "under_way": pg, "state": state, "last_try": last}
+    if pg:
+        out["progress"] = {"part": "download %s" % pg.get("edition"), "fraction": pg["share"], "overall": pg["share"], "parts": 1,
+                           "eta_s": pg.get("eta_s"), "rate": pg.get("rate_mb_s")}
+    return {"download": out, "state": state if on else "done"}
+
+
+_LAST_COUNT = {}
+_LAST_DUPS = {}
+_SAVED = {}
+
+
+def _counts_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_counts.json")
+
+
+def _saved_counts(commons_folder):
+    """the last good count of every dataset, kept on disk (1.31.2): a file busy at the moment the page restarts is shown with
+    it, never as 0"""
+    if commons_folder not in _SAVED:
+        try:
+            with open(_counts_path(commons_folder)) as f:
+                _SAVED[commons_folder] = json.load(f)
+        except (OSError, ValueError):
+            _SAVED[commons_folder] = {}
+    return _SAVED[commons_folder]
+
+
+def _save_counts(commons_folder, rows):
+    saved = _saved_counts(commons_folder)
+    new = {r["key"]: r["facts"] for r in rows if r["facts"] and not r.get("count_from")}
+    if new and any(saved.get(k) != v for k, v in new.items()):
+        saved.update(new)
+        try:
+            with open(_counts_path(commons_folder) + ".tmp", "w") as f:
+                json.dump(saved, f)
+            _replace(_counts_path(commons_folder) + ".tmp", _counts_path(commons_folder), tries=5)
+        except OSError:
+            pass
+_LEDGER = {}
+
+
+def _ledger_path(commons_folder):
+    return os.path.join(commons_folder, FOLDER, "_count-drops.jsonl")
+
+
+def _count_ledger(commons_folder, rows, now):
+    """every fall in a dataset's count, written down with its cause: duplicates removed (the same fact held by an earlier
+    dataset), the working copy swapped, or unexplained — so a lower total is never a mystery"""
+    prev = _LEDGER.get(commons_folder)
+    cur = {}
+    for r in rows:
+        p = shard_path(commons_folder, r["key"])
+        dups = None
+        if os.path.exists(p) and not r.get("count_from"):
+            dups = (_meta_of(p) or {}).get("duplicates_removed") or 0
+        cur[r["key"]] = (r["facts"], dups, p)
+        if dups is not None:
+            _LAST_DUPS[(commons_folder, r["key"])] = dups
+    _LEDGER[commons_folder] = cur
+    if not prev:
+        return
+    for k, (f, dups, p) in cur.items():
+        if k not in prev or f >= prev[k][0]:
+            continue
+        pf, pdups, pp = prev[k]
+        fell = pf - f
+        dd = (dups or 0) - (pdups or 0) if dups is not None and pdups is not None else 0
+        cause = ("duplicates removed: the same facts are held by an earlier dataset (one copy is kept)" if dd >= fell * 0.95 else
+                 "the working copy and the data-drive copy were swapped (%s → %s)" % (pp, p) if p != pp else
+                 "unexplained — please send the health report")
+        try:
+            with open(_ledger_path(commons_folder), "a") as fh:
+                fh.write(json.dumps({"at": now, "dataset": k, "from": pf, "to": f, "fell": fell, "duplicates": dd, "cause": cause}) + "\n")
+        except OSError:
+            pass
+        TR.event("count_drop", dataset=k, before=pf, after=f, duplicates=dd, cause=cause)
+
+
+def count_drops(commons_folder, since=0):
+    out = []
+    try:
+        with open(_ledger_path(commons_folder)) as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("at", 0) >= since:
+                    out.append(e)
+    except OSError:
+        pass
+    return out
+
+
+_STATUS = {}
+_STATUS_LOCK = __import__("threading").Lock()
+
+
+def status_cached(commons_folder, commons=None, max_age=10.0):
+    """status(), at most every max_age seconds; while one is being computed (a busy drive) the last one is given at once.
+    The Control Panel asks every 2 seconds — on a saturated drive each full status took longer than that and piled up."""
+    hit = _STATUS.get(commons_folder)
+    if hit and time.time() - hit[0] < max_age:
+        return hit[1]
+    if not _STATUS_LOCK.acquire(blocking=hit is None):
+        return hit[1]
+    try:
+        val = status(commons_folder, commons)
+        _STATUS[commons_folder] = (time.time(), val)
+        return val
+    finally:
+        _STATUS_LOCK.release()
+
+
+def headline(st):
+    """the harvest in one sentence: what it is doing, how fast (the last 10 minutes), and the main reason when it is slow"""
+    rs = st.get("runner") or {}
+    if st.get("copying"):
+        c = st["copying"]
+        return {"state": "copying", "text": "Getting ready: copying %s to C: (%d%%) before it resumes there." % (
+            c["dataset"], 100 * c["done"] / max(1, c["total"]))}
+    if not rs.get("alive"):
+        return {"state": "stopped", "text": "Stopped. Press ⚡ Start harvesting."}
+    if rs.get("version") != VERSION:
+        return {"state": "old", "text": "An older harvesting engine is running. Press ■ Stop harvesting, then ⚡ Start harvesting."}
+    fpm = st.get("facts_per_min") or 0
+    direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
+    why = ""
+    if direct:
+        why = " Slow because %d dataset(s) write straight to D: (no room on C:)." % len(direct)
+    elif fpm < 1_000_000:
+        running = [d for d in st["datasets"] if d["state"] == "running"]
+        idle = [d for d in running if not d["last_10min"]]
+        if running and len(idle) > len(running) / 2:
+            why = " %d of %d running datasets added nothing in 10 minutes — most are waiting for a download connection " \
+                  "(the servers allow only a few at a time) or still finishing their first batch." % (len(idle), len(running))
+    return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
+
+
+def _progress(pg, now, live=False):
+    """the saved meter → part and overall fraction, rate and time left (None when nothing is measured yet). live (the agent
+    is running): the rate is measured up to now, not up to the last mark, so an agent that has stopped moving shows its
+    speed falling instead of the speed it last had (1.33: lanes stuck for an hour still read "10 MB/s")"""
+    if not pg:
+        return None
+    total, done = pg.get("total") or 0, pg.get("done") or 0
+    frac = min(1.0, done / total) if total else None
+    end = max(now, pg.get("at") or now) if live else (pg.get("at") or now)
+    secs = max(0.001, end - (pg.get("since") or now))
+    rate = max(0, done - (pg.get("done_at_start") or 0)) / secs if secs > 1 else None
+    eta = (total - done) / rate if rate and total and done < total else None
+    parts = pg.get("parts") or 1
+    overall = ((pg.get("part_no", 1) - 1) + (frac or 0)) / parts
+    return dict(pg, fraction=frac, overall=round(overall, 4), rate=rate, eta_s=round(eta) if eta else None)
+
+
+def _alive(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            rs = json.load(f)
+        return time.time() - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
+    except (OSError, ValueError):
+        return False
+
+
+def by_area(commons_folder):
+    """{area: {"facts", "last_minute", "last_hour"}} for the live ticker (cheap: shard meta only)"""
+    out = {}
+    for d in status(commons_folder)["datasets"]:
+        a = out.setdefault(d["area"], {"facts": 0, "last_minute": 0, "last_hour": 0})
+        for k in a:
+            a[k] += d[k]
+    return out
+
+
+def stores(commons_folder):
+    """the dataset stores (shards) that exist, in catalogue order: [(key, dataset)]"""
+    return [(k, ds) for k, ds in catalog().items() if os.path.exists(shard_path(commons_folder, k))]
+
+
+def search_store(commons_folder, key, ds, text, limit):
+    """facts whose subject starts with `text` (exact case first, then capitalised) in ONE store"""
+    out = []
+    db = _ro(shard_path(commons_folder, key))
+    try:
+        for t in dict.fromkeys((text, text[:1].upper() + text[1:])):
+            if len(out) >= limit:
+                break
+            for s, pr, o, part, row in db.execute(
+                    "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
+                    "WHERE f.s >= ? AND f.s < ? LIMIT ?", (t, t + "\uffff", limit - len(out))):
+                out.append({"subject": s, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed",
+                            "licence": ds.licence, "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s), "status": "computed" if not ds.source else "sourced"})
+    finally:
+        db.close()
+    return out
+
+
+def label_wikidata(commons_folder, out):
+    """Wikidata item numbers in the values shown with their labels"""
+    qs = [int(m) for r in out if r["source"] == "wikidata" for m in QID.findall(r["object"])]
+    if qs:
+        lab = wd_labels(commons_folder, qs)
+        for r in out:
+            if r["source"] == "wikidata":
+                r["object"] = QID.sub(lambda m: "%s (Q%s)" % (lab[int(m.group(1))], m.group(1)) if int(m.group(1)) in lab else m.group(0), r["object"])
+    return out
+
+
+def search_central(commons_folder, text, limit=50):
+    """the central lookup: every store in turn until `limit` facts are found — (facts, stores asked, stores held)"""
+    out, asked = [], 0
+    text = (text or "").strip()
+    held = stores(commons_folder)
+    if not text:
+        return out, 0, len(held)
+    for key, ds in held:
+        if len(out) >= limit:
+            break
+        asked += 1
+        out += search_store(commons_folder, key, ds, text, limit - len(out))
+    return out[:limit], asked, len(held)
+
+
+def search(commons_folder, text, limit=50):
+    """facts whose subject starts with `text` (exact case first, then capitalised), across every shard"""
+    return label_wikidata(commons_folder, search_central(commons_folder, text, limit)[0])[:limit]
+
+
+# ------------------------------------------------------------------------------------------------ control (the Control Panel)
+def start(commons, keys, agents, passphrase, program_dir):
+    """start the bulk runner (admin): a separate program, so the applications stay responsive"""
+    import subprocess
+    commons.approvals._require(passphrase or "")
+    if stopping(commons.folder):
+        raise ValueError("The last Stop is still saving to the data drive — press Start again in a minute (⚡ Start harvesting waits by itself).")
+    if _alive(commons.folder):
+        if runner_version(commons.folder) != VERSION:
+            r = full_speed(commons, program_dir, "Start")
+            return {"summary": r.get("summary") or "replacing an older engine", **status(commons.folder, commons)}
+        return {"summary": "bulk harvesting is already running", **status_cached(commons.folder, commons)}
+    keys = [k for k in (keys or list(catalog())) if k in catalog()]
+    if not keys:
+        raise ValueError("Choose at least one dataset.")
+    import qbcontrol as ctl, qbkeystone as ks
+    keys = ks.order(keys, commons.folder, commons, ctl.get(commons, "target"))   # the admin's target, then keystone priority
+    agents = MAX_AGENTS if not agents or int(agents) <= 0 else max(1, min(int(agents), MAX_AGENTS))   # 0 = full speed
+    _launch(commons.folder, keys, agents, program_dir)
+    with commons.store.write() as db:
+        commons.agent_log(db, "engine", "Bulk harvesting started: %s (%d agents)" % (", ".join(keys), agents))
+    return {"summary": "bulk harvesting is starting: %d dataset(s), %d agent(s)" % (len(keys), agents), **status_cached(commons.folder, commons)}
+
+
+def _launch(commons_folder, keys, agents, program_dir):
+    import subprocess
+    path = os.path.join(program_dir, "qbbulk.py")
+    kw = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+    subprocess.Popen([sys.executable, path, "run", "--commons", commons_folder, "--datasets", ",".join(keys), "--agents", str(agents)],
+                     cwd=program_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
+def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
+    """the master switch's own start: every approved dataset, one agent per core (as the Control Panel's ⚡ Full speed) —
+    the path that brings in tens of millions of facts. Nothing to do when the agents already run."""
+    if stopping(commons.folder):                       # 1.31.2: the stop finishes saving first, then this start runs
+        import threading
+
+        def after_stop():
+            t0 = time.time()
+            while stopping(commons.folder) and time.time() - t0 < STOP_SAVE_S:
+                time.sleep(5)
+            full_speed(commons, program_dir, why + " (after the stop finished saving)", launch)
+        threading.Thread(target=after_stop, daemon=True, name="qb-start-after-stop").start()
+        return {"bulk": "starting after the stop", "summary": "the last stop is still saving to the data drive; harvesting starts "
+                                                             "by itself as soon as that is done"}
+    if _alive(commons.folder):
+        if runner_version(commons.folder) == VERSION:
+            return {"bulk": "already running"}
+        # an engine from an older version is still running (it has no window): stop it, then start this one
+        import threading
+        stop(commons, grace=60)
+
+        def later():
+            t0 = time.time()
+            while (_alive(commons.folder) or _pids(commons.folder)) and time.time() - t0 < 180:
+                time.sleep(2)
+            full_speed(commons, program_dir, why + " (replacing an older engine)", launch)
+        threading.Thread(target=later, daemon=True, name="qb-replace").start()
+        return {"bulk": "replacing an older engine", "summary": "an older harvesting engine was still running: it is stopped and this version starts in about a minute"}
+    if os.environ.get("QB_OFFLINE") and launch is None:      # self-tests never download
+        return {"bulk": "offline"}
+    keys = [k for k, ds in catalog().items() if not ds.source or commons.registry.check(ds.source)[0]]
+    if not keys:
+        return {"bulk": "no approved dataset"}
+    import qbcontrol as ctl, qbkeystone as ks
+    keys = ks.order(keys, commons.folder, commons, ctl.get(commons, "target"))
+    folder = os.path.join(commons.folder, FOLDER)
+    os.makedirs(folder, exist_ok=True)
+    try:
+        os.remove(os.path.join(folder, "_runner.stop"))
+    except OSError:
+        pass
+    (launch or _launch)(commons.folder, keys, MAX_AGENTS, program_dir)
+    with commons.store.write() as db:
+        commons.agent_log(db, "engine", "%s: bulk agents started at full speed (%d datasets, %d agents)" % (why, len(keys), MAX_AGENTS))
+    return {"bulk": "started", "datasets": len(keys), "agents": MAX_AGENTS}
+
+
+def runner_state(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            rs = json.load(f)
+    except (OSError, ValueError):
+        return {"running": False, "note": "never started"}
+    return {"running": _alive(commons_folder), "note": rs.get("note"), "agents": rs.get("agents"), "datasets": len(rs.get("datasets") or [])}
+
+
+RESUME_GAP_S = 180                 # at most one automatic restart every 3 minutes
+
+
+def resume_if_crashed(commons, program_dir, now=None, launch=None):
+    """the runner ended without finishing (the computer slept, the window was closed, the drive dropped out) and nobody
+    pressed Stop: start it again on the same datasets — every agent resumes where its shard stopped. Returns what it did,
+    or None. (Since 1.23 the red Stop is the only way to stop the agents; the old master switch no longer applies.)"""
+    import qbharvest as hv
+    folder = os.path.join(commons.folder, FOLDER)
+    now = now or time.time()
+    try:
+        with open(os.path.join(folder, "_runner.json")) as f:
+            rs = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if rs.get("note") == "finished" or now - rs.get("heartbeat", now) < 60 or os.path.exists(os.path.join(folder, "_runner.stop")):
+        return None
+    if now - rs.get("heartbeat", now) > 300 and rs.get("pid"):
+        _kill(int(rs["pid"]))                     # hung: its lock would keep a new engine out
+    mark = os.path.join(folder, "_runner.resumed")
+    try:
+        if now - os.path.getmtime(mark) < RESUME_GAP_S:
+            return None
+    except OSError:
+        pass
+    keys = [k for k in (rs.get("datasets") or []) if k in catalog()]
+    if not keys:
+        return None
+    open(mark, "w").close()
+    (launch or _launch)(commons.folder, keys, int(rs.get("agents") or MAX_AGENTS), program_dir)
+    with commons.store.write() as db:
+        commons.agent_log(db, "engine", "Bulk harvesting resumed by itself: the runner had stopped without finishing (last: %s)"
+                          % (rs.get("note") or "?"))
+    return {"resumed": keys, "agents": int(rs.get("agents") or MAX_AGENTS), "last_note": rs.get("note")}
+
+
+def _pids(commons_folder):
+    """the runner's process and every agent process still marked running in a shard"""
+    pids = set()
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            pids.add(int(json.load(f).get("pid") or 0))
+    except (OSError, ValueError, TypeError):
+        pass
+    for key in catalog():
+        p = shard_path(commons_folder, key)
+        if not os.path.exists(p):
+            continue
+        try:
+            db = _ro(p)
+            meta = dict(db.execute("SELECT key, value FROM meta WHERE key IN ('state', 'pid')").fetchall())
+            db.close()
+            if json.loads(meta.get("state", '""')) == "running":
+                pids.add(int(json.loads(meta.get("pid", "0")) or 0))
+        except (sqlite3.Error, ValueError, TypeError):
+            pass
+    pids.discard(0); pids.discard(os.getpid())
+    return pids
+
+
+def _kill(pid):
+    """end a process and everything it started (Windows: taskkill /T; elsewhere its process group)"""
+    import subprocess, signal
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30, creationflags=0x08000000)
+        else:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except (OSError, AttributeError):
+                os.kill(pid, signal.SIGTERM)
+        return True
+    except Exception:
+        return False
+
+
+STOP_GRACE_S = 60
+
+
+def stop(commons, grace=None, wait=False):
+    """every agent stops after its current batch; any still running after `grace` seconds (an agent from an older version, or
+    one waiting hours for a slow disk) is ended — SQLite undoes its unfinished batch, which is read again next time"""
+    import threading
+    folder = os.path.join(commons.folder, FOLDER)
+    os.makedirs(folder, exist_ok=True)
+    open(os.path.join(folder, "_runner.stop"), "w").close()
+    grace = STOP_GRACE_S if grace is None else grace
+
+    def enforce():
+        t0 = time.time()
+        while time.time() - t0 < grace and _agent_pids(commons.folder):
+            time.sleep(1)
+        left = _agent_pids(commons.folder)
+        for pid in left:                              # agents only: the runner is saving what changed to D:
+            _kill(pid)
+        if left:
+            TR.event("stop", ended=sorted(left), why="agent still running %d s after Stop" % grace)
+        rp = _runner_pid(commons.folder)              # the runner ends by itself; it is ended only if it ignores Stop or hangs
+        t1 = time.time()
+        while rp and time.time() - t0 < STOP_SAVE_S:
+            hb = _runner_heartbeat(commons.folder)
+            if hb.get("note") == "finished" or not _pid_alive(rp):
+                return
+            if not str(hb.get("note") or "").startswith("stopping") and time.time() - t1 > 30:
+                break                                 # it does not react to Stop (an older version, or stuck)
+            if time.time() - hb.get("heartbeat", 0) > 120:
+                break                                 # it stopped beating while saving: hung
+            time.sleep(2)
+        if rp and _pid_alive(rp) and _runner_heartbeat(commons.folder).get("note") != "finished":
+            _kill(rp)
+            TR.event("stop", ended=[rp], why="the runner gave no sign of life for 2 min while stopping")
+    th = threading.Thread(target=enforce, daemon=True, name="qb-stop")
+    th.start()
+    if wait:
+        th.join()
+    out = {"summary": "harvesting stops: every agent finishes its current batch (any still running after %d s is ended), then what "
+                      "changed is saved to the data drive" % grace, **status_cached(commons.folder, commons)}
+    _STATUS.pop(commons.folder, None)                 # the next look is fresh: it shows the stop
+    return out
+
+
+STOP_SAVE_S = 3 * 3600             # the longest a stop may spend saving to D: before the runner is ended anyway
+
+
+def _runner_heartbeat(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _runner_pid(commons_folder):
+    try:
+        return int(_runner_heartbeat(commons_folder).get("pid") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
+
+def _pid_alive(pid):
+    if not pid:
+        return False
+    if os.name == "nt":
+        import subprocess
+        try:
+            r = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+            return str(pid) in r.stdout
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _agent_pids(commons_folder):
+    """every agent process still alive: from its heartbeat file (every agent, the download too) and from its shard"""
+    pids = set()
+    d = os.path.join(commons_folder, FOLDER, "_agents")
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(d, f)) as fh:
+                        a = json.load(fh)
+                    if time.time() - a.get("at", 0) < 60 and a.get("pid"):
+                        pids.add(int(a["pid"]))
+                except (OSError, ValueError, TypeError):
+                    pass
+    pids |= {p for p in _pids(commons_folder) if _pid_alive(p)}    # a shard can still say "running" after a crash
+    rp = _runner_pid(commons_folder)
+    pids.discard(rp or 0); pids.discard(0); pids.discard(os.getpid())
+    return pids
+
+
+def stopping(commons_folder):
+    """a stop still under way: the runner saving to D:, or agents not yet ended"""
+    hb = _runner_heartbeat(commons_folder)
+    return (str(hb.get("note") or "").startswith("stopping") and time.time() - hb.get("heartbeat", 0) < 120) or \
+        bool(os.path.exists(os.path.join(commons_folder, FOLDER, "_runner.stop")) and _agent_pids(commons_folder))
+
+
+def runner_version(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return json.load(f).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+# ------------------------------------------------------------------------------------------------ the analysis, by email
+DELAYS = [   # (words in the measured bottleneck, the delay in plain words, what QueryBook does about it)
+    (("connection-slot", "net_wait", "refused", "429", "503", "slow down"),
+     "waiting for download connections (each server lets only a few downloads in at a time)",
+     "an agent that waits more than 10 minutes gives its place to another dataset and comes back; mirror servers are used when they hold the same file"),
+    (("network",), "download speed (the internet connection or the server)",
+     "every connection the servers allow is kept busy; nothing to fix on this computer"),
+    (("disk", "commit", "drive"), "writing to the drive",
+     "facts are written on C: first and copied to D: in the background; when C: fills up, a dataset moves to D: and carries on"),
+    (("CPU",), "the processor (every core is busy — the best case)", "nothing needed"),
+]
+
+
+def _runner_events(commons_folder, since):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
+            return [e for e in (json.load(f).get("events") or []) if e.get("at", 0) >= since]
+    except (OSError, ValueError):
+        return []
+
+
+def plain_summary(st, o=None, events=(), hours=2, commons=None):
+    """the harvest for a person, in a few short lines: health, speed, the main delay and what is done about it,
+    what recovered by itself, and what (if anything) to do"""
+    rs = st.get("runner") or {}
+    fpm = st.get("facts_per_min") or 0
+    alive = rs.get("alive")
+    old = alive and rs.get("version") not in (None, VERSION)
+    if not alive:
+        health = "STOPPED"
+    elif fpm >= 1_000_000:
+        health = "GOOD"
+    elif fpm > 0:
+        health = "WORKING, BUT SLOW"
+    else:
+        health = "RUNNING — NO NEW FACTS IN THE LAST 10 MINUTES"
+    L = ["QueryBook harvest — %s" % time.strftime("%d %b %Y %H:%M"), "",
+         "Health:      %s" % health,
+         "Speed now:   %s facts a minute (%s in the last hour)" % (format(fpm, ","), format(st.get("last_hour") or 0, ",")),
+         "Facts held:  %s" % format(st.get("total") or 0, ",")]
+    if st.get("working_copies") and st.get("on_data_drive") is not None:
+        L.append("             %s already saved on the data drive (D:); the rest is in the working copies on C:, saved to D: every 10 minutes"
+                 % format(st["on_data_drive"], ","))
+    # the main delay, weighed by how long each dataset ran
+    weight = {}
+    for d in (o or {}).get("datasets") or []:
+        b = d.get("bottleneck") or ""
+        for i, (words, _, _) in enumerate(DELAYS):
+            if any(w.lower() in b.lower() for w in words):
+                weight[i] = weight.get(i, 0) + (d.get("wall_s") or 0)
+                break
+    for c in ((o or {}).get("congestion") or [])[:3]:
+        for i, (words, _, _) in enumerate(DELAYS):
+            if any(w.lower() in str(c.get("what")).lower() for w in words):
+                weight[i] = weight.get(i, 0) + (c.get("total_s") or 0)
+                break
+    if weight:
+        i = max(weight, key=weight.get)
+        L += ["Main delay:  %s" % DELAYS[i][1], "             QueryBook: %s." % DELAYS[i][2]]
+    else:
+        L.append("Main delay:  none measured yet")
+    ends = [e for e in events if e.get("what") == "ended" and e.get("state") != "done" and "Stop" not in str(e.get("why"))]
+    L.append("Recovered by itself (last %g h): %s" % (hours, ("%d time(s)" % len(ends)) if ends else "nothing needed"))
+    for e in ends[-5:]:
+        nxt = e.get("next_in_s")
+        L.append("  %s  %s — %s%s" % (time.strftime("%H:%M", time.localtime(e.get("at", 0))), e.get("dataset"),
+                                       str(e.get("why") or e.get("state"))[:110],
+                                       ("; tried again after %s" % qt.fmt_dur(nxt)) if nxt else ""))
+    drops = st.get("drops") or []
+    if drops:
+        dup = sum(d["fell"] for d in drops if d["cause"].startswith("duplicates"))
+        other = [d for d in drops if not d["cause"].startswith("duplicates")]
+        if dup:
+            L.append("Duplicates removed (last %g h): %s — the same facts already held by another dataset; nothing is lost" % (hours, format(dup, ",")))
+        for d in other[-3:]:
+            L.append("Count fell: %s %s → %s — %s" % (d["dataset"], format(d["from"], ","), format(d["to"], ","), d["cause"]))
+    fails = ((o or {}).get("failures") or [])[:3]
+    if fails:
+        L.append("Problems seen (all retried): " + "; ".join("%s %s ×%d" % (f["where"], f["kind"], f["count"]) for f in fails))
+    if not alive:
+        todo = "press ⚡ Start harvesting (and tick \"Start QueryBook when Windows starts\" so it never stays stopped)"
+    elif old:
+        todo = "press ■ Stop harvesting, wait a minute, then ⚡ Start harvesting (an older engine is still running)"
+    elif any("not connected" in str(e.get("why")) for e in ends[-3:]):
+        todo = "connect the data drive (D:) — the harvest resumes by itself within a minute"
+    else:
+        todo = "nothing — QueryBook restarts, re-routes and retries by itself"
+    if commons is not None:                            # Control Panel 1.34: answer routing and the Shadow comparison
+        try:
+            import qbdsn
+            L += qbdsn.health_lines(commons)
+        except Exception as e:                         # the health report must never fail because of this section
+            L.append("Answer routing: could not be read (%s)" % e)
+    L += ["", "What you need to do: " + todo]
+    return "\n".join(L)
+
+
+def analysis_text(commons, hours=2, max_seconds=120, counter=None):
+    """the instrumentation report of the last `hours`, with the one-sentence headline on top"""
+    cut = time.time() - hours * 3600
+    files = []
+    for d in qt.trace_dirs(commons.folder):
+        if os.path.isdir(d):
+            files += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                      if f.endswith((".jsonl", ".jsonl.gz")) and os.path.getmtime(os.path.join(d, f)) >= cut]
+    t0, n = time.time(), [0]
+
+    def counted():
+        for l in qt.read_lines(files, since_ns=int(cut * 1e9), max_seconds=max_seconds):
+            n[0] += 1
+            if counter is not None:
+                counter["lines"] = n[0]
+            yield l
+    o = qt.analyze(counted())
+    st = status_cached(commons.folder, commons)
+    hl = plain_summary(st, o, _runner_events(commons.folder, cut), hours, commons)
+    text = (hl + "\n\n\n" + "-" * 70 + "\nTECHNICAL DETAILS (for support — you do not need to read these)\n" +
+            "Last %g hour(s) of logs: %d file(s), %s lines, analysed in %s\n\n" % (hours, len(files), format(n[0], ","), qt.fmt_dur(time.time() - t0))
+            + qt.text_report(o))
+    return text, o, hl, len(files)
+
+
+def _email_path(commons):
+    return os.path.join(commons.folder, "report-email.json")
+
+
+def email_settings(commons, program_dir=None):
+    try:
+        with open(_email_path(commons), encoding="utf-8") as f:
+            e = json.load(f)
+    except (OSError, ValueError):
+        e = {}
+    if not e.get("to") and program_dir:                # a personal package may name the address beside the launchers
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(program_dir)), "report-email.txt"), encoding="utf-8-sig") as f:
+                e["to"] = f.read().strip()
+        except OSError:
+            pass
+    return e
+
+
+def save_email_settings(commons, to=None, user=None, password=None, every_hours=None):
+    e = email_settings(commons)
+    if to is not None:
+        e["to"] = to.strip()
+    if user is not None:
+        e["user"] = user.strip()
+    if password:
+        e["password"] = password.replace(" ", "").strip()     # Google shows app passwords in groups of four
+    if every_hours is not None:
+        e["every_hours"] = max(0.0, float(every_hours))
+    with open(_email_path(commons) + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(e, f)
+    _replace(_email_path(commons) + ".tmp", _email_path(commons))
+    try:
+        os.chmod(_email_path(commons), 0o600)
+    except OSError:
+        pass
+    return e
+
+
+def send_report(commons, program_dir=None, hours=2, smtp=None):
+    """analyse and email the report (Gmail: smtp.gmail.com with an app password). Returns what was sent."""
+    import smtplib
+    from email.message import EmailMessage
+    e = email_settings(commons, program_dir)
+    to, user, pw = e.get("to"), e.get("user") or e.get("to"), e.get("password")
+    if not to or not pw:
+        raise ValueError("Set the address and the Gmail app password first (Harvesting → Email the analysis).")
+    text, o, hl, nfiles = analysis_text(commons, hours)
+    m = EmailMessage()
+    lines = {l.split(":", 1)[0].strip(): l.split(":", 1)[1].strip() for l in hl.splitlines() if ":" in l}
+    m["Subject"] = "QueryBook harvest %s — %s, %s" % (time.strftime("%Y-%m-%d %H:%M"), lines.get("Health", "?"), lines.get("Speed now", "")[:60])
+    m["From"], m["To"] = user, to
+    m.set_content(text)
+    m.add_attachment(text.encode("utf-8"), maintype="text", subtype="plain", filename="querybook-analysis-%s.txt" % time.strftime("%Y%m%d-%H%M"))
+    if smtp is not None:                                 # tests
+        smtp(m)
+    else:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=60) as sm:
+            sm.starttls()
+            sm.login(user, pw)
+            sm.send_message(m)
+    e["last_sent"] = time.time()
+    save_email_settings(commons)
+    with open(_email_path(commons), encoding="utf-8") as f:
+        cur = json.load(f)
+    cur["last_sent"] = e["last_sent"]
+    with open(_email_path(commons), "w", encoding="utf-8") as f:
+        json.dump(cur, f)
+    return {"sent_to": to, "headline": hl, "lines": len(text.splitlines()), "summary": "the analysis was emailed to %s" % to}
+
+
+def email_due(commons, program_dir=None, now=None):
+    """the Control Panel's monitor calls this: sends the analysis every `every_hours` (0 = never)"""
+    e = email_settings(commons, program_dir)
+    every = float(e.get("every_hours") or 0)
+    now = now or time.time()
+    if not every or not e.get("password") or not e.get("to") or now - float(e.get("last_sent") or 0) < every * 3600:
+        return None
+    return send_report(commons, program_dir)
+
+
+# ------------------------------------------------------------------------------------------------ start with Windows
+AUTOSTART_NAME = "QueryBook-start.cmd"
+
+
+def _startup_folder():
+    env = os.environ.get("QB_STARTUP_FOLDER")             # tests
+    if env:
+        return env
+    if os.name != "nt" or not os.environ.get("APPDATA"):
+        return None
+    return os.path.join(os.environ["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+
+def autostart(program_dir, on=None):
+    """Windows starts QueryBook by itself after a restart (a small file in the Startup folder): the harvest carries on
+    after an update, a power cut or a reboot. on=None: just say whether it is set."""
+    folder = _startup_folder()
+    if not folder:
+        return {"available": False, "on": False, "why": "only on Windows"}
+    path = os.path.join(folder, AUTOSTART_NAME)
+    suite = os.path.dirname(os.path.abspath(program_dir))
+    start_all = os.path.join(suite, "START-ALL-WINDOWS.bat")
+    if on is True:
+        os.makedirs(folder, exist_ok=True)
+        with open(path, "w", newline="") as f:              # waits a little first: an external drive is often found late
+            f.write("@echo off\r\nREM QueryBook: start after Windows starts (turn off in the Control Panel, Harvesting tab)\r\n"
+                    "timeout /t 60 /nobreak >nul\r\nstart \"QueryBook\" /min cmd /c \"%s\"\r\n" % start_all)
+    elif on is False and os.path.exists(path):
+        os.remove(path)
+    return {"available": True, "on": os.path.exists(path), "file": path, "starts": start_all}
+
+
+def add_routes(api, commons, program_dir):
+    commons.registry.ensure()
+
+    @api.get("/api/autostart")
+    def autostart_get(p):
+        return autostart(program_dir)
+
+    @api.post("/api/autostart")
+    def autostart_set(p):
+        return autostart(program_dir, bool(p.get("on")))
+    @api.get("/api/bulk")
+    def bulk_status(p):
+        st = status_cached(commons.folder, commons)
+        return dict(st, headline=headline(st))
+
+    @api.post("/api/bulk/start")
+    def bulk_start(p):
+        try:
+            return start(commons, p.get("datasets"), p.get("agents", 4), p.get("passphrase"), program_dir)   # 0 = full speed
+        except ValueError as e:
+            raise core.UserError(str(e))
+
+    @api.post("/api/bulk/stop")
+    def bulk_stop(p):
+        return stop(commons)
+
+    @api.post("/api/bulk/restore")
+    def bulk_restore(p):
+        """find and restore missing facts (1.31.2): every copy of every dataset compared; nothing is deleted"""
+        if _alive(commons.folder) or stopping(commons.folder):
+            raise core.UserError("Stop harvesting first (and let the stop finish saving). This check also runs by itself at every Start.")
+        r = restore_missing(commons.folder)
+        _STATUS.pop(commons.folder, None)
+        n = sum(v["added"] for v in r.values())
+        return {"restored": r, "summary": ("%s facts added back to %d dataset(s)" % (format(n, ","), len(r))) if r else
+                "every copy was checked: no dataset was missing facts that another copy holds"}
+
+    @api.get("/api/backup")
+    def backup_status(p):
+        import qbvault
+        return qbvault.status(commons.folder)
+
+    @api.post("/api/backup/settings")
+    def backup_settings(p):
+        """the backup drive's folder, how many generations to keep, how often (admin)"""
+        import qbvault
+        commons.approvals._require(p.get("passphrase") or "")
+        try:
+            qbvault.save_config(commons.folder, p.get("folder"), p.get("keep"), p.get("every_hours"), p.get("on"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        return qbvault.status(commons.folder)
+
+    @api.post("/api/backup/now")
+    def backup_now(p):
+        """a backup in the background (the page follows backup-status.json); refused while one runs"""
+        import qbvault, threading
+        if not qbvault.vault_dir(commons.folder):
+            raise core.UserError("Choose a backup folder on a connected drive first.")
+        if qbvault.running(commons.folder):
+            raise core.UserError("A backup is already running.")
+
+        def go():
+            try:
+                qbvault.backup(commons.folder, reason="manual")
+            except Exception:
+                pass                                    # the reason is in backup-status.json
+        threading.Thread(target=go, daemon=True, name="qb-backup-now").start()
+        return {"started": True}
+
+    @api.post("/api/backup/restore")
+    def backup_restore(p):
+        """add back from a backup every fact the live datasets lack; copy back missing files. Nothing is deleted."""
+        import qbvault
+        if _alive(commons.folder) or stopping(commons.folder):
+            raise core.UserError("Stop harvesting first (and let the stop finish saving).")
+        try:
+            r = qbvault.restore(commons.folder, p.get("generation"))
+        except RuntimeError as e:
+            raise core.UserError(str(e))
+        _STATUS.pop(commons.folder, None)
+        n = sum(v.get("added", 0) for v in r.values())
+        return {"restored": r, "summary": ("%s facts added back, %d file(s) copied back" % (format(n, ","), sum(1 for v in r.values() if v.get("copied"))))
+                if r else "the live data already holds everything in that backup"}
+
+    @api.post("/api/bulk/download-settings")
+    def bulk_download_settings(p):
+        """download once (1.31): on/off, and the folder the dump is kept in (e.g. the large external drive)"""
+        try:
+            return save_download_settings(commons, p.get("folder"), p.get("on"), p.get("passphrase"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+
+    @api.get("/api/keystones")
+    def keystones(p):
+        import qbkeystone as ks
+        cov = ks.coverage(commons.folder, commons)
+        return dict(cov, probes=ks.probes(cov["keystones"]))
+
+    @api.get("/api/bulk/diagnose")
+    def bulk_diagnose(p):
+        import qbconnections as qc
+        own = getattr(api, "own_folder", None)
+        return {"checks": diagnose(commons, qc.google_folders(program_dir, own))}
+
+    @api.post("/api/bulk/move-folder")
+    def bulk_move(p):
+        import qbconnections as qc
+        try:
+            return move_folder(commons, qc.google_folders(program_dir, getattr(api, "own_folder", None)), p.get("folder"), p.get("passphrase"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+
+    # -- instrumentation: the trace logs analysed, exported, the drives compared
+    tfolder = lambda: qt.trace_dir(commons.folder)
+    AN = {"state": "idle", "result": None, "started": None, "lines": 0}
+
+    def analyse(hours):
+        """in the background: the page never waits for the logs (a busy drive made the answer take longer than people wait)"""
+        try:
+            text, o, hl, nfiles = analysis_text(commons, hours, counter=AN)
+            AN["result"] = {"report": o, "files": nfiles, "folder": tfolder(), "text": text, "summary": hl, "at": time.time()}
+        except Exception as e:
+            AN["result"] = {"text": "The analysis failed: %s" % e, "files": 0, "folder": tfolder()}
+        finally:
+            AN["state"] = "done"
+
+    @api.get("/api/trace/report")
+    def trace_report(p):
+        """starts an analysis (the last `hours`, default 2) unless one is running; answers at once with its state —
+        the page asks again until it is done"""
+        settings = {"on": (commons.setting("trace:on", "on") or "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0)}
+        if p.get("start") and AN["state"] != "working":
+            import threading
+            AN.update(state="working", result=None, started=time.time(), lines=0)
+            threading.Thread(target=analyse, args=(float(p.get("hours") or 2),), daemon=True, name="qb-analyse").start()
+        out = dict(AN["result"] or {}, state=AN["state"], settings=settings, folder=tfolder())
+        if AN["state"] == "working":
+            out["text"] = "Analysing… %s lines read so far (%s)" % (format(AN["lines"], ","), qt.fmt_dur(time.time() - AN["started"]))
+        return out
+
+    @api.get("/api/report/plain")
+    def report_plain(p):
+        """the few-line health report, at once (the main delay comes from the last analysis of the logs, when there is one;
+        one is started in the background otherwise)"""
+        st = status_cached(commons.folder, commons)
+        last = AN["result"] if AN["result"] and time.time() - (AN["result"].get("at") or 0) < 3 * 3600 else None
+        if not last and AN["state"] != "working":
+            import threading
+            AN.update(state="working", result=None, started=time.time(), lines=0)
+            threading.Thread(target=analyse, args=(2.0,), daemon=True, name="qb-analyse").start()
+        return {"text": plain_summary(st, (last or {}).get("report"), _runner_events(commons.folder, time.time() - 7200), 2, commons),
+                "analysing": AN["state"] == "working"}
+
+    @api.get("/api/report/email-settings")
+    def email_get(p):
+        e = email_settings(commons, program_dir)
+        return {"to": e.get("to") or "", "user": e.get("user") or "", "password_set": bool(e.get("password")),
+                "every_hours": e.get("every_hours") or 0, "last_sent": e.get("last_sent")}
+
+    @api.post("/api/report/email-settings")
+    def email_set(p):
+        e = save_email_settings(commons, p.get("to"), p.get("user"), p.get("password") or None, p.get("every_hours"))
+        return {"to": e.get("to"), "password_set": bool(e.get("password")), "every_hours": e.get("every_hours") or 0,
+                "summary": "saved" + (" — the analysis is emailed every %g hour(s)" % e["every_hours"] if e.get("every_hours") else "")}
+
+    @api.post("/api/report/email-now")
+    def email_now(p):
+        try:
+            return send_report(commons, program_dir, float(p.get("hours") or 2))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        except Exception as e:
+            raise core.UserError("The email could not be sent: %s. Check the address and the Gmail app password." % e)
+
+    @api.get("/api/drive/old-copies")
+    def old_copies_route(p):
+        """the copies of earlier versions still on C: that the data drive holds (safe to delete) and those it cannot vouch for"""
+        import qbdrive
+        root = qbdrive.root_for(program_dir)
+        if not root:
+            raise core.UserError("No data drive is set (data-folder.txt beside the launchers).")
+        r = qbdrive.old_copies(root, program_dir)
+        return {"safe_files": len(r["safe"]), "safe_bytes": r["safe_bytes"], "keep_files": len(r["keep"]), "keep_bytes": r["keep_bytes"],
+                "keep_examples": [{"path": x["path"], "why": x["why"]} for x in r["keep"][:15]], "root": root}
+
+    @api.post("/api/drive/delete-old-copies")
+    def delete_old_route(p):
+        import qbdrive
+        if p.get("confirm") != "yes":
+            raise core.UserError("Confirm first.")
+        root = qbdrive.root_for(program_dir)
+        if not root:
+            raise core.UserError("No data drive is set (data-folder.txt beside the launchers).")
+        return qbdrive.delete_old(root, program_dir, say=lambda *a: None)
+
+    @api.post("/api/trace/export")
+    def trace_export(p):
+        path, n, raw = qt.export(tfolder(), days=float(p.get("days") or 1),
+                                 out_zip=os.path.join(commons.folder, "trace-export-%s.zip" % time.strftime("%Y%m%d-%H%M%S")))
+        return {"zip": path, "files": n, "mb": round(raw / 1e6, 1), "zip_mb": round(os.path.getsize(path) / 1e6, 1),
+                "summary": "%d log file(s) packed into %s — send this file for analysis" % (n, path)}
+
+    @api.post("/api/trace/settings")
+    def trace_settings(p):
+        if "on" in p:
+            commons.set_setting("trace:on", "on" if p.get("on") in (True, "true", "on", 1) else "off")
+        if p.get("sample") is not None:
+            commons.set_setting("trace:sample", max(0, int(p["sample"])))
+        return {"on": commons.setting("trace:on", "on") != "off", "sample": int(commons.setting("trace:sample", qt.DEFAULT_SAMPLE) or 0),
+                "summary": "applies to agents started from now on"}
+
+    @api.post("/api/trace/drives")
+    def trace_drives(p):
+        """the internal drive (the user's home folder, C: on Windows) against the data folder's drive (e.g. D:\\QB)"""
+        folders = {"internal drive (%s)" % os.path.splitdrive(os.path.expanduser("~"))[0] or os.path.expanduser("~"): os.path.expanduser("~"),
+                   "data drive (%s)" % (os.path.splitdrive(commons.folder)[0] or commons.folder): os.path.dirname(commons.folder)}
+        for extra in (p.get("folders") or []):
+            folders[extra] = extra
+        r = qt.compare_storage(folders, mb=int(p.get("mb") or 256), rows=int(p.get("rows") or 300_000))
+        t = qt.Tracer().configure(tfolder(), "drives-%d" % os.getpid())
+        t._line(dict(r, ev="storage", proc=t.proc), now=True)
+        t.close()
+        return r
+
+    @api.get("/api/bulk/search")
+    def bulk_search(p):
+        """answered as the Control Panel's Answer routing says: Central, DSN, or Shadow (Central answers, the DSN is compared)"""
+        import qbdsn
+        return qbdsn.lookup(commons, p.get("q") or "", int(p.get("limit") or 50))
+
+    @api.get("/api/dsn/status")
+    def dsn_status(p):
+        """the Answer routing setting, the Shadow comparison of the last 24 hours and the learned pathways"""
+        import qbdsn
+        m = qbdsn.mode(commons)
+        net, chk = qbdsn.network(commons), qbdsn.check_networks(commons)
+        return {"mode": m, "modes": [{"id": k, "text": qbdsn.MODE_TEXT[k]} for k in qbdsn.MODES],
+                "shadow": qbdsn.shadow_summary(commons), "pathways": qbdsn.pathways(commons), "health": qbdsn.health_lines(commons),
+                "network": {"stores": net.summary(top=8), "checks": chk.summary(top=8)}}
+
+    @api.post("/api/dsn/mode")
+    def dsn_mode(p):
+        import qbdsn
+        commons.approvals._require(p.get("passphrase") or "")
+        try:
+            r = qbdsn.set_mode(commons, p.get("mode"))
+        except ValueError as e:
+            raise core.UserError(str(e))
+        with commons.store.write() as db:
+            commons.agent_log(db, "engine", r["summary"])
+        return r
+
+
+# ------------------------------------------------------------------------------------------------ "why so slow?"
+def diagnose(commons, folders=None, probe=True):
+    """every reason the bulk agents might not be running at full speed, each with what to do. folders: {program: data folder}
+    (to check all four programs share one Commons)."""
+    import qbharvest as hv
+    out = []
+
+    def add(name, ok, detail, fix=""):
+        out.append({"check": name, "ok": bool(ok), "detail": detail, "fix": "" if ok else fix})
+    st = status(commons.folder, commons)
+    add("Admin passphrase", True, "set — type it on the Bulk harvesting tab" if commons.approvals.admin_set()
+        else "none set — every button works without one", "")
+    rs = st["runner"]
+    alive = rs.get("alive")
+    add("Bulk agents running", alive, ("running: %s" % rs.get("note")) if alive else
+        ("not running (last: %s)" % (rs.get("note") or "never started")),
+        "Bulk harvesting tab → ⚡ Full speed. The agents then run for hours (Wikidata) and stop by themselves. Since 1.16 the "
+        "Control Panel restarts agents that ended without finishing (while the master switch is on), within a minute or so.")
+    shards = os.path.join(commons.folder, FOLDER)
+    os.makedirs(shards, exist_ok=True)
+    free = shutil.disk_usage(shards).free / 1e9
+    keep = float(commons.setting("bulk:min_free_gb") or MIN_FREE_GB)
+    add("Free space where the facts are stored", free >= max(keep, 200), "%.0f GB free at %s" % (free, shards),
+        ("Under %g GB the agents pause. " % keep if free < keep else "") +
+        "A full Wikidata pass needs about 100–200 GB for the facts, plus about 160 GB for each downloaded weekly dump (two are "
+        "kept; Bulk harvesting → Download once → folder puts them on any drive). Move the shared folder to a large drive (e.g. your 20 TB drive): "
+        "Bulk harvesting → type the new folder → Move the shared folder.")
+    if folders:
+        import qbcommons as cm
+        where = {app: os.path.abspath(cm.commons_folder(f)) for app, f in folders.items()}
+        where["this Control Panel"] = os.path.abspath(commons.folder)
+        same = len(set(where.values())) == 1
+        add("All programs share one fact store", same, "all use %s" % next(iter(where.values())) if same else
+            "; ".join("%s → %s" % kv for kv in where.items()),
+            "Bulk harvesting → Move the shared folder (it points all four programs at one folder), then restart them.")
+    states = {}
+    for d in st["datasets"]:
+        states.setdefault(d["state"], []).append(d["key"])
+    bad = [(d["key"], d["error"]) for d in st["datasets"] if d["error"] and d["state"] in ("failed", "blocked", "stopped", "paused")]
+    add("Datasets without errors", not bad, ", ".join("%s: %d" % (k, len(v)) for k, v in sorted(states.items())) +
+        ("" if not bad else " — " + "; ".join("%s: %s" % (k, (e or "")[:120]) for k, e in bad[:5])),
+        "Read each error above: 'disk is nearly full' → move the folder; 'not approved' → approve the source on the Harvesting page; "
+        "'switched off' → master switch; 'HTTP 429 Too Many Requests' → the server asked to slow down: since 1.14 the agents share a few "
+        "connections per server, spread over the Wikidata mirrors and retry by themselves — press ⚡ Full speed to resume; "
+        "another network error → check the server's internet connection or firewall.")
+    blocked = [d["key"] for d in st["datasets"] if not d["approved"]]
+    add("Sources approved in the registry", not blocked, "all approved" if not blocked else "not approved: " + ", ".join(blocked),
+        "Harvesting page → Sources → approve them (admin passphrase).")
+    add("Facts arriving", st["last_hour"] > 0, "%s bulk facts in total, %s in the last hour" % (format(st["total"], ","), format(st["last_hour"], ",")),
+        "If the agents are running but nothing arrives, look at the dataset errors above.")
+    if probe:
+        for name, url in (("Wikidata dumps", WikidataDump.URL), ("NCBI (PubChem, Taxonomy)", "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/")):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=20) as r:
+                    add("Reach " + name, True, "HTTP %d" % r.status)
+            except Exception as e:
+                add("Reach " + name, False, "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "The server cannot download from this site: check its internet connection, proxy or firewall.")
+    w = work_dir(commons.folder)
+    if w:
+        wk = work_keys(commons.folder)
+        dr = drained(commons.folder)
+        ages = [time.time() - (dr.get(k) or {}).get("at", 0) for k in wk]
+        freec = shutil.disk_usage(os.path.dirname(w) if not os.path.isdir(w) else w).free / 1e9 if os.path.isdir(os.path.dirname(w)) else None
+        direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy")]
+        add("Datasets writing straight to the data drive (slow)", not direct,
+            ", ".join(direct) if direct else "none — every running dataset writes to its fast working copy",
+            "These had no room on the internal drive (%d GB are kept free there). Free space on C: and press Stop, then Start." % WORK_MIN_FREE_GB)
+        add("Fast working copies on the internal drive", True,
+            "%d dataset(s) at %s; %s; saved to the data drive every %d min (oldest copy there: %s)" % (
+                len(wk), w, ("%.0f GB free there" % freec) if freec is not None else "free space unknown", DRAIN_S // 60,
+                ("%d min old" % (max(ages) / 60)) if ages and max(ages) < 1e8 else "not yet saved" if wk else "—"), "")
+    ws = write_slots(commons)
+    add("Agents writing to the data drive at once", True,
+        ("%d at a time (the shared folder is on another drive than the system's: an external disk slows down badly when many "
+         "agents write at once; the others keep reading and parsing meanwhile)" % ws) if ws else "no limit (system drive)",
+        "Setting bulk:write_slots (0 = no limit).")
+    add("CPU cores for agents", (os.cpu_count() or 1) >= 4, "%d cores — Full speed runs %d agents" % (os.cpu_count() or 1, MAX_AGENTS), "")
+    return out
+
+
+def move_folder(commons, folders, target, passphrase):
+    """admin: point every program at a new shared folder (e.g. a large drive). The current facts are copied there when the new
+    folder is empty; the programs use it after a restart."""
+    import qbcommons as cm
+    commons.approvals._require(passphrase or "")
+    target = os.path.abspath(os.path.expanduser(target or ""))
+    if not target or target == os.path.abspath(commons.folder):
+        raise ValueError("Give a new folder, e.g. E:\\QueryBook-Data\\commons")
+    if _alive(commons.folder):
+        raise ValueError("Stop the bulk agents first (■ Stop all), then move the folder.")
+    os.makedirs(target, exist_ok=True)
+    copied = False
+    if not os.listdir(target):
+        shutil.copytree(commons.folder, target, dirs_exist_ok=True)
+        copied = True
+    for app, f in folders.items():
+        os.makedirs(f, exist_ok=True)
+        cm.set_commons_folder(f, target)
+    with commons.store.write() as db:
+        commons.agent_log(db, "control", "Shared folder moved to %s for %s" % (target, ", ".join(folders)))
+    return {"folder": target, "copied": copied, "programs": sorted(folders),
+            "summary": "All programs now use %s%s. Close all four programs and start them again (START-ALL)." % (target, " (current facts copied)" if copied else "")}
+
+# ------------------------------------------------------------------------------------------------ self-test
+def self_test():
+    """every reader and rule on small local files in the publishers' own formats; resume; stop; registry block; ticker"""
+    import shutil, tempfile
+    import qbcommons as cm
+    out = []
+    ok = lambda n, c, d="": out.append((n, bool(c), d))
+    out += [("scaffold: " + n, g, "") for n, g in sc.self_test()]
+    tmp = tempfile.mkdtemp()
+    try:
+        url = lambda name: "file://" + urllib.request.pathname2url(os.path.join(tmp, name))
+        with gzip.open(os.path.join(tmp, "CID-Mass.gz"), "wt") as f:
+            f.write("".join("%d\tC%dH%dO\t%d.0\t%d.0\n" % (i, i, 2 * i, 16 + 14 * i, 16 + 14 * i) for i in range(1, 3001)))
+        with gzip.open(os.path.join(tmp, "CID-SMILES.gz"), "wt") as f:
+            f.write("2244\tCC(=O)OC1=CC=CC=C1C(=O)O\n")
+        with gzip.open(os.path.join(tmp, "CID-InChI-Key.gz"), "wt") as f:
+            f.write("2244\tInChI=1S/C9H8O4\tBSYNRYMUTXBXSQ-UHFFFAOYSA-N\n")
+        with zipfile.ZipFile(os.path.join(tmp, "gnis.zip"), "w") as z:
+            z.writestr("Text/DomesticNames_National.txt", "﻿feature_id|feature_name|feature_class|state_name|state_numeric|county_name|county_numeric|map_name|"
+                       "date_created|date_edited|bgn_type|bgn_authority|bgn_date|prim_lat_dms|prim_long_dms|prim_lat_dec|prim_long_dec\r\n"
+                       "399|Agua Sal Creek|Stream|Arizona|04|Apache|001|Fire Dance Mesa|02/08/1980|||||362740N|1092842W|36.4611122|-109.4784394\r\n")
+        with gzip.open(os.path.join(tmp, "2024.csv.gz"), "wt") as f:
+            f.write("USW00094728,20240101,TMAX,72,,,W,\nUSW00094728,20240101,TMIN,-11,,,W,\nUSW00094728,20240102,PRCP,25,,X,W,\nUSW00094728,20240101,AWND,30,,,W,\n")
+        with open(os.path.join(tmp, "stations.txt"), "w") as f:
+            f.write("USW00094728  40.7789  -73.9692   39.6 NY NEW YORK CNTRL PK TWR                 HCN 72506\n")
+        with open(os.path.join(tmp, "nobel.json"), "w") as f:
+            json.dump({"results": {"bindings": [{"year": {"value": "1921"}, "valueLabel": {"value": "Albert Einstein"},
+                                                 "item": {"value": "http://www.wikidata.org/entity/Q937"}}]}}, f)
+        with tarfile.open(os.path.join(tmp, "cc0.tar.bz2"), "w:bz2") as t:
+            data = "330998\teng\tChildren who spend more time outdoors have a lower risk of myopia.\t2019-01-12\n1\tfra\tBonjour.\t2019-01-12\n".encode()
+            ti = tarfile.TarInfo("sentences_CC0.csv"); ti.size = len(data)
+            t.addfile(ti, io.BytesIO(data))
+        cf = os.path.join(tmp, "commons")
+        c = cm.Commons(cf, "stem")
+        c.registry.ensure()
+        c.set_setting("bulk:min_free_gb", 1e9)
+        g = run_dataset(cf, "calendar-scaffold", max_rows=1)
+        ok("disk guard: no agent starts when the disk has less free than the setting keeps", g["state"] == "stopped" and "disk" in g["why"], g)
+        c.set_setting("bulk:min_free_gb", 0)
+        for k, v in (("bulk:url:pubchem-computed:CID-Mass", url("CID-Mass.gz")), ("bulk:url:pubchem-computed:CID-SMILES", url("CID-SMILES.gz")),
+                     ("bulk:url:pubchem-computed:CID-InChI-Key", url("CID-InChI-Key.gz")), ("bulk:url:usgs-gnis:domestic names", url("gnis.zip"))):
+            c.set_setting(k, v)
+        for s in ("pubchem-computed", "usgs-gnis", "noaa", "wikidata"):
+            ok("dataset source %s is approved in the registry" % s, c.registry.check(s)[0])
+        global BATCH
+        old, BATCH = BATCH, 1000
+        c.set_setting("trace:sample", 7)
+        try:
+            r1 = run_dataset(cf, "pubchem-computed", max_rows=1500)
+            r2 = run_dataset(cf, "pubchem-computed")
+        finally:
+            BATCH = old
+        # 1.26: working copies on the internal drive, saved to the data drive
+        cf2 = os.path.join(tmp, "commons-d")
+        c2 = cm.Commons(cf2, "stem"); c2.registry.ensure(); c2.set_setting("bulk:min_free_gb", 0)
+        for k, v in (("bulk:url:pubchem-computed:CID-Mass", url("CID-Mass.gz")), ("bulk:url:pubchem-computed:CID-SMILES", url("CID-SMILES.gz")),
+                     ("bulk:url:pubchem-computed:CID-InChI-Key", url("CID-InChI-Key.gz"))):
+            c2.set_setting(k, v)
+        old_env = {k: os.environ.get(k) for k in ("QB_WORK_FOLDER", "QB_WORK_MIN_FREE_GB")}
+        os.environ["QB_WORK_FOLDER"] = os.path.join(tmp, "internal"); os.environ["QB_WORK_MIN_FREE_GB"] = "0"
+        old_b, BATCH = BATCH, 1000
+        try:
+            w1 = run_dataset(cf2, "pubchem-computed", max_rows=1500)
+            wp, hp = work_path(cf2, "pubchem-computed"), home_path(cf2, "pubchem-computed")
+            ok("working copy: the agent writes to the internal drive, not the data drive",
+               os.path.exists(wp) and not os.path.exists(hp) and shard_path(cf2, "pubchem-computed") == wp, w1)
+            n1 = drain(cf2, "pubchem-computed")
+            hn = sqlite3.connect(hp).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("the copier saves it to the data drive whole (the same facts)", n1 == hn == w1["new"] and os.path.exists(wp), (n1, hn, w1))
+            at1 = drained(cf2)["pubchem-computed"]["at"]
+            ok("1.31.1: an unchanged working copy is not written to the data drive again",
+               drain(cf2, "pubchem-computed") == n1 and drained(cf2)["pubchem-computed"]["at"] == at1)
+            os.utime(wp, (time.time() + 5, time.time() + 5))           # new facts were written to the working copy
+            ok("1.31.1: a changed copy waits its turn (saved at most once per 3x its last saving time, and at least 10 min apart)",
+               drain(cf2, "pubchem-computed") == "later" and drained(cf2)["pubchem-computed"]["at"] == at1)
+            ok("1.31.1: Stop (or the end of a run) always saves", drain(cf2, "pubchem-computed", force=True) == n1
+               and drained(cf2)["pubchem-computed"]["at"] > at1)
+            st2 = status(cf2, c2)
+            ok("the status says where each dataset is and when it was last saved to the data drive",
+               any(d["key"] == "pubchem-computed" and d.get("working_copy") and d.get("saved_to_data_drive") for d in st2["datasets"]))
+            fw = finish_work(cf2)
+            ok("an unfinished dataset keeps its working copy after the run (it resumes there)", os.path.exists(wp) and "kept" in fw["pubchem-computed"], fw)
+            w2 = run_dataset(cf2, "pubchem-computed")
+            fw2 = finish_work(cf2)
+            hn2 = sqlite3.connect(hp).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("a finished dataset is saved to the data drive and its working copy removed once the facts match",
+               w2["state"] == "done" and not os.path.exists(wp) and hn2 == hn + w2["new"] and "removed" in fw2["pubchem-computed"], (w2, fw2, hn2))
+            ok("with no working copy, readers find the home copy", shard_path(cf2, "pubchem-computed") == hp)
+            ok("a dataset already on the data drive gets its working copy from there before it resumes",
+               pull(cf2, "pubchem-computed") and sqlite3.connect(wp).execute("SELECT count(*) FROM facts").fetchone()[0] == hn2)
+            os.environ["QB_WORK_MIN_FREE_GB"] = "1e12"
+            os.remove(wp)
+            ok("too little room on the internal drive: the agent writes to the data drive itself", pull(cf2, "pubchem-computed") is False)
+        finally:
+            BATCH = old_b
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        # 1.29: Stop really stops — an engine that does not stop by itself (an older version, a batch stuck on a slow disk) is ended
+        import subprocess as _sp
+        sleeper = _sp.Popen([sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True)
+        hbp = os.path.join(cf, FOLDER, "_runner.json")
+        with open(hbp, "w") as f:
+            json.dump({"heartbeat": time.time() + 3600, "pid": sleeper.pid, "note": "running", "datasets": ["calendar-scaffold"]}, f)
+        ok("an engine of an older version is noticed (it has no version)", runner_version(cf) is None and _alive(cf))
+        stop(c, grace=1, wait=True)
+        try:
+            sleeper.wait(10); ended = True
+        except _sp.TimeoutExpired:
+            ended = False; sleeper.kill()
+        ok("Stop ends whatever is still running after the grace time", ended)
+        os.remove(hbp)
+        os.remove(os.path.join(cf, FOLDER, "_runner.stop"))
+        sent = []
+        save_email_settings(c, to="me@example.org", user="me@example.org", password="abcd efgh ijkl mnop", every_hours=6)
+        r_em = send_report(c, smtp=sent.append)
+        ok("the analysis is emailed: the plain health report first (health in the subject), details below and attached",
+           sent and sent[0]["To"] == "me@example.org" and sent[0].get_body().get_content().startswith("QueryBook harvest")
+           and "Health:" in sent[0].get_body().get_content().split("TECHNICAL DETAILS")[0] and "STOPPED" in sent[0]["Subject"]
+           and any(a.get_filename().endswith(".txt") for a in sent[0].iter_attachments()), r_em)
+        ok("…and again only when it is due (every 6 hours here)", email_due(c) is None and email_settings(c).get("password") == "abcdefghijklmnop")
+        import threading as _th
+        ws = WriteSlots(cf, 1)
+        a = ws.take(); got = []
+        th = _th.Thread(target=lambda: got.append(ws.take())); th.start(); time.sleep(0.4)
+        waited = not got
+        ws.release(a); th.join(5); ws.release(got[0] if got else None)
+        c.set_setting("bulk:write_slots", 3)
+        ok("write slots: with 1 slot a second agent waits for the drive until the first has written; the setting is read",
+           waited and got and write_slots(c) == 3)
+        t0 = time.time(); s1 = status_cached(cf, c); s2 = status_cached(cf, c)
+        ok("the Control Panel's status is computed at most every 10 s (the second ask is instant)", s1 is s2 and time.time() - t0 < 30)
+        old_ns = int((time.time() + 3600) * 1e9)
+        ok("analysis reads only the hours asked for", list(qt.read_lines([os.path.join(cf, "trace")], since_ns=old_ns)) == [])
+        tl = list(qt.read_lines([os.path.join(cf, "trace")]))
+        an = qt.analyze(tl)
+        pc = next((d for d in an["datasets"] if d["dataset"] == "pubchem-computed"), None)
+        ok("instrumentation: every batch, its stage times and the records followed end to end are logged and analysed",
+           pc and pc["batches"] >= 3 and {"source", "rule", "fingerprint", "db_insert", "db_commit"} <= {x["stage"] for x in pc["stages"]}
+           and an["records"] and an["records"]["followed"] > 0 and all(r.get("w", {}).get("committed") for r in tl if r["ev"] == "record"),
+           (pc and pc["stages"], an["records"]))
+        st = {d["key"]: d for d in status(cf, c)["datasets"]}
+        pc = st["pubchem-computed"]
+        sdb = _ro(shard_path(cf, "pubchem-computed"))
+        stored = sdb.execute("SELECT f.fp, f.s, pr.name, f.o FROM facts f JOIN predicates pr ON pr.id = f.p ORDER BY f.row LIMIT 50").fetchall()
+        sdb.close()
+        fast, odd = fingerprinter("stem"), [" A b ", "İstanbul", "STRASSE ß", "x 　y", "\x1c\x85z", "a|b", "", 2024, 3.5, None]
+        same_fp = all(f == fp("stem", s, p, o) for f, s, p, o in stored) and all(
+            fast(s, p, o) == fp("stem", s, p, o) for s in odd for p in ("p", " P q ") for o in odd)
+        ok("PubChem: formula and mass per compound, plus SMILES and InChIKey; a capped run resumes where it stopped (no fact twice); "
+           "fingerprints are the Commons' own", r1["state"] == "paused" and r2["state"] == "done" and pc["facts"] == 3000 * 2 + 2
+           and pc["parts"][0]["rows"] == 3000 and len(stored) == 50 and same_fp, (r1, r2, pc["facts"], same_fp))
+        pg = pc.get("progress") or {}
+        ok("progress: each part measured on the publisher's own scale (compressed bytes of the file), with the overall share",
+           pg.get("unit") == "bytes" and pg.get("total") == os.path.getsize(os.path.join(tmp, "CID-Mass.gz")) and pg.get("fraction") == 1.0
+           and pg.get("part") == "CID-Mass" and pg.get("overall") == 1.0, pg)
+        hits = search(cf, "PubChem CID 2244")
+        ok("search: a compound's facts with dataset, row and the PubChem page", any(h["predicate"] == "SMILES" and h["link"].endswith("/compound/2244")
+                                                                                       and h["provenance"].startswith("CID-SMILES, row 1") for h in hits), hits[:2])
+        logged = c.store.query("SELECT action, decision, new, source_key FROM harvest_log WHERE action LIKE 'bulk:%'")
+        ok("harvest log: each part's facts are logged with the source (hash chain intact)", logged and all(r["source_key"] == "pubchem-computed" for r in logged)
+           and c.harvest_log.verify().get("ok", True) is not False, logged[:3])
+        g = run_dataset(cf, "usgs-gnis")
+        hits = search(cf, "Agua Sal Creek")
+        ok("GNIS: a zip read in place, the place's class, state, county and coordinates", g["state"] == "done" and
+           {h["predicate"] for h in hits} == {"feature class", "state", "county", "latitude", "longitude"}, hits)
+        w = Weather([2024])
+        rows = [f for line in gz_lines(url("2024.csv.gz")) for f in w.facts("year 2024", line, {})]
+        ok("weather: tenths of a degree become °C, flagged readings and other elements are left out",
+           rows == [("Weather station USW00094728 on 2024-01-01", "maximum temperature (°C)", "7.2"),
+                    ("Weather station USW00094728 on 2024-01-01", "minimum temperature (°C)", "-1.1")], rows)
+        stn = w.facts("stations", next(text_lines(url("stations.txt"))), {})
+        ok("weather: stations get their name, coordinates, elevation and state", ("Weather station USW00094728", "name", "NEW YORK CNTRL PK TWR") in stn
+           and ("Weather station USW00094728", "elevation (m)", "39.6") in stn, stn)
+        tt = Tatoeba()
+        rows = [f for line in tar_member_lines(url("cc0.tar.bz2"), "sentences_CC0.csv") for f in tt.facts("sentences", line, {})]
+        ok("Tatoeba: CC0 sentences streamed from the tar.bz2, with their language", rows[:2] == [("Tatoeba sentence 330998", "text",
+           "Children who spend more time outdoors have a lower risk of myopia."), ("Tatoeba sentence 330998", "language (ISO 639-3)", "eng")]
+           and len(rows) == 4, rows)
+        mo, st = MitOcw(), {}
+        course = {"title": "Linear Algebra", "best_run_id": 1, "url": "https://ocw.mit.edu/courses/18-06-linear-algebra-spring-2010/",
+                  "description": "MIT's own wording, never stored", "course": {"course_numbers": [{"value": "18.06", "listing_type": "primary"}]},
+                  "runs": [{"id": 1, "semester": "Spring", "year": 2010, "instructors": [{"full_name": "Prof. Gilbert Strang"}],
+                            "level": [{"name": "Undergraduate"}]}], "departments": [{"name": "Mathematics", "school": {"name": "School of Science"}}],
+                  "ocw_topics": ["Linear Algebra"], "course_feature": ["Lecture Videos"]}
+        of = mo.facts("courses", course, st)
+        ok("MIT OCW: catalog facts only (number, title, instructor, term, topics), never the description", ("MIT course 18.06 (Spring 2010)",
+           "instructor", "Prof. Gilbert Strang") in of and ("MIT course 18.06 (Spring 2010)", "title", "Linear Algebra") in of
+           and not any("wording" in o for _, _, o in of) and st["_links"]["MIT course 18.06 (Spring 2010)"].startswith("https://ocw.mit.edu/"), of)
+        import gzip as _gz
+        ents = [{"type": "item", "id": "Q%d" % q, "labels": {"en": {"value": name}}, "claims": {
+                    "P569": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "time", "value": {"time": "+1879-03-14T00:00:00Z", "precision": 11}}}}],
+                    "P27": [{"rank": "deprecated", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": "Q183"}}}},
+                            {"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": "Q30"}}}}]}}
+                for q, name in ((937, "Albert Einstein"), (30, "United States"), (5, "human"))]
+        dump = os.path.join(tmp, "dump.json.gz")
+        with open(dump, "wb") as f:                     # one gzip member per entity, as Wikimedia writes it
+            f.write(_gz.compress(b"[\n", mtime=0))
+            for i, e in enumerate(ents):
+                f.write(_gz.compress((json.dumps(e) + (",\n" if i < 2 else "\n")).encode(), mtime=0))
+            f.write(_gz.compress(b"]\n", mtime=0))
+        size = os.path.getsize(dump)
+        cut = size // 2
+        both = [x for a_, b_ in ((0, cut), (cut, size)) for x in gz_member_lines("file://" + dump, a_, b_)]
+        ok("Wikidata dump: two byte ranges read on their own give every entity exactly once",
+           sorted(json.loads(x.rstrip(b","))["id"] for x in both if x[:1] == b"{") == ["Q30", "Q5", "Q937"], both)
+        wd = WikidataDump(1, 1)
+        c.set_setting("bulk:url:wikidata-dump", "file://" + dump)
+        WikidataDump.LANES, lanes_was = 1, WikidataDump.LANES
+        try:
+            r = run_dataset(cf, "wikidata-dump-1")
+            hits = search(cf, "Albert Einstein")
+        finally:
+            WikidataDump.LANES = lanes_was
+        ok("Wikidata dump: truthy statements only (a deprecated one is skipped), objects shown with their label",
+           r["state"] == "done" and {(h["predicate"], h["object"]) for h in hits} == {("date of birth", "1879-03-14"),
+           ("country of citizenship", "United States (Q30)")} and hits[0]["link"] == "https://www.wikidata.org/wiki/Q937", (r, hits))
+        # 1.31 download once, read locally: without a ready copy a lane waits for the download; with one it reads it, named by
+        # the copy's own edition (so parts streamed before are not read again), its version the publisher's date
+        c.set_setting("bulk:url:wikidata-dump", "")
+        dumps = os.path.join(tmp, "dumps")
+        c.set_setting("bulk:dumps:folder", dumps)
+        WikidataDump.LANES = 1
+        try:
+            ok("1.32: by default the lanes stream while the download runs (they no longer wait idle for 157 GB)",
+               stream_while_downloading(c))
+            c.set_setting("bulk:wikidata:while_downloading", "wait")      # the 1.31 behaviour, kept as an option (and offline here)
+            rw = run_dataset(cf, "wikidata-dump-1")
+            ok("download once, set to wait: a lane waits for the one download (looked at again in 2 minutes)",
+               rw["state"] == "paused" and WAITING in rw["why"] and next_try(rw, 3) == 120, rw)
+            ed_dir = os.path.join(dumps, "wikidata", "2026-11-02")
+            os.makedirs(ed_dir)
+            shutil.copy(dump, os.path.join(ed_dir, qbdump.FILE))
+            with open(os.path.join(ed_dir, "ready.json"), "w") as f:
+                json.dump({"edition": "2026-11-02", "size": size, "last_modified": "Mon, 02 Nov 2026 10:00:00 GMT", "checked": "test"}, f)
+            for ext in ("", "-wal", "-shm", ".labels", ".progress"):     # the lane from a clean slate: read once from the copy
+                if os.path.exists(shard_path(cf, "wikidata-dump-1") + ext):
+                    os.remove(shard_path(cf, "wikidata-dump-1") + ext)
+            r2 = run_dataset(cf, "wikidata-dump-1")
+            sh_ = sqlite3.connect(shard_path(cf, "wikidata-dump-1"))
+            pn = sh_.execute("SELECT name, version FROM parts").fetchall()
+            sh_.close()
+            ok("download once: the lane reads the ready copy from the drive, named by its edition, versioned by the publisher's date",
+               r2["state"] == "done" and pn == [("2026-11-02 part 0001 of 0001", "Mon, 02 Nov 2026 10:00:00 GMT")], (r2, pn))
+            dsr = status(cf, c)["download"]
+            ok("download once: the status page shows the ready edition and where it is kept",
+               dsr["ready"]["edition"] == "2026-11-02" and dsr["folder"] == dumps and dsr["on"], dsr)
+            src = WikidataDownload().sources(c)
+            ok("download once: one server, one connection limit (Wikimedia's two addresses share theirs)",
+               len({_host(u) for u, _ in src}) == len(src) and dict((_host(u), n) for u, n in src)["dumps.wikimedia.org"] == WikidataDump.PRIMARY_CONNECTIONS, src)
+            c.set_setting("bulk:wikidata:local", "off")
+            off = run_dataset(cf, "wikidata-download")
+            ok("download once can be switched off (bulk:wikidata:local = off: the lanes stream as before)", off["state"] == "done" and "not used" in off["why"], off)
+            c.set_setting("bulk:wikidata:local", "")
+        finally:
+            WikidataDump.LANES = lanes_was
+            c.set_setting("bulk:dumps:folder", "")
+            c.set_setting("bulk:wikidata:while_downloading", "")
+            c.set_setting("bulk:url:wikidata-dump", "file://" + dump)      # the tests below read the dump file as before
+        # the lattice (1.15): every series Wikidata knows, read in batches, written exactly as the dump lanes write facts
+        W = "http://www.wikidata.org/entity/"
+        ans = {"results": {"bindings": [
+            {"e": {"value": W + "Q10"}, "eLabel": {"value": "1999 World Series"}, "s": {"value": W + "Q265538"}, "w": {"value": W + "Q213417"},
+             "dt": {"value": "1999-10-23T00:00:00Z"}, "dp": {"value": "11"}, "cty": {"value": W + "Q30"}},
+            {"e": {"value": W + "Q11"}, "eLabel": {"value": "2000 World Series"}, "s": {"value": W + "Q265538"}, "w": {"value": W + "Q213417"},
+             "st": {"value": "2000-10-21T00:00:00Z"}, "sp": {"value": "9"}, "n": {"value": "2"}},
+            {"e": {"value": W + "Q12"}, "eLabel": {"value": "Q12"}, "s": {"value": W + "Q265538"}}]}}
+        with open(os.path.join(tmp, "lattice.json"), "w") as f:
+            json.dump(ans, f)
+        with open(os.path.join(cf, FOLDER, "wikidata-lattice-series.json"), "w") as f:
+            json.dump({"read": time.time(), "date": "2026-10-31", "links": {"P3450": [["Q265538", 3]], "P179": [], "P31": []}}, f)
+        c.set_setting("bulk:url:wikidata-lattice", url("lattice.json"))
+        rl = run_dataset(cf, "wikidata-lattice")
+        sh_ = sqlite3.connect(shard_path(cf, "wikidata-lattice"))
+        lf = {(a, p_, o) for a, p_, o in sh_.execute("SELECT f.s, pr.name, f.o FROM facts f JOIN predicates pr ON pr.id = f.p")}
+        sh_.close()
+        ok("lattice: editions read in one batch, in the dump's own form (Q-id objects, dates at their precision)",
+           rl["state"] == "done" and {("1999 World Series (Q10)", "winner", "Q213417"), ("1999 World Series (Q10)", "point in time", "1999-10-23"),
+                                      ("2000 World Series (Q11)", "start time", "2000"), ("2000 World Series (Q11)", "number of participants", "2"),
+                                      ("1999 World Series (Q10)", "sports season of league or competition", "Q265538")} <= lf, (rl, sorted(lf)))
+        ok("lattice: each edition is linked to the one before and after it; a nameless edition is skipped",
+           ("1999 World Series (Q10)", "next edition (by date)", "Q11") in lf and ("2000 World Series (Q11)", "previous edition (by date)", "Q10") in lf
+           and not any(a.endswith("(Q12)") for a, _p, _o in lf))
+        fpd = fingerprinter("history")
+        ok("lattice: a fact the dump also holds has the same fingerprint (so one copy is kept)",
+           fpd("1999 World Series (Q10)", "winner", "Q213417") == fp("history", "1999 World Series (Q10)", "winner", "Q213417"))
+        ok("lattice: batches of at most 200 series and 1,500 editions; a giant series alone",
+           WikidataLattice.batches([["Q1", 1000], ["Q2", 600], ["Q3", 5], ["Q4", 3000]]) == [["Q1"], ["Q2", "Q3"], ["Q4"]])
+        wd = WikidataDump(1, 1)
+        os.makedirs(os.path.join(cf, FOLDER), exist_ok=True)
+        with open(os.path.join(cf, FOLDER, "wikidata-properties.json"), "w") as f:
+            json.dump({"read": time.time(), "props": {"P1449": ["Monolingualtext", "nickname"], "P214": ["ExternalId", "VIAF ID"],
+                                                      "P373": ["String", "Commons category"], "P8888": ["WikibaseItem", "favourite thing"]}}, f)
+        wd.props = wd.catalogue(cf, fetch=False)
+        def ent(q, claims, cls="Q5"):
+            c = {"P31": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": cls}}}}]}
+            for pid, dv in claims.items():
+                c[pid] = [{"rank": "normal", "mainsnak": {"datavalue": dv}}]
+            return json.dumps({"type": "item", "id": q, "labels": {"en": {"value": "X"}}, "claims": c}).encode()
+        st_ = {"_labelbuf": [], "_labeldb": None}
+        got = {p_ for _, p_, _ in wd.facts("p", ent("Q1", {"P1449": {"type": "monolingualtext", "value": {"text": "Ace", "language": "en"}},
+                                                        "P214": {"type": "string", "value": "12345"}, "P373": {"type": "string", "value": "X"},
+                                                        "P8888": {"type": "wikibase-entityid", "value": {"id": "Q2"}},
+                                                        "P625": {"type": "globecoordinate", "value": {"latitude": 1, "longitude": 2, "globe": "http://www.wikidata.org/entity/Q405"}}}), st_)}
+        ok("Wikidata: every knowledge property kept by its English name; external identifiers, Wikimedia housekeeping and "
+           "coordinates on other globes left out", got == {"instance of", "nickname", "favourite thing"}, got)
+        ok("Wikidata: Wikimedia's own pages (categories, lists, templates) give no facts",
+           wd.facts("p", ent("Q3", {"P8888": {"type": "wikibase-entityid", "value": {"id": "Q2"}}}, cls="Q4167836"), st_) == [])
+        os.remove(os.path.join(cf, FOLDER, "wikidata-properties.json"))
+        se = Series()
+        se.GAP_S = 0
+        f = [x for row in se.rows("nobel-physics", url("nobel.json"), {}) for x in se.facts("nobel-physics", row, {})]
+        ok("series: a slot is filled only from the source's answer (plus its place in the lattice)",
+           f == [("Nobel Prize in Physics 1921", "edition of", "Nobel Prize in Physics"), ("Nobel Prize in Physics 1921", "laureate", "Albert Einstein")], f)
+        real_open, real_sleep = urllib.request.urlopen, time.sleep
+        def busy(*a, **k):
+            raise urllib.error.HTTPError("https://query.wikidata.org/sparql", 429, "Too Many Requests", {}, None)
+        urllib.request.urlopen, time.sleep = busy, (lambda s: None)
+        try:
+            se2 = Series(); se2.GAP_S = 0
+            try:
+                list(se2.rows("nobel-physics", se2.ENDPOINT, {}))
+                paused = False
+            except Busy:
+                paused = True
+        finally:
+            urllib.request.urlopen, time.sleep = real_open, real_sleep
+        ok("series: when Wikidata keeps refusing (HTTP 429) the dataset pauses to resume later — it does not fail", paused)
+        # polite downloading (1.14): connection slots per server, a refusing server cools down, identical mirrors carry on
+        sl = Slots(tmp)
+        st0 = {"now": False}
+        a1, a2 = sl.acquire([("https://a.example/f", 2)], st0), sl.acquire([("https://a.example/f", 2)], st0)
+        a3 = sl.acquire([("https://a.example/f", 2), ("https://b.example/f", 1)], st0)
+        ok("slots: at most N connections per server; the next agent takes another server", a1[0] == a2[0] == "https://a.example/f"
+           and a3[0] == "https://b.example/f", (a1[0], a2[0], a3[0]))
+        for x in (a1, a2, a3):
+            sl.release(x[1])
+        blob = bytes(range(256)) * 4096
+        calls = []
+
+        class _R:
+            def __init__(self, data):
+                self.data, self.status = data, 206
+            def read(self, n):
+                d, self.data = self.data[:n], self.data[n:]
+                return d
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        def fake(req, timeout=None):
+            u = req.full_url
+            calls.append(_host(u))
+            if "a.example" in u:
+                raise urllib.error.HTTPError(u, 429, "Too Many Requests", {"Retry-After": "300"}, None)
+            start = int(req.headers["Range"].split("=")[1].split("-")[0])
+            return _R(blob[start:])
+        urllib.request.urlopen, time.sleep = fake, (lambda s: None)
+        try:
+            got = b"".join(_ranged("https://a.example/f", 1000, {"now": False}, [("https://a.example/f", 2), ("https://b.example/f", 1)], Slots(tmp)))
+        finally:
+            urllib.request.urlopen, time.sleep = real_open, real_sleep
+        ok("a server that answers 429 cools down (Retry-After honoured) and a mirror with the same file carries on — same bytes",
+           got == blob[1000:] and calls[:2] == ["a.example", "b.example"] and Slots(tmp).cooling("a.example") > 250, (len(got), calls[:4]))
+        wd = WikidataDump(1)
+        heads = {"https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.gz": (100, "Tue"), "https://m1.example/x.gz": (100, "Tue"),
+                 "https://m2.example/x.gz": (99, "Tue"), "https://m3.example/x.gz": (100, "Mon")}
+        wd.mirrors = [("https://m1.example/x.gz", 3), ("https://m2.example/x.gz", 3), ("https://m3.example/x.gz", 3)]
+        wd._head_full = lambda u: heads[u]
+        base, srcs = wd._sources(wd.URL)
+        ok("mirrors are used only when they hold the identical file (same size and date)", base == wd.URL and
+           [u for u, _ in srcs] == [wd.URL, "https://m1.example/x.gz"], srcs)
+        def refuse(u):
+            raise urllib.error.HTTPError(u, 429, "Too Many Requests", {}, None)
+        wd._head_full = refuse
+        try:
+            wd._sources(wd.URL); held = False
+        except Busy:
+            held = True
+        ok("when every server refuses, the dataset pauses (and the runner retries it) instead of failing", held)
+        cal = Calendar()
+        yf = cal.facts("years", 2024, {})
+        ok("calendar: computed facts name their rule", ("Year 2024", "Easter Sunday (Western churches)", "2024-03-31") in yf and cal.rule.get("date"), yf[:3])
+        with c.store.write() as db:
+            db.execute("UPDATE policy_sources SET status = 'blocked' WHERE key = 'usgs-gnis'")
+        b = run_dataset(cf, "usgs-gnis")
+        ok("a source blocked in the registry is not harvested (and the refusal is logged)", b["state"] == "blocked"
+           and c.store.scalar("SELECT count(*) FROM harvest_log WHERE action = 'bulk:usgs-gnis' AND decision = 'blocked'", default=0) == 1, b)
+        shutil.copy(shard_path(cf, "wikidata-dump-1"), shard_path(cf, "wikidata-dump-2"))   # the same items arriving in another lane
+        dd = dedupe(cf)
+        ok("deduplication: a fact held by one shard is removed from every later one (6 repeats here), and the counts follow",
+           dd == {"wikidata-dump-2": 6} and len(search(cf, "Albert Einstein")) == 2 and dedupe(cf) == {}, dd)
+        ar = by_area(cf)
+        nlat = sqlite3.connect(shard_path(cf, "wikidata-lattice")).execute("SELECT count(*) FROM facts").fetchone()[0]
+        ok("ticker: shard facts counted per area", ar["stem"]["facts"] == 6002 and ar["history"]["facts"] == 5 + 6 + nlat, ar)   # series + dump fixture + lattice
+        import qbcontrol as ctl
+        kc = lane_keystones(cf, "wikidata-dump-1")
+        ok("keystones: each Wikidata entity's facts counted under its domain (no class given: a date of birth means a person)",
+           kc == {"human_individuals": 6}, kc)
+        cov = ks.coverage(cf, c)
+        row = {r["key"]: r for r in cov["keystones"]}
+        ok("coverage is measured from the facts held, with each keystone's sources and state",
+           row["human_individuals"]["facts"] == 6 and "wikidata" in row["human_individuals"]["feeds"]
+           and row["chemistry_materials"]["facts"] >= 3000 and row["astronomy"]["state"] == "not started", [(r["key"], r["facts"]) for r in cov["keystones"]][:6])
+        o = ks.order(["usgs-gnis", "pubchem-computed", "calendar-scaffold"], cf, c, {"sources": ["usgs-gnis"]})
+        ok("runner order: the admin's target first, then keystone priority", o[0] == "usgs-gnis" and len(o) == 3, o)
+        for x in ("wikidata-dump-1", "wikidata-dump-2"):
+            for ext in ("", "-wal", "-shm", ".labels", ".progress"):
+                if os.path.exists(shard_path(cf, x) + ext):
+                    os.remove(shard_path(cf, x) + ext)
+        with c.store.write() as db:
+            c.set_setting(ctl.FILTER_KEY, json.dumps({"exclude_words": ["united states"]}), db)
+        r = run_dataset(cf, "wikidata-dump-1")
+        hits = search(cf, "Albert Einstein")
+        ok("the Control Panel's filter binds bulk facts too (and the harvest log says how many it left out)",
+           r["filtered"] == 2 and not search(cf, "United States") and len(hits) == 2
+           and c.store.scalar("SELECT count(*) FROM harvest_log WHERE action = 'bulk:wikidata-dump-1' AND reason LIKE '%left out by the Control Panel%'", default=0) >= 1,
+           (r, hits))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    out += _supervisor_tests()
+    return out
+
+
+def _supervisor_tests():
+    """the never-stop supervisor, with scripted agents (threads standing in for processes) and a moving clock"""
+    import shutil, tempfile, threading
+    out = []
+    ok = lambda n, c, d="": out.append((n, bool(c), d))
+    cf = tempfile.mkdtemp()
+    script = {}                                     # dataset → what its agent does: fail / stall / silent / done / work
+
+    class P:
+        n = 1000
+
+        def __init__(self, target, args, daemon=False):
+            self.args, self.ended, self.exitcode = args, threading.Event(), None
+            P.n += 1
+            self.pid = P.n
+            ALL[self.pid] = self
+
+        def start(self):
+            cf_, key, _, rp = self.args
+            alive = os.path.join(_alive_dir(cf_), key + ".json")
+            how = script[key]
+            if how in ("fail", "done"):
+                with open(rp, "w") as f:
+                    json.dump({"dataset": key, "state": "paused" if how == "fail" else "done", "why": "test", "new": 0}, f)
+                self.ended.set()
+                self.exitcode = 0
+            else:                                       # stall: alive, same progress · silent: no heartbeat · work: moving
+                if how != "silent":
+                    with open(alive, "w") as f:
+                        json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": None}, f)
+
+        def is_alive(self):
+            if script.get(self.args[1]) == "work" and not self.ended.is_set():
+                with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
+                    json.dump({"at": CLOCK[0], "pid": self.pid, "meter": CLOCK[0], "rows": CLOCK[0], "waiting": None}, f)
+            elif script.get(self.args[1]) == "stall" and not self.ended.is_set():
+                with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
+                    json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": None}, f)
+            return not self.ended.is_set()
+
+        def join(self, t=None):
+            self.ended.wait(t)
+
+    class MP:
+        Process = P
+    ALL, CLOCK = {}, [time.time()]
+
+    def kill(pid):
+        ALL[pid].exitcode = -9
+        ALL[pid].ended.set()
+    try:
+        script.update({"a": "fail", "b": "stall", "c": "silent", "d": "work", "e": "done"})
+        sup = Supervisor(cf, list(script), 5, mp=MP, kill=kill)
+        sup.check(CLOCK[0])
+        ok("supervisor: every dataset gets its own agent", sorted(sup.running) == ["b", "c", "d"] or len(sup.events) >= 5,
+           [e["what"] + ":" + e["dataset"] for e in sup.events])
+        CLOCK[0] += 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: a dataset that fails is tried again after a wait (1 min, then 2, 5, 10, 15 — never given up)",
+           ends.get("a", {}).get("next_in_s") == BACKOFF_S[0] and "a" in sup.queue, ends.get("a"))
+        ok("supervisor: a finished dataset is looked at again the next day (new editions)",
+           ends.get("e", {}).get("next_in_s") == RECHECK_DONE_S, ends.get("e"))
+        CLOCK[0] += SILENT_S + 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: an agent with no sign of life for 3 minutes is ended and restarted later",
+           "c" in ends and "no sign of life" in ends["c"]["why"]
+           and sum(1 for e in sup.events if e["what"] == "started" and e["dataset"] == "c") == 2, ends.get("c"))
+        ok("supervisor: an agent that keeps moving is left alone", "d" in sup.running and "d" not in ends)
+        CLOCK[0] += STALL_S + 5
+        sup.check(CLOCK[0])
+        ends = {e["dataset"]: e for e in sup.events if e["what"] == "ended"}
+        ok("supervisor: an agent alive but making no progress for 15 minutes is ended and restarted later",
+           "b" in ends and "no progress" in ends["b"]["why"] and "b" in sup.queue, ends.get("b"))
+        ok("supervisor: the failing dataset was started again after its wait",
+           sum(1 for e in sup.events if e["what"] == "started" and e["dataset"] == "a") >= 2)
+        fails_before = sup.fails["a"]
+        for _ in range(8):
+            CLOCK[0] += 3700
+            sup.check(CLOCK[0])
+        ok("supervisor: repeated failures wait longer each time but never stop (15 minutes at most)",
+           sup.fails["a"] > fails_before and "a" in sup.queue and sup.queue["a"] - time.time() <= BACKOFF_S[-1] + 1, sup.fails["a"])
+        sup.stop_all(grace=0)
+        ok("supervisor: Stop ends every agent and starts nothing new", not sup.running and not sup.queue)
+        ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
+           next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
+        # re-routes between the internal drive (working copies) and the data drive
+        old_env = {k: os.environ.get(k) for k in ("QB_WORK_FOLDER", "QB_WORK_MIN_FREE_GB")}
+        os.environ["QB_WORK_FOLDER"] = os.path.join(cf, "work")
+        try:
+            wp = work_path(cf, "x")
+            os.makedirs(os.path.dirname(wp), exist_ok=True)
+            db = sqlite3.connect(wp)
+            db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+            db.execute("INSERT INTO meta VALUES ('facts', '3'), ('state', '\"running\"')")
+            db.commit(); db.close()
+            real_free = _free
+            globals()["_free"] = lambda folder: 0 if os.path.abspath(folder).startswith(os.path.abspath(cf)) and "work" not in folder else real_free(folder)
+            try:
+                ok("the data drive full: the working copy keeps every fact and is not copied over (no half files)",
+                   drain(cf, "x") == "no room" and not os.path.exists(home_path(cf, "x") + ".draining") and os.path.exists(wp))
+            finally:
+                globals()["_free"] = real_free
+            os.environ["QB_WORK_MIN_FREE_GB"] = "1e12"
+            ok("the internal drive full: the dataset's working copy is saved home and the agent carries on writing to the data drive",
+               pull(cf, "x") is False and not os.path.exists(wp) and os.path.exists(home_path(cf, "x")))
+        finally:
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        os.environ["QB_STARTUP_FOLDER"] = os.path.join(cf, "Startup")
+        try:
+            pd = os.path.join(cf, "suite", "QueryBook-Control-Panel")
+            a1 = autostart(pd, True)
+            with open(a1["file"], newline="") as f:
+                body = f.read()
+            a2 = autostart(pd, False)
+            ok("start with Windows: one small file in the Startup folder starts the whole suite (and is removed when turned off)",
+               a1["on"] and "START-ALL-WINDOWS.bat" in body and "\r\n" in body and not a2["on"], body)
+        finally:
+            os.environ.pop("QB_STARTUP_FOLDER", None)
+        # counts: a busy shard keeps its last count; a home copy with facts the working copy lacks is merged, never overwritten
+        key0 = next(k for k, d in catalog().items() if not getattr(d, "standalone", False))
+        os.environ["QB_WORK_FOLDER"] = os.path.join(cf, "work2")
+        try:
+            def mk(path, fps, dups=0):
+                sh = Shard(cf, key0, path)
+                pid = sh.pred("name")
+                sh.db.execute("INSERT OR IGNORE INTO parts(name, url) VALUES('p1', 'u')")
+                sh.db.executemany("INSERT OR IGNORE INTO facts VALUES (?,?,?,?,1,1)", [(bytes([i]) * 16, "s%d" % i, pid, "o") for i in fps])
+                sh.set_meta("facts", len(fps)); sh.set_meta("duplicates_removed", dups); sh.set_meta("state", "running")
+                sh.db.commit(); sh.db.close()
+            hp0, wp0 = home_path(cf, key0), work_path(cf, key0)
+            mk(hp0, range(1, 11))                         # D: holds 10 facts (an older engine kept writing there)
+            mk(wp0, range(1, 6))                          # the working copy on C: holds only 5 of them
+            n = drain(cf, key0)
+            db = sqlite3.connect(hp0)
+            held = db.execute("SELECT count(*) FROM facts").fetchone()[0]; db.close()
+            ok("saving to D: never overwrites facts only the D: copy holds — they are merged in first", n == 10 and held == 10, (n, held))
+            st1 = status(cf)
+            r1 = [d for d in st1["datasets"] if d["key"] == key0][0]
+            sh = Shard(cf, key0, wp0)
+            sh.db.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM facts LIMIT 4)")
+            sh.set_meta("facts", 6); sh.set_meta("duplicates_removed", 4); sh.db.commit(); sh.db.close()
+            status(cf)
+            dr = count_drops(cf)
+            ok("a lower count is written down with its cause (here: duplicates held by an earlier dataset — nothing lost)",
+               r1["facts"] == 10 and dr and dr[-1]["fell"] == 4 and dr[-1]["cause"].startswith("duplicates"), dr)
+            real_ro = _ro
+            globals()["_ro"] = lambda path: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")) if key0 in path else real_ro(path)
+            try:
+                r2 = [d for d in status(cf)["datasets"] if d["key"] == key0][0]
+            finally:
+                globals()["_ro"] = real_ro
+            ok("a dataset busy for a moment keeps its last count (the total never dips to a wrong number)",
+               r2["facts"] == 6 and r2.get("count_from"), r2.get("facts"))
+            # 1.31.2: facts held by another copy are added back; a busy file keeps its saved count across a restart
+            import qbcommons as cm
+            c = cm.Commons(cf, "stem")
+            k2 = "ncbi-taxonomy"
+            mk(home_path(cf, k2), range(1, 21))          # D: holds 20 facts
+            mk(work_path(cf, k2), range(1, 6))           # the live copy on C: only 5
+            import qbdrive
+            oldcf = os.path.join(cf, "old-version")
+            os.makedirs(os.path.join(oldcf, FOLDER))
+            mk(os.path.join(oldcf, FOLDER, "%s.sqlite" % "noaa-ghcn-daily"), range(30, 60))   # an earlier version's folder holds NOAA facts
+            mk(work_path(cf, "noaa-ghcn-daily"), range(30, 40))
+            places0 = qbdrive.old_places
+            qbdrive.old_places = lambda *a, **k: [("commons", oldcf)]
+            try:
+                rr = restore_missing(cf)
+            finally:
+                qbdrive.old_places = places0
+            cnt = lambda p_: sqlite3.connect(p_).execute("SELECT count(*) FROM facts").fetchone()[0]
+            ok("1.31.2: facts the live copy lacks are added back from the data drive's copy and from an earlier version's folder",
+               rr.get(k2, {}).get("added") == 15 and cnt(work_path(cf, k2)) == 20 and rr.get("noaa-ghcn-daily", {}).get("added") == 20
+               and cnt(work_path(cf, "noaa-ghcn-daily")) == 30 and cnt(home_path(cf, k2)) == 20, rr)
+            ok("1.31.2: run again, nothing more is added (and nothing is ever deleted)", restore_missing(cf) == {} and cnt(home_path(cf, k2)) == 20)
+            status(cf)
+            _LAST_COUNT.clear(); _SAVED.clear()
+            globals()["_ro"] = lambda path: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")) if k2 in path else real_ro(path)
+            try:
+                r3 = [d for d in status(cf)["datasets"] if d["key"] == k2][0]
+            finally:
+                globals()["_ro"] = real_ro
+            ok("1.31.2: a file busy just after the page restarts shows its saved count, never 0", r3["facts"] == 20 and r3.get("count_from"), r3.get("facts"))
+            # Stop saves only what changed; Start during a stop waits for it
+            drain(cf, k2, force=True)
+            at2 = drained(cf)[k2]["at"]
+            fw = finish_work(cf, only_changed=True)
+            ok("1.31.2: Stop saves only what changed (an unchanged copy is not rewritten)", drained(cf)[k2]["at"] == at2, fw)
+            hb2 = os.path.join(cf, FOLDER, "_runner.json")
+            with open(hb2, "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": os.getpid(), "note": "stopping: saving what changed to the data drive — noaa (1 of 2)"}, f)
+            launched = []
+            fs = full_speed(c, os.path.dirname(os.path.abspath(__file__)), "test", launch=lambda *a: launched.append(a))
+            ok("1.31.2: Start while a stop is still saving waits for it (no second engine, the Stop signal is not cleared early)",
+               fs["bulk"] == "starting after the stop" and not launched and stopping(cf), fs)
+            with open(hb2, "w") as f:
+                json.dump({"heartbeat": time.time(), "pid": 0, "note": "finished"}, f)
+            for _ in range(30):
+                if launched:
+                    break
+                time.sleep(0.5)
+            ok("1.31.2: …and starts by itself as soon as the stop has finished", bool(launched) and not stopping(cf))
+            os.remove(hb2)
+            # 1.31.1: the dump beside the working copies on the internal drive (when it has room), never on the USB drive by default
+            global INTERNAL_DUMP_ROOM
+            room0, INTERNAL_DUMP_ROOM = INTERNAL_DUMP_ROOM, 0
+            try:
+                internal = dumps_folder(cf, c)
+                ok("1.31.1: with working copies on the internal drive and room there, the dump is kept there",
+                   internal == os.path.join(os.path.dirname(work_dir(cf)), "dumps"), internal)
+                INTERNAL_DUMP_ROOM = 1e18
+                ok("1.31.1: no room on the internal drive: the dump goes to the shared folder", dumps_folder(cf, c) == os.path.join(cf, "dumps"))
+                c.set_setting("bulk:dumps:folder", os.path.join(cf, "big-drive"))
+                ok("1.31.1: the admin's folder always wins", dumps_folder(cf, c) == os.path.join(cf, "big-drive"))
+                c.set_setting("bulk:dumps:folder", "")
+                INTERNAL_DUMP_ROOM = 0
+                old = os.path.join(cf, "dumps", "wikidata", "2026-10-26")
+                os.makedirs(old, exist_ok=True)
+                open(os.path.join(old, qbdump.FILE), "wb").write(b"x")
+                json.dump({"edition": "2026-10-26", "size": 1}, open(os.path.join(old, "ready.json"), "w"))
+                ok("1.31.1: a copy made before the folder changed is still read until a newer one is ready",
+                   (dumps_ready(cf, c) or {}).get("edition") == "2026-10-26")
+            finally:
+                INTERNAL_DUMP_ROOM = room0
+            c.set_setting("bulk:min_free_gb", "0")
+            rn = Run(cf, catalog()["pubchem-computed"])
+            first = rn.stopped()
+            c.set_setting("bulk:min_free_gb", "1e15")
+            cached_ = rn.stopped()
+            rn._chk_at = 0
+            later = rn.stopped()
+            c.set_setting("bulk:min_free_gb", "")
+            ok("1.31.1: the checks between batches (on the data drive) are re-read every 30 s, not before every batch",
+               first is None and cached_ is None and later and "nearly full" in later, (first, cached_, later))
+        finally:
+            os.environ.pop("QB_WORK_FOLDER", None)
+        st = {"runner": {"alive": True, "version": VERSION}, "facts_per_min": 250_000, "last_hour": 15_000_000, "total": 900_000_000}
+        o = {"datasets": [{"dataset": "x", "wall_s": 600, "bottleneck": "connection-slot congestion: agents queue"},
+                          {"dataset": "y", "wall_s": 100, "bottleneck": "disk-bound: writing the shard"}],
+             "congestion": [], "failures": [{"where": "x", "kind": "HTTPError", "count": 4}]}
+        ev = [{"what": "ended", "dataset": "b", "state": "paused", "why": "no progress for 15 min — ended and restarted", "next_in_s": 60, "at": time.time()}]
+        t = plain_summary(st, o, ev)
+        ok("the health report is a few plain lines: health, speed, the main delay and what is done about it, recoveries, what to do",
+           len(t.splitlines()) <= 14 and "WORKING, BUT SLOW" in t and "download connections" in t and "restarted" in t
+           and "What you need to do: nothing" in t, t)
+        t2 = plain_summary({"runner": {"alive": False}}, None, [])
+        ok("the health report says what to press when the harvest is stopped", "STOPPED" in t2 and "Start harvesting" in t2, t2)
+        one = Slots(cf)._lock("runner", 0)
+        r = run(cf, ["a"], 1, until=lambda s: True)
+        ok("only one harvesting engine at a time: a second one is refused", r and "already running" in str(r[0].get("error")), r)
+        Slots(cf).release(one)
+    finally:
+        shutil.rmtree(cf, ignore_errors=True)
+    # 1.33: staged writes — a batch is appended, the keyed tables are folded in rarely and sorted, the result is the same
+    cf = tempfile.mkdtemp()
+    try:
+        sh = Shard(cf, "stage-test")
+        p1 = sh.part("p1", "file://x")[0]; p2 = sh.part("p2", "file://y")[0]
+        k = lambda n: hashlib.sha256(str(n).encode()).digest()[:16]
+        sh.write(p1, [(k(1), "a", 1, "first", p1, 0), (k(2), "b", 1, "x", p1, 1)], 2)
+        ok("1.33: a batch goes to the stage, not into the keyed tables (its cost does not grow with the shard)",
+           sh.db.execute("SELECT count(*) FROM facts").fetchone()[0] == 0 and sh.meta("staged") == 2
+           and sh.db.execute("SELECT rows FROM parts WHERE id = ?", (p1,)).fetchone()[0] == 2)
+        sh.write(p1, [(k(1), "a", 1, "second", p1, 2), (k(3), "c", 1, "y", p1, 3)], 4, [(k(3), "https://c")])
+        n1 = sh.merge()
+        sh.write(p2, [(k(3), "c", 1, "later", p2, 0), (k(4), "d", 1, "z", p2, 1)], 2)
+        n2 = sh.merge()
+        got = dict(sh.db.execute("SELECT fp, o FROM facts"))
+        pf = dict(sh.db.execute("SELECT name, facts FROM parts"))
+        ok("1.33: merging keeps the earliest of two staged facts with one fingerprint and never replaces a fact already held",
+           n1 == 3 and n2 == 1 and got.get(k(1)) == "first" and got.get(k(3)) == "y" and len(got) == 4, (n1, n2, got))
+        ok("1.33: after a merge the counts, parts and links are as batch-by-batch inserts made them, and the stage is empty",
+           sh.meta("facts") == 4 and sh.meta("staged") == 0 and pf == {"p1": 3, "p2": 1}
+           and sh.db.execute("SELECT count(*) FROM stage").fetchone()[0] == 0
+           and sh.db.execute("SELECT url FROM links WHERE fp = ?", (k(3),)).fetchone() == ("https://c",), (pf, sh.meta("facts")))
+        ok("1.33: merging an empty stage does nothing", sh.merge() == 0 and sh.meta("facts") == 4)
+        ok("1.33: the rate counts staged facts the moment they are written",
+           sh.db.execute("SELECT facts FROM progress ORDER BY at DESC LIMIT 1").fetchone()[0] == 4)
+        sh.db.close()
+    finally:
+        shutil.rmtree(cf, ignore_errors=True)
+    # 1.34 safeguards: the copier never shrinks the home copy; a restore shows the full count; the backup is a copy at Start
+    root = tempfile.mkdtemp()
+    try:
+        cf = os.path.join(root, "commons"); os.makedirs(cf)
+        os.environ["QB_WORK_FOLDER"] = os.path.join(root, "work")
+        key = "pubchem-computed"
+        sh = Shard(cf, key, home_path(cf, key)); pid = sh.part("p", "file://x")[0]; pr = sh.pred("mass")
+        k = lambda n: hashlib.sha256(str(n).encode()).digest()[:16]
+        sh.write(pid, [(k(i), "s%d" % i, pr, "o", pid, i) for i in range(40)], 40); sh.merge(); sh.db.close()
+        wp = work_path(cf, key); os.makedirs(os.path.dirname(wp), exist_ok=True)
+        shutil.copyfile(home_path(cf, key), wp)
+        w = sqlite3.connect(wp); w.execute("DELETE FROM facts WHERE fp IN (SELECT fp FROM facts LIMIT 10)")
+        w.execute("UPDATE meta SET value = '30' WHERE key = 'facts'"); w.commit(); w.close()      # the working copy lost 10
+        g = globals(); real = g["merge_into"]; g["merge_into"] = lambda dst, src: 0                # ...and adding back fails
+        try:
+            r2 = drain(cf, key, force=True)
+        finally:
+            g["merge_into"] = real
+        hn2 = sqlite3.connect(home_path(cf, key)).execute("SELECT count(*) FROM facts").fetchone()[0]
+        r = drain(cf, key, force=True)                                                             # adding back works again
+        hn = sqlite3.connect(home_path(cf, key)).execute("SELECT count(*) FROM facts").fetchone()[0]
+        ok("1.34: the copier never replaces the data drive's copy with one holding fewer facts", r2 == "busy" and hn2 == 40 and r == 40 and hn == 40, (r, r2, hn, hn2))
+        _restoring(cf, {"key": key, "from": "F:\\QB-Backup", "facts": 206_000_000, "live": 30})
+        row = next(d for d in status(cf)["datasets"] if d["key"] == key)
+        _restoring(cf, None)
+        row2 = next(d for d in status(cf)["datasets"] if d["key"] == key)
+        ok("1.34: while facts are being added back the page shows the full count with a note, never a drop",
+           row["facts"] == 206_000_000 and "restoring" in row.get("count_from", "") and row2["facts"] == 40, (row["facts"], row2["facts"]))
+        import qbvault
+        bk = os.path.join(root, "backup"); os.makedirs(bk)
+        with open(os.path.join(cf, "backup.json"), "w") as f:
+            json.dump({"folder": bk}, f)
+        qbvault.backup(cf, reason="test")
+        ok("1.34: the newest backup is one of the copies checked at Start",
+           any(qbvault.NAME in p_ for p_ in other_copies(cf, key)), other_copies(cf, key))
+    finally:
+        os.environ.pop("QB_WORK_FOLDER", None)
+        shutil.rmtree(root, ignore_errors=True)
+    pg = {"total": 1000, "done": 600, "done_at_start": 0, "since": 1000.0, "at": 1060.0, "part": "2026-11-06 part 0049 of 0147",
+          "part_no": 4, "parts": 10}
+    ok("1.33: a running agent's speed is measured up to now — one that stopped moving shows its speed falling",
+       abs(_progress(pg, 1060.0, live=True)["rate"] - 10) < 1e-9 and abs(_progress(pg, 1120.0, live=True)["rate"] - 5) < 1e-9
+       and abs(_progress(pg, 1120.0)["rate"] - 10) < 1e-9)
+    return out
+
+
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sp = ap.add_subparsers(dest="cmd", required=True)
+    r = sp.add_parser("run")
+    r.add_argument("--commons", required=True)
+    r.add_argument("--datasets", default="")
+    r.add_argument("--agents", type=int, default=4, help="0 = full speed: one agent per CPU core")
+    r.add_argument("--max-rows", type=int, default=None)
+    s = sp.add_parser("status")
+    s.add_argument("--commons", required=True)
+    sp.add_parser("self-test")
+    a = ap.parse_args(argv)
+    if a.cmd == "run":
+        for res in run(a.commons, [k for k in a.datasets.split(",") if k] or None, a.agents if a.agents > 0 else MAX_AGENTS, a.max_rows):
+            print(json.dumps(res))
+    elif a.cmd == "status":
+        print(json.dumps(status(a.commons), indent=1, default=str))
+    else:
+        res = self_test()
+        for n, g, d in res:
+            print(("  [OK]   " if g else "  [FAIL] ") + n + ("" if g else "  — %s" % (d,)))
+        print("\n  %d of %d checks passed" % (sum(1 for x in res if x[1]), len(res)))
+        return 0 if all(x[1] for x in res) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

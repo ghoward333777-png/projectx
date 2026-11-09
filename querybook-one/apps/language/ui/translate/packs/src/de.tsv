@@ -1,0 +1,214 @@
+# German seed lexicon — QueryBook Translate v1
+@rules {"split": true, "minPart": 3, "linkers": ["s", "n", "en", "es"], "suffixes": ["en", "n", "e", "s"]}
+hello	hallo ; guten Tag | de-AT: servus ; grüß Gott ; hallo | de-CH: grüezi ; hoi ; hallo
+goodbye	auf Wiedersehen ; tschüss | de-AT: auf Wiedersehen ; servus ; baba | de-CH: auf Wiedersehen ; adieu ; tschüss
+good_morning	guten Morgen
+good_afternoon	guten Tag
+good_evening	guten Abend
+good_night	gute Nacht
+please	bitte
+thank_you	danke ; danke schön | de-CH: merci ; danke
+thank_you_very_much	vielen Dank ; danke schön ; herzlichen Dank | de-CH: merci vielmal ; vielen Dank
+youre_welcome	bitte ; gern geschehen ; bitte schön | de-CH: gern geschehen ; bitte
+sorry	Entschuldigung ; es tut mir leid
+excuse_me	Entschuldigung ; entschuldigen Sie
+yes	ja
+no	nein
+ok	okay ; in Ordnung
+how_are_you	wie geht es Ihnen ; wie geht's ; wie geht es dir
+im_fine	mir geht es gut ; mir geht's gut ; gut
+nice_to_meet_you	freut mich ; sehr erfreut
+what_is_your_name	wie heißen Sie ; wie heißt du
+my_name_is	ich heiße ; mein Name ist
+i_dont_understand	ich verstehe nicht ; ich verstehe das nicht
+i_understand	ich verstehe
+do_you_speak_english	sprechen Sie Englisch ; sprichst du Englisch
+speak_slowly	bitte sprechen Sie langsam ; sprechen Sie bitte langsamer
+repeat_please	bitte wiederholen Sie das ; noch einmal bitte
+i_dont_know	ich weiß nicht ; ich weiß es nicht
+i	ich ; mich ; mir
+you	Sie ; du ; ihr ; dich ; dir
+he	er ; ihn ; ihm
+she	sie
+we	wir ; uns
+they	sie
+my	mein ; meine ; meinen ; meinem ; meiner
+your	Ihr ; Ihre ; dein ; deine
+the	der ; die ; das ; den ; dem ; des
+a	ein ; eine ; einen ; einem ; einer
+this	dies ; dieser ; diese ; dieses ; das hier
+that	das ; jener
+be	ist ; sind ; bin ; bist ; seid ; sein
+not	nicht ; kein ; keine
+and	und
+or	oder
+with	mit
+without	ohne
+very	sehr
+what	was
+where	wo
+when	wann
+who	wer
+why	warum
+how	wie
+how_much	wie viel
+how_many	wie viele
+which	welcher ; welche ; welches
+where_is	wo ist ; wo sind ; wo befindet sich
+i_want	ich will ; ich möchte
+i_would_like	ich möchte ; ich hätte gern ; ich hätte gerne
+i_need	ich brauche
+i_have	ich habe
+do_you_have	haben Sie ; hast du
+is_there	gibt es
+want	wollen
+need	brauchen
+have	haben
+go	gehen ; fahren
+come	kommen
+eat	essen
+drink	trinken
+speak	sprechen
+understand	verstehen
+know	wissen
+like	mögen ; gern haben
+see	sehen
+wait	warten
+buy	kaufen
+pay	bezahlen ; zahlen
+help	Hilfe ; helfen
+water	Wasser
+food	Essen
+bread	Brot
+coffee	Kaffee
+tea	Tee
+beer	Bier
+wine	Wein
+milk	Milch
+money	Geld
+day	Tag
+today	heute
+tomorrow	morgen
+yesterday	gestern
+now	jetzt
+later	später
+here	hier
+there	dort ; da
+man	Mann
+woman	Frau
+child	Kind
+friend	Freund ; Freundin
+family	Familie
+house	Haus
+name	Name
+phone	Telefon ; Handy
+bathroom	Toilette ; WC ; Badezimmer
+door	Tür
+language	Sprache
+good	gut
+bad	schlecht
+big	groß
+small	klein
+hot	heiß ; warm
+cold	kalt
+open	offen ; geöffnet
+closed	geschlossen ; zu
+new	neu
+one	eins ; ein
+two	zwei
+three	drei
+four	vier
+five	fünf
+six	sechs
+seven	sieben
+eight	acht
+nine	neun
+ten	zehn
+hundred	hundert
+thousand	tausend
+airport	Flughafen
+train_station	Bahnhof
+bus_stop	Bushaltestelle ; Haltestelle
+bus	Bus
+train	Zug ; Bahn
+taxi	Taxi
+ticket	Fahrkarte ; Ticket | de-CH: Billett ; Ticket
+passport	Reisepass ; Pass
+hotel	Hotel
+room	Zimmer
+reservation	Reservierung | de-CH: Reservation ; Reservierung
+restaurant	Restaurant
+menu	Speisekarte ; Karte
+the_bill_please	die Rechnung bitte | de-AT: zahlen bitte ; die Rechnung bitte
+table_for_two	einen Tisch für zwei ; Tisch für zwei
+how_much_is_this	wie viel kostet das ; was kostet das
+too_expensive	zu teuer
+cheap	billig ; günstig
+expensive	teuer
+left	links
+right	rechts
+straight_ahead	geradeaus
+near	nah ; in der Nähe
+far	weit
+street	Straße
+map	Karte ; Stadtplan
+city	Stadt
+beach	Strand
+museum	Museum
+bank	Bank
+atm	Geldautomat | de-CH: Bancomat ; Geldautomat | de-AT: Bankomat ; Geldautomat
+pharmacy	Apotheke
+market	Markt
+shop	Geschäft ; Laden
+entrance	Eingang
+exit	Ausgang
+luggage	Gepäck
+i_am_lost	ich habe mich verlaufen
+where_is_the_bathroom	wo ist die Toilette
+call_the_police	rufen Sie die Polizei
+police	Polizei
+wifi	WLAN ; Wi-Fi
+password	Passwort
+credit_card	Kreditkarte
+cash	Bargeld ; bar
+vegetarian	vegetarisch ; Vegetarier ; Vegetarierin
+breakfast	Frühstück
+lunch	Mittagessen
+dinner	Abendessen | de-CH: Nachtessen ; Abendessen
+chicken	Hähnchen ; Huhn | de-AT: Hendl ; Hähnchen | de-CH: Poulet ; Hähnchen
+fish	Fisch
+meat	Fleisch
+rice	Reis
+doctor	Arzt ; Ärztin
+hospital	Krankenhaus | de-AT: Spital ; Krankenhaus | de-CH: Spital ; Krankenhaus
+emergency	Notfall
+ambulance	Krankenwagen | de-CH: Ambulanz ; Krankenwagen | de-AT: Rettung ; Krankenwagen
+i_need_a_doctor	ich brauche einen Arzt
+call_an_ambulance	rufen Sie einen Krankenwagen
+pain	Schmerz ; Schmerzen
+it_hurts_here	es tut hier weh ; hier tut es weh
+headache	Kopfschmerzen
+fever	Fieber
+cold_illness	Erkältung
+cough	Husten
+nausea	Übelkeit
+diarrhea	Durchfall
+allergy	Allergie
+i_am_allergic_to	ich bin allergisch gegen
+penicillin	Penicillin
+medicine	Medikament ; Medizin
+prescription	Rezept
+blood	Blut
+heart	Herz
+stomach	Magen ; Bauch
+head	Kopf
+chest	Brust
+pregnant	schwanger
+diabetes	Diabetes
+asthma	Asthma
+dizzy	schwindlig ; mir ist schwindlig
+i_cant_breathe	ich kann nicht atmen ; ich bekomme keine Luft
+sick	krank
+insurance	Versicherung ; Krankenversicherung
+nurse	Krankenpfleger ; Krankenschwester ; Pflegekraft
+pill	Tablette

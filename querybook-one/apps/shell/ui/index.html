@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<header class="bar">
+  <span class="brand">QueryBook</span>
+  <form id="askform" class="askbox" role="search">
+    <input id="askinput" type="search" autocomplete="off" placeholder="Ask anything — a word, a fact, a calculation" aria-label="Ask QueryBook">
+    <button type="submit">Ask</button>
+  </form>
+  <div class="roles" id="roles" role="group" aria-label="Show areas for"></div>
+</header>
+<div class="frame">
+  <nav class="rail" id="rail" aria-label="Areas"></nav>
+  <main id="pane"></main>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

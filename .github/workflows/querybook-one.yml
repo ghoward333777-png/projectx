@@ -1,0 +1,47 @@
+name: QueryBook (one window)
+
+on:
+  push:
+    paths: ["querybook-one/**", ".github/workflows/querybook-one.yml"]
+  pull_request:
+    paths: ["querybook-one/**", ".github/workflows/querybook-one.yml"]
+  workflow_dispatch:
+
+jobs:
+  lean:
+    name: Lean 4 proofs (Mathlib)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: querybook-one/lean
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Fetch Mathlib's prebuilt files
+        run: lake exe cache get
+      - name: Check every proof
+        run: lake build
+
+  suite:
+    name: Suite tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: querybook-one
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Shell and Lean-sync tests
+        run: python -m unittest discover -s tests -t . -v
+      - name: Every application's self-test
+        working-directory: querybook-one/apps
+        run: python -B tools/run_all_tests.py

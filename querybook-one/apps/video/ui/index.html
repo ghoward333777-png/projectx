@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueryBook Video Studio</title>
+<link rel="stylesheet" href="qb.css">
+<style>
+  :root { --accent: #6d28d9; }
+  .shot { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 10px 0; background: var(--chip); }
+  .shot .hd { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .shot .hd b { flex: 1; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; }
+  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .clip img { width: 100%; border-radius: 8px; display: block; background: #000; }
+  .out video { width: 100%; max-height: 420px; background: #000; border-radius: 8px; }
+  table.plan { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.plan td, table.plan th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  @media (max-width: 700px) { .grid3 { grid-template-columns: 1fr; } }
+  @media (prefers-color-scheme: dark) { :root { --accent: #8b5cf6; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>QueryBook Video Studio</h1>
+  <span class="tag">Shots in, one finished video out — stored actions reused, voices from Language Builder, narrator videos made by Gemini or HeyGen</span>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <button data-tab="studio">Studio</button>
+  <button data-tab="library">Clip library</button>
+  <button data-tab="outputs">Finished videos</button>
+  <button data-tab="settings">Settings</button>
+  <button data-tab="diag">Diagnostics</button>
+  <button data-tab="help">Help</button>
+</nav>
+<main>
+  <section class="panel" id="studio">
+    <div class="card">
+      <h2>Project</h2>
+      <div id="lbstate" class="small"></div>
+      <div class="grid3">
+        <div><label class="f" for="p-name">Name</label><input id="p-name" type="text" value="My video"></div>
+        <div><label class="f" for="p-format">Shape</label><select id="p-format"></select></div>
+        <div><label class="f" for="p-grade">Colour</label><select id="p-grade"></select></div>
+        <div><label class="f" for="p-engine">Voice engine (Language Builder)</label><select id="p-engine"></select></div>
+        <div><label class="f" for="p-voice">Voice name (optional)</label><input id="p-voice" type="text" placeholder="engine default"></div>
+        <div><label class="f" for="p-lang">Language</label><input id="p-lang" type="text" value="en"></div>
+        <div><label class="f" for="p-fps">Frames per second</label><select id="p-fps"><option value="">as filmed</option><option>30</option><option>60</option></select></div>
+        <div><label class="f" for="p-height">Height</label><select id="p-height"><option value="">as filmed</option><option>1080</option><option>1440</option><option>2160</option></select></div>
+        <div><label class="f" for="p-interp">In-between frames</label><select id="p-interp"><option value="best">best (new motion)</option><option value="fast">fast (repeat frames)</option></select></div>
+      </div>
+      <div class="row small" style="margin-top:10px">
+        <label><input type="checkbox" id="p-bridges" checked> In-between frames at joins (else a cut)</label>
+        <label><input type="checkbox" id="p-captions" checked> Captions (.srt)</label>
+        <label><input type="checkbox" id="p-burn"> Burn captions into the picture</label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Shots</h2>
+      <div id="shots"></div>
+      <div class="row">
+        <button class="btn quiet" id="add-action">+ Action shot</button>
+        <button class="btn quiet" id="add-talk">+ Narrator (video made by Gemini or HeyGen)</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <button class="btn quiet" id="plan">Show the plan and time</button>
+        <button class="btn" id="render">Make the video</button>
+        <button class="btn quiet" id="stop">Stop</button>
+        <button class="btn quiet" id="saveproj">Save project</button>
+        <select id="projects" style="width:auto" aria-label="Saved projects"><option value="">Open a saved project…</option></select>
+      </div>
+      <div id="planout" style="margin-top:12px"></div>
+      <div id="job" style="margin-top:12px"></div>
+      <div id="result"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="library">
+    <div class="card">
+      <h2>Add footage of an action</h2>
+      <p class="small muted">Only footage you may use: your own filming, licensed stock, or people who agreed. Narrations are added automatically when a narrator speaks.</p>
+      <div class="grid3">
+        <div><label class="f" for="l-action">Action</label><input id="l-action" type="text" list="l-actions" placeholder="walk-toward"><datalist id="l-actions"></datalist></div>
+        <div><label class="f" for="l-look">Look (optional)</label><input id="l-look" type="text" placeholder="woman in a red coat"></div>
+        <div><label class="f" for="l-source">Source</label><input id="l-source" type="text" placeholder="filmed by me"></div>
+      </div>
+      <label class="f" for="l-consent">Consent *</label><input id="l-consent" type="text" placeholder="the person filmed agreed / no real person appears">
+      <div class="row" style="margin-top:10px"><input type="file" id="l-file" accept="video/*"><button class="btn" id="l-add">Add to the library</button></div>
+    </div>
+    <div class="card"><h2>Stored clips</h2><div id="clips"></div><div id="timings" class="small muted"></div></div>
+  </section>
+
+  <section class="panel" id="outputs">
+    <div class="card"><h2>Finished videos</h2><div id="outs"></div></div>
+  </section>
+
+  <section class="panel" id="settings">
+    <div class="card">
+      <h2>Settings</h2>
+      <label class="f" for="s-url">Language Builder address</label><input id="s-url" type="text">
+      <label class="f" for="s-key">Gemini key for actions not yet in the library (optional)</label>
+      <input id="s-key" type="password" placeholder="leave empty to keep the current one" autocomplete="off">
+      <p class="small muted" id="s-keystate"></p>
+      <div class="row"><button class="btn" id="s-save">Save</button></div>
+    </div>
+  </section>
+
+  <section class="panel" id="diag"></section>
+
+  <section class="panel" id="help">
+    <div class="card">
+      <h2>How the studio makes a video</h2>
+      <ul>
+        <li><b>Action shots</b> use a stored clip of the action when there is one (seconds), re-shaped, re-timed and re-coloured here. Only an action with no stored clip is generated by the video model, once; it is then stored for reuse.</li>
+        <li><b>Voice-over</b> on an action shot is spoken by Language Builder with its voices and its pronunciation resolver (heteronyms like <i>read</i>, <i>lead</i>, <i>wind</i>). If the speech is longer than the action, the last frame is held.</li>
+        <li><b>Narrator shots</b> are an author persona from Language Builder saying the text, in a video made by Gemini (HeyGen when Gemini cannot), or by HeyGen or D-ID with the persona's own voice. Nothing animates a face on this computer. The finished narration is stored, so the same narrator saying the same text again costs nothing.</li>
+        <li><b>Joins</b> get in-between frames when the two ends are similar; otherwise a cut. <b>Captions</b> come from the word timings Language Builder measures.</li>
+        <li>Every result is checked: motion kept in each shot, lip-sync length unchanged, sound and picture the same length, upscaled picture still matching its source.</li>
+        <li><b>Start Language Builder first</b> (START-ALL starts every program). Action shots without voices work without it.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<footer class="status"></footer>
+<script src="qb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
