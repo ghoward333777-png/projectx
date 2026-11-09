@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Speech probe: change one thing at a time, drastically, and see which change moves the outcome.
 
-    python tools/speech_probe.py [whisper|long|all] [--quick]
+    python tools/speech_probe.py [whisper|features|long|all] [--quick]
 
 whisper — every voice name × voice option × sentence × speed, through the raw voice name (as before the fix) and the
           resolved one (the fix), each made 3 times: did espeak-ng drop the option (same audio as no option)? do the
@@ -85,6 +85,57 @@ def whisper_probe() -> None:
     say("")
 
 
+FEATURES = [("voiced", "vocal", "voiced_ratio"), ("zcr", "vocal", "zcr_speech"), ("zcr_voiced", "vocal", "zcr_voiced"),
+            ("dbfs", "volume", "mean_dbfs"), ("hnr_db", "quality", "hnr_db"), ("jitter", "quality", "jitter_pct"),
+            ("shimmer", "quality", "shimmer_pct"), ("breathiness", "quality", "breathiness"), ("longest_voiced_s", "quality", "longest_voiced_s"),
+            ("pitch_hz", "pitch", "mean_hz")]
+
+
+def feature_probe() -> None:
+    """Every measurement the whisper rule could use, for plain speech and for whispers, across voices, sentences and
+    speeds — and for each measurement, whether whispers and plain speech overlap (a clean rule needs a gap)."""
+    voices = ["en", "en-us", "en-gb"]
+    modes = {"plain": "", "whisper": "+whisper", "whisperf": "+whisperf"}
+    texts = ["Hello there. This is a short test of the voice.", "The quick brown fox jumps over the lazy dog.",
+             "Please call me back when you get home tonight."]
+    rates = [120, 150, 260]
+    if QUICK:
+        voices, texts, rates = voices[:2], texts[:1], rates[1:2]
+    rows = []
+    for v in voices:
+        for mode, suffix in modes.items():
+            for t in texts:
+                for r in rates:
+                    w = speech.speak_wav(t, v + suffix, r)
+                    if not w:
+                        continue
+                    m = V.measure(w)
+                    row = {"voice": v, "mode": mode, "rate": r, "text": t[:12], "label": m["vocal_mode"]["label"]}
+                    for name, sec, key in FEATURES:
+                        val = (m.get(sec) or {}).get(key)
+                        row[name] = round(val, 3) if isinstance(val, (int, float)) else None
+                    rows.append(row)
+    DATA["features"] = rows
+    say("## Measurements: plain speech vs whispers — espeak-ng: %s" % speech.version())
+    say("")
+    say("| measurement | plain (min–max) | whispers (min–max) | gap between them? |")
+    say("|---|---|---|---|")
+    for name, _, _ in FEATURES:
+        pv = [r[name] for r in rows if r["mode"] == "plain" and r[name] is not None]
+        wv = [r[name] for r in rows if r["mode"] != "plain" and r[name] is not None]
+        if not pv or not wv:
+            say("| %s | — | — | — |" % name)
+            continue
+        gap = "yes: whispers all below %.3f" % ((min(pv) + max(wv)) / 2) if max(wv) < min(pv) else \
+              "yes: whispers all above %.3f" % ((max(pv) + min(wv)) / 2) if min(wv) > max(pv) else "no (overlap)"
+        say("| %s | %.3f – %.3f | %.3f – %.3f | %s |" % (name, min(pv), max(pv), min(wv), max(wv), gap))
+    wl = [r["label"] for r in rows if r["mode"] != "plain"]
+    say("")
+    say("**Whispers called whispering by today's rule:** %d of %d; **plain speech called whispering:** %d of %d" % (
+        wl.count("whispering"), len(wl), sum(r["label"] == "whispering" for r in rows if r["mode"] == "plain"), sum(r["mode"] == "plain" for r in rows)))
+    say("")
+
+
 def long_probe() -> None:
     import app  # the Language app itself: its SpeechLab is what the self-test uses
     reply = json.dumps({"results": [{"alternatives": [{"transcript": "good morning", "confidence": 0.9, "words": [
@@ -149,6 +200,8 @@ if __name__ == "__main__":
         say("espeak-ng not found — whisper probe skipped")
     elif what in ("whisper", "all"):
         whisper_probe()
+    if speech.find_espeak() and what in ("features", "whisper", "all"):
+        feature_probe()
     if what in ("long", "all"):
         long_probe()
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
