@@ -89,7 +89,7 @@ def dedupeHits : List Hit → List Hit
 #guard (dedupeHits [⟨"Rome", "inception", "753 BC", 90⟩, ⟨"rome (Q220)", "Inception", "753 bc", 70⟩]).length == 1   -- py: len(dedupe([{"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "rome (Q220)", "predicate": "Inception", "object": "753 bc"}])) == 1
 
 -- FactStore (vw/factstore.py:235)
-def countTotal (ufcs commons shards : List Nat) (c : Nat) : Nat := ufcs.foldl (· + ·) 0 + c + shards.foldl (· + ·) 0
+def countTotal (ufcs : List Nat) (c : Nat) (shards : List Nat) : Nat := ufcs.foldl (· + ·) 0 + c + shards.foldl (· + ·) 0
 #guard countTotal [1200000] 0 [] == 1200000                         -- py: FactStore("").status()["facts"] == 0
 
 -- FactStore.__init__ (vw/factstore.py:243)
@@ -105,7 +105,7 @@ def stale (now t0 : Nat) : Bool := decide (t0 + CACHE_SECONDS ≤ now) || t0 == 
 -- FactStore.lookup (vw/factstore.py:329)
 def byTrust (a b : Hit) : Bool := decide (a.trust ≥ b.trust)
 theorem lookup_bounded (xs : List Hit) (n : Nat) : (xs.take n).length ≤ n := List.length_take_le _ _
-#guard ([⟨"a", "p", "x", 90⟩, ⟨"a", "p", "y", 50⟩].take 1).length == 1   -- py: FactStore("/no/such/root").lookup("Rome", 5) == []
+#guard (([⟨"a", "p", "x", 90⟩, ⟨"a", "p", "y", 50⟩] : List Hit).take 1).length == 1   -- py: FactStore("/no/such/root").lookup("Rome", 5) == []
 
 -- FactStore.ufcs_lookup (vw/factstore.py:357)
 def ufcsWhere : String := "subject = ? ORDER BY trust DESC LIMIT ?"

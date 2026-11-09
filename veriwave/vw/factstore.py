@@ -236,7 +236,7 @@ class FactStore:
     """QueryBook's facts on the data drive, read-only; discovery and counts are refreshed at most every 30 seconds
 
     Lean:
-        def countTotal (ufcs commons shards : List Nat) (c : Nat) : Nat := ufcs.foldl (· + ·) 0 + c + shards.foldl (· + ·) 0
+        def countTotal (ufcs : List Nat) (c : Nat) (shards : List Nat) : Nat := ufcs.foldl (· + ·) 0 + c + shards.foldl (· + ·) 0
         #guard countTotal [1200000] 0 [] == 1200000                         -- py: FactStore("").status()["facts"] == 0
     """
 
@@ -332,7 +332,7 @@ class FactStore:
         Lean:
             def byTrust (a b : Hit) : Bool := decide (a.trust ≥ b.trust)
             theorem lookup_bounded (xs : List Hit) (n : Nat) : (xs.take n).length ≤ n := List.length_take_le _ _
-            #guard ([⟨"a", "p", "x", 90⟩, ⟨"a", "p", "y", 50⟩].take 1).length == 1   -- py: FactStore("/no/such/root").lookup("Rome", 5) == []
+            #guard (([⟨"a", "p", "x", 90⟩, ⟨"a", "p", "y", 50⟩] : List Hit).take 1).length == 1   -- py: FactStore("/no/such/root").lookup("Rome", 5) == []
         """
         self.refresh()
         s = subject.strip()
