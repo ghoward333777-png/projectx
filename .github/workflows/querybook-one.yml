@@ -25,6 +25,54 @@ jobs:
       - name: Check every proof
         run: lake build
 
+  windows-bundle:
+    name: QueryBook.zip on Windows (Python inside, no install)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build QueryBook.zip (downloads python.org's embeddable Python, checks its SHA-256)
+        working-directory: querybook-one
+        run: python tools/build_bundle.py
+      - name: Unzip it like a user would; point the data folder at a test folder
+        run: |
+          Expand-Archive querybook-one/dist/QueryBook.zip -DestinationPath $env:RUNNER_TEMP\user
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
+          Set-Content -Path "$env:RUNNER_TEMP\user\QueryBook\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
+      - name: Start everything with the bundled Python only, then ask a question
+        run: |
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $app = "$env:RUNNER_TEMP\user\QueryBook"
+          $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\QueryBook-Shell\shell.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\shell.log" -RedirectStandardError "$env:RUNNER_TEMP\shell.err"
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 3
+            try {
+              $s = Invoke-RestMethod http://127.0.0.1:8090/api/shell/status
+              $states = ($s.programs | ForEach-Object { "$($_.id)=$($_.state)" }) -join " "
+              Write-Host $states
+              if (($s.programs | Where-Object { $_.state -ne "running" }).Count -eq 0) { $ok = $true; break }
+            } catch { Write-Host "waiting for the shell…" }
+          }
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP\shell.log", "$env:RUNNER_TEMP\shell.err"; $s.programs | ForEach-Object { $_.output }; throw "not every application started" }
+          $a = Invoke-RestMethod "http://127.0.0.1:8090/api/shell/ask?q=obsequious"
+          Write-Host "Ask: $($a.short)"
+          if (-not ($a.short -match "fawning|obedient")) { throw "Ask did not answer from the Language Builder" }
+          $m = Invoke-RestMethod "http://127.0.0.1:8090/api/shell/ask?q=60%20mph%20to%20km/h"
+          Write-Host "Ask: $($m.short)"
+          if (-not ($m.short -match "96.56064")) { throw "Ask did not answer from STEM" }
+          Get-ChildItem "$env:RUNNER_TEMP\QB" | ForEach-Object { Write-Host "data folder: $($_.Name)" }
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QueryBook-windows
+          path: querybook-one/dist/QueryBook.zip
+
   rust:
     name: Rust port (matches the Python exactly)
     runs-on: ubuntu-latest
