@@ -127,7 +127,7 @@ def matches(f: dict, ws: list[str], qnum: int, domain: str, area: str, implement
         def featMatches (f : Feat) (ws : List String) (qnum : Nat) (domain area impl aud : String) : Bool :=
           (domain == "" || f.domain == domain) && (area == "" || f.area == area) &&
           (impl == "" || f.implemented == impl) && (aud == "" || f.audience == aud) &&
-          (qnum == f.no || ws.all (fun w => contains f.hay w))
+          (if qnum != 0 then qnum == f.no else ws.all (fun w => contains f.hay w))
         theorem featMatches_domain (f : Feat) (ws : List String) (q : Nat) (d a i u : String)
             (h : featMatches f ws q d a i u = true) (hd : d ≠ "") : f.domain = d := by
           unfold featMatches at h
@@ -146,8 +146,8 @@ def matches(f: dict, ws: list[str], qnum: int, domain: str, area: str, implement
         return False
     if audience and f["audience"] != audience:
         return False
-    if qnum and qnum == f["no"]:
-        return True
+    if qnum:
+        return qnum == f["no"]
     h = hay(f)
     return all(w in h for w in ws)
 
@@ -162,6 +162,7 @@ def search(q: str, domain: str, area: str, implemented: str, audience: str, limi
             (search fs ws q d a i u limit).length ≤ limit := by
           unfold search; exact List.length_take_le _ _
         #guard (search [] [] 0 "" "" "" "" 5).length == 0                 -- py: len(search("ask", "", "", "", "", 5)) <= 5
+        #guard (search [⟨7, "x", "", "", "", "", ""⟩, ⟨8, "y", "", "", "", "", ""⟩] [] 7 "" "" "" "" 5).length == 1   -- py: [f["no"] for f in search("7", "", "", "", "", 5)] == [7]
     """
     ws = core.words(q)
     qs = q.strip().lstrip("#")

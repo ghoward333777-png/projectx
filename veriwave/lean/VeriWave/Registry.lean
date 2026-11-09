@@ -52,7 +52,7 @@ def hayOf (name domain rule onScreen notes : String) : String := lower (String.i
 def featMatches (f : Feat) (ws : List String) (qnum : Nat) (domain area impl aud : String) : Bool :=
   (domain == "" || f.domain == domain) && (area == "" || f.area == area) &&
   (impl == "" || f.implemented == impl) && (aud == "" || f.audience == aud) &&
-  (qnum == f.no || ws.all (fun w => contains f.hay w))
+  (if qnum != 0 then qnum == f.no else ws.all (fun w => contains f.hay w))
 theorem featMatches_domain (f : Feat) (ws : List String) (q : Nat) (d a i u : String)
     (h : featMatches f ws q d a i u = true) (hd : d ≠ "") : f.domain = d := by
   unfold featMatches at h
@@ -70,28 +70,29 @@ theorem search_len (fs : List Feat) (ws : List String) (q : Nat) (d a i u : Stri
     (search fs ws q d a i u limit).length ≤ limit := by
   unfold search; exact List.length_take_le _ _
 #guard (search [] [] 0 "" "" "" "" 5).length == 0                 -- py: len(search("ask", "", "", "", "", 5)) <= 5
+#guard (search [⟨7, "x", "", "", "", "", ""⟩, ⟨8, "y", "", "", "", "", ""⟩] [] 7 "" "" "" "" 5).length == 1   -- py: [f["no"] for f in search("7", "", "", "", "", 5)] == [7]
 
--- tally (vw/registry.py:178)
+-- tally (vw/registry.py:179)
 def countEq (xs : List String) (v : String) : Nat := (xs.filter (· == v)).length
 theorem countEq_le (xs : List String) (v : String) : countEq xs v ≤ xs.length := by
   unfold countEq; exact List.length_filter_le _ _
 #guard countEq ["a", "b", "a"] "a" == 2                          -- py: tally([{"k": "a"}, {"k": "b"}, {"k": "a"}], "k") == {"a": 2, "b": 1}
 
--- summary (vw/registry.py:193)
+-- summary (vw/registry.py:194)
 def builtCount (built964 builtApps builtBoth : Nat) : Nat := built964 + builtApps + builtBoth
 #guard builtCount 41 8 33 == 82                                   -- py: summary()["built"] == 82
 
--- lookup (vw/registry.py:208)
+-- lookup (vw/registry.py:209)
 def lookupNo (fs : List Feat) (n : Nat) : Option Feat := fs.find? (·.no == n)
 #guard (lookupNo [] 1).isNone                                      -- py: lookup("#1")["feature"] == "Standard Q&A"
 
--- score (vw/registry.py:222)
+-- score (vw/registry.py:223)
 def score (name rest : String) (ws : List String) : Nat :=
   (ws.filter (fun w => contains name w)).length * 3 + (ws.filter (fun w => contains rest w)).length
 theorem score_zero (name rest : String) : score name rest [] = 0 := rfl
 #guard score "voice cloning" "consent" ["voice", "consent"] == 4   -- py: score({"feature": "Voice Cloning", "rule": "consent", "on_screen": "", "domain": ""}, ["voice", "consent"]) == 4
 
--- best_matches (vw/registry.py:236)
+-- best_matches (vw/registry.py:237)
 def before (a b : Nat × Nat) : Bool := a.1 > b.1 || (a.1 == b.1 && a.2 < b.2)
 def insertBy (x : Nat × Nat) : List (Nat × Nat) → List (Nat × Nat)
   | [] => [x]

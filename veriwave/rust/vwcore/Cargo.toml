@@ -1,0 +1,9 @@
+[package]
+name = "vwcore"
+version = "0.1.0"
+edition = "2021"
+description = "VeriWave's engine core in Rust: must equal the Python (vw/core.py, vw/router.py, vw/verdict.py) on contracts/vectors.tsv"
+license = "UNLICENSED"
+publish = false
+
+[dependencies]

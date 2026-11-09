@@ -1,0 +1,141 @@
+fnv1a32		2166136261
+slug		
+words		
+strip_qids		
+fnv1a32	a	3826002220
+slug	a	a
+words	a	a
+strip_qids	a	a
+fnv1a32	VeriWave	3739194040
+slug	VeriWave	veriwave
+words	VeriWave	veriwave
+strip_qids	VeriWave	VeriWave
+fnv1a32	Hello, World!	1525479220
+slug	Hello, World!	hello-world
+words	Hello, World!	hello|world
+strip_qids	Hello, World!	Hello, World!
+fnv1a32	  To-Do List 2  	1704386320
+slug	  To-Do List 2  	to-do-list-2
+words	  To-Do List 2  	to|do|list|2
+strip_qids	  To-Do List 2  	To-Do List 2
+fnv1a32	Ünïcödé café	2016172100
+slug	Ünïcödé café	n-c-d-caf
+words	Ünïcödé café	n|c|d|caf
+strip_qids	Ünïcödé café	Ünïcödé café
+fnv1a32	Build me a to-do app!	2564593697
+slug	Build me a to-do app!	build-me-a-to-do-app
+words	Build me a to-do app!	build|me|a|to|do|app
+strip_qids	Build me a to-do app!	Build me a to-do app!
+fnv1a32	it's 5 o'clock	1176424337
+slug	it's 5 o'clock	it-s-5-o-clock
+words	it's 5 o'clock	it's|5|o'clock
+strip_qids	it's 5 o'clock	it's 5 o'clock
+fnv1a32	***	3794539469
+slug	***	
+words	***	
+strip_qids	***	***
+fnv1a32	draw a lighthouse at sunset	787439821
+slug	draw a lighthouse at sunset	draw-a-lighthouse-at-sunset
+words	draw a lighthouse at sunset	draw|a|lighthouse|at|sunset
+strip_qids	draw a lighthouse at sunset	draw a lighthouse at sunset
+fnv1a32	What is 15% of 80?	4075244564
+slug	What is 15% of 80?	what-is-15-of-80
+words	What is 15% of 80?	what|is|15|of|80
+strip_qids	What is 15% of 80?	What is 15% of 80?
+fnv1a32	Paris (Q90) is in France (Q142)	3791628584
+slug	Paris (Q90) is in France (Q142)	paris-q90-is-in-france-q142
+words	Paris (Q90) is in France (Q142)	paris|q90|is|in|france|q142
+strip_qids	Paris (Q90) is in France (Q142)	Paris is in France
+xorshift32	1	270369
+xorshift32	2	540738
+xorshift32	270369	67634689
+xorshift32	2463534242	723471715
+xorshift32	4294967295	253983
+route	Build me a to-do app	code
+screen_for	Build me a to-do app	
+route	Draw a lighthouse at sunset	image
+screen_for	Draw a lighthouse at sunset	
+route	make a short video about bees	video
+screen_for	make a short video about bees	
+route	compose a calm melody	audio
+screen_for	compose a calm melody	
+route	write a poem about the sea	text
+screen_for	write a poem about the sea	
+route	When was the printing press invented?	answer
+screen_for	When was the printing press invented?	
+route	open the language lab	open
+screen_for	open the language lab	lang-learn
+route	hello	chat
+screen_for	hello	
+route	/code a timer	code
+screen_for	/code a timer	
+route	/image a red fox	image
+screen_for	/image a red fox	
+route	write a python script that counts words	code
+screen_for	write a python script that counts words	
+route	say good morning	audio
+screen_for	say good morning	
+route	what can you do	chat
+screen_for	what can you do	
+route	make me a song about rain	audio
+screen_for	make me a song about rain	
+route	create a logo for a bakery	image
+screen_for	create a logo for a bakery	
+route	60 mph to km/h	answer
+screen_for	60 mph to km/h	
+route		chat
+screen_for		
+route	thanks!	chat
+screen_for	thanks!	
+route	show me the feature registry	open
+screen_for	show me the feature registry	vw-features
+route	animate a bouncing ball	video
+screen_for	animate a bouncing ball	
+route	please narrate this paragraph	audio
+screen_for	please narrate this paragraph	
+route	write an email to my landlord	text
+screen_for	write an email to my landlord	
+calculate	What is 15% of 80?	12
+calculate	2^10 / 3	1024/3 ≈ 341.3333333333
+calculate	(1.5 + 2.25) * -4	-15
+calculate	1/0	∅
+calculate	60 mph to km/h	∅
+calculate	hello	∅
+calculate	-2^2	-4
+calculate	2^-1	0.5
+calculate	3*(4+5)/2	13.5
+calculate	1+	∅
+calculate	((2))	2
+calculate	0.1+0.2	0.3
+calculate	2^61	2305843009213693952
+calculate	2^62	∅
+calculate	99999999999999999999	∅
+calculate	1,000 × 3 =	3000
+calculate	7 ÷ 8	0.875
+calculate	1/3 + 1/6	0.5
+calculate	-(3-5)^3	8
+calculate	2^2^3	256
+calculate	10 % of 50	5
+calculate	5 -- 3	8
+calculate	3 +	∅
+calculate	()	∅
+calculate	1 2	∅
+calculate	0^-1	∅
+calculate	12.500 * 4	50
+calculate	calculate 22/7	22/7 ≈ 3.1428571428
+status_trust	Verified	95
+status_trust		65
+status_trust	disputed	40
+status_trust	 HARVESTED 	70
+status_trust	unknown-thing	65
+status_trust	rejected	5
+multi_valued	award received	true
+multi_valued	date of birth	false
+multi_valued	Occupation	true
+multi_valued	inception	false
+verdict		UNKNOWN
+verdict	Rome;inception;753 BC	VERIFIED
+verdict	Rome;inception;753 BC|Rome (Q220);Inception;752 BC	CONTRADICTED
+verdict	Curie;award received;Nobel Physics|Curie;award received;Nobel Chemistry	VERIFIED
+verdict	A;date of birth;1900|B;date of birth;1901	VERIFIED
+verdict	A;p;x|a;P; X 	VERIFIED

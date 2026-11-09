@@ -17,7 +17,7 @@ structure Fact where
 deriving Repr, BEq
 def MIN_TRUST : Nat := 50
 
--- status_trust (vw/verdict.py:36)
+-- status_trust (vw/verdict.py:37)
 def statusTrust (s : String) : Nat :=
   match lower s.trim with
   | "proved" => 99 | "verified" => 95 | "confirmed" => 95 | "accepted" => 85 | "sourced" => 80 | "active" => 75
@@ -28,7 +28,7 @@ theorem statusTrust_le (s : String) : statusTrust s ≤ 100 := by
 #guard statusTrust "Verified" == 95                              -- py: status_trust("Verified") == 95
 #guard statusTrust "" == 65                                      -- py: status_trust("") == 65
 
--- gate (vw/verdict.py:53)
+-- gate (vw/verdict.py:54)
 def gate (fs : List Fact) (minimum : Nat) : List Fact := fs.filter (fun f => decide (minimum ≤ f.trust))
 theorem gate_sound (fs : List Fact) (m : Nat) (f : Fact) (h : f ∈ gate fs m) : m ≤ f.trust := by
   simp [gate, List.mem_filter] at h
@@ -36,7 +36,7 @@ theorem gate_sound (fs : List Fact) (m : Nat) (f : Fact) (h : f ∈ gate fs m) :
 theorem gate_sub (fs : List Fact) (m : Nat) : (gate fs m).length ≤ fs.length := List.length_filter_le _ _
 #guard (gate [⟨"a", "p", "x", 40⟩, ⟨"a", "p", "x", 50⟩] 50).length == 1   -- py: gate([40, 50], 50) == [1]
 
--- strip_qids (vw/verdict.py:68)
+-- strip_qids (vw/verdict.py:69)
 def isQid : List Char → Option (List Char)
   | ' ' :: '(' :: 'Q' :: rest =>
     let ds := rest.takeWhile Char.isDigit
@@ -55,11 +55,11 @@ def stripQids (s : String) : String := (String.mk (stripAux s.length s.toList)).
 #guard stripQids "Paris (Q90) is in France (Q142)" == "Paris is in France"   -- py: strip_qids("Paris (Q90) is in France (Q142)") == "Paris is in France"
 #guard stripQids "a (Qx)" == "a (Qx)"                                      -- py: strip_qids("a (Qx)") == "a (Qx)"
 
--- norm (vw/verdict.py:105)
+-- norm (vw/verdict.py:106)
 def norm (s : String) : String := lower (stripQids s).trim
 #guard norm " Rome (Q220) " == "rome"                           -- py: norm(" Rome (Q220) ") == "rome"
 
--- multi_valued (vw/verdict.py:115)
+-- multi_valued (vw/verdict.py:116)
 def multiWords : List String := ["instance of", "subclass of", "occupation", "award", "child", "sibling", "spouse",
   "member", "genre", "language", "field", "part of", "has part", "notable work", "educated", "employer", "position",
   "nominated", "citizenship", "alias", "also known", "category", "translation", "named after", "influenced",
@@ -69,14 +69,14 @@ def multiValued (p : String) : Bool := multiWords.any (fun m => (lower p |>.spli
 #guard multiValued "award received"                              -- py: multi_valued("award received")
 #guard !multiValued "date of birth"                              -- py: not multi_valued("date of birth")
 
--- clash (vw/verdict.py:132)
+-- clash (vw/verdict.py:133)
 def clash (a b : Fact) : Bool :=
   !multiValued a.pred && a.obj != "" && b.obj != "" && norm a.subj == norm b.subj &&
   lower a.pred == lower b.pred && norm a.obj != norm b.obj
 theorem clash_irrefl (a : Fact) : clash a a = false := by simp [clash]
 #guard clash ⟨"Rome", "inception", "753 BC", 90⟩ ⟨"Rome (Q220)", "Inception", "752 BC", 90⟩   -- py: clash({"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "Rome (Q220)", "predicate": "Inception", "object": "752 BC"})
 
--- verdict (vw/verdict.py:147)
+-- verdict (vw/verdict.py:148)
 inductive Verdict where | unknown | contradicted | verified
 deriving Repr, BEq, DecidableEq
 def verdict (fs : List Fact) : Verdict :=
@@ -93,17 +93,17 @@ theorem verdict_nonempty (f : Fact) (fs : List Fact) : verdict (f :: fs) ≠ .un
 #guard verdict [⟨"Rome", "inception", "753 BC", 90⟩, ⟨"Rome", "inception", "752 BC", 90⟩] == .contradicted   -- py: verdict([{"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "Rome", "predicate": "inception", "object": "752 BC"}]) == "CONTRADICTED"
 #guard verdict [⟨"Curie", "award received", "Nobel Physics", 90⟩, ⟨"Curie", "award received", "Nobel Chemistry", 90⟩] == .verified   -- py: verdict([{"subject": "Curie", "predicate": "award received", "object": "Nobel Physics"}, {"subject": "Curie", "predicate": "award received", "object": "Nobel Chemistry"}]) == "VERIFIED"
 
--- conflicts (vw/verdict.py:176)
+-- conflicts (vw/verdict.py:177)
 def conflictKeys (fs : List Fact) : List (String × String) :=
   (fs.filter (fun a => fs.any (fun b => clash a b))).map (fun a => (norm a.subj, lower a.pred)) |>.eraseDups
 theorem conflictKeys_nil : conflictKeys [] = [] := rfl
 #guard (conflictKeys [⟨"Rome", "inception", "753 BC", 90⟩, ⟨"Rome", "inception", "752 BC", 90⟩]).length == 1   -- py: len(conflicts([{"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "Rome", "predicate": "inception", "object": "752 BC"}])) == 1
 
--- gcd (vw/verdict.py:210)
+-- gcd (vw/verdict.py:211)
 -- Nat.gcd from core Lean
 #guard Nat.gcd 12 18 == 6                                         -- py: gcd(12, 18) == 6
 
--- q_norm (vw/verdict.py:222)
+-- q_norm (vw/verdict.py:223)
 structure Q where
   num : Int
   den : Nat
@@ -115,11 +115,21 @@ def Q.norm (n : Int) (d : Nat) : Q :=
 #guard Q.norm (-6) 8 == ⟨-3, 4⟩                                   -- py: q_norm(-6, 8) == (-3, 4)
 #guard Q.norm 0 5 == ⟨0, 1⟩                                       -- py: q_norm(0, 5) == (0, 1)
 
--- q_apply (vw/verdict.py:243)
+-- in_bound (vw/verdict.py:244)
+def BOUND : Nat := 2 ^ 62
+def inBound (q : Q) : Bool := decide (q.num.natAbs < BOUND) && decide (q.den < BOUND)
+#guard inBound ⟨-5, 2⟩ && !inBound ⟨2 ^ 62, 1⟩                    -- py: in_bound((-5, 2)) and not in_bound((2 ** 62, 1))
+
+-- bounded (vw/verdict.py:255)
+def bounded (q : Option Q) : Option Q := q.bind (fun v => if inBound v then some v else none)
+theorem bounded_none : bounded none = none := rfl
+#guard bounded (some ⟨1, 1⟩) == some ⟨1, 1⟩                        -- py: bounded((1, 1)) == (1, 1)
+
+-- q_apply (vw/verdict.py:266)
 def qpow (a : Q) : Nat → Q
   | 0 => ⟨1, 1⟩
   | k + 1 => let r := qpow a k; Q.norm (r.num * a.num) (r.den * a.den)
-def qApply (op : Char) (a b : Q) : Option Q :=
+def qApply (op : Char) (a b : Q) : Option Q := bounded <|
   match op with
   | '+' => some (Q.norm (a.num * b.den + b.num * a.den) (a.den * b.den))
   | '-' => some (Q.norm (a.num * b.den - b.num * a.den) (a.den * b.den))
@@ -137,8 +147,14 @@ theorem qApply_div_zero (a : Q) (d : Nat) : qApply '/' a ⟨0, d⟩ = none := by
 #guard qApply '/' ⟨1, 1⟩ ⟨-2, 1⟩ == some ⟨-1, 2⟩                 -- py: q_apply("/", (1, 1), (-2, 1)) == (-1, 2)
 #guard qApply '^' ⟨2, 1⟩ ⟨-2, 1⟩ == some ⟨1, 4⟩                  -- py: q_apply("^", (2, 1), (-2, 1)) == (1, 4)
 #guard qApply '/' ⟨1, 1⟩ ⟨0, 1⟩ == none                          -- py: q_apply("/", (1, 1), (0, 1)) is None
+#guard qApply '^' ⟨2, 1⟩ ⟨62, 1⟩ == none                         -- py: q_apply("^", (2, 1), (62, 1)) is None
+#guard qApply '^' ⟨2, 1⟩ ⟨61, 1⟩ == some ⟨2 ^ 61, 1⟩             -- py: q_apply("^", (2, 1), (61, 1)) == (2 ** 61, 1)
 
--- tokenize (vw/verdict.py:295)
+-- q_raw (vw/verdict.py:297)
+-- qApply above is `bounded` applied to this same arithmetic
+#guard qApply '*' ⟨3, 1⟩ ⟨4, 1⟩ == some ⟨12, 1⟩                    -- py: q_raw("*", (3, 1), (4, 1)) == (12, 1)
+
+-- tokenize (vw/verdict.py:330)
 inductive Tok where | num (q : Q) | op (c : Char)
 deriving Repr, BEq
 def isOpChar (c : Char) : Bool := c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '(' || c == ')'
@@ -146,6 +162,10 @@ def flush (num : Option Nat) (sc : Nat) (acc : List Tok) : List Tok :=
   match num with
   | some n => Tok.num (Q.norm n (10 ^ sc)) :: acc
   | none => acc
+def allInBound : List Tok → Bool
+  | [] => true
+  | Tok.num q :: ts => inBound q && allInBound ts
+  | Tok.op _ :: ts => allInBound ts
 def tokAux : List Char → Option Nat → Nat → Bool → List Tok → Option (List Tok)
   | [], num, sc, _, acc => some (flush num sc acc).reverse
   | c :: cs, num, sc, dot, acc =>
@@ -154,17 +174,21 @@ def tokAux : List Char → Option Nat → Nat → Bool → List Tok → Option (
     else if c == ' ' then tokAux cs none 0 false (flush num sc acc)
     else if isOpChar c then tokAux cs none 0 false (Tok.op c :: flush num sc acc)
     else none
-def tokenize (s : String) : Option (List Tok) := tokAux s.toList none 0 false []
+def tokenize (s : String) : Option (List Tok) :=
+  match tokAux s.toList none 0 false [] with
+  | some ts => if allInBound ts then some ts else none
+  | none => none
 #guard tokenize "2.5*(3)" == some [.num ⟨5, 2⟩, .op '*', .op '(', .num ⟨3, 1⟩, .op ')']   -- py: tokenize("2.5*(3)") == [("n", 5, 2), ("*", 0, 0), ("(", 0, 0), ("n", 3, 1), (")", 0, 0)]
 #guard tokenize "2..5" == none                                    -- py: tokenize("2..5") is None
 #guard tokenize "2x" == none                                      -- py: tokenize("2x") is None
+#guard tokenize "99999999999999999999" == none                    -- py: tokenize("99999999999999999999") is None
 
--- prec (vw/verdict.py:351)
+-- prec (vw/verdict.py:397)
 def prec (c : Char) : Nat := if c == '+' || c == '-' then 1 else if c == '*' || c == '/' then 2
   else if c == '~' then 3 else if c == '^' then 4 else 0
 #guard prec '^' == 4                                              -- py: prec("^") == 4
 
--- to_rpn (vw/verdict.py:362)
+-- to_rpn (vw/verdict.py:408)
 def shouldPop (top incoming : Char) : Bool :=
   top != '(' && (prec top > prec incoming || (prec top == prec incoming && incoming != '^'))
 def popWhile (o : Char) : List Char → List Tok → List Char × List Tok
@@ -197,7 +221,7 @@ def toRpn (ts : List Tok) : Option (List Tok) := rpnAux ts true [] []
 #guard toRpn [.num ⟨1, 1⟩, .op '+', .num ⟨2, 1⟩, .op '*', .num ⟨3, 1⟩] == some [.num ⟨1, 1⟩, .num ⟨2, 1⟩, .num ⟨3, 1⟩, .op '*', .op '+']   -- py: to_rpn(tokenize("1+2*3")) == [("n", 1, 1), ("n", 2, 1), ("n", 3, 1), ("*", 0, 0), ("+", 0, 0)]
 #guard toRpn [.op '(', .num ⟨1, 1⟩] == none                      -- py: to_rpn(tokenize("(1")) is None
 
--- eval_rpn (vw/verdict.py:440)
+-- eval_rpn (vw/verdict.py:486)
 def evalRpn : List Tok → List Q → Option Q
   | [], [q] => some q
   | [], _ => none
@@ -210,7 +234,7 @@ def evalRpn : List Tok → List Q → Option Q
   | _, _ => none
 #guard evalRpn [.num ⟨2, 1⟩, .num ⟨2, 1⟩, .op '^', .op '~'] [] == some ⟨-4, 1⟩   -- py: eval_rpn(to_rpn(tokenize("-2^2"))) == (-4, 1)
 
--- prepare (vw/verdict.py:477)
+-- prepare (vw/verdict.py:523)
 def leads : List String := ["what is ", "what's ", "calculate ", "compute ", "evaluate ", "how much is "]
 def dropLead (s : String) : String :=
   match leads.find? (fun l => s.startsWith l) with
@@ -222,7 +246,7 @@ def prepare (s : String) : String :=
 #guard prepare "What is 15% of 80?" == "15/100*80"               -- py: prepare("What is 15% of 80?") == "15/100*80"
 #guard prepare "1,000 × 3 =" == "1000 * 3"                       -- py: prepare("1,000 × 3 =") == "1000 * 3"
 
--- decimal_digits (vw/verdict.py:501)
+-- decimal_digits (vw/verdict.py:547)
 def padLeft (s : String) (k : Nat) : String := String.mk (List.replicate (k - s.length) '0') ++ s
 def decimalDigits (n : Int) (d places : Nat) : String :=
   let a := n.natAbs
@@ -232,7 +256,7 @@ def decimalDigits (n : Int) (d places : Nat) : String :=
 #guard decimalDigits 1 3 4 == "0.3333"                            -- py: decimal_digits(1, 3, 4) == "0.3333"
 #guard decimalDigits (-7) 2 1 == "-3.5"                           -- py: decimal_digits(-7, 2, 1) == "-3.5"
 
--- terminating_places (vw/verdict.py:521)
+-- terminating_places (vw/verdict.py:567)
 def strip25 : Nat → Nat → Nat × Nat × Nat
   | 0, d => (d, 0, 0)
   | k + 1, d =>
@@ -246,7 +270,7 @@ def terminatingPlaces (d : Nat) : Int :=
 #guard terminatingPlaces 3 == -1                                  -- py: terminating_places(3) == -1
 #guard terminatingPlaces 20 == 2                                  -- py: terminating_places(20) == 2
 
--- fmt_q (vw/verdict.py:551)
+-- fmt_q (vw/verdict.py:597)
 def fmtQ (q : Q) : String :=
   if q.den = 1 then toString q.num
   else
@@ -257,7 +281,7 @@ def fmtQ (q : Q) : String :=
 #guard fmtQ ⟨5, 2⟩ == "2.5"                                       -- py: fmt_q((5, 2)) == "2.5"
 #guard fmtQ ⟨1, 3⟩ == "1/3 ≈ 0.3333333333"                        -- py: fmt_q((1, 3)) == "1/3 ≈ 0.3333333333"
 
--- calculate (vw/verdict.py:574)
+-- calculate (vw/verdict.py:620)
 def calculate (s : String) : Option String :=
   match tokenize (prepare s) with
   | none => none

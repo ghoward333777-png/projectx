@@ -20,6 +20,7 @@ from . import core
 
 MIN_TRUST = 50
 DEFAULT_TRUST = 65
+BOUND = 2 ** 62          # every rational keeps |numerator| and denominator below this (Rust: i128 never overflows)
 STATUS_TRUST: dict[str, int] = {
     "proved": 99, "verified": 95, "confirmed": 95, "accepted": 85, "sourced": 80, "active": 75, "harvested": 70,
     "imported": 70, "unverified": 60, "pending": 55, "stale": 45, "disputed": 40, "contested": 40, "retracted": 5,
@@ -240,6 +241,28 @@ def q_norm(n: int, d: int) -> tuple[int, int]:
     return (n // g if n >= 0 else -((-n) // g), d // g)
 
 
+def in_bound(q: tuple[int, int]) -> bool:
+    """whether a rational stays inside the exact range every port shares (|numerator|, denominator < 2^62)
+
+    Lean:
+        def BOUND : Nat := 2 ^ 62
+        def inBound (q : Q) : Bool := decide (q.num.natAbs < BOUND) && decide (q.den < BOUND)
+        #guard inBound ⟨-5, 2⟩ && !inBound ⟨2 ^ 62, 1⟩                    -- py: in_bound((-5, 2)) and not in_bound((2 ** 62, 1))
+    """
+    return abs(q[0]) < BOUND and q[1] < BOUND
+
+
+def bounded(q: tuple[int, int] | None) -> tuple[int, int] | None:
+    """the value if it is in range, else None
+
+    Lean:
+        def bounded (q : Option Q) : Option Q := q.bind (fun v => if inBound v then some v else none)
+        theorem bounded_none : bounded none = none := rfl
+        #guard bounded (some ⟨1, 1⟩) == some ⟨1, 1⟩                        -- py: bounded((1, 1)) == (1, 1)
+    """
+    return q if q is not None and in_bound(q) else None
+
+
 def q_apply(op: str, a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int] | None:
     """a op b for + - * / ^ ; None for division by zero or an exponent that isn't a small whole number
 
@@ -247,7 +270,7 @@ def q_apply(op: str, a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int] 
         def qpow (a : Q) : Nat → Q
           | 0 => ⟨1, 1⟩
           | k + 1 => let r := qpow a k; Q.norm (r.num * a.num) (r.den * a.den)
-        def qApply (op : Char) (a b : Q) : Option Q :=
+        def qApply (op : Char) (a b : Q) : Option Q := bounded <|
           match op with
           | '+' => some (Q.norm (a.num * b.den + b.num * a.den) (a.den * b.den))
           | '-' => some (Q.norm (a.num * b.den - b.num * a.den) (a.den * b.den))
@@ -265,6 +288,18 @@ def q_apply(op: str, a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int] 
         #guard qApply '/' ⟨1, 1⟩ ⟨-2, 1⟩ == some ⟨-1, 2⟩                 -- py: q_apply("/", (1, 1), (-2, 1)) == (-1, 2)
         #guard qApply '^' ⟨2, 1⟩ ⟨-2, 1⟩ == some ⟨1, 4⟩                  -- py: q_apply("^", (2, 1), (-2, 1)) == (1, 4)
         #guard qApply '/' ⟨1, 1⟩ ⟨0, 1⟩ == none                          -- py: q_apply("/", (1, 1), (0, 1)) is None
+        #guard qApply '^' ⟨2, 1⟩ ⟨62, 1⟩ == none                         -- py: q_apply("^", (2, 1), (62, 1)) is None
+        #guard qApply '^' ⟨2, 1⟩ ⟨61, 1⟩ == some ⟨2 ^ 61, 1⟩             -- py: q_apply("^", (2, 1), (61, 1)) == (2 ** 61, 1)
+    """
+    return bounded(q_raw(op, a, b))
+
+
+def q_raw(op: str, a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int] | None:
+    """a op b before the range check
+
+    Lean:
+        -- qApply above is `bounded` applied to this same arithmetic
+        #guard qApply '*' ⟨3, 1⟩ ⟨4, 1⟩ == some ⟨12, 1⟩                    -- py: q_raw("*", (3, 1), (4, 1)) == (12, 1)
     """
     an, ad = a
     bn, bd = b
@@ -303,6 +338,10 @@ def tokenize(text: str) -> list[tuple[str, int, int]] | None:
           match num with
           | some n => Tok.num (Q.norm n (10 ^ sc)) :: acc
           | none => acc
+        def allInBound : List Tok → Bool
+          | [] => true
+          | Tok.num q :: ts => inBound q && allInBound ts
+          | Tok.op _ :: ts => allInBound ts
         def tokAux : List Char → Option Nat → Nat → Bool → List Tok → Option (List Tok)
           | [], num, sc, _, acc => some (flush num sc acc).reverse
           | c :: cs, num, sc, dot, acc =>
@@ -311,10 +350,14 @@ def tokenize(text: str) -> list[tuple[str, int, int]] | None:
             else if c == ' ' then tokAux cs none 0 false (flush num sc acc)
             else if isOpChar c then tokAux cs none 0 false (Tok.op c :: flush num sc acc)
             else none
-        def tokenize (s : String) : Option (List Tok) := tokAux s.toList none 0 false []
+        def tokenize (s : String) : Option (List Tok) :=
+          match tokAux s.toList none 0 false [] with
+          | some ts => if allInBound ts then some ts else none
+          | none => none
         #guard tokenize "2.5*(3)" == some [.num ⟨5, 2⟩, .op '*', .op '(', .num ⟨3, 1⟩, .op ')']   -- py: tokenize("2.5*(3)") == [("n", 5, 2), ("*", 0, 0), ("(", 0, 0), ("n", 3, 1), (")", 0, 0)]
         #guard tokenize "2..5" == none                                    -- py: tokenize("2..5") is None
         #guard tokenize "2x" == none                                      -- py: tokenize("2x") is None
+        #guard tokenize "99999999999999999999" == none                    -- py: tokenize("99999999999999999999") is None
     """
     toks: list[tuple[str, int, int]] = []
     num: int | None = None
@@ -345,6 +388,9 @@ def tokenize(text: str) -> list[tuple[str, int, int]] | None:
     if num is not None:
         n, d = q_norm(num, 10 ** sc)
         toks.append(("n", n, d))
+    for t in toks:
+        if t[0] == "n" and not in_bound((t[1], t[2])):
+            return None
     return toks
 
 
