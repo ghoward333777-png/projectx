@@ -283,7 +283,7 @@ def q_apply(op: str, a: tuple[int, int], b: tuple[int, int]) -> tuple[int, int] 
                    else let p := qpow a b.num.natAbs
                         some (Q.norm (p.den * (if p.num < 0 then -1 else 1)) p.num.natAbs)
           | _ => none
-        theorem qApply_div_zero (a : Q) (d : Nat) : qApply '/' a ⟨0, d⟩ = none := by simp [qApply]
+        theorem qApply_div_zero (a : Q) (d : Nat) : qApply '/' a ⟨0, d⟩ = none := by simp [qApply, bounded]
         #guard qApply '+' ⟨1, 2⟩ ⟨1, 3⟩ == some ⟨5, 6⟩                   -- py: q_apply("+", (1, 2), (1, 3)) == (5, 6)
         #guard qApply '/' ⟨1, 1⟩ ⟨-2, 1⟩ == some ⟨-1, 2⟩                 -- py: q_apply("/", (1, 1), (-2, 1)) == (-1, 2)
         #guard qApply '^' ⟨2, 1⟩ ⟨-2, 1⟩ == some ⟨1, 4⟩                  -- py: q_apply("^", (2, 1), (-2, 1)) == (1, 4)
