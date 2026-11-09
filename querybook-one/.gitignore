@@ -1,2 +1,4 @@
 dist/
 speech-probe.json
+__pycache__/
+*.pyc
