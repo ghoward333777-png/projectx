@@ -19,12 +19,14 @@ Standard library only. Deterministic: the same lookups in the same order give th
 """
 import json, os, re, threading, time
 
+import qbmath                   # the routing arithmetic: pure, proved in Lean, ported to Rust
+
 MODES = ("central", "shadow", "dsn")
 MODE_TEXT = {"central": "Central — every store is asked (the default)",
              "shadow": "Shadow — Central answers; the DSN runs beside it and every difference is logged",
              "dsn": "DSN — only the stores the learned pathways point to are asked"}
 SETTING = "answer:routing"
-THETA, ETA, SILENCE, DRIFT, EXPLORE_EVERY = 0.30, 0.10, 0.15, 0.002, 25
+THETA, ETA, SILENCE, DRIFT, EXPLORE_EVERY = qbmath.DSN_THETA, qbmath.DSN_ETA, qbmath.DSN_SILENCE, qbmath.DSN_DRIFT, qbmath.DSN_EXPLORE_EVERY
 MAX_KINDS = 2000
 LOG_MAX = 5_000_000
 VERDICT_MIN = 50
@@ -151,8 +153,7 @@ def dsn_search(commons, text, limit=50, learn=True):
         nth = sum(x.get("n", 0) for x in syn.values())
         for key, _ in held:
             s = syn.setdefault(key, {"s": 0.5, "hits": 0, "empty": 0, "last": 0, "n": 0})
-            if s["s"] < 0.5:
-                s["s"] += DRIFT * (0.5 - s["s"])          # weak pathways recover slowly: re-sensitisation
+            s["s"] = qbmath.dsn_recover(s["s"])          # weak pathways recover slowly: re-sensitisation
         ranked = sorted(held, key=lambda kd: (-syn[kd[0]]["s"], kd[0]))
         strong = [kd for kd in ranked if syn[kd[0]]["s"] >= THETA]
         weak = [kd for kd in ranked if syn[kd[0]]["s"] < THETA]
@@ -175,10 +176,9 @@ def dsn_search(commons, text, limit=50, learn=True):
                 s["last"] = int(time.time())
                 if learn:
                     if got:
-                        s["s"] += ETA * (1 - s["s"]); s["hits"] += 1
+                        s["s"] = qbmath.dsn_hit(s["s"]); s["hits"] += 1
                     else:
-                        s["s"] -= SILENCE * s["s"]; s["empty"] += 1
-                    s["s"] = round(s["s"], 4)
+                        s["s"] = qbmath.dsn_miss(s["s"]); s["empty"] += 1
                 out.extend(got)
         ask(strong)
         if not out and weak:                             # nothing on the strong pathways: ask everyone, and learn

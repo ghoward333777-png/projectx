@@ -24,11 +24,13 @@ The same file serves the QueryBook suite (qbsynapse.py) and the prototype (qb_sy
 """
 import hashlib, json, os, threading, time
 
+import qbmath                   # the learning arithmetic: pure, proved in Lean, ported to Rust
+
 VERSION = "1.0.0"
-INIT, ETA, DEPRESS, THETA = 0.20, 0.10, 0.25, 0.30
+INIT, ETA, DEPRESS, THETA = qbmath.SYN_INIT, qbmath.SYN_ETA, qbmath.SYN_DEPRESS, qbmath.SYN_THETA
 ASSEMBLY = 0.50                 # strength that binds two agents into the same assembly (about five joint successes)
-DECAY_PER_DAY, CONSOLIDATED_DECAY_PER_DAY, CONSOLIDATE_AFTER = 0.05, 0.01, 20
-PRUNE_BELOW, PRUNE_IDLE_DAYS = 0.05, 30
+DECAY_PER_DAY, CONSOLIDATED_DECAY_PER_DAY, CONSOLIDATE_AFTER = qbmath.SYN_DECAY_PER_DAY, qbmath.SYN_CONSOLIDATED_DECAY_PER_DAY, qbmath.SYN_CONSOLIDATE_AFTER
+PRUNE_BELOW, PRUNE_IDLE_DAYS = qbmath.SYN_PRUNE_BELOW, qbmath.SYN_PRUNE_IDLE_DAYS
 MAX_EPISODE_NODES, MAX_SYNAPSES, MAX_CONTEXTS, MAX_RECENT = 8, 50_000, 2000, 400
 DAY = 86400.0
 
@@ -107,24 +109,21 @@ class Network:
     def _fade(self, s, at):
         """forgetting since the synapse was last used (lazy: applied whenever it is touched)"""
         days = max(0.0, (at - (s["last"] or at)) / DAY)
-        if days > 0:
-            rate = CONSOLIDATED_DECAY_PER_DAY if s["consolidated"] else DECAY_PER_DAY
-            s["strength"] = round(s["strength"] * (1 - rate) ** days, 4)
+        s["strength"] = qbmath.syn_fade(s["strength"], days, s["consolidated"])
 
     def _change(self, s, good, context, evidence, at):
         self._fade(s, at)
         before = s["strength"]
         if good:
-            s["strength"] = round(before + ETA * (1 - before), 4)
+            s["strength"] = qbmath.syn_potentiate(before)
             s["ok"] += 1
             self.counters["potentiated"] += 1
         else:
-            s["strength"] = round(before - DEPRESS * before, 4)
+            s["strength"] = qbmath.syn_depress(before)
             s["bad"] += 1
             self.counters["depressed"] += 1
-        tot = s["ok"] + s["bad"]
-        s["threshold"] = round(THETA + 0.4 * s["bad"] / tot, 3) if tot else THETA
-        s["consolidated"] = s["ok"] >= CONSOLIDATE_AFTER and s["ok"] >= 4 * s["bad"]
+        s["threshold"] = qbmath.syn_threshold(s["ok"], s["bad"])
+        s["consolidated"] = qbmath.syn_consolidated(s["ok"], s["bad"])
         if context:
             s["contexts"][context] = s["contexts"].get(context, 0) + 1
             if len(s["contexts"]) > 12:

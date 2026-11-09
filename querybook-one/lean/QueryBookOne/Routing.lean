@@ -1,3 +1,5 @@
+import Mathlib
+
 /-!
 # Answer routing: the Digital Synaptic Network (apps/_core/qbdsn.py `dsn_search`)
 
@@ -10,7 +12,6 @@ a new pathway starts at 0.5.
 
 A pathway is asked first when s ≥ THETA. Python rounds to 4 decimals after each update; see Synapse.lean on rounding.
 -/
-import Mathlib
 
 namespace QueryBookOne.Routing
 

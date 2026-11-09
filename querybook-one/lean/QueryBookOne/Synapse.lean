@@ -1,3 +1,5 @@
+import Mathlib
+
 /-!
 # Network memory (apps/_core/qbsynapse.py)
 
@@ -12,7 +14,6 @@ CONSOLIDATE_AFTER 20 (and four good outcomes for every bad one).
 The Python code also rounds each result to 4 decimals; the bounds proved here hold for the exact values, and rounding to
 4 decimals keeps a value in [0, 1] because 0 and 1 are themselves 4-decimal numbers.
 -/
-import Mathlib
 
 namespace QueryBookOne.Synapse
 

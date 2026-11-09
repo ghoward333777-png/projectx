@@ -1,9 +1,10 @@
+import Mathlib
+
 /-!
 # Angles in degrees, as the STEM application uses them (`sind`, `asind` in apps/stem/engine.py)
 
 sind x = sin(x · π / 180) and asind y = arcsin(y) · 180 / π.
 -/
-import Mathlib
 
 namespace QueryBookOne.Degrees
 

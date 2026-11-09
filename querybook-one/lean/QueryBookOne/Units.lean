@@ -1,10 +1,11 @@
+import Mathlib
+import QueryBookOne.Degrees
+
 /-!
 # Unit conversion (apps/stem/units.py `convert_value`), over exact fractions as the application computes it
 
 A linear unit converts by `value · factor_from / factor_to`; a temperature scale by its affine map through kelvin.
 -/
-import Mathlib
-import QueryBookOne.Degrees
 
 namespace QueryBookOne.Units
 
