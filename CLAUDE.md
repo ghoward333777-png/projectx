@@ -95,3 +95,14 @@ building QueryBook features.
   `querybook-next/rust/querybook-core`. Changes to `core/text.py`,
   `core/lexicons.txt`, `core/fql/lexer.py` or `core/legacy.py` must be ported
   to Rust and their golden vectors regenerated.
+
+## QueryBook one window (`querybook-one/`) — the current QueryBook rebuild
+
+Stage 1 of the plan in `docs/querybook-rebuild/` (407-feature inventory + blueprint). It IS the suite: its
+applications (`querybook-one/apps`, from `claude/lucid-brahmagupta-ak4f6m`) plus `apps/shell` (one window,
+Ask box). Keep the suite's own conventions: edit `apps/_core` then run `apps/tools/sync_core.py`; every
+app's self-test via `apps/tools/run_all_tests.py`. Formula math lives in pure modules (`_core/qbmath.py`,
+STEM's `science.py`/`units.py`) with Lean proofs (`querybook-one/lean`, Mathlib, `lake build`) and a Rust
+port (`querybook-one/rust/qbcore`); `tools/gen_lean.py` / `tools/gen_rust.py` regenerate them and their
+`--check` runs in the tests, so a formula changed in Python must have its proofs and Rust regenerated.
+The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-folder.txt = D:\QB).
