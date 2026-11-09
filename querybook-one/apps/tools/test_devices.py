@@ -173,7 +173,7 @@ def main():
         st = hub.start_lan(port)
         lan = "http://127.0.0.1:%d" % port
         c.check("network listener starts", st["running"] and st["port"] == port)
-        dead = Device("http://127.0.0.1:9", g["token"], spool=os.path.join(tmp, "spool3.jsonl"))
+        dead = Device("http://127.0.0.1:9", g["token"], spool=os.path.join(tmp, "spool3.jsonl"), every_s=3600)   # flushed by hand only (Windows takes ~2 s to refuse a connection, which would trigger the timed flush)
         dead.send("detection", label="kettle")
         sp = dead.flush()
         dead.url = lan
