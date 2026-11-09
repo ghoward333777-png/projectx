@@ -60,6 +60,15 @@ def main() -> int:
         print("%5.0fs  runner %s (beat %s s ago, pid %s)  agents running: %d  facts: %s  note: %s" % (
             time.time() - t0, "ALIVE" if alive else "NOT BEATING", "—" if age is None else "%.0f" % age, rs.get("pid"),
             len(running), facts, str(rs.get("note") or "")[:90]))
+        hl = b.get("headline") or {}
+        print("         screen: %s  [facts/min %s, last minute %s]" % (hl.get("text"), b.get("facts_per_min"), b.get("last_minute")))
+        for d in b.get("datasets") or []:
+            if d.get("key") in running or d.get("staged") or d.get("last_10min"):
+                pg = d.get("progress") or {}
+                print("         %-20s %-9s filed %-10s staged %-10s +10min %-9s part %s %s%% %s" % (
+                    d["key"], d.get("state"), d.get("facts"), d.get("staged"), d.get("last_10min"), str(pg.get("part") or "")[-18:],
+                    "—" if pg.get("fraction") is None else round(100 * pg["fraction"], 1),
+                    "" if not pg.get("rate") else "%.1f %s/s" % (pg["rate"] / (1e6 if pg.get("unit") == "bytes" else 1), "MB" if pg.get("unit") == "bytes" else pg.get("unit") or "")))
         for e in rs.get("events") or []:
             k = (e.get("at"), e.get("dataset"), e.get("what"))
             if k in seen:
