@@ -34,6 +34,46 @@ jobs:
           name: querybook-next-pyz
           path: querybook-next/dist/querybook-next.pyz
 
+  windows-bundle:
+    name: Windows bundle (Python inside, no install)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build QueryBook.zip (downloads python.org's embeddable Python, checks its SHA-256)
+        working-directory: querybook-next
+        run: python tools/build_windows_bundle.py
+      - name: Unzip it like a user would, with no Python on PATH
+        run: |
+          Expand-Archive querybook-next/dist/QueryBook.zip -DestinationPath $env:RUNNER_TEMP\user
+          python -c "import sys; sys.path.insert(0, 'querybook-next'); from pathlib import Path; import tests.suite_fixture as f; f.build_suite_folder(Path(r'${{ runner.temp }}\DQB'))"
+      - name: Run the bundled Python through START-QueryBook.bat
+        run: |
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $app = "$env:RUNNER_TEMP\user\QueryBook"
+          & "$app\START-QueryBook.bat" --home "$env:RUNNER_TEMP\DQB" fql "Facts.datasets()" | Tee-Object out.txt
+          if (-not (Select-String -Path out.txt -Pattern "pubchem-computed" -Quiet)) { throw "bundled run did not answer" }
+          & "$app\python\python.exe" -c "import sys; print(sys.version); import sqlite3; print('sqlite', sqlite3.sqlite_version)"
+      - name: Start the server from the bundle and query it
+        run: |
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $app = "$env:RUNNER_TEMP\user\QueryBook"
+          $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("$app\querybook-next.pyz", "--home", "$env:RUNNER_TEMP\DQB", "serve", "--no-harvest", "--port", "8090") -PassThru
+          Start-Sleep -Seconds 8
+          $r = Invoke-RestMethod http://127.0.0.1:8090/api/stats
+          Stop-Process -Id $p.Id
+          if (-not $r.store.connected) { throw "store not connected" }
+          "store facts: " + ($r.store.bulk_facts + $r.store.commons_facts)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QueryBook-windows
+          path: querybook-next/dist/QueryBook.zip
+
   rust:
     name: Rust core
     runs-on: ubuntu-latest
