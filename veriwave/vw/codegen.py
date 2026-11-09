@@ -429,7 +429,7 @@ def _quiz(title: str, prompt: str, questions: list[dict] | None) -> str:
           ((answers.zip qs).filter (fun p => p.1 == p.2.a)).length
         theorem quizScore_le (answers : List Nat) (qs : List QuizQ) : quizScore answers qs ≤ qs.length := by
           unfold quizScore
-          exact Nat.le_trans (List.length_filter_le _ _) (by simp [List.length_zip])
+          exact Nat.le_trans (List.length_filter_le _ _) (by simp only [List.length_zip]; omega)
         #guard pageKey (baseTitle .quiz) == "app:quiz"                   -- py: 'const KEY = "app:quiz"' in _quiz("Quiz", "", None) and "QUESTIONS" in _quiz("Quiz", "", None)
     """
     qs = questions or [
@@ -687,7 +687,7 @@ def generate_local(prompt: str, kind: str) -> dict:
     Lean:
         def entryFor (k : Kind) (title : String) : String := if k == .python then pyName title ++ ".py" else "index.html"
         theorem entry_previews (k : Kind) (t : String) (h : k ≠ .python) : entryFor k t = "index.html" := by
-          simp [entryFor, h]
+          cases k <;> first | exact (h rfl).elim | rfl
         #guard entryFor .todo "To-Do List" == "index.html"                -- py: generate_local("Build me a to-do app", "")["entry"] == "index.html"
         #guard entryFor .python "Command-Line Tool" == "command_line_tool.py"   -- py: generate_local("write a python script", "")["entry"] == "command_line_tool.py"
     """

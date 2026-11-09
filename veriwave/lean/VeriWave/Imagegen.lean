@@ -34,29 +34,32 @@ def addSky (light : String) (els : List String) : List String :=
   let e2 := if light == "night" && !e1.contains "stars" then "stars" :: e1 else e1
   if (light == "sunset" || light == "dawn" || light == "desert") && !e2.contains "sun" then "sun" :: e2 else e2
 theorem addSky_keeps (l : String) (els : List String) (e : String) (h : e ∈ els) : e ∈ addSky l els := by
-  unfold addSky; split <;> split <;> split <;> simp_all
+  have k : ∀ (c : Bool) (x : String) (L : List String), e ∈ L → e ∈ (if c = true then x :: L else L) := by
+    intro c x L hL; cases c <;> simp [hL]
+  simp only [addSky]
+  apply k; apply k; apply k; exact h
 #guard (addSky "night" []).contains "moon"                       -- py: "moon" in elements_of([], "night")
 
--- svg_open (vw/imagegen.py:103)
+-- svg_open (vw/imagegen.py:106)
 def svgHeader : String := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 640\" width=\"1024\" height=\"640\">"
 #guard svgHeader.startsWith "<svg"                                -- py: svg_open("day")[0].startswith("<svg") and 'viewBox="0 0 1024 640"' in svg_open("day")[0]
 
--- ridge (vw/imagegen.py:117)
+-- ridge (vw/imagegen.py:120)
 def ridgeCount (step : Nat) (h : 0 < step) : Nat := 1024 / step + 1
 theorem ridge_points_bound (y base amp : Int) (h : 0 ≤ amp) : clamp 0 640 (base - y) ≤ 640 :=
   (clamp_in 0 640 (base - y) (by decide)).2
 #guard clamp 0 640 (400 - 900) == 0                               -- py: all(0 <= int(p.split(",")[1]) <= 640 for p in ridge(core.Rng(1), 400, 900, 64).split(" "))
 
--- paint (vw/imagegen.py:136)
+-- paint (vw/imagegen.py:139)
 def sceneKind (els : List String) : String := if els.isEmpty then "abstract" else "scene"
 #guard sceneKind [] == "abstract"                                 -- py: paint("an idea")["kind"] == "abstract"
 #guard sceneKind ["sea"] == "scene"                               -- py: paint("a lighthouse by the sea at sunset")["kind"] == "scene"
 
--- abstract (vw/imagegen.py:240)
+-- abstract (vw/imagegen.py:243)
 def abstractShapes : Nat := 18
 #guard abstractShapes == 18                                        -- py: len(abstract(core.Rng(4), PALETTES["day"])) == 18
 
--- safe_svg (vw/imagegen.py:260)
+-- safe_svg (vw/imagegen.py:263)
 def banned : List String := ["<script", "javascript:", "onload=", "onclick=", "onerror=", "onmouseover=", "href=\"http", "<foreignobject"]
 def safeSvg (s : String) : String :=
   let t := s.trim

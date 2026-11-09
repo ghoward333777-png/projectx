@@ -56,7 +56,7 @@ def dispatch(method: str, path: str) -> str:
             else if p == "/api/vw/create" then .create else if p == "/api/vw/querybook/restart" then .restart else .notFound
           else .notFound
         theorem post_never_serves_files (p : String) : dispatch "POST" p ≠ .out ∧ dispatch "POST" p ≠ .page := by
-          unfold dispatch; simp; constructor <;> (repeat' split) <;> simp
+          unfold dispatch; constructor <;> simp <;> (repeat' split) <;> simp
         #guard dispatch "GET" "/out/000001-x/image.svg" == .out           -- py: dispatch("GET", "/out/000001-x/image.svg") == "out"
         #guard dispatch "POST" "/api/vw/chat" == .chat                     -- py: dispatch("POST", "/api/vw/chat") == "chat"
         #guard dispatch "DELETE" "/" == .notFound                          -- py: dispatch("DELETE", "/") == "notFound"

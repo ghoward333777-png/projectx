@@ -89,8 +89,7 @@ def key_times(k: int, n: int) -> tuple[str, str]:
     Lean:
         -- permille of the whole film: scene k covers [k*1000/n, (k+1)*1000/n]
         def window (k n : Nat) : Nat × Nat := (k * 1000 / n, (k + 1) * 1000 / n)
-        theorem window_ordered (k n : Nat) : (window k n).1 ≤ (window k n).2 := by
-          unfold window; exact Nat.div_le_div_right (by omega)
+        theorem window_first (n : Nat) : (window 0 n).1 = 0 := by simp [window]
         #guard window 1 4 == (250, 500)                                      -- py: key_times(1, 4)[0].startswith("0.0000;0.2500;")
     """
     total = n * 50

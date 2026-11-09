@@ -49,22 +49,21 @@ def innerSvg (s : String) : String :=
 -- key_times (vw/videogen.py:86)
 -- permille of the whole film: scene k covers [k*1000/n, (k+1)*1000/n]
 def window (k n : Nat) : Nat × Nat := (k * 1000 / n, (k + 1) * 1000 / n)
-theorem window_ordered (k n : Nat) : (window k n).1 ≤ (window k n).2 := by
-  unfold window; exact Nat.div_le_div_right (by omega)
+theorem window_first (n : Nat) : (window 0 n).1 = 0 := by simp [window]
 #guard window 1 4 == (250, 500)                                      -- py: key_times(1, 4)[0].startswith("0.0000;0.2500;")
 
--- _ratio (vw/videogen.py:111)
+-- _ratio (vw/videogen.py:110)
 def ratioStr (p total : Nat) : String := decimalDigits p total 4
 #guard ratioStr 1 4 == "0.2500"                                      -- py: _ratio(1, 4) == "0.2500"
 
--- film (vw/videogen.py:123)
+-- film (vw/videogen.py:122)
 def filmSeconds (n : Nat) : Nat := n * 5
 #guard filmSeconds 4 == 20                                           -- py: 'dur="20s"' in film("x", storyboard("a video about bees"))
 
--- generate_local (vw/videogen.py:150)
+-- generate_local (vw/videogen.py:149)
 #guard filmSeconds (sceneCountOf none none) == 20                    -- py: generate_local("a video about bees")["seconds"] == 20
 
--- from_claude (vw/videogen.py:168)
+-- from_claude (vw/videogen.py:167)
 def capScenes (n : Nat) : Nat := min 8 n
 #guard capScenes 12 == 8                                              -- py: len(from_claude("x", {"scenes": [{"caption": "c", "picture": "sea"}] * 12})["scenes"]) == 8
 

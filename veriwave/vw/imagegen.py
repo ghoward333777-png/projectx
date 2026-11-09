@@ -86,7 +86,10 @@ def elements_of(ws: list[str], light: str) -> list[str]:
           let e2 := if light == "night" && !e1.contains "stars" then "stars" :: e1 else e1
           if (light == "sunset" || light == "dawn" || light == "desert") && !e2.contains "sun" then "sun" :: e2 else e2
         theorem addSky_keeps (l : String) (els : List String) (e : String) (h : e ∈ els) : e ∈ addSky l els := by
-          unfold addSky; split <;> split <;> split <;> simp_all
+          have k : ∀ (c : Bool) (x : String) (L : List String), e ∈ L → e ∈ (if c = true then x :: L else L) := by
+            intro c x L hL; cases c <;> simp [hL]
+          simp only [addSky]
+          apply k; apply k; apply k; exact h
         #guard (addSky "night" []).contains "moon"                       -- py: "moon" in elements_of([], "night")
     """
     found = [e for e in ELEMENTS if core.has_any(ws, TRIGGERS[e])]

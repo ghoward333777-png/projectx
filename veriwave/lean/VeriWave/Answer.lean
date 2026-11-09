@@ -71,28 +71,30 @@ theorem offered_partition (ts : List Nat) (m : Nat) : (offered ts m).1 + (offere
   induction ts with
   | nil => rfl
   | cons t ts ih =>
-    unfold offered at *
+    simp only [offered] at ih ⊢
     by_cases h : m ≤ t
-    · simp [List.filter_cons, h, Nat.not_lt.mpr h] <;> omega
-    · simp [List.filter_cons, h, Nat.lt_of_not_le h] <;> omega
+    · have h' : ¬ t < m := by omega
+      simp [List.filter_cons, h, h'] <;> omega
+    · have h' : t < m := by omega
+      simp [List.filter_cons, h, h'] <;> omega
 #guard offered [95, 40, 65] 50 == (2, 1)                          -- py: citations_from({"sections": [{"kind": "facts", "items": [{"status": "verified", "predicate": "p", "object": "a", "subject": "s"}, {"status": "disputed"}, {"status": ""}]}]}, 50)[1] == 1
 
--- provenance_input (vw/answer.py:176)
+-- provenance_input (vw/answer.py:178)
 def provenanceInput (q : String) (cs : List Cite) : String :=
   q ++ String.join (cs.map (fun c => "\n" ++ c.text ++ "|" ++ c.source ++ "|" ++ c.link))
 #guard provenanceInput "q" [⟨"t", "s", "", 90⟩] == "q\nt|s|"    -- py: provenance_input("q", [{"text": "t", "where": "s"}]) == "q\nt|s|"
 
--- provenance_hash (vw/answer.py:188)
+-- provenance_hash (vw/answer.py:190)
 -- SHA-256 is an external primitive (Rust: sha2, Python: hashlib); Lean fixes what it is applied to.
 def provenanceHashInput (q : String) (cs : List Cite) : String := provenanceInput q cs
 #guard (provenanceHashInput "" []).length == 0                    -- py: provenance_hash("", []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
--- registry_cites (vw/answer.py:199)
+-- registry_cites (vw/answer.py:201)
 def registryCite (no : Nat) (name status rule screen : String) : Cite :=
   ⟨"#" ++ toString no ++ " " ++ name ++ " (" ++ status ++ ") — " ++ rule ++ " " ++ screen, "QueryBook Feature Registry v71", "", 99⟩
 #guard (registryCite 1 "Standard Q&A" "Built" "R." "S").trust == 99   -- py: all(c["trust"] == 99 for c in registry_cites("feature 1"))
 
--- compose (vw/answer.py:226)
+-- compose (vw/answer.py:228)
 def composeVerdict (cites : List Cite) (contradicted : Bool) : Verdict :=
   if cites.isEmpty then .unknown else if contradicted then .contradicted else .verified
 theorem compose_refuses (c : Bool) : composeVerdict [] c = .unknown := rfl
@@ -100,7 +102,7 @@ theorem compose_cited (x : Cite) (xs : List Cite) (c : Bool) : composeVerdict (x
   unfold composeVerdict; cases c <;> simp
 #guard composeVerdict [] true == .unknown                         -- py: compose("", {}, 50, "", False)["verdict"] == "UNKNOWN"
 
--- grounded_prompt (vw/answer.py:293)
+-- grounded_prompt (vw/answer.py:295)
 def factLine (n : Nat) (c : Cite) : String :=
   "[" ++ toString n ++ "] " ++ c.text ++ " (source: " ++ c.source ++ ", trust " ++ toString c.trust ++ "%)"
 #guard factLine 1 ⟨"t", "s", "", 90⟩ == "[1] t (source: s, trust 90%)"   -- py: grounded_prompt({"question": "q", "citations": [{"n": 1, "text": "t", "where": "s", "trust": 90}]}).endswith("[1] t (source: s, trust 90%)")

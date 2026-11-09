@@ -51,38 +51,38 @@ theorem okRel_no_parent (ps : List String) (h : okRel ps = true) : ".." ∉ ps :
 #guard !okRel ["x", "..", "y"]                                        -- py: resolve("/nowhere", "x", "../y") is None
 
 -- out_url (vw/store.py:108)
+def outUrl (id file : String) : String := "/out/" ++ id ++ "/" ++ file
 #guard outUrl "a" "b" == "/out/a/b"                                    -- py: out_url("a", "b") == "/out/a/b"
 
--- log_line (vw/store.py:117)
+-- log_line (vw/store.py:118)
+def logLine (json : String) : String := json ++ "\n"
 #guard logLine "{}" == "{}\n"                                         -- py: log_line({}) == "{}\n"
 
--- Store (vw/store.py:126)
+-- Store (vw/store.py:128)
 structure StoreState where
   counter : Nat
 def StoreState.bump (s : StoreState) : StoreState := ⟨s.counter + 1⟩
 theorem bump_grows (s : StoreState) : s.counter < s.bump.counter := Nat.lt_succ_self _
 
--- Store.__init__ (vw/store.py:136)
+-- Store.__init__ (vw/store.py:138)
 def startCounter (existing : List Nat) : Nat := existing.foldl max 0
 #guard startCounter [3, 9, 4] == 9                               -- py: Store.highest(["000003-a", "000009-b", "x"]) == 9
 
--- Store.highest (vw/store.py:148)
+-- Store.highest (vw/store.py:150)
 def leadingNumber (s : String) : Nat := (s.takeWhile Char.isDigit).toNat!
 #guard leadingNumber "000009-b" == 9                              -- py: Store.highest(["000009-b"]) == 9
 
--- Store.save (vw/store.py:162)
-def outUrl (id file : String) : String := "/out/" ++ id ++ "/" ++ file
+-- Store.save (vw/store.py:164)
 #guard outUrl "000001-x" "image.svg" == "/out/000001-x/image.svg"   -- py: out_url("000001-x", "image.svg") == "/out/000001-x/image.svg"
 
--- Store.file_path (vw/store.py:188)
+-- Store.file_path (vw/store.py:189)
 #guard !okRel ["..", "etc"]                                       -- py: resolve("/nowhere", "..", "etc") is None
 
--- Store.list_items (vw/store.py:196)
+-- Store.list_items (vw/store.py:197)
 def newestFirst (ids : List String) (limit : Nat) : List String := ids.reverse.take limit
 theorem newestFirst_len (ids : List String) (n : Nat) : (newestFirst ids n).length ≤ n := List.length_take_le _ _
 
--- Store.log (vw/store.py:212)
-def logLine (json : String) : String := json ++ "\n"
+-- Store.log (vw/store.py:213)
 #guard (logLine "{}").endsWith "\n"                               -- py: log_line({}) == "{}\n"
 
 end VeriWave.Store

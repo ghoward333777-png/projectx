@@ -31,7 +31,7 @@ def decideLink (m : Mode) (answers present driveOk : Bool) : Linked :=
   else .alone
 theorem none_is_alone (a p d : Bool) : decideLink .none a p d = .alone := rfl
 theorem attach_never_starts (a p d : Bool) : decideLink .attach a p d ≠ .started := by
-  unfold decideLink; cases a <;> simp
+  cases a <;> cases p <;> cases d <;> decide
 #guard decideLink .auto true true true == .attached                -- py: decide_link("auto", True, True, True) == "attached"
 #guard decideLink .auto false true true == .started                -- py: decide_link("auto", False, True, True) == "started"
 #guard decideLink .auto false true false == .alone                 -- py: decide_link("auto", False, True, False) == "alone"
@@ -44,7 +44,7 @@ structure Prog where
 def runningUrls (ps : List Prog) : List (String × String) :=
   (ps.filter (fun p => p.state == "running" && p.url != "")).map (fun p => (p.id, p.url))
 theorem runningUrls_le (ps : List Prog) : (runningUrls ps).length ≤ ps.length := by
-  simp [runningUrls]; exact List.length_filter_le _ _
+  simp only [runningUrls, List.length_map]; exact List.length_filter_le _ _
 #guard runningUrls [⟨"stem", "http://x", "running"⟩, ⟨"video", "", "starting"⟩] == [("stem", "http://x")]   -- py: running_urls([{"id": "stem", "url": "http://x", "state": "running"}, {"id": "video", "url": None, "state": "starting"}]) == {"stem": "http://x"}
 
 -- import_shell (vw/querybook.py:76)

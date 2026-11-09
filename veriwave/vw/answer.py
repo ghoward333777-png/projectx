@@ -138,10 +138,12 @@ def citations_from(qb: dict, min_trust: int) -> tuple[list[dict], int, list[dict
           induction ts with
           | nil => rfl
           | cons t ts ih =>
-            unfold offered at *
+            simp only [offered] at ih ⊢
             by_cases h : m ≤ t
-            · simp [List.filter_cons, h, Nat.not_lt.mpr h] <;> omega
-            · simp [List.filter_cons, h, Nat.lt_of_not_le h] <;> omega
+            · have h' : ¬ t < m := by omega
+              simp [List.filter_cons, h, h'] <;> omega
+            · have h' : t < m := by omega
+              simp [List.filter_cons, h, h'] <;> omega
         #guard offered [95, 40, 65] 50 == (2, 1)                          -- py: citations_from({"sections": [{"kind": "facts", "items": [{"status": "verified", "predicate": "p", "object": "a", "subject": "s"}, {"status": "disputed"}, {"status": ""}]}]}, 50)[1] == 1
     """
     cites: list[dict] = []

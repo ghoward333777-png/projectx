@@ -109,6 +109,7 @@ def out_url(iid: str, name: str) -> str:
     """the URL a creation's file is served at
 
     Lean:
+        def outUrl (id file : String) : String := "/out/" ++ id ++ "/" ++ file
         #guard outUrl "a" "b" == "/out/a/b"                                    -- py: out_url("a", "b") == "/out/a/b"
     """
     return "/out/" + iid + "/" + name
@@ -118,6 +119,7 @@ def log_line(entry: dict) -> str:
     """one conversation-log line: compact JSON and a newline
 
     Lean:
+        def logLine (json : String) : String := json ++ "\n"
         #guard logLine "{}" == "{}\n"                                         -- py: log_line({}) == "{}\n"
     """
     return json.dumps(entry, ensure_ascii=False) + "\n"
@@ -163,7 +165,6 @@ class Store:
         """a new creation folder with its files and a meta.json; returns its id and file URLs (/out/<id>/<file>)
 
         Lean:
-            def outUrl (id file : String) : String := "/out/" ++ id ++ "/" ++ file
             #guard outUrl "000001-x" "image.svg" == "/out/000001-x/image.svg"   -- py: out_url("000001-x", "image.svg") == "/out/000001-x/image.svg"
         """
         with self.lock:
@@ -213,7 +214,6 @@ class Store:
         """one line appended to the conversation log (JSON lines)
 
         Lean:
-            def logLine (json : String) : String := json ++ "\n"
             #guard (logLine "{}").endsWith "\n"                               -- py: log_line({}) == "{}\n"
         """
         with self.lock, open(os.path.join(self.root, "conversation.jsonl"), "a", encoding="utf-8") as f:

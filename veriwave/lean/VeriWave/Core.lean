@@ -50,7 +50,7 @@ theorem Rng.below_lt (r : Rng) (n : Nat) (h : 0 < n) : (r.below n).1 < n := Nat.
 def Rng.between (r : Rng) (lo hi : Int) : Int × Rng :=
   (lo + ((r.below ((hi - lo).toNat + 1)).1 : Int), (r.below ((hi - lo).toNat + 1)).2)
 theorem Rng.between_ge (r : Rng) (lo hi : Int) : lo ≤ (r.between lo hi).1 := by
-  unfold Rng.between; omega
+  simp only [Rng.between]; omega
 
 -- Rng.pick (vw/core.py:111)
 def Rng.pick (r : Rng) (items : List String) : String × Rng :=
