@@ -181,7 +181,7 @@ async function loadBulk() {
   const picked = new Set($$("[data-bk]:checked").map(b => b.dataset.bk));
   $("#bk-agents").max = r.max_agents || 16;
   $("#bk-full").textContent = "⚡ Full speed (" + (r.max_agents || 16) + " agents)";
-  $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total_gathered ?? r.total)}</b> facts gathered</span>` + (r.staged ? `<span class="pill" title="Facts are read and kept straight away, then filed into the dataset at the end of each part of the download (Wikidata parts are 1 GB, so this takes a while). Filed facts are what answers use.">${fmt(r.total)} filed · ${fmt(r.staged)} being filed</span>` : "") + `<span class="pill">${QB.rate(r.facts_per_min)} (last 10 min)</span>` +
+  $("#bk-summary").innerHTML = `<span class="pill"><b>${fmt(r.total)}</b> facts</span>` + ((r.drops || []).length ? `<details class="small"><summary>${r.drops.length} time(s) a count went down in the last 2 hours — why</summary><ul>${r.drops.map(x => `<li>${esc(x.dataset)}: ${fmt(x.from)} → ${fmt(x.to)} (−${fmt(x.fell)}) — ${esc(x.cause)}</li>`).join("")}</ul></details>` : "") + (r.staged ? `<span class="pill" title="Facts read but not yet filed into their dataset. Each batch is sampled against the facts already held; only new ones will be added, so the total never falls when they are filed.">+ about ${fmt(Math.max(0, (r.total_gathered ?? r.total) - r.total))} new being filed (${fmt(r.staged)} read)</span>` : "") + `<span class="pill">${QB.rate(r.facts_per_min)} (last 10 min)</span>` +
     `<span class="pill">+${fmt(r.last_hour)} in the last hour</span><span class="pill">${bytes(r.bytes)} on disk</span>` +
     `<span class="pill">${r.runner.alive && String(r.runner.note || "").startsWith("stopping") ? '<span class="badge warn">◐ stopping</span> ' + esc(r.runner.note.replace(/^stopping: /, ""))
       : r.runner.alive ? '<span class="badge good">● harvesting</span> ' + esc(r.runner.note || "") : '<span class="badge">○ stopped</span>'}</span>`;
@@ -191,7 +191,7 @@ async function loadBulk() {
       <td class="small">${esc(d.source)}<br>${esc(d.licence)}${d.approved ? "" : `<br><span class="badge bad">not approved</span> ${esc(d.approval)}`}</td>
       <td><span class="badge ${BK_STATE[d.state] || ""}">${esc(d.state)}</span>${d.error ? `<div class="small muted">${esc(d.error)}</div>` : ""}${d.working_copy
         ? `<div class="small muted">working on C:, ${d.saved_to_data_drive ? "saved to D: " + QB.dur(Date.now() / 1000 - d.saved_to_data_drive) + " ago" : "not yet saved to D:"}</div>` : ""}</td>
-      <td>${fmt(d.gathered ?? d.facts)}<div class="small muted">${d.staged ? fmt(d.facts) + " filed · " : ""}${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_10min / 10)}<br>+${fmt(d.last_hour)} in the last hour</td>
+      <td>${fmt(d.facts)}<div class="small muted">${d.staged ? "+ about " + fmt(Math.max(0, (d.gathered ?? d.facts) - d.facts)) + " new of " + fmt(d.staged) + " read · " : ""}${d.doing ? esc(d.doing) + " · " : ""}${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_10min / 10)}<br>+${fmt(d.last_hour)} in the last hour</td>
       <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
   // the harvest in one sentence
   const hl = r.headline || {}; const hb = $("#bk-headline");

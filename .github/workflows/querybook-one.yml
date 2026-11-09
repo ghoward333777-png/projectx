@@ -76,7 +76,7 @@ jobs:
   windows-harvest:
     # The user's report: harvesting runs about a minute, then stops. Reproduced as the user runs it: QueryBook.zip,
     # the bundled Python only, one window, Start pressed in the Control Panel — then watched for 6 minutes.
-    name: Harvesting keeps going on Windows (QueryBook.zip, 10 min)
+    name: Harvesting keeps going on Windows (QueryBook.zip, 25 min, no stalls, no falls)
     runs-on: windows-latest
     defaults:
       run:
@@ -93,7 +93,7 @@ jobs:
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
           Set-Content -Path "$env:RUNNER_TEMP\user\QueryBook\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n="FreeGB";e={[math]::Round($_.Free/1GB,1)}}
-      - name: Start QueryBook, press Start harvesting, watch for 10 minutes
+      - name: Start QueryBook, press Start harvesting, watch for 25 minutes
         run: |
           $app = "$env:RUNNER_TEMP\user\QueryBook"
           $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\QueryBook-Shell\shell.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\shell.log" -RedirectStandardError "$env:RUNNER_TEMP\shell.err"
@@ -102,7 +102,7 @@ jobs:
             try { $s = Invoke-RestMethod http://127.0.0.1:8090/api/shell/status; if (($s.programs | Where-Object { $_.state -ne "running" }).Count -eq 0) { break } } catch { }
           }
           $s.programs | ForEach-Object { Write-Host "$($_.id) $($_.state) $($_.url)" }
-          python querybook-one/tools/harvest_watch.py --start --minutes 10 --every 30 --data "$env:RUNNER_TEMP\QB"
+          python querybook-one/tools/harvest_watch.py --start --minutes 25 --every 30 --max-still 10 --data "$env:RUNNER_TEMP\QB"
           $code = $LASTEXITCODE
           Write-Host "--- python processes"; Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ForEach-Object { Write-Host $_.ProcessId $_.CommandLine.Substring(0, [math]::Min(220, $_.CommandLine.Length)) }
           Write-Host "--- shell status"; (Invoke-RestMethod http://127.0.0.1:8090/api/shell/status).programs | ForEach-Object { Write-Host $_.id $_.state; $_.output }

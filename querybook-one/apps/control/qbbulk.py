@@ -31,12 +31,17 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.34.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.35.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
 STAGE_MIN = 5_000_000              # 1.33: staged facts are folded into the keyed tables once at least this many wait, or half
                                    # the shard's own size, whichever is more — and at the end of every part
+STAGE_CAP = 20_000_000             # 1.35: …but never more than this at once. Half of a 100-million-fact shard is 50 million
+                                   # facts in one transaction: hours on a data drive, the agent's write slot held all along,
+                                   # and every other agent waiting for that slot — the "many hours, no facts" stall
+MERGE_SLOTS_EXTERNAL, MERGE_SLOTS_SYSTEM = 1, 2   # 1.35: agents filing (folding a stage) at once — each takes MERGE_CACHE_MB
+WAIT_MAX_S = 6 * 3600              # 1.35: an agent "waiting" this long with no progress at all is ended and restarted
 CACHE_MB = 128                     # SQLite page cache per agent
 MERGE_CACHE_MB = 1024              # 1.33: the page cache while a stage is folded in (the subject index cannot be visited in
                                    # order, so it must stay in memory or every insert reads a page); back to CACHE_MB after
@@ -1983,6 +1988,36 @@ class WriteSlots(Slots):
             time.sleep(0.05)
 
 
+class MergeSlots(Slots):
+    """1.35: at most N agents file (fold their stage into the keyed tables) at once, in a pool of its own: an agent filing
+    for half an hour no longer holds a write slot, so every other agent keeps appending batches meanwhile. try_take() never
+    waits (an agent whose turn has not come keeps staging and tries again next batch); take() waits (the end of a part)."""
+
+    def __init__(self, commons_folder, n):
+        super().__init__(commons_folder)
+        self.n = max(1, int(n or 1))
+
+    def try_take(self):
+        for i in range(self.n):
+            f = self._lock("disk-merge", i)
+            if f:
+                return f
+        return None
+
+    def take(self, stop=None):
+        while True:
+            f = self.try_take()
+            if f or (stop and stop()):
+                return f
+            time.sleep(0.5)
+
+
+def merge_slots(commons_folder):
+    drive = os.path.splitdrive(os.path.abspath(commons_folder))[0].upper()
+    system = (os.environ.get("SystemDrive") or "").upper()
+    return MERGE_SLOTS_EXTERNAL if drive and system and drive != system else MERGE_SLOTS_SYSTEM
+
+
 def write_slots(commons):
     """the setting bulk:write_slots, else automatic: 2 when the shared folder is on another drive than the system's own
     (an external disk), no limit on the system drive"""
@@ -1996,6 +2031,7 @@ def write_slots(commons):
 
 class Shard:
     wslots = None
+    mslots = None
 
     def __init__(self, commons_folder, key, path=None):
         os.makedirs(os.path.join(commons_folder, FOLDER), exist_ok=True)
@@ -2039,6 +2075,7 @@ class Shard:
         slot = self.wslots.take() if self.wslots else None
         try:
             t1 = _NS(); self.walls = {"sorted": _WALL()}
+            new_est = self._new_estimate(rows)                        # before the append: is the sample already held?
             self.db.executemany("INSERT INTO stage(fp, s, p, o, part, row) VALUES(?,?,?,?,?,?)", rows)
             t2 = _NS(); TR.add("db_insert", t2 - t1, len(rows)); self.walls["inserted"] = _WALL()
             if links:
@@ -2047,37 +2084,70 @@ class Shard:
             self.db.execute("UPDATE parts SET rows = ? WHERE id = ?", (rows_done, part_id))
             staged = (self.meta("staged", 0) or 0) + len(rows)
             self.set_meta("staged", staged)
+            self.set_meta("staged_new", (self.meta("staged_new", 0) or 0) + new_est)
             self._progress()
             t4 = _NS(); TR.add("db_progress", t4 - t3)
             self.db.commit()                                          # the disk: one sequential WAL append
             TR.add("db_commit", _NS() - t4, 1, len(rows)); self.walls["committed"] = _WALL()
-            if staged >= max(STAGE_MIN, (self.meta("facts", 0) or 0) // 2):
-                return self._merge()
-            return 0
         finally:
             if slot is not None:
                 self.wslots.release(slot)
             AGENT["waiting"] = None
             TR.add("write", _NS() - t)
+        # 1.35: filing happens AFTER the write slot is given back, in the merge pool, and only when it is this agent's turn —
+        # otherwise it keeps staging and tries again with its next batch (no agent ever waits here)
+        if staged >= min(STAGE_CAP, max(STAGE_MIN, (self.meta("facts", 0) or 0) // 2)):
+            ms = self.mslots.try_take() if self.mslots else None
+            if ms is None and self.mslots:
+                TR.event("merge_deferred", staged=staged, why="another agent is filing; this one keeps reading and staging")
+                return 0
+            try:
+                AGENT["waiting"] = "filing %s facts into the dataset" % format(staged, ",")
+                return self._merge()
+            finally:
+                AGENT["waiting"] = None
+                if self.mslots:
+                    self.mslots.release(ms)
+        return 0
+
+    NEW_SAMPLE = 1000
+
+    def _new_estimate(self, rows):
+        """1.35: about how many of these facts are new — a sample of up to 1,000 of them looked up in the facts already held
+        (the fingerprint index: a few page reads each). Shown as 'about N new' so a re-read of facts held already (the
+        dump read again after a restart, a dataset harvested before) never inflates the total that then falls when filed."""
+        if not rows:
+            return 0
+        held = self.meta("facts", 0) or 0
+        if not held:
+            return len(rows)
+        step = max(1, len(rows) // self.NEW_SAMPLE)
+        sample = [r[0] for r in rows[::step]][:self.NEW_SAMPLE]
+        hits = 0
+        for i in range(0, len(sample), 500):
+            chunk = sample[i:i + 500]
+            hits += self.db.execute("SELECT count(*) FROM facts WHERE fp IN (%s)" % ",".join("?" * len(chunk)), chunk).fetchone()[0]
+        return int(round(len(rows) * (1 - hits / max(1, len(sample)))))
 
     def _progress(self):
         """the running total for the rate: facts kept plus facts staged (the stage is counted the moment it is written)"""
         now = time.time()
         self.db.execute("INSERT OR REPLACE INTO progress(at, facts) VALUES(?, ?)",
-                        (now, (self.meta("facts", 0) or 0) + (self.meta("staged", 0) or 0)))
+                        (now, (self.meta("facts", 0) or 0) + (self.meta("staged_new", 0) or 0)))   # 1.35: new facts only
         self.db.execute("DELETE FROM progress WHERE at < ?", (now - 2 * 86400,))
 
     def merge(self):
         """fold every staged fact into the keyed tables (the end of a part, before dedupe); returns the new facts"""
         if not self.db.execute("SELECT 1 FROM stage LIMIT 1").fetchone() and not self.meta("staged", 0):
             return 0
-        AGENT["waiting"] = "writing to the disk"
-        slot = self.wslots.take() if self.wslots else None
+        AGENT["waiting"] = "waiting for its turn to file (another dataset is filing)"
+        slot = self.mslots.take() if self.mslots else None      # 1.35: the merge pool, not a write slot
         try:
+            AGENT["waiting"] = "filing %s facts into the dataset" % format(self.meta("staged", 0) or 0, ",")
             return self._merge()
         finally:
             if slot is not None:
-                self.wslots.release(slot)
+                self.mslots.release(slot)
             AGENT["waiting"] = None
 
     def _merge(self):
@@ -2109,6 +2179,7 @@ class Shard:
         self.db.execute("DELETE FROM stage_links")
         self.set_meta("facts", (self.meta("facts", 0) or 0) + new)
         self.set_meta("staged", 0)
+        self.set_meta("staged_new", 0)
         self._progress()
         self.db.commit()
         return new
@@ -2188,6 +2259,7 @@ def run_dataset(commons_folder, key, max_rows=None):
     t = _NS()
     sh = Shard(commons_folder, key, work_path(commons_folder, key) if on_c else None)
     sh.wslots = None if on_c else WriteSlots(commons_folder, write_slots(run.commons))
+    sh.mslots = MergeSlots(commons_folder, merge_slots(sh.path if on_c else commons_folder))
     TR.add("open_shard", _NS() - t)
     TR.event("run", phase="start", dataset=key, app=ds.app, sample=TR.sample, max_rows=max_rows, folder=commons_folder)
     fpr = fingerprinter(AREA[ds.app])
@@ -2457,6 +2529,16 @@ RECHECK_DONE_S = 24 * 3600                      # a finished dataset is looked a
 SUPERVISE_TICK_S = 2
 
 
+def _agent_alive_info(commons_folder, key):
+    """the agent's own heartbeat (what it is doing right now), or None"""
+    try:
+        with open(os.path.join(commons_folder, FOLDER, "_agents", key + ".json")) as f:
+            a = json.load(f)
+        return a if time.time() - (a.get("at") or 0) < 120 else None
+    except (OSError, ValueError):
+        return None
+
+
 def _alive_dir(commons_folder):
     d = os.path.join(commons_folder, FOLDER, "_agents")
     os.makedirs(d, exist_ok=True)
@@ -2573,12 +2655,18 @@ class Supervisor:
                 a = None
             if a:
                 prog = (a.get("meter"), a.get("rows"))
-                if prog != info["progress"] or a.get("waiting"):
-                    info["progress"], info["changed"] = prog, now
+                if prog != info["progress"]:
+                    info["progress"], info["changed"], info["waiting_since"] = prog, now, None
+                elif a.get("waiting"):                   # waiting on purpose (filing, a connection) is not a stall…
+                    info["waiting_since"] = info.get("waiting_since") or now
+                    if now - info["waiting_since"] < WAIT_MAX_S:   # …unless it lasts 6 hours without any progress at all
+                        info["changed"] = now
             silent = (now - (a or {}).get("at", info["started"])) > SILENT_S
             stalled = (now - info["changed"]) > STALL_S
             if silent or stalled:
-                why = ("no sign of life for %d min" % (SILENT_S // 60)) if silent else ("no progress for %d min" % (STALL_S // 60))
+                why = ("no sign of life for %d min" % (SILENT_S // 60)) if silent else \
+                      ("waiting for %d h without any progress (%s)" % (WAIT_MAX_S // 3600, (a or {}).get("waiting")) if info.get("waiting_since")
+                       and now - info["waiting_since"] >= WAIT_MAX_S else "no progress for %d min" % (STALL_S // 60))
                 self.kill(pr.pid)
                 pr.join(10)
                 self._finish(key, None, why + " — ended and restarted where it stopped")
@@ -2798,7 +2886,8 @@ def status(commons_folder, commons=None):
                 db = _ro(p)
                 meta = {k: json.loads(v) for k, v in db.execute("SELECT key, value FROM meta")}
                 row.update(state=meta.get("state", "not started"), facts=meta.get("facts", 0) or 0, error=meta.get("error"),
-                           staged=meta.get("staged", 0) or 0)
+                           staged=meta.get("staged", 0) or 0,
+                           staged_new=meta.get("staged_new", meta.get("staged", 0)) or 0)   # 1.35: about this many of them are new
                 pgm = meta.get("progress")
                 try:                                    # the side file is newer between batches
                     with open(p + ".progress") as f:
@@ -2842,10 +2931,15 @@ def status(commons_folder, commons=None):
             row.update(download_status(commons_folder, commons))
         if row["facts"] and not row.get("count_from"):
             _LAST_COUNT[(commons_folder, key)] = row["facts"]
-        # gathered = filed + staged. Staged facts are folded into the keyed tables only at the end of a part (a Wikidata
-        # part is 1 GB, a long while), so a count of filed facts alone stands still for minutes on end and harvesting
-        # looks stopped while millions of facts are being gathered. Every count the screen shows uses gathered.
-        row["gathered"] = (row["facts"] or 0) + (row.get("staged") or 0)
+        # gathered = filed + the NEW facts among those staged (1.35: estimated from a sample of each batch). Staged facts
+        # are filed only at the end of a part or every 5-20 million, so filed alone stands still for long stretches; but
+        # adding every staged fact (1.34.1) counted facts the store already holds, and the total then FELL when they were
+        # filed and skipped — a re-read of the dump on a store of a billion showed 1,004 M, then 1,001 M. Never again:
+        # gathered only counts facts that will be kept.
+        row["gathered"] = (row["facts"] or 0) + min(row.get("staged_new") or 0, row.get("staged") or 0)
+        al = _agent_alive_info(commons_folder, key)
+        if al and al.get("waiting") and row["state"] == "running":
+            row["doing"] = al["waiting"]                   # "filing 20,000,000 facts into the dataset", "a download connection"…
         out.append(row)
     _count_ledger(commons_folder, out, now)
     _save_counts(commons_folder, out)
@@ -3037,13 +3131,16 @@ def headline(st):
     fpm = st.get("facts_per_min") or 0
     direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
     why = ""
+    filing = [d for d in st["datasets"] if str(d.get("doing") or "").startswith("filing")]
+    if filing:                                        # 1.35: say so — the rate dips while staged facts are filed, nothing stopped
+        why = " Filing now: %s." % "; ".join("%s (%s)" % (d["key"], d["doing"].replace(" into the dataset", "")) for d in filing[:3])
     if direct:
-        why = " Slow because %d dataset(s) write straight to D: (no room on C:)." % len(direct)
+        why += " Slow because %d dataset(s) write straight to D: (no room on C:)." % len(direct)
     elif fpm < 1_000_000:
         running = [d for d in st["datasets"] if d["state"] == "running"]
         idle = [d for d in running if not d["last_10min"]]
         if running and len(idle) > len(running) / 2:
-            why = " %d of %d running datasets added nothing in 10 minutes — most are waiting for a download connection " \
+            why += " %d of %d running datasets added nothing in 10 minutes — most are waiting for a download connection " \
                   "(the servers allow only a few at a time) or still finishing their first batch." % (len(idle), len(running))
     return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
 
@@ -4475,6 +4572,9 @@ def _supervisor_tests():
             elif script.get(self.args[1]) == "stall" and not self.ended.is_set():
                 with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
                     json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": None}, f)
+            elif script.get(self.args[1]) == "filing" and not self.ended.is_set():
+                with open(os.path.join(_alive_dir(self.args[0]), self.args[1] + ".json"), "w") as f:
+                    json.dump({"at": CLOCK[0], "pid": self.pid, "meter": 5, "rows": 5, "waiting": "filing 20,000,000 facts into the dataset"}, f)
             return not self.ended.is_set()
 
         def join(self, t=None):
@@ -4522,6 +4622,23 @@ def _supervisor_tests():
            sup.fails["a"] > fails_before and "a" in sup.queue and sup.queue["a"] - time.time() <= BACKOFF_S[-1] + 1, sup.fails["a"])
         sup.stop_all(grace=0)
         ok("supervisor: Stop ends every agent and starts nothing new", not sup.running and not sup.queue)
+        # 1.35: filing (waiting on purpose) is left alone past 15 minutes, but not for ever
+        script["f"] = "filing"
+        sup2 = Supervisor(cf, ["f"], 1, mp=MP, kill=kill)
+        sup2.check(CLOCK[0])
+        for _ in range(4):
+            CLOCK[0] += STALL_S
+            sup2.check(CLOCK[0])
+        ok("1.35 supervisor: an agent filing for an hour (no new rows, but filing) is left alone",
+           "f" in sup2.running and not any(e["what"] == "ended" for e in sup2.events), sup2.events[-2:])
+        CLOCK[0] += WAIT_MAX_S
+        sup2.check(CLOCK[0])
+        CLOCK[0] += STALL_S + 5
+        sup2.check(CLOCK[0])
+        endf = [e for e in sup2.events if e["what"] == "ended" and e["dataset"] == "f"]
+        ok("1.35 supervisor: …but waiting 6 hours without any progress at all is ended and restarted, with the reason",
+           endf and "6 h without any progress" in endf[0]["why"] and "filing" in endf[0]["why"], endf)
+        sup2.stop_all(grace=0)
         ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
            next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
         # re-routes between the internal drive (working copies) and the data drive
@@ -4731,6 +4848,40 @@ def _supervisor_tests():
         row_ = next(d for d in st_["datasets"] if d["key"] == "calendar-scaffold")
         ok("staged facts count as gathered on the screen the moment they are read (filed stays the keyed count)",
            row_["facts"] == 0 and row_["staged"] == 3 and row_["gathered"] == 3 and st_["total_gathered"] == 3 and st_["total"] == 0, row_)
+        # 1.35: facts the store holds already, read again, are not counted as gathered — the total never falls when filed
+        sg = Shard(cf, "calendar-scaffold")
+        sg.merge()
+        held_ = sg.meta("facts")
+        sg.write(pg_, [(k(10 + i), "s%d" % i, 1, "o", pg_, 10 + i) for i in range(3)], 6)       # the same three again
+        sg.write(pg_, [(k(50 + i), "t%d" % i, 1, "o", pg_, 20 + i) for i in range(2)], 8)       # two new ones
+        sg.db.close()
+        r2_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+        sg = Shard(cf, "calendar-scaffold"); sg.merge(); after_ = sg.meta("facts"); sg.db.close()
+        r3_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+        ok("1.35: facts already held, read again, are not counted as new (sampled); only the new ones are, and filing them "
+           "never makes the total fall", held_ == 3 and r2_["staged"] == 5 and r2_["gathered"] == 5 and after_ == 5
+           and r3_["gathered"] == 5 and r3_["gathered"] >= r2_["gathered"], (held_, r2_.get("staged"), r2_.get("gathered"), after_))
+        # 1.35: filing waits its turn in its own pool and never blocks an agent's next batch
+        global STAGE_MIN, STAGE_CAP
+        old_min, old_cap = STAGE_MIN, STAGE_CAP
+        STAGE_MIN = STAGE_CAP = 4
+        try:
+            sm = Shard(cf, "mit-ocw")
+            sm.mslots = MergeSlots(cf, 1)
+            pm = sm.part("m1", "file://m")[0]
+            busy = MergeSlots(cf, 1).try_take()                # another agent is filing
+            got1 = sm.write(pm, [(k(100 + i), "u", 1, "o", pm, i) for i in range(5)], 5)
+            staged1 = sm.meta("staged")
+            MergeSlots(cf, 1).release(busy)
+            got2 = sm.write(pm, [(k(200 + i), "v", 1, "o", pm, i) for i in range(2)], 7)
+            ok("1.35: while another agent files, an agent keeps staging (its batch is written, no wait); it files on its "
+               "next batch once the pool is free", busy is not None and got1 == 0 and staged1 == 5 and got2 == 7
+               and sm.meta("facts") == 7 and sm.meta("staged") == 0, (busy is not None, got1, staged1, got2, sm.meta("facts")))
+            sm.db.close()
+        finally:
+            STAGE_MIN, STAGE_CAP = old_min, old_cap
+        ok("1.35: no filing ever takes more than 20 million facts at once (half a big shard used to be one transaction)",
+           min(STAGE_CAP, max(STAGE_MIN, 400_000_000 // 2)) == 20_000_000)
     finally:
         shutil.rmtree(cf, ignore_errors=True)
     # 1.34 safeguards: the copier never shrinks the home copy; a restore shows the full count; the backup is a copy at Start

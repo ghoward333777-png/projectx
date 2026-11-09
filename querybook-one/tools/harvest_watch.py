@@ -46,6 +46,8 @@ def main() -> int:
         print("Start pressed:", r.get("summary"))
     t0, seen, last, facts0 = time.time(), set(), {}, None
     alive_samples, agent_samples = 0, 0
+    top, top_at, falls, longest_still, filed0, filed_last = None, time.time(), [], 0.0, None, None
+    max_still = float(arg("--max-still", "10")) * 60
     while time.time() - t0 < minutes * 60:
         try:
             b = get(panel + "/api/bulk")
@@ -56,8 +58,22 @@ def main() -> int:
         rs = b.get("runner") or {}
         age = time.time() - float(rs.get("heartbeat") or 0) if rs.get("heartbeat") else None
         running = rs.get("running") or []
-        facts = b.get("total_gathered", b.get("total"))            # gathered = filed + staged (what the screen counts)
+        facts = b.get("total_gathered", b.get("total"))            # gathered = filed + new staged (what the screen counts)
         facts0 = facts if facts0 is None else facts0
+        filed0 = b.get("total") if filed0 is None else filed0
+        filed_last = b.get("total")
+        if facts is not None:                       # care of records: the count must never fall; stalls: how long it stood still
+            if top is not None and facts < top:
+                falls.append((round(time.time() - t0), top, facts))
+                print("         !! THE TOTAL FELL: %s -> %s" % (top, facts))
+            if top is None or facts > top:
+                top, top_at = facts, time.time()
+            longest_still = max(longest_still, time.time() - top_at)
+        for x in b.get("drops") or []:
+            k_ = ("drop", x.get("at"), x.get("dataset"))
+            if k_ not in seen:
+                seen.add(k_)
+                print("         count went down: %s %s -> %s: %s" % (x.get("dataset"), x.get("from"), x.get("to"), x.get("cause")))
         alive = age is not None and age < 60
         alive_samples += alive
         agent_samples += bool(running)
@@ -69,10 +85,11 @@ def main() -> int:
         for d in b.get("datasets") or []:
             if d.get("key") in running or d.get("staged") or d.get("last_10min"):
                 pg = d.get("progress") or {}
-                print("         %-20s %-9s filed %-10s staged %-10s +10min %-9s part %s %s%% %s" % (
-                    d["key"], d.get("state"), d.get("facts"), d.get("staged"), d.get("last_10min"), str(pg.get("part") or "")[-18:],
+                print("         %-20s %-9s filed %-10s staged %-10s new~ %-10s +10min %-9s part %s %s%% %s %s" % (
+                    d["key"], d.get("state"), d.get("facts"), d.get("staged"), d.get("staged_new"), d.get("last_10min"), str(pg.get("part") or "")[-18:],
                     "—" if pg.get("fraction") is None else round(100 * pg["fraction"], 1),
-                    "" if not pg.get("rate") else "%.1f %s/s" % (pg["rate"] / (1e6 if pg.get("unit") == "bytes" else 1), "MB" if pg.get("unit") == "bytes" else pg.get("unit") or "")))
+                    "" if not pg.get("rate") else "%.1f %s/s" % (pg["rate"] / (1e6 if pg.get("unit") == "bytes" else 1), "MB" if pg.get("unit") == "bytes" else pg.get("unit") or ""),
+                    ("[" + d["doing"] + "]") if d.get("doing") else ""))
         for e in rs.get("events") or []:
             k = (e.get("at"), e.get("dataset"), e.get("what"))
             if k in seen:
@@ -96,9 +113,13 @@ def main() -> int:
             except OSError:
                 pass
     grew = (last.get("facts") or 0) > (facts0 or 0)
-    ok = bool(last.get("alive")) and grew
+    still_ok = longest_still <= max_still
+    ok = bool(last.get("alive")) and grew and not falls and still_ok
+    print("Longest stretch with no new facts: %.1f min (limit %.0f) · times the total fell: %d · filed %s -> %s" % (
+        longest_still / 60, max_still / 60, len(falls), filed0, filed_last))
     print("VERDICT: harvesting %s after %.0f min — runner beating in %d samples, agents running in %d; facts gathered %s -> %s" % (
-        "is still RUNNING and gathering" if ok else "has STOPPED" if not last.get("alive") else "is running but GATHERED NOTHING",
+        "is still RUNNING and gathering" if ok else "has STOPPED" if not last.get("alive") else "is running but GATHERED NOTHING" if not grew
+        else "LOST COUNT (the total fell)" if falls else "STALLED for %.0f min" % (longest_still / 60),
         minutes, alive_samples, agent_samples, facts0, last.get("facts")))
     return 0 if ok else 1
 
