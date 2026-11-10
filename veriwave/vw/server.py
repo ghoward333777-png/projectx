@@ -15,7 +15,8 @@ POST /api/vw/querybook/restart {id}
 
 Lean:
     inductive Handler where
-      | page | status | features | feature | items | zip | out | traces | trace | packet | chat | answer | code | create | restart | notFound
+      | page | status | features | feature | items | zip | out | traces | trace | packet | evals | eval | chat | answer | code | create
+      | restart | evalRun | notFound
     deriving Repr, BEq, DecidableEq
 """
 from __future__ import annotations
@@ -28,7 +29,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import factstore, registry, store, trace
+from . import evaluate, factstore, registry, store, trace
 from .backends import Claude
 from .factstore import FactStore, default_root
 from .model import VERSION, VeriWave
@@ -52,10 +53,12 @@ def dispatch(method: str, path: str) -> str:
             else if p == "/api/vw/status" then .status else if p == "/api/vw/features" then .features
             else if p == "/api/vw/feature" then .feature else if p == "/api/vw/items" then .items
             else if p == "/api/vw/zip" then .zip else if p == "/api/vw/traces" then .traces else if p == "/api/vw/trace" then .trace
-            else if p == "/api/vw/packet" then .packet else if p.startsWith "/out/" then .out else .notFound
+            else if p == "/api/vw/packet" then .packet else if p == "/api/vw/evals" then .evals else if p == "/api/vw/eval" then .eval
+            else if p.startsWith "/out/" then .out else .notFound
           else if m == "POST" then
             if p == "/api/vw/chat" then .chat else if p == "/api/vw/answer" then .answer else if p == "/api/vw/code" then .code
-            else if p == "/api/vw/create" then .create else if p == "/api/vw/querybook/restart" then .restart else .notFound
+            else if p == "/api/vw/create" then .create else if p == "/api/vw/querybook/restart" then .restart
+            else if p == "/api/vw/eval/run" then .evalRun else .notFound
           else .notFound
         theorem post_never_serves_files (p : String) : dispatch "POST" p ≠ .out ∧ dispatch "POST" p ≠ .page := by
           unfold dispatch; constructor <;> simp <;> (repeat' split) <;> simp
@@ -68,13 +71,13 @@ def dispatch(method: str, path: str) -> str:
             return "page"
         table = {"/api/vw/status": "status", "/api/vw/features": "features", "/api/vw/feature": "feature",
                  "/api/vw/items": "items", "/api/vw/zip": "zip", "/api/vw/traces": "traces", "/api/vw/trace": "trace",
-                 "/api/vw/packet": "packet"}
+                 "/api/vw/packet": "packet", "/api/vw/evals": "evals", "/api/vw/eval": "eval"}
         if path in table:
             return table[path]
         return "out" if path.startswith("/out/") else "notFound"
     if method == "POST":
         table = {"/api/vw/chat": "chat", "/api/vw/answer": "answer", "/api/vw/code": "code", "/api/vw/create": "create",
-                 "/api/vw/querybook/restart": "restart"}
+                 "/api/vw/querybook/restart": "restart", "/api/vw/eval/run": "evalRun"}
         return table.get(path, "notFound")
     return "notFound"
 
@@ -143,6 +146,8 @@ class App:
         """
         self.conn = conn
         self.model = model
+        self.eval_state: dict = {"running": False, "done": 0, "total": 0, "last": "", "error": ""}
+        self.eval_lock = threading.Lock()
 
     def get(self, path: str, q: dict[str, str]) -> tuple[int, object, str]:
         """a GET request: (status, body, content type)
@@ -181,6 +186,11 @@ class App:
                         with open(full, encoding="utf-8", errors="replace") as fh:
                             files[rel] = fh.read()
             return 200, store.zip_files(files), "application/zip"
+        if h == "evals":
+            return 200, self.evals(), ""
+        if h == "eval":
+            rep = self.eval_report(q.get("name", ""))
+            return (200, rep, "") if rep is not None else (404, {"error": "No such report"}, "")
         if h == "traces":
             return 200, {"traces": self.model.trace_list(int_param(q.get("limit"), 100, 1, 200)), "logic_types": trace.LOGIC_TYPES}, ""
         if h == "trace":
@@ -238,12 +248,108 @@ class App:
             if kind in ("text", "image", "video", "audio"):
                 return 200, self.model.make(kind, prompt, engine, "Asked on the Create: " + kind + " screen.", ""), ""
             return 400, {"error": "kind must be text, image, video or audio"}, ""
+        if h == "evalRun":
+            return self.eval_start(int_param(body.get("sample"), 100, 10, 2000), int_param(body.get("seed"), 1, 0, 1000000))
         if h == "restart":
             try:
                 return 200, self.conn.restart(str(body.get("id") or "")), ""
             except (KeyError, OSError) as e:
                 return 404, {"error": str(e)}, ""
         return 404, {"error": "not found"}, ""
+
+    def eval_dir(self) -> str:
+        """where readiness reports are kept: the creations folder's evals/ (D:\\QB\\veriwave\\evals on the test server)
+
+        Lean:
+            def evalDir (root : String) : String := root ++ "/evals"
+            #guard evalDir "D:/QB/veriwave" == "D:/QB/veriwave/evals"         -- py: evaluate.report_name(1).startswith("eval-")
+        """
+        return os.path.join(self.model.store.root, "evals")
+
+    def evals(self) -> dict:
+        """the evaluation's store, whether it may run, its progress, and every saved report's scores (newest first)
+
+        Lean:
+            #guard reportName 1 == "eval-1.json"                                -- py: evaluate.report_name(1) == "eval-1.json"
+        """
+        root = evaluate.eval_root()
+        st = self.model.facts.status()
+        reports: list[dict] = []
+        try:
+            names = sorted((n for n in os.listdir(self.eval_dir()) if n.startswith("eval-") and n.endswith(".json")), reverse=True)
+        except OSError:
+            names = []
+        for n in names[:50]:
+            rep = self.eval_report(n)
+            if rep is not None:
+                reports.append({"name": n, "at": rep.get("at"), "ok": rep.get("ok"), "error": rep.get("error", ""), "root": rep.get("root"),
+                                "facts": (rep.get("store") or {}).get("facts", 0), "summary": rep.get("summary"), "sample": rep.get("sample")})
+        return {"root": root, "store": {"root": st.get("root"), "facts": st.get("facts"), "connected": st.get("connected")},
+                "blocked": evaluate.readiness_check(st, root), "state": dict(self.eval_state), "reports": reports,
+                "phrasings": evaluate.PHRASINGS,
+                "questions_file": os.path.join(self.model.store.root, "eval-questions.jsonl")}
+
+    def eval_report(self, name: str) -> dict | None:
+        """one saved report by file name
+
+        Lean:
+            #guard okRel ["eval-1.json"] && !okRel [".."]                     -- py: store.okrel_check(["eval-1.json"]) and not store.okrel_check([".."])
+        """
+        if not store.okrel_check([name]) or not name.endswith(".json"):
+            return None
+        try:
+            with open(os.path.join(self.eval_dir(), name), encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def eval_start(self, sample: int, seed: int) -> tuple[int, object, str]:
+        """start an evaluation in the background (one at a time); it runs only against the D:\\QB store
+
+        Lean:
+            def canStart (running : Bool) (blocked : String) : Bool := !running && blocked == ""
+            #guard !canStart true "" && !canStart false "missing" && canStart false ""   -- py: evaluate.readiness_check({"root_exists": False}, "D:\\QB") != ""
+        """
+        root = evaluate.eval_root()
+        why = evaluate.readiness_check(self.model.facts.status(), root)
+        with self.eval_lock:
+            if self.eval_state["running"]:
+                return 409, {"error": "An evaluation is already running."}, ""
+            if why:
+                return 409, {"error": why}, ""
+            self.eval_state = {"running": True, "done": 0, "total": 0, "last": "", "error": ""}
+        threading.Thread(target=self.eval_worker, args=(root, sample, seed), daemon=True, name="vw-eval").start()
+        return 202, {"started": True, "root": root, "sample": sample, "seed": seed}, ""
+
+    def eval_worker(self, root: str, sample: int, seed: int) -> None:
+        """the background evaluation: sampled questions plus the person's own (eval-questions.jsonl), saved as a report
+
+        Lean:
+            #guard planSize 1 3 0 == 3                                          -- py: len(evaluate.PHRASINGS) == 3
+        """
+        def progress(done: int, total: int) -> None:
+            """record how far the evaluation has got
+
+            Lean:
+                def progressPct (done total : Nat) : Nat := if total = 0 then 0 else done * 100 / total
+                #guard progressPct 5 20 == 25                                   -- py: evaluate.percentile([25.0], 50) == 25.0
+            """
+            self.eval_state["done"] = done
+            self.eval_state["total"] = total
+        try:
+            curated = evaluate.load_curated(os.path.join(self.model.store.root, "eval-questions.jsonl"))
+            rep = evaluate.run(self.model, root, sample, seed, curated, progress)
+            os.makedirs(self.eval_dir(), exist_ok=True)
+            name = evaluate.report_name(int(rep["at"]))
+            with open(os.path.join(self.eval_dir(), name), "w", encoding="utf-8") as f:
+                json.dump(rep, f, ensure_ascii=False)
+            self.eval_state["last"] = name
+            self.eval_state["error"] = str(rep.get("error") or "")
+        except Exception as e:  # reported on the screen, never swallowed
+            self.eval_state["error"] = "Evaluation failed: " + str(e)
+        finally:
+            self.eval_state["running"] = False
 
 
 def make_handler(app: App) -> type:

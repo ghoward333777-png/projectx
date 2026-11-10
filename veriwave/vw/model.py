@@ -129,6 +129,15 @@ def factstore_dedupe(facts: list[dict]) -> list[dict]:
     return dedupe(facts)
 
 
+def verdict_norm(text: str) -> str:
+    """vw.verdict.norm with spacing collapsed: how a subject found by a shorter candidate is compared
+
+    Lean:
+        #guard ufcsNorm (norm "Rome (Q220)") == "rome"                        -- py: verdict_norm("Rome  (Q220)") == "rome"
+    """
+    return " ".join(answer.verdict.norm(text).split())
+
+
 def keep_last(n: int, items: list) -> list:
     """the last n items
 
@@ -215,11 +224,13 @@ class VeriWave:
         return understand_fallback(question)
 
     def direct_facts(self, intent: dict) -> list[dict]:
-        """facts about the question's subject read straight from the data drive (UFCS, Commons, bulk shards)
+        """facts about the question's subject read straight from the data drive (UFCS, Commons, bulk shards).
+        The whole subject first; then the shorter subjects inside it ('inception of Rome' -> 'Rome'), keeping from those
+        only the facts whose predicate shares a word with the rest of the question, so precision holds.
 
         Lean:
-            def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word"
-            #guard wantsFacts "fact" && !wantsFacts "math"                  -- py: VeriWave.wants_facts("fact") and not VeriWave.wants_facts("math")
+            def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word" || kind == "math"
+            #guard wantsFacts "fact" && wantsFacts "math" && !wantsFacts "empty"   -- py: VeriWave.wants_facts("fact") and VeriWave.wants_facts("math") and not VeriWave.wants_facts("empty")
         """
         if not VeriWave.wants_facts(str(intent.get("kind") or "")):
             return []
@@ -228,7 +239,16 @@ class VeriWave:
             found = dedupe(found + self.facts.lookup(v, 40))
             if len(found) >= 40:
                 break
-        return found
+        if found:
+            return found
+        for cand, rest in answer.subject_candidates(str(intent.get("subject") or "")):
+            hits = self.facts.lookup(cand, 40)
+            exact = [f for f in hits if verdict_norm(str(f["subject"])) == verdict_norm(cand)]
+            keep = [f for f in exact if answer.predicate_matches(str(f["predicate"]), rest)] if rest else exact
+            if keep:
+                intent["hints"] = list(intent.get("hints") or []) + rest
+                return dedupe(keep)
+        return []
 
     @staticmethod
     def wants_facts(kind: str) -> bool:
@@ -237,7 +257,7 @@ class VeriWave:
         Lean:
             #guard !wantsFacts "empty"                                       -- py: not VeriWave.wants_facts("empty")
         """
-        return kind in ("fact", "word")
+        return kind in ("fact", "word", "math")
 
     # ------------------------------------------------------------------ Answer
     def ask(self, question: str, min_trust: int, last_subject: str, engine: str, reason: str) -> dict:

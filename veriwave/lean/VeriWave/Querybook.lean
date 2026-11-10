@@ -14,8 +14,9 @@ import VeriWave.Backends
 import VeriWave.Store
 import VeriWave.Factstore
 import VeriWave.Trace
+import VeriWave.Evaluate
 
-open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore VeriWave.Trace
+open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore VeriWave.Trace VeriWave.Evaluate
 
 namespace VeriWave.Querybook
 

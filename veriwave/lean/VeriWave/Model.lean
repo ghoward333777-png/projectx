@@ -14,9 +14,10 @@ import VeriWave.Backends
 import VeriWave.Store
 import VeriWave.Factstore
 import VeriWave.Trace
+import VeriWave.Evaluate
 import VeriWave.Querybook
 
-open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore VeriWave.Trace VeriWave.Querybook
+open VeriWave.Core VeriWave.Interfaces VeriWave.Registry VeriWave.Router VeriWave.Verdict VeriWave.Answer VeriWave.Codegen VeriWave.Textgen VeriWave.Imagegen VeriWave.Audiogen VeriWave.Videogen VeriWave.Backends VeriWave.Store VeriWave.Factstore VeriWave.Trace VeriWave.Evaluate VeriWave.Querybook
 
 namespace VeriWave.Model
 
@@ -63,92 +64,95 @@ def mergeCount (fromApps fromDrive : List Hit) : Nat := (dedupeHits (fromApps ++
 -- factstore_dedupe (vw/model.py:123)
 #guard (dedupeHits []).length == 0                                   -- py: factstore_dedupe([]) == []
 
--- keep_last (vw/model.py:132)
+-- verdict_norm (vw/model.py:132)
+#guard ufcsNorm (norm "Rome (Q220)") == "rome"                        -- py: verdict_norm("Rome  (Q220)") == "rome"
+
+-- keep_last (vw/model.py:141)
 def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
 theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
   simp [keepLast]; omega
 #guard keepLast 0 ["a"] == []                                         -- py: keep_last(0, ["a"]) == []
 
--- load_traces (vw/model.py:144)
+-- load_traces (vw/model.py:153)
 #guard (keepLast 200 []).length == 0                                  -- py: load_traces("/no/such/folder", 5) == []
 
--- store_okrel (vw/model.py:166)
+-- store_okrel (vw/model.py:175)
 #guard okRel ["1-0001"]                                               -- py: store_okrel(["1-0001"]) and not store_okrel([".."])
 
--- zip_name (vw/model.py:175)
+-- zip_name (vw/model.py:184)
 def zipName (id : String) : String := id ++ ".zip"
 #guard zipName "a" == "a.zip"                                         -- py: zip_name("a") == "a.zip"
 
--- VeriWave (vw/model.py:185)
+-- VeriWave (vw/model.py:194)
 structure Model where
   claudeOn : Bool
   appsRunning : Bool
 
--- VeriWave.__init__ (vw/model.py:194)
+-- VeriWave.__init__ (vw/model.py:203)
 def Model.new (c a : Bool) : Model := ⟨c, a⟩
 
--- VeriWave.understand (vw/model.py:207)
+-- VeriWave.understand (vw/model.py:216)
 #guard fallbackSubject "Marie Curie?" == "marie curie"          -- py: understand_fallback("Marie Curie?")["subject"] == "marie curie"
 
--- VeriWave.direct_facts (vw/model.py:217)
-def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word"
-#guard wantsFacts "fact" && !wantsFacts "math"                  -- py: VeriWave.wants_facts("fact") and not VeriWave.wants_facts("math")
+-- VeriWave.direct_facts (vw/model.py:226)
+def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word" || kind == "math"
+#guard wantsFacts "fact" && wantsFacts "math" && !wantsFacts "empty"   -- py: VeriWave.wants_facts("fact") and VeriWave.wants_facts("math") and not VeriWave.wants_facts("empty")
 
--- VeriWave.wants_facts (vw/model.py:234)
+-- VeriWave.wants_facts (vw/model.py:254)
 #guard !wantsFacts "empty"                                       -- py: not VeriWave.wants_facts("empty")
 
--- VeriWave.ask (vw/model.py:243)
+-- VeriWave.ask (vw/model.py:263)
 def keepsVerdict (before after : Verdict) : Bool := before == after
 theorem rewording_keeps (v : Verdict) : keepsVerdict v v = true := by cases v <;> rfl
 
--- VeriWave.record (vw/model.py:291)
+-- VeriWave.record (vw/model.py:311)
 #guard keepLast 2 ["a", "b", "c"] == ["b", "c"]                     -- py: keep_last(2, ["a", "b", "c"]) == ["b", "c"]
 
--- VeriWave.trace_list (vw/model.py:311)
+-- VeriWave.trace_list (vw/model.py:331)
 #guard (keepLast 1 ["x"]).length == 1                               -- py: keep_last(1, ["x"]) == ["x"]
 
--- VeriWave.trace_get (vw/model.py:320)
+-- VeriWave.trace_get (vw/model.py:340)
 def findId (ids : List String) (t : String) : Bool := ids.contains t
 #guard !findId [] "x"                                               -- py: VeriWave.trace_get.__name__ == "trace_get"
 
--- VeriWave.make (vw/model.py:340)
+-- VeriWave.make (vw/model.py:360)
 def makeKinds : List String := ["code", "text", "image", "video", "audio"]
 #guard makeKinds.contains "video" && !makeKinds.contains "answer"   -- py: "video" in MAKE_KINDS and "answer" not in MAKE_KINDS
 
--- VeriWave.facts_about (vw/model.py:364)
+-- VeriWave.facts_about (vw/model.py:384)
 def takeFacts (n : Nat) (xs : List String) : List String := xs.take n
 theorem takeFacts_le (n : Nat) (xs : List String) : (takeFacts n xs).length ≤ n := List.length_take_le _ _
 
--- VeriWave.code (vw/model.py:386)
+-- VeriWave.code (vw/model.py:406)
 #guard zipName "000001-todo" == "000001-todo.zip"                -- py: zip_name("000001-todo") == "000001-todo.zip"
 
--- VeriWave.text (vw/model.py:412)
+-- VeriWave.text (vw/model.py:432)
 #guard bodyKind .poem == "verse"                                  -- py: textgen.generate_local("a poem about rain", [], [])["layout"] == "verse"
 
--- VeriWave.image (vw/model.py:438)
+-- VeriWave.image (vw/model.py:458)
 #guard safeSvg "<svg></svg>" == "<svg></svg>"                     -- py: imagegen.safe_svg("<svg></svg>") == "<svg></svg>"
 
--- VeriWave.video (vw/model.py:464)
+-- VeriWave.video (vw/model.py:484)
 #guard filmSeconds 4 == 20                                        -- py: videogen.generate_local("a video about bees")["seconds"] == 20
 
--- VeriWave.audio (vw/model.py:488)
+-- VeriWave.audio (vw/model.py:508)
 #guard planKind "music" == "music"                                -- py: audiogen.plan("a calm melody")["kind"] == "music"
 
--- VeriWave.speech (vw/model.py:504)
+-- VeriWave.speech (vw/model.py:524)
 def speechEngine (espeakNg espeak : Bool) : String := if espeakNg then "espeak-ng" else if espeak then "espeak" else ""
 #guard speechEngine false false == ""                             -- py: isinstance(VeriWave.find_espeak(), str)
 
--- VeriWave.find_espeak (vw/model.py:526)
+-- VeriWave.find_espeak (vw/model.py:546)
 #guard speechEngine true false == "espeak-ng"                     -- py: VeriWave.find_espeak() in ("", shutil.which("espeak-ng") or "", shutil.which("espeak") or "")
 
--- VeriWave.chat (vw/model.py:535)
+-- VeriWave.chat (vw/model.py:555)
 theorem chat_explicit (msg : String) (r : Route) (h : explicitRoute msg = some r) : route msg = r := route_explicit msg r h
 
--- VeriWave.converse (vw/model.py:571)
+-- VeriWave.converse (vw/model.py:591)
 def converseEngine (claude : Bool) (asked : String) : String := if claude && asked != "local" then "claude" else "local"
 #guard converseEngine false "" == "local"                          -- py: engine_for("chat", False, "") == "local"
 
--- VeriWave.status (vw/model.py:588)
+-- VeriWave.status (vw/model.py:608)
 #guard catalogSize == 67                                           -- py: len(interfaces.catalog()) == 67
 
 end VeriWave.Model

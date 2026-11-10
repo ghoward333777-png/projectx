@@ -14,6 +14,7 @@ import VeriWave.Backends
 import VeriWave.Store
 import VeriWave.Factstore
 import VeriWave.Trace
+import VeriWave.Evaluate
 import VeriWave.Querybook
 import VeriWave.Model
 import VeriWave.Server

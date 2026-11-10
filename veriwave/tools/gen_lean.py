@@ -24,7 +24,7 @@ OUT = os.path.join(ROOT, "lean", "VeriWave")
 
 # dependency order: each Lean module imports the ones before it
 ORDER = ["core", "interfaces", "registry", "router", "verdict", "answer", "codegen", "textgen", "imagegen", "audiogen",
-         "videogen", "backends", "store", "factstore", "trace", "querybook", "model", "server"]
+         "videogen", "backends", "store", "factstore", "trace", "evaluate", "querybook", "model", "server"]
 
 
 def lean_name(mod: str) -> str:

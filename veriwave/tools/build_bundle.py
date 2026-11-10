@@ -46,6 +46,14 @@ START_BAT = (
     "\"%~dp0python\\python.exe\" -X utf8 \"%~dp0app\\veriwave\\veriwave.py\" %*\r\n"
     "if errorlevel 1 pause\r\n"
 )
+EVAL_BAT = (
+    "@echo off\r\n"
+    "rem VeriWave readiness evaluation against the fact store on D:\\QB (read-only). Report: D:\\QB\\veriwave\\evals\r\n"
+    "title VeriWave readiness evaluation\r\n"
+    "cd /d \"%~dp0\"\r\n"
+    "\"%~dp0python\\python.exe\" -X utf8 \"%~dp0app\\veriwave\\evaluate.py\" %*\r\n"
+    "pause\r\n"
+)
 START_MAC = ("#!/bin/bash\n# VeriWave - double-click to start (first time: right-click > Open > Open).\n"
              "cd \"$(dirname \"$0\")\"\nexec python3 app/veriwave/veriwave.py \"$@\"\n")
 README = (
@@ -73,6 +81,10 @@ README = (
     "  If that drive is not connected, VeriWave still opens, but QueryBook's applications do not start;\r\n"
     "  connect the drive and start again, or put another folder's path in data-folder.txt.\r\n"
     "  What VeriWave makes (apps, pictures, films, audio) is saved in D:\\QB\\veriwave.\r\n\r\n"
+    "IS IT READY TO PUBLISH?\r\n"
+    "  Double-click EVALUATE-VeriWave.bat (or open Admin > Readiness in VeriWave). It asks VeriWave about real facts\r\n"
+    "  drawn from D:\\QB and scores accuracy, answer rate, wrong refusals and speed. Add your own questions in\r\n"
+    "  D:\\QB\\veriwave\\eval-questions.jsonl (example: app\\veriwave\\eval\\questions-example.jsonl).\r\n\r\n"
     "OPTIONAL\r\n"
     "  Claude engine: set the ANTHROPIC_API_KEY environment variable before starting VeriWave.\r\n"
     "  Speech: install espeak-ng (https://github.com/espeak-ng/espeak-ng/releases).\r\n"
@@ -107,10 +119,11 @@ def entries(embed_zip: bytes, qb: object) -> list[tuple[str, bytes, int]]:
     out: list[tuple[str, bytes, int]] = [
         ("VeriWave/START-VeriWave.bat", START_BAT.encode(), 0o755),
         ("VeriWave/START-VeriWave.command", START_MAC.encode(), 0o755),
+        ("VeriWave/EVALUATE-VeriWave.bat", EVAL_BAT.encode(), 0o755),
         ("VeriWave/README.txt", README.encode(), 0o644),
         ("VeriWave/app/querybook-one/apps/data-folder.txt", b"D:\\QB\r\n", 0o644),
     ]
-    for part in ("veriwave.py", "vw", "ui", "README.md", "lean", "rust", "contracts", "tools"):
+    for part in ("veriwave.py", "evaluate.py", "vw", "ui", "eval", "README.md", "lean", "rust", "contracts", "tools"):
         src = os.path.join(VW, part)
         if os.path.isdir(src):
             out += walk(src, "VeriWave/app/veriwave/" + part)

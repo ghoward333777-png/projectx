@@ -341,3 +341,75 @@ class TraceTest(unittest.TestCase):
 
     def test_packet_endpoint_only_for_connected_stores(self):
         self.assertEqual(self.app.get("/api/vw/packet", {"store": "/etc", "block": "0", "fp": "x" * 64})[0], 404)
+
+
+class EvaluateTest(unittest.TestCase):
+    """The readiness evaluation asks about real facts from the store it is pointed at, and refuses without one."""
+
+    def setUp(self):
+        import sqlite3
+        from vw import factstore
+        self.root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.root, "store"))
+        db = sqlite3.connect(os.path.join(self.root, "store", "index.sqlite"))
+        db.execute("CREATE TABLE fp (fingerprint TEXT PRIMARY KEY, block INTEGER)")
+        db.execute("CREATE TABLE nuc (fp TEXT PRIMARY KEY, subject TEXT, predicate TEXT, object TEXT, trust REAL, block INTEGER)")
+        db.execute("CREATE INDEX nuc_sp ON nuc(subject, predicate)")
+        facts = [("rome", "inception", "753 BC"), ("paris", "country", "France"), ("printing press", "inventor", "Johannes Gutenberg"),
+                 ("marie curie", "award received", "Nobel Prize in Physics"), ("mount everest", "elevation", "8849 m")]
+        for s, p, o in facts:
+            db.execute("INSERT INTO nuc VALUES (?,?,?,?,0.9,0)", (factstore.ufcs_fingerprint(s, p, o, "+"), s, p, o))
+        db.commit()
+        db.close()
+        self.data = tempfile.mkdtemp()
+        conn = Connection("none", False)
+        conn.start()
+        self.model = VeriWave(conn, store.Store(self.data), Claude("", None), FactStore(self.root))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+        shutil.rmtree(self.data, ignore_errors=True)
+
+    def test_scores_against_the_store(self):
+        from vw import evaluate
+        curated = [{"question": "Who invented the printing press?", "expect": ["Gutenberg"], "expect_unknown": False, "kind": "curated"},
+                   {"question": "What did Zorblax Quentaro invent?", "expect": [], "expect_unknown": True, "kind": "curated"}]
+        rep = evaluate.run(self.model, self.root, 5, 3, curated, None)
+        self.assertTrue(rep["ok"], rep.get("error"))
+        self.assertEqual(rep["root"], self.root)
+        self.assertEqual(rep["store"]["facts"], 5)
+        s = rep["summary"]
+        self.assertEqual(s["questions"], len(rep["rows"]))
+        self.assertGreaterEqual(s["questions"], 3 * 3 + 2)
+        self.assertEqual(s["accuracy"], 100.0)
+        self.assertEqual(s["answer_rate"], 100.0)                # 'What is the elevation of Mount Everest?' finds 'mount everest'
+        self.assertEqual(s["correct_refusals"], 1)
+        self.assertTrue(all(r["trace_id"] for r in rep["rows"]))
+
+    def test_refuses_without_the_store(self):
+        from vw import evaluate
+        rep = evaluate.run(self.model, "D:\\QB", 5, 1, [], None)      # VeriWave is connected elsewhere, not D:\QB
+        self.assertFalse(rep["ok"])
+        self.assertIn("D:\\QB", rep["error"])
+        empty = VeriWave(self.model.conn, self.model.store, Claude("", None), FactStore("/no/such/QB"))
+        self.assertIn("not connected", evaluate.run(empty, "/no/such/QB", 5, 1, [], None)["error"])
+
+    def test_evaluation_endpoints(self):
+        import time as _t
+        app = App(self.model.conn, self.model)
+        os.environ["VERIWAVE_FACTS"] = self.root
+        try:
+            code, body, _ = app.post("/api/vw/eval/run", {"sample": 10, "seed": 2})
+            self.assertEqual(code, 202, body)
+            for _ in range(200):
+                if not app.eval_state["running"]:
+                    break
+                _t.sleep(0.05)
+            d = app.get("/api/vw/evals", {})[1]
+            self.assertEqual(d["root"], self.root)
+            self.assertEqual(d["blocked"], "")
+            self.assertTrue(d["reports"][0]["ok"])
+            self.assertEqual(app.get("/api/vw/eval", {"name": d["reports"][0]["name"]})[0], 200)
+            self.assertEqual(app.get("/api/vw/eval", {"name": "../x.json"})[0], 404)
+        finally:
+            os.environ.pop("VERIWAVE_FACTS", None)

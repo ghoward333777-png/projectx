@@ -127,6 +127,9 @@ screen on demand (QueryBook page + Workspace) and the 407-feature registry brows
 - Reasoning traces (`vw/trace.py`, Admin's Reasoning screen): every prompt records each Bible logic type as ran /
   not applicable / specified-not-built. Never mark a logic type "ran" unless code actually ran it (Neuromorphic,
   Predictive, Scenario, Induction, Abduction are specified, not built).
+- Readiness evaluation (`vw/evaluate.py`, `evaluate.py`, Admin > Readiness): runs only against D:\QB (or an explicit
+  `VERIWAVE_FACTS`); sampled real facts × 3 phrasings + `eval-questions.jsonl`; reports in `<data>/evals/`.
+  Re-run it after any retrieval change: answer rate, accuracy and wrong refusals are the release measures.
 - The download is `python tools/build_bundle.py` → `dist/VeriWave.zip` (embeddable Python inside; CI tests it on Windows).
 - Before shipping, from `veriwave/`: `python -m unittest discover -s tests -t .`, and `cargo test --release` in
   `rust/vwcore`. CI (`.github/workflows/veriwave.yml`) also runs `lake build`.

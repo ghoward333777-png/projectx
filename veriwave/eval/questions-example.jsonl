@@ -1,0 +1,9 @@
+# Your own readiness questions for VeriWave, one JSON object per line. Copy this file to
+#   D:\QB\veriwave\eval-questions.jsonl
+# and edit it. "expect" lists accepted answers (any one counts; case and spacing are ignored).
+# Use "expect_unknown": true when the right response is "I don't know" (the fact is not in your store).
+{"question": "Who invented the printing press?", "expect": ["Gutenberg"]}
+{"question": "When was the printing press invented?", "expect": ["1440"]}
+{"question": "What is 15% of 80?", "expect": ["12"]}
+{"question": "60 mph to km/h", "expect": ["96.56"]}
+{"question": "What did the fictional inventor Zorblax Quentaro invent?", "expect_unknown": true}

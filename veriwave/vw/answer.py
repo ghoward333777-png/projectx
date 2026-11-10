@@ -189,6 +189,70 @@ def hinted_short(focus: list[dict], hints: list[str]) -> str:
     return ""
 
 
+def subject_candidates(subject: str) -> list[tuple[str, list[str]]]:
+    """shorter subjects inside a question's subject, each with the words left over (they should name the predicate):
+    the part after the last ' of ' first ('inception of Rome' -> 'Rome', ['inception']), then shorter word runs from
+    the end and from the start, longest first; at most eight
+
+    Lean:
+        def ofSplit (ws : List String) : Option (List String × List String) :=
+          match (ws.reverse.findIdx? (· == "of")) with
+          | some i => let k := ws.length - 1 - i; some (ws.drop (k + 1), ws.take k)
+          | none => none
+        def candidateCount (n : Nat) : Nat := min 8 (2 * (n - 1))
+        theorem candidateCount_le (n : Nat) : candidateCount n ≤ 8 := Nat.min_le_left _ _
+        def dropMarks (s : String) : String := s.trim.dropRightWhile (fun c => c == '?' || c == '!' || c == '.')
+        #guard dropMarks "inception of Rome?" == "inception of Rome"          -- py: subject_candidates("inception of Rome?")[0] == ("Rome", ["inception"])
+        #guard ofSplit ["inception", "of", "rome"] == some (["rome"], ["inception"])   -- py: subject_candidates("inception of Rome")[0] == ("Rome", ["inception"])
+        #guard ofSplit ["rome", "inception"] == none                          -- py: ("Rome", ["inception"]) in subject_candidates("Rome inception")
+    """
+    raw = subject.strip().rstrip("?!.").split()
+    low = [core.lower(w) for w in raw]
+    out: list[tuple[str, list[str]]] = []
+    stop = ["the", "a", "an", "of", "is", "was", "what", "who", "when", "where", "tell", "me", "about"]
+
+    def add(words: list[str], rest: list[str]) -> None:
+        """one candidate, unless empty, only filler words, or already listed
+
+        Lean:
+            def fillerOnly (stop ws : List String) : Bool := ws.all stop.contains
+            def trimFiller (stop ws : List String) : List String := ((ws.dropWhile stop.contains).reverse.dropWhile stop.contains).reverse
+            #guard fillerOnly ["the", "of"] ["the"] && !fillerOnly ["the"] ["rome"]   -- py: subject_candidates("the") == []
+            #guard trimFiller ["of", "me", "about"] ["me", "about", "x"] == ["x"]     -- py: subject_candidates("Tell me about 67550+67550")[0][0] == "67550+67550"
+        """
+        while words and core.lower(words[0]) in stop:
+            words = words[1:]
+        while words and core.lower(words[-1]) in stop:
+            words = words[:-1]
+        cand = " ".join(words).strip()
+        left = [w for w in rest if w not in stop]
+        if cand and not all(core.lower(w) in stop for w in words) and all(c[0] != cand for c in out):
+            out.append((cand, left))
+    if "of" in low:
+        k = len(low) - 1 - low[::-1].index("of")
+        add(raw[k + 1:], low[:k])
+    for n in range(len(raw) - 1, 0, -1):
+        add(raw[len(raw) - n:], low[:len(raw) - n])
+        add(raw[:n], low[n:])
+    return out[:8]
+
+
+def predicate_matches(predicate: str, words: list[str]) -> bool:
+    """whether a fact's predicate shares a word (or a word stem of four letters or more) with the question's other words
+
+    Lean:
+        def stemHit (pred w : String) : Bool := w.length ≥ 4 && ((lower pred).splitOn (String.mk (w.toList.take 5))).length > 1
+        #guard stemHit "time of discovery or invention" "invented"           -- py: predicate_matches("time of discovery or invention", ["invented"])
+        #guard !stemHit "inception" "of"                                     -- py: not predicate_matches("inception", ["of"])
+    """
+    p = core.lower(predicate)
+    pw = core.words(p)
+    for w in words:
+        if w in pw or (len(w) >= 4 and w[:5] in p):
+            return True
+    return False
+
+
 def provenance_input(question: str, cites: list[dict]) -> str:
     """the canonical text the provenance hash covers: the question, then one line per citation
 

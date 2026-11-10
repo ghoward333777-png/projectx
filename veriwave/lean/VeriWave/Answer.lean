@@ -84,22 +84,45 @@ def hinted (hints : List String) (pred : String) : Bool := hints.any (fun h => (
 #guard hinted ["date", "time", "invention"] "time of discovery or invention"   -- py: hinted_short([{"subject": "printing press", "predicate": "time of discovery or invention", "object": "c. 1440"}], ["time"]) == "printing press — time of discovery or invention: c. 1440"
 #guard !hinted [] "inventor"                                        -- py: hinted_short([{"subject": "a", "predicate": "inventor", "object": "b"}], []) == ""
 
--- provenance_input (vw/answer.py:192)
+-- subject_candidates (vw/answer.py:192)
+def ofSplit (ws : List String) : Option (List String × List String) :=
+  match (ws.reverse.findIdx? (· == "of")) with
+  | some i => let k := ws.length - 1 - i; some (ws.drop (k + 1), ws.take k)
+  | none => none
+def candidateCount (n : Nat) : Nat := min 8 (2 * (n - 1))
+theorem candidateCount_le (n : Nat) : candidateCount n ≤ 8 := Nat.min_le_left _ _
+def dropMarks (s : String) : String := s.trim.dropRightWhile (fun c => c == '?' || c == '!' || c == '.')
+#guard dropMarks "inception of Rome?" == "inception of Rome"          -- py: subject_candidates("inception of Rome?")[0] == ("Rome", ["inception"])
+#guard ofSplit ["inception", "of", "rome"] == some (["rome"], ["inception"])   -- py: subject_candidates("inception of Rome")[0] == ("Rome", ["inception"])
+#guard ofSplit ["rome", "inception"] == none                          -- py: ("Rome", ["inception"]) in subject_candidates("Rome inception")
+
+-- subject_candidates.add (vw/answer.py:214)
+def fillerOnly (stop ws : List String) : Bool := ws.all stop.contains
+def trimFiller (stop ws : List String) : List String := ((ws.dropWhile stop.contains).reverse.dropWhile stop.contains).reverse
+#guard fillerOnly ["the", "of"] ["the"] && !fillerOnly ["the"] ["rome"]   -- py: subject_candidates("the") == []
+#guard trimFiller ["of", "me", "about"] ["me", "about", "x"] == ["x"]     -- py: subject_candidates("Tell me about 67550+67550")[0][0] == "67550+67550"
+
+-- predicate_matches (vw/answer.py:240)
+def stemHit (pred w : String) : Bool := w.length ≥ 4 && ((lower pred).splitOn (String.mk (w.toList.take 5))).length > 1
+#guard stemHit "time of discovery or invention" "invented"           -- py: predicate_matches("time of discovery or invention", ["invented"])
+#guard !stemHit "inception" "of"                                     -- py: not predicate_matches("inception", ["of"])
+
+-- provenance_input (vw/answer.py:256)
 def provenanceInput (q : String) (cs : List Cite) : String :=
   q ++ String.join (cs.map (fun c => "\n" ++ c.text ++ "|" ++ c.source ++ "|" ++ c.link))
 #guard provenanceInput "q" [⟨"t", "s", "", 90⟩] == "q\nt|s|"    -- py: provenance_input("q", [{"text": "t", "where": "s"}]) == "q\nt|s|"
 
--- provenance_hash (vw/answer.py:204)
+-- provenance_hash (vw/answer.py:268)
 -- SHA-256 is an external primitive (Rust: sha2, Python: hashlib); Lean fixes what it is applied to.
 def provenanceHashInput (q : String) (cs : List Cite) : String := provenanceInput q cs
 #guard (provenanceHashInput "" []).length == 0                    -- py: provenance_hash("", []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
--- registry_cites (vw/answer.py:215)
+-- registry_cites (vw/answer.py:279)
 def registryCite (no : Nat) (name status rule screen : String) : Cite :=
   ⟨"#" ++ toString no ++ " " ++ name ++ " (" ++ status ++ ") — " ++ rule ++ " " ++ screen, "QueryBook Feature Registry v71", "", 99⟩
 #guard (registryCite 1 "Standard Q&A" "Built" "R." "S").trust == 99   -- py: all(c["trust"] == 99 for c in registry_cites("feature 1"))
 
--- compose (vw/answer.py:242)
+-- compose (vw/answer.py:306)
 def composeVerdict (cites : List Cite) (contradicted : Bool) : Verdict :=
   if cites.isEmpty then .unknown else if contradicted then .contradicted else .verified
 theorem compose_refuses (c : Bool) : composeVerdict [] c = .unknown := rfl
@@ -107,7 +130,7 @@ theorem compose_cited (x : Cite) (xs : List Cite) (c : Bool) : composeVerdict (x
   unfold composeVerdict; cases c <;> simp
 #guard composeVerdict [] true == .unknown                         -- py: compose("", {}, 50, "", False)["verdict"] == "UNKNOWN"
 
--- grounded_prompt (vw/answer.py:309)
+-- grounded_prompt (vw/answer.py:373)
 def factLine (n : Nat) (c : Cite) : String :=
   "[" ++ toString n ++ "] " ++ c.text ++ " (source: " ++ c.source ++ ", trust " ++ toString c.trust ++ "%)"
 #guard factLine 1 ⟨"t", "s", "", 90⟩ == "[1] t (source: s, trust 90%)"   -- py: grounded_prompt({"question": "q", "citations": [{"n": 1, "text": "t", "where": "s", "trust": 90}]}).endswith("[1] t (source: s, trust 90%)")

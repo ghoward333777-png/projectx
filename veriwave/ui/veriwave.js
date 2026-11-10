@@ -8,6 +8,7 @@ const MODES = [
   { id: "create", name: "Create", subs: ["text", "image", "video", "audio"] },
   { id: "querybook", name: "QueryBook" }, { id: "features", name: "Feature Registry" }, { id: "workspace", name: "Workspace" },
   { id: "reasoning", name: "Reasoning", admin: true },
+  { id: "readiness", name: "Readiness", admin: true },
 ];
 const SUBS = { text: "Text", image: "Image", video: "Video", audio: "Audio" };
 const ROLES = ["Reader", "Author", "Instructor", "Admin"];
@@ -49,6 +50,7 @@ function route() {
   if (SUBS[h]) return { mode: "create", sub: h };
   if (h.startsWith("reasoning")) return { mode: state.role === "Admin" ? "reasoning" : "chat", sub: load("vw:sub", "text"), trace: h.split(":")[1] || "" };
   const m = MODES.find(x => x.id === h);
+  if (m && m.admin && state.role !== "Admin") return { mode: "chat", sub: load("vw:sub", "text") };
   return { mode: m ? m.id : "chat", sub: load("vw:sub", "text") };
 }
 function drawBar() {
@@ -69,7 +71,7 @@ function render() {
   drawBar();
   const main = document.getElementById("main");
   main.replaceChildren();
-  const views = { chat: chatView, answer: answerView, code: codeView, create: createView, querybook: querybookView, features: featuresView, workspace: workspaceView, reasoning: reasoningView };
+  const views = { chat: chatView, answer: answerView, code: codeView, create: createView, querybook: querybookView, features: featuresView, workspace: workspaceView, reasoning: reasoningView, readiness: readinessView };
   main.append(views[r.mode](r));
   document.body.classList.toggle("in-ws", r.mode === "workspace" && state.ws.some(id => iface(id) && !iface(id).builtin));
   syncPanes(r.mode === "workspace");
@@ -567,6 +569,72 @@ function linkCard(links) {
     box.append(svg);
   }
   return box;
+}
+
+/* ------------------------------------------------------------------ Readiness (admin)
+   How well VeriWave answers from the fact store on D:\QB: sampled real facts in several phrasings plus your own questions. */
+const TARGETS = [["accuracy", "Accuracy", 98, ">="], ["top_answer_accuracy", "Top answer right", 90, ">="], ["answer_rate", "Answer rate", 90, ">="],
+  ["wrong_refusal_rate", "Wrong refusals", 10, "<="], ["p95_ms", "95th-percentile time (ms)", 2000, "<="]];
+let evalTimer = null;
+function readinessView() {
+  const v = el("div", { class: "view wide" });
+  const head = el("div", { class: "card" }, el("p", { class: "muted" }, "Loading…"));
+  const reports = el("div");
+  const detail = el("div");
+  v.append(head, el("div", { class: "tgrid" }, reports, detail));
+  const showReport = async name => {
+    detail.replaceChildren(el("div", { class: "card thinking" }, "Loading the report…"));
+    try { detail.replaceChildren(reportView(await api("/api/vw/eval?name=" + encodeURIComponent(name)))); }
+    catch (e) { detail.replaceChildren(el("div", { class: "err" }, e.message)); }
+    reports.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", b.dataset.name === name ? "page" : "false"));
+  };
+  const refreshEvals = async first => {
+    let d;
+    try { d = await api("/api/vw/evals"); } catch (e) { head.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+    const size = el("select", { "aria-label": "Sample size" }, [100, 300, 1000].map(n => el("option", { value: n, selected: n === 300 }, n + " facts × " + d.phrasings.length + " phrasings")));
+    const st = d.state;
+    const busy = st.running;
+    head.replaceChildren(el("h2", {}, "Readiness — is VeriWave ready to publish?"),
+      el("p", { class: "small muted" }, "Real Fact Units are drawn at random from the store and asked about in " + d.phrasings.length + " phrasings (" + d.phrasings.join(" · ") + "). The fact is known to be there, so \u201cI don't know\u201d is a retrieval failure and a citation without the right object is a wrong answer. Your own questions in " + d.questions_file + " are added (one JSON object per line: {\"question\": \u2026, \"expect\": [\u2026]} or {\"question\": \u2026, \"expect_unknown\": true})."),
+      el("div", { class: "row small", style: "margin:8px 0" }, el("span", { class: "dot " + (d.blocked ? "err" : "ok") }),
+        el("span", { style: "flex:1;min-width:0" }, d.blocked ? el("b", {}, d.blocked) : [el("b", {}, "Evaluating against " + d.root), " — " + (d.store.facts || 0).toLocaleString() + " facts connected (read-only)"])),
+      el("div", { class: "row" }, size, el("button", { class: "btn", type: "button", disabled: busy || !!d.blocked || null, onclick: async () => {
+        try { await api("/api/vw/eval/run", { sample: +size.value, seed: Math.floor(Date.now() / 1000) % 100000 }); refreshEvals(false); } catch (e) { toast(e.message); } } }, busy ? "Running…" : "Run evaluation"),
+        busy ? el("span", { class: "small muted" }, st.total ? st.done + " / " + st.total + " questions" : "drawing facts from the store…") : null,
+        st.error ? el("span", { class: "err small" }, st.error) : null));
+    reports.replaceChildren(el("div", { class: "tlist" }, d.reports.length ? d.reports.map(r => el("button", { type: "button", "data-name": r.name, onclick: () => showReport(r.name) },
+      el("b", {}, new Date(r.at * 1000).toLocaleString()), r.ok ? el("div", { class: "small" }, "accuracy " + r.summary.accuracy + "% · answer rate " + r.summary.answer_rate + "%") : el("div", { class: "err small" }, r.error),
+      el("div", { class: "small muted" }, r.root + " · " + (r.facts || 0).toLocaleString() + " facts · " + (r.summary ? r.summary.questions : 0) + " questions"))) : el("p", { class: "muted small" }, "No reports yet.")));
+    clearTimeout(evalTimer);
+    if (busy) evalTimer = setTimeout(() => { if (route().mode === "readiness") refreshEvals(false); }, 2000);
+    if ((first || (!busy && st.last)) && d.reports.length) showReport(st.last && !busy ? st.last : d.reports[0].name);
+  };
+  refreshEvals(true);
+  return v;
+}
+function reportView(r) {
+  const out = el("div");
+  if (!r.ok) { out.append(el("div", { class: "card" }, el("h2", {}, "Did not run"), el("div", { class: "err" }, r.error))); return out; }
+  const s = r.summary;
+  out.append(el("div", { class: "card" }, el("h2", {}, "Report — " + new Date(r.at * 1000).toLocaleString()),
+    el("div", { class: "small muted" }, "Store " + r.root + " · " + (r.store.facts || 0).toLocaleString() + " facts · " + s.questions + " questions · seed " + r.seed + " · " + (r.seconds || 0) + " s"),
+    el("div", { class: "stats", style: "margin-top:10px" }, [["Accuracy", s.accuracy + "%"], ["Top answer right", s.top_answer_accuracy + "%"], ["Answer rate", s.answer_rate + "%"],
+      ["Wrong refusals", s.wrong_refusal_rate + "%"], ["Median time", s.median_ms + " ms"], ["95th percentile", s.p95_ms + " ms"]].map(([k, n]) => el("div", { class: "stat" }, el("b", {}, n), el("span", { class: "small muted" }, k))))));
+  out.append(el("div", { class: "card" }, el("h2", {}, "Against suggested release targets"),
+    el("p", { class: "small muted" }, "Starting points for a cite-or-refuse system — a confident wrong answer with a citation is worse than a refusal. The bar is your decision."),
+    el("table", { class: "ftable" }, el("tr", {}, ["Measure", "This run", "Suggested", ""].map(h => el("th", {}, h))),
+      TARGETS.map(([k, name, t, op]) => { const val = s[k]; const pass = op === ">=" ? val >= t : val <= t;
+        return el("tr", {}, el("td", {}, name), el("td", {}, String(val) + (k.endsWith("ms") ? "" : "%")), el("td", {}, op + " " + t + (k.endsWith("ms") ? "" : "%")),
+          el("td", {}, el("span", { class: "chip " + (pass ? "built" : "partial") }, pass ? "meets" : "not yet"))); }))));
+  if (r.by_phrasing) out.append(el("div", { class: "card" }, el("h2", {}, "By phrasing (where retrieval breaks)"),
+    el("table", { class: "ftable" }, el("tr", {}, ["Phrasing", "Answer rate", "Accuracy", "Wrong refusals"].map(h => el("th", {}, h))),
+      Object.entries(r.by_phrasing).map(([t, p]) => el("tr", {}, el("td", { class: "mono" }, t), el("td", {}, p.answer_rate + "%"), el("td", {}, p.accuracy + "%"), el("td", {}, p.wrong_refusal_rate + "%"))))));
+  const bad = r.rows.filter(x => x.outcome !== "correct" && x.outcome !== "correct refusal");
+  out.append(el("div", { class: "card" }, el("h2", {}, "Failures (" + bad.length + ")"),
+    bad.length ? el("div", { class: "tbl" }, el("table", { class: "ftable" }, el("tr", {}, ["Question", "Outcome", "Expected", "VeriWave said", ""].map(h => el("th", {}, h))),
+      bad.slice(0, 300).map(x => el("tr", {}, el("td", {}, x.question), el("td", {}, el("span", { class: "chip partial" }, x.outcome)), el("td", { class: "small" }, (x.expect || []).join(" | ") || "(I don't know)"),
+        el("td", { class: "small" }, x.short), el("td", {}, x.trace_id ? el("a", { class: "small", href: "#reasoning:" + x.trace_id }, "trace") : null))))) : el("p", { class: "muted" }, "None.")));
+  return out;
 }
 
 /* ------------------------------------------------------------------ start */
