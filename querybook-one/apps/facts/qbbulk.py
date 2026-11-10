@@ -3000,6 +3000,7 @@ def status(commons_folder, commons=None):
             "last_minute": sum(d["last_minute"] for d in out), "last_hour": sum(d["last_hour"] for d in out),
             "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
             "drops": count_drops(commons_folder, now - 7200),
+            "keepalive": keepalive_info(commons_folder),
             "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
                                  for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
             "duplicates_removed": sum((_LAST_DUPS.get((commons_folder, d["key"])) or 0) for d in out),
@@ -3400,6 +3401,86 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
     return {"resumed": keys, "agents": int(rs.get("agents") or MAX_AGENTS), "last_note": rs.get("note")}
 
 
+KEEPALIVE_STALL_S = 30 * 60        # 1.35: harvesting "on", agents running, and nothing moved (no fact, no byte) this long: restart
+KEEPALIVE_NAME = "_keepalive.json"
+
+
+def keep_alive(commons, program_dir, now=None, st=None, restart=None):
+    """1.35 — 24 x 7: called by the Control Panel's monitoring pass (every minute or so).
+    The runner and each agent already restart what dies or hangs. This restarts the WHOLE engine when it is alive but
+    nothing at all moves: no fact gathered or filed, no byte downloaded, for 30 minutes, while it should be working
+    (Start was pressed, Stop was not; some dataset is running, not every one finished or waiting on purpose).
+    A clean Stop (every agent saves its batch, the stop saves to the data drive) and a full-speed Start follow; each restart
+    is written down with its reason and shown on the Harvesting page. Returns what it did, or None."""
+    folder = os.path.join(commons.folder, FOLDER)
+    now = now or time.time()
+    path = os.path.join(folder, KEEPALIVE_NAME)
+    try:
+        with open(path) as f:
+            ka = json.load(f)
+    except (OSError, ValueError):
+        ka = {"since": now, "sig": None, "restarts": []}
+    if os.path.exists(os.path.join(folder, "_runner.stop")) or stopping(commons.folder):
+        ka.update(since=now, sig=None)                 # stopped on purpose (or a stop still saving): nothing to watch
+        _ka_save(path, ka)
+        return None
+    st = st or status_cached(commons.folder, commons)
+    rs = st.get("runner") or {}
+    if not rs.get("alive"):
+        ka.update(since=now, sig=None)                 # a dead runner is resume_if_crashed's job (it runs in the same pass)
+        _ka_save(path, ka)
+        return None
+    running = [d for d in st["datasets"] if d.get("state") == "running"]
+    sig = [st.get("total_gathered", st.get("total")), st.get("total"),
+           sum(int(((d.get("progress") or {}).get("done")) or 0) for d in st["datasets"]),
+           ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None)]
+    if sig != ka.get("sig"):
+        ka.update(sig=sig, since=now)
+        _ka_save(path, ka)
+        return None
+    idle_on_purpose = str(rs.get("note") or "").startswith("waiting") or not running
+    if idle_on_purpose or now - ka["since"] < KEEPALIVE_STALL_S:
+        _ka_save(path, ka)
+        return None
+    why = "nothing moved for %d min (no fact gathered or filed, no byte downloaded) with %d dataset(s) running" % (
+        (now - ka["since"]) // 60, len(running))
+    ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why}]
+    ka.update(since=now, sig=None)
+    _ka_save(path, ka)
+    TR.event("keepalive", action="restart", why=why)
+    try:
+        with commons.store.write() as db:
+            commons.agent_log(db, "engine", "Harvesting restarted by itself: " + why)
+    except Exception:
+        pass
+    if restart:
+        restart()
+    else:
+        stop(commons, grace=STOP_GRACE_S)
+        full_speed(commons, program_dir, "keep-alive: " + why)   # waits for the stop to finish saving, then starts
+    return {"restarted": True, "why": why}
+
+
+def _ka_save(path, ka):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w") as f:
+            json.dump(ka, f)
+        _replace(path + ".tmp", path)
+    except OSError:
+        pass
+
+
+def keepalive_info(commons_folder):
+    try:
+        with open(os.path.join(commons_folder, FOLDER, KEEPALIVE_NAME)) as f:
+            ka = json.load(f)
+        r = ka.get("restarts") or []
+        return {"restarts": len(r), "last": r[-1] if r else None, "watching_since": ka.get("since")}
+    except (OSError, ValueError):
+        return {"restarts": 0, "last": None}
+
+
 def _pids(commons_folder):
     """the runner's process and every agent process still marked running in a shard"""
     pids = set()
@@ -3779,7 +3860,9 @@ def autostart(program_dir, on=None):
         return {"available": False, "on": False, "why": "only on Windows"}
     path = os.path.join(folder, AUTOSTART_NAME)
     suite = os.path.dirname(os.path.abspath(program_dir))
-    start_all = os.path.join(suite, "START-ALL-WINDOWS.bat")
+    start_all = os.path.join(suite, "START-QueryBook.bat")              # 1.35: the one window (QueryBook.zip)
+    if not os.path.exists(start_all):
+        start_all = os.path.join(suite, "START-ALL-WINDOWS.bat")        # the separate-windows suite
     if on is True:
         os.makedirs(folder, exist_ok=True)
         with open(path, "w", newline="") as f:              # waits a little first: an external drive is often found late
@@ -4918,6 +5001,25 @@ def _supervisor_tests():
         ok("1.35: facts already held, read again, are not counted as new (sampled); only the new ones are, and filing them "
            "never makes the total fall", held_ == 3 and r2_["staged"] == 5 and r2_["gathered"] == 5 and after_ == 5
            and r3_["gathered"] == 5 and r3_["gathered"] >= r2_["gathered"], (held_, r2_.get("staged"), r2_.get("gathered"), after_))
+        # 1.35, 24 x 7: keep_alive restarts the engine when nothing moves for 30 min, and only then
+        class _C:
+            folder = cf
+            store = None
+        kac, did = _C(), []
+        mk = lambda total, done, note="running: 2 agent(s)", alive=True: {"runner": {"alive": alive, "note": note}, "total": total,
+            "total_gathered": total, "datasets": [{"key": "a", "state": "running", "progress": {"done": done}}]}
+        t0_ = 1_000_000.0
+        r1 = keep_alive(kac, "", t0_, mk(10, 5), lambda: did.append(1))
+        r2 = keep_alive(kac, "", t0_ + 600, mk(20, 9), lambda: did.append(1))                 # moving: fine
+        r3 = keep_alive(kac, "", t0_ + 600 + KEEPALIVE_STALL_S - 60, mk(20, 9), lambda: did.append(1))   # still, not long enough
+        r4 = keep_alive(kac, "", t0_ + 600 + KEEPALIVE_STALL_S + 1, mk(20, 9), lambda: did.append(1))    # still for 30 min: restart
+        r5 = keep_alive(kac, "", t0_ + 600 + KEEPALIVE_STALL_S + 120, mk(20, 9), lambda: did.append(1))  # just restarted: wait again
+        r6 = keep_alive(kac, "", t0_ + 9e5, mk(20, 9, "waiting: every dataset is finished or waiting for its next try"), lambda: did.append(1))
+        r7 = keep_alive(kac, "", t0_ + 2e6, mk(20, 9, alive=False), lambda: did.append(1))
+        ok("1.35 keep-alive: harvesting that moves is left alone; nothing moving for 30 minutes with datasets running restarts it "
+           "once (written down with its reason); waiting on purpose or a dead runner (resumed elsewhere) is not restarted here",
+           not any((r1, r2, r3, r5, r6, r7)) and r4 and r4["restarted"] and did == [1] and keepalive_info(cf)["restarts"] == 1
+           and "nothing moved for 30 min" in keepalive_info(cf)["last"]["why"], (r3, r4, r5, r6, did, keepalive_info(cf)))
         # 1.35: a dataset changing hands (file moved for a moment) keeps its count on the screen
         sp_ = shard_path(cf, "calendar-scaffold")
         os.replace(sp_, sp_ + ".moving")

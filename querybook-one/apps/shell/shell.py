@@ -139,6 +139,7 @@ class Program:
     def start(self) -> None:
         if not self.dir:
             return
+        self.user_stopped = False
         self.state, self.url, self.started_at = "starting", None, time.time()
         flags = 0x08000000 if os.name == "nt" else 0                 # CREATE_NO_WINDOW: no extra black windows
         self.proc = subprocess.Popen([sys.executable, "-u", "app.py", "--no-browser"], cwd=self.dir, env=child_env(self.root),
@@ -159,6 +160,7 @@ class Program:
         self.state = "stopped" if code == 0 else "stopped with an error (code %s)" % code
 
     def stop(self) -> None:
+        self.user_stopped = True                                     # stopped on purpose: the watcher leaves it alone
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
             try:
@@ -168,6 +170,7 @@ class Program:
 
     def to_json(self) -> dict:
         return {"id": self.pid, "name": self.name, "url": self.url, "state": self.state,
+                "restarts": getattr(self, "restarts", 0), "last_restart": getattr(self, "last_restart", None),
                 "output": self.lines[-12:] if self.state not in ("running",) else []}
 
 
@@ -199,6 +202,52 @@ class Shell:
     def stop_all(self) -> None:
         for p in self.programs.values():
             p.stop()
+
+    def watch(self) -> None:
+        """24 x 7: every 15 s — a program that ended unexpectedly is started again (after 10 s, then longer if it keeps
+        ending: never more than about 6 times an hour), and one that is running but has not answered for 3 minutes is
+        ended and started again. Programs stopped on purpose (Restart button, closing QueryBook) are left alone."""
+        import urllib.request
+        fails: dict[str, int] = {}
+        restarts: dict[str, list[float]] = {}
+        while True:
+            time.sleep(15)
+            for pid, p in self.programs.items():
+                if not p.dir or getattr(p, "user_stopped", False) or not p.proc:
+                    continue
+                now = time.time()
+                recent = [t for t in restarts.get(pid, []) if now - t < 3600]
+                restarts[pid] = recent
+                ended = p.proc.poll() is not None
+                hung = False
+                if not ended and p.state == "running" and p.url:
+                    try:
+                        with urllib.request.urlopen(p.url, timeout=30) as r:          # its home page: every program serves one
+                            r.read(64)
+                        fails[pid] = 0
+                    except Exception:
+                        fails[pid] = fails.get(pid, 0) + 1
+                        hung = fails[pid] >= 6                         # 6 looks, 15 s apart, each waiting 30 s: about 3-4 minutes
+                elif not ended and p.state == "starting" and now - p.started_at > 600:
+                    hung = True                                      # never said it was running in 10 minutes
+                if not (ended or hung):
+                    continue
+                wait = 10 if len(recent) < 3 else 600                # keeps ending: try every 10 minutes, never give up
+                if recent and now - recent[-1] < wait:
+                    continue
+                why = "it stopped (code %s)" % p.proc.returncode if ended else "it stopped answering"
+                print("  %s %s — starting it again." % (p.name, why))
+                if hung:
+                    try:
+                        p.proc.kill()
+                        p.proc.wait(timeout=10)
+                    except Exception:
+                        pass
+                fails[pid] = 0
+                restarts[pid] = recent + [now]
+                p.restarts = getattr(p, "restarts", 0) + 1
+                p.last_restart = {"at": now, "why": why}
+                p.start()
 
     def urls(self) -> dict[str, str]:
         return {pid: p.url for pid, p in self.programs.items() if p.url}
@@ -281,6 +330,7 @@ def main(argv: list[str]) -> int:
     shell = Shell()
     shell.prepare_drive()
     shell.start_all()
+    threading.Thread(target=shell.watch, daemon=True, name="qb-shell-watch").start()   # 24 x 7: restart what ends or hangs
     port = free_port(PORT)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(shell))
     httpd.daemon_threads = True

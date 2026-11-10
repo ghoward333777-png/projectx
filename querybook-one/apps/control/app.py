@@ -284,6 +284,12 @@ class Panel:
                 self.log("bulk runner resumed by itself:", r)
         except Exception as e:
             self.log("bulk resume:", repr(e))
+        try:                                       # 1.35, 24 x 7: alive but nothing moving for 30 min -> clean restart
+            r = qbbulk.keep_alive(self.commons, HERE)
+            if r:
+                self.log("bulk harvesting restarted by itself:", r["why"])
+        except Exception as e:
+            self.log("bulk keep-alive:", repr(e))
         apps = self.apps()
         for a in apps:
             k = a["app"]
