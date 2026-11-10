@@ -133,6 +133,9 @@ def keep_last(n: int, items: list) -> list:
     """the last n items
 
     Lean:
+        def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
+        theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
+          simp [keepLast]; omega
         #guard keepLast 0 ["a"] == []                                         -- py: keep_last(0, ["a"]) == []
     """
     return items[len(items) - n:] if len(items) > n else list(items)
@@ -289,9 +292,6 @@ class VeriWave:
         """keep a reasoning trace: in memory (the last 200) and as a JSON file in the creations folder's traces/
 
         Lean:
-            def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
-            theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
-              simp [keepLast]; omega
             #guard keepLast 2 ["a", "b", "c"] == ["b", "c"]                     -- py: keep_last(2, ["a", "b", "c"]) == ["b", "c"]
         """
         with self.lock:

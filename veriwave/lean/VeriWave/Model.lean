@@ -64,44 +64,44 @@ def mergeCount (fromApps fromDrive : List Hit) : Nat := (dedupeHits (fromApps ++
 #guard (dedupeHits []).length == 0                                   -- py: factstore_dedupe([]) == []
 
 -- keep_last (vw/model.py:132)
+def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
+theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
+  simp [keepLast]; omega
 #guard keepLast 0 ["a"] == []                                         -- py: keep_last(0, ["a"]) == []
 
--- load_traces (vw/model.py:141)
+-- load_traces (vw/model.py:144)
 #guard (keepLast 200 []).length == 0                                  -- py: load_traces("/no/such/folder", 5) == []
 
--- store_okrel (vw/model.py:163)
+-- store_okrel (vw/model.py:166)
 #guard okRel ["1-0001"]                                               -- py: store_okrel(["1-0001"]) and not store_okrel([".."])
 
--- zip_name (vw/model.py:172)
+-- zip_name (vw/model.py:175)
 def zipName (id : String) : String := id ++ ".zip"
 #guard zipName "a" == "a.zip"                                         -- py: zip_name("a") == "a.zip"
 
--- VeriWave (vw/model.py:182)
+-- VeriWave (vw/model.py:185)
 structure Model where
   claudeOn : Bool
   appsRunning : Bool
 
--- VeriWave.__init__ (vw/model.py:191)
+-- VeriWave.__init__ (vw/model.py:194)
 def Model.new (c a : Bool) : Model := ⟨c, a⟩
 
--- VeriWave.understand (vw/model.py:204)
+-- VeriWave.understand (vw/model.py:207)
 #guard fallbackSubject "Marie Curie?" == "marie curie"          -- py: understand_fallback("Marie Curie?")["subject"] == "marie curie"
 
--- VeriWave.direct_facts (vw/model.py:214)
+-- VeriWave.direct_facts (vw/model.py:217)
 def wantsFacts (kind : String) : Bool := kind == "fact" || kind == "word"
 #guard wantsFacts "fact" && !wantsFacts "math"                  -- py: VeriWave.wants_facts("fact") and not VeriWave.wants_facts("math")
 
--- VeriWave.wants_facts (vw/model.py:231)
+-- VeriWave.wants_facts (vw/model.py:234)
 #guard !wantsFacts "empty"                                       -- py: not VeriWave.wants_facts("empty")
 
--- VeriWave.ask (vw/model.py:240)
+-- VeriWave.ask (vw/model.py:243)
 def keepsVerdict (before after : Verdict) : Bool := before == after
 theorem rewording_keeps (v : Verdict) : keepsVerdict v v = true := by cases v <;> rfl
 
--- VeriWave.record (vw/model.py:288)
-def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
-theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
-  simp [keepLast]; omega
+-- VeriWave.record (vw/model.py:291)
 #guard keepLast 2 ["a", "b", "c"] == ["b", "c"]                     -- py: keep_last(2, ["a", "b", "c"]) == ["b", "c"]
 
 -- VeriWave.trace_list (vw/model.py:311)
