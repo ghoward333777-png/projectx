@@ -114,6 +114,12 @@ source → harvester → rights gate → metadata → format normaliser → docu
   5. Say it yourself and see which words were heard.
 
   Server side: `language/labtext.py` and `/api/lablang/*`.
+- **Translation and speech in every language restored** (Language 1.55, `language/lablangs.py`):
+  - **Lab languages:** the Lab lists every language QueryBook can translate. The Builder's 17 languages with word lists come first, then the 12 dictionary packs. With a Google or Gemini key, all 139 languages of the QueryBook Translate registry are listed.
+  - **Online translation:** used for languages with no offline data, or words the dictionaries lack. Google Translate (the Google Cloud key) is tried first, then Gemini (the Speech key or the Control Panel key). It is always labelled, and the offline word-by-word result stays visible.
+  - **Speech:** the espeak-ng voice for the language (about 100 languages), else the browser's own voice.
+  - **Translate tab:** QueryBook Translate (also on the window's rail as 🌐 Translate) uses the Language app as its online gateway (`/api/translate/config`, `/api/translate-gateway/mt`), with provenance on every result.
+  - **Avatar:** the Lab avatar speaks the sentence at once while the Gemini / HeyGen video is made. Talking clips now also find a Gemini key saved only in the Control Panel; that missing key was why the avatar stayed silent.
 - **Lip-sync: Gemini / ElevenLabs talking clips** (Language 1.54, back to what worked in 1.52). A face says the words in a video made by Gemini; when Gemini cannot, the chosen voice (e.g. ElevenLabs) speaks and HeyGen animates the portrait. Speech → Talking clips, the Speak page's "Make a talking clip of this", and Language Lab step 4, where a human avatar from the library (Pamela and the starter faces) says the sentence in that video, in place. The local face engine tried in 1.53 was removed at the user's request (kept in git history, commit 82e15af).
 - **24 × 7 harvesting:**
   - The Control Panel restarts the engine cleanly (Stop, save, Start) when harvesting is on and nothing has moved for 30 minutes: no fact gathered or filed, no byte downloaded. Each restart is logged and shown.

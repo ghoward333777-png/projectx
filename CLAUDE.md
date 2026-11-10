@@ -115,6 +115,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - The local face engine (Language 1.53: face.js, avatarface.js, photoface.js, motionlib, Quality Lab) was tried and
   rejected by the user on 2026-11-10 ("failed lip synching"). Its code is kept in git history at commit 82e15af — do
   not put it back, and do not replace the Gemini/ElevenLabs route, unless the user asks.
+- Language Lab languages and translation (1.55, `apps/language/lablangs.py`): every QueryBook Translate registry language
+  (139) with Google Translate → Gemini online for what the offline packs/word lists lack (always labelled); espeak-ng
+  voice else the browser's voice. QueryBook Translate's online gateway is the Language app (`/api/translate-gateway/mt`).
+  Keep it — the user lost this once ("we previously had a good translation tool").
 - Never remove or replace a working feature without first checking the git history and the user's earlier sessions
   for why it is there, and asking the user. Removing working features has cost the user days of work.
 

@@ -153,6 +153,14 @@ class Keys:
             except (OSError, ValueError):
                 pass
             out["api_key"] = out["api_key"] or os.environ.get("GOOGLE_API_KEY") or ""
+            if provider == "google_gemini" and not out["api_key"]:
+                # a Gemini key saved in the Control Panel (Harvesting -> API keys) serves here too — the talking clips
+                # and the Language Lab's avatar used to stay silent when the key had been saved only there
+                try:
+                    import lablangs
+                    out["api_key"] = lablangs.control_panel_key("gemini")
+                except Exception:
+                    pass
         out["custom_voices"] = cfg.get("custom_voices") or {}
         return out
 

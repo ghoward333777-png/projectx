@@ -17,8 +17,13 @@ const LL_RECOG = window.SpeechRecognition || window.webkitSpeechRecognition;
 async function llInit() {
   if (LL.ready) return;
   LL.ready = true;
-  const r = await api("/api/languages");
-  LL.langs = (r.languages || []).map(l => ({ code: l.code, name: l.name, native: l.native, speech: l.speech || SPEECH[l.code] }));
+  // every language QueryBook can translate and speak (Language 1.55): the Builder's 17 with word lists, the Translate
+  // dictionary packs, and — with a Google or Gemini key — every language of the Translate registry
+  let r;
+  try { r = await api("/api/lablang/languages"); } catch (e) { r = await api("/api/languages"); }
+  LL.cloud = !!r.cloud; LL.cloudBy = r.cloud_by || "";
+  LL.langs = (r.languages || []).map(l => ({ code: l.code, name: l.name, native: l.native, speech: l.speech || SPEECH[l.code] || l.code,
+    espeak: l.espeak, offline: l.offline !== false, words: l.words !== false }));
   if (!LL.langs.length) LL.langs = Object.keys(NAMES).map(c => ({ code: c, name: NAMES[c], speech: SPEECH[c] }));
   try { const s = JSON.parse(localStorage.getItem("qb-lab-pair") || "{}"); if (s.from) LL.from = s.from; if (s.to) LL.to = s.to; } catch (e) { /* first visit */ }
   if (LL.from === LL.to) LL.to = LL.from === "en" ? "es" : "en";
@@ -66,9 +71,17 @@ function llSetPair(from, to, first) {
   $$(".ll-toname").forEach(e => e.textContent = llName(to));
   $("#ll-text").setAttribute("lang", from);
   $("#ll-caps").innerHTML = (LL_RECOG ? '<span class="chip ok">🎙 listening: this browser</span>' : '<span class="chip">🎙 listening: Google key needed (or use Chrome / Edge)</span>') +
-    '<span class="chip ok">🔊 voices: built in, offline</span><span class="chip ok">🌍 translation: offline</span>';
+    llCapChips(to);
   LL.deckOff = 0; llDeck(true);
   if (!first && $("#ll-text").value.trim()) llTranslate(); else { LL.out = null; llRenderOut(); }
+}
+
+function llCapChips(to) {
+  const l = LL.langs.find(x => x.code === to) || {};
+  const voice = l.espeak !== "" ? '<span class="chip ok">🔊 voice: built in, offline</span>' : '<span class="chip">🔊 voice: this browser’s ' + esc(llName(to)) + " voice</span>";
+  const tr = l.offline ? '<span class="chip ok">🌍 translation: offline' + (LL.cloud ? " (+ " + esc(LL.cloudBy) + " for gaps)" : "") + "</span>"
+    : '<span class="chip">🌍 translation: ' + esc(LL.cloudBy || "online") + " (online)</span>";
+  return voice + tr;
 }
 
 // ---------------------------------------------------------------- step 1: words
@@ -77,6 +90,12 @@ async function llDeck(reset) {
   // the list is in the language being learned; learning English, it is drawn from the speaker's own language's list
   const learn = LL.to, deckLang = learn === "en" ? LL.from : learn;
   const r = await api("/api/lablang/deck?lang=" + encodeURIComponent(deckLang) + "&q=" + encodeURIComponent(LL.deckQ) + "&limit=60&offset=" + LL.deckOff);
+  if (r.nolist) {                                          // a Translate language: no word list, type or say a sentence instead
+    $("#ll-wlist").innerHTML = '<li class="muted small">' + esc(llName(deckLang)) + " has no word list here — type or say a word or sentence on the right; it is translated " +
+      (LL.cloud ? "by " + esc(LL.cloudBy) + "." : "with the dictionary pack.") + "</li>";
+    $("#ll-wcount").textContent = ""; $("#ll-wmore").hidden = true;
+    return;
+  }
   const shortest = a => a.slice().sort((x, y) => x.length - y.length)[0];
   const rows = r.words.map(w => {
     const target = learn === "en" ? w.en : shortest(w.tr);                          // the word in the language being learned
@@ -153,6 +172,18 @@ async function llTranslate() {
     });
   }
   LL.out = { pieces, segs, notes: r ? r.notes : [], text: pieces.map(p => p.text).join("").replace(/\s+([,.?!;:])/g, "$1").trim() };
+  // online (Google Translate, else Gemini) when there is no offline data, or the offline words leave gaps; the
+  // word-by-word result stays underneath so every word can still be checked
+  const gaps = segs.some(s => s.flagged && /\p{L}/u.test(s.source));
+  if (LL.cloud && (gaps || !r || !r.pieces)) {
+    $("#ll-out").innerHTML = '<p class="muted ll-empty">Translating with ' + esc(LL.cloudBy) + "…</p>";
+    try {
+      const c = await api("/api/lablang/cloudtr", { text, src: LL.from, tgt: LL.to });
+      const offline = LL.out;
+      const seg = { kind: "cloud", source: text, target: c.text, flagged: false, others: [], provenance: { type: "cloud", detail: "Translated by " + c.by + " (online)" } };
+      LL.out = { pieces: [{ text: c.text, seg: 0 }], segs: [seg], notes: [], text: c.text, by: c.by, offline };
+    } catch (e) { LL.out.cloudError = e.message; }
+  }
   llRenderOut();
   llMark(false);
 }
@@ -169,13 +200,18 @@ function llRenderOut() {
   $("#ll-out").setAttribute("lang", LL.to);
   $("#ll-out").innerHTML = o.pieces.map((p, k) => {
     if (p.seg === null || p.seg === undefined) return esc(p.text);
-    const s = o.segs[p.seg], cls = s.kind === "punct" || s.kind === "number" ? "" : s.flagged ? "unk" : s.kind === "wordlist" ? "wl" : "dict";
+    const s = o.segs[p.seg], cls = s.kind === "punct" || s.kind === "number" ? "" : s.flagged ? "unk" : s.kind === "wordlist" ? "wl" : s.kind === "cloud" ? "cl" : "dict";
     if (!cls) return esc(p.text);
     return '<button class="ll-tok ' + cls + '" data-seg="' + p.seg + '">' + esc(p.text) + "</button>";
   }).join("");
   $$("#ll-out .ll-tok").forEach(b => b.onclick = () => llWhy(+b.dataset.seg, b));
   const unk = o.segs.filter(s => s.flagged && /\p{L}/u.test(s.source)).length, wl = o.segs.filter(s => s.kind === "wordlist").length;
-  $("#ll-notes").innerHTML = (unk ? '<span class="chip warn">' + unk + " word" + (unk > 1 ? "s" : "") + " not found — kept as written (underlined)</span>" : "") +
+  const off = o.offline && o.offline.segs.some(s => !s.flagged && /\p{L}/u.test(s.source)) ? o.offline.text : "";
+  $("#ll-notes").innerHTML = (o.by ? '<span class="chip ok">🌐 Translated by ' + esc(o.by) + " (online)</span>" +
+      (off && off !== o.text ? '<p class="small muted">Word by word, offline: <span lang="' + LL.to + '">' + esc(off) + "</span></p>" : "") : "") +
+    (o.cloudError ? '<p class="small bad-t">Online translation failed: ' + esc(o.cloudError) + "</p>" : "") +
+    (!o.by && !LL.cloud && unk ? '<p class="small muted">Add a Google or Gemini key (Speech → Keys, or Control Panel → API keys) to translate the missing words online.</p>' : "") +
+    (o.by ? "" : unk ? '<span class="chip warn">' + unk + " word" + (unk > 1 ? "s" : "") + " not found — kept as written (underlined)</span>" : "") +
     (wl ? '<span class="chip">' + wl + " from the word list (dotted) — tap to choose another</span>" : "") +
     (o.segs.some(s => s.kind === "phrase" || s.kind === "word" || s.kind === "omitted") ? '<span class="chip ok">dictionary phrases and words</span>' : "") +
     ((o.notes || []).some(n => /entry by entry/.test(n)) || o.segs.filter(s => s.kind !== "punct" && s.kind !== "number").length > 1 && o.segs.some(s => s.kind === "wordlist")
@@ -206,7 +242,12 @@ async function llSay(which, word) {
   const text = which === "word" ? word : which === "source" ? $("#ll-text").value.trim() : (LL.out && LL.out.text);
   if (!text) { toast(which === "target" ? "Translate first, then press ▶." : "Type something first."); return; }
   llStop();
-  const r = await api("/api/lablang/say", { text, lang, voice: $("#ll-voice").value, rate: +$("#ll-speed").value });
+  let r;
+  try { r = await api("/api/lablang/say", { text, lang, voice: $("#ll-voice").value, rate: +$("#ll-speed").value }); }
+  catch (e) {
+    if (/^no-espeak-voice|espeak-ng is missing/.test(e.message)) return llBrowserSay(text, lang);
+    throw e;
+  }
   LL.said = r;
   $("#ll-ipa").innerHTML = r.ipa ? '<span class="muted">Say it like:</span> <span class="ipa">/' + esc(r.ipa) + "/</span>" : "";
   const words = r.track.words || [];
@@ -218,6 +259,24 @@ async function llSay(which, word) {
     if ($("#ll-repeat").checked && LL.playing === a) setTimeout(() => { if (LL.playing === a) { a.currentTime = 0; a.play(); llAnimate(a, r.track); } }, 700); };
   await a.play().catch(() => toast("The browser blocked the sound — press ▶ again.", true));
   llAnimate(a, r.track);
+}
+// the browser's own voice for the language (Windows / Edge / Chrome have voices for many languages espeak-ng lacks)
+function llBrowserSay(text, lang) {
+  if (!window.speechSynthesis) { toast("No voice for " + llName(lang) + " here — try Edge or Chrome.", true); return; }
+  const tag = llSpeechTag(lang), base = tag.split("-")[0].toLowerCase(), all = speechSynthesis.getVoices();
+  const v = all.find(x => x.lang.toLowerCase() === tag.toLowerCase()) || all.find(x => x.lang.toLowerCase().split(/[-_]/)[0] === base);
+  if (!v) toast("This browser has no " + llName(lang) + " voice installed — Windows: Settings → Time & language → Speech → Add voices.", true);
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = tag; if (v) u.voice = v; u.rate = Math.max(0.5, Math.min(2, (+$("#ll-speed").value || 150) / 150));
+  $("#ll-ipa").textContent = "";
+  $("#ll-karaoke").setAttribute("lang", lang);
+  const words = text.split(/\s+/);
+  $("#ll-karaoke").innerHTML = words.map((w, k) => '<span data-k="' + k + '">' + esc(w) + "</span>").join(" ") + ' <span class="muted small">(browser voice)</span>';
+  let k = 0;
+  u.onboundary = ev => { if (ev.name !== "word") return; $$("#ll-karaoke span[data-k]").forEach(s => s.classList.toggle("on", +s.dataset.k === k)); llFace(["aa", "E", "O", "I", "U"][k % 5]); k++; };
+  u.onend = () => { llFace("sil", 0); $$("#ll-karaoke span").forEach(s => s.classList.remove("on")); };
+  LL.playing = { pause: () => speechSynthesis.cancel() };
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 function llStop() {
   if (LL.playing) { LL.playing.pause(); LL.playing = null; }
@@ -355,11 +414,16 @@ function llAvPick(id, name) {
 async function llAvSay() {
   if (!LL.out || !LL.out.text || !LL.avatar) return;
   const btn = $("#ll-avgo"); btn.disabled = true;
-  $("#ll-avstate").textContent = (LL.avatarName || "The avatar") + " is getting ready to say it — the video takes about a minute…";
+  llSay("target").catch(() => {});                         // heard at once; the lip-synced video follows
+  $("#ll-avstate").textContent = (LL.avatarName || "The avatar") + " is getting ready to say it — the lip-synced video takes about a minute…";
   try {
     const c = await api("/api/talk/make", { text: LL.out.text, lang: LL.to, person: $("#ll-avperson").value, route: "auto", face: LL.avatar });
     llAvFollow(c.id);
-  } catch (e) { $("#ll-avstate").innerHTML = '<span class="bad-t">' + esc(e.message) + "</span>"; btn.disabled = false; }
+  } catch (e) {
+    $("#ll-avstate").innerHTML = '<span class="bad-t">The video could not be made: ' + esc(e.message) + "</span>" +
+      '<br><span class="small muted">It needs a Gemini key, or ElevenLabs + HeyGen keys (Speech → Keys, or Control Panel → API keys). The sentence was spoken with the built-in voice.</span>';
+    btn.disabled = false;
+  }
 }
 async function llAvFollow(id) {
   let c;
@@ -376,6 +440,8 @@ async function llAvFollow(id) {
     $("#ll-avstate").innerHTML = "Made by <b>" + (c.route === "gemini" ? "Gemini" : "HeyGen") + "</b>" + (c.why && c.route === "heygen" ? " — " + esc(c.why) : "") +
       ' · <a href="/api/talk/video?id=' + c.id + '" download="talking-clip-' + c.id + '.mp4">download</a> · <span class="muted">' + esc(c.label || "") + "</span>";
   } else {
-    $("#ll-avstate").innerHTML = '<span class="bad-t">Not made: ' + esc(c.detail || "") + "</span>";
+    const d = String(c.detail || ""), m = d.match(/"message":\s*"([^"]+)"/);   // a service's JSON error: just its message
+    $("#ll-avstate").innerHTML = '<span class="bad-t">Not made: ' + esc(m ? d.split("(")[0].trim() + " — " + m[1] + (/HeyGen/.test(d) ? " (and no HeyGen key is set)" : "") : d) + "</span>" +
+      '<br><span class="small muted">The sentence was spoken with the built-in voice. Keys: Speech → Keys, or Control Panel → API keys.</span>';
   }
 }

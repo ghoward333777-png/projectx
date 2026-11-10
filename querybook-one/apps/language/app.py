@@ -45,12 +45,13 @@ import voicedsp
 import tts
 import visemes
 import labtext
+import lablangs
 import verify
 import vocab
 
 APP_ID = "language"
 APP_NAME = "QueryBook Language Builder"
-VERSION = "1.54.0"
+VERSION = "1.55.0"
 PORT = 8101
 program_dir = HERE
 
@@ -173,6 +174,13 @@ class App:
                 pass
 
     # ------------------------------------------------------------------ talking clips (1.52): made by Gemini or HeyGen
+    def _cloud_keys(self):
+        """keys for online translation: the Google key (Diagnostics -> Google Cloud, Translation API) and the Gemini key
+        (Speech -> Voice providers, else the Control Panel's)"""
+        g = self.speech.keys.get("google_cloud").get("api_key") or ""
+        gm = self.speech.keys.get("google_gemini").get("api_key") or lablangs.control_panel_key("gemini")
+        return {"google": g, "gemini": gm}
+
     def _talk_voice(self, line, lang, voice):
         """the voice for the HeyGen route: the voice chosen on the Speak page, else ElevenLabs "Rachel" (the October 29 voice
         clips), else Google Cloud, else the built-in voice"""
@@ -831,6 +839,8 @@ class App:
         # ---- Language Lab screen: one text through words, translation, speech out, speech in and lip-sync
         @a.get("/api/lablang/deck")
         def lablang_deck(p):
+            if str(p.get("lang") or "") not in vocab.LANGUAGES:     # a Translate language without a word list: no deck
+                return {"lang": str(p.get("lang") or ""), "total": 0, "words": [], "nolist": True}
             lang = self._lang(p.get("lang"))
             q = " ".join(str(p.get("q") or "").lower().split())
             lim, off = max(1, min(200, int(p.get("limit") or 60))), max(0, int(p.get("offset") or 0))
@@ -846,20 +856,74 @@ class App:
         def lablang_fill(p):
             return labtext.fill(p.get("src") or "en", p.get("tgt") or "es", p.get("words") or [])
 
+        # ---- QueryBook Translate (ui/translate): its config, and its online gateway (POST <gateway>/mt), so the 127
+        # languages without an offline dictionary pack translate too — through Google Translate or Gemini, every result
+        # carrying its provenance as the app requires (cloud.js validateCloudResult)
+        @a.get("/api/translate/config")
+        def translate_config(p):
+            k = self._cloud_keys()
+            return {"edition": "QueryBook", "gatewayUrl": "/api/translate-gateway", "cloudOptIn": bool(k.get("google") or k.get("gemini")),
+                    "cloudTimeoutMs": 12000, "cloudBelowCoverage": 70}
+
+        @a.post("/api/translate-gateway/mt")
+        def translate_gateway_mt(p):
+            text = str(p.get("text") or "")[:5000]
+            src, tgt = str(p.get("src") or "en"), str(p.get("tgt") or "en")
+            names = {l["code"]: l["name"] for l in lablangs.registry()}
+            try:
+                r = lablangs.cloud_translate(self._cloud_keys(), text, src, tgt, names)
+            except RuntimeError as e:
+                raise core.UserError(str(e))
+            return {"output": r["text"], "coverage": {"percent": 100, "known": 1, "total": 1},
+                    "segments": [{"source": text, "target": r["text"], "kind": "cloud", "flagged": False,
+                                  "provenance": {"engine": r["by"], "source": r["by"]}}], "engine": "cloud", "by": r["by"]}
+
+        @a.post("/api/translate-gateway/telemetry")
+        def translate_gateway_telemetry(p):
+            return {"ok": True}
+
+        # ---- the Language Lab's languages: every Translate registry language QueryBook can translate and speak
+        @a.get("/api/lablang/languages")
+        def lablang_languages(p):
+            k = self._cloud_keys()
+            cloud = bool(k.get("google") or k.get("gemini"))
+            return {"languages": lablangs.languages(vocab.LANGUAGES, speech.find_espeak(), cloud), "cloud": cloud,
+                    "cloud_by": "Google Translate" if k.get("google") else "Gemini" if k.get("gemini") else ""}
+
+        @a.post("/api/lablang/cloudtr")
+        def lablang_cloudtr(p):
+            text = " ".join(str(p.get("text") or "").split())[:2000]
+            if not text:
+                raise core.UserError("Nothing to translate.")
+            names = {l["code"]: l["name"] for l in lablangs.registry()}
+            try:
+                return lablangs.cloud_translate(self._cloud_keys(), text, str(p.get("src") or "en"), str(p.get("tgt") or "en"), names)
+            except RuntimeError as e:
+                raise core.UserError(str(e))
+
         @a.post("/api/lablang/say")
         def lablang_say(p):
-            lang = p.get("lang") if p.get("lang") in vocab.LANGUAGES else "en"
+            code = str(p.get("lang") or "en")
             text = " ".join(str(p.get("text") or "").split())[:300]
             if not text:
                 raise core.UserError("There is nothing to say yet — type, pick a word or translate first.")
-            voice = labtext.voice_name(vocab.LANGUAGES[lang]["espeak"], p.get("voice") or "")
+            if code in vocab.LANGUAGES:
+                lang, base = code, vocab.LANGUAGES[code]["espeak"]
+            else:                                          # any language espeak-ng has a voice for (about 100)
+                lang, base = code, lablangs.espeak_voice(code, lablangs.espeak_languages(speech.find_espeak()))
+                if not base:
+                    raise core.UserError("no-espeak-voice: espeak-ng has no voice for this language — the browser's own voice is used instead")
+            voice = labtext.voice_name(base, p.get("voice") or "")
             rate = max(80, min(260, int(p.get("rate") or 150)))
             wav = speech.speak_wav(text, voice, rate)
             if not wav:
                 raise core.UserError("No voice is available here: espeak-ng is missing (" + speech.status()["hint"] + ")")
-            track = visemes.align(text, wav, lang, self.lab)
+            try:
+                track = visemes.align(text, wav, lang if lang in vocab.LANGUAGES else "en", self.lab)
+            except Exception:
+                track = {"visemes": [], "words": [{"word": w} for w in text.split()]}
             return {"audio": "data:audio/wav;base64," + _b64.b64encode(wav).decode("ascii"), "track": track,
-                    "voice": voice, "rate": rate, "ipa": speech.ipa(text, vocab.LANGUAGES[lang]["espeak"])}
+                    "voice": voice, "rate": rate, "ipa": speech.ipa(text, base)}
 
         @a.post("/api/lablang/hear")
         def lablang_hear(p):
@@ -1876,6 +1940,8 @@ def selftest():
                 and not any(os.path.exists(os.path.join(HERE, m)) for m in ("motionlib.py", "qualitylab.py")), gone)
         c.check("talking-clip routes (1.52)", all((m, r) in app.api.routes for m, r in (("GET", "/api/talk/status"), ("POST", "/api/talk/make"),
                 ("GET", "/api/talk/clip"), ("GET", "/api/talk/video"), ("GET", "/api/talk/list"), ("POST", "/api/talk/delete"))))
+        c.check("translator restored (1.55): its config, its online gateway, the Lab's languages, online translation", all((m, r) in app.api.routes for m, r in (
+                ("GET", "/api/translate/config"), ("POST", "/api/translate-gateway/mt"), ("GET", "/api/lablang/languages"), ("POST", "/api/lablang/cloudtr"))))
         sst = speechsci.self_test()
         c.check("Speech Science Protocol (1.51): factors, formula, human limits, verdict, group statistics and reports", all(g for _, g, _ in sst),
                 [n for n, g, _ in sst if not g])

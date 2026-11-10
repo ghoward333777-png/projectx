@@ -83,10 +83,14 @@ async function boot() {
     fetch('data/languages.json').then((r) => r.json()),
     fetch('config.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
   ]);
-  app.config = config || {};
+  // Inside QueryBook, the Language app is the online gateway (Google Translate, else Gemini) for the languages
+  // that have no offline pack; its settings win over the static config.json.
+  const qb = location.protocol === 'file:' ? null : await fetch('/api/translate/config').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  app.config = { ...(config || {}), ...(qb || {}) };
   app.engine = new TranslatorEngine({ languages: registry });
   const saved = (await storage.get('kv', 'settings')) || {};
   app.settings = { ...DEFAULT_SETTINGS, ...presetFromConfig(app.config), ...saved };
+  if (app.config.edition === 'QueryBook' && app.config.gatewayUrl && !saved.gatewayUrl) Object.assign(app.settings, presetFromConfig(app.config));
   applyTheme();
   app.packs = new PackManager({ engine: app.engine });
   app.packs.setStore(storeSource());
@@ -118,6 +122,8 @@ function presetFromConfig(cfg) {
   if (cfg.storeKey) p.storeKey = cfg.storeKey;
   if (cfg.gatewayUrl) p.gatewayUrl = cfg.gatewayUrl;
   if (typeof cfg.cloudOptIn === 'boolean') p.cloudOptIn = cfg.cloudOptIn;
+  if (cfg.cloudTimeoutMs) p.cloudTimeoutMs = cfg.cloudTimeoutMs;
+  if (cfg.cloudBelowCoverage) p.cloudBelowCoverage = cfg.cloudBelowCoverage;
   if (typeof cfg.storeConnected === 'boolean') p.storeConnected = cfg.storeConnected;
   return p;
 }
@@ -375,7 +381,7 @@ async function run() {
   const route = plan(app.settings, { coverage: r.coverage.percent, words });
   r.route = route;
   if (route.mt === 'cloud') {
-    const res = await cloudTranslate(app.settings, { ...req, src: r.src, srcDialect: r.srcDialect });
+    const res = await cloudTranslate(app.settings, { ...req, src: r.src, srcDialect: r.srcDialect }, { timeoutMs: app.settings.cloudTimeoutMs || 1500 });
     if (token !== app.runToken) return;
     if (res.result) {
       app.usage.cloud++;

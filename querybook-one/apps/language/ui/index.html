@@ -170,6 +170,7 @@ tr.lc-active td { background: #f0fdf4; }
   .ll-tok:hover { background: var(--chip); }
   .ll-tok.wl { border-bottom: 2px dotted var(--accent); }
   .ll-tok.unk { border-bottom: 2px solid var(--bad); color: var(--bad); }
+  .ll-tok.cl { border-bottom: 2px solid var(--ok, #2a8); }
   .ll-notes { margin-top: 6px; }
   .ll-stagegrid { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: center; }
   .ll-face { width: 200px; height: 220px; }
@@ -916,7 +917,7 @@ tr.lc-active td { background: #f0fdf4; }
     <div class="card" style="padding:0;overflow:hidden">
       <iframe id="tr-frame" title="QueryBook Translate" data-src="translate/index.html" style="width:100%;height:calc(100vh - 150px);min-height:640px;border:0;display:block"></iframe>
     </div>
-    <p class="small muted">QueryBook Translate — offline, every word from its dictionaries with its source shown; unknown words are passed through and marked, never guessed. <a href="translate/index.html" target="_blank" rel="noopener">Open in its own window</a></p>
+    <p class="small muted">QueryBook Translate — 139 languages: offline, every word from its dictionaries with its source shown; with a Google or Gemini key, the languages and words the dictionaries lack are translated online (Google Translate, else Gemini) and labelled as such. <a href="translate/index.html" target="_blank" rel="noopener">Open in its own window</a></p>
   </section>
 
   <section class="panel" id="lookup">

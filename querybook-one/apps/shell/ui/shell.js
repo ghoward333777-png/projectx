@@ -7,6 +7,7 @@ const AREAS = [
   { id: "ask", name: "Ask", builtin: true },
   { id: "bookquery", name: "📚 Book Query", builtin: true },
   { id: "language", name: "Language", app: "language", hash: "learn" },
+  { id: "translate", name: "🌐 Translate", app: "language", hash: "translate" },
   { id: "stem", name: "STEM", app: "stem" },
   { id: "history", name: "History & News", app: "facts" },
   { id: "video", name: "Video Studio", app: "video" },
