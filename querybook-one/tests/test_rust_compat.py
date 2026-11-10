@@ -5,7 +5,7 @@ import os
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORTED = [os.path.join("apps", "_core", "qbmath.py"), os.path.join("apps", "shell", "ask.py")]
+PORTED = [os.path.join("apps", "_core", "qbmath.py"), os.path.join("apps", "shell", "ask.py"), os.path.join("apps", "shell", "modes.py")]
 BANNED = {"eval", "exec", "compile", "getattr", "setattr", "delattr", "hasattr", "globals", "locals", "vars", "__import__"}
 ALLOWED = {"__future__", "json", "re", "threading", "urllib", "math", "typing", "dataclasses"}
 

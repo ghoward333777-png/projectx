@@ -21,13 +21,15 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ask
+import modes
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -179,6 +181,7 @@ class Shell:
         self.root = data_folder()
         self.job = WindowsJob()
         self.programs = {pid: Program(pid, self.root, self.job) for pid in PROGRAMS}
+        self.watches = Watches(self.root)
 
     def prepare_drive(self) -> None:
         if not self.root:
@@ -253,10 +256,145 @@ class Shell:
         return {pid: p.url for pid, p in self.programs.items() if p.url}
 
 
+# --------------------------------------------------------------------------- the Ask page's modes (modes.py does the arranging)
+def ask_mode(body: dict, urls: dict) -> dict:
+    """one question in any mode: guided follow-ups resolve 'it' from earlier turns, a claim is looked up by its subject,
+    a structured query is subject + what to know; then the facts are gathered (ask.answer) and arranged (modes.compose)"""
+    mode = str(body.get("mode") or "qa")
+    q = " ".join(str(body.get("q") or "").split())[:500]
+    want = ""
+    if body.get("subject"):                                  # structured query
+        want = str(body.get("want") or "")
+        q = modes.structured(str(body.get("subject")), "") or q
+    guided = None
+    if mode == "guided" and body.get("turns"):
+        guided = modes.follow_up(q, [t for t in body.get("turns") or [] if isinstance(t, dict)])
+        q = guided["question"]
+    asked = q
+    if mode == "verify":
+        asked = modes.claim_subject(q) or q
+    r = ask.answer(asked, urls)
+    r["question"] = q
+    if mode == "verify":
+        r["claim"] = q
+    out = modes.compose(r, mode, str(body.get("format") or "auto"), str(body.get("register") or "plain"), want, int(body.get("seed") or 0))
+    if guided:
+        out["guided"] = guided
+    return out
+
+
+def check_text(text: str, urls: dict) -> dict:
+    """every claim in a pasted text checked against the facts (each claim's subject asked in parallel)"""
+    claims = modes.split_claims(text, 12)
+    results: list[dict] = [{} for _ in claims]
+
+    def one(i: int, c: str) -> None:
+        subj = modes.claim_subject(c)
+        try:
+            r = ask.answer(subj, urls) if subj else {"sections": []}
+            results[i] = modes.verdict(c, modes.facts_of(r.get("sections") or []))
+            results[i]["subject"] = subj
+        except Exception as e:                                # one slow lookup never hides the other claims
+            results[i] = {"claim": c, "verdict": "UNKNOWN", "facts": [], "subject": subj, "error": str(e)}
+    ts = [threading.Thread(target=one, args=(i, c), daemon=True) for i, c in enumerate(claims)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(40)
+    tally = {k: sum(1 for x in results if x.get("verdict") == k) for k in ("VERIFIED", "CONTRADICTED", "UNKNOWN")}
+    return {"claims": results, "tally": tally}
+
+
+class Watches:
+    """saved questions asked again on request or every hour while the window is open (Registry #78)"""
+
+    def __init__(self, folder: str | None) -> None:
+        self.path = os.path.join(folder or HERE, "shell", "watches.json")
+        self.lock = threading.Lock()
+
+    def load(self) -> list:
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return []
+
+    def save(self, rows: list) -> None:
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, self.path)
+
+    @staticmethod
+    def snapshot(r: dict) -> dict:
+        facts = modes.facts_of(r.get("sections") or [])
+        return {"short": r.get("short") or "", "facts": sorted({"%s|%s|%s" % (f.get("subject"), f.get("predicate"), f.get("object")) for f in facts})[:200]}
+
+    def act(self, body: dict, urls: dict) -> dict:
+        with self.lock:
+            rows = self.load()
+            a = body.get("action")
+            if a == "add":
+                q = " ".join(str(body.get("q") or "").split())[:300]
+                if not q:
+                    raise ValueError("Type the question to watch first.")
+                if not any(w["q"].lower() == q.lower() for w in rows):
+                    rows.append({"q": q, "added": time.time(), "checks": 0, "changes": 0, "last": None, "last_change": None, "snap": None})
+            elif a == "remove":
+                rows = [w for w in rows if w["q"] != body.get("q")]
+            self.save(rows)
+        if a in ("add", "run"):
+            self.run_all(urls, only=body.get("q") if a == "add" else None)
+        return {"watches": [{k: v for k, v in w.items() if k != "snap"} for w in self.load()]}
+
+    def run_all(self, urls: dict, only: object = None) -> None:
+        rows = self.load()
+        for w in rows:
+            if only and w["q"] != only:
+                continue
+            try:
+                r = ask.answer(w["q"], urls)
+            except Exception:
+                continue
+            snap = self.snapshot(r)
+            if w.get("snap") is not None and modes.changed(w["snap"], snap):
+                w["changes"] += 1
+                w["last_change"] = time.time()
+                w["was"] = w["snap"].get("short") or ""
+            w["snap"], w["checks"], w["last"], w["now"] = snap, w["checks"] + 1, time.time(), snap["short"]
+        with self.lock:
+            cur = {x["q"]: x for x in self.load()}
+            self.save([next((w for w in rows if w["q"] == q), x) for q, x in cur.items()])
+
+    def loop(self, urls_fn) -> None:
+        while True:
+            time.sleep(3600)
+            try:
+                self.run_all(urls_fn())
+            except Exception:
+                pass
+
+
+def say(body: dict, urls: dict) -> dict:
+    """the answer spoken by Language Builder's voice (and its mouth track, for a face)"""
+    base = (urls.get("language") or "").rstrip("/")
+    if not base:
+        raise ValueError("Language Builder is not running, so there is no voice yet.")
+    req = urllib.request.Request(base + "/api/lablang/say", data=json.dumps({"text": str(body.get("text") or "")[:300],
+                                 "lang": body.get("lang") or "en", "voice": body.get("voice") or ""}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
 def make_handler(shell: Shell):
     ui = os.path.join(HERE, "ui")
     types = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-             ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8"}
+             ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+             ".wasm": "application/wasm", ".tflite": "application/octet-stream"}
+    lang_dir = program_dir("language")
+    vendor = os.path.join(lang_dir, "ui", "vendor", "mediapipe") if lang_dir else ""   # the bundled object detector (offline)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args) -> None:              # quiet console
@@ -280,9 +418,16 @@ def make_handler(shell: Shell):
                                            "programs": [p.to_json() for p in shell.programs.values()]})
                 if u.path == "/api/shell/ask":
                     return self.send(200, ask.answer(q.get("q", ""), shell.urls()))
+                if u.path == "/api/shell/modes":
+                    return self.send(200, {"inputs": modes.INPUTS, "modes": modes.MODES, "formats": modes.FORMATS, "registers": modes.REGISTERS})
+                if u.path == "/api/shell/watch":
+                    return self.send(200, {"watches": [{k: v for k, v in w.items() if k != "snap"} for w in shell.watches.load()]})
                 path = "/index.html" if u.path in ("", "/") else u.path
                 rel = os.path.normpath(urllib.parse.unquote(path).lstrip("/"))
-                f = os.path.join(ui, rel)
+                base_dir = ui
+                if rel.replace("\\", "/").startswith("vendor/mediapipe/") and vendor:
+                    base_dir, rel = vendor, os.path.normpath(rel.replace("\\", "/")[len("vendor/mediapipe/"):])
+                f = os.path.join(base_dir, rel)
                 if rel.startswith("..") or os.path.isabs(rel) or not os.path.isfile(f):
                     return self.send(404, {"error": "not found"})
                 with open(f, "rb") as fh:
@@ -304,7 +449,28 @@ def make_handler(shell: Shell):
                     p.stop()
                     p.start()
                     return self.send(200, p.to_json())
+                if u.path == "/api/shell/ask":
+                    return self.send(200, ask_mode(body, shell.urls()))
+                if u.path == "/api/shell/grade":
+                    return self.send(200, modes.grade(str(body.get("given") or ""), str(body.get("expected") or "")))
+                if u.path == "/api/shell/check":
+                    return self.send(200, check_text(str(body.get("text") or "")[:20000], shell.urls()))
+                if u.path == "/api/shell/seen":
+                    rows = modes.seen_summary([d for d in body.get("detections") or [] if isinstance(d, dict)][:20000])
+                    return self.send(200, {"seen": rows, "answer": modes.seen_answer(str(body.get("q") or ""), rows) if body.get("q") else ""})
+                if u.path == "/api/shell/watch":
+                    return self.send(200, shell.watches.act(body, shell.urls()))
+                if u.path == "/api/shell/say":
+                    return self.send(200, say(body, shell.urls()))
                 return self.send(404, {"error": "not found"})
+            except ValueError as e:
+                return self.send(400, {"error": str(e)})
+            except urllib.error.HTTPError as e:
+                try:
+                    msg = json.loads(e.read().decode("utf-8")).get("error") or str(e)
+                except Exception:
+                    msg = str(e)
+                return self.send(400, {"error": msg})
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception as e:
@@ -330,7 +496,8 @@ def main(argv: list[str]) -> int:
     shell = Shell()
     shell.prepare_drive()
     shell.start_all()
-    threading.Thread(target=shell.watch, daemon=True, name="qb-shell-watch").start()   # 24 x 7: restart what ends or hangs
+    threading.Thread(target=shell.watch, daemon=True, name="qb-shell-watch").start()
+    threading.Thread(target=shell.watches.loop, args=(shell.urls,), daemon=True, name="qb-watched-questions").start()   # 24 x 7: restart what ends or hangs
     port = free_port(PORT)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(shell))
     httpd.daemon_threads = True

@@ -93,61 +93,8 @@ function waitingView(a, p) {
     } }, "Start it again") : null));
 }
 
-/* ------------------------------------------------------------------ Ask */
-let lastAnswer = null, lastQuestion = "";
-function askView() {
-  const v = el("div", { class: "view", id: "askview" });
-  if (!lastAnswer) {
-    v.append(el("div", { class: "card" }, el("h2", {}, "Ask anything"),
-      el("p", { class: "muted" }, "One question goes to every part of QueryBook at once: word meanings and translations, calculations and conversions, history, the shared facts and the bulk datasets on your data drive. Every answer line says where it came from."),
-      el("div", { class: "tiles" }, ["When was the printing press invented?", "What does obsequious mean?", "60 mph to km/h", "Marie Curie", "molar mass of H2O"].map(q =>
-        el("button", { class: "tile", type: "button", onclick: () => ask(q) }, el("b", {}, q))))));
-    return v;
-  }
-  const r = lastAnswer;
-  if (r.loading) { v.append(el("div", { class: "card" }, el("p", { class: "muted" }, `Asking every application about “${lastQuestion}”…`))); return v; }
-  if (r.error) { v.append(el("div", { class: "card" }, el("p", { class: "note" }, r.error))); return v; }
-  v.append(el("div", { class: "card" },
-    el("div", { class: "small muted" }, r.question),
-    el("div", { class: "short" }, r.short || (r.sections.length ? "Here is what QueryBook holds about this:" : "QueryBook holds nothing on this yet.")),
-    el("div", { class: "small muted", style: "margin-top:6px" }, `Asked: ${(r.asked || []).map(nameOf).join(", ") || "nothing"}` +
-      ((r.unavailable || []).length ? ` · not answering: ${r.unavailable.map(u => nameOf(u.source)).join(", ")}` : ""))));
-  for (const s of r.sections) {
-    if (s.kind === "facts") {
-      v.append(el("div", { class: "card" }, el("h2", {}, `Facts (${s.items.length})`),
-        el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Subject"), el("th", {}, "What"), el("th", {}, "Value"), el("th", {}, "Where it came from")),
-          s.items.map(f => el("tr", {}, el("td", {}, f.subject || ""), el("td", {}, f.predicate || ""),
-            el("td", {}, f.object || f.statement || "", f.date ? el("div", { class: "small muted" }, f.date) : null),
-            el("td", {}, f.link ? el("a", { href: f.link, target: "_blank", rel: "noopener" }, f.where || "source") : (f.where || ""),
-              f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
-              f.provenance ? el("div", { class: "small muted" }, f.provenance) : null)))))));
-    } else if (s.kind === "word") {
-      v.append(el("div", { class: "card" }, el("h2", {}, "Meaning"), s.items.map(it =>
-        it.translations ? el("div", { class: "small", style: "margin-top:8px" }, el("b", {}, "Translations: "),
-          Object.entries(it.translations).map(([l, w]) => `${l}: ${[].concat(w).slice(0, 3).join(", ")}`).join(" · "))
-        : el("div", {}, it.word ? el("div", { class: "short" }, it.word, it.pos ? el("span", { class: "small muted" }, "  " + it.pos) : null) : null,
-            el("p", { style: "white-space:pre-wrap;margin:6px 0" }, it.text), it.source ? el("div", { class: "small muted" }, it.source) : null)),
-        el("button", { class: "btn ghost", type: "button", style: "margin-top:10px", onclick: () => show("language") }, "Open in Language")));
-    } else if (s.kind === "math") {
-      v.append(el("div", { class: "card" }, el("h2", {}, "Calculation"), s.items.map(it => el("div", {}, el("div", { class: "short" }, it.text),
-        el("div", { class: "small muted" }, (it.exact ? "Exact · " : "") + (it.how || "")))),
-        el("button", { class: "btn ghost", type: "button", style: "margin-top:10px", onclick: () => show("stem") }, "Open in STEM")));
-    }
-  }
-  return v;
-}
+/* ------------------------------------------------------------------ Ask: askpage.js (askView, ask) */
 function nameOf(s) { return { stem: "STEM", language: "Language", history: "History & News", commons: "Shared facts", bulk: "Bulk datasets" }[s] || s; }
-async function ask(q) {
-  q = (q || "").trim(); if (!q) return;
-  document.getElementById("askinput").value = q;
-  lastQuestion = q; lastAnswer = { loading: true }; show("ask");
-  try {
-    const res = await fetch("/api/shell/ask?q=" + encodeURIComponent(q));
-    lastAnswer = await res.json();
-    if (!res.ok) lastAnswer = { error: lastAnswer.error || "QueryBook could not answer." };
-  } catch (e) { lastAnswer = { error: "QueryBook is not responding. Is its window still open?" }; }
-  if (current === "ask") show("ask");
-}
 document.getElementById("askform").addEventListener("submit", e => { e.preventDefault(); ask(document.getElementById("askinput").value); });
 
 /* ------------------------------------------------------------------ status */
