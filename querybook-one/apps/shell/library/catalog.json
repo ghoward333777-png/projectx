@@ -13,6 +13,7 @@
     "What is a light year?",
     "How did Neptune come to be discovered?"
    ],
+   "families": [],
    "historical": 0,
    "id": "comstock-astronomy",
    "kind": "nonfiction",
@@ -44,6 +45,7 @@
    "structure": "measurements, calculations and scientific procedures",
    "subject": "Astronomy and scientific education",
    "title": "A Text-Book of Astronomy",
+   "top_people": [],
    "units": 2916,
    "year": 1903
   },
@@ -57,6 +59,7 @@
     "the invisible hand",
     "What does Smith say about colonies?"
    ],
+   "families": [],
    "historical": 0,
    "id": "smith-wealth",
    "kind": "nonfiction",
@@ -82,6 +85,7 @@
    "structure": "economic systems and causal relationships",
    "subject": "Economics",
    "title": "An Inquiry into the Nature and Causes of the Wealth of Nations",
+   "top_people": [],
    "units": 11271,
    "year": 1776
   },
@@ -95,6 +99,7 @@
     "What did he learn from his grandfather Verus?",
     "the present moment"
    ],
+   "families": [],
    "historical": 0,
    "id": "aurelius-meditations",
    "kind": "nonfiction",
@@ -119,6 +124,7 @@
    "structure": "thematic propositions",
    "subject": "Stoic philosophy",
    "title": "Meditations",
+   "top_people": [],
    "units": 2678,
    "year": 180
   },
@@ -131,6 +137,9 @@
     "When did he escape?",
     "Baltimore",
     "What does he say about religion?"
+   ],
+   "families": [
+    "Auld"
    ],
    "historical": 11,
    "id": "douglass-narrative",
@@ -155,6 +164,14 @@
    "structure": "firsthand historical testimony",
    "subject": "Autobiography and American history",
    "title": "Narrative of the Life of Frederick Douglass, an American Slave",
+   "top_people": [
+    "Edward Covey",
+    "Colonel Lloyd",
+    "Hugh Auld",
+    "Thomas Auld",
+    "Austin Gore",
+    "William Freeland"
+   ],
    "units": 1890,
    "year": 1845
   },
@@ -168,6 +185,7 @@
     "What are the five factors?",
     "If the enemy is stronger"
    ],
+   "families": [],
    "historical": 0,
    "id": "suntzu-art-of-war",
    "kind": "nonfiction",
@@ -193,6 +211,7 @@
    "structure": "conditional strategy rules",
    "subject": "Strategy",
    "title": "The Art of War",
+   "top_people": [],
    "units": 2667,
    "year": -500
   },
@@ -207,6 +226,7 @@
     "When did the Western Empire end?",
     "Attila"
    ],
+   "families": [],
    "historical": 0,
    "id": "gibbon-decline-fall",
    "kind": "nonfiction",
@@ -237,6 +257,7 @@
    "structure": "timeline-intensive historical knowledge",
    "subject": "Comprehensive history",
    "title": "The History of the Decline and Fall of the Roman Empire",
+   "top_people": [],
    "units": 69765,
    "year": 1776
   },
@@ -250,6 +271,7 @@
     "fortune",
     "mercenaries"
    ],
+   "families": [],
    "historical": 0,
    "id": "machiavelli-prince",
    "kind": "nonfiction",
@@ -273,6 +295,7 @@
    "structure": "political recommendations and case examples",
    "subject": "Political strategy",
    "title": "The Prince",
+   "top_people": [],
    "units": 1327,
    "year": 1532
   },
@@ -286,6 +309,7 @@
     "What does Socrates say about poets?",
     "the three classes of the city"
    ],
+   "families": [],
    "historical": 0,
    "id": "plato-republic",
    "kind": "nonfiction",
@@ -310,6 +334,7 @@
    "structure": "dialogue and conceptual reasoning",
    "subject": "Philosophy and political theory",
    "title": "The Republic",
+   "top_people": [],
    "units": 8589,
    "year": -375
   },
@@ -323,6 +348,7 @@
     "the pond in winter",
     "simplicity"
    ],
+   "families": [],
    "historical": 0,
    "id": "thoreau-walden",
    "kind": "nonfiction",
@@ -348,6 +374,7 @@
    "structure": "observation, memoir and social criticism",
    "subject": "Society, nature and political philosophy",
    "title": "Walden, and On the Duty of Civil Disobedience",
+   "top_people": [],
    "units": 3994,
    "year": 1854
   },
@@ -360,6 +387,10 @@
     "the storming of the Bastille",
     "Who is Madame Defarge?",
     "Trace the Manette family"
+   ],
+   "families": [
+    "Defarge",
+    "Manette"
    ],
    "historical": 0,
    "id": "dickens-two-cities",
@@ -387,6 +418,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Historical fiction",
    "title": "A Tale of Two Cities",
+   "top_people": [
+    "Jarvis Lorry",
+    "Ernest Defarge",
+    "Doctor Manette",
+    "Jerry Cruncher",
+    "Charles Darnay",
+    "Lucie Manette"
+   ],
    "units": 7415,
    "year": 1859
   },
@@ -400,6 +439,7 @@
     "the Queen of Hearts",
     "How does Alice grow and shrink?"
    ],
+   "families": [],
    "historical": 0,
    "id": "carroll-alice",
    "kind": "fiction",
@@ -424,6 +464,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Fantasy",
    "title": "Alice's Adventures in Wonderland",
+   "top_people": [
+    "Alice",
+    "The Queen of Hearts",
+    "The King of Hearts",
+    "The Mock Turtle",
+    "The Mad Hatter",
+    "The Gryphon"
+   ],
    "units": 1412,
    "year": 1865
   },
@@ -436,6 +484,9 @@
     "Whitby",
     "How is Dracula defeated?",
     "Renfield"
+   ],
+   "families": [
+    "Westenra"
    ],
    "historical": 0,
    "id": "stoker-dracula",
@@ -462,6 +513,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Gothic horror",
    "title": "Dracula",
+   "top_people": [
+    "Abraham Van Helsing",
+    "Jonathan Harker",
+    "Lucy Westenra",
+    "Arthur Holmwood",
+    "Mina Murray",
+    "Count Dracula"
+   ],
    "units": 8914,
    "year": 1897
   },
@@ -474,6 +533,10 @@
     "Elizabeth",
     "Where is the creature made?",
     "Robert Walton"
+   ],
+   "families": [
+    "De Lacey",
+    "Frankenstein"
    ],
    "historical": 0,
    "id": "shelley-frankenstein",
@@ -500,6 +563,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Gothic and early science fiction",
    "title": "Frankenstein; or, The Modern Prometheus",
+   "top_people": [
+    "The creature",
+    "Elizabeth Lavenza",
+    "Henry Clerval",
+    "Alphonse Frankenstein",
+    "Victor Frankenstein",
+    "Justine Moritz"
+   ],
    "units": 3296,
    "year": 1818
   },
@@ -513,6 +584,7 @@
     "What is ambergris?",
     "Who survives?"
    ],
+   "families": [],
    "historical": 0,
    "id": "melville-moby-dick",
    "kind": "fiction",
@@ -537,6 +609,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Adventure and literary fiction",
    "title": "Moby-Dick; or, The Whale",
+   "top_people": [
+    "Captain Ahab",
+    "Queequeg",
+    "Stubb",
+    "Starbuck",
+    "Moby Dick",
+    "Flask"
+   ],
    "units": 8643,
    "year": 1851
   },
@@ -549,6 +629,14 @@
     "Where does Elizabeth first meet Darcy?",
     "Mr. Wickham",
     "Lady Catherine"
+   ],
+   "families": [
+    "Bennet",
+    "Bingley",
+    "Darcy",
+    "Gardiner",
+    "Lucas",
+    "de Bourgh"
    ],
    "historical": 0,
    "id": "austen-pride",
@@ -574,6 +662,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Social and romantic novel",
    "title": "Pride and Prejudice",
+   "top_people": [
+    "Elizabeth Bennet",
+    "Fitzwilliam Darcy",
+    "Jane Bennet",
+    "Charles Bingley",
+    "Kitty Bennet",
+    "George Wickham"
+   ],
    "units": 6150,
    "year": 1813
   },
@@ -588,6 +684,7 @@
     "The Speckled Band",
     "Jabez Wilson"
    ],
+   "families": [],
    "historical": 0,
    "id": "doyle-sherlock-holmes",
    "kind": "fiction",
@@ -611,6 +708,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Detective fiction",
    "title": "The Adventures of Sherlock Holmes",
+   "top_people": [
+    "Sherlock Holmes",
+    "Dr. Watson",
+    "Inspector Lestrade",
+    "Jephro Rucastle",
+    "James McCarthy",
+    "Neville St. Clair"
+   ],
    "units": 6521,
    "year": 1892
   },
@@ -623,6 +728,10 @@
     "What happens in the cave?",
     "Becky Thatcher",
     "Who killed Dr. Robinson?"
+   ],
+   "families": [
+    "Sawyer",
+    "Thatcher"
    ],
    "historical": 0,
    "id": "twain-tom-sawyer",
@@ -647,6 +756,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "American adventure fiction",
    "title": "The Adventures of Tom Sawyer",
+   "top_people": [
+    "Tom Sawyer",
+    "Huckleberry Finn",
+    "Injun Joe",
+    "Becky Thatcher",
+    "Sid",
+    "Aunt Polly"
+   ],
    "units": 5213,
    "year": 1876
   },
@@ -659,6 +776,13 @@
     "Abbé Faria",
     "the treasure",
     "Mercédès"
+   ],
+   "families": [
+    "Danglars",
+    "Dantès",
+    "Morcerf",
+    "Morrel",
+    "Villefort"
    ],
    "historical": 2,
    "id": "dumas-monte-cristo",
@@ -686,6 +810,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Adventure and revenge novel",
    "title": "The Count of Monte Cristo",
+   "top_people": [
+    "Edmond Dantès",
+    "Gérard de Villefort",
+    "Danglars",
+    "Albert de Morcerf",
+    "Valentine de Villefort",
+    "Fernand Mondego"
+   ],
    "units": 25067,
    "year": 1844
   },
@@ -699,6 +831,13 @@
     "the battle of Borodino",
     "Who is Natásha connected to?",
     "Kutúzov"
+   ],
+   "families": [
+    "Bezúkhov",
+    "Bolkónski",
+    "Drubetskóy",
+    "Kurágin",
+    "Rostóv"
    ],
    "historical": 15,
    "id": "tolstoy-war-peace",
@@ -726,6 +865,14 @@
    "structure": "narrative: characters, places, events, chronology",
    "subject": "Historical epic",
    "title": "War and Peace",
+   "top_people": [
+    "Pierre Bezúkhov",
+    "Natásha Rostóva",
+    "Prince Andrew Bolkónski",
+    "Princess Mary Bolkónskaya",
+    "Nicholas Rostóv",
+    "Napoleon"
+   ],
    "units": 30023,
    "year": 1869
   }

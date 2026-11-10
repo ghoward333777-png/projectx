@@ -698,6 +698,8 @@ def overview(book: dict) -> dict:
             "chapters": [{"n": c["n"], "label": c["label"], "title": c["title"], "part": c.get("part") or ""} for c in book.get("chapters") or []],
             "units": len(book["units"]), "kinds": kinds, "modern": status, "new_since": len(book.get("new_since") or []),
             "people": len(book.get("people") or []), "historical": sum(1 for p in book.get("people") or [] if p.get("historical")),
+            "top_people": [p["name"] for p in sorted(book.get("people") or [], key=lambda p: -len(p.get("units") or []))[:6]],
+            "families": sorted({p["family"] for p in book.get("people") or [] if p.get("family")}),
             "examples": book.get("examples") or []}
 
 

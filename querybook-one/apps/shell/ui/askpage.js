@@ -34,6 +34,10 @@ async function akPost(url, body) {
 function askView() {
   if (!AK.root) {
     AK.root = el("div", { class: "view", id: "askview" },
+      el("button", { type: "button", class: "bqbanner", onclick: () => show("bookquery") },
+        el("span", { class: "bqbig" }, "📚"),
+        el("span", {}, el("b", {}, "Book Query"), el("span", { class: "small" }, "Choose a book from the library and ask it anything — answers quoted from the book, chapter and paragraph.")),
+        el("span", { class: "btn" }, "Open →")),
       el("div", { class: "card askcontrols" },
         el("div", { class: "ctlrow" }, el("span", { class: "ctllabel" }, "How you ask"), el("div", { class: "seg", id: "ak-inputs", role: "group", "aria-label": "How you ask" })),
         el("div", { class: "ctlrow" }, el("span", { class: "ctllabel" }, "Mode"), el("div", { class: "seg", id: "ak-modes", role: "group", "aria-label": "Mode" })),
@@ -61,7 +65,11 @@ function akControls() {
     b.replaceChildren(...items.map(it => el("button", { type: "button", "aria-pressed": String(AK[key] === it.id), title: it.about || "",
       onclick: () => { AK[key] = it.id; save("qb:ask:" + key, it.id); akControls(); after(); } }, it.name)));
   };
-  seg("#ak-inputs", c.inputs, "input", () => { akStopCamera(); akPanel(); });
+  seg("#ak-inputs", c.inputs, "input", () => {
+    akStopCamera();
+    if (AK.input === "book") { AK.input = "type"; save("qb:ask:input", "type"); akControls(); show("bookquery"); return; }   // its own page
+    akPanel();
+  });
   seg("#ak-modes", c.modes, "mode", () => { AK.turns = []; akPanel(); if (AK.last && AK.last.question && AK.input !== "check" && AK.input !== "watch") akAsk(AK.last.question); });
   const f = AK.root.querySelector("#ak-format");
   f.replaceChildren(...c.formats.map(x => el("option", { value: x.id, selected: x.id === AK.format }, x.name)));
@@ -322,8 +330,8 @@ function akWatchPanel() {
 
 /* ------------------------------------------------------------------ asking */
 async function ask(q) {                                       // the header's Ask box
+  if (current === "bookquery") { if (BQ.book) return bqAsk(q); return; }   // Book Query: ask the open book
   if (current !== "ask") show("ask");
-  if (AK.input === "book" && AK.book) return akBookAsk(q);
   if (["camera", "video", "photo", "check", "watch", "structured"].includes(AK.input)) { AK.input = "type"; save("qb:ask:input", "type"); akControls(); akPanel(); }
   return akAsk(q);
 }

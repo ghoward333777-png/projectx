@@ -131,3 +131,22 @@ class ParserTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WindowLibraryTest(unittest.TestCase):
+    """the one window's Book Query page: the library list, a book's card, reading a chapter"""
+
+    def test_list_card_and_chapter(self):
+        import shell
+        lib = shell.Library([LIB, ""])
+        books = lib.list()
+        self.assertEqual(len(books), 19)
+        wp = next(b for b in books if b["id"] == "tolstoy-war-peace")
+        self.assertIn("Pierre Bezúkhov", wp["top_people"])
+        self.assertIn("Rostóv", wp["families"])
+        ch = lib.chapter("comstock-astronomy", 9)
+        self.assertEqual(ch["chapter"]["label"], "Chapter IX")
+        self.assertEqual((ch["prev"], ch["next"]), (8, 10))
+        self.assertTrue(all(u["id"].startswith("FU-") for p in ch["paragraphs"] for u in p["units"]))
+        with self.assertRaises(ValueError):
+            lib.get("darwin-origin")

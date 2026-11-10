@@ -31,7 +31,7 @@ import ask
 import bookq
 import modes
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -365,6 +365,27 @@ class Library:
                 continue
         return cards
 
+    def chapter(self, book_id: str, n: int) -> dict:
+        """the Original Text layer of one chapter: its paragraphs, each with its anchor and its Fact Units"""
+        book, _ = self.get(book_id)
+        ch = bookq.chapter_of(book, n)
+        if not ch:
+            raise ValueError("No such chapter.")
+        paras: list = []
+        last = None
+        for u in book["units"]:
+            if u["chapter"] != n:
+                continue
+            key = (u["section"], u["para"])
+            if key != last:
+                paras.append({"anchor": bookq.anchor(book, u), "units": []})
+                last = key
+            paras[-1]["units"].append({"id": u["id"], "text": u["text"], "kind": u["kind"]})
+        chs = [c["n"] for c in book.get("chapters") or []]
+        k = chs.index(n)
+        return {"book": book_id, "title": book.get("title"), "chapter": ch, "paragraphs": paras[:1500], "more": len(paras) > 1500,
+                "prev": chs[k - 1] if k > 0 else None, "next": chs[k + 1] if k + 1 < len(chs) else None}
+
     def passage(self, book_id: str, unit_id: str) -> dict:
         """the Original Text layer around one Fact Unit: its whole paragraph, the paragraphs before and after"""
         book, _ = self.get(book_id)
@@ -512,6 +533,8 @@ def make_handler(shell: Shell):
                 if u.path == "/api/shell/book":
                     book, _ = shell.library.get(q.get("book", ""))
                     return self.send(200, bookq.overview(book))
+                if u.path == "/api/shell/book/chapter":
+                    return self.send(200, shell.library.chapter(q.get("book", ""), int(q.get("n") or 0)))
                 if u.path == "/api/shell/book/passage":
                     return self.send(200, shell.library.passage(q.get("book", ""), q.get("unit", "")))
                 if u.path == "/api/shell/watch":
@@ -538,6 +561,10 @@ def make_handler(shell: Shell):
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+                if u.path == "/api/shell/quit":               # a newer QueryBook asks this one to make way
+                    self.send(200, {"ok": True, "version": VERSION})
+                    threading.Thread(target=lambda: (time.sleep(0.3), shell.stop_all(), os._exit(0)), daemon=True).start()
+                    return
                 if u.path == "/api/shell/restart":
                     p = shell.programs.get(body.get("id"))
                     if not p:
@@ -590,8 +617,69 @@ def free_port(port: int) -> int:
     return port
 
 
+def _listening_pid(port: int) -> int:
+    """the process listening on 127.0.0.1:<port> (Windows: netstat; Mac/Linux: lsof), or 0"""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, timeout=10).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[1].endswith(":%d" % port) and parts[3].upper() == "LISTENING":
+                    return int(parts[4])
+        else:
+            out = subprocess.run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"], capture_output=True, text=True, timeout=10).stdout
+            return int(out.split()[0]) if out.split() else 0
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return 0
+
+
+def _port_free(port: int) -> bool:
+    import socket
+    with socket.socket() as so:
+        try:
+            so.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def stop_older_copies() -> None:
+    """An older QueryBook still running (its window left open, or hidden) keeps the port and the applications, and the
+    browser keeps showing it. Find any QueryBook window program on 8090-8109 and close it — politely when it knows how
+    (version 1.3+), otherwise by ending its process tree. Only a program that answers as a QueryBook window is touched."""
+    for port in range(PORT, PORT + 20):
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:%d/api/shell/status" % port, timeout=1.5) as r:
+                st = json.loads(r.read().decode("utf-8"))
+        except Exception:
+            continue
+        if "programs" not in st:
+            continue
+        print("  Closing an older QueryBook (version %s) that was still running on port %d…" % (st.get("version", "?"), port))
+        try:
+            req = urllib.request.Request("http://127.0.0.1:%d/api/shell/quit" % port, data=b"{}", headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3).read()
+        except Exception:
+            pid = _listening_pid(port)
+            if pid and pid != os.getpid():
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=20)
+                else:
+                    try:
+                        os.kill(pid, 15)
+                    except OSError:
+                        pass
+        for _ in range(240):                                # wait (up to a minute) until the port can be taken: it saves and closes its applications first
+            time.sleep(0.25)
+            if _port_free(port):
+                break
+        time.sleep(1.0)
+
+
 def main(argv: list[str]) -> int:
     print("\n  QueryBook %s" % VERSION)
+    stop_older_copies()
     shell = Shell()
     shell.prepare_drive()
     shell.start_all()

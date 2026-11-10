@@ -34,7 +34,7 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
 
 ## Book Query and the sample-ebook library
 
-QueryBook was designed to give anchored answers about one ebook. **Ask → 📚 Book Query** does that for a library of 19 public-domain books (`apps/shell/library/`):
+QueryBook was designed to give anchored answers about one ebook. **📚 Book Query** (left rail, under Ask, for every role; also the button at the top of the Ask page) does that for a library of 19 public-domain books (`apps/shell/library/`): step 1 choose a book (search, nonfiction / fiction / book-vs-today filters), step 2 ask it — suggested questions grouped by what the book can answer, earlier questions, the contents (read any chapter, every sentence a Fact Unit), answers quoted with their anchors. A newer QueryBook closes an older copy still running (which kept the browser on the old version); the version shows beside the name.
 
 - **Nonfiction:** Gibbon, *Decline and Fall*; Smith, *Wealth of Nations*; Plato, *Republic*; Machiavelli, *The Prince*; Marcus Aurelius, *Meditations*; Sun Tzu, *The Art of War*; Thoreau, *Walden* and *Civil Disobedience*; Douglass, *Narrative*; Comstock, *A Text-Book of Astronomy*.
 - **Fiction:** *Pride and Prejudice*, *Frankenstein*, *Moby-Dick*, *Alice in Wonderland*, *The Adventures of Sherlock Holmes*, *Dracula*, *A Tale of Two Cities*, *The Count of Monte Cristo*, *War and Peace*, *Tom Sawyer*.

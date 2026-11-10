@@ -5,6 +5,7 @@
 const AREAS = [
   { band: "Everyday" },
   { id: "ask", name: "Ask", builtin: true },
+  { id: "bookquery", name: "📚 Book Query", builtin: true },
   { id: "language", name: "Language", app: "language", hash: "learn" },
   { id: "stem", name: "STEM", app: "stem" },
   { id: "history", name: "History & News", app: "facts" },
@@ -67,7 +68,7 @@ function show(id) {
   const old = pane.querySelector(".view"); if (old) old.remove();
   const a = AREAS.find(x => x.id === id);
   if (!a) return;
-  if (a.builtin) { pane.append(askView()); return; }
+  if (a.builtin) { pane.append(id === "bookquery" ? bookQueryView() : askView()); if (id !== "bookquery") document.getElementById("askinput").placeholder = "Ask anything — a word, a fact, a calculation"; return; }
   const p = prog(a.app);
   if (p.state !== "running" || !p.url) { pane.append(waitingView(a, p)); return; }
   const src = p.url + (a.hash ? "#" + a.hash : "");
@@ -104,6 +105,7 @@ async function refresh() {
     status = await (await fetch("/api/shell/status")).json();
   } catch (e) { return; }
   drawRail();
+  const v = document.getElementById("qbver"); if (v && status.version) v.textContent = status.version;
   const a = AREAS.find(x => x.id === current);
   if (a && !a.builtin) {
     const p = prog(a.app);

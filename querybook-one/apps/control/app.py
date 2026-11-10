@@ -1032,6 +1032,10 @@ def selftest():
             check("bulk harvesting: starting needs the admin passphrase", False)
         except Exception:
             check("bulk harvesting: starting needs the admin passphrase", True)
+        try:                                       # the engine the test started never outlives the test (it kept
+            qbbulk.stop(co, grace=10, wait=True)   # downloading into a deleted temp folder and filled the disk)
+        except Exception:
+            pass
     print("\n  %d of %d checks passed" % (passed, passed + failed))
     return failed == 0
 
