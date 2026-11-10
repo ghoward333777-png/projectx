@@ -1,0 +1,11 @@
+# Rebuilt at session start (graphify extract . --code-only && graphify cluster-only .), ~20 s, identical every time.
+# Kept in git: GRAPH_REPORT.md (the project map), graph.html (open in a browser), .graphify_labels.json (cluster names).
+graph.json
+cache/
+manifest.json
+.graphify_analysis.json
+.graphify_build.json
+.graphify_root
+.graphify_python
+memory/
+reflections/

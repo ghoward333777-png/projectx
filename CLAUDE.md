@@ -130,3 +130,20 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Book Query answers through `apps/_core/qbcompose.py` (plan -> evidence -> compose -> verify; Claude `claude-opus-5-5` via
   raw HTTP because the bundle is stdlib-only, else Gemini, else `bookq.compose_rules`). Keep the verification: no
   uncited sentence, citations only to supplied passages. Multi-book questions (`books: [...]`) are a core feature.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- graphify-out/graph.json is not committed (6 MB, rewritten whole on every build). If it is missing, rebuild it — local AST
+  only, about 20 s, and identical every time: `graphify extract . --code-only && graphify cluster-only .` (install with
+  `uv tool install graphifyy==0.9.105` if `graphify` is not found). Committed: GRAPH_REPORT.md (the project map),
+  graph.html, and .graphify_labels.json — the cluster names, written by hand; when clusters change, name the new ones
+  there ("QB1 …" QueryBook one, "QB Next …", "Book Studio …") and rerun `graphify cluster-only .`.
+- The synced copies of the QueryBook core and bulk data are left out by .graphifyignore, which
+  querybook-one/apps/tools/sync_core.py regenerates — edit FILES there, not the ignore list.
