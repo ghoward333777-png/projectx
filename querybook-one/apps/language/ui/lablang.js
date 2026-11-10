@@ -55,6 +55,7 @@ async function llInit() {
   $("#ll-play-src").addEventListener("click", () => llSay("source"));
   $("#ll-avgo").addEventListener("click", llAvSay);
   llAvatars().catch(e => { $("#ll-avstate").textContent = "The avatars could not be loaded: " + e.message; });
+  llAvKeys();
   $("#ll-stop").addEventListener("click", llStop);
   $("#ll-clear").addEventListener("click", () => { $("#ll-text").value = ""; LL.out = null; llRenderOut(); llMark(false); $("#ll-text").focus(); });
   $$("#ll-examples button").forEach(b => b.addEventListener("click", () => { $("#ll-text").value = b.dataset.say; llTranslate(); }));
@@ -192,8 +193,9 @@ const llCase = (src, t) => /^\p{Lu}/u.test(src) ? t.charAt(0).toLocaleUpperCase(
 function llRenderOut() {
   const o = LL.out;
   $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o; $("#ll-clip").disabled = !o; $("#ll-avgo").disabled = !o;
+  $("#ll-avhint").hidden = !!o;
   if (!o) {
-    $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here, word by word — tap any word to see where it came from.</p>';
+    $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here after you press Translate in step 1.</p>';
     $("#ll-ipa").textContent = ""; $("#ll-karaoke").innerHTML = ""; $("#ll-score").innerHTML = ""; $("#ll-notes").innerHTML = "";
     return;
   }
@@ -217,7 +219,7 @@ function llRenderOut() {
     ((o.notes || []).some(n => /entry by entry/.test(n)) || o.segs.filter(s => s.kind !== "punct" && s.kind !== "number").length > 1 && o.segs.some(s => s.kind === "wordlist")
       ? '<p class="small muted">Put together word by word: the words are right, but word endings, gender (el / la) and word order may need a native speaker’s eye.</p>' : "");
   $("#ll-score").innerHTML = "";
-  $("#ll-karaoke").innerHTML = '<span class="muted">Press ▶ to hear it.</span>';
+  $("#ll-karaoke").innerHTML = '<span class="muted small">Press ▶ Listen to hear it. Tap a word above to see where it came from.</span>';
 }
 
 function llWhy(i, el) {
@@ -402,6 +404,15 @@ async function llAvatars() {
   $$("#ll-avfaces [data-av]").forEach(b => b.onclick = () => llAvPick(b.dataset.av, b.dataset.name));
   const b = $('#ll-avfaces [data-av="' + cur + '"]');
   if (b) llAvPick(cur, b.dataset.name);
+}
+// says plainly whether the avatar video can be made here, and what to do when it cannot
+async function llAvKeys() {
+  let s;
+  try { s = await api("/api/talk/status"); } catch (e) { return; }
+  $("#ll-avkeys").innerHTML = s.gemini_key || s.heygen_key
+    ? '<span class="chip ok">✔ Avatar video ready (' + (s.gemini_key ? "Gemini" : "HeyGen") + " key found)</span>"
+    : '<div class="note bad"><b>The avatar video needs a key.</b> Add a Gemini key: Speech → Voice providers → Google Gemini (or Control Panel → API keys). ' +
+      "Until then the sentence is spoken with the built-in voice and the face stays still.</div>";
 }
 function llAvPick(id, name) {
   LL.avatar = id; LL.avatarName = name;
