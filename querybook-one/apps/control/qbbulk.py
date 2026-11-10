@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.35.1"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.35.2"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -2157,9 +2157,17 @@ class Shard:
         t = _NS()
         new = 0
         self.db.execute("PRAGMA cache_size=-%d" % (MERGE_CACHE_MB * 1024))
+        # 1.35.2: a filing reports that it is advancing (SQLite steps), so nothing mistakes a long filing on a big shard
+        # for a stall. Before, the engine's 30-minute keep-alive saw no new facts during a filing of hours on a
+        # billion-fact drive, restarted the engine, the filing rolled back, began again — and nothing was ever filed.
+        def step():
+            AGENT["filing"] = AGENT.get("filing", 0) + 1
+            return 0
+        self.db.set_progress_handler(step, FILING_STEP)
         try:
             new = self._fold()
         finally:
+            self.db.set_progress_handler(None, 0)
             self.db.execute("PRAGMA cache_size=-%d" % (CACHE_MB * 1024))
             self.db.execute("PRAGMA shrink_memory")
         TR.add("db_merge", _NS() - t, 1, new)
@@ -2519,8 +2527,9 @@ def _agent(args):
 # ------------------------------------------------------------------------------------------------ the supervisor (1.30)
 # Every dataset is its own watched process. The supervisor restarts what ends, ends what stalls, re-routes what waits too
 # long, and never gives up: the red Stop is the only way to end it.
-AGENT = {"rows": 0, "waiting": None}            # in each agent process: how far it is, and whether it is waiting on purpose
+AGENT = {"rows": 0, "waiting": None, "filing": 0}            # in each agent process: how far it is, and whether it is waiting on purpose
 SLOT_MAX_WAIT_S = 600                           # a lane waiting longer than this for a download connection gives its place up
+FILING_STEP = 200000                            # SQLite steps between two "still filing" ticks
 STALL_S = 900                                   # no progress for this long (and not waiting on purpose): ended and restarted
 SILENT_S = 180                                  # no sign of life for this long: ended and restarted
 BACKOFF_S = (60, 120, 300, 600, 900)          # waits before the next try after the 1st, 2nd, ... failure in a row
@@ -2556,7 +2565,7 @@ def _agent_main(commons_folder, key, max_rows, result_path):
             try:
                 with open(alive + ".tmp", "w") as f:
                     json.dump({"at": time.time(), "pid": os.getpid(), "meter": METER.done, "rows": AGENT["rows"],
-                               "waiting": AGENT["waiting"]}, f)
+                               "waiting": AGENT["waiting"], "filing": AGENT.get("filing", 0)}, f)
                 _replace(alive + ".tmp", alive, tries=5)
             except OSError:
                 pass
@@ -2666,7 +2675,7 @@ class Supervisor:
             except (OSError, ValueError):
                 a = None
             if a:
-                prog = (a.get("meter"), a.get("rows"))
+                prog = (a.get("meter"), a.get("rows"), a.get("filing"))      # 1.35.2: a filing advancing is progress
                 if prog != info["progress"]:
                     info["progress"], info["changed"], info["waiting_since"] = prog, now, None
                 elif a.get("waiting"):                   # waiting on purpose (filing, a connection) is not a stall…
@@ -3450,7 +3459,8 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
     running = [d for d in st["datasets"] if d.get("state") == "running"]
     sig = [st.get("total_gathered", st.get("total")), st.get("total"),
            sum(int(((d.get("progress") or {}).get("done")) or 0) for d in st["datasets"]),
-           ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None)]
+           ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None),
+           agents_moving(commons.folder)]
     if sig != ka.get("sig"):
         ka.update(sig=sig, since=now)
         _ka_save(path, ka)
@@ -3616,6 +3626,25 @@ def _pid_alive(pid):
         return True
     except OSError:
         return False
+
+
+def agents_moving(commons_folder):
+    """1.35.2: every live agent's own progress — bytes read, rows, SQLite steps while filing — as one list. It changes
+    while ANY agent advances, so keep_alive never restarts an engine whose agent is in the middle of a long filing
+    (only a filing frozen for 30 minutes, not a single step, is a stall)."""
+    out = []
+    d = os.path.join(commons_folder, FOLDER, "_agents")
+    if os.path.isdir(d):
+        for f in sorted(os.listdir(d)):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(d, f)) as fh:
+                        a = json.load(fh)
+                    if time.time() - a.get("at", 0) < 120:
+                        out.append([f[:-5], a.get("meter"), a.get("rows"), a.get("filing")])
+                except (OSError, ValueError, TypeError):
+                    pass
+    return out
 
 
 def _agent_pids(commons_folder):
@@ -5037,6 +5066,22 @@ def _supervisor_tests():
            "once (written down with its reason); waiting on purpose or a dead runner (resumed elsewhere) is not restarted here",
            not any((r1, r2, r3, r5, r6, r7)) and r4 and r4["restarted"] and did == [1] and keepalive_info(cf)["restarts"] == 1
            and "nothing moved for 30 min" in keepalive_info(cf)["last"]["why"], (r3, r4, r5, r6, did, keepalive_info(cf)))
+        # 1.35.2: an agent in the middle of a long filing (its SQLite steps advancing, no new fact yet) is never restarted
+        # by the keep-alive; a filing frozen for 30 minutes is
+        ad_ = _alive_dir(cf)
+        def _beat(filing_):
+            with open(os.path.join(ad_, "usgs-gnis.json"), "w") as f:
+                json.dump({"at": time.time(), "pid": 1, "meter": 5, "rows": 9, "waiting": "filing 20,000,000 facts into the dataset", "filing": filing_}, f)
+        kd, kc = [], _C()
+        t1_ = t0_ + 5e6
+        _beat(1); keep_alive(kac, "", t1_, mk(20, 9), lambda: kd.append(1))
+        moving_ = []
+        for i in range(1, 7):                            # an hour of filing, a step every 10 minutes
+            _beat(1 + i); moving_.append(keep_alive(kac, "", t1_ + i * 600, mk(20, 9), lambda: kd.append(1)))
+        frozen_ = [keep_alive(kac, "", t1_ + 3600 + i * 600, mk(20, 9), lambda: kd.append(1)) for i in range(1, 5)]
+        os.remove(os.path.join(ad_, "usgs-gnis.json"))
+        ok("1.35.2 keep-alive: an hour-long filing that is still advancing is left alone; one frozen for 30 min is restarted",
+           not any(moving_) and kd == [1] and any(frozen_), (moving_, frozen_, kd))
         # 1.35: a dataset changing hands (file moved for a moment) keeps its count on the screen
         sp_ = shard_path(cf, "calendar-scaffold")
         os.replace(sp_, sp_ + ".moving")
