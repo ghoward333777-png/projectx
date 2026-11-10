@@ -372,7 +372,7 @@ def self_test():
         whole = os.path.join(tmp, "whole.mp4")
         rb._ff(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=6", "-pix_fmt", "yuv420p", whole])
         a1, b1 = os.path.join(tmp, "a1.mp4"), os.path.join(tmp, "b1.mp4")
-        rb._ff(["-i", whole, "-t", "3", a1]); rb._ff(["-ss", "3", "-i", whole, a1.replace("a1", "b1")])
+        rb._ff(["-i", whole, "-t", "3", a1]); rb._ff(["-ss", "3", "-i", whole, b1])   # (not a1.replace: a temp folder can contain "a1")
         lib2.add("reach", a1, "filmed", consent="test footage"); lib2.add("grasp", b1, "filmed", consent="test footage")
         out2 = os.path.join(tmp, "out2.mp4")
         r3 = render(lib2, ["reach", "grasp"], out2, "horizontal", generator=fake)

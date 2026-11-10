@@ -94,6 +94,13 @@ def _multipart(fields, files):
     return out + ("--%s--\r\n" % bnd).encode(), "multipart/form-data; boundary=" + bnd
 
 
+
+def _unquote(a):
+    """Windows splitting (posix=False) keeps the quotes around a quoted piece; take them off."""
+    if len(a) >= 2 and a[0] == a[-1] and a[0] in "\"'":
+        return a[1:-1]
+    return a
+
 class Personas:
     def __init__(self, store, speech, folder):
         self.store, self.speech = store, speech
@@ -407,7 +414,7 @@ class Personas:
                 fh.write(wav)
             vals = {"face": face, "audio": audio, "out": out, "outdir": work, "repo": f.get("repo") or ""}
             # split the template first, then fill each piece: paths with spaces stay one argument on every system
-            args = [a.format(**vals) for a in shlex.split(cmd, posix=os.name != "nt")]
+            args = [_unquote(a).format(**vals) for a in shlex.split(cmd, posix=os.name != "nt")]
             note("running: %s" % " ".join(os.path.basename(a) if os.sep in a else a for a in args)[:200])
             pr = subprocess.run(args, capture_output=True, text=True, timeout=7200, cwd=f.get("repo") or work)
             if pr.returncode != 0:

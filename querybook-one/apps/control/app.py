@@ -524,14 +524,24 @@ class Panel:
                 if a["running"]:
                     try:
                         d = _call(a["url"], "/api/diagnostics", timeout=20)
-                        bad = [x["name"] for x in d.get("checks", []) if x.get("status") == "fail"]
+                        bad = [x for x in d.get("checks", []) if x.get("status") == "fail"]
+                        warn = [x for x in d.get("checks", []) if x.get("status") == "warn"]
+                        say = lambda xs: "; ".join("%s (%s)" % (x["name"], str(x.get("detail") or "")[:300]) for x in xs[:4])
                         add("%s's own diagnostics" % a["name"], not bad if d.get("overall") != "warn" or bad else None,
-                            "overall %s%s" % (d.get("overall"), (": " + ", ".join(bad)) if bad else ""))
+                            "overall %s%s" % (d.get("overall"), (": " + say(bad)) if bad else (": " + say(warn)) if warn else ""))
                     except Exception as e:
                         add("%s's own diagnostics" % a["name"], False, str(e))
                     add("%s uses this Control Panel's rules" % a["name"], self._same_rules(a["url"]), "reads the same shared database")
         if section in ("harvest", "all"):
-            add("Master harvesting switch", True if cm.hv.master_running(c) else None, "running" if cm.hv.master_running(c) else "stopped")
+            try:                                       # the bulk engine (the old master switch only steered the retired team harvest)
+                bst = qbbulk.status_cached(c.folder, c)
+                rs, ka = bst.get("runner") or {}, bst.get("keepalive") or {}
+                add("Bulk harvesting engine", True if rs.get("alive") else None,
+                    ("running: %s agent(s), %s facts a minute" % (len(rs.get("running") or []), format(bst.get("facts_per_min") or 0, ","))
+                     if rs.get("alive") else "stopped — press ⚡ Start harvesting") +
+                    (" · restarted by itself %d× (last: %s)" % (ka["restarts"], (ka.get("last") or {}).get("why")) if ka.get("restarts") else ""))
+            except Exception as e:
+                add("Bulk harvesting engine", None, "could not be read: %s" % e)
             ok = c.harvest_log.verify()
             add("Harvest log hash chain intact", bool(ok.get("ok")), json.dumps(ok)[:200])
             n = c.store.scalar("SELECT count(*) FROM harvest_log WHERE decision = 'failed'", default=0)

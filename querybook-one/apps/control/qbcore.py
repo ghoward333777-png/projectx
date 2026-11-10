@@ -1212,8 +1212,15 @@ class Diagnostics:
                     same = bool(b) and mb[0]["name"] == b[0]["name"] and _sha256(mb[0]["path"]) == _sha256(b[0]["path"])
                     checks.append(_check("mirror", "Backup mirror (second copy)", "ok" if same else "warn",
                                          "%d copies; newest %s" % (len(mb), "matches the newest backup" if same else "is older than the newest backup")))
-            errs, n = self.errors_since(24)
-            checks.append(_check("errors", "Errors in the last 24 hours", "ok" if n == 0 else "fail" if n >= 20 else "warn", "%d" % n, n))
+            errs, n = self.errors_since(24, limit=500)
+            top = {}
+            for e in errs:                                   # the same error again and again: say which, and how often
+                k = re.sub(r"\d+", "#", e["message"])[:160]
+                top[k] = top.get(k, 0) + 1
+            common = sorted(top.items(), key=lambda kv: -kv[1])[:2]
+            detail = "%d" % n + ("" if not common else " — most often: " + "; ".join("%s (x%d)" % (m, c) for m, c in common)
+                                 + " · the whole lines are in %s" % (getattr(self.log, "path", None) or "the log"))
+            checks.append(_check("errors", "Errors in the last 24 hours", "ok" if n == 0 else "fail" if n >= 20 else "warn", detail, n))
             if self.jobs is not None:
                 j = self.jobs.status()
                 last = self.jobs.last or {}
