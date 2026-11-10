@@ -111,7 +111,7 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 
 - Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)
   with HeyGen animating the portrait (`apps/language/talkclip.py`, `ui/talk.js`, Speech → Talking clips, the Speak
-  page's "Make a talking clip of this", the Lab's step-4 "Talking clip" button). This is what works for the user.
+  page's "Make a talking clip of this", the Lab's step-4 human avatar: pick a library face, "Avatar says it" plays the Gemini/HeyGen video in place). This is what works for the user. The human avatars (library faces) must always be visible where the user works.
 - The local face engine (Language 1.53: face.js, avatarface.js, photoface.js, motionlib, Quality Lab) was tried and
   rejected by the user on 2026-11-10 ("failed lip synching"). Its code is kept in git history at commit 82e15af — do
   not put it back, and do not replace the Gemini/ElevenLabs route, unless the user asks.

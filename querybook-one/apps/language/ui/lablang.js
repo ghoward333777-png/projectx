@@ -48,6 +48,8 @@ async function llInit() {
     if (window.showSub) showSub("talk");
   });
   $("#ll-play-src").addEventListener("click", () => llSay("source"));
+  $("#ll-avgo").addEventListener("click", llAvSay);
+  llAvatars().catch(e => { $("#ll-avstate").textContent = "The avatars could not be loaded: " + e.message; });
   $("#ll-stop").addEventListener("click", llStop);
   $("#ll-clear").addEventListener("click", () => { $("#ll-text").value = ""; LL.out = null; llRenderOut(); llMark(false); $("#ll-text").focus(); });
   $$("#ll-examples button").forEach(b => b.addEventListener("click", () => { $("#ll-text").value = b.dataset.say; llTranslate(); }));
@@ -158,7 +160,7 @@ const llCase = (src, t) => /^\p{Lu}/u.test(src) ? t.charAt(0).toLocaleUpperCase(
 
 function llRenderOut() {
   const o = LL.out;
-  $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o; $("#ll-clip").disabled = !o;
+  $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o; $("#ll-clip").disabled = !o; $("#ll-avgo").disabled = !o;
   if (!o) {
     $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here, word by word — tap any word to see where it came from.</p>';
     $("#ll-ipa").textContent = ""; $("#ll-karaoke").innerHTML = ""; $("#ll-score").innerHTML = ""; $("#ll-notes").innerHTML = "";
@@ -324,3 +326,56 @@ function llScore(heard, final) {
 }
 
 function llMark(on) { $("#ll-tr").classList.toggle("pulse", !!$("#ll-text").value.trim() && !LL.out); }
+
+// ---------------------------------------------------------------- step 4: the human avatar (Language 1.54)
+// A library avatar (Pamela, the starter faces, any face added on Speech) says the sentence in a talking video made by
+// Gemini; when Gemini cannot, ElevenLabs (or the Speak page's voice) speaks and HeyGen moves the face — the talking
+// clips of Speech → Talking clips, shown right here. Nothing animates the face on this computer.
+function llAvGuess(name) { return /^(man|male|boy)\b/i.test(name) ? "man" : /^(woman|pamela|girl|female)\b/i.test(name) ? "woman" : "person"; }
+async function llAvatars() {
+  const r = await api("/api/avatars/list");
+  const faces = (r.avatars || []).filter(a => a.kind !== "body");
+  let cur = "";
+  try { cur = localStorage.getItem("qb-lab-avatar") || ""; } catch (e) { /* first visit */ }
+  if (!faces.some(a => String(a.id) === cur)) cur = String((faces.find(a => a.name === "Pamela") || faces[0] || {}).id || "");
+  $("#ll-avfaces").innerHTML = faces.map(a => '<button type="button" data-av="' + a.id + '" data-name="' + esc(a.name) + '" title="' + esc(a.name) + '"><img loading="lazy" alt="' + esc(a.name) + '" src="/api/avatars/image?id=' + a.id + '"></button>').join("")
+    || '<p class="small muted">No avatars yet — add one on Speech → Talking clips.</p>';
+  $$("#ll-avfaces [data-av]").forEach(b => b.onclick = () => llAvPick(b.dataset.av, b.dataset.name));
+  const b = $('#ll-avfaces [data-av="' + cur + '"]');
+  if (b) llAvPick(cur, b.dataset.name);
+}
+function llAvPick(id, name) {
+  LL.avatar = id; LL.avatarName = name;
+  try { localStorage.setItem("qb-lab-avatar", id); } catch (e) { /* storage unavailable */ }
+  $$("#ll-avfaces [data-av]").forEach(x => x.classList.toggle("on", x.dataset.av === String(id)));
+  $("#ll-avstage").innerHTML = '<img id="ll-avimg" alt="' + esc(name) + '" src="/api/avatars/image?id=' + id + '">';
+  $("#ll-avperson").value = llAvGuess(name);
+  $("#ll-avstate").textContent = "";
+}
+async function llAvSay() {
+  if (!LL.out || !LL.out.text || !LL.avatar) return;
+  const btn = $("#ll-avgo"); btn.disabled = true;
+  $("#ll-avstate").textContent = (LL.avatarName || "The avatar") + " is getting ready to say it — the video takes about a minute…";
+  try {
+    const c = await api("/api/talk/make", { text: LL.out.text, lang: LL.to, person: $("#ll-avperson").value, route: "auto", face: LL.avatar });
+    llAvFollow(c.id);
+  } catch (e) { $("#ll-avstate").innerHTML = '<span class="bad-t">' + esc(e.message) + "</span>"; btn.disabled = false; }
+}
+async function llAvFollow(id) {
+  let c;
+  try { c = await api("/api/talk/clip?id=" + encodeURIComponent(id)); }
+  catch (e) { $("#ll-avstate").innerHTML = '<span class="bad-t">' + esc(e.message) + "</span>"; $("#ll-avgo").disabled = false; return; }
+  if (c.status === "queued" || c.status === "working") {
+    $("#ll-avstate").textContent = (c.detail || "working") + "…";
+    LL.avPoll = setTimeout(() => llAvFollow(id), 3000);
+    return;
+  }
+  $("#ll-avgo").disabled = false;
+  if (c.status === "done") {
+    $("#ll-avstage").innerHTML = '<video controls autoplay playsinline src="/api/talk/video?id=' + c.id + '"></video>';
+    $("#ll-avstate").innerHTML = "Made by <b>" + (c.route === "gemini" ? "Gemini" : "HeyGen") + "</b>" + (c.why && c.route === "heygen" ? " — " + esc(c.why) : "") +
+      ' · <a href="/api/talk/video?id=' + c.id + '" download="talking-clip-' + c.id + '.mp4">download</a> · <span class="muted">' + esc(c.label || "") + "</span>";
+  } else {
+    $("#ll-avstate").innerHTML = '<span class="bad-t">Not made: ' + esc(c.detail || "") + "</span>";
+  }
+}

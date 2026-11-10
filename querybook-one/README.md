@@ -42,7 +42,7 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
   5. Say it yourself and see which words were heard.
 
   Server side: `language/labtext.py` and `/api/lablang/*`.
-- **Lip-sync: Gemini / ElevenLabs talking clips** (Language 1.54, back to what worked in 1.52). A face says the words in a video made by Gemini; when Gemini cannot, the chosen voice (e.g. ElevenLabs) speaks and HeyGen animates the portrait. Speech → Talking clips, the Speak page's "Make a talking clip of this", and Language Lab step 4's **Talking clip** button. The local face engine tried in 1.53 was removed at the user's request (kept in git history, commit 82e15af).
+- **Lip-sync: Gemini / ElevenLabs talking clips** (Language 1.54, back to what worked in 1.52). A face says the words in a video made by Gemini; when Gemini cannot, the chosen voice (e.g. ElevenLabs) speaks and HeyGen animates the portrait. Speech → Talking clips, the Speak page's "Make a talking clip of this", and Language Lab step 4, where a human avatar from the library (Pamela and the starter faces) says the sentence in that video, in place. The local face engine tried in 1.53 was removed at the user's request (kept in git history, commit 82e15af).
 - **24 × 7 harvesting:**
   - The Control Panel restarts the engine cleanly (Stop, save, Start) when harvesting is on and nothing has moved for 30 minutes: no fact gathered or filed, no byte downloaded. Each restart is logged and shown.
   - The one window restarts any program that ends, or stops answering for about 3 minutes.
