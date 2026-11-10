@@ -7,6 +7,7 @@ const MODES = [
   { id: "chat", name: "Chat" }, { id: "answer", name: "Answer" }, { id: "code", name: "Code" },
   { id: "create", name: "Create", subs: ["text", "image", "video", "audio"] },
   { id: "querybook", name: "QueryBook" }, { id: "features", name: "Feature Registry" }, { id: "workspace", name: "Workspace" },
+  { id: "reasoning", name: "Reasoning", admin: true },
 ];
 const SUBS = { text: "Text", image: "Image", video: "Video", audio: "Audio" };
 const ROLES = ["Reader", "Author", "Instructor", "Admin"];
@@ -46,12 +47,13 @@ const prog = app => (state.status?.querybook?.programs || []).find(p => p.id ===
 function route() {
   const h = (location.hash || "#chat").slice(1);
   if (SUBS[h]) return { mode: "create", sub: h };
+  if (h.startsWith("reasoning")) return { mode: state.role === "Admin" ? "reasoning" : "chat", sub: load("vw:sub", "text"), trace: h.split(":")[1] || "" };
   const m = MODES.find(x => x.id === h);
   return { mode: m ? m.id : "chat", sub: load("vw:sub", "text") };
 }
 function drawBar() {
   const r = route();
-  document.getElementById("modes").replaceChildren(...MODES.map(m =>
+  document.getElementById("modes").replaceChildren(...MODES.filter(m => !m.admin || state.role === "Admin").map(m =>
     el("a", { href: "#" + (m.subs ? r.sub || "text" : m.id), "aria-current": r.mode === m.id ? "page" : null }, m.name)));
   document.getElementById("roles").replaceChildren(...ROLES.map(x => el("button", { type: "button", "aria-pressed": String(x === state.role),
     onclick: () => { state.role = x; save("vw:role", x); drawBar(); render(); } }, x)));
@@ -67,7 +69,7 @@ function render() {
   drawBar();
   const main = document.getElementById("main");
   main.replaceChildren();
-  const views = { chat: chatView, answer: answerView, code: codeView, create: createView, querybook: querybookView, features: featuresView, workspace: workspaceView };
+  const views = { chat: chatView, answer: answerView, code: codeView, create: createView, querybook: querybookView, features: featuresView, workspace: workspaceView, reasoning: reasoningView };
   main.append(views[r.mode](r));
   document.body.classList.toggle("in-ws", r.mode === "workspace" && state.ws.some(id => iface(id) && !iface(id).builtin));
   syncPanes(r.mode === "workspace");
@@ -101,6 +103,7 @@ function vwMessage(m) {
   const box = el("div", { class: "msg vw" }, el("div", { class: "route" }, { answer: "Answer", code: "Code", text: "Text", image: "Image", video: "Video", audio: "Audio", open: "QueryBook", chat: "Chat" }[r.route] || r.route));
   if (r.reply && r.route !== "answer") box.append(el("div", { class: "say" }, r.reply));
   if (r.result) box.append(resultCard(r.route, r.result));
+  if (r.trace_id && state.role === "Admin" && r.route !== "answer") box.append(el("a", { class: "small", style: "margin-left:6px", href: "#reasoning:" + r.trace_id }, "Reasoning trace"));
   return box;
 }
 async function send(text) {
@@ -150,6 +153,7 @@ function answerCard(r) {
   if ((r.unavailable || []).length) meta.push("not answering: " + r.unavailable.map(u => u.source).join(", "));
   if (meta.length) c.append(el("div", { class: "small muted", style: "margin-top:8px" }, meta.join(" · ")));
   c.append(el("div", { class: "hash", title: "SHA-256 over the question and every citation" }, "provenance " + r.provenance));
+  if (r.trace_id && state.role === "Admin") c.append(el("a", { class: "btn ghost small", style: "margin-top:8px", href: "#reasoning:" + r.trace_id }, "Reasoning trace"));
   if (r.engine_note) c.append(engineNote(r));
   return c;
 }
@@ -434,6 +438,135 @@ function featuresView() {
   }
   if (featCache && !f.q && !f.domain && !f.area && !f.implemented) drawTable(); else list();
   return v;
+}
+
+/* ------------------------------------------------------------------ Reasoning (admin)
+   Every kind of logic, reasoning, decision and analysis the QueryBook Bible documents, for one prompt. */
+const STATUS_CLS = { "ran": "built", "not applicable": "not", "specified, not built": "partial" };
+let traceCache = { list: [], types: [] };
+function reasoningView(r) {
+  const v = el("div", { class: "view wide" });
+  const list = el("div", { class: "tlist" });
+  const detail = el("div", { class: "tdetail" });
+  v.append(el("div", { class: "card" }, el("h2", {}, "Reasoning — every logic type behind each answer"),
+    el("p", { class: "small muted" }, "For each prompt: the stages VeriWave ran, each tagged with its logic type and the QueryBook Bible chapter that specifies it; every Fact Unit with its UFCS packet tracking and Ontology Mesh links; and the status of every Bible logic type — ran, not applicable to this prompt, or specified in the Bible but not built yet.")),
+    el("div", { class: "tgrid" }, list, detail));
+  const pick = async id => {
+    detail.replaceChildren(el("div", { class: "card thinking" }, "Loading the trace…"));
+    try { detail.replaceChildren(traceDetail(await api("/api/vw/trace?id=" + encodeURIComponent(id)))); }
+    catch (e) { detail.replaceChildren(el("div", { class: "err" }, e.message)); }
+    list.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", b.dataset.id === id ? "page" : "false"));
+  };
+  (async () => {
+    try { const d = await api("/api/vw/traces?limit=200"); traceCache = { list: d.traces, types: d.logic_types }; }
+    catch (e) { list.replaceChildren(el("div", { class: "err" }, e.message)); return; }
+    if (!traceCache.list.length) { list.append(el("p", { class: "muted small" }, "No prompts yet. Ask something in Chat or Answer.")); detail.replaceChildren(logicLegend()); return; }
+    list.append(...traceCache.list.map(t => el("button", { type: "button", "data-id": t.id, onclick: () => { history.replaceState(null, "", "#reasoning:" + t.id); pick(t.id); } },
+      el("span", { class: "chip" }, t.route), t.verdict ? el("span", { class: "verdict " + t.verdict, style: "margin-left:6px" }, t.verdict) : null,
+      el("div", { class: "tprompt" }, t.prompt), el("div", { class: "small muted" }, new Date(t.at * 1000).toLocaleTimeString() + " · " + t.total_ms + " ms"))));
+    pick(r.trace || traceCache.list[0].id);
+  })();
+  return v;
+}
+function logicLegend() {
+  return el("div", { class: "card" }, el("h2", {}, "The QueryBook Bible's logic types"), el("div", { class: "lgrid" }, traceCache.types.map(t =>
+    el("div", { class: "lcard" }, el("b", {}, t.name), el("div", { class: "small muted" }, t.chapters), el("p", { class: "small" }, t.bible)))));
+}
+function traceDetail(t) {
+  const out = el("div");
+  const ran = t.logic.filter(l => l.status === "ran").length;
+  out.append(el("div", { class: "card" },
+    el("div", { class: "row" }, el("span", { class: "chip" }, t.route), t.verdict ? el("span", { class: "verdict " + t.verdict }, t.verdict) : null,
+      el("span", { class: "small muted" }, "trace " + t.id + " · " + new Date(t.at * 1000).toLocaleString() + " · " + t.total_ms + " ms")),
+    el("div", { class: "short" }, t.prompt), t.short ? el("div", { class: "muted" }, t.short) : null));
+  out.append(el("div", { class: "card" }, el("h2", {}, "Logic types — " + ran + " of " + t.logic.length + " ran for this prompt"),
+    el("div", { class: "lgrid" }, t.logic.map(l => el("div", { class: "lcard " + STATUS_CLS[l.status] },
+      el("div", { class: "row" }, el("b", { class: "grow" }, l.name), el("span", { class: "chip " + STATUS_CLS[l.status] }, l.status)),
+      el("div", { class: "small muted" }, l.chapters),
+      el("p", { class: "small", style: "margin:6px 0 4px" }, el("i", {}, "Bible: "), l.bible),
+      el("p", { class: "small", style: "margin:0" }, el("i", {}, "VeriWave: "), l.veriwave),
+      l.stages.length ? el("div", { class: "small muted", style: "margin-top:4px" }, "In: " + l.stages.join(", ")) : null)))));
+  out.append(el("div", { class: "card" }, el("h2", {}, "Stages, in the order they ran"),
+    el("ol", { class: "stages" }, t.stages.map(s => el("li", { class: STATUS_CLS[s.status] },
+      el("details", { open: s.status === "ran" && ["packets", "linkage", "deduce", "gate"].includes(s.id) ? true : null },
+        el("summary", {}, el("b", {}, s.name), " ", el("span", { class: "chip " + STATUS_CLS[s.status] }, s.status),
+          s.logic.map(id => el("span", { class: "chip logic" }, (t.logic.find(l => l.id === id) || { name: id }).name)),
+          s.status === "ran" ? el("span", { class: "small muted" }, " " + s.ms + " ms · " + s.category) : null,
+          el("div", { class: "small", style: "margin:4px 0 0 2px" }, s.summary)),
+        stageData(s, t)))))));
+  if ((t.packets || []).length) out.append(packetCard(t.packets));
+  const ln = t.stages.find(s => s.id === "linkage");
+  if (ln && ln.status === "ran") out.append(linkCard(ln.data.links));
+  if ((t.slices || []).length) {
+    const max = Math.max(...t.slices.map(x => x.ms), 0.01);
+    out.append(el("div", { class: "card" }, el("h2", {}, "Processor Slices (Ch. 69)"),
+      t.slices.map(x => el("div", { class: "slice" }, el("span", { class: "sname" }, x.category + " (" + x.stages + ")"),
+        el("span", { class: "sbar" }, el("span", { style: "width:" + Math.max(1, Math.round(x.ms / max * 100)) + "%" })), el("span", { class: "small muted" }, x.ms + " ms")))));
+  }
+  return out;
+}
+function kv(obj) {
+  const rows = Object.entries(obj || {}).filter(([k, v]) => v !== "" && v != null && !(Array.isArray(v) && !v.length) && typeof v !== "object");
+  return rows.length ? el("dl", { class: "kv" }, rows.flatMap(([k, v]) => [el("dt", {}, k.replace(/_/g, " ")), el("dd", {}, String(v))])) : null;
+}
+function stageData(s, t) {
+  const d = s.data || {};
+  const box = el("div", { class: "sdata" });
+  if (s.id === "route" || s.id === "understand" || s.id === "engine" || s.id === "generate" || s.id === "store" || s.id === "temporal" || s.id === "directive" || s.id === "express" || s.id === "provenance") box.append(kv(d) || "");
+  if (s.id === "understand") box.append(el("div", { class: "small" }, "Spellings looked up: " + (d.spellings || []).join(" · ") + (d.predicate_hints?.length ? " — predicate hints: " + d.predicate_hints.join(", ") : "")));
+  if (s.id === "retrieve") {
+    box.append(el("div", { class: "small" }, el("b", {}, "FQL issued"), el("ul", {}, (d.fql || []).map(q => el("li", { class: "mono" }, q)))));
+    if ((d.stores || []).length) box.append(el("div", { class: "small" }, el("b", {}, "Stores read (read-only): "), d.stores.join(" · ")));
+    if ((d.applications_asked || []).length) box.append(el("div", { class: "small" }, "QueryBook applications asked: " + d.applications_asked.join(", ")));
+    if (d.rph) box.append(el("div", { class: "small" }, el("b", {}, "Response provenance hash (RPH): "), el("span", { class: "hash" }, d.rph), el("div", { class: "hash" }, "over: " + d.rph_input.slice(0, 160) + (d.rph_input.length > 160 ? "…" : ""))));
+  }
+  if (s.id === "packets") box.append(el("div", { class: "small muted" }, "See UFCS packet tracking below."));
+  if (s.id === "linkage") box.append(el("div", { class: "small muted" }, "See Fact Unit linkage below."));
+  if (s.id === "gate") box.append(el("table", { class: "ftable" }, el("tr", {}, el("th", {}, "#"), el("th", {}, "Fact Unit"), el("th", {}, "Trust"), el("th", {}, "Source")),
+    (d.offered || []).map(o => el("tr", {}, el("td", {}, o.n), el("td", {}, o.text), el("td", {}, o.trust + "%"), el("td", { class: "small" }, o.where)))),
+    el("div", { class: "small muted" }, "Threshold " + d.threshold + "% · held back " + d.withheld + " · distinct sources " + d.distinct_sources));
+  if (s.id === "consistency") box.append(el("div", { class: "small" }, "Rule: " + d.rule), (d.conflicts || []).map(k => el("div", { class: "conflict" }, k.subject + " — " + k.predicate + ": " + k.values.map(v => v.value).join(" vs "))));
+  if (s.id === "deduce") {
+    box.append(el("div", { class: "small" }, "Rule: " + d.rule), el("div", { class: "small" }, "Premises: " + ((d.premises || []).map(n => "[" + n + "]").join(" ") || "none")));
+    if (d.derivation && d.derivation.expression) box.append(kv(d.derivation));
+  }
+  return box;
+}
+function packetCard(packets) {
+  const pre = el("pre", { class: "code", hidden: true });
+  return el("div", { class: "card" }, el("h2", {}, "UFCS packet tracking — " + packets.length + " Fact Unit(s)"),
+    el("p", { class: "small muted" }, "Each cited Fact Unit: its nucleus, the semantic fingerprint stored in the UFCS index, the fingerprint VeriWave recomputed from the nucleus (SHA-256 of norm(subject)|norm(predicate)|norm(object)|polarity), and the block holding the full packet."),
+    el("div", { class: "tbl" }, el("table", { class: "ftable" }, el("tr", {}, ["#", "Nucleus (subject · predicate · object)", "Pol.", "Trust", "Store", "Semantic fingerprint", "Verified", ""].map(h => el("th", {}, h))),
+      packets.map((p, i) => el("tr", {}, el("td", {}, i + 1),
+        el("td", {}, p.nucleus.subject, el("span", { class: "muted" }, " · " + p.nucleus.predicate + " · "), p.nucleus.object),
+        el("td", {}, p.polarity || "?"), el("td", {}, p.trust + "%"),
+        el("td", { class: "small" }, p.kind.toUpperCase(), p.block_file ? el("div", { class: "muted" }, p.block_file) : null, p.dataset ? el("div", { class: "muted" }, p.dataset) : null),
+        el("td", { class: "hash", title: "stored: " + p.stored_fp + "\ncomputed: " + p.computed_fp }, (p.stored_fp || "—").slice(0, 16) + "…"),
+        el("td", {}, p.verified ? el("span", { class: "chip built" }, "✓ matches") : el("span", { class: "chip " + (p.kind === "ufcs" ? "partial" : "not"), title: p.note || "" }, p.kind === "ufcs" ? "✗ differs" : "suite id")),
+        el("td", {}, p.kind === "ufcs" ? el("button", { class: "btn ghost small", type: "button", onclick: async e => {
+          e.target.disabled = true; pre.hidden = false; pre.textContent = "Reading block " + p.block + " for this packet…";
+          try { pre.textContent = JSON.stringify(await api("/api/vw/packet?store=" + encodeURIComponent(p.store) + "&block=" + p.block + "&fp=" + p.stored_fp), null, 2); }
+          catch (err) { pre.textContent = err.message; } e.target.disabled = false; } }, "Full packet") : null))))), pre);
+}
+function linkCard(links) {
+  const box = el("div", { class: "card" }, el("h2", {}, "Fact Unit linkage (Ontology Mesh, one hop)"),
+    el("p", { class: "small muted" }, "Siblings share the cited Fact Unit's subject; onward links are Fact Units about its object. Inbound links (facts whose object is this subject) need an object index the UFCS store does not keep."));
+  for (const l of links) {
+    const nodes = [...l.siblings.map(x => ({ x, kind: "sibling" })), ...l.onward.map(x => ({ x, kind: "onward" }))].slice(0, 10);
+    const W = 760, H = 60 + Math.max(1, nodes.length) * 34;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("class", "lsvg"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "Links of " + l.fact);
+    const add = (tag, attrs, text) => { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text) n.textContent = text; svg.append(n); return n; };
+    const cy = H / 2;
+    nodes.forEach((n, i) => { const y = 40 + i * 34; add("line", { x1: 250, y1: cy, x2: 430, y2: y, class: "ledge " + n.kind });
+      add("text", { x: 440, y: y + 4, class: "ltext" }, (n.kind === "onward" ? "→ " : "↔ ") + n.x.predicate + ": " + n.x.object.slice(0, 40) + "  (" + n.x.trust + "%)"); });
+    add("rect", { x: 10, y: cy - 22, width: 240, height: 44, rx: 8, class: "lnode" });
+    add("text", { x: 20, y: cy - 4, class: "ltext b" }, l.fact.split(" — ")[0].slice(0, 30));
+    add("text", { x: 20, y: cy + 12, class: "ltext s" }, (l.fact.split(" — ")[1] || "").slice(0, 36));
+    if (!nodes.length) add("text", { x: 440, y: cy + 4, class: "ltext s" }, "no linked Fact Units one hop away");
+    box.append(svg);
+  }
+  return box;
 }
 
 /* ------------------------------------------------------------------ start */

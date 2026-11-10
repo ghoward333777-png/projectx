@@ -124,6 +124,9 @@ screen on demand (QueryBook page + Workspace) and the 407-feature registry brows
 - Answers stay cite-or-refuse: no fact, no answer (UNKNOWN). Claude may only reword cited facts there.
 - Default fact connection (`vw/factstore.py`): UFCS stores, Commons and bulk shards under `$VERIWAVE_FACTS` /
   QueryBook's data-folder.txt / `D:\QB`, opened SQLite `mode=ro` only. Never write to, move or copy the store.
+- Reasoning traces (`vw/trace.py`, Admin's Reasoning screen): every prompt records each Bible logic type as ran /
+  not applicable / specified-not-built. Never mark a logic type "ran" unless code actually ran it (Neuromorphic,
+  Predictive, Scenario, Induction, Abduction are specified, not built).
 - The download is `python tools/build_bundle.py` → `dist/VeriWave.zip` (embeddable Python inside; CI tests it on Windows).
 - Before shipping, from `veriwave/`: `python -m unittest discover -s tests -t .`, and `cargo test --release` in
   `rust/vwcore`. CI (`.github/workflows/veriwave.yml`) also runs `lake build`.

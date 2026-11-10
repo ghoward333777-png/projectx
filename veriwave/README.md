@@ -11,6 +11,7 @@ thing it does:
 | **Create: Text / Image / Video / Audio** | Text: stories, poems, haiku, letters, articles grounded in QueryBook facts, lists and slogans. Images: vector scenes. Video: a storyboard and an animated film with captions. Audio: music, rain, ocean, wind, alarm and beep, and speech via espeak-ng. |
 | **QueryBook** | Every QueryBook screen (67 interfaces: every tab of the Language Builder, STEM, History & News, Video Studio and Control Panel, the Book Studio, QueryBook's own window) with live status. Open any one, tick several, or open all. |
 | **Workspace** | Any set of those screens at once: as tabs, side by side or in a grid. They stay loaded while you switch. |
+| **Reasoning** (Admin) | For every prompt, every kind of logic, reasoning, decision and analysis the QueryBook Bible documents: the stages VeriWave ran, each tagged with its logic type and Bible chapter (Ch. 3 Fact Unit, 6 Ontology Mesh, 7 Neuromorphic layer, 41 Confidence, 81 UFCS/FQL, 108 Reasoning Modes, 124 Context Lock, 69 Processor Slices …), and the status of all 18 logic types: ran, not applicable to this prompt, or specified in the Bible but not built yet. Every cited Fact Unit has UFCS packet tracking (stored and recomputed semantic fingerprint, block, full packet on demand, the FQL response provenance hash) and one-hop Ontology Mesh links. |
 | **Feature Registry** | All 407 features of the QueryBook Composite Feature Registry v71: rule, formula, status, where each lives, and a button to open the screen that serves it. |
 
 The Reader / Author / Instructor / Admin switch works as it does in QueryBook: the Operate screens and admin tabs are
@@ -94,6 +95,7 @@ cd lean && lake build
 | `vw/codegen.py`, `vw/textgen.py`, `vw/imagegen.py`, `vw/videogen.py`, `vw/audiogen.py` | The generators |
 | `vw/interfaces.py`, `vw/registry.py` | Every QueryBook screen, and the 407-feature registry |
 | `vw/querybook.py` | Attaching to, or starting, QueryBook one and the Book Studio |
+| `vw/trace.py` | The reasoning trace: the Bible's 18 logic types and every stage of every prompt |
 | `vw/factstore.py` | The default fact connection: UFCS stores, Commons and bulk shards on D:\QB, read-only |
 | `vw/backends.py` | The optional Claude engine (Messages API over `urllib`) |
 | `vw/store.py`, `vw/server.py` | Creations folder; HTTP window and API |

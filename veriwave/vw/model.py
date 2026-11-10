@@ -21,11 +21,15 @@ import shutil
 import subprocess
 import tempfile
 
-from . import answer, audiogen, codegen, core, imagegen, interfaces, registry, router, textgen, videogen
+import json
+import threading
+import time
+
+from . import answer, audiogen, codegen, core, imagegen, interfaces, registry, router, textgen, trace, videogen
 from .backends import BackendError, Claude, parse_json_reply, strip_fence
 from .factstore import FactStore, dedupe
 from .querybook import Connection, import_ask
-from .store import Store
+from .store import Store, okrel_check
 
 CHAT_SYSTEM = ("You are VeriWave, the QueryBook AI model: helpful, direct and honest. Keep replies short unless asked for "
                "more. Never state a fact you are unsure of as certain; when the user wants a verified fact, suggest the "
@@ -125,6 +129,46 @@ def factstore_dedupe(facts: list[dict]) -> list[dict]:
     return dedupe(facts)
 
 
+def keep_last(n: int, items: list) -> list:
+    """the last n items
+
+    Lean:
+        #guard keepLast 0 ["a"] == []                                         -- py: keep_last(0, ["a"]) == []
+    """
+    return items[len(items) - n:] if len(items) > n else list(items)
+
+
+def load_traces(folder: str, limit: int) -> list[dict]:
+    """the newest saved traces (oldest first), so the Reasoning screen survives a restart
+
+    Lean:
+        #guard (keepLast 200 []).length == 0                                  -- py: load_traces("/no/such/folder", 5) == []
+    """
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".json"))[-limit:] if limit > 0 else []
+    except OSError:
+        return []
+    out: list[dict] = []
+    for n in names:
+        try:
+            with open(os.path.join(folder, n), encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and "stages" in data:
+                out.append(data)
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def store_okrel(parts: list[str]) -> bool:
+    """vw.store.okrel_check, by name here
+
+    Lean:
+        #guard okRel ["1-0001"]                                               -- py: store_okrel(["1-0001"]) and not store_okrel([".."])
+    """
+    return okrel_check(parts)
+
+
 def zip_name(iid: str) -> str:
     """the download name of a code project
 
@@ -153,6 +197,9 @@ class VeriWave:
         self.claude = claude
         self.facts = facts
         self.ask_mod: object | None = import_ask()
+        self.lock = threading.Lock()
+        self.trace_n = 0
+        self.traces: list[dict] = load_traces(os.path.join(store.root, "traces"), 200)
 
     def understand(self, question: str) -> dict:
         """what a question asks about (QueryBook's own ask.understand: kind, subject, variants, predicate hints)
@@ -175,7 +222,7 @@ class VeriWave:
             return []
         found: list[dict] = []
         for v in [str(x) for x in (intent.get("variants") or [intent.get("subject") or ""])][:3]:
-            found += self.facts.lookup(v, 40)
+            found = dedupe(found + self.facts.lookup(v, 40))
             if len(found) >= 40:
                 break
         return found
@@ -190,28 +237,128 @@ class VeriWave:
         return kind in ("fact", "word")
 
     # ------------------------------------------------------------------ Answer
-    def ask(self, question: str, min_trust: int, last_subject: str, engine: str) -> dict:
-        """a cite-or-refuse answer; with Claude on, the cited facts reworded into prose (verdict and citations unchanged)
+    def ask(self, question: str, min_trust: int, last_subject: str, engine: str, reason: str) -> dict:
+        """a cite-or-refuse answer; with Claude on, the cited facts reworded into prose (verdict and citations unchanged).
+        Every stage is timed and recorded as a reasoning trace (vw/trace.py) for the admin's Reasoning screen.
 
         Lean:
             def keepsVerdict (before after : Verdict) : Bool := before == after
             theorem rewording_keeps (v : Verdict) : keepsVerdict v v = true := by cases v <;> rfl
         """
+        timings: dict[str, float] = {}
+        t0 = time.perf_counter()
         urls = self.conn.app_urls()
         resolved = answer.resolve_followup(question, last_subject) or question
+        timings["route"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
         qb: dict = {}
         if self.ask_mod is not None and urls:
             qb = self.ask_mod.answer(resolved, urls)  # type: ignore[attr-defined]
+        timings["apps"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
         intent = dict(qb.get("understood") or self.understand(resolved))
-        qb = merge_facts(qb, intent, self.direct_facts(intent))
+        timings["understand"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        drive = self.direct_facts(intent)
+        timings["retrieve"] = timings["apps"] + (time.perf_counter() - t0) * 1000
+        qb = merge_facts(qb, intent, drive)
+        t0 = time.perf_counter()
         res = answer.compose(question, qb, min_trust, last_subject, bool(urls) or bool(self.facts.status()["connected"]))
+        timings["compose"] = (time.perf_counter() - t0) * 1000
         res["engine"] = "local"
+        t0 = time.perf_counter()
         if res["citations"] and engine_for("answer", self.claude.available, engine) == "local+claude":
             try:
                 res["prose"] = self.claude.complete(answer.GROUNDED_SYSTEM, [{"role": "user", "content": answer.grounded_prompt(res)}], 2000, "low")
                 res["engine"] = "local+claude"
             except BackendError as e:
                 res["engine_note"] = str(e)
+        timings["express"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        cited = [f for f in drive if any(str(c.get("text") or "") == answer.fact_text(f) for c in res["citations"])][:5]
+        timings["packets"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        links = [dict(self.facts.links(f, 5), fact=answer.fact_text(f)) for f in cited]
+        timings["linkage"] = (time.perf_counter() - t0) * 1000
+        tr = trace.answer_trace("", int(time.time()), question, {"route": "answer", "reason": reason}, intent, qb, cited, res, links,
+                                timings, str(res["engine"]))
+        res["trace_id"] = self.record(tr)
+        return res
+
+    def record(self, tr: dict) -> str:
+        """keep a reasoning trace: in memory (the last 200) and as a JSON file in the creations folder's traces/
+
+        Lean:
+            def keepLast (n : Nat) (xs : List String) : List String := xs.drop (xs.length - n)
+            theorem keepLast_le (n : Nat) (xs : List String) : (keepLast n xs).length ≤ n := by
+              simp [keepLast]; omega
+            #guard keepLast 2 ["a", "b", "c"] == ["b", "c"]                     -- py: keep_last(2, ["a", "b", "c"]) == ["b", "c"]
+        """
+        with self.lock:
+            self.trace_n += 1
+            tid = str(int(time.time())) + "-" + str(self.trace_n).rjust(4, "0")
+        tr["id"] = tid
+        self.traces = keep_last(200, self.traces + [tr])
+        folder = os.path.join(self.store.root, "traces")
+        try:
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, tid + ".json"), "w", encoding="utf-8") as f:
+                json.dump(tr, f, ensure_ascii=False)
+        except OSError:
+            pass
+        return tid
+
+    def trace_list(self, limit: int) -> list[dict]:
+        """the newest traces first, one line each
+
+        Lean:
+            #guard (keepLast 1 ["x"]).length == 1                               -- py: keep_last(1, ["x"]) == ["x"]
+        """
+        return [{"id": t["id"], "at": t["at"], "prompt": t["prompt"], "route": t["route"], "verdict": t.get("verdict") or "",
+                 "short": str(t.get("short") or "")[:120], "total_ms": t.get("total_ms", 0)} for t in reversed(self.traces)][:limit]
+
+    def trace_get(self, tid: str) -> dict | None:
+        """one trace by id, from memory or from its file
+
+        Lean:
+            def findId (ids : List String) (t : String) : Bool := ids.contains t
+            #guard !findId [] "x"                                               -- py: VeriWave.trace_get.__name__ == "trace_get"
+        """
+        for t in self.traces:
+            if t["id"] == tid:
+                return t
+        path = os.path.join(self.store.root, "traces", tid + ".json")
+        if not store_okrel([tid]) or not os.path.isfile(path):
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def make(self, kind: str, prompt: str, engine: str, reason: str, code_kind: str) -> dict:
+        """one creation (code, text, image, video or audio), timed and recorded as a reasoning trace
+
+        Lean:
+            def makeKinds : List String := ["code", "text", "image", "video", "audio"]
+            #guard makeKinds.contains "video" && !makeKinds.contains "answer"   -- py: "video" in MAKE_KINDS and "answer" not in MAKE_KINDS
+        """
+        t0 = time.perf_counter()
+        if kind == "code":
+            res = self.code(prompt, code_kind, engine)
+        elif kind == "text":
+            res = self.text(prompt, engine)
+        elif kind == "image":
+            res = self.image(prompt, engine)
+        elif kind == "video":
+            res = self.video(prompt, engine)
+        else:
+            res = self.audio(prompt, engine)
+        ms = (time.perf_counter() - t0) * 1000
+        used = engine_for(kind, self.claude.available, engine)
+        res["trace_id"] = self.record(trace.creation_trace("", int(time.time()), prompt, {"route": kind, "reason": reason},
+                                                           str(res.get("engine") or used), res, {"route": 0.0, "generate": ms}))
         return res
 
     def facts_about(self, subject: str) -> tuple[list[str], list[str]]:
@@ -395,20 +542,12 @@ class VeriWave:
         body = router.strip_explicit(message)
         out: dict = {"route": rt, "reply": chat_reply(rt), "result": None}
         if rt == "answer":
-            res = self.ask(body, answer.verdict.MIN_TRUST, last_subject, engine)
+            res = self.ask(body, answer.verdict.MIN_TRUST, last_subject, engine, trace.route_reason(message, "answer"))
             out["result"] = res
             out["reply"] = res.get("prose") or res["short"]
             out["subject"] = res.get("subject") or last_subject
-        elif rt == "code":
-            out["result"] = self.code(body, "", engine)
-        elif rt == "text":
-            out["result"] = self.text(body, engine)
-        elif rt == "image":
-            out["result"] = self.image(body, engine)
-        elif rt == "video":
-            out["result"] = self.video(body, engine)
-        elif rt == "audio":
-            out["result"] = self.audio(body, engine)
+        elif rt in MAKE_KINDS:
+            out["result"] = self.make(rt, body, engine, trace.route_reason(message, rt), "")
             if out["result"].get("error"):
                 out["reply"] = out["result"]["error"]
         elif rt == "open":
@@ -418,6 +557,14 @@ class VeriWave:
             out["reply"] = ("Opening " + item["name"] + ".") if item is not None else "I don't know that screen. The QueryBook menu lists them all."
         else:
             out["reply"] = self.converse(body, history, engine)
+        if out["result"] is None or rt == "open":
+            tid = self.record(trace.creation_trace("", int(time.time()), message, {"route": rt, "reason": trace.route_reason(message, rt)},
+                                                   engine_for(rt, self.claude.available, engine), dict(out["result"] or {}), {}))
+            if out["result"] is not None:
+                out["result"]["trace_id"] = tid
+            out["trace_id"] = tid
+        else:
+            out["trace_id"] = str(out["result"].get("trace_id") or "")
         self.store.log({"message": message, "route": rt, "reply": out["reply"][:500]})
         return out
 
@@ -453,4 +600,5 @@ class VeriWave:
                 "espeak": bool(VeriWave.find_espeak()), "data": self.store.root, "facts": self.facts.status()}
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+MAKE_KINDS = ("code", "text", "image", "video", "audio")

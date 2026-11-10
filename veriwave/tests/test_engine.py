@@ -285,3 +285,59 @@ class FactStoreTest(unittest.TestCase):
         fs.lookup("rome", 10)
         after = {os.path.join(d, f): os.path.getmtime(os.path.join(d, f)) for d, _, fs_ in os.walk(self.root) for f in fs_}
         self.assertEqual(after, self.before)
+
+
+class TraceTest(unittest.TestCase):
+    """Every prompt leaves a reasoning trace naming each Bible logic type, with UFCS packet tracking and linkage."""
+
+    def setUp(self):
+        import sqlite3
+        from vw import factstore
+        self.root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.root, "store"))
+        db = sqlite3.connect(os.path.join(self.root, "store", "index.sqlite"))
+        db.execute("CREATE TABLE fp (fingerprint TEXT PRIMARY KEY, block INTEGER)")
+        db.execute("CREATE TABLE nuc (fp TEXT PRIMARY KEY, subject TEXT, predicate TEXT, object TEXT, trust REAL, block INTEGER)")
+        db.execute("CREATE INDEX nuc_sp ON nuc(subject, predicate)")
+        for s, p, o, t in (("printing press", "inventor", "Johannes Gutenberg", 0.93), ("printing press", "time of discovery or invention", "c. 1440", 0.9),
+                           ("johannes gutenberg", "occupation", "goldsmith", 0.8)):
+            db.execute("INSERT INTO nuc VALUES (?,?,?,?,?,0)", (factstore.ufcs_fingerprint(s, p, o, "+"), s, p, o, t))
+        db.commit()
+        db.close()
+        self.data = tempfile.mkdtemp()
+        conn = Connection("none", False)
+        conn.start()
+        self.app = App(conn, VeriWave(conn, store.Store(self.data), Claude("", None), FactStore(self.root)))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+        shutil.rmtree(self.data, ignore_errors=True)
+
+    def test_answer_trace(self):
+        from vw import trace
+        r = self.app.post("/api/vw/chat", {"message": "Who invented the printing press?"})[1]
+        code, t, _ = self.app.get("/api/vw/trace", {"id": r["trace_id"]})
+        self.assertEqual(code, 200)
+        self.assertEqual([l["id"] for l in t["logic"]], trace.LOGIC_IDS)
+        status = {l["id"]: l["status"] for l in t["logic"]}
+        for ran in ("deterministic", "atomic", "interpretive", "transport", "relational", "confidence", "deductive", "safety", "metering"):
+            self.assertEqual(status[ran], "ran", ran)
+        for spec in ("neuromorphic", "predictive", "scenario", "abductive"):
+            self.assertEqual(status[spec], "specified, not built", spec)
+        self.assertEqual(len(t["packets"]), 2)
+        self.assertTrue(all(p["verified"] and p["polarity"] == "+" for p in t["packets"]))
+        retrieve = [s for s in t["stages"] if s["id"] == "retrieve"][0]
+        self.assertEqual(len(retrieve["data"]["rph"]), 64)
+        links = [s for s in t["stages"] if s["id"] == "linkage"][0]["data"]["links"]
+        onward = [l for l in links if l["fact"].endswith("Johannes Gutenberg")][0]["onward"]
+        self.assertEqual(onward[0]["object"], "goldsmith")                     # Ontology Mesh: one hop to the inventor
+
+    def test_creation_and_screen_traces(self):
+        r = self.app.post("/api/vw/create", {"kind": "image", "prompt": "a lighthouse at sunset"})[1]
+        t = self.app.get("/api/vw/trace", {"id": r["trace_id"]})[1]
+        self.assertEqual({l["id"]: l["status"] for l in t["logic"]}["generative"], "ran")
+        self.assertEqual(self.app.get("/api/vw/traces", {})[1]["traces"][0]["route"], "image")
+        self.assertEqual(self.app.get("/api/vw/trace", {"id": "../../x"})[0], 404)
+
+    def test_packet_endpoint_only_for_connected_stores(self):
+        self.assertEqual(self.app.get("/api/vw/packet", {"store": "/etc", "block": "0", "fp": "x" * 64})[0], 404)

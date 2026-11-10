@@ -25,6 +25,9 @@ Lean:
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
+import json
 import os
 import sqlite3
 import threading
@@ -355,6 +358,24 @@ class FactStore:
         rest.sort(key=lambda f: -int(f["trust"]))
         return (exact + rest)[:limit]
 
+    def links(self, fact: dict, limit: int) -> dict:
+        """Ontology Mesh linkage of one Fact Unit: its siblings (same subject) and its onward links (facts about its object)
+
+        Lean:
+            def onward (obj : String) (facts : List Hit) : List Hit := facts.filter (fun h => ufcsNorm h.subj == ufcsNorm obj)
+            theorem onward_sub (o : String) (fs : List Hit) : (onward o fs).length ≤ fs.length := List.length_filter_le _ _
+            #guard (onward "France" [⟨"france", "capital", "Paris", 90⟩, ⟨"spain", "capital", "Madrid", 90⟩]).length == 1   -- py: FactStore("/no/such").links({"subject": "x", "predicate": "p", "object": "y"}, 3) == {"siblings": [], "onward": [], "inbound": "not indexed"}
+        """
+        subj = str(fact.get("subject") or "")
+        obj = verdict.strip_qids(str(fact.get("object") or ""))
+        key = (verdict.norm(subj), core.lower(str(fact.get("predicate") or "")), verdict.norm(obj))
+        sib = [f for f in self.lookup(subj, limit + 1)
+               if (verdict.norm(str(f["subject"])), core.lower(str(f["predicate"])), verdict.norm(str(f["object"]))) != key][:limit]
+        onward = [f for f in self.lookup(obj, limit) if norm(verdict.strip_qids(str(f["subject"]))) == norm(obj)] if obj else []
+        slim = lambda f: {"subject": str(f["subject"]), "predicate": str(f["predicate"]), "object": str(f["object"]), "trust": int(f["trust"]),
+                          "where": str(f["where"])}
+        return {"siblings": [slim(f) for f in sib], "onward": [slim(f) for f in onward], "inbound": "not indexed"}
+
     def ufcs_lookup(self, path: str, subject: str, limit: int) -> list[dict]:
         """one UFCS store: subject = norm(subject) on its index, then the subject-prefix range
 
@@ -369,10 +390,10 @@ class FactStore:
             return []
         try:
             key = norm(subject)
-            rows = list(conn.execute("SELECT subject, predicate, object, trust FROM nuc WHERE subject = ? ORDER BY trust DESC LIMIT ?",
+            rows = list(conn.execute("SELECT subject, predicate, object, trust, fp, block FROM nuc WHERE subject = ? ORDER BY trust DESC LIMIT ?",
                                      (key, limit)))
             if len(rows) < limit:
-                rows += list(conn.execute("SELECT subject, predicate, object, trust FROM nuc WHERE subject > ? AND subject < ? LIMIT ?",
+                rows += list(conn.execute("SELECT subject, predicate, object, trust, fp, block FROM nuc WHERE subject > ? AND subject < ? LIMIT ?",
                                           (key, prefix_end(key), limit - len(rows))))
         except sqlite3.Error:
             rows = []
@@ -380,7 +401,8 @@ class FactStore:
             conn.close()
         where = "UFCS store (" + path + ")"
         return [{"subject": str(r["subject"]), "predicate": str(r["predicate"]), "object": str(r["object"]), "trust": ufcs_trust(r["trust"]),
-                 "where": where, "status": ""} for r in rows]
+                 "where": where, "status": "", "packet": {"kind": "ufcs", "store": path, "fp": str(r["fp"]), "block": int(r["block"] or 0),
+                                                          "raw_trust": float(r["trust"] or 0.0)}} for r in rows]
 
     def commons_lookup(self, subject: str, limit: int) -> list[dict]:
         """the Commons: each spelling of the subject on its (subject, predicate) index
@@ -395,11 +417,13 @@ class FactStore:
             return []
         try:
             for v in variants(subject):
-                for r in conn.execute("SELECT subject, predicate, object, statement, status FROM facts WHERE subject = ? LIMIT ?",
+                for r in conn.execute("SELECT id, fingerprint, domain, origin_app, subject, predicate, object, statement, status FROM facts WHERE subject = ? LIMIT ?",
                                       (v, limit - len(out))):
                     out.append({"subject": str(r["subject"]), "predicate": str(r["predicate"]), "object": str(r["object"]),
                                 "statement": str(r["statement"] or ""), "status": str(r["status"] or ""),
-                                "trust": verdict.status_trust(str(r["status"] or "")), "where": "Shared facts (Commons, " + self.root + ")"})
+                                "trust": verdict.status_trust(str(r["status"] or "")), "where": "Shared facts (Commons, " + self.root + ")",
+                                "packet": {"kind": "commons", "store": self.commons, "fp": str(r["fingerprint"] or ""), "id": int(r["id"]),
+                                           "domain": str(r["domain"] or ""), "origin": str(r["origin_app"] or "")}})
                 if len(out) >= limit:
                     break
         except sqlite3.Error:
@@ -429,13 +453,15 @@ class FactStore:
                     self.preds[key] = {}
             names = self.preds[key]
             for v in variants(subject):
-                q = list(conn.execute("SELECT s, p, o FROM facts WHERE s = ? LIMIT ?", (v, limit - len(out))))
+                q = list(conn.execute("SELECT fp, s, p, o FROM facts WHERE s = ? LIMIT ?", (v, limit - len(out))))
                 if len(out) + len(q) < limit:
-                    q += list(conn.execute("SELECT s, p, o FROM facts WHERE s > ? AND s < ? LIMIT ?",
+                    q += list(conn.execute("SELECT fp, s, p, o FROM facts WHERE s > ? AND s < ? LIMIT ?",
                                            (v + " (", prefix_end(v + " ("), limit - len(out) - len(q))))
                 for r in q:
                     out.append({"subject": str(r["s"]), "predicate": names.get(int(r["p"]), str(r["p"])), "object": str(r["o"]),
-                                "trust": 70, "status": "harvested", "where": "Bulk dataset " + key + " (" + self.root + ")"})
+                                "trust": 70, "status": "harvested", "where": "Bulk dataset " + key + " (" + self.root + ")",
+                                "packet": {"kind": "shard", "store": sh["path"], "fp": bytes(r["fp"]).hex() if r["fp"] is not None else "",
+                                           "dataset": key}})
                 if len(out) >= limit:
                     break
         except sqlite3.Error:
@@ -443,3 +469,99 @@ class FactStore:
         finally:
             conn.close()
         return out
+
+
+def ufcs_fingerprint(subject: str, predicate: str, obj: str, polarity: str) -> str:
+    """a Fact Unit's semantic fingerprint exactly as ufcs_store.py computes it: SHA-256 of norm(s)|norm(p)|norm(o)|polarity
+
+    Lean:
+        -- SHA-256 is an external primitive; Lean fixes the text it is taken over
+        def fingerprintInput (s p o pol : String) : String := ufcsNorm s ++ "|" ++ ufcsNorm p ++ "|" ++ ufcsNorm o ++ "|" ++ pol
+        #guard fingerprintInput "Printing  Press" "Inventor" "Johannes Gutenberg" "+" == "printing press|inventor|johannes gutenberg|+"   -- py: fingerprint_input("Printing  Press", "Inventor", "Johannes Gutenberg", "+") == "printing press|inventor|johannes gutenberg|+"
+    """
+    return hashlib.sha256(fingerprint_input(subject, predicate, obj, polarity).encode()).hexdigest()
+
+
+def fingerprint_input(subject: str, predicate: str, obj: str, polarity: str) -> str:
+    """the canonical text a UFCS semantic fingerprint is taken over
+
+    Lean:
+        #guard fingerprintInput "a" "b" "c" "-" == "a|b|c|-"                 -- py: fingerprint_input("a", "b", "c", "-") == "a|b|c|-"
+    """
+    return norm(subject) + "|" + norm(predicate) + "|" + norm(obj) + "|" + polarity
+
+
+def rph(fps: list[str]) -> str:
+    """the response provenance hash ufcs_store.fql() gives a result: SHA-256 of RPH|fp1|fp2…
+
+    Lean:
+        def rphInput (fps : List String) : String := "|".intercalate ("RPH" :: fps)
+        #guard rphInput ["a", "b"] == "RPH|a|b"                               -- py: rph_input(["a", "b"]) == "RPH|a|b"
+    """
+    return hashlib.sha256(rph_input(fps).encode()).hexdigest()
+
+
+def rph_input(fps: list[str]) -> str:
+    """the text the response provenance hash is taken over
+
+    Lean:
+        #guard rphInput [] == "RPH"                                           -- py: rph_input([]) == "RPH"
+    """
+    return "|".join(["RPH"] + fps)
+
+
+def verify_packet(fact: dict) -> dict:
+    """UFCS packet tracking for one fact: the stored fingerprint, the one recomputed from its nucleus, and whether they agree
+
+    Lean:
+        def verifies (stored computedPos computedNeg : String) : String :=
+          if stored == computedPos then "+" else if stored == computedNeg then "-" else ""
+        #guard verifies "x" "x" "y" == "+"                                    -- py: verify_packet({"subject": "a", "predicate": "b", "object": "c", "packet": {"kind": "ufcs", "fp": ufcs_fingerprint("a", "b", "c", "+")}})["polarity"] == "+"
+        #guard verifies "z" "x" "y" == ""                                     -- py: verify_packet({"subject": "a", "predicate": "b", "object": "c", "packet": {"kind": "ufcs", "fp": "z"}})["verified"] is False
+    """
+    pk = dict(fact.get("packet") or {})
+    s, p, o = str(fact.get("subject") or ""), str(fact.get("predicate") or ""), str(fact.get("object") or "")
+    pos = ufcs_fingerprint(s, p, o, "+")
+    neg = ufcs_fingerprint(s, p, o, "-")
+    stored = str(pk.get("fp") or "")
+    pol = "+" if stored == pos else "-" if stored == neg else ""
+    out = {"kind": str(pk.get("kind") or "app"), "store": str(pk.get("store") or ""), "stored_fp": stored, "computed_fp": pos,
+           "polarity": pol, "verified": bool(pol), "nucleus": {"subject": s, "predicate": p, "object": o},
+           "fingerprint_input": fingerprint_input(s, p, o, pol or "+")}
+    for k in ("block", "id", "dataset", "domain", "origin", "raw_trust"):
+        if k in pk:
+            out[k] = pk[k]
+    if out["kind"] == "ufcs" and "block" in pk:
+        out["block_file"] = "blocks/block_%05d.jsonl.gz" % int(pk["block"])
+    if out["kind"] != "ufcs":
+        out["verified"] = False
+        out["note"] = ("QueryBook's Commons and bulk shards use the suite's own fingerprint (qbcore), not the UFCS one; "
+                       "the stored identifier is shown as recorded.")
+    return out
+
+
+def find_packet(store: str, block: int, fp: str, seconds: float) -> dict | None:
+    """the full UFCS packet (FUID, sources, certification, temporal, safety) read from its block, or None
+
+    Lean:
+        def blockName (n : Nat) : String :=
+          let d := toString n
+          "block_" ++ String.mk (List.replicate (5 - d.length) '0') ++ d ++ ".jsonl.gz"
+        #guard blockName 7 == "block_00007.jsonl.gz"                          -- py: "block_%05d.jsonl.gz" % 7 == "block_00007.jsonl.gz"
+    """
+    path = os.path.join(store, "blocks", "block_%05d.jsonl.gz" % block)
+    if not os.path.isfile(path) or len(fp) != 64:
+        return None
+    needle = '"semantic_fingerprint":"' + fp + '"'
+    end = time.monotonic() + seconds
+    try:
+        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if needle in line:
+                    data = json.loads(line)
+                    return data if isinstance(data, dict) else None
+                if i % 20000 == 0 and time.monotonic() > end:
+                    return {"_timeout": True}
+    except (OSError, ValueError, EOFError):
+        return None
+    return None

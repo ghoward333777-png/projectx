@@ -27,21 +27,21 @@ structure Hit where
   trust : Nat
 deriving Repr, BEq
 
--- default_root (vw/factstore.py:43)
+-- default_root (vw/factstore.py:46)
 def chooseFactRoot (env dataFolder : String) (dqbExists : Bool) : String :=
   if env != "" then env else if dataFolder != "" then dataFolder else if dqbExists then "D:\\QB" else ""
 #guard chooseFactRoot "" "" true == "D:\\QB"                        -- py: choose_root("", "", True) == "D:\\QB"
 #guard chooseFactRoot "E:\\Facts" "D:\\QB" true == "E:\\Facts"      -- py: choose_root("E:\\Facts", "D:\\QB", True) == "E:\\Facts"
 
--- choose_root (vw/factstore.py:63)
+-- choose_root (vw/factstore.py:66)
 #guard chooseFactRoot "" "F:\\QB" false == "F:\\QB"                  -- py: choose_root("", "F:\\QB", False) == "F:\\QB"
 
--- norm (vw/factstore.py:76)
+-- norm (vw/factstore.py:79)
 -- ASCII model of ufcs_store._norm (Python lower-cases all of Unicode; Lean's String.toLower is ASCII)
 def ufcsNorm (s : String) : String := " ".intercalate ((s.toLower.split (· == ' ')).filter (· != ""))
 #guard ufcsNorm "  Marie   Curie " == "marie curie"               -- py: norm("  Marie   Curie ") == "marie curie"
 
--- variants (vw/factstore.py:87)
+-- variants (vw/factstore.py:90)
 def dedup : List String → List String
   | [] => []
   | x :: xs => if xs.contains x then dedup xs else x :: dedup xs
@@ -51,37 +51,37 @@ theorem dedup_le (xs : List String) : (dedup xs).length ≤ xs.length := by
   | cons x xs ih => unfold dedup; split <;> simp <;> omega
 #guard (dedup ["a", "b", "a"]).length == 2                         -- py: len(variants("x")) == 2
 
--- title (vw/factstore.py:108)
+-- title (vw/factstore.py:111)
 def titleWord (w : String) : String := match w.toList with
   | [] => ""
   | c :: cs => String.mk (c.toUpper :: cs.map Char.toLower)
 def titleOf (s : String) : String := " ".intercalate ((s.split (· == ' ')).map titleWord)
 #guard titleOf "marie curie" == "Marie Curie"                       -- py: title("marie curie") == "Marie Curie"
 
--- ufcs_trust (vw/factstore.py:121)
+-- ufcs_trust (vw/factstore.py:124)
 -- trust in thousandths, rounded half up to a percentage
 def ufcsTrust (milli : Int) : Int := clamp 0 100 ((milli + 5) / 10)
 theorem ufcsTrust_range (m : Int) : 0 ≤ ufcsTrust m ∧ ufcsTrust m ≤ 100 := clamp_in 0 100 _ (by decide)
 #guard ufcsTrust 950 == 95                                          -- py: ufcs_trust(0.95) == 95
 #guard ufcsTrust 1700 == 100                                        -- py: ufcs_trust(1.7) == 100
 
--- prefix_end (vw/factstore.py:138)
+-- prefix_end (vw/factstore.py:141)
 def prefixEnd (p : String) : String := p ++ "\uFFFF"
 #guard (prefixEnd "rome").startsWith "rome"                         -- py: prefix_end("rome") == "rome\uffff"
 
--- ro (vw/factstore.py:148)
+-- ro (vw/factstore.py:151)
 def roUri (path : String) : String := "file:" ++ path ++ "?mode=ro"
 #guard (roUri "x").endsWith "?mode=ro"                              -- py: RO_MODE == "?mode=ro"
 
--- has_table (vw/factstore.py:163)
+-- has_table (vw/factstore.py:166)
 def hasTableOf (tables : List String) (t : String) : Bool := tables.contains t
 #guard hasTableOf ["fp", "nuc"] "nuc"                               -- py: has_table("/no/such/file.sqlite", "nuc") is False
 
--- find_ufcs (vw/factstore.py:182)
+-- find_ufcs (vw/factstore.py:185)
 def joinPath (root sub : String) : String := if sub == "" then root else root ++ "/" ++ sub
 #guard joinPath "D:/QB" "store" == "D:/QB/store"                     -- py: find_ufcs("/no/such/root") == []
 
--- dedupe (vw/factstore.py:215)
+-- dedupe (vw/factstore.py:218)
 def factKey (h : Hit) : String × String × String := (norm h.subj, lower h.pred, norm h.obj)
 def dedupeAux : List (String × String × String) → List Hit → List Hit
   | _, [] => []
@@ -89,34 +89,66 @@ def dedupeAux : List (String × String × String) → List Hit → List Hit
 def dedupeHits (hs : List Hit) : List Hit := dedupeAux [] hs
 #guard (dedupeHits [⟨"Rome", "inception", "753 BC", 90⟩, ⟨"rome (Q220)", "Inception", "753 bc", 70⟩]).length == 1   -- py: len(dedupe([{"subject": "Rome", "predicate": "inception", "object": "753 BC"}, {"subject": "rome (Q220)", "predicate": "Inception", "object": "753 bc"}])) == 1
 
--- FactStore (vw/factstore.py:236)
+-- FactStore (vw/factstore.py:239)
 def countTotal (ufcs : List Nat) (c : Nat) (shards : List Nat) : Nat := ufcs.foldl (· + ·) 0 + c + shards.foldl (· + ·) 0
 #guard countTotal [1200000] 0 [] == 1200000                         -- py: FactStore("").status()["facts"] == 0
 
--- FactStore.__init__ (vw/factstore.py:244)
+-- FactStore.__init__ (vw/factstore.py:247)
 def CACHE_SECONDS : Nat := 30
 
--- FactStore.refresh (vw/factstore.py:257)
+-- FactStore.refresh (vw/factstore.py:260)
 def stale (now t0 : Nat) : Bool := decide (t0 + CACHE_SECONDS ≤ now) || t0 == 0
 #guard stale 100 60 && !stale 70 60                             -- py: FactStore("").refresh() is None
 
--- FactStore.status (vw/factstore.py:317)
+-- FactStore.status (vw/factstore.py:320)
 #guard countTotal [1000000, 250000] 10 [5] == 1250015            -- py: FactStore("/no/such/root").status()["connected"] is False
 
--- FactStore.lookup (vw/factstore.py:330)
+-- FactStore.lookup (vw/factstore.py:333)
 def byTrust (a b : Hit) : Bool := decide (a.trust ≥ b.trust)
 theorem lookup_bounded (xs : List Hit) (n : Nat) : (xs.take n).length ≤ n := List.length_take_le _ _
 #guard (([⟨"a", "p", "x", 90⟩, ⟨"a", "p", "y", 50⟩] : List Hit).take 1).length == 1   -- py: FactStore("/no/such/root").lookup("Rome", 5) == []
 
--- FactStore.ufcs_lookup (vw/factstore.py:358)
+-- FactStore.links (vw/factstore.py:361)
+def onward (obj : String) (facts : List Hit) : List Hit := facts.filter (fun h => ufcsNorm h.subj == ufcsNorm obj)
+theorem onward_sub (o : String) (fs : List Hit) : (onward o fs).length ≤ fs.length := List.length_filter_le _ _
+#guard (onward "France" [⟨"france", "capital", "Paris", 90⟩, ⟨"spain", "capital", "Madrid", 90⟩]).length == 1   -- py: FactStore("/no/such").links({"subject": "x", "predicate": "p", "object": "y"}, 3) == {"siblings": [], "onward": [], "inbound": "not indexed"}
+
+-- FactStore.ufcs_lookup (vw/factstore.py:379)
 def ufcsWhere : String := "subject = ? ORDER BY trust DESC LIMIT ?"
 #guard ufcsWhere.startsWith "subject = ?"                       -- py: FactStore("").ufcs_lookup("/no/such", "x", 3) == []
 
--- FactStore.commons_lookup (vw/factstore.py:385)
+-- FactStore.commons_lookup (vw/factstore.py:407)
 #guard statusTrust "unsourced" == 65                             -- py: verdict.status_trust("unsourced") == 65
 
--- FactStore.shard_lookup (vw/factstore.py:411)
+-- FactStore.shard_lookup (vw/factstore.py:435)
 def labelPrefix (s : String) : String := s ++ " ("
 #guard labelPrefix "Rome" == "Rome ("                             -- py: FactStore("").shard_lookup({"key": "k", "path": "/no/such.sqlite"}, "Rome", 3) == []
+
+-- ufcs_fingerprint (vw/factstore.py:474)
+-- SHA-256 is an external primitive; Lean fixes the text it is taken over
+def fingerprintInput (s p o pol : String) : String := ufcsNorm s ++ "|" ++ ufcsNorm p ++ "|" ++ ufcsNorm o ++ "|" ++ pol
+#guard fingerprintInput "Printing  Press" "Inventor" "Johannes Gutenberg" "+" == "printing press|inventor|johannes gutenberg|+"   -- py: fingerprint_input("Printing  Press", "Inventor", "Johannes Gutenberg", "+") == "printing press|inventor|johannes gutenberg|+"
+
+-- fingerprint_input (vw/factstore.py:485)
+#guard fingerprintInput "a" "b" "c" "-" == "a|b|c|-"                 -- py: fingerprint_input("a", "b", "c", "-") == "a|b|c|-"
+
+-- rph (vw/factstore.py:494)
+def rphInput (fps : List String) : String := "|".intercalate ("RPH" :: fps)
+#guard rphInput ["a", "b"] == "RPH|a|b"                               -- py: rph_input(["a", "b"]) == "RPH|a|b"
+
+-- rph_input (vw/factstore.py:504)
+#guard rphInput [] == "RPH"                                           -- py: rph_input([]) == "RPH"
+
+-- verify_packet (vw/factstore.py:513)
+def verifies (stored computedPos computedNeg : String) : String :=
+  if stored == computedPos then "+" else if stored == computedNeg then "-" else ""
+#guard verifies "x" "x" "y" == "+"                                    -- py: verify_packet({"subject": "a", "predicate": "b", "object": "c", "packet": {"kind": "ufcs", "fp": ufcs_fingerprint("a", "b", "c", "+")}})["polarity"] == "+"
+#guard verifies "z" "x" "y" == ""                                     -- py: verify_packet({"subject": "a", "predicate": "b", "object": "c", "packet": {"kind": "ufcs", "fp": "z"}})["verified"] is False
+
+-- find_packet (vw/factstore.py:543)
+def blockName (n : Nat) : String :=
+  let d := toString n
+  "block_" ++ String.mk (List.replicate (5 - d.length) '0') ++ d ++ ".jsonl.gz"
+#guard blockName 7 == "block_00007.jsonl.gz"                          -- py: "block_%05d.jsonl.gz" % 7 == "block_00007.jsonl.gz"
 
 end VeriWave.Factstore

@@ -8,7 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BANNED = {"eval", "exec", "compile", "getattr", "setattr", "delattr", "hasattr", "globals", "locals", "vars", "__import__", "type"}
 ALLOWED = {"__future__", "json", "math", "typing", "dataclasses", "hashlib", "html", "io", "os", "struct", "threading",
            "time", "urllib", "wave", "zipfile", "base64", "shutil", "socket", "subprocess", "sys", "http",
-           "tempfile", "webbrowser", "sqlite3"}
+           "tempfile", "webbrowser", "sqlite3", "gzip"}
 # vw: VeriWave itself; shell/ask: QueryBook one's own modules (ask.py is already on QueryBook's Rust-ported list)
 LOCAL = {"vw", "shell", "ask"}
 # standard-library methods whose signature VeriWave must match when it overrides them

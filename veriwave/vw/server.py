@@ -15,7 +15,7 @@ POST /api/vw/querybook/restart {id}
 
 Lean:
     inductive Handler where
-      | page | status | features | feature | items | zip | out | chat | answer | code | create | restart | notFound
+      | page | status | features | feature | items | zip | out | traces | trace | packet | chat | answer | code | create | restart | notFound
     deriving Repr, BEq, DecidableEq
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import registry, store
+from . import factstore, registry, store, trace
 from .backends import Claude
 from .factstore import FactStore, default_root
 from .model import VERSION, VeriWave
@@ -51,7 +51,8 @@ def dispatch(method: str, path: str) -> str:
             if p == "/" || p == "/index.html" || p == "/veriwave.css" || p == "/veriwave.js" then .page
             else if p == "/api/vw/status" then .status else if p == "/api/vw/features" then .features
             else if p == "/api/vw/feature" then .feature else if p == "/api/vw/items" then .items
-            else if p == "/api/vw/zip" then .zip else if p.startsWith "/out/" then .out else .notFound
+            else if p == "/api/vw/zip" then .zip else if p == "/api/vw/traces" then .traces else if p == "/api/vw/trace" then .trace
+            else if p == "/api/vw/packet" then .packet else if p.startsWith "/out/" then .out else .notFound
           else if m == "POST" then
             if p == "/api/vw/chat" then .chat else if p == "/api/vw/answer" then .answer else if p == "/api/vw/code" then .code
             else if p == "/api/vw/create" then .create else if p == "/api/vw/querybook/restart" then .restart else .notFound
@@ -66,7 +67,8 @@ def dispatch(method: str, path: str) -> str:
         if path in ("/", "/index.html", "/veriwave.css", "/veriwave.js"):
             return "page"
         table = {"/api/vw/status": "status", "/api/vw/features": "features", "/api/vw/feature": "feature",
-                 "/api/vw/items": "items", "/api/vw/zip": "zip"}
+                 "/api/vw/items": "items", "/api/vw/zip": "zip", "/api/vw/traces": "traces", "/api/vw/trace": "trace",
+                 "/api/vw/packet": "packet"}
         if path in table:
             return table[path]
         return "out" if path.startswith("/out/") else "notFound"
@@ -179,6 +181,22 @@ class App:
                         with open(full, encoding="utf-8", errors="replace") as fh:
                             files[rel] = fh.read()
             return 200, store.zip_files(files), "application/zip"
+        if h == "traces":
+            return 200, {"traces": self.model.trace_list(int_param(q.get("limit"), 100, 1, 200)), "logic_types": trace.LOGIC_TYPES}, ""
+        if h == "trace":
+            tr = self.model.trace_get(q.get("id", ""))
+            return (200, tr, "") if tr is not None else (404, {"error": "No such trace"}, "")
+        if h == "packet":
+            known = [u["path"] for u in self.model.facts.status()["ufcs"]]
+            st = q.get("store", "")
+            if st not in known:
+                return 404, {"error": "Not a UFCS store VeriWave is connected to"}, ""
+            pk = factstore.find_packet(st, int_param(q.get("block"), 0, 0, 100000), q.get("fp", ""), 25.0)
+            if pk is None:
+                return 404, {"error": "Packet not found in its block"}, ""
+            if pk.get("_timeout"):
+                return 504, {"error": "The block is large; the packet was not reached within 25 seconds"}, ""
+            return 200, pk, ""
         if h == "out":
             parts = path[len("/out/"):].split("/", 1)
             if len(parts) == 2:
@@ -206,25 +224,19 @@ class App:
             return 200, self.model.chat(msg, history, str(body.get("subject") or ""), engine), ""
         if h == "answer":
             return 200, self.model.ask(str(body.get("q") or ""), int_param(body.get("min_trust"), 50, 0, 100),
-                                       str(body.get("subject") or ""), engine), ""
+                                       str(body.get("subject") or ""), engine, "Asked on the Answer screen."), ""
         if h == "code":
             prompt = str(body.get("prompt") or "").strip()
             if not prompt:
                 return 400, {"error": "Describe the application first."}, ""
-            return 200, self.model.code(prompt, str(body.get("kind") or ""), engine), ""
+            return 200, self.model.make("code", prompt, engine, "Asked on the Code screen.", str(body.get("kind") or "")), ""
         if h == "create":
             kind = str(body.get("kind") or "")
             prompt = str(body.get("prompt") or "").strip()
             if not prompt:
                 return 400, {"error": "Write a prompt first."}, ""
-            if kind == "text":
-                return 200, self.model.text(prompt, engine), ""
-            if kind == "image":
-                return 200, self.model.image(prompt, engine), ""
-            if kind == "video":
-                return 200, self.model.video(prompt, engine), ""
-            if kind == "audio":
-                return 200, self.model.audio(prompt, engine), ""
+            if kind in ("text", "image", "video", "audio"):
+                return 200, self.model.make(kind, prompt, engine, "Asked on the Create: " + kind + " screen.", ""), ""
             return 400, {"error": "kind must be text, image, video or audio"}, ""
         if h == "restart":
             try:
