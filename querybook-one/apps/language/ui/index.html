@@ -146,10 +146,20 @@ tr.lc-active td { background: #f0fdf4; }
   .ll-pick { display: flex; flex-direction: column; gap: 4px; }
   .ll-pick select { font-size: 17px; padding: 8px 10px; min-width: 200px; }
   .ll-swapbtn { font-size: 20px; padding: 6px 14px !important; }
-  .ll-caps { margin-top: 12px; }
+  .ll-caps { flex: 1 1 260px; text-align: right; }
   .ll-caps .chip.ok { background: var(--good-bg); color: var(--good); }
   .chip.warn { background: var(--warn-bg); color: var(--warn); }
-  .ll-main, .ll-how { max-width: 900px; }
+  .ll-main { max-width: 960px; }
+  .ll-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  .ll-steps a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--chip); color: inherit; text-decoration: none; }
+  .ll-steps a.done { background: var(--good-bg); color: var(--good); }
+  .ll-steps a.done .step { background: var(--good); }
+  .ll-arrow { color: var(--muted, #889); }
+  .ll-sub { font-weight: 400; font-size: 14px; color: var(--muted, #667); }
+  .ll-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .ll-side { font-weight: 600; margin-bottom: 4px; }
+  .ll-outbox { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 92px; background: var(--chip); }
+  @media (max-width: 700px) { .ll-two { grid-template-columns: 1fr; } }
   #ll-stop { background: var(--panel) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; }
   .ll-how h2 { margin-bottom: 6px; }
   .ll-howlist { margin: 0; padding-left: 22px; line-height: 1.7; }
@@ -160,8 +170,8 @@ tr.lc-active td { background: #f0fdf4; }
   .ll-more summary { cursor: pointer; color: var(--muted, #667); font-size: 14px; }
   #ll-avkeys .note { margin: 4px 0 0; }
   .ll-words[open] { display: block; }
-  .ll-words input { width: 100%; max-width: 420px; font-size: 16px; padding: 8px 10px; margin-top: 8px; }
-  .ll-wlist { list-style: none; padding: 0; margin: 0 0 8px; overflow-y: auto; max-height: 300px; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 12px; }
+  .ll-words input { width: 100%; max-width: 360px; font-size: 16px; padding: 8px 10px; margin-right: 10px; }
+  .ll-wlist { list-style: none; padding: 0; margin: 0 0 8px; overflow-y: auto; max-height: 176px; margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; }
   .ll-wlist li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
   .ll-word { flex: 1; text-align: left; background: none; border: 0; padding: 8px 6px; cursor: pointer; color: inherit; display: flex; flex-direction: column; border-radius: 6px; }
   .ll-word:hover, .ll-word:focus-visible { background: var(--chip); }
@@ -212,7 +222,7 @@ tr.lc-active td { background: #f0fdf4; }
   <span class="tag">Builds 17 languages by itself — and speaks, listens and measures speech</span>
 </header>
 <nav class="tabs" aria-label="Sections">
-  <button data-tab="learn">🌍 Translate &amp; Avatar</button>
+  <button data-tab="learn">🌍 Words · Translate · Speech · Avatar</button>
   <button data-tab="build">Build</button>
   <button data-tab="speech">Speech</button>
   <button data-tab="photoreal">Photo Real Lab</button>
@@ -229,64 +239,71 @@ tr.lc-active td { background: #f0fdf4; }
 </nav>
 <main>
   <section class="panel" id="learn" aria-label="Language Lab">
-    <div class="card ll-how">
-      <h2>Translate a sentence, hear it, and have an avatar say it</h2>
-      <ol class="ll-howlist">
-        <li><b>Translate</b> — choose the two languages, type a sentence, press <b>Translate</b>.</li>
-        <li><b>Listen</b> — press <b>▶ Listen</b> to hear the translation spoken.</li>
-        <li><b>Avatar</b> — pick a face and press <b>🎬 Make the avatar say it</b>.</li>
-      </ol>
-    </div>
-
     <div class="ll-main">
-      <div class="card">
-        <h2><span class="step">1</span> Translate</h2>
-        <div class="ll-bar">
-          <label class="ll-pick"><span class="small muted">From</span><select id="ll-from" aria-label="Translate from this language"></select></label>
-          <button class="btn secondary ll-swapbtn" id="ll-swap" title="Swap the two languages" aria-label="Swap languages">⇄</button>
-          <label class="ll-pick"><span class="small muted">To</span><select id="ll-to" aria-label="Translate into this language"></select></label>
+      <nav class="ll-steps" aria-label="The four steps">
+        <a href="#ll-s1" data-s="1"><span class="step">1</span> Words</a><span class="ll-arrow">→</span>
+        <a href="#ll-s2" data-s="2"><span class="step">2</span> Translate</a><span class="ll-arrow">→</span>
+        <a href="#ll-s3" data-s="3"><span class="step">3</span> Speech</a><span class="ll-arrow">→</span>
+        <a href="#ll-s4" data-s="4"><span class="step">4</span> Avatar speech</a>
+      </nav>
+
+      <div class="card ll-bar">
+        <label class="ll-pick"><span class="small muted">From</span><select id="ll-from" aria-label="Translate from this language"></select></label>
+        <button class="btn secondary ll-swapbtn" id="ll-swap" title="Swap the two languages" aria-label="Swap languages">⇄</button>
+        <label class="ll-pick"><span class="small muted">To</span><select id="ll-to" aria-label="Translate into this language"></select></label>
+        <div class="ll-caps small" id="ll-caps"></div>
+      </div>
+
+      <div class="card ll-words" id="ll-s1" aria-label="Words">
+        <h2><span class="step">1</span> Words <span class="ll-sub">— tap a word: it is translated and spoken. Or skip this and type a sentence in step 2.</span></h2>
+        <input id="ll-wq" type="search" placeholder="Find a word, in either language…" aria-label="Find a word" autocomplete="off">
+        <span class="small muted" id="ll-wcount"></span>
+        <ul id="ll-wlist" class="ll-wlist"></ul>
+        <button class="btn secondary small" id="ll-wmore" hidden>More words</button>
+      </div>
+
+      <div class="card" id="ll-s2">
+        <h2><span class="step">2</span> Translate <span class="ll-sub">— type a word or a sentence and press Translate.</span></h2>
+        <div class="ll-two">
+          <div>
+            <div class="ll-side"><span class="ll-fromname"></span></div>
+            <textarea id="ll-text" rows="3" placeholder="Type here, then press Translate"></textarea>
+            <div class="row ll-actions">
+              <button class="btn ll-big" id="ll-tr">Translate →</button>
+              <button class="btn secondary" id="ll-mic" title="Say the sentence instead of typing it">🎙 Say it</button>
+              <button class="btn secondary small" id="ll-clear" title="Start again">Clear</button>
+            </div>
+            <span class="small muted" id="ll-micstate" aria-live="polite"></span>
+          </div>
+          <div>
+            <div class="ll-side"><span class="ll-toname"></span></div>
+            <div id="ll-out" class="ll-out ll-outbox" aria-live="polite"></div>
+            <div class="ll-notes small" id="ll-notes"></div>
+            <div id="ll-why"></div>
+          </div>
         </div>
-        <label class="small muted ll-lbl" for="ll-text">Type what you want to say, in <span class="ll-fromname"></span></label>
-        <textarea id="ll-text" rows="3" placeholder="Type a sentence here, then press Translate"></textarea>
-        <div class="row ll-actions">
-          <button class="btn ll-big" id="ll-tr">Translate →</button>
-          <button class="btn secondary" id="ll-mic" title="Speak the sentence instead of typing it">🎙 Speak instead of typing</button>
-          <button class="btn secondary small" id="ll-clear" title="Start again">Clear</button>
-          <span class="small muted" id="ll-micstate" aria-live="polite"></span>
-        </div>
-        <div class="row small ll-examples" id="ll-examples"><span class="muted">Or try one:</span>
+        <div class="row small ll-examples" id="ll-examples"><span class="muted">Try:</span>
           <button class="btn secondary small" data-say="Good morning">Good morning</button>
           <button class="btn secondary small" data-say="Thank you very much">Thank you very much</button>
           <button class="btn secondary small" data-say="Where is the train station?">Where is the train station?</button>
           <button class="btn secondary small" data-say="I would like a glass of water, please.">A glass of water, please</button>
         </div>
-        <details class="ll-more ll-words" aria-label="Words">
-          <summary>📖 Or pick a single word from the <span class="ll-toname"></span> word list</summary>
-          <input id="ll-wq" type="search" placeholder="Find a word, in either language…" aria-label="Find a word" autocomplete="off">
-          <p class="small muted" id="ll-wcount"></p>
-          <ul id="ll-wlist" class="ll-wlist"></ul>
-          <button class="btn secondary small" id="ll-wmore" hidden>More words</button>
-          <p class="small muted ll-tip">Tap a word to use it and hear it. 🔊 just plays it.</p>
-        </details>
-        <div class="ll-caps small" id="ll-caps"></div>
       </div>
 
-      <div class="card ll-stage">
-        <h2><span class="step">2</span> Listen to it in <span class="ll-toname"></span></h2>
-        <div id="ll-out" class="ll-out" aria-live="polite"></div>
+      <div class="card ll-stage" id="ll-s3">
+        <h2><span class="step">3</span> Speech <span class="ll-sub">— the translation is spoken (text to speech).</span></h2>
         <div class="row ll-playrow">
-          <button class="btn ll-big" id="ll-play" disabled>▶ Listen</button>
+          <button class="btn ll-big" id="ll-play" disabled>▶ Speak it</button>
           <button class="btn secondary small" id="ll-stop" title="Stop the sound">■ Stop</button>
           <label class="small">Speed <select id="ll-speed"><option value="105">Slow</option><option value="150" selected>Normal</option><option value="200">Fast</option></select></label>
+          <label class="small">Voice <select id="ll-voice"><option value="">Standard</option><option value="female">Female</option><option value="male">Male</option><option value="whisper">Whisper</option><option value="whisper-female">Whisper (female)</option><option value="slow-old">Older</option></select></label>
+          <label class="small"><input type="checkbox" id="ll-auto" checked> Speak as soon as it is translated</label>
         </div>
         <div id="ll-karaoke" class="ll-karaoke" aria-live="off"></div>
         <div id="ll-ipa" class="small"></div>
-        <div class="ll-notes small" id="ll-notes"></div>
-        <div id="ll-why"></div>
         <details class="ll-more">
-          <summary>More options — voice, repeat, hear the original, mouth shapes</summary>
+          <summary>More — repeat, hear the original, mouth shapes, practice saying it</summary>
           <div class="row small" style="margin-top:8px">
-            <label>Voice <select id="ll-voice"><option value="">Standard</option><option value="female">Female</option><option value="male">Male</option><option value="whisper">Whisper</option><option value="whisper-female">Whisper (female)</option><option value="slow-old">Older</option></select></label>
             <label><input type="checkbox" id="ll-repeat"> Repeat</label>
             <button class="btn secondary small" id="ll-play-src">▶ Hear the original (<span class="ll-fromname"></span>)</button>
           </div>
@@ -302,44 +319,38 @@ tr.lc-active td { background: #f0fdf4; }
               <g id="ll-mouth"></g>
             </svg>
             <div class="ll-controls">
-              <p class="small muted">This drawing shows the mouth shape of each sound while you listen — a pronunciation guide. The human avatar is in step 3.</p>
+              <p class="small muted">Mouth guide: this drawing shows the mouth shape of each sound while it is spoken.</p>
               <div id="ll-mouthnow" class="small muted" aria-live="off"></div>
             </div>
           </div>
+          <p class="small" style="margin-top:10px"><b>Practice saying it:</b> <span class="muted">press Start, say the <span class="ll-toname"></span> sentence, press again. Each word turns green when it is heard.</span></p>
+          <div class="row"><button class="btn secondary" id="ll-practice" disabled>🎙 Start</button></div>
+          <div id="ll-score" aria-live="polite"></div>
         </details>
       </div>
 
-      <div class="card">
-        <h2><span class="step">3</span> Avatar says it</h2>
-        <p class="ll-lead">A human avatar says the translation in a lip-synced video.</p>
+      <div class="card" id="ll-s4">
+        <h2><span class="step">4</span> Avatar speech <span class="ll-sub">— a human avatar says it in a lip-synced video.</span></h2>
         <div class="ll-avatar">
           <div class="ll-avstage" id="ll-avstage"><img id="ll-avimg" alt="The chosen avatar"></div>
           <div class="ll-avside">
-            <div><b>First, pick a face:</b></div>
+            <div class="small muted">Pick a face:</div>
             <div id="ll-avfaces" class="ll-avfaces" role="group" aria-label="Avatars"></div>
-            <div><b>Then press:</b></div>
-            <div class="row"><button class="btn ll-big" id="ll-avgo" disabled>🎬 Make the avatar say it</button></div>
-            <p class="small muted" id="ll-avhint">Translate a sentence in step 1 first — then this button works.</p>
+            <div class="row"><button class="btn ll-big" id="ll-avgo" disabled>🎬 Avatar speaks it</button></div>
+            <p class="small muted" id="ll-avhint">Translate something in step 2 first.</p>
             <div id="ll-avstate" class="small" aria-live="polite"></div>
-            <p class="small muted">You hear the sentence straight away. The video appears in the picture on the left after about a minute.</p>
+            <p class="small muted">The video appears in the picture after about a minute.</p>
             <div id="ll-avkeys" class="small"></div>
           </div>
         </div>
         <details class="ll-more">
-          <summary>More options — man or woman, choose the voice, keep the clips</summary>
+          <summary>More — man or woman, choose the voice, keep the clips</summary>
           <div class="row small" style="margin-top:8px">
             <label>The avatar is a <select id="ll-avperson"><option value="woman">woman</option><option value="man">man</option><option value="person">person</option></select></label>
             <button class="btn secondary small" id="ll-clip" disabled title="Opens Speech → Talking clips with this sentence: choose the voice (e.g. ElevenLabs), add your own face, see all the clips made">🎬 Open in Talking clips (choose the voice, add a face)</button>
           </div>
           <p class="small muted">The video is made by Gemini. When Gemini cannot, the voice chosen on Speech → Speak (for example ElevenLabs) speaks and HeyGen moves the face.</p>
         </details>
-      </div>
-
-      <div class="card">
-        <h2><span class="step">4</span> Practice — say it yourself <span class="muted small">(optional)</span></h2>
-        <p class="small muted">Press Start, say the <span class="ll-toname"></span> sentence from step 2, then press the button again. Each word turns green when it is heard.</p>
-        <div class="row"><button class="btn" id="ll-practice" disabled>🎙 Start</button></div>
-        <div id="ll-score" aria-live="polite"></div>
       </div>
     </div>
   </section>

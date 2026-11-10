@@ -92,7 +92,7 @@ async function llDeck(reset) {
   const learn = LL.to, deckLang = learn === "en" ? LL.from : learn;
   const r = await api("/api/lablang/deck?lang=" + encodeURIComponent(deckLang) + "&q=" + encodeURIComponent(LL.deckQ) + "&limit=60&offset=" + LL.deckOff);
   if (r.nolist) {                                          // a Translate language: no word list, type or say a sentence instead
-    $("#ll-wlist").innerHTML = '<li class="muted small">' + esc(llName(deckLang)) + " has no word list here — type or say a word or sentence on the right; it is translated " +
+    $("#ll-wlist").innerHTML = '<li class="muted small">' + esc(llName(deckLang)) + " has no word list here — type a word or sentence in step 2; it is translated " +
       (LL.cloud ? "by " + esc(LL.cloudBy) + "." : "with the dictionary pack.") + "</li>";
     $("#ll-wcount").textContent = ""; $("#ll-wmore").hidden = true;
     return;
@@ -185,8 +185,15 @@ async function llTranslate() {
       LL.out = { pieces: [{ text: c.text, seg: 0 }], segs: [seg], notes: [], text: c.text, by: c.by, offline };
     } catch (e) { LL.out.cloudError = e.message; }
   }
+  LL.said = null;
   llRenderOut();
   llMark(false);
+  if ($("#ll-auto").checked && LL.out && LL.out.text) llSay("target").catch(() => {});
+}
+// the strip at the top: which of the four steps are done
+function llSteps() {
+  const done = { 1: !!LL.out, 2: !!LL.out, 3: !!(LL.out && LL.said), 4: !!(LL.out && $("#ll-avstage video")) };
+  $$(".ll-steps a").forEach(a => a.classList.toggle("done", !!done[a.dataset.s]));
 }
 const llCase = (src, t) => /^\p{Lu}/u.test(src) ? t.charAt(0).toLocaleUpperCase() + t.slice(1) : t;
 
@@ -194,8 +201,9 @@ function llRenderOut() {
   const o = LL.out;
   $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o; $("#ll-clip").disabled = !o; $("#ll-avgo").disabled = !o;
   $("#ll-avhint").hidden = !!o;
+  llSteps();
   if (!o) {
-    $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here after you press Translate in step 1.</p>';
+    $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here.</p>';
     $("#ll-ipa").textContent = ""; $("#ll-karaoke").innerHTML = ""; $("#ll-score").innerHTML = ""; $("#ll-notes").innerHTML = "";
     return;
   }
@@ -219,7 +227,7 @@ function llRenderOut() {
     ((o.notes || []).some(n => /entry by entry/.test(n)) || o.segs.filter(s => s.kind !== "punct" && s.kind !== "number").length > 1 && o.segs.some(s => s.kind === "wordlist")
       ? '<p class="small muted">Put together word by word: the words are right, but word endings, gender (el / la) and word order may need a native speaker’s eye.</p>' : "");
   $("#ll-score").innerHTML = "";
-  $("#ll-karaoke").innerHTML = '<span class="muted small">Press ▶ Listen to hear it. Tap a word above to see where it came from.</span>';
+  $("#ll-karaoke").innerHTML = '<span class="muted small">Press ▶ Speak it to hear it.</span>';
 }
 
 function llWhy(i, el) {
@@ -250,7 +258,7 @@ async function llSay(which, word) {
     if (/^no-espeak-voice|espeak-ng is missing/.test(e.message)) return llBrowserSay(text, lang);
     throw e;
   }
-  LL.said = r;
+  LL.said = r; llSteps();
   $("#ll-ipa").innerHTML = r.ipa ? '<span class="muted">Say it like:</span> <span class="ipa">/' + esc(r.ipa) + "/</span>" : "";
   const words = r.track.words || [];
   $("#ll-karaoke").setAttribute("lang", lang);
@@ -277,6 +285,7 @@ function llBrowserSay(text, lang) {
   let k = 0;
   u.onboundary = ev => { if (ev.name !== "word") return; $$("#ll-karaoke span[data-k]").forEach(s => s.classList.toggle("on", +s.dataset.k === k)); llFace(["aa", "E", "O", "I", "U"][k % 5]); k++; };
   u.onend = () => { llFace("sil", 0); $$("#ll-karaoke span").forEach(s => s.classList.remove("on")); };
+  LL.said = { browser: true }; llSteps();
   LL.playing = { pause: () => speechSynthesis.cancel() };
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
@@ -425,7 +434,7 @@ function llAvPick(id, name) {
 async function llAvSay() {
   if (!LL.out || !LL.out.text || !LL.avatar) return;
   const btn = $("#ll-avgo"); btn.disabled = true;
-  llSay("target").catch(() => {});                         // heard at once; the lip-synced video follows
+  if (!LL.said) llSay("target").catch(() => {});           // heard at once; the lip-synced video follows
   $("#ll-avstate").textContent = (LL.avatarName || "The avatar") + " is getting ready to say it — the lip-synced video takes about a minute…";
   try {
     const c = await api("/api/talk/make", { text: LL.out.text, lang: LL.to, person: $("#ll-avperson").value, route: "auto", face: LL.avatar });
@@ -447,7 +456,7 @@ async function llAvFollow(id) {
   }
   $("#ll-avgo").disabled = false;
   if (c.status === "done") {
-    $("#ll-avstage").innerHTML = '<video controls autoplay playsinline src="/api/talk/video?id=' + c.id + '"></video>';
+    $("#ll-avstage").innerHTML = '<video controls autoplay playsinline src="/api/talk/video?id=' + c.id + '"></video>'; llSteps();
     $("#ll-avstate").innerHTML = "Made by <b>" + (c.route === "gemini" ? "Gemini" : "HeyGen") + "</b>" + (c.why && c.route === "heygen" ? " — " + esc(c.why) : "") +
       ' · <a href="/api/talk/video?id=' + c.id + '" download="talking-clip-' + c.id + '.mp4">download</a> · <span class="muted">' + esc(c.label || "") + "</span>";
   } else {

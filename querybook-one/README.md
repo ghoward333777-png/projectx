@@ -114,7 +114,7 @@ source → harvester → rights gate → metadata → format normaliser → docu
   5. Say it yourself and see which words were heard.
 
   Server side: `language/labtext.py` and `/api/lablang/*`.
-- **The Language page made plain** (Language 1.56): the first tab is now "Translate & Avatar", three steps top to bottom: 1 Translate, 2 Listen, 3 Avatar says it (pick a face, one button), then optional practice. A line says whether the avatar video has the key it needs. Nothing was removed: the word list, voice choices, the drawn mouth guide and Talking clips sit under "More options".
+- **The Language page in four steps** (Language 1.57): the first tab is "Words · Translate · Speech · Avatar". A strip at the top shows 1 Words → 2 Translate → 3 Speech → 4 Avatar speech and turns green as each is done. Tapping a word, or pressing Translate, shows the translation beside the input and speaks it at once; step 4 has one button, "Avatar speaks it", and says whether the video has its key. Nothing was removed: repeat, hear the original, the drawn mouth guide, practice and Talking clips are under "More".
 - **Translation and speech in every language restored** (Language 1.55, `language/lablangs.py`):
   - **Lab languages:** the Lab lists every language QueryBook can translate. The Builder's 17 languages with word lists come first, then the 12 dictionary packs. With a Google or Gemini key, all 139 languages of the QueryBook Translate registry are listed.
   - **Online translation:** used for languages with no offline data, or words the dictionaries lack. Google Translate (the Google Cloud key) is tried first, then Gemini (the Speech key or the Control Panel key). It is always labelled, and the offline word-by-word result stays visible.
