@@ -1,4 +1,4 @@
-"""Photo Real Lab: perfect lip-sync engineered from one perfect sample, and proven on every output.
+"""Photo Real Lab: one perfect sample of the author, and every narrator video measured against it.
 
 The method:
   1. REFERENCE — one real recording of the author speaking (real footage is perfect lip-sync by definition).
@@ -6,13 +6,12 @@ The method:
      (viseme), how fast the mouth opens and closes, how long the lips stay shut on p/b/m, how often the mouth
      changes direction, how jaw and lips move together, blinking and head micro-motion, and how well the lips
      agree with the words.
-  2. MEASURE — any rendering (the photo-driven face, a HeyGen or D-ID video, a local model's video) is
-     tracked by the same face tracker and measured into the same signature.
+  2. MEASURE — any narrator video (made by Gemini, HeyGen or D-ID) is tracked by the same face tracker and
+     measured into the same signature. (1.52: nothing animates a face on this computer, so there is no renderer
+     to calibrate; a video that fails the gate is made again by the video model, never touched up here.)
   3. SCORE AND GATE — each dimension is compared with the reference (0–100); a rendering is released only
      if the overall score and every critical dimension pass. Failures say which dimension failed.
-  4. CALIBRATE — for the photo-driven face, the differences are turned into corrected settings and the
-     loop repeats until it passes (closed-loop calibration), so it passes every time, not by luck.
-  5. GRAPH — every reference, measurement, setting and verdict is a QueryBook fact packet (UFCS 1.0:
+  4. GRAPH — every reference, measurement, setting and verdict is a QueryBook fact packet (UFCS 1.0:
      subject–predicate–object, fingerprint, trust, source) in the "photoreal" domain. The graph answers which
      method, which settings and which fixes produce real-looking lip-sync, and exports to the QueryBook store.
 """
@@ -286,44 +285,6 @@ def signature(frames, wav, text, lang="en", info=None, lab=None, word_times=None
     return out
 
 
-def keyframes(frames, vis, model, info=None):
-    """The real frames of the perfect sample to keep as the author's mouth library: for each sound, the frame in
-    the steady middle of that sound whose lip opening and width are closest to the author's model; a neutral
-    rest frame (mouth closed, facing the camera, outside speech); and a blink frame."""
-    info = info or {}
-    H = _f(info.get("height"), 720) or 720
-    seen = [f for f in frames or [] if isinstance(f, dict) and f.get("face")]
-    lead = model["lead_ms"] / 1000.0
-    width = lambda f: _f(f.get("mouth_px")) / ((_f(f.get("face_h")) * H) or 1.0)
-    out = {}
-    for v in model["gap"]:
-        if v == "sil":
-            continue
-        best = None
-        for f in seen:
-            t = _f(f.get("t")) + lead
-            seg = next((x for x in vis if x["v"] == v and x["end"] - x["start"] >= 0.06 and
-                        x["start"] + 0.3 * (x["end"] - x["start"]) <= t <= x["end"] - 0.3 * (x["end"] - x["start"])), None)
-            if not seg:
-                continue
-            d = abs(_f(f.get("gap")) - model["gap"][v]) + 0.5 * abs(width(f) - model["width"][v]) + 0.002 * abs(_f(f.get("yaw")))
-            if best is None or d < best[0]:
-                best = (d, _f(f.get("t")), _f(f.get("gap")))
-        # keep a frame only if it really shows that sound: close to the model, and closed lips for p / b / m
-        if best and best[0] < 0.08 and not (v == "PP" and best[2] > 0.05):
-            out[v] = round(best[1], 3)
-    speech_from = min((x["start"] for x in vis if x["v"] != "sil"), default=0.0)
-    speech_to = max((x["end"] for x in vis if x["v"] != "sil"), default=0.0)
-    rest = [f for f in seen if _f(f.get("t")) + lead < speech_from - 0.1 or _f(f.get("t")) + lead > speech_to + 0.2] or seen
-    blink = lambda f: (_f((f.get("bs") or {}).get("eyeBlinkLeft")) + _f((f.get("bs") or {}).get("eyeBlinkRight"))) / 2
-    r = min(rest, key=lambda f: _f(f.get("gap")) + 0.01 * abs(_f(f.get("yaw"))) + 0.01 * abs(_f(f.get("pitch"))) + blink(f))
-    out["rest"] = round(_f(r.get("t")), 3)
-    b = max(seen, key=blink)
-    if blink(b) >= 0.5:
-        out["blink"] = round(_f(b.get("t")), 3)
-    return out
-
-
 def _best_shift(meas, pred, max_ms=300):
     """The shift (ms) that best lines a measured series up with the predicted one, and the error there.
     Positive = the measured lips are later than the author's would be."""
@@ -372,39 +333,7 @@ def compare(ref, cand):
                         "FAIL — " + (", ".join(failed) if failed else "overall %.0f below %d" % (overall, PASS_OVERALL)))}
 
 
-# ---------------------------------------------------------------------- 4: closed-loop calibration (photo-driven face)
-def initial_params(ref):
-    """Renderer settings taken straight from the author's fitted model: shapes, lead, response, blinking, head motion."""
-    m = ref["model"]
-    p = json.loads(json.dumps(DEFAULT_PARAMS))
-    G, Wd = _complete(m)
-    p.update({"lead_ms": m["lead_ms"], "smooth_ms": m["tau_ms"], "head_sd_deg": ref.get("head_sd_deg") or 1.0,
-              "blink_per_min": ref.get("blink_per_min") or (round(60.0 * ref.get("blinks", 0) / ref["seconds"], 1) if ref.get("seconds") and ref.get("blinks") else 15),
-              "shapes": {v: {"gap": round(G[v], 4), "width": round(Wd[v], 4)} for v in G}})
-    return p
-
-
-def correct(params, ref, cand):
-    """New renderer settings: fit the same model to the rendering and correct each part by what differs."""
-    rm = ref["model"]
-    n = min(len(cand["series"]["gap"]), len(cand["series"]["width"]))
-    cm = fit_model(cand["series"]["gap"][:n], cand["series"]["width"][:n], cand["visemes"])
-    p = json.loads(json.dumps(params))
-    p["lead_ms"] = int(round(p["lead_ms"] + (rm["lead_ms"] - cm["lead_ms"])))
-    p["smooth_ms"] = int(max(8, min(200, p["smooth_ms"] * rm["tau_ms"] / max(5, cm["tau_ms"]))))
-    ps = p.setdefault("shapes", {})
-    for v in rm["gap"]:
-        if v not in cm["gap"]:
-            continue
-        cur = ps.get(v) or {"gap": rm["gap"][v], "width": rm["width"][v]}
-        ps[v] = {"gap": round(max(0.0, cur["gap"] + 0.9 * (rm["gap"][v] - cm["gap"][v]) / max(0.3, p["gap_gain"])), 4),
-                 "width": round(max(0.01, cur["width"] + 0.9 * (rm["width"][v] - cm["width"][v]) / max(0.6, p["width_gain"])), 4)}
-    p["blink_per_min"] = params.get("blink_per_min")
-    p["head_sd_deg"] = ref.get("head_sd_deg") or params.get("head_sd_deg")
-    return p
-
-
-# ---------------------------------------------------------------------- 5: the graph
+# ---------------------------------------------------------------------- 4: the graph
 def packet(subject, predicate, obj, trust=0.95, source="photoreal-lab", polarity="+"):
     """A UFCS 1.0 fact packet (same content addressing as the QueryBook store)."""
     norm = lambda s: " ".join(str(s).strip().lower().split())
@@ -453,9 +382,7 @@ class Lab:
             raise ValueError("The lips in this recording follow the words too loosely to learn from (model explains %d%%) — record again: "
                              "face the camera, good light, speak clearly." % round(100 * sig["model"]["explained"]))
         rid = self._run("reference", pid, None, "real footage", _lean(sig), verdict="reference")
-        params = initial_params(sig)
-        kf = keyframes(frames, sig["visemes"], sig["model"], info)
-        ref = {"run": rid, "signature": _lean(sig), "params": params, "text": text, "created": _now(), "keyframes": kf, "library": {}}
+        ref = {"run": rid, "signature": _lean(sig), "text": text, "created": _now()}
         with self.store.write() as db:
             db.execute("UPDATE personas SET reference = ? WHERE id = ?", (json.dumps(ref), int(pid)))
         subj = "author %s reference #%d" % (p["name"], rid)
@@ -468,9 +395,6 @@ class Lab:
                         % (round(100 * mdl["explained"]), round(100 * SAMPLE_MIN_EXPLAINED)))
         if mdl["gap"].get("PP", 0) > min([mdl["gap"][v] for v in ("aa", "O", "E") if v in mdl["gap"]] or [1]):
             warn.append("closed-lip sounds (p, b, m) do not look closed in this sample")
-        lost = [v for v in ALL_VISEMES if v in mdl["gap"] and v not in kf]
-        if lost:
-            warn.append("no clear frame for: %s (those sounds use the nearest look-alike)" % ", ".join(lost))
         ref["warnings"] = warn
         with self.store.write() as db:
             db.execute("UPDATE personas SET reference = ? WHERE id = ?", (json.dumps(ref), int(pid)))
@@ -484,11 +408,10 @@ class Lab:
         for v in mdl["gap"]:
             facts.append(("author %s viseme %s" % (p["name"], v), "lip opening (share of mouth width)", mdl["gap"][v], 0.95))
             facts.append(("author %s viseme %s" % (p["name"], v), "mouth width (share of face height)", mdl["width"][v], 0.95))
-        facts.append(("photo-driven renderer for %s" % p["name"], "starts from settings", json.dumps(params, sort_keys=True), 0.9))
         self._facts(facts, "reference-%d" % rid, "reference")
         self.store.activity("Photo Real Lab: reference", "ok", "%s · %d frames · lead %s ms · response %s ms · explains %d%%" %
                             (p["name"], sig["frames"], mdl["lead_ms"], mdl["tau_ms"], round(100 * mdl["explained"])))
-        return {"run": rid, "signature": _lean(sig), "model": mdl, "params": params, "keyframes": kf, "warnings": warn, "dimensions": {k: v[0] for k, v in DIMENSIONS.items()}}
+        return {"run": rid, "signature": _lean(sig), "model": mdl, "warnings": warn, "dimensions": {k: v[0] for k, v in DIMENSIONS.items()}}
 
     def reference(self, pid):
         r = self.personas.get(pid).get("reference")
@@ -518,31 +441,8 @@ class Lab:
             with self.store.write() as db:
                 db.execute("UPDATE narrations SET score = ? WHERE id = ?", (json.dumps({"run": rid, "overall": sc["overall"], "passed": sc["passed"], "verdict": sc["verdict"]}), int(narration)))
         self.store.activity("Photo Real Lab: measure", "ok" if sc["passed"] else "failed", "%s · %s · %.0f/100 · %s" % (p["name"], method, sc["overall"], sc["verdict"][:120]))
-        return {"run": rid, "signature": sig, "score": sc}  # full signature: calibration fits the rendering's own model
+        return {"run": rid, "signature": sig, "score": sc}
 
-    # 4. closed loop for the photo-driven face
-    def calibrate(self, pid, frames, wav, text, params, lang="en", info=None, round_no=1):
-        """Measure one rendering made with `params`; return the verdict and the corrected settings for the next round.
-        When it passes, the settings are stored as the persona's proven settings."""
-        ref = self.reference(pid)
-        m = self.measure(pid, frames, wav, text, "photo", lang, info, None, params)
-        sc = m["score"]
-        nxt = params if sc["passed"] else correct(params, ref["signature"], m["signature"])
-        if sc["passed"]:
-            ref["params"], ref["proven"] = params, {"run": m["run"], "score": sc["overall"], "at": _now()}
-            with self.store.write() as db:
-                db.execute("UPDATE personas SET reference = ? WHERE id = ?", (json.dumps(ref), int(pid)))
-            self._facts([("photo-driven renderer for %s" % self.personas.get(pid)["name"], "proven settings", json.dumps(params, sort_keys=True), 0.97),
-                         ("photo-driven renderer for %s" % self.personas.get(pid)["name"], "passes the gate after rounds", round_no, 0.97)],
-                        "calibrate-%d" % m["run"], "calibration")
-        else:
-            changes = {k: (params.get(k), nxt.get(k)) for k in nxt if k != "shapes" and nxt.get(k) != params.get(k)}
-            self._facts([("calibration round %d (run #%d)" % (round_no, m["run"]), "changed " + k, "%s → %s" % (a, b), 0.9) for k, (a, b) in changes.items()],
-                        "calibrate-%d" % m["run"], "calibration")
-        self._run("calibrate", pid, None, "photo", None, {"round": round_no, "overall": sc["overall"], "passed": sc["passed"]}, nxt, sc["verdict"])
-        return {"run": m["run"], "score": sc, "next_params": nxt, "passed": sc["passed"], "round": round_no}
-
-    # 5. what the graph knows
     def findings(self, pid=None):
         q = self.store.query
         runs = q("SELECT id, created, kind, persona, method, scores, verdict FROM photoreal_runs WHERE kind = 'measure'" +

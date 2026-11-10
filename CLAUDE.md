@@ -106,3 +106,14 @@ STEM's `science.py`/`units.py`) with Lean proofs (`querybook-one/lean`, Mathlib,
 port (`querybook-one/rust/qbcore`); `tools/gen_lean.py` / `tools/gen_rust.py` regenerate them and their
 `--check` runs in the tests, so a formula changed in Python must have its proofs and Rust regenerated.
 The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-folder.txt = D:\QB).
+
+### Lip-sync and talking faces — the user's decision (do not change)
+
+- Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)
+  with HeyGen animating the portrait (`apps/language/talkclip.py`, `ui/talk.js`, Speech → Talking clips, the Speak
+  page's "Make a talking clip of this", the Lab's step-4 "Talking clip" button). This is what works for the user.
+- The local face engine (Language 1.53: face.js, avatarface.js, photoface.js, motionlib, Quality Lab) was tried and
+  rejected by the user on 2026-11-10 ("failed lip synching"). Its code is kept in git history at commit 82e15af — do
+  not put it back, and do not replace the Gemini/ElevenLabs route, unless the user asks.
+- Never remove or replace a working feature without first checking the git history and the user's earlier sessions
+  for why it is there, and asking the user. Removing working features has cost the user days of work.

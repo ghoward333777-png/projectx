@@ -161,15 +161,6 @@ function liveChips(f, fps) {
     '<span class="vd-chip">lips open ' + Math.round(100 * f.gap) + "%</span>";
 }
 
-// Mouth parameters for the avatar from the tracked face (same scale as the talking face's viseme table).
-function mouthFromFace(f) {
-  const b = f.bs || {}, g = k => b[k] || 0;
-  const round = Math.max(g("mouthFunnel"), g("mouthPucker"));
-  const spread = Math.max((g("mouthStretchLeft") + g("mouthStretchRight")) / 2, (g("mouthSmileLeft") + g("mouthSmileRight")) / 2);
-  return { open: Math.min(1, Math.max(f.gap * 2.2, g("jawOpen") * 1.1)), width: Math.max(0.25, Math.min(0.85, 0.55 + 0.4 * spread - 0.3 * round)),
-    round, teeth: Math.min(1, 0.3 + g("mouthUpperUpLeft") + g("mouthRollLower")), tongue: 0.2, press: Math.min(1, g("mouthClose") * 2 + g("mouthPressLeft")) };
-}
-
 // ---------------------------------------------------------------- sources
 async function vdUse(stream, kind) {
   vdStop();
@@ -211,7 +202,6 @@ async function vdLiveLoop() {
       const fps = VD.fpsT.length > 2 ? 1000 * (VD.fpsT.length - 1) / (VD.fpsT[VD.fpsT.length - 1] - VD.fpsT[0]) : 0;
       drawOverlay(v, f);
       if (n % 3 === 0) liveChips(f, fps);
-      if (VD.avatar && f.face) VD.avatar.live(mouthFromFace(f));
     }
     if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(step); else requestAnimationFrame(step);
   };
@@ -399,7 +389,6 @@ async function vdOverdub() {
     (r.stages ? '<details><summary class="small">Timing of every stage (to 0.01 s)</summary>' + stagesTable(r.stages.stages, r.stages.seconds) + "</details>" : "");
   $("#vd-prev").onclick = () => vdPreview(box.querySelector("audio"));
   $("#vd-export").onclick = vdExport;
-  if (window.TalkingFace) faceCard(box, r.audio, text, (SP.profile && SP.profile.lang) || "en");
 }
 
 function vdPreview(a) {
@@ -480,16 +469,6 @@ async function vdSetup() {
   $("#vd-go").onclick = vdAnalyse;
   $("#vd-dub").onclick = vdOverdub;
   $("#vd-ingest").onclick = vdIngest;
-  $("#vd-mirror").onchange = async e => {
-    const el = $("#vd-avatar");
-    el.hidden = !e.target.checked;
-    if (e.target.checked) {
-      el.innerHTML = '<div class="row"><button class="btn small" data-am="2d">2D</button><button class="btn small" data-am="3d">3D / VR</button></div><div class="vd-av"></div>';
-      VD.avatar = new TalkingFace(el.querySelector(".vd-av"));
-      await VD.avatar.setMode("2d");
-      el.querySelectorAll("[data-am]").forEach(b => b.onclick = () => VD.avatar.setMode(b.dataset.am));
-    } else { VD.avatar = null; el.innerHTML = ""; }
-  };
 }
 
 // ---------------------------------------------------------------- QueryBook ingestion of a video: sound + face together

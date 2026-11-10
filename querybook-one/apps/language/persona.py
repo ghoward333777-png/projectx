@@ -6,15 +6,15 @@ A persona holds the author's photo (with its face landmarks), a voice sample and
   * elevenlabs    — ElevenLabs instant voice clone, built from the sample;
   * offline       — the built-in voice tuned (generate → measure → adjust) to the sample's pitch, speed,
                     loudness and breath: free and private, recognisably synthetic.
-Its face can be produced by any of:
-  * photo   — the author's photo animated in the browser (bundled face tracker, mesh warp; free, offline);
-  * heygen  — HeyGen talking-photo video (cloud, needs a key);
-  * did     — D-ID talk video (cloud, needs a key);
-  * local   — a locally installed open-source model (Wav2Lip, SadTalker or any command) — private, needs a GPU.
+Its face is always a video made by a video model (1.52: nothing animates the photo on this computer any more):
+  * gemini  — Gemini Omni performs the line from the photo (its own voice), with the October 29 instructions;
+              when Gemini cannot (a refused name, the day's videos used up, no key), HeyGen makes it instead;
+  * heygen  — HeyGen animates the photo to the persona's own voice (cloud, needs a key);
+  * did     — D-ID talk video to the persona's own voice (cloud, needs a key).
 Everything a persona produces is labelled "AI narrator". Deleting a persona deletes its local samples and
 voice references (copies held by a cloud provider must be deleted there; the page says so).
 """
-import base64, datetime, glob, hashlib, json, os, shlex, shutil, subprocess, threading, time, uuid
+import base64, datetime, hashlib, json, os, shutil, threading, time, uuid
 
 import tts
 import voicedsp
@@ -48,15 +48,11 @@ CREATE TABLE IF NOT EXISTS narrations (
 """
 
 VOICE_METHODS = {"google_custom": "Google custom (cloned) voice", "elevenlabs": "ElevenLabs voice clone", "offline": "Offline approximation (built-in voice tuned to the sample)"}
-FACE_METHODS = {"photo": "Photo-driven, in this app (free, offline)", "heygen": "HeyGen talking photo (cloud)", "did": "D-ID talk (cloud)",
-                "local": "Local AI model (Wav2Lip / SadTalker / your command)"}
+FACE_METHODS = {"gemini": "Gemini performs it (HeyGen when Gemini cannot)", "heygen": "HeyGen talking photo, the persona's voice (cloud)",
+                "did": "D-ID talk, the persona's voice (cloud)"}
 CONSENT_TEXT = ("I, {signer}, am the person whose face and voice are in these samples (or I hold their written permission). "
                 "I allow this QueryBook to create an AI narrator that looks and sounds like {name}, to narrate QueryBook content. "
                 "Everything it produces will be labelled as AI-generated. I can withdraw this by deleting the persona.")
-LOCAL_PRESETS = {
-    "wav2lip": "python {repo}/inference.py --checkpoint_path {repo}/checkpoints/wav2lip_gan.pth --face {face} --audio {audio} --outfile {out}",
-    "sadtalker": "python {repo}/inference.py --driven_audio {audio} --source_image {face} --result_dir {outdir} --still --preprocess full",
-}
 LABEL = "AI narrator — generated with consent"
 
 
@@ -94,13 +90,6 @@ def _multipart(fields, files):
     return out + ("--%s--\r\n" % bnd).encode(), "multipart/form-data; boundary=" + bnd
 
 
-
-def _unquote(a):
-    """Windows splitting (posix=False) keeps the quotes around a quoted piece; take them off."""
-    if len(a) >= 2 and a[0] == a[-1] and a[0] in "\"'":
-        return a[1:-1]
-    return a
-
 class Personas:
     def __init__(self, store, speech, folder):
         self.store, self.speech = store, speech
@@ -108,6 +97,7 @@ class Personas:
         os.makedirs(self.dir, exist_ok=True)
         self.keys = speech.keys
         self.lock = threading.Lock()
+        self.talk = None                                   # talkclip.TalkClips, set by the app (the Gemini route and its budget)
 
     # ---------------------------------------------------------------- files
     def _pdir(self, pid):
@@ -194,34 +184,6 @@ class Personas:
                 "google_custom": "The Google cloning key was removed from this computer."}.get((p["voice"] or {}).get("method"), "")
         return {"deleted": True, "note": note}
 
-    # ---------------------------------------------------------------- the real-mouth library (from the perfect sample)
-    def set_library(self, pid, items):
-        """Store the author's own frames for each sound (chosen by the Photo Real Lab from the perfect sample)."""
-        p = self.get(pid)
-        ref = p.get("reference")
-        if not ref:
-            raise ValueError("Record the perfect sample first.")
-        lib = {}
-        for it in items or []:
-            v = str(it.get("v") or "")
-            if v not in (ref.get("keyframes") or {}) or not it.get("image_b64") or not isinstance(it.get("landmarks"), list) or len(it["landmarks"]) < 400:
-                continue
-            img = base64.b64decode(str(it["image_b64"]).split(",", 1)[-1])
-            if img[:2] != b"\xff\xd8":
-                continue
-            fn = "lib-%s.jpg" % v
-            with open(os.path.join(self._pdir(pid), fn), "wb") as f:
-                f.write(img)
-            lib[v] = {"file": fn, "landmarks": [[round(float(x), 5), round(float(y), 5)] for x, y, *_ in it["landmarks"]]}
-        if "rest" not in lib:
-            raise ValueError("The rest frame (mouth closed) could not be taken from the sample.")
-        ref["library"] = lib
-        with self.store.write() as db:
-            db.execute("UPDATE personas SET reference = ? WHERE id = ?", (json.dumps(ref), int(pid)))
-        self.store.activity("Author narrator: real-mouth library", "ok", "%s · %d frames of the author's own mouth" % (p["name"], len(lib)))
-        return {"frames": sorted(lib), "count": len(lib)}
-
-    # ---------------------------------------------------------------- voice
     def set_voice(self, pid, method, lang="en"):
         p = self.get(pid)
         if method not in VOICE_METHODS:
@@ -274,28 +236,25 @@ class Personas:
         if method not in FACE_METHODS:
             raise ValueError("Unknown face method.")
         f = {"method": method}
-        f.update({k: v for k, v in (settings or {}).items() if k in ("command", "repo", "preset")})
-        if method == "local":
-            if f.get("preset") in LOCAL_PRESETS and not f.get("command"):
-                f["command"] = LOCAL_PRESETS[f["preset"]]
-            if not f.get("command"):
-                raise ValueError("Give the command that runs your local model (or choose a preset).")
         if method in ("heygen", "did") and not self.keys.configured(method):
             raise ValueError("Add your %s API key first." % ("HeyGen" if method == "heygen" else "D-ID"))
+        if method == "gemini" and not (self.keys.configured("google_gemini") or self.keys.configured("heygen")):
+            raise ValueError("Add a Gemini API key (or a HeyGen key) first.")
         with self.store.write() as db:
             db.execute("UPDATE personas SET face = ? WHERE id = ?", (json.dumps(f), int(pid)))
         return f
 
     # ---------------------------------------------------------------- narration
     def narrate(self, pid, text, face_method=None, emotion=None, lang=None):
-        """Speak `text` as the author. photo: returns at once (the page animates the photo); cloud / local: a
-        background job makes an MP4 — poll narration(id)."""
+        """Speak `text` as the author: a background job makes an MP4 with the chosen video model — poll narration(id)."""
         import visemes
         p = self.get(pid)
         text = " ".join(str(text or "").split())
         if not text:
             raise ValueError("Type what the narrator should say.")
-        fm = face_method or (p["face"] or {}).get("method") or "photo"
+        fm = face_method or (p["face"] or {}).get("method") or "gemini"
+        if fm not in FACE_METHODS:                         # a face set up before 1.52 ("photo", "local"): made by Gemini now
+            fm = "gemini"
         t0 = time.time()
         g = self.speak(pid, text, emotion)
         with open(self.speech.audio_path(g["audio"]), "rb") as fh:
@@ -303,13 +262,13 @@ class Personas:
         track = visemes.align(text, wav, lang or (p["voice"] or {}).get("lang") or "en", self.speech.lab)
         with self.store.write() as db:
             nid = db.execute("INSERT INTO narrations(created, persona, text, face_method, voice_method, audio, status, seconds) VALUES(?,?,?,?,?,?,?,?)",
-                             (_now(), int(pid), text, fm, (p["voice"] or {}).get("method"), g["audio"], "done" if fm == "photo" else "queued",
+                             (_now(), int(pid), text, fm, (p["voice"] or {}).get("method"), g["audio"], "queued",
                               round(time.time() - t0, 2))).lastrowid
-        if fm != "photo":
-            threading.Thread(target=self._video_job, args=(nid, p, fm, wav), daemon=True, name="narration-%d" % nid).start()
+        threading.Thread(target=self._video_job, args=(nid, p, fm, wav, text, lang or (p["voice"] or {}).get("lang") or "en"),
+                         daemon=True, name="narration-%d" % nid).start()
         self.store.activity("Author narrator: narration", "ok", "%s · %s · “%s”" % (p["name"], FACE_METHODS[fm], text[:60]))
         return {"id": nid, "persona": pid, "audio": g["audio"], "track": track, "face_method": fm, "label": LABEL,
-                "engine_used": g["summary"]["engine_used"], "voice_fallback": g["summary"].get("fallback_reason"), "status": "done" if fm == "photo" else "queued"}
+                "engine_used": g["summary"]["engine_used"], "voice_fallback": g["summary"].get("fallback_reason"), "status": "queued"}
 
     def narration(self, nid):
         rows = self.store.query("SELECT * FROM narrations WHERE id = ?", (int(nid),))
@@ -323,24 +282,36 @@ class Personas:
         with self.store.write() as db:
             db.execute("UPDATE narrations SET %s WHERE id = ?" % ", ".join("%s = ?" % k for k in kw), list(kw.values()) + [int(nid)])
 
-    def _video_job(self, nid, p, method, wav):
+    def _video_job(self, nid, p, method, wav, text="", lang="en"):
         t0 = time.time()
         self._set(nid, status="working", detail="starting %s" % FACE_METHODS[method])
         try:
             with open(self.file_path(p["id"], p["photo"]), "rb") as f:
                 photo = f.read()
             out = os.path.join(self._pdir(p["id"]), "narration-%d.mp4" % int(nid))
-            if method == "heygen":
-                data = self._heygen(photo, wav, lambda s: self._set(nid, detail=s))
-            elif method == "did":
-                data = self._did(photo, wav, lambda s: self._set(nid, detail=s))
+            note = lambda s: self._set(nid, detail=s)
+            data = None
+            if method == "gemini":
+                why = "talking clips are not set up"
+                if self.talk is not None:
+                    data, why = self.talk._try_gemini(text, photo, lang, "person", note)
+                if not data:
+                    if not self.keys.configured("heygen"):
+                        raise RuntimeError(why + " — and no HeyGen key is set")
+                    note("Gemini could not make it (%s) — HeyGen makes it with the persona's voice" % why)
+                    method = "heygen"
+            if data:
+                method = "gemini"
+            elif method == "heygen":
+                data = self._heygen(photo, wav, note)
             else:
-                data = self._local(p, photo, wav, out, lambda s: self._set(nid, detail=s))
+                data = self._did(photo, wav, note)
             if not data or len(data) < 1000:
                 raise RuntimeError("the %s result was empty" % method)
             with open(out, "wb") as f:
                 f.write(data)
-            self._set(nid, status="done", video=os.path.basename(out), detail="video ready (%d KB)" % (len(data) // 1024), seconds=round(time.time() - t0, 2))
+            self._set(nid, status="done", video=os.path.basename(out), face_method=method, seconds=round(time.time() - t0, 2),
+                      detail="video ready (%d KB, made by %s)" % (len(data) // 1024, {"gemini": "Gemini", "heygen": "HeyGen", "did": "D-ID"}.get(method, method)))
             self.store.activity("Author narrator: video", "ok", "%s · %s · %.2f s" % (p["name"], method, time.time() - t0))
         except Exception as e:
             msg = tts.scrub(e, self.keys)[:400]
@@ -362,7 +333,7 @@ class Personas:
     def _heygen(self, photo, wav, note):
         """HeyGen's v3 API (the v1 upload and talking-photo endpoints were retired on 31 October 2026): the photo and the
         narration are uploaded as assets, then an "image" video animates the photo to the audio. No photo-avatar slot is
-        used, so a plan's avatar limit does not apply."""
+        used, so a plan's avatar limit does not apply. (The same request as talkclip.heygen_video.)"""
         k = {"X-Api-Key": self.keys.get("heygen")["api_key"]}
         api = tts._base("heygen", "https://api.heygen.com")
 
@@ -400,31 +371,3 @@ class Personas:
                        lambda d: d.get("status") == "done", lambda d: d.get("status") in ("error", "rejected"), note)
         note("downloading the video")
         return tts._http(r["result_url"], None, {}, method="GET", timeout=300)[0]
-
-    def _local(self, p, photo, wav, out, note):
-        f = p["face"] or {}
-        cmd = f.get("command") or ""
-        work = os.path.join(self._pdir(p["id"]), "work-%s" % uuid.uuid4().hex[:8])
-        os.makedirs(work)
-        try:
-            face, audio = os.path.join(work, "face.jpg"), os.path.join(work, "audio.wav")
-            with open(face, "wb") as fh:
-                fh.write(photo)
-            with open(audio, "wb") as fh:
-                fh.write(wav)
-            vals = {"face": face, "audio": audio, "out": out, "outdir": work, "repo": f.get("repo") or ""}
-            # split the template first, then fill each piece: paths with spaces stay one argument on every system
-            args = [_unquote(a).format(**vals) for a in shlex.split(cmd, posix=os.name != "nt")]
-            note("running: %s" % " ".join(os.path.basename(a) if os.sep in a else a for a in args)[:200])
-            pr = subprocess.run(args, capture_output=True, text=True, timeout=7200, cwd=f.get("repo") or work)
-            if pr.returncode != 0:
-                raise RuntimeError("the local model stopped (exit %d): %s" % (pr.returncode, (pr.stderr or pr.stdout)[-300:]))
-            if not os.path.isfile(out):                     # models that write into a folder (SadTalker): newest MP4 there
-                vids = sorted(glob.glob(os.path.join(work, "**", "*.mp4"), recursive=True), key=os.path.getmtime)
-                if not vids:
-                    raise RuntimeError("the local model made no MP4")
-                shutil.copy(vids[-1], out)
-            with open(out, "rb") as fh:
-                return fh.read()
-        finally:
-            shutil.rmtree(work, ignore_errors=True)

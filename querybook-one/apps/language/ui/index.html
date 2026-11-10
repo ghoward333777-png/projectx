@@ -171,16 +171,8 @@ tr.lc-active td { background: #f0fdf4; }
   .ll-tok.wl { border-bottom: 2px dotted var(--accent); }
   .ll-tok.unk { border-bottom: 2px solid var(--bad); color: var(--bad); }
   .ll-notes { margin-top: 6px; }
-  .ll-stagegrid { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 18px; align-items: start; }
-  .ll-main, .ll-stage, .ll-controls, .ll-facepick { min-width: 0; }       /* a long face strip scrolls inside its card */
-  .ll-facecol { display: flex; flex-direction: column; gap: 6px; }
-  .ll-avatar { width: 100%; max-width: 320px; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: var(--chip); }
-  .ll-facepick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
-  .ll-faces { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px; max-width: 100%; flex: 1 1 100%; }
-  .ll-faces button { flex: 0 0 auto; width: 64px; border: 2px solid transparent; border-radius: 10px; background: var(--chip); padding: 2px; cursor: pointer; color: inherit; font-size: 11px; }
-  .ll-faces button img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; display: block; }
-  .ll-faces button .gl { width: 56px; height: 56px; display: grid; place-items: center; font-size: 26px; }
-  .ll-faces button[aria-selected="true"] { border-color: var(--accent); }
+  .ll-stagegrid { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: center; }
+  .ll-face { width: 200px; height: 220px; }
   .ll-karaoke { font-size: 22px; line-height: 1.6; min-height: 36px; }
   .ll-karaoke span { padding: 0 2px; border-radius: 4px; }
   .ll-karaoke span.on { background: var(--accent); color: var(--accent-ink); }
@@ -262,12 +254,18 @@ tr.lc-active td { background: #f0fdf4; }
         </div>
 
         <div class="card ll-stage">
-          <h2><span class="step">4</span> Hear it and watch the avatar say it</h2>
+          <h2><span class="step">4</span> Hear it and watch the mouth</h2>
           <div class="ll-stagegrid">
-            <div class="ll-facecol">
-              <div id="ll-stage" class="face-stage ll-avatar" aria-label="The avatar says the words, lips and face in time with the voice"></div>
-              <div id="ll-faceinfo" class="small muted"></div>
-            </div>
+            <svg class="ll-face" viewBox="0 0 200 220" role="img" aria-label="A face that mouths the words as they are spoken">
+              <ellipse cx="100" cy="112" rx="74" ry="92" fill="var(--ll-skin)"/>
+              <path d="M30 92 C34 30 166 30 170 92 C160 58 120 44 100 46 C80 44 40 58 30 92Z" fill="var(--ll-hair)"/>
+              <ellipse cx="72" cy="98" rx="9" ry="10" fill="#fff"/><ellipse cx="128" cy="98" rx="9" ry="10" fill="#fff"/>
+              <circle cx="73" cy="100" r="5" fill="#2b2f3a"/><circle cx="129" cy="100" r="5" fill="#2b2f3a"/>
+              <path d="M60 82 Q72 76 84 82" stroke="#5b4636" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M116 82 Q128 76 140 82" stroke="#5b4636" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M100 104 Q94 124 100 128 Q106 129 108 126" stroke="#b9876d" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <g id="ll-mouth"></g>
+            </svg>
             <div class="ll-controls">
               <div id="ll-karaoke" class="ll-karaoke" aria-live="off"></div>
               <div id="ll-ipa" class="small"></div>
@@ -275,6 +273,7 @@ tr.lc-active td { background: #f0fdf4; }
                 <button class="btn" id="ll-play" disabled>▶ Hear <span class="ll-toname"></span></button>
                 <button class="btn secondary" id="ll-play-src">▶ Hear <span class="ll-fromname"></span></button>
                 <button class="btn secondary small" id="ll-stop" title="Stop">■</button>
+                <button class="btn secondary" id="ll-clip" disabled title="A face says the translation in a video made by Gemini (HeyGen with your chosen voice, e.g. ElevenLabs, when Gemini cannot)">🎬 Talking clip</button>
               </div>
               <div class="row small">
                 <label>Speed <select id="ll-speed"><option value="105">Slow</option><option value="150" selected>Normal</option><option value="200">Fast</option></select></label>
@@ -284,8 +283,6 @@ tr.lc-active td { background: #f0fdf4; }
               <div id="ll-mouthnow" class="small muted" aria-live="off"></div>
             </div>
           </div>
-          <div class="ll-facepick"><span class="small muted">Who says it:</span><div id="ll-faces" class="ll-faces" role="listbox" aria-label="Choose the avatar"></div>
-            <span class="small muted">More faces, moves and tuning: Speech → Avatar studio &amp; library.</span></div>
         </div>
 
         <div class="card">
@@ -370,8 +367,6 @@ tr.lc-active td { background: #f0fdf4; }
       <button data-sp="listen">🎙 Listen &amp; analyse</button>
       <button data-sp="ask">💬 Ask by voice</button>
       <button data-sp="video">🎥 Face &amp; video</button>
-      <button data-sp="qlab">🎬 Quality lab</button>
-      <button data-sp="avatars">🧑 Avatar studio &amp; library</button>
       <button data-sp="talk">🎬 Talking clips</button>
       <button data-sp="providers">🔑 Voice providers</button>
       <button data-sp="log">⏱ Speech log</button>
@@ -379,16 +374,14 @@ tr.lc-active td { background: #f0fdf4; }
 
     <!-- shared: text, engine and the voice profile -->
     <div id="sp-shared">
-      <div class="card fp-card"><h2><span class="step">1</span> Choose the face that speaks</h2>
-        <div class="fp-wrap"><div class="fp-now" id="sp-face-now"></div><div class="grow" id="sp-faces"></div></div></div>
       <div class="card">
-        <h2><span class="step">2</span> Choose the voice</h2>
+        <h2><span class="step">1</span> Choose the voice</h2>
         <div class="voicepick" id="sp-quick"></div>
       </div>
       <div class="card">
         <div class="grid2">
           <div>
-            <h2><span class="step">3</span> Type what to say</h2>
+            <h2><span class="step">2</span> Type what to say</h2>
             <textarea id="sp-text" rows="3">Good morning. I have something important to tell you, so please listen carefully.</textarea>
           </div>
           <div>
@@ -441,8 +434,9 @@ tr.lc-active td { background: #f0fdf4; }
 
     <div class="sp" id="sp-speak">
       <div class="card">
-        <h2><span class="step">4</span> Speak</h2>
-        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Speak with the chosen face</button>
+        <h2><span class="step">3</span> Speak</h2>
+        <div class="row"><button class="btn bigbtn" id="sp-go">🔊 Speak</button>
+          <button class="btn" id="sp-to-talk" title="A face says these words: made by Gemini (HeyGen when Gemini cannot)">🎬 Make a talking clip of this</button>
           <label class="chk"><input type="checkbox" id="sp-fallback" checked> If the engine fails, use the offline voice</label></div>
         <div id="sp-out" style="margin-top:12px"></div>
       </div>
@@ -568,27 +562,11 @@ tr.lc-active td { background: #f0fdf4; }
               <button class="btn quiet" id="vd-stop" disabled>⏹ Stop camera / sharing</button>
               <span id="vd-state" class="small"></span>
             </div>
-            <label class="small" style="display:block;margin-top:8px"><input type="checkbox" id="vd-mirror"> Avatar copies the mouth live (2D, or 3D with Enter VR)</label>
-            <div id="vd-avatar" class="face-stage" style="max-width:300px" hidden></div>
           </div>
         </div>
       </div>
       <div class="card" id="vse-card">
-        <h2>Visual Speech Engine — full-face lip sync <span class="small muted">— speech science, no AI model, same answer every time</span></h2>
-        <p class="small">From the words and their recording: the sounds and their timing, pitch and loudness, an emotion estimate and a voice fingerprint (audio analysis); then the mouth moving the way people really speak — each sound blends into its neighbours, lips round ahead of an “oo”, every p, b and m closes — with the jaw, brows that lift on stressed words, small head nods, blinks and glances at pauses (face motion). Your own mouth shapes are used once the reservoir (step 5) has learned them. Exports drive real rigs: ARKit-named blendshape curves for Blender, Unreal, Unity or Live Link.</p>
-        <div class="row">
-          <input id="vse-text" class="grow" type="text" placeholder="The words that are spoken" aria-label="Spoken words">
-          <label class="btn quiet" style="cursor:pointer">🎙 Recording (optional)<input type="file" id="vse-audio" accept="audio/*,video/*" hidden></label>
-          <label class="small">Frames <select id="vse-fps" style="width:auto"><option value="24">24</option><option value="30" selected>30</option><option value="60">60</option><option value="100">100</option></select></label>
-          <button class="btn" id="vse-go">✨ Make lip-sync motion</button>
-          <span id="vse-state" class="small"></span>
-        </div>
-        <div class="vd-grid">
-          <div><canvas id="vse-canvas" width="320" height="300" style="width:100%;max-width:320px;background:#f8fafc;border-radius:10px"></canvas>
-            <div class="row"><button class="btn quiet" id="vse-play" disabled>▶ Play preview</button><audio id="vse-player" hidden></audio></div></div>
-          <div><div id="vse-out" class="small"></div><div id="vse-dl" class="row"></div></div>
-        </div>
-        <h3>How accurate is it?</h3>
+        <h2>Lip reading — how accurate is it? <span class="small muted">— speech science, no AI model, same answer every time</span></h2>
         <p class="small">Measures lip-reading by this engine against lip-reading v1 — on synthetic speakers (each with their own mouth shapes, speed and tracking noise) and on your own held-out recordings from the reservoir.</p>
         <div class="row"><button class="btn quiet" id="vse-bench">📏 Run the benchmark</button></div>
         <div id="vse-bench-out"></div>
@@ -665,7 +643,7 @@ tr.lc-active td { background: #f0fdf4; }
       </div>
       <div class="card" id="lc-card">
         <h2>5 · Teach and improve <span class="small muted">— the ingestion reservoir (speech-visual domain)</span></h2>
-        <p class="small">Every recording with a face and known words goes into the reservoir of the ingestion domain (numbers only — never the picture). The app learns from it: how <b>this</b> camera sees <b>these</b> mouths, which shapes they confuse, this computer's camera/microphone delay, the lip-sync timing, and the talking face's mouth shapes. About one recording in four is held back for testing; a learned version is switched on <b>only when it beats the current one on those held-back recordings</b>. Every version is kept and can be rolled back.</p>
+        <p class="small">Every recording with a face and known words goes into the reservoir of the ingestion domain (numbers only — never the picture). The app learns from it: how <b>this</b> camera sees <b>these</b> mouths, which shapes they confuse, this computer's camera/microphone delay and the lip-sync timing (all for reading lips; no face is animated here). About one recording in four is held back for testing; a learned version is switched on <b>only when it beats the current one on those held-back recordings</b>. Every version is kept and can be rolled back.</p>
         <div id="lc-stats" class="stats"></div>
         <h3>Teach it (about 2 minutes)</h3>
         <p class="small">Face the camera as in the guide above, press the button, read the sentence aloud, press again. Twelve sentences cover every mouth shape. With Google Speech-to-Text connected, each sentence also gets exact word times, which tune the lip-sync timing.</p>
@@ -692,15 +670,12 @@ tr.lc-active td { background: #f0fdf4; }
       </div>
     </div>
 
-    <div class="sp" id="sp-qlab" hidden></div>
-    <div class="sp" id="sp-avatars" hidden></div>
-
     <div class="sp" id="sp-talk" hidden>
       <div class="card">
         <h2>Talking clips <span class="small muted">— a face says your words, made by a video model</span></h2>
         <p class="small">Gemini performs the line from the portrait — face, lips and voice together — with the same instructions that made the October 29 answer videos.
           When Gemini cannot (it refuses some names of real people, the day's videos are used up, or no Gemini key is set), the line is spoken by the voice chosen on
-          the <b>Speak</b> page and HeyGen animates the same portrait to it. To have a face speak right here, with no internet, use the <b>Avatar studio</b> (or step 4 of the Language Lab).</p>
+          the <b>Speak</b> page and HeyGen animates the same portrait to it. Nothing animates a face on this computer.</p>
         <div id="tk-status" class="small"></div>
         <h3>1 · Choose the face</h3>
         <div id="tk-faces" class="fp-strip"></div>
@@ -750,7 +725,7 @@ tr.lc-active td { background: #f0fdf4; }
   <section class="panel" id="photoreal">
     <div class="card">
       <h2>Photo Real Lab — an AI narrator that looks and sounds like the author</h2>
-      <p class="small">The method: record <b>one perfect sample</b> — the author reading the reference passage on camera. The lab fits a model of the author's own mouth to it (how far the lips lead the sound, how fast they move, the exact shape for every sound) — the measured reason it looks right. Every narration, from any face method, is then measured frame by frame against what the author's mouth would do for the same words, and released only if it passes. The photo-driven face is calibrated in a closed loop until it passes. Every result is a QueryBook fact in the <b>photoreal</b> graph domain.</p>
+      <p class="small">The method: record <b>one perfect sample</b> — the author reading the reference passage on camera. The lab fits a model of the author's own mouth to it (how far the lips lead the sound, how fast they move, the exact shape for every sound) — the measured reason it looks right. Every narration, from any face method, is then measured frame by frame against what the author's mouth would do for the same words, and released only if it passes. Narrator videos are made by Gemini (HeyGen or D-ID when chosen, or when Gemini cannot) — nothing animates the photo on this computer. Every result is a QueryBook fact in the <b>photoreal</b> graph domain.</p>
       <p class="small muted">Only with the author's consent. Everything produced is labelled “AI narrator”.</p>
     </div>
     <div class="card">
@@ -817,10 +792,9 @@ tr.lc-active td { background: #f0fdf4; }
           <label class="small">Face <select id="pr-nface"></select></label>
           <button class="btn bigbtn" id="pr-narrate">🎬 Narrate</button>
           <button class="btn" id="pr-measure" disabled>📏 Measure against the author</button>
-          <button class="btn" id="pr-calibrate" disabled>🎯 Calibrate until it passes</button>
         </div>
         <div class="pr-grid" style="margin-top:10px">
-          <div><div id="pr-stage" class="face-stage" style="max-width:480px"></div><div id="pr-player"></div></div>
+          <div><div id="pr-stage" style="max-width:480px"></div><div id="pr-player"></div></div>
           <div id="pr-score"></div>
         </div>
       </div>
@@ -886,21 +860,21 @@ tr.lc-active td { background: #f0fdf4; }
     </div>
     <div class="card">
       <h2>2 · Read the lips of a talking head &nbsp;·&nbsp; 3 · Measure the delivery</h2>
-      <p class="small">Choose a video of one person speaking (face to the camera, mouth visible) — or let an avatar say the script and be recorded from its own picture.
+      <p class="small">Choose a video of one person speaking (face to the camera, mouth visible) — or one of the talking clips made on Speech → Talking clips.
         <b>Read the words</b> gives the words from the lips (and from the sound, when Speech-to-Text is set up). <b>Measure this delivery</b> runs the
         Speech Science Protocol: every word and sound measured against what is said, a verdict against fixed criteria, and a report.</p>
       <div class="row"><input id="sc-file" type="file" accept="video/*" aria-label="Video of a talking head">
         <label class="small">Language spoken <select id="sc-lang"></select></label>
         <label class="small"><input type="checkbox" id="sc-stt" checked> use Speech-to-Text too (when set up)</label></div>
-      <textarea id="sc-script" rows="2" style="width:100%" placeholder="The script — what is said (optional for reading, needed for an avatar; it makes the timing and the verdict exact)"></textarea>
+      <textarea id="sc-script" rows="2" style="width:100%" placeholder="The script — what is said (optional for reading; it makes the timing and the verdict exact)"></textarea>
       <div class="row small"><b>Labels</b> (for comparisons):
         <input id="sc-l-speaker" placeholder="speaker" style="width:8em"><select id="sc-l-role"><option value="test">role: test</option><option value="reference">role: reference (calibrates)</option></select>
         <input id="sc-l-dialect" placeholder="dialect, e.g. en-GB-scot" style="width:12em"><input id="sc-l-accent" placeholder="accent" style="width:8em">
         <select id="sc-l-emotion"><option value="">emotion: —</option><option>neutral</option><option>joy</option><option>sadness</option><option>anger</option><option>fear</option><option>surprise</option><option>disgust</option><option>calm</option><option>excited</option></select></div>
       <div class="row"><button class="btn" id="sc-read" disabled>👄 Read the words</button><button class="btn" id="sc-measure" disabled>📐 Measure this delivery</button>
-        <span class="muted small">or</span> <select id="sc-av" aria-label="Avatar"></select><button class="btn quiet" id="sc-avatar">🧑 Measure an avatar saying the script</button></div>
+        <span class="muted small">or</span> <select id="sc-clip" aria-label="Talking clip"></select></div>
       <div class="bar"><div id="sc-prog" style="width:0"></div></div><div class="small muted" id="sc-state"></div>
-      <div class="grid2"><div><video id="sc-video" controls playsinline hidden style="max-width:100%;max-height:360px"></video><div id="sc-stage" hidden style="width:640px;max-width:100%"></div></div><div id="sc-out"></div></div>
+      <div class="grid2"><div><video id="sc-video" controls playsinline hidden style="max-width:100%;max-height:360px"></video></div><div id="sc-out"></div></div>
     </div>
     <div class="card">
       <h2>4 · Compare dialects, accents and emotions</h2>
@@ -987,8 +961,8 @@ tr.lc-active td { background: #f0fdf4; }
         <li><b>Transcribe an audio file</b> — MP3, M4A, OGG or WAV of any length: live captions while it plays (Google Speech-to-Text hears it in pieces cut at pauses, ahead of the voice), or the whole file in the background — in pieces with the Google key, or by Google's long-audio recognition through Cloud Storage. Click a time to jump there; download TXT, SRT, VTT or JSON; ingest it.</li>
         <li><b>Listen &amp; analyse</b> — measures a recording and recognises the vocal mode: whispering, crying, laughing, shouting, singing or speaking, with the reasons. Hoarseness, tremble and voice age are judged on a 3-second “aaah”, as voice clinics do.</li>
         <li><b>Ask by voice</b> — understands a spoken question and how it was asked, answers from what the builder learned, and can answer a whisper in a whisper.</li>
-        <li><b>Talking face</b> — after <b>Speak</b> or <b>Ask</b>, a face (2D, or 3D with <b>Enter VR</b> on a headset) moves its mouth in time with the voice. The mouth shapes are the 15 standard visemes, timed from the measured audio (or exactly, from Google Speech-to-Text word times). Export as JSON, CSV or Rhubarb TSV for animation tools.</li>
-        <li><b>Teach and improve</b> — Face &amp; video, step 5. Recordings with a face and known words go into the ingestion reservoir (numbers only, never pictures). The app learns this camera's and this speaker's mouth shapes, the shapes they confuse, the computer's camera/microphone delay, the lip-sync timing and the talking face's mouth shapes. A new version is used only when it does better on held-back recordings; all versions are kept and can be rolled back; the reservoir can be exported and imported to pool learning between computers.</li>
+        <li><b>Talking clips</b> — a portrait says your words in a video made by Gemini, with the instructions that made the October 29 answer videos; when Gemini cannot (a refused name, the day's 20 videos used up, no key), the Speak page's voice speaks the line and HeyGen animates the same portrait to it. Nothing animates a face on this computer. Each clip is checked with Speech-to-Text when it is set up.</li>
+        <li><b>Teach and improve</b> — Face &amp; video, step 5. Recordings with a face and known words go into the ingestion reservoir (numbers only, never pictures). The app learns this camera's and this speaker's mouth shapes, the shapes they confuse, the computer's camera/microphone delay and the lip-sync timing (all for reading lips; no face is animated here). A new version is used only when it does better on held-back recordings; all versions are kept and can be rolled back; the reservoir can be exported and imported to pool learning between computers.</li>
         <li><b>Camera with the voice</b> — in <b>Ask by voice</b> and <b>Listen &amp; analyse</b>, tick the camera box: the lips choose between the recognizer's possible readings of your words, the face settles close calls (crying and laughing sound alike but look opposite), the answer's voice follows the face's mood, and a speaker check says whether the voice belongs to the face.</li>
         <li><b>Face &amp; video</b> — camera, screen or video file. Live face tracking with a quality check, a sync check (how many milliseconds sound and lips are apart), lip-reading with look-alike words, checking the lips against a script, an avatar that copies the mouth, and overdubbing (with consent; always labelled synthetic).</li>
         <li><b>Speech log</b> — every speech process with UTC timestamps and stage timings to the hundredth of a second; time statistics per process and engine; CSV download.</li>
@@ -996,10 +970,9 @@ tr.lc-active td { background: #f0fdf4; }
       </ul>
       <h2>Photo Real Lab and the author's AI narrator</h2>
       <ul>
-        <li><b>Author persona</b> — a photo, a voice sample and the author's signed consent (fingerprints of both samples are kept). Voice: Google custom (cloned) voice, ElevenLabs clone, or the offline voice tuned to the sample. Face: the photo-driven face here, HeyGen, D-ID, or a local model (Wav2Lip, SadTalker or any command). Everything it makes is labelled “AI narrator”.</li>
-        <li><b>The perfect sample</b> — the author reads the reference passage on camera. The lab fits the author's own mouth model to it (lip lead, response time, the shape for every sound) and keeps the author's real frames for each sound: the <b>real-mouth library</b> the narrator is made from (real lips, teeth and light).</li>
+        <li><b>Author persona</b> — a photo, a voice sample and the author's signed consent (fingerprints of both samples are kept). Voice: Google custom (cloned) voice, ElevenLabs clone, or the offline voice tuned to the sample. Face: a video made by Gemini (HeyGen when Gemini cannot), or by HeyGen or D-ID with the persona's own voice. Everything it makes is labelled “AI narrator”.</li>
+        <li><b>The perfect sample</b> — the author reads the reference passage on camera. The lab fits the author's own mouth model to it (lip lead, response time, the shape for every sound); every narrator video is measured against it.</li>
         <li><b>Measure and gate</b> — every narration, from any face method, is tracked and compared frame by frame with what the author's mouth would do for the same words. It passes only when the overall score is 85+ and every critical part is 70+; the page says which part failed.</li>
-        <li><b>Calibrate</b> — for the face made here, the lab corrects the settings round by round until it passes, and keeps the proven settings.</li>
         <li><b>The photoreal graph</b> — every measurement and setting is a QueryBook fact (UFCS 1.0 packet) in the “photoreal” domain; export it to the QueryBook store.</li>
         <li><b>Answer as the author</b> — in Ask by voice choose the narrator under “Answer as”.</li>
       </ul>
@@ -1034,19 +1007,11 @@ tr.lc-active td { background: #f0fdf4; }
 <footer class="status"></footer>
 <script src="qb.js"></script>
 <script src="app.js"></script>
-<script src="photoface.js"></script>
-<script src="avatarface.js"></script>
-<script src="face.js"></script>
 <script src="speech.js"></script>
 <script src="video.js"></script>
 <script src="scan.js"></script>
 <script src="vse.js"></script>
 <script src="photoreal.js"></script>
-<script src="avatars.js"></script>
-<script src="review.js"></script>
-<script src="bench.js"></script>
-<script src="motionlib.js"></script>
-<script src="qualitylab.js"></script>
 <script src="transcribe.js"></script>
 <script src="talk.js"></script>
 <script src="science.js"></script>

@@ -1,7 +1,7 @@
 "use strict";
-// Visual Speech Engine (stage 1): full-face lip-sync motion from words + audio, its preview and exports,
-// the engine's lip-reading and face analysis inside "Analyse video", and the benchmark against lip-reading v1.
-const VSE = { motion: null, csv: null, audioUrl: null, raf: null };
+// Visual Speech Engine: lip reading inside "Analyse video", the benchmark against lip-reading v1 and the lip-reading curriculum.
+// (1.52: nothing here moves a face — every speaking face is a talking clip made by Gemini or HeyGen, see talk.js.)
+const VSE = {};
 
 async function vseJob(path, body, onProgress) {
   const j = await api(path, body);
@@ -15,87 +15,6 @@ async function vseJob(path, body, onProgress) {
 }
 
 // ---------------------------------------------------------------- lip sync
-async function vseLipSync() {
-  const text = $("#vse-text").value.trim(), file = $("#vse-audio").files[0];
-  if (!text) { toast("Type the words that are spoken.", true); return; }
-  const btn = $("#vse-go"); buttonStart(btn);
-  let ok = false;
-  try {
-    const body = { text, fps: Number($("#vse-fps").value), lang: (window.SP && SP.profile && SP.profile.lang) || "en" };
-    if (file) {
-      $("#vse-state").textContent = "Reading the audio…";
-      const audio = await decodeTrack(file);
-      body.audio_b64 = await wavB64(audio, 16000);
-      if (VSE.audioUrl) URL.revokeObjectURL(VSE.audioUrl);
-      VSE.audioUrl = URL.createObjectURL(file);
-    } else VSE.audioUrl = null;
-    const r = await vseJob("/api/vse/lip_sync", body, p => { $("#vse-state").textContent = p.message || "working…"; });
-    VSE.motion = r.motion; VSE.csv = r.arkit_csv || null;
-    const emo = r.emotion ? Object.entries(r.emotion).filter(([k, v]) => typeof v === "number" && v >= 0.25).map(([k, v]) => k + " " + v.toFixed(2)).join(", ") : "";
-    const vis = (r.visemes || r.viseme_sequence || { visemes: [] }).visemes;
-    $("#vse-out").innerHTML = '<div class="note good"><b>Motion ready:</b> ' + r.motion.frames.length + " frames at " + r.motion.fps + " per second · " + vis.length + " visemes · " +
-      (r.motion.accents_s || []).length + " pitch accents · " + (r.motion.blinks_s || []).length + " blinks" + (emo ? " · emotion: " + esc(emo) : "") +
-      (r.personal_targets && r.personal_targets.length ? " · your own mouth shapes for " + r.personal_targets.length + " visemes" : "") + (r.note ? " · " + esc(r.note) : "") + "</div>" +
-      '<p class="small">Visemes reached (100% = the full mouth shape; lower = blended into its neighbours): ' +
-      vis.slice(0, 40).map(v => '<span class="vd-word ' + (v.intensity >= 0.7 ? "ok" : v.intensity >= 0.4 ? "warn" : "bad") + '">' + esc(v.id) + " " + Math.round(100 * v.intensity) + "%</span>").join(" ") + "</p>";
-    $("#vse-dl").innerHTML = '<a class="btn quiet" download="vse-motion.json" href="' + URL.createObjectURL(new Blob([JSON.stringify(r, null, 1)], { type: "application/json" })) + '">⬇ Motion (JSON)</a> ' +
-      (VSE.csv ? '<a class="btn quiet" download="vse-arkit-blendshapes.csv" href="' + URL.createObjectURL(new Blob([VSE.csv], { type: "text/csv" })) + '">⬇ ARKit blendshapes (CSV)</a>' : "");
-    $("#vse-play").disabled = false;
-    $("#vse-state").textContent = "";
-    vseDraw(0);
-    ok = true;
-  } catch (e) { $("#vse-state").textContent = "Stopped: " + e.message; }
-  finally { buttonEnd(btn, ok); }
-}
-
-function vseFrame(t) {
-  const m = VSE.motion; if (!m) return null;
-  return m.frames[Math.max(0, Math.min(m.frames.length - 1, Math.round(t * m.fps)))];
-}
-
-// A simple face drawn from the motion (preview only — the numbers drive real rigs through the exports).
-function vseDraw(t) {
-  const c = $("#vse-canvas"), g = c.getContext("2d"), f = vseFrame(t);
-  if (!f) return;
-  const P = {}; VSE.motion.params.forEach((k, i) => { P[k] = f.mouth[i]; });
-  const W = c.width, H = c.height, cx = W / 2, yaw = f.head_pose_deg[0], pitch = f.head_pose_deg[1];
-  g.clearRect(0, 0, W, H);
-  g.save(); g.translate(cx + yaw * 2, H * 0.5 + pitch * 2); g.rotate(f.head_pose_deg[2] * Math.PI / 180);
-  const jaw = 26 * P.jawOpen;
-  g.fillStyle = "#f1c9a5"; g.beginPath(); g.ellipse(0, jaw / 3, 92, 118 + jaw / 2, 0, 0, Math.PI * 2); g.fill();
-  // eyes, blinks, gaze, brows
-  [-1, 1].forEach(s => {
-    const ex = s * 36, ey = -30, open = 9 * (1 - f.blink);
-    g.fillStyle = "#fff"; g.beginPath(); g.ellipse(ex, ey, 15, Math.max(0.8, open), 0, 0, Math.PI * 2); g.fill();
-    if (open > 2) { g.fillStyle = "#3b2f2f"; g.beginPath(); g.arc(ex + f.eye_gaze[0] * 18, ey - f.eye_gaze[1] * 10, 5, 0, Math.PI * 2); g.fill(); }
-    g.strokeStyle = "#5b4636"; g.lineWidth = 4; g.beginPath(); g.moveTo(ex - 16, ey - 20 - 10 * f.brows[s < 0 ? 0 : 1]); g.lineTo(ex + 16, ey - 20 - 10 * f.brows[0]); g.stroke();
-  });
-  // mouth: width from stretch/smile against rounding; opening from the lip gap; closure presses the lips
-  const w = 34 * (1 + 0.35 * P.stretch + 0.25 * P.smile - 0.45 * P.mouthPucker - 0.25 * P.mouthFunnel);
-  const h = Math.max(0.5, 2 * w * P.gap), my = 52 + jaw * 0.6, lipT = 5 + 3 * P.mouthFunnel - 2 * P.press;
-  g.fillStyle = "#7a2230"; g.beginPath(); g.ellipse(0, my, w, h / 2 + 0.5, 0, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = "#b5545e"; g.lineWidth = lipT; g.beginPath(); g.ellipse(0, my, w + 2, h / 2 + 3, 0, 0, Math.PI * 2); g.stroke();
-  if (P.smile > 0.1) { g.strokeStyle = "#b5545e"; g.lineWidth = 2; g.beginPath(); g.moveTo(-w - 2, my); g.quadraticCurveTo(-w - 6, my - 8 * P.smile, -w - 4, my - 10 * P.smile); g.moveTo(w + 2, my); g.quadraticCurveTo(w + 6, my - 8 * P.smile, w + 4, my - 10 * P.smile); g.stroke(); }
-  g.restore();
-  g.fillStyle = "#64748b"; g.font = "12px system-ui"; g.fillText(t.toFixed(2) + " s · jaw " + f.jaw_rotation_deg.toFixed(1) + "° · yaw " + yaw.toFixed(1) + "°", 8, H - 8);
-}
-
-function vsePlay() {
-  if (!VSE.motion) return;
-  cancelAnimationFrame(VSE.raf);
-  const a = $("#vse-player");
-  const dur = VSE.motion.frames.length / VSE.motion.fps;
-  let t0 = performance.now();
-  if (VSE.audioUrl) { a.src = VSE.audioUrl; a.currentTime = 0; a.play().catch(() => {}); }
-  const step = () => {
-    const t = VSE.audioUrl && !a.paused ? a.currentTime : (performance.now() - t0) / 1000;
-    vseDraw(Math.min(t, dur));
-    if (t < dur) VSE.raf = requestAnimationFrame(step);
-  };
-  step();
-}
-
-// ---------------------------------------------------------------- lip reading and face analysis inside "Analyse video"
 function vseRender(r) {
   let h = "";
   const v = r.vse;
@@ -168,7 +87,5 @@ async function vseCurriculum() {
 document.addEventListener("DOMContentLoaded", () => {
   if (!$("#vse-card")) return;
   if ($("#vse-curr")) $("#vse-curr").onclick = vseCurriculum;
-  $("#vse-go").onclick = vseLipSync;
-  $("#vse-play").onclick = vsePlay;
   $("#vse-bench").onclick = vseBench;
 });

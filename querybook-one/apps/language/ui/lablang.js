@@ -40,11 +40,18 @@ async function llInit() {
   $("#ll-mic").addEventListener("click", () => llListen("source"));
   $("#ll-practice").addEventListener("click", () => llListen("practice"));
   $("#ll-play").addEventListener("click", () => llSay("target"));
+  // the talking face: Gemini (HeyGen with the Speak page's voice when Gemini cannot) — Speech → Talking clips
+  $("#ll-clip").addEventListener("click", () => {
+    if (!LL.out || !LL.out.text) return;
+    $$('nav.tabs button[data-tab="speech"]')[0].click();
+    if (window.tkFrom) tkFrom(LL.out.text, LL.to);
+    if (window.showSub) showSub("talk");
+  });
   $("#ll-play-src").addEventListener("click", () => llSay("source"));
   $("#ll-stop").addEventListener("click", llStop);
   $("#ll-clear").addEventListener("click", () => { $("#ll-text").value = ""; LL.out = null; llRenderOut(); llMark(false); $("#ll-text").focus(); });
   $$("#ll-examples button").forEach(b => b.addEventListener("click", () => { $("#ll-text").value = b.dataset.say; llTranslate(); }));
-  llFaces();
+  llFace("sil", 0);
   llSetPair(LL.from, LL.to, true);
 }
 
@@ -151,7 +158,7 @@ const llCase = (src, t) => /^\p{Lu}/u.test(src) ? t.charAt(0).toLocaleUpperCase(
 
 function llRenderOut() {
   const o = LL.out;
-  $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o;
+  $("#ll-play").disabled = !o; $("#ll-practice").disabled = !o; $("#ll-clip").disabled = !o;
   if (!o) {
     $("#ll-out").innerHTML = '<p class="muted ll-empty">The translation appears here, word by word — tap any word to see where it came from.</p>';
     $("#ll-ipa").textContent = ""; $("#ll-karaoke").innerHTML = ""; $("#ll-score").innerHTML = ""; $("#ll-notes").innerHTML = "";
@@ -205,37 +212,34 @@ async function llSay(which, word) {
   $("#ll-karaoke").innerHTML = words.length ? words.map((w, k) => '<span data-k="' + k + '">' + esc(w.word) + "</span>").join(" ") : esc(text);
   const a = new Audio(r.audio);
   LL.playing = a;
-  const track = Object.assign({}, r.track);
-  if (LL.face) LL.face.attach(a, track);                     // the avatar speaks with the mouth shapes at once…
-  if (LL.face && LL.faceKind === "avatar" && r.audio_name && window.avWaitJob) {   // …and with all 52 face channels when they are ready
-    const mine = a;
-    api("/api/vse/lip_sync", { audio_name: r.audio_name, text, lang, emotion: null }).then(j => avWaitJob(j.job_id)).then(res => {
-      if (LL.playing !== mine || !res || !res.motion) return;
-      LL.face.track = Object.assign({}, track, { motion: res.motion });
-      $("#ll-faceinfo").textContent = LL.faceName + " — every face channel (" + res.motion.frames.length + " frames × 52)";
-    }).catch(() => {});                                       // the mouth shapes carry on if the motion cannot be made
-  }
-  a.onended = () => { cancelAnimationFrame(LL.raf); $$("#ll-karaoke span").forEach(s => s.classList.remove("on")); $("#ll-mouthnow").textContent = "";
-    if ($("#ll-repeat").checked && LL.playing === a) setTimeout(() => { if (LL.playing === a) { a.currentTime = 0; a.play(); llKaraoke(a, track); } }, 700); };
+  a.onended = () => { cancelAnimationFrame(LL.raf); llFace("sil", 0); $$("#ll-karaoke span").forEach(s => s.classList.remove("on")); $("#ll-mouthnow").textContent = "";
+    if ($("#ll-repeat").checked && LL.playing === a) setTimeout(() => { if (LL.playing === a) { a.currentTime = 0; a.play(); llAnimate(a, r.track); } }, 700); };
   await a.play().catch(() => toast("The browser blocked the sound — press ▶ again.", true));
-  llKaraoke(a, track);
+  llAnimate(a, r.track);
 }
 function llStop() {
   if (LL.playing) { LL.playing.pause(); LL.playing = null; }
-  cancelAnimationFrame(LL.raf);
+  cancelAnimationFrame(LL.raf); llFace("sil", 0);
 }
 
+// mouth shapes (Oculus/Meta 15): [opening 0–1, width 0–1, rounding 0–1, show: teeth / tongue / lip-on-teeth]
+const LL_SHAPE = { sil: [0.02, 0.55, 0, ""], PP: [0, 0.5, 0, ""], FF: [0.12, 0.6, 0, "lip"], TH: [0.22, 0.6, 0, "tongue"], DD: [0.26, 0.62, 0, "teeth"],
+  kk: [0.32, 0.6, 0, ""], CH: [0.26, 0.42, 0.6, "teeth"], SS: [0.1, 0.7, 0, "teeth"], nn: [0.2, 0.6, 0, "tongue"], RR: [0.26, 0.46, 0.5, ""],
+  aa: [0.85, 0.66, 0, "teeth"], E: [0.48, 0.76, 0, "teeth"], I: [0.22, 0.82, 0, "teeth"], O: [0.62, 0.44, 0.8, ""], U: [0.3, 0.34, 1, ""] };
 const LL_DESC = { sil: "rest", PP: "lips pressed (p b m)", FF: "lower lip to teeth (f v)", TH: "tongue between teeth (th)", DD: "tongue behind teeth (t d)",
   kk: "back of tongue (k g)", CH: "lips forward (ch sh j)", SS: "teeth close (s z)", nn: "tongue up (n l)", RR: "lips rounded (r)", aa: "jaw open (a)",
   E: "spread, half open (e)", I: "spread, nearly closed (ee)", O: "rounded, open (o)", U: "small round (oo w)" };
+let LL_CUR = [0.02, 0.55, 0];
 
-// the words light up and the mouth shape is named while the avatar (TalkingFace, face.js) moves the face itself
-function llKaraoke(a, track) {
+function llAnimate(a, track) {
   const vs = track.visemes || [], ws = track.words || [];
   const step = () => {
     if (LL.playing !== a) return;
     const t = a.currentTime;
     const v = vs.find(x => t >= x.start && t < x.end) || { v: "sil" };
+    const tgt = LL_SHAPE[v.v] || LL_SHAPE.sil;
+    for (let k = 0; k < 3; k++) LL_CUR[k] += (tgt[k] - LL_CUR[k]) * 0.45;      // ease toward the shape (lips are not instant)
+    llDraw(LL_CUR, tgt[3]);
     $("#ll-mouthnow").textContent = v.v !== "sil" ? "mouth: " + (LL_DESC[v.v] || v.v) : "";
     const cur = ws.findIndex(w => t >= w.start && t < w.end);                    // exactly one word lit (the one being said)
     $$("#ll-karaoke span").forEach(s => s.classList.toggle("on", +s.dataset.k === cur));
@@ -243,47 +247,22 @@ function llKaraoke(a, track) {
   };
   LL.raf = requestAnimationFrame(step);
 }
+function llFace(v) { const s = LL_SHAPE[v] || LL_SHAPE.sil; LL_CUR = s.slice(0, 3); llDraw(LL_CUR, s[3]); }
 
-// ---------------------------------------------------------------- the avatar (the restored local face engine: face.js, avatarface.js)
-async function llFaces() {
-  if (!window.TalkingFace) { $("#ll-faceinfo").textContent = "The avatar engine did not load."; return; }
-  LL.face = LL.face || new TalkingFace($("#ll-stage"));
-  let avs = [];
-  try { avs = ((await api("/api/avatars/list")).avatars || []).filter(a => a.kind !== "body" && a.analysed !== false); } catch (e) { avs = []; }
-  const opts = [{ id: "2d", name: "Drawn", glyph: "🙂" }, { id: "3d", name: "3D", glyph: "🧊" }].concat(avs.map(a => ({ id: String(a.id), name: a.name, img: "/api/avatars/image?id=" + a.id })));
-  let pick = null;
-  try { pick = localStorage.getItem("qb-lab-face"); } catch (e) { /* ignore */ }
-  if (!opts.some(o => o.id === pick)) pick = (opts.find(o => o.img) || opts[0]).id;   // first time: the first library face
-  $("#ll-faces").innerHTML = opts.map(o => '<button role="option" data-face="' + esc(o.id) + '" title="' + esc(o.name) + '">' +
-    (o.img ? '<img loading="lazy" alt="" src="' + esc(o.img) + '">' : '<span class="gl">' + o.glyph + "</span>") + "<span>" + esc(o.name.slice(0, 9)) + "</span></button>").join("");
-  $$("#ll-faces button").forEach(b => b.onclick = () => llSetFace(b.dataset.face, opts));
-  await llSetFace(pick, opts);
-}
-
-async function llSetFace(id, opts) {
-  const o = (opts || []).find(x => x.id === id) || { id, name: id };
-  $$("#ll-faces button").forEach(b => b.setAttribute("aria-selected", b.dataset.face === id));
-  try { localStorage.setItem("qb-lab-face", id); } catch (e) { /* ignore */ }
-  LL.faceName = o.name;
-  try {
-    if (id === "2d" || id === "3d") {
-      LL.faceKind = id;
-      await LL.face.setMode(id);
-      $("#ll-faceinfo").textContent = id === "3d" ? "3D face (it can be viewed in VR on the Speak page)." : "Drawn face.";
-    } else {
-      const av = await api("/api/avatars/get?id=" + encodeURIComponent(id));
-      if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatar studio → Analyse faces");
-      await LL.face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: false, turnId: null },
-        params: { camera: "still" } });
-      LL.faceKind = "avatar";
-      $("#ll-faceinfo").textContent = av.name + (av.label ? " · " + av.label : "") + " — press ▶ and the avatar says it, lips and face in time.";
-    }
-    if (LL.said && LL.face) LL.face.track = LL.said.track;
-  } catch (e) {
-    $("#ll-faceinfo").textContent = "That face could not be shown (" + e.message + ") — showing the drawn face.";
-    LL.faceKind = "2d";
-    await LL.face.setMode("2d");
-  }
+function llDraw(cur, show) {
+  const [open, width, round] = cur;
+  const cx = 100, cy = 150, w = 18 + 34 * width * (1 - 0.35 * round), h = 2 + 30 * open + 6 * round * open;
+  const lip = 3.5 + 2.5 * round;
+  const outer = "M" + (cx - w - lip) + "," + cy + " C" + (cx - w * 0.6) + "," + (cy - h - lip * 1.6) + " " + (cx + w * 0.6) + "," + (cy - h - lip * 1.6) + " " + (cx + w + lip) + "," + cy +
+    " C" + (cx + w * 0.6) + "," + (cy + h + lip * 1.8) + " " + (cx - w * 0.6) + "," + (cy + h + lip * 1.8) + " " + (cx - w - lip) + "," + cy + "Z";
+  const inner = "M" + (cx - w) + "," + cy + " C" + (cx - w * 0.55) + "," + (cy - h) + " " + (cx + w * 0.55) + "," + (cy - h) + " " + (cx + w) + "," + cy +
+    " C" + (cx + w * 0.55) + "," + (cy + h) + " " + (cx - w * 0.55) + "," + (cy + h) + " " + (cx - w) + "," + cy + "Z";
+  let extra = "";
+  if (h > 4 && show === "teeth") extra += '<rect x="' + (cx - w * 0.7) + '" y="' + (cy - h * 0.62) + '" width="' + (w * 1.4) + '" height="' + Math.min(6, h * 0.35) + '" rx="2" fill="#fff"/>';
+  if (show === "lip") extra += '<rect x="' + (cx - w * 0.6) + '" y="' + (cy - 3) + '" width="' + (w * 1.2) + '" height="4" rx="2" fill="#fff"/>';
+  if (show === "tongue" && h > 3) extra += '<ellipse cx="' + cx + '" cy="' + (cy + h * 0.25) + '" rx="' + (w * 0.5) + '" ry="' + Math.max(2, h * 0.45) + '" fill="#d9707a"/>';
+  $("#ll-mouth").innerHTML = '<path d="' + outer + '" fill="var(--ll-lip)"/>' + (h > 1.2 ? '<path d="' + inner + '" fill="#3b1218"/>' + extra : "") +
+    '<path d="M' + (cx - w) + "," + cy + " L" + (cx + w) + "," + cy + '" stroke="#5a1a22" stroke-width="' + (h > 1.2 ? 0 : 1.4) + '"/>';
 }
 
 // ---------------------------------------------------------------- speech in: say the source text, or practise the translation
