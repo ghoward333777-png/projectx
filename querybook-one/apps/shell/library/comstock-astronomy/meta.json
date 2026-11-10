@@ -1,0 +1,42 @@
+{
+ "id": "comstock-astronomy",
+ "title": "A Text-Book of Astronomy",
+ "author": "George C. Comstock",
+ "year": 1903,
+ "published": "D. Appleton and Company, New York, 1903 (copyright 1901)",
+ "kind": "nonfiction",
+ "subject": "Astronomy and scientific education",
+ "structure": "measurements, calculations and scientific procedures",
+ "about": "A college textbook built on measurement, observation and celestial mechanics. QueryBook answers from the book alone, quoting it with chapter, section and paragraph, and sets every checked assertion beside what is established today.",
+ "provenance": {
+  "source": "Project Gutenberg eBook #34834",
+  "url": "https://www.gutenberg.org/ebooks/34834",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER [IVXL]+",
+   "APPENDIX"
+  ],
+  "title_line": true,
+  "stop": [
+   "INDEX"
+  ],
+  "sections": "comstock",
+  "min_chars": 150,
+  "parts": []
+ },
+ "examples": [
+  "Show me everything science has discovered or corrected since this textbook was published",
+  "Which statements in Chapter X are still considered correct?",
+  "Give me the current accepted value for every astronomical measurement in Chapter XIII",
+  "Explain why the shrinking of the sun was reasonable in 1903 but is no longer accepted",
+  "How far away is the sun?",
+  "What are the canals of Mars?",
+  "What is a light year?",
+  "How did Neptune come to be discovered?"
+ ],
+ "characters": []
+}

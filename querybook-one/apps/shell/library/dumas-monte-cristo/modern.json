@@ -1,0 +1,16 @@
+{
+  "about": "Historical context for The Count of Monte Cristo: the real political events that set the plot going.",
+  "entries": [
+    {"id": "elba", "topic": "Napoleon on Elba", "status": "Historical context",
+     "match": ["lose a day and a half at the Island of Elba"],
+     "modern": "Napoleon was exiled to Elba in May 1814 and left it on 26 February 1815; Dantès's errand there (February 1815) and the letter he carries to a Bonapartist in Paris put him in the middle of the plot to return.",
+     "value": "Exile May 1814 – 26 February 1815", "sources": ["Philip Dwyer, Napoleon: Passion, Death and Resurrection 1815–1840 (2018)", "Encyclopaedia Britannica, 'Hundred Days'"],
+     "relationship": "Real background; the Pharaon's call at Elba is fiction."},
+    {"id": "hundred-days", "topic": "The Hundred Days", "status": "Historical context",
+     "match": ["after the Hundred Days and after Waterloo"],
+     "modern": "Napoleon returned to power on 20 March 1815 and was defeated at Waterloo on 18 June 1815; Louis XVIII was restored on 8 July — the 'Hundred Days'.",
+     "value": "20 March – 8 July 1815; Waterloo 18 June 1815", "sources": ["Encyclopaedia Britannica, 'Hundred Days'", "Andrew Roberts, Napoleon the Great (2014)"],
+     "relationship": "Real events; Dantès stays forgotten in the Château d'If through them (fiction)."}
+  ],
+  "new_since": []
+}

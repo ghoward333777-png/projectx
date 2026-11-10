@@ -117,3 +117,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   not put it back, and do not replace the Gemini/ElevenLabs route, unless the user asks.
 - Never remove or replace a working feature without first checking the git history and the user's earlier sessions
   for why it is there, and asking the user. Removing working features has cost the user days of work.
+
+### Book Query library (`querybook-one/apps/shell/library/`)
+
+- 19 public-domain books (Darwin excluded at the user's request — never add him). Texts are QueryBook editions:
+  Project Gutenberg header/licence/trademark removed, provenance and rights kept in `meta.json`.
+- After changing `bookq.py`, a `meta.json` or a `modern.json`, run `python tools/build_library.py` (its `--check`
+  runs in the tests). Modern/context entries must name sources and match a real sentence of the book.

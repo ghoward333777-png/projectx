@@ -1,0 +1,36 @@
+{
+ "id": "suntzu-art-of-war",
+ "title": "The Art of War",
+ "author": "Sun Tzu (translated by Lionel Giles)",
+ "year": -500,
+ "published": "c. 5th century BC; Giles translation 1910",
+ "kind": "nonfiction",
+ "subject": "Strategy",
+ "structure": "conditional strategy rules",
+ "provenance": {
+  "source": "Project Gutenberg eBook #132",
+  "url": "https://www.gutenberg.org/ebooks/132",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "Chapter [IVX]+\\. .*",
+   "INTRODUCTION"
+  ],
+  "sections": "arabic",
+  "min_chars": 200,
+  "editorial": [
+   "Introduction"
+  ]
+ },
+ "examples": [
+  "When should you fight?",
+  "know the enemy and know yourself",
+  "spies",
+  "What are the five factors?",
+  "If the enemy is stronger"
+ ],
+ "characters": []
+}

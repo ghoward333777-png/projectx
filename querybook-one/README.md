@@ -32,6 +32,34 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
 | `tools/` | `gen_lean.py` and `gen_rust.py` generate the proofs, the Rust formulas and the test vectors from the Python; `build_bundle.py` builds `QueryBook.zip` |
 | `tests/` | Ask logic, Lean/Rust kept in step with the Python, and the Rust-compatibility guard |
 
+## Book Query and the sample-ebook library
+
+QueryBook was designed to give anchored answers about one ebook. **Ask → 📚 Book Query** does that for a library of 19 public-domain books (`apps/shell/library/`):
+
+- **Nonfiction:** Gibbon, *Decline and Fall*; Smith, *Wealth of Nations*; Plato, *Republic*; Machiavelli, *The Prince*; Marcus Aurelius, *Meditations*; Sun Tzu, *The Art of War*; Thoreau, *Walden* and *Civil Disobedience*; Douglass, *Narrative*; Comstock, *A Text-Book of Astronomy*.
+- **Fiction:** *Pride and Prejudice*, *Frankenstein*, *Moby-Dick*, *Alice in Wonderland*, *The Adventures of Sherlock Holmes*, *Dracula*, *A Tale of Two Cities*, *The Count of Monte Cristo*, *War and Peace*, *Tom Sawyer*.
+
+Each book has four layers:
+
+1. **Original text** (`text.txt.gz`): the public-domain text only, with the Project Gutenberg header, licence and trademark removed, so it is a QueryBook edition. `meta.json` keeps the provenance (Gutenberg number, address, date fetched) and the rights note, including that Project Gutenberg does not endorse it.
+2. **Fact and narrative units** (`book.json.gz`, built by `tools/build_library.py`, deterministic, `--check` in the tests):
+   - every sentence is a Fact Unit with a fingerprint (`FU-…`) and its part, chapter, § and ¶ anchor;
+   - each unit has a kind: definition, measurement (with its quantities), law, observation, procedure, assertion, note or table;
+   - for fiction, the curated characters and their aliases, appearances, families and the co-occurrence network;
+   - other proper names, and every year mentioned.
+3. **Enrichment** (`modern.json`): each entry is tied by pattern to the exact book sentence it judges, and the build fails if that sentence is not found. It holds what is established today, a status (Confirmed / Refined / Superseded / Incorrect / Historically significant / Historical context), named sources, the relationship and why the claim was reasonable then. Layers so far:
+   - Comstock: 27 entries, plus 12 discoveries since 1903;
+   - Gibbon: 7;
+   - historical context for *War and Peace*, *A Tale of Two Cities* and *Monte Cristo*.
+4. **Answer provenance:** every quotation in an answer links to its paragraph in the original text and shows its Fact Unit ID.
+
+`bookq.py` does the answering. It is pure and Rust-ready (in the Rust-compatibility guard), and handles:
+
+- BM25 retrieval over the units, accent-insensitive;
+- "since the book was published", "still correct", "current values" and "why was it reasonable then";
+- relationship networks, family and character tracing, and fictional vs historical figures;
+- timelines, evidence in story order (observed vs deduced), and who narrates.
+
 ## Changes made to the suite's code
 
 - **Language Lab** (the Language area's first tab, `#learn`): one screen and one text, in five steps:

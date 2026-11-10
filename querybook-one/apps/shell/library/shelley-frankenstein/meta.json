@@ -1,0 +1,137 @@
+{
+ "id": "shelley-frankenstein",
+ "title": "Frankenstein; or, The Modern Prometheus",
+ "author": "Mary Shelley",
+ "year": 1818,
+ "published": "1818 (text of the 1831 edition)",
+ "kind": "fiction",
+ "subject": "Gothic and early science fiction",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #84",
+  "url": "https://www.gutenberg.org/ebooks/84",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "Letter \\d+",
+   "Chapter \\d+"
+  ],
+  "min_chars": 300
+ },
+ "examples": [
+  "Who narrates each part of the story?",
+  "Why does the creature turn to revenge?",
+  "Elizabeth",
+  "Where is the creature made?",
+  "Robert Walton"
+ ],
+ "characters": [
+  {
+   "name": "Victor Frankenstein",
+   "aliases": [
+    "Victor",
+    "Frankenstein"
+   ],
+   "family": "Frankenstein",
+   "historical": false
+  },
+  {
+   "name": "The creature",
+   "aliases": [
+    "creature",
+    "daemon",
+    "monster",
+    "fiend",
+    "wretch"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Robert Walton",
+   "aliases": [
+    "Walton"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Elizabeth Lavenza",
+   "aliases": [
+    "Elizabeth"
+   ],
+   "family": "Frankenstein",
+   "historical": false
+  },
+  {
+   "name": "Henry Clerval",
+   "aliases": [
+    "Clerval",
+    "Henry"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Alphonse Frankenstein",
+   "aliases": [
+    "my father"
+   ],
+   "family": "Frankenstein",
+   "historical": false
+  },
+  {
+   "name": "William Frankenstein",
+   "aliases": [
+    "William"
+   ],
+   "family": "Frankenstein",
+   "historical": false
+  },
+  {
+   "name": "Justine Moritz",
+   "aliases": [
+    "Justine"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Ernest Frankenstein",
+   "aliases": [
+    "Ernest"
+   ],
+   "family": "Frankenstein",
+   "historical": false
+  },
+  {
+   "name": "De Lacey",
+   "aliases": [
+    "the old man"
+   ],
+   "family": "De Lacey",
+   "historical": false
+  },
+  {
+   "name": "Felix",
+   "aliases": [],
+   "family": "De Lacey",
+   "historical": false
+  },
+  {
+   "name": "Agatha",
+   "aliases": [],
+   "family": "De Lacey",
+   "historical": false
+  },
+  {
+   "name": "Safie",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

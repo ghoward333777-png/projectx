@@ -100,3 +100,28 @@ ol.steps li.later { opacity: .6; }
 .conn:hover { border-color: var(--accent); }
 .conn .sbar { height: 4px; background: var(--chip); border-radius: 2px; overflow: hidden; } .conn .sbar span { display: block; height: 100%; background: var(--accent); }
 @media (max-width: 560px) { .ctllabel { min-width: 0; width: 100%; } dl.profile { grid-template-columns: 1fr; } }
+/* Book Query */
+.libgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin: 10px 0; }
+.libband { grid-column: 1 / -1; font: 600 12px system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.libcard { display: grid; gap: 3px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; padding: 10px 12px; cursor: pointer; }
+.libcard:hover { border-color: var(--accent); }
+.libcard[aria-pressed="true"] { border-color: var(--accent); background: var(--sel); box-shadow: inset 0 0 0 1px var(--accent); }
+.libcard b { font-size: 15px; line-height: 1.3; }
+.libtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.bookdetail { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.bookdetail h3 { margin: 0 0 4px; }
+.chip.refined { background: var(--warn-bg); color: var(--warn); }
+.chip.context { background: var(--sel); color: var(--accent); }
+.assert { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 6px; }
+.assert:first-of-type { border-top: 0; }
+.agrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 700px) { .agrid { grid-template-columns: 1fr; } }
+.alabel { font: 600 11px system-ui, sans-serif; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+blockquote { margin: 4px 0; padding: 4px 0 4px 12px; border-left: 3px solid var(--line); }
+a.anchor { text-decoration: none; border-bottom: 1px dotted var(--accent); }
+dialog.passage { max-width: 760px; width: calc(100% - 32px); max-height: 85vh; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px 20px; }
+dialog.passage::backdrop { background: rgba(0, 0, 0, .45); }
+dialog.passage .ptext p { margin: 4px 0 12px; line-height: 1.6; }
+dialog.passage .here { background: var(--warn-bg); color: var(--ink); border-radius: 3px; box-shadow: 0 0 0 2px var(--warn-bg); }
+.libwrap > summary { cursor: pointer; font-weight: 600; margin: 8px 0; color: var(--accent); }
+.askcontrols .ctlrow[hidden] { display: none; }

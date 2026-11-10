@@ -1,0 +1,150 @@
+{
+ "id": "twain-tom-sawyer",
+ "title": "The Adventures of Tom Sawyer",
+ "author": "Mark Twain",
+ "year": 1876,
+ "published": "1876",
+ "kind": "fiction",
+ "subject": "American adventure fiction",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #74",
+  "url": "https://www.gutenberg.org/ebooks/74",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER [IVXL]+\\.?",
+   "CONCLUSION",
+   "PREFACE"
+  ],
+  "min_chars": 300,
+  "editorial": [
+   "Preface"
+  ]
+ },
+ "examples": [
+  "How does Tom get the fence whitewashed?",
+  "Injun Joe",
+  "What happens in the cave?",
+  "Becky Thatcher",
+  "Who killed Dr. Robinson?"
+ ],
+ "characters": [
+  {
+   "name": "Tom Sawyer",
+   "aliases": [
+    "Tom"
+   ],
+   "family": "Sawyer",
+   "historical": false
+  },
+  {
+   "name": "Huckleberry Finn",
+   "aliases": [
+    "Huck",
+    "Huckleberry"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Becky Thatcher",
+   "aliases": [
+    "Becky"
+   ],
+   "family": "Thatcher",
+   "historical": false
+  },
+  {
+   "name": "Aunt Polly",
+   "aliases": [
+    "Polly"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Sid",
+   "aliases": [],
+   "family": "Sawyer",
+   "historical": false
+  },
+  {
+   "name": "Mary",
+   "aliases": [],
+   "family": "Sawyer",
+   "historical": false
+  },
+  {
+   "name": "Injun Joe",
+   "aliases": [
+    "Joe"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Muff Potter",
+   "aliases": [
+    "Potter"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Joe Harper",
+   "aliases": [
+    "Harper"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Dr. Robinson",
+   "aliases": [
+    "Robinson"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Judge Thatcher",
+   "aliases": [],
+   "family": "Thatcher",
+   "historical": false
+  },
+  {
+   "name": "Widow Douglas",
+   "aliases": [
+    "the widow"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Ben Rogers",
+   "aliases": [
+    "Ben"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Alfred Temple",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Amy Lawrence",
+   "aliases": [
+    "Amy"
+   ],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

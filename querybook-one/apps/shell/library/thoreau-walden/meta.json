@@ -1,0 +1,49 @@
+{
+ "id": "thoreau-walden",
+ "title": "Walden, and On the Duty of Civil Disobedience",
+ "author": "Henry David Thoreau",
+ "year": 1854,
+ "published": "Walden 1854; Civil Disobedience 1849",
+ "kind": "nonfiction",
+ "subject": "Society, nature and political philosophy",
+ "structure": "observation, memoir and social criticism",
+ "provenance": {
+  "source": "Project Gutenberg eBook #205",
+  "url": "https://www.gutenberg.org/ebooks/205",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "headings": [
+   "Economy",
+   "Where I Lived, and What I Lived For",
+   "Reading",
+   "Sounds",
+   "Solitude",
+   "Visitors",
+   "The Bean-Field",
+   "The Village",
+   "The Ponds",
+   "Baker Farm",
+   "Higher Laws",
+   "Brute Neighbors",
+   "House-Warming",
+   "Former Inhabitants and Winter Visitors",
+   "Winter Animals",
+   "The Pond in Winter",
+   "Spring",
+   "Conclusion",
+   "ON THE DUTY OF CIVIL DISOBEDIENCE"
+  ],
+  "min_chars": 500
+ },
+ "examples": [
+  "Why did Thoreau go to the woods?",
+  "How much did his house cost?",
+  "Why did he refuse to pay the poll tax?",
+  "the pond in winter",
+  "simplicity"
+ ],
+ "characters": []
+}

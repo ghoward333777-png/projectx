@@ -1,0 +1,37 @@
+{
+ "id": "gibbon-decline-fall",
+ "title": "The History of the Decline and Fall of the Roman Empire",
+ "author": "Edward Gibbon",
+ "year": 1776,
+ "published": "1776–1789 (six volumes)",
+ "kind": "nonfiction",
+ "subject": "Comprehensive history",
+ "structure": "timeline-intensive historical knowledge",
+ "provenance": {
+  "source": "Project Gutenberg eBook #25717",
+  "url": "https://www.gutenberg.org/ebooks/25717",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "VOLUME [A-Z]+"
+  ],
+  "chapters": [
+   "Chapter [IVXLC]+: .*"
+  ],
+  "wrap": true,
+  "min_chars": 300,
+  "first_part": "Volume One"
+ },
+ "examples": [
+  "Which emperors ruled between 180 and 284?",
+  "What causes does Gibbon give for the decline of Rome?",
+  "Constantinople",
+  "Show Gibbon's claims beside the modern view",
+  "When did the Western Empire end?",
+  "Attila"
+ ],
+ "characters": []
+}

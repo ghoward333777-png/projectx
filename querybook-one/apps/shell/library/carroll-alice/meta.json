@@ -1,0 +1,145 @@
+{
+ "id": "carroll-alice",
+ "title": "Alice's Adventures in Wonderland",
+ "author": "Lewis Carroll",
+ "year": 1865,
+ "published": "1865",
+ "kind": "fiction",
+ "subject": "Fantasy",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #11",
+  "url": "https://www.gutenberg.org/ebooks/11",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER [IVXL]+\\."
+  ],
+  "title_line": true,
+  "min_chars": 300
+ },
+ "examples": [
+  "What happens when Alice drinks from the bottle?",
+  "the Cheshire Cat",
+  "Who is at the tea-party?",
+  "the Queen of Hearts",
+  "How does Alice grow and shrink?"
+ ],
+ "characters": [
+  {
+   "name": "Alice",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The White Rabbit",
+   "aliases": [
+    "White Rabbit",
+    "Rabbit"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Cheshire Cat",
+   "aliases": [
+    "Cheshire Cat",
+    "Cat"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Mad Hatter",
+   "aliases": [
+    "Hatter"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The March Hare",
+   "aliases": [
+    "March Hare"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Dormouse",
+   "aliases": [
+    "Dormouse"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Queen of Hearts",
+   "aliases": [
+    "Queen"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The King of Hearts",
+   "aliases": [
+    "King"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Duchess",
+   "aliases": [
+    "Duchess"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Caterpillar",
+   "aliases": [
+    "Caterpillar"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Mock Turtle",
+   "aliases": [
+    "Mock Turtle"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Gryphon",
+   "aliases": [
+    "Gryphon"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Bill the Lizard",
+   "aliases": [
+    "Bill"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Knave of Hearts",
+   "aliases": [
+    "Knave"
+   ],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

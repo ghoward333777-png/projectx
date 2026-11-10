@@ -1,0 +1,21 @@
+{
+  "about": "Historical context for A Tale of Two Cities: the real events of the French Revolution around the fictional story.",
+  "entries": [
+    {"id": "bastille", "topic": "The storming of the Bastille", "status": "Historical context",
+     "match": ["^The Bastille!”$"],
+     "modern": "The Bastille fortress-prison in Paris was stormed on 14 July 1789; it then held only seven prisoners. The day is France's national holiday.",
+     "value": "14 July 1789", "sources": ["Simon Schama, Citizens: A Chronicle of the French Revolution (1989)", "William Doyle, The Oxford History of the French Revolution (2nd ed. 2002)"],
+     "relationship": "Real event; Doctor Manette's cell, One Hundred and Five, North Tower, and the Defarges' part in the attack are fiction."},
+    {"id": "la-force", "topic": "The prison of La Force and the September Massacres", "status": "Historical context",
+     "match": ["You are consigned, Evrémonde, to the prison of La Force"],
+     "modern": "La Force was a real Paris prison; in the September Massacres (2–6 September 1792) crowds killed about 1,100–1,400 prisoners in Paris, including over 160 at La Force.",
+     "value": "2–6 September 1792", "sources": ["William Doyle, The Oxford History of the French Revolution (2nd ed. 2002)", "Frédéric Bluche, Septembre 1792: logiques d'un massacre (1986)"],
+     "relationship": "Real place and events; Darnay's imprisonment there is fiction."},
+    {"id": "guillotine", "topic": "La Guillotine and the Terror", "status": "Historical context",
+     "match": ["the sharp female called La Guillotine"],
+     "modern": "The guillotine was adopted in 1792; during the Terror (September 1793 – July 1794) about 17,000 people were officially executed in France, some 2,600 of them in Paris.",
+     "value": "Terror 1793–1794; ~17,000 official executions", "sources": ["Donald Greer, The Incidence of the Terror during the French Revolution (1935)", "Simon Schama, Citizens (1989)"],
+     "relationship": "Real; Sydney Carton's death on the scaffold is fiction."}
+  ],
+  "new_since": []
+}

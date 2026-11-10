@@ -9,6 +9,7 @@ function akLoad(k, d) { try { return localStorage.getItem(k) || d; } catch (e) {
 const AK = {
   root: null, cat: null, input: akLoad("qb:ask:input", "type"), mode: akLoad("qb:ask:mode", "qa"), format: akLoad("qb:ask:format", "auto"),
   register: akLoad("qb:ask:register", "plain"), turns: [], last: null, busy: false, seed: 1,
+  library: null, book: akLoad("qb:ask:book", ""), bookInfo: null,
   det: null, detLoading: null, cam: null, camOn: false, camDets: [], camT0: 0, vidDets: [], photoDets: [],
 };
 const AK_EXAMPLES = {
@@ -67,7 +68,9 @@ function akControls() {
   const r = AK.root.querySelector("#ak-register");
   r.replaceChildren(...c.registers.map(x => el("option", { value: x.id, selected: x.id === AK.register }, "Tone: " + x.name)));
   const inp = c.inputs.find(x => x.id === AK.input) || {}, md = c.modes.find(x => x.id === AK.mode) || {};
-  AK.root.querySelector("#ak-about").textContent = (inp.about || "") + " " + (md.about || "");
+  const book = AK.input === "book";
+  AK.root.querySelectorAll(".ctlrow").forEach((row, k) => { row.hidden = book && k > 0; });   // a book answers in its own layers
+  AK.root.querySelector("#ak-about").textContent = (inp.about || "") + (book ? "" : " " + (md.about || ""));
 }
 
 /* ------------------------------------------------------------------ the input panel */
@@ -82,7 +85,9 @@ function akPanel() {
     i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } });
     return el("div", { class: "akline" }, i, el("button", { class: "btn", type: "button", onclick: go }, "Ask"));
   };
-  if (AK.input === "type" || AK.input === "speak") {
+  if (AK.input === "book") {
+    box.append(akLibraryPanel());
+  } else if (AK.input === "type" || AK.input === "speak") {
     if (AK.input === "speak") box.append(akSpeak());
     else box.append(askLine(AK.mode === "verify" ? "Say something you believe is true" : AK.mode === "guided" && AK.turns.length ? "Ask a follow-up (\"when was it built?\")" : "Ask anything — a word, a fact, a calculation", akAsk));
     box.append(el("div", { class: "tiles small", style: "margin-top:10px" }, (AK_EXAMPLES[AK.mode] || AK_EXAMPLES.qa).map(q =>
@@ -318,6 +323,7 @@ function akWatchPanel() {
 /* ------------------------------------------------------------------ asking */
 async function ask(q) {                                       // the header's Ask box
   if (current !== "ask") show("ask");
+  if (AK.input === "book" && AK.book) return akBookAsk(q);
   if (["camera", "video", "photo", "check", "watch", "structured"].includes(AK.input)) { AK.input = "type"; save("qb:ask:input", "type"); akControls(); akPanel(); }
   return akAsk(q);
 }
@@ -355,9 +361,10 @@ function akRedraw() {
 
 function akAnswer(r) {
   if (!r) return [];
-  if (r.loading) return [el("div", { class: "card" }, el("p", { class: "muted" }, `Asking every part of QueryBook about “${r.question}”…`))];
+  if (r.loading) return [el("div", { class: "card" }, el("p", { class: "muted" }, r.loadingText || `Asking every part of QueryBook about “${r.question}”…`))];
   if (r.error) return [el("div", { class: "card" }, el("p", { class: "note" }, r.error))];
   if (r.checked) return [akChecked(r)];
+  if (r.bookAnswer) return akBookAnswer(r);
   const cards = [];
   const fmt = AK.format === "auto" ? r.format : AK.format;     // a changed format redraws without asking again where it can
   const v = r.view || {};
@@ -526,4 +533,128 @@ function akChecked(r) {
     r.claims.length ? r.claims.map(c => el("div", { class: "qitem" }, el("span", { class: "chip " + (VERDICT_CLASS[c.verdict] || "") }, { VERIFIED: "Supported", CONTRADICTED: "Contradicted", UNKNOWN: "Not known" }[c.verdict]),
       " ", c.claim, c.facts.length ? el("ul", { class: "small" }, c.facts.map(f => el("li", {}, f.text, el("span", { class: "muted" }, " — " + f.where)))) : null))
       : el("p", { class: "small muted" }, "No sentence in the text states something that can be checked."));
+}
+
+/* ------------------------------------------------------------------ Book Query: the sample-ebook library */
+const STATUS_CLASS = { Confirmed: "verified", "Historically significant": "verified", Refined: "refined", Superseded: "disputed", Incorrect: "disputed", "Historical context": "context" };
+function akLibraryPanel() {
+  const box = el("div", { id: "ak-library" });
+  const draw = () => {
+    const books = AK.library || [];
+    const cur = books.find(b => b.id === AK.book);
+    box.replaceChildren(
+      el("div", { class: "small muted" }, "Choose a book. QueryBook answers only from that book, quoting it with its chapter and paragraph, and shows where it now differs from what is known today."),
+      el("details", { class: "libwrap", open: !cur }, el("summary", {}, cur ? `📚 ${cur.title} — change book (${books.length} in the library)` : `📚 The library — ${books.length} books`),
+      el("div", { class: "libgrid" }, ["nonfiction", "fiction"].map(kind => [
+        el("div", { class: "libband" }, kind === "nonfiction" ? "Nonfiction" : "Fiction"),
+        books.filter(b => b.kind === kind).map(b => el("button", { type: "button", class: "libcard", "aria-pressed": String(b.id === AK.book), onclick: () => { AK.book = b.id; save("qb:ask:book", b.id); AK.last = null; draw(); akRedraw(); } },
+          el("b", {}, b.title), el("span", { class: "small" }, `${b.author} · ${b.year < 0 ? -b.year + " BC" : b.year}`),
+          el("span", { class: "small muted" }, b.subject),
+          el("span", { class: "libtags" }, el("span", { class: "chip" }, `${b.units.toLocaleString()} Fact Units`),
+            Object.keys(b.modern || {}).length ? el("span", { class: "chip verified" }, b.kind === "fiction" ? "historical context" : "modern layer") : null,
+            b.people ? el("span", { class: "chip" }, `${b.people} people`) : null)))]).flat(2))),
+      cur ? akBookDetail(cur) : el("p", { class: "small muted" }, "No book chosen yet."));
+  };
+  if (AK.library) draw();
+  else fetch("/api/shell/library").then(r => r.json()).then(j => { AK.library = j.books || []; if (!AK.library.some(b => b.id === AK.book)) AK.book = ""; draw(); })
+    .catch(() => box.replaceChildren(el("p", { class: "note" }, "The library could not be loaded.")));
+  box.append(el("p", { class: "small muted" }, "Loading the library…"));
+  return box;
+}
+
+function akBookDetail(b) {
+  const i = el("input", { type: "search", class: "akinput", placeholder: `Ask ${b.title}…`, "aria-label": "Question about the book" });
+  const go = () => akBookAsk(i.value);
+  i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } });
+  const pv = b.provenance || {};
+  return el("div", { class: "bookdetail" },
+    el("h3", {}, b.title, el("span", { class: "small muted" }, `  ${b.author} · ${b.published || b.year}`)),
+    b.about ? el("p", { class: "small" }, b.about) : null,
+    el("p", { class: "small muted" }, `Structure: ${b.structure || ""}. ${b.units.toLocaleString()} Fact Units — ` +
+      Object.entries(b.kinds || {}).sort((x, y) => y[1] - x[1]).map(([k, n]) => `${n.toLocaleString()} ${k}`).join(", ") + "."),
+    el("div", { class: "akline" }, i, el("button", { class: "btn", type: "button", onclick: go }, "Book Query")),
+    el("div", { class: "chips" }, el("span", { class: "small muted" }, "Try: "), (b.examples || []).map(q => el("button", { class: "chip btnchip", type: "button", onclick: () => { i.value = q; akBookAsk(q); } }, q))),
+    el("p", { class: "small muted" }, "Source: ", pv.url ? el("a", { href: pv.url, target: "_blank", rel: "noopener" }, pv.source || pv.url) : (pv.source || ""),
+      pv.fetched ? ` (fetched ${pv.fetched}). ` : ". ", pv.rights || ""));
+}
+
+async function akBookAsk(q) {
+  q = (q || "").trim(); if (!q || !AK.book) return;
+  document.getElementById("askinput").value = q;
+  if (current !== "ask") show("ask");
+  const b = (AK.library || []).find(x => x.id === AK.book) || {};
+  AK.last = { question: q, loading: true, loadingText: `Reading ${b.title || "the book"}…` }; akRedraw();
+  try { AK.last = Object.assign({ bookAnswer: true }, await akPost("/api/shell/book/ask", { book: AK.book, q })); }
+  catch (e) { AK.last = { question: q, error: e.message }; }
+  akRedraw();
+}
+
+function akAnchor(book, unit, anchor) {
+  return el("a", { href: "#", class: "anchor", title: "Show this passage in the original text" + (unit ? " · Fact Unit " + unit : ""),
+    onclick: e => { e.preventDefault(); akPassage(book, unit); } }, anchor);
+}
+
+async function akPassage(book, unit) {
+  if (!unit) return;
+  let j;
+  try { j = await (await fetch(`/api/shell/book/passage?book=${encodeURIComponent(book)}&unit=${encodeURIComponent(unit)}`)).json(); }
+  catch (e) { return; }
+  const dlg = el("dialog", { class: "passage" },
+    el("div", { class: "small muted" }, "Original text — ", j.title || ""),
+    el("h3", {}, j.anchor),
+    (j.paragraphs || []).map(p => el("div", { class: "ptext" }, el("div", { class: "small muted" }, p.anchor),
+      el("p", {}, p.units.map(u => [el("span", { class: u.here ? "here" : "", title: "Fact Unit " + u.id + " · " + u.kind }, u.text), " "])))),
+    el("p", { class: "small muted" }, "Fact Unit ", el("code", {}, j.unit), " · ", (j.provenance || {}).source || ""),
+    el("button", { class: "btn", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Close"));
+  document.body.append(dlg);
+  dlg.showModal();
+  const h = dlg.querySelector(".here"); if (h) h.scrollIntoView({ block: "center" });
+}
+
+function akBookAnswer(r) {
+  const cards = [];
+  const bk = r.book;
+  cards.push(el("div", { class: "card" }, el("div", { class: "small muted" }, `${r.title} · ${r.query}`),
+    el("div", { class: "short" }, r.lead || "The book does not say."),
+    el("div", { class: "small muted", style: "margin-top:6px" }, "Answered from the book alone" + (r.chapter ? ` (${r.chapter ? "one chapter" : ""})` : "") + ". Every quotation links to its place in the original text.")));
+  if ((r.assertions || []).length) {
+    cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "historical" ? "Real history around the story" : "The book beside what is known today"),
+      r.assertions.map(a => el("div", { class: "assert" },
+        el("div", { class: "arow" }, el("b", {}, a.topic), " ", el("span", { class: "chip " + (STATUS_CLASS[a.status] || "") }, a.status)),
+        el("div", { class: "agrid" },
+          el("div", {}, el("div", { class: "alabel" }, "Book assertion"), a.book.map(x => el("blockquote", {}, "“" + x.text + "”", el("div", { class: "small" }, akAnchor(bk, x.unit, x.anchor))))),
+          el("div", {}, el("div", { class: "alabel" }, a.status === "Historical context" ? "What history records" : "Current verified fact"), el("p", {}, a.modern),
+            a.value ? el("div", { class: "small" }, el("b", {}, "Value: "), a.value) : null)),
+        a.relationship ? el("div", { class: "small" }, el("span", { class: "alabel" }, "Fact relationship "), a.relationship) : null,
+        a.why_then ? el("div", { class: "small" }, el("span", { class: "alabel" }, "Why it was reasonable then "), a.why_then) : null,
+        el("div", { class: "small muted" }, el("span", { class: "alabel" }, "Sources "), a.sources.join(" · "))))));
+  }
+  if ((r.new_since || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, "Discovered since the book was written"),
+    el("ol", { class: "timeline" }, r.new_since.map(n => el("li", {}, el("span", { class: "yr" }, String(n.year)), el("span", {}, n.what, el("div", { class: "small muted" }, n.source)))))));
+  if ((r.edges || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, `Relationship network — ${(r.people[0] || {}).name || ""}`),
+    el("div", { class: "small muted" }, "Counted as paragraphs in which both are named. Click a name to see their network."),
+    el("div", { class: "conns" }, r.edges.map(e => el("button", { class: "conn", type: "button", onclick: () => akBookAsk("Show the relationship network around " + e.with) },
+      el("b", {}, e.with), el("span", { class: "sbar" }, el("span", { style: `width:${Math.round(100 * e.together / r.edges[0].together)}%` })), el("span", { class: "small muted" }, `${e.together} paragraphs together`))))));
+  if ((r.people || []).length && !(r.edges || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, "People"),
+    el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Name"), el("th", {}, ""), el("th", {}, "Also called"), el("th", {}, "Named"), el("th", {}, "First"), el("th", {}, "Last")),
+      r.people.map(p => el("tr", {}, el("td", {}, el("a", { href: "#", onclick: e => { e.preventDefault(); akBookAsk("Show the relationship network around " + p.name); } }, p.name)),
+        el("td", {}, el("span", { class: "chip " + (p.historical ? "context" : "") }, p.historical ? "historical" : "fictional"), p.family ? el("div", { class: "small muted" }, p.family + " family") : null),
+        el("td", { class: "small" }, (p.aliases || []).slice(0, 4).join(", ")), el("td", {}, String(p.mentions)),
+        el("td", { class: "small" }, p.first), el("td", { class: "small" }, p.last)))))));
+  if ((r.chapters || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "structure" ? "Parts of the book" : "Through the book, chapter by chapter"),
+    el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Chapter"), el("th", {}, r.intent === "structure" ? "Paragraphs" : "Times named"), r.intent === "structure" ? null : el("th", {}, "First mention")),
+      r.chapters.map(c => el("tr", {}, el("td", {}, c.name), el("td", {}, String(c.mentions)),
+        c.first ? el("td", { class: "small" }, "“" + c.first.text.slice(0, 160) + (c.first.text.length > 160 ? "…" : "") + "” ", akAnchor(bk, c.first.unit, "↗")) : null))))));
+  if ((r.timeline || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, "Timeline"),
+    el("ol", { class: "timeline" }, r.timeline.map(t => el("li", {}, el("span", { class: "yr" }, t.year < 0 ? `${-t.year} BC` : String(t.year)),
+      el("span", {}, "“" + t.text + "”", el("div", { class: "small" }, akAnchor(bk, t.unit, t.anchor))))))));
+  if ((r.passages || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "evidence" ? "Evidence and deduction, in story order" : r.intent === "values" ? "Measurements in the book" : "From the book"),
+    r.passages.map(p => el("div", { class: "qitem" },
+      p.reasoning ? el("span", { class: "chip " + (p.reasoning === "deduced" ? "refined" : "verified") }, p.reasoning === "deduced" ? "deduction" : "observed") : null,
+      p.checked ? el("span", { class: "chip verified" }, "checked today") : null,
+      el("blockquote", {}, "“" + p.text + "”"),
+      el("div", { class: "small" }, akAnchor(bk, p.unit, p.anchor), el("span", { class: "muted" }, ` · ${p.kind}` + (p.unit ? ` · ${p.unit}` : "")))))));
+  const pv = r.provenance || {};
+  cards.push(el("div", { class: "small muted", style: "margin:0 4px 20px" }, "Answer provenance: ", r.title, " — QueryBook edition of ", pv.source || "", ". ", pv.rights || ""));
+  return cards;
 }

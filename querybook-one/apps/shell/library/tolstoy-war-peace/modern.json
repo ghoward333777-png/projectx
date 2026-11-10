@@ -1,0 +1,31 @@
+{
+  "about": "Historical context for War and Peace: the real events the novel's fictional characters live through, with dates. Tolstoy gives dates in the Russian Old Style (Julian) calendar, 12 days behind the Gregorian calendar used in the West.",
+  "entries": [
+    {"id": "austerlitz", "topic": "The battle of Austerlitz", "status": "Historical context",
+     "match": ["memorable battle of Austerlitz"],
+     "modern": "Napoleon defeated the Russian and Austrian armies at Austerlitz (in today's Czech Republic) on 2 December 1805 (20 November Old Style) — 'the battle of the three emperors'.",
+     "value": "2 December 1805 (N.S.)", "sources": ["David G. Chandler, The Campaigns of Napoleon (1966)", "Encyclopaedia Britannica, 'Battle of Austerlitz'"],
+     "relationship": "Real event; Prince Andrew's wounding and the sky above him are fiction set inside it."},
+    {"id": "tilsit", "topic": "The meeting of the emperors at Tilsit", "status": "Historical context",
+     "match": ["On the thirteenth of June the French and Russian Emperors arrived in Tilsit"],
+     "modern": "Napoleon and Alexander I met on a raft on the Niemen on 25 June 1807 (13 June Old Style); the Treaties of Tilsit (7 and 9 July 1807) made peace between France and Russia.",
+     "value": "25 June 1807 (N.S.)", "sources": ["Encyclopaedia Britannica, 'Treaties of Tilsit'", "Dominic Lieven, Russia Against Napoleon (2009)"],
+     "relationship": "Real event; Nicholas Rostóv's and Borís's presence there is fiction."},
+    {"id": "niemen-1812", "topic": "The invasion of Russia", "status": "Historical context",
+     "match": ["he went in a carriage to the Niemen"],
+     "modern": "Napoleon's Grande Armée, about 450,000–600,000 men, crossed the Niemen into Russia on 24 June 1812 (12 June Old Style).",
+     "value": "24 June 1812 (N.S.)", "sources": ["Dominic Lieven, Russia Against Napoleon (2009)", "Adam Zamoyski, 1812: Napoleon's Fatal March on Moscow (2004)"],
+     "relationship": "Real event."},
+    {"id": "borodino", "topic": "The battle of Borodino", "status": "Historical context",
+     "match": ["the twenty-sixth the battle of Borodinó itself"],
+     "modern": "Borodino was fought on 7 September 1812 (26 August Old Style), about 120 km west of Moscow — one of the bloodiest single days of the Napoleonic wars, with some 70,000 casualties.",
+     "value": "7 September 1812 (N.S.); ~70,000 casualties", "sources": ["Dominic Lieven, Russia Against Napoleon (2009)", "Alexander Mikaberidze, The Battle of Borodino (2007)"],
+     "relationship": "Real event. Tolstoy's own date, the twenty-sixth of August, is the same day in the Russian calendar."},
+    {"id": "moscow-fire", "topic": "The burning of Moscow", "status": "Historical context",
+     "match": ["Moscow was burned because it found itself in a position"],
+     "modern": "Moscow burned from 14 to 18 September 1812, after the French entered it; about three quarters of the city was destroyed. Historians still debate how far the governor Rostopchin ordered it — Tolstoy's argument that a wooden city left to soldiers was bound to burn is one serious view.",
+     "value": "14–18 September 1812 (N.S.)", "sources": ["Alexander Mikaberidze, The Burning of Moscow (2014)"],
+     "relationship": "Real event; Tolstoy's interpretation is still part of the historical debate."}
+  ],
+  "new_since": []
+}

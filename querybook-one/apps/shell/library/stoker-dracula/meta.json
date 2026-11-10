@@ -1,0 +1,130 @@
+{
+ "id": "stoker-dracula",
+ "title": "Dracula",
+ "author": "Bram Stoker",
+ "year": 1897,
+ "published": "1897",
+ "kind": "fiction",
+ "subject": "Gothic horror",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #345",
+  "url": "https://www.gutenberg.org/ebooks/345",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER [IVXL]+\\.?"
+  ],
+  "title_line": true,
+  "min_chars": 300
+ },
+ "examples": [
+  "Who wrote each diary and letter?",
+  "Trace Lucy Westenra through the book",
+  "Whitby",
+  "How is Dracula defeated?",
+  "Renfield"
+ ],
+ "characters": [
+  {
+   "name": "Count Dracula",
+   "aliases": [
+    "Dracula",
+    "the Count"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Jonathan Harker",
+   "aliases": [
+    "Jonathan",
+    "Harker"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Mina Murray",
+   "aliases": [
+    "Mina",
+    "Mina Harker",
+    "Madam Mina"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Lucy Westenra",
+   "aliases": [
+    "Lucy",
+    "Miss Westenra"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Abraham Van Helsing",
+   "aliases": [
+    "Van Helsing",
+    "Professor"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "John Seward",
+   "aliases": [
+    "Dr. Seward",
+    "Seward",
+    "Jack"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Arthur Holmwood",
+   "aliases": [
+    "Arthur",
+    "Lord Godalming",
+    "Holmwood"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Quincey Morris",
+   "aliases": [
+    "Quincey",
+    "Morris"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "R. M. Renfield",
+   "aliases": [
+    "Renfield"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Mrs. Westenra",
+   "aliases": [],
+   "family": "Westenra",
+   "historical": false
+  },
+  {
+   "name": "Mr. Swales",
+   "aliases": [
+    "Swales"
+   ],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

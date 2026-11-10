@@ -1,0 +1,35 @@
+{
+ "id": "plato-republic",
+ "title": "The Republic",
+ "author": "Plato (translated by Benjamin Jowett)",
+ "year": -375,
+ "published": "c. 375 BC; Jowett translation 1871",
+ "kind": "nonfiction",
+ "subject": "Philosophy and political theory",
+ "structure": "dialogue and conceptual reasoning",
+ "provenance": {
+  "source": "Project Gutenberg eBook #1497",
+  "url": "https://www.gutenberg.org/ebooks/1497",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "BOOK [IVX]+\\.",
+   "INTRODUCTION AND ANALYSIS\\."
+  ],
+  "min_chars": 300,
+  "editorial": [
+   "Introduction And Analysis"
+  ]
+ },
+ "examples": [
+  "What is justice?",
+  "the allegory of the cave",
+  "Who should rule the city?",
+  "What does Socrates say about poets?",
+  "the three classes of the city"
+ ],
+ "characters": []
+}

@@ -1,0 +1,42 @@
+{
+ "id": "aurelius-meditations",
+ "title": "Meditations",
+ "author": "Marcus Aurelius (translated by Meric Casaubon)",
+ "year": 180,
+ "published": "written c. 170–180",
+ "kind": "nonfiction",
+ "subject": "Stoic philosophy",
+ "structure": "thematic propositions",
+ "provenance": {
+  "source": "Project Gutenberg eBook #2680",
+  "url": "https://www.gutenberg.org/ebooks/2680",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "THE [A-Z]+ BOOK",
+   "INTRODUCTION",
+   "APPENDIX",
+   "NOTES",
+   "GLOSSARY"
+  ],
+  "sections": "roman",
+  "min_chars": 200,
+  "editorial": [
+   "Introduction",
+   "Appendix",
+   "Notes",
+   "Glossary"
+  ]
+ },
+ "examples": [
+  "death",
+  "What does he say about anger?",
+  "duty",
+  "What did he learn from his grandfather Verus?",
+  "the present moment"
+ ],
+ "characters": []
+}

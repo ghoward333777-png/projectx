@@ -14,6 +14,7 @@ Standard library only.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import subprocess
@@ -27,9 +28,10 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ask
+import bookq
 import modes
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -182,6 +184,7 @@ class Shell:
         self.job = WindowsJob()
         self.programs = {pid: Program(pid, self.root, self.job) for pid in PROGRAMS}
         self.watches = Watches(self.root)
+        self.library = Library(os.path.join(HERE, "library"))
 
     def prepare_drive(self) -> None:
         if not self.root:
@@ -305,6 +308,77 @@ def check_text(text: str, urls: dict) -> dict:
     return {"claims": results, "tally": tally}
 
 
+# --------------------------------------------------------------------------- the sample-ebook library (Book Query)
+class Library:
+    """the books in library/<id>/book.json.gz, loaded when first asked about (the last six are kept in memory)"""
+
+    def __init__(self, folder: str) -> None:
+        self.folder = folder
+        self.lock = threading.Lock()
+        self.cache: dict = {}
+        self.order: list = []
+        self.cards: list | None = None
+
+    def ids(self) -> list:
+        try:
+            return sorted(d for d in os.listdir(self.folder) if os.path.isfile(os.path.join(self.folder, d, "book.json.gz")))
+        except OSError:
+            return []
+
+    def get(self, book_id: str) -> tuple:
+        if book_id not in self.ids():
+            raise ValueError("There is no book %r in the library." % book_id)
+        with self.lock:
+            if book_id in self.cache:
+                self.order.remove(book_id)
+                self.order.append(book_id)
+                return self.cache[book_id]
+            with gzip.open(os.path.join(self.folder, book_id, "book.json.gz"), "rb") as f:
+                book = json.loads(f.read().decode("utf-8"))
+            entry = (book, bookq.index(book))
+            self.cache[book_id] = entry
+            self.order.append(book_id)
+            while len(self.order) > 6:
+                self.cache.pop(self.order.pop(0), None)
+            return entry
+
+    def list(self) -> list:
+        """one card per book, from library/catalog.json (written by tools/build_library.py)"""
+        if self.cards is None:
+            try:
+                with open(os.path.join(self.folder, "catalog.json"), encoding="utf-8") as f:
+                    self.cards = json.load(f)["books"]
+            except (OSError, ValueError, KeyError):
+                self.cards = []
+        return self.cards
+
+    def passage(self, book_id: str, unit_id: str) -> dict:
+        """the Original Text layer around one Fact Unit: its whole paragraph, the paragraphs before and after"""
+        book, _ = self.get(book_id)
+        units = book["units"]
+        i = next((k for k, u in enumerate(units) if u.get("id") == unit_id), -1)
+        if i < 0:
+            raise ValueError("No such Fact Unit in this book.")
+        u = units[i]
+        key = lambda x: (x["chapter"], x["section"], x["para"])
+        paras: list = []
+        lo = i
+        while lo > 0 and units[lo - 1]["chapter"] == u["chapter"]:
+            lo -= 1
+        hi = i
+        while hi + 1 < len(units) and units[hi + 1]["chapter"] == u["chapter"]:
+            hi += 1
+        for k in range(lo, hi + 1):
+            if not paras or key(paras[-1]["first"]) != key(units[k]):
+                paras.append({"first": units[k], "units": []})
+            paras[-1]["units"].append({"id": units[k]["id"], "text": units[k]["text"], "kind": units[k]["kind"], "here": k == i})
+        at = next(n for n, p in enumerate(paras) if any(x["here"] for x in p["units"]))
+        show = paras[max(0, at - 2): at + 3]
+        return {"book": book_id, "title": book.get("title"), "anchor": bookq.anchor(book, u), "unit": unit_id,
+                "paragraphs": [{"anchor": bookq.anchor(book, p["first"]), "units": p["units"]} for p in show],
+                "provenance": book.get("provenance") or {}}
+
+
 class Watches:
     """saved questions asked again on request or every hour while the window is open (Registry #78)"""
 
@@ -420,6 +494,13 @@ def make_handler(shell: Shell):
                     return self.send(200, ask.answer(q.get("q", ""), shell.urls()))
                 if u.path == "/api/shell/modes":
                     return self.send(200, {"inputs": modes.INPUTS, "modes": modes.MODES, "formats": modes.FORMATS, "registers": modes.REGISTERS})
+                if u.path == "/api/shell/library":
+                    return self.send(200, {"books": shell.library.list()})
+                if u.path == "/api/shell/book":
+                    book, _ = shell.library.get(q.get("book", ""))
+                    return self.send(200, bookq.overview(book))
+                if u.path == "/api/shell/book/passage":
+                    return self.send(200, shell.library.passage(q.get("book", ""), q.get("unit", "")))
                 if u.path == "/api/shell/watch":
                     return self.send(200, {"watches": [{k: v for k, v in w.items() if k != "snap"} for w in shell.watches.load()]})
                 path = "/index.html" if u.path in ("", "/") else u.path
@@ -432,6 +513,8 @@ def make_handler(shell: Shell):
                     return self.send(404, {"error": "not found"})
                 with open(f, "rb") as fh:
                     return self.send(200, fh.read(), types.get(os.path.splitext(f)[1], "application/octet-stream"))
+            except ValueError as e:
+                return self.send(400, {"error": str(e)})
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception as e:
@@ -460,6 +543,9 @@ def make_handler(shell: Shell):
                     return self.send(200, {"seen": rows, "answer": modes.seen_answer(str(body.get("q") or ""), rows) if body.get("q") else ""})
                 if u.path == "/api/shell/watch":
                     return self.send(200, shell.watches.act(body, shell.urls()))
+                if u.path == "/api/shell/book/ask":
+                    book, idx = shell.library.get(str(body.get("book") or ""))
+                    return self.send(200, bookq.answer(book, idx, str(body.get("q") or "")[:500]))
                 if u.path == "/api/shell/say":
                     return self.send(200, say(body, shell.urls()))
                 return self.send(404, {"error": "not found"})

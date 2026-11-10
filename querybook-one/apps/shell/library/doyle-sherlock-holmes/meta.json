@@ -1,0 +1,171 @@
+{
+ "id": "doyle-sherlock-holmes",
+ "title": "The Adventures of Sherlock Holmes",
+ "author": "Arthur Conan Doyle",
+ "year": 1892,
+ "published": "1892",
+ "kind": "fiction",
+ "subject": "Detective fiction",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #1661",
+  "url": "https://www.gutenberg.org/ebooks/1661",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "[IVXL]+\\. (A|THE) [A-Z][A-Z \\-’'.]+"
+  ],
+  "subheads": [
+   "[IVXL]+\\."
+  ],
+  "min_chars": 500
+ },
+ "examples": [
+  "List the clues in A Scandal in Bohemia",
+  "Separate observed evidence from Holmes's deduction in The Red-Headed League",
+  "Irene Adler",
+  "How did Holmes know Watson had been in Afghanistan?",
+  "The Speckled Band",
+  "Jabez Wilson"
+ ],
+ "characters": [
+  {
+   "name": "Sherlock Holmes",
+   "aliases": [
+    "Holmes",
+    "Mr. Holmes"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Dr. Watson",
+   "aliases": [
+    "Watson",
+    "Doctor"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Irene Adler",
+   "aliases": [
+    "Adler",
+    "the woman"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Jabez Wilson",
+   "aliases": [
+    "Mr. Wilson",
+    "Wilson"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "John Clay",
+   "aliases": [
+    "Vincent Spaulding",
+    "Spaulding"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Inspector Lestrade",
+   "aliases": [
+    "Lestrade"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Dr. Grimesby Roylott",
+   "aliases": [
+    "Roylott",
+    "Dr. Roylott"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Helen Stoner",
+   "aliases": [
+    "Miss Stoner"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Mrs. Hudson",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Peter Jones",
+   "aliases": [
+    "Mr. Jones"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "King of Bohemia",
+   "aliases": [
+    "the King",
+    "Count Von Kramm"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "James McCarthy",
+   "aliases": [
+    "McCarthy"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "John Turner",
+   "aliases": [
+    "Turner"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Neville St. Clair",
+   "aliases": [
+    "St. Clair",
+    "Hugh Boone",
+    "Boone"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Violet Hunter",
+   "aliases": [
+    "Miss Hunter"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Jephro Rucastle",
+   "aliases": [
+    "Rucastle"
+   ],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

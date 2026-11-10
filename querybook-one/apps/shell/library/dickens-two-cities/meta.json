@@ -1,0 +1,151 @@
+{
+ "id": "dickens-two-cities",
+ "title": "A Tale of Two Cities",
+ "author": "Charles Dickens",
+ "year": 1859,
+ "published": "1859",
+ "kind": "fiction",
+ "subject": "Historical fiction",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #98",
+  "url": "https://www.gutenberg.org/ebooks/98",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "Book the [A-Za-z]+--.*"
+  ],
+  "chapters": [
+   "CHAPTER [IVXL]+\\.?"
+  ],
+  "title_line": true,
+  "min_chars": 300
+ },
+ "examples": [
+  "Separate fictional events from real history",
+  "Sydney Carton",
+  "the storming of the Bastille",
+  "Who is Madame Defarge?",
+  "Trace the Manette family"
+ ],
+ "characters": [
+  {
+   "name": "Sydney Carton",
+   "aliases": [
+    "Carton"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Charles Darnay",
+   "aliases": [
+    "Darnay",
+    "Evrémonde",
+    "Evremonde"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Lucie Manette",
+   "aliases": [
+    "Lucie",
+    "Miss Manette"
+   ],
+   "family": "Manette",
+   "historical": false
+  },
+  {
+   "name": "Doctor Manette",
+   "aliases": [
+    "Dr. Manette",
+    "Doctor"
+   ],
+   "family": "Manette",
+   "historical": false
+  },
+  {
+   "name": "Jarvis Lorry",
+   "aliases": [
+    "Mr. Lorry",
+    "Lorry"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Madame Defarge",
+   "aliases": [],
+   "family": "Defarge",
+   "historical": false
+  },
+  {
+   "name": "Ernest Defarge",
+   "aliases": [
+    "Monsieur Defarge",
+    "Defarge"
+   ],
+   "family": "Defarge",
+   "historical": false
+  },
+  {
+   "name": "Miss Pross",
+   "aliases": [
+    "Pross"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Jerry Cruncher",
+   "aliases": [
+    "Cruncher",
+    "Jerry"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "C. J. Stryver",
+   "aliases": [
+    "Stryver"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Marquis St. Evrémonde",
+   "aliases": [
+    "Monseigneur",
+    "the Marquis"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "John Barsad",
+   "aliases": [
+    "Barsad",
+    "Solomon Pross"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Gabelle",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "The Vengeance",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

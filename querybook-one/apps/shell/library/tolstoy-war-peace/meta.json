@@ -1,0 +1,325 @@
+{
+ "id": "tolstoy-war-peace",
+ "title": "War and Peace",
+ "author": "Leo Tolstoy (translated by Louise and Aylmer Maude)",
+ "year": 1869,
+ "published": "1865–1869",
+ "kind": "fiction",
+ "subject": "Historical epic",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #2600",
+  "url": "https://www.gutenberg.org/ebooks/2600",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "BOOK [A-Z]+(: \\d{4}( ?- ?\\d{2,4})?)?",
+   "(FIRST|SECOND) EPILOGUE(: .*)?"
+  ],
+  "chapters": [
+   "CHAPTER [IVXL]+"
+  ],
+  "min_chars": 300
+ },
+ "examples": [
+  "Show the relationship network around Pierre",
+  "Trace the Rostov family",
+  "Separate fictional characters from historical figures",
+  "the battle of Borodino",
+  "Who is Natásha connected to?",
+  "Kutúzov"
+ ],
+ "characters": [
+  {
+   "name": "Pierre Bezúkhov",
+   "aliases": [
+    "Pierre",
+    "Bezúkhov",
+    "Count Bezúkhov"
+   ],
+   "family": "Bezúkhov",
+   "historical": false
+  },
+  {
+   "name": "Prince Andrew Bolkónski",
+   "aliases": [
+    "Prince Andrew",
+    "Andrew"
+   ],
+   "family": "Bolkónski",
+   "historical": false
+  },
+  {
+   "name": "Natásha Rostóva",
+   "aliases": [
+    "Natásha",
+    "Natasha"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Nicholas Rostóv",
+   "aliases": [
+    "Nicholas",
+    "Nikolenka"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Count Ilyá Rostóv",
+   "aliases": [
+    "Count Rostóv",
+    "the old count"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Countess Rostóva",
+   "aliases": [
+    "the countess"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Pétya Rostóv",
+   "aliases": [
+    "Pétya",
+    "Petya"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Véra Rostóva",
+   "aliases": [
+    "Véra"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Sónya",
+   "aliases": [
+    "Sonya"
+   ],
+   "family": "Rostóv",
+   "historical": false
+  },
+  {
+   "name": "Princess Mary Bolkónskaya",
+   "aliases": [
+    "Princess Mary",
+    "Mary"
+   ],
+   "family": "Bolkónski",
+   "historical": false
+  },
+  {
+   "name": "Prince Nicholas Bolkónski",
+   "aliases": [
+    "the old prince"
+   ],
+   "family": "Bolkónski",
+   "historical": false
+  },
+  {
+   "name": "Lise Bolkónskaya",
+   "aliases": [
+    "the little princess",
+    "Lise"
+   ],
+   "family": "Bolkónski",
+   "historical": false
+  },
+  {
+   "name": "Hélène Kurágina",
+   "aliases": [
+    "Hélène",
+    "Helene"
+   ],
+   "family": "Kurágin",
+   "historical": false
+  },
+  {
+   "name": "Anatole Kurágin",
+   "aliases": [
+    "Anatole"
+   ],
+   "family": "Kurágin",
+   "historical": false
+  },
+  {
+   "name": "Prince Vasíli Kurágin",
+   "aliases": [
+    "Prince Vasíli",
+    "Vasíli"
+   ],
+   "family": "Kurágin",
+   "historical": false
+  },
+  {
+   "name": "Borís Drubetskóy",
+   "aliases": [
+    "Borís",
+    "Boris"
+   ],
+   "family": "Drubetskóy",
+   "historical": false
+  },
+  {
+   "name": "Anna Pávlovna Schérer",
+   "aliases": [
+    "Anna Pávlovna"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Dólokhov",
+   "aliases": [
+    "Dolokhov"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Denísov",
+   "aliases": [
+    "Denisov"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Platón Karatáev",
+   "aliases": [
+    "Karatáev",
+    "Platón"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Napoleon",
+   "aliases": [
+    "Napoleon Bonaparte",
+    "Bonaparte"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Kutúzov",
+   "aliases": [
+    "Kutuzov"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Emperor Alexander",
+   "aliases": [
+    "Alexander",
+    "the Emperor"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Bagratión",
+   "aliases": [
+    "Bagration"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Speránski",
+   "aliases": [
+    "Speransky"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Davout",
+   "aliases": [],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Murat",
+   "aliases": [],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Barclay de Tolly",
+   "aliases": [
+    "Barclay"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Rostopchín",
+   "aliases": [
+    "Rostopchin",
+    "Count Rostopchín"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Arakchéev",
+   "aliases": [
+    "Arakcheev"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Weyrother",
+   "aliases": [],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Bennigsen",
+   "aliases": [],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Mack",
+   "aliases": [
+    "General Mack"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Dokhtúrov",
+   "aliases": [
+    "Dokhturov"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Ermólov",
+   "aliases": [
+    "Ermolov"
+   ],
+   "family": "",
+   "historical": true
+  }
+ ]
+}

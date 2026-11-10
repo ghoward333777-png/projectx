@@ -1,0 +1,136 @@
+{
+ "id": "melville-moby-dick",
+ "title": "Moby-Dick; or, The Whale",
+ "author": "Herman Melville",
+ "year": 1851,
+ "published": "1851",
+ "kind": "fiction",
+ "subject": "Adventure and literary fiction",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #2701",
+  "url": "https://www.gutenberg.org/ebooks/2701",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER \\d+\\. .*",
+   "Epilogue",
+   "ETYMOLOGY\\.",
+   "EXTRACTS\\. \\(Supplied by a Sub-Sub-Librarian\\)\\."
+  ],
+  "min_chars": 120
+ },
+ "examples": [
+  "Who is Queequeg?",
+  "Why does Ahab hunt the white whale?",
+  "the Pequod",
+  "What is ambergris?",
+  "Who survives?"
+ ],
+ "characters": [
+  {
+   "name": "Ishmael",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Captain Ahab",
+   "aliases": [
+    "Ahab"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Moby Dick",
+   "aliases": [
+    "the white whale",
+    "White Whale"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Queequeg",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Starbuck",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Stubb",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Flask",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Tashtego",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Daggoo",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Fedallah",
+   "aliases": [
+    "the Parsee"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Pip",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Father Mapple",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Captain Peleg",
+   "aliases": [
+    "Peleg"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Captain Bildad",
+   "aliases": [
+    "Bildad"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Elijah",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  }
+ ]
+}

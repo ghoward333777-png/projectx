@@ -1,0 +1,36 @@
+{
+ "id": "smith-wealth",
+ "title": "An Inquiry into the Nature and Causes of the Wealth of Nations",
+ "author": "Adam Smith",
+ "year": 1776,
+ "published": "1776",
+ "kind": "nonfiction",
+ "subject": "Economics",
+ "structure": "economic systems and causal relationships",
+ "provenance": {
+  "source": "Project Gutenberg eBook #3300",
+  "url": "https://www.gutenberg.org/ebooks/3300",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "BOOK [IVX]+\\."
+  ],
+  "chapters": [
+   "CHAPTER [IVX]+\\.?",
+   "INTRODUCTION AND PLAN OF THE WORK\\."
+  ],
+  "title_line": true,
+  "min_chars": 300
+ },
+ "examples": [
+  "What is the division of labour?",
+  "pin factory",
+  "What determines the price of labour?",
+  "the invisible hand",
+  "What does Smith say about colonies?"
+ ],
+ "characters": []
+}

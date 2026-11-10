@@ -1,0 +1,130 @@
+{
+ "id": "douglass-narrative",
+ "title": "Narrative of the Life of Frederick Douglass, an American Slave",
+ "author": "Frederick Douglass",
+ "year": 1845,
+ "published": "1845",
+ "kind": "nonfiction",
+ "subject": "Autobiography and American history",
+ "structure": "firsthand historical testimony",
+ "provenance": {
+  "source": "Project Gutenberg eBook #23",
+  "url": "https://www.gutenberg.org/ebooks/23",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "CHAPTER [IVXL]+",
+   "PREFACE",
+   "LETTER FROM WENDELL PHILLIPS, ESQ\\.",
+   "APPENDIX"
+  ],
+  "min_chars": 300,
+  "editorial": [
+   "Preface",
+   "Letter From Wendell Phillips, Esq"
+  ]
+ },
+ "examples": [
+  "How did Douglass learn to read?",
+  "Mr. Covey",
+  "When did he escape?",
+  "Baltimore",
+  "What does he say about religion?"
+ ],
+ "characters": [
+  {
+   "name": "Frederick Douglass",
+   "aliases": [
+    "Frederick",
+    "Douglass"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Hugh Auld",
+   "aliases": [
+    "Master Hugh"
+   ],
+   "family": "Auld",
+   "historical": true
+  },
+  {
+   "name": "Sophia Auld",
+   "aliases": [
+    "Mrs. Auld"
+   ],
+   "family": "Auld",
+   "historical": true
+  },
+  {
+   "name": "Thomas Auld",
+   "aliases": [
+    "Captain Auld",
+    "Master Thomas"
+   ],
+   "family": "Auld",
+   "historical": true
+  },
+  {
+   "name": "Edward Covey",
+   "aliases": [
+    "Mr. Covey",
+    "Covey"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "William Freeland",
+   "aliases": [
+    "Mr. Freeland"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Captain Anthony",
+   "aliases": [
+    "Captain Aaron Anthony"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Colonel Lloyd",
+   "aliases": [
+    "Colonel Edward Lloyd"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Austin Gore",
+   "aliases": [
+    "Mr. Gore"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Anna Murray",
+   "aliases": [
+    "Anna"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "David Ruggles",
+   "aliases": [
+    "Mr. Ruggles"
+   ],
+   "family": "",
+   "historical": true
+  }
+ ]
+}

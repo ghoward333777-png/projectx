@@ -1,0 +1,176 @@
+{
+ "id": "austen-pride",
+ "title": "Pride and Prejudice",
+ "author": "Jane Austen",
+ "year": 1813,
+ "published": "1813",
+ "kind": "fiction",
+ "subject": "Social and romantic novel",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #1342",
+  "url": "https://www.gutenberg.org/ebooks/1342",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "chapters": [
+   "(?i)chapter [ivxlc]+\\.?\\]?"
+  ],
+  "min_chars": 300
+ },
+ "examples": [
+  "Who is Mr. Darcy connected to?",
+  "Trace the Bennet family",
+  "Where does Elizabeth first meet Darcy?",
+  "Mr. Wickham",
+  "Lady Catherine"
+ ],
+ "characters": [
+  {
+   "name": "Elizabeth Bennet",
+   "aliases": [
+    "Elizabeth",
+    "Lizzy",
+    "Eliza",
+    "Miss Elizabeth"
+   ],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Fitzwilliam Darcy",
+   "aliases": [
+    "Mr. Darcy",
+    "Darcy"
+   ],
+   "family": "Darcy",
+   "historical": false
+  },
+  {
+   "name": "Jane Bennet",
+   "aliases": [
+    "Jane",
+    "Miss Bennet"
+   ],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Charles Bingley",
+   "aliases": [
+    "Mr. Bingley",
+    "Bingley"
+   ],
+   "family": "Bingley",
+   "historical": false
+  },
+  {
+   "name": "Mr. Bennet",
+   "aliases": [],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Mrs. Bennet",
+   "aliases": [],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Lydia Bennet",
+   "aliases": [
+    "Lydia"
+   ],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Kitty Bennet",
+   "aliases": [
+    "Kitty",
+    "Catherine"
+   ],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "Mary Bennet",
+   "aliases": [
+    "Mary"
+   ],
+   "family": "Bennet",
+   "historical": false
+  },
+  {
+   "name": "George Wickham",
+   "aliases": [
+    "Mr. Wickham",
+    "Wickham"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "William Collins",
+   "aliases": [
+    "Mr. Collins",
+    "Collins"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Charlotte Lucas",
+   "aliases": [
+    "Charlotte"
+   ],
+   "family": "Lucas",
+   "historical": false
+  },
+  {
+   "name": "Lady Catherine de Bourgh",
+   "aliases": [
+    "Lady Catherine"
+   ],
+   "family": "de Bourgh",
+   "historical": false
+  },
+  {
+   "name": "Caroline Bingley",
+   "aliases": [
+    "Miss Bingley"
+   ],
+   "family": "Bingley",
+   "historical": false
+  },
+  {
+   "name": "Georgiana Darcy",
+   "aliases": [
+    "Georgiana",
+    "Miss Darcy"
+   ],
+   "family": "Darcy",
+   "historical": false
+  },
+  {
+   "name": "Mr. Gardiner",
+   "aliases": [],
+   "family": "Gardiner",
+   "historical": false
+  },
+  {
+   "name": "Mrs. Gardiner",
+   "aliases": [],
+   "family": "Gardiner",
+   "historical": false
+  },
+  {
+   "name": "Colonel Fitzwilliam",
+   "aliases": [],
+   "family": "Darcy",
+   "historical": false
+  }
+ ]
+}

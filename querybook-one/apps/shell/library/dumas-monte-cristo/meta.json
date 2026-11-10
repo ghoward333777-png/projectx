@@ -1,0 +1,178 @@
+{
+ "id": "dumas-monte-cristo",
+ "title": "The Count of Monte Cristo",
+ "author": "Alexandre Dumas (with Auguste Maquet)",
+ "year": 1844,
+ "published": "1844–1846",
+ "kind": "fiction",
+ "subject": "Adventure and revenge novel",
+ "structure": "narrative: characters, places, events, chronology",
+ "provenance": {
+  "source": "Project Gutenberg eBook #1184",
+  "url": "https://www.gutenberg.org/ebooks/1184",
+  "fetched": "2026-11-10",
+  "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed); copyright status outside the USA can differ. Not endorsed by Project Gutenberg."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "VOLUME [A-Z]+"
+  ],
+  "chapters": [
+   "Chapter \\d+\\. .*"
+  ],
+  "min_chars": 300
+ },
+ "examples": [
+  "What names does Edmond Dantès use?",
+  "Who betrayed Dantès?",
+  "Abbé Faria",
+  "the treasure",
+  "Mercédès"
+ ],
+ "characters": [
+  {
+   "name": "Edmond Dantès",
+   "aliases": [
+    "Dantès",
+    "Edmond",
+    "Count of Monte Cristo",
+    "the count",
+    "Sinbad the Sailor",
+    "Abbé Busoni",
+    "Lord Wilmore"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Mercédès",
+   "aliases": [
+    "Mercédès Mondego",
+    "Madame de Morcerf"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Fernand Mondego",
+   "aliases": [
+    "Fernand",
+    "Count de Morcerf",
+    "Morcerf"
+   ],
+   "family": "Morcerf",
+   "historical": false
+  },
+  {
+   "name": "Danglars",
+   "aliases": [
+    "Baron Danglars"
+   ],
+   "family": "Danglars",
+   "historical": false
+  },
+  {
+   "name": "Gérard de Villefort",
+   "aliases": [
+    "Villefort",
+    "M. de Villefort"
+   ],
+   "family": "Villefort",
+   "historical": false
+  },
+  {
+   "name": "Gaspard Caderousse",
+   "aliases": [
+    "Caderousse"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Abbé Faria",
+   "aliases": [
+    "Faria",
+    "the abbé"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Albert de Morcerf",
+   "aliases": [
+    "Albert"
+   ],
+   "family": "Morcerf",
+   "historical": false
+  },
+  {
+   "name": "Maximilian Morrel",
+   "aliases": [
+    "Maximilian"
+   ],
+   "family": "Morrel",
+   "historical": false
+  },
+  {
+   "name": "Pierre Morrel",
+   "aliases": [
+    "M. Morrel"
+   ],
+   "family": "Morrel",
+   "historical": false
+  },
+  {
+   "name": "Haydée",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Valentine de Villefort",
+   "aliases": [
+    "Valentine"
+   ],
+   "family": "Villefort",
+   "historical": false
+  },
+  {
+   "name": "Bertuccio",
+   "aliases": [],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Benedetto",
+   "aliases": [
+    "Andrea Cavalcanti",
+    "Andrea"
+   ],
+   "family": "",
+   "historical": false
+  },
+  {
+   "name": "Louis Dantès",
+   "aliases": [
+    "old Dantès"
+   ],
+   "family": "Dantès",
+   "historical": false
+  },
+  {
+   "name": "Napoleon",
+   "aliases": [
+    "Bonaparte",
+    "Napoleon Bonaparte"
+   ],
+   "family": "",
+   "historical": true
+  },
+  {
+   "name": "Louis XVIII",
+   "aliases": [],
+   "family": "",
+   "historical": true
+  }
+ ]
+}

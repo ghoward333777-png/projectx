@@ -11,6 +11,7 @@ import re
 
 # --------------------------------------------------------------------------- the catalogue shown on the Ask page
 INPUTS: list[dict] = [
+    {"id": "book", "name": "📚 Book Query", "features": [1, 362, 252], "about": "Ask one book from the sample library: answers quoted from the book with chapter and paragraph, and its claims set beside what is known today."},
     {"id": "type", "name": "Type", "features": [1, 362], "about": "Type a question, a word, a name or a calculation."},
     {"id": "speak", "name": "Speak", "features": [167, 96], "about": "Say the question; the microphone is used only while you hold the button."},
     {"id": "camera", "name": "Live camera", "features": [105, 166], "about": "Point the camera at things; QueryBook names what it sees and answers about it."},
