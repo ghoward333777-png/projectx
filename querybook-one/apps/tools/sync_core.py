@@ -11,38 +11,6 @@ APPS = ["language", "stem", "facts", "control", "video"]
 FILES = [("qbcore.py", "qbcore.py"), ("qbdrive.py", "qbdrive.py"), ("qbtrace.py", "qbtrace.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("qbengineer.py", "qbengineer.py"), ("qbcontrol.py", "qbcontrol.py"), ("qbselfknow.py", "qbselfknow.py"), ("qbexemplar.py", "qbexemplar.py"), ("qbcampaign.py", "qbcampaign.py"), ("qbbulk.py", "qbbulk.py"), ("qbscaffold.py", "qbscaffold.py"), ("qbapidoc.py", "qbapidoc.py"), ("qbconnections.py", "qbconnections.py"), ("qbgather.py", "qbgather.py"), ("qbkeystone.py", "qbkeystone.py"), ("gcloud.py", "gcloud.py"), ("qbusage.py", "qbusage.py"), ("qbdump.py", "qbdump.py"), ("qbdsn.py", "qbdsn.py"), ("qbsynapse.py", "qbsynapse.py"), ("qbmath.py", "qbmath.py"), ("qbseal.py", "qbseal.py"), ("qbfarm.py", "qbfarm.py"), ("qbvault.py", "qbvault.py"), ("bookq.py", "bookq.py"), ("qbbooks.py", "qbbooks.py"), ("qbcompose.py", "qbcompose.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
          (os.path.join("ui", "qb.js"), os.path.join("ui", "qb.js"))]
 
-def write_graphifyignore():
-    """Graphify (the code knowledge graph, graphify-out/) indexes each file once: the synced copies of the core in every
-    application and the shell, and bulk data (book texts, vendored libraries, bundles), are left out — regenerated here
-    so the list follows FILES."""
-    repo = os.path.dirname(os.path.dirname(ROOT))
-    path = os.path.join(repo, ".graphifyignore")
-    head = ["# Graphify ignore list (gitignore syntax). The block between the markers is written by",
-            "# querybook-one/apps/tools/sync_core.py; edit the lines above or below it by hand.", ""]
-    try:
-        with open(path, encoding="utf-8") as f:
-            old = f.read().split("\n")
-    except OSError:
-        old = head + ["# bulk data and generated output",
-                      "querybook-one/downloads/", "querybook-one/dist/", "**/vendor/", "**/translate/packs/", "**/library/**/*.gz",
-                      "**/avatars_starter/", "**/.lake/", "**/target/", "**/node_modules/", "graphify-out/cache/", "*.min.js", "*.wasm", "*.dll", ""]
-    start, end = "# >>> synced copies (sync_core.py)", "# <<< synced copies"
-    block = [start]
-    for app in APPS:
-        for src, dst in FILES:
-            block.append("querybook-one/apps/%s/%s" % (app, dst.replace(os.sep, "/")))
-        if app == "video":
-            block += ["querybook-one/apps/video/%s" % t for t in ("hybrid_video.py", "qbframes.py", "reuse_bench.py", "generate_exemplars.py")]
-    block += ["querybook-one/apps/shell/%s" % f for f in ("bookq.py", "qbcompose.py", "qbbooks.py")]
-    block.append(end)
-    if start in old and end in old:
-        lines = old[:old.index(start)] + block + old[old.index(end) + 1:]
-    else:
-        lines = old + [""] + block + [""]
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines).rstrip("\n") + "\n")
-
-
 if __name__ == "__main__":
     for app in APPS:
         d = os.path.join(ROOT, app)
@@ -66,4 +34,3 @@ if __name__ == "__main__":
             shutil.copyfile(src, os.path.join(v964, dst))
         shutil.copytree(os.path.join(ROOT, "tools", "plans"), os.path.join(v964, "plans"), dirs_exist_ok=True)
         print("synced QueryBook-v9.64")
-    write_graphifyignore()

@@ -1,5 +1,5 @@
 # Graphify ignore list (gitignore syntax). The block between the markers is written by
-# querybook-one/apps/tools/sync_core.py; edit the lines above or below it by hand.
+# .claude/graphify/ignore.py (Claude Code sessions only; from sync_core.py FILES); edit the lines above or below it by hand.
 
 # bulk data and generated output
 querybook-one/downloads/
@@ -17,7 +17,7 @@ graphify-out/cache/
 *.dll
 
 
-# >>> synced copies (sync_core.py)
+# >>> synced copies (.claude/graphify/ignore.py)
 querybook-one/apps/language/qbcore.py
 querybook-one/apps/language/qbdrive.py
 querybook-one/apps/language/qbtrace.py

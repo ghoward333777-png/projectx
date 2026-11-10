@@ -137,7 +137,8 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 
 ## graphify
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships
+(every function, class, route and file, with what calls what). The session-start hook builds it automatically.
 
 Rules:
 - When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
@@ -150,4 +151,8 @@ Rules:
   graph.html, and .graphify_labels.json — the cluster names, written by hand; when clusters change, name the new ones
   there ("QB1 …" QueryBook one, "QB Next …", "Book Studio …") and rerun `graphify cluster-only .`.
 - The synced copies of the QueryBook core and bulk data are left out by .graphifyignore, which
-  querybook-one/apps/tools/sync_core.py regenerates — edit FILES there, not the ignore list.
+  `.claude/graphify/ignore.py` regenerates from sync_core.py's FILES (read only).
+- **Graphify is a Claude Code session tool only — the user's decision.** Never put it in the QueryBook prototype: no
+  graphify code, calls or files under `querybook-one/apps`, `querybook-next`, the bundle or QueryBook.zip. Everything
+  for it lives in `.claude/` (skill, hooks, `graphify/session-start.sh`, which installs it and builds the graph at
+  session start) and `graphify-out/`.

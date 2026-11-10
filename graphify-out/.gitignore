@@ -9,3 +9,5 @@ manifest.json
 .graphify_python
 memory/
 reflections/
+.graphify_build_state.json
+.graphify_labels.pending.json
