@@ -2603,6 +2603,18 @@ class Supervisor:
         self.res_dir = os.path.join(commons_folder, FOLDER, "_results")
         os.makedirs(self.res_dir, exist_ok=True)
 
+    def farmed(self, now=None):
+        """dataset → machine for every active farm-out assignment, read again at most once a minute"""
+        now = now or time.time()
+        if now - getattr(self, "_farm_at", 0) > 60:
+            self._farm_at = now
+            try:
+                import qbfarm
+                self._farm = qbfarm.farmed_out(self.cf)
+            except Exception:
+                self._farm = getattr(self, "_farm", {})
+        return getattr(self, "_farm", {})
+
     def note(self, what, key, **kw):
         e = dict(kw, what=what, dataset=key, at=time.time())
         self.events.append(e)
@@ -2670,8 +2682,14 @@ class Supervisor:
                 self.kill(pr.pid)
                 pr.join(10)
                 self._finish(key, None, why + " — ended and restarted where it stopped")
+        farmed = self.farmed(now)                    # 1.35: datasets given to another PC (Control Panel → Farm out)
+        for key in [k for k in self.running if k in farmed]:
+            info = self.running[key]
+            self.kill(info["proc"].pid)
+            info["proc"].join(10)
+            self._finish(key, None, "farmed out to %s — that computer harvests it now (the facts so far are kept)" % farmed[key])
         free = self.agents - len(self.running)
-        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running), key=lambda k: self.keys.index(k)):
+        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running and k not in farmed), key=lambda k: self.keys.index(k)):
             if free <= 0:
                 break
             self.launch(key)
@@ -2868,6 +2886,11 @@ def status(commons_folder, commons=None):
     """every dataset: approval, state, facts, rows per part, rate, size; the runner's heartbeat"""
     out, folder = [], os.path.join(commons_folder, FOLDER)
     now = time.time()
+    try:                                              # 1.35: datasets farmed out to other PCs (shown as such)
+        import qbfarm
+        _FARMED[commons_folder] = qbfarm.farmed_out(commons_folder)
+    except Exception:
+        _FARMED[commons_folder] = {}
     for key, ds in catalog().items():
         approved, why = True, ""
         if ds.source and commons is not None:
@@ -2937,6 +2960,9 @@ def status(commons_folder, commons=None):
         # filed and skipped — a re-read of the dump on a store of a billion showed 1,004 M, then 1,001 M. Never again:
         # gathered only counts facts that will be kept.
         row["gathered"] = (row["facts"] or 0) + min(row.get("staged_new") or 0, row.get("staged") or 0)
+        fo = _FARMED.get(commons_folder, {}).get(key)
+        if fo:
+            row["farmed_out"] = fo                         # given to another PC: this server does not harvest it
         # 1.35: a dataset changing hands (its agent paused and restarted, its working copy moving between C: and D:) can
         # be unreadable or absent for a moment; it then read as "not started", 0 facts, and the total dipped by millions
         # for one look (Windows, 25-minute test: 56.3 M -> 52.8 M -> 57.8 M). The facts were never gone: show the last
@@ -3023,7 +3049,8 @@ def download_status(commons_folder, commons=None):
 
 
 _LAST_COUNT = {}
-_LAST_GATHERED = {}                # 1.35: the last full count of each dataset, shown while it changes hands
+_LAST_GATHERED = {}
+_FARMED = {}                # 1.35: the last full count of each dataset, shown while it changes hands
 _LAST_DUPS = {}
 _SAVED = {}
 
@@ -4653,6 +4680,22 @@ def _supervisor_tests():
         ok("1.35 supervisor: …but waiting 6 hours without any progress at all is ended and restarted, with the reason",
            endf and "6 h without any progress" in endf[0]["why"] and "filing" in endf[0]["why"], endf)
         sup2.stop_all(grace=0)
+        # 1.35: a dataset farmed out to another PC is not harvested here (and is handed over if it was running)
+        import qbfarm
+        script["g"] = "work"
+        sup3 = Supervisor(cf, ["g"], 1, mp=MP, kill=kill)
+        sup3.check(CLOCK[0])
+        was = "g" in sup3.running
+        qbfarm.assign(cf, "LAB-PC-2", "", "windows", ["g"], ["g"])
+        CLOCK[0] += 61
+        sup3.check(CLOCK[0])
+        CLOCK[0] += 400
+        sup3.check(CLOCK[0])
+        endg = [e for e in sup3.events if e["what"] == "ended" and e["dataset"] == "g"]
+        ok("1.35 supervisor: a dataset farmed out to another PC is handed over (ended here, facts kept) and not started again",
+           was and "g" not in sup3.running and endg and "farmed out to LAB-PC-2" in endg[0]["why"]
+           and sum(1 for e in sup3.events if e["what"] == "started" and e["dataset"] == "g") == 1, sup3.events[-3:])
+        sup3.stop_all(grace=0)
         ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
            next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
         # re-routes between the internal drive (working copies) and the data drive

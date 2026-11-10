@@ -110,6 +110,40 @@ jobs:
           Stop-Process -Id $p.Id -Force
           exit $code
 
+  windows-farm:
+    # Farm out, as the user would: QueryBook.zip on the server, a dataset given to this PC by name and IP, its Windows
+    # harvester downloaded (Python inside) and started with only that Python, sealed facts backed up to a "drive",
+    # imported on the server — every count checked, and no fact text in a sealed file.
+    name: Farm-out harvester on Windows (QueryBook.zip -> harvester -> drive -> import)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build and unzip QueryBook.zip
+        run: |
+          python querybook-one/tools/build_bundle.py
+          Expand-Archive querybook-one/dist/QueryBook.zip -DestinationPath $env:RUNNER_TEMP\user
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\QB" | Out-Null
+          Set-Content -Path "$env:RUNNER_TEMP\user\QueryBook\data-folder.txt" -Value "$env:RUNNER_TEMP\QB"
+      - name: Server, harvester, drive, import
+        run: |
+          $app = "$env:RUNNER_TEMP\user\QueryBook"
+          $p = Start-Process -FilePath "$app\python\python.exe" -ArgumentList @("-X", "utf8", "$app\QueryBook-Shell\shell.py", "--no-browser") -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\shell.log" -RedirectStandardError "$env:RUNNER_TEMP\shell.err"
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 3
+            try { $s = Invoke-RestMethod http://127.0.0.1:8090/api/shell/status; if (($s.programs | Where-Object { $_.state -ne "running" }).Count -eq 0) { break } } catch { }
+          }
+          python querybook-one/tools/farm_e2e.py --panel http://127.0.0.1:8100 --work "$env:RUNNER_TEMP\farm" --dataset calendar-scaffold --os windows
+          $code = $LASTEXITCODE
+          if ($code -ne 0 -and (Test-Path "$env:RUNNER_TEMP\farm\harvester.log")) { Get-Content "$env:RUNNER_TEMP\farm\harvester.log" -Tail 40 }
+          Stop-Process -Id $p.Id -Force
+          exit $code
+
   rust:
     name: Rust port (matches the Python exactly)
     runs-on: ubuntu-latest

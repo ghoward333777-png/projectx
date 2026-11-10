@@ -43,7 +43,13 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
 
   Server side: `language/labtext.py` and `/api/lablang/*`.
 - Speech: voice options (whisper, female, croak, grandpa) now apply to every language. British voices used to drop them. The female whisper is espeak-ng's `whisperf`. Breathy whispers are recognised on every espeak-ng version. `tools/speech_probe.py` tabulates what changes the outcome on each system.
-- The Control Panel's tabs can be opened by link (`#bulk`, `#facts`), so the window's areas land on the right tab.
+- **Farm out** (Control Panel → Farm out, `#farm`): give datasets or Wikidata lanes to another Windows PC or Mac, by computer name and IP address.
+  - **No duplicate work:** each dataset goes to one machine only, and this server's harvester skips it.
+  - **The harvester:** download a ready-to-run zip. It carries Python inside on Windows, and uses python3 on a Mac. It runs the same bulk engine, refuses to run on another machine or IP address, and seals what it gathers to the server's public key.
+  - **What the harvester's user sees:** only a tally of record types and counts. **Back up to drive** copies the sealed files to an external drive.
+  - **Import:** **Import from a drive** opens the files with the server's private key, checks each one against its assignment, and adds the facts without duplicates.
+  - **Code:** `_core/qbseal.py` (X25519 and an encrypt-then-MAC box, standard library only, RFC 7748 vectors) and `_core/qbfarm.py`. The end-to-end check is `tools/farm_e2e.py`.
+- The Control Panel's tabs can be opened by link (`#bulk`, `#facts`, `#farm`), so the window's areas land on the right tab. The Control Panel's own tab code used to ignore the link.
 - Language Builder falls back to the whole of Webster's 1913 for words outside its 5,052 common words. It holds 101,080 headwords and is built by `apps/tools/build_webster_full.py` from Project Gutenberg #29765; "obsequious" now has a meaning.
 - `qbsynapse` and `qbdsn` compute through `qbmath.py`. The results are identical and their self-tests pass.
 - The test runner works on Windows: it uses UTF-8 output, and test temporary folders tolerate files Windows still has open. This applies to test runs only.

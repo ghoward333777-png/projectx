@@ -38,6 +38,7 @@ import qbselfknow
 import qbexemplar
 import qbcampaign
 import qbbulk
+import qbfarm
 import qbapidoc
 import qbconnections
 import qbgather
@@ -93,6 +94,7 @@ class Panel:
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
         self.api.own_folder = self.folder                # so "why so slow?" can check that all four programs share one Commons
         qbbulk.add_routes(self.api, self.commons, HERE)
+        qbfarm.add_routes(self.api, self.commons, HERE)     # farm out: another PC harvests datasets this one does not (/api/farm)
         qbconnections.add_routes(self.api, self.commons)
         qbconnections.add_google_setup(self.api, self.commons, HERE, self.folder)   # one-click Google setup (/api/google/setup)
         qbconnections.add_registration(self.api, self.commons, HERE, self.folder)  # API registration: sign-up links, keys, checks (/api/registration)

@@ -6,9 +6,13 @@ const level = l => l === "error" ? "bad" : l === "warn" ? "warn" : "good";
 
 function tabs() {
   const show = id => { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id)); $$("section.panel").forEach(s => s.classList.toggle("active", s.id === id));
-    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); } if (id === "apis") loadApis().catch(e => toast(e.message)); };
+    try { localStorage.setItem("qb-control-tab", id); } catch (e) { } if (id === "audit") loadAudit(); if (id === "self") loadSelf().catch(e => toast(e.message)); if (id === "exemplars") loadExemplars().catch(e => toast(e.message)); if (id === "bulk") { loadBulk().catch(e => toast(e.message)); loadGather().catch(e => toast(e.message)); loadKeystones().catch(e => toast(e.message)); } if (id === "apis") loadApis().catch(e => toast(e.message)); if (id === "farm" && window.loadFarm) loadFarm().catch(e => toast(e.message)); };
   $$("nav.tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
   let t = "overview"; try { t = localStorage.getItem("qb-control-tab") || t; } catch (e) { }
+  // the one window opens a tab by link (#bulk, #farm, #facts, #audit, #diag): it wins over the last tab used
+  const fromHash = () => { const h = (location.hash || "").slice(1); return h && $("#" + h) && $$("nav.tabs button").some(b => b.dataset.tab === h) ? h : null; };
+  window.addEventListener("hashchange", () => { const h = fromHash(); if (h) show(h); });
+  t = fromHash() || t;
   show($("#" + t) ? t : "overview");
 }
 
