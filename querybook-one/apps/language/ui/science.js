@@ -163,14 +163,43 @@ async function scMeasure() {
   finally { buttonEnd(btn, ok); $("#sc-prog").style.width = ok ? "100%" : "0"; }
 }
 
-// a talking clip made on Speech → Talking clips (Gemini or HeyGen) is measured exactly like a person on video
-async function scClip(id) {
-  const c = await api("/api/talk/clip?id=" + encodeURIComponent(id));
-  const blob = await (await fetch("/api/talk/video?id=" + encodeURIComponent(id))).blob();
-  scLoad(new File([blob], "talking-clip-" + id + ".mp4", { type: "video/mp4" }));
-  SCI.kind = "talking clip:" + (c.route || "video model");
-  if (!$("#sc-script").value.trim()) $("#sc-script").value = c.line;
-  if (c.lang && $("#sc-lang").querySelector('option[value="' + c.lang + '"]')) $("#sc-lang").value = c.lang;
+// an avatar says the text; its own canvas is recorded with the sound, then measured exactly like a person on video
+async function scAvatar() {
+  const btn = $("#sc-avatar"); buttonStart(btn); let ok = false;
+  try {
+    const text = $("#sc-script").value.trim();
+    if (!text) throw new Error("Type the script the avatar should say.");
+    const list = (await api("/api/avatars/list")).avatars.filter(a => a.analysed && !a.hidden);
+    const want = +$("#sc-av").value, av = list.find(a => a.id === want) || list[0];
+    if (!av) throw new Error("No analysed avatar.");
+    $("#sc-state").textContent = av.name + " is speaking the script…";
+    const r = await api("/api/avatars/speak", { id: av.id, text, profile: { emotion: $("#sc-l-emotion").value || undefined, lang: $("#sc-lang").value } });
+    const res = await avWaitJob(r.job.job_id, m => { $("#sc-state").textContent = "Face motion: " + m; });
+    const full = await api("/api/avatars/get?id=" + av.id), stage = $("#sc-stage"); stage.innerHTML = ""; stage.hidden = false;
+    const f = new DepthFace(stage, { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: full.landmarks, label: full.label, body: full.kind === "body" });
+    await f.ready;
+    const audio = new Audio("/api/speech/audio?name=" + encodeURIComponent(r.audio)); audio.preload = "auto";
+    await new Promise((y, n) => { audio.oncanplaythrough = y; audio.onerror = () => n(new Error("the speech could not be loaded")); audio.load(); });
+    const ac = new (window.AudioContext || window.webkitAudioContext)(), src = ac.createMediaElementSource(audio), dest = ac.createMediaStreamDestination();
+    src.connect(dest); src.connect(ac.destination);
+    const stream = new MediaStream([...f.cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+    const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(m => MediaRecorder.isTypeSupported(m));
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4000000 }), chunks = [];
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    const track = { visemes: [], motion: res.motion, mouth: res.mouth };
+    let raf; const loop = () => { f.frame(track, audio.currentTime); raf = requestAnimationFrame(loop); };
+    rec.start(250); loop(); await new Promise(y => setTimeout(y, 300));
+    $("#sc-state").textContent = "Recording the avatar's own picture and sound…";
+    await ac.resume(); await audio.play();
+    await new Promise(y => { audio.onended = y; setTimeout(y, (audio.duration || 30) * 1000 + 3000); });   // never waits forever
+    await new Promise(y => setTimeout(y, 400)); await new Promise(y => { rec.onstop = y; rec.stop(); });
+    cancelAnimationFrame(raf); ac.close();
+    SCI.blob = new Blob(chunks, { type: "video/webm" }); SCI.kind = "avatar:" + av.name;
+    const v = $("#sc-video"); v.src = URL.createObjectURL(SCI.blob); v.hidden = false;
+    $("#sc-read").disabled = $("#sc-measure").disabled = false;
+    ok = true; buttonEnd(btn, ok);
+    await scMeasure();
+  } catch (e) { $("#sc-out").innerHTML = '<div class="note bad">' + esc(e.message) + "</div>"; buttonEnd(btn, false); }
 }
 
 // ---- 4. the corpus and group comparisons
@@ -180,7 +209,7 @@ async function scList() {
     r.deliveries.map(d => '<tr data-id="' + d.id + '"><td>' + d.id + "</td><td>" + esc(d.at.replace("T", " ")) + "</td><td>" + esc((d.text || "").slice(0, 40)) + "</td><td>" + esc(d.result) + "</td><td>" + (d.DI || 0).toFixed(0) +
       "</td>" + ["speaker", "role", "dialect", "accent", "emotion"].map(k => '<td><input data-k="' + k + '" value="' + esc(d.labels[k] || "") + '" style="width:6.5em"></td>').join("") +
       '<td><button class="btn quiet small" data-scsave>Save</button> <button class="btn quiet small" data-scview>View</button> <button class="btn quiet small" data-scdel>✕</button></td></tr>').join("") + "</table>"
-    : '<p class="muted small">No measured deliveries yet. Measure a video or a talking clip above; each one is kept here with its labels.</p>';
+    : '<p class="muted small">No measured deliveries yet. Measure a video or an avatar above; each one is kept here with its labels.</p>';
   $$("#sc-list [data-scsave]").forEach(b => b.onclick = async () => { const tr = b.closest("tr"), lab = {};
     tr.querySelectorAll("input[data-k]").forEach(i => { lab[i.dataset.k] = i.value.trim(); });
     const keep = (SCI.rows.find(x => x.id === +tr.dataset.id) || {}).labels || {};
@@ -212,10 +241,10 @@ function scWire(el) {
 }
 async function scProtocol() { const p = await api("/api/science/protocol"); $("#sc-repview").innerHTML = scMd(p.methods); }
 
-async function scAvatars() {           // (name kept for the tab hook) the talking clips that can be measured
-  try { const l = (await api("/api/talk/list")).clips.filter(c => c.status === "done");
-    $("#sc-clip").innerHTML = '<option value="">a talking clip…</option>' + l.map(c => '<option value="' + c.id + '">' + esc((c.face ? c.face + ": " : "") + c.line.slice(0, 50)) +
-      " (" + esc(c.route || "") + ")</option>").join(""); } catch (e) { /* none */ }
+async function scAvatars() {
+  if (SCI.avs) return; SCI.avs = true;
+  try { const l = (await api("/api/avatars/list")).avatars.filter(a => a.analysed && !a.hidden);
+    $("#sc-av").innerHTML = l.map(a => '<option value="' + a.id + '">' + esc(a.name) + "</option>").join(""); } catch (e) { /* none */ }
 }
 function scSetup() {
   const b = document.querySelector('nav.tabs button[data-tab="science"]');
@@ -225,7 +254,7 @@ function scSetup() {
   $("#sc-file").onchange = e => { if (e.target.files[0]) scLoad(e.target.files[0]); };
   $("#sc-read").onclick = () => scRead();
   $("#sc-measure").onclick = () => scMeasure();
-  $("#sc-clip").onchange = e => { if (e.target.value) scClip(e.target.value).catch(x => toast(x.message, true)); };
+  $("#sc-avatar").onclick = () => scAvatar();
   $("#sc-cmpgo").onclick = () => scCompare();
   $("#sc-proto").onclick = () => scProtocol().catch(e => toast(e.message, true));
   try { if (localStorage.getItem(document.title + ":tab") === "science") { scInit(); scAvatars(); } } catch (e) { /* ignore */ }

@@ -1,8 +1,16 @@
 "use strict";
-// Photo Real Lab: author personas (with consent), the perfect reference sample, narration videos made by Gemini, HeyGen
-// or D-ID (1.52: no face is animated in this browser), measurement against the author's own mouth model, the gate, the graph.
+// Photo Real Lab: author personas (with consent), the perfect reference sample, narration by any face method,
+// measurement against the author's own mouth model, the release gate, closed-loop calibration, and the graph.
 const PR = { meta: null, sel: null, persona: null, photo: null, sample: null, narr: null, rec: false, refRec: false };
 const PR_VIS = ["PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U"];
+
+// what the face is made from: the real-mouth library when there is one, else the photo
+function prFaceSource(p, id) {
+  p = p || PR.persona; id = id || PR.sel;
+  const lib = (p.reference || {}).library;
+  return { photoUrl: "/api/persona/photo?id=" + id, landmarks: p.landmarks, library: lib && lib.rest ? lib : null,
+    libUrl: v => "/api/persona/lib?id=" + id + "&v=" + encodeURIComponent(v) };
+}
 
 async function landmarksOf(canvas) {
   const lm = await tracker();
@@ -59,14 +67,13 @@ async function prSelect(id, quiet) {
   $("#pr-detail").hidden = false;
   $("#pr-title").textContent = p.name + " — AI narrator";
   $("#pr-voice").value = (p.voice || {}).method || "offline";
-  const fm0 = PR.meta.face_methods[(p.face || {}).method] ? p.face.method : "gemini";
-  $("#pr-face").value = fm0; $("#pr-nface").value = fm0;
+  $("#pr-face").value = (p.face || {}).method || "photo"; $("#pr-nface").value = (p.face || {}).method || "photo";
   $("#pr-voice-now").innerHTML = "Now: <b>" + esc(PR.meta.voice_methods[(p.voice || {}).method] || "") + "</b>" + ((p.voice || {}).matched === false ? " (closest match kept)" : "");
   $("#pr-face-now").innerHTML = "Now: <b>" + esc(PR.meta.face_methods[(p.face || {}).method] || "") + "</b>" +
-    (p.photo_check && p.photo_check.length ? '<br><span class="bad-t">Photo: ' + esc(p.photo_check.join("; ")) + ".</span>" : "");
+    (p.photo_check && p.photo_check.length ? '<br><span class="bad-t">Photo: ' + esc(p.photo_check.join("; ")) + ". The real-mouth library from the perfect sample avoids this.</span>" : "");
   prFaceOpts();
   prShowReference(p.reference);
-  if (!quiet) { $("#pr-score").innerHTML = ""; $("#pr-stage").innerHTML = ""; $("#pr-player").innerHTML = ""; $("#pr-measure").disabled = true; }
+  if (!quiet) { $("#pr-score").innerHTML = ""; $("#pr-stage").innerHTML = ""; $("#pr-player").innerHTML = ""; $("#pr-measure").disabled = true; $("#pr-calibrate").disabled = true; }
   prFindings();
 }
 
@@ -76,17 +83,22 @@ function prFaceOpts() {
   if (m === "heygen" || m === "did") {
     h = '<div class="row"><input id="pr-key" type="password" placeholder="' + (m === "heygen" ? "HeyGen" : "D-ID") + ' API key' + (keys[m] ? " (saved — type to replace)" : "") + '"><button class="btn small" id="pr-key-save">Save key</button></div>' +
       '<span class="muted">The photo and the narration audio are sent to ' + (m === "heygen" ? "HeyGen" : "D-ID") + " to make each video.</span>";
-  } else if (m === "gemini") h = '<span class="muted">Gemini performs the line from the author\'s photo (face, lips and its own voice), with the instructions that made the October 29 answer videos. ' +
-      (keys.google_gemini ? "" : "No Gemini key yet — add it on Speech → Voice providers. ") + "When Gemini cannot, HeyGen makes it with the persona's voice.</span>";
+  } else if (m === "local") {
+    h = '<div class="row"><select id="pr-preset"><option value="wav2lip">Wav2Lip</option><option value="sadtalker">SadTalker</option><option value="">my own command</option></select>' +
+      '<input id="pr-repo" type="text" placeholder="Folder where the model is installed" value="' + esc(f.repo || "") + '"></div>' +
+      '<input id="pr-cmd" type="text" style="width:100%;margin-top:4px" placeholder="Command with {face} {audio} {out} {outdir} {repo}" value="' + esc(f.command || "") + '">' +
+      '<span class="muted">Runs on this computer (a graphics card makes it fast). Nothing is uploaded.</span>';
+  } else if (m === "photo") h = '<span class="muted">Animates the author\'s photo here in the browser. Free, offline; calibrated against the perfect sample.</span>';
   $("#pr-face-opts").innerHTML = h;
   if ($("#pr-key-save")) $("#pr-key-save").onclick = async () => { await api("/api/speech/keys", { provider: m, values: { api_key: $("#pr-key").value } }); $("#pr-key").value = ""; toast("Key saved."); PR.meta = await api("/api/persona"); };
+  if ($("#pr-preset")) $("#pr-preset").onchange = e => { if (e.target.value) $("#pr-cmd").value = PR.meta.local_presets[e.target.value]; };
 }
 
 function prShowReference(ref) {
-  if (!ref) { $("#pr-ref-out").innerHTML = '<p class="small muted">No perfect sample yet — the lab needs it to measure the narrator videos.</p>'; return; }
+  if (!ref) { $("#pr-ref-out").innerHTML = '<p class="small muted">No perfect sample yet — the lab needs it to measure and calibrate.</p>'; return; }
   const m = ref.signature.model || {}, g = m.gap || {}, mx = Math.max(0.05, ...Object.values(g));
   $("#pr-ref-out").innerHTML = (ref.warnings && ref.warnings.length ? '<div class="note bad"><b>This sample is not good enough for a perfect narrator:</b> ' + esc(ref.warnings.join("; ")) + "</div>" :
-    '<div class="note good">✔ A good perfect sample: every narrator video can be measured against it.</div>') + '<div class="stats">' + stat((m.lead_ms ?? "—") + " ms", "lips lead the sound") + stat((m.tau_ms ?? "—") + " ms", "mouth response time") +
+    '<div class="note good">✔ A good perfect sample: the narrator can be measured and calibrated against it.</div>') + '<div class="stats">' + stat((m.lead_ms ?? "—") + " ms", "lips lead the sound") + stat((m.tau_ms ?? "—") + " ms", "mouth response time") +
     stat(Math.round(100 * (m.explained || 0)) + "%", "lip motion explained by the model") + stat(ref.signature.frames, "frames") + stat(ref.signature.seconds + " s", "length") +
     (ref.proven ? stat(ref.proven.score + "/100", "photo face proven") : "") + "</div>" +
     '<p class="small"><b>The author\'s lip opening for each sound</b> (share of mouth width):</p><div class="pr-bars">' +
@@ -103,13 +115,19 @@ async function prRefRecord() {
   if (!PR.refRec) {
     try { await recStart(null, $("#pr-ref-out")); } catch (e) { toast("The microphone could not be opened: " + e.message, true); return; }
     if (!(await camSideStart($("#pr-ref-cam"), REC.t0))) { recStop(); return; }
+    // keep the video too: the real-mouth library is taken from it
+    PR.vparts = []; PR.mr = new MediaRecorder(CAMSIDE.stream); PR.mr.ondataavailable = e => { if (e.data.size) PR.vparts.push(e.data); };
+    PR.mrOffset = (performance.now() - REC.t0) / 1000; PR.mr.start(500);
     PR.refRec = true; btn.textContent = "⏹ Stop — finished reading"; btn.classList.add("busy");
   } else {
     PR.refRec = false; btn.textContent = "🎙📷 Record the perfect sample"; btn.classList.remove("busy");
+    const stopped = new Promise(r => { PR.mr.onstop = r; }); PR.mr.stop();
     const blob = recStop();
+    await stopped;
     const cam = camSideStop($("#pr-ref-cam"));
     if (!cam) { $("#pr-ref-out").textContent = "No face frames were recorded."; return; }
-    await prRefSend(await blobB64(blob), cam.frames, cam.info);
+    const r = await prRefSend(await blobB64(blob), cam.frames, cam.info);
+    await prBuildLibrary(URL.createObjectURL(new Blob(PR.vparts, { type: PR.mr.mimeType || "video/webm" })), r.keyframes, PR.mrOffset);
   }
 }
 async function prRefFile(file) {
@@ -117,9 +135,26 @@ async function prRefFile(file) {
   $("#pr-ref-out").innerHTML = '<p class="small">Tracking the face in the video…</p>'; $("#pr-ref-out").appendChild(v); v.style.maxWidth = "320px";
   const t = await trackVideo(v, s => { $("#pr-ref-out").firstChild.textContent = "Tracking the face in the video… " + s.toFixed(2) + " s"; });
   const audio = await decodeTrack(file);
-  await prRefSend(await wavB64(audio, 16000), t.frames, { width: v.videoWidth, height: v.videoHeight, fps: Math.round(10 * Math.max(t.fps, t.tracked)) / 10, source: "file" });
+  const r = await prRefSend(await wavB64(audio, 16000), t.frames, { width: v.videoWidth, height: v.videoHeight, fps: Math.round(10 * Math.max(t.fps, t.tracked)) / 10, source: "file" });
+  await prBuildLibrary(v.src, r.keyframes, 0);
 }
 
+// Take the chosen frames out of the perfect sample's video: one per sound, a rest frame and a blink frame.
+async function prBuildLibrary(url, keyframes, offset) {
+  if (!keyframes || !keyframes.rest) return;
+  const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.src = url;
+  await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error("the sample video could not be read back")); });
+  const seek = t => new Promise(res => { v.onseeked = res; v.currentTime = Math.max(0, t); });
+  const items = [];
+  for (const [k, t] of Object.entries(keyframes)) {
+    await seek(t - (offset || 0));
+    const c = prCanvasFrom(v, 960), lm = await landmarksOf(c);
+    if (lm) items.push({ v: k, image_b64: c.toDataURL("image/jpeg", 0.92), landmarks: lm });
+  }
+  const r = await api("/api/persona/library", { id: PR.sel, items });
+  toast("Real-mouth library: " + r.count + " frames of the author's own mouth.");
+  await prSelect(PR.sel, true); prShowReference(PR.persona.reference);
+}
 async function prRefSend(wav, frames, info) {
   const r = await api("/api/photoreal/reference", { persona: PR.sel, audio_b64: wav, frames, info, text: PR.meta.passage, lang: (PR.persona.voice || {}).lang || "en" });
   toast("Perfect sample analysed: the author's mouth model is ready.");
@@ -128,16 +163,25 @@ async function prRefSend(wav, frames, info) {
   return r;
 }
 
-// ---------------------------------------------------------------- narrate and measure
+// ---------------------------------------------------------------- narrate, measure, calibrate
 async function prNarrate() {
   const text = $("#pr-text").value.trim(); if (!text) { toast("Type what the narrator should say.", true); return; }
   const fm = $("#pr-nface").value;
   const r = await api("/api/persona/narrate", { id: PR.sel, text, face_method: fm });
   PR.narr = Object.assign(r, { text });
-  $("#pr-score").innerHTML = ""; $("#pr-measure").disabled = true;
+  $("#pr-score").innerHTML = ""; $("#pr-measure").disabled = true; $("#pr-calibrate").disabled = true;
   $("#pr-player").innerHTML = '<p class="small muted">' + esc(r.label) + (r.voice_fallback ? " · the chosen voice failed (" + esc(r.voice_fallback) + "), the offline voice spoke" : "") + "</p>";
-  $("#pr-stage").innerHTML = '<div class="meter live"><i style="width:100%"></i></div><p class="small" id="pr-wait">Making the video…</p>';
-  {
+  if (fm === "photo") {
+    if (!PR.persona.landmarks) { toast("This persona's photo has no face landmarks.", true); return; }
+    const a = document.createElement("audio"); a.controls = true; a.src = "/api/speech/audio?name=" + encodeURIComponent(r.audio);
+    $("#pr-player").prepend(a);
+    PR.face = new TalkingFace($("#pr-stage"));
+    await PR.face.setMode("photo", { persona: prFaceSource(), params: (PR.persona.reference || {}).params });
+    PR.face.attach(a, r.track);
+    a.play().catch(() => {});
+    $("#pr-measure").disabled = !PR.persona.reference; $("#pr-calibrate").disabled = !PR.persona.reference;
+  } else {
+    $("#pr-stage").innerHTML = '<div class="meter live"><i style="width:100%"></i></div><p class="small" id="pr-wait">Making the video…</p>';
     for (;;) {
       await new Promise(res => setTimeout(res, 2000));
       const n = await api("/api/persona/narration?id=" + r.id);
@@ -151,6 +195,25 @@ async function prNarrate() {
   }
 }
 
+// Render the photo face frame by frame (30 per second) off screen and track each frame: exact and repeatable.
+async function prRenderAndTrack(params, track, note) {
+  const box = document.createElement("div"); box.style.cssText = "position:fixed;left:-2000px;top:0;width:480px";
+  document.body.appendChild(box);
+  try {
+    const pf = authorFace(box, prFaceSource(), params);
+    await pf.ready;
+    const lm = await tracker(), frames = [], n = Math.ceil(track.duration * 30);
+    for (let i = 0; i < n; i++) {
+      const t = i / 30;
+      pf.frame(track, t, {});
+      const f = measureFrame(lm.detectForVideo(pf.cv, performance.now()), { videoWidth: pf.cv.width, videoHeight: pf.cv.height }, t);
+      delete f._L; frames.push(f);
+      if (note && i % 15 === 0) { note(i / n); await new Promise(r => setTimeout(r, 0)); }
+    }
+    return { frames, info: { width: pf.cv.width, height: pf.cv.height, fps: 30, source: "photo face (rendered)" } };
+  } finally { box.remove(); }
+}
+
 function prScoreHtml(sc, title) {
   return '<h3>' + esc(title || "Measured against the author") + ": " + sc.overall + '/100</h3><div class="note ' + (sc.passed ? "good" : "bad") + '"><b>' + esc(sc.verdict) + "</b></div>" +
     '<table class="tbl small"><tr><th>What is compared</th><th>Author</th><th>This</th><th>Score</th></tr>' +
@@ -162,18 +225,40 @@ async function prMeasure() {
   const r = PR.narr; if (!r) return;
   const btn = $("#pr-measure"); buttonStart(btn); let ok = false;
   try {
-    const v = $("#pr-stage video");
-    const t = await trackVideo(v, s => { $("#pr-score").textContent = "Tracking the video… " + s.toFixed(2) + " s"; });
-    const info = { width: v.videoWidth, height: v.videoHeight, fps: Math.round(10 * Math.max(t.fps, t.tracked)) / 10, source: r.face_method };
-    // the video's own soundtrack: Gemini speaks with its own voice, so the narration audio made here is not what is heard
-    const sound = await decodeTrack(await (await fetch(v.src)).blob());
-    const n = await api("/api/persona/narration?id=" + r.id);
-    const m = await api("/api/photoreal/measure", { persona: PR.sel, audio_b64: await wavB64(sound, 16000), frames: t.frames, info, text: r.text,
-      method: n.face_method || r.face_method, narration: r.id, lang: (PR.persona.voice || {}).lang || "en" });
+    let frames, info;
+    if (r.face_method === "photo") {
+      ({ frames, info } = await prRenderAndTrack((PR.persona.reference || {}).params, r.track, x => { $("#pr-score").textContent = "Rendering and tracking every frame… " + Math.round(100 * x) + "%"; }));
+    } else {
+      const v = $("#pr-stage video");
+      const t = await trackVideo(v, s => { $("#pr-score").textContent = "Tracking the video… " + s.toFixed(2) + " s"; });
+      frames = t.frames; info = { width: v.videoWidth, height: v.videoHeight, fps: Math.round(10 * Math.max(t.fps, t.tracked)) / 10, source: r.face_method };
+    }
+    const m = await api("/api/photoreal/measure", { persona: PR.sel, audio: r.audio, frames, info, text: r.text, method: r.face_method, narration: r.id,
+      params: r.face_method === "photo" ? (PR.persona.reference || {}).params : null, lang: (PR.persona.voice || {}).lang || "en" });
     $("#pr-score").innerHTML = prScoreHtml(m.score);
     ok = true; prFindings();
   } catch (e) { $("#pr-score").innerHTML = '<div class="note bad">' + esc(e.message) + "</div>"; }
   finally { buttonEnd(btn, ok); }
+}
+
+async function prCalibrate() {
+  const r = PR.narr; if (!r || r.face_method !== "photo") return;
+  const btn = $("#pr-calibrate"); buttonStart(btn); let ok = false;
+  let params = JSON.parse(JSON.stringify((PR.persona.reference || {}).params || {})), rows = [];
+  try {
+    for (let round = 1; round <= 6; round++) {
+      const { frames, info } = await prRenderAndTrack(params, r.track, x => { $("#pr-score").innerHTML = rows.join("") + "<p>Round " + round + ": rendering and tracking… " + Math.round(100 * x) + "%</p>"; });
+      const c = await api("/api/photoreal/calibrate", { persona: PR.sel, audio: r.audio, frames, info, text: r.text, params, round, lang: (PR.persona.voice || {}).lang || "en" });
+      rows.push('<p class="small">Round ' + round + ": <b>" + c.score.overall + "/100</b> — " + esc(c.score.verdict) + "</p>");
+      $("#pr-score").innerHTML = rows.join("");
+      if (c.passed) { $("#pr-score").innerHTML = rows.join("") + prScoreHtml(c.score, "Calibrated — passes"); ok = true; break; }
+      params = c.next_params;
+    }
+    if (!ok) $("#pr-score").innerHTML += '<div class="note bad">Not passing after 6 rounds. The findings below show which dimension holds it back — usually a better perfect sample (clearer face, more light, 60 fps) fixes it.</div>';
+    await prSelect(PR.sel, true);
+    if (ok) { PR.face = new TalkingFace($("#pr-stage")); await PR.face.setMode("photo", { persona: prFaceSource(), params: PR.persona.reference.params }); PR.face.attach($("#pr-player audio"), r.track); }
+  } catch (e) { $("#pr-score").innerHTML += '<div class="note bad">' + esc(e.message) + "</div>"; }
+  finally { buttonEnd(btn, ok); prFindings(); }
 }
 
 async function prFindings() {
@@ -226,7 +311,8 @@ async function prInit() {
   $("#pr-face").onchange = prFaceOpts;
   $("#pr-voice-go").onclick = async () => { await api("/api/persona/voice", { id: PR.sel, method: $("#pr-voice").value, lang: (PR.persona.voice || {}).lang || "en" }); await prLoad(); };
   $("#pr-face-go").onclick = async () => {
-    await api("/api/persona/face", { id: PR.sel, method: $("#pr-face").value }); await prLoad();
+    const m = $("#pr-face").value, settings = m === "local" ? { command: $("#pr-cmd").value, repo: $("#pr-repo").value, preset: $("#pr-preset").value } : {};
+    await api("/api/persona/face", { id: PR.sel, method: m, settings }); await prLoad();
   };
   $("#pr-delete").onclick = async () => {
     if (!confirm("Delete this persona, its photo, voice sample and narrations?")) return;
@@ -237,6 +323,7 @@ async function prInit() {
   $("#pr-ref-file").onchange = e => { const f = e.target.files[0]; if (f) prRefFile(f).catch(err => toast(err.message, true)); };
   $("#pr-narrate").onclick = prNarrate;
   $("#pr-measure").onclick = prMeasure;
+  $("#pr-calibrate").onclick = prCalibrate;
   $("#pr-gq").oninput = () => { clearTimeout(PR.gt); PR.gt = setTimeout(prGraph, 300); };
   await prLoad();
 }

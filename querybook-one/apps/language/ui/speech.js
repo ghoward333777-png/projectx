@@ -103,25 +103,180 @@ function stagesTable(stages, total) {
     (total !== undefined ? "<tr><td><b>Total</b></td><td></td><td><b>" + Number(total).toFixed(2) + "</b></td><td></td></tr>" : "") + "</table>";
 }
 
-// The author's AI narrator answers (Photo Real Lab persona): a video made by Gemini (HeyGen when Gemini cannot).
+// The face that speaks: 2D, 3D or any analysed library avatar. Remembered in this browser.
+function faceChoice() { try { return localStorage.getItem("qb.face") || "2d"; } catch (e) { return "2d"; } }
+function setFaceChoice(v) { try { localStorage.setItem("qb.face", v); } catch (e) {} }
+let FACE_LIST = null;
+async function faceAvatars(fresh) {
+  if (!FACE_LIST || fresh) FACE_LIST = api("/api/avatars/list").then(r => r.avatars.filter(a => a.analysed)).catch(() => []);
+  return FACE_LIST;
+}
+// The big "this face will speak" preview on the Speak page (kept in step with every picker).
+async function showFaceNow() {
+  const el = $("#sp-face-now"); if (!el) return;
+  const v = faceChoice(), list = await faceAvatars(), a = list.find(x => String(x.id) === v);
+  if (v !== "2d" && v !== "3d" && !a) { setFaceChoice("2d"); }
+  const c = faceChoice();
+  el.innerHTML = a ? '<img alt="" src="/api/avatars/image?id=' + a.id + '"' + (a.kind === "body" ? ' class="fp-bodyimg"' : "") + '><b>' + esc(a.name) + '</b><span class="small muted">' + (a.kind === "body" ? "full body · " : "") + 'will speak</span>'
+    : '<span class="fp-ico">' + (c === "3d" ? "🧊" : "🙂") + "</span><b>" + (c === "3d" ? "3D / VR face" : "2D face") + '</b><span class="small muted">will speak</span>';
+  $$("#sp-faces [data-fp]").forEach(x => x.classList.toggle("on", x.dataset.fp === c));
+}
+// Full-body avatars: whether the camera cuts between wide and close shots (on by default), remembered in this browser
+function faceCamera() { try { return localStorage.getItem("qb.camera") !== "still"; } catch (e) { return true; } }
+// A strip of clickable faces; onPick(value) with "2d", "3d" or an avatar id.
+async function facePicker(host, onPick, opts) {
+  const list = await faceAvatars(), only = opts && opts.avatarsOnly;
+  const cur = opts && opts.current !== undefined ? String(opts.current) : faceChoice();
+  const tile = (v, inner, title) => '<button class="fp-tile' + (String(v) === cur ? " on" : "") + '" data-fp="' + v + '" title="' + esc(title) + '">' + inner + "</button>";
+  const faces = list.filter(a => a.kind !== "body"), bodies = list.filter(a => a.kind === "body");
+  const av = a => tile(a.id, '<img loading="lazy" alt="" src="/api/avatars/image?id=' + a.id + '"><span>' + esc(a.name) + "</span>", a.name + " — " + a.label);
+  host.innerHTML = (bodies.length ? '<div class="small muted fp-head">Faces</div>' : "") +
+    '<div class="fp-strip">' + (only ? "" : tile("2d", '<span class="fp-ico">🙂</span><span>2D</span>', "Drawn 2D face") + tile("3d", '<span class="fp-ico">🧊</span><span>3D / VR</span>', "3D face, with Enter VR")) +
+    faces.map(av).join("") + "</div>" +
+    (bodies.length ? '<div class="small muted fp-head">Full-body avatars — the whole figure breathes and moves while the face speaks</div><div class="fp-strip fp-bodies">' + bodies.map(av).join("") + "</div>" : "") +
+    (list.length ? "" : '<p class="small muted">No avatars yet — add portraits in <a href="#" data-fp-lib>Speech → Avatars</a>.</p>');
+  host.querySelectorAll("[data-fp]").forEach(b => b.onclick = () => {
+    host.querySelectorAll("[data-fp]").forEach(x => x.classList.toggle("on", x === b));
+    setFaceChoice(b.dataset.fp);
+    showFaceNow(); onPick(b.dataset.fp);
+  });
+  showFaceNow();
+  const lib = host.querySelector("[data-fp-lib]"); if (lib) lib.onclick = e => { e.preventDefault(); showSub("avatars"); };
+}
+
+// Record the talking face with its voice, from the first word to the last, as an MP4 (WebM where the browser cannot).
+async function faceVideo(stage, audio, note, text) {
+  const cv = stage.querySelector("canvas");
+  if (!cv || !audio) throw new Error("choose a photo face or the 3D face first (the drawn 2D face cannot be filmed)");
+  if (!audio._qbCtx) { const ac = new (window.AudioContext || window.webkitAudioContext)(); audio._qbCtx = ac; audio._qbSrc = ac.createMediaElementSource(audio); audio._qbSrc.connect(ac.destination); }
+  const ac = audio._qbCtx, dest = ac.createMediaStreamDestination(); audio._qbSrc.connect(dest);
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const types = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1,opus", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"];
+  const mime = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!mime) throw new Error("this browser cannot record video");
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 }), parts = [];
+  qbWake("video"); try {
+  rec.ondataavailable = e => { if (e.data.size) parts.push(e.data); };
+  await ac.resume(); audio.pause(); audio.currentTime = 0;
+  rec.start(250); await new Promise(r => setTimeout(r, 250));
+  const tick = setInterval(() => { note.textContent = "Recording… " + Math.floor(audio.currentTime) + " of " + Math.ceil(audio.duration || 0) + " s"; }, 500);
+  await audio.play();
+  await new Promise(r => audio.addEventListener("ended", r, { once: true }));
+  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => { rec.onstop = r; rec.stop(); });
+  clearInterval(tick); audio._qbSrc.disconnect(dest);
+  } finally { qbWakeEnd("video"); }
+  let blob = new Blob(parts, { type: mime.split(";")[0] }), ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  if (ext === "webm" || !/avc1/.test(mime)) {                     // make it play everywhere: H.264 + AAC
+    note.textContent = "Converting to MP4 (H.264)…";
+    try { const r = await api("/api/media/mp4", { video_b64: await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); }) });
+      blob = await (await fetch("data:video/mp4;base64," + r.mp4_b64)).blob(); ext = "mp4"; }
+    catch (e) { note.textContent = ext === "webm" ? "MP4 needs a newer browser or ffmpeg on this computer — saved as WebM instead. " : ""; }
+  }
+  const a = document.createElement("a"), name = (String(text || "avatar").replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 40) || "avatar") + "." + ext;
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  note.textContent += "Saved " + name + " (" + (blob.size / 1048576).toFixed(1) + " MB).";
+}
+
+// Talking face card: lip-sync track from the server, drawn as the chosen face (2D SVG, 3D with Enter VR, or a library avatar
+// moved by all 52 face channels), synced to the audio.
+async function faceCard(host, audioName, text, lang, emotion) {
+  const box = document.createElement("div"); box.className = "card face-card";
+  box.innerHTML = '<h3>Talking face <span class="small muted">click a face to change who speaks</span></h3><div data-fpick></div>' +
+    '<div class="row"><label class="small"><input type="checkbox" data-exact> exact timing (Google Speech-to-Text)</label>' +
+    '<span class="small">Export: <a data-fx="json">JSON</a> · <a data-fx="csv">CSV</a> · <a data-fx="tsv">Rhubarb TSV</a></span></div>' +
+    '<div class="face-stage" style="max-width:360px"></div>' +
+    '<div class="row" style="margin:6px 0"><button class="btn bigbtn" data-fplay>▶ Play</button><span class="small" data-ftime>0:00 / 0:00</span>' +
+    '<button class="btn quiet" data-fdl>⬇ Download video (MP4)</button><span class="small muted" data-fdlnote></span>' +
+    '<label class="small" data-fcamw hidden><input type="checkbox" data-fcam> camera cuts and push-ins (full body)</label>' +
+    '</div><div class="row small" data-fmoves hidden></div>' +
+    '<p class="small muted" data-finfo>Working out the mouth shapes…</p>';
+  host.appendChild(box);
+  const stage = box.querySelector(".face-stage"), info = box.querySelector("[data-finfo]"), audio = host.querySelector("audio");
+  box.querySelectorAll("[data-fx]").forEach(a => { a.href = "/api/speech/lipsync.export?audio=" + encodeURIComponent(audioName) + "&text=" + encodeURIComponent(text) + "&lang=" + encodeURIComponent(lang) + "&format=" + a.dataset.fx; a.setAttribute("download", ""); });
+  const face = new TalkingFace(stage);
+  face.setEmotion(emotion || "neutral");
+  let track = null, motion = null;
+  // play / pause right under the face, and the clock
+  const pb = box.querySelector("[data-fplay]"), clock = box.querySelector("[data-ftime]"), mmss = x => Math.floor(x / 60) + ":" + String(Math.floor(x % 60)).padStart(2, "0");
+  if (audio) {
+    const sync = () => { pb.textContent = audio.paused ? "▶ Play" : "❚❚ Pause"; clock.textContent = mmss(audio.currentTime || 0) + " / " + mmss(isFinite(audio.duration) ? audio.duration : 0); };
+    pb.onclick = () => { if (audio.paused) { if (audio.ended) audio.currentTime = 0; audio.play().catch(() => {}); } else audio.pause(); };
+    ["play", "pause", "ended", "timeupdate", "loadedmetadata"].forEach(ev => audio.addEventListener(ev, sync)); sync();
+    audio.addEventListener("play", () => qbWake("speech")); ["pause", "ended"].forEach(ev => audio.addEventListener(ev, () => qbWakeEnd("speech")));
+  }
+  box.querySelector("[data-fdl]").onclick = () => faceVideo(stage, audio, box.querySelector("[data-fdlnote]"), text).catch(e => { box.querySelector("[data-fdlnote]").textContent = "Could not record: " + e.message; });
+  const load = async exact => {
+    const t0 = performance.now();
+    track = await api("/api/speech/lipsync", { audio: audioName, text, lang, exact });
+    face.attach(audio, motion ? Object.assign({}, track, { motion }) : track);
+    if (face.impl && face.impl.cueTurns) face.impl.cueTurns(track.words);         // "… turn around …" in the text: she turns
+    info.textContent = track.words.length + " words, " + track.visemes.length + " mouth shapes, " + track.duration.toFixed(2) + " s of audio — timing: " + track.method + " (" + ((performance.now() - t0) / 1000).toFixed(2) + " s)";
+    return track;
+  };
+  // Show the chosen face at once, driven by the mouth shapes; the full 52-channel motion is added when it is ready.
+  // A problem with the motion never swaps the face back: the chosen face keeps speaking with the mouth shapes.
+  let shown = null;
+  const show = async v => {
+    shown = v;
+    if (v === "2d" || v === "3d") {
+      stage.style.maxWidth = "360px";
+      try { await face.setMode(v); } catch (e) { info.textContent = "3D could not start here: " + e.message; await face.setMode("2d"); }
+      return;
+    }
+    let av;
+    try {
+      av = await api("/api/avatars/get?id=" + encodeURIComponent(v));
+      if (!av.landmarks) throw new Error("this face is not analysed yet — Speech → Avatars → Analyse faces");
+      stage.style.maxWidth = av.kind === "body" ? "460px" : "360px";
+      box.querySelector("[data-fcamw]").hidden = av.kind !== "body";
+      const mv = box.querySelector("[data-fmoves]"), moves = (av.motions || []).length ? (await api("/api/avatars/motions?id=" + av.id)).motions : [];
+      mv.hidden = !moves.length;                         // her recorded moves: a button each (the words in brackets set them off in a script)
+      const takes = slug => moves.filter(m => m.take_of === slug).length;
+      mv.innerHTML = moves.length ? "<b>Moves:</b> " + moves.filter(m => !m.take_of).map(m => '<button class="btn quiet" data-move="' + esc(m.slug) + '" title="Says: ' + esc((m.words || []).join(", ")) + '">' +
+        esc(m.slug === "turn-around" ? "↻ turn around" : m.name) + (takes(m.slug) ? " (" + (takes(m.slug) + 1) + " takes)" : "") + "</button>").join("") + '<span class="muted"> — or write a move\'s words in the text</span>' : "";
+      mv.querySelectorAll("[data-move]").forEach(b => b.onclick = () => face.impl && face.impl.playMove && face.impl.playMove(b.dataset.move));
+      await face.setMode("avatar", { avatar: { imageUrl: "/api/avatars/image?id=" + av.id, landmarks: av.landmarks, label: av.label, body: av.kind === "body", turnId: moves.length ? av.id : null },
+        params: { camera: faceCamera() ? "director" : "still" } });
+    } catch (e) { info.textContent = "That face could not be shown: " + e.message; await face.setMode("2d"); return; }
+    if (track) face.track = motion ? Object.assign({}, track, { motion }) : track;
+    if (motion) { info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels"; return; }
+    info.textContent = av.name + " is speaking (mouth shapes) — adding all 52 face channels…";
+    if (!motionJob) motionJob = api("/api/vse/lip_sync", { audio_name: audioName, text, lang, emotion: null }).then(j => avWaitJob(j.job_id)).then(r => r.motion);
+    motionJob.then(m => {                              // not awaited: the face speaks with mouth shapes meanwhile
+      motion = m;
+      if (shown !== v) return;
+      face.track = Object.assign({}, face.track || track || {}, { motion });
+      info.textContent = av.name + " · " + av.label + " — " + motion.frames.length + " frames × 52 channels";
+    }).catch(e => { motionJob = null; if (shown === v) info.textContent = av.name + " is speaking with mouth shapes only (the 52-channel motion failed: " + e.message + ")"; });
+  };
+  let motionJob = null;
+  const cam = box.querySelector("[data-fcam]"); cam.checked = faceCamera();
+  cam.onchange = () => { try { localStorage.setItem("qb.camera", cam.checked ? "director" : "still"); } catch (e) {} if (shown) show(shown); };
+  facePicker(box.querySelector("[data-fpick]"), show);
+  if (window.rvAttach) rvAttach(box, face, { avatarId: () => +shown, text, audio });   // check the delivery, flag what is wrong
+  box.querySelector("[data-exact]").onchange = e => load(e.target.checked).catch(err => { info.textContent = "Exact timing failed: " + err.message; });
+  await show(faceChoice());
+  try { await load(false); } catch (e) { info.textContent = "Lip-sync failed: " + e.message; }
+  if (motion && shown !== "2d" && shown !== "3d") info.textContent = "52 face channels × " + motion.frames.length + " frames";
+  return face;
+}
+
+// The author's AI narrator speaks a text (Photo Real Lab persona): photo-driven face with the proven settings.
 async function narratorCard(host, pid, text, emotion) {
-  const box = document.createElement("div"); box.className = "card";
-  box.innerHTML = '<h3>Answered by the author\'s AI narrator</h3><div class="small muted nar-state">Asking the video model…</div><div class="nar-player"></div>';
+  const box = document.createElement("div"); box.className = "card face-card";
+  box.innerHTML = '<h3>Answered by the author\'s AI narrator</h3><div class="face-stage" style="max-width:420px"></div><div class="nar-player"></div>';
   host.appendChild(box);
   try {
-    const r = await api("/api/persona/narrate", { id: pid, text, emotion });
-    for (let i = 0; i < 600; i++) {
-      const n = await api("/api/persona/narration?id=" + r.id);
-      box.querySelector(".nar-state").textContent = n.detail || n.status;
-      if (n.status === "done") {
-        box.querySelector(".nar-player").innerHTML = '<video controls autoplay playsinline style="max-width:100%;max-height:420px" src="/api/persona/video?narration=' + r.id + '"></video>' +
-          '<p class="small muted">' + esc(r.label) + "</p>";
-        const a0 = host.querySelector("audio"); if (a0) a0.pause();
-        return;
-      }
-      if (n.status === "failed") throw new Error(n.detail || "the video could not be made");
-      await new Promise(res => setTimeout(res, 3000));
-    }
+    const p = await api("/api/persona/get?id=" + pid);
+    const a0 = host.querySelector("audio"); if (a0) a0.pause();
+    const r = await api("/api/persona/narrate", { id: pid, text, face_method: "photo", emotion });
+    const a = document.createElement("audio"); a.controls = true; a.src = "/api/speech/audio?name=" + encodeURIComponent(r.audio);
+    box.querySelector(".nar-player").appendChild(a);
+    const f = new TalkingFace(box.querySelector(".face-stage"));
+    f.setEmotion(emotion || "neutral");
+    await f.setMode("photo", { persona: prFaceSource(p, pid), params: (p.reference || {}).params });
+    f.attach(a, r.track); a.play().catch(() => {});
   } catch (e) { box.insertAdjacentHTML("beforeend", '<div class="note bad">The narrator could not answer: ' + esc(e.message) + "</div>"); }
 }
 
@@ -138,7 +293,8 @@ async function generate() {
       stat(m.duration_s + " s", "length") : "") + "</div>" +
     (s.effects && s.effects.length ? '<p class="small"><b>Added after the engine:</b> ' + esc(s.effects.join("; ")) + "</p>" : "") +
     "<details><summary class=\"small\">Timing of every stage (to 0.01 s)</summary>" + stagesTable(r.stages.stages, r.stages.seconds) + "</details>";
-  $("#sp-out").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#sp-out").scrollIntoView({ behavior: "smooth", block: "start" });   // the speaking face, right where the eye goes
+  if (window.TalkingFace) faceCard($("#sp-out"), r.audio, $("#sp-text").value, SP.profile.lang, SP.profile.emotion);
 }
 
 // ---------------------------------------------------------------- match
@@ -324,6 +480,7 @@ async function ask(audio, video) {
   const a = $("#ak-out audio"); if (a) a.play().catch(() => {});
   const as = $("#ak-as") && $("#ak-as").value;
   if (as) narratorCard($("#ak-out"), Number(as), r.answer, r.voice_used.emotion);   // the author's AI narrator answers
+  else if (window.TalkingFace) faceCard($("#ak-out"), r.audio, r.answer, SP.profile.lang, r.voice_used.emotion);
 }
 
 // ---------------------------------------------------------------- providers
@@ -401,7 +558,9 @@ function showSub(id) {
   $("#sp-shared").hidden = !["speak", "match", "ask"].includes(id);
   if (id === "providers") loadProviders();
   if (id === "log") loadLog();
-  if (id === "talk" && window.tkInit) tkInit();
+  if (id === "avatars") renderAvatars($("#sp-avatars"));
+  if (id === "qlab") renderQualityLab($("#sp-qlab"));
+  if (id === "talk" && window.tkInit) tkInit();           // talking clips made by a video model (Gemini, else HeyGen)
 }
 
 async function loadSpeech() {
@@ -431,7 +590,7 @@ async function loadSpeech() {
   $("#sp-engine").onchange = async e => { await selectEngine(e.target.value); renderQuick(); };
   $("#sp-voice").onchange = schedulePlan; $("#sp-model").onchange = schedulePlan; $("#sp-text").oninput = schedulePlan;
   $("#sp-go").onclick = generate;
-  $("#sp-to-talk").onclick = () => { if (window.tkFrom) tkFrom($("#sp-text").value, SP.profile.lang); showSub("talk"); };
+  facePicker($("#sp-faces"), () => {});
   $("#mt-go").onclick = match;
   $("#ls-rec").onclick = lsRecord;
   $("#ls-file").onchange = async e => { const f = e.target.files[0]; if (!f) return; SP.video = null;

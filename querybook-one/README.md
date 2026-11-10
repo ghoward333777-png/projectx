@@ -42,6 +42,17 @@ Your data stays on `D:\QB`, as named in `data-folder.txt`, following the same ru
   5. Say it yourself and see which words were heard.
 
   Server side: `language/labtext.py` and `/api/lablang/*`.
+- **Avatars restored** (Language 1.53). Language 1.52, in an earlier session, removed the local face engine. This version brings it back:
+  - the drawn 2D/3D/VR face;
+  - library avatars driven by 52 face channels, and the 28 bundled starter faces with their recorded moves;
+  - the photo-driven author face;
+  - the speech motion library, the Quality Lab, the calibration bench and the live mirror avatar.
+
+  The 1.52 talking clips (Gemini, else HeyGen) stay too, as **Speech → Talking clips**. Language Lab step 4 uses the avatar: pick a face from the strip, and it speaks with mouth shapes at once and with all 52 face channels when they're ready.
+- **24 × 7 harvesting:**
+  - The Control Panel restarts the engine cleanly (Stop, save, Start) when harvesting is on and nothing has moved for 30 minutes: no fact gathered or filed, no byte downloaded. Each restart is logged and shown.
+  - The one window restarts any program that ends, or stops answering for about 3 minutes.
+  - "Start with Windows" now launches `START-QueryBook.bat`. It used to point at the old suite's file, which isn't in QueryBook.zip.
 - Speech: voice options (whisper, female, croak, grandpa) now apply to every language. British voices used to drop them. The female whisper is espeak-ng's `whisperf`. Breathy whispers are recognised on every espeak-ng version. `tools/speech_probe.py` tabulates what changes the outcome on each system.
 - **Farm out** (Control Panel → Farm out, `#farm`): give datasets or Wikidata lanes to another Windows PC or Mac, by computer name and IP address.
   - **No duplicate work:** each dataset goes to one machine only, and this server's harvester skips it.

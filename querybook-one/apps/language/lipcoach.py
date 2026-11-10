@@ -12,7 +12,7 @@ those held-back recordings; every version is kept with its scores and can be rol
   * which mouth shapes this camera and this speaker confuse (the look-alike costs used to match words),
   * this computer's own camera/microphone delay (so the sync check stops blaming the video for it),
   * the lip-sync timing weights (from recordings with exact Speech-to-Text word times),
-  * the mouth shapes the lip reader expects, averaged from real tracked mouths.
+  * the talking face's mouth shapes, averaged from real tracked mouths.
 """
 import datetime, hashlib, json, math, threading
 
@@ -257,7 +257,7 @@ class LipCoach:
         al = [e for e in ex if e["word_times"] and e["audio"]]
         if len(al) >= 2:
             params["align"], metrics["align"] = self._tune_align(al)
-        # 5. the mouth shapes the lip reader expects, from real mouths
+        # 5. the talking face's mouth shapes from real mouths
         by_v = {}
         for e in ex:
             for r, l in zip(e["rows"], e["lab"]):

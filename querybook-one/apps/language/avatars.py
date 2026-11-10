@@ -1,7 +1,8 @@
-"""Face library: the portraits that talking clips are made from (Speech → Talking clips).
+"""Avatar library: talking faces made from portraits, for the Speech lab and any narration.
 
-1.52: a portrait is never animated on this computer. Gemini performs it, or HeyGen animates it, in a talking clip
-(talkclip.py). The library keeps the picture, its face landmarks (for checking the picture is usable) and who it shows.
+Every avatar is a portrait plus its 478 3D face landmarks (x, y and depth, measured in the browser by the bundled
+face tracker). The page animates it with all 52 ARKit face channels from the Visual Speech Engine — jaw, lips,
+cheeks, nose, eyes, gaze, blinks, brows and tongue — and turns the head in 3D using the landmarks' depth.
 
 Whose face it is decides what is needed:
   * synthetic  — an AI-generated portrait of nobody: the admin confirms it shows no real person;
@@ -26,6 +27,14 @@ CREATE TABLE delivery_checks (
   id INTEGER PRIMARY KEY, created TEXT NOT NULL, avatar_id INTEGER NOT NULL, script TEXT, duration REAL, score INTEGER, spans TEXT,
   reference TEXT, renderer TEXT);
 """]
+# what a person can flag in a delivery; the first five are measured by the delivery check (and the learning loop works on
+# them), the rest need a person's eyes — each flag stays open until someone marks it fixed
+FLAG_REASONS = {"background": "the background moves", "region": "the forehead / head region moves for no reason",
+                "lips": "lip shape (flat lower lip, swollen lips, pucker, spread)", "hair": "the hair separates from the head",
+                "fold": "a smear, tear or fold in the picture", "teeth": "teeth or tongue look wrong", "sync": "the mouth is out of sync with the voice",
+                "eyes": "eyes or blinks look wrong", "brows": "brows move too much or too little", "head": "head movement unnatural",
+                "body": "body movement unnatural", "other": "something else (say what in the note)"}
+REFERENCE_KEYS = ("brow_inner_sd", "brow_outer_sd", "blinks_per_min", "yaw_range", "pitch_range", "roll_range", "gap_mean", "gap_p90", "smile_p50", "upper_lift")
 SOURCES = {"synthetic": "AI-generated portrait — shows no real person", "consented": "a real person who agreed (name and consent recorded)"}
 LABEL = "Synthetic avatar — AI-generated"
 MAX_BYTES = 20 * 1024 * 1024
@@ -74,20 +83,22 @@ def _name_from_file(fn):
 
 
 def quality(landmarks, width=None, height=None, body=False):
-    """What makes a portrait usable for a talking clip. Returns a list of problems (empty = good)."""
+    """What makes a portrait animate well. Returns a list of problems (empty = good)."""
     out = []
     if not landmarks or len(landmarks) < 468:
         return ["no face found — use a clear, front-facing portrait"]
     P = lambda i: landmarks[i]
     d = lambda a, b: ((P(a)[0] - P(b)[0]) ** 2 + (P(a)[1] - P(b)[1]) ** 2) ** 0.5
     if d(13, 14) > 0.08 * d(61, 291):
-        out.append("mouth open in the portrait — a closed, neutral mouth gives the video model the best start")
+        out.append("mouth open in the portrait — a closed, neutral mouth animates more naturally")
     r = (P(1)[0] - P(234)[0]) / ((P(454)[0] - P(234)[0]) or 1e-6)
     if abs(r - 0.5) > 0.12:
         out.append("face turned to one side — front-facing works best")
     fh = abs(P(152)[1] - P(10)[1])
     if fh < 0.25 and not body:                                # a full-body avatar shows the whole figure on purpose
         out.append("face small in the picture (%.0f%% of its height) — crop closer for more detail" % (100 * fh))
+    if len(landmarks[0]) < 3:
+        out.append("no depth measured — re-analyse to enable 3D head motion")
     return out
 
 
@@ -130,8 +141,8 @@ class Library:
             db.execute("UPDATE avatars SET image = ? WHERE id = ?", (fn, aid))
         return {"id": aid, "name": name, "duplicate": False}
 
-    def install_starter(self, folder):
-        """Install the bundled starter portraits once; portraits the admin later deletes stay deleted."""
+    def install_starter(self, folder, on_speech_motion=None):
+        """Install the bundled starter faces (already analysed) once; avatars the admin later deletes stay deleted."""
         mf = os.path.join(folder, "manifest.json")
         if not os.path.isfile(mf):
             return {"installed": 0}
@@ -155,6 +166,27 @@ class Library:
                 continue
             with open(p, "rb") as f:
                 r = self.add(f.read(), a.get("name"), "synthetic", True, tags=["starter"] + (["body"] if a.get("kind") == "body" else []), filename=a["file"])
+            if a.get("anatomy") and not os.path.isfile(os.path.join(self.folder, str(r["id"]), "anatomy.json")):
+                self.set_anatomy(r["id"], a["anatomy"])
+            for old in man.get("removed_reference") or []:       # a bundled clip measured again: the earlier entry goes
+                if old in {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}:
+                    self.reference_remove(r["id"], old)
+            for c in a.get("reference") or []:                    # the person's own reference clips, already measured
+                have = {x["clip"] for x in (self.reference(r["id"]) or {"clips": []})["clips"]}
+                if c["clip"] not in have:
+                    self.reference_add(r["id"], c["clip"], c["stats"], c["frames"])
+            if a.get("speech_motion") and on_speech_motion:        # the person's own speech movement (Language 1.47)
+                try:
+                    on_speech_motion(r["id"], a["speech_motion"], folder)
+                except (OSError, ValueError) as e:
+                    if self.log:
+                        self.log("speech motion not installed for %s: %s" % (a.get("name"), e))
+            moves = ([{"slug": "turn-around", "dir": a["turn"]}] if a.get("turn") else []) + list(a.get("motions") or [])
+            for mv in moves:                                     # the person's recorded moves (also added to earlier installs)
+                src = os.path.join(folder, os.path.basename(mv["dir"]))
+                dst = self._motion_dir(r["id"], mv["slug"])
+                if os.path.isdir(src) and not os.path.isfile(self._meta_file(dst)):
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
             if not r["duplicate"]:
                 with self.store.write() as db:
                     att = json.loads(db.execute("SELECT attestation FROM avatars WHERE id = ?", (r["id"],)).fetchone()[0])
@@ -216,6 +248,17 @@ class Library:
         r["voice"] = json.loads(r["voice"]) if r["voice"] else None
         r["analysed"] = bool(r["landmarks"])
         r["kind"] = "body" if "body" in r["tags"] else "face"     # full-body avatar (whole figure moves) or a face portrait
+        r["turn"] = os.path.isfile(os.path.join(self.folder, str(r["id"]), "turn", "turn.json"))
+        md = os.path.join(self.folder, str(r["id"]), "motions")
+        r["motions"] = (["turn-around"] if r["turn"] else []) + (sorted(x for x in os.listdir(md) if os.path.isfile(os.path.join(md, x, "motion.json"))) if os.path.isdir(md) else [])
+        qp = os.path.join(self.folder, str(r["id"]), "qc.json")
+        r["qc"] = None
+        if os.path.isfile(qp):
+            try:
+                with open(qp, encoding="utf-8") as f:
+                    r["qc"] = json.load(f)
+            except (OSError, ValueError):
+                pass
         r["label"] = LABEL if r["source"] == "synthetic" else "Avatar of %s — with consent" % r["attestation"].get("subject", "")
         if landmarks:
             r["landmarks"] = json.loads(r["landmarks"]) if r["landmarks"] else None
@@ -274,6 +317,251 @@ class Library:
         with self.store.write() as db:
             db.execute("UPDATE avatars SET image = ?, width = ?, height = ?, landmarks = NULL, quality = NULL WHERE id = ?", (fn, w, h, int(aid)))
         return {"id": int(aid), "width": w, "height": h}
+
+    def set_qc(self, aid, qc):
+        """The movement check the page ran on this face (anatomy limits, folds, crossing lips) and any per-face tuning."""
+        self.get(aid)
+        q = {"ok": bool(qc.get("ok")), "issues": [str(x)[:120] for x in (qc.get("issues") or [])][:40], "tuned": {str(k)[:40]: float(v) for k, v in (qc.get("tuned") or {}).items()},
+             "range": qc.get("range") or {}, "poses": int(qc.get("poses") or 0), "lip_line": qc.get("lip_line") or {},
+             "aesthetic": qc.get("aesthetic") or {}, "at": _now()}
+        d = os.path.join(self.folder, str(int(aid)))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "qc.json"), "w", encoding="utf-8") as f:
+            json.dump(q, f)
+        return q
+
+    # ---------------------------------------------------------------- motions (full body): the person's own recorded moves
+    # Each motion is a run of frames from a video of the person (a turnaround, a stretch, a walk …), aligned by the page to
+    # this avatar's framing, with a name and the words that set it off in a script. "turn-around" keeps its original
+    # folder (turn/), so turnarounds stored by earlier versions stay where they are.
+    @staticmethod
+    def _slug(slug):
+        s = re.sub(r"[^a-z0-9]+", "-", str(slug or "").lower()).strip("-")[:40]
+        if not s:
+            raise core.UserError("Name the move (for example: turn around, stretch, walk).")
+        return s
+
+    def _motion_dir(self, aid, slug):
+        self.get(aid)
+        s = self._slug(slug)
+        return os.path.join(self.folder, str(int(aid)), "turn" if s == "turn-around" else os.path.join("motions", s))
+
+    @staticmethod
+    def _meta_file(d):
+        return os.path.join(d, "turn.json" if os.path.basename(d) == "turn" else "motion.json")
+
+    def motion_put(self, aid, slug, i, data):
+        """One frame of a motion, already aligned by the page (JPEG)."""
+        i = int(i)
+        if not 0 <= i < MAX_TURN_FRAMES:
+            raise core.UserError("A move holds at most %d frames." % MAX_TURN_FRAMES)
+        if _kind(data or b"") != "jpg" or len(data) > 2 * 1024 * 1024:
+            raise core.UserError("Send each frame as a JPEG under 2 MB.")
+        d = self._motion_dir(aid, slug)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "%03d.jpg" % i), "wb") as f:
+            f.write(data)
+        return {"id": int(aid), "frame": i}
+
+    def motion_set(self, aid, slug, meta):
+        """Finish a motion: its name and trigger words, timing, the alignment used, each frame's head angle (None = hidden)."""
+        d = self._motion_dir(aid, slug)
+        n = int(meta.get("frames") or 0)
+        if n < 4 or any(not os.path.isfile(os.path.join(d, "%03d.jpg" % i)) for i in range(n)):
+            raise core.UserError("The frames of this move did not all arrive — import it again.")
+        for fn in os.listdir(d):                                  # frames left over from a longer earlier version
+            if fn.endswith(".jpg") and int(fn[:3]) >= n:
+                os.remove(os.path.join(d, fn))
+        s = self._slug(slug)
+        words = [" ".join(str(w).lower().split())[:40] for w in (meta.get("words") or []) if str(w).strip()][:12]
+        m = {"slug": s, "name": " ".join(str(meta.get("name") or s.replace("-", " ")).split())[:40], "words": words or ([s.replace("-", " ")]),
+             "frames": n, "fps": float(meta.get("fps") or 12), "width": int(meta.get("width") or 0), "height": int(meta.get("height") or 0),
+             "face_h": float(meta.get("face_h") or 0.2), "face_cy": float(meta.get("face_cy") or 0.25), "align": str(meta.get("align") or "track")[:10],
+             "yaw": [None if v is None else round(float(v), 1) for v in (meta.get("yaw") or [])][:n], "start": max(0, min(n - 1, int(meta.get("start") or 0))),
+             "end": max(0, min(n - 1, int(meta["end"]) if meta.get("end") is not None else n - 1)), "source": str(meta.get("source") or "")[:200], "at": _now()}
+        if meta.get("take_of"):                                 # another take of a move: she alternates between them
+            m["take_of"] = self._slug(meta["take_of"])
+        with open(self._meta_file(d), "w", encoding="utf-8") as f:
+            json.dump(m, f)
+        return m
+
+    def motion(self, aid, slug):
+        p = self._meta_file(self._motion_dir(aid, slug))
+        if not os.path.isfile(p):
+            return None
+        with open(p, encoding="utf-8") as f:
+            m = json.load(f)
+        if self._slug(slug) == "turn-around":                     # stored before moves had names
+            m.setdefault("slug", "turn-around"); m.setdefault("name", "turn around"); m.setdefault("words", ["turn around"]); m.setdefault("align", "track")
+        return m
+
+    # -- the delivery check, flags and the reference clips (Speech → Check delivery; Avatar studio → Flags / Reference)
+    def flag_add(self, aid, meta, thumb=None):
+        self.get(aid)
+        reason = meta.get("reason") if meta.get("reason") in FLAG_REASONS else "other"
+        box = meta.get("box")
+        if box is not None and not (isinstance(box, list) and len(box) == 4 and all(isinstance(v, (int, float)) for v in box)):
+            raise core.UserError("The flagged region must be a box [x, y, width, height].")
+        with self.store.write() as db:
+            fid = db.execute("""INSERT INTO delivery_flags(created, avatar_id, t, box, reason, note, source, state, script, renderer, history)
+                                VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (_now(), int(aid), float(meta.get("t") or 0), json.dumps(box), reason,
+                                                                 str(meta.get("note") or "")[:1000], "check" if meta.get("source") == "check" else "you",
+                                                                 json.dumps(meta.get("state") or None), str(meta.get("script") or "")[:4000],
+                                                                 str(meta.get("renderer") or "")[:40], json.dumps([]))).lastrowid
+        if thumb:
+            d = os.path.join(self.folder, str(int(aid)), "flags")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "%d.jpg" % fid), "wb") as f:
+                f.write(thumb)
+        return self.flag(fid)
+
+    def flag(self, fid):
+        r = self.store.one("SELECT * FROM delivery_flags WHERE id = ?", (int(fid),))
+        if not r:
+            raise core.UserError("That flag no longer exists.")
+        for k in ("box", "state", "history"):
+            r[k] = json.loads(r[k]) if r[k] else None
+        r["reason_text"] = FLAG_REASONS.get(r["reason"], r["reason"])
+        r["measured"] = r["reason"] in ("background", "region", "lips", "hair", "fold")
+        r["has_thumb"] = os.path.isfile(self.flag_thumb(r["avatar_id"], fid))
+        return r
+
+    def flag_thumb(self, aid, fid):
+        return os.path.join(self.folder, str(int(aid)), "flags", "%d.jpg" % int(fid))
+
+    def flags(self, aid=None, status=None):
+        q, a = "SELECT id FROM delivery_flags WHERE 1 = 1", []
+        if aid:
+            q += " AND avatar_id = ?"; a.append(int(aid))
+        if status:
+            q += " AND status = ?"; a.append(status)
+        return [self.flag(r["id"]) for r in self.store.query(q + " ORDER BY id DESC LIMIT 500", a)]
+
+    def flag_set(self, fid, status=None, note=None, recheck=None):
+        """Mark a flag fixed / still wrong / won't fix, or record a re-check (its measurement under the current renderer)."""
+        f = self.flag(fid)
+        hist = f["history"] or []
+        if recheck is not None:
+            hist.append({"at": _now(), "recheck": recheck})
+        if status:
+            if status not in ("open", "fixed", "wontfix"):
+                raise core.UserError("A flag is open, fixed or won't fix.")
+            hist.append({"at": _now(), "status": status, "note": str(note or "")[:500]})
+        with self.store.write() as db:
+            db.execute("UPDATE delivery_flags SET status = ?, resolved = ?, history = ? WHERE id = ?",
+                       (status or f["status"], _now() if status in ("fixed", "wontfix") else f["resolved"], json.dumps(hist[-50:]), int(fid)))
+        return self.flag(fid)
+
+    def flag_delete(self, fid):
+        f = self.flag(fid)
+        with self.store.write() as db:
+            db.execute("DELETE FROM delivery_flags WHERE id = ?", (int(fid),))
+        p = self.flag_thumb(f["avatar_id"], fid)
+        if os.path.isfile(p):
+            os.remove(p)
+        return {"deleted": int(fid)}
+
+    def check_add(self, aid, r):
+        self.get(aid)
+        with self.store.write() as db:
+            cid = db.execute("""INSERT INTO delivery_checks(created, avatar_id, script, duration, score, spans, reference, renderer)
+                                VALUES(?,?,?,?,?,?,?,?)""", (_now(), int(aid), str(r.get("script") or "")[:4000], float(r.get("duration") or 0),
+                                                           int(r.get("score") or 0), json.dumps(r.get("spans") or [])[:200000],
+                                                           json.dumps(r.get("reference") or None), str(r.get("renderer") or "")[:40])).lastrowid
+            db.execute("DELETE FROM delivery_checks WHERE avatar_id = ? AND id NOT IN (SELECT id FROM delivery_checks WHERE avatar_id = ? ORDER BY id DESC LIMIT 200)",
+                       (int(aid), int(aid)))
+        return {"id": cid}
+
+    def checks(self, aid, limit=30):
+        rows = self.store.query("SELECT * FROM delivery_checks WHERE avatar_id = ? ORDER BY id DESC LIMIT ?", (int(aid), int(limit)))
+        for r in rows:
+            r["spans"] = json.loads(r["spans"] or "[]"); r["reference"] = json.loads(r["reference"] or "null")
+        return rows
+
+    def reference(self, aid):
+        p = os.path.join(self.folder, str(int(aid)), "reference.json")
+        if not os.path.isfile(p):
+            return None
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+
+    def reference_add(self, aid, clip, stats, frames):
+        """One reference clip of the person speaking, measured by the face tracker; the reference is the frame-weighted
+        mean over all clips (more clips: a steadier picture of how she really moves)."""
+        self.get(aid)
+        st = {k: float(stats[k]) for k in REFERENCE_KEYS if isinstance(stats.get(k), (int, float))}
+        if len(st) < 5 or int(frames or 0) < 24:
+            raise core.UserError("The clip was too short, or no face was found in it (at least a second of a visible face is needed).")
+        ref = self.reference(aid) or {"clips": []}
+        ref["clips"] = [c for c in ref["clips"] if c["clip"] != str(clip)[:160]] + [{"clip": str(clip)[:160], "frames": int(frames), "stats": st, "at": _now()}]
+        tot = sum(c["frames"] for c in ref["clips"])
+        ref["stats"] = {k: round(sum(c["stats"][k] * c["frames"] for c in ref["clips"] if k in c["stats"]) /
+                              max(1, sum(c["frames"] for c in ref["clips"] if k in c["stats"])), 4) for k in REFERENCE_KEYS}
+        ref.update(frames=tot, at=_now())
+        with open(os.path.join(self.folder, str(int(aid)), "reference.json"), "w", encoding="utf-8") as f:
+            json.dump(ref, f)
+        return ref
+
+    def reference_remove(self, aid, clip):
+        ref = self.reference(aid) or {"clips": []}
+        keep = [c for c in ref["clips"] if c["clip"] != clip]
+        p = os.path.join(self.folder, str(int(aid)), "reference.json")
+        if os.path.isfile(p):
+            os.remove(p)
+        out = None
+        for c in keep:
+            out = self.reference_add(aid, c["clip"], c["stats"], c["frames"])
+        return out
+
+    def motions(self, aid):
+        base = os.path.join(self.folder, str(int(aid)))
+        slugs = (["turn-around"] if os.path.isfile(os.path.join(base, "turn", "turn.json")) else []) + \
+                sorted(x for x in (os.listdir(os.path.join(base, "motions")) if os.path.isdir(os.path.join(base, "motions")) else [])
+                       if os.path.isfile(os.path.join(base, "motions", x, "motion.json")))
+        return [self.motion(aid, x) for x in slugs]
+
+    def motion_frame(self, aid, slug, i):
+        p = os.path.join(self._motion_dir(aid, slug), "%03d.jpg" % int(i))
+        if not os.path.isfile(p):
+            raise core.UserError("No such frame.")
+        return p
+
+    def motion_delete(self, aid, slug):
+        shutil.rmtree(self._motion_dir(aid, slug), ignore_errors=True)
+        return {"deleted": True}
+
+    # the person's proportions, learned from all their footage (face height per shoulder width, head top, body height):
+    # aligns a new video where the face is seldom seen
+    def anatomy(self, aid):
+        p = os.path.join(self.folder, str(int(aid)), "anatomy.json")
+        if not os.path.isfile(p):
+            return None
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+
+    def set_anatomy(self, aid, a):
+        self.get(aid)
+        keep = {k: float(a[k]) for k in ("face_per_width", "headtop", "height_per_face", "x_off") if isinstance(a.get(k), (int, float))}
+        keep.update(frames=int(a.get("frames") or 0), videos=[str(v)[:120] for v in (a.get("videos") or [])][:50], at=_now())
+        with open(os.path.join(self.folder, str(int(aid)), "anatomy.json"), "w", encoding="utf-8") as f:
+            json.dump(keep, f)
+        return keep
+
+    # the turnaround, as earlier versions called it
+    def turn_put(self, aid, i, data):
+        return self.motion_put(aid, "turn-around", i, data)
+
+    def turn_set(self, aid, meta):
+        return self.motion_set(aid, "turn-around", dict(meta, name=meta.get("name") or "turn around", words=meta.get("words") or ["turn around"]))
+
+    def turn(self, aid):
+        return self.motion(aid, "turn-around")
+
+    def turn_frame(self, aid, i):
+        return self.motion_frame(aid, "turn-around", i)
+
+    def turn_delete(self, aid):
+        return self.motion_delete(aid, "turn-around")
 
     def update(self, aid, name=None, tags=None, voice=None, notes=None, hidden=None):
         self.get(aid)

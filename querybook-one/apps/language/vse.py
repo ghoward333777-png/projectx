@@ -1,8 +1,4 @@
-"""vse — the Visual Speech Engine, stage 1: lip reading inside the Language Builder.
-
-1.52: nothing here draws or animates a face. Every speaking face is a clip made by Gemini or HeyGen (talkclip.py).
-The LSG below survives only as the lip reader's model of how a mouth moves for each sound: the reader compares a real
-face against it. Its motion is never rendered, exported or played.
+"""vse — the Visual Speech Engine, stage 1: lip sync and lip reading inside the Language Builder.
 
 The design follows the Visual Speech Engine specification (subsystems APS, VPS, LSG, LRE, FMS, COL) but every
 part is built from signal processing, geometry and established speech science instead of trained networks, so
@@ -30,7 +26,7 @@ API, so trained models can replace these parts one at a time and be measured wit
                                     beam-pruned), word-frequency priors and an insertion penalty. With a script
                                     it force-aligns instead (per-word timing and agreement). Every word still
                                     comes with the words that look the same on the lips.
-  COL  Control & Orchestration      background jobs (lip_read, curriculum, benchmark) with status polling.
+  COL  Control & Orchestration      background jobs (lip_sync, lip_read, benchmark) with status polling.
 
 Accuracy is measured, never claimed: benchmark() runs a synthetic round trip (deterministic speakers with
 their own mouth shapes, timing and noise) and, when the ingestion reservoir has held-out recordings, the same
@@ -562,6 +558,34 @@ def arkit52(f, emo, tongue=0.0, asym=0.0, t=0.0, phase=0.0, upper=None):
         "tongueOut": tongue,
     }
     return [c(v.get(k, 0.0)) for k in ARKIT52]
+
+
+def arkit52_csv(motion):
+    """All 52 ARKit channels per frame plus head pose (Live Link Face column order)."""
+    lines = [",".join(["time_s"] + ARKIT52 + ["headYaw", "headPitch", "headRoll"])]
+    for f in motion["frames"]:
+        lines.append(",".join(str(x) for x in [f["time"]] + f["bs"] + f["head_pose_deg"]))
+    return "\n".join(lines) + "\n"
+
+
+ARKIT = [("jawOpen", "jawOpen", 1), ("mouthClose", "mouthClose", 1), ("mouthFunnel", "mouthFunnel", 1), ("mouthPucker", "mouthPucker", 1),
+         ("mouthStretchLeft", "stretch", 1), ("mouthStretchRight", "stretch", 1), ("mouthSmileLeft", "smile", 1), ("mouthSmileRight", "smile", 1),
+         ("mouthRollLower", "mouthRollLower", 1), ("mouthRollUpper", "mouthRollUpper", 1), ("mouthUpperUpLeft", "upperUp", 1),
+         ("mouthUpperUpRight", "upperUp", 1), ("mouthLowerDownLeft", "lowerDown", 1), ("mouthLowerDownRight", "lowerDown", 1),
+         ("mouthPressLeft", "press", 1), ("mouthPressRight", "press", 1), ("mouthShrugLower", "mouthShrugLower", 1)]
+
+
+def arkit_csv(motion):
+    """The motion as ARKit-named blendshape curves (Live Link Face / Blender / Unreal friendly), one row per frame."""
+    head = ["time_s"] + [a for a, _, _ in ARKIT] + ["eyeBlinkLeft", "eyeBlinkRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
+                                                    "eyeLookX", "eyeLookY", "headYaw", "headPitch", "headRoll"]
+    lines = [",".join(head)]
+    for f in motion["frames"]:
+        m = f["mouth"]
+        row = [f["time"]] + [m[_I[k]] for _, k, _ in ARKIT] + [f["blink"], f["blink"], f["brows"][0], f["brows"][1], f["brows"][1],
+                                                               f["eye_gaze"][0], f["eye_gaze"][1]] + f["head_pose_deg"]
+        lines.append(",".join(str(round(x, 4)) for x in row))
+    return "\n".join(lines) + "\n"
 
 
 # ============================================================================ LRE — lip reading
@@ -1117,6 +1141,7 @@ class Engine:
         self.sl, self.lab, self.coach = speech_lab, lab, coach
         self.jobs = {}
         self._lock = threading.Lock()
+        self.human = None                     # the human motion model (Quality lab), set by the app
         self.real = None                      # (1.48) viseme models measured on real faces, set by the app
         self.stt_timing = False               # (1.48) Speech-to-Text word times; off since 1.50 (timing fitted to the sound, as in 1.46)
 
@@ -1157,6 +1182,36 @@ class Engine:
         return j
 
     # -- pipelines
+    def lip_sync_job(self, wav, text, lang="en", word_times=None, fps=30, emotion_override=None, personal=True):
+        def fn(progress):
+            progress(1, 4, "audio: phonemes, prosody, emotion, voice")
+            wt, timing = word_times, "word times given" if word_times else "fitted to the sound"
+            if not wt and self.sl is not None and self.stt_timing:
+                try:                                      # (1.48) Speech-to-Text word times, fitted to the script's words
+                    if self.sl.stt_ready():
+                        r = self.sl.transcribe(wav, lang)
+                        wt = visemes.fit_word_times(text, (r or {}).get("words") or []) if r and not r.get("error") else None
+                        timing = "Speech-to-Text word times" if wt else "fitted to the sound (Speech-to-Text did not match the words)"
+                except Exception:
+                    wt = None
+            a = aps(wav, text, lang, self.lab, wt)
+            emo = dict(a["emotion"])
+            if emotion_override:
+                emo.update({k: float(v) for k, v in emotion_override.items() if k in EMOTION_KEYS})
+            progress(2, 4, "lip sync and face motion")
+            hm = self.human() if self.human else {}
+            tg = dict(hm.get("targets") or {})                              # mouth shapes learned from real speakers
+            if personal:
+                tg.update(self._targets())                                   # this speaker's own shapes win
+            ls = lip_sync(a["track"], a["prosody"], emo, fps=int(fps), targets=tg, seed=text, style=hm.get("style"))
+            progress(4, 4, "done")
+            return {"phonemes": a["phonemes"], "emotion": emo, "speaker_embedding": a["speaker_embedding"],
+                    "prosody_summary": {"pitch_hz": a["measure"]["pitch"].get("mean_hz"), "rate_syl_s": a["measure"]["rate"]["articulation_rate_syl_s"]},
+                    "visemes": ls["viseme_sequence"], "motion": ls["motion"], "arkit_csv": arkit_csv(ls["motion"]), "arkit52_csv": arkit52_csv(ls["motion"]),
+                    "personal_targets": sorted(tg), "duration": a["duration"], "human_model": hm.get("version", 0),
+                    "words": [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in a["track"].get("words", [])], "timing": timing}
+        return fn
+
     def lip_read_job(self, frames, lang="en", words=(), script=""):
         def fn(progress):
             progress(1, 2, "face analysis")
