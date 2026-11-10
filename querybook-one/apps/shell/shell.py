@@ -184,7 +184,7 @@ class Shell:
         self.job = WindowsJob()
         self.programs = {pid: Program(pid, self.root, self.job) for pid in PROGRAMS}
         self.watches = Watches(self.root)
-        self.library = Library(os.path.join(HERE, "library"))
+        self.library = Library([os.path.join(HERE, "library"), os.path.join(self.root, "library") if self.root else ""])
 
     def prepare_drive(self) -> None:
         if not self.root:
@@ -310,30 +310,39 @@ def check_text(text: str, urls: dict) -> dict:
 
 # --------------------------------------------------------------------------- the sample-ebook library (Book Query)
 class Library:
-    """the books in library/<id>/book.json.gz, loaded when first asked about (the last six are kept in memory)"""
+    """Book Query's books: the 19 bundled with QueryBook (library/) and those the Control Panel's Book Harvester gathered
+    (<data folder>/library). A book is loaded when first asked about; the last six are kept in memory."""
 
-    def __init__(self, folder: str) -> None:
-        self.folder = folder
+    def __init__(self, folders: list) -> None:
+        self.folders = [f for f in folders if f]
         self.lock = threading.Lock()
         self.cache: dict = {}
         self.order: list = []
-        self.cards: list | None = None
+
+    def where(self) -> dict:
+        found: dict = {}
+        for d in self.folders:
+            try:
+                for name in sorted(os.listdir(d)):
+                    if name not in found and os.path.isfile(os.path.join(d, name, "book.json.gz")):
+                        found[name] = os.path.join(d, name)
+            except OSError:
+                continue
+        return found
 
     def ids(self) -> list:
-        try:
-            return sorted(d for d in os.listdir(self.folder) if os.path.isfile(os.path.join(self.folder, d, "book.json.gz")))
-        except OSError:
-            return []
+        return sorted(self.where())
 
     def get(self, book_id: str) -> tuple:
-        if book_id not in self.ids():
+        place = self.where().get(book_id)
+        if not place:
             raise ValueError("There is no book %r in the library." % book_id)
         with self.lock:
             if book_id in self.cache:
                 self.order.remove(book_id)
                 self.order.append(book_id)
                 return self.cache[book_id]
-            with gzip.open(os.path.join(self.folder, book_id, "book.json.gz"), "rb") as f:
+            with gzip.open(os.path.join(place, "book.json.gz"), "rb") as f:
                 book = json.loads(f.read().decode("utf-8"))
             entry = (book, bookq.index(book))
             self.cache[book_id] = entry
@@ -343,14 +352,18 @@ class Library:
             return entry
 
     def list(self) -> list:
-        """one card per book, from library/catalog.json (written by tools/build_library.py)"""
-        if self.cards is None:
+        """every book's card: the bundled catalog, then the harvested one (re-read each time: the harvester adds books)"""
+        cards, seen = [], set()
+        for d in self.folders:
             try:
-                with open(os.path.join(self.folder, "catalog.json"), encoding="utf-8") as f:
-                    self.cards = json.load(f)["books"]
+                with open(os.path.join(d, "catalog.json"), encoding="utf-8") as f:
+                    for c in json.load(f)["books"]:
+                        if c.get("id") not in seen:
+                            seen.add(c.get("id"))
+                            cards.append(c)
             except (OSError, ValueError, KeyError):
-                self.cards = []
-        return self.cards
+                continue
+        return cards
 
     def passage(self, book_id: str, unit_id: str) -> dict:
         """the Original Text layer around one Fact Unit: its whole paragraph, the paragraphs before and after"""

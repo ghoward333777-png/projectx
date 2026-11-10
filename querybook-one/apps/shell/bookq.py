@@ -80,7 +80,7 @@ def _title(line: str) -> str:
 
 def _label(line: str) -> str:
     """'CHAPTER XIV.' -> 'Chapter XIV'; 'BOOK ONE: 1805' -> 'Book One: 1805'; roman numerals stay in capitals"""
-    t = line.strip().rstrip(".]").strip()
+    t = re.sub(r"^#+ ", "", line.strip()).rstrip(".]").strip()         # "## Title" — a heading from an EPUB or HTML page
     return " ".join(_cap(w) for w in t.split(" "))
 
 
@@ -176,7 +176,8 @@ def parse(text: str, rules: dict) -> list[dict]:
             part_at.append([i, part])
             i += 1
             continue
-        if ln and (_full(chap_re, ln) or ln in exact):
+        alone = not rules.get("standalone") or ((i == 0 or not lines[i - 1].strip()) and (i + 1 >= len(lines) or not lines[i + 1].strip()))
+        if ln and alone and (_full(chap_re, ln) or ln in exact):
             title = ""
             j = i + 1
             if rules.get("wrap") and not ln.endswith((".", ")", "]")) and j < len(lines) and lines[j].strip():
@@ -200,6 +201,14 @@ def parse(text: str, rules: dict) -> list[dict]:
             block.append(lines[i])
         i += 1
     start("", "")
+    chunk = int(rules.get("chunk") or 0)
+    if chunk and len(chapters) <= 1 and chapters and len(chapters[0]["paragraphs"]) > chunk:
+        # no headings found (a plain essay, an OCR scan): numbered sections of `chunk` paragraphs keep every anchor short
+        paras = chapters[0]["paragraphs"]
+        chapters = []
+        for k in range(0, len(paras), chunk):
+            chapters.append({"n": 0, "label": "Section %d" % (k // chunk + 1), "title": "", "part": "",
+                             "paragraphs": paras[k:k + chunk], "figures": [], "line": k})
     # a heading met twice in the same part: the first was the contents page — its text goes to the front matter
     last: dict[str, int] = {}
     for k, c in enumerate(chapters):
@@ -780,3 +789,37 @@ def reasoning_kind(sentence: str) -> str:
     shown as such; the sentence itself is always quoted"""
     d, o = bool(DEDUCED.search(sentence)), bool(OBSERVED.search(sentence))
     return "deduced" if d else "observed" if o else ""
+
+
+# --------------------------------------------------------------------------- structure rules for a book nobody has described
+CHAPTER_STYLES: list[list[str]] = [
+    [r"## .+"],                                            # headings recovered from EPUB / HTML
+    [r"(?i)chapter [ivxlc]+\.?(:? .*)?", r"(?i)chapter \d+\.?(:? .*)?"],
+    [r"(?i)letter [ivxlc\d]+\.?(:? .*)?"],
+    [r"(?i)stave [ivx]+\.?(:? .*)?"],
+    [r"THE (" + "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth".upper() + r") BOOK\.?"],
+    [r"(?i)(book|part) [ivxlc]+\.?(:? .*)?", r"(?i)(book|part) (the )?(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\b.*"],
+    [r"[IVXLC]+\.", r"[IVXLC]+\. [A-Z][A-Z ,’'\-]+"],
+    [r"\d{1,3}\."],
+]
+PART_STYLES: list[str] = [r"(?i)(first|second|third) epilogue\b.*",r"(?i)(book|part|volume) [ivxlc]+\.?(:? .*)?",
+                          r"(?i)(book|part|volume) (the )?(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\b.*"]
+
+
+def auto_rules(text: str) -> dict:
+    """Structure rules for any book: the first heading style that occurs at least three times as a whole line becomes the
+    chapters; BOOK / PART / VOLUME above them become parts when the chapters are something else; a short line under a
+    bare heading is its title; an index at the end stops the book. Contents pages are dropped by parse() itself."""
+    lines = [l.strip() for l in body(text).split("\n") if l.strip()]
+    chapters: list[str] = []
+    for style in CHAPTER_STYLES:
+        n = sum(1 for l in lines if len(l) <= 90 and any(re.fullmatch(p, l) for p in style))
+        if n >= (2 if style == CHAPTER_STYLES[0] else 3):        # headings an EPUB / HTML page marked as such need less proof
+            chapters = style
+            break
+    parts: list[str] = []
+    if chapters and chapters != CHAPTER_STYLES[4]:
+        if sum(1 for l in lines if len(l) <= 90 and any(re.fullmatch(p, l) for p in PART_STYLES)) >= 2:
+            parts = PART_STYLES
+    return {"chapters": chapters, "parts": parts, "title_line": True, "stop": [r"INDEX\.?", r"(?i)index"], "min_chars": 300,
+            "standalone": True, "chunk": 60}

@@ -11,6 +11,7 @@ const AREAS = [
   { id: "video", name: "Video Studio", app: "video" },
   { band: "Operate", admin: true },
   { id: "harvest", name: "Harvest", app: "control", hash: "bulk", admin: true },
+  { id: "books", name: "Book Harvester", app: "control", hash: "books", admin: true },
   { id: "knowledge", name: "Knowledge", app: "control", hash: "facts", admin: true },
   { id: "trust", name: "Trust & Security", app: "control", hash: "audit", admin: true },
   { id: "system", name: "System", app: "control", hash: "diag", admin: true },

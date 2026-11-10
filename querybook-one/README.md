@@ -60,6 +60,29 @@ Each book has four layers:
 - relationship networks, family and character tracing, and fictional vs historical figures;
 - timelines, evidence in story order (observed vs deduced), and who narrates.
 
+## Book Harvester (Control Panel → Books, `#books`; rail: Operate → Book Harvester)
+
+`_core/qbbooks.py` is the Harvesting Engine's book and document pipeline:
+
+source → harvester → rights gate → metadata → format normaliser → document structure → Fact Units → Book Query
+
+| # | Source | Status | How |
+|---|---|---|---|
+| 1 | Project Gutenberg | active | Its machine-readable catalog (`pg_catalog.csv.gz`, cached weekly) is filtered by type, language, subject and bookshelf, then ranked by downloads (OPDS search). The plain text is downloaded at a 2-second pace. A header marked "copyrighted" is refused. |
+| 2 | Internet Archive | active | Scanned documents: the advanced-search API and the item's OCR text, cleaned (hyphenation, page numbers). An item is ingested only if published in 1930 or earlier; otherwise it is held. The item's licence field is recorded but not trusted (it labels Gutenberg texts "GPL"). |
+| 3 | HathiTrust | research only | Approved noncommercial research access. Volumes you hold are imported from a folder; each Rights Record says "licensed for noncommercial research". |
+| 4 | Standard Ebooks | by address | One book by its page address (bulk ZIPs are for Patrons Circle members). The EPUB is read in spine order and its headings become chapters. |
+| 5 | Government and other public documents | by address | HTML or text with the rights the admin declares; "unknown" is held. PDF is held with an explanation, because reading PDFs and OCR are the next stage. |
+
+- **Presets:** Phase 1 (100 books) and Phase 2 (1,000 books) across ten subjects, most read first.
+- **Structure:** detected automatically (`bookq.auto_rules`). On the bundled books it matches the hand-tuned rules, for example 366 chapters of *War and Peace*. A text with no headings, such as an OCR scan, is cut into numbered sections.
+- **Rights Record:** every book carries one: work, author, source and id, original publication, rights status, territory, source file (address, format, size, SHA-256), ingestion date, transformation (normaliser, parser, OCR) and human review. Admins mark books reviewed in the tab.
+- **Block list:** Darwin.
+- **Where books go:** `<data folder>/library/<id>/`, in the same form as the bundled books, listed in its `catalog.json`. Book Query lists them beside the 19 bundled books.
+- **The job:** runs in the background, resumes after a restart, and Stop finishes the current book first.
+- **Self-test:** 19 checks against a stand-in for every site.
+- **Live check:** the 3 most-read Gutenberg astronomy books harvested in about 1 s each; one Internet Archive scan (1889) ingested from OCR; undated and post-1930 items held.
+
 ## Changes made to the suite's code
 
 - **Language Lab** (the Language area's first tab, `#learn`): one screen and one text, in five steps:

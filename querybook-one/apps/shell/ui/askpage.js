@@ -552,7 +552,8 @@ function akLibraryPanel() {
           el("span", { class: "small muted" }, b.subject),
           el("span", { class: "libtags" }, el("span", { class: "chip" }, `${b.units.toLocaleString()} Fact Units`),
             Object.keys(b.modern || {}).length ? el("span", { class: "chip verified" }, b.kind === "fiction" ? "historical context" : "modern layer") : null,
-            b.people ? el("span", { class: "chip" }, `${b.people} people`) : null)))]).flat(2))),
+            b.people ? el("span", { class: "chip" }, `${b.people} people`) : null,
+            b.harvested ? el("span", { class: "chip context" }, "harvested") : null)))]).flat(2))),
       cur ? akBookDetail(cur) : el("p", { class: "small muted" }, "No book chosen yet."));
   };
   if (AK.library) draw();

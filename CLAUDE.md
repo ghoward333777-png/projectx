@@ -124,3 +124,6 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   Project Gutenberg header/licence/trademark removed, provenance and rights kept in `meta.json`.
 - After changing `bookq.py`, a `meta.json` or a `modern.json`, run `python tools/build_library.py` (its `--check`
   runs in the tests). Modern/context entries must name sources and match a real sentence of the book.
+- The Book Harvester (`apps/_core/qbbooks.py`, Control Panel → Books) writes harvested books to `<data>/library`.
+  `bookq.py` lives in `apps/_core` and is copied to every app and to `apps/shell` by `sync_core.py`. Keep the rights gate
+  (unknown → held, IA judged by publication year, Gutenberg 'copyrighted' refused) and the Rights Record on every book.

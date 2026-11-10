@@ -116,6 +116,7 @@
   <button data-tab="overview">Overview</button>
   <button data-tab="bulk">Harvesting</button>
   <button data-tab="farm">Farm out</button>
+  <button data-tab="books">Books</button>
   <button data-tab="target">Targeting</button>
   <button data-tab="filter">Filtering</button>
   <button data-tab="facts">Shared facts</button>
@@ -371,6 +372,58 @@
     </div>
   </section>
 
+  <section class="panel" id="books">
+    <div class="card">
+      <div class="sechead"><h2>Book Harvester <span class="small muted">— books and documents for Book Query</span></h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
+      <p class="muted small">Source → harvester → <b>rights gate</b> → metadata → format normaliser (text, EPUB, HTML, OCR text) → document structure (parts,
+        chapters, sections, paragraphs, notes) → <b>Fact Units</b> → Book Query. Every book keeps a <b>Rights Record</b> apart from its content: source and
+        identifier, original publication, rights status, territory, source file with its SHA-256, ingestion date, transformation and human review.
+        Anything whose rights are unclear is <b>held for review</b>, never ingested. Authors on the block list are never harvested: <span id="bk-blocked"></span>.</p>
+      <div id="bk-summary" class="small"></div>
+    </div>
+    <div class="card">
+      <h2><span class="fm-step">1</span> Sources</h2>
+      <div id="bk-sources"></div>
+    </div>
+    <div class="card">
+      <h2><span class="fm-step">2</span> Find books <span class="small muted">— Project Gutenberg's catalog, ranked by downloads, or the Internet Archive</span></h2>
+      <div class="row"><button class="btn" data-phase="phase1">Phase 1 — 100 books</button><button class="btn" data-phase="phase2">Phase 2 — 1,000 books</button>
+        <span class="small muted">Ten subjects (history, science, philosophy, economics, politics, biography, literature, detective stories, science fiction, children's classics), the most read first.</span></div>
+      <div class="fm-grid" style="margin-top:10px">
+        <label>Subjects <span class="small muted">(comma between)</span><input id="bk-subjects" placeholder="e.g. astronomy, Roman history, detective stories"></label>
+        <label>Books per subject<input id="bk-per" type="number" min="1" max="200" value="10"></label>
+        <label>Source<select id="bk-source"><option value="gutenberg">Project Gutenberg (ebooks)</option><option value="internet-archive">Internet Archive (scanned documents, OCR)</option></select></label>
+        <label>Language<select id="bk-lang"><option value="en">English</option><option value="fr">French</option><option value="de">German</option><option value="es">Spanish</option><option value="it">Italian</option></select></label>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn" id="bk-find">Find books</button><span class="small muted" id="bk-find-out"></span></div>
+      <div id="bk-found" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2><span class="fm-step">3</span> Add one book or document by its address <span class="small muted">— Standard Ebooks, government and other public documents</span></h2>
+      <div class="fm-grid">
+        <label>Address<input id="bk-url" placeholder="https://standardebooks.org/ebooks/… or https://…/report.html"></label>
+        <label>Source<select id="bk-asrc"><option value="standard-ebooks">Standard Ebooks (EPUB)</option><option value="government">Government or other public document</option></select></label>
+        <label>Rights<select id="bk-rights"></select></label>
+        <label>Title and author <span class="small muted">(optional)</span><input id="bk-title" placeholder="Title"><input id="bk-author" placeholder="Author"></label>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn" id="bk-add">Harvest it</button><span class="small muted">PDF and scans: use the Internet Archive's OCR text for now — reading PDFs directly is the next stage.</span></div>
+    </div>
+    <div class="card">
+      <h2><span class="fm-step">4</span> Research track — HathiTrust <span class="small muted">— approved noncommercial research only</span></h2>
+      <p class="muted small">HathiTrust's bulk public-domain datasets are for approved noncommercial research (Google-digitised volumes carry extra conditions).
+        Once you hold volumes under those terms, import their plain-text files from a folder; each Rights Record says "licensed for noncommercial research".</p>
+      <div class="row"><input id="bk-folder" class="grow" placeholder="e.g. D:\HathiTrust\volumes"><label class="small"><input type="checkbox" id="bk-agree"> I hold these volumes under HathiTrust's research terms</label><button class="btn" id="bk-import">Import</button></div>
+    </div>
+    <div class="card">
+      <div class="sechead"><h2><span class="fm-step">5</span> Harvesting now</h2><span><button class="btn quiet" id="bk-start">Resume</button> <button class="btn quiet" id="bk-stop">Stop</button></span></div>
+      <div id="bk-job"></div>
+    </div>
+    <div class="card">
+      <h2><span class="fm-step">6</span> The library <span class="small muted" id="bk-count"></span></h2>
+      <div id="bk-books"></div>
+    </div>
+  </section>
+
   <section class="panel" id="bulk">
     <div class="card">
       <div class="sechead"><h2>Harvesting</h2><button class="btn quiet" id="bk-refresh">Check again</button></div>
@@ -548,5 +601,6 @@
 <script src="app.js"></script>
 <script src="aiusage.js"></script>
 <script src="farm.js"></script>
+<script src="books.js"></script>
 </body>
 </html>
