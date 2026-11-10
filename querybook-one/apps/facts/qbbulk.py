@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.35.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.35.1"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -2974,8 +2974,22 @@ def status(commons_folder, commons=None):
             for f_ in ("facts", "staged", "staged_new", "gathered"):
                 row[f_] = prev_g.get(f_, row.get(f_))
             row["count_from"] = row.get("count_from") or "last known — the dataset is changing hands (paused, restarting or being moved), its facts are kept"
-        elif row["gathered"]:
-            _LAST_GATHERED[lk] = {f_: row.get(f_) for f_ in ("facts", "staged", "staged_new", "gathered")}
+        else:
+            # 1.35.1: the "new" figure is a sample of 1,000 per batch, so a batch with a few duplicates in it (0.2 % —
+            # Windows test: 5,000,031 staged, 4,990,136 kept) reads as all new, and the total then fell by those few
+            # thousand when the batch was filed. Hold the total where it was until new facts pass it (seconds at
+            # harvest speed) and count the difference as already held, rather than show a fall.
+            fl = _FLOOR.get(lk)
+            if prev_g and not fl and row["facts"] > (prev_g.get("facts") or 0) and row["gathered"] < prev_g["gathered"]:
+                fl = _FLOOR[lk] = {"gathered": prev_g["gathered"], "facts": row["facts"]}
+                _HELD_AT_FILING[lk] = _HELD_AT_FILING.get(lk, 0) + prev_g["gathered"] - row["gathered"]
+            if fl:
+                if row["gathered"] >= fl["gathered"] or row["facts"] < fl["facts"]:
+                    _FLOOR.pop(lk, None)                  # passed it (or a real fall, which the drops ledger explains)
+                else:
+                    row["gathered"] = fl["gathered"]
+            if row["gathered"]:
+                _LAST_GATHERED[lk] = {f_: row.get(f_) for f_ in ("facts", "staged", "staged_new", "gathered")}
         al = _agent_alive_info(commons_folder, key)
         if al and al.get("waiting") and row["state"] == "running":
             row["doing"] = al["waiting"]                   # "filing 20,000,000 facts into the dataset", "a download connection"…
@@ -3003,6 +3017,7 @@ def status(commons_folder, commons=None):
             "keepalive": keepalive_info(commons_folder),
             "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
                                  for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
+            "already_held_at_filing": sum(v for (cf, _k), v in _HELD_AT_FILING.items() if cf == commons_folder),
             "duplicates_removed": sum((_LAST_DUPS.get((commons_folder, d["key"])) or 0) for d in out),
             "bytes": sum(d["bytes"] for d in out), "download": download_status(commons_folder, commons)["download"]}
 
@@ -3051,6 +3066,8 @@ def download_status(commons_folder, commons=None):
 
 _LAST_COUNT = {}
 _LAST_GATHERED = {}
+_FLOOR = {}                  # 1.35.1: the total held while a just-filed batch's few duplicates are overtaken
+_HELD_AT_FILING = {}
 _FARMED = {}                # 1.35: the last full count of each dataset, shown while it changes hands
 _LAST_DUPS = {}
 _SAVED = {}
@@ -5029,6 +5046,27 @@ def _supervisor_tests():
         ok("1.35: a dataset whose file is moving for a moment keeps its last count on the screen (the total never dips), "
            "and reads its own file again once it is back", r4_["gathered"] == 5 and "changing hands" in str(r4_.get("count_from"))
            and r5_["gathered"] == 5 and not r5_.get("count_from"), (r4_.get("gathered"), r4_.get("count_from"), r5_.get("gathered")))
+        # 1.35.1: a batch whose few duplicates the 1,000-fact sample misses: the total holds, never falls, when it is filed
+        old_ns = Shard.NEW_SAMPLE
+        Shard.NEW_SAMPLE = 1                                # the sample sees only the first fact: the duplicate is missed
+        try:
+            sg = Shard(cf, "calendar-scaffold")
+            sg.write(pg_, [(k(60 + i), "v%d" % i, 1, "o", pg_, 30 + i) for i in range(3)] + [(k(10), "s0", 1, "o", pg_, 33)], 12)
+            sg.db.close()
+            h1_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+            sg = Shard(cf, "calendar-scaffold"); sg.merge(); sg.db.close()
+            st2_ = status(cf)
+            h2_ = next(d for d in st2_["datasets"] if d["key"] == "calendar-scaffold")
+            sg = Shard(cf, "calendar-scaffold")
+            sg.write(pg_, [(k(70 + i), "w%d" % i, 1, "o", pg_, 40 + i) for i in range(2)], 14)
+            sg.db.close()
+            h3_ = next(d for d in status(cf)["datasets"] if d["key"] == "calendar-scaffold")
+        finally:
+            Shard.NEW_SAMPLE = old_ns
+        ok("1.35.1: a filed batch with a duplicate the sample missed holds the total (counted as already held) until new facts "
+           "pass it — the total never falls", h1_["gathered"] == 9 and h2_["facts"] == 8 and h2_["gathered"] == 9
+           and st2_["already_held_at_filing"] == 1 and h3_["gathered"] == 10, (h1_.get("gathered"), h2_.get("facts"),
+           h2_.get("gathered"), st2_.get("already_held_at_filing"), h3_.get("gathered")))
         # 1.35: filing waits its turn in its own pool and never blocks an agent's next batch
         global STAGE_MIN, STAGE_CAP
         old_min, old_cap = STAGE_MIN, STAGE_CAP
