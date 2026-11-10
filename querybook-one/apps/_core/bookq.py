@@ -825,3 +825,146 @@ def auto_rules(text: str) -> dict:
             parts = PART_STYLES
     return {"chapters": chapters, "parts": parts, "title_line": True, "stop": [r"INDEX\.?", r"(?i)index"], "min_chars": 300,
             "standalone": True, "chunk": 60}
+
+
+# --------------------------------------------------------------------------- answer engineering: what is asked, the evidence, the answer
+QTYPES: list[list[str]] = [
+    ["howmany", r"^(how many|how much|what number|what is the number)\b"],
+    ["measure", r"^how (far|big|large|long|old|heavy|hot|cold|fast|high|deep|wide|massive)\b|^what is the (distance|size|diameter|mass|temperature|speed|velocity|length|age|weight|height|depth)\b"],
+    ["when", r"^(when|what year|in what year|what date|on what date|at what time)\b"],
+    ["where", r"^(where|in what place|in which (city|country|place))\b"],
+    ["who", r"^(who|whom|whose|which (person|man|woman|character))\b"],
+    ["why", r"^(why|for what reason|what (is|was) the reason|what (causes|caused|made))\b"],
+    ["how", r"^(how (did|does|do|is|was|can|could|should|would)|in what way|by what means)\b"],
+    ["define", r"^(what (is|are|was|were) (a |an |the )?|define\b|definition of|what does .* mean|meaning of)"],
+    ["yesno", r"^(is|are|was|were|do|does|did|can|could|should|has|have|had|will|would)\b"],
+    ["list", r"^(list|name|what are the|which are the|enumerate|give me (all|the))\b"],
+]
+REASON = re.compile(r"\b(because|for|since|so that|in order to|reason|cause[sd]?|due to|owing to|that is why|therefore|hence|thus|on account of|motive|wish(ed)? to|wanted to|determined to)\b", re.I)
+DATE_WORDS = re.compile(r"\b(1[0-9]{3}|20[0-9]{2}|(january|february|march|april|may|june|july|august|september|october|november|december)\b|\b\d{1,2}(st|nd|rd|th)\b|century|a\.\s?d\.|b\.\s?c\.)", re.I)
+PLACE_WORDS = re.compile(r"\b(in|at|near|to|from|into) (the )?[A-Z][a-zà-ÿ]+", re.U)
+
+
+def analyze(query: str) -> dict:
+    """the question's type (who, when, why, how many, ...) and its focus: the words that name what it is about"""
+    q = " ".join((query or "").split()).strip()
+    low = q.lower().rstrip("?!. ")
+    qtype = "open"
+    for name, pat in QTYPES:
+        if re.search(pat, low):
+            qtype = name
+            break
+    focus = terms(re.sub(r"^(what|who|whom|whose|when|where|why|how|which|is|are|was|were|do|does|did|define|list|name)\b", "", low))
+    return {"question": q, "qtype": qtype, "focus": focus}
+
+
+def alias_terms(book: dict, query: str) -> list[str]:
+    """the other names of every character the question mentions ('Natasha' -> natasha, rostova, ...)"""
+    out: list[str] = []
+    fq = fold(query)
+    for p in book.get("people") or []:
+        names = [p["name"]] + list(p.get("aliases") or [])
+        if any(re.search(r"(?<![a-z])" + re.escape(fold(a)) + r"(?![a-z])", fq) for a in names if len(a) >= 3):
+            for a in names:
+                out += terms(a)
+    return list(dict.fromkeys(out))
+
+
+def evidence(book: dict, idx: dict, query: str, limit: int) -> list[dict]:
+    """The paragraphs most likely to hold the answer, best first: each Fact Unit is scored (BM25), a paragraph scores its
+    best unit plus a share of the others, more for covering more of the question's words, more again when its chapter or
+    section title names what is asked. Each paragraph comes back whole, with its anchor and its units."""
+    a = analyze(query)
+    extra = alias_terms(book, query)
+    hits = search(book, idx, query + " " + " ".join(extra), chapter_in(book, query), 400)
+    if not hits:
+        return []
+    paras: dict[tuple, dict] = {}
+    for h in hits:
+        key = (h["chapter"], h["section"], h["para"])
+        p = paras.setdefault(key, {"best": 0.0, "sum": 0.0, "units": set(), "first": h["idx"]})
+        p["best"] = max(p["best"], h["score"])
+        p["sum"] += h["score"]
+        p["units"].add(h["idx"])
+        p["first"] = min(p["first"], h["idx"])
+    qt = set(query_terms(query) + extra)
+    chs = {c["n"]: c for c in book.get("chapters") or []}
+    secs = book.get("sections") or {}
+    rows = []
+    for key, p in paras.items():
+        ch = chs.get(key[0], {})
+        title_terms = set(terms((ch.get("title") or "") + " " + (ch.get("label") or "") + " " + secs.get(str(key[1]), "")))
+        cover = set()
+        lo = p["first"]
+        while lo > 0 and (book["units"][lo - 1]["chapter"], book["units"][lo - 1]["section"], book["units"][lo - 1]["para"]) == key:
+            lo -= 1
+        hi = lo
+        units = []
+        while hi < len(book["units"]) and (book["units"][hi]["chapter"], book["units"][hi]["section"], book["units"][hi]["para"]) == key:
+            units.append(hi)
+            cover |= set(idx["tf"][hi]) & qt
+            hi += 1
+        score = p["best"] + 0.25 * (p["sum"] - p["best"])
+        score *= 0.6 + 0.8 * len(cover) / max(1, len(qt))
+        if title_terms & qt:
+            score *= 1.35
+        if a["qtype"] == "why" and any(REASON.search(book["units"][i]["text"]) for i in units):
+            score *= 1.2
+        rows.append({"score": round(score, 3), "key": key, "units": units, "hit": sorted(p["units"])})
+    rows.sort(key=lambda r: (-r["score"], r["units"][0]))
+    out = []
+    for r in rows[:limit]:
+        us = [book["units"][i] for i in r["units"]]
+        if len(us) > 14:                                  # a very long paragraph: the hit sentences with one either side
+            keep = sorted({j for i in r["hit"] for j in (i - 1, i, i + 1) if r["units"][0] <= j <= r["units"][-1]})
+            us = [book["units"][i] for i in keep]
+        out.append({"anchor": anchor(book, us[0]), "chapter": us[0]["chapter"], "score": r["score"],
+                    "units": [{"id": u.get("id") or "", "text": u["text"], "kind": u["kind"]} for u in us],
+                    "text": " ".join(u["text"] for u in us)})
+    return out
+
+
+def _fits(qtype: str, s: str, focus: list[str]) -> float:
+    """how well one sentence answers a question of this type (0 = not at all)"""
+    low = fold(s)
+    f = sum(1 for t in focus if t in terms(s)) / max(1, len(focus))
+    if qtype in ("howmany", "measure"):
+        return (1.0 if quantities(s) or re.search(r"\b\d[\d,.]*\b", s) else 0.15) * (0.4 + f)
+    if qtype == "when":
+        return (1.0 if DATE_WORDS.search(s) else 0.15) * (0.4 + f)
+    if qtype == "where":
+        return (1.0 if PLACE_WORDS.search(s) else 0.3) * (0.4 + f)
+    if qtype == "why":
+        return (1.0 if REASON.search(s) else 0.25) * (0.4 + f)
+    if qtype == "define":
+        return (1.0 if re.search(r"\b(is|are|was|were|means|called|consists)\b", low) else 0.3) * (0.4 + f)
+    if qtype == "who":
+        return (1.0 if re.search(r"\b(is|was|were|are)\b", low) and re.search(r"[A-Z][a-z]+", s) else 0.4) * (0.4 + f)
+    return 0.4 + f
+
+
+def compose_rules(query: str, ev: list[dict]) -> dict:
+    """Without a language model: pick the sentence that answers this TYPE of question best (a number for 'how far', a
+    date for 'when', a reason for 'why', 'X is ...' for 'what is X'), then two or three supporting sentences. Every line is
+    a sentence of the book with its anchor; nothing is reworded."""
+    a = analyze(query)
+    cands = []
+    for rank, p in enumerate(ev):
+        for u in p["units"]:
+            if u["kind"] in ("table",) or u["text"].rstrip().endswith("?") or len(u["text"]) < 25:
+                continue
+            fit = _fits(a["qtype"], u["text"], a["focus"])
+            cands.append((fit * p["score"] / (1 + 0.15 * rank), rank, u, p))
+    cands.sort(key=lambda c: -c[0])
+    if not cands:
+        return {"answered": False, "answer": "", "points": [], "by": "rules", "qtype": a["qtype"]}
+    best = cands[0]
+    points, used = [], {best[2]["id"]}
+    for c in cands[1:]:
+        if len(points) >= 3:
+            break
+        if c[2]["id"] in used:
+            continue
+        used.add(c[2]["id"])
+        points.append({"text": c[2]["text"], "cites": [c[2]["id"]]})
+    return {"answered": True, "answer": best[2]["text"], "answer_cites": [best[2]["id"]], "points": points, "by": "rules", "qtype": a["qtype"]}

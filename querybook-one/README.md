@@ -60,6 +60,27 @@ Each book has four layers:
 - relationship networks, family and character tracing, and fictional vs historical figures;
 - timelines, evidence in story order (observed vs deduced), and who narrates.
 
+## How Book Query answers (the answer engine, `_core/qbcompose.py`)
+
+1. **Plan the search.** A model turns the question into the phrases and names the book probably uses ("Why did Thoreau go to the woods?" → "went to the woods", "live deliberately"). It does not answer at this step.
+2. **Gather the evidence.** `bookq.evidence()` scores paragraphs, not single sentences: the best unit, coverage of the question's words, chapter and section titles, character aliases with or without accents, and reasons for "why" questions. The best paragraphs are numbered P1, P2, … (B2-P3 when several books are asked).
+3. **Compose the answer.** Claude (`claude-opus-5-5`, structured JSON output, refusals fall back server-side), else Gemini. The model answers the exact question first, then gives the supporting points; for several books, what each book says and where they agree or differ. Every sentence cites its passages.
+4. **Verify.** A sentence citing a passage it was not given, or sharing no real words with what it cites, is removed. Nothing uncited survives. "Not in the book" is a valid answer.
+
+Without a key, the rules answer (`bookq.compose_rules`). They pick the sentence that fits the question's type: a number for "how far", a date for "when", a reason for "why", "X is …" for "what is X". The sentence is quoted unchanged. Book Query uses the Claude or Gemini key saved in the Control Panel (Harvesting → API keys), with a switch on the page.
+
+Measured on hard questions across seven books, the passage holding the real answer was in the evidence for three of seven without a search plan, and for seven of seven with one, usually as P1:
+
+- Thoreau's "live deliberately";
+- Elizabeth's "a most beloved sister";
+- Ishmael's "escaped alone";
+- the Red-Headed League's tunnel;
+- Natásha marrying Pierre;
+- "safer to be feared than loved";
+- justice as minding one's own business.
+
+**Several books at once.** Book Query → "📚 Ask several books at once": pick two to eight books, ask once. Each book is searched separately, and the answer gives each book's view with citations to its book, chapter and paragraph. Questions that ask for a list (networks, family tracing, timelines, "what changed since the book", evidence in story order) keep their exact list answers.
+
 ## Book Harvester (Control Panel → Books, `#books`; rail: Operate → Book Harvester)
 
 `_core/qbbooks.py` is the Harvesting Engine's book and document pipeline:

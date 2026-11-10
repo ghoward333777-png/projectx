@@ -29,9 +29,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ask
 import bookq
+import qbcompose
 import modes
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -484,6 +485,29 @@ class Watches:
                 pass
 
 
+LIST_INTENTS = ("since", "still_correct", "values", "modern", "historical", "network", "trace", "first", "characters", "structure", "timeline", "evidence")
+
+
+def book_ask(shell: "Shell", body: dict) -> dict:
+    """Book Query: one book or several. Questions that ask for a list (what changed since the book, a character's network,
+    a timeline, evidence in story order) keep bookq's exact lists; every other question is answered by the answer
+    engine — search planned, evidence gathered, the answer composed and every citation verified (qbcompose)."""
+    q = " ".join(str(body.get("q") or "").split())[:500]
+    ids = [str(x) for x in (body.get("books") or []) if x] or [str(body.get("book") or "")]
+    ids = list(dict.fromkeys(ids))[:8]
+    loaded = [shell.library.get(i) for i in ids]
+    use_ai = body.get("ai", True) not in (False, "false", 0)
+    keys = qbcompose.load_keys(shell.root or "")
+    if len(loaded) == 1:
+        book, idx = loaded[0]
+        r = bookq.answer(book, idx, q)
+        if r["intent"] not in LIST_INTENTS or (r["intent"] in ("network", "trace", "first") and not (r["edges"] or r["chapters"] or r["passages"])):
+            r["composed"] = qbcompose.answer(loaded, q, keys, use_ai)
+        return r
+    return {"multi": True, "query": q, "books": [{"id": b.get("id"), "title": b.get("title")} for b, _ in loaded],
+            "composed": qbcompose.answer(loaded, q, keys, use_ai)}
+
+
 def say(body: dict, urls: dict) -> dict:
     """the answer spoken by Language Builder's voice (and its mouth track, for a face)"""
     base = (urls.get("language") or "").rstrip("/")
@@ -533,6 +557,10 @@ def make_handler(shell: Shell):
                 if u.path == "/api/shell/book":
                     book, _ = shell.library.get(q.get("book", ""))
                     return self.send(200, bookq.overview(book))
+                if u.path == "/api/shell/book/ai":
+                    keys = qbcompose.load_keys(shell.root or "")
+                    return self.send(200, {"claude": bool(keys.get("anthropic")), "gemini": bool(keys.get("gemini")),
+                                           "model": qbcompose.CLAUDE_MODEL if keys.get("anthropic") else qbcompose.GEMINI_MODEL if keys.get("gemini") else ""})
                 if u.path == "/api/shell/book/chapter":
                     return self.send(200, shell.library.chapter(q.get("book", ""), int(q.get("n") or 0)))
                 if u.path == "/api/shell/book/passage":
@@ -584,8 +612,7 @@ def make_handler(shell: Shell):
                 if u.path == "/api/shell/watch":
                     return self.send(200, shell.watches.act(body, shell.urls()))
                 if u.path == "/api/shell/book/ask":
-                    book, idx = shell.library.get(str(body.get("book") or ""))
-                    return self.send(200, bookq.answer(book, idx, str(body.get("q") or "")[:500]))
+                    return self.send(200, book_ask(shell, body))
                 if u.path == "/api/shell/say":
                     return self.send(200, say(body, shell.urls()))
                 return self.send(404, {"error": "not found"})

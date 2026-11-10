@@ -154,3 +154,18 @@ dialog.reader { max-width: 820px; }
 dialog.reader .ptext p { font: 17px/1.65 Georgia, "Times New Roman", serif; }
 dialog.reader span[title]:hover { background: var(--sel); border-radius: 3px; }
 .bqgroup .btnchip { white-space: normal; text-align: left; line-height: 1.35; padding: 4px 11px; }
+/* composed answers */
+.card.answer .short { font-size: 19px; line-height: 1.45; }
+.cites { white-space: nowrap; }
+a.cite { display: inline-block; font: 600 11px system-ui, sans-serif; padding: 0 6px; margin: 0 1px; border-radius: 999px; background: var(--sel); color: var(--accent);
+  text-decoration: none; vertical-align: 2px; }
+a.cite:hover { background: var(--accent); color: var(--accent-ink); }
+ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0; }
+.bybook { display: grid; gap: 8px; margin-top: 10px; } .bybook p { margin: 2px 0; }
+.evid.flash { background: var(--warn-bg); border-radius: 8px; transition: background .3s; }
+.bqcard.picked { border-color: var(--accent); background: var(--sel); box-shadow: inset 0 0 0 2px var(--accent); }
+.bqcard.picked .bqmeta b::before { content: "✓ "; color: var(--accent); }
+.bqpickbar { position: sticky; bottom: 0; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 10px 14px; margin: 0 0 14px; box-shadow: 0 -4px 12px rgba(0,0,0,.08); }
+.chipx { border: 0; background: none; color: inherit; cursor: pointer; font: 700 13px system-ui, sans-serif; padding: 0 2px; }
+.bqai { margin-top: 8px; } .bqai label { cursor: pointer; }

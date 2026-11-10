@@ -8,7 +8,7 @@ import os, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPS = ["language", "stem", "facts", "control", "video"]
-FILES = [("qbcore.py", "qbcore.py"), ("qbdrive.py", "qbdrive.py"), ("qbtrace.py", "qbtrace.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("qbengineer.py", "qbengineer.py"), ("qbcontrol.py", "qbcontrol.py"), ("qbselfknow.py", "qbselfknow.py"), ("qbexemplar.py", "qbexemplar.py"), ("qbcampaign.py", "qbcampaign.py"), ("qbbulk.py", "qbbulk.py"), ("qbscaffold.py", "qbscaffold.py"), ("qbapidoc.py", "qbapidoc.py"), ("qbconnections.py", "qbconnections.py"), ("qbgather.py", "qbgather.py"), ("qbkeystone.py", "qbkeystone.py"), ("gcloud.py", "gcloud.py"), ("qbusage.py", "qbusage.py"), ("qbdump.py", "qbdump.py"), ("qbdsn.py", "qbdsn.py"), ("qbsynapse.py", "qbsynapse.py"), ("qbmath.py", "qbmath.py"), ("qbseal.py", "qbseal.py"), ("qbfarm.py", "qbfarm.py"), ("qbvault.py", "qbvault.py"), ("bookq.py", "bookq.py"), ("qbbooks.py", "qbbooks.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
+FILES = [("qbcore.py", "qbcore.py"), ("qbdrive.py", "qbdrive.py"), ("qbtrace.py", "qbtrace.py"), ("qbcommons.py", "qbcommons.py"), ("qbharvest.py", "qbharvest.py"), ("qbonline.py", "qbonline.py"), ("qbdevices.py", "qbdevices.py"), ("qbagents.py", "qbagents.py"), ("qbartifact.py", "qbartifact.py"), ("qbengineer.py", "qbengineer.py"), ("qbcontrol.py", "qbcontrol.py"), ("qbselfknow.py", "qbselfknow.py"), ("qbexemplar.py", "qbexemplar.py"), ("qbcampaign.py", "qbcampaign.py"), ("qbbulk.py", "qbbulk.py"), ("qbscaffold.py", "qbscaffold.py"), ("qbapidoc.py", "qbapidoc.py"), ("qbconnections.py", "qbconnections.py"), ("qbgather.py", "qbgather.py"), ("qbkeystone.py", "qbkeystone.py"), ("gcloud.py", "gcloud.py"), ("qbusage.py", "qbusage.py"), ("qbdump.py", "qbdump.py"), ("qbdsn.py", "qbdsn.py"), ("qbsynapse.py", "qbsynapse.py"), ("qbmath.py", "qbmath.py"), ("qbseal.py", "qbseal.py"), ("qbfarm.py", "qbfarm.py"), ("qbvault.py", "qbvault.py"), ("bookq.py", "bookq.py"), ("qbbooks.py", "qbbooks.py"), ("qbcompose.py", "qbcompose.py"), (os.path.join("ui", "qb.css"), os.path.join("ui", "qb.css")),
          (os.path.join("ui", "qb.js"), os.path.join("ui", "qb.js"))]
 
 if __name__ == "__main__":
@@ -24,7 +24,8 @@ if __name__ == "__main__":
                 shutil.copyfile(os.path.join(ROOT, "tools", t), os.path.join(d, t))
         print("synced", app)
     # the one window answers Book Query with the same parser and question logic as the Control Panel's book harvester
-    shutil.copyfile(os.path.join(ROOT, "_core", "bookq.py"), os.path.join(ROOT, "shell", "bookq.py"))
+    for f in ("bookq.py", "qbcompose.py", "qbbooks.py"):
+        shutil.copyfile(os.path.join(ROOT, "_core", f), os.path.join(ROOT, "shell", f))
     # QueryBook 9.64 carries the same online harvesters, exemplar library, generator and plans
     v964 = os.path.join(os.path.dirname(ROOT), "QueryBook-v9.64")
     if os.path.isdir(v964):

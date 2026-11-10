@@ -127,3 +127,6 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - The Book Harvester (`apps/_core/qbbooks.py`, Control Panel → Books) writes harvested books to `<data>/library`.
   `bookq.py` lives in `apps/_core` and is copied to every app and to `apps/shell` by `sync_core.py`. Keep the rights gate
   (unknown → held, IA judged by publication year, Gutenberg 'copyrighted' refused) and the Rights Record on every book.
+- Book Query answers through `apps/_core/qbcompose.py` (plan -> evidence -> compose -> verify; Claude `claude-opus-5-5` via
+  raw HTTP because the bundle is stdlib-only, else Gemini, else `bookq.compose_rules`). Keep the verification: no
+  uncited sentence, citations only to supplied passages. Multi-book questions (`books: [...]`) are a core feature.

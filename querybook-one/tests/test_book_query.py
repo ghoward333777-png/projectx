@@ -150,3 +150,29 @@ class WindowLibraryTest(unittest.TestCase):
         self.assertTrue(all(u["id"].startswith("FU-") for p in ch["paragraphs"] for u in p["units"]))
         with self.assertRaises(ValueError):
             lib.get("darwin-origin")
+
+
+class AnswerEngineTest(unittest.TestCase):
+    """the answer engine without a key (the rules) — one book and several; the model path is tested in qbcompose's self-test"""
+
+    def test_one_and_several_books(self):
+        import shell
+        lib = shell.Library([LIB, ""])
+
+        class S:
+            library = lib
+            root = ""
+        r = shell.book_ask(S, {"book": "melville-moby-dick", "q": "Why does Ahab hunt the white whale?", "ai": False})
+        c = r["composed"]
+        self.assertTrue(c["answered"])
+        self.assertEqual(c["by"], "rules")
+        self.assertIn("Ahab", c["answer"])
+        labels = {p["label"] for p in c["evidence"]}
+        self.assertTrue(set(c["answer_cites"]) <= labels)
+        m = shell.book_ask(S, {"books": ["melville-moby-dick", "shelley-frankenstein", "stoker-dracula"], "q": "What does each book say about revenge?", "ai": False})
+        self.assertTrue(m["multi"])
+        self.assertEqual({p["label"].split("-")[0] for p in m["composed"]["evidence"]}, {"B1", "B2", "B3"})
+        self.assertEqual(len(m["composed"]["by_book"]), 3)
+        lst = shell.book_ask(S, {"book": "tolstoy-war-peace", "q": "Show the relationship network around Pierre"})
+        self.assertNotIn("composed", lst)                  # list questions keep their exact lists
+        self.assertTrue(lst["edges"])

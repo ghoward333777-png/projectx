@@ -4,7 +4,8 @@
    the answer itself is drawn by askpage.js (akBookAnswer, akPassage). The view is built once and kept. */
 "use strict";
 
-const BQ = { root: null, books: null, book: akLoad("qb:bq:book", ""), info: null, filter: "all", search: "", last: null, busy: false };
+const BQ = { root: null, books: null, book: akLoad("qb:bq:book", ""), info: null, filter: "all", search: "", last: null, busy: false,
+  several: false, picked: [], multiPage: false, ai: akLoad("qb:bq:ai", "1") === "1", aiStatus: null };
 
 function bqHistory(id) { try { return JSON.parse(localStorage.getItem("qb:bq:hist:" + id) || "[]"); } catch (e) { return []; } }
 function bqRemember(id, q) {
@@ -36,7 +37,23 @@ async function bqLoad() {
 
 function bqDraw() {
   bqHeader();
-  BQ.root.replaceChildren(...(BQ.book && BQ.info ? bqBookPage() : bqLibrary()));
+  BQ.root.replaceChildren(...(BQ.multiPage && BQ.picked.length > 1 ? bqMultiPage() : BQ.book && BQ.info ? bqBookPage() : bqLibrary()));
+}
+
+/* how answers are composed: Claude / Gemini with the saved key, or the rules — and a switch */
+function bqAiLine() {
+  const s = BQ.aiStatus;
+  const box = el("div", { class: "small muted bqai" });
+  const fill = () => {
+    const st = BQ.aiStatus || {};
+    const has = st.claude || st.gemini;
+    box.replaceChildren(has
+      ? el("label", {}, el("input", { type: "checkbox", checked: BQ.ai, onchange: e => { BQ.ai = e.target.checked; save("qb:bq:ai", BQ.ai ? "1" : "0"); } }),
+          ` Compose answers with ${st.claude ? "Claude" : "Gemini"} (${st.model}) from the book's passages — every sentence cited and checked. Off: the book's own sentences, chosen by rules.`)
+      : el("span", {}, "No AI key saved, so answers are the book's own sentences chosen by rules. For composed answers, save a Claude or Gemini key in the Control Panel → Harvesting → API keys."));
+  };
+  if (s) fill(); else fetch("/api/shell/book/ai").then(r => r.json()).then(j => { BQ.aiStatus = j; fill(); }).catch(() => {});
+  return box;
 }
 
 /* ------------------------------------------------------------------ step 1: the library */
@@ -69,12 +86,21 @@ function bqLibrary() {
     el("div", { class: "card bqintro" },
       el("h1", {}, "📚 Book Query"),
       el("p", {}, "Choose a book, then ask it anything. QueryBook answers from that book alone: every answer quotes the book with its exact chapter and paragraph, and where the book's knowledge has since changed, it shows the book beside what is known today."),
-      el("ol", { class: "bqsteps" }, el("li", { class: "now" }, el("b", {}, "1 · Choose a book")), el("li", {}, "2 · Ask it"))),
+      el("ol", { class: "bqsteps" }, el("li", { class: "now" }, el("b", {}, BQ.several ? "1 · Choose the books" : "1 · Choose a book")), el("li", {}, "2 · Ask")),
+      el("div", { class: "seg", style: "margin-top:12px" },
+        el("button", { type: "button", "aria-pressed": String(!BQ.several), onclick: () => { BQ.several = false; bqDraw(); } }, "📖 Ask one book"),
+        el("button", { type: "button", "aria-pressed": String(BQ.several), onclick: () => { BQ.several = true; bqDraw(); } }, "📚 Ask several books at once")),
+      BQ.several ? el("p", { class: "small" }, "Pick two or more books, then ask one question: QueryBook gathers the evidence from each book and answers with what each says — where they agree and where they differ — every point cited to its book, chapter and paragraph.") : null),
     el("div", { class: "card" },
       el("div", { class: "akline" }, search),
       el("div", { class: "seg", style: "margin-top:10px" }, filters.map(([id, label]) => el("button", { type: "button", "aria-pressed": String(BQ.filter === id),
         onclick: () => { BQ.filter = id; bqDraw(); } }, label))),
       grid()),
+    BQ.several ? el("div", { class: "bqpickbar" },
+      el("span", {}, BQ.picked.length ? `${BQ.picked.length} chosen: ` : "Choose two or more books.",
+        BQ.picked.map(id => ((BQ.books || []).find(b => b.id === id) || {}).title).filter(Boolean).join(" · ")),
+      el("button", { class: "btn", type: "button", disabled: BQ.picked.length < 2, onclick: () => { BQ.multiPage = true; BQ.last = null; bqDraw(); window.scrollTo({ top: 0 }); } },
+        `Ask these ${BQ.picked.length || ""} books →`)) : null,
   ];
 }
 
@@ -83,7 +109,9 @@ function bqCard(b) {
   const initials = (b.title || "?").split(/[\s-]+/).filter(w => w && !/^(the|a|an|of|and|in|on|to|or|for|by|with|its)$/i.test(w))
     .slice(0, 2).map(w => w[0]).join("").toUpperCase();
   const hue = (BQ_HUE[b.kind] || 160) + ((b.title || "").length * 7) % 40;
-  return el("button", { type: "button", class: "bqcard", onclick: () => bqOpen(b.id) },
+  const picked = BQ.picked.includes(b.id);
+  return el("button", { type: "button", class: "bqcard" + (BQ.several && picked ? " picked" : ""), "aria-pressed": BQ.several ? String(picked) : null,
+    onclick: () => { if (!BQ.several) return bqOpen(b.id); BQ.picked = picked ? BQ.picked.filter(x => x !== b.id) : BQ.picked.concat([b.id]).slice(0, 8); bqDraw(); } },
     el("span", { class: "bqcover", style: `background:hsl(${hue} 45% 42%)` }, initials),
     el("span", { class: "bqmeta" },
       el("b", {}, b.title),
@@ -160,7 +188,8 @@ function bqBookPage() {
           el("div", { class: "small muted" }, `${b.subject || ""}${b.structure ? " · " + b.structure : ""} · ${(b.units || 0).toLocaleString()} Fact Units in ${chapters.length} parts`))),
       b.about ? el("p", { class: "small" }, b.about) : null,
       el("div", { class: "akline" }, input, el("button", { class: "btn", type: "button", onclick: go }, "Ask the book")),
-      el("div", { class: "small muted", style: "margin-top:6px" }, "QueryBook answers from this book alone and never invents: if the book does not say, it tells you so.")),
+      el("div", { class: "small muted", style: "margin-top:6px" }, "QueryBook answers from this book alone and never invents: if the book does not say, it tells you so."),
+      bqAiLine()),
     el("div", { id: "bq-out" }, ...(BQ.last ? bqAnswerCards(BQ.last) : [])),
     el("div", { class: "bqcols" },
       el("div", { class: "card" }, el("h2", {}, "What you can ask"),
@@ -196,7 +225,7 @@ async function bqAsk(q) {
   BQ.last = { loading: true, query: q };
   if (box()) { box().replaceChildren(...bqAnswerCards(BQ.last)); box().scrollIntoView({ behavior: "smooth", block: "start" }); }
   try {
-    BQ.last = await akPost("/api/shell/book/ask", { book: BQ.book, q });
+    BQ.last = await akPost("/api/shell/book/ask", { book: BQ.book, q, ai: BQ.ai });
     bqRemember(BQ.book, q);
   } catch (e) { BQ.last = { error: e.message, query: q }; }
   bqDraw();
@@ -224,4 +253,48 @@ async function bqRead(book, n) {
   document.body.append(dlg);
   dlg.showModal();
   dlg.scrollTop = 0;
+}
+
+/* ------------------------------------------------------------------ several books at once */
+function bqMultiPage() {
+  const chosen = BQ.picked.map(id => (BQ.books || []).find(b => b.id === id)).filter(Boolean);
+  const input = el("input", { type: "search", id: "bq-mq", class: "akinput bqinput", placeholder: `Ask these ${chosen.length} books anything…`, "aria-label": "Your question" });
+  const go = () => bqAskMulti(input.value);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } });
+  const fiction = chosen.every(b => b.kind === "fiction"), nonfiction = chosen.every(b => b.kind === "nonfiction");
+  const sugg = fiction
+    ? ["How does each book portray love?", "What does each book say about revenge?", "How do the heroes of these books face death?", "How is money treated in each book?", "What role does fate play in each book?"]
+    : nonfiction
+      ? ["What does each book say about war?", "How does each book define justice?", "What makes a good ruler, according to each book?", "What does each book say about money and wealth?", "How should a person live, according to each book?"]
+      : ["What does each book say about war?", "How does each book treat death?", "What does each book say about freedom?", "How is power described in each book?"];
+  return [
+    el("div", { class: "card bqbook" },
+      el("div", { class: "akline", style: "margin-top:0" },
+        el("button", { class: "btn ghost small", type: "button", onclick: () => { BQ.multiPage = false; bqDraw(); } }, "← Choose books"),
+        el("ol", { class: "bqsteps" }, el("li", {}, "1 · Choose the books ✓"), el("li", { class: "now" }, el("b", {}, "2 · Ask them")))),
+      el("h1", {}, `Ask ${chosen.length} books at once`),
+      el("div", { class: "chips" }, chosen.map(b => el("span", { class: "chip context" }, b.title, " ",
+        el("button", { type: "button", class: "chipx", title: "Leave this book out", onclick: () => { BQ.picked = BQ.picked.filter(x => x !== b.id); if (BQ.picked.length < 2) BQ.multiPage = false; bqDraw(); } }, "×")))),
+      el("div", { class: "akline" }, input, el("button", { class: "btn", type: "button", onclick: go }, "Ask the books")),
+      el("div", { class: "small muted", style: "margin-top:6px" }, "Each book is searched on its own; the answer says what each book says, every point cited to its book, chapter and paragraph."),
+      bqAiLine()),
+    el("div", { id: "bq-out" }, ...(BQ.last ? bqAnswerCards(BQ.last) : [])),
+    el("div", { class: "card" }, el("h2", {}, "Questions that work across books"),
+      el("div", { class: "chips" }, sugg.map(q => el("button", { class: "chip btnchip", type: "button", onclick: () => { input.value = q; bqAskMulti(q); } }, q)))),
+  ];
+}
+
+async function bqAskMulti(q) {
+  q = (q || "").trim();
+  if (!q || BQ.picked.length < 2) return;
+  if (current !== "bookquery") show("bookquery");
+  document.getElementById("askinput").value = q;
+  const box = () => BQ.root.querySelector("#bq-out");
+  BQ.last = { loading: true, query: q };
+  if (box()) box().replaceChildren(el("div", { class: "card" }, el("p", { class: "muted" }, `Searching ${BQ.picked.length} books for “${q}”…`)));
+  try { BQ.last = await akPost("/api/shell/book/ask", { books: BQ.picked, q, ai: BQ.ai }); }
+  catch (e) { BQ.last = { error: e.message, query: q }; }
+  bqDraw();
+  const i = BQ.root.querySelector("#bq-mq"); if (i) i.value = q;
+  const o = box(); if (o) o.scrollIntoView({ behavior: "smooth", block: "start" });
 }

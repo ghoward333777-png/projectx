@@ -330,7 +330,7 @@ function akWatchPanel() {
 
 /* ------------------------------------------------------------------ asking */
 async function ask(q) {                                       // the header's Ask box
-  if (current === "bookquery") { if (BQ.book) return bqAsk(q); return; }   // Book Query: ask the open book
+  if (current === "bookquery") { if (BQ.multiPage && BQ.picked.length > 1) return bqAskMulti(q); if (BQ.book) return bqAsk(q); return; }   // Book Query: the open book(s)
   if (current !== "ask") show("ask");
   if (["camera", "video", "photo", "check", "watch", "structured"].includes(AK.input)) { AK.input = "type"; save("qb:ask:input", "type"); akControls(); akPanel(); }
   return akAsk(q);
@@ -620,12 +620,46 @@ async function akPassage(book, unit) {
   const h = dlg.querySelector(".here"); if (h) h.scrollIntoView({ block: "center" });
 }
 
+/* the composed answer: the direct answer, what each book says, the supporting points — every sentence with its
+   citation chips; then the passages themselves (each opens in the original text) */
+const AK_BY = { claude: "Claude", gemini: "Gemini", rules: "QueryBook's rules (no AI key — the book's own sentences)" };
+function akComposed(c) {
+  const ev = {}; (c.evidence || []).forEach(p => { ev[p.label] = p; });
+  const chip = lab => el("a", { href: "#ev-" + lab, class: "cite", title: ev[lab] ? `${ev[lab].book_title} — ${ev[lab].anchor}` : lab,
+    onclick: e => { e.preventDefault(); const t = document.getElementById("ev-" + lab); if (t) { t.scrollIntoView({ behavior: "smooth", block: "center" }); t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1600); } } }, lab);
+  const cites = cs => el("span", { class: "cites" }, (cs || []).map(chip));
+  const quote = t => c.quote ? "“" + t + "”" : t;
+  const multi = (c.books || []).length > 1;
+  const cards = [];
+  cards.push(el("div", { class: "card answer" },
+    el("div", { class: "small muted" }, `${(c.books || []).map(b => b.title).join(" · ")} — ${c.question}`),
+    c.answered ? el("div", { class: "short" }, quote(c.answer), " ", cites(c.answer_cites))
+      : el("div", {}, el("div", { class: "short" }, multi ? "These books do not answer this." : "The book does not answer this."),
+          c.not_found ? el("p", {}, c.not_found) : null),
+    (c.by_book || []).length ? el("div", { class: "bybook" }, c.by_book.map(b => el("div", {}, el("div", { class: "alabel" }, b.book), el("p", {}, quote(b.text), " ", cites(b.cites))))) : null,
+    (c.points || []).length ? el("ul", { class: "points" }, c.points.map(pt => el("li", {}, quote(pt.text), " ", cites(pt.cites)))) : null,
+    el("div", { class: "small muted", style: "margin-top:8px" },
+      `Answered by ${AK_BY[c.by] || c.by}${c.model ? " (" + c.model + ")" : ""} from ${(c.evidence || []).length} passage${(c.evidence || []).length === 1 ? "" : "s"} of ${multi ? "these books" : "the book"}. `,
+      c.by === "rules" ? "Each line is a sentence of the book, unchanged." : "Only what the passages say: every sentence cites them, and QueryBook checked each citation" +
+        ((c.removed || []).length ? ` — ${c.removed.length} unsupported sentence${c.removed.length === 1 ? " was" : "s were"} removed.` : "."),
+      (c.notes || []).length ? el("div", { class: "note small", style: "margin-top:6px" }, c.notes.join(" · ")) : null)));
+  if ((c.evidence || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, "The passages behind the answer"),
+    el("div", { class: "small muted" }, (c.plan && (c.plan.phrases || []).length) ? "Searched for: " + c.question + " · " + c.plan.phrases.join(" · ") : ""),
+    c.evidence.map(p => el("div", { class: "qitem evid", id: "ev-" + p.label },
+      el("span", { class: "chip context" }, p.label), " ",
+      el("span", { class: "small" }, multi ? el("b", {}, p.book_title + " — ") : null, akAnchor(p.book, (p.units[0] || {}).id, p.anchor)),
+      el("blockquote", {}, p.text.length > 900 ? p.text.slice(0, 900) + "…" : p.text)))));
+  return cards;
+}
+
 function akBookAnswer(r) {
+  if (r.multi) return akComposed(r.composed || {});
   const cards = [];
   const bk = r.book;
-  cards.push(el("div", { class: "card" }, el("div", { class: "small muted" }, `${r.title} · ${r.query}`),
+  if (r.composed) cards.push(...akComposed(r.composed).slice(0, 1));
+  else cards.push(el("div", { class: "card" }, el("div", { class: "small muted" }, `${r.title} · ${r.query}`),
     el("div", { class: "short" }, r.lead || "The book does not say."),
-    el("div", { class: "small muted", style: "margin-top:6px" }, "Answered from the book alone" + (r.chapter ? ` (${r.chapter ? "one chapter" : ""})` : "") + ". Every quotation links to its place in the original text.")));
+    el("div", { class: "small muted", style: "margin-top:6px" }, "Answered from the book alone. Every quotation links to its place in the original text.")));
   if ((r.assertions || []).length) {
     cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "historical" ? "Real history around the story" : "The book beside what is known today"),
       r.assertions.map(a => el("div", { class: "assert" },
@@ -657,7 +691,8 @@ function akBookAnswer(r) {
   if ((r.timeline || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, "Timeline"),
     el("ol", { class: "timeline" }, r.timeline.map(t => el("li", {}, el("span", { class: "yr" }, t.year < 0 ? `${-t.year} BC` : String(t.year)),
       el("span", {}, "“" + t.text + "”", el("div", { class: "small" }, akAnchor(bk, t.unit, t.anchor))))))));
-  if ((r.passages || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "evidence" ? "Evidence and deduction, in story order" : r.intent === "values" ? "Measurements in the book" : "From the book"),
+  if (r.composed) cards.push(...akComposed(r.composed).slice(1));
+  else if ((r.passages || []).length) cards.push(el("div", { class: "card" }, el("h2", {}, r.intent === "evidence" ? "Evidence and deduction, in story order" : r.intent === "values" ? "Measurements in the book" : "From the book"),
     r.passages.map(p => el("div", { class: "qitem" },
       p.reasoning ? el("span", { class: "chip " + (p.reasoning === "deduced" ? "refined" : "verified") }, p.reasoning === "deduced" ? "deduction" : "observed") : null,
       p.checked ? el("span", { class: "chip verified" }, "checked today") : null,
