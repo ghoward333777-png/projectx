@@ -46,7 +46,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.36.0"
+VERSION = "1.37.0"
 PORT = 8100
 program_dir = HERE
 
@@ -280,16 +280,22 @@ class Panel:
             qbbulk.email_due(self.commons, HERE)
         except Exception as e:
             self.log("analysis email:", repr(e))
+        try:                                       # 1.36 fail-safe: Start means ON until Stop — no engine running: started again
+            r = qbbulk.ensure_on(self.commons, HERE)
+            if r:
+                self.log("bulk harvesting started by itself:", r["why"])
+        except Exception as e:
+            self.log("bulk ensure-on:", repr(e))
         try:                                       # bulk agents that ended without finishing are started again (master on)
             r = qbbulk.resume_if_crashed(self.commons, HERE)
             if r:
                 self.log("bulk runner resumed by itself:", r)
         except Exception as e:
             self.log("bulk resume:", repr(e))
-        try:                                       # 1.35, 24 x 7: alive but nothing moving for 30 min -> clean restart
+        try:                                       # 24 x 7: nothing moving 30 min, or no NEW fact 1 h / 2 h / 3 h -> restart, hard restart, rest
             r = qbbulk.keep_alive(self.commons, HERE)
             if r:
-                self.log("bulk harvesting restarted by itself:", r["why"])
+                self.log("bulk harvesting fail-safe:", r.get("action"), "-", r["why"])
         except Exception as e:
             self.log("bulk keep-alive:", repr(e))
         apps = self.apps()
@@ -538,10 +544,16 @@ class Panel:
             try:                                       # the bulk engine (the old master switch only steered the retired team harvest)
                 bst = qbbulk.status_cached(c.folder, c)
                 rs, ka = bst.get("runner") or {}, bst.get("keepalive") or {}
-                add("Bulk harvesting engine", True if rs.get("alive") else None,
+                wd = bst.get("watchdog") or {}
+                dry = rs.get("alive") and not bst.get("facts_per_min") and wd.get("state") == "dry" and (wd.get("dry_s") or 0) >= 1800
+                add("Bulk harvesting engine", True if rs.get("alive") and not dry else None,   # 1.36: running without one new fact is not "ok"
                     ("running: %s agent(s), %s facts a minute" % (len(rs.get("running") or []), format(bst.get("facts_per_min") or 0, ","))
-                     if rs.get("alive") else "stopped — press ⚡ Start harvesting") +
-                    (" · restarted by itself %d× (last: %s)" % (ka["restarts"], (ka.get("last") or {}).get("why")) if ka.get("restarts") else ""))
+                     if rs.get("alive") else ("switched on, not running — starting again by itself" if wd.get("want") == "on" else "stopped — press ⚡ Start harvesting")) +
+                    ((" · " + wd["text"]) if rs.get("alive") and wd.get("text") else "") +
+                    (" · fail-safe acted %d× (last: %s — %s)" % (ka["restarts"], (ka.get("last") or {}).get("action") or "restarted", (ka.get("last") or {}).get("why")) if ka.get("restarts") else ""))
+                add("Harvesting fail-safe", True if wd.get("want") == "on" else None,
+                    "on: harvesting is restarted by itself whenever it is not running, and when no new fact arrives (restart at 1 h, hard restart at 2 h, "
+                    "datasets that add nothing rested at 3 h)" if wd.get("want") == "on" else "off until ⚡ Start harvesting is pressed (Stop was pressed, or it was never started)")
             except Exception as e:
                 add("Bulk harvesting engine", None, "could not be read: %s" % e)
             ok = c.harvest_log.verify()

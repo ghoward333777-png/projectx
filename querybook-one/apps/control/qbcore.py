@@ -889,7 +889,7 @@ def make_handler(api, ui_dir, log, app_name, store=None):
             try:
                 self.end_headers()
                 self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
+            except ConnectionError:                    # (Windows: ConnectionAbortedError, WinError 10053)
                 pass                                   # the page was closed or reloaded before the answer arrived
 
         def _dispatch(self, method):
@@ -944,6 +944,9 @@ def make_handler(api, ui_dir, log, app_name, store=None):
                 note("error", repr(e))
                 log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))
                 return self._send(500, {"error": "Something went wrong: %s" % e})
+            except ConnectionError:                    # the caller went away before the answer was sent (the window polls
+                note("ok", "caller closed the connection")   # /api/status and moves on): not an error of this application
+                return None
             except Exception as e:
                 note("error", repr(e))
                 log("ERROR", method, url.path, repr(e), traceback.format_exc().replace("\n", " | "))

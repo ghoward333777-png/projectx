@@ -200,8 +200,15 @@ async function loadBulk() {
       <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
   // the harvest in one sentence
   const hl = r.headline || {}; const hb = $("#bk-headline");
-  hb.className = "note " + (hl.state === "harvesting" ? "good" : hl.state === "old" ? "bad" : "");
-  hb.innerHTML = "<b>" + esc(hl.text || "") + "</b>";
+  hb.className = "note " + (hl.state === "harvesting" || hl.state === "working" ? "good" : hl.state === "old" || hl.state === "dry" ? "bad" : "");
+  // 1.36 — the fail-safe, in one line under the headline: on or off, when the last new fact arrived, what it has done
+  const wd = r.watchdog || {}, la = wd.last_action;
+  const ago = t => QB.dur(Math.max(0, Date.now() / 1000 - t)) + " ago";
+  hb.innerHTML = "<b>" + esc(hl.text || "") + "</b>" + `<div class="small" style="font-weight:400;margin-top:6px">` +
+    (wd.want === "on" ? "🛡 <b>Fail-safe on</b>: harvesting is started again by itself whenever it is not running (after a restart of the computer too), and when no new fact arrives it restarts at 1 h, restarts hard at 2 h, and rests the datasets that add nothing at 3 h."
+      : "🛡 Fail-safe off: it switches on when you press ⚡ Start harvesting, and stays on until you press Stop.") +
+    (wd.last_new_at && (r.runner || {}).alive ? ` · Last new fact: ${ago(wd.last_new_at)}` : "") +
+    (la && la.at ? ` · It has acted ${QB.num(wd.actions)}× — last: ${esc(la.action || "restarted")}, ${ago(la.at)} (${esc(la.why || "")})` : "") + "</div>";
   // where the agents write, and the copy to C: in progress (one line, the standard bar)
   const onC = r.datasets.filter(d => d.working_copy).length, direct = r.datasets.filter(d => d.state === "running" && !d.working_copy).length;
   $("#bk-where").innerHTML = r.copying

@@ -107,6 +107,15 @@ port (`querybook-one/rust/qbcore`); `tools/gen_lean.py` / `tools/gen_rust.py` re
 `--check` runs in the tests, so a formula changed in Python must have its proofs and Rust regenerated.
 The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-folder.txt = D:\QB).
 
+### Harvesting fail-safe — never regress (`apps/_core/qbbulk.py`: `intent`, `ensure_on`, `keep_alive`, `rest`, `watchdog_info`)
+
+- The user has lost many hours to harvests that ran without adding a fact. Harvesting health is judged by NEW FACTS
+  (`total_gathered` rising), never by activity (bytes, rows, a churning drive).
+- Start = ON until Stop (`_intent.json`). `ensure_on` starts the engine whenever it is on and not running; only
+  `stop(auto=False)` (the Stop button) switches it off — internal stops must pass `auto=True`.
+- `keep_alive` ladder with no new fact: 1 h restart, 2 h hard restart, 3 h rest the dry datasets 6 h (`_rest.json`, honoured
+  by `Supervisor.check`). An advancing filing is exempt for at most `WORK_MAX_S`. Keep the page and diagnostics text honest.
+
 ### Lip-sync and talking faces — the user's decision (do not change)
 
 - Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)

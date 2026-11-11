@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.35.2"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.36.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -2697,8 +2697,16 @@ class Supervisor:
             self.kill(info["proc"].pid)
             info["proc"].join(10)
             self._finish(key, None, "farmed out to %s — that computer harvests it now (the facts so far are kept)" % farmed[key])
+        rested = resting(self.cf, now)               # 1.36: datasets the fail-safe rested (hours without one new fact)
+        for key in [k for k in self.running if k in rested]:
+            info = self.running[key]
+            self.kill(info["proc"].pid)
+            info["proc"].join(10)
+            self._finish(key, None, "resting until %s — it ran for hours without one new fact, so other datasets take its place (the facts so far are kept)"
+                         % time.strftime("%H:%M", time.localtime(rested[key])))
         free = self.agents - len(self.running)
-        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running and k not in farmed), key=lambda k: self.keys.index(k)):
+        for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running and k not in farmed and k not in rested),
+                          key=lambda k: self.keys.index(k)):
             if free <= 0:
                 break
             self.launch(key)
@@ -3024,6 +3032,7 @@ def status(commons_folder, commons=None):
             "last_10min": sum(d["last_10min"] for d in out), "facts_per_min": round(sum(d["last_10min"] for d in out) / 10),
             "drops": count_drops(commons_folder, now - 7200),
             "keepalive": keepalive_info(commons_folder),
+            "watchdog": watchdog_info(commons_folder, rs.get("alive"), now),
             "on_data_drive": sum(((_meta_of(home_path(commons_folder, d["key"])) or {}).get("facts") or 0)
                                  for d in out if os.path.exists(home_path(commons_folder, d["key"]))),
             "already_held_at_filing": sum(v for (cf, _k), v in _HELD_AT_FILING.items() if cf == commons_folder),
@@ -3192,11 +3201,18 @@ def headline(st):
         c = st["copying"]
         return {"state": "copying", "text": "Getting ready: copying %s to C: (%d%%) before it resumes there." % (
             c["dataset"], 100 * c["done"] / max(1, c["total"]))}
+    wd = st.get("watchdog") or {}
     if not rs.get("alive"):
+        if wd.get("want") == "on":
+            return {"state": "starting", "text": "Harvesting is switched on and the engine is not running — QueryBook is starting it again by itself (within 3 minutes)."}
         return {"state": "stopped", "text": "Stopped. Press ⚡ Start harvesting."}
     if rs.get("version") != VERSION:
         return {"state": "old", "text": "An older harvesting engine is running. Press ■ Stop harvesting, then ⚡ Start harvesting."}
     fpm = st.get("facts_per_min") or 0
+    if not fpm and wd.get("text") and (wd.get("dry_s") or 0) >= 600:
+        run_ = [d for d in st["datasets"] if d.get("state") == "running"]
+        busy_ = "; ".join("%s (%s)" % (d["key"], d.get("doing") or "reading") for d in run_[:4])
+        return {"state": wd.get("state") or "dry", "text": wd["text"] + ((" Busy now: %s%s." % (busy_, " and %d more" % (len(run_) - 4) if len(run_) > 4 else "")) if busy_ else "")}
     direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
     why = ""
     filing = [d for d in st["datasets"] if str(d.get("doing") or "").startswith("filing")]
@@ -3338,6 +3354,7 @@ def _launch(commons_folder, keys, agents, program_dir):
 def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
     """the master switch's own start: every approved dataset, one agent per core (as the Control Panel's ⚡ Full speed) —
     the path that brings in tens of millions of facts. Nothing to do when the agents already run."""
+    set_intent(commons.folder, True, why)              # 1.36: harvesting is wanted from now until someone presses Stop
     if stopping(commons.folder):                       # 1.31.2: the stop finishes saving first, then this start runs
         import threading
 
@@ -3354,7 +3371,7 @@ def full_speed(commons, program_dir, why="Start all harvesting", launch=None):
             return {"bulk": "already running"}
         # an engine from an older version is still running (it has no window): stop it, then start this one
         import threading
-        stop(commons, grace=60)
+        stop(commons, grace=60, auto=True)
 
         def later():
             t0 = time.time()
@@ -3429,63 +3446,271 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
 
 KEEPALIVE_STALL_S = 30 * 60        # 1.35: harvesting "on", agents running, and nothing moved (no fact, no byte) this long: restart
 KEEPALIVE_NAME = "_keepalive.json"
+# 1.36 — the fail-safe judges by OUTCOME. Agents can read bytes and check rows for hours and add nothing (1.35 saw that as
+# "moving" and never acted). No NEW fact for this long while datasets run: 1 a clean restart, 2 a hard restart (every
+# process ended, stale marks cleared), 3 the datasets that add nothing are rested so the others take their place.
+NOFACT_S = (60 * 60, 120 * 60, 180 * 60)
+REST_S = 6 * 3600                  # how long a dataset that adds nothing is rested
+BUSY_GRACE_S = 20 * 60             # a filing (or the one download, when lanes wait for it) that advanced this recently is real work
+WORK_MAX_S = 4 * 3600              # …but not for ever: 4 hours without one new fact and the ladder runs whatever is "busy"
+ENSURE_WAIT_S = 120                # switched on and no engine for this long: started again
+INTENT_NAME, REST_NAME = "_intent.json", "_rest.json"
+
+
+def _read_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def intent(commons_folder):
+    """what the person wants: {"want": "on" | "off" | None, "at", "by"} — on from Start until Stop, across restarts,
+    crashes, updates and reboots. Before 1.36 there was no record: an engine that ran and was not stopped counts as on."""
+    it = _read_json(os.path.join(commons_folder, FOLDER, INTENT_NAME), None)
+    if isinstance(it, dict) and it.get("want") in ("on", "off"):
+        return it
+    folder = os.path.join(commons_folder, FOLDER)
+    if os.path.exists(os.path.join(folder, "_runner.json")) and not os.path.exists(os.path.join(folder, "_runner.stop")):
+        return {"want": "on", "at": 0, "by": "an engine was running and Stop was not pressed"}
+    return {"want": None, "at": 0, "by": ""}
+
+
+def set_intent(commons_folder, on, by=""):
+    folder = os.path.join(commons_folder, FOLDER)
+    cur = _read_json(os.path.join(folder, INTENT_NAME), {})
+    if cur.get("want") == ("on" if on else "off"):
+        return                                          # unchanged: keep when it was first said
+    _ka_save(os.path.join(folder, INTENT_NAME), {"want": "on" if on else "off", "at": time.time(), "by": str(by)[:200]})
+
+
+def resting(commons_folder, now=None):
+    """dataset -> until when it rests (only those still resting)"""
+    now = now or time.time()
+    r = _read_json(os.path.join(commons_folder, FOLDER, REST_NAME), {})
+    return {k: v for k, v in r.items() if isinstance(v, (int, float)) and v > now} if isinstance(r, dict) else {}
+
+
+def rest(commons_folder, keys, seconds=REST_S, now=None):
+    now = now or time.time()
+    r = resting(commons_folder, now)
+    r.update({k: now + seconds for k in keys})
+    _ka_save(os.path.join(commons_folder, FOLDER, REST_NAME), r)
+    return r
+
+
+def hard_stop(commons):
+    """level 2: every agent and the runner ended at once (SQLite undoes an unfinished batch; it is read again), and the
+    marks a hung process leaves behind are cleared, so the start that follows begins clean"""
+    folder = os.path.join(commons.folder, FOLDER)
+    open(os.path.join(folder, "_runner.stop"), "w").close()
+    ended = []
+    for pid in sorted(_agent_pids(commons.folder)):
+        _kill(pid)
+        ended.append(pid)
+    rp = _runner_pid(commons.folder)
+    if rp and _pid_alive(rp):
+        _kill(rp)
+        ended.append(rp)
+    d = os.path.join(folder, "_agents")
+    if os.path.isdir(d):
+        for f in os.listdir(d):
+            if f.endswith(".json"):
+                try:
+                    os.remove(os.path.join(d, f))
+                except OSError:
+                    pass
+    hb = os.path.join(folder, "_runner.json")
+    rs = _read_json(hb, None)
+    if isinstance(rs, dict):                           # the ended runner can no longer say so itself
+        rs.update(note="finished", heartbeat=0)
+        _ka_save(hb, rs)
+    TR.event("keepalive", action="hard stop", ended=ended)
+    return ended
+
+
+def _mins(sec):
+    sec = int(sec)
+    return "%d h %02d min" % (sec // 3600, sec % 3600 // 60) if sec >= 3600 else "%d min" % (sec // 60)
 
 
 def keep_alive(commons, program_dir, now=None, st=None, restart=None):
-    """1.35 — 24 x 7: called by the Control Panel's monitoring pass (every minute or so).
-    The runner and each agent already restart what dies or hangs. This restarts the WHOLE engine when it is alive but
-    nothing at all moves: no fact gathered or filed, no byte downloaded, for 30 minutes, while it should be working
-    (Start was pressed, Stop was not; some dataset is running, not every one finished or waiting on purpose).
-    A clean Stop (every agent saves its batch, the stop saves to the data drive) and a full-speed Start follow; each restart
-    is written down with its reason and shown on the Harvesting page. Returns what it did, or None."""
+    """24 x 7, called by the Control Panel's monitoring pass (every minute or so). The runner and each agent already
+    restart what dies or hangs. This watches the WHOLE engine while it should be working (Start was pressed, Stop was
+    not; some dataset is running, not every one finished or waiting on purpose):
+      1.35  nothing at all moves (no fact, no byte, no row) for 30 minutes -> a clean restart;
+      1.36  no NEW fact for 60 min -> a clean restart; for 2 h -> a hard restart; for 3 h -> the datasets that add
+            nothing are rested for 6 hours and the others take their place. One new fact resets the ladder. A filing
+            that is advancing (staged facts going into the store) is real work and is not interrupted.
+    Every action is written down with its reason and shown on the Harvesting page. Returns what it did, or None."""
     folder = os.path.join(commons.folder, FOLDER)
     now = now or time.time()
     path = os.path.join(folder, KEEPALIVE_NAME)
-    try:
-        with open(path) as f:
-            ka = json.load(f)
-    except (OSError, ValueError):
+    ka = _read_json(path, None)
+    if not isinstance(ka, dict):
         ka = {"since": now, "sig": None, "restarts": []}
     if os.path.exists(os.path.join(folder, "_runner.stop")) or stopping(commons.folder):
-        ka.update(since=now, sig=None)                 # stopped on purpose (or a stop still saving): nothing to watch
+        ka.update(since=now, sig=None, new_at=now)     # stopped on purpose (or a stop still saving): nothing to watch
         _ka_save(path, ka)
         return None
     st = st or status_cached(commons.folder, commons)
     rs = st.get("runner") or {}
     if not rs.get("alive"):
-        ka.update(since=now, sig=None)                 # a dead runner is resume_if_crashed's job (it runs in the same pass)
+        ka.update(since=now, sig=None, new_at=now)     # a dead runner is ensure_on's / resume_if_crashed's job (same pass)
         _ka_save(path, ka)
         return None
     running = [d for d in st["datasets"] if d.get("state") == "running"]
+    moving = agents_moving(commons.folder)
+    dl = ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None)
     sig = [st.get("total_gathered", st.get("total")), st.get("total"),
-           sum(int(((d.get("progress") or {}).get("done")) or 0) for d in st["datasets"]),
-           ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None),
-           agents_moving(commons.folder)]
-    if sig != ka.get("sig"):
+           sum(int(((d.get("progress") or {}).get("done")) or 0) for d in st["datasets"]), dl, moving]
+    g = st.get("total_gathered", st.get("total")) or 0
+    if ka.get("new_total") is None or ka.get("new_at") is None or g > ka["new_total"]:
+        ka.update(new_total=g, new_at=now, level=0)    # a new fact: all is well, the ladder starts over
+    elif g < ka["new_total"]:
+        ka["new_total"] = g
+    busy = [[a[0], a[3]] for a in moving if a[3]]      # filings under way, with their step counts
+    try:
+        waiting_for_download = dl is not None and not stream_while_downloading(commons)
+    except Exception:
+        waiting_for_download = False
+    busy_sig = [busy, dl if waiting_for_download else None]
+    if busy_sig != ka.get("busy_sig"):
+        ka.update(busy_sig=busy_sig, busy_at=now)
+    working = bool(busy or (waiting_for_download and dl)) and now - (ka.get("busy_at") or 0) < BUSY_GRACE_S \
+        and now - ka["new_at"] < WORK_MAX_S
+    moved = sig != ka.get("sig")
+    if moved:
         ka.update(sig=sig, since=now)
-        _ka_save(path, ka)
-        return None
     idle_on_purpose = str(rs.get("note") or "").startswith("waiting") or not running
-    if idle_on_purpose or now - ka["since"] < KEEPALIVE_STALL_S:
+    ka["idle"] = bool(idle_on_purpose)
+    ka["working"] = ("filing" if busy else "downloading") if working else ""
+    level, why = 0, ""
+    if not idle_on_purpose:
+        dry = now - ka["new_at"]
+        if not moved and now - ka["since"] >= KEEPALIVE_STALL_S:
+            level = 1
+            why = "nothing moved for %d min (no fact gathered or filed, no byte downloaded) with %d dataset(s) running" % (
+                (now - ka["since"]) // 60, len(running))
+        elif not working and int(ka.get("level") or 0) < len(NOFACT_S) and dry >= NOFACT_S[int(ka.get("level") or 0)]:
+            level = int(ka.get("level") or 0) + 1
+            why = "no new fact for %s although %d dataset(s) were running" % (_mins(dry), len(running))
+            ka["level"] = level
+    if not level:
         _ka_save(path, ka)
         return None
-    why = "nothing moved for %d min (no fact gathered or filed, no byte downloaded) with %d dataset(s) running" % (
-        (now - ka["since"]) // 60, len(running))
-    ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why}]
+    cat = catalog()
+    dry_keys = [d["key"] for d in running if not getattr(cat.get(d["key"]), "standalone", False)]
+    action = {1: "restarted", 2: "restarted hard (every process ended, stale marks cleared)",
+              3: "rested %d dataset(s) that added nothing for %s, so the others take their place" % (len(dry_keys), _mins(REST_S))}[level]
+    if level == 3:
+        rest(commons.folder, dry_keys, REST_S, now)
+        ka.update(new_at=now, level=0)                 # a fresh ladder for the datasets that now get their turn
+    ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why, "level": level, "action": action}]
     ka.update(since=now, sig=None)
     _ka_save(path, ka)
-    TR.event("keepalive", action="restart", why=why)
+    TR.event("keepalive", action=action, why=why, level=level)
     try:
         with commons.store.write() as db:
-            commons.agent_log(db, "engine", "Harvesting restarted by itself: " + why)
+            commons.agent_log(db, "engine", "Fail-safe: harvesting %s — %s" % (action, why))
     except Exception:
         pass
+    if level == 3:
+        return {"rested": dry_keys, "why": why, "level": 3, "action": action}
     if restart:
         restart()
+    elif level == 2:
+        hard_stop(commons)
+        full_speed(commons, program_dir, "fail-safe (hard restart): " + why)
     else:
-        stop(commons, grace=STOP_GRACE_S)
+        stop(commons, grace=STOP_GRACE_S, auto=True)
         full_speed(commons, program_dir, "keep-alive: " + why)   # waits for the stop to finish saving, then starts
-    return {"restarted": True, "why": why}
+    return {"restarted": True, "why": why, "level": level, "action": action}
+
+
+def ensure_on(commons, program_dir, now=None, launch=None):
+    """1.36 fail-safe, called in the same monitoring pass, first: harvesting is switched ON (Start was pressed, Stop was
+    not) and no engine is running — after a reboot, a crash, an update into a new folder, a restart that was cut short
+    and left its stop mark behind — so it is started. The stop mark alone no longer means 'stopped on purpose': only
+    the Stop button does. Also keeps the Windows start-up entry pointing at the folder QueryBook runs from now."""
+    now = now or time.time()
+    folder = os.path.join(commons.folder, FOLDER)
+    it = intent(commons.folder)
+    out = None
+    if it.get("want") == "on":
+        try:
+            autostart_follow(commons.folder, program_dir)
+        except Exception:
+            pass
+        if not _alive(commons.folder) and not stopping(commons.folder) and now - (it.get("at") or 0) > ENSURE_WAIT_S:
+            mark = os.path.join(folder, "_runner.resumed")
+            try:
+                recent = now - os.path.getmtime(mark) < RESUME_GAP_S
+            except OSError:
+                recent = False
+            if not recent:
+                os.makedirs(folder, exist_ok=True)
+                open(mark, "w").close()
+                why = "harvesting is switched on and no engine was running"
+                r = full_speed(commons, program_dir, "fail-safe: " + why, launch)
+                if r.get("bulk") in ("started", "starting after the stop", "replacing an older engine"):
+                    ka = _read_json(os.path.join(folder, KEEPALIVE_NAME), None)
+                    if not isinstance(ka, dict):
+                        ka = {"since": now, "sig": None, "restarts": []}
+                    ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why, "level": 0, "action": "started"}]
+                    ka.update(since=now, sig=None, new_at=now, level=0)
+                    _ka_save(os.path.join(folder, KEEPALIVE_NAME), ka)
+                    out = {"started": True, "why": why, "result": r}
+    return out
+
+
+def autostart_follow(commons_folder, program_dir):
+    """harvesting switched on: Windows starts QueryBook after a reboot, from the folder it runs from NOW (each download
+    unpacks into a new folder; the entry used to keep pointing at the old one). Off only when the person turned it off."""
+    if os.path.exists(os.path.join(commons_folder, FOLDER, "_autostart.off")):
+        return None
+    cur = autostart(program_dir)
+    if not cur.get("available") or not os.path.exists(cur.get("starts") or ""):
+        return None
+    try:
+        with open(cur["file"]) as f:
+            same = cur["starts"] in f.read()
+    except OSError:
+        same = False
+    return None if same else autostart(program_dir, True)
+
+
+def watchdog_info(commons_folder, alive=None, now=None):
+    """the fail-safe in plain words, for the Harvesting page and the diagnostics"""
+    now = now or time.time()
+    folder = os.path.join(commons_folder, FOLDER)
+    ka = _read_json(os.path.join(folder, KEEPALIVE_NAME), {})
+    ka = ka if isinstance(ka, dict) else {}
+    it = intent(commons_folder)
+    rested = resting(commons_folder, now)
+    dry = max(0, now - ka["new_at"]) if ka.get("new_at") else 0
+    level = int(ka.get("level") or 0)
+    last = (ka.get("restarts") or [None])[-1]
+    out = {"want": it.get("want"), "since": it.get("at"), "last_new_at": ka.get("new_at"), "dry_s": int(dry), "level": level,
+           "resting": rested, "last_action": last, "actions": len(ka.get("restarts") or []), "state": "ok", "text": ""}
+    if not alive:
+        return out
+    did = (" Last action: %s, %s ago (%s)." % (last.get("action") or "restarted", _mins(now - last["at"]), last.get("why"))) if last and last.get("at") else ""
+    rest_txt = (" Resting: %s." % ", ".join("%s until %s" % (k, time.strftime("%H:%M", time.localtime(v))) for k, v in sorted(rested.items())[:6])
+                + (" and %d more" % (len(rested) - 6) if len(rested) > 6 else "")) if rested else ""
+    if ka.get("idle"):
+        out.update(state="caught-up", text="Nothing left to read right now: every dataset is finished, resting or waiting for its next try. "
+                   "QueryBook looks again by itself (finished datasets daily, for new editions)." + rest_txt)
+    elif ka.get("working"):
+        out.update(state="working", text=("No new fact for %s because the engine is %s — real work, not a stall; the count rises when it is done." % (
+            _mins(dry), "filing the facts it gathered into the store" if ka["working"] == "filing" else "downloading the Wikidata dump (the lanes wait for it)")) + did)
+    elif dry >= 600:
+        nxt = next((t for t in NOFACT_S[level:]), None)
+        step = {0: "restarts the engine", 1: "restarts it hard (every process ended)", 2: "rests the datasets that add nothing so the others take their place"}.get(level, "")
+        out.update(state="dry", text="Running, but no new fact for %s — the agents are reading records the store already holds, or are stuck. "
+                   "The fail-safe is watching%s." % (_mins(dry), (": at %s without a new fact it %s" % (_mins(nxt), step)) if nxt and step else "") + did + rest_txt)
+    return out
 
 
 def _ka_save(path, ka):
@@ -3551,12 +3776,15 @@ def _kill(pid):
 STOP_GRACE_S = 60
 
 
-def stop(commons, grace=None, wait=False):
+def stop(commons, grace=None, wait=False, auto=False):
     """every agent stops after its current batch; any still running after `grace` seconds (an agent from an older version, or
-    one waiting hours for a slow disk) is ended — SQLite undoes its unfinished batch, which is read again next time"""
+    one waiting hours for a slow disk) is ended — SQLite undoes its unfinished batch, which is read again next time.
+    auto: a stop QueryBook makes itself on the way to a restart — harvesting stays switched on (see ensure_on)."""
     import threading
     folder = os.path.join(commons.folder, FOLDER)
     os.makedirs(folder, exist_ok=True)
+    if not auto:
+        set_intent(commons.folder, False, "Stop pressed")
     open(os.path.join(folder, "_runner.stop"), "w").close()
     grace = STOP_GRACE_S if grace is None else grace
 
@@ -3928,6 +4156,16 @@ def add_routes(api, commons, program_dir):
 
     @api.post("/api/autostart")
     def autostart_set(p):
+        off = os.path.join(commons.folder, FOLDER, "_autostart.off")   # 1.36: only the person's own "off" keeps it off
+        try:
+            if p.get("on"):
+                if os.path.exists(off):
+                    os.remove(off)
+            else:
+                os.makedirs(os.path.dirname(off), exist_ok=True)
+                open(off, "w").close()
+        except OSError:
+            pass
         return autostart(program_dir, bool(p.get("on")))
     @api.get("/api/bulk")
     def bulk_status(p):
@@ -4825,6 +5063,27 @@ def _supervisor_tests():
            was and "g" not in sup3.running and endg and "farmed out to LAB-PC-2" in endg[0]["why"]
            and sum(1 for e in sup3.events if e["what"] == "started" and e["dataset"] == "g") == 1, sup3.events[-3:])
         sup3.stop_all(grace=0)
+        # 1.36: a dataset the fail-safe rested is ended here and not started again until its rest is over; others run
+        script.update({"h": "work", "i": "work"})
+        sup4 = Supervisor(cf, ["h", "i"], 1, mp=MP, kill=kill)
+        sup4.check(CLOCK[0])
+        first4 = sorted(sup4.running)
+        rest(cf, ["h"], 3600, CLOCK[0])
+        CLOCK[0] += 5
+        sup4.check(CLOCK[0])
+        during4 = sorted(sup4.running)
+        endh = [e for e in sup4.events if e["what"] == "ended" and e["dataset"] == "h"]
+        CLOCK[0] += 1800
+        sup4.check(CLOCK[0])
+        still4 = sorted(sup4.running)
+        kill(sup4.running["i"]["proc"].pid)
+        CLOCK[0] += 1900                                   # the rest is over: h may run again
+        sup4.check(CLOCK[0]); CLOCK[0] += BACKOFF_S[-1] + 5; sup4.check(CLOCK[0])
+        ok("1.36 supervisor: a rested dataset is ended (facts kept) and its place goes to the next one; it runs again after its rest",
+           first4 == ["h"] and during4 == ["i"] and still4 == ["i"] and endh and "resting until" in endh[0]["why"]
+           and "h" in sup4.running, (first4, during4, still4, sorted(sup4.running), endh[:1]))
+        sup4.stop_all(grace=0)
+        os.remove(os.path.join(cf, FOLDER, REST_NAME))
         ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
            next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
         # re-routes between the internal drive (working copies) and the data drive
@@ -5074,14 +5333,72 @@ def _supervisor_tests():
                 json.dump({"at": time.time(), "pid": 1, "meter": 5, "rows": 9, "waiting": "filing 20,000,000 facts into the dataset", "filing": filing_}, f)
         kd, kc = [], _C()
         t1_ = t0_ + 5e6
-        _beat(1); keep_alive(kac, "", t1_, mk(20, 9), lambda: kd.append(1))
+        _beat(1); keep_alive(kac, "", t1_, mk(21, 9), lambda: kd.append(1))
         moving_ = []
         for i in range(1, 7):                            # an hour of filing, a step every 10 minutes
-            _beat(1 + i); moving_.append(keep_alive(kac, "", t1_ + i * 600, mk(20, 9), lambda: kd.append(1)))
-        frozen_ = [keep_alive(kac, "", t1_ + 3600 + i * 600, mk(20, 9), lambda: kd.append(1)) for i in range(1, 5)]
+            _beat(1 + i); moving_.append(keep_alive(kac, "", t1_ + i * 600, mk(21, 9), lambda: kd.append(1)))
+        wd_filing = watchdog_info(cf, True, t1_ + 3600)
+        frozen_ = [keep_alive(kac, "", t1_ + 3600 + i * 600, mk(21, 9), lambda: kd.append(1)) for i in range(1, 5)]
         os.remove(os.path.join(ad_, "usgs-gnis.json"))
-        ok("1.35.2 keep-alive: an hour-long filing that is still advancing is left alone; one frozen for 30 min is restarted",
-           not any(moving_) and kd == [1] and any(frozen_), (moving_, frozen_, kd))
+        ok("1.35.2 keep-alive: an hour-long filing that is still advancing is left alone (and the page says it is filing, not "
+           "stalled); one that then freezes is restarted, once", not any(moving_) and kd == [1] and any(frozen_)
+           and wd_filing["state"] == "working" and "filing" in wd_filing["text"], (moving_, frozen_, kd, wd_filing))
+        # 1.36 fail-safe, judged by outcome: agents that keep reading (bytes and rows move every look) but add no NEW
+        # fact — 1.35 called that "moving" and never acted. 60 min: restart; 2 h: hard restart; 3 h: rest them.
+        os.remove(os.path.join(cf, FOLDER, KEEPALIVE_NAME))
+        def _busy(n_):
+            with open(os.path.join(ad_, "usgs-gnis.json"), "w") as f:
+                json.dump({"at": time.time(), "pid": 1, "meter": n_, "rows": n_, "waiting": None, "filing": None}, f)
+        t2_, acts_, did2 = t1_ + 1e6, [], []
+        for i in range(0, 20):                           # a look every 10 minutes for 3 h 10 min; rows move, the total does not
+            _busy(i)
+            r_ = keep_alive(kac, "", t2_ + i * 600, mk(40, 9), lambda: did2.append(1))
+            if r_:
+                acts_.append((i * 10, r_["level"]))
+        wd_ = watchdog_info(cf, True, t2_ + 19 * 600 + 700)
+        ok("1.36 fail-safe: reading for hours without one new fact is acted on — restart at 60 min, hard restart at 2 h, "
+           "and at 3 h the datasets that add nothing are rested so the others take their place; each action is written down",
+           acts_ == [(60, 1), (120, 2), (180, 3)] and did2 == [1, 1] and list(resting(cf, t2_ + 181 * 60)) == ["a"]
+           and not resting(cf, t2_ + 181 * 60 + REST_S) and keepalive_info(cf)["restarts"] == 3
+           and "rested 1 dataset" in keepalive_info(cf)["last"]["action"], (acts_, did2, resting(cf, t2_ + 181 * 60)))
+        ok("1.36 fail-safe: the page says so in plain words (no new fact for how long, what the fail-safe does next, what rests)",
+           wd_["state"] == "dry" and "no new fact for" in wd_["text"] and "Resting: a until" in wd_["text"] and wd_["actions"] == 3, wd_)
+        _busy(99)
+        r_new = keep_alive(kac, "", t2_ + 21 * 600, mk(41, 9), lambda: did2.append(1))
+        _busy(100)
+        r_after = keep_alive(kac, "", t2_ + 21 * 600 + 3000, mk(41, 9), lambda: did2.append(1))
+        ok("1.36 fail-safe: one new fact and the ladder starts over (nothing is restarted while facts arrive)",
+           not r_new and not r_after and did2 == [1, 1] and watchdog_info(cf, True, t2_ + 21 * 600 + 60)["dry_s"] == 60, (r_new, r_after))
+        os.remove(os.path.join(ad_, "usgs-gnis.json"))
+        os.remove(os.path.join(cf, FOLDER, REST_NAME))
+        # 1.36: Start means ON until Stop — an engine that is not running is started again, even with a stop mark left behind
+        real_fs, started_ = full_speed, []
+        for f_ in ("_runner.json", "_runner.stop", "_runner.resumed", INTENT_NAME):
+            if os.path.exists(os.path.join(cf, FOLDER, f_)):
+                os.remove(os.path.join(cf, FOLDER, f_))
+        try:
+            globals()["full_speed"] = lambda c_, pd_, why="", launch=None: (started_.append(why), {"bulk": "started"})[1]
+            e0 = ensure_on(kac, "", time.time())                           # never started, nothing said: left alone
+            set_intent(cf, True, "Start pressed")
+            e1 = ensure_on(kac, "", time.time() + 30)                      # just pressed: the start itself is under way
+            open(os.path.join(cf, FOLDER, "_runner.stop"), "w").close()    # a restart cut short left its mark behind
+            e2 = ensure_on(kac, "", time.time() + ENSURE_WAIT_S + 5)
+            e3 = ensure_on(kac, "", time.time() + ENSURE_WAIT_S + 35)      # at most one start every 3 minutes
+            set_intent(cf, False, "Stop pressed")
+            os.remove(os.path.join(cf, FOLDER, "_runner.resumed"))
+            e4 = ensure_on(kac, "", time.time() + 9e5)                     # Stop was pressed: stays stopped
+        finally:
+            globals()["full_speed"] = real_fs
+        ok("1.36 fail-safe: Start means ON until Stop is pressed — with no engine running it is started again by itself "
+           "(after a reboot, a crash, a restart cut short), at most once every 3 minutes; after Stop it stays stopped",
+           not e0 and not e1 and e2 and e2["started"] and not e3 and not e4 and len(started_) == 1 and intent(cf)["want"] == "off"
+           and "fail-safe" in started_[0], (e0, e1, e2, e3, e4, started_))
+        ok("1.36 fail-safe: with harvesting on and no engine, the page says it is starting again by itself (not 'Stopped')",
+           headline({"runner": {"alive": False}, "watchdog": {"want": "on"}, "datasets": []})["state"] == "starting"
+           and headline({"runner": {"alive": False}, "watchdog": {"want": "off"}, "datasets": []})["state"] == "stopped")
+        for f_ in ("_runner.stop", INTENT_NAME):
+            if os.path.exists(os.path.join(cf, FOLDER, f_)):
+                os.remove(os.path.join(cf, FOLDER, f_))
         # 1.35: a dataset changing hands (file moved for a moment) keeps its count on the screen
         sp_ = shard_path(cf, "calendar-scaffold")
         os.replace(sp_, sp_ + ".moving")
