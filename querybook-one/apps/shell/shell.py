@@ -28,11 +28,13 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ask
+import assist
 import bookq
+import caps
 import qbcompose
 import modes
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -186,6 +188,8 @@ class Shell:
         self.programs = {pid: Program(pid, self.root, self.job) for pid in PROGRAMS}
         self.watches = Watches(self.root)
         self.library = Library([os.path.join(HERE, "library"), os.path.join(self.root, "library") if self.root else ""])
+        # the AI Capabilities page (caps.py: the twelve capabilities; assist.py: the worker, its workflows and projects)
+        self.assist = assist.Assist(self.root or HERE, lambda: qbcompose.load_keys(self.root or ""), self.urls, ask_mode, check_text)
 
     def prepare_drive(self) -> None:
         if not self.root:
@@ -552,6 +556,8 @@ def make_handler(shell: Shell):
                     return self.send(200, ask.answer(q.get("q", ""), shell.urls()))
                 if u.path == "/api/shell/modes":
                     return self.send(200, {"inputs": modes.INPUTS, "modes": modes.MODES, "formats": modes.FORMATS, "registers": modes.REGISTERS})
+                if u.path == "/api/shell/caps":
+                    return self.send(200, shell.assist.catalogue())
                 if u.path == "/api/shell/library":
                     return self.send(200, {"books": shell.library.list()})
                 if u.path == "/api/shell/book":
@@ -615,6 +621,8 @@ def make_handler(shell: Shell):
                     return self.send(200, book_ask(shell, body))
                 if u.path == "/api/shell/say":
                     return self.send(200, say(body, shell.urls()))
+                if u.path == "/api/shell/caps/run":
+                    return self.send(200, shell.assist.run(body))
                 return self.send(404, {"error": "not found"})
             except ValueError as e:
                 return self.send(400, {"error": str(e)})

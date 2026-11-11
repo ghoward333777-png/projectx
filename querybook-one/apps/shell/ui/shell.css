@@ -169,3 +169,27 @@ ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0
   background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 10px 14px; margin: 0 0 14px; box-shadow: 0 -4px 12px rgba(0,0,0,.08); }
 .chipx { border: 0; background: none; color: inherit; cursor: pointer; font: 700 13px system-ui, sans-serif; padding: 0 2px; }
 .bqai { margin-top: 8px; } .bqai label { cursor: pointer; }
+
+/* ✨ AI Capabilities (capspage.js) */
+.captiles { grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); }
+.captile { display: grid; gap: 4px; position: relative; min-height: 118px; align-content: start; }
+.captile:hover, .captile:focus-visible { border-color: var(--accent); }
+.capnum { position: absolute; top: 8px; right: 12px; font: 600 12px system-ui, sans-serif; color: var(--muted); }
+.capicon { font-size: 26px; line-height: 1.1; }
+.capstrip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.capstrip .on, .cappanel .seg .on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cappanel .seg { margin: 8px 0 10px; }
+.capresult { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.capout { white-space: pre-wrap; word-wrap: break-word; font: inherit; line-height: 1.55; margin: 10px 0 0; padding: 12px 14px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.capstep { margin: 0 0 12px; }
+.capphase { display: grid; gap: 4px; margin-top: 12px; }
+.captask { display: block; cursor: pointer; padding: 2px 0; }
+.captask.done { color: var(--muted); text-decoration: line-through; }
+.capwfs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.capwfs .on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.capdraft { margin: 6px 0; padding-left: 22px; }
+.capchat { display: grid; gap: 10px; max-height: 460px; overflow-y: auto; padding: 4px 2px 10px; }
+.capmsg { display: grid; gap: 2px; justify-items: start; }
+.capmsg.user { justify-items: end; }
+.capbubble { white-space: pre-wrap; max-width: 80%; padding: 9px 13px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.capmsg.user .capbubble { background: var(--accent); color: #fff; border-color: var(--accent); }

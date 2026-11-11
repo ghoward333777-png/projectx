@@ -104,6 +104,30 @@ source → harvester → rights gate → metadata → format normaliser → docu
 - **Self-test:** 19 checks against a stand-in for every site.
 - **Live check:** the 3 most-read Gutenberg astronomy books harvested in about 1 s each; one Internet Archive scan (1889) ingested from OCR; undated and post-1930 items held.
 
+## AI Capabilities (window 1.5.0)
+
+A page in the window ("✨ AI Capabilities", `apps/shell/ui/capspage.js`) with one tile for each of the twelve things QueryBook's AI does:
+
+| # | Capability | What it does here |
+|---|---|---|
+| 1 | Ask / Search | A question goes to the Ask page (facts with sources); Book Query. |
+| 2 | Summarize | Short summary, key points or one sentence of a pasted text. |
+| 3 | Write / Create | Email, letter, report, essay, story, announcement, or a clearer rewrite. |
+| 4 | Organize | Sort and remove repeats, group into topics, outline, table, actions and dates. |
+| 5 | Analyze | Statistics of numbers or a table, a text's measures, two texts compared, claims checked against the facts. |
+| 6 | Develop / Project | A goal becomes a phased plan with tasks to tick off; projects are saved. |
+| 7 | Tools | Calculator, unit converter, dictionary, chemistry, word count, fact checker, read aloud, STEM, Video Studio. |
+| 8 | Processes / Workflows | Chains of steps (five starters; build and save your own). |
+| 9 | Agent(s) | A goal in words: the agent chooses the steps, runs them and shows each one; the harvest agents. |
+| 10 | Chatbot | A conversation answered from the facts; follow-ups remember the subject. |
+| 11 | Translate / Languages | Quick translation; the Language and Translate areas. |
+| 12 | Learn / Study | Tutorial, quiz, flashcards, connections (the Ask page's modes); study questions from your own text. |
+
+- **Who does the work:** `apps/shell/caps.py` is the rule-based engine (pure, no AI: a summary is the text's own sentences, numbers are computed). `apps/shell/assist.py` adds Claude or Gemini when a key is saved and "Use AI" is on. Every result says who made it.
+- **Checks on the model:** numbers are always computed by the rules (the model only comments); a model grouping that loses or changes an item is refused; a chat reply is marked "general knowledge" unless facts were found.
+- **Storage:** workflows and projects are small files in `<data>/shell` (`workflows.json`, `projects.json`).
+- **Routes:** `GET /api/shell/caps`, `POST /api/shell/caps/run`. Tests: `tests/test_capabilities.py`.
+
 ## Changes made to the suite's code
 
 - **Language Lab** (the Language area's first tab, `#learn`): one screen and one text, in five steps:

@@ -135,6 +135,15 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   raw HTTP because the bundle is stdlib-only, else Gemini, else `bookq.compose_rules`). Keep the verification: no
   uncited sentence, citations only to supplied passages. Multi-book questions (`books: [...]`) are a core feature.
 
+### AI Capabilities (`querybook-one/apps/shell/caps.py`, `assist.py`, `ui/capspage.js`)
+
+- The user's list of twelve, in this order — keep all twelve tiles: Ask/Search, Summarize, Write/Create, Organize, Analyze,
+  Develop/Project, Tools, Processes/Workflows, Agent(s), Chatbot, Translate/Languages, Learn/Study.
+- `caps.py` is pure and rule-based (in the Rust-compat list): it must work with no AI key and invent nothing. `assist.py`
+  adds Claude/Gemini through `qbcompose.ask_model`; every result carries `by` and the page shows "Made by".
+- Capabilities that already have a home open it (Ask page and its modes, Book Query, Language, Translate, STEM, Video,
+  Harvest) — do not build second copies. Tests: `tests/test_capabilities.py`.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships

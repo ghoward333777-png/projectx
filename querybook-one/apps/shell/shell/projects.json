@@ -1,0 +1,107 @@
+[
+ {
+  "name": "Open a community tool library by spring",
+  "goal": "Open a community tool library by spring",
+  "target": "by spring",
+  "phases": [
+   {
+    "name": "Define",
+    "tasks": [
+     {
+      "text": "Write the goal in one sentence: Open a community tool library by spring",
+      "done": true
+     },
+     {
+      "text": "Say what done looks like and how it will be measured",
+      "done": false
+     },
+     {
+      "text": "List who is involved and who decides",
+      "done": false
+     },
+     {
+      "text": "Note the limits: money, time, people",
+      "done": false
+     }
+    ]
+   },
+   {
+    "name": "Plan",
+    "tasks": [
+     {
+      "text": "Break the goal into its main pieces of work",
+      "done": false
+     },
+     {
+      "text": "Put the pieces in order and mark what depends on what",
+      "done": false
+     },
+     {
+      "text": "Give each piece an owner and a date",
+      "done": false
+     },
+     {
+      "text": "List what could go wrong and what would be done about it",
+      "done": false
+     }
+    ]
+   },
+   {
+    "name": "Do",
+    "tasks": [
+     {
+      "text": "Start with the piece everything else depends on",
+      "done": false
+     },
+     {
+      "text": "Check progress every week against the dates",
+      "done": false
+     },
+     {
+      "text": "Write down each decision and why",
+      "done": false
+     }
+    ]
+   },
+   {
+    "name": "Check",
+    "tasks": [
+     {
+      "text": "Test the result against what done looks like",
+      "done": false
+     },
+     {
+      "text": "Ask the people it is for",
+      "done": false
+     },
+     {
+      "text": "Fix what the test and the people found",
+      "done": false
+     }
+    ]
+   },
+   {
+    "name": "Finish",
+    "tasks": [
+     {
+      "text": "Hand over: who looks after it now",
+      "done": false
+     },
+     {
+      "text": "Write what worked and what to do differently",
+      "done": false
+     },
+     {
+      "text": "Thank the people who helped",
+      "done": false
+     }
+    ]
+   }
+  ],
+  "risks": [],
+  "by": "rules",
+  "note": "No AI key is saved, so this is QueryBook's standard five-phase plan for any goal. With a Claude or Gemini key the tasks are written for your goal.",
+  "id": "3716f3d942",
+  "created": "2026-11-11 06:14"
+ }
+]
