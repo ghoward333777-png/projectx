@@ -1,0 +1,223 @@
+[
+  {
+    "slug": "meaning-before-wording-veriwave",
+    "title": "Meaning before wording: a first look at AtomGraph's VeriWave",
+    "dek": "Most AI systems predict the next word. AtomGraph says it is building an engine that starts somewhere else entirely: with units of meaning that can be traced back to their sources.",
+    "date": "2026-11-10",
+    "author": "The Provenance Desk",
+    "tags": ["AtomGraph", "World models"],
+    "hues": [188, 268],
+    "featured": true,
+    "blocks": [
+      {"type": "p", "text": "Ask a chatbot who replaced a pump in Unit 4 and it will give you a fluent sentence. Whether that sentence is *true* is a separate matter, and the model itself usually cannot tell you. It produced the words that were most likely to come next. That is what it was built to do."},
+      {"type": "p", "text": "AtomGraph Inc. is working on a different starting point. Its engine, **VeriWave**, is described on the company's site as \"a meaning-centered cognitive engine designed to organize knowledge, reason over evidence, and deliver answers that can be traced back to their sources.\" The headline promise is short: intelligence built from verifiable meaning."},
+      {"type": "callout", "title": "Read this first", "text": "VeriWave is in development. AtomGraph states plainly that the capabilities it describes are design objectives, and it says performance measurements will be published later. Everything below describes what the system is *designed* to do, in the company's own terms."},
+      {"type": "h", "text": "A world model underneath the language"},
+      {"type": "p", "text": "The core idea is that knowledge should live in a structure, and language should be a way in and out of it. AtomGraph calls that structure a **persistent world model**: \"structured facts, concepts, relationships, events, states, rules, provenance, and change over time.\" It is meant to sit, in the company's words, \"beneath the wording of any single language.\""},
+      {"type": "p", "text": "Documents, databases, images, speech, video and sensor data go in. What comes out the other side is a set of identifiable units of meaning, each one typed. The site lists ten kinds:"},
+      {"type": "chips", "items": [
+        {"k": "ENT", "v": "Objects and entities", "tone": "cyan"},
+        {"k": "AGT", "v": "People, organizations, locations", "tone": "cyan"},
+        {"k": "PRP", "v": "Properties and conditions", "tone": "cyan"},
+        {"k": "EVT", "v": "Events and timelines", "tone": "violet"},
+        {"k": "CAU", "v": "Causes and consequences", "tone": "violet"},
+        {"k": "RUL", "v": "Physical and operational rules", "tone": "violet"},
+        {"k": "GOL", "v": "Tasks, goals, constraints", "tone": "amber"},
+        {"k": "AGR", "v": "Agreements and contradictions", "tone": "amber"},
+        {"k": "SRC", "v": "Sources and confidence levels", "tone": "green"},
+        {"k": "Δt", "v": "Changes in knowledge over time", "tone": "green"}
+      ]},
+      {"type": "p", "text": "So the pump sentence stops being a string of words and becomes something closer to a record: `EVT:replace(object=Pump P-40)`. The site's own illustration is a maintenance lookup, where an answer about Unit 4 points back to a specific procedure document and its revision."},
+      {"type": "quote", "text": "Meaning before wording. Evidence before assertion. Structure before speculation.", "cite": "Three of AtomGraph's five stated principles"},
+      {"type": "h", "text": "One event, many languages"},
+      {"type": "p", "text": "A consequence of working below the wording is that translation becomes a surface concern. The site shows \"The pump was replaced\" in English, Spanish and German all resolving to one event. The same goes for modality: text, images, diagrams, audio, speech, video, sensor and spatial data are all listed as inputs to the same shared representation."},
+      {"type": "h", "text": "Why graphs, and why now"},
+      {"type": "p", "text": "Representing knowledge as typed things and typed relationships is a long-standing idea, and it is worth understanding on its own before judging any new system built around it. This short explainer covers the basics of knowledge graphs."},
+      {"type": "video", "id": "y7sXDpffzQQ", "title": "What is a Knowledge Graph?", "channel": "IBM Technology"},
+      {"type": "p", "text": "What AtomGraph adds to that tradition, at least on paper, is a hard commitment to provenance and time. Every unit carries its source. Every change is recorded. And the company claims a property that language models famously lack: \"Subject to the same information, rules, permissions, and system state, VeriWave is designed to return consistent, reproducible results.\""},
+      {"type": "h", "text": "What to watch for"},
+      {"type": "list", "items": [
+        "**The ingestion problem.** Turning messy documents into clean typed meaning is the hard part of every knowledge system ever built. How VeriWave does it will decide everything else.",
+        "**Published measurements.** The company says they are coming. Until then these are goals.",
+        "**Scale.** Three deployment tiers are named: local systems, enterprise systems and distributed networks."
+      ]},
+      {"type": "p", "text": "The other articles on this blog take the individual ideas one at a time. Start with the seven evidence labels: they are the clearest window into how this design thinks."}
+    ]
+  },
+  {
+    "slug": "seven-evidence-labels",
+    "title": "Seven ways to say how sure you are",
+    "dek": "VeriWave's design gives every statement one of seven evidence labels. The last one, Unknown, may be the most important feature in the whole system.",
+    "date": "2026-11-08",
+    "author": "The Provenance Desk",
+    "tags": ["AtomGraph", "Evidence"],
+    "hues": [150, 200],
+    "blocks": [
+      {"type": "p", "text": "A language model writes a guess in the same confident voice as a fact. There is no change of tone when it leaves the evidence behind, because from the inside there is no difference: both are simply likely text."},
+      {"type": "p", "text": "The video below explains why this happens. It is a property of how these models work, and more training data alone does not remove it."},
+      {"type": "video", "id": "cfqtFvWOfg0", "title": "Why Large Language Models Hallucinate", "channel": "IBM Technology"},
+      {"type": "h", "text": "The seven labels"},
+      {"type": "p", "text": "AtomGraph's answer, in the VeriWave design, is to make the status of a claim part of the claim. The company's site lists seven evidence labels:"},
+      {"type": "chips", "items": [
+        {"k": "Verified", "v": "Confirmed against the record", "tone": "green"},
+        {"k": "Multiple sources", "v": "More than one source agrees", "tone": "green"},
+        {"k": "Single source", "v": "One source, no corroboration", "tone": "cyan"},
+        {"k": "Inferred", "v": "Reasoned, not directly stated", "tone": "violet"},
+        {"k": "Conflicting", "v": "Sources disagree", "tone": "amber"},
+        {"k": "Incomplete", "v": "Part of the picture is missing", "tone": "amber"},
+        {"k": "Unknown", "v": "The system declines rather than invents", "tone": "red"}
+      ]},
+      {"type": "p", "text": "Only the description of Unknown is quoted from the company. The other glosses here are our plain reading of each label's name."},
+      {"type": "h", "text": "Why Unknown matters most"},
+      {"type": "p", "text": "Think about who uses an answer. A maintenance planner, a compliance officer, a clinician. For them a wrong answer that sounds right is far more costly than an honest gap, because the gap gets checked and the wrong answer gets acted on."},
+      {"type": "quote", "text": "The system declines rather than invents.", "cite": "AtomGraph, describing the Unknown status"},
+      {"type": "p", "text": "The middle labels do quieter work. **Inferred** separates what a source said from what the system worked out. **Conflicting** keeps a disagreement visible. AtomGraph's site makes that last point directly about prediction-first systems, where \"disagreement between sources is often hidden.\" In the VeriWave design, conflicting claims are meant to coexist, each attached to its own source."},
+      {"type": "h", "text": "A useful habit, with or without VeriWave"},
+      {"type": "p", "text": "You do not need new technology to borrow the idea. Next time an AI tool gives you an answer that matters, sort each sentence into one of the seven boxes yourself. Which parts did a source say? Which did the tool infer? Which can you not place at all? The sentences you cannot place are the ones to check."},
+      {"type": "callout", "title": "Status of this technology", "text": "VeriWave is in development, and AtomGraph describes these capabilities as design objectives. No public measurements are available yet."}
+    ]
+  },
+  {
+    "slug": "nothing-silently-overwritten",
+    "title": "Nothing silently overwritten: memory with a paper trail",
+    "dek": "Knowledge changes. The interesting question is what happens to the old version. AtomGraph's design keeps it, links it, and proposes a signed audit chain on top.",
+    "date": "2026-11-05",
+    "author": "The Provenance Desk",
+    "tags": ["AtomGraph", "Audit"],
+    "hues": [32, 330],
+    "blocks": [
+      {"type": "p", "text": "A language model's knowledge is frozen into billions of numbers at training time. Nobody can open the file and find the place where it learned a particular fact, and nobody can cleanly edit one. When the world changes, the usual fix is to train again or to paste newer text into the prompt."},
+      {"type": "video", "id": "LPZh9BOjkQs", "title": "Large Language Models explained briefly", "channel": "3Blue1Brown"},
+      {"type": "h", "text": "Append, never erase"},
+      {"type": "p", "text": "VeriWave's design treats change as a first-class kind of knowledge. It even has its own type in the system, written **Δt**. The rule on AtomGraph's site is two sentences long:"},
+      {"type": "quote", "text": "New information is added. Nothing is silently overwritten.", "cite": "AtomGraph"},
+      {"type": "p", "text": "A correction does not delete the thing it corrects. It links to it, and the earlier record is marked as superseded. That gives you something ordinary AI systems cannot offer: the ability to ask what the system believed last March, and why it stopped believing it."},
+      {"type": "p", "text": "Accountants and engineers will recognise the pattern. Ledgers and version control work the same way, and for the same reason. A history you can edit is a history you cannot trust."},
+      {"type": "h", "text": "The proposed audit service"},
+      {"type": "p", "text": "On top of this sits something AtomGraph labels as **proposed**: a Universal Integrity Audit Service. The site describes it as using \"cryptographic signatures, trusted timestamps, append-only records, provenance tracking.\" In the company's illustration, each record signs the hash of the one before it."},
+      {"type": "p", "text": "That chaining matters. If each entry contains a fingerprint of the previous one, then changing any old entry breaks every fingerprint after it. Tampering becomes detectable by anyone holding the chain."},
+      {"type": "list", "items": [
+        "**Signatures** show who wrote a record.",
+        "**Trusted timestamps** show when.",
+        "**Append-only storage** means the past stays put.",
+        "**Provenance tracking** shows where each claim came from."
+      ]},
+      {"type": "h", "text": "Where this would earn its keep"},
+      {"type": "p", "text": "AtomGraph lists compliance and operational auditing among its target uses, alongside scientific and medical knowledge organization. Those are fields where \"the AI said so\" is not an acceptable answer to an inspector. A reasoning trail that can be replayed and checked is the product."},
+      {"type": "callout", "title": "Status of this technology", "text": "The audit service is marked as proposed and VeriWave itself is in development. AtomGraph describes these as design objectives."}
+    ]
+  },
+  {
+    "slug": "generated-or-retrieved-citations",
+    "title": "Was that citation retrieved, or generated?",
+    "dek": "Retrieval-augmented generation was the industry's first serious answer to made-up sources. It helps. Here is what it fixes, what it leaves open, and where a structured approach aims to go further.",
+    "date": "2026-11-02",
+    "author": "The Provenance Desk",
+    "tags": ["Evidence", "How AI works"],
+    "hues": [210, 300],
+    "blocks": [
+      {"type": "p", "text": "There is a line on AtomGraph's site that describes a familiar failure of prediction-first AI in five words: \"Citations may be generated, not retrieved.\" A model asked for a reference can write something with the right shape, an author, a journal, a year, without any such paper existing."},
+      {"type": "h", "text": "The first fix: retrieval"},
+      {"type": "p", "text": "The widely used remedy is retrieval-augmented generation, or RAG. Before the model answers, a search step finds relevant passages and places them in the prompt. The model then writes with the source text in front of it."},
+      {"type": "video", "id": "T-D1OfcDW1M", "title": "What is Retrieval-Augmented Generation (RAG)?", "channel": "IBM Technology"},
+      {"type": "h", "text": "What retrieval leaves open"},
+      {"type": "p", "text": "RAG is a real improvement, and it is the right tool for many jobs. It also has known soft spots:"},
+      {"type": "list", "items": [
+        "**The last step is still prediction.** The model reads the passages and then writes freely. It can misread, blend, or drift beyond them.",
+        "**Passages are text, not facts.** Two documents that disagree are simply two chunks in the prompt. Nothing forces the disagreement to be shown.",
+        "**Answers vary.** Ask twice and you may get two different summaries of the same sources.",
+        "**Time is flat.** A superseded manual and its replacement look alike to a search index unless someone has done extra work."
+      ]},
+      {"type": "h", "text": "The structured alternative"},
+      {"type": "p", "text": "VeriWave's design takes a different route to the same goal. Instead of retrieving passages for a model to paraphrase, it aims to hold the facts themselves as typed units, each tied to its source, and to reason over those. On that plan a citation is a link that was stored when the fact was first recorded. Nothing writes it at answer time."},
+      {"type": "p", "text": "The same structure addresses the other soft spots, at least on paper. Disagreement has its own type (**AGR**) and its own evidence label (**Conflicting**). Change over time has a type (**Δt**). And the company states a goal of consistent, reproducible results given the same information, rules, permissions and system state."},
+      {"type": "quote", "text": "Evidence before assertion.", "cite": "AtomGraph's second principle"},
+      {"type": "h", "text": "A fair comparison"},
+      {"type": "p", "text": "RAG exists today, runs at scale, and is well understood. VeriWave is in development and its capabilities are stated as design objectives. The structured approach also carries the heavier burden: someone, or something, has to turn raw documents into clean, typed meaning, and that step has defeated ambitious knowledge projects before. The claims are worth following. The measurements, when published, are what will settle them."}
+    ]
+  },
+  {
+    "slug": "how-a-transformer-predicts",
+    "title": "How a transformer actually picks the next word",
+    "dek": "To judge any alternative to today's language models you need a clear picture of what those models do. Two of the best visual explanations ever made, plus the short version in plain words.",
+    "date": "2026-10-29",
+    "author": "The Provenance Desk",
+    "tags": ["How AI works"],
+    "hues": [255, 320],
+    "blocks": [
+      {"type": "p", "text": "Every large language model does one thing. Given some text, it produces a probability for every possible next piece of text. Pick one, add it to the end, and repeat. A whole essay is that loop run a few thousand times."},
+      {"type": "h", "text": "The short version"},
+      {"type": "list", "items": [
+        "**Tokens.** Text is cut into small pieces, often parts of words.",
+        "**Embeddings.** Each token becomes a long list of numbers: a point in a space where related meanings sit near each other.",
+        "**Attention.** Each token looks at the others and pulls in what is relevant. This is how \"bank\" learns whether it is beside a river or holding money.",
+        "**Layers.** The attention step repeats many times, each pass refining the picture.",
+        "**Prediction.** The final numbers become a probability for every token in the vocabulary."
+      ]},
+      {"type": "p", "text": "Grant Sanderson's animated walk-through is the clearest introduction available."},
+      {"type": "video", "id": "wjZofJX0v4M", "title": "Transformers, the tech behind LLMs | Deep Learning Chapter 5", "channel": "3Blue1Brown"},
+      {"type": "h", "text": "Attention, slowly"},
+      {"type": "p", "text": "Attention is the idea that made modern AI work, and it rewards a second, slower look."},
+      {"type": "video", "id": "eMlx5fFNoYc", "title": "Attention in transformers, step-by-step | Deep Learning Chapter 6", "channel": "3Blue1Brown"},
+      {"type": "h", "text": "What this explains"},
+      {"type": "p", "text": "Once you see the loop, several well-known behaviours stop being mysterious. The model has no separate store of facts to consult: what it knows is spread across its weights. It has no built-in sense of where a claim came from. And because the next token is drawn from a probability distribution, the same question can give different answers."},
+      {"type": "p", "text": "Those are the gaps that designs such as AtomGraph's VeriWave say they are aiming at, by starting from stored, typed, sourced meaning. Whether that works is an open question. Understanding the loop above is what lets you ask it well."}
+    ]
+  },
+  {
+    "slug": "safety-inside-the-architecture",
+    "title": "Safety inside the architecture",
+    "dek": "Most AI safety is added around a model after it is built. AtomGraph's fourth principle says the controls belong in the structure itself, along four axes: access, conclusions, actions and oversight.",
+    "date": "2026-10-25",
+    "author": "The Provenance Desk",
+    "tags": ["AtomGraph", "Safety"],
+    "hues": [345, 265],
+    "blocks": [
+      {"type": "p", "text": "With a language model, instructions and data arrive in the same channel: text. That single fact is behind a whole family of attacks. A web page, an email or a document can contain words that the model treats as orders."},
+      {"type": "p", "text": "Andrej Karpathy's introductory talk covers this ground well in its final third, including jailbreaks and prompt injection."},
+      {"type": "video", "id": "zjkBMFhNj_g", "title": "[1hr Talk] Intro to Large Language Models", "channel": "Andrej Karpathy"},
+      {"type": "h", "text": "Four control axes"},
+      {"type": "p", "text": "AtomGraph's site lists what it wants built into VeriWave itself: \"permissions, provenance, behavioral boundaries, identity controls, action constraints, evidence requirements, auditability.\" It groups them along four axes."},
+      {"type": "chips", "items": [
+        {"k": "Access", "v": "Who may see which knowledge", "tone": "cyan"},
+        {"k": "Conclusions", "v": "What evidence a claim needs", "tone": "violet"},
+        {"k": "Actions", "v": "What the system may do", "tone": "amber"},
+        {"k": "Oversight", "v": "How people review it afterwards", "tone": "green"}
+      ]},
+      {"type": "p", "text": "The four axis names are AtomGraph's. The one-line descriptions are our reading of them."},
+      {"type": "h", "text": "Why structure helps"},
+      {"type": "p", "text": "Rules are easier to enforce on records than on prose. If every fact is a typed unit with a source and an owner, then \"this user may not see that\" is a check on a field. If every conclusion carries an evidence label, then \"do not act on anything weaker than Multiple sources\" is a rule a machine can apply the same way every time."},
+      {"type": "quote", "text": "Safety within the architecture.", "cite": "AtomGraph's fourth principle"},
+      {"type": "p", "text": "This fits the uses the company names. Agent and workflow support, robotics and environmental reasoning, and operational auditing all involve systems that *do* things. There, the limits on action matter at least as much as the quality of the answer."},
+      {"type": "h", "text": "The honest caveat"},
+      {"type": "p", "text": "Architecture moves the problem; it does not remove it. Permissions still have to be set correctly by people. The step that turns raw input into structured meaning is itself a place where things can go wrong. And none of this has been publicly measured yet: VeriWave is in development and these are design objectives. The direction is a sound one to argue for all the same."}
+    ]
+  },
+  {
+    "slug": "weekend-llm-curriculum",
+    "title": "A weekend curriculum: understand language models from the ground up",
+    "dek": "Three videos, in order, about six hours in total. By Sunday night you will know what a neural network is, how a chat model is trained, and how to build a tiny one yourself.",
+    "date": "2026-10-20",
+    "author": "The Provenance Desk",
+    "tags": ["How AI works", "Learning"],
+    "hues": [48, 168],
+    "blocks": [
+      {"type": "p", "text": "Opinions about AI are cheap and a working mental model is not. Here is the shortest path to one that we know of. Each step builds on the one before."},
+      {"type": "h", "text": "Saturday morning: what a neural network is"},
+      {"type": "p", "text": "Start with the classic. Nineteen minutes on how layers of simple units can recognise a handwritten digit. Everything later is this idea made larger."},
+      {"type": "video", "id": "aircAruvnKk", "title": "But what is a neural network? | Deep learning chapter 1", "channel": "3Blue1Brown"},
+      {"type": "h", "text": "Saturday afternoon: the whole pipeline"},
+      {"type": "p", "text": "Next, the full life of a chat model: gathering the data, tokenizing it, pretraining, fine-tuning into an assistant, and the strange strengths and weaknesses of the result. Long, and worth every minute."},
+      {"type": "video", "id": "7xTGNNLPyMI", "title": "Deep Dive into LLMs like ChatGPT", "channel": "Andrej Karpathy"},
+      {"type": "h", "text": "Sunday: build one"},
+      {"type": "p", "text": "Finally, write a small GPT in Python and train it on Shakespeare. You can follow along with only basic programming experience. Nothing demystifies a technology like watching it run on your own laptop."},
+      {"type": "video", "id": "kCc8FmEb1nY", "title": "Let's build GPT: from scratch, in code, spelled out.", "channel": "Andrej Karpathy"},
+      {"type": "h", "text": "Then what?"},
+      {"type": "list", "items": [
+        "Read **How a transformer actually picks the next word** on this blog for the attention mechanism in detail.",
+        "Read **Was that citation retrieved, or generated?** to see how retrieval is bolted on.",
+        "Then read the AtomGraph pieces with fresh eyes. You will be able to say exactly which properties of language models a meaning-first design is trying to change."
+      ]}
+    ]
+  }
+]

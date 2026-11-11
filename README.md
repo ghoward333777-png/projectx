@@ -313,3 +313,19 @@ no API keys.
 - `tests/rich-chapter-contract.php` — PHP output contract checks
 - `tests/amazon-book-writer-contract.php` — Amazon Book Writer contract checks
 - `tests/audiobook-contract.php` — editions and audiobook production contract checks
+
+## Provenance — the AI blog
+
+`blog.php` is a self-contained blog about AI and the meaning-first technology
+AtomGraph is developing (VeriWave). Articles live in `data/blog-articles.json`
+as simple blocks (`p`, `h`, `quote`, `callout`, `list`, `chips`, `video`); add
+an entry there to publish a new one. Each article carries at least one YouTube
+video (click-to-load, privacy-enhanced player) and a comment form.
+
+Comments are stored by `BlogStore` as one JSON file per article under
+`blog-comments/` (the folder must be writable by PHP; set the
+`BLOG_COMMENTS_DIR` environment variable to keep it elsewhere). Posting is
+protected by a session CSRF token, a honeypot field, a 20-second cooldown, and
+length limits; all reader text is cleaned with `ManuscriptHygiene` and
+HTML-escaped on output. There is no moderation queue: to remove a comment,
+delete its entry from the article's JSON file. Run `php tests/blog-contract.php`.
