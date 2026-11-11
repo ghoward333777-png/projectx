@@ -193,3 +193,11 @@ ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0
 .capmsg.user { justify-items: end; }
 .capbubble { white-space: pre-wrap; max-width: 80%; padding: 9px 13px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
 .capmsg.user .capbubble { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* the harvest pill and banner (1.6) */
+.hvpill { font: 600 12px system-ui, sans-serif; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.hvpill.ok { background: var(--good-bg); color: var(--good); border-color: transparent; }
+.hvpill.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.hvpill.bad { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+.hvbanner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 9px 16px; background: var(--bad-bg); color: var(--bad); border-bottom: 1px solid var(--bad); font-size: 14px; }
+.hvbanner .btn { margin-left: auto; }

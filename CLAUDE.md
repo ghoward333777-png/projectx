@@ -113,6 +113,13 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   (`total_gathered` rising), never by activity (bytes, rows, a churning drive).
 - Start = ON until Stop (`_intent.json`). `ensure_on` starts the engine whenever it is on and not running; only
   `stop(auto=False)` (the Stop button) switches it off — internal stops must pass `auto=True`.
+- Never one long all-or-nothing disk job: `merge_into` works in 256 saved pieces and `restore_missing` resumes and never
+  merges an unchanged copy twice (`_restored.json`). The user's log showed the old merge churning the external drive for
+  hours, restarted from zero by the fail-safe itself. "starting:" (getting ready) is work with its own progress.
+- A runner whose process exists is alive (`_runner_alive`, heartbeat up to 15 min late): the heartbeat file is on the busy drive.
+- One dataset reading 45 min without a new fact is rested (`DRY_DATASET_S`). The Control Panel's `drive_guard` pauses
+  harvesting while the data drive fails its probe or gives I/O errors, and resumes by itself. Excessive pauses raise an
+  alert and turn the window's header pill red (`/api/bulk/health`, `/api/shell/harvest`).
 - `keep_alive` ladder with no new fact: 1 h restart, 2 h hard restart, 3 h rest the dry datasets 6 h (`_rest.json`, honoured
   by `Supervisor.check`). An advancing filing is exempt for at most `WORK_MAX_S`. Keep the page and diagnostics text honest.
 

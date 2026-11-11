@@ -46,7 +46,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.37.0"
+VERSION = "1.38.0"
 PORT = 8100
 program_dir = HERE
 
@@ -280,6 +280,21 @@ class Panel:
             qbbulk.email_due(self.commons, HERE)
         except Exception as e:
             self.log("analysis email:", repr(e))
+        paused = None
+        try:                                       # 1.38: a data drive that does not answer -> harvesting waits for it
+            paused = self.drive_guard()
+        except Exception as e:
+            self.log("drive guard:", repr(e))
+        if paused:
+            found["data-drive"] = ("error", "Harvesting is paused to protect the data drive: %s. QueryBook tests the drive every minute and "
+                                   "resumes by itself when it answers. Check the drive's cable and power." % paused.get("why"), None)
+            try:
+                with self.store.write() as db:
+                    self.raise_alert(db, "data-drive", *found["data-drive"])
+            except Exception:
+                pass                               # the panel's own database is on that drive
+            self.last_check = core.now_cs()
+            return {"alerts": 1, "checked": self.last_check, "paused": paused.get("why")}
         try:                                       # 1.36 fail-safe: Start means ON until Stop — no engine running: started again
             r = qbbulk.ensure_on(self.commons, HERE)
             if r:
@@ -298,6 +313,12 @@ class Panel:
                 self.log("bulk harvesting fail-safe:", r.get("action"), "-", r["why"])
         except Exception as e:
             self.log("bulk keep-alive:", repr(e))
+        try:                                       # 1.38: an excessive pause is an alert (no new fact for 20 min, getting ready for 30)
+            al = (qbbulk.health(self.commons.folder, self.commons) or {}).get("alert")
+            if al:
+                found["harvest-pause"] = (al.get("level") or "warn", al.get("text") or "", None)
+        except Exception as e:
+            self.log("harvest health:", repr(e))
         apps = self.apps()
         for a in apps:
             k = a["app"]
@@ -497,7 +518,7 @@ class Panel:
                 try:
                     self._refresh_own()
                 except Exception as e:
-                    self.log("ticker:", repr(e))
+                    self.note_error("ticker:", e)
                 time.sleep(TICKER_S)
         threading.Thread(target=loop, daemon=True, name="qb-control-ticker").start()
 
@@ -507,9 +528,58 @@ class Panel:
                 try:
                     self.check()
                 except Exception as e:
-                    self.log("monitor:", repr(e))
+                    self.note_error("monitor:", e)
                 time.sleep(MONITOR_S)
         threading.Thread(target=loop, daemon=True, name="qb-control-monitor").start()
+
+    def note_error(self, where, e):
+        """1.38: a background pass failed. Read/write errors of the data drive are counted for the drive guard; and the same
+        line is written to the log at most once every 10 minutes with how often it happened (a failing drive wrote one
+        line every 20 seconds for eleven hours — 2,248 lines that said one thing)."""
+        msg, now = repr(e), time.time()
+        if "disk I/O error" in msg or "locking protocol" in msg or (isinstance(e, OSError) and getattr(e, "errno", None) == 5):
+            self.io_errors = [t for t in getattr(self, "io_errors", []) if now - t < 600] + [now]
+        seen = getattr(self, "_err_seen", {})
+        last, n = seen.get((where, msg), (0, 0))
+        if now - last >= 600:
+            self.log(where, msg + (" (and %d more times since the last line)" % n if n else ""))
+            seen[(where, msg)] = (now, 0)
+        else:
+            seen[(where, msg)] = (last, n + 1)
+        self._err_seen = seen
+
+    def drive_guard(self):
+        """1.38: the data drive is tested on every pass (a small write, at most 15 s). When it does not answer, or its
+        databases gave read/write errors three times in five minutes, harvesting is paused — the agents stop working a
+        drive that is failing or was unplugged — and it starts again by itself once the drive has answered for 3
+        minutes. Returns the pause ({"why", ...}) or None."""
+        now = time.time()
+        folder = self.commons.folder
+        ok, why = qbbulk.drive_probe(folder)
+        recent = [t for t in getattr(self, "io_errors", []) if now - t < 300]
+        if not ok or len(recent) >= 3:
+            why = why or "its databases gave read/write errors %d times in the last 5 minutes" % len(recent)
+            st = qbbulk.DRIVE_STATE.get(folder)
+            if not st:
+                qbbulk.DRIVE_STATE[folder] = st = {"paused_at": now, "why": why}
+                self.log("drive guard: harvesting paused to protect the data drive -", why)
+                try:
+                    qbbulk.stop(self.commons, grace=20, auto=True)      # harvesting stays switched on: it resumes by itself
+                except Exception as e:
+                    self.log("drive guard: stop:", repr(e))
+                    try:
+                        qbbulk.hard_stop(self.commons)
+                    except Exception:
+                        pass
+            st.update(why=why, bad_at=now)
+            return st
+        st = qbbulk.DRIVE_STATE.get(folder)
+        if st and now - st.get("bad_at", 0) >= 180:
+            qbbulk.DRIVE_STATE.pop(folder, None)
+            self.io_errors = []
+            self.log("drive guard: the data drive answers again after %d min - harvesting resumes" % ((now - st["paused_at"]) // 60))
+            return None
+        return st
 
     # ------------------------------------------------------------------ diagnostics, section by section
     def diagnose(self, section):
@@ -850,6 +920,25 @@ def selftest():
               r["control"]["master"] == "running" and os.path.exists(os.path.join(co.folder, "shards", "_runner.stop")), r["summary"])
         r = p.harvest("start")
         check("1.23: Start means the bulk agents (the one green Start)", r["control"]["master"] == "running" and "bulk" in r["summary"], r["summary"])
+        # 1.38: the drive guard — read/write errors of the data drive pause harvesting; it resumes by itself; the log is not flooded
+        import sqlite3 as _sq
+        g0 = p.drive_guard()
+        n_log = len(open(p.log_path, encoding="utf-8").read().splitlines()) if os.path.exists(getattr(p, "log_path", "")) else None
+        for _ in range(40):
+            p.note_error("monitor:", _sq.OperationalError("disk I/O error"))
+        g1 = p.drive_guard()
+        h1 = qbbulk.health(co.folder, co)
+        r1 = p.check()
+        p.io_errors = []
+        g2 = p.drive_guard()                               # the drive answers, but only just: still paused
+        qbbulk.DRIVE_STATE[co.folder]["bad_at"] = time.time() - 200
+        g3 = p.drive_guard()                               # it has answered for 3 minutes: resumed
+        check("1.38 drive guard: three read/write errors of the data drive in five minutes pause harvesting (it stays switched on), the "
+              "page and an alert say why, and it resumes by itself once the drive has answered for 3 minutes; forty identical errors "
+              "write one log line, not forty", g0 is None and g1 and "read/write errors" in g1["why"] and h1["state"] == "drive"
+              and h1["alert"]["level"] == "error" and r1.get("paused") and g2 and g3 is None and co.folder not in qbbulk.DRIVE_STATE
+              and qbbulk.intent(co.folder)["want"] == "on" and len(p._err_seen) == 1 and list(p._err_seen.values())[0][1] == 39,
+              (g0, g1, h1, r1, g2, g3, qbbulk.intent(co.folder)))
         # applications (none running in the test)
         ap = p.apps()
         check("the three applications are listed and found installed", [x["app"] for x in ap] == ["language", "stem", "facts"] and all(x["installed"] for x in ap), ap)

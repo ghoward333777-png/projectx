@@ -115,5 +115,34 @@ async function refresh() {
     if ((p.state === "running" && showingWait) || (p.state !== "running" && !showingWait)) show(current);
   }
 }
-drawRoles(); drawRail(); show(current); refresh();
+/* ------------------------------------------------------------------ the harvest, always in sight (1.6)
+   A pill in the header on every page: green while facts arrive, amber while it gets ready or waits, red on an excessive
+   pause (no new fact for 20 minutes, the data drive not answering). Click: the Harvest page. The red state also shows a
+   banner once per pause, so it is not missed while working elsewhere. */
+let hvLast = "";
+async function harvestPill() {
+  const pill = document.getElementById("hvpill");
+  let h;
+  try { h = await (await fetch("/api/shell/harvest")).json(); } catch (e) { return; }
+  const al = h.alert, bad = h.state === "drive" || h.state === "dry" || (al && al.level === "error");
+  const warn = !bad && (al || h.state === "preparing" || h.state === "starting" || h.state === "copying");
+  const off = h.state === "stopped";
+  pill.hidden = h.state === "unknown" && !h.text;
+  pill.className = "hvpill " + (bad ? "bad" : warn ? "warn" : off ? "off" : "ok");
+  pill.textContent = bad ? (h.state === "drive" ? "⚠ Harvest paused: data drive" : "⚠ Harvest: no new facts")
+    : h.state === "preparing" ? "Harvest: getting ready" : h.state === "starting" ? "Harvest: starting again" : off ? "Harvest: stopped"
+    : h.state === "caught-up" ? "Harvest: caught up" : h.state === "working" ? "Harvest: filing" : h.facts_per_min ? `Harvest: ${Number(h.facts_per_min).toLocaleString()} facts/min` : "Harvest: running";
+  pill.title = (al && al.text) || h.text || "";
+  pill.onclick = () => show("harvest");
+  const key = bad ? h.state + ":" + ((al && al.text) || h.text || "").slice(0, 40) : "";
+  let bar = document.getElementById("hvbanner");
+  if (bad && key !== hvLast) {
+    if (!bar) { bar = el("div", { id: "hvbanner", class: "hvbanner", role: "alert" }); document.querySelector(".frame").before(bar); }
+    bar.replaceChildren(el("b", {}, "Harvesting needs attention: "), (al && al.text) || h.text || "",
+      el("button", { type: "button", class: "btn ghost", onclick: () => show("harvest") }, "Open Harvest"),
+      el("button", { type: "button", class: "chipx", title: "Hide", onclick: () => { hvLast = key; bar.remove(); } }, "×"));
+  } else if (!bad && bar) { bar.remove(); hvLast = ""; }
+}
+drawRoles(); drawRail(); show(current); refresh(); harvestPill();
 setInterval(refresh, 3000);
+setInterval(harvestPill, 30000);

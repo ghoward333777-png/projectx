@@ -34,7 +34,7 @@ import caps
 import qbcompose
 import modes
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -556,6 +556,15 @@ def make_handler(shell: Shell):
                     return self.send(200, ask.answer(q.get("q", ""), shell.urls()))
                 if u.path == "/api/shell/modes":
                     return self.send(200, {"inputs": modes.INPUTS, "modes": modes.MODES, "formats": modes.FORMATS, "registers": modes.REGISTERS})
+                if u.path == "/api/shell/harvest":         # the harvest in one line, for the header (1.6)
+                    base = (shell.urls().get("control") or "").rstrip("/")
+                    if not base:
+                        return self.send(200, {"state": "unknown", "text": "The Control Panel is starting."})
+                    try:
+                        with urllib.request.urlopen(base + "/api/bulk/health", timeout=8) as r:
+                            return self.send(200, json.loads(r.read().decode("utf-8")))
+                    except (OSError, ValueError) as e:
+                        return self.send(200, {"state": "unknown", "text": "The harvest could not be read just now (%s)." % e})
                 if u.path == "/api/shell/caps":
                     return self.send(200, shell.assist.catalogue())
                 if u.path == "/api/shell/library":

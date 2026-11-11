@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.36.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.37.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1664,27 +1664,52 @@ def _meta_of(path):
         return None
 
 
-def merge_into(dst_path, src_path):
-    """every fact of src that dst lacks is added to dst (predicates matched by name); returns how many were added"""
+MERGE_PIECES = 256                 # 1.37: a copy is merged in 256 pieces (by the first byte of each fact's fingerprint)
+
+
+def merge_into(dst_path, src_path, start=0, progress=None, halt=None):
+    """every fact of src that dst lacks is added to dst (predicates matched by name); returns how many were added.
+    1.37: in 256 pieces, each saved as it is done. Before, the whole copy went in as ONE step — hours of disk work on a
+    large dataset with nothing to show, and started again from nothing whenever it was interrupted (so on a store of a
+    billion facts it could churn the data drive for a night and never finish). Now an interruption costs one piece:
+    start = the piece to resume at; progress(pieces_done, added_so_far) after each; halt() True stops between pieces.
+    Returns the number added by this call (see the piece reached through progress)."""
     db = sqlite3.connect(dst_path, timeout=120)
     try:
         db.executescript(SCHEMA)
         db.execute("ATTACH DATABASE ? AS h", (src_path,))
         db.execute("INSERT OR IGNORE INTO predicates(name, rule) SELECT name, rule FROM h.predicates")
         db.execute("INSERT OR IGNORE INTO parts(name, url, version) SELECT name, url, version FROM h.parts")
-        before = db.total_changes
-        db.execute("""INSERT OR IGNORE INTO facts(fp, s, p, o, part, row)
-                      SELECT f.fp, f.s, mp.id, f.o, coalesce(mpt.id, f.part), f.row FROM h.facts f
-                      JOIN h.predicates hp ON hp.id = f.p JOIN main.predicates mp ON mp.name = hp.name
-                      LEFT JOIN h.parts hpt ON hpt.id = f.part LEFT JOIN main.parts mpt ON mpt.name = hpt.name""")
-        added = db.total_changes - before
-        db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT fp, url FROM h.links")
-        r = db.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
-        db.execute("INSERT INTO meta(key, value) VALUES('facts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                   (json.dumps((json.loads(r[0]) if r else 0) + added),))
         db.commit()
+        total = 0
+        for i in range(max(0, int(start)), MERGE_PIECES):
+            if halt and halt():
+                break
+            lo, hi = bytes([i]), (bytes([i + 1]) if i + 1 < MERGE_PIECES else None)
+            where, args = ("f.fp >= ? AND f.fp < ?", (lo, hi)) if hi else ("f.fp >= ?", (lo,))
+            if i == 0:
+                where, args = "f.fp < ?", (hi,)                      # (an empty fingerprint sorts before every byte)
+            before = db.total_changes
+            db.execute("""INSERT OR IGNORE INTO facts(fp, s, p, o, part, row)
+                          SELECT f.fp, f.s, mp.id, f.o, coalesce(mpt.id, f.part), f.row FROM h.facts f
+                          JOIN h.predicates hp ON hp.id = f.p JOIN main.predicates mp ON mp.name = hp.name
+                          LEFT JOIN h.parts hpt ON hpt.id = f.part LEFT JOIN main.parts mpt ON mpt.name = hpt.name
+                          WHERE """ + where, args)
+            added = db.total_changes - before
+            lw, la = ("l.fp >= ? AND l.fp < ?", (lo, hi)) if hi else ("l.fp >= ?", (lo,))
+            if i == 0:
+                lw, la = "l.fp < ?", (hi,)
+            db.execute("INSERT OR IGNORE INTO links(fp, url) SELECT l.fp, l.url FROM h.links l WHERE " + lw, la)
+            if added:
+                r = db.execute("SELECT value FROM meta WHERE key = 'facts'").fetchone()
+                db.execute("INSERT INTO meta(key, value) VALUES('facts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                           (json.dumps((json.loads(r[0]) if r else 0) + added),))
+            db.commit()                                              # this piece is kept whatever happens next
+            total += added
+            if progress:
+                progress(i + 1, total)
         db.execute("DETACH DATABASE h")
-        return added
+        return total
     finally:
         db.close()
 
@@ -1811,15 +1836,34 @@ def other_copies(commons_folder, key):
     return out
 
 
-def restore_missing(commons_folder, say=None):
+RESTORED_NAME = "_restored.json"
+
+
+def _copy_stamp(path, meta):
+    """what identifies a copy as it is now: its size, when it was last written, and the facts it says it holds"""
+    try:
+        return [os.path.getsize(path), int(os.path.getmtime(path)), int((meta or {}).get("facts") or 0)]
+    except OSError:
+        return None
+
+
+def restore_missing(commons_folder, say=None, halt=None):
     """1.31.2: for every dataset, every other copy is compared with the live one; when a copy holds more facts than the live
     one can account for (its count, plus the duplicates removed from it since), every fact it holds that the live copy lacks
     is added back (merge — nothing is ever deleted). Runs before the agents start, and from the Control Panel.
+    1.37: a copy that was merged is written down (_restored.json) and is not merged again while it is unchanged — before,
+    a copy whose count the live one could never 'account for' was merged again at EVERY start, for hours each time; and a
+    merge that is interrupted resumes at the piece it had reached instead of starting over.
     Returns {dataset: {"from": path, "added": n}} for each dataset that got facts back."""
     out = {}
+    led_path = os.path.join(commons_folder, FOLDER, RESTORED_NAME)
+    led = _read_json(led_path, {})
+    led = led if isinstance(led, dict) else {}
     for key, ds in catalog().items():
         if getattr(ds, "standalone", False):
             continue
+        if halt and halt():
+            break
         live = shard_path(commons_folder, key)
         for other in other_copies(commons_folder, key):
             lm = _meta_of(live) or {} if os.path.exists(live) else {}
@@ -1827,22 +1871,46 @@ def restore_missing(commons_folder, say=None):
             expect = (lm.get("facts") or 0) + (lm.get("duplicates_removed") or 0) - (om.get("duplicates_removed") or 0)
             if (om.get("facts") or 0) <= expect:
                 continue
+            stamp, lk = _copy_stamp(other, om), key + "|" + os.path.normcase(os.path.abspath(other))
+            rec = led.get(lk) or {}
+            if stamp and rec.get("stamp") == stamp and rec.get("done"):
+                continue                                    # this very copy was merged already: everything it holds is here
+            resume = int(rec.get("piece") or 0) if stamp and rec.get("stamp") == stamp else 0
+            had = int(rec.get("added") or 0) if resume else 0
             if say:
-                say("restoring %s: %s holds %s facts, the live copy %s" % (key, other, format(om.get("facts") or 0, ","), format(lm.get("facts") or 0, ",")))
+                say("adding back facts to %s from another copy (%s holds %s, the live copy %s)%s" % (
+                    key, other, format(om.get("facts") or 0, ","), format(lm.get("facts") or 0, ","),
+                    " — resuming at %d%%" % (100 * resume // MERGE_PIECES) if resume else ""))
             if not os.path.exists(live):                    # no live copy at all: the fuller copy becomes the home copy
                 os.makedirs(os.path.dirname(home_path(commons_folder, key)), exist_ok=True)
                 shutil.copyfile(other, home_path(commons_folder, key))
-                added = om.get("facts") or 0
+                added, reached = om.get("facts") or 0, MERGE_PIECES
             else:
-                _restoring(commons_folder, {"key": key, "from": other, "facts": om.get("facts") or 0, "live": lm.get("facts") or 0})
+                state = {"piece": resume}
+
+                def step(piece, added_now, _lk=lk, _stamp=stamp, _had=had, _key=key, _other=other, _om=om, _lm=lm, _state=state):
+                    _state["piece"] = piece
+                    led[_lk] = {"stamp": _stamp, "piece": piece, "added": _had + added_now, "done": piece >= MERGE_PIECES, "at": time.time()}
+                    _ka_save(led_path, led)
+                    _restoring(commons_folder, {"key": _key, "from": _other, "facts": _om.get("facts") or 0, "live": _lm.get("facts") or 0,
+                                                "piece": piece, "pieces": MERGE_PIECES, "added": _had + added_now})
+                    if say:
+                        say("adding back facts to %s from another copy: %d%% checked, %s added back so far" % (
+                            _key, 100 * piece // MERGE_PIECES, format(_had + added_now, ",")))
+                _restoring(commons_folder, {"key": key, "from": other, "facts": om.get("facts") or 0, "live": lm.get("facts") or 0,
+                                            "piece": resume, "pieces": MERGE_PIECES, "added": had})
                 try:
-                    added = merge_into(live, other)
+                    added = merge_into(live, other, resume, step, halt)
                 finally:
                     _restoring(commons_folder, None)
+                reached = state["piece"]
+            if stamp and reached >= MERGE_PIECES:
+                led[lk] = {"stamp": stamp, "piece": MERGE_PIECES, "added": had + added, "done": True, "at": time.time()}
+                _ka_save(led_path, led)
             r = out.setdefault(key, {"added": 0, "from": []})
             r["added"] += added
             r["from"].append(other)
-            TR.event("restore", dataset=key, source=other, added=added)
+            TR.event("restore", dataset=key, source=other, added=added, piece=reached)
     return out
 
 
@@ -2769,7 +2837,8 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
             beat(rnote["text"])
     threading.Thread(target=restore_beat, daemon=True, name="qb-restore-beat").start()
     try:                                              # 1.31.2: facts held in any other copy are added back first
-        TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text="starting: " + t)))
+        TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text="starting: " + t),
+                                                   halt=lambda: os.path.exists(stop)))
     except Exception as e:
         TR.fail("restore", e, retried=True)
     finally:
@@ -3019,7 +3088,7 @@ def status(commons_folder, commons=None):
             rs = json.load(f)
     except (OSError, ValueError):
         pass
-    rs["alive"] = bool(rs) and now - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
+    rs["alive"] = _runner_alive(rs, now)
     w = work_dir(commons_folder)
     try:
         free_c = shutil.disk_usage(w if os.path.isdir(w) else os.path.dirname(w) if os.path.isdir(os.path.dirname(w)) else os.path.expanduser("~")).free if w else None
@@ -3209,6 +3278,8 @@ def headline(st):
     if rs.get("version") != VERSION:
         return {"state": "old", "text": "An older harvesting engine is running. Press ■ Stop harvesting, then ⚡ Start harvesting."}
     fpm = st.get("facts_per_min") or 0
+    if wd.get("state") == "preparing" and wd.get("text"):
+        return {"state": "preparing", "text": wd["text"]}
     if not fpm and wd.get("text") and (wd.get("dry_s") or 0) >= 600:
         run_ = [d for d in st["datasets"] if d.get("state") == "running"]
         busy_ = "; ".join("%s (%s)" % (d["key"], d.get("doing") or "reading") for d in run_[:4])
@@ -3246,11 +3317,25 @@ def _progress(pg, now, live=False):
     return dict(pg, fraction=frac, overall=round(overall, 4), rate=rate, eta_s=round(eta) if eta else None)
 
 
+HB_BUSY_S = 15 * 60                # 1.37: a runner whose process is there is alive, even when its heartbeat is this late
+
+
+def _runner_alive(rs, now=None):
+    """1.37: the heartbeat file lives on the data drive, and a drive busy with a large merge or copy can hold a small write
+    back for minutes. The engine was then taken for dead: a second one was started on top of it, and after 5 minutes the
+    working one was ENDED — in the middle of its work, which began again from the start. Now: a fresh heartbeat, or a
+    process that is still there with a heartbeat less than 15 minutes old."""
+    if not rs or rs.get("note") == "finished":
+        return False
+    age = (now or time.time()) - (rs.get("heartbeat") or 0)
+    return age < 30 or (age < HB_BUSY_S and _pid_alive(rs.get("pid")))
+
+
 def _alive(commons_folder):
     try:
         with open(os.path.join(commons_folder, FOLDER, "_runner.json")) as f:
             rs = json.load(f)
-        return time.time() - rs.get("heartbeat", 0) < 30 and rs.get("note") != "finished"
+        return _runner_alive(rs)
     except (OSError, ValueError):
         return False
 
@@ -3425,8 +3510,10 @@ def resume_if_crashed(commons, program_dir, now=None, launch=None):
         return None
     if rs.get("note") == "finished" or now - rs.get("heartbeat", now) < 60 or os.path.exists(os.path.join(folder, "_runner.stop")):
         return None
-    if now - rs.get("heartbeat", now) > 300 and rs.get("pid"):
-        _kill(int(rs["pid"]))                     # hung: its lock would keep a new engine out
+    if _pid_alive(rs.get("pid")) and now - rs.get("heartbeat", now) < HB_BUSY_S:
+        return None                               # 1.37: its process is there — busy (a slow drive), not crashed
+    if now - rs.get("heartbeat", now) >= HB_BUSY_S and rs.get("pid"):
+        _kill(int(rs["pid"]))                     # hung for 15 minutes: its lock would keep a new engine out
     mark = os.path.join(folder, "_runner.resumed")
     try:
         if now - os.path.getmtime(mark) < RESUME_GAP_S:
@@ -3451,6 +3538,9 @@ KEEPALIVE_NAME = "_keepalive.json"
 # process ended, stale marks cleared), 3 the datasets that add nothing are rested so the others take their place.
 NOFACT_S = (60 * 60, 120 * 60, 180 * 60)
 REST_S = 6 * 3600                  # how long a dataset that adds nothing is rested
+DRY_DATASET_S = 45 * 60            # 1.37: ONE dataset reading (rows moving) this long without one new fact is rested — that is
+#                                    the drive churning for nothing: records the store already holds, read and thrown away
+ALERT_DRY_S = 20 * 60              # 1.37: no new fact this long while harvesting runs: the person is told (page, alert, window)
 BUSY_GRACE_S = 20 * 60             # a filing (or the one download, when lanes wait for it) that advanced this recently is real work
 WORK_MAX_S = 4 * 3600              # …but not for ever: 4 hours without one new fact and the ladder runs whatever is "busy"
 ENSURE_WAIT_S = 120                # switched on and no engine for this long: started again
@@ -3560,6 +3650,29 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
         ka.update(since=now, sig=None, new_at=now)     # a dead runner is ensure_on's / resume_if_crashed's job (same pass)
         _ka_save(path, ka)
         return None
+    if str(rs.get("note") or "").startswith("starting"):
+        # 1.37: getting ready (adding back facts from another copy) is work, with its own progress — 1.35/1.36 saw
+        # "18 datasets running, nothing moving", restarted the engine after 30 minutes, and the merge began again.
+        rn = restoring_now(commons.folder) or {}
+        psig = [rs.get("note"), rn.get("key"), rn.get("piece"), rn.get("added")]
+        if psig != ka.get("prep_sig"):
+            ka.update(prep_sig=psig, prep_at=now)
+        ka.update(since=now, sig=None, new_at=now, preparing=str(rs.get("note"))[:300], prep_since=ka.get("prep_since") or now, idle=False, working="")
+        if now - (ka.get("prep_at") or now) < KEEPALIVE_STALL_S:
+            _ka_save(path, ka)
+            return None
+        why = "getting ready stood still for %d min (%s)" % ((now - ka["prep_at"]) // 60, str(rs.get("note"))[:120])
+        ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why, "level": 1, "action": "restarted (it resumes where it stopped)"}]
+        ka.update(prep_at=now, prep_sig=None)
+        _ka_save(path, ka)
+        TR.event("keepalive", action="restart", why=why, level=1)
+        if restart:
+            restart()
+        else:
+            stop(commons, grace=STOP_GRACE_S, auto=True)
+            full_speed(commons, program_dir, "keep-alive: " + why)
+        return {"restarted": True, "why": why, "level": 1, "action": "restarted (it resumes where it stopped)"}
+    ka.update(preparing="", prep_since=None)
     running = [d for d in st["datasets"] if d.get("state") == "running"]
     moving = agents_moving(commons.folder)
     dl = ((st.get("download") or {}).get("done") if isinstance(st.get("download"), dict) else None)
@@ -3586,6 +3699,43 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
     idle_on_purpose = str(rs.get("note") or "").startswith("waiting") or not running
     ka["idle"] = bool(idle_on_purpose)
     ka["working"] = ("filing" if busy else "downloading") if working else ""
+    # 1.37 — churn, dataset by dataset: its agent keeps reading (bytes and rows move) and not one new fact comes of it.
+    cat = catalog()
+    per, mv, filing_keys = ka.get("per") or {}, {a[0]: [a[1], a[2]] for a in moving}, {a[0] for a in moving if a[3]}
+    newper, churn = {}, []
+    for d in running:
+        k_ = d["key"]
+        g_ = d.get("gathered", d.get("facts")) or 0
+        p_ = per.get(k_)
+        if not p_ or g_ > p_["g"] or k_ in filing_keys or getattr(cat.get(k_), "standalone", False):
+            p_ = {"g": g_, "at": now, "mv": mv.get(k_), "moved": False}
+        else:
+            if mv.get(k_) is not None and mv.get(k_) != p_.get("mv"):
+                p_.update(mv=mv.get(k_), moved=True)
+            p_["g"] = min(p_["g"], g_)
+            if p_["moved"] and now - p_["at"] >= DRY_DATASET_S:
+                churn.append(k_)
+        newper[k_] = p_
+    ka["per"] = newper
+    if churn:
+        counts = ka.get("rest_n") or {}
+        for k_ in churn:
+            counts[k_] = int(counts.get(k_) or 0) + 1
+            rest(commons.folder, [k_], REST_S * min(4, 2 ** (counts[k_] - 1)), now)   # 6 h, then 12 h, then 24 h
+            newper.pop(k_, None)
+        ka["rest_n"] = counts
+        why = "%s read for %s without one new fact (the store already holds what %s reading)" % (
+            ", ".join(churn[:6]) + (" and %d more" % (len(churn) - 6) if len(churn) > 6 else ""), _mins(DRY_DATASET_S), "it is" if len(churn) == 1 else "they are")
+        action = "rested %d dataset(s) that were reading without adding anything, so the drive stops working for nothing" % len(churn)
+        ka["restarts"] = (ka.get("restarts") or [])[-49:] + [{"at": now, "why": why, "level": 3, "action": action}]
+        _ka_save(path, ka)
+        TR.event("keepalive", action=action, why=why, level=3)
+        try:
+            with commons.store.write() as db:
+                commons.agent_log(db, "engine", "Fail-safe: harvesting %s — %s" % (action, why))
+        except Exception:
+            pass
+        return {"rested": churn, "why": why, "level": 3, "action": action}
     level, why = 0, ""
     if not idle_on_purpose:
         dry = now - ka["new_at"]
@@ -3600,7 +3750,6 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
     if not level:
         _ka_save(path, ka)
         return None
-    cat = catalog()
     dry_keys = [d["key"] for d in running if not getattr(cat.get(d["key"]), "standalone", False)]
     action = {1: "restarted", 2: "restarted hard (every process ended, stale marks cleared)",
               3: "rested %d dataset(s) that added nothing for %s, so the others take their place" % (len(dry_keys), _mins(REST_S))}[level]
@@ -3699,7 +3848,14 @@ def watchdog_info(commons_folder, alive=None, now=None):
     did = (" Last action: %s, %s ago (%s)." % (last.get("action") or "restarted", _mins(now - last["at"]), last.get("why"))) if last and last.get("at") else ""
     rest_txt = (" Resting: %s." % ", ".join("%s until %s" % (k, time.strftime("%H:%M", time.localtime(v))) for k, v in sorted(rested.items())[:6])
                 + (" and %d more" % (len(rested) - 6) if len(rested) > 6 else "")) if rested else ""
-    if ka.get("idle"):
+    if ka.get("preparing"):
+        took = max(0, now - (ka.get("prep_since") or now))
+        out.update(state="preparing", dry_s=int(took), text="Getting ready before harvesting (%s so far): %s. Each piece is saved as it is done, "
+                   "so an interruption no longer starts it over." % (_mins(took), str(ka["preparing"]).replace("starting: ", "")))
+        if took >= 30 * 60:
+            out["alert"] = {"level": "warn", "text": "Harvesting has been getting ready for %s (%s). No new facts arrive until it is done; it is advancing and resumes where it stopped if interrupted."
+                            % (_mins(took), str(ka["preparing"]).replace("starting: ", "")[:160])}
+    elif ka.get("idle"):
         out.update(state="caught-up", text="Nothing left to read right now: every dataset is finished, resting or waiting for its next try. "
                    "QueryBook looks again by itself (finished datasets daily, for new editions)." + rest_txt)
     elif ka.get("working"):
@@ -3710,6 +3866,57 @@ def watchdog_info(commons_folder, alive=None, now=None):
         step = {0: "restarts the engine", 1: "restarts it hard (every process ended)", 2: "rests the datasets that add nothing so the others take their place"}.get(level, "")
         out.update(state="dry", text="Running, but no new fact for %s — the agents are reading records the store already holds, or are stuck. "
                    "The fail-safe is watching%s." % (_mins(dry), (": at %s without a new fact it %s" % (_mins(nxt), step)) if nxt and step else "") + did + rest_txt)
+    if out["state"] == "dry" and dry >= ALERT_DRY_S:
+        out["alert"] = {"level": "warn" if dry < NOFACT_S[0] else "error", "text": "Harvesting has added no new fact for %s. %s" % (
+            _mins(dry), "A dataset that reads for 45 min without a new fact is rested; the engine is restarted at 1 h and restarted hard at 2 h." + did)}
+    return out
+
+
+def drive_probe(commons_folder, wait=15):
+    """does the data drive answer? a small file written, forced to the disk, read back and removed — in at most `wait`
+    seconds (a drive that hangs must not hang the monitor). Returns (ok, why)."""
+    import threading
+    res = {}
+
+    def go():
+        pth = os.path.join(commons_folder, FOLDER, "_probe.%d.tmp" % os.getpid())
+        try:
+            os.makedirs(os.path.dirname(pth), exist_ok=True)
+            with open(pth, "wb") as f:
+                f.write(b"querybook")
+                f.flush()
+                os.fsync(f.fileno())
+            with open(pth, "rb") as f:
+                good = f.read() == b"querybook"
+            os.remove(pth)
+            res["r"] = (True, "") if good else (False, "the data drive returned something other than what was written")
+        except OSError as e:
+            res["r"] = (False, "the data drive refused a small write: %s" % e)
+    t = threading.Thread(target=go, daemon=True, name="qb-drive-probe")
+    t.start()
+    t.join(wait)
+    return res.get("r") or (False, "the data drive did not answer within %d seconds" % wait)
+
+
+DRIVE_STATE = {}                   # commons folder -> {"paused_at", "why"}: set by the Control Panel's drive guard (in memory:
+#                                    it must be readable when the drive is not)
+
+
+def health(commons_folder, commons=None):
+    """the harvest in one small answer, for the window's header and the alerts: never raises (the drive may be the problem)"""
+    out = {"state": "unknown", "text": "", "alert": None, "facts_per_min": 0, "alive": False}
+    ds = DRIVE_STATE.get(commons_folder)
+    if ds:
+        text = ("Harvesting is paused to protect the data drive: %s. QueryBook tests the drive every minute and starts harvesting again by itself "
+                "when it answers. Check its cable and power." % ds.get("why"))
+        return dict(out, state="drive", text=text, alert={"level": "error", "text": text})
+    try:
+        st = status_cached(commons_folder, commons)
+        hl, wd = headline(st), st.get("watchdog") or {}
+        out.update(state=hl.get("state"), text=hl.get("text"), alert=wd.get("alert"), facts_per_min=st.get("facts_per_min") or 0,
+                   alive=bool((st.get("runner") or {}).get("alive")), want=wd.get("want"), total=st.get("total_gathered", st.get("total")))
+    except Exception as e:
+        out.update(state="unreadable", text="The harvest could not be read just now: %s" % e)
     return out
 
 
@@ -4167,6 +4374,10 @@ def add_routes(api, commons, program_dir):
         except OSError:
             pass
         return autostart(program_dir, bool(p.get("on")))
+    @api.get("/api/bulk/health")
+    def bulk_health(p):
+        return health(commons.folder, commons)
+
     @api.get("/api/bulk")
     def bulk_status(p):
         st = status_cached(commons.folder, commons)
@@ -5371,6 +5582,94 @@ def _supervisor_tests():
            not r_new and not r_after and did2 == [1, 1] and watchdog_info(cf, True, t2_ + 21 * 600 + 60)["dry_s"] == 60, (r_new, r_after))
         os.remove(os.path.join(ad_, "usgs-gnis.json"))
         os.remove(os.path.join(cf, FOLDER, REST_NAME))
+        # 1.37: adding facts back from another copy — in pieces, resumable, and never the same copy twice
+        import tempfile as _tf
+        cfo = _tf.mkdtemp()
+        KEY_ = "tatoeba-cc0"
+        for folder_, lo_, hi_ in ((cf, 0, 300), (cfo, 200, 900)):          # live: 300 facts; the other copy: 700, 100 of them shared
+            sh_ = Shard(folder_, KEY_)
+            pt_ = sh_.part("p1", "file://z")[0]
+            pd_ = sh_.pred("means")
+            sh_.write(pt_, [(k(7000 + i), "m%d" % i, pd_, "o", pt_, i) for i in range(lo_, hi_)], hi_ - lo_)
+            sh_.merge(); sh_.db.close()
+        live_, other_ = shard_path(cf, KEY_), shard_path(cfo, KEY_)
+        seen_, calls_ = [], []
+        real_oc, real_mi = other_copies, merge_into
+        try:
+            globals()["other_copies"] = lambda c_, key_: [other_] if key_ == KEY_ else []
+            globals()["merge_into"] = lambda d_, s_, start=0, progress=None, halt=None: (calls_.append(start), real_mi(d_, s_, start, progress, halt))[1]
+            r_a = restore_missing(cf, say=seen_.append, halt=lambda: len(calls_) and (_read_json(os.path.join(cf, FOLDER, RESTORED_NAME), {}) or {}).get(
+                KEY_ + "|" + os.path.normcase(os.path.abspath(other_)), {}).get("piece", 0) >= 100)        # interrupted at piece 100 of 256
+            mid_ = (_meta_of(live_) or {}).get("facts")
+            led_ = _read_json(os.path.join(cf, FOLDER, RESTORED_NAME), {})[KEY_ + "|" + os.path.normcase(os.path.abspath(other_))]
+            r_b = restore_missing(cf, say=seen_.append)                    # started again: resumes, does not start over
+            end_ = (_meta_of(live_) or {}).get("facts")
+            r_c = restore_missing(cf, say=seen_.append)                    # and again: this copy was merged, nothing to do
+            db_ = sqlite3.connect(live_); real_n = db_.execute("SELECT count(*) FROM facts").fetchone()[0]; db_.close()
+        finally:
+            globals()["other_copies"], globals()["merge_into"] = real_oc, real_mi
+        ok("1.37: facts are added back from another copy in pieces, each one kept — interrupted at piece 100 of 256 it resumes there "
+           "(nothing is done twice, nothing lost: 300 + 600 = 900), and the count rises while it works",
+           led_["piece"] == 100 and not led_["done"] and 300 < mid_ < 900 and calls_[:2] == [0, 100] and end_ == 900 and real_n == 900
+           and r_a[KEY_]["added"] + r_b[KEY_]["added"] == 600 and any("resuming at 39%" in t for t in seen_), (led_, mid_, calls_, end_, real_n))
+        ok("1.37: a copy that was merged is never merged again while it is unchanged (it used to be merged at every start, for hours)",
+           calls_ == [0, 100] and r_c == {}, (calls_, r_c))
+        os.remove(live_)
+        # 1.37: getting ready is work — an engine adding facts back for an hour is not restarted; one that stands still is
+        os.remove(os.path.join(cf, FOLDER, KEEPALIVE_NAME))
+        prep_, did3, t3_ = [], [], t0_ + 9e6
+        def _prep(i_):
+            _restoring(cf, {"key": "usgs-gnis", "from": "x", "facts": 9, "live": 5, "piece": i_, "pieces": 256, "added": i_})
+            return mk(50, 9, "starting: adding back facts to usgs-gnis from another copy: %d%% checked" % i_)
+        for i in range(0, 8):                                              # 70 minutes, a piece every 10 minutes
+            prep_.append(keep_alive(kac, "", t3_ + i * 600, _prep(i), lambda: did3.append(1)))
+        wd_p = watchdog_info(cf, True, t3_ + 7 * 600)
+        still_ = [keep_alive(kac, "", t3_ + 7 * 600 + j * 600, _prep(7), lambda: did3.append(1)) for j in range(1, 5)]
+        _restoring(cf, None)
+        ok("1.37 fail-safe: an engine getting ready (adding facts back, piece by piece) for over an hour is left to finish — it was "
+           "restarted every 30 minutes before, and began again each time; one that stands still for 30 minutes is restarted, and resumes",
+           not any(prep_) and did3 == [1] and wd_p["state"] == "preparing" and "Getting ready" in wd_p["text"] and wd_p.get("alert")
+           and headline({"runner": {"alive": True, "version": VERSION}, "watchdog": wd_p, "datasets": []})["state"] == "preparing",
+           (prep_, still_, did3, wd_p))
+        # 1.37: churn, dataset by dataset — one keeps reading without a new fact while the others add theirs: it alone is rested
+        os.remove(os.path.join(cf, FOLDER, KEEPALIVE_NAME))
+        def _two(i_, good_):
+            for key_, rows_ in (("usgs-gnis", i_), ("ncbi-taxonomy", i_)):
+                with open(os.path.join(ad_, key_ + ".json"), "w") as f:
+                    json.dump({"at": time.time(), "pid": 1, "meter": rows_, "rows": rows_, "waiting": None, "filing": None}, f)
+            return {"runner": {"alive": True, "note": "running: 2 agent(s)"}, "total": 100 + good_, "total_gathered": 100 + good_,
+                    "datasets": [{"key": "usgs-gnis", "state": "running", "gathered": 100, "progress": {"done": i_}},
+                                 {"key": "ncbi-taxonomy", "state": "running", "gathered": good_, "progress": {"done": i_}}]}
+        t4_, churn_ = t3_ + 1e6, []
+        for i in range(0, 7):                                              # an hour: one dataset adds facts, the other only reads
+            r_ = keep_alive(kac, "", t4_ + i * 600, _two(i, i * 1000), lambda: did3.append(9))
+            if r_:
+                churn_.append((i * 10, r_.get("rested")))
+        for key_ in ("usgs-gnis", "ncbi-taxonomy"):
+            os.remove(os.path.join(ad_, key_ + ".json"))
+        ok("1.37 fail-safe: a dataset that reads for 45 minutes without one new fact is rested (6 h, then 12 h, then 24 h) while the "
+           "datasets that add facts carry on — the drive stops working for nothing; nothing is restarted for it",
+           churn_ == [(50, ["usgs-gnis"])] and list(resting(cf, t4_ + 3100)) == ["usgs-gnis"] and 9 not in did3
+           and "reading without adding anything" in keepalive_info(cf)["last"]["action"], (churn_, resting(cf, t4_ + 3100)))
+        os.remove(os.path.join(cf, FOLDER, REST_NAME))
+        # 1.37: the engine's process is there -> it is alive, however late its heartbeat (a busy data drive)
+        me_, gone_ = os.getpid(), 2 ** 22 + 12345
+        ok("1.37: an engine whose process is running is alive even when its heartbeat is minutes late (a busy drive) — it is no longer "
+           "taken for dead, doubled and then ended; a late heartbeat with no process, or 15 minutes of silence, still means dead",
+           _runner_alive({"heartbeat": time.time() - 5, "pid": gone_}) and _runner_alive({"heartbeat": time.time() - 400, "pid": me_})
+           and not _runner_alive({"heartbeat": time.time() - 400, "pid": gone_}) and not _runner_alive({"heartbeat": time.time() - HB_BUSY_S - 5, "pid": me_})
+           and not _runner_alive({"heartbeat": time.time(), "pid": me_, "note": "finished"}))
+        pr_ok = drive_probe(cf)
+        open(live_ + ".not-a-folder", "w").close()
+        pr_bad = drive_probe(live_ + ".not-a-folder", wait=5)
+        os.remove(live_ + ".not-a-folder")
+        DRIVE_STATE[cf] = {"paused_at": time.time(), "why": "the data drive refused a small write"}
+        h_bad = health(cf)
+        DRIVE_STATE.pop(cf)
+        h_ok = health(cf)
+        ok("1.37: the data drive is tested with a small write; while it does not answer, the harvest says it is paused to protect "
+           "the drive (and why), and reads normally again afterwards", pr_ok[0] and not pr_bad[0] and "refused" in pr_bad[1]
+           and h_bad["state"] == "drive" and h_bad["alert"]["level"] == "error" and h_ok["state"] != "drive", (pr_ok, pr_bad, h_bad, h_ok))
         # 1.36: Start means ON until Stop — an engine that is not running is started again, even with a stop mark left behind
         real_fs, started_ = full_speed, []
         for f_ in ("_runner.json", "_runner.stop", "_runner.resumed", INTENT_NAME):
