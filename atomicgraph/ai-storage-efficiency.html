@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Storage Efficiency · AtomicGraph</title>
+<meta name="description" content="AI is hungry for more than chips. Models, training data, checkpoints and memory stores all have to live somewhere, and smart design can shrink every one of them.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span>Atomic<b>Graph</b></span></a>
+    <nav><a href="deterministic-ai.html">Deterministic AI</a><a href="ai-processing-efficiency.html">AI Processing Efficiency</a><a href="ai-storage-efficiency.html">AI Storage Efficiency</a><a href="ai-power-crunch.html">AI Power Crunch</a></nav>
+  </div>
+</header>
+<main>
+<article>
+  <header class="wrap ahead">
+    <span class="kicker" style="--h:160">Data</span>
+    <h1>AI Storage Efficiency</h1>
+    <p class="dek">AI is hungry for more than chips. Models, training data, checkpoints and memory stores all have to live somewhere, and smart design can shrink every one of them.</p>
+    <p class="meta">AtomicGraph · Issue 01 · 2 min read</p>
+  </header>
+  <div class="wrap"><div class="art" style="--h:160" aria-hidden="true"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice"><g fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55"><path d="M60 150 150 70 240 120 330 50M150 70 200 160 240 120M60 150 200 160 330 140 330 50M240 120 330 140"/></g><g fill="currentColor"><circle cx="60" cy="150" r="7"/><circle cx="150" cy="70" r="10"/><circle cx="240" cy="120" r="8"/><circle cx="330" cy="50" r="6"/><circle cx="200" cy="160" r="5"/><circle cx="330" cy="140" r="9"/></g></svg></div></div>
+  <div class="prose">
+<p>Talk about AI costs usually stops at processors. Storage is the quieter bill. It grows with every model version saved, every document indexed and every conversation remembered.</p>
+<h2>What takes up the space</h2>
+<ul><li>Model weights. A model with billions of parameters occupies many gigabytes, and each fine-tuned variant is traditionally another full copy.</li><li>Training data and checkpoints. Datasets are kept for reproducibility, and training runs save their progress again and again.</li><li>Vector stores. To let AI search documents by meaning, each passage is turned into a long list of numbers called an embedding. Millions of passages mean billions of numbers.</li><li>Logs and history. Prompts, answers and audit trails pile up quickly.</li></ul>
+<h2>Shrinking the model</h2>
+<p>Quantization, which stores each weight in fewer bits, cuts model files by four to eight times. Adapters go further for customised models. Instead of saving a whole new copy for each customer or task, you save a small add-on file that modifies one shared base model. A hundred variants then cost little more than one.</p>
+<h2>Shrinking the memory</h2>
+<p>Embeddings can be compressed as well, by using shorter vectors or by storing coarse codes in place of full-precision numbers. Search quality drops slightly and storage drops a lot.</p>
+<p>A different approach is to store meaning once. If a thousand documents all state that a pump was replaced on a given date, a text index stores that sentence a thousand times. A structured store, such as a knowledge graph, records the fact once and links it to its thousand sources.</p>
+<blockquote>Store the fact once and point to it a thousand times.</blockquote>
+<h2>Housekeeping</h2>
+<p>The unglamorous measures pay well: remove duplicate data, delete checkpoints nobody will reload, and move rarely used material to cheaper, slower storage. One caution applies. Anything needed to reproduce or audit a result should be kept, so decide what that is before the clean-up, not after.</p>
+<p>Storage efficiency is also speed. Smaller models load faster, smaller indexes search faster, and data that fits in memory avoids the slowest step of all: waiting for the disk.</p>
+  </div>
+</article>
+<div class="wrap"><a class="next" href="ai-power-crunch.html"><span>Next article</span><strong>AI Power Crunch →</strong></a></div>
+</main>
+<footer><div class="wrap">AtomicGraph · A magazine about artificial intelligence · <a href="index.html">Home</a></div></footer>
+</body>
+</html>

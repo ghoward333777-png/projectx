@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deterministic AI · AtomicGraph</title>
+<meta name="description" content="Ask the same question twice and you may get two different answers. Why that happens, why it matters, and what it takes to build AI that repeats itself on purpose.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span>Atomic<b>Graph</b></span></a>
+    <nav><a href="deterministic-ai.html">Deterministic AI</a><a href="ai-processing-efficiency.html">AI Processing Efficiency</a><a href="ai-storage-efficiency.html">AI Storage Efficiency</a><a href="ai-power-crunch.html">AI Power Crunch</a></nav>
+  </div>
+</header>
+<main>
+<article>
+  <header class="wrap ahead">
+    <span class="kicker" style="--h:215">Reliability</span>
+    <h1>Deterministic AI</h1>
+    <p class="dek">Ask the same question twice and you may get two different answers. Why that happens, why it matters, and what it takes to build AI that repeats itself on purpose.</p>
+    <p class="meta">AtomicGraph · Issue 01 · 2 min read</p>
+  </header>
+  <div class="wrap"><div class="art" style="--h:215" aria-hidden="true"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice"><g fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55"><path d="M60 150 150 70 240 120 330 50M150 70 200 160 240 120M60 150 200 160 330 140 330 50M240 120 330 140"/></g><g fill="currentColor"><circle cx="60" cy="150" r="7"/><circle cx="150" cy="70" r="10"/><circle cx="240" cy="120" r="8"/><circle cx="330" cy="50" r="6"/><circle cx="200" cy="160" r="5"/><circle cx="330" cy="140" r="9"/></g></svg></div></div>
+  <div class="prose">
+<p>A calculator that gave a slightly different answer each time would be thrown away. Yet that is how most language models behave by default. The same prompt, sent twice, can produce two different replies, and sometimes two different conclusions.</p>
+<h2>Where the randomness comes from</h2>
+<p>A language model does not look an answer up. At each step it produces a probability for every possible next word-piece, and then one is drawn. A setting called temperature controls how adventurous the draw is. Turn it up and the writing gets more varied. Turn it down and the model picks the most likely option more often.</p>
+<p>Setting temperature to zero helps, but it is not a guarantee. The arithmetic runs in parallel on graphics chips, and floating-point numbers added in a different order can round differently. A tiny difference early on can tip a close decision, and everything after that diverges. A quiet model update from the provider will change answers too.</p>
+<blockquote>Creativity wants variety. Accountability wants the same answer on Tuesday that you got on Monday.</blockquote>
+<h2>Why it matters</h2>
+<ul><li>Testing. You cannot write a reliable test for software whose output keeps moving.</li><li>Audit. A regulator, a court or a customer may ask why the system said what it said. You need to be able to reproduce it.</li><li>Trust. People stop relying on a tool that contradicts itself.</li><li>Automation. When AI output feeds another program, small variations become broken pipelines.</li></ul>
+<h2>How to get there</h2>
+<p>There are two broad routes. The first tames the model: fix the temperature and the random seed, pin the exact model version, force the output into a strict format, and cache answers so a repeated question returns the stored reply.</p>
+<p>The second route moves the answer out of the model. Facts live in a database or a knowledge graph, rules are applied by ordinary code, and the language model is used only to understand the question and phrase the result. The reasoning step is then deterministic by construction, because it is a lookup and a rule, not a draw.</p>
+<p>Neither route is free. Determinism costs flexibility, and structured knowledge has to be built and kept current. But for medicine, finance, law and engineering, a system that gives the same answer for the same inputs is the entry requirement.</p>
+  </div>
+</article>
+<div class="wrap"><a class="next" href="ai-processing-efficiency.html"><span>Next article</span><strong>AI Processing Efficiency →</strong></a></div>
+</main>
+<footer><div class="wrap">AtomicGraph · A magazine about artificial intelligence · <a href="index.html">Home</a></div></footer>
+</body>
+</html>

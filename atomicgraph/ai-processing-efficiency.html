@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Processing Efficiency · AtomicGraph</title>
+<meta name="description" content="The first era of modern AI was about making models bigger. The next is about getting the same answer with far less arithmetic.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span>Atomic<b>Graph</b></span></a>
+    <nav><a href="deterministic-ai.html">Deterministic AI</a><a href="ai-processing-efficiency.html">AI Processing Efficiency</a><a href="ai-storage-efficiency.html">AI Storage Efficiency</a><a href="ai-power-crunch.html">AI Power Crunch</a></nav>
+  </div>
+</header>
+<main>
+<article>
+  <header class="wrap ahead">
+    <span class="kicker" style="--h:268">Compute</span>
+    <h1>AI Processing Efficiency</h1>
+    <p class="dek">The first era of modern AI was about making models bigger. The next is about getting the same answer with far less arithmetic.</p>
+    <p class="meta">AtomicGraph · Issue 01 · 1 min read</p>
+  </header>
+  <div class="wrap"><div class="art" style="--h:268" aria-hidden="true"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice"><g fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55"><path d="M60 150 150 70 240 120 330 50M150 70 200 160 240 120M60 150 200 160 330 140 330 50M240 120 330 140"/></g><g fill="currentColor"><circle cx="60" cy="150" r="7"/><circle cx="150" cy="70" r="10"/><circle cx="240" cy="120" r="8"/><circle cx="330" cy="50" r="6"/><circle cx="200" cy="160" r="5"/><circle cx="330" cy="140" r="9"/></g></svg></div></div>
+  <div class="prose">
+<p>Every word an AI model writes costs arithmetic: billions of multiplications for each word-piece, repeated until the answer is done. Training a model is a large one-off bill. Running it for millions of people, all day, is the bill that never stops. That running cost is called inference, and it is where efficiency now matters most.</p>
+<h2>Smaller numbers</h2>
+<p>Models are usually trained with 32-bit numbers. Quantization stores and computes them with 8 bits, or even 4. The model becomes four to eight times smaller, runs faster, and in most everyday use loses little accuracy. It is the main reason capable models now run on laptops and phones.</p>
+<h2>Smaller models</h2>
+<p>Distillation trains a compact student model to imitate a large teacher. Pruning removes connections that contribute little. A well-made small model often handles routine work, such as sorting, summarising and extracting, as well as a giant one, at a fraction of the cost.</p>
+<h2>Less repeated work</h2>
+<ul><li>Caching keeps the results of work already done, so a long shared prompt is processed once instead of every time.</li><li>Batching groups many requests so the hardware is never idle.</li><li>Routing sends easy questions to a small model and saves the large one for hard problems.</li><li>Retrieval fetches the three relevant pages instead of making the model read the whole manual.</li></ul>
+<blockquote>The cheapest computation is the one you do not run.</blockquote>
+<h2>Better-matched hardware</h2>
+<p>General-purpose graphics chips started the boom. Chips designed specifically for AI arithmetic, and software that fits the model closely to the chip, squeeze more work out of each watt.</p>
+<h2>The catch</h2>
+<p>Efficiency gains rarely shrink total demand. When something gets cheaper, people use more of it. Economists call this the Jevons paradox, and AI shows every sign of following it. Efficiency is still the right goal: it decides who can afford to use AI at all, and how far a fixed supply of chips and electricity will stretch.</p>
+  </div>
+</article>
+<div class="wrap"><a class="next" href="ai-storage-efficiency.html"><span>Next article</span><strong>AI Storage Efficiency →</strong></a></div>
+</main>
+<footer><div class="wrap">AtomicGraph · A magazine about artificial intelligence · <a href="index.html">Home</a></div></footer>
+</body>
+</html>

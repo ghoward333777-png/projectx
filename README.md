@@ -329,3 +329,10 @@ protected by a session CSRF token, a honeypot field, a 20-second cooldown, and
 length limits; all reader text is cleaned with `ManuscriptHygiene` and
 HTML-escaped on output. There is no moderation queue: to remove a comment,
 delete its entry from the article's JSON file. Run `php tests/blog-contract.php`.
+
+## AtomicGraph — the AI magazine
+
+`atomicgraph/` is a static magazine site (plain HTML and one stylesheet, no PHP
+needed): a cover page plus four articles on deterministic AI, processing
+efficiency, storage efficiency and the AI power crunch. Open
+`atomicgraph/index.html` directly or upload the folder to any web host.
