@@ -31,7 +31,7 @@ EMBED_URL = "https://www.python.org/ftp/python/%s/python-%s-embed-amd64.zip" % (
 EMBED_SHA256 = "9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38"   # python.org SBOM for 3.13.17
 SKIP_DIRS = {"__pycache__", ".pytest_cache"}
 SKIP_SUFFIX = (".pyc", ".pt")
-SKIP_FILES = {"config.json"}
+SKIP_FILES = {"config.json", "watches.json", "workflows.json", "projects.json"}   # per-computer settings and saved personal files
 FIXED = (2026, 11, 9, 0, 0, 0)
 
 START_BAT = (

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 # per-computer setting written by "python app.py set-data FOLDER"
 config.json
+# the window's own saved files when no data folder is set (watches, workflows, projects)
+shell/shell/
