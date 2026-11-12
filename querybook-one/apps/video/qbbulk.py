@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.37.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.38.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1847,7 +1847,7 @@ def _copy_stamp(path, meta):
         return None
 
 
-def restore_missing(commons_folder, say=None, halt=None):
+def restore_missing(commons_folder, say=None, halt=None, hold=None):
     """1.31.2: for every dataset, every other copy is compared with the live one; when a copy holds more facts than the live
     one can account for (its count, plus the duplicates removed from it since), every fact it holds that the live copy lacks
     is added back (merge — nothing is ever deleted). Runs before the agents start, and from the Control Panel.
@@ -1897,12 +1897,17 @@ def restore_missing(commons_folder, say=None, halt=None):
                     if say:
                         say("adding back facts to %s from another copy: %d%% checked, %s added back so far" % (
                             _key, 100 * piece // MERGE_PIECES, format(_had + added_now, ",")))
+                if hold:
+                    hold(key, True)                         # 1.38: only this dataset waits; the others harvest meanwhile
+                    live = shard_path(commons_folder, key)
                 _restoring(commons_folder, {"key": key, "from": other, "facts": om.get("facts") or 0, "live": lm.get("facts") or 0,
                                             "piece": resume, "pieces": MERGE_PIECES, "added": had})
                 try:
                     added = merge_into(live, other, resume, step, halt)
                 finally:
                     _restoring(commons_folder, None)
+                    if hold:
+                        hold(key, False)
                 reached = state["piece"]
             if stamp and reached >= MERGE_PIECES:
                 led[lk] = {"stamp": stamp, "piece": MERGE_PIECES, "added": had + added, "done": True, "at": time.time()}
@@ -2677,6 +2682,7 @@ class Supervisor:
         self.fails = {k: 0 for k in self.keys}
         self.running = {}                                    # dataset → {proc, started, result, last progress, last change}
         self.events = []
+        self.hold = set()                                    # 1.38: datasets having facts added back from another copy right now
         self.res_dir = os.path.join(commons_folder, FOLDER, "_results")
         os.makedirs(self.res_dir, exist_ok=True)
 
@@ -2765,13 +2771,20 @@ class Supervisor:
             self.kill(info["proc"].pid)
             info["proc"].join(10)
             self._finish(key, None, "farmed out to %s — that computer harvests it now (the facts so far are kept)" % farmed[key])
-        rested = resting(self.cf, now)               # 1.36: datasets the fail-safe rested (hours without one new fact)
-        for key in [k for k in self.running if k in rested]:
+        for key in [k for k in self.running if k in self.hold]:      # 1.38: its own agent steps aside for the merge
             info = self.running[key]
             self.kill(info["proc"].pid)
             info["proc"].join(10)
-            self._finish(key, None, "resting until %s — it ran for hours without one new fact, so other datasets take its place (the facts so far are kept)"
-                         % time.strftime("%H:%M", time.localtime(rested[key])))
+            self._finish(key, None, "paused while facts are added back to it from another copy — it harvests again right after")
+        rested = dict(resting(self.cf, now), **{k: now + 60 for k in self.hold})
+        # 1.36: datasets the fail-safe rested (hours without one new fact)
+        for key in [k for k in self.running if k in rested and k not in self.hold]:
+            info = self.running[key]
+            self.kill(info["proc"].pid)
+            info["proc"].join(10)
+            if key not in self.hold:
+                self._finish(key, None, "resting until %s — it ran for hours without one new fact, so other datasets take its place (the facts so far are kept)"
+                             % time.strftime("%H:%M", time.localtime(rested[key])))
         free = self.agents - len(self.running)
         for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running and k not in farmed and k not in rested),
                           key=lambda k: self.keys.index(k)):
@@ -2821,28 +2834,40 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
         try:
             with open(hb + ".tmp", "w") as f:
                 json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys,
-                           "note": note, "running": sorted(sup.running), "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
+                           "note": note, "running": sorted(sup.running), "restoring": rnote.get("text") if rnote.get("on") else "", "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
                                                                                   if k not in sup.running and t > time.time()},
                            "events": sup.events[-60:]}, f)
             _replace(hb + ".tmp", hb)
         except OSError as e:
             TR.fail("heartbeat", e, retried=True)
-    beat("starting")
     import threading
-    rnote = {"text": "starting: checking every copy of every dataset for facts to add back"}
-    r_done = threading.Event()
+    rnote = {"text": "", "on": False}
+    beat("starting")
+    # 1.38: facts held in another copy are added back IN THE BACKGROUND, one dataset at a time. Until 1.37 nothing was
+    # harvested until every copy of every dataset had been compared and merged — on a store of a billion facts on an
+    # external drive that is hours of "0 facts a minute" after every start. Now only the dataset being merged waits
+    # (its agent steps aside and returns right after); every other dataset harvests from the first minute.
 
-    def restore_beat():
-        while not r_done.wait(10):
-            beat(rnote["text"])
-    threading.Thread(target=restore_beat, daemon=True, name="qb-restore-beat").start()
-    try:                                              # 1.31.2: facts held in any other copy are added back first
-        TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text="starting: " + t),
-                                                   halt=lambda: os.path.exists(stop)))
-    except Exception as e:
-        TR.fail("restore", e, retried=True)
-    finally:
-        r_done.set()
+    def restore_hold(key, on):
+        if on:
+            sup.hold.add(key)
+            t0 = time.time()
+            while key in sup.running and time.time() - t0 < 180 and not os.path.exists(stop):
+                time.sleep(1)                             # its agent ends after the batch it is writing
+        else:
+            sup.hold.discard(key)
+
+    def restorer():
+        try:
+            rnote["on"] = True
+            TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text=t),
+                                                       halt=lambda: os.path.exists(stop), hold=restore_hold))
+        except Exception as e:
+            TR.fail("restore", e, retried=True)
+        finally:
+            rnote.update(on=False, text="")
+            sup.hold.clear()
+    threading.Thread(target=restorer, daemon=True, name="qb-restore").start()
     drain_stop = threading.Event()
 
     def drainer():                                    # one copier: working copies on C: → their home on D:, in turn
@@ -3283,7 +3308,8 @@ def headline(st):
     if not fpm and wd.get("text") and (wd.get("dry_s") or 0) >= 600:
         run_ = [d for d in st["datasets"] if d.get("state") == "running"]
         busy_ = "; ".join("%s (%s)" % (d["key"], d.get("doing") or "reading") for d in run_[:4])
-        return {"state": wd.get("state") or "dry", "text": wd["text"] + ((" Busy now: %s%s." % (busy_, " and %d more" % (len(run_) - 4) if len(run_) > 4 else "")) if busy_ else "")}
+        return {"state": wd.get("state") or "dry", "text": wd["text"] + ((" Busy now: %s%s." % (busy_, " and %d more" % (len(run_) - 4) if len(run_) > 4 else "")) if busy_ else "")
+                + ((" In the background: %s." % rs["restoring"]) if rs.get("restoring") else "")}
     direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
     why = ""
     filing = [d for d in st["datasets"] if str(d.get("doing") or "").startswith("filing")]
@@ -3297,6 +3323,8 @@ def headline(st):
         if running and len(idle) > len(running) / 2:
             why += " %d of %d running datasets added nothing in 10 minutes — most are waiting for a download connection " \
                   "(the servers allow only a few at a time) or still finishing their first batch." % (len(idle), len(running))
+    if rs.get("restoring"):
+        why += " In the background: %s (that one dataset waits; the others harvest)." % rs["restoring"]
     return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
 
 
@@ -5295,6 +5323,24 @@ def _supervisor_tests():
            and "h" in sup4.running, (first4, during4, still4, sorted(sup4.running), endh[:1]))
         sup4.stop_all(grace=0)
         os.remove(os.path.join(cf, FOLDER, REST_NAME))
+        # 1.38: a dataset having facts added back from another copy steps aside; every other dataset harvests meanwhile
+        script.update({"j": "work", "l": "work"})
+        sup5 = Supervisor(cf, ["j", "l"], 2, mp=MP, kill=kill)
+        sup5.check(CLOCK[0])
+        both5 = sorted(sup5.running)
+        sup5.hold.add("j")
+        CLOCK[0] += 5; sup5.check(CLOCK[0])
+        held5 = sorted(sup5.running)
+        endj = [e for e in sup5.events if e["what"] == "ended" and e["dataset"] == "j"]
+        CLOCK[0] += 900; sup5.check(CLOCK[0])
+        still5 = sorted(sup5.running)
+        sup5.hold.discard("j")
+        CLOCK[0] += 5; sup5.check(CLOCK[0])
+        ok("1.38 supervisor: while facts are added back to one dataset from another copy, only that dataset waits — the others keep "
+           "harvesting (before, nothing was harvested until every copy of every dataset had been merged); it returns right after",
+           both5 == ["j", "l"] and held5 == ["l"] and still5 == ["l"] and endj and "added back" in endj[0]["why"]
+           and sorted(sup5.running) == ["j", "l"], (both5, held5, still5, sorted(sup5.running), endj[:1]))
+        sup5.stop_all(grace=0)
         ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
            next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
         # re-routes between the internal drive (working copies) and the data drive

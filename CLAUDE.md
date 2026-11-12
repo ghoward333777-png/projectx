@@ -116,6 +116,8 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Never one long all-or-nothing disk job: `merge_into` works in 256 saved pieces and `restore_missing` resumes and never
   merges an unchanged copy twice (`_restored.json`). The user's log showed the old merge churning the external drive for
   hours, restarted from zero by the fail-safe itself. "starting:" (getting ready) is work with its own progress.
+- Harvesting never waits for the add-back: `restore_missing` runs in a background thread of the runner and holds out only
+  the dataset it is merging (`Supervisor.hold`). The Control Panel log records "harvest: 0 facts a minute - why" every 10 min.
 - A runner whose process exists is alive (`_runner_alive`, heartbeat up to 15 min late): the heartbeat file is on the busy drive.
 - One dataset reading 45 min without a new fact is rested (`DRY_DATASET_S`). The Control Panel's `drive_guard` pauses
   harvesting while the data drive fails its probe or gives I/O errors, and resumes by itself. Excessive pauses raise an

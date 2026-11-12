@@ -46,7 +46,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.38.0"
+VERSION = "1.39.0"
 PORT = 8100
 program_dir = HERE
 
@@ -314,7 +314,18 @@ class Panel:
         except Exception as e:
             self.log("bulk keep-alive:", repr(e))
         try:                                       # 1.38: an excessive pause is an alert (no new fact for 20 min, getting ready for 30)
-            al = (qbbulk.health(self.commons.folder, self.commons) or {}).get("alert")
+            hh = qbbulk.health(self.commons.folder, self.commons) or {}
+            al = hh.get("alert")
+            # 1.39: the log says what the harvest is doing — a line every 10 minutes while it runs and adds nothing (the
+            # log used to be silent then, so a slow night left nothing to read), and one when facts flow again
+            now_ = time.time()
+            quiet = hh.get("alive") and not hh.get("facts_per_min")
+            if quiet and now_ - getattr(self, "_hv_logged", 0) >= 600:
+                self._hv_logged = now_
+                self.log("harvest: 0 facts a minute -", hh.get("state"), "-", str(hh.get("text") or "")[:600])
+            elif not quiet and getattr(self, "_hv_logged", 0) and hh.get("alive"):
+                self._hv_logged = 0
+                self.log("harvest: facts are arriving again - %s a minute" % format(hh.get("facts_per_min") or 0, ","))
             if al:
                 found["harvest-pause"] = (al.get("level") or "warn", al.get("text") or "", None)
         except Exception as e:
