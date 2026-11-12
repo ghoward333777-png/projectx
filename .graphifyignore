@@ -50,6 +50,8 @@ querybook-one/apps/language/qbvault.py
 querybook-one/apps/language/bookq.py
 querybook-one/apps/language/qbbooks.py
 querybook-one/apps/language/qbcompose.py
+querybook-one/apps/language/sense.py
+querybook-one/apps/language/qbrelevance.py
 querybook-one/apps/language/ui/qb.css
 querybook-one/apps/language/ui/qb.js
 querybook-one/apps/stem/qbcore.py
@@ -84,6 +86,8 @@ querybook-one/apps/stem/qbvault.py
 querybook-one/apps/stem/bookq.py
 querybook-one/apps/stem/qbbooks.py
 querybook-one/apps/stem/qbcompose.py
+querybook-one/apps/stem/sense.py
+querybook-one/apps/stem/qbrelevance.py
 querybook-one/apps/stem/ui/qb.css
 querybook-one/apps/stem/ui/qb.js
 querybook-one/apps/facts/qbcore.py
@@ -118,6 +122,8 @@ querybook-one/apps/facts/qbvault.py
 querybook-one/apps/facts/bookq.py
 querybook-one/apps/facts/qbbooks.py
 querybook-one/apps/facts/qbcompose.py
+querybook-one/apps/facts/sense.py
+querybook-one/apps/facts/qbrelevance.py
 querybook-one/apps/facts/ui/qb.css
 querybook-one/apps/facts/ui/qb.js
 querybook-one/apps/control/qbcore.py
@@ -152,6 +158,8 @@ querybook-one/apps/control/qbvault.py
 querybook-one/apps/control/bookq.py
 querybook-one/apps/control/qbbooks.py
 querybook-one/apps/control/qbcompose.py
+querybook-one/apps/control/sense.py
+querybook-one/apps/control/qbrelevance.py
 querybook-one/apps/control/ui/qb.css
 querybook-one/apps/control/ui/qb.js
 querybook-one/apps/video/qbcore.py
@@ -186,6 +194,8 @@ querybook-one/apps/video/qbvault.py
 querybook-one/apps/video/bookq.py
 querybook-one/apps/video/qbbooks.py
 querybook-one/apps/video/qbcompose.py
+querybook-one/apps/video/sense.py
+querybook-one/apps/video/qbrelevance.py
 querybook-one/apps/video/ui/qb.css
 querybook-one/apps/video/ui/qb.js
 querybook-one/apps/video/hybrid_video.py
@@ -195,4 +205,5 @@ querybook-one/apps/video/generate_exemplars.py
 querybook-one/apps/shell/bookq.py
 querybook-one/apps/shell/qbcompose.py
 querybook-one/apps/shell/qbbooks.py
+querybook-one/apps/shell/sense.py
 # <<< synced copies
