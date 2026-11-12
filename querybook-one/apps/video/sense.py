@@ -149,18 +149,23 @@ def choose(question: str, entities: list[dict], facts: list[dict]) -> dict:
         n = float(e.get("facts") or len(fs) or 0)
         # the kind asked for, then the thing itself, then how much it is read (Wikipedia page views), how widely it is
         # written about (Wikipedias with an article) and how much is held about it
-        score = (1000.0 if want and k in want else 0.0) + (0.0 if about else 300.0) + 60.0 * math.log10(1.0 + views) \
+        # a thing named exactly as asked has an edge over one found by another name or by part of its name — an edge a
+        # well-known thing overcomes ("Dodgers" is the Los Angeles Dodgers, not an obscure item called just "Dodgers")
+        exact = 150.0 if e.get("exact", True) else 0.0
+        score = (1000.0 if want and k in want else 0.0) + (0.0 if about else 300.0) + exact + 60.0 * math.log10(1.0 + views) \
             + 6.0 * min(fame, 150.0) + 40.0 * math.log10(1.0 + n)
         said = next((clean(f.get("object")) for f in fs if str(f.get("predicate") or "").lower() == "description"), "") or \
             next((clean(f.get("object")) for f in fs if str(f.get("predicate") or "").lower() in ("instance of", "occupation")), "")
         ranked.append({"subject": s, "kind": k, "about": about, "score": round(score, 1), "fame": e.get("fame"), "views": e.get("views"),
-                       "facts": int(n), "what": said})
+                       "facts": int(n), "what": said, "exact": bool(e.get("exact", True))})
     ranked.sort(key=lambda r: (-r["score"], r["subject"]))
     if not ranked:
         return {"subject": "", "kind": "", "why": "", "ranked": [], "only_about": False}
     top = ranked[0]
     only_about = bool(top["about"]) and not any(not r["about"] for r in ranked)
     why = "%s is %s" % (clean(top["subject"]), KIND_WORD.get(top["kind"], "a thing"))
+    if not top.get("exact", True):
+        why = "the best-known thing by that name: " + why
     if top.get("views"):
         why += ", among the most-read subjects on Wikipedia"
     if top.get("fame"):

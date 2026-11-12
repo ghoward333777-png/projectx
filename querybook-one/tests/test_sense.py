@@ -107,6 +107,8 @@ class Panel(http.server.BaseHTTPRequestHandler):
         q = dict(urllib.parse.parse_qsl(u.query))
         if u.path == "/api/bulk/entity":
             return self._send(Panel.world.get(q.get("q", "").lower(), {"entities": [], "facts": []}))
+        if u.path == "/api/bulk/search" and q.get("q", "").lower() == "dodgers":      # the old search: names that BEGIN with the words
+            return self._send({"facts": facts("Dodgers–Giants rivalry (Q1)", [("instance of", "sports rivalry (Q2)")])})
         return self._send({"facts": []})
 
     def do_POST(self):
@@ -157,6 +159,34 @@ class AskTest(unittest.TestCase):
         r2 = ask.answer("Who is card only?", self.urls)
         self.assertIn("no record of the person itself", r2["missing"])
         self.assertEqual(Panel.demand[-1]["subject"], "card only")
+
+
+class PartOfANameTest(unittest.TestCase):
+    TEAM, FILM2 = "Los Angeles Dodgers (Q334634)", "Dodgers (Q777001)"
+
+    def test_the_well_known_thing_beats_an_obscure_exact_name(self):
+        fs = facts(self.TEAM, [("instance of", "baseball team (Q13027888)"), ("description", "baseball team in Los Angeles, California")]) + \
+            facts(self.FILM2, [("instance of", "film (Q11424)")])
+        ents = [{"subject": self.FILM2, "facts": 1, "exact": True}, {"subject": self.TEAM, "facts": 2, "fame": 70, "exact": False, "by_part_of_name": True}]
+        r = sense.answer_for("What are the Dodgers", "Dodgers", ents, fs)
+        self.assertEqual(r["entity"]["subject"], self.TEAM)
+        self.assertEqual(r["entity"]["kind"], "organization")
+        self.assertIn("best-known thing by that name", r["entity"]["why"])
+        self.assertEqual(r["said"], "Los Angeles Dodgers — baseball team in Los Angeles, California.")
+        # between two equally obscure things, the one named exactly as asked wins
+        r2 = sense.choose("What is Dodgers", [{"subject": "A (Q1)", "facts": 2, "exact": False}, {"subject": "Dodgers (Q2)", "facts": 2, "exact": True}],
+                          facts("A (Q1)", [("instance of", "x")]) + facts("Dodgers (Q2)", [("instance of", "x")]))
+        self.assertEqual(r2["subject"], "Dodgers (Q2)")
+
+
+class PrefixOnlyTest(AskTest):
+    def test_names_that_only_begin_with_the_words_are_not_an_answer(self):
+        Panel.demand = []
+        r = ask.answer("What are the Dodgers", self.urls)
+        self.assertIn("nothing named “Dodgers” itself", r["missing"])
+        self.assertIn("demand agent", r["learning"])
+        self.assertEqual(Panel.demand[-1]["subject"], "Dodgers")
+        self.assertTrue(r["sections"])                                   # what was found is still shown, said for what it is
 
 
 if __name__ == "__main__":

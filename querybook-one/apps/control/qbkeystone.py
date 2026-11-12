@@ -242,8 +242,10 @@ def order(keys, commons_folder, commons=None, target=None):
                     tier = _qb.DOMAINS[key[8:]][0]
                 except Exception:
                     tier = 9
-                return (0, 2 + tier, 0, 0, key)
-            return (0, 0 if key == "hot-demand" else 1 if key == "hot-most-read" else 2, -int(learned.get(key[4:]) or 0), 0, key)
+                return (0, 3 + tier, 0, 0, key)
+            if key.startswith("hot-top-"):                 # 1.43: the icons of the culture, before everything but the demand agent
+                return (0, 1, 0, 0, key)
+            return (0, 0 if key == "hot-demand" else 2 if key == "hot-most-read" else 3, -int(learned.get(key[4:]) or 0), 0, key)
         return (hot, 0 if targeted else 1, -score.get(k, 0), lane, key)
     return sorted(keys, key=rank)
 

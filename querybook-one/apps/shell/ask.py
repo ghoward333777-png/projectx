@@ -169,7 +169,9 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                         return {"facts": r.get("facts") or [], "entities": r.get("entities") or []}
                 except Exception:
                     pass
-                return bulk()
+                r = bulk()
+                r["prefix_only"] = True                 # nothing is named this: only names that BEGIN with the words were found
+                return r
             jobs.append(("bulk", entity))
     threads = [threading.Thread(target=run, args=job, daemon=True) for job in jobs]
     for t in threads:
@@ -221,6 +223,13 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                 out["short"] = judged["said"]
             out["identity"] = judged["said"]
             bfacts = judged["facts"]
+        elif bulk.get("prefix_only") and bfacts and intent["subject"]:
+            # 1.43: "Dodgers" found only "Dodgers–Giants rivalry", "Dodgers Stadium"...: shown, but said plainly, and the
+            # subject itself is sent for (it used to pass as an answer, so nothing went and fetched the team)
+            exact = intent["subject"].casefold()
+            if not any(sense.clean(f.get("subject")).casefold() == exact for f in bfacts):
+                out["missing"] = ("QueryBook holds nothing named “%s” itself yet — only things whose names begin with it, listed below."
+                                  % intent["subject"])
         facts += bfacts
     hist = results.get("history")
     if isinstance(hist, dict) and not hist.get("_error"):

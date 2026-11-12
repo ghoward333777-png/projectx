@@ -134,7 +134,12 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Popularity = Wikipedia page views first (`hot-most-read`, `wd_views`: summed over sampled months so lasting subjects beat
   news spikes), then fame (Wikipedias with an article), then facts held. Views are an added signal, never the only one, and
   never outrank the kind the question expects.
-- Harvest order: `hot-demand` (asked and not found, fetched at once), then `hot-most-read`, then the hot lattices (best-known items of each kind,
+- Icons first (`ICONS`, `WikidataIcons`, `hot-top-*`): the best known of each type people ask about (teams, athletes, bands,
+  screen, leaders, landmarks), by fame, weighted for the user's culture (`bulk:culture`), the best 50 of every type in turn.
+  The user's priority is types and iconic subjects "in line with culture" — incoming-link counts are NOT fame.
+- People say part of a name ("the Dodgers"): `wd_names` word index + `by_part_of_name`; an exact name is only an edge, fame
+  outweighs it. A prefix-only search result is never an answer: say so and queue the subject.
+- Harvest order: `hot-demand`, then `hot-top-*` icons, then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
 - Complete domains (`DOMAINS`, `WikidataDomain`, keys `hot-all-*`) — the user's strategy: until the store is mature, harvest
   100% of chosen domains in tiers (1 public-facing people, 2 key jobs in critical fields, 3 other well-known fields), after

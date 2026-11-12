@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.42.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.43.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1231,12 +1231,13 @@ class WikidataDump(Dataset):
         # names people use for the well-known ones ("FDR", "The Babe") — what lets the Ask box choose the right "Babe Ruth"
         db.execute("CREATE TABLE IF NOT EXISTS fame (q INTEGER PRIMARY KEY, links INTEGER NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS alias (name TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (name, q)) WITHOUT ROWID")
+        db.execute("CREATE TABLE IF NOT EXISTS names (word TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (word, q)) WITHOUT ROWID")
         db.commit()
         try:                                             # 1.40: the positions of the dump no lane has ever finished come first
             self.covered = dump_positions_read(run.folder)
         except Exception:
             self.covered = None
-        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": []}
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_namebuf": []}
 
     def rows(self, part, url, state):
         base, _, rng = url.partition("#")
@@ -1263,6 +1264,10 @@ class WikidataDump(Dataset):
         if ab:
             db.executemany("INSERT OR IGNORE INTO alias(name, q) VALUES(?, ?)", ab)
             ab.clear()
+        nb = state.get("_namebuf")
+        if nb:                                           # 1.43: the words of well-known names ("Dodgers" -> Los Angeles Dodgers)
+            db.executemany("INSERT OR IGNORE INTO names(word, q) VALUES(?, ?)", nb)
+            nb.clear()
         vb = state.get("_viewbuf")
         if vb:                                           # 1.41: Wikipedia page views, added up over the months sampled
             db.executemany("INSERT INTO views(q, views) VALUES(?, ?) ON CONFLICT(q) DO UPDATE SET views = views + excluded.views, months = months + 1", vb)
@@ -1342,13 +1347,17 @@ class WikidataDump(Dataset):
                 if fb is not None:
                     fb.append((int(q[1:]), links))
                 if links >= FAME_ALIASES:
-                    ab = state.get("_aliasbuf")
+                    ab, nb = state.get("_aliasbuf"), state.get("_namebuf")
+                    said = [lab]
                     for a in ((e.get("aliases") or {}).get("en") or ())[:12]:
                         v = (a.get("value") or "").strip()
                         if v and v != lab:
                             out.append((s, "also known as", v))
+                            said.append(v)
                             if ab is not None:
                                 ab.append((v.casefold(), int(q[1:])))
+                    if nb is not None:                   # 1.43: every word of its names, so part of a name finds it
+                        nb.extend((w, int(q[1:])) for w in name_words(" ".join(said)))
             state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
             k = ks.entity_keystone(cls - {None}, claims.keys())
             if k:                                       # measured coverage per keystone domain (qbkeystone)
@@ -1499,6 +1508,7 @@ def lane_keystones(commons_folder, key):
 QID = re.compile(r"\bQ(\d+)\b")
 
 
+PART_NAME_TOP = 6                  # how many of the best-known items found by part of their name are offered
 FAME_ALIASES = 5                    # other names are kept for items with an article in at least this many Wikipedias
 KEEP_EDITION_DAYS = 56             # an edition is kept until every lane has read it, at most this long
 PART_NAME = re.compile(r"^(\S+) part (\d+) of (\d+)$")
@@ -1569,7 +1579,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand", "hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -1604,6 +1614,66 @@ def wd_alias(commons_folder, name):
         except sqlite3.Error:
             continue
     return sorted(out)
+
+
+NAME_SKIP = frozenset("the of and in on at for to de la le el du von van der den der a an".split())
+
+
+def name_words(text):
+    """the words of a name that tell it from others: lower case, no punctuation, no little words — {"los", "angeles", "dodgers"}"""
+    return {w for w in re.findall(r"[^\W_]+", (text or "").casefold()) if len(w) >= 3 and w not in NAME_SKIP}
+
+
+def wd_names(commons_folder, text, limit=400):
+    """1.43 — Q-numbers of the well-known items whose names hold EVERY word asked ("Dodgers" -> Los Angeles Dodgers,
+    Brooklyn Dodgers; "Lincoln Memorial" -> Lincoln Memorial). People say part of a name; the store keeps the whole."""
+    want = sorted(name_words(text), key=len, reverse=True)
+    out = set()
+    if not want:
+        return []
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+            qs = None
+            for w in want:
+                got = {q for q, in db.execute("SELECT q FROM names WHERE word = ? LIMIT 20000", (w,))}
+                qs = got if qs is None else qs & got
+                if not qs:
+                    break
+            db.close()
+            out |= qs or set()
+        except sqlite3.Error:
+            continue
+        if len(out) >= limit:
+            break
+    return sorted(out)[:limit]
+
+
+def index_names(commons_folder):
+    """the names of the well-known items already read (their fame and labels are on file) put into the word index, once per
+    label file — so records harvested before 1.43 are found by part of their name too. Returns how many names were added."""
+    added = 0
+    for p in _label_dbs(commons_folder):
+        try:
+            db = sqlite3.connect(p, timeout=30)
+            try:
+                if db.execute("PRAGMA user_version").fetchone()[0] >= 1:
+                    continue
+                db.execute("CREATE TABLE IF NOT EXISTS names (word TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (word, q)) WITHOUT ROWID")
+                rows = []
+                for q, label in db.execute("SELECT f.q, l.label FROM fame f JOIN labels l ON l.q = f.q WHERE f.links >= ?", (FAME_ALIASES,)):
+                    rows += [(w, q) for w in name_words(label)]
+                for name, q in db.execute("SELECT name, q FROM alias"):
+                    rows += [(w, q) for w in name_words(name)]
+                db.executemany("INSERT OR IGNORE INTO names(word, q) VALUES(?, ?)", rows)
+                db.execute("PRAGMA user_version = 1")
+                db.commit()
+                added += len(rows)
+            finally:
+                db.close()
+        except sqlite3.Error:
+            continue                                   # busy or older than 1.40 (no fame yet): tried again at the next start
+    return added
 
 
 ENT_SUBJECT = re.compile(r"^(.*) \(Q(\d+)\)$")
@@ -1665,11 +1735,34 @@ def find_entities(commons_folder, text, top=5, per=400):
                     e = found.setdefault(s_, {"n": 0, "stores": [], "alias": True})
                     e["n"] += n_
                     e["stores"].append(key)
+    # 1.43: part of a name. "Dodgers" is not the name of anything well known — it is a word of "Los Angeles Dodgers". The
+    # well-known items whose names hold every word asked are candidates too, the best known of them only.
+    have_q = {int(m.group(2)) for s_ in found for m in [ENT_SUBJECT.match(s_)] if m}
+    part_q = [q_ for q_ in wd_names(commons_folder, forms[0]) if q_ not in have_q]
+    if part_q:
+        pv, pf = wd_views(commons_folder, part_q), wd_fame(commons_folder, part_q)
+        part_q = sorted(part_q, key=lambda q_: (-(pv.get(q_) or 0), -(pf.get(q_) or 0), q_))[:PART_NAME_TOP]
+        for qn, lab in wd_labels(commons_folder, part_q).items():
+            s_ = "%s (Q%d)" % (lab, qn)
+            if s_ in found:
+                continue
+            for key, ds in held:
+                try:
+                    db = _ro(shard_path(commons_folder, key))
+                    n_ = db.execute("SELECT count(*) FROM facts WHERE s = ?", (s_,)).fetchone()[0]
+                    db.close()
+                except sqlite3.Error:
+                    continue
+                if n_:
+                    e = found.setdefault(s_, {"n": 0, "stores": [], "part": True})
+                    e["n"] += n_
+                    e["stores"].append(key)
     qn_of = {s_: int(m.group(2)) for s_ in found for m in [ENT_SUBJECT.match(s_)] if m}
     fame = wd_fame(commons_folder, list(qn_of.values())) if qn_of else {}
     views = wd_views(commons_folder, list(qn_of.values())) if qn_of else {}
     ents = [{"subject": s_, "qid": ("Q%d" % qn_of[s_]) if s_ in qn_of else None, "facts": e["n"], "fame": fame.get(qn_of.get(s_)),
-             "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias"))} for s_, e in found.items()]
+             "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias")),
+             "by_part_of_name": bool(e.get("part")), "exact": not e.get("alias") and not e.get("part")} for s_, e in found.items()]
     # best known first: what people read (page views), then how widely it is written about (Wikipedias), then how much is held
     ents.sort(key=lambda e: (-(e["views"] or 0), -(e["fame"] or 0), -e["facts"], e["subject"]))
     cat = catalog()
@@ -1808,8 +1901,9 @@ class WikidataHot(Dataset):
         db.execute("CREATE TABLE IF NOT EXISTS fame (q INTEGER PRIMARY KEY, links INTEGER NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS alias (name TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (name, q)) WITHOUT ROWID")
         db.execute("CREATE TABLE IF NOT EXISTS views (q INTEGER PRIMARY KEY, views INTEGER NOT NULL, months INTEGER NOT NULL DEFAULT 1)")
+        db.execute("CREATE TABLE IF NOT EXISTS names (word TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (word, q)) WITHOUT ROWID")
         db.commit()
-        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_viewbuf": [], "_known": set(), "_months": {}}
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_viewbuf": [], "_namebuf": [], "_known": set(), "_months": {}}
 
     def parts(self):
         ed = time.strftime("%Y-%m")
@@ -1970,6 +2064,10 @@ class WikidataDemand(WikidataHot):
             rows = [ents[q] for q in ids if q in ents and "missing" not in ents[q]]
             self._name_values(rows, state)
             self._learn(rows)
+            if rows:                                       # 1.43: asked for as "Dodgers", found as Los Angeles Dodgers: remembered
+                top = int(rows[0]["id"][1:])
+                state["_aliasbuf"].append((subject.casefold(), top))
+                state["_namebuf"].extend((w, top) for w in name_words(subject))
         q = demand_list(self.folder)                       # marked: fetched (or nothing by that name in Wikidata)
         for row in q:
             if row.get("subject") == subject:
@@ -2116,6 +2214,49 @@ DOMAINS = {
         ("P106", "Q4964182", "philosopher", False), ("P106", "Q201788", "historian", False), ("P106", "Q11900058", "explorer", False),
         ("P106", "Q10873124", "chess player", False), ("P106", "Q12362622", "philanthropist", False), ("P106", "Q333634", "translator", False))),
 }
+# ------------------------------------------------------------------------------------------------ icons (1.43)
+# The icons of the culture, first. Before anything else is harvested: the TOP of each type people ask about — the major
+# leagues' teams, the best-known athletes, bands and singers, screen stars, films and series, presidents and leaders,
+# countries, cities, landmarks, universities, wars, religions, holidays — ranked by how well known each is (the number
+# of Wikipedias with an article about it), with a weight for the user's own culture (the United States by default). The
+# hot lattices ranked by how often Wikidata's own records point at an item, which is not fame: after hours of harvesting
+# "the Dodgers" was still unknown. Each icons set is small and finishes within the hour; the complete domains follow.
+# (property, item, the label it must have, with every narrower kind, how many of the best known, an extra condition,
+#  the least fame worth asking for — for kinds too large to rank whole)
+CULTURE = ("Q30", "United States")         # the setting bulk:culture replaces it ("Q145" for the United Kingdom, ...)
+CULTURE_WEIGHT = 1.5
+TEAM = "wdt:P31/wdt:P279* wd:Q12973014 ; "   # (Q12973014: sports team, checked) — a league's teams, not its players
+ICONS = {
+    "sports-teams": (0, "The teams: every major-league team, and the best-known teams of every sport", (
+        ("P118", "Q1163715", "Major League Baseball", False, 80, TEAM, 0), ("P118", "Q1215884", "National Football League", False, 80, TEAM, 0),
+        ("P118", "Q155223", "National Basketball Association", False, 80, TEAM, 0), ("P118", "Q18543", "Major League Soccer", False, 80, TEAM, 0),
+        ("P118", "Q2593221", "Women's National Basketball Association", False, 40, TEAM, 0),
+        ("P31", "Q13027888", "baseball team", True, 300, "", 0), ("P31", "Q13393265", "basketball team", True, 300, "", 0),
+        ("P31", "Q17156793", "American football team", True, 300, "", 0), ("P31", "Q4498974", "ice hockey team", True, 300, "", 0),
+        ("P31", "Q476028", "association football club", False, 400, "", 0), ("P31", "Q1194951", "national sports team", True, 300, "", 0),
+        ("P31", "Q847017", "sports club", False, 300, "", 0))),
+    "athletes": (0, "The best-known athletes of every sport", (("P106", "Q2066131", "athlete", True, 8000, "", 0),)),
+    "music": (0, "The best-known bands, singers and musicians", (
+        ("P31", "Q215380", "musical group", True, 4000, "", 0), ("P106", "Q177220", "singer", True, 4000, "", 0),
+        ("P106", "Q639669", "musician", True, 4000, "", 0))),
+    "screen": (0, "The best-known actors, hosts, comedians, directors, films and television series", (
+        ("P106", "Q33999", "actor", True, 5000, "", 0), ("P106", "Q947873", "television presenter", True, 1500, "", 0),
+        ("P106", "Q245068", "comedian", True, 1500, "", 0), ("P106", "Q2526255", "film director", False, 1500, "", 0),
+        ("P31", "Q11424", "film", False, 4000, "", 25), ("P31", "Q5398426", "television series", False, 2500, "", 15))),
+    "leaders-writers": (0, "Presidents, the best-known American politicians, monarchs and writers", (
+        ("P39", "Q11696", "President of the United States", False, 100, "", 0), ("P39", "Q14211", "Prime Minister of the United Kingdom", False, 100, "", 0),
+        ("P106", "Q82955", "politician", False, 4000, "wdt:P27 wd:Q30 ; ", 0), ("P106", "Q116", "monarch", False, 800, "", 0),
+        ("P106", "Q36180", "writer", True, 4000, "", 0))),
+    "places-landmarks": (0, "Countries, states, the best-known cities, landmarks, universities and museums", (
+        ("P31", "Q6256", "country", False, 300, "", 0), ("P31", "Q3624078", "sovereign state", False, 300, "", 0), ("P31", "Q35657", "U.S. state", False, 60, "", 0),
+        ("P31", "Q515", "city", False, 2000, "", 20), ("P31", "Q4989906", "monument", False, 1500, "", 0), ("P31", "Q570116", "tourist attraction", False, 2000, "", 0),
+        ("P31", "Q3918", "university", False, 1500, "", 0), ("P31", "Q33506", "museum", False, 1000, "", 0), ("P31", "Q46169", "national park", False, 500, "", 0))),
+    "culture-events": (0, "Wars and battles, religions, holidays, sports, instruments, foods, awards and what everyone looks up", (
+        ("P31", "Q198", "war", False, 800, "", 0), ("P31", "Q178561", "battle", False, 1500, "", 0), ("P31", "Q9174", "religion", False, 300, "", 0),
+        ("P31", "Q1445650", "holiday", False, 500, "", 0), ("P31", "Q349", "sport", False, 500, "", 0), ("P31", "Q34379", "musical instrument", False, 500, "", 0),
+        ("P31", "Q2095", "food", False, 800, "", 0), ("P31", "Q618779", "award", False, 800, "", 0), ("P31", "Q167170", "multi-sport event", False, 300, "", 0),
+        ("P31", "Q11344", "chemical element", False, 200, "", 0), ("P31", "Q634", "planet", False, 50, "", 0), ("P31", "Q12136", "disease", False, 800, "", 0))),
+}
 WDQS = "https://query.wikidata.org/sparql"
 DOMAIN_PAUSE_S = 2.0               # between two queries (the query service allows one client a share of its time)
 DOMAIN_SLOW_S = 45                 # the query service cuts an answer off at 60 s and sends what it had: slower than this is not trusted
@@ -2135,64 +2276,143 @@ def _qn(cell):
     return int(m.group(1)) if m else None
 
 
-def domain_discover(name, query=None, pause=None):
-    """everyone in a domain: {"ids": [Q-numbers, best known first], "roots": [...report...], "people": n}.
-    Per root: its label is checked; its narrower kinds are listed; the people of each group of kinds are asked for with
-    how well known they are (Wikipedias with an article). A group that is slow or fails is halved; a single kind that
-    still fails is asked for without the fame (the plain list is fast and complete) — nobody is dropped for being slow."""
-    query = query or DOMAIN_QUERY
+ICON_BLOCK = 50                    # an icons set takes the best 50 of each of its types in turn, in the order the types are listed
+
+
+def interleave(lists, block=ICON_BLOCK):
+    """the first `block` of every list (in the lists' own order), then the next `block` of each — once each. So the major
+    leagues' teams (listed first) are read before the 51st-best-known football club in the world."""
+    out, seen = [], set()
+    for start in range(0, max((len(x) for x in lists), default=0), block):
+        for x in lists:
+            for k in x[start:start + block]:
+                if k not in seen:
+                    seen.add(k)
+                    out.append(k)
+    return out
+
+
+def _num(cell):
+    try:
+        return int(float(cell.strip().strip('"').split('"')[0] or 0))
+    except ValueError:
+        return 0
+
+
+def domain_discover(name, query=None, pause=None, table=None, folder=None, culture=None):
+    """everything in a domain or an icons set: {"ids": [Q-numbers, best known first], "roots": [...report...], "people": n}.
+    Per root: its label is checked; its narrower kinds are listed; the items of each group of kinds are asked for with
+    how well known they are (Wikipedias with an article). A group that is slow or fails is halved. A complete domain then
+    asks for a kind that still fails WITHOUT the fame (the plain list is fast and complete — nobody is dropped for being
+    slow); an icons set, which wants only the best known, leaves that kind out and says so. Icons are weighted for the
+    user's culture and cut to the best known of each root."""
+    base_query = query or DOMAIN_QUERY
     pause = DOMAIN_PAUSE_S if pause is None else pause
-    tier, title, roots = DOMAINS[name]
-    fame, report = {}, []
-    got = query("SELECT ?i ?l WHERE { VALUES ?i { %s } ?i rdfs:label ?l FILTER(LANG(?l) = \"en\") }" % " ".join("wd:" + q for _p, q, _l, _s in roots))
+    table = DOMAINS if table is None else table
+    tier, title, roots = table[name]
+    culture = culture or CULTURE[0]
+    slots = Slots(folder) if folder else None
+
+    def query(sparql):
+        """the service allows one computer a few queries at a time: every agent takes its turn (two at once), and a refusal waits"""
+        lock, t0 = None, time.time()
+        while slots is not None and lock is None and time.time() - t0 < 600:
+            lock = slots._lock("wikidata-query", 0) or slots._lock("wikidata-query", 1)
+            if lock is None:
+                time.sleep(0.5)
+        try:
+            for attempt in range(4):
+                try:
+                    return base_query(sparql)
+                except urllib.error.HTTPError as e:
+                    if e.code not in REFUSED or attempt == 3:
+                        raise
+                    time.sleep(max(15 * (attempt + 1), _retry_after(e)))
+        finally:
+            if lock is not None:
+                slots.release(lock)
+    fame, home, report, per_root = {}, set(), [], []
+    got = query("SELECT ?i ?l WHERE { VALUES ?i { %s } ?i rdfs:label ?l FILTER(LANG(?l) = \"en\") }" % " ".join(sorted({"wd:" + r[1] for r in roots})))
     labels = {_qn(r[0]): r[1].strip().strip('"').rsplit('"@', 1)[0] for r in got if len(r) > 1 and _qn(r[0])}
 
-    def people(prop, classes):
-        """{person: fame} for these kinds; splits on trouble"""
+    def people(prop, classes, extra, least, ranked_only):
+        """{item: fame} for these kinds; splits on trouble"""
         t0 = time.time()
+        vals = " ".join("wd:Q%d" % c for c in classes)
         try:
-            rows = query("SELECT DISTINCT ?p ?n WHERE { VALUES ?c { %s } ?p wdt:%s ?c ; wikibase:sitelinks ?n }" % (" ".join("wd:Q%d" % c for c in classes), prop))
+            rows = query("SELECT DISTINCT ?p ?n WHERE { VALUES ?c { %s } ?p wdt:%s ?c ; %swikibase:sitelinks ?n %s}" % (
+                vals, prop, extra, "FILTER(?n >= %d) " % least if least else ""))
             if time.time() - t0 < DOMAIN_SLOW_S:
-                return {_qn(r[0]): int(float(r[1].strip().strip('"').split('"')[0] or 0)) if len(r) > 1 else 0 for r in rows if _qn(r[0])}
+                return {_qn(r[0]): _num(r[1]) if len(r) > 1 else 0 for r in rows if _qn(r[0])}
         except (OSError, ValueError):
             pass
         time.sleep(pause)
         if len(classes) > 1:
             half = len(classes) // 2
-            out = people(prop, classes[:half])
-            out.update(people(prop, classes[half:]))
+            out = people(prop, classes[:half], extra, least, ranked_only)
+            out.update(people(prop, classes[half:], extra, least, ranked_only))
             return out
+        if ranked_only:
+            raise LookupError("too many to rank")
         rows = query("SELECT ?p WHERE { ?p wdt:%s wd:Q%d }" % (prop, classes[0]))      # the plain list: complete, fame unknown
         return {_qn(r[0]): 0 for r in rows if _qn(r[0])}
-    for prop, q, label, sub in roots:
+
+    def at_home(prop, classes, extra):
+        """the items of these kinds that belong to the user's culture (a person's citizenship, a thing's country)"""
+        out = set()
+        tie = "wdt:P27" if prop in ("P106", "P39") else "wdt:P17"
+        for i in range(0, len(classes), 40):
+            try:
+                time.sleep(pause)
+                out |= {_qn(r[0]) for r in query("SELECT DISTINCT ?p WHERE { VALUES ?c { %s } ?p wdt:%s ?c ; %s%s wd:%s }" % (
+                    " ".join("wd:Q%d" % c for c in classes[i:i + 40]), prop, extra, tie, culture)) if _qn(r[0])}
+            except (OSError, ValueError):
+                pass                                    # no weight for this group: it is ranked by fame alone
+        return out
+    for r in roots:
+        prop, q, label, sub = r[0], r[1], r[2], r[3]
+        top, extra, least = (r[4], r[5], r[6]) if len(r) > 4 else (None, "", 0)
         qn = int(q[1:])
         if (labels.get(qn) or "").casefold() != label.casefold():
             report.append({"item": q, "expected": label, "found": labels.get(qn), "people": 0, "used": False,
-                           "why": "its label is not “%s” — left out, so the wrong people are not harvested" % label})
+                           "why": "its label is not “%s” — left out, so the wrong things are not harvested" % label})
             continue
         classes = [qn]
         if sub:
             time.sleep(pause)
-            classes = sorted({_qn(r[0]) for r in query("SELECT DISTINCT ?c WHERE { ?c wdt:P279* wd:%s }" % q) if _qn(r[0])} | {qn})[:3000]
-        mine = {}
+            classes = sorted({_qn(x[0]) for x in query("SELECT DISTINCT ?c WHERE { ?c wdt:P279* wd:%s }" % q) if _qn(x[0])} | {qn})[:3000]
+        mine, lost = {}, 0
         for i in range(0, len(classes), 40):
             time.sleep(pause)
-            mine.update(people(prop, classes[i:i + 40]))
+            try:
+                mine.update(people(prop, classes[i:i + 40], extra, least, top is not None))
+            except LookupError:
+                lost += 1
+        if top is not None:                             # icons: weighted for the culture, the best known of this root only
+            mine_home = at_home(prop, classes, extra) if "wd:" + culture not in extra else set(mine)
+            home |= mine_home
+            keep = sorted(mine, key=lambda k: (-(mine[k] * (CULTURE_WEIGHT if k in mine_home else 1.0)), k))[:top]
+            mine = {k: mine[k] for k in keep}
+            per_root.append(keep)
         for k, v in mine.items():
             fame[k] = max(fame.get(k, 0), v)
-        report.append({"item": q, "expected": label, "found": labels.get(qn), "kinds": len(classes), "people": len(mine), "used": True})
-    ids = sorted(fame, key=lambda k: (-fame[k], k))
-    return {"name": name, "tier": tier, "title": title, "read": time.time(), "edition": time.strftime("%Y-%m"), "people": len(ids), "roots": report, "ids": ids}
+        report.append(dict({"item": q, "expected": label, "found": labels.get(qn), "kinds": len(classes), "people": len(mine), "used": True},
+                           **({"why": "%d kind(s) too large to rank were left out" % lost} if lost else {})))
+    ids = sorted(fame, key=lambda k: (-(fame[k] * (CULTURE_WEIGHT if k in home else 1.0)), k))
+    if per_root:                                        # icons: the top of every type in turn, the types in their listed order
+        ids = interleave(per_root)
+    return {"name": name, "tier": tier, "title": title, "read": time.time(), "edition": time.strftime("%Y-%m"), "people": len(ids), "roots": report,
+            "ids": ids, "culture": culture}
 
 
-def domain_path(commons_folder, name):
-    return os.path.join(commons_folder, FOLDER, "_domain-%s.json.gz" % name)
+def domain_path(commons_folder, name, kind="domain"):
+    return os.path.join(commons_folder, FOLDER, "_%s-%s.json.gz" % (kind, name))
 
 
-def domain_load(commons_folder, name):
+def domain_load(commons_folder, name, kind="domain"):
     import gzip
     try:
-        with gzip.open(domain_path(commons_folder, name), "rt", encoding="utf-8") as f:
+        with gzip.open(domain_path(commons_folder, name, kind), "rt", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError, EOFError):
         return None
@@ -2201,20 +2421,22 @@ def domain_load(commons_folder, name):
 def domains_report(commons_folder):
     """[{name, tier, title, people, roots, read}] for the page: who is in each complete domain, and which codes were left out"""
     out = []
-    for name, (tier, title, _roots) in DOMAINS.items():
-        d = domain_load(commons_folder, name) or {}
-        out.append({"name": name, "tier": tier, "title": title, "people": d.get("people"), "read": d.get("read"),
-                    "roots": d.get("roots") or [], "key": "hot-all-" + name})
+    for kind, table, prefix in (("icons", ICONS, "hot-top-"), ("domain", DOMAINS, "hot-all-")):
+        for name, (tier, title, _roots) in table.items():
+            d = domain_load(commons_folder, name, kind) or {}
+            out.append({"name": name, "tier": tier, "title": title, "people": d.get("people"), "read": d.get("read"),
+                        "roots": d.get("roots") or [], "key": prefix + name, "culture": d.get("culture")})
     return out
 
 
 class WikidataDomain(WikidataHot):
     """ONE complete domain: everyone in it, the best known first, each person's whole record."""
     BATCH = 500                                        # people per part (ten requests of 50)
+    TABLE, KIND = DOMAINS, "domain"
 
     def __init__(self, name):
         self.name = name
-        self.tier, self.title_short, self.roots = DOMAINS[name]
+        self.tier, self.title_short, self.roots = self.TABLE[name]
         self.depth, self.finds = 0, ()
         self.key = "hot-all-" + name
         self.title = "Complete domain (tier %d) — %s" % (self.tier, self.title_short)
@@ -2222,18 +2444,19 @@ class WikidataDomain(WikidataHot):
         self.approx = "everyone in the domain, listed afresh every month"
 
     def _ids(self):
-        d = getattr(self, "_disc", None) or domain_load(self.folder, self.name)
+        d = getattr(self, "_disc", None) or domain_load(self.folder, self.name, self.KIND)
         if not d or d.get("edition") != time.strftime("%Y-%m"):
             import gzip
             AGENT["waiting"] = "listing everyone in this domain (Wikidata's query service)"
             try:
-                d = domain_discover(self.name)
+                d = domain_discover(self.name, table=self.TABLE, folder=self.folder, culture=getattr(self, "culture", None))
             finally:
                 AGENT["waiting"] = None
-            os.makedirs(os.path.dirname(domain_path(self.folder, self.name)), exist_ok=True)
-            with gzip.open(domain_path(self.folder, self.name) + ".tmp", "wt", encoding="utf-8") as f:
+            path = domain_path(self.folder, self.name, self.KIND)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with gzip.open(path + ".tmp", "wt", encoding="utf-8") as f:
                 json.dump(d, f)
-            _replace(domain_path(self.folder, self.name) + ".tmp", domain_path(self.folder, self.name))
+            _replace(path + ".tmp", path)
         self._disc = d
         return d
 
@@ -2256,6 +2479,23 @@ class WikidataDomain(WikidataHot):
         return self._each(rows, state)
 
 
+class WikidataIcons(WikidataDomain):
+    """ONE icons set: the best known of each type it names, weighted for the user's culture — read before anything else."""
+    BATCH = 250
+    TABLE, KIND = ICONS, "icons"
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.key = "hot-top-" + name
+        self.title = "Icons — " + self.title_short
+        self.why = "the icons of the culture first: the best known of each type people ask about, ranked by fame, weighted for the user's country"
+        self.approx = "the best known of each type, listed afresh every month"
+
+    def prepare(self, run):
+        self.culture = (run.commons.setting("bulk:culture") or CULTURE[0]).strip() or CULTURE[0]
+        return super().prepare(run)
+
+
 def wd_views(commons_folder, qids):
     """{Q-number: Wikipedia page views, added up over the months sampled} for the items among the most read"""
     want, out = sorted(set(qids)), {}
@@ -2276,7 +2516,7 @@ def wd_views(commons_folder, qids):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(),) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataMostRead(),) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -3694,6 +3934,10 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
             sup.hold.discard(key)
 
     def restorer():
+        try:
+            TR.event("names", indexed=index_names(commons_folder))     # 1.43: part-of-name lookup for records already read
+        except Exception as e:
+            TR.fail("names", e, retried=True)
         try:
             rnote["on"] = True
             TR.event("restore", result=restore_missing(commons_folder, say=lambda t: rnote.update(text=t),
@@ -5919,8 +6163,11 @@ def self_test():
             "Q99": ent("Q99", "Babe Ruth", {"P31": [item("Q809892")]}),
             "Q83807": ent("Q83807", "Ed Sullivan", {"P31": [item("Q5")], "P569": [when("1901-09-28")], "P106": [item("Q947873")]}, 40,
                           "American television host (1901–1974)"),
+            "Q334634": ent("Q334634", "Los Angeles Dodgers", {"P31": [item("Q13027888")]}, 70, "baseball team in Los Angeles, California", ("LA Dodgers",)),
+            "Q777001": ent("Q777001", "Dodgers", {"P31": [item("Q11424")]}),
         }
-        LABELS = {"Q5": "human", "Q10871364": "baseball player", "Q809892": "baseball card", "Q947873": "television presenter"}
+        LABELS = {"Q5": "human", "Q10871364": "baseball player", "Q809892": "baseball card", "Q947873": "television presenter",
+                  "Q13027888": "baseball team", "Q11424": "film"}
         asked_ = []
 
         def fake_wd(params):
@@ -5929,7 +6176,8 @@ def self_test():
                 hit = params["srsearch"].endswith("P106=Q10871364") and int(params["sroffset"]) == 0
                 return {"query": {"search": [{"title": "Q213812"}] if hit else [], "searchinfo": {"totalhits": 1}}}
             if params.get("action") == "wbsearchentities":
-                return {"search": [{"id": q} for q in {"Ed Sullivan": ["Q83807"], "Babe Ruth": ["Q213812", "Q99"]}.get(params["search"], [])]}
+                return {"search": [{"id": q} for q in {"Ed Sullivan": ["Q83807"], "Babe Ruth": ["Q213812", "Q99"],
+                                                       "Dodgers": ["Q334634", "Q777001"]}.get(params["search"], [])]}
             if params.get("titles"):                       # by Wikipedia article title (the most-read lattice)
                 by_t = {"Babe Ruth": "Q213812"}
                 out_ = {by_t[t]: dict(WORLD[by_t[t]], sitelinks=dict(WORLD[by_t[t]]["sitelinks"], enwiki={"title": t}))
@@ -5968,6 +6216,7 @@ def self_test():
             d0 = demand_note(cf, "Ed Sullivan", "Who is Ed Sullivan?", "no record")
             demand_note(cf, "Babe Ruth", "Who was Babe Ruth?", "only a baseball card")
             demand_note(cf, "Ed Sullivan")
+            demand_note(cf, "Dodgers", "What are the Dodgers?")
             rd = run_dataset(cf, "hot-demand")
             dq = {r_["subject"]: r_ for r_ in demand_list(cf)}
             fe = find_entities(cf, "ed sullivan")
@@ -6046,6 +6295,61 @@ def self_test():
             ok("1.42: the domains asked for are there, in tiers — tier 1 the people who face the public", {n_ for n_, d_ in DOMAINS.items() if d_[0] == 1}
                == {"actors", "authors", "television-radio", "music", "models", "speakers", "officials", "athletes"} and DOMAINS["key-professions"][0] == 2
                and DOMAINS["arts-faith-scholarship"][0] == 3 and all(len(r_) == 4 for d_ in DOMAINS.values() for r_ in d_[2]))
+            # 1.43 icons: the best known of each type, weighted for the user's culture; a kind too large to rank is left out, said
+            iq_ = []
+
+            def fake_i(sparql):
+                iq_.append(sparql)
+                if "rdfs:label" in sparql:
+                    return [[E_ % 13027888, '"baseball team"@en'], [E_ % 11424, '"film"@en']]
+                if "wdt:P17 wd:Q30" in sparql:
+                    return [[E_ % 2]]                                      # the one that is at home in the United States
+                if "sitelinks" in sparql:
+                    if "Q11424" in sparql:
+                        raise OSError("the query service timed out")
+                    return [[E_ % 1, "80"], [E_ % 2, "60"], [E_ % 3, "50"]]
+                return [[E_ % 7]]
+            real_ic = dict(ICONS)
+            try:
+                ICONS["t"] = (0, "Teams", (("P31", "Q13027888", "baseball team", False, 2, "", 0), ("P31", "Q11424", "film", False, 5, "", 25)))
+                di = domain_discover("t", fake_i, 0, ICONS)
+            finally:
+                ICONS.clear(); ICONS.update(real_ic)
+            ok("1.43 icons: the best known of each type by fame, weighted for the user's culture (an American team with 60 Wikipedias "
+               "comes before a foreign one with 80), cut to the top of each type; a kind too large to rank is left out and reported, never "
+               "harvested unranked", di["ids"] == [2, 1] and di["culture"] == "Q30" and di["roots"][0]["people"] == 2 and di["roots"][1]["people"] == 0
+               and "too large to rank" in di["roots"][1]["why"] and any("FILTER(?n >= 25)" in q_ for q_ in iq_)
+               and not any(q_.startswith("SELECT ?p WHERE") for q_ in iq_), (di, len(iq_)))
+            ok("1.43 icons: a set takes the best 50 of each of its types in turn, the types in their listed order — every major-league "
+               "team (listed first) before the 51st-best-known club of another sport; nothing twice",
+               interleave([[1, 2, 3], [4, 2, 5, 6, 7]], 2) == [1, 2, 4, 3, 5, 6, 7] and interleave([]) == []
+               and ICONS["sports-teams"][2][0][2] == "Major League Baseball")
+            ok("1.43 icons: the sets asked for — teams, athletes, music, screen, leaders, places, culture — start before everything but the "
+               "demand agent, then what people read, the lattices, and the complete domains tier by tier",
+               set(ICONS) == {"sports-teams", "athletes", "music", "screen", "leaders-writers", "places-landmarks", "culture-events"}
+               and _ks.order(["hot-all-actors", "hot-places", "hot-most-read", "wikidata-dump-1", "hot-top-sports-teams", "hot-demand"], cf)
+               == ["hot-demand", "hot-top-sports-teams", "hot-most-read", "hot-places", "hot-all-actors", "wikidata-dump-1"]
+               and list(catalog())[:2] == ["hot-demand", "hot-top-sports-teams"])
+            # 1.43 part of a name: "Dodgers" is the Los Angeles Dodgers, not an obscure thing called just "Dodgers"
+            fd = find_entities(cf, "dodgers")
+            jd = _sense.answer_for("What are the Dodgers", "Dodgers", fd["entities"], fd["facts"])
+            fp_ = find_entities(cf, "angeles dodgers")
+            ldb = sqlite3.connect(shard_path(cf, "hot-demand") + ".labels")
+            n_before = ldb.execute("SELECT count(*) FROM names").fetchone()[0]
+            ldb.execute("DELETE FROM names"); ldb.execute("PRAGMA user_version = 0"); ldb.commit(); ldb.close()
+            gone_ = find_entities(cf, "angeles dodgers")["entities"]
+            back_ = index_names(cf)
+            ok("1.43: asked for by part of its name, the well-known thing is found (every word asked must be in its name) and preferred "
+               "to an obscure thing with exactly that name — and the demand agent remembers the name it was asked under",
+               {e_["subject"]: (e_["exact"], e_["by_other_name"] or e_["by_part_of_name"]) for e_ in fd["entities"]}
+               == {"Dodgers (Q777001)": (True, False), "Los Angeles Dodgers (Q334634)": (False, True)}
+               and jd["entity"]["subject"] == "Los Angeles Dodgers (Q334634)" and jd["said"].startswith("Los Angeles Dodgers — baseball team in Los Angeles")
+               and "best-known thing by that name" in jd["entity"]["why"] and [e_["subject"] for e_ in fp_["entities"]] == ["Los Angeles Dodgers (Q334634)"]
+               and fp_["entities"][0]["by_part_of_name"] and name_words("The Los Angeles Dodgers") == {"los", "angeles", "dodgers"},
+               (fd["entities"], jd["said"], jd["entity"]["why"], fp_["entities"]))
+            ok("1.43: records read before the word index existed are put into it once (from their fame, labels and other names)",
+               n_before > 0 and gone_ == [] and back_ >= 3 and [e_["subject"] for e_ in find_entities(cf, "angeles dodgers")["entities"]]
+               == ["Los Angeles Dodgers (Q334634)"] and index_names(cf) == 0, (n_before, gone_, back_))
             # WHO is meant: the man and the card are both in the store now
             fb = find_entities(cf, "babe ruth")                 # typed in lower case
             jb = _sense.answer_for("Who was Babe Ruth?", "Babe Ruth", fb["entities"], fb["facts"])
