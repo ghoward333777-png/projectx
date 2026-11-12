@@ -51,6 +51,17 @@ class SenseTest(unittest.TestCase):
         self.assertEqual(r["subject"], b)
         self.assertIn("60 Wikipedias", r["why"])
 
+    def test_what_people_read_decides_too(self):
+        a, b = "Mercury (Q1)", "Mercury (Q2)"
+        fs = facts(a, [("instance of", "planet (Q634)")]) + facts(b, [("instance of", "chemical element (Q11344)")])
+        r = sense.choose("What is Mercury?", [{"subject": a, "facts": 30, "fame": 100, "views": 2000000}, {"subject": b, "facts": 30, "fame": 100}], fs)
+        self.assertEqual(r["subject"], a)
+        self.assertIn("most-read", r["why"])
+        self.assertEqual(r["ranked"][0]["views"], 2000000)
+        # being read a great deal never turns a film into the person: the kind asked for still comes first
+        r2 = sense.choose("Who was Babe Ruth?", [dict(ENTS[1], views=9000000), ENTS[2]], F_FILM + F_MAN)
+        self.assertEqual(r2["subject"], MAN)
+
     def test_only_the_card_is_held_says_so(self):
         r = sense.answer_for("Who was Babe Ruth?", "Babe Ruth", ENTS[:2], F_CARD + F_FILM)
         self.assertIn("no record of the person itself", r["missing"])

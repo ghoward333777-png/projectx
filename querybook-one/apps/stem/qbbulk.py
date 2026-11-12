@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.40.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.41.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1263,6 +1263,10 @@ class WikidataDump(Dataset):
         if ab:
             db.executemany("INSERT OR IGNORE INTO alias(name, q) VALUES(?, ?)", ab)
             ab.clear()
+        vb = state.get("_viewbuf")
+        if vb:                                           # 1.41: Wikipedia page views, added up over the months sampled
+            db.executemany("INSERT INTO views(q, views) VALUES(?, ?) ON CONFLICT(q) DO UPDATE SET views = views + excluded.views, months = months + 1", vb)
+            vb.clear()
         if kc:
             db.executemany("INSERT INTO keystones(k, facts) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET facts = facts + excluded.facts", kc.items())
             kc.clear()
@@ -1565,7 +1569,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand"] + ["hot-" + n for n in HOT] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand", "hot-most-read"] + ["hot-" + n for n in HOT] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -1663,9 +1667,11 @@ def find_entities(commons_folder, text, top=5, per=400):
                     e["stores"].append(key)
     qn_of = {s_: int(m.group(2)) for s_ in found for m in [ENT_SUBJECT.match(s_)] if m}
     fame = wd_fame(commons_folder, list(qn_of.values())) if qn_of else {}
+    views = wd_views(commons_folder, list(qn_of.values())) if qn_of else {}
     ents = [{"subject": s_, "qid": ("Q%d" % qn_of[s_]) if s_ in qn_of else None, "facts": e["n"], "fame": fame.get(qn_of.get(s_)),
-             "stores": e["stores"], "by_other_name": bool(e.get("alias"))} for s_, e in found.items()]
-    ents.sort(key=lambda e: (-(e["fame"] or 0), -e["facts"], e["subject"]))
+             "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias"))} for s_, e in found.items()]
+    # best known first: what people read (page views), then how widely it is written about (Wikipedias), then how much is held
+    ents.sort(key=lambda e: (-(e["views"] or 0), -(e["fame"] or 0), -e["facts"], e["subject"]))
     cat = catalog()
     facts = []
     for e in ents[:top]:
@@ -1801,8 +1807,9 @@ class WikidataHot(Dataset):
         db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS fame (q INTEGER PRIMARY KEY, links INTEGER NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS alias (name TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (name, q)) WITHOUT ROWID")
+        db.execute("CREATE TABLE IF NOT EXISTS views (q INTEGER PRIMARY KEY, views INTEGER NOT NULL, months INTEGER NOT NULL DEFAULT 1)")
         db.commit()
-        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_known": set()}
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_viewbuf": [], "_known": set(), "_months": {}}
 
     def parts(self):
         ed = time.strftime("%Y-%m")
@@ -1984,9 +1991,101 @@ class WikidataDemand(WikidataHot):
         _ka_save(os.path.join(self.folder, FOLDER, LEARNED_NAME), learned)
 
 
+# ------------------------------------------------------------------------------------------------ what people read (1.41)
+VIEWS_URL = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/%04d/%02d/all-days"
+VIEWS_FROM = (2015, 7)             # Wikimedia's page-view counts begin here
+NOT_ARTICLES = ("Main_Page", "Special:", "Wikipedia:", "Portal:", "File:", "Help:", "Category:", "Template:", "User:", "Talk:", "Draft:", "-", "404.php")
+
+
+def VIEWS_FETCH(year, month):
+    """the 1,000 most-read articles of the English Wikipedia in one month: [(title, views)] (the tests replace this)"""
+    try:
+        with urllib.request.urlopen(_req(VIEWS_URL % (year, month)), timeout=90) as r:
+            d = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []                                  # a month Wikimedia has not published (yet)
+        raise
+    arts = ((d.get("items") or [{}])[0].get("articles")) or []
+    return [(a["article"], int(a.get("views") or 0)) for a in arts if not str(a.get("article", "")).startswith(NOT_ARTICLES)]
+
+
+def views_months(now=None, recent=24):
+    """the months sampled: every one of the last two years (what is read now), then one a quarter back to 2015 — so a
+    subject that is read year after year counts for more than one that was in the news for a week"""
+    t = time.gmtime(now or time.time())
+    y, m = (t.tm_year, t.tm_mon - 1) if t.tm_mon > 1 else (t.tm_year - 1, 12)     # the last complete month
+    out = []
+    while (y, m) >= VIEWS_FROM:
+        if len(out) < recent or m in (1, 4, 7, 10):
+            out.append((y, m))
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    return out
+
+
+class WikidataMostRead(WikidataHot):
+    """What people actually read: the 1,000 most-read articles of the English Wikipedia, month by month over ten years
+    (Wikimedia's own page-view counts, public domain). Each article's Wikidata record is read whole, and its views are
+    added up over the months — the direct measure of what people want to know, used to choose which "Babe Ruth" is meant
+    and to rank every answer. Rank by rank across the months: the top 50 of every month before the next 50 of any."""
+    def __init__(self):
+        self.name, self.key = "most-read", "hot-most-read"
+        self.title_short, self.depth, self.finds = "the most-read Wikipedia articles, month by month", 1000, ()
+        self.title = "Hot lattice — what people read (Wikipedia page views)"
+        self.why = "the subjects people look up most, by Wikimedia's own count of page views — the best guide to the questions they will ask"
+        self.approx = "about 1,000 articles a month over ten years, re-sampled monthly"
+
+    def parts(self):
+        return [("most read %04d-%02d rank %04d-%04d" % (y, m, off + 1, off + self.PAGE), "views#%d#%d#%d" % (y, m, off))
+                for off in range(0, self.depth, self.PAGE) for y, m in views_months()]
+
+    def rows(self, part, url, state):
+        _, y, m, off = url.split("#")
+        key = (int(y), int(m))
+        if key not in state["_months"]:
+            if len(state["_months"]) > 6:
+                state["_months"].clear()
+            state["_months"][key] = VIEWS_FETCH(*key)
+        chunk = state["_months"][key][int(off):int(off) + self.PAGE]
+        if not chunk:
+            return iter(())
+        by_title = {t.replace("_", " "): v for t, v in chunk}
+        ents = (self._get({"action": "wbgetentities", "sites": "enwiki", "titles": "|".join(by_title), "props": "labels|descriptions|aliases|claims|sitelinks",
+                           "languages": "en|mul"}, state).get("entities") or {})
+        rows = []
+        for q, e in ents.items():
+            if "missing" in e or not str(q).startswith("Q"):
+                continue
+            title = ((e.get("sitelinks") or {}).get("enwiki") or {}).get("title")
+            if title in by_title:
+                state["_viewbuf"].append((int(q[1:]), by_title[title]))
+            rows.append(e)
+        self._name_values(rows, state)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+
+def wd_views(commons_folder, qids):
+    """{Q-number: Wikipedia page views, added up over the months sampled} for the items among the most read"""
+    want, out = sorted(set(qids)), {}
+    for p in _label_dbs(commons_folder):
+        if not want:
+            break
+        try:
+            db = _ro(p)
+            for i in range(0, len(want), 500):
+                chunk = want[i:i + 500]
+                for q, v in db.execute("SELECT q, views FROM views WHERE q IN (%s)" % ",".join("?" * len(chunk)), chunk):
+                    out[q] = out.get(q, 0) + v
+            db.close()
+        except sqlite3.Error:
+            continue
+    return out
+
+
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(),) + tuple(WikidataHot(n) for n in HOT) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -5636,6 +5735,12 @@ def self_test():
                 return {"query": {"search": [{"title": "Q213812"}] if hit else [], "searchinfo": {"totalhits": 1}}}
             if params.get("action") == "wbsearchentities":
                 return {"search": [{"id": q} for q in {"Ed Sullivan": ["Q83807"], "Babe Ruth": ["Q213812", "Q99"]}.get(params["search"], [])]}
+            if params.get("titles"):                       # by Wikipedia article title (the most-read lattice)
+                by_t = {"Babe Ruth": "Q213812"}
+                out_ = {by_t[t]: dict(WORLD[by_t[t]], sitelinks=dict(WORLD[by_t[t]]["sitelinks"], enwiki={"title": t}))
+                        for t in params["titles"].split("|") if t in by_t}
+                out_["-1"] = {"missing": ""}
+                return {"entities": out_}
             ids = params["ids"].split("|")
             if params.get("props") == "labels":
                 return {"entities": {q: {"labels": {"en": {"value": LABELS[q]}}} for q in ids if q in LABELS}}
@@ -5680,18 +5785,37 @@ def self_test():
             order_ = _ks.order(["wikidata-dump-1", "hot-places", "usgs-gnis", "hot-people-entertainment", "hot-demand"], cf)
             ok("1.40: the demand agent and the hot lattices start before everything else, the lattice people's questions land in first",
                order_[:3] == ["hot-demand", "hot-people-entertainment", "hot-places"], order_)
+            # 1.41 what people read: Wikipedia's most-read articles, their views added up over the months sampled
+            real_vf, real_vm = VIEWS_FETCH, views_months
+            try:
+                globals()["VIEWS_FETCH"] = lambda y_, m_: [("Babe_Ruth", 500000), ("Some_Article_Wikidata_Lacks", 400000)]
+                globals()["views_months"] = lambda now=None, recent=24: [(2026, 10), (2026, 9)]
+                mr_parts = WikidataMostRead().parts()
+                rm = run_dataset(cf, "hot-most-read")
+            finally:
+                globals()["VIEWS_FETCH"], globals()["views_months"] = real_vf, real_vm
+            vm_ = real_vm(time.mktime((2026, 11, 12, 0, 0, 0, 0, 0, 0)))
+            ok("1.41 what people read: the most-read Wikipedia articles month by month (every month of two years, then one a quarter back "
+               "to 2015, so lasting subjects outweigh a week in the news), each one's whole record read and its views added up",
+               rm["state"] == "done" and len(mr_parts) == 40 and mr_parts[0][0] == "most read 2026-10 rank 0001-0050" and mr_parts[1][0] == "most read 2026-09 rank 0001-0050"
+               and wd_views(cf, [213812, 99]) == {213812: 1000000} and vm_[0] == (2026, 10) and len(vm_[:24]) == 24 and vm_[24] == (2024, 10)
+               and vm_[-1] == (2015, 7) and all(m_ in (1, 4, 7, 10) for _y, m_ in vm_[24:]), (rm, mr_parts[:2], wd_views(cf, [213812]), vm_[22:27]))
+            ok("1.41: page-view articles that are not subjects (the main page, search, project pages) are left out, and the most-read "
+               "lattice starts right after the demand agent", "Main_Page".startswith(NOT_ARTICLES) and "Special:Search".startswith(NOT_ARTICLES)
+               and not "Babe_Ruth".startswith(NOT_ARTICLES) and _ks.order(["hot-places", "wikidata-dump-1", "hot-most-read", "hot-demand"], cf)[:2]
+               == ["hot-demand", "hot-most-read"])
             # WHO is meant: the man and the card are both in the store now
             fb = find_entities(cf, "babe ruth")                 # typed in lower case
             jb = _sense.answer_for("Who was Babe Ruth?", "Babe Ruth", fb["entities"], fb["facts"])
             fa = find_entities(cf, "The Babe")
             ok("1.40: every thing with the name is found however it was typed, the best known first (fame, then how much is recorded), with "
                "ALL its facts and their values named — and by its other names too",
-               [(e_["subject"], e_["fame"]) for e_ in fb["entities"]] == [("Babe Ruth (Q213812)", 120), ("Babe Ruth (Q99)", None)]
+               [(e_["subject"], e_["fame"], e_["views"]) for e_ in fb["entities"]] == [("Babe Ruth (Q213812)", 120, 1000000), ("Babe Ruth (Q99)", None, None)]
                and {"human (Q5)", "baseball player (Q10871364)"} <= {f_["object"] for f_ in fb["facts"]}
                and fa["entities"] and fa["entities"][0]["subject"] == "Babe Ruth (Q213812)" and fa["entities"][0]["by_other_name"], (fb["entities"], fa["entities"]))
             ok("1.40 a grasp of reality: Babe Ruth is a person, not the baseball card of the same name — the answer says who he was",
                jb["entity"]["subject"] == "Babe Ruth (Q213812)" and jb["entity"]["kind"] == "human" and not jb["missing"]
-               and jb["said"].startswith("Babe Ruth (born 1895) — American baseball player") and [r_["kind"] for r_ in jb["entity"]["ranked"]] == ["human", "depiction"] and "with an article in 120 Wikipedias" in jb["entity"]["why"],
+               and jb["said"].startswith("Babe Ruth (born 1895) — American baseball player") and [r_["kind"] for r_ in jb["entity"]["ranked"]] == ["human", "depiction"] and "with an article in 120 Wikipedias" in jb["entity"]["why"] and "most-read" in jb["entity"]["why"],
                (jb["said"], jb["entity"]))
         finally:
             globals()["HOT_FETCH"] = real_fetch
@@ -5702,7 +5826,7 @@ def self_test():
             else:
                 os.environ["QB_OFFLINE"] = off_was
             os.remove(os.path.join(cf, FOLDER, "wikidata-properties.json"))
-            for key_ in ("hot-people-sports", "hot-demand"):   # the tests that follow count the stores they made themselves
+            for key_ in ("hot-people-sports", "hot-demand", "hot-most-read"):   # the tests that follow count the stores they made themselves
                 for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
                     if os.path.exists(shard_path(cf, key_) + ext):
                         os.remove(shard_path(cf, key_) + ext)

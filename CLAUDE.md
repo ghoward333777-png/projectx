@@ -131,7 +131,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 
 - 1.5 billion facts could not answer "Who is Ed Sullivan?" and took Babe Ruth for a baseball card. Never judge the store by
   its size: judge it by the relevance test (198 well-known subjects, 12 fields; daily; Harvesting → Relevance).
-- Harvest order: `hot-demand` (asked and not found, fetched at once), then the hot lattices (best-known items of each kind,
+- Popularity = Wikipedia page views first (`hot-most-read`, `wd_views`: summed over sampled months so lasting subjects beat
+  news spikes), then fame (Wikipedias with an article), then facts held. Views are an added signal, never the only one, and
+  never outrank the kind the question expects.
+- Harvest order: `hot-demand` (asked and not found, fetched at once), then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
 - The dump lanes read never-read positions first and finish an edition before a new one is fetched. Do not go back to
   "newest edition, part 1" — that is why whole stretches of Wikidata were never read.
