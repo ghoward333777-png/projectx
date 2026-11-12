@@ -38,6 +38,7 @@ import qbselfknow
 import qbexemplar
 import qbcampaign
 import qbbulk
+import qbrelevance
 import qbfarm
 import qbbooks
 import qbapidoc
@@ -46,7 +47,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.39.0"
+VERSION = "1.40.0"
 PORT = 8100
 program_dir = HERE
 
@@ -95,6 +96,18 @@ class Panel:
         qbexemplar.attach(self)                           # the shared exemplar library: /api/exemplars
         self.api.own_folder = self.folder                # so "why so slow?" can check that all four programs share one Commons
         qbbulk.add_routes(self.api, self.commons, HERE)
+
+        # 1.40 — the relevance test: can QueryBook answer what people actually ask? (qbrelevance; runs daily by itself)
+        @self.api.get("/api/relevance")
+        def relevance_get(p):
+            r = qbrelevance.last(self.commons.folder)
+            return {"result": r, "summary": qbrelevance.summary(r), "running": qbrelevance.running(self.commons.folder),
+                    "demand": qbbulk.demand_list(self.commons.folder)[-60:], "learned": qbbulk.demand_learned(self.commons.folder)}
+
+        @self.api.post("/api/relevance/run")
+        def relevance_run(p):
+            started = qbrelevance.run_in_background(self.commons.folder, force=True)
+            return {"started": started, "running": True}
         qbbooks.add_routes(self.api, self.commons, HERE)    # the book harvester: Gutenberg, Internet Archive, by address (/api/books)
         qbfarm.add_routes(self.api, self.commons, HERE)     # farm out: another PC harvests datasets this one does not (/api/farm)
         qbconnections.add_routes(self.api, self.commons)
@@ -313,6 +326,13 @@ class Panel:
                 self.log("bulk harvesting fail-safe:", r.get("action"), "-", r["why"])
         except Exception as e:
             self.log("bulk keep-alive:", repr(e))
+        try:                                       # 1.40: the relevance test, once a day by itself; a low score is an alert
+            qbrelevance.run_in_background(self.commons.folder)
+            rv = qbrelevance.last(self.commons.folder)
+            if rv and rv.get("percent", 100) < 80:
+                found["relevance"] = ("warn", qbrelevance.summary(rv) + " The misses were sent to the demand agent; see Harvesting → Relevance.", None)
+        except Exception as e:
+            self.log("relevance:", repr(e))
         try:                                       # 1.38: an excessive pause is an alert (no new fact for 20 min, getting ready for 30)
             hh = qbbulk.health(self.commons.folder, self.commons) or {}
             al = hh.get("alert")
@@ -632,6 +652,9 @@ class Panel:
                      if rs.get("alive") else ("switched on, not running — starting again by itself" if wd.get("want") == "on" else "stopped — press ⚡ Start harvesting")) +
                     ((" · " + wd["text"]) if rs.get("alive") and wd.get("text") else "") +
                     (" · fail-safe acted %d× (last: %s — %s)" % (ka["restarts"], (ka.get("last") or {}).get("action") or "restarted", (ka.get("last") or {}).get("why")) if ka.get("restarts") else ""))
+                rv = qbrelevance.last(c.folder)
+                add("Relevance: well-known subjects answerable", (True if rv["percent"] >= 80 else None) if rv else None, qbrelevance.summary(rv) +
+                    ((" " + " ".join(rv.get("diagnosis") or [])[:700]) if rv and rv["percent"] < 80 else ""))
                 add("Harvesting fail-safe", True if wd.get("want") == "on" else None,
                     "on: harvesting is restarted by itself whenever it is not running, and when no new fact arrives (restart at 1 h, hard restart at 2 h, "
                     "datasets that add nothing rested at 3 h)" if wd.get("want") == "on" else "off until ⚡ Start harvesting is pressed (Stop was pressed, or it was never started)")

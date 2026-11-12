@@ -384,6 +384,10 @@ function akAnswer(r) {
     el("div", { class: "small muted" }, r.question, r.guided && r.guided.resolved ? `  (about ${r.guided.resolved})` : ""),
     r.clarify ? el("p", { class: "note" }, r.clarify) : null,
     el("div", { class: "short" }, akSaid(r) || (r.sections.length ? "Here is what QueryBook holds about this:" : "QueryBook holds nothing on this yet.")),
+    // 1.6: which thing was meant, and what kind of thing it is (sense.py) — and, when QueryBook lacks it, that it is being fetched
+    r.entity && r.entity.subject ? el("p", { class: "small muted" }, "Understood as: " + r.entity.why + "." +
+      ((r.entity.ranked || []).length > 1 ? " Also by this name: " + r.entity.ranked.slice(1, 5).map(x => (x.what || x.kind)).filter(Boolean).join("; ") + "." : "")) : null,
+    r.missing ? el("p", { class: "note" }, r.missing + (r.learning ? " " + r.learning : "")) : null,
     el("div", { class: "small muted", style: "margin-top:6px" },
       `Topic: ${r.topic} · shown as ${akFormatName(fmt)}${r.register !== "plain" ? " · tone: " + r.register : ""} · asked: ${(r.asked || []).map(nameOf).join(", ") || "nothing"}` +
       ((r.unavailable || []).length ? ` · not answering: ${r.unavailable.map(u => nameOf(u.source)).join(", ")}` : "")),

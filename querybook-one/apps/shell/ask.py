@@ -18,6 +18,8 @@ from typing import Callable
 import urllib.parse
 import urllib.request
 
+import sense
+
 LEADS = (
     "what is the meaning of", "what's the meaning of", "what does", "meaning of", "definition of", "define", "how do you say",
     "tell me about", "who invented", "who discovered", "who founded", "who wrote", "who created", "who was", "who is",
@@ -61,9 +63,13 @@ def understand(question: str) -> dict:
     words = s.split()
     while words and words[0] in ARTICLES + ("is", "was", "are", "were", "did", "does", "do"):
         words = words[1:]
+    trailed = False
     while words and words[-1] in TRAILS:
         hints += list(HINTS.get(words[-1], ()))
         words = words[:-1]
+        trailed = True
+    if not trailed and low.startswith(("who is ", "who was ", "who are ", "who were ", "what is ", "what was ", "tell me about ")):
+        hints = []                                   # "Who was Babe Ruth?" asks who he WAS, not who invented him
     subject = " ".join(words).strip(" '\"“”")
     m = re.search(re.escape(subject), q, re.I) if subject else None
     if m:                                            # keep the case the question used ("DNA", "Marie Curie")
@@ -153,7 +159,18 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                     if len(found) >= 60:
                         break
                 return {"facts": found}
-            jobs.append(("bulk", bulk))
+
+            def entity() -> dict:
+                """who or what is meant: every thing with this name, best known first, with all its facts (engine 1.40);
+                an older engine has no such route, and then the prefix search above answers as before"""
+                try:
+                    r = _get(base("control") + "/api/bulk/entity?" + urllib.parse.urlencode({"q": intent["subject"], "top": 6}), timeout=20)
+                    if r.get("entities"):
+                        return {"facts": r.get("facts") or [], "entities": r.get("entities") or []}
+                except Exception:
+                    pass
+                return bulk()
+            jobs.append(("bulk", entity))
     threads = [threading.Thread(target=run, args=job, daemon=True) for job in jobs]
     for t in threads:
         t.start()
@@ -193,9 +210,18 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                           "statement": f.get("statement"), "where": "Shared facts (Commons)", "status": f.get("status"), "id": f.get("id")})
     bulk = results.get("bulk")
     if isinstance(bulk, dict) and not bulk.get("_error"):
-        for f in bulk.get("facts") or []:
-            facts.append({"subject": f.get("subject"), "predicate": f.get("predicate"), "object": f.get("object"),
-                          "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")})
+        bfacts = [{"subject": f.get("subject"), "predicate": f.get("predicate"), "object": f.get("object"),
+                   "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")}
+                  for f in bulk.get("facts") or []]
+        if bulk.get("entities"):                     # a grasp of reality: which match is meant, and what kind of thing it is
+            judged = sense.answer_for(intent["question"], intent["subject"], bulk["entities"], bfacts)
+            out["entity"] = judged["entity"]
+            out["missing"] = judged["missing"]
+            if judged["said"] and not intent["hints"] and not out["short"] and not judged["missing"]:
+                out["short"] = judged["said"]
+            out["identity"] = judged["said"]
+            bfacts = judged["facts"]
+        facts += bfacts
     hist = results.get("history")
     if isinstance(hist, dict) and not hist.get("_error"):
         for f in hist.get("facts") or []:
@@ -205,5 +231,15 @@ def answer(question: str, urls: dict[str, str]) -> dict:
     if facts:
         out["sections"].append({"source": "Facts", "app": "control", "kind": "facts", "items": facts[:40]})
         if not out["short"]:
-            out["short"] = short_answer(intent, facts)
+            out["short"] = short_answer(intent, facts) or str(out.get("identity") or "")
+    # what QueryBook could not answer is what it must learn next: the subject goes to the demand agent, which fetches its
+    # record from Wikidata now (engine 1.40) — so the same question is answered the next time it is asked
+    if intent["kind"] == "fact" and intent["subject"] and base("control") and (out.get("missing") or not facts):
+        out["missing"] = str(out.get("missing") or "QueryBook holds no record of “%s” yet." % intent["subject"])
+        try:
+            d = _post(base("control") + "/api/bulk/demand", {"subject": intent["subject"], "question": intent["question"], "why": out["missing"]}, timeout=4)
+            if d.get("queued"):
+                out["learning"] = "It has been sent to the demand agent, which is fetching it now. Ask again in a few minutes."
+        except Exception:
+            pass
     return out

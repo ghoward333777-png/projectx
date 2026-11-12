@@ -34,7 +34,7 @@ def write_graphifyignore():
             block.append("querybook-one/apps/%s/%s" % (app, dst.replace(os.sep, "/")))
         if app == "video":
             block += ["querybook-one/apps/video/%s" % t for t in ("hybrid_video.py", "qbframes.py", "reuse_bench.py", "generate_exemplars.py")]
-    block += ["querybook-one/apps/shell/%s" % f for f in ("bookq.py", "qbcompose.py", "qbbooks.py")]
+    block += ["querybook-one/apps/shell/%s" % f for f in ("bookq.py", "qbcompose.py", "qbbooks.py", "sense.py")]
     block.append(end)
     if start in old and end in old:
         lines = old[:old.index(start)] + block + old[old.index(end) + 1:]

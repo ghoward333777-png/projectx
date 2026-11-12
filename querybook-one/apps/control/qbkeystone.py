@@ -223,6 +223,11 @@ def order(keys, commons_folder, commons=None, target=None):
         score = {}
     t = target or {}
     srcs, apps = set(t.get("sources") or []), set(t.get("apps") or [])
+    try:
+        import qbbulk as _qb
+        learned = _qb.demand_learned(commons_folder)
+    except Exception:
+        learned = {}
 
     def rank(key):
         import qbbulk
@@ -230,7 +235,10 @@ def order(keys, commons_folder, commons=None, target=None):
         targeted = bool(ds and ((ds.source or "") in srcs or ds.app in apps or key in srcs))
         k = "human_individuals" if key.startswith("wikidata-dump-") else DATASETS.get(key)
         lane = int(key.rsplit("-", 1)[1]) if key.startswith("wikidata-dump-") else 0
-        return (0 if targeted else 1, -score.get(k, 0), lane, key)
+        hot = 0 if key.startswith("hot-") else 1          # 1.40: what people ask about first, before any target or keystone
+        if not hot:                                        # the demand agent, then the lattices people's questions land in most
+            return (0, 0 if key == "hot-demand" else 1, -int(learned.get(key[4:]) or 0), 0, key)
+        return (hot, 0 if targeted else 1, -score.get(k, 0), lane, key)
     return sorted(keys, key=rank)
 
 

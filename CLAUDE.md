@@ -127,6 +127,18 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - `keep_alive` ladder with no new fact: 1 h restart, 2 h hard restart, 3 h rest the dry datasets 6 h (`_rest.json`, honoured
   by `Supervisor.check`). An advancing filing is exempt for at most `WORK_MAX_S`. Keep the page and diagnostics text honest.
 
+### Relevance — the measure is answerable questions, not fact count (`qbrelevance.py`, `sense.py`, `qbbulk.WikidataHot`)
+
+- 1.5 billion facts could not answer "Who is Ed Sullivan?" and took Babe Ruth for a baseball card. Never judge the store by
+  its size: judge it by the relevance test (198 well-known subjects, 12 fields; daily; Harvesting → Relevance).
+- Harvest order: `hot-demand` (asked and not found, fetched at once), then the hot lattices (best-known items of each kind,
+  most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
+- The dump lanes read never-read positions first and finish an edition before a new one is fetched. Do not go back to
+  "newest edition, part 1" — that is why whole stretches of Wikidata were never read.
+- Answers go through `find_entities` + `sense.answer_for`: the kind of each match, the kind the question expects, the thing
+  itself above things made about it (a card, a film, an award), fame, identifiers last. Never return "the first match".
+- When nothing (or only a thing-about) is held, say so and queue the subject (`/api/bulk/demand`). Never pretend.
+
 ### Lip-sync and talking faces — the user's decision (do not change)
 
 - Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)

@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.39.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.40.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1196,8 +1196,9 @@ class WikidataDump(Dataset):
         if self.local:                         # the downloaded copy: named by its own edition, so parts done while
             self.edition = self.local["edition"]   # streaming the same edition are not read again
         n = -(-self.size // self.PART)
+        mine = unread_first([i for i in range(n) if i % self.lanes == self.lane - 1], n, getattr(self, "covered", None))
         return [("%s part %04d of %04d" % (self.edition, i + 1, n), "%s#%d-%d" % (url, i * self.PART, min(self.size, (i + 1) * self.PART)))
-                for i in range(n) if i % self.lanes == self.lane - 1]
+                for i in mine]
 
     def prepare(self, run):
         self.base = run.commons.setting("bulk:url:wikidata-dump")      # a mirror or a local copy of the dump (and tests)
@@ -1226,8 +1227,16 @@ class WikidataDump(Dataset):
         db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
         db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
+        # 1.40 relevance: how well known each item is (the number of Wikipedias with an article about it), and the other
+        # names people use for the well-known ones ("FDR", "The Babe") — what lets the Ask box choose the right "Babe Ruth"
+        db.execute("CREATE TABLE IF NOT EXISTS fame (q INTEGER PRIMARY KEY, links INTEGER NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS alias (name TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (name, q)) WITHOUT ROWID")
         db.commit()
-        return {"_labeldb": db, "_labelbuf": []}
+        try:                                             # 1.40: the positions of the dump no lane has ever finished come first
+            self.covered = dump_positions_read(run.folder)
+        except Exception:
+            self.covered = None
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": []}
 
     def rows(self, part, url, state):
         base, _, rng = url.partition("#")
@@ -1247,6 +1256,13 @@ class WikidataDump(Dataset):
         if buf:
             db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
             buf.clear()
+        fb, ab = state.get("_famebuf"), state.get("_aliasbuf")
+        if fb:
+            db.executemany("INSERT OR REPLACE INTO fame(q, links) VALUES(?, ?)", fb)
+            fb.clear()
+        if ab:
+            db.executemany("INSERT OR IGNORE INTO alias(name, q) VALUES(?, ?)", ab)
+            ab.clear()
         if kc:
             db.executemany("INSERT INTO keystones(k, facts) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET facts = facts + excluded.facts", kc.items())
             kc.clear()
@@ -1282,6 +1298,10 @@ class WikidataDump(Dataset):
             e = json.loads(line)
         except ValueError:
             return []
+        return self.entity_facts(e, state)
+
+    def entity_facts(self, e, state):
+        """one Wikidata entity (as the dump and the API both give it) -> its facts, in the lanes' own form"""
         L = e.get("labels") or {}
         lab = (L.get("en") or L.get("mul") or {}).get("value")
         if not lab or e.get("type") != "item":
@@ -1308,6 +1328,23 @@ class WikidataDump(Dataset):
                     if v:
                         out.append((s, name, v))
         if out:
+            # 1.40 relevance: what the item IS in one line, the other names it goes by, and how well known it is
+            links = len(e.get("sitelinks") or ())
+            if links:
+                d = ((e.get("descriptions") or {}).get("en") or {}).get("value")
+                if d:
+                    out.append((s, "description", d))
+                fb = state.get("_famebuf")
+                if fb is not None:
+                    fb.append((int(q[1:]), links))
+                if links >= FAME_ALIASES:
+                    ab = state.get("_aliasbuf")
+                    for a in ((e.get("aliases") or {}).get("en") or ())[:12]:
+                        v = (a.get("value") or "").strip()
+                        if v and v != lab:
+                            out.append((s, "also known as", v))
+                            if ab is not None:
+                                ab.append((v.casefold(), int(q[1:])))
             state.setdefault("_links", {})[s] = "https://www.wikidata.org/wiki/" + q
             k = ks.entity_keystone(cls - {None}, claims.keys())
             if k:                                       # measured coverage per keystone domain (qbkeystone)
@@ -1411,6 +1448,21 @@ class WikidataDownload(Dataset):
             if gone:
                 TR.event("download", note="half download on the data drive removed (now kept in %s): %s" % (dumps, ", ".join(gone)))
 
+        # 1.40: finish the edition first. A new edition appears every week, the parts are named by their edition, so every
+        # lane began again at part 1 each week — and with a week not being enough, the later parts were NEVER read: the
+        # same first parts over and over (the drive working for nothing), whole stretches of Wikidata never in the store.
+        cur = dumps_ready(run.folder, run.commons)
+        if cur and (run.commons.setting("bulk:wikidata:chase_editions") or "off") != "on":
+            pr = edition_progress(run.folder, cur.get("edition") or "")
+            try:
+                age = (time.time() - time.mktime(time.strptime(cur["edition"], "%Y-%m-%d"))) / 86400
+            except (ValueError, KeyError, TypeError):
+                age = 0
+            if pr["total"] and pr["done"] < pr["total"] and age < KEEP_EDITION_DAYS:
+                return {"dataset": self.key, "state": "done", "new": 0, "edition": cur.get("edition"),
+                        "why": "keeping edition %s until every lane has read it (%d of %d parts done) — no new edition is fetched before that"
+                               % (cur.get("edition"), pr["done"], pr["total"])}
+
         def meter(n):
             METER.done += n
         log = lambda *a: TR.event("download", note=" ".join(str(x) for x in a))
@@ -1443,13 +1495,209 @@ def lane_keystones(commons_folder, key):
 QID = re.compile(r"\bQ(\d+)\b")
 
 
+FAME_ALIASES = 5                    # other names are kept for items with an article in at least this many Wikipedias
+KEEP_EDITION_DAYS = 56             # an edition is kept until every lane has read it, at most this long
+PART_NAME = re.compile(r"^(\S+) part (\d+) of (\d+)$")
+
+
+def _lane_parts(commons_folder):
+    """[(lane, edition, index (1-based), parts in that edition, done)] from every lane's own record of its parts"""
+    out = []
+    for lane in range(1, WikidataDump.LANES + 1):
+        p = shard_path(commons_folder, "wikidata-dump-%d" % lane)
+        if not os.path.exists(p):
+            continue
+        try:
+            db = _ro(p)
+            rows = db.execute("SELECT name, done FROM parts").fetchall()
+            db.close()
+        except sqlite3.Error:
+            continue
+        for name, done in rows:
+            m = PART_NAME.match(name or "")
+            if m:
+                out.append((lane, m.group(1), int(m.group(2)), int(m.group(3)), bool(done)))
+    return out
+
+
+def unread_first(indices, n, covered):
+    """a lane's parts of an edition of n parts, those at positions never read before (in any edition) first"""
+    if not covered:
+        return list(indices)
+    read = {int(f * n + 1e-9) for f in covered}
+    return sorted(indices, key=lambda i: (i in read, i))
+
+
+def dump_positions_read(commons_folder):
+    """the positions of the Wikidata dump (0..1, the start of each part) that some lane has read to the end in ANY edition.
+    The file keeps its order from week to week (new items go to the end), so a position read once is, nearly, read."""
+    return sorted({(i - 1) / n for _lane, _ed, i, n, done in _lane_parts(commons_folder) if done and n})
+
+
+def edition_progress(commons_folder, edition):
+    rows = [(i, n, done) for _lane, ed, i, n, done in _lane_parts(commons_folder) if ed == edition]
+    total = max((n for _i, n, _d in rows), default=0)
+    return {"edition": edition, "done": sum(1 for _i, _n, d in rows if d), "total": total}
+
+
+def dump_coverage(commons_folder):
+    """how much of Wikidata has EVER been read, and what the lanes are on now — the first thing the relevance test reports"""
+    rows = _lane_parts(commons_folder)
+    if not rows:
+        return {"share": 0.0, "parts": 0, "read": 0, "editions": [], "current": None, "text": "No part of the Wikidata dump has been read yet."}
+    eds = {}
+    for _lane, ed, i, n, done in rows:
+        e = eds.setdefault(ed, {"edition": ed, "parts": n, "done": 0, "started": 0})
+        e["started"] += 1
+        e["done"] += 1 if done else 0
+    cur = max(eds)
+    n = eds[cur]["parts"] or 1
+    read = {int(f * n) for f in dump_positions_read(commons_folder)}
+    read = {i for i in read if 0 <= i < n}
+    share = len(read) / n
+    hist = sorted(eds.values(), key=lambda e: e["edition"])
+    never = [e for e in hist if e["done"] < e["parts"]]
+    text = ("%d of %d parts of the Wikidata dump (%d%%) have ever been read to the end, counting every edition. " % (len(read), n, round(100 * share))
+            + ("%d edition(s) were started and none was finished (%s) — each new weekly edition made the lanes start again at part 1, so the later parts were never reached. "
+               % (len(hist), ", ".join("%s: %d of %d" % (e["edition"], e["done"], e["parts"]) for e in hist[-6:])) if hist and len(never) == len(hist) else "")
+            + "Since 1.40 the lanes read the never-read parts first and finish an edition before a new one is fetched.")
+    return {"share": round(share, 4), "parts": n, "read": len(read), "unread": sorted(set(range(n)) - read)[:200], "editions": hist, "current": cur, "text": text}
+
+
+def _label_dbs(commons_folder):
+    for key in ["hot-demand"] + ["hot-" + n for n in HOT] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+        p = shard_path(commons_folder, key) + ".labels"
+        if os.path.exists(p):
+            yield p
+
+
+def wd_fame(commons_folder, qids):
+    """{Q-number: Wikipedias with an article} for the items whose fame is recorded (1.40 on)"""
+    want, out = sorted(set(qids)), {}
+    for p in _label_dbs(commons_folder):
+        if not want:
+            break
+        try:
+            db = _ro(p)
+            for i in range(0, len(want), 500):
+                chunk = want[i:i + 500]
+                out.update(db.execute("SELECT q, links FROM fame WHERE q IN (%s)" % ",".join("?" * len(chunk)), chunk).fetchall())
+            db.close()
+        except sqlite3.Error:
+            continue
+        want = [x for x in want if x not in out]
+    return out
+
+
+def wd_alias(commons_folder, name):
+    """Q-numbers of the well-known items that go by this other name ("FDR", "The Babe")"""
+    out = set()
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+            out.update(q for q, in db.execute("SELECT q FROM alias WHERE name = ?", ((name or "").casefold(),)))
+            db.close()
+        except sqlite3.Error:
+            continue
+    return sorted(out)
+
+
+ENT_SUBJECT = re.compile(r"^(.*) \(Q(\d+)\)$")
+
+
+def name_forms(text):
+    """the ways a name may have been typed: as given, first letter capital, Every Word Capital, ALL CAPITALS (short ones)"""
+    t = " ".join((text or "").split())
+    forms = [t, t[:1].upper() + t[1:], " ".join(w[:1].upper() + w[1:] for w in t.split(" "))]
+    if len(t) <= 6:
+        forms.append(t.upper())
+    return list(dict.fromkeys(f for f in forms if f))
+
+
+def find_entities(commons_folder, text, top=5, per=400):
+    """1.40 — WHO or WHAT is meant: every thing named exactly `text` (or known by that other name) in every store, the
+    best known first, with ALL the facts of the best ones. Before, the Ask box took the first sixty facts whose subject
+    began with the words — any "Babe Ruth" (a museum's baseball card), sixty of its facts at random.
+    Well known = Wikipedias with an article (fame, recorded from 1.40), then how many facts the store holds about it (a
+    famous person has hundreds, a namesake a handful). Returns {"entities": [...], "facts": [...], "asked", "stores"}."""
+    forms = name_forms(text)
+    held = stores(commons_folder)
+    found = {}                                         # subject -> {"n", "stores"}
+    if not forms:
+        return {"entities": [], "facts": [], "asked": 0, "stores": len(held)}
+    alias_q = set()
+    for f in forms[:2]:
+        alias_q.update(wd_alias(commons_folder, f))
+    for key, ds in held:
+        try:
+            db = _ro(shard_path(commons_folder, key))
+        except sqlite3.Error:
+            continue
+        try:
+            for f in forms:
+                for s_, n_ in db.execute("SELECT s, count(*) FROM facts WHERE (s >= ? AND s < ?) OR s = ? GROUP BY s LIMIT 300",
+                                         (f + " (Q", f + " (Q\uffff", f)):
+                    e = found.setdefault(s_, {"n": 0, "stores": []})
+                    e["n"] += n_
+                    e["stores"].append(key)
+        except sqlite3.Error:
+            pass
+        finally:
+            db.close()
+    if alias_q:                                        # known by another name: the item's own label names its subject
+        labs = wd_labels(commons_folder, list(alias_q))
+        for qn, lab in labs.items():
+            s_ = "%s (Q%d)" % (lab, qn)
+            if s_ in found:
+                continue
+            for key, ds in held:
+                try:
+                    db = _ro(shard_path(commons_folder, key))
+                    n_ = db.execute("SELECT count(*) FROM facts WHERE s = ?", (s_,)).fetchone()[0]
+                    db.close()
+                except sqlite3.Error:
+                    continue
+                if n_:
+                    e = found.setdefault(s_, {"n": 0, "stores": [], "alias": True})
+                    e["n"] += n_
+                    e["stores"].append(key)
+    qn_of = {s_: int(m.group(2)) for s_ in found for m in [ENT_SUBJECT.match(s_)] if m}
+    fame = wd_fame(commons_folder, list(qn_of.values())) if qn_of else {}
+    ents = [{"subject": s_, "qid": ("Q%d" % qn_of[s_]) if s_ in qn_of else None, "facts": e["n"], "fame": fame.get(qn_of.get(s_)),
+             "stores": e["stores"], "by_other_name": bool(e.get("alias"))} for s_, e in found.items()]
+    ents.sort(key=lambda e: (-(e["fame"] or 0), -e["facts"], e["subject"]))
+    cat = catalog()
+    facts = []
+    for e in ents[:top]:
+        got = 0
+        for key in dict.fromkeys(e["stores"]):
+            ds = cat[key]
+            try:
+                db = _ro(shard_path(commons_folder, key))
+            except sqlite3.Error:
+                continue
+            try:
+                for s_, pr, o, part, row in db.execute(
+                        "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
+                        "WHERE f.s = ? LIMIT ?", (e["subject"], per - got)):
+                    facts.append({"subject": s_, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed", "licence": ds.licence,
+                                  "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_), "status": "computed" if not ds.source else "sourced"})
+                    got += 1
+            except sqlite3.Error:
+                pass
+            finally:
+                db.close()
+            if got >= per:
+                break
+    return {"entities": ents[:25], "facts": label_wikidata(commons_folder, facts), "asked": len(held), "stores": len(held)}
+
+
 def wd_labels(commons_folder, qids):
     """English labels for Q-numbers, from every lane's label file"""
     want, out = sorted(set(qids)), {}
-    for lane in list(range(1, WikidataDump.LANES + 1)) + ["lattice"]:
-        p = shard_path(commons_folder, "wikidata-dump-%d" % lane if lane != "lattice" else "wikidata-lattice") + ".labels"
-        if not want or not os.path.exists(p):
-            continue
+    for p in _label_dbs(commons_folder):
+        if not want:
+            break
         db = _ro(p)
         for i in range(0, len(want), 500):
             chunk = want[i:i + 500]
@@ -1459,8 +1707,286 @@ def wd_labels(commons_folder, qids):
     return out
 
 
+# ------------------------------------------------------------------------------------------------ the hot lattices (1.40)
+# What people ask about first. The dump lanes read all of Wikidata in the order of a 150 GB file: after three weeks the
+# store held 1.5 billion facts and nothing about Ed Sullivan. A hot lattice does the opposite: for one kind of thing
+# (television presenters, presidents, monuments, universities, wars...) it asks Wikidata for the items of that kind in
+# order of how much the rest of Wikidata links to them — the best known first — and reads each one's whole record. A few
+# thousand requests bring the few hundred thousand subjects nearly every question is about; the lanes fill in the rest.
+# Each lattice is its own dataset with its own agent, so they run side by side; they are re-read every month.
+HOT = {
+    "people-politics": ("People — politics and government", 3000, (
+        "P106=Q82955", "P39=Q11696", "P39=Q14211", "P106=Q372436", "P106=Q193391", "P106=Q116", "P106=Q16533", "P106=Q40348",
+        "P106=Q189290", "P106=Q15253558", "P39=Q30461", "P39=Q13218630", "P39=Q4416090", "P106=Q2304859")),
+    "people-entertainment": ("People — film, television, radio and stage", 3000, (
+        "P106=Q947873", "P106=Q33999", "P106=Q10800557", "P106=Q10798782", "P106=Q245068", "P106=Q2526255", "P106=Q2722764",
+        "P106=Q3282637", "P106=Q28389", "P106=Q4610556", "P106=Q2405480", "P106=Q2259451", "P106=Q5716684", "P106=Q138858")),
+    "people-music": ("People — music", 3000, (
+        "P106=Q177220", "P106=Q639669", "P106=Q36834", "P106=Q753110", "P106=Q2252262", "P106=Q158852", "P106=Q855091",
+        "P106=Q486748", "P106=Q488205", "P106=Q183945", "P106=Q2865819", "P106=Q386854", "P31=Q215380", "P31=Q5741069")),
+    "people-arts-letters": ("People — art, literature and ideas", 3000, (
+        "P106=Q1028181", "P106=Q1281618", "P106=Q42973", "P106=Q33231", "P106=Q36180", "P106=Q49757", "P106=Q6625963",
+        "P106=Q1930187", "P106=Q4964182", "P106=Q214917", "P106=Q644687", "P106=Q5322166", "P106=Q4853732", "P106=Q333634")),
+    "people-science-education": ("People — science, invention, medicine and education", 3000, (
+        "P106=Q169470", "P106=Q593644", "P106=Q170790", "P106=Q864503", "P106=Q205375", "P106=Q39631", "P106=Q11063",
+        "P106=Q188094", "P106=Q201788", "P106=Q37226", "P106=Q1622272", "P106=Q81096", "P106=Q11631", "P106=Q11900058",
+        "P106=Q901", "P106=Q212980", "P106=Q2374149", "P106=Q82594")),
+    "people-religion": ("People — religion", 3000, (
+        "P106=Q42603", "P106=Q1234713", "P106=Q250867", "P106=Q152002", "P106=Q133485", "P106=Q125482", "P106=Q219477",
+        "P106=Q432386", "P106=Q733786", "P39=Q19546", "P106=Q15995642", "P106=Q191808", "P106=Q831474", "P31=Q178885")),
+    "people-sports": ("People — sport", 3000, (
+        "P106=Q10871364", "P106=Q3665646", "P106=Q19204627", "P106=Q937857", "P106=Q11338576", "P106=Q10833314", "P106=Q11303721",
+        "P106=Q11513337", "P106=Q11774891", "P106=Q10349745", "P106=Q10843402", "P106=Q2309784", "P106=Q13381572", "P106=Q4009406",
+        "P106=Q13141064", "P106=Q10873124")),
+    "people-business-society": ("People — business, exploration and public life", 3000, (
+        "P106=Q43845", "P106=Q131524", "P106=Q2462658", "P106=Q806798", "P106=Q10076267", "P106=Q12362622", "P106=Q8246794",
+        "P106=Q3242115", "P106=Q10669499", "P106=Q2095549", "P106=Q15980158", "P106=Q484876")),
+    "places": ("Places — countries, states, cities and the natural world", 3000, (
+        "P31=Q3624078", "P31=Q6256", "P31=Q35657", "P31=Q515", "P31=Q1549591", "P31=Q5119", "P31=Q1093829", "P31=Q8502",
+        "P31=Q4022", "P31=Q23397", "P31=Q23442", "P31=Q46169", "P31=Q5107", "P31=Q9430", "P31=Q8514", "P31=Q34763",
+        "P31=Q47168", "P31=Q1637706", "P31=Q174844", "P31=Q133056")),
+    "monuments": ("Monuments, landmarks and famous buildings", 3000, (
+        "P31=Q4989906", "P31=Q570116", "P1435=Q9259", "P31=Q33506", "P31=Q16970", "P31=Q23413", "P31=Q12280", "P31=Q11303",
+        "P31=Q5003624", "P31=Q179700", "P31=Q2977", "P31=Q44539", "P31=Q16560", "P31=Q483110", "P31=Q839954", "P31=Q12518",
+        "P31=Q1128397", "P31=Q24354", "P31=Q22698", "P1435=Q19558910")),
+    "institutions": ("Institutions — universities, companies, governments, churches, teams, media", 3000, (
+        "P31=Q3918", "P31=Q4830453", "P31=Q891723", "P31=Q327333", "P31=Q7278", "P31=Q484652", "P31=Q163740", "P31=Q11032",
+        "P31=Q1254874", "P31=Q13027888", "P31=Q13393265", "P31=Q17156793", "P31=Q476028", "P31=Q9174", "P31=Q879146", "P31=Q3914",
+        "P31=Q16917", "P31=Q7075", "P31=Q2085381", "P31=Q41298", "P31=Q14350", "P31=Q1616075", "P31=Q11691", "P31=Q8473")),
+    "events": ("Events — wars, elections, disasters, discoveries and firsts", 3000, (
+        "P31=Q198", "P31=Q178561", "P31=Q10931", "P31=Q47566", "P31=Q40231", "P31=Q3839081", "P31=Q131569", "P31=Q159821",
+        "P31=Q7944", "P31=Q3882219", "P31=Q13418847", "P31=Q12184", "P31=Q8065", "P31=Q124757", "P31=Q175331", "P31=Q5389",
+        "P31=Q82414", "P31=Q11422536", "P31=Q1318941", "P31=Q752783", "P31=Q7283", "P31=Q1190554")),
+    "works": ("Works — films, television, music, books and art", 3000, (
+        "P31=Q11424", "P31=Q5398426", "P31=Q15416", "P31=Q482994", "P31=Q7725634", "P31=Q571", "P31=Q8261", "P31=Q3305213",
+        "P31=Q7889", "P31=Q2743", "P31=Q25379", "P31=Q134556", "P31=Q1004", "P31=Q24856", "P31=Q41298", "P31=Q860861",
+        "P31=Q105543609", "P31=Q1344", "P31=Q21191270", "P31=Q5185279")),
+    "knowledge": ("Things people look up — science, nature, culture and daily life", 3000, (
+        "P31=Q11344", "P31=Q12136", "P31=Q634", "P31=Q618779", "P31=Q349", "P31=Q34379", "P31=Q2095", "P31=Q1445650",
+        "P31=Q34770", "P31=Q8142", "P31=Q9143", "P31=Q8928", "P31=Q11173", "P31=Q7187", "P31=Q8054", "P31=Q16521",
+        "P31=Q43229", "P31=Q11862829", "P31=Q483394", "P31=Q41710", "P31=Q4022", "P31=Q15401930", "P31=Q1420", "P31=Q11446")),
+}
+
+
+def HOT_FETCH(params):
+    """one request to Wikidata's API (the tests replace this)"""
+    url = "https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode(dict(params, format="json", maxlag=5))
+    with urllib.request.urlopen(_req(url), timeout=90) as r:
+        return json.loads(r.read())
+
+
+class WikidataHot(Dataset):
+    """ONE hot lattice: the best-known items of each kind it names, the most linked-to first, each item's whole record.
+    A part is 50 items of one kind (rank 1-50, 51-100, ...): the parts are ordered by rank across the kinds, so the top
+    50 of every kind are read before the next 50 of any. Facts are written exactly as the dump lanes write them (the
+    lanes' own entity rule), with the item's description, other names and fame — where the two overlap one copy is kept."""
+    app, source, licence = "facts", "wikidata", "CC0 1.0 (Wikidata)"
+    PAGE = 50
+    GAP_S = 0.6                                       # between two requests of one lattice (Wikidata asks for restraint)
+
+    def __init__(self, name):
+        self.name = name
+        self.title_short, self.depth, self.finds = HOT[name]
+        self.key = "hot-" + name
+        self.title = "Hot lattice — " + self.title_short
+        self.why = "what people ask about first: the best-known items of each kind, most linked-to first, read directly from Wikidata"
+        self.approx = "about %s items in %d kinds, re-read monthly" % (format(self.depth * len(self.finds), ","), len(self.finds))
+
+    def prepare(self, run):
+        self.lane = WikidataDump(1)
+        self.lane.props = self.lane.catalogue(run.folder, fetch=not os.environ.get("QB_OFFLINE"))
+        self.folder = run.folder
+        db = sqlite3.connect(shard_path(run.folder, self.key) + ".labels")
+        db.execute("CREATE TABLE IF NOT EXISTS labels (q INTEGER PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS keystones (k TEXT PRIMARY KEY, facts INTEGER NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS fame (q INTEGER PRIMARY KEY, links INTEGER NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS alias (name TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (name, q)) WITHOUT ROWID")
+        db.commit()
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_known": set()}
+
+    def parts(self):
+        ed = time.strftime("%Y-%m")
+        return [("%s %s rank %05d-%05d" % (ed, find, off + 1, off + self.PAGE), "hot#%s#%d" % (find, off))
+                for off in range(0, self.depth, self.PAGE) for find in self.finds]
+
+    def _get(self, params, state):
+        last = state.get("_last", 0)
+        if last and time.time() - last < self.GAP_S:
+            time.sleep(self.GAP_S - (time.time() - last))
+        for attempt in range(5):
+            try:
+                slot = self._turn()
+                try:
+                    r = HOT_FETCH(params)
+                finally:
+                    if slot is not None:
+                        self._slots.release(slot)
+                if isinstance(r, dict) and (r.get("error") or {}).get("code") == "maxlag":
+                    time.sleep(5 + 5 * attempt)       # Wikidata's own servers are behind: wait as it asks
+                    continue
+                state["_last"] = time.time()
+                return r
+            except urllib.error.HTTPError as e:
+                if e.code not in REFUSED + (502, 504):
+                    raise
+                time.sleep(max(10 * (attempt + 1), _retry_after(e)))
+        raise Busy("Wikidata asked us to slow down; this hot lattice continues on the next run")
+
+    API_AT_ONCE = 3                                   # every lattice together: at most this many requests to Wikidata at a time
+
+    def _turn(self):
+        """fifteen lattices each asking at their own pace would be twenty requests a second from one computer: they take
+        turns, three at a time (a lock file each, shared by every agent)"""
+        if getattr(self, "_slots", None) is None:
+            self._slots = Slots(self.folder)
+        t0 = time.time()
+        while time.time() - t0 < 120:
+            for i in range(self.API_AT_ONCE):
+                f = self._slots._lock("wikidata-api", i)
+                if f:
+                    return f
+            time.sleep(0.2)
+        return None
+
+    def rows(self, part, url, state):
+        _, find, off = url.split("#")
+        r = self._get({"action": "query", "list": "search", "srsearch": "haswbstatement:" + find, "srnamespace": 0, "srlimit": self.PAGE,
+                       "sroffset": int(off), "srsort": "incoming_links_desc", "srprop": ""}, state)
+        ids = [h["title"] for h in (r.get("query") or {}).get("search", []) if str(h.get("title", "")).startswith("Q")]
+        if not ids:
+            return iter(())
+        ents = (self._get({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels|descriptions|aliases|claims|sitelinks",
+                           "languages": "en|mul"}, state).get("entities") or {})
+        rows = [ents[q] for q in ids if q in ents and "missing" not in ents[q]]
+        self._name_values(rows, state)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+    def _each(self, rows, state):
+        try:
+            for r in rows:
+                yield r
+        finally:
+            self.lane._flush(state)                        # fame, other names and labels of this batch are kept
+
+    def _name_values(self, ents, state):
+        """the labels of the items these records point to (a birthplace, an occupation, a spouse), so their values read as
+        names: those no label file holds yet are asked for, 50 at a time, and kept"""
+        refs = set()
+        for e in ents:
+            for sts in (e.get("claims") or {}).values():
+                for st in sts:
+                    v = ((st.get("mainsnak") or {}).get("datavalue") or {}).get("value")
+                    if isinstance(v, dict) and str(v.get("id", "")).startswith("Q"):
+                        refs.add(int(v["id"][1:]))
+        refs -= state["_known"]
+        if refs:
+            refs -= set(wd_labels(self.folder, list(refs)))
+        want = sorted(refs)
+        for i in range(0, len(want), 50):
+            r = self._get({"action": "wbgetentities", "ids": "|".join("Q%d" % q for q in want[i:i + 50]), "props": "labels", "languages": "en|mul"}, state)
+            for q, e in (r.get("entities") or {}).items():
+                L = e.get("labels") or {}
+                lab = (L.get("en") or L.get("mul") or {}).get("value")
+                if lab and q[1:].isdigit():
+                    state["_labelbuf"].append((int(q[1:]), lab))
+        state["_known"] |= refs
+        self.lane._flush(state)
+
+    def facts(self, part, row, state):
+        out = self.lane.entity_facts(row, state)
+        if len(state.get("_labelbuf") or ()) >= 500:
+            self.lane._flush(state)
+        return out
+
+    def link(self, subject):
+        m = re.search(r"\((Q\d+)\)$", subject)
+        return "https://www.wikidata.org/wiki/" + m.group(1) if m else None
+
+
+DEMAND_NAME, LEARNED_NAME = "_demand.json", "_demand_learned.json"
+
+
+def demand_note(commons_folder, subject, question="", why=""):
+    """1.40 — learn from what was asked: a subject QueryBook could not answer (or answered with the wrong kind of thing)
+    is queued for the demand agent, which fetches its record from Wikidata at once. Returns {"queued", "pending"}."""
+    subject = " ".join(str(subject or "").split())[:120]
+    if len(subject) < 2:
+        return {"queued": False, "pending": 0}
+    path = os.path.join(commons_folder, FOLDER, DEMAND_NAME)
+    q = _read_json(path, [])
+    q = q if isinstance(q, list) else []
+    row = next((r for r in q if r.get("subject", "").casefold() == subject.casefold()), None)
+    if row:
+        row.update(n=int(row.get("n") or 1) + 1, last=time.time())
+    else:
+        q.append({"subject": subject, "question": str(question or "")[:200], "why": str(why or "")[:200], "at": time.time(), "last": time.time(), "n": 1})
+    _ka_save(path, q[-3000:])
+    return {"queued": True, "pending": sum(1 for r in q if not r.get("done"))}
+
+
+def demand_list(commons_folder):
+    q = _read_json(os.path.join(commons_folder, FOLDER, DEMAND_NAME), [])
+    return q if isinstance(q, list) else []
+
+
+def demand_learned(commons_folder):
+    """{lattice: how many asked-for subjects turned out to be of its kinds} — the lattices people's questions land in most
+    are harvested first (qbkeystone.order)"""
+    d = _read_json(os.path.join(commons_folder, FOLDER, LEARNED_NAME), {})
+    return d if isinstance(d, dict) else {}
+
+
+class WikidataDemand(WikidataHot):
+    """The demand agent: every subject that was asked and not found (the Ask box, the relevance test) is looked up by name
+    in Wikidata and the best candidates' whole records are read — the person, and the things named after them. It learns
+    as it goes: the kinds of the subjects it fetches decide which hot lattices are harvested first."""
+    def __init__(self):
+        self.name, self.key = "demand", "hot-demand"
+        self.title_short, self.depth, self.finds = "what was asked and not found", 0, ()
+        self.title = "Demand agent — what was asked and not found, fetched at once"
+        self.why = "a question QueryBook could not answer is the best guide to what it lacks: its subject is fetched within minutes"
+        self.approx = "as asked"
+
+    def parts(self):
+        ed = time.strftime("%Y-%m")
+        return [("asked %s: %s" % (ed, r["subject"]), "demand#" + r["subject"]) for r in demand_list(self.folder) if r.get("subject")]
+
+    def rows(self, part, url, state):
+        subject = url.split("#", 1)[1]
+        r = self._get({"action": "wbsearchentities", "search": subject, "language": "en", "uselang": "en", "type": "item", "limit": 7}, state)
+        ids = [h["id"] for h in r.get("search") or [] if str(h.get("id", "")).startswith("Q")]
+        rows = []
+        if ids:
+            ents = (self._get({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels|descriptions|aliases|claims|sitelinks",
+                               "languages": "en|mul"}, state).get("entities") or {})
+            rows = [ents[q] for q in ids if q in ents and "missing" not in ents[q]]
+            self._name_values(rows, state)
+            self._learn(rows)
+        q = demand_list(self.folder)                       # marked: fetched (or nothing by that name in Wikidata)
+        for row in q:
+            if row.get("subject") == subject:
+                row.update(done=time.time(), found=len(rows))
+        _ka_save(os.path.join(self.folder, FOLDER, DEMAND_NAME), q)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+    def _learn(self, ents):
+        learned = demand_learned(self.folder)
+        for e in ents[:1]:                                 # the best match: what kind of thing was asked for
+            claims = e.get("claims") or {}
+            mine = {"%s=%s" % (p, ((st.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id"))
+                    for p in ("P31", "P106", "P39", "P1435") for st in claims.get(p, ())
+                    if isinstance(((st.get("mainsnak") or {}).get("datavalue") or {}).get("value"), dict)}
+            for name, (_t, _d, finds) in HOT.items():
+                if mine & set(finds):
+                    learned[name] = int(learned.get(name) or 0) + 1
+        _ka_save(os.path.join(self.folder, FOLDER, LEARNED_NAME), learned)
+
+
 def catalog():
-    return {d.key: d for d in (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
+    return {d.key: d for d in (WikidataDemand(),) + tuple(WikidataHot(n) for n in HOT) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -2676,6 +3202,8 @@ def _agent_main(commons_folder, key, max_rows, result_path):
 def next_try(r, fails):
     """seconds until a dataset is started again, from how it ended (None: not again in this run)"""
     st = (r or {}).get("state")
+    if (r or {}).get("dataset") == "hot-demand" and st in ("done", "paused"):
+        return 120                               # 1.40: the demand agent looks at its queue every two minutes
     if st == "done":
         return RECHECK_DONE_S
     if st == "stopped" and "Control Panel" in str(r.get("why") or ""):
@@ -2735,6 +3263,7 @@ class Supervisor:
         info = self.running.pop(key)
         if r is None:
             r = {"dataset": key, "state": "paused", "why": how}
+        r.setdefault("dataset", key)
         ok = r.get("state") in ("done",)
         self.fails[key] = 0 if ok or r.get("new") or r.get("written") else self.fails[key] + 1   # staged facts are progress too
         wait = next_try(r, max(0, self.fails[key] - 1))
@@ -3121,6 +3650,10 @@ def status(commons_folder, commons=None):
         al = _agent_alive_info(commons_folder, key)
         if al and al.get("waiting") and row["state"] == "running":
             row["doing"] = al["waiting"]                   # "filing 20,000,000 facts into the dataset", "a download connection"…
+        if key.startswith("hot-") and row.get("parts"):   # a lattice has a thousand small parts: the page gets the count and the last few
+            ps = row["parts"]
+            row["parts_done"], row["parts_total"] = sum(1 for x in ps if x.get("done")), len(ps)
+            row["parts"] = [x for x in ps if not x.get("done")][:2] + [x for x in ps if x.get("done")][-2:]
         out.append(row)
     _count_ledger(commons_folder, out, now)
     _save_counts(commons_folder, out)
@@ -3752,7 +4285,7 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
         k_ = d["key"]
         g_ = d.get("gathered", d.get("facts")) or 0
         p_ = per.get(k_)
-        if not p_ or g_ > p_["g"] or k_ in filing_keys or getattr(cat.get(k_), "standalone", False):
+        if not p_ or g_ > p_["g"] or k_ in filing_keys or getattr(cat.get(k_), "standalone", False) or k_ == "hot-demand":
             p_ = {"g": g_, "at": now, "mv": mv.get(k_), "moved": False}
         else:
             if mv.get(k_) is not None and mv.get(k_) != p_.get("mv"):
@@ -4419,6 +4952,23 @@ def add_routes(api, commons, program_dir):
         except OSError:
             pass
         return autostart(program_dir, bool(p.get("on")))
+    @api.post("/api/bulk/demand")
+    def bulk_demand(p):
+        return demand_note(commons.folder, p.get("subject") or "", p.get("question") or "", p.get("why") or "")
+
+    @api.get("/api/bulk/demand")
+    def bulk_demand_list(p):
+        return {"demand": demand_list(commons.folder)[-200:], "learned": demand_learned(commons.folder)}
+
+    @api.get("/api/bulk/entity")
+    def bulk_entity(p):
+        """1.40: who or what is meant by a name — the best-known match first, with all its facts"""
+        return find_entities(commons.folder, p.get("q") or "", int(p.get("top") or 5))
+
+    @api.get("/api/bulk/coverage")
+    def bulk_coverage(p):
+        return dump_coverage(commons.folder)
+
     @api.get("/api/bulk/health")
     def bulk_health(p):
         return health(commons.folder, commons)
@@ -5061,6 +5611,118 @@ def self_test():
            fpd("1999 World Series (Q10)", "winner", "Q213417") == fp("history", "1999 World Series (Q10)", "winner", "Q213417"))
         ok("lattice: batches of at most 200 series and 1,500 editions; a giant series alone",
            WikidataLattice.batches([["Q1", 1000], ["Q2", 600], ["Q3", 5], ["Q4", 3000]]) == [["Q1"], ["Q2", "Q3"], ["Q4"]])
+        # 1.40 relevance — the hot lattices, the demand agent, fame, and choosing the right "Babe Ruth"
+        import sense as _sense
+        ent = lambda q, label, claims, links=0, desc=None, aliases=(): {
+            "type": "item", "id": q, "labels": {"en": {"value": label}}, "sitelinks": {"w%d" % i: {} for i in range(links)},
+            "descriptions": {"en": {"value": desc}} if desc else {}, "aliases": {"en": [{"value": a} for a in aliases]},
+            "claims": {pp: [{"rank": "normal", "mainsnak": {"datavalue": dv}} for dv in dvs] for pp, dvs in claims.items()}}
+        item = lambda q: {"type": "wikibase-entityid", "value": {"id": q}}
+        when = lambda d: {"type": "time", "value": {"time": "+%sT00:00:00Z" % d, "precision": 11}}
+        WORLD = {
+            "Q213812": ent("Q213812", "Babe Ruth", {"P31": [item("Q5")], "P569": [when("1895-02-06")], "P106": [item("Q10871364")]}, 120,
+                           "American baseball player (1895–1948)", ("The Babe", "George Herman Ruth")),
+            "Q99": ent("Q99", "Babe Ruth", {"P31": [item("Q809892")]}),
+            "Q83807": ent("Q83807", "Ed Sullivan", {"P31": [item("Q5")], "P569": [when("1901-09-28")], "P106": [item("Q947873")]}, 40,
+                          "American television host (1901–1974)"),
+        }
+        LABELS = {"Q5": "human", "Q10871364": "baseball player", "Q809892": "baseball card", "Q947873": "television presenter"}
+        asked_ = []
+
+        def fake_wd(params):
+            asked_.append(params)
+            if params.get("list") == "search":
+                hit = params["srsearch"].endswith("P106=Q10871364") and int(params["sroffset"]) == 0
+                return {"query": {"search": [{"title": "Q213812"}] if hit else [], "searchinfo": {"totalhits": 1}}}
+            if params.get("action") == "wbsearchentities":
+                return {"search": [{"id": q} for q in {"Ed Sullivan": ["Q83807"], "Babe Ruth": ["Q213812", "Q99"]}.get(params["search"], [])]}
+            ids = params["ids"].split("|")
+            if params.get("props") == "labels":
+                return {"entities": {q: {"labels": {"en": {"value": LABELS[q]}}} for q in ids if q in LABELS}}
+            return {"entities": {q: WORLD[q] for q in ids if q in WORLD}}
+        with open(os.path.join(cf, FOLDER, "wikidata-properties.json"), "w") as f:
+            json.dump({"read": time.time(), "props": {"P31": ["WikibaseItem", "instance of"], "P569": ["Time", "date of birth"],
+                                                      "P106": ["WikibaseItem", "occupation"]}}, f)
+        real_fetch, real_hot, off_was, gap_was = HOT_FETCH, dict(HOT), os.environ.get("QB_OFFLINE"), WikidataHot.GAP_S
+        try:
+            globals()["HOT_FETCH"] = fake_wd
+            os.environ["QB_OFFLINE"] = "1"
+            WikidataHot.GAP_S = 0
+            HOT["people-sports"] = ("People — sport", 100, ("P106=Q10871364", "P106=Q3665646"))
+            hot_parts = WikidataHot("people-sports").parts()
+            rh = run_dataset(cf, "hot-people-sports")
+            dbh = sqlite3.connect(shard_path(cf, "hot-people-sports"))
+            hf = {(a, p_, o) for a, p_, o in dbh.execute("SELECT f.s, pr.name, f.o FROM facts f JOIN predicates pr ON pr.id = f.p")}
+            dbh.close()
+            ok("1.40 hot lattice: the best-known items of each kind are asked for by rank (the top 50 of every kind before the next 50 of any) "
+               "and each one's whole record is read, in the dump lanes' own form — with what it IS (description) and its other names",
+               rh["state"] == "done" and [n.split(" ", 1)[1] for n, _u in hot_parts] == [
+                   "P106=Q10871364 rank 00001-00050", "P106=Q3665646 rank 00001-00050", "P106=Q10871364 rank 00051-00100", "P106=Q3665646 rank 00051-00100"]
+               and {("Babe Ruth (Q213812)", "date of birth", "1895-02-06"), ("Babe Ruth (Q213812)", "occupation", "Q10871364"),
+                    ("Babe Ruth (Q213812)", "instance of", "Q5"), ("Babe Ruth (Q213812)", "description", "American baseball player (1895–1948)"),
+                    ("Babe Ruth (Q213812)", "also known as", "The Babe")} <= hf, (rh, hot_parts[:2], sorted(hf)))
+            ok("1.40 hot lattice: how well known each item is (Wikipedias with an article) and the names of the things it points to are kept",
+               wd_fame(cf, [213812, 99]) == {213812: 120} and wd_labels(cf, [5, 10871364]) == {5: "human", 10871364: "baseball player"}
+               and wd_alias(cf, "the babe") == [213812], (wd_fame(cf, [213812]), wd_labels(cf, [5, 10871364]), wd_alias(cf, "the babe")))
+            # the demand agent: asked and not found -> fetched; and it learns which lattice the question landed in
+            d0 = demand_note(cf, "Ed Sullivan", "Who is Ed Sullivan?", "no record")
+            demand_note(cf, "Babe Ruth", "Who was Babe Ruth?", "only a baseball card")
+            demand_note(cf, "Ed Sullivan")
+            rd = run_dataset(cf, "hot-demand")
+            dq = {r_["subject"]: r_ for r_ in demand_list(cf)}
+            fe = find_entities(cf, "ed sullivan")
+            ok("1.40 demand agent: a subject that was asked and not found is fetched by name within minutes (looked at every 2 minutes), its "
+               "record is then in the store, and the agent learns which lattice the question landed in (that lattice is harvested first)",
+               d0["queued"] and rd["state"] == "done" and dq["Ed Sullivan"]["n"] == 2 and dq["Ed Sullivan"].get("done") and dq["Ed Sullivan"]["found"] == 1
+               and [e_["subject"] for e_ in fe["entities"]] == ["Ed Sullivan (Q83807)"] and demand_learned(cf).get("people-entertainment") == 1
+               and next_try({"dataset": "hot-demand", "state": "done"}, 0) == 120, (rd, dq, fe["entities"], demand_learned(cf)))
+            import qbkeystone as _ks
+            order_ = _ks.order(["wikidata-dump-1", "hot-places", "usgs-gnis", "hot-people-entertainment", "hot-demand"], cf)
+            ok("1.40: the demand agent and the hot lattices start before everything else, the lattice people's questions land in first",
+               order_[:3] == ["hot-demand", "hot-people-entertainment", "hot-places"], order_)
+            # WHO is meant: the man and the card are both in the store now
+            fb = find_entities(cf, "babe ruth")                 # typed in lower case
+            jb = _sense.answer_for("Who was Babe Ruth?", "Babe Ruth", fb["entities"], fb["facts"])
+            fa = find_entities(cf, "The Babe")
+            ok("1.40: every thing with the name is found however it was typed, the best known first (fame, then how much is recorded), with "
+               "ALL its facts and their values named — and by its other names too",
+               [(e_["subject"], e_["fame"]) for e_ in fb["entities"]] == [("Babe Ruth (Q213812)", 120), ("Babe Ruth (Q99)", None)]
+               and {"human (Q5)", "baseball player (Q10871364)"} <= {f_["object"] for f_ in fb["facts"]}
+               and fa["entities"] and fa["entities"][0]["subject"] == "Babe Ruth (Q213812)" and fa["entities"][0]["by_other_name"], (fb["entities"], fa["entities"]))
+            ok("1.40 a grasp of reality: Babe Ruth is a person, not the baseball card of the same name — the answer says who he was",
+               jb["entity"]["subject"] == "Babe Ruth (Q213812)" and jb["entity"]["kind"] == "human" and not jb["missing"]
+               and jb["said"].startswith("Babe Ruth (born 1895) — American baseball player") and [r_["kind"] for r_ in jb["entity"]["ranked"]] == ["human", "depiction"] and "with an article in 120 Wikipedias" in jb["entity"]["why"],
+               (jb["said"], jb["entity"]))
+        finally:
+            globals()["HOT_FETCH"] = real_fetch
+            HOT.clear(); HOT.update(real_hot)
+            WikidataHot.GAP_S = gap_was
+            if off_was is None:
+                os.environ.pop("QB_OFFLINE", None)
+            else:
+                os.environ["QB_OFFLINE"] = off_was
+            os.remove(os.path.join(cf, FOLDER, "wikidata-properties.json"))
+            for key_ in ("hot-people-sports", "hot-demand"):   # the tests that follow count the stores they made themselves
+                for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(shard_path(cf, key_) + ext):
+                        os.remove(shard_path(cf, key_) + ext)
+            for f_ in (DEMAND_NAME, LEARNED_NAME):
+                if os.path.exists(os.path.join(cf, FOLDER, f_)):
+                    os.remove(os.path.join(cf, FOLDER, f_))
+        # 1.40: how much of the dump was EVER read, the never-read parts first, an edition finished before the next
+        real_lp = _lane_parts
+        try:
+            globals()["_lane_parts"] = lambda c_: [(1, "2026-10-28", 1, 146, True), (1, "2026-11-04", 1, 147, True), (1, "2026-11-04", 17, 147, True),
+                                                   (2, "2026-11-04", 2, 147, False), (1, "2026-11-11", 1, 147, False)]
+            cov_ = dump_coverage(cf)
+            first_ = unread_first([i for i in range(147) if i % 16 == 0], 147, dump_positions_read(cf))
+            ep_ = edition_progress(cf, "2026-11-04")
+        finally:
+            globals()["_lane_parts"] = real_lp
+        ok("1.40: the engine knows how much of Wikidata it has EVER read (here 2 of 147 parts across three editions, none finished — each "
+           "new weekly edition had sent every lane back to part 1), and a lane now reads its never-read parts first",
+           cov_["read"] == 2 and cov_["parts"] == 147 and cov_["current"] == "2026-11-11" and "none was finished" in cov_["text"]
+           and first_[:3] == [32, 48, 64] and first_[-2:] == [0, 16] and ep_ == {"edition": "2026-11-04", "done": 2, "total": 147}, (cov_, first_, ep_))
         wd = WikidataDump(1, 1)
         os.makedirs(os.path.join(cf, FOLDER), exist_ok=True)
         with open(os.path.join(cf, FOLDER, "wikidata-properties.json"), "w") as f:

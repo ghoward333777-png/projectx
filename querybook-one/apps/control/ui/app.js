@@ -197,7 +197,8 @@ async function loadBulk() {
       <td><span class="badge ${BK_STATE[d.state] || ""}">${esc(d.state)}</span>${d.error ? `<div class="small muted">${esc(d.error)}</div>` : ""}${d.working_copy
         ? `<div class="small muted">working on C:, ${d.saved_to_data_drive ? "saved to D: " + QB.dur(Date.now() / 1000 - d.saved_to_data_drive) + " ago" : "not yet saved to D:"}</div>` : ""}</td>
       <td>${fmt(d.facts)}<div class="small muted">${d.staged ? "+ about " + fmt(Math.max(0, (d.gathered ?? d.facts) - d.facts)) + " new of " + fmt(d.staged) + " read · " : ""}${d.doing ? esc(d.doing) + " · " : ""}${bytes(d.bytes)}</div></td><td class="small">${QB.rate(d.last_10min / 10)}<br>+${fmt(d.last_hour)} in the last hour</td>
-      <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+      <td class="small">${d.progress && d.progress.overall != null && d.state !== "done" ? QB.bar(d.progress.overall, d.progress.eta_s ? QB.left(d.progress.eta_s) + " in this file" : "") : ""}${d.parts_total ? `<b>${fmt(d.parts_done)} of ${fmt(d.parts_total)} batches done</b><br>` : ""}${d.parts.map(p => `${esc(p.name)}: ${fmt(p.rows)} rows${p.done ? " ✓" : ""}`).join("<br>")}</td></tr>`).join("") + "</table>";
+  drawRelevance();
   // the harvest in one sentence
   const hl = r.headline || {}; const hb = $("#bk-headline");
   hb.className = "note " + (hl.state === "harvesting" || hl.state === "working" ? "good" : hl.state === "old" || hl.state === "dry" || hl.state === "drive" ? "bad" : "");
@@ -699,3 +700,33 @@ tabs(); bind(); load(); loadChat(); tick();
 setInterval(tick, 2000);
 setInterval(() => { if (document.visibilityState === "visible" && $("#bulk").classList.contains("active")) { loadBulk().catch(() => {}); loadGather().catch(() => {}); } }, 5000);
 setInterval(() => { if (document.visibilityState === "visible") load(true); }, 10000);
+
+
+/* 1.40 — Relevance: can QueryBook answer what people actually ask? The test (qbrelevance) runs once a day by itself;
+   this card shows its score, the breakdown by field, the misses with the reason, the diagnosis, and what the demand
+   agent has fetched. Refreshed at most once a minute. */
+let RV_AT = 0;
+async function drawRelevance(force) {
+  const box = $("#bk-relevance"); if (!box) return;
+  if (!force && Date.now() - RV_AT < 60000) return;
+  RV_AT = Date.now();
+  let j; try { j = await api("/api/relevance"); } catch (e) { return; }
+  const r = j.result, pct = r ? r.percent : null;
+  const dem = j.demand || [], done = dem.filter(d => d.done), wait = dem.filter(d => !d.done);
+  const learned = Object.entries(j.learned || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  box.innerHTML = `<h2 style="margin-top:0">Relevance — can QueryBook answer what people ask?</h2>` +
+    (r ? `<div style="font-size:1.5em;font-weight:700" class="${pct >= 80 ? "good-t" : pct >= 50 ? "" : "bad-t"}">${r.answerable} of ${r.of} well-known subjects answerable (${pct}%)</div>
+      <p class="small muted">Tested ${QB.dur(Date.now() / 1000 - r.at)} ago in ${r.seconds} s: each subject is asked the way the Ask box asks; the answer must be the right kind of thing (a person for a person) and hold the facts that make an answer.${(r.history || []).length > 1 ? " Earlier scores: " + r.history.slice(-8, -1).map(h => h.percent + "%").join(" → ") + " → now " + pct + "%." : ""}</p>
+      <div class="row" style="flex-wrap:wrap;gap:6px">${r.fields.map(f => `<span class="chip ${f.answerable === f.of ? "ok" : f.answerable >= f.of / 2 ? "" : "warn"}">${esc(f.field)} ${f.answerable}/${f.of}</span>`).join("")}</div>
+      ${(r.diagnosis || []).map(d => `<p>${esc(d)}</p>`).join("")}
+      ${r.misses.length ? `<details><summary>${r.misses.length} not answerable — the list, with the reason for each</summary><table><tr><th>Field</th><th>Subject</th><th>Result</th><th>Why</th></tr>` +
+        r.misses.map(m => `<tr><td>${esc(m.field)}</td><td><b>${esc(m.name)}</b></td><td><span class="badge ${m.result === "missing" ? "bad" : "warn"}">${esc(m.result)}</span></td><td class="small">${esc(m.why)}</td></tr>`).join("") + `</table></details>` : ""}`
+      : `<p>${j.running ? "The relevance test is running for the first time…" : "The relevance test has not run yet."}</p>`) +
+    `<p class="small"><b>Demand agent</b> — what was asked and not found, fetched at once: ${QB.num(done.length)} fetched, ${QB.num(wait.length)} waiting` +
+    (wait.length ? " (" + wait.slice(-6).map(d => esc(d.subject)).join(", ") + (wait.length > 6 ? "…" : "") + ")" : "") + "." +
+    (learned.length ? " It has learned that questions land most in: " + learned.map(([k, n]) => esc(k) + " (" + n + ")").join(", ") + " — those lattices are harvested first." : "") + `</p>
+    <div class="row"><button class="btn secondary" id="rv-run">${j.running ? "Testing…" : "Run the relevance test now"}</button></div>`;
+  $("#rv-run").disabled = !!j.running;
+  $("#rv-run").onclick = async () => { await api("/api/relevance/run", {}); toast("The relevance test is running — about a minute."); setTimeout(() => drawRelevance(true), 4000); };
+  if (j.running) setTimeout(() => drawRelevance(true), 8000);
+}
