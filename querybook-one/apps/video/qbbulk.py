@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.38.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.39.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -2209,10 +2209,25 @@ class Shard:
                         (now, (self.meta("facts", 0) or 0) + (self.meta("staged_new", 0) or 0)))   # 1.35: new facts only
         self.db.execute("DELETE FROM progress WHERE at < ?", (now - 2 * 86400,))
 
-    def merge(self):
-        """fold every staged fact into the keyed tables (the end of a part, before dedupe); returns the new facts"""
+    def merge(self, wait=True):
+        """fold every staged fact into the keyed tables (the end of a dataset, before dedupe); returns the new facts.
+        wait=False (1.39, the end of a part): only if it is this agent's turn — otherwise nothing is filed now, the staged
+        facts stay staged (they are on the disk and counted) and the agent reads its next part. Before, every agent
+        stopped at the end of EVERY part and queued to file, one at a time on an external drive: with 16 Wikidata lanes
+        15 stood idle at "0 facts a minute" for hours, and each shard was rewritten once per 1 GB file."""
         if not self.db.execute("SELECT 1 FROM stage LIMIT 1").fetchone() and not self.meta("staged", 0):
             return 0
+        if not wait and self.mslots:
+            slot = self.mslots.try_take()
+            if slot is None:
+                TR.event("merge_deferred", staged=self.meta("staged", 0), why="end of a part, another agent is filing: this one reads its next part")
+                return 0
+            try:
+                AGENT["waiting"] = "filing %s facts into the dataset" % format(self.meta("staged", 0) or 0, ",")
+                return self._merge()
+            finally:
+                self.mslots.release(slot)
+                AGENT["waiting"] = None
         AGENT["waiting"] = "waiting for its turn to file (another dataset is filing)"
         slot = self.mslots.take() if self.mslots else None      # 1.35: the merge pool, not a write slot
         try:
@@ -2455,9 +2470,9 @@ def run_dataset(commons_folder, key, max_rows=None):
             new = _batch(sh, pid, buf, row_no, links, pending, bt, key, name)
             total_new += new; log_new += new
             finished = limit is None or row_no < limit
-            if finished:                                # the part's staged facts join the keyed tables before it is done
-                with qt.timed("merge"):
-                    new = sh.merge()
+            if finished:                                # 1.39: filed now only if it is this agent's turn, or 20 million wait;
+                with qt.timed("merge"):                 # otherwise it reads on (everything is filed at the end of the dataset)
+                    new = sh.merge(wait=(sh.meta("staged", 0) or 0) >= STAGE_CAP)
                 total_new += new; log_new += new
             TR.event("part", phase="end", dataset=key, part=name, rows=row_no, new=total_new)
             for series, year in state.pop("_filled", set()):
@@ -2474,6 +2489,8 @@ def run_dataset(commons_folder, key, max_rows=None):
             why = run.stopped()
             if why:
                 raise _Stop(why)
+        with qt.timed("merge"):                         # 1.39: whatever is still staged is filed before the dataset is done
+            sh.merge()
         all_done = all(d for (d,) in sh.db.execute("SELECT done FROM parts"))
         sh.set_meta("state", "done" if all_done else "paused"); sh.set_meta("finished", core.now_iso()); sh.db.commit()
         TR.event("run", phase="end", dataset=key, state="done" if all_done else "paused", new=total_new, filtered=filtered,
@@ -5790,6 +5807,15 @@ def _supervisor_tests():
             ok("1.35: while another agent files, an agent keeps staging (its batch is written, no wait); it files on its "
                "next batch once the pool is free", busy is not None and got1 == 0 and staged1 == 5 and got2 == 7
                and sm.meta("facts") == 7 and sm.meta("staged") == 0, (busy is not None, got1, staged1, got2, sm.meta("facts")))
+            # 1.39: at the end of a part an agent no longer queues to file — it files if it is its turn, else it reads on
+            busy = MergeSlots(cf, 1).try_take()
+            sm.write(pm, [(k(300 + i), "w", 1, "o", pm, i) for i in range(3)], 10)
+            d1, st1 = sm.merge(wait=False), sm.meta("staged")
+            MergeSlots(cf, 1).release(busy)
+            d2 = sm.merge(wait=False)
+            ok("1.39: at the end of a part an agent whose turn to file has not come does not wait (15 of 16 lanes used to stand "
+               "idle in that queue): its facts stay staged and counted, it reads its next part, and files when the pool is free",
+               d1 == 0 and st1 == 3 and d2 == 3 and sm.meta("staged") == 0 and sm.meta("facts") == 10, (d1, st1, d2, sm.meta("facts")))
             sm.db.close()
         finally:
             STAGE_MIN, STAGE_CAP = old_min, old_cap
