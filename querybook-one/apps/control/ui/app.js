@@ -725,6 +725,12 @@ async function drawRelevance(force) {
     `<p class="small"><b>Demand agent</b> — what was asked and not found, fetched at once: ${QB.num(done.length)} fetched, ${QB.num(wait.length)} waiting` +
     (wait.length ? " (" + wait.slice(-6).map(d => esc(d.subject)).join(", ") + (wait.length > 6 ? "…" : "") + ")" : "") + "." +
     (learned.length ? " It has learned that questions land most in: " + learned.map(([k, n]) => esc(k) + " (" + n + ")").join(", ") + " — those lattices are harvested first." : "") + `</p>
+    <details><summary><b>Complete domains</b> — 100% of the people in the fields users ask about, in tiers, the best known first</summary>
+      <table><tr><th>Tier</th><th>Domain</th><th>People listed</th><th>Left out</th></tr>` +
+      (j.domains || []).map(d => { const out = (d.roots || []).filter(r => !r.used);
+        return `<tr><td>${d.tier}</td><td>${esc(d.title)}</td><td>${d.people == null ? '<span class="muted">not listed yet</span>' : "<b>" + QB.num(d.people) + "</b>"}</td>
+          <td class="small">${out.length ? out.map(r => esc(r.expected) + ": " + esc(r.why || "")).join("<br>") : ""}</td></tr>`; }).join("") + `</table>
+      <p class="small muted">Tier 1: people who face the public. Tier 2: people in key jobs of critical fields. Tier 3: people in other well-known fields. Each domain is listed from Wikidata afresh every month and read in batches (see “batches done” in the table of datasets below).</p></details>
     <div class="row"><button class="btn secondary" id="rv-run">${j.running ? "Testing…" : "Run the relevance test now"}</button></div>`;
   $("#rv-run").disabled = !!j.running;
   $("#rv-run").onclick = async () => { await api("/api/relevance/run", {}); toast("The relevance test is running — about a minute."); setTimeout(() => drawRelevance(true), 4000); };

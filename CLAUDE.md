@@ -136,6 +136,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   never outrank the kind the question expects.
 - Harvest order: `hot-demand` (asked and not found, fetched at once), then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
+- Complete domains (`DOMAINS`, `WikidataDomain`, keys `hot-all-*`) — the user's strategy: until the store is mature, harvest
+  100% of chosen domains in tiers (1 public-facing people, 2 key jobs in critical fields, 3 other well-known fields), after
+  the hot lattices. Every root carries the label it must have; `domain_discover` re-checks it and leaves a mismatch out.
+  Never add a Wikidata code from memory without checking its label (four in `HOT` were wrong).
 - The dump lanes read never-read positions first and finish an edition before a new one is fetched. Do not go back to
   "newest edition, part 1" — that is why whole stretches of Wikidata were never read.
 - Answers go through `find_entities` + `sense.answer_for`: the kind of each match, the kind the question expects, the thing

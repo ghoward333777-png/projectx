@@ -237,6 +237,12 @@ def order(keys, commons_folder, commons=None, target=None):
         lane = int(key.rsplit("-", 1)[1]) if key.startswith("wikidata-dump-") else 0
         hot = 0 if key.startswith("hot-") else 1          # 1.40: what people ask about first, before any target or keystone
         if not hot:                                        # the demand agent, then the lattices people's questions land in most
+            if key.startswith("hot-all-"):                 # 1.42: the complete domains, tier by tier, after the hot lattices
+                try:
+                    tier = _qb.DOMAINS[key[8:]][0]
+                except Exception:
+                    tier = 9
+                return (0, 2 + tier, 0, 0, key)
             return (0, 0 if key == "hot-demand" else 1 if key == "hot-most-read" else 2, -int(learned.get(key[4:]) or 0), 0, key)
         return (hot, 0 if targeted else 1, -score.get(k, 0), lane, key)
     return sorted(keys, key=rank)

@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.41.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.42.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1569,7 +1569,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand", "hot-most-read"] + ["hot-" + n for n in HOT] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand", "hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -1745,7 +1745,7 @@ HOT = {
         "P106=Q11513337", "P106=Q11774891", "P106=Q10349745", "P106=Q10843402", "P106=Q2309784", "P106=Q13381572", "P106=Q4009406",
         "P106=Q13141064", "P106=Q10873124")),
     "people-business-society": ("People — business, exploration and public life", 3000, (
-        "P106=Q43845", "P106=Q131524", "P106=Q2462658", "P106=Q806798", "P106=Q10076267", "P106=Q12362622", "P106=Q8246794",
+        "P106=Q43845", "P106=Q131524", "P106=Q2462658", "P106=Q806798", "P106=Q12362622", "P106=Q8246794",
         "P106=Q3242115", "P106=Q10669499", "P106=Q2095549", "P106=Q15980158", "P106=Q484876")),
     "places": ("Places — countries, states, cities and the natural world", 3000, (
         "P31=Q3624078", "P31=Q6256", "P31=Q35657", "P31=Q515", "P31=Q1549591", "P31=Q5119", "P31=Q1093829", "P31=Q8502",
@@ -1762,15 +1762,15 @@ HOT = {
     "events": ("Events — wars, elections, disasters, discoveries and firsts", 3000, (
         "P31=Q198", "P31=Q178561", "P31=Q10931", "P31=Q47566", "P31=Q40231", "P31=Q3839081", "P31=Q131569", "P31=Q159821",
         "P31=Q7944", "P31=Q3882219", "P31=Q13418847", "P31=Q12184", "P31=Q8065", "P31=Q124757", "P31=Q175331", "P31=Q5389",
-        "P31=Q82414", "P31=Q11422536", "P31=Q1318941", "P31=Q752783", "P31=Q7283", "P31=Q1190554")),
+        "P31=Q82414", "P31=Q1318941", "P31=Q752783", "P31=Q1190554")),
     "works": ("Works — films, television, music, books and art", 3000, (
         "P31=Q11424", "P31=Q5398426", "P31=Q15416", "P31=Q482994", "P31=Q7725634", "P31=Q571", "P31=Q8261", "P31=Q3305213",
         "P31=Q7889", "P31=Q2743", "P31=Q25379", "P31=Q134556", "P31=Q1004", "P31=Q24856", "P31=Q41298", "P31=Q860861",
-        "P31=Q105543609", "P31=Q1344", "P31=Q21191270", "P31=Q5185279")),
+        "P31=Q105543609", "P31=Q1344", "P31=Q5185279")),
     "knowledge": ("Things people look up — science, nature, culture and daily life", 3000, (
         "P31=Q11344", "P31=Q12136", "P31=Q634", "P31=Q618779", "P31=Q349", "P31=Q34379", "P31=Q2095", "P31=Q1445650",
-        "P31=Q34770", "P31=Q8142", "P31=Q9143", "P31=Q8928", "P31=Q11173", "P31=Q7187", "P31=Q8054", "P31=Q16521",
-        "P31=Q43229", "P31=Q11862829", "P31=Q483394", "P31=Q41710", "P31=Q4022", "P31=Q15401930", "P31=Q1420", "P31=Q11446")),
+        "P31=Q34770", "P31=Q8142", "P31=Q9143", "P31=Q8928", "P31=Q11173", "P31=Q16521",
+        "P31=Q43229", "P31=Q11862829", "P31=Q483394", "P31=Q41710", "P31=Q1420", "P31=Q11446")),
 }
 
 
@@ -2065,6 +2065,197 @@ class WikidataMostRead(WikidataHot):
         return self._each(rows, state)
 
 
+# ------------------------------------------------------------------------------------------------ complete domains (1.42)
+# 100% of a domain, in tiers. A hot lattice takes the best-known few thousand of a kind; a complete domain takes EVERYONE
+# Wikidata records in it: every actor, every author, every athlete. The whole list comes from Wikidata's query service
+# (everyone with the occupation, and with every narrower occupation under it — all 935 kinds of athlete), the best known
+# first; their records are then read 50 at a time, exactly as the lanes and the lattices write them.
+#   tier 1  people who face the public: actors, authors, television and radio, music, models, speakers, officials, athletes
+#   tier 2  people in key jobs of critical fields: medicine, engineering, science, law, business and finance, teaching, flight
+#   tier 3  people in other well-known fields: the visual arts, film-making, religion, scholarship, exploration
+# Each code below was checked against Wikidata's own label on 2026-11-12; the label is checked again at every discovery,
+# and a code whose label no longer matches is left out and reported (a wrong code would harvest the wrong people).
+# (property, item, the label it must have, with every narrower kind under it)
+DOMAINS = {
+    "actors": (1, "Every actor", (("P106", "Q33999", "actor", True),)),
+    "authors": (1, "Every author and writer", (("P106", "Q36180", "writer", True), ("P106", "Q482980", "author", False))),
+    "television-radio": (1, "Every television and radio personality, presenter, journalist and comedian", (
+        ("P106", "Q947873", "television presenter", True), ("P106", "Q44508716", "television personality", False), ("P106", "Q270389", "news presenter", False),
+        ("P106", "Q18668527", "talk show host", False), ("P106", "Q2722764", "radio personality", True), ("P106", "Q1371925", "announcer", False),
+        ("P106", "Q130857", "disc jockey", False), ("P106", "Q15077007", "podcaster", False), ("P106", "Q17125263", "YouTuber", False),
+        ("P106", "Q2045208", "Internet celebrity", False), ("P106", "Q2906862", "influencer", False), ("P106", "Q2986228", "sports commentator", False),
+        ("P106", "Q245068", "comedian", True), ("P106", "Q1930187", "journalist", True))),
+    "music": (1, "Every music recording artist", (
+        ("P106", "Q177220", "singer", True), ("P106", "Q639669", "musician", True), ("P106", "Q55960555", "recording artist", False),
+        ("P106", "Q36834", "composer", False), ("P106", "Q753110", "songwriter", False), ("P31", "Q215380", "musical group", True))),
+    "models": (1, "Every fashion model and pageant contestant", (
+        ("P106", "Q4610556", "model", True), ("P106", "Q3357567", "fashion model", False), ("P106", "Q18581305", "beauty pageant contestant", False))),
+    "speakers": (1, "Every public speaker, orator, preacher and activist", (
+        ("P106", "Q12859263", "orator", False), ("P106", "Q15982858", "motivational speaker", False), ("P106", "Q662729", "public figure", False),
+        ("P106", "Q30107072", "televangelist", False), ("P106", "Q432386", "preacher", False), ("P106", "Q15253558", "activist", True))),
+    "officials": (1, "Every public official: politicians, judges, diplomats, officers, civil servants", (
+        ("P106", "Q82955", "politician", False), ("P106", "Q212238", "civil servant", False), ("P106", "Q599151", "official", False),
+        ("P106", "Q16533", "judge", False), ("P106", "Q193391", "diplomat", False), ("P106", "Q372436", "statesperson", False),
+        ("P106", "Q189290", "military officer", False), ("P106", "Q116", "monarch", False))),
+    "athletes": (1, "Every athlete, professional and amateur, and every coach", (
+        ("P106", "Q2066131", "athlete", True), ("P106", "Q50995749", "sportsperson", False), ("P106", "Q41583", "coach", False))),
+    "key-professions": (2, "People in key jobs: medicine, engineering, science, law, business, finance, teaching, flight", (
+        ("P106", "Q39631", "physician", True), ("P106", "Q81096", "engineer", True), ("P106", "Q901", "scientist", True),
+        ("P106", "Q40348", "lawyer", False), ("P106", "Q43845", "businessperson", True), ("P106", "Q131524", "entrepreneur", False),
+        ("P106", "Q484876", "chief executive officer", False), ("P106", "Q806798", "banker", False), ("P106", "Q188094", "economist", False),
+        ("P106", "Q1622272", "university teacher", False), ("P106", "Q37226", "teacher", False), ("P106", "Q2095549", "aircraft pilot", False),
+        ("P106", "Q11631", "astronaut", False), ("P106", "Q205375", "inventor", False), ("P106", "Q42973", "architect", False),
+        ("P106", "Q2462658", "manager", False), ("P106", "Q82594", "computer scientist", False), ("P106", "Q212980", "psychologist", False))),
+    "arts-faith-scholarship": (3, "People in other well-known fields: art, film-making, religion, scholarship, exploration", (
+        ("P106", "Q1028181", "painter", False), ("P106", "Q1281618", "sculptor", False), ("P106", "Q33231", "photographer", False),
+        ("P106", "Q5322166", "designer", False), ("P106", "Q644687", "illustrator", False), ("P106", "Q2526255", "film director", False),
+        ("P106", "Q3282637", "film producer", False), ("P106", "Q28389", "screenwriter", False), ("P106", "Q5716684", "dancer", False),
+        ("P106", "Q42603", "priest", True), ("P106", "Q1234713", "theologian", False), ("P106", "Q152002", "pastor", False),
+        ("P106", "Q133485", "rabbi", False), ("P106", "Q125482", "imam", False), ("P106", "Q219477", "missionary", False),
+        ("P106", "Q733786", "monk", False), ("P106", "Q191808", "nun", False), ("P106", "Q15995642", "religious leader", False),
+        ("P106", "Q4964182", "philosopher", False), ("P106", "Q201788", "historian", False), ("P106", "Q11900058", "explorer", False),
+        ("P106", "Q10873124", "chess player", False), ("P106", "Q12362622", "philanthropist", False), ("P106", "Q333634", "translator", False))),
+}
+WDQS = "https://query.wikidata.org/sparql"
+DOMAIN_PAUSE_S = 2.0               # between two queries (the query service allows one client a share of its time)
+DOMAIN_SLOW_S = 45                 # the query service cuts an answer off at 60 s and sends what it had: slower than this is not trusted
+
+
+def DOMAIN_QUERY(sparql):
+    """one query to Wikidata's query service: [[cell, ...], ...] without the header row (the tests replace this)"""
+    req = urllib.request.Request(WDQS, data=urllib.parse.urlencode({"query": sparql}).encode(),
+                                 headers={"User-Agent": UA, "Accept": "text/tab-separated-values"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        lines = r.read().decode("utf-8", "replace").split("\n")
+    return [ln.split("\t") for ln in lines[1:] if ln.strip()]
+
+
+def _qn(cell):
+    m = re.search(r"Q(\d+)>?$", cell.strip())
+    return int(m.group(1)) if m else None
+
+
+def domain_discover(name, query=None, pause=None):
+    """everyone in a domain: {"ids": [Q-numbers, best known first], "roots": [...report...], "people": n}.
+    Per root: its label is checked; its narrower kinds are listed; the people of each group of kinds are asked for with
+    how well known they are (Wikipedias with an article). A group that is slow or fails is halved; a single kind that
+    still fails is asked for without the fame (the plain list is fast and complete) — nobody is dropped for being slow."""
+    query = query or DOMAIN_QUERY
+    pause = DOMAIN_PAUSE_S if pause is None else pause
+    tier, title, roots = DOMAINS[name]
+    fame, report = {}, []
+    got = query("SELECT ?i ?l WHERE { VALUES ?i { %s } ?i rdfs:label ?l FILTER(LANG(?l) = \"en\") }" % " ".join("wd:" + q for _p, q, _l, _s in roots))
+    labels = {_qn(r[0]): r[1].strip().strip('"').rsplit('"@', 1)[0] for r in got if len(r) > 1 and _qn(r[0])}
+
+    def people(prop, classes):
+        """{person: fame} for these kinds; splits on trouble"""
+        t0 = time.time()
+        try:
+            rows = query("SELECT DISTINCT ?p ?n WHERE { VALUES ?c { %s } ?p wdt:%s ?c ; wikibase:sitelinks ?n }" % (" ".join("wd:Q%d" % c for c in classes), prop))
+            if time.time() - t0 < DOMAIN_SLOW_S:
+                return {_qn(r[0]): int(float(r[1].strip().strip('"').split('"')[0] or 0)) if len(r) > 1 else 0 for r in rows if _qn(r[0])}
+        except (OSError, ValueError):
+            pass
+        time.sleep(pause)
+        if len(classes) > 1:
+            half = len(classes) // 2
+            out = people(prop, classes[:half])
+            out.update(people(prop, classes[half:]))
+            return out
+        rows = query("SELECT ?p WHERE { ?p wdt:%s wd:Q%d }" % (prop, classes[0]))      # the plain list: complete, fame unknown
+        return {_qn(r[0]): 0 for r in rows if _qn(r[0])}
+    for prop, q, label, sub in roots:
+        qn = int(q[1:])
+        if (labels.get(qn) or "").casefold() != label.casefold():
+            report.append({"item": q, "expected": label, "found": labels.get(qn), "people": 0, "used": False,
+                           "why": "its label is not “%s” — left out, so the wrong people are not harvested" % label})
+            continue
+        classes = [qn]
+        if sub:
+            time.sleep(pause)
+            classes = sorted({_qn(r[0]) for r in query("SELECT DISTINCT ?c WHERE { ?c wdt:P279* wd:%s }" % q) if _qn(r[0])} | {qn})[:3000]
+        mine = {}
+        for i in range(0, len(classes), 40):
+            time.sleep(pause)
+            mine.update(people(prop, classes[i:i + 40]))
+        for k, v in mine.items():
+            fame[k] = max(fame.get(k, 0), v)
+        report.append({"item": q, "expected": label, "found": labels.get(qn), "kinds": len(classes), "people": len(mine), "used": True})
+    ids = sorted(fame, key=lambda k: (-fame[k], k))
+    return {"name": name, "tier": tier, "title": title, "read": time.time(), "edition": time.strftime("%Y-%m"), "people": len(ids), "roots": report, "ids": ids}
+
+
+def domain_path(commons_folder, name):
+    return os.path.join(commons_folder, FOLDER, "_domain-%s.json.gz" % name)
+
+
+def domain_load(commons_folder, name):
+    import gzip
+    try:
+        with gzip.open(domain_path(commons_folder, name), "rt", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError, EOFError):
+        return None
+
+
+def domains_report(commons_folder):
+    """[{name, tier, title, people, roots, read}] for the page: who is in each complete domain, and which codes were left out"""
+    out = []
+    for name, (tier, title, _roots) in DOMAINS.items():
+        d = domain_load(commons_folder, name) or {}
+        out.append({"name": name, "tier": tier, "title": title, "people": d.get("people"), "read": d.get("read"),
+                    "roots": d.get("roots") or [], "key": "hot-all-" + name})
+    return out
+
+
+class WikidataDomain(WikidataHot):
+    """ONE complete domain: everyone in it, the best known first, each person's whole record."""
+    BATCH = 500                                        # people per part (ten requests of 50)
+
+    def __init__(self, name):
+        self.name = name
+        self.tier, self.title_short, self.roots = DOMAINS[name]
+        self.depth, self.finds = 0, ()
+        self.key = "hot-all-" + name
+        self.title = "Complete domain (tier %d) — %s" % (self.tier, self.title_short)
+        self.why = "100% of a domain people ask about: everyone Wikidata records in it, the best known first, read directly"
+        self.approx = "everyone in the domain, listed afresh every month"
+
+    def _ids(self):
+        d = getattr(self, "_disc", None) or domain_load(self.folder, self.name)
+        if not d or d.get("edition") != time.strftime("%Y-%m"):
+            import gzip
+            AGENT["waiting"] = "listing everyone in this domain (Wikidata's query service)"
+            try:
+                d = domain_discover(self.name)
+            finally:
+                AGENT["waiting"] = None
+            os.makedirs(os.path.dirname(domain_path(self.folder, self.name)), exist_ok=True)
+            with gzip.open(domain_path(self.folder, self.name) + ".tmp", "wt", encoding="utf-8") as f:
+                json.dump(d, f)
+            _replace(domain_path(self.folder, self.name) + ".tmp", domain_path(self.folder, self.name))
+        self._disc = d
+        return d
+
+    def parts(self):
+        d = self._ids()
+        n = len(d["ids"])
+        return [("%s everyone in %s %07d-%07d of %07d" % (d["edition"], self.name, i + 1, min(n, i + self.BATCH), n), "domain#%d" % i)
+                for i in range(0, n, self.BATCH)]
+
+    def rows(self, part, url, state):
+        start = int(url.split("#")[1])
+        ids = self._ids()["ids"][start:start + self.BATCH]
+        rows = []
+        for i in range(0, len(ids), self.PAGE):
+            ents = (self._get({"action": "wbgetentities", "ids": "|".join("Q%d" % q for q in ids[i:i + self.PAGE]),
+                               "props": "labels|descriptions|aliases|claims|sitelinks", "languages": "en|mul"}, state).get("entities") or {})
+            rows += [e for e in ents.values() if "missing" not in e]
+        self._name_values(rows, state)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+
 def wd_views(commons_folder, qids):
     """{Q-number: Wikipedia page views, added up over the months sampled} for the items among the most read"""
     want, out = sorted(set(qids)), {}
@@ -2085,7 +2276,7 @@ def wd_views(commons_folder, qids):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -5064,6 +5255,10 @@ def add_routes(api, commons, program_dir):
         """1.40: who or what is meant by a name — the best-known match first, with all its facts"""
         return find_entities(commons.folder, p.get("q") or "", int(p.get("top") or 5))
 
+    @api.get("/api/bulk/domains")
+    def bulk_domains(p):
+        return {"domains": domains_report(commons.folder)}
+
     @api.get("/api/bulk/coverage")
     def bulk_coverage(p):
         return dump_coverage(commons.folder)
@@ -5804,6 +5999,53 @@ def self_test():
                "lattice starts right after the demand agent", "Main_Page".startswith(NOT_ARTICLES) and "Special:Search".startswith(NOT_ARTICLES)
                and not "Babe_Ruth".startswith(NOT_ARTICLES) and _ks.order(["hot-places", "wikidata-dump-1", "hot-most-read", "hot-demand"], cf)[:2]
                == ["hot-demand", "hot-most-read"])
+            # 1.42 complete domains: everyone in a domain, the best known first; a wrong code is left out; trouble loses nobody
+            E_ = "<http://www.wikidata.org/entity/Q%d>"
+            dq_ = []
+
+            def fake_q(sparql):
+                dq_.append(sparql)
+                if "rdfs:label" in sparql:
+                    return [[E_ % 947873, '"television presenter"@en'], [E_ % 270389, '"something else entirely"@en']]
+                if "P279*" in sparql:
+                    return [[E_ % 947873], [E_ % 555]]
+                if "sitelinks" in sparql:
+                    if "Q555" in sparql:
+                        raise OSError("the query service timed out")       # with the other kind, and alone
+                    return [[E_ % 83807, "40"], [E_ % 213812, '"120"^^<http://www.w3.org/2001/XMLSchema#integer>']]
+                return [[E_ % 99]]                                         # the plain list of the kind that kept failing
+            real_dq, real_dom, pause_was = DOMAIN_QUERY, dict(DOMAINS), DOMAIN_PAUSE_S
+            try:
+                globals()["DOMAIN_QUERY"], globals()["DOMAIN_PAUSE_S"] = fake_q, 0
+                DOMAINS["tv"] = (1, "Every television presenter", (("P106", "Q947873", "television presenter", True), ("P106", "Q270389", "news presenter", False)))
+                dd = domain_discover("tv")
+                ra = run_dataset(cf, "hot-all-tv")
+                dba = sqlite3.connect(shard_path(cf, "hot-all-tv"))
+                subj_ = {a for a, in dba.execute("SELECT DISTINCT s FROM facts")}
+                dba.close()
+                rep_ = next(d_ for d_ in domains_report(cf) if d_["name"] == "tv")
+                ord_ = _ks.order(["hot-all-key-professions", "wikidata-dump-1", "hot-all-actors", "hot-places", "hot-demand"], cf)
+            finally:
+                globals()["DOMAIN_QUERY"], globals()["DOMAIN_PAUSE_S"] = real_dq, pause_was
+                DOMAINS.clear(); DOMAINS.update(real_dom)
+                for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(shard_path(cf, "hot-all-tv") + ext):
+                        os.remove(shard_path(cf, "hot-all-tv") + ext)
+                if os.path.exists(domain_path(cf, "tv")):
+                    os.remove(domain_path(cf, "tv"))
+            ok("1.42 complete domain: EVERYONE with the occupation and its narrower kinds is listed, the best known first; a kind the query "
+               "service fails on is asked for again on its own, then without fame — nobody is dropped; a code whose label no longer matches is "
+               "left out and reported", dd["ids"] == [213812, 83807, 99] and dd["people"] == 3
+               and [(r_["item"], r_["used"]) for r_ in dd["roots"]] == [("Q947873", True), ("Q270389", False)] and dd["roots"][0]["kinds"] == 2
+               and "left out" in dd["roots"][1]["why"] and sum(1 for q_ in dq_ if "sitelinks" in q_) >= 3, (dd, len(dq_)))
+            ok("1.42 complete domain: each person's whole record is then read, in batches, exactly as the lanes write it; the page can say "
+               "who is in each domain; tier 1 starts after the hot lattices, tier 2 after tier 1, the dump lanes after all of them",
+               ra["state"] == "done" and {"Babe Ruth (Q213812)", "Ed Sullivan (Q83807)", "Babe Ruth (Q99)"} <= subj_ and rep_["people"] == 3
+               and rep_["key"] == "hot-all-tv" and ord_ == ["hot-demand", "hot-places", "hot-all-actors", "hot-all-key-professions", "wikidata-dump-1"],
+               (ra, subj_, rep_, ord_))
+            ok("1.42: the domains asked for are there, in tiers — tier 1 the people who face the public", {n_ for n_, d_ in DOMAINS.items() if d_[0] == 1}
+               == {"actors", "authors", "television-radio", "music", "models", "speakers", "officials", "athletes"} and DOMAINS["key-professions"][0] == 2
+               and DOMAINS["arts-faith-scholarship"][0] == 3 and all(len(r_) == 4 for d_ in DOMAINS.values() for r_ in d_[2]))
             # WHO is meant: the man and the card are both in the store now
             fb = find_entities(cf, "babe ruth")                 # typed in lower case
             jb = _sense.answer_for("Who was Babe Ruth?", "Babe Ruth", fb["entities"], fb["facts"])
