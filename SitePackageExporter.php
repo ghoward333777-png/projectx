@@ -48,6 +48,18 @@ final class SitePackageExporter
         'tests/print-media-contract.php',
         'tests/manuscript-developer-contract.php',
         'tests/hygiene-contract.php',
+        'magazine/index.php',
+        'magazine/departments.php',
+        'magazine/MagazineStore.php',
+        'magazine/MagazineAuth.php',
+        'magazine/BotShield.php',
+        'magazine/MagazineMarkup.php',
+        'magazine/MagazineShop.php',
+        'magazine/config.sample.php',
+        'magazine/assets/magazine.css',
+        'magazine/assets/magazine.js',
+        'bin/magazine-admin.php',
+        'tests/magazine-contract.php',
         'README.md',
     ];
 

@@ -67,3 +67,11 @@ under `projects/` — keep the auto-save in `amazon-book-writer.php` and the CLI
   self-test fails.
 - Deterministic output is a feature: same inputs must produce the same book.
 - Voice cloning stays behind the explicit consent gate (`voice_consent` / `--consent`).
+
+## Online magazine (`magazine/`)
+
+Separate dependency-free app (flat files under `magazine/data/`, never committed). The 20
+departments in `magazine/departments.php` are permanent: keep their slugs and order, and
+each keeps a mission paragraph. Every public form goes through `BotShield::check()` and a
+CSRF token; all article/comment output is escaped through `MagazineMarkup`. Shop links are
+restricted to PayPal and Amazon hosts. `tests/magazine-contract.php` covers all of this.

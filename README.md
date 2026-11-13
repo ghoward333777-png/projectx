@@ -313,3 +313,25 @@ no API keys.
 - `tests/rich-chapter-contract.php` — PHP output contract checks
 - `tests/amazon-book-writer-contract.php` — Amazon Book Writer contract checks
 - `tests/audiobook-contract.php` — editions and audiobook production contract checks
+
+## Online magazine (`magazine/`)
+
+A dependency-free online magazine with 20 permanent departments, each with a mission
+paragraph followed by its article stream.
+
+```bash
+php -S 127.0.0.1:8083 -t magazine
+```
+
+- **Accounts**: native registration (email + password) and Google sign-in. Copy
+  `magazine/config.sample.php` to `magazine/config.php` and add the Google OAuth keys.
+- **First administrator**: register on the site, then run
+  `php bin/magazine-admin.php you@example.com admin` (or list your Google address in
+  `admin_emails`). Editors and admins get the Newsroom: write, schedule, and manage articles.
+- **Anti-robot**: signed proof of work, honeypot, time trap, and rate limits are built in;
+  Cloudflare Turnstile is verified on top when its keys are configured.
+- **Articles**: light markup, YouTube embeds (lead video or a link on its own line),
+  Buyer's Brief scorecards, per-article comments switch, share icons, RSS feed.
+  A future publish date schedules an article, so a backlog can release one a day.
+- **Shop**: products check out on PayPal or link to Amazon with your Associates tag.
+- Data lives in `magazine/data/` (flat files, guarded against direct download). Back it up.
