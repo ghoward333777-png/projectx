@@ -9,6 +9,7 @@ const AREAS = [
   { id: "caps", name: "✨ AI Capabilities", builtin: true },
   { id: "language", name: "Language", app: "language", hash: "learn" },
   { id: "translate", name: "🌐 Translate", app: "language", hash: "translate" },
+  { id: "textgen", name: "✍️ AI text gen", builtin: true },         // 1.7.9: the writing machine (Language and speech): any document, planned and checked
   { id: "stem", name: "STEM", app: "stem" },
   { id: "history", name: "History & News", app: "facts" },
   { id: "video", name: "Video Studio", app: "video" },
@@ -70,7 +71,7 @@ function show(id) {
   const old = pane.querySelector(".view"); if (old) old.remove();
   const a = AREAS.find(x => x.id === id);
   if (!a) return;
-  if (a.builtin) { pane.append(id === "bookquery" ? bookQueryView() : id === "caps" ? capsView() : askView()); if (id !== "bookquery") document.getElementById("askinput").placeholder = "Ask anything — a word, a fact, a calculation"; return; }
+  if (a.builtin) { pane.append(id === "bookquery" ? bookQueryView() : id === "caps" ? capsPageView() : id === "textgen" ? textGenView() : askView()); if (id !== "bookquery") document.getElementById("askinput").placeholder = "Ask anything — a word, a fact, a calculation"; return; }
   const p = prog(a.app);
   if (p.state !== "running" || !p.url) { pane.append(waitingView(a, p)); return; }
   const src = p.url + (a.hash ? "#" + a.hash : "");

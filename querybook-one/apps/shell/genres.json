@@ -1,0 +1,2764 @@
+{
+ "version": "genres-0.1",
+ "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+ "families": [
+  {
+   "id": "academic",
+   "name": "Academic",
+   "framework": "theme preview",
+   "demand": "Claim, evidence and citation discipline"
+  },
+  {
+   "id": "business",
+   "name": "Business",
+   "framework": "theme preview with conclusions first",
+   "demand": "A decision-maker who reads only the top"
+  },
+  {
+   "id": "technical",
+   "name": "Technical",
+   "framework": "index, with linking for procedures",
+   "demand": "Exactness, consistent terminology, task order"
+  },
+  {
+   "id": "analytical",
+   "name": "Analytical and policy",
+   "framework": "index over a stated question",
+   "demand": "Separating finding from interpretation"
+  },
+  {
+   "id": "legal",
+   "name": "Legal",
+   "framework": "theme preview in a fixed form (issue, rule, application, conclusion)",
+   "demand": "Defined terms, jurisdiction, no ambiguity"
+  },
+  {
+   "id": "journalism",
+   "name": "Journalism",
+   "framework": "most important first, then linking",
+   "demand": "Verification, attribution, harm avoidance"
+  },
+  {
+   "id": "fiction",
+   "name": "Fiction and dramatic",
+   "framework": "linking, with previews deliberately withheld",
+   "demand": "Tension, voice, subtext"
+  }
+ ],
+ "genres": [
+  {
+   "id": "essay",
+   "name": "essay",
+   "also": [
+    "academic essay"
+   ],
+   "family": "academic",
+   "purpose": "argue one claim and support it",
+   "reader": "a marker or informed general reader",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Introduction",
+     "move": "state the question and the claim, and preview the reasons in order",
+     "required": true
+    },
+    {
+     "name": "First reason",
+     "move": "give the strongest reason with its evidence",
+     "required": true
+    },
+    {
+     "name": "Second reason",
+     "move": "give a further, independent reason with its evidence",
+     "required": true
+    },
+    {
+     "name": "Third reason",
+     "move": "add a reason only if it is as strong as the others",
+     "required": false
+    },
+    {
+     "name": "Counter-argument",
+     "move": "state the best objection fairly and answer it",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "restate the claim in the light of the argument, without new evidence",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     800,
+     2500
+    ]
+   },
+   "evidence": "claims rest on cited sources or stated reasoning; quotations are exact and referenced",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Sources are used without citation",
+     "check": "citations"
+    },
+    {
+     "failure": "The claim is not stated at the start",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "research-paper",
+   "name": "research paper",
+   "also": [
+    "journal article",
+    "scientific paper"
+   ],
+   "family": "academic",
+   "purpose": "report an original study so that it can be judged and repeated",
+   "reader": "researchers in the field",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Abstract",
+     "move": "say the question, method, main result and what it means, in one paragraph",
+     "required": true,
+     "framework": "constant theme"
+    },
+    {
+     "name": "Introduction",
+     "move": "set the problem in what is known, name the gap, state the aim",
+     "required": true
+    },
+    {
+     "name": "Methods",
+     "move": "say what was done precisely enough to repeat it",
+     "required": true
+    },
+    {
+     "name": "Results",
+     "move": "report what was found, without interpreting it",
+     "required": true
+    },
+    {
+     "name": "Discussion",
+     "move": "interpret the results, set them against earlier work, state the limits",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "say what now follows",
+     "required": true
+    },
+    {
+     "name": "References",
+     "move": "list every work cited",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     3000,
+     8000
+    ]
+   },
+   "evidence": "every claim about earlier work is cited; data and method are reported so the result can be checked",
+   "constraints": [
+    "Results are reported as found: nothing is selected or altered to fit",
+    "Work by others is credited"
+   ],
+   "failures": [
+    {
+     "failure": "Claims about earlier work are not cited",
+     "check": "citations"
+    },
+    {
+     "failure": "Results and interpretation are mixed",
+     "check": ""
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "literature-review",
+   "name": "literature review",
+   "also": [],
+   "family": "academic",
+   "purpose": "show what is known on a question, how the work fits together, and what is missing",
+   "reader": "researchers and students of the field",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "index"
+   },
+   "sections": [
+    {
+     "name": "Introduction",
+     "move": "state the question, the scope and how the review is organised",
+     "required": true
+    },
+    {
+     "name": "Themes",
+     "move": "group the work by idea, not by author, and compare the findings within each",
+     "required": true
+    },
+    {
+     "name": "Disagreements",
+     "move": "set out where the work conflicts and why",
+     "required": true
+    },
+    {
+     "name": "Gaps",
+     "move": "name what has not been studied",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "say what the field now knows and what should be done next",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     2000,
+     8000
+    ]
+   },
+   "evidence": "every statement about a study cites it; the reviewer's own judgement is marked as such",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Studies are listed one by one instead of compared",
+     "check": ""
+    },
+    {
+     "failure": "Statements about the literature are not cited",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "abstract",
+   "name": "abstract",
+   "also": [],
+   "family": "academic",
+   "purpose": "let a reader decide in a minute whether to read the whole work",
+   "reader": "a researcher scanning many papers",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Abstract",
+     "move": "say the problem, the method, the main result with its key number, and the conclusion",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "formal",
+    "hedging": "none",
+    "words": [
+     100,
+     300
+    ]
+   },
+   "evidence": "only what the full work supports; no citation, no undefined abbreviation",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "It is too long or too short",
+     "check": "abstract_length"
+    },
+    {
+     "failure": "It promises instead of reporting the result",
+     "check": ""
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "thesis-chapter",
+   "name": "thesis chapter",
+   "also": [
+    "dissertation chapter",
+    "thesis",
+    "dissertation"
+   ],
+   "family": "academic",
+   "purpose": "carry one stage of a long argument and tie it to the whole",
+   "reader": "examiners",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "theme preview",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Chapter introduction",
+     "move": "say what this chapter does, how it follows the last, and preview its sections in order",
+     "required": true
+    },
+    {
+     "name": "Body sections",
+     "move": "develop each previewed part under its own heading, in the previewed order",
+     "required": true
+    },
+    {
+     "name": "Synthesis",
+     "move": "bring the sections together into the chapter's finding",
+     "required": true
+    },
+    {
+     "name": "Chapter conclusion",
+     "move": "state what has been established and what the next chapter takes up",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     5000,
+     15000
+    ]
+   },
+   "evidence": "every borrowed idea and datum is cited; the chapter's own contribution is distinguished from others' work",
+   "constraints": [
+    "The work is the candidate's own, and every source is acknowledged"
+   ],
+   "failures": [
+    {
+     "failure": "The preview and the section headings do not match",
+     "check": ""
+    },
+    {
+     "failure": "Sources are not cited",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "critique",
+   "name": "critique",
+   "also": [
+    "critical review",
+    "critical analysis"
+   ],
+   "family": "academic",
+   "purpose": "judge a work against stated criteria",
+   "reader": "a marker or reader who has not read the work",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Introduction",
+     "move": "name the work and its author, say what it sets out to do, and give the overall judgement",
+     "required": true
+    },
+    {
+     "name": "Summary",
+     "move": "say briefly and fairly what the work argues",
+     "required": true
+    },
+    {
+     "name": "Evaluation",
+     "move": "judge it criterion by criterion, with evidence from the work",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "give the final judgement and whom the work would serve",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     800,
+     2500
+    ]
+   },
+   "evidence": "every judgement points to a passage or feature of the work",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "It summarises without judging",
+     "check": ""
+    },
+    {
+     "failure": "Judgements are not tied to the work",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "business-report",
+   "name": "business report",
+   "also": [
+    "report"
+   ],
+   "family": "business",
+   "purpose": "give a decision-maker what was found and what to do",
+   "reader": "a manager who may read only the first page",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Executive summary",
+     "move": "state the conclusion and the recommendation first",
+     "required": true
+    },
+    {
+     "name": "Background",
+     "move": "say why the report was asked for and what it covers",
+     "required": true
+    },
+    {
+     "name": "Findings",
+     "move": "set out what was found, one finding to a section",
+     "required": true
+    },
+    {
+     "name": "Analysis",
+     "move": "say what the findings mean for the decision",
+     "required": true
+    },
+    {
+     "name": "Recommendations",
+     "move": "say what to do, who does it and by when",
+     "required": true
+    },
+    {
+     "name": "Appendices",
+     "move": "hold the supporting detail",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain professional",
+    "hedging": "none",
+    "words": [
+     800,
+     4000
+    ]
+   },
+   "evidence": "figures name their source and date; a finding is kept apart from the opinion drawn from it",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The conclusion is buried",
+     "check": "conclusion_first"
+    },
+    {
+     "failure": "Promotional or empty wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "memo",
+   "name": "memo",
+   "also": [
+    "memorandum"
+   ],
+   "family": "business",
+   "purpose": "tell colleagues one thing they need to know or do",
+   "reader": "busy colleagues",
+   "headed": true,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Heading",
+     "move": "To, From, Date, Subject — a subject line that says the point",
+     "required": true
+    },
+    {
+     "name": "Purpose",
+     "move": "say in the first sentence what the memo is for and what is wanted",
+     "required": true
+    },
+    {
+     "name": "Details",
+     "move": "give only what the reader needs to act",
+     "required": true
+    },
+    {
+     "name": "Action",
+     "move": "say who must do what by when",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "plain professional",
+    "hedging": "none",
+    "words": [
+     150,
+     600
+    ]
+   },
+   "evidence": "dates, amounts and names are exact",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The request is not in the opening",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "proposal",
+   "name": "proposal",
+   "also": [
+    "business proposal",
+    "project proposal",
+    "grant proposal"
+   ],
+   "family": "business",
+   "purpose": "win approval or funding for a piece of work",
+   "reader": "a person who can say yes and will compare it with others",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say what is proposed, what it will achieve and what it costs",
+     "required": true
+    },
+    {
+     "name": "Problem",
+     "move": "establish the need and what it costs to leave it",
+     "required": true
+    },
+    {
+     "name": "Solution",
+     "move": "describe the work proposed and why this approach",
+     "required": true
+    },
+    {
+     "name": "Plan",
+     "move": "give the stages, the people and the dates",
+     "required": true
+    },
+    {
+     "name": "Budget",
+     "move": "give the cost, itemised",
+     "required": true
+    },
+    {
+     "name": "Benefits and risks",
+     "move": "say what will be gained and what could go wrong",
+     "required": true
+    },
+    {
+     "name": "Request",
+     "move": "say exactly what decision is asked for",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "future",
+    "formality": "plain professional",
+    "hedging": "none",
+    "words": [
+     800,
+     5000
+    ]
+   },
+   "evidence": "every figure and claim of benefit can be traced to a source or a stated assumption",
+   "constraints": [
+    "Costs and capabilities are stated truthfully"
+   ],
+   "failures": [
+    {
+     "failure": "The ask is not stated at the start",
+     "check": "conclusion_first"
+    },
+    {
+     "failure": "Promotional or empty wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "executive-summary",
+   "name": "executive summary",
+   "also": [],
+   "family": "business",
+   "purpose": "stand in for a longer document for the reader who will read nothing else",
+   "reader": "a senior decision-maker",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say the purpose, the main findings, the conclusion and the recommendation, in that order of importance",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain professional",
+    "hedging": "none",
+    "words": [
+     150,
+     500
+    ]
+   },
+   "evidence": "nothing appears here that is not in the full document",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "It introduces instead of concluding",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "white-paper",
+   "name": "white paper",
+   "also": [
+    "whitepaper"
+   ],
+   "family": "business",
+   "purpose": "persuade an informed reader that a problem matters and that an approach solves it",
+   "reader": "a professional weighing a decision in their own field",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Title and summary",
+     "move": "say the problem, the answer and who should read on",
+     "required": true
+    },
+    {
+     "name": "Problem",
+     "move": "establish the problem and the cost of leaving it alone",
+     "required": true
+    },
+    {
+     "name": "Background",
+     "move": "say what has been tried and why it falls short",
+     "required": true
+    },
+    {
+     "name": "Solution",
+     "move": "explain the approach and how it works",
+     "required": true
+    },
+    {
+     "name": "Evidence",
+     "move": "show that it works — data, cases, comparisons",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "say what the reader should do next",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "professional",
+    "hedging": "some",
+    "words": [
+     1500,
+     5000
+    ]
+   },
+   "evidence": "claims are supported by data or named cases, each with its source; the product is not the argument",
+   "constraints": [
+    "Evidence is reported fairly, including what it does not show"
+   ],
+   "failures": [
+    {
+     "failure": "It reads as an advertisement",
+     "check": "no_vague_praise"
+    },
+    {
+     "failure": "Claims are not sourced",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "postmortem",
+   "name": "postmortem",
+   "also": [
+    "post-mortem",
+    "incident report",
+    "incident review"
+   ],
+   "family": "business",
+   "purpose": "record what went wrong, why, and what will stop it happening again",
+   "reader": "the team and those affected",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say what happened, its effect and its duration",
+     "required": true
+    },
+    {
+     "name": "Timeline",
+     "move": "give the events in order with their times",
+     "required": true,
+     "framework": "linking"
+    },
+    {
+     "name": "Root cause",
+     "move": "trace the failure to its cause, not to a person",
+     "required": true
+    },
+    {
+     "name": "What went well and what did not",
+     "move": "say both plainly",
+     "required": true
+    },
+    {
+     "name": "Actions",
+     "move": "list each fix with its owner and date",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "past",
+    "formality": "plain professional",
+    "hedging": "none",
+    "words": [
+     500,
+     3000
+    ]
+   },
+   "evidence": "times and effects come from logs and records, not memory",
+   "constraints": [
+    "It is blameless: it names causes and conditions, not culprits"
+   ],
+   "failures": [
+    {
+     "failure": "The summary does not say what happened",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "technical-report",
+   "name": "technical report",
+   "also": [
+    "engineering report"
+   ],
+   "family": "technical",
+   "purpose": "record a piece of technical work so that it can be used and checked",
+   "reader": "engineers and a manager who reads the summary",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say the aim, the method, the main result and the conclusion",
+     "required": true
+    },
+    {
+     "name": "Introduction",
+     "move": "state the problem, the scope and the layout of the report",
+     "required": true
+    },
+    {
+     "name": "Method",
+     "move": "describe the approach, equipment and conditions",
+     "required": true
+    },
+    {
+     "name": "Results",
+     "move": "present the data, each figure and table numbered and titled",
+     "required": true
+    },
+    {
+     "name": "Discussion",
+     "move": "interpret the results and state their accuracy and limits",
+     "required": true
+    },
+    {
+     "name": "Conclusions",
+     "move": "list what was established",
+     "required": true
+    },
+    {
+     "name": "Recommendations",
+     "move": "say what should follow",
+     "required": false
+    },
+    {
+     "name": "References",
+     "move": "list the sources",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     1500,
+     8000
+    ]
+   },
+   "evidence": "every figure has units and a source; uncertainty is stated",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "A term changes name between sections",
+     "check": ""
+    },
+    {
+     "failure": "Sources are not cited",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "tutorial",
+   "name": "tutorial",
+   "also": [
+    "how-to",
+    "how to guide",
+    "getting started guide"
+   ],
+   "family": "technical",
+   "purpose": "take a beginner through doing one thing successfully for the first time",
+   "reader": "a newcomer following along step by step",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "What you will build",
+     "move": "say what the reader will have at the end and what they need first",
+     "required": true
+    },
+    {
+     "name": "Steps",
+     "move": "give one action to a step, in order, each with what to expect",
+     "required": true
+    },
+    {
+     "name": "Check",
+     "move": "show how to confirm it worked",
+     "required": true
+    },
+    {
+     "name": "What next",
+     "move": "point to the next thing to learn",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     500,
+     3000
+    ]
+   },
+   "evidence": "every command and value is exact and was run as written",
+   "constraints": [
+    "A step that can lose data or cost money carries a warning before the step"
+   ],
+   "failures": [
+    {
+     "failure": "Steps are not numbered",
+     "check": "steps_numbered"
+    },
+    {
+     "failure": "Steps do not begin with the action",
+     "check": "steps_imperative"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "procedure",
+   "name": "procedure",
+   "also": [
+    "standard operating procedure",
+    "instructions",
+    "work instruction"
+   ],
+   "family": "technical",
+   "purpose": "let a trained person carry out a task the same way every time",
+   "reader": "an operator doing the task now",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Purpose and scope",
+     "move": "say what the procedure is for and when it applies",
+     "required": true
+    },
+    {
+     "name": "Before you start",
+     "move": "list tools, materials, conditions and warnings",
+     "required": true
+    },
+    {
+     "name": "Steps",
+     "move": "give one action to a step, in order, with the expected result",
+     "required": true
+    },
+    {
+     "name": "If something goes wrong",
+     "move": "say what to do for each likely fault",
+     "required": true
+    },
+    {
+     "name": "Records",
+     "move": "say what to record and where",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     2000
+    ]
+   },
+   "evidence": "values, limits and part names are exact",
+   "constraints": [
+    "A warning comes before the step it applies to, never after"
+   ],
+   "failures": [
+    {
+     "failure": "Steps are not numbered",
+     "check": "steps_numbered"
+    },
+    {
+     "failure": "Steps do not begin with the action",
+     "check": "steps_imperative"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "reference",
+   "name": "reference documentation",
+   "also": [
+    "reference",
+    "api reference",
+    "reference manual"
+   ],
+   "family": "technical",
+   "purpose": "let a user look one thing up and find it complete and exact",
+   "reader": "a practitioner who already knows the task",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Overview",
+     "move": "name the whole and list its parts",
+     "required": true
+    },
+    {
+     "name": "Entries",
+     "move": "describe each part in the same order of fields — what it is, its inputs, its result, its limits, an example",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     300,
+     10000
+    ]
+   },
+   "evidence": "every entry is checked against the thing it describes",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Entries do not follow one pattern",
+     "check": ""
+    },
+    {
+     "failure": "A term changes name between entries",
+     "check": ""
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "specification",
+   "name": "specification",
+   "also": [
+    "spec",
+    "requirements specification",
+    "requirements"
+   ],
+   "family": "technical",
+   "purpose": "state what must be built precisely enough to build and test it",
+   "reader": "the people who will build and test it",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Scope",
+     "move": "say what is covered and what is not",
+     "required": true
+    },
+    {
+     "name": "Definitions",
+     "move": "define every term that the requirements use",
+     "required": true
+    },
+    {
+     "name": "Requirements",
+     "move": "state each requirement separately, numbered, testable, with must for what is mandatory",
+     "required": true
+    },
+    {
+     "name": "Constraints",
+     "move": "state the limits that the design must respect",
+     "required": true
+    },
+    {
+     "name": "Acceptance",
+     "move": "say how each requirement will be shown to be met",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "none",
+    "words": [
+     500,
+     10000
+    ]
+   },
+   "evidence": "each requirement can be tested; nothing is left to interpretation",
+   "constraints": [
+    "\"must\" marks what is mandatory and \"should\" what is preferred, and neither is used loosely"
+   ],
+   "failures": [
+    {
+     "failure": "Terms are not defined",
+     "check": "defined_terms"
+    },
+    {
+     "failure": "Vague wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "overview",
+   "name": "overview",
+   "also": [
+    "technical overview",
+    "architecture overview",
+    "introduction to"
+   ],
+   "family": "technical",
+   "purpose": "give a newcomer the shape of a system before the detail",
+   "reader": "a capable reader new to this system",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "What it is",
+     "move": "say in a sentence or two what the system is and what it is for",
+     "required": true
+    },
+    {
+     "name": "The parts",
+     "move": "name the whole and then each part, saying what each does",
+     "required": true
+    },
+    {
+     "name": "How the parts work together",
+     "move": "follow one typical task through the parts",
+     "required": true,
+     "framework": "linking"
+    },
+    {
+     "name": "Where to go next",
+     "move": "point to the detail for each part",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     300,
+     2000
+    ]
+   },
+   "evidence": "names match the system's own names exactly",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The parts are listed before the whole is named",
+     "check": ""
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "analysis",
+   "name": "analysis",
+   "also": [
+    "analytical report"
+   ],
+   "family": "analytical",
+   "purpose": "answer a stated question from evidence",
+   "reader": "a reader who must rely on the answer",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Question",
+     "move": "state the question and why it matters",
+     "required": true
+    },
+    {
+     "name": "Evidence",
+     "move": "set out what is known, with its source and its quality",
+     "required": true
+    },
+    {
+     "name": "Findings",
+     "move": "say what the evidence shows",
+     "required": true
+    },
+    {
+     "name": "Interpretation",
+     "move": "say what the findings mean — kept apart from the findings",
+     "required": true
+    },
+    {
+     "name": "Limits",
+     "move": "say what the analysis cannot tell",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "answer the question",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     800,
+     5000
+    ]
+   },
+   "evidence": "a finding states its evidence; an interpretation is marked as one",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Finding and interpretation are mixed",
+     "check": ""
+    },
+    {
+     "failure": "Evidence is not sourced",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "policy-brief",
+   "name": "policy brief",
+   "also": [
+    "policy paper",
+    "briefing note",
+    "briefing"
+   ],
+   "family": "analytical",
+   "purpose": "give a decision-maker the options on an issue and a recommendation",
+   "reader": "an official or legislator with a few minutes",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say the issue, the recommendation and why, at the top",
+     "required": true
+    },
+    {
+     "name": "The issue",
+     "move": "say what the problem is, whom it affects and why now",
+     "required": true
+    },
+    {
+     "name": "Options",
+     "move": "set out the realistic choices with the costs and effects of each",
+     "required": true
+    },
+    {
+     "name": "Recommendation",
+     "move": "say which option and why",
+     "required": true
+    },
+    {
+     "name": "Implementation",
+     "move": "say what it would take to do it",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain professional",
+    "hedging": "some",
+    "words": [
+     600,
+     2500
+    ]
+   },
+   "evidence": "figures name their source and year; each option is described fairly",
+   "constraints": [
+    "Options are presented fairly, including the one not recommended"
+   ],
+   "failures": [
+    {
+     "failure": "The recommendation is not at the top",
+     "check": "conclusion_first"
+    },
+    {
+     "failure": "Evidence is not sourced",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "case-study",
+   "name": "case study",
+   "also": [],
+   "family": "analytical",
+   "purpose": "show what one real case teaches",
+   "reader": "practitioners who face similar cases",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say what the case is and its main lesson",
+     "required": true
+    },
+    {
+     "name": "Background",
+     "move": "describe the setting and the problem",
+     "required": true
+    },
+    {
+     "name": "What was done",
+     "move": "tell the events and decisions in order",
+     "required": true,
+     "framework": "linking"
+    },
+    {
+     "name": "Results",
+     "move": "say what happened, with measures",
+     "required": true
+    },
+    {
+     "name": "Lessons",
+     "move": "say what carries over to other cases and what does not",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "plain professional",
+    "hedging": "some",
+    "words": [
+     800,
+     4000
+    ]
+   },
+   "evidence": "events and figures come from records or named accounts",
+   "constraints": [
+    "People and organisations are named only with consent or from public record"
+   ],
+   "failures": [
+    {
+     "failure": "It tells the story without drawing the lesson",
+     "check": ""
+    },
+    {
+     "failure": "Results have no measures or sources",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "review",
+   "name": "review",
+   "also": [
+    "book review",
+    "product review",
+    "film review"
+   ],
+   "family": "analytical",
+   "purpose": "tell a reader whether something is worth their time or money, and why",
+   "reader": "a member of the public deciding",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Verdict",
+     "move": "say what is being reviewed and the judgement, at the start",
+     "required": true
+    },
+    {
+     "name": "What it is",
+     "move": "describe it briefly, without spoiling it",
+     "required": true
+    },
+    {
+     "name": "Strengths",
+     "move": "say what it does well, with examples",
+     "required": true
+    },
+    {
+     "name": "Weaknesses",
+     "move": "say where it falls short, with examples",
+     "required": true
+    },
+    {
+     "name": "Who it is for",
+     "move": "say who should and should not choose it",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "conversational",
+    "hedging": "some",
+    "words": [
+     300,
+     1500
+    ]
+   },
+   "evidence": "judgements rest on stated examples from the thing reviewed",
+   "constraints": [
+    "Any interest the reviewer has in the thing reviewed is declared"
+   ],
+   "failures": [
+    {
+     "failure": "The verdict is withheld to the end",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "legal-memo",
+   "name": "legal memo",
+   "also": [
+    "legal memorandum",
+    "memorandum of law"
+   ],
+   "family": "legal",
+   "purpose": "tell a lawyer what the law says about a client's question and how it is likely to apply",
+   "reader": "a supervising lawyer",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "theme preview",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Heading",
+     "move": "To, From, Date, Re",
+     "required": true
+    },
+    {
+     "name": "Question presented",
+     "move": "state the legal question on these facts",
+     "required": true
+    },
+    {
+     "name": "Brief answer",
+     "move": "answer it directly, with the main reason",
+     "required": true
+    },
+    {
+     "name": "Facts",
+     "move": "state the relevant facts neutrally, including the unfavourable ones",
+     "required": true
+    },
+    {
+     "name": "Discussion",
+     "move": "for each issue give the rule, apply it to the facts, and conclude",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "say the likely outcome and what to do next",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     1000,
+     5000
+    ]
+   },
+   "evidence": "every statement of law cites its authority; facts are distinguished from inference",
+   "constraints": [
+    "This is a draft for a qualified lawyer to review; it is not legal advice",
+    "The governing jurisdiction is named, and nothing is asserted about law outside it"
+   ],
+   "failures": [
+    {
+     "failure": "It does not say it is a draft for a lawyer",
+     "check": "lawyer_review"
+    },
+    {
+     "failure": "Statements of law are not cited",
+     "check": "citations"
+    },
+    {
+     "failure": "The answer is not given early",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "legal-brief",
+   "name": "brief",
+   "also": [
+    "legal brief",
+    "appellate brief",
+    "trial brief"
+   ],
+   "family": "legal",
+   "purpose": "persuade a court to rule for one side",
+   "reader": "a judge",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "theme preview",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Questions presented",
+     "move": "state the issues as the court should see them",
+     "required": true
+    },
+    {
+     "name": "Statement of the case",
+     "move": "tell the facts and the procedure accurately, with record references",
+     "required": true
+    },
+    {
+     "name": "Summary of argument",
+     "move": "preview the argument's points in order",
+     "required": true
+    },
+    {
+     "name": "Argument",
+     "move": "under one heading per point, give the rule, apply it and answer the other side",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "state exactly the relief sought",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "none",
+    "words": [
+     2000,
+     12000
+    ]
+   },
+   "evidence": "every statement of law and of record is cited; adverse authority is disclosed",
+   "constraints": [
+    "This is a draft for a qualified lawyer to review; it is not legal advice",
+    "The governing jurisdiction is named, and nothing is asserted about law outside it",
+    "Authority against the argument is disclosed to the court"
+   ],
+   "failures": [
+    {
+     "failure": "It does not say it is a draft for a lawyer",
+     "check": "lawyer_review"
+    },
+    {
+     "failure": "Statements of law are not cited",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "case-analysis",
+   "name": "case analysis",
+   "also": [
+    "case brief",
+    "case note"
+   ],
+   "family": "legal",
+   "purpose": "record what a decided case held and why",
+   "reader": "a law student or lawyer",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Citation",
+     "move": "name the case, the court and the year",
+     "required": true
+    },
+    {
+     "name": "Facts",
+     "move": "state the facts that mattered to the decision",
+     "required": true
+    },
+    {
+     "name": "Issue",
+     "move": "state the legal question the court answered",
+     "required": true
+    },
+    {
+     "name": "Holding",
+     "move": "state the court's answer",
+     "required": true
+    },
+    {
+     "name": "Reasoning",
+     "move": "explain why the court decided as it did",
+     "required": true
+    },
+    {
+     "name": "Significance",
+     "move": "say what the case changed or confirms",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "formal",
+    "hedging": "none",
+    "words": [
+     300,
+     1500
+    ]
+   },
+   "evidence": "holdings are stated as the court stated them; the writer's own view is kept apart",
+   "constraints": [
+    "This is a draft for a qualified lawyer to review; it is not legal advice"
+   ],
+   "failures": [
+    {
+     "failure": "Statements are not tied to the decision",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "contract",
+   "name": "contract",
+   "also": [
+    "agreement",
+    "terms and conditions"
+   ],
+   "family": "legal",
+   "purpose": "record what the parties have agreed so that it can be relied on and enforced",
+   "reader": "the parties, and a court if they fall out",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Parties and date",
+     "move": "name each party exactly and the date",
+     "required": true
+    },
+    {
+     "name": "Definitions",
+     "move": "define every term the contract relies on",
+     "required": true
+    },
+    {
+     "name": "Obligations",
+     "move": "state what each party must do, one obligation to a clause",
+     "required": true
+    },
+    {
+     "name": "Payment",
+     "move": "state the amount, the timing and the method",
+     "required": true
+    },
+    {
+     "name": "Term and termination",
+     "move": "state when it starts, when it ends and how it may be ended",
+     "required": true
+    },
+    {
+     "name": "Liability and disputes",
+     "move": "state the limits of liability, the governing law and how disputes are settled",
+     "required": true
+    },
+    {
+     "name": "Signatures",
+     "move": "provide for each party to sign",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "formal",
+    "hedging": "none",
+    "words": [
+     500,
+     10000
+    ]
+   },
+   "evidence": "each term means one thing throughout; nothing depends on what a party meant to say",
+   "constraints": [
+    "This is a draft for a qualified lawyer to review; it is not legal advice",
+    "The governing jurisdiction is named, and nothing is asserted about law outside it"
+   ],
+   "failures": [
+    {
+     "failure": "It does not say it is a draft for a lawyer",
+     "check": "lawyer_review"
+    },
+    {
+     "failure": "Terms are not defined",
+     "check": "defined_terms"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "policy",
+   "name": "policy",
+   "also": [
+    "company policy",
+    "policy document"
+   ],
+   "family": "legal",
+   "purpose": "say what people in an organisation must and must not do, and what happens otherwise",
+   "reader": "everyone the policy binds",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Purpose",
+     "move": "say what the policy is for",
+     "required": true
+    },
+    {
+     "name": "Scope",
+     "move": "say whom and what it covers",
+     "required": true
+    },
+    {
+     "name": "Definitions",
+     "move": "define the terms it uses",
+     "required": true
+    },
+    {
+     "name": "Rules",
+     "move": "state each rule separately and plainly",
+     "required": true
+    },
+    {
+     "name": "Responsibilities",
+     "move": "say who must do what",
+     "required": true
+    },
+    {
+     "name": "Breaches",
+     "move": "say what happens when a rule is broken",
+     "required": true
+    },
+    {
+     "name": "Review",
+     "move": "say who owns the policy and when it is next reviewed",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain formal",
+    "hedging": "none",
+    "words": [
+     300,
+     4000
+    ]
+   },
+   "evidence": "each rule can be followed and checked",
+   "constraints": [
+    "This is a draft for a qualified lawyer to review; it is not legal advice"
+   ],
+   "failures": [
+    {
+     "failure": "It does not say it is a draft for a lawyer",
+     "check": "lawyer_review"
+    },
+    {
+     "failure": "Terms are not defined",
+     "check": "defined_terms"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "news-report",
+   "name": "news report",
+   "also": [
+    "news story",
+    "news article"
+   ],
+   "family": "journalism",
+   "purpose": "tell the public what happened, accurately and quickly",
+   "reader": "a member of the public who may read one paragraph",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Headline",
+     "move": "say what happened in a few plain words",
+     "required": true
+    },
+    {
+     "name": "Lead",
+     "move": "say what happened, to whom, when and where, in one sentence",
+     "required": true
+    },
+    {
+     "name": "Key details",
+     "move": "give the next most important facts, each attributed",
+     "required": true
+    },
+    {
+     "name": "Background",
+     "move": "give what a reader needs to understand it",
+     "required": true
+    },
+    {
+     "name": "What next",
+     "move": "say what is expected to happen",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     900
+    ]
+   },
+   "evidence": "every fact is attributed; quotations are exact; numbers have a source",
+   "constraints": [
+    "Every fact is attributed to a named source or to the reporter's own observation",
+    "Nothing is published that was not verified",
+    "Harm is weighed: victims, minors and people not charged are not identified without cause"
+   ],
+   "failures": [
+    {
+     "failure": "The first sentence does not carry the news",
+     "check": "lead_5w"
+    },
+    {
+     "failure": "Facts are not attributed",
+     "check": "attribution"
+    },
+    {
+     "failure": "Opinion or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "crime-report",
+   "name": "crime report",
+   "also": [
+    "crime story",
+    "court report"
+   ],
+   "family": "journalism",
+   "purpose": "report an offence or a court hearing without prejudging anyone",
+   "reader": "the public",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Headline",
+     "move": "say what is alleged or what the court did",
+     "required": true
+    },
+    {
+     "name": "Lead",
+     "move": "say what happened, when and where, and what the police or court have said",
+     "required": true
+    },
+    {
+     "name": "What is known",
+     "move": "give the confirmed facts, each attributed to police, court or a named witness",
+     "required": true
+    },
+    {
+     "name": "The accused",
+     "move": "give only what is charged or found, as charged or found",
+     "required": true
+    },
+    {
+     "name": "Background",
+     "move": "give earlier events that are on record",
+     "required": true
+    },
+    {
+     "name": "What next",
+     "move": "give the next hearing or stage",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     800
+    ]
+   },
+   "evidence": "every claim is attributed to police, court record or a named person",
+   "constraints": [
+    "Every fact is attributed to a named source or to the reporter's own observation",
+    "Nothing is published that was not verified",
+    "Harm is weighed: victims, minors and people not charged are not identified without cause",
+    "A person accused is not called guilty: an allegation is reported as an allegation until a court decides",
+    "Victims of sexual offences and children are not identified"
+   ],
+   "failures": [
+    {
+     "failure": "An accusation is reported as fact",
+     "check": "allegation_marked"
+    },
+    {
+     "failure": "Facts are not attributed",
+     "check": "attribution"
+    },
+    {
+     "failure": "The first sentence does not carry the news",
+     "check": "lead_5w"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "weather-report",
+   "name": "weather report",
+   "also": [
+    "weather forecast",
+    "forecast"
+   ],
+   "family": "journalism",
+   "purpose": "tell people what weather to expect and what to do about it",
+   "reader": "the public, planning the next day or days",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Headline",
+     "move": "say the main thing to expect",
+     "required": true
+    },
+    {
+     "name": "Outlook",
+     "move": "say what is expected, where and when, the most important first",
+     "required": true
+    },
+    {
+     "name": "Details",
+     "move": "give temperatures, wind, rain or snow with times and amounts",
+     "required": true
+    },
+    {
+     "name": "Warnings",
+     "move": "state any official warning exactly as issued, with its source",
+     "required": true
+    },
+    {
+     "name": "Advice",
+     "move": "say what people should do",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "future",
+    "formality": "plain",
+    "hedging": "some",
+    "words": [
+     100,
+     500
+    ]
+   },
+   "evidence": "figures come from the named forecasting service; a warning is quoted as issued",
+   "constraints": [
+    "Every fact is attributed to a named source or to the reporter's own observation",
+    "Nothing is published that was not verified",
+    "An official warning is given exactly as issued and attributed to the service that issued it"
+   ],
+   "failures": [
+    {
+     "failure": "The forecast does not say how likely or when",
+     "check": "hedged_forecast"
+    },
+    {
+     "failure": "The source of the forecast is not named",
+     "check": "attribution"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "feature",
+   "name": "feature",
+   "also": [
+    "feature article",
+    "feature story",
+    "profile"
+   ],
+   "family": "journalism",
+   "purpose": "let a reader understand a person, place or issue in depth",
+   "reader": "a reader with time, who must be drawn in",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "begin with a scene, a person or a question that carries the subject",
+     "required": true
+    },
+    {
+     "name": "The point",
+     "move": "say, soon, what the piece is about and why it matters now",
+     "required": true
+    },
+    {
+     "name": "Body",
+     "move": "develop it through scenes, voices and facts, each leading to the next",
+     "required": true
+    },
+    {
+     "name": "Wider meaning",
+     "move": "set the subject in its larger setting",
+     "required": true
+    },
+    {
+     "name": "Ending",
+     "move": "close on an image or a line that completes the opening",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "narrative",
+    "hedging": "some",
+    "words": [
+     800,
+     4000
+    ]
+   },
+   "evidence": "every fact and quotation is real and attributed; scenes are reported, not imagined",
+   "constraints": [
+    "Every fact is attributed to a named source or to the reporter's own observation",
+    "Nothing is published that was not verified",
+    "Harm is weighed: victims, minors and people not charged are not identified without cause"
+   ],
+   "failures": [
+    {
+     "failure": "People are not quoted or sourced",
+     "check": "attribution"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "explainer",
+   "name": "explainer",
+   "also": [
+    "explainer article",
+    "backgrounder"
+   ],
+   "family": "journalism",
+   "purpose": "make a complicated subject in the news understandable",
+   "reader": "an intelligent reader new to the subject",
+   "headed": false,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "The question",
+     "move": "say what the subject is and why it is in the news",
+     "required": true
+    },
+    {
+     "name": "The short answer",
+     "move": "answer it in a paragraph",
+     "required": true
+    },
+    {
+     "name": "How it works",
+     "move": "explain it part by part, in plain words",
+     "required": true
+    },
+    {
+     "name": "What is disputed",
+     "move": "say fairly where people disagree",
+     "required": true
+    },
+    {
+     "name": "What happens next",
+     "move": "say what to watch for",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "some",
+    "words": [
+     500,
+     2000
+    ]
+   },
+   "evidence": "facts are sourced; where experts disagree, both views are given",
+   "constraints": [
+    "Every fact is attributed to a named source or to the reporter's own observation",
+    "Nothing is published that was not verified"
+   ],
+   "failures": [
+    {
+     "failure": "The short answer is not near the top",
+     "check": "conclusion_first"
+    },
+    {
+     "failure": "Facts are not sourced",
+     "check": "attribution"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "scene",
+   "name": "scene",
+   "also": [],
+   "family": "fiction",
+   "purpose": "show one stretch of continuous action in which something changes",
+   "reader": "a reader of the story",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "put a character in a place, wanting something",
+     "required": true
+    },
+    {
+     "name": "Conflict",
+     "move": "put something in the way",
+     "required": true
+    },
+    {
+     "name": "Turn",
+     "move": "let something change that cannot be undone",
+     "required": true
+    },
+    {
+     "name": "Exit",
+     "move": "end on the new situation, before it is explained",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "narrative",
+    "hedging": "free",
+    "words": [
+     300,
+     2000
+    ]
+   },
+   "evidence": "consistent with the story bible: who knows what, where everyone is, what has already happened",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Nothing changes between the start and the end",
+     "check": "scene_turns"
+    },
+    {
+     "failure": "No one speaks",
+     "check": "dialogue_present"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "short-story",
+   "name": "short story",
+   "also": [
+    "story"
+   ],
+   "family": "fiction",
+   "purpose": "give a reader one complete experience of a character under pressure",
+   "reader": "a reader of fiction",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "establish who, where and what is wanted, in motion",
+     "required": true
+    },
+    {
+     "name": "Complication",
+     "move": "raise an obstacle that matters",
+     "required": true
+    },
+    {
+     "name": "Rising action",
+     "move": "let each attempt make things harder or reveal more",
+     "required": true
+    },
+    {
+     "name": "Climax",
+     "move": "force the choice the story has been heading for",
+     "required": true
+    },
+    {
+     "name": "Ending",
+     "move": "show what has changed, without explaining it",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "narrative",
+    "hedging": "free",
+    "words": [
+     1000,
+     7500
+    ]
+   },
+   "evidence": "consistent with the story bible; every promise planted early is kept, often with a turn",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Nothing changes for the character",
+     "check": "scene_turns"
+    },
+    {
+     "failure": "No one speaks",
+     "check": "dialogue_present"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "novel-chapter",
+   "name": "novel chapter",
+   "also": [
+    "chapter"
+   ],
+   "family": "fiction",
+   "purpose": "advance the story and leave the reader wanting the next chapter",
+   "reader": "a reader of the novel",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Hook",
+     "move": "begin in a moment that raises a question",
+     "required": true
+    },
+    {
+     "name": "Scenes",
+     "move": "play out one or more scenes, each changing something",
+     "required": true
+    },
+    {
+     "name": "Development",
+     "move": "move the plot, the character or the reader's knowledge forward",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "end on a question, a decision or a reversal",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "narrative",
+    "hedging": "free",
+    "words": [
+     1500,
+     6000
+    ]
+   },
+   "evidence": "consistent with the story bible and with every earlier chapter",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Nothing changes by the end of the chapter",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "monologue",
+   "name": "monologue",
+   "also": [
+    "soliloquy"
+   ],
+   "family": "fiction",
+   "purpose": "let one character speak at length and be changed by speaking",
+   "reader": "an actor and an audience",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Trigger",
+     "move": "begin from something that has just happened to the speaker",
+     "required": true
+    },
+    {
+     "name": "Want",
+     "move": "make clear whom they are speaking to and what they want from them",
+     "required": true
+    },
+    {
+     "name": "Shift",
+     "move": "let the speaker discover or admit something part-way through",
+     "required": true
+    },
+    {
+     "name": "Landing",
+     "move": "end somewhere different from the start",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "spoken",
+    "hedging": "free",
+    "words": [
+     150,
+     700
+    ]
+   },
+   "evidence": "true to the character's voice, knowledge and situation in the story bible",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The speaker ends where they began",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "dialogue",
+   "name": "dialogue",
+   "also": [
+    "conversation"
+   ],
+   "family": "fiction",
+   "purpose": "let two or more characters pursue different wants through what they say and do not say",
+   "reader": "a reader or audience",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Entry",
+     "move": "begin late, with the characters already wanting different things",
+     "required": true
+    },
+    {
+     "name": "Exchange",
+     "move": "let each line answer the last while pursuing the speaker's own aim",
+     "required": true
+    },
+    {
+     "name": "Subtext",
+     "move": "keep the real subject under the spoken one",
+     "required": true
+    },
+    {
+     "name": "Turn",
+     "move": "let the balance between them shift",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "spoken",
+    "hedging": "free",
+    "words": [
+     150,
+     1500
+    ]
+   },
+   "evidence": "each voice is distinct and consistent with the character in the story bible",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "There is almost no speech",
+     "check": "dialogue_present"
+    },
+    {
+     "failure": "The balance between the speakers never shifts",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "script",
+   "name": "script",
+   "also": [
+    "screenplay",
+    "play",
+    "teleplay"
+   ],
+   "family": "fiction",
+   "purpose": "set down a drama to be performed: what is seen and what is said",
+   "reader": "actors, a director and a crew",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Scene heading",
+     "move": "say where and when",
+     "required": true
+    },
+    {
+     "name": "Action",
+     "move": "say only what can be seen and heard",
+     "required": true
+    },
+    {
+     "name": "Dialogue",
+     "move": "give each line under the name of its speaker",
+     "required": true
+    },
+    {
+     "name": "Turn",
+     "move": "let the scene change something",
+     "required": true
+    },
+    {
+     "name": "Out",
+     "move": "cut when the scene has done its work",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "spoken",
+    "hedging": "free",
+    "words": [
+     300,
+     5000
+    ]
+   },
+   "evidence": "consistent with the story bible; nothing is written that cannot be seen or heard",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "There is almost no speech",
+     "check": "dialogue_present"
+    },
+    {
+     "failure": "Nothing changes in the scene",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "sources": [],
+    "variants": []
+   }
+  }
+ ]
+}

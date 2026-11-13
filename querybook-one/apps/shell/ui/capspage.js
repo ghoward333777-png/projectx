@@ -24,16 +24,18 @@ function capsView() {
   const inp = document.getElementById("askinput"); if (inp) inp.placeholder = "Ask anything — a word, a fact, a calculation";
   return CP.root;
 }
+function capsPageView() { if (CP.textgen) { CP.textgen = false; CP.cap = akLoad("qb:caps:cap", ""); } const v = capsView(); if (CP.cat) cpDraw(); return v; }
 
 function cpCap() { return (CP.cat.capabilities || []).find(c => c.id === CP.cap); }
 function cpTask(c) { return c.tasks.find(t => t.id === CP.task[c.id]) || c.tasks[0]; }
-function cpOpen(id) { CP.cap = id; cpSave("qb:caps:cap", id); CP.err = ""; cpDraw(); if (id === "workflow") cpLoadWf(); if (id === "project") cpProjects(); }
+function cpOpen(id) { if (CP.textgen && !id) return show("caps"); CP.cap = id; cpSave("qb:caps:cap", id); CP.err = ""; cpDraw(); if (id === "workflow") cpLoadWf(); if (id === "project") cpProjects(); }
 
 function cpDraw() {
   const c = cpCap(), ai = CP.cat.ai || {};
   const head = el("div", { class: "card" },
-    el("h2", {}, "✨ AI Capabilities"),
-    el("p", { class: "muted" }, "Twelve things QueryBook can do for you. Pick one."),
+    el("h2", {}, CP.textgen ? "✍️ AI text gen" : "✨ AI Capabilities"),
+    el("p", { class: "muted" }, CP.textgen ? "Any kind of document, planned from its own record and checked at five layers: sentence flow, paragraph pattern, structure, register and the rules of its field."
+      : "Twelve things QueryBook can do for you. Pick one."),
     el("div", { class: "small muted bqai" }, ai.claude || ai.gemini
       ? el("label", {}, el("input", { type: "checkbox", checked: CP.ai, onchange: e => { CP.ai = e.target.checked; cpSave("qb:caps:ai", CP.ai ? "1" : "0"); } }),
           ` Use ${ai.claude ? "Claude" : "Gemini"} (${ai.model}) for writing, summaries and plans. Every result says who made it. Off: QueryBook's own rules only.`)
@@ -41,7 +43,16 @@ function cpDraw() {
   const tiles = el("div", { class: c ? "capstrip" : "tiles captiles" }, CP.cat.capabilities.map(k =>
     el("button", { type: "button", class: c ? "chip btnchip" + (k.id === CP.cap ? " on" : "") : "tile captile", "aria-pressed": String(k.id === CP.cap), onclick: () => cpOpen(k.id), title: k.about },
       c ? `${k.icon} ${k.name}` : [el("span", { class: "capnum" }, String(k.n)), el("span", { class: "capicon" }, k.icon), el("b", {}, k.name), el("span", { class: "small muted" }, k.about)])));
-  CP.root.replaceChildren(head, tiles, ...(c ? [cpPanel(c)] : []));
+  CP.root.replaceChildren(head, ...(CP.textgen ? [] : [tiles]), ...(c ? [cpPanel(c)] : []));
+}
+
+/* AI text gen (the rail, beside Language and Translate): the Write capability opened on the writing machine */
+function textGenView() {
+  CP.textgen = true; CP.cap = "write";
+  if (!CP.task.write || !/^write\.(doc|check|grammar)$/.test(CP.task.write)) CP.task.write = "write.doc";
+  const v = capsView();
+  if (CP.cat) cpDraw();
+  return v;
 }
 
 /* ------------------------------------------------------------------ one capability */
@@ -84,10 +95,15 @@ function cpInput(c, t) {
       return akAsk(text);
     }
     if (t.id === "tool.speak") return cpSpeak(text);
-    await cpDo(t.id, { task: t.id, text, option: t.id === "tr.quick" ? CP.lang : "" });
+    await cpDo(t.id, { task: t.id, text, option: t.id === "tr.quick" ? CP.lang : t.option === "genre" ? (CP.genre || "") : "" });
   }
+  // a kind of document (the genre library): chosen here, or left to the brief to name
+  const genre = t.option === "genre" ? el("label", { class: "small" }, "Kind of document ", el("select", { onchange: e => { CP.genre = e.target.value; } },
+    el("option", { value: "", selected: !CP.genre }, t.id === "write.check" ? "Not chosen — judge the grammar only" : "Named in my brief"),
+    (CP.cat.families || []).map(f => el("optgroup", { label: f.name }, (CP.cat.genres || []).filter(g => g.family === f.id)
+      .map(g => el("option", { value: g.id, selected: g.id === CP.genre }, g.name[0].toUpperCase() + g.name.slice(1))))))) : null;
   return el("div", {}, field, el("div", { class: "akline" },
-    el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: go }, CP.busy ? "Working…" : label), lang,
+    el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: go }, CP.busy ? "Working…" : label), lang, genre,
     single ? el("span", { class: "small muted" }, "The answer opens on the Ask page, with its sources.") : null));
 }
 
@@ -117,7 +133,11 @@ function cpResult(t, r) {
     r.note ? el("p", { class: "note" }, r.note) : null,
     r.header && r.rows ? cpTable(r) : el("pre", { class: "capout" }, r.text || ""),
     r.insight ? el("p", {}, el("b", {}, "In plain words: "), r.insight, " ", el("span", { class: "chip" }, r.insight_by)) : null,
-    r.rules_text && r.rules_text !== r.text ? el("details", { class: "small" }, el("summary", {}, "The text's own key sentences (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.rules_text)) : null);
+    r.rules_text && r.rules_text !== r.text ? el("details", { class: "small" }, el("summary", {}, "The text's own key sentences (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.rules_text)) : null,
+    // the writing machine: what the draft was planned from, and how the critic judged it (QueryBook's rules, no AI)
+    r.critique_text && r.critique_text !== r.text ? el("details", { class: "small", open: !(r.critique || {}).passed }, el("summary", {}, "The critic's reading — five layers (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.critique_text)) : null,
+    r.blueprint_text && r.blueprint_text !== r.text ? el("details", { class: "small" }, el("summary", {}, "The blueprint it was written to"), el("pre", { class: "capout" }, r.blueprint_text)) : null,
+    (r.facts || []).length && typeof r.facts[0] === "string" ? el("details", { class: "small" }, el("summary", {}, "Facts QueryBook supplied (" + r.facts.length + ")"), el("pre", { class: "capout" }, r.facts.join("\n"))) : null);
   return out;
 }
 

@@ -228,6 +228,18 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   raw HTTP because the bundle is stdlib-only, else Gemini, else `bookq.compose_rules`). Keep the verification: no
   uncited sentence, citations only to supplied passages. Multi-book questions (`books: [...]`) are a core feature.
 
+### Writing skills / AI text gen — the user's plan (`docs/querybook-rebuild/writing-skills-plan.md`)
+
+- In the window it is **✍️ AI text gen**, in the rail beside Language and Translate (the user: "part of the language and speech
+  page"). The user is building and perfecting it over days: extend it, do not move or rename it.
+- `apps/shell/writing.py` is pure and rule-based (Rust-compat list): the topic–comment tagger, the framework classifier, the
+  four checks, the blueprint and the five-layer critic. It invents nothing and marks what it cannot tell as unsure.
+- Genres are DATA: edit `tools/build_genres.py`, run it (its `--check` is in the tests). A new genre is a new row, never a
+  change to the writer. Rules are in QueryBook's own words; keep no source passages. A record's provenance must stay honest:
+  "first draft … not yet reviewed" until sources are reconciled and a person has reviewed it.
+- The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
+  qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
+
 ### AI Capabilities (`querybook-one/apps/shell/caps.py`, `assist.py`, `ui/capspage.js`)
 
 - The user's list of twelve, in this order — keep all twelve tiles: Ask/Search, Summarize, Write/Create, Organize, Analyze,

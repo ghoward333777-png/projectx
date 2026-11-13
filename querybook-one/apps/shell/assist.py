@@ -21,6 +21,7 @@ from typing import Callable
 import caps
 import modes
 import qbcompose
+import writing
 
 TEXT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["text"], "properties": {"text": {"type": "string"}}}
 PLAN_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["name", "target", "phases", "risks"], "properties": {
@@ -104,7 +105,81 @@ class Assist:
                 "language": bool(self.urls().get("language"))}
 
     def catalogue(self) -> dict:
-        return {"capabilities": caps.CAPABILITIES, "steps": caps.STEPS, "ai": self.status(), "labels": LABELS}
+        lib = self.genres()
+        return {"capabilities": caps.CAPABILITIES, "steps": caps.STEPS, "ai": self.status(), "labels": LABELS,
+                "genres": [{"id": g["id"], "name": g["name"], "family": g["family"]} for g in lib["genres"].values()],
+                "families": lib["families"], "genres_status": lib["status"]}
+
+    # ---------------------------------------------------------------- writing (writing.py: the grammar, the genre library, the critic)
+    def genres(self) -> dict:
+        if getattr(self, "_genres", None) is None:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres.json"), encoding="utf-8") as f:
+                self._genres = writing.load_genres(f.read())
+        return self._genres
+
+    def write_document(self, brief: str, genre_id: str, use_ai: bool) -> dict:
+        """the writing machine: brief -> genre -> blueprint -> bind facts -> draft -> critique -> one revision.
+        The draft is a model's (labelled); the blueprint and the critic are QueryBook's rules and judge by the same record."""
+        lib = self.genres()
+        pick = {"id": genre_id, "why": "chosen", "blend": ""} if genre_id in lib["genres"] else writing.select_genre(brief, lib)
+        if not pick["id"]:
+            names = ", ".join(g["name"] for g in lib["genres"].values())
+            return {"by": "rules", "text": "What kind of document should this be? Choose one above, or name it in the brief.\n\nQueryBook can plan and check: " + names + ".",
+                    "note": "The brief does not name a kind of document, and QueryBook does not guess one."}
+        g = lib["genres"][pick["id"]]
+        bp = writing.blueprint(g, brief)
+        plan = writing.blueprint_text(bp)
+        out = {"genre": g["id"], "genre_name": g["name"], "blueprint": bp, "blueprint_text": plan, "blend": pick["blend"],
+               "record_status": g["provenance"]["status"]}
+        facts: list[dict] = []
+        if not bp["fiction"]:                                # bind facts: what QueryBook holds on the subject, for the draft to stand on
+            try:
+                r = self.ask_fn({"q": brief[:300], "mode": "qa"}, self.urls())
+                facts = modes.facts_of(r.get("sections") or [])[:12]
+            except (RuntimeError, OSError, ValueError, KeyError):
+                facts = []
+        fact_lines = ["%s — %s: %s" % (modes.clean(f.get("subject")), f.get("predicate") or "", modes.fact_value(f)) for f in facts]
+        out["facts"] = fact_lines
+        status = "This genre's record is a %s." % g["provenance"]["status"]
+        if not self.can_ai(use_ai):
+            return dict(out, by="rules", text=plan, note="No AI key is saved, so this is the plan to write from: the sections in order, what each must "
+                        "do, and the register. Write to it, then use “Check a draft” to have it judged. " + status)
+        system = ("You draft documents to a blueprint. Follow the BLUEPRINT exactly. Use only what the BRIEF and the FACTS give: add no fact, name, "
+                  "number, date, quotation or source of your own, and leave [square brackets] where a needed detail is missing."
+                  + (" This is fiction: invent the story from the brief's premise, and keep its own facts consistent." if bp["fiction"] else ""))
+        user = "BLUEPRINT:\n%s\n\nBRIEF:\n%s\n\nFACTS:\n%s" % (writing.writer_brief(bp), brief[:6000], "\n".join(fact_lines) or "(none held)")
+        try:
+            j, provider = self.model(system, user, TEXT_SCHEMA)
+            draft = str(j.get("text") or "").strip()
+            if not draft:
+                raise RuntimeError("empty result")
+            crit = writing.critique(draft, bp)
+            rounds = 0
+            if not crit["passed"]:                           # the critic sends it back once, with what failed — the blueprint stays fixed
+                rounds = 1
+                j2, _ = self.model(system + " You are revising: change only what the LIST requires and keep everything else.",
+                                   user + "\n\nDRAFT:\n" + draft[:20000] + "\n\nLIST (fix each):\n" + "\n".join("- " + x for x in crit["revise"][:12]), TEXT_SCHEMA)
+                again = str(j2.get("text") or "").strip()
+                if again:
+                    c2 = writing.critique(again, bp)
+                    if len(c2["revise"]) <= len(crit["revise"]):
+                        draft, crit = again, c2
+            return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=rounds,
+                        note=("The critic passed it at all five layers. " if crit["passed"] else "The critic still finds %d thing%s to fix (listed below). "
+                              % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status
+                        + (" Checks left for a person: %d." % len(crit["for_a_person"]) if crit["for_a_person"] else ""))
+        except (RuntimeError, OSError, ValueError) as e:
+            return dict(out, by="rules", text=plan, note="The AI could not draft this (%s), so this is the plan to write from. %s" % (e, status))
+
+    def check_draft(self, text: str, genre_id: str) -> dict:
+        lib = self.genres()
+        g = lib["genres"].get(genre_id)
+        bp = writing.blueprint(g, "") if g else writing.plain_blueprint()
+        bp["asks"] = []
+        crit = writing.critique(text, bp)
+        return {"by": "rules", "critique": crit, "text": writing.critique_text(crit), "genre": genre_id,
+                "note": ("Judged as %s. " % writing.a_an(g["name"]) if g else "No kind of document chosen, so only the grammar is judged (sentence flow and paragraph "
+                         "pattern). Choose a kind above for all five layers. ") + ("This genre's record is a %s." % g["provenance"]["status"] if g else "")}
 
     # ---------------------------------------------------------------- the model
     def model(self, system: str, user: str, schema: dict) -> tuple[dict, str]:
@@ -146,7 +221,18 @@ class Assist:
             raise ValueError("QueryBook does not know that task.")
         if not text:
             raise ValueError("There is nothing to work on yet — type or paste something first.")
-        r = self.step(task, text, option, use_ai)
+        if task == "write.doc":
+            r = self.write_document(text, option, use_ai)
+        elif task == "write.check":
+            r = self.check_draft(text, option)
+        elif task == "write.grammar":
+            paras = [p for p in writing.paragraphs(text) if len(writing.sentences(p)) >= 2][:12]
+            r = {"by": "rules", "text": "\n\n".join("Paragraph %d\n%s" % (i + 1, writing.explain(p)) for i, p in enumerate(paras))
+                 or "There is no paragraph of two or more sentences to read.",
+                 "note": "Each sentence is split into its topic (what the reader already holds) and its comment (what is new). The tagger works by rules, "
+                         "not by parsing: where it finds no verb it says so."}
+        else:
+            r = self.step(task, text, option, use_ai)
         r["task"] = task
         r["by_label"] = LABELS.get(r.get("by", "rules"), r.get("by", ""))
         return r
