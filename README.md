@@ -314,7 +314,7 @@ no API keys.
 - `tests/amazon-book-writer-contract.php` — Amazon Book Writer contract checks
 - `tests/audiobook-contract.php` — editions and audiobook production contract checks
 
-## Online magazine (`magazine/`)
+## Online magazine: MINDATION.AI (`magazine/`)
 
 A dependency-free online magazine with 20 permanent departments, each with a mission
 paragraph followed by its article stream.

@@ -6,11 +6,11 @@
  * config.php is ignored by git: never commit real keys.
  */
 return [
-    'site_name' => 'The Pro-Human Review',
+    'site_name' => 'MINDATION.AI',
     'tagline' => 'Efficient, local, verifiable, auditable AI, for the people who lead.',
 
-    // Public address of the magazine folder, e.g. https://example.com/magazine/ (used for share links and Google sign-in).
-    'base_url' => '',
+    // Public address of the magazine (used for share links and Google sign-in).
+    'base_url' => 'https://mindation.ai/',
     'timezone' => 'UTC',
 
     // Google sign-in: create an OAuth 2.0 "Web application" client at

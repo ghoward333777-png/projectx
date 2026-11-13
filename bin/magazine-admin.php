@@ -11,9 +11,22 @@ declare(strict_types=1);
  * Use this to promote the first administrator after registering on the site.
  */
 
-require_once __DIR__ . '/../magazine/MagazineStore.php';
+// The app normally sits beside this folder as magazine/; on a host where its contents were
+// uploaded straight into the web root, public_html/ is found instead (or set MAGAZINE_APP_DIR).
+$app = null;
+foreach (array_filter([getenv('MAGAZINE_APP_DIR') ?: null, __DIR__ . '/../magazine', __DIR__ . '/../public_html']) as $candidate) {
+    if (is_file($candidate . '/MagazineStore.php')) {
+        $app = $candidate;
+        break;
+    }
+}
+if ($app === null) {
+    fwrite(STDERR, "Could not find the magazine files. Set MAGAZINE_APP_DIR to the folder that holds MagazineStore.php.\n");
+    exit(2);
+}
+require_once $app . '/MagazineStore.php';
 
-$dir = getenv('MAGAZINE_DATA_DIR') ?: __DIR__ . '/../magazine/data';
+$dir = getenv('MAGAZINE_DATA_DIR') ?: $app . '/data';
 $store = new MagazineStore($dir);
 
 if (($argv[1] ?? '') === '--list') {

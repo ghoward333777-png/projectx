@@ -19,7 +19,7 @@ const PER_PAGE = 12;
 function magazine_config(): array
 {
     $config = [
-        'site_name' => 'The Pro-Human Review',
+        'site_name' => 'MINDATION.AI',
         'tagline' => 'Efficient, local, verifiable, auditable AI, for the people who lead.',
         'base_url' => '',
         'timezone' => 'UTC',
