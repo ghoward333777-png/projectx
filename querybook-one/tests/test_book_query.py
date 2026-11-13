@@ -36,7 +36,7 @@ class LibraryTest(unittest.TestCase):
         with open(os.path.join(LIB, "catalog.json"), encoding="utf-8") as f:
             books = json.load(f)["books"]
         ids = {b["id"] for b in books}
-        self.assertEqual(len(books), 19)
+        self.assertEqual(len(books), 22)
         self.assertFalse(any("darwin" in i for i in ids))               # the user's decision: no Darwin
         self.assertEqual(sum(1 for b in books if b["kind"] == "fiction"), 10)
         for b in books:
@@ -140,7 +140,7 @@ class WindowLibraryTest(unittest.TestCase):
         import shell
         lib = shell.Library([LIB, ""])
         books = lib.list()
-        self.assertEqual(len(books), 19)
+        self.assertEqual(len(books), 22)
         wp = next(b for b in books if b["id"] == "tolstoy-war-peace")
         self.assertIn("Pierre Bezúkhov", wp["top_people"])
         self.assertIn("Rostóv", wp["families"])

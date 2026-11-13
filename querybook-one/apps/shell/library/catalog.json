@@ -263,6 +263,147 @@
   },
   {
    "about": "",
+   "author": "The American Revision Committee",
+   "examples": [
+    "Who was Moses?",
+    "What are the ten commandments?",
+    "love",
+    "What does it say about wisdom?",
+    "the good Samaritan",
+    "In the beginning"
+   ],
+   "families": [],
+   "historical": 0,
+   "id": "bible-asv",
+   "kind": "nonfiction",
+   "kinds": {
+    "assertion": 33202,
+    "definition": 114,
+    "law": 480,
+    "measurement": 2,
+    "observation": 339,
+    "procedure": 16
+   },
+   "modern": {},
+   "new_since": 0,
+   "people": 12,
+   "provenance": {
+    "fetched": "2026-11-13",
+    "rights": "Public domain (published 1901). The American Standard Version is the translation the New American Standard Bible was revised from; the New American Standard itself is under copyright and is not in this library. Text as distributed by eBible.org, set one verse to a paragraph. Not endorsed by eBible.org.",
+    "source": "eBible.org, American Standard Version (verse-per-line text)",
+    "url": "https://ebible.org/find/details.php?id=eng-asv"
+   },
+   "published": "1901",
+   "structure": "scripture: books, chapters and verses",
+   "subject": "Scripture: the Old and New Testaments",
+   "title": "The Holy Bible, American Standard Version",
+   "top_people": [
+    "Jesus",
+    "David",
+    "Moses",
+    "Jacob",
+    "Abraham",
+    "Solomon"
+   ],
+   "units": 34153,
+   "year": 1901
+  },
+  {
+   "about": "",
+   "author": "Translated by the scholars appointed by King James I",
+   "examples": [
+    "Who was Moses?",
+    "What are the ten commandments?",
+    "love",
+    "What does it say about wisdom?",
+    "the good Samaritan",
+    "In the beginning"
+   ],
+   "families": [],
+   "historical": 0,
+   "id": "bible-kjv",
+   "kind": "nonfiction",
+   "kinds": {
+    "assertion": 32663,
+    "definition": 123,
+    "law": 485,
+    "measurement": 2,
+    "observation": 384,
+    "procedure": 10
+   },
+   "modern": {},
+   "new_since": 0,
+   "people": 12,
+   "provenance": {
+    "fetched": "2026-11-13",
+    "rights": "Public domain in the USA. This QueryBook edition keeps the public-domain text only (Project Gutenberg's header, licence and trademark removed) and sets it one verse to a paragraph; in the United Kingdom the King James Version is under Crown letters patent. Not endorsed by Project Gutenberg.",
+    "source": "Project Gutenberg eBook #10",
+    "url": "https://www.gutenberg.org/ebooks/10"
+   },
+   "published": "1611 (the text of the standard 1769 edition)",
+   "structure": "scripture: books, chapters and verses",
+   "subject": "Scripture: the Old and New Testaments",
+   "title": "The Holy Bible, King James Version",
+   "top_people": [
+    "Jesus",
+    "David",
+    "Moses",
+    "Jacob",
+    "Abraham",
+    "Solomon"
+   ],
+   "units": 33667,
+   "year": 1611
+  },
+  {
+   "about": "",
+   "author": "Edited by Michael Paul Johnson and volunteers",
+   "examples": [
+    "Who was Moses?",
+    "What are the ten commandments?",
+    "love",
+    "What does it say about wisdom?",
+    "the good Samaritan",
+    "In the beginning"
+   ],
+   "families": [],
+   "historical": 0,
+   "id": "bible-web",
+   "kind": "nonfiction",
+   "kinds": {
+    "assertion": 44875,
+    "definition": 120,
+    "law": 489,
+    "measurement": 4,
+    "observation": 361,
+    "procedure": 289
+   },
+   "modern": {},
+   "new_since": 0,
+   "people": 12,
+   "provenance": {
+    "fetched": "2026-11-13",
+    "rights": "Public domain: dedicated to the public domain by its editors. \"World English Bible\" is a trademark of eBible.org, used here because the text of the 66 books is unchanged (the deuterocanonical books of the source are not included); only the layout is QueryBook's, one verse to a paragraph. Not endorsed by eBible.org.",
+    "source": "eBible.org, World English Bible (verse-per-line text)",
+    "url": "https://ebible.org/find/details.php?id=eng-web"
+   },
+   "published": "2000–2020 (2020 stable text)",
+   "structure": "scripture: books, chapters and verses",
+   "subject": "Scripture: the Old and New Testaments",
+   "title": "The Holy Bible, World English Bible",
+   "top_people": [
+    "Jesus",
+    "David",
+    "Moses",
+    "Jacob",
+    "Abraham",
+    "Solomon"
+   ],
+   "units": 46138,
+   "year": 2020
+  },
+  {
+   "about": "",
    "author": "Niccolò Machiavelli (translated by W. K. Marriott)",
    "examples": [
     "Is it better to be loved or feared?",

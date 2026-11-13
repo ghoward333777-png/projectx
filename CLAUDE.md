@@ -144,6 +144,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   minute; `Supervisor.hot_first` starts no other dataset while the hot list has work (valve: 30 min without a new hot fact).
   When the records service refuses (429) records come through the query service (`wdqs_entities`). Names are tried with and
   without "The" (`name_forms`). Do not loosen any of these.
+- A refused records service is answered in this order: the per-record address (`entitydata_entities`), then the query service
+  in halving batches (`wdqs_entities`). The query service alone lost most facts of famous subjects — never make it the first.
+- One name of an item must hold EVERY word asked, short words too (`wd_names`), and a full name matched exactly outweighs fame
+  (`sense.choose`): "Ed Sullivan" was answered with Boris Vian (pen name Vernon Sullivan).
 - Harvest order: `hot-demand`, `hot-seed`, then `hot-top-*` icons, then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
 - Complete domains (`DOMAINS`, `WikidataDomain`, keys `hot-all-*`) — the user's strategy: until the store is mature, harvest
@@ -173,7 +177,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 
 ### Book Query library (`querybook-one/apps/shell/library/`)
 
-- 19 public-domain books (Darwin excluded at the user's request — never add him). Texts are QueryBook editions:
+- 22 public-domain books (Darwin excluded at the user's request — never add him), three of them Bibles (`bible-kjv`, `bible-asv`,
+  `bible-web`, made by `tools/build_bibles.py`: a book of the Bible is a chapter, its chapter a section, a verse a paragraph).
+  Only public-domain translations: the NASB, NIV, ESV and the rest of Bible Gateway are under copyright and its terms forbid
+  copying — do not add them. Texts are QueryBook editions:
   Project Gutenberg header/licence/trademark removed, provenance and rights kept in `meta.json`.
 - After changing `bookq.py`, a `meta.json` or a `modern.json`, run `python tools/build_library.py` (its `--check`
   runs in the tests). Modern/context entries must name sources and match a real sentence of the book.

@@ -151,7 +151,9 @@ def choose(question: str, entities: list[dict], facts: list[dict]) -> dict:
         # written about (Wikipedias with an article) and how much is held about it
         # a thing named exactly as asked has an edge over one found by another name or by part of its name — an edge a
         # well-known thing overcomes ("Dodgers" is the Los Angeles Dodgers, not an obscure item called just "Dodgers")
-        exact = 150.0 if e.get("exact", True) else 0.0
+        # a full name typed out and matched exactly ("Ed Sullivan") is a far stronger sign than one word that many share
+        full = len(clean(s).split()) >= 2
+        exact = (600.0 if full else 150.0) if e.get("exact", True) else 0.0
         score = (1000.0 if want and k in want else 0.0) + (0.0 if about else 300.0) + exact + 60.0 * math.log10(1.0 + views) \
             + 6.0 * min(fame, 150.0) + 40.0 * math.log10(1.0 + n)
         said = next((clean(f.get("object")) for f in fs if str(f.get("predicate") or "").lower() == "description"), "") or \

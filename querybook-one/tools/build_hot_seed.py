@@ -29,6 +29,19 @@ def main():
             done = json.load(f)
     except (OSError, ValueError):
         done = {}
+    earlier = None                          # a shipped list made before its sets were kept one by one: kept whole
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            old = json.load(f)
+        if old.get("lists"):
+            for n, ids in old["lists"].items():
+                done.setdefault(n, {"ids": ids, "roots": (old.get("roots") or {}).get(n, [])})
+        else:
+            earlier = old
+            for n in old.get("sets") or {}:
+                done.setdefault(n, {"ids": [], "roots": (old.get("roots") or {}).get(n, []), "count": old["sets"][n]})
+    except (OSError, ValueError):
+        pass
     for name in qbbulk.ICONS:
         if name in done:
             print("have", name, len(done[name]["ids"]))
@@ -40,12 +53,27 @@ def main():
             json.dump(done, f)
         print("%-18s %6d in %4d s  left out: %s" % (name, len(d["ids"]), time.time() - t0,
               [r["expected"] for r in d["roots"] if not r["used"] or r.get("why")]), flush=True)
-    ids = qbbulk.interleave([done[n]["ids"] for n in qbbulk.ICONS])
-    seed = {"made": datetime.date.today().isoformat(), "culture": qbbulk.CULTURE[0], "sets": {n: len(done[n]["ids"]) for n in qbbulk.ICONS},
-            "roots": {n: done[n]["roots"] for n in qbbulk.ICONS}, "ids": ids}
+    if earlier:                             # the earlier list takes its sets' share of every round, each new set its own 50
+        share = qbbulk.ICON_BLOCK * len(earlier.get("sets") or {})
+        fresh = [done[n]["ids"] for n in qbbulk.ICONS if done[n]["ids"]]
+        ids, seen, k = [], set(), 0
+        while k * share < len(earlier["ids"]) or any(k * qbbulk.ICON_BLOCK < len(x) for x in fresh):
+            for q in earlier["ids"][k * share:(k + 1) * share] + [q for x in fresh for q in x[k * qbbulk.ICON_BLOCK:(k + 1) * qbbulk.ICON_BLOCK]]:
+                if q not in seen:
+                    seen.add(q)
+                    ids.append(q)
+            k += 1
+        lists = {}
+    else:
+        ids = qbbulk.interleave([done[n]["ids"] for n in qbbulk.ICONS])
+        lists = {n: done[n]["ids"] for n in qbbulk.ICONS}
+    seed = {"made": datetime.date.today().isoformat(), "culture": qbbulk.CULTURE[0],
+            "sets": {n: done[n].get("count") or len(done[n]["ids"]) for n in qbbulk.ICONS},
+            "roots": {n: done[n]["roots"] for n in qbbulk.ICONS}, "lists": lists, "ids": ids}
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(seed, f, separators=(",", ":"))
-    os.remove(PART)
+    if os.path.exists(PART):
+        os.remove(PART)
     print("wrote", OUT, len(ids), "subjects")
 
 

@@ -1,0 +1,182 @@
+{
+ "id": "bible-web",
+ "title": "The Holy Bible, World English Bible",
+ "author": "Edited by Michael Paul Johnson and volunteers",
+ "year": 2020,
+ "published": "2000–2020 (2020 stable text)",
+ "kind": "nonfiction",
+ "subject": "Scripture: the Old and New Testaments",
+ "structure": "scripture: books, chapters and verses",
+ "provenance": {
+  "source": "eBible.org, World English Bible (verse-per-line text)",
+  "url": "https://ebible.org/find/details.php?id=eng-web",
+  "fetched": "2026-11-13",
+  "rights": "Public domain: dedicated to the public domain by its editors. \"World English Bible\" is a trademark of eBible.org, used here because the text of the 66 books is unchanged (the deuterocanonical books of the source are not included); only the layout is QueryBook's, one verse to a paragraph. Not endorsed by eBible.org."
+ },
+ "text": "text.txt.gz",
+ "rules": {
+  "parts": [
+   "The Old Testament",
+   "The New Testament"
+  ],
+  "headings": [
+   "Genesis",
+   "Exodus",
+   "Leviticus",
+   "Numbers",
+   "Deuteronomy",
+   "Joshua",
+   "Judges",
+   "Ruth",
+   "1 Samuel",
+   "2 Samuel",
+   "1 Kings",
+   "2 Kings",
+   "1 Chronicles",
+   "2 Chronicles",
+   "Ezra",
+   "Nehemiah",
+   "Esther",
+   "Job",
+   "Psalms",
+   "Proverbs",
+   "Ecclesiastes",
+   "Song of Solomon",
+   "Isaiah",
+   "Jeremiah",
+   "Lamentations",
+   "Ezekiel",
+   "Daniel",
+   "Hosea",
+   "Joel",
+   "Amos",
+   "Obadiah",
+   "Jonah",
+   "Micah",
+   "Nahum",
+   "Habakkuk",
+   "Zephaniah",
+   "Haggai",
+   "Zechariah",
+   "Malachi",
+   "Matthew",
+   "Mark",
+   "Luke",
+   "John",
+   "Acts",
+   "Romans",
+   "1 Corinthians",
+   "2 Corinthians",
+   "Galatians",
+   "Ephesians",
+   "Philippians",
+   "Colossians",
+   "1 Thessalonians",
+   "2 Thessalonians",
+   "1 Timothy",
+   "2 Timothy",
+   "Titus",
+   "Philemon",
+   "Hebrews",
+   "James",
+   "1 Peter",
+   "2 Peter",
+   "1 John",
+   "2 John",
+   "3 John",
+   "Jude",
+   "Revelation"
+  ],
+  "standalone": true,
+  "sections": "arabic",
+  "min_chars": 100
+ },
+ "examples": [
+  "Who was Moses?",
+  "What are the ten commandments?",
+  "love",
+  "What does it say about wisdom?",
+  "the good Samaritan",
+  "In the beginning"
+ ],
+ "characters": [
+  {
+   "name": "Moses",
+   "aliases": [
+    "Moses"
+   ]
+  },
+  {
+   "name": "Abraham",
+   "aliases": [
+    "Abraham",
+    "Abram"
+   ]
+  },
+  {
+   "name": "David",
+   "aliases": [
+    "David"
+   ]
+  },
+  {
+   "name": "Jesus",
+   "aliases": [
+    "Jesus",
+    "Christ"
+   ]
+  },
+  {
+   "name": "Paul",
+   "aliases": [
+    "Paul",
+    "Saul of Tarsus"
+   ]
+  },
+  {
+   "name": "Peter",
+   "aliases": [
+    "Peter",
+    "Simon Peter",
+    "Cephas"
+   ]
+  },
+  {
+   "name": "Solomon",
+   "aliases": [
+    "Solomon"
+   ]
+  },
+  {
+   "name": "Noah",
+   "aliases": [
+    "Noah"
+   ]
+  },
+  {
+   "name": "Jacob",
+   "aliases": [
+    "Jacob"
+   ]
+  },
+  {
+   "name": "Joseph",
+   "aliases": [
+    "Joseph"
+   ]
+  },
+  {
+   "name": "Mary",
+   "aliases": [
+    "Mary"
+   ]
+  },
+  {
+   "name": "Elijah",
+   "aliases": [
+    "Elijah",
+    "Elias"
+   ]
+  }
+ ]
+}

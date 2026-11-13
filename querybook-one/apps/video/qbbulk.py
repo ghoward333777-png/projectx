@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.44.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.45.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1616,6 +1616,7 @@ def wd_alias(commons_folder, name):
     return sorted(out)
 
 
+NAME_CHECK = 5000
 NAME_SKIP = frozenset("the of and in on at for to de la le el du von van der den der a an".split())
 
 
@@ -1628,6 +1629,7 @@ def wd_names(commons_folder, text, limit=400):
     """1.43 — Q-numbers of the well-known items whose names hold EVERY word asked ("Dodgers" -> Los Angeles Dodgers,
     Brooklyn Dodgers; "Lincoln Memorial" -> Lincoln Memorial). People say part of a name; the store keeps the whole."""
     want = sorted(name_words(text), key=len, reverse=True)
+    every = {w for w in re.findall(r"[^\W_]+", (text or "").casefold()) if w not in NAME_SKIP}
     out = set()
     if not want:
         return []
@@ -1640,6 +1642,20 @@ def wd_names(commons_folder, text, limit=400):
                 qs = got if qs is None else qs & got
                 if not qs:
                     break
+            # 1.45: ONE name of the item must hold every word asked — the short ones too. "Ed Sullivan" asked the index for
+            # "sullivan" alone ("ed" is too short to index) and was answered with Boris Vian, whose pen name is Vernon Sullivan.
+            if qs and len(every) > 0:
+                keep = set()
+                cand = sorted(qs)[:NAME_CHECK]
+                for i in range(0, len(cand), 500):
+                    chunk = cand[i:i + 500]
+                    marks = ",".join("?" * len(chunk))
+                    rows = list(db.execute("SELECT q, label FROM labels WHERE q IN (%s)" % marks, chunk))
+                    rows += list(db.execute("SELECT q, name FROM alias WHERE q IN (%s)" % marks, chunk))
+                    for q, nm in rows:
+                        if q not in keep and every <= set(re.findall(r"[^\W_]+", (nm or "").casefold())):
+                            keep.add(q)
+                qs = keep
             db.close()
             out |= qs or set()
         except sqlite3.Error:
@@ -1909,10 +1925,11 @@ def wdqs_ask(sparql, folder=None):
                 if e.code not in REFUSED + (500, 502, 503, 504) or attempt == 3:
                     raise
                 time.sleep(max(WDQS_PAUSE_S * (attempt + 1), _retry_after(e)))
-            except (urllib.error.URLError, TimeoutError, ConnectionError):
-                if attempt == 3:
+            except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError):
+                # (ValueError: the service ran out of its minute and cut the answer off mid-way — not an answer at all)
+                if attempt == 1:
                     raise
-                time.sleep(WDQS_PAUSE_S * (attempt + 1))
+                time.sleep(WDQS_PAUSE_S)
     finally:
         if lock is not None:
             slots.release(lock)
@@ -1929,7 +1946,71 @@ def api_refused_set(folder, why=""):
         _ka_save(os.path.join(folder, FOLDER, API_REFUSED_NAME), {"until": time.time() + API_REFUSED_S, "at": time.time(), "why": str(why)[:200]})
 
 
+WDQS_BATCH = 25
+ENTITY_AT_ONCE = 2                 # records asked for at the same time from the per-record address
+ENTITY_PAUSE_S = 3.0               # after it says "too many requests"
+
+
+def ENTITY_FETCH(qid):
+    """one whole record from Wikidata's per-record address (Special:EntityData — not the records service: it answered
+    here while that one refused). The record as the records service gives it, or None. (The tests replace this.)"""
+    req = urllib.request.Request("https://www.wikidata.org/wiki/Special:EntityData/%s.json" % qid, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        ents = json.loads(r.read()).get("entities") or {}
+    return next(iter(ents.values()), None)
+
+
+def entitydata_entities(qids):
+    """1.45 — {Q-id: record}, one record a request, two at a time, slowing down when told to. Measured: 52 records in 4
+    seconds, against 50 a minute through the query service. Gives up (returns what it has) when the address refuses
+    outright, so the caller reads the rest through the query service."""
+    ids = [q for q in dict.fromkeys(qids) if re.fullmatch(r"Q\d+", q or "")]
+    out, state = {}, {"fails": 0}
+
+    def one(q):
+        for attempt in range(4):
+            if state["fails"] >= 12:
+                return
+            try:
+                e = ENTITY_FETCH(q)
+                if e and "missing" not in e:
+                    out[q] = e
+                state["fails"] = 0
+                return
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return
+                state["fails"] += 1
+                time.sleep(max(ENTITY_PAUSE_S * (attempt + 1), min(30, _retry_after(e))) if ENTITY_PAUSE_S else 0)
+            except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError):
+                state["fails"] += 1
+                time.sleep(ENTITY_PAUSE_S)
+    import concurrent.futures as _cf
+    with _cf.ThreadPoolExecutor(ENTITY_AT_ONCE) as ex:
+        list(ex.map(one, ids))
+    return out
+
+
 def wdqs_entities(qids, folder=None):
+    """…in batches the query service answers within its minute. A batch it cannot answer (the most-written-about subjects
+    have thousands of statements) is halved until it can; a single subject it still cannot answer is left for the next
+    run — never the whole part lost for one of them."""
+    ids = [q for q in dict.fromkeys(qids) if re.fullmatch(r"Q\d+", q or "")]
+    out = {}
+
+    def take(chunk):
+        try:
+            out.update(_wdqs_entities(chunk, folder))
+        except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError):
+            if len(chunk) > 1:
+                take(chunk[:len(chunk) // 2])
+                take(chunk[len(chunk) // 2:])
+    for i in range(0, len(ids), WDQS_BATCH):
+        take(ids[i:i + WDQS_BATCH])
+    return out
+
+
+def _wdqs_entities(qids, folder=None):
     """{Q-id: record} for these items, read from the query service and shaped as the records service gives them (labels,
     description, other names, the number of Wikipedias, and every best-rank statement with its value: an item, a date at
     its own precision, a quantity with its unit, a place on Earth, a text). Three small queries per batch."""
@@ -2129,10 +2210,11 @@ class WikidataHot(Dataset):
             return out
         except Refused:
             pass
-        out = {}
-        for i in range(0, len(ids), self.PAGE):
-            out.update(wdqs_entities(ids[i:i + self.PAGE], getattr(self, "folder", None)))
-        state["_via"] = "query service"
+        out = entitydata_entities(ids)                  # the per-record address: whole records, fast
+        left = [q for q in ids if q not in out]
+        if left:                                         # …and what it would not give, through the query service
+            out.update(wdqs_entities(left, getattr(self, "folder", None)))
+        state["_via"] = "per-record address" if not left else "per-record address and query service"
         return out
 
     def rows(self, part, url, state):
@@ -2457,6 +2539,24 @@ ICONS = {
         ("P31", "Q1445650", "holiday", False, 500, "", 0), ("P31", "Q349", "sport", False, 500, "", 0), ("P31", "Q34379", "musical instrument", False, 500, "", 0),
         ("P31", "Q2095", "food", False, 800, "", 0), ("P31", "Q618779", "award", False, 800, "", 0), ("P31", "Q167170", "multi-sport event", False, 300, "", 0),
         ("P31", "Q11344", "chemical element", False, 200, "", 0), ("P31", "Q634", "planet", False, 50, "", 0), ("P31", "Q12136", "disease", False, 800, "", 0))),
+    # 1.45: "QueryBook does not know who Moses is." The sets above had no place for the figures of faith, thought, science
+    # and the arts — the people and works asked about for centuries. (Every code's label checked against Wikidata.)
+    "faith-thought-science": (0, "Figures of the Bible and of every faith, gods, popes, philosophers, scientists, inventors and explorers", (
+        ("P31", "Q20643955", "human biblical figure", False, 800, "", 0), ("P106", "Q42857", "prophet", False, 300, "", 0),
+        ("P31", "Q178885", "deity", True, 800, "", 0), ("P39", "Q19546", "Pope", False, 300, "", 0), ("P31", "Q179461", "religious text", True, 300, "", 0),
+        ("P106", "Q4964182", "philosopher", False, 1500, "", 0), ("P106", "Q1234713", "theologian", False, 500, "", 0),
+        ("P106", "Q169470", "physicist", False, 1000, "", 0), ("P106", "Q170790", "mathematician", False, 1000, "", 0),
+        ("P106", "Q593644", "chemist", False, 800, "", 0), ("P106", "Q205375", "inventor", False, 800, "", 0),
+        ("P106", "Q11900058", "explorer", False, 800, "", 0), ("P106", "Q11631", "astronaut", False, 400, "", 0),
+        ("P106", "Q188094", "economist", False, 500, "", 0), ("P106", "Q1402561", "military leader", False, 800, "", 0))),
+    "arts-business-works": (0, "Painters, composers, architects, founders and companies, characters of myth and story, and the best-known works", (
+        ("P106", "Q1028181", "painter", False, 1500, "", 0), ("P106", "Q36834", "composer", False, 1500, "", 0),
+        ("P106", "Q1281618", "sculptor", False, 400, "", 0), ("P106", "Q42973", "architect", False, 600, "", 0),
+        ("P106", "Q131524", "entrepreneur", False, 1000, "", 0), ("P106", "Q43845", "businessperson", False, 1000, "", 0),
+        ("P31", "Q4830453", "business", False, 2000, "", 30), ("P31", "Q22988604", "mythological Greek character", False, 500, "", 0),
+        ("P31", "Q3658341", "literary character", False, 500, "", 0), ("P31", "Q7725634", "literary work", False, 2000, "", 20),
+        ("P31", "Q3305213", "painting", False, 500, "", 15), ("P31", "Q7889", "video game", False, 800, "", 20),
+        ("P31", "Q482994", "album", False, 800, "", 20), ("P31", "Q7366", "song", False, 800, "", 20))),
 }
 WDQS = "https://query.wikidata.org/sparql"
 DOMAIN_PAUSE_S = 2.0               # between two queries (the query service allows one client a share of its time)
@@ -6619,7 +6719,8 @@ def self_test():
                and ICONS["sports-teams"][2][0][2] == "Major League Baseball")
             ok("1.43 icons: the sets asked for — teams, athletes, music, screen, leaders, places, culture — start before everything but the "
                "demand agent, then what people read, the lattices, and the complete domains tier by tier",
-               set(ICONS) == {"sports-teams", "athletes", "music", "screen", "leaders-writers", "places-landmarks", "culture-events"}
+               set(ICONS) == {"sports-teams", "athletes", "music", "screen", "leaders-writers", "places-landmarks", "culture-events",
+                              "faith-thought-science", "arts-business-works"}
                and _ks.order(["hot-all-actors", "hot-places", "hot-most-read", "wikidata-dump-1", "hot-top-sports-teams", "hot-demand"], cf)
                == ["hot-demand", "hot-top-sports-teams", "hot-most-read", "hot-places", "hot-all-actors", "wikidata-dump-1"]
                and list(catalog())[:3] == ["hot-demand", "hot-seed", "hot-top-sports-teams"])
@@ -6668,6 +6769,7 @@ def self_test():
                and not hot_first("hot-all-actors") and not hot_first("wikidata-dump-1"), (rs_, seed_parts))
             # 1.44 the records service refuses (HTTP 429): the same records are read through the query service
             hot_was, wdqs_was, pause_was, asked_w = HOT_FETCH, WDQS_FETCH, WDQS_PAUSE_S, []
+            ent_was, epause_was = ENTITY_FETCH, ENTITY_PAUSE_S
 
             def _no(params):
                 raise urllib.error.HTTPError("https://www.wikidata.org/w/api.php", 429, "Too Many Requests", {}, None)
@@ -6695,7 +6797,7 @@ def self_test():
                 sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
                 with open(sf_, "w") as f:
                     json.dump({"made": "2026-11-13", "ids": [1299]}, f)
-                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, WDQS_FETCH=_wdqs, WDQS_PAUSE_S=0)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, WDQS_FETCH=_wdqs, WDQS_PAUSE_S=0, ENTITY_FETCH=lambda q: _no({}), ENTITY_PAUSE_S=0)
                 rw_ = run_dataset(cf, "hot-seed")
                 refused_ = api_refused(cf)
                 fw_ = find_entities(cf, "Beatles")
@@ -6710,8 +6812,23 @@ def self_test():
                     return []
                 globals()["WDQS_FETCH"] = _flaky
                 flaky_ = wdqs_ask("SELECT 1")
+                # the per-record address answers: whole records from it; one it refuses comes through the query service
+                big = {"n": 0}
+
+                def _cut(sparql):                        # a batch too large is cut off mid-answer: halved until it fits
+                    big["n"] += 1
+                    if sparql.count("wd:Q") > 1:
+                        raise ValueError("cut off")
+                    return _wdqs(sparql)
+                globals().update(WDQS_FETCH=_cut, ENTITY_FETCH=lambda q: {"type": "item", "id": q, "labels": {"en": {"value": "Thing " + q}}, "claims": {}}
+                                 if q != "Q1299" else _no({}))
+                ed_ = entitydata_entities(["Q5", "Q1299", "Q6"])
+                mix_, st_ = WikidataSeed(), {}
+                mix_.folder = cf
+                got_ = mix_._entities(["Q5", "Q1299"], st_)
+                halved_ = wdqs_entities(["Q1299", "Q7"])
             finally:
-                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, WDQS_PAUSE_S=pause_was)
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, WDQS_PAUSE_S=pause_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
                 for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
                     if os.path.exists(shard_path(cf, "hot-seed") + ext):
                         os.remove(shard_path(cf, "hot-seed") + ext)
@@ -6726,6 +6843,43 @@ def self_test():
                and any(f_["predicate"] == "inception" and f_["object"] == "1960" for f_ in fw_["facts"])
                and [c["mainsnak"]["datavalue"]["type"] for c in ew_["claims"]["P571"]] == ["time"] and "P856" not in ew_["claims"]
                and found_w == ["Q1299"] and flaky_ == [] and calls["n"] == 2, (rw_, refused_, fw_["entities"], [f_ for f_ in fw_["facts"]][:6], found_w, calls))
+            ok("1.45: the fast second route — whole records from Wikidata's per-record address, two at a time; a record it refuses is "
+               "read through the query service; a batch the query service cuts off is halved, never lost whole",
+               sorted(ed_) == ["Q5", "Q6"] and sorted(got_) == ["Q1299", "Q5"] and got_["Q1299"]["labels"]["en"]["value"] == "The Beatles"
+               and st_["_via"] == "per-record address and query service" and list(halved_) == ["Q1299"], (sorted(ed_), sorted(got_), st_, list(halved_)))
+            # 1.45 "Who is Ed Sullivan?" answered with Boris Vian (pen name Vernon Sullivan, better known than the host)
+            def _rec(q, label, desc, wikis, aliases, job):
+                return {"type": "item", "id": q, "labels": {"en": {"value": label}}, "descriptions": {"en": {"value": desc}},
+                        "aliases": {"en": [{"value": a} for a in aliases]}, "sitelinks": {"w%d" % i: {} for i in range(wikis)},
+                        "claims": {"P31": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": "Q5"}}}}],
+                                   "P106": [{"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": job}}}}]}}
+            people_ = {"Q83807": _rec("Q83807", "Ed Sullivan", "American television host (1901-1974)", 46, ["Edward Vincent Sullivan"], "Q947873"),
+                       "Q156213": _rec("Q156213", "Boris Vian", "French writer (1920-1959)", 70, ["Vernon Sullivan", "Bison Ravi"], "Q36180")}
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [83807, 156213]}, f)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, ENTITY_FETCH=lambda q: people_.get(q), ENTITY_PAUSE_S=0,
+                                 WDQS_FETCH=lambda sparql: [{"s": {"value": WD_E + "Q5"}, "l": {"value": "human"}}] if "rdfs:label ?l" in sparql else [])
+                re_ = run_dataset(cf, "hot-seed")
+                fes = find_entities(cf, "Ed Sullivan")
+                jes = _sense.answer_for("who is Ed Sullivan?", "Ed Sullivan", fes["entities"], fes["facts"])
+                fsu = find_entities(cf, "Sullivan")
+                fvs = find_entities(cf, "Vernon Sullivan")
+            finally:
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
+                for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(shard_path(cf, "hot-seed") + ext):
+                        os.remove(shard_path(cf, "hot-seed") + ext)
+                if os.path.exists(os.path.join(cf, FOLDER, API_REFUSED_NAME)):
+                    os.remove(os.path.join(cf, FOLDER, API_REFUSED_NAME))
+            ok("1.45: “Who is Ed Sullivan?” was answered with Boris Vian — “Ed” is too short for the word index, so “Sullivan” alone "
+               "matched his pen name Vernon Sullivan, and he is better known. Now one name of the item must hold EVERY word asked, and a "
+               "full name matched exactly outweighs fame: Ed Sullivan is Ed Sullivan; “Sullivan” and “Vernon Sullivan” still find Vian",
+               re_["state"] == "done" and [e_["subject"] for e_ in fes["entities"]] == ["Ed Sullivan (Q83807)"]
+               and jes["entity"]["subject"] == "Ed Sullivan (Q83807)" and "Boris" not in jes["said"]
+               and "Boris Vian (Q156213)" in [e_["subject"] for e_ in fsu["entities"]]
+               and [e_["subject"] for e_ in fvs["entities"]] == ["Boris Vian (Q156213)"], (re_, fes["entities"], jes.get("said"), fsu["entities"], fvs["entities"]))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

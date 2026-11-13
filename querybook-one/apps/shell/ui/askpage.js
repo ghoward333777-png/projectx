@@ -480,7 +480,7 @@ function akTimeline(rows) {
 }
 function akProfile(rows, map) {
   return el("div", { class: "card" }, el("h2", {}, "At a glance"), el("dl", { class: "profile" },
-    rows.slice(0, 16).map(r => [el("dt", {}, r.label), el("dd", {}, r.value, el("span", { class: "small muted" }, "  " + (r.where || "")))])),
+    rows.slice(0, 16).flatMap(r => [el("dt", {}, r.label), el("dd", {}, r.value, el("span", { class: "small muted" }, "  " + (r.where || "")))])),
     map ? el("a", { href: map, target: "_blank", rel: "noopener", class: "btn ghost small" }, "🗺 Show on a map (OpenStreetMap)") : null);
 }
 function akSteps(steps, title) {
