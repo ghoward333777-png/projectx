@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.47.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.48.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1237,7 +1237,7 @@ class WikidataDump(Dataset):
             self.covered = dump_positions_read(run.folder)
         except Exception:
             self.covered = None
-        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_namebuf": []}
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_namebuf": [], "_ctxbuf": []}
 
     def rows(self, part, url, state):
         base, _, rng = url.partition("#")
@@ -1257,6 +1257,16 @@ class WikidataDump(Dataset):
         if buf:
             db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
             buf.clear()
+        xb = state.get("_ctxbuf")
+        if xb:                                           # 1.48: the context of the statements kept (dates, qualifiers, rank, sources)
+            db.execute(CONTEXT_SQL)
+            db.executemany("INSERT OR REPLACE INTO context(q, p, o, rank, start, end, at, quals, refs) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", xb)
+            xb.clear()
+        xd = state.get("_ctxdone")
+        if xd:
+            db.execute("CREATE TABLE IF NOT EXISTS context_done (q INTEGER PRIMARY KEY)")
+            db.executemany("INSERT OR IGNORE INTO context_done(q) VALUES(?)", xd)
+            xd.clear()
         dmb = state.get("_demandbuf")
         if dmb:                                          # 1.47: demand measurements, one row per subject and period
             db.execute("CREATE TABLE IF NOT EXISTS demand (q INTEGER NOT NULL, period TEXT NOT NULL, views INTEGER NOT NULL, rank INTEGER NOT NULL, "
@@ -1334,13 +1344,16 @@ class WikidataDump(Dataset):
         q = e["id"]
         buf = state["_labelbuf"]
         buf.append((int(q[1:]), lab))
-        if len(buf) >= 200_000:
+        if len(buf) >= 200_000 or len(state.get("_ctxbuf") or ()) >= 50_000:
             self._flush(state)
         claims = e.get("claims") or {}
         cls = {((x.get("mainsnak") or {}).get("datavalue") or {}).get("value", {}).get("id") for x in claims.get("P31", ())}
         if cls & ks.WIKIMEDIA_INTERNAL:                 # a category, disambiguation, template or list page: Wikimedia's own pages
             return []
         s, out, props = "%s (%s)" % (lab, q), [], self.props
+        ctx, refs = state.get("_ctxbuf"), bool(state.get("_ctx_refs")) or CONTEXT_LANE_REFS
+        if ctx is not None and refs and q[1:].isdigit() and not e.get("_partial"):
+            state.setdefault("_ctxdone", []).append((int(q[1:]),))   # (a record that came through the query service has no context: read again later)
         for p, sts in claims.items():
             name = props.get(p)
             if not name:
@@ -1352,6 +1365,10 @@ class WikidataDump(Dataset):
                     v = self.value(dv)
                     if v:
                         out.append((s, name, v))
+                        if ctx is not None and (refs or "qualifiers" in st or st.get("rank") != "normal"):
+                            row = statement_context(st, props, self.value, refs)     # 1.48: when it held, where it is stated, its rank
+                            if row:
+                                ctx.append((int(q[1:]), name, v) + row)
         if out:
             # 1.40 relevance: what the item IS in one line, the other names it goes by, and how well known it is
             links = len(e.get("sitelinks") or ())
@@ -1595,7 +1612,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand", "hot-seed", "hot-circle"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand", "hot-seed", "hot-circle", "hot-context"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -1813,6 +1830,7 @@ def find_entities(commons_folder, text, top=5, per=400):
     facts = []
     for e in ents[:top]:
         got = 0
+        ctx_of = wd_context(commons_folder, qn_of[e["subject"]]) if e["subject"] in qn_of else {}
         for key in dict.fromkeys(e["stores"]):
             ds = cat[key]
             try:
@@ -1823,8 +1841,12 @@ def find_entities(commons_folder, text, top=5, per=400):
                 for s_, pr, o, part, row in db.execute(
                         "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
                         "WHERE f.s = ? LIMIT ?", (e["subject"], per - got)):
-                    facts.append({"subject": s_, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed", "licence": ds.licence,
-                                  "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_), "status": "computed" if not ds.source else "sourced"})
+                    f_ = {"subject": s_, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed", "licence": ds.licence,
+                          "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_), "status": "computed" if not ds.source else "sourced"}
+                    c_ = ctx_of.get((pr, o))
+                    if c_:                               # 1.48: when it held, its rank, where it is stated
+                        f_.update({k: v for k, v in c_.items() if v})
+                    facts.append(f_)
                     got += 1
             except sqlite3.Error:
                 pass
@@ -2049,7 +2071,8 @@ def _wdqs_entities(qids, folder=None):
     out = {}
     for b in wdqs_ask("SELECT ?s ?l ?d ?n WHERE { VALUES ?s { %s } ?s wikibase:sitelinks ?n . OPTIONAL { ?s rdfs:label ?l FILTER(LANG(?l) = \"en\") } "
                       "OPTIONAL { ?s schema:description ?d FILTER(LANG(?d) = \"en\") } }" % vals, folder):
-        e = out.setdefault(q_of(b), {"type": "item", "id": q_of(b), "labels": {}, "descriptions": {}, "aliases": {"en": []}, "claims": {}, "sitelinks": {}})
+        e = out.setdefault(q_of(b), {"type": "item", "id": q_of(b), "labels": {}, "descriptions": {}, "aliases": {"en": []}, "claims": {}, "sitelinks": {},
+                                     "_partial": True})   # main values only: no qualifiers, references or rank by this route
         if "l" in b:
             e["labels"]["en"] = {"value": b["l"]["value"]}
         if "d" in b:
@@ -2167,7 +2190,8 @@ class WikidataHot(Dataset):
         db.execute("CREATE TABLE IF NOT EXISTS views (q INTEGER PRIMARY KEY, views INTEGER NOT NULL, months INTEGER NOT NULL DEFAULT 1)")
         db.execute("CREATE TABLE IF NOT EXISTS names (word TEXT NOT NULL, q INTEGER NOT NULL, PRIMARY KEY (word, q)) WITHOUT ROWID")
         db.commit()
-        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_viewbuf": [], "_namebuf": [], "_known": set(), "_months": {}}
+        return {"_labeldb": db, "_labelbuf": [], "_famebuf": [], "_aliasbuf": [], "_viewbuf": [], "_namebuf": [], "_known": set(), "_months": {},
+                "_ctxbuf": [], "_ctx_refs": True}
 
     def parts(self):
         ed = time.strftime("%Y-%m")
@@ -3033,6 +3057,65 @@ class WikidataCircle(WikidataDomain):
         return self._each(rows, state)
 
 
+class WikidataContext(WikidataDomain):
+    """1.48 — completing the facts already held. Records read before 1.48 have their facts but not their context. This reads
+    the well-known ones again, the best known first: the facts are already held (nothing is counted twice), their dates,
+    qualifiers, rank and sources are added beside them. Waves of 5,000 until none is left."""
+    BATCH = 250
+    CIRCLE_RING = None
+    no_new_facts_expected = True                       # it completes facts; the "no new fact" rest does not apply to it
+
+    def __init__(self):
+        self.name, self.key = "context", "hot-context"
+        self.tier, self.title_short, self.roots, self.depth, self.finds = 0, "dates, sources and rank for facts already held", (), 0, ()
+        self.title = "Completing facts — dates, sources and rank for the well-known records already held"
+        self.why = "a fact without its dates and its source is incomplete: the well-known records read before 1.48 are read again for them"
+        self.approx = "every record held that is written about in 5 or more Wikipedias"
+
+    def _ids(self):
+        d = getattr(self, "_disc", None)
+        if d:
+            return d
+        import gzip
+        path = domain_path(self.folder, "context", "context")
+        old = domain_load(self.folder, "context", "context") or {}
+        w = context_wave(self.folder)
+        n = int(old.get("wave") or 0) + 1                # every run lists afresh what is still without its context
+        d = {"ids": w["ids"], "wave": n, "edition": "wave %06d" % n, "waiting": w["waiting"]}
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with gzip.open(path + ".tmp", "wt", encoding="utf-8") as f:
+            json.dump(d, f)
+        _replace(path + ".tmp", path)
+        self._disc = d
+        return d
+
+    def parts(self):
+        d = self._ids()
+        n = len(d["ids"])
+        return [("%s completing %05d-%05d of %05d" % (d["edition"], i + 1, min(n, i + self.BATCH), n), "domain#%d" % i)
+                for i in range(0, n, self.BATCH)]
+
+    def rows(self, part, url, state):
+        start = int(url.split("#")[1])
+        ids = self._ids()["ids"][start:start + self.BATCH]
+        ents = self._entities(["Q%d" % q for q in ids], state)
+        rows = [ents[k] for k in ("Q%d" % q for q in ids) if k in ents and "missing" not in ents[k]]
+        if rows or not ids:                              # asked for and answered whole: not listed again (a record since deleted included)
+            partial = {int(e["id"][1:]) for e in rows if e.get("_partial")}
+            state.setdefault("_ctxdone", []).extend((q,) for q in ids if q not in partial)
+        self._name_values(rows, state)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+    def facts(self, part, row, state):
+        """the record is read for its context only: its facts are already held where they were first read, and are not
+        written a second time here (a second copy would be counted twice)"""
+        self.lane.entity_facts(row, state)
+        if len(state.get("_ctxbuf") or ()) >= 5000:
+            self.lane._flush(state)
+        return []
+
+
 class WikidataSeed(WikidataDomain):
     """1.44 — the hot list, IMMEDIATELY. Listing an icons set from Wikidata takes 5 to 15 minutes, two sets at a time: on a
     new start the hot list spent its first half hour asking who is famous and read nobody ("Who are the Beatles?" — no
@@ -3075,6 +3158,132 @@ def wd_views(commons_folder, qids):
         except sqlite3.Error:
             continue
     return out
+
+
+# ---- 1.48: the context of a fact. The user: "Harvest dates, sources or rank". A Wikidata statement is more than subject,
+# predicate, object: it says WHEN it held (start time, end time, point in time), carries other qualifiers (the district of an
+# office, the work an award was for), has a RANK (preferred / normal) and names its SOURCES (stated in, reference URL,
+# retrieved). The harvester kept the main value only — "Reagan, position held, Governor of California", no years, no source.
+# The context is kept BESIDE the fact (in the dataset's label file, keyed by item, predicate and value exactly as the fact is
+# stored), so the fact store and every fingerprint stay as they are, and a fact read again gains its context without
+# becoming a new fact. Hot datasets keep everything; the dump lanes keep dates, qualifiers and rank (their sources would
+# add tens of gigabytes to the data drive: CONTEXT_LANE_REFS turns that on).
+CONTEXT_SQL = ("CREATE TABLE IF NOT EXISTS context (q INTEGER NOT NULL, p TEXT NOT NULL, o TEXT NOT NULL, rank TEXT, start TEXT, end TEXT, "
+               "at TEXT, quals TEXT, refs TEXT, PRIMARY KEY (q, p, o)) WITHOUT ROWID")
+CONTEXT_LANE_REFS = False
+Q_START, Q_END, Q_AT = "P580", "P582", "P585"       # start time, end time, point in time (labels checked against Wikidata)
+REF_KEYS = (("P248", "stated in"), ("P854", "url"), ("P813", "retrieved"), ("P577", "published"), ("P1476", "title"), ("P143", "imported from"))
+
+
+def statement_context(st, props, value, with_refs=True):
+    """(rank, start, end, at, qualifiers as JSON, sources as JSON) of one statement, or None when it carries none of them.
+    Values are formatted exactly as fact values are (a date at its own precision, an item as its Q-number)."""
+    def vals(snaks):
+        out = []
+        for sn in snaks or ():
+            dv = (sn or {}).get("datavalue")
+            v = value(dv) if dv else None
+            if v and v not in out:
+                out.append(v)
+        return out
+    qs = st.get("qualifiers") or {}
+    start, end, at = (vals(qs.get(Q_START)) or [None])[0], (vals(qs.get(Q_END)) or [None])[0], (vals(qs.get(Q_AT)) or [None])[0]
+    quals = {}
+    for pid, snaks in qs.items():
+        if pid in (Q_START, Q_END, Q_AT) or len(quals) >= 8:
+            continue
+        v = vals(snaks)[:4]
+        if v:
+            quals[props.get(pid) or pid] = v
+    refs = []
+    if with_refs:
+        for r in (st.get("references") or ())[:3]:
+            sn = r.get("snaks") or {}
+            one = {}
+            for pid, key in REF_KEYS:
+                v = vals(sn.get(pid))
+                if v:
+                    one[key] = v[0][:300]
+            if one and one not in refs:
+                refs.append(one)
+    rank = st.get("rank") if st.get("rank") in ("preferred", "deprecated") else None
+    if not (start or end or at or quals or refs or rank):
+        return None
+    return (rank or "normal", start, end, at, json.dumps(quals, ensure_ascii=False, sort_keys=True) if quals else None,
+            json.dumps(refs, ensure_ascii=False, sort_keys=True) if refs else None)
+
+
+def wd_context(commons_folder, qnum):
+    """{(predicate, value as stored): {"rank", "start", "end", "at", "qualifiers": {...}, "sources": [...]}} for one item"""
+    out = {}
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+            for pr, o, rank, start, end, at, quals, refs in db.execute("SELECT p, o, rank, start, end, at, quals, refs FROM context WHERE q = ?", (qnum,)):
+                c = out.setdefault((pr, o), {})
+                for k, v in (("rank", rank), ("start", start), ("end", end), ("at", at)):
+                    if v and not c.get(k):
+                        c[k] = v
+                if quals and not c.get("qualifiers"):
+                    c["qualifiers"] = json.loads(quals)
+                if refs and not c.get("sources"):
+                    c["sources"] = json.loads(refs)
+            db.close()
+        except (sqlite3.Error, ValueError):
+            continue
+    return out
+
+
+def context_status(commons_folder):
+    """for the page: how many statements have their context, how many records were read with it, how many wait"""
+    st = {"statements": 0, "dated": 0, "sourced": 0, "records": 0, "waiting": 0}
+    read, famous = set(), set()
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+        except sqlite3.Error:
+            continue
+        for sql, key in (("SELECT count(*) FROM context", "statements"), ("SELECT count(*) FROM context WHERE start IS NOT NULL OR end IS NOT NULL OR at IS NOT NULL", "dated"),
+                         ("SELECT count(*) FROM context WHERE refs IS NOT NULL", "sourced")):
+            try:
+                st[key] += db.execute(sql).fetchone()[0]
+            except sqlite3.Error:
+                pass
+        for sql, bag in (("SELECT q FROM context_done", read), ("SELECT q FROM fame WHERE links >= %d" % CONTEXT_FAME, famous)):
+            try:
+                bag.update(q for q, in db.execute(sql))
+            except sqlite3.Error:
+                pass
+        db.close()
+    st["records"], st["waiting"] = len(read), len(famous - read)
+    return st
+
+
+CONTEXT_FAME = 5                   # the backfill re-reads what is written about in at least this many Wikipedias (the rest: section "plan")
+CONTEXT_WAVE = 5000
+
+
+def context_wave(commons_folder, limit=None):
+    """the well-known records held WITHOUT their context (read before 1.48), the best known first"""
+    read, fame = set(), {}
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+        except sqlite3.Error:
+            continue
+        try:
+            read.update(q for q, in db.execute("SELECT q FROM context_done"))
+        except sqlite3.Error:
+            pass
+        try:
+            for q, n in db.execute("SELECT q, links FROM fame WHERE links >= ?", (CONTEXT_FAME,)):
+                if n > fame.get(q, 0):
+                    fame[q] = n
+        except sqlite3.Error:
+            pass
+        db.close()
+    left = sorted((q for q in fame if q not in read), key=lambda q: (-fame[q], q))
+    return {"ids": left[:limit or CONTEXT_WAVE], "waiting": len(left)}
 
 
 # ---- 1.47: demand intelligence, first slice (the user's Wikipedia Demand Intelligence design). A measurement is kept as it
@@ -3159,7 +3368,7 @@ def demand_report(commons_folder, top=40):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead(), WikidataContext()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -4383,7 +4592,7 @@ HOT_RETRY_S = 120                  # a hot set that was refused or interrupted i
 def hot_first(key):
     """the sets everything else waits for: the icons, what people read, the hot lattices (not the demand agent, which is
     always on, and not the complete domains — millions of records over days — which run after, beside the rest)"""
-    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle") and not key.startswith("hot-all-")
+    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle", "hot-context") and not key.startswith("hot-all-")
 
 
 def next_try(r, fails):
@@ -4391,7 +4600,7 @@ def next_try(r, fails):
     st = (r or {}).get("state")
     if (r or {}).get("dataset") == "hot-demand" and st in ("done", "paused"):
         return 120                               # 1.40: the demand agent looks at its queue every two minutes
-    if (r or {}).get("dataset") == "hot-circle" and st in ("done", "paused"):
+    if (r or {}).get("dataset") in ("hot-circle", "hot-context") and st in ("done", "paused"):
         return CIRCLE_AGAIN_S                    # 1.46: the net has no end: the next wave is listed five minutes after the last
     if st == "done":
         return RECHECK_DONE_S
@@ -5192,12 +5401,21 @@ def search_store(commons_folder, key, ds, text, limit):
 
 def label_wikidata(commons_folder, out):
     """Wikidata item numbers in the values shown with their labels"""
-    qs = [int(m) for r in out if r["source"] == "wikidata" for m in QID.findall(r["object"])]
+    def inside(r):                                      # 1.48: the items named in a fact's qualifiers and sources
+        return [v for vs in (r.get("qualifiers") or {}).values() for v in vs] + [x.get(k) or "" for x in r.get("sources") or () for k in ("stated in", "imported from")]
+    qs = [int(m) for r in out if r["source"] == "wikidata" for t in [r["object"]] + inside(r) for m in QID.findall(t)]
     if qs:
         lab = wd_labels(commons_folder, qs)
+        name = lambda t: QID.sub(lambda m: "%s (Q%s)" % (lab[int(m.group(1))], m.group(1)) if int(m.group(1)) in lab else m.group(0), t)
         for r in out:
             if r["source"] == "wikidata":
-                r["object"] = QID.sub(lambda m: "%s (Q%s)" % (lab[int(m.group(1))], m.group(1)) if int(m.group(1)) in lab else m.group(0), r["object"])
+                r["object"] = name(r["object"])
+                if r.get("qualifiers"):
+                    r["qualifiers"] = {k: [name(v) for v in vs] for k, vs in r["qualifiers"].items()}
+                for x in r.get("sources") or ():
+                    for k in ("stated in", "imported from"):
+                        if x.get(k):
+                            x[k] = name(x[k])
     return out
 
 
@@ -5524,7 +5742,8 @@ def keep_alive(commons, program_dir, now=None, st=None, restart=None):
         k_ = d["key"]
         g_ = d.get("gathered", d.get("facts")) or 0
         p_ = per.get(k_)
-        if not p_ or g_ > p_["g"] or k_ in filing_keys or getattr(cat.get(k_), "standalone", False) or k_ == "hot-demand":
+        if not p_ or g_ > p_["g"] or k_ in filing_keys or getattr(cat.get(k_), "standalone", False) or k_ == "hot-demand" \
+                or getattr(cat.get(k_), "no_new_facts_expected", False):
             p_ = {"g": g_, "at": now, "mv": mv.get(k_), "moved": False}
         else:
             if mv.get(k_) is not None and mv.get(k_) != p_.get("mv"):
@@ -7258,6 +7477,63 @@ def self_test():
                and sp["peak_period"] == "2025-03" and ri["class"] == "rising" and demand_class([("2025-01", 5, 999)], S12)["class"] == "seen once"
                and demand_class([], S12)["class"] == "" and all(c["model"] == DEMAND_MODEL for c in (ev, sp, ri))
                and all(c["class"] in DEMAND_CLASSES for c in (ev, sp, ri)), (ev, sp, ri))
+            # 1.48 dates, sources and rank: harvested with every statement, and added to records already held
+            def _snak(kind, val):
+                return {"datavalue": {"type": kind, "value": val}}
+            def _t(y):
+                return _snak("time", {"time": "+%04d-01-01T00:00:00Z" % y, "precision": 9})
+            rr = _rec("Q9960", "Ronald Reagan", "40th president of the United States", 200, [], "Q33999")
+            rr["claims"]["P39"] = [
+                {"rank": "normal", "mainsnak": _snak("wikibase-entityid", {"id": "Q11696"}),
+                 "qualifiers": {"P580": [_t(1981)], "P582": [_t(1989)], "P1365": [_snak("wikibase-entityid", {"id": "Q23685"})]},
+                 "references": [{"snaks": {"P248": [_snak("wikibase-entityid", {"id": "Q36578"})], "P854": [_snak("string", "https://example.org/reagan")],
+                                           "P813": [_snak("time", {"time": "+2020-05-01T00:00:00Z", "precision": 11})]}}]},
+                {"rank": "normal", "mainsnak": _snak("wikibase-entityid", {"id": "Q887010"}), "qualifiers": {"P580": [_t(1967)], "P582": [_t(1975)]}}]
+            rr["claims"]["P1082"] = [{"rank": "preferred", "mainsnak": _snak("string", "x")}]
+            plain = {"Q9960": {k: (v if k != "claims" else {p_: [{"rank": c["rank"], "mainsnak": c["mainsnak"]} for c in cs] for p_, cs in v.items()})
+                               for k, v in rr.items()}}
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [9960]}, f)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, ENTITY_FETCH=lambda q: {"Q9960": rr}.get(q), ENTITY_PAUSE_S=0, WDQS_FETCH=lambda sparql: [])
+                x1 = run_dataset(cf, "hot-seed")
+                fx = find_entities(cf, "Ronald Reagan")
+                pres = next(f_ for f_ in fx["facts"] if f_["predicate"] == "position held" and "Q11696" in f_["object"])
+                gov = next(f_ for f_ in fx["facts"] if f_["predicate"] == "position held" and "Q887010" in f_["object"])
+                st1 = context_status(cf)
+                # a record held WITHOUT its context (read before 1.48): the backfill lists it and completes it, adding no fact
+                ldb = sqlite3.connect(shard_path(cf, "hot-seed") + ".labels")
+                ldb.execute("DELETE FROM context"); ldb.execute("DELETE FROM context_done"); ldb.commit(); ldb.close()
+                bare = [f_ for f_ in find_entities(cf, "Ronald Reagan")["facts"] if f_.get("start") or f_.get("sources")]
+                wv = context_wave(cf)
+                x2 = run_dataset(cf, "hot-context")
+                again = next(f_ for f_ in find_entities(cf, "Ronald Reagan")["facts"] if f_["predicate"] == "position held" and "Q11696" in f_["object"])
+                wv2 = context_wave(cf)
+            finally:
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
+                for k_ in ("hot-seed", "hot-context"):
+                    for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                        if os.path.exists(shard_path(cf, k_) + ext):
+                            os.remove(shard_path(cf, k_) + ext)
+                for f_ in (os.path.join(cf, FOLDER, API_REFUSED_NAME), domain_path(cf, "context", "context")):
+                    if os.path.exists(f_):
+                        os.remove(f_)
+            ok("1.48: a statement is harvested with WHEN it held, its other qualifiers, its rank and its sources — “position held: "
+               "President of the United States” carries 1981 to 1989, whom he replaced, and where it is stated (the work, the address, "
+               "the day it was retrieved); a statement with none of these stores nothing extra; the fact itself and its fingerprint are "
+               "unchanged", x1["state"] == "done" and (pres.get("start"), pres.get("end")) == ("1981", "1989")
+               and (gov.get("start"), gov.get("end")) == ("1967", "1975") and list(pres.get("qualifiers") or {}) and pres["sources"][0]["url"] == "https://example.org/reagan"
+               and pres["sources"][0]["retrieved"] == "2020-05-01" and "stated in" in pres["sources"][0] and "sources" not in gov
+               and st1["statements"] >= 2 and st1["dated"] >= 2 and st1["sourced"] >= 1 and st1["records"] >= 1
+               and statement_context({"rank": "normal", "mainsnak": {}}, {}, lambda dv: None) is None, (x1, pres, gov, st1))
+            ok("1.48: facts already held are completed — a record read before 1.48 (facts, no context) is listed by the backfill, the "
+               "best known first, read again, and its dates and sources are added beside the facts it already has: no new fact, nothing "
+               "counted twice, and it is not listed again. The backfill waits for nothing, blocks nothing and is not rested for adding "
+               "no new fact", bare == [] and wv["ids"] == [9960] and x2["state"] == "done" and x2["new"] == 0
+               and (again.get("start"), again.get("end")) == ("1981", "1989") and wv2["ids"] == [] and not hot_first("hot-context")
+               and catalog()["hot-context"].no_new_facts_expected and next_try({"dataset": "hot-context", "state": "done"}, 0) == CIRCLE_AGAIN_S,
+               (bare, wv, x2, again, wv2))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

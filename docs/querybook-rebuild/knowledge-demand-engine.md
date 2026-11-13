@@ -165,7 +165,7 @@ The American Historical People Graph (`top-americans-1400-2026.md`) is one consu
 | Other language editions | English only; "cross-language demand" today is the count of Wikipedias, not views |
 | Redirect consolidation; disambiguation, list and date pages classified | Titles are resolved to a QID; redirect phrases are not kept as keywords |
 | Clickstream ingest and the navigation graph | Not started |
-| Wikidata qualifiers, references and ranks kept on facts | The harvester stores the main value only. This is the largest gap against section 8 and is needed for roles with periods |
+| Wikidata qualifiers, references and ranks kept on facts | Built in 1.48 for new harvests and for well-known records already held; the rest of the store is the plan in `complete-facts-plan.md` |
 | QRank | Not ingested; its terms to be recorded first |
 | Google Trends, GDELT, OpenAlex, Library of Congress, Chronicling America | None connected. Each needs its Source Qualification entry first |
 | Source ledger / qualification gate as a table | Provenance exists per fact; the ledger does not |

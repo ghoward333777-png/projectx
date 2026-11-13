@@ -186,6 +186,17 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Not built: see its section 11 (qualifiers/references on facts, clickstream, coverage auditor, source ledger, outside
   sensors). No new source is ingested before its licence is recorded from the source's own page.
 
+### Complete facts — dates, sources, rank (`docs/querybook-rebuild/complete-facts-plan.md`; engine 1.48)
+
+- Every Wikidata statement kept is harvested with its context (`statement_context`): start / end / point in time, other
+  qualifiers, rank, sources. It is stored BESIDE the fact (`context` table in the dataset's label file, keyed by item,
+  predicate and stored value; `wd_context`) — never change the facts table or a fingerprint for it.
+- Hot datasets keep sources; the dump lanes keep dates, qualifiers and rank only (`CONTEXT_LANE_REFS` off: tens of GB).
+- `hot-context` completes well-known records read before 1.48. It writes NO facts (`facts()` returns []), is outside the
+  hot-first gate and is exempt from the dry-dataset rest (`no_new_facts_expected`). Keep all three.
+- A record that came through the query service has no context (`_partial`): it must stay listed for a later read.
+- A date is shown only when the store holds one (`sense.period`, `sense.dated`). Never supply a missing date.
+
 ### Lip-sync and talking faces — the user's decision (do not change)
 
 - Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)

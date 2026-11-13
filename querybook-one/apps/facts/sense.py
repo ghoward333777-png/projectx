@@ -208,6 +208,38 @@ def several(facts: list[dict], predicate: str, n: int = 3) -> list[str]:
     return out[:n]
 
 
+def period(f: dict) -> str:
+    """when a fact held, from its own context (1.48): "1981–1989", "since 2009", "until 1975", "1969" — or "" when the
+    store holds no date for it. Never guessed."""
+    a, b, at = year(str(f.get("start") or "")), year(str(f.get("end") or "")), year(str(f.get("at") or ""))
+    if a and b:
+        return a if a == b else "%s–%s" % (a, b)
+    if a:
+        return "since " + a
+    if b:
+        return "until " + b
+    return at
+
+
+def dated(facts: list[dict], predicate: str, n: int = 4) -> list[str]:
+    """the values of a predicate with the period each held, the earliest first when dates are known ("Governor of
+    California (1967–1975)"); those without a date keep their order after them"""
+    rows: list[tuple[int, int, str]] = []
+    seen: list[str] = []
+    for i, f in enumerate(facts):
+        if str(f.get("predicate") or "").lower() != predicate:
+            continue
+        v = clean(f.get("object"))
+        if not v or v in seen:
+            continue
+        seen.append(v)
+        p = period(f)
+        y = year(str(f.get("start") or f.get("at") or f.get("end") or ""))
+        rows.append((0 if y else 1, int(y) if y else i, v + (" (%s)" % p if p else "")))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    return [r[2] for r in rows[:n]]
+
+
 def year(value: str) -> str:
     m = YEAR.search(value or "")
     return m.group(1) if m else ""
@@ -356,10 +388,10 @@ def identity(subject: str, facts: list[dict], kind: str) -> str:
             out += " Born %s%s." % (born, " in " + bp if bp else "")
         if died:
             out += " Died %s%s." % (died, " in " + dp if dp else "")
-        teams = several(facts, "member of sports team", 4)
+        teams = dated(facts, "member of sports team", 4)
         if teams:
             out += " Played for %s." % ", ".join(teams)
-        roles = several(facts, "position held", 3)
+        roles = dated(facts, "position held", 4)
         if roles:
             out += " Held the position of %s." % ", ".join(roles)
         works = several(facts, "notable work", 3)

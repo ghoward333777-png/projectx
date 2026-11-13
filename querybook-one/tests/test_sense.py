@@ -219,6 +219,25 @@ class KnownForTest(unittest.TestCase):
         self.assertNotIn("Best known", sense.identity("X (Q1)", self.facts([("occupation", "poet")]), "human"))
 
 
+class PeriodTest(unittest.TestCase):
+    """a fact's dates come from its own context; none is ever supplied when the store holds none"""
+
+    def test_roles_are_said_with_their_years_in_order(self):
+        facts = [{"subject": "R (Q1)", "predicate": "position held", "object": "President of the United States (Q11696)", "start": "1981-01-20", "end": "1989-01-20"},
+                 {"subject": "R (Q1)", "predicate": "position held", "object": "Governor of California (Q887010)", "start": "1967", "end": "1975"},
+                 {"subject": "R (Q1)", "predicate": "position held", "object": "President of the Screen Actors Guild"},
+                 {"subject": "R (Q1)", "predicate": "occupation", "object": "politician"}]
+        said = sense.identity("R (Q1)", facts, "human")
+        self.assertIn("Governor of California (1967–1975), President of the United States (1981–1989), President of the Screen Actors Guild", said)
+
+    def test_period_forms(self):
+        self.assertEqual(sense.period({"start": "2009"}), "since 2009")
+        self.assertEqual(sense.period({"end": "1975"}), "until 1975")
+        self.assertEqual(sense.period({"at": "1969-07-20"}), "1969")
+        self.assertEqual(sense.period({"start": "1999", "end": "1999-12"}), "1999")
+        self.assertEqual(sense.period({}), "")
+
+
 class PrefixOnlyTest(AskTest):
     def test_names_that_only_begin_with_the_words_are_not_an_answer(self):
         Panel.demand = []

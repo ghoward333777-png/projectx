@@ -212,8 +212,9 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                           "statement": f.get("statement"), "where": "Shared facts (Commons)", "status": f.get("status"), "id": f.get("id")})
     bulk = results.get("bulk")
     if isinstance(bulk, dict) and not bulk.get("_error"):
-        bfacts = [{"subject": f.get("subject"), "predicate": f.get("predicate"), "object": f.get("object"),
-                   "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")}
+        bfacts = [dict({"subject": f.get("subject"), "predicate": f.get("predicate"), "object": f.get("object"),
+                        "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")},
+                       **{k: f[k] for k in ("start", "end", "at", "rank", "qualifiers", "sources") if f.get(k)})     # 1.7.8: its dates, rank, sources
                   for f in bulk.get("facts") or []]
         if bulk.get("entities"):                     # a grasp of reality: which match is meant, and what kind of thing it is
             judged = sense.answer_for(intent["question"], intent["subject"], bulk["entities"], bfacts)

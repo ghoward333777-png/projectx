@@ -730,6 +730,7 @@ async function drawRelevance(force) {
         Object.entries(j.demand.classes || {}).map(([c, n]) => `${esc(c)}: <b>${QB.num(n)}</b>`).join(", ") + `. Read most persistently: ` +
         (j.demand.top || []).slice(0, 25).map(r => `${esc(r.subject)} <span class="muted">(${esc(r.class)}, ${r.months} of ${r.sampled} months)</span>`).join(", ") +
         `. <span class="muted">These are Wikimedia's page-view counts as measured (${esc(j.demand.model)}): what is read, not what is important or true.</span></p>` : ""}
+      <p class="small"><b>Complete facts</b> — dates, rank and sources kept with each fact: <b>${QB.num((j.context || {}).statements || 0)}</b> statements have their context (${QB.num((j.context || {}).dated || 0)} dated, ${QB.num((j.context || {}).sourced || 0)} with a named source), from <b>${QB.num((j.context || {}).records || 0)}</b> records read with it; <b>${QB.num((j.context || {}).waiting || 0)}</b> well-known records read earlier are waiting to be completed.</p>
       <p class="small"><b>Network of nets</b> — everyone and everything an icon is tied to (family, partners, members, founders, successors, places, events, works), then the same for each of those, three rings out: <b>${QB.num((j.circle || {}).waiting || 0)}</b> waiting to be read.</p>
       <p class="small"><b>Icons by category</b> — ` + Object.entries(j.categories || {}).map(([c, kinds]) => `<b>${esc(c)}</b>: ${kinds.map(esc).join(", ")}`).join(". ") + `.</p>
       <table><tr><th>Tier</th><th>Domain</th><th>People listed</th><th>Left out</th></tr>` +

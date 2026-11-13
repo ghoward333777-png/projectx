@@ -450,10 +450,12 @@ function akSection(s, fmt) {
     return el("div", { class: "card" }, el("h2", {}, `Facts (${s.items.length})`),
       el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Subject"), el("th", {}, "What"), el("th", {}, "Value"), el("th", {}, "Where it came from")),
         rows.map(f => el("tr", {}, el("td", {}, akName(f.subject)), el("td", {}, f.predicate || ""),
-          el("td", {}, akLink(f.object || f.statement || ""), f.date ? el("div", { class: "small muted" }, f.date) : null),
+          el("td", {}, akLink(f.object || f.statement || ""), f.date ? el("div", { class: "small muted" }, f.date) : null,
+            akWhen(f) ? el("div", { class: "small muted" }, akWhen(f)) : null),
           el("td", {}, f.link ? el("a", { href: f.link, target: "_blank", rel: "noopener" }, f.where || "source") : (f.where || ""),
             f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
-            f.provenance ? el("div", { class: "small muted" }, f.provenance) : null))))));
+            f.provenance ? el("div", { class: "small muted" }, f.provenance) : null,
+            (f.sources || []).length ? el("div", { class: "small muted" }, "Stated in: ", akSources(f.sources)) : null))))));
   }
   if (s.kind === "word") {
     return el("div", { class: "card" }, el("h2", {}, "Meaning"), s.items.map(it =>
@@ -474,6 +476,24 @@ const akName = s => String(s || "").replace(/\s*\(Q\d+\)$/, "");
 function akLink(v) {                                          // a value that names something can be asked about next
   const s = String(v || ""), m = s.match(/^(.*?)\s*\(Q\d+\)$/);
   return m ? el("a", { href: "#", onclick: e => { e.preventDefault(); akAsk(m[1]); } }, m[1]) : s.replace(/\s*\(Q\d+\)/g, "");
+}
+
+// 1.7.8: when a fact held and where it is stated (the store's own record of it; nothing is shown when none is held)
+function akWhen(f) {
+  const y = v => String(v || "").replace(/^(-?\d{1,4})(-\d\d)?(-\d\d)?$/, (m, a, b, c) => c ? m : b ? a + b : a);
+  const bits = [];
+  if (f.start && f.end) bits.push(y(f.start) + " to " + y(f.end));
+  else if (f.start) bits.push("since " + y(f.start));
+  else if (f.end) bits.push("until " + y(f.end));
+  else if (f.at) bits.push("as of " + y(f.at));
+  Object.entries(f.qualifiers || {}).slice(0, 3).forEach(([k, vs]) => bits.push(k + ": " + vs.map(akName).join(", ")));
+  if (f.rank === "preferred") bits.push("preferred value");
+  return bits.join(" · ");
+}
+function akSources(srcs) {
+  return srcs.slice(0, 2).map((x, i) => { const name = akName(x["stated in"] || x.title || x["imported from"] || (x.url ? "web page" : "source"));
+    const when = x.retrieved ? " (retrieved " + x.retrieved + ")" : x.published ? " (" + x.published + ")" : "";
+    return el("span", {}, i ? "; " : "", x.url ? el("a", { href: x.url, target: "_blank", rel: "noopener" }, name) : name, when); });
 }
 
 function akTimeline(rows) {
