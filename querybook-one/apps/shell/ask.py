@@ -215,13 +215,16 @@ def answer(question: str, urls: dict[str, str]) -> dict:
         bfacts = [dict({"subject": f.get("subject"), "predicate": f.get("predicate"), "object": f.get("object"),
                         "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")},
                        **{k: f[k] for k in ("start", "end", "at", "rank", "qualifiers", "sources") if f.get(k)},     # 1.7.8: its dates, rank, sources
-                       **({"context_read": bool(f["context_read"])} if "context_read" in f else {}))               # 1.8.1: False -> Fill Dates is offered
+                       **({"context_read": bool(f["context_read"])} if "context_read" in f else {}),               # 1.8.1: False -> Fill Dates is offered
+                       **{k: f[k] for k in ("state", "backing", "state_why", "identity") if f.get(k)})              # 1.8.4: the four states; who it is about
                   for f in bulk.get("facts") or []]
         if bulk.get("entities"):                     # a grasp of reality: which match is meant, and what kind of thing it is
             judged = sense.answer_for(intent["question"], intent["subject"], bulk["entities"], bfacts)
             out["entity"] = judged["entity"]
             out["missing"] = judged["missing"]
             out["known_for"] = judged.get("known_for") or {}
+            out["identity_state"] = judged.get("identity") or {}
+            out["unresolved"] = judged.get("unresolved") or {}
             if judged["said"] and not intent["hints"] and not out["short"] and not judged["missing"]:
                 out["short"] = judged["said"]
             out["identity"] = judged["said"]

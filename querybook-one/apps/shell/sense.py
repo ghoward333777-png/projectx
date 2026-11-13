@@ -208,6 +208,53 @@ def several(facts: list[dict], predicate: str, n: int = 3) -> list[str]:
     return out[:n]
 
 
+# ---- the states of a fact unit. The user: "We have true, false, undetermined, and conflicting status? Are these the new 4 states
+# of fact units? … we put them in a 'we don't know' zone." Two different questions are kept apart:
+#   TRUTH    is the statement true?        true / false / undetermined / conflicting
+#   IDENTITY do we know who or what it is about?   resolved / unresolved / ambiguous / conflicting
+# "The Greenville Times printed the name Harvey Jordan on 4 March 1905" is TRUE and its identity is UNRESOLVED: the page
+# is there to read, but which Harvey Jordan is not known. Marking the whole fact "undetermined" would throw away what is known.
+# The fuller status a fact already carries (how it is backed) stays underneath as the reason for its truth state.
+TRUTH_STATES = ("true", "false", "undetermined", "conflicting")
+IDENTITY_STATES = ("resolved", "unresolved", "ambiguous", "conflicting")
+TRUTH_OF = {"verified": "true", "corroborated": "true", "computed": "true", "rejected": "false", "disputed": "conflicting",
+            "sourced": "undetermined", "reported": "undetermined", "unsourced": "undetermined"}
+TRUTH_WHY = {"verified": "checked and confirmed", "corroborated": "two or more independent sources agree", "computed": "calculated, and the calculation can be repeated",
+             "rejected": "found to be wrong", "disputed": "sources disagree", "sourced": "one named source says so; not yet confirmed by a second",
+             "reported": "a report says so; not confirmed", "unsourced": "no source is recorded"}
+
+
+def independent_sources(fact: dict) -> int:
+    """how many different sources a fact's own record names (the work it is stated in, else the address's site)"""
+    seen: list[str] = []
+    for x in fact.get("sources") or []:
+        if not isinstance(x, dict):
+            continue
+        key = clean(x.get("stated in")) or re.sub(r"^https?://(?:www\.)?([^/]+).*$", r"\1", str(x.get("url") or "")) or clean(x.get("title"))
+        if key and key not in seen:
+            seen.append(key)
+    return len(seen)
+
+
+def truth_state(fact: dict) -> dict:
+    """{"state": one of TRUTH_STATES, "backing": the fuller status, "why"} for one fact. A fact one source states becomes
+    corroborated — and so true — when its own record names two or more different sources; nothing else is promoted."""
+    backing = str(fact.get("status") or "unsourced").lower()
+    if backing == "sourced" and independent_sources(fact) >= 2:
+        backing = "corroborated"
+    if backing not in TRUTH_OF:
+        backing = "unsourced"
+    return {"state": TRUTH_OF[backing], "backing": backing, "why": TRUTH_WHY[backing]}
+
+
+def identity_state(subject: str, facts: list[dict]) -> dict:
+    """{"state": one of IDENTITY_STATES, "why"} for a subject: resolved when it carries its record's own identifier; a name
+    printed in a newspaper is unresolved — it stands for whoever bore that name, and is never taken for a known person"""
+    if any(str(f.get("predicate") or "").lower() == "in the news" for f in facts) and not QID.search(subject):
+        return {"state": "unresolved", "why": "a name as printed in a newspaper: which person of that name is not known"}
+    return {"state": "resolved", "why": "identified by its source's own record"}
+
+
 def period(f: dict) -> str:
     """when a fact held, from its own context (1.48): "1981–1989", "since 2009", "until 1975", "1969" — or "" when the
     store holds no date for it. Never guessed."""
@@ -442,4 +489,14 @@ def answer_for(question: str, subject: str, entities: list[dict], facts: list[di
         missing = ("QueryBook holds %s named “%s”, but no record of the %s itself yet." % (
             KIND_WORD.get(pick["kind"], "a thing"), clean(pick["subject"]), "person" if "human" in want else "subject"))
     known = known_for(mine) if pick["kind"] == "human" else {}
-    return {"entity": pick, "facts": mine, "said": said, "missing": missing, "known_for": known}
+    ident = identity_state(pick["subject"], mine)
+    # the "we don't know" zone: the same name printed in newspapers, kept APART from the known subject — never merged by name
+    apart = [e for e in entities if str(e.get("subject") or "") != pick["subject"] and clean(e.get("subject")).lower() == clean(pick["subject"]).lower()
+             and identity_state(str(e.get("subject") or ""), group(facts).get(str(e.get("subject") or "")) or [])["state"] == "unresolved"]
+    zone = {}
+    if apart and ident["state"] == "resolved":
+        n = sum(int(e.get("facts") or 0) for e in apart)
+        zone = {"name": clean(apart[0]["subject"]), "mentions": n,
+                "why": "The name “%s” is also printed in newspapers (%d mention%s held). Those are unresolved: they may be this %s or someone else of the name." % (
+                    clean(apart[0]["subject"]), n, "" if n == 1 else "s", "person" if pick["kind"] == "human" else "subject")}
+    return {"entity": pick, "facts": mine, "said": said, "missing": missing, "known_for": known, "identity": ident, "unresolved": zone}

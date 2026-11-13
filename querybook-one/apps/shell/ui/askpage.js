@@ -390,6 +390,8 @@ function akAnswer(r) {
     // 1.7.6: several occupations — which one the person is best known for, and why
     r.known_for && r.known_for.best && (r.known_for.also || []).length ? el("p", { class: "small muted" },
       "Roles: " + r.known_for.why + ". Also: " + r.known_for.also.join(", ") + ".") : null,
+    (r.identity_state || {}).state === "unresolved" ? el("p", { class: "note" }, "We don't know who this is: " + r.identity_state.why + ".") : null,
+    (r.unresolved || {}).why ? el("p", { class: "small muted" }, r.unresolved.why) : null,
     r.missing ? el("p", { class: "note" }, r.missing + (r.learning ? " " + r.learning : "")) : null,
     el("div", { class: "small muted", style: "margin-top:6px" },
       `Topic: ${r.topic} · shown as ${akFormatName(fmt)}${r.register !== "plain" ? " · tone: " + r.register : ""} · asked: ${(r.asked || []).map(nameOf).join(", ") || "nothing"}` +
@@ -453,7 +455,11 @@ function akSection(s, fmt) {
           el("td", {}, akLink(f.object || f.statement || ""), f.date ? el("div", { class: "small muted" }, f.date) : null,
             akWhen(f) ? el("div", { class: "small muted" }, akWhen(f)) : null, akFill(f)),
           el("td", {}, f.link ? el("a", { href: f.link, target: "_blank", rel: "noopener" }, f.where || "source") : (f.where || ""),
-            f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
+            // 1.8.4: the fact's state (true / false / undetermined / conflicting) with how it is backed; and whether we know who it is about
+            f.state ? el("div", {}, el("span", { class: "chip " + (f.state === "true" ? "verified" : f.state === "false" ? "rejected" : f.state === "conflicting" ? "disputed" : "reported"),
+              title: f.state_why || "" }, f.state + (f.backing ? " · " + f.backing : "")),
+              f.identity === "unresolved" ? el("span", { class: "chip", title: "A name as printed; which person of that name is not known" }, "unresolved name") : null)
+              : f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
             f.provenance ? el("div", { class: "small muted" }, f.provenance) : null,
             (f.sources || []).length ? el("div", { class: "small muted" }, "Stated in: ", akSources(f.sources)) : null))))));
   }

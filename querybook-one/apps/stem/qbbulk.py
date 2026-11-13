@@ -32,7 +32,7 @@ import qbnews  # noqa: E402  (names in the news: the extractor of the news latti
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.50.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.51.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1847,6 +1847,11 @@ def name_forms(text):
     return list(dict.fromkeys(f for f in forms if f))
 
 
+def _sense_mod():
+    import sense
+    return sense
+
+
 def find_entities(commons_folder, text, top=5, per=400):
     """1.40 — WHO or WHAT is meant: every thing named exactly `text` (or known by that other name) in every store, the
     best known first, with ALL the facts of the best ones. Before, the Ask box took the first sixty facts whose subject
@@ -1921,7 +1926,8 @@ def find_entities(commons_folder, text, top=5, per=400):
     views = wd_views(commons_folder, list(qn_of.values())) if qn_of else {}
     ents = [{"subject": s_, "qid": ("Q%d" % qn_of[s_]) if s_ in qn_of else None, "facts": e["n"], "fame": fame.get(qn_of.get(s_)),
              "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias")),
-             "by_part_of_name": bool(e.get("part")), "exact": not e.get("alias") and not e.get("part")} for s_, e in found.items()]
+             "by_part_of_name": bool(e.get("part")), "exact": not e.get("alias") and not e.get("part"),
+             "identity": "unresolved" if e["stores"] == ["hot-news"] * len(e["stores"]) and s_ not in qn_of else "resolved"} for s_, e in found.items()]
     # best known first: what people read (page views), then how widely it is written about (Wikipedias), then how much is held
     if qn_of and any(e["views"] for e in ents):         # 1.47: how each one's demand behaves (lasting, or a week in the news)
         series, sampled = wd_demand(commons_folder, [qn_of[e["subject"]] for e in ents if e["views"] and e["subject"] in qn_of])
@@ -1953,6 +1959,9 @@ def find_entities(commons_folder, text, top=5, per=400):
                     if c_:                               # 1.48: when it held, its rank, where it is stated
                         f_.update({k: v for k, v in c_.items() if v})
                     f_["context_read"] = read_           # 1.49: False -> its dates have never been read: "Fill Dates" is offered
+                    ts_ = _sense_mod().truth_state(f_)    # 1.51: the four states of a fact unit, and who it is about
+                    f_["state"], f_["backing"], f_["state_why"] = ts_["state"], ts_["backing"], ts_["why"]
+                    f_["identity"] = "unresolved" if key == "hot-news" else "resolved"
                     facts.append(f_)
                     got += 1
             except sqlite3.Error:

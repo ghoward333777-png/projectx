@@ -186,6 +186,15 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Not built: see its section 11 (qualifiers/references on facts, clickstream, coverage auditor, source ledger, outside
   sensors). No new source is ingested before its licence is recorded from the source's own page.
 
+### The states of a fact unit — the user's four (`sense.TRUTH_STATES`, `sense.truth_state`, `sense.identity_state`; engine 1.51)
+
+- TRUTH: true / false / undetermined / conflicting — the user's four states, matched to four-state logic in hardware
+  (1, 0, Z = nothing drives it: no confirming evidence, X = drivers disagree: sources conflict). The fuller status (verified,
+  corroborated, computed, sourced, reported, unsourced, disputed, rejected) stays underneath as the reason (`backing`).
+  One source = undetermined; two different sources named in the fact's own record = corroborated = true. Never promote a report.
+- IDENTITY is a separate field: resolved / unresolved / ambiguous / conflicting. A newspaper name is TRUE as printed and
+  UNRESOLVED as to who: the "we don't know" zone. It is shown apart from a known person of the same name and never merged by name.
+
 ### News lattice — names in America's newspapers (`qbbulk.NewsNames`, key `hot-news`; `apps/_core/qbnews.py`; engine 1.50)
 
 - The user: "harvest all names recorded in daily news publications from America's newspaper archives … the reason they were

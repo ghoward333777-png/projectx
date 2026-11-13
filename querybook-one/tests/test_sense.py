@@ -238,6 +238,47 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(sense.period({}), "")
 
 
+class StatesTest(unittest.TestCase):
+    """the four truth states of a fact unit, and — kept apart — whether we know who it is about"""
+
+    def test_the_four_truth_states_with_the_backing_underneath(self):
+        self.assertEqual(sense.TRUTH_STATES, ("true", "false", "undetermined", "conflicting"))
+        got = {st: sense.truth_state({"status": st})["state"] for st in ("verified", "corroborated", "computed", "sourced", "reported", "unsourced", "disputed", "rejected")}
+        self.assertEqual(got, {"verified": "true", "corroborated": "true", "computed": "true", "sourced": "undetermined", "reported": "undetermined",
+                               "unsourced": "undetermined", "disputed": "conflicting", "rejected": "false"})
+        self.assertEqual(sense.truth_state({})["backing"], "unsourced")
+
+    def test_one_source_is_undetermined_and_two_different_sources_make_it_true(self):
+        one = {"status": "sourced", "sources": [{"stated in": "Encyclopaedia A"}, {"stated in": "Encyclopaedia A", "url": "https://a.example/x"}]}
+        two = {"status": "sourced", "sources": [{"stated in": "Encyclopaedia A"}, {"url": "https://www.whitehouse.gov/about"}]}
+        self.assertEqual(sense.truth_state(one)["state"], "undetermined")
+        self.assertEqual((sense.truth_state(two)["state"], sense.truth_state(two)["backing"]), ("true", "corroborated"))
+        self.assertEqual(sense.truth_state({"status": "reported", "sources": two["sources"]})["state"], "undetermined")   # a report is not promoted
+
+    def test_a_newspaper_name_is_true_as_printed_and_unresolved_as_to_who(self):
+        f = {"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”", "status": "reported"}
+        self.assertEqual(sense.identity_state("Harvey Jordan", [f])["state"], "unresolved")
+        self.assertEqual(sense.identity_state("Theodore Roosevelt (Q33866)", [{"predicate": "occupation", "object": "politician"}])["state"], "resolved")
+
+    def test_the_unresolved_zone_is_kept_apart_from_the_known_person(self):
+        ents = [{"subject": "Theodore Roosevelt (Q33866)", "facts": 3, "fame": 200}, {"subject": "Theodore Roosevelt", "facts": 2, "fame": None}]
+        facts = [{"subject": "Theodore Roosevelt (Q33866)", "predicate": "instance of", "object": "human"},
+                 {"subject": "Theodore Roosevelt (Q33866)", "predicate": "occupation", "object": "politician"},
+                 {"subject": "Theodore Roosevelt (Q33866)", "predicate": "date of birth", "object": "1858-10-27"},
+                 {"subject": "Theodore Roosevelt", "predicate": "in the news", "object": "1905-03-04 — Evening star (Washington, D.C.), p. 1 — elected or appointed — “…”"},
+                 {"subject": "Theodore Roosevelt", "predicate": "in the news", "object": "1905-03-05 — Evening star (Washington, D.C.), p. 2 — spoke — “…”"}]
+        j = sense.answer_for("Who is Theodore Roosevelt?", "Theodore Roosevelt", ents, facts)
+        self.assertEqual(j["entity"]["subject"], "Theodore Roosevelt (Q33866)")     # the known person answers
+        self.assertEqual(j["identity"]["state"], "resolved")
+        self.assertEqual(j["unresolved"]["mentions"], 2)
+        self.assertIn("may be this person or someone else of the name", j["unresolved"]["why"])
+        self.assertNotIn("in the news", " ".join(str(f["predicate"]) for f in j["facts"]))   # newspaper mentions are not merged into the record
+        only = sense.answer_for("Who is Harvey Jordan?", "Harvey Jordan", [{"subject": "Harvey Jordan", "facts": 1}],
+                                [{"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”"}])
+        self.assertEqual(only["identity"]["state"], "unresolved")
+        self.assertEqual(only["unresolved"], {})
+
+
 class NewsNameTest(unittest.TestCase):
     """a name from the news lattice is said to be a name as printed in newspapers, with when and why — never a known person"""
 
