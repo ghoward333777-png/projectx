@@ -2716,7 +2716,7 @@ class WikidataSeed(WikidataDomain):
         self.tier, self.title_short, self.roots, self.depth, self.finds = 0, "the icons list shipped with QueryBook", (), 0, ()
         self.title = "Icons — the list shipped with QueryBook, read at once"
         self.why = "the best-known teams, athletes, bands, screen stars, leaders, places and events, listed in advance so reading starts immediately"
-        self.approx = "about 60,000 subjects"
+        self.approx = "about 47,000 subjects"
 
     def _ids(self):
         d = seed_load() or {"ids": [], "made": "none"}

@@ -243,6 +243,8 @@ def order(keys, commons_folder, commons=None, target=None):
                 except Exception:
                     tier = 9
                 return (0, 3 + tier, 0, 0, key)
+            if key == "hot-seed":                          # 1.44: the icons list shipped with QueryBook: read at once
+                return (0, 1, -1, 0, key)
             if key.startswith("hot-top-"):                 # 1.43: the icons of the culture, before everything but the demand agent
                 return (0, 1, 0, 0, key)
             return (0, 0 if key == "hot-demand" else 2 if key == "hot-most-read" else 3, -int(learned.get(key[4:]) or 0), 0, key)
