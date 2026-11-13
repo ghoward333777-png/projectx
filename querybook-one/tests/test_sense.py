@@ -238,6 +238,20 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(sense.period({}), "")
 
 
+class NewsNameTest(unittest.TestCase):
+    """a name from the news lattice is said to be a name as printed in newspapers, with when and why — never a known person"""
+
+    def test_a_newspaper_name_is_described_as_one(self):
+        facts = [{"subject": "Harvey Jordan", "predicate": "in the news",
+                  "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “Pres Harvey Jordan of the Southern Cotton Association will speak”"},
+                 {"subject": "Harvey Jordan", "predicate": "in the news",
+                  "object": "1907-01-10 — Evening star (Washington, D.C.), p. 2 — elected or appointed — “Harvey Jordan was elected”"}]
+        said = sense.identity("Harvey Jordan", facts, sense.kind_of(facts))
+        self.assertIn("a name printed in American newspapers in 1905 to 1907: 2 mentions held", said)
+        self.assertIn("not matched to a person", said)
+        self.assertIn("1905-03-04: spoke (The Greenville times (Greenville, Miss.), p. 1)", said)
+
+
 class PrefixOnlyTest(AskTest):
     def test_names_that_only_begin_with_the_words_are_not_an_answer(self):
         Panel.demand = []

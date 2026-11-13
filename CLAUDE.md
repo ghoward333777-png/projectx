@@ -186,6 +186,18 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Not built: see its section 11 (qualifiers/references on facts, clickstream, coverage auditor, source ledger, outside
   sensors). No new source is ingested before its licence is recorded from the source's own page.
 
+### News lattice — names in America's newspapers (`qbbulk.NewsNames`, key `hot-news`; `apps/_core/qbnews.py`; engine 1.50)
+
+- The user: "harvest all names recorded in daily news publications from America's newspaper archives … the reason they were
+  in the news, time, date". Source: the Library of Congress's Chronicling America through its JSON interface, one request
+  every 5 s (its robots file). Registry source `chronicling-america-pre1931`: ONLY issues more than 95 full years old
+  (`news_last_year`) — never loosen that.
+- The lattice is day × newspaper page, the days taken across all years in turn. It reads the head of each page (about the first
+  1,100 characters the archive returns with a day's list); the whole text of pages is a later pass.
+- A fact is (name as printed, "in the news", "date — paper (town), p. N — reason — “the paper's own words”"), linked to its
+  page, status "reported". A name is NOT a person: never merge it with a Wikidata record by name alone, never say who it is.
+  A reason about crime always reads "arrested or tried, as reported". Runs beside the hot list (outside the hot-first gate).
+
 ### Complete facts — dates, sources, rank (`docs/querybook-rebuild/complete-facts-plan.md`; engine 1.48)
 
 - Every Wikidata statement kept is harvested with its context (`statement_context`): start / end / point in time, other

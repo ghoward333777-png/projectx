@@ -28,10 +28,11 @@ import qbcore as core  # noqa: E402
 import qbscaffold as sc  # noqa: E402
 import qbkeystone as ks  # noqa: E402
 import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on the data drive)
+import qbnews  # noqa: E402  (names in the news: the extractor of the news lattice)
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.49.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.50.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -662,6 +663,108 @@ class GNIS(Dataset):
 
     def link(self, subject):
         return "https://edits.nationalmap.gov/apps/gaz-domestic/public/summary/" + subject.rsplit(" ", 1)[-1].rstrip(")")
+
+
+# ---- 1.50: the news lattice. The user: "add another lattice network - to harvest all names recorded in daily news publications
+# from America's newspaper archives; I want to record the reason they were in the news, time, date, etc."
+# The archive is the Library of Congress's Chronicling America, read through its own data interface (it asks for that, not
+# for page scraping), one request every five seconds as its robots file asks. The lattice is DAY x NEWSPAPER PAGE: every day
+# from 1770 to the last year that is wholly more than 95 years old (the Library's rights statement: "Newspapers published in
+# the United States more than 95 years ago are in the public domain in their entirety"; approved by the user in the registry
+# as chronicling-america-pre1931). The days are taken across all the years in turn, so every era fills together.
+# What is read is the head of each page as the archive returns it with a day's list (about the first 1,100 characters: the
+# headlines and the opening of the lead stories) — 100 pages a request. The whole text of a page is a later, slower pass.
+# A name is recorded AS PRINTED by the machine reading; it is not matched to a person (qbnews says what is and is not claimed).
+NEWS_API = "https://www.loc.gov/collections/chronicling-america/"
+NEWS_FIRST_YEAR = 1770
+NEWS_PER = 100
+NEWS_MAX_PAGES = 400               # requests for one day at most (40,000 newspaper pages)
+
+
+def news_last_year(today=None):
+    """the last year whose every issue is more than 95 years old"""
+    return (today or datetime.date.today()).year - 96
+
+
+def NEWS_FETCH(day, sp):
+    """one request to the archive: the newspaper pages of one day, 100 at a time (the tests replace this)"""
+    q = urllib.parse.urlencode({"dl": "page", "dates": day, "fo": "json", "c": NEWS_PER, "sp": sp, "at": "results,pagination"})
+    with urllib.request.urlopen(_req(NEWS_API + "?" + q), timeout=120) as r:
+        return json.loads(r.read())
+
+
+class NewsNames(Dataset):
+    key, title, app, source = "hot-news", "News lattice — names in America's newspapers, day by day (Library of Congress)", "facts", "chronicling-america-pre1931"
+    licence = "Public domain (Library of Congress: newspapers published in the United States more than 95 years ago)"
+    why = ("who was in the news, and why: every name printed in the head of every newspaper page of the archive, with the day, the paper, "
+           "its town, the page, the reason, and the paper's own words")
+    approx = "about 59,000 days and 20 million newspaper pages, 1770 to 1930"
+    GAP_S = 5.0                                        # the archive's robots file: Crawl-Delay 5
+
+    def parts(self):
+        years = list(range(news_last_year(), NEWS_FIRST_YEAR - 1, -1))
+        out = []
+        for m in range(1, 13):                           # a day of the year across ALL the years, then the next day
+            for d in range(1, 32):
+                for y in years:
+                    try:
+                        datetime.date(y, m, d)
+                    except ValueError:
+                        continue
+                    day = "%04d-%02d-%02d" % (y, m, d)
+                    out.append(("news " + day, "news#" + day))
+        return out
+
+    def rows(self, part, url, state):
+        day = url.split("#")[1]
+        if int(day[:4]) > news_last_year():
+            return iter(())                              # (never a paper that is not yet wholly in the public domain)
+
+        def pages():
+            sp, started = 1, False
+            while sp <= NEWS_MAX_PAGES:
+                last = state.get("_last", 0)
+                if last and time.time() - last < self.GAP_S:
+                    time.sleep(self.GAP_S - (time.time() - last))
+                d = None
+                for attempt in range(3):                  # a connection that drops mid-answer is asked again, after the pause
+                    try:
+                        d = NEWS_FETCH(day, sp)
+                        break
+                    except urllib.error.HTTPError as e:
+                        if e.code in REFUSED + (502, 504):
+                            raise Busy("the Library of Congress asked us to slow down (HTTP %d); this day continues on the next run" % e.code)
+                        raise
+                    except (http.client.HTTPException, urllib.error.URLError, TimeoutError, ConnectionError, ValueError) as e:
+                        if attempt == 2:
+                            raise Busy("the Library of Congress did not answer whole (%s); this day continues on the next run" % type(e).__name__)
+                        time.sleep(self.GAP_S * (attempt + 1))
+                    finally:
+                        state["_last"] = time.time()
+                pg = d.get("pagination") or {}
+                if not started:
+                    METER.start(int(pg.get("of") or 0), "newspaper pages")
+                    started = True
+                for r in d.get("results") or []:
+                    if r.get("date") == day and r.get("description"):       # the page of that very day (a bound volume carries a year only)
+                        yield r
+                if not pg.get("next"):
+                    break
+                sp += 1
+        return pages()
+
+    def facts(self, part, row, state):
+        text = " ".join(x for x in row.get("description") or [] if isinstance(x, str))
+        paper = qbnews.paper_of(row.get("title") or "")
+        try:
+            page = int((row.get("number_page") or ["1"])[0])
+        except (ValueError, TypeError, IndexError):
+            page = 1
+        out, links = [], state.setdefault("_links", {})
+        for m in qbnews.mentions(text):
+            links[m["name"]] = row.get("url") or ""
+            out.append((m["name"], "in the news", qbnews.fact_object(row["date"], paper, page, m)))
+        return out
 
 
 class FoodData(Dataset):
@@ -1839,11 +1942,13 @@ def find_entities(commons_folder, text, top=5, per=400):
             except sqlite3.Error:
                 continue
             try:
-                for s_, pr, o, part, row in db.execute(
-                        "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
-                        "WHERE f.s = ? LIMIT ?", (e["subject"], per - got)):
+                for s_, pr, o, part, row, url_ in db.execute(
+                        "SELECT f.s, pr.name, f.o, pa.name, f.row, l.url FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
+                        "LEFT JOIN links l ON l.fp = f.fp WHERE f.s = ? LIMIT ?", (e["subject"], per - got)):
                     f_ = {"subject": s_, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed", "licence": ds.licence,
-                          "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_), "status": "computed" if not ds.source else "sourced"}
+                          "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_) or url_, "status": "computed" if not ds.source else "sourced"}
+                    if key == "hot-news":                 # a newspaper's report: reported, not confirmed; a name as printed, not a person
+                        f_["status"] = "reported"
                     c_ = ctx_of.get((pr, o))
                     if c_:                               # 1.48: when it held, its rank, where it is stated
                         f_.update({k: v for k, v in c_.items() if v})
@@ -3433,7 +3538,7 @@ def demand_report(commons_folder, top=40):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead(), WikidataContext()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead(), WikidataContext(), NewsNames()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -4657,7 +4762,7 @@ HOT_RETRY_S = 120                  # a hot set that was refused or interrupted i
 def hot_first(key):
     """the sets everything else waits for: the icons, what people read, the hot lattices (not the demand agent, which is
     always on, and not the complete domains — millions of records over days — which run after, beside the rest)"""
-    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle", "hot-context") and not key.startswith("hot-all-")
+    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle", "hot-context", "hot-news") and not key.startswith("hot-all-")
 
 
 def next_try(r, fails):
@@ -7638,6 +7743,54 @@ def self_test():
                and after_["entities"][0]["facts"] == n_before_ and all(f_["context_read"] for f_ in after_["facts"])
                and not down_["ok"] and "Nothing was changed" in down_["why"] and not bad_["ok"] and "does not come from a Wikidata record" in bad_["why"],
                (fd_, pres_, down_, bad_, n_before_, after_["entities"][0]["facts"]))
+            # 1.50 the news lattice: names in America's newspapers, day by day
+            news_was, ngap_was = NEWS_FETCH, NewsNames.GAP_S
+            asked_n = []
+
+            def _news(day, sp):
+                asked_n.append((day, sp))
+                if day != "1905-03-04":
+                    return {"results": [], "pagination": {"of": 0}}
+                pg = {"results": [
+                    {"date": "1905-03-04", "title": "Image 1 of The Greenville times (Greenville, Miss.), March 4, 1905", "number_page": ["0000000001"],
+                     "url": "https://www.loc.gov/resource/sn85034374/1905-03-04/ed-1/?sp=1",
+                     "description": ["Pres Harvey Jordan of the Southern Cotton Association will speak in this city March 8th GREENVILLE MISS SATURDAY "
+                                     "MARCH 4 1905 Alonzo White was arrested and charged before Judge Robinson on Friday"]},
+                    {"date": "1905", "title": "The Sun (Jacksonville, Fla.) 1905-1908", "number_page": ["0000000001"], "url": "https://www.loc.gov/resource/x/",
+                     "description": ["Mr John W Smith died"]}],
+                    "pagination": {"of": 2, "next": "more" if sp == 1 else None}}
+                if sp == 2:
+                    pg["results"] = [{"date": "1905-03-04", "title": "Image 3 of Evening star (Washington, D.C.), March 4, 1905", "number_page": ["0000000003"],
+                                      "url": "https://www.loc.gov/resource/sn83045462/1905-03-04/ed-1/?sp=3",
+                                      "description": ["Theodore Roosevelt of New York was inaugurated today and Charles Warren Fairbanks of Indiana took the oath"]}]
+                return pg
+            try:
+                globals()["NEWS_FETCH"] = _news
+                NewsNames.GAP_S = 0
+                nn_ = NewsNames()
+                parts_n = nn_.parts()
+                st_n = {}
+                rows_n = list(nn_.rows("news 1905-03-04", "news#1905-03-04", st_n))
+                facts_n = [f_ for r_ in rows_n for f_ in nn_.facts("news 1905-03-04", r_, st_n)]
+                late_ = list(nn_.rows("news 1990-01-01", "news#1990-01-01", {}))
+                by_n = {f_[0]: f_[2] for f_ in facts_n}
+            finally:
+                globals()["NEWS_FETCH"] = news_was
+                NewsNames.GAP_S = ngap_was
+            ok("1.50: the news lattice — every day of the archive across all the years in turn; a page's names are recorded as printed "
+               "with the day, the paper and its town, the page, the reason, and the paper's own words: Harvey Jordan spoke, Alonzo White "
+               "was “arrested or tried, as reported” (a report, never a finding), Theodore Roosevelt was elected or appointed; a bound "
+               "volume dated by year only is not taken for a day; nothing later than 95 full years ago is read; it runs beside the hot "
+               "list, each fact linked to its page",
+               parts_n[0] == ("news %d-01-01" % news_last_year(), "news#%d-01-01" % news_last_year()) and parts_n[1][0] == "news %d-01-01" % (news_last_year() - 1)
+               and len(parts_n) > 58000 and all(int(n_[5:9]) <= news_last_year() for n_, _u in parts_n[:400])
+               and len(rows_n) == 2 and asked_n[:2] == [("1905-03-04", 1), ("1905-03-04", 2)]
+               and by_n["Harvey Jordan"].startswith("1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “")
+               and "arrested or tried, as reported" in by_n["Alonzo White"] and "Judge Robinson" in by_n
+               and "elected or appointed" in by_n["Theodore Roosevelt"] and "Evening star (Washington, D.C.), p. 3" in by_n["Charles Warren Fairbanks"]
+               and "John W. Smith" not in by_n and late_ == [] and st_n["_links"]["Charles Warren Fairbanks"].endswith("?sp=3")
+               and not hot_first("hot-news") and "hot-news" in catalog() and catalog()["hot-news"].source == "chronicling-america-pre1931",
+               (parts_n[:2], len(parts_n), by_n, asked_n, late_))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

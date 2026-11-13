@@ -167,7 +167,8 @@ The American Historical People Graph (`top-americans-1400-2026.md`) is one consu
 | Clickstream ingest and the navigation graph | Not started |
 | Wikidata qualifiers, references and ranks kept on facts | Built in 1.48 for new harvests and for well-known records already held; the rest of the store is the plan in `complete-facts-plan.md` |
 | QRank | Not ingested; its terms to be recorded first |
-| Google Trends, GDELT, OpenAlex, Library of Congress, Chronicling America | None connected. Each needs its Source Qualification entry first |
+| Google Trends, GDELT, OpenAlex, Library of Congress authorities | None connected. Each needs its Source Qualification entry first |
+| Chronicling America | Connected in engine 1.50 as the news lattice (`hot-news`): names with date, paper, page and reason, from the head of each page. Whole-page text and matching names to people are not built |
 | Source ledger / qualification gate as a table | Provenance exists per fact; the ledger does not |
 | Keyword extraction from article text, sections, infoboxes | Not started |
 | Predicate Demand Profiles per entity class | `sense.IMPORTANT` lists telling predicates per kind by hand; not learned |

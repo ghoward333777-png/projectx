@@ -372,6 +372,18 @@ def identity(subject: str, facts: list[dict], kind: str) -> str:
     from what it is an instance of, what it does, and its dates and places. Nothing is added that a fact does not say."""
     name = clean(subject)
     desc = first(facts, "description")
+    news = sorted(clean(f.get("object")) for f in facts if str(f.get("predicate") or "").lower() == "in the news")
+    if news and not desc and kind != "human":
+        # a name printed in old newspapers (the news lattice): said as exactly that — a name as printed, not a known person
+        years = sorted({year(x[:10]) for x in news if year(x[:10])})
+        span = years[0] if len(years) == 1 else "%s to %s" % (years[0], years[-1]) if years else ""
+        out = "%s — a name printed in American newspapers%s: %d mention%s held. It is a name as printed, not matched to a person; several people can share it." % (
+            name, " in " + span if span else "", len(news), "" if len(news) == 1 else "s")
+        for x in news[:3]:
+            bits = x.split(" — ")
+            if len(bits) >= 3:
+                out += " %s: %s (%s)." % (bits[0], bits[2], bits[1])
+        return out
     if kind == "human":
         born, died = first(facts, "date of birth"), first(facts, "date of death")
         span = (" (%s–%s)" % (year(born), year(died))) if year(born) and year(died) else (" (born %s)" % year(born)) if year(born) else ""
