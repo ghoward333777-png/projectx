@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.43.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.44.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1579,7 +1579,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand", "hot-seed"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -1685,6 +1685,13 @@ def name_forms(text):
     forms = [t, t[:1].upper() + t[1:], " ".join(w[:1].upper() + w[1:] for w in t.split(" "))]
     if len(t) <= 6:
         forms.append(t.upper())
+    # 1.44: the Ask box drops a leading "the" ("Who are the Beatles?" asks for "Beatles") and the record is "The Beatles":
+    # every form is tried with and without its article
+    low = t.casefold()
+    if low.startswith("the "):
+        forms += name_forms(t[4:])
+    elif t:
+        forms += ["The " + f for f in list(forms)]
     return list(dict.fromkeys(f for f in forms if f))
 
 
@@ -1700,7 +1707,7 @@ def find_entities(commons_folder, text, top=5, per=400):
     if not forms:
         return {"entities": [], "facts": [], "asked": 0, "stores": len(held)}
     alias_q = set()
-    for f in forms[:2]:
+    for f in dict.fromkeys(x.casefold() for x in forms):
         alias_q.update(wd_alias(commons_folder, f))
     for key, ds in held:
         try:
@@ -1867,6 +1874,155 @@ HOT = {
 }
 
 
+# ---- 1.44: a second way to read records. Wikidata's records service (api.php) refuses a computer it finds too busy
+# ("429 Too Many Requests") — outright, for as long as it likes; its query service is a separate system with its own
+# allowance. The hot list read records through the first only: where it was refused, the list was made and nobody was
+# read. Now a refusal switches every agent to the query service for a quarter of an hour, then the records service is
+# tried again. The query service's answer is put into the records service's own shape, so the facts written are the same.
+API_REFUSED_NAME = "_api_refused.json"
+API_REFUSED_S = 15 * 60
+WDQS_PAUSE_S = 10
+WD_E, WD_D = "http://www.wikidata.org/entity/", "http://www.wikidata.org/prop/direct/"
+
+
+def WDQS_FETCH(sparql):
+    """one query to the query service, typed answers: the list of bindings (the tests replace this)"""
+    req = urllib.request.Request("https://query.wikidata.org/sparql", data=urllib.parse.urlencode({"query": sparql}).encode(),
+                                 headers={"User-Agent": UA, "Accept": "application/sparql-results+json"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read())["results"]["bindings"]
+
+
+def wdqs_ask(sparql, folder=None):
+    """…taking turns with every other agent (two at a time), and waiting when the service says it is busy"""
+    slots = Slots(folder) if folder else None
+    lock, t0 = None, time.time()
+    while slots is not None and lock is None and time.time() - t0 < 600:
+        lock = slots._lock("wikidata-read", 0) or slots._lock("wikidata-read", 1)   # (its own turns: never behind the slow listing queries)
+        if lock is None:
+            time.sleep(0.3)
+    try:
+        for attempt in range(4):
+            try:
+                return WDQS_FETCH(sparql)
+            except urllib.error.HTTPError as e:
+                if e.code not in REFUSED + (500, 502, 503, 504) or attempt == 3:
+                    raise
+                time.sleep(max(WDQS_PAUSE_S * (attempt + 1), _retry_after(e)))
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if attempt == 3:
+                    raise
+                time.sleep(WDQS_PAUSE_S * (attempt + 1))
+    finally:
+        if lock is not None:
+            slots.release(lock)
+
+
+def api_refused(folder, now=None):
+    """the records service refused this computer recently: every agent reads through the query service until then"""
+    d = _read_json(os.path.join(folder, FOLDER, API_REFUSED_NAME), {}) if folder else {}
+    return bool(isinstance(d, dict) and (d.get("until") or 0) > (now or time.time()))
+
+
+def api_refused_set(folder, why=""):
+    if folder:
+        _ka_save(os.path.join(folder, FOLDER, API_REFUSED_NAME), {"until": time.time() + API_REFUSED_S, "at": time.time(), "why": str(why)[:200]})
+
+
+def wdqs_entities(qids, folder=None):
+    """{Q-id: record} for these items, read from the query service and shaped as the records service gives them (labels,
+    description, other names, the number of Wikipedias, and every best-rank statement with its value: an item, a date at
+    its own precision, a quantity with its unit, a place on Earth, a text). Three small queries per batch."""
+    ids = [q for q in dict.fromkeys(qids) if re.fullmatch(r"Q\d+", q or "")]
+    if not ids:
+        return {}
+    vals = " ".join("wd:" + q for q in ids)
+    q_of = lambda b, k="s": b[k]["value"].rsplit("/", 1)[-1]
+    out = {}
+    for b in wdqs_ask("SELECT ?s ?l ?d ?n WHERE { VALUES ?s { %s } ?s wikibase:sitelinks ?n . OPTIONAL { ?s rdfs:label ?l FILTER(LANG(?l) = \"en\") } "
+                      "OPTIONAL { ?s schema:description ?d FILTER(LANG(?d) = \"en\") } }" % vals, folder):
+        e = out.setdefault(q_of(b), {"type": "item", "id": q_of(b), "labels": {}, "descriptions": {}, "aliases": {"en": []}, "claims": {}, "sitelinks": {}})
+        if "l" in b:
+            e["labels"]["en"] = {"value": b["l"]["value"]}
+        if "d" in b:
+            e["descriptions"]["en"] = {"value": b["d"]["value"]}
+        try:
+            e["sitelinks"] = {"w%d" % i: {} for i in range(int(float(b["n"]["value"])))}
+        except (KeyError, ValueError):
+            pass
+    if not out:
+        return {}
+    for b in wdqs_ask("SELECT ?s ?a WHERE { VALUES ?s { %s } ?s skos:altLabel ?a FILTER(LANG(?a) = \"en\") }" % vals, folder):
+        if q_of(b) in out:
+            out[q_of(b)]["aliases"]["en"].append({"value": b["a"]["value"]})
+    add = lambda q, pid, dv: out[q]["claims"].setdefault(pid, []).append({"rank": "normal", "mainsnak": {"datavalue": dv}})
+    timed, measured = set(), set()
+    # dates at their own precision, quantities with their unit (the simple values lose both)
+    for b in wdqs_ask("SELECT ?s ?pd ?t ?prec ?amt ?unit WHERE { VALUES ?s { %s } ?s ?p ?st . ?st a wikibase:BestRank ; ?psv ?v . "
+                      "?prop wikibase:claim ?p ; wikibase:statementValue ?psv ; wikibase:directClaim ?pd . "
+                      "{ ?v wikibase:timeValue ?t ; wikibase:timePrecision ?prec } UNION { ?v wikibase:quantityAmount ?amt ; wikibase:quantityUnit ?unit } }" % vals, folder):
+        q, pid = q_of(b), b["pd"]["value"].rsplit("/", 1)[-1]
+        if q not in out:
+            continue
+        if "t" in b:
+            t = b["t"]["value"]
+            add(q, pid, {"type": "time", "value": {"time": t if t[:1] in "+-" else "+" + t, "precision": int(float(b["prec"]["value"]))}})
+            timed.add((q, pid))
+        elif "amt" in b:
+            a, u = b["amt"]["value"], b["unit"]["value"]
+            add(q, pid, {"type": "quantity", "value": {"amount": a if a[:1] in "+-" else "+" + a, "unit": "1" if u.endswith("/Q199") else u}})
+            measured.add((q, pid))
+    for b in wdqs_ask("SELECT ?s ?p ?o WHERE { VALUES ?s { %s } ?s ?p ?o . FILTER(STRSTARTS(STR(?p), \"%s\")) }" % (vals, WD_D), folder):
+        q, pid, o = q_of(b), b["p"]["value"].rsplit("/", 1)[-1], b["o"]
+        if q not in out or (q, pid) in timed or (q, pid) in measured:
+            continue
+        v, dt = o.get("value", ""), o.get("datatype", "")
+        if o.get("type") == "uri":
+            if v.startswith(WD_E) and re.fullmatch(r"Q\d+", v[len(WD_E):]):
+                add(q, pid, {"type": "wikibase-entityid", "value": {"id": v[len(WD_E):]}})
+        elif dt.endswith("#dateTime") or dt.endswith("#decimal"):
+            continue                                    # (a date or quantity the precise query did not return: left out, not guessed)
+        elif dt.endswith("wktLiteral"):
+            m = re.fullmatch(r"Point\(([-0-9.eE]+) ([-0-9.eE]+)\)", v)
+            if m:                                        # (a place on another globe carries its globe first: skipped, as the lanes do)
+                add(q, pid, {"type": "globecoordinate", "value": {"latitude": float(m.group(2)), "longitude": float(m.group(1)), "globe": WD_E + "Q2"}})
+        elif o.get("xml:lang"):
+            add(q, pid, {"type": "monolingualtext", "value": {"text": v, "language": o["xml:lang"]}})
+        elif not dt or dt.endswith("#string"):
+            add(q, pid, {"type": "string", "value": v})
+    return out
+
+
+def wdqs_labels(qnums, folder=None):
+    out = {}
+    ids = sorted(set(qnums))
+    for i in range(0, len(ids), 400):
+        for b in wdqs_ask("SELECT ?s ?l WHERE { VALUES ?s { %s } ?s rdfs:label ?l FILTER(LANG(?l) = \"en\") }" % " ".join("wd:Q%d" % q for q in ids[i:i + 400]), folder):
+            out[int(b["s"]["value"].rsplit("/Q", 1)[-1])] = b["l"]["value"]
+    return out
+
+
+def wdqs_find(name, folder=None, limit=7):
+    """the items called `name` (their label or another name of theirs, with and without "The"), the best known first"""
+    forms = [f for f in name_forms(name) if '"' not in f and "\\" not in f][:8]
+    if not forms:
+        return []
+    rows = wdqs_ask("SELECT DISTINCT ?s ?n WHERE { VALUES ?l { %s } { ?s rdfs:label ?l } UNION { ?s skos:altLabel ?l } ?s wikibase:sitelinks ?n } "
+                    "ORDER BY DESC(?n) LIMIT %d" % (" ".join('"%s"@en' % f for f in forms), limit), folder)
+    return [b["s"]["value"].rsplit("/", 1)[-1] for b in rows if b["s"]["value"].rsplit("/", 1)[-1].startswith("Q")]
+
+
+def wdqs_titles(titles, folder=None):
+    """{English Wikipedia article title: Q-id}"""
+    ok = [t for t in titles if '"' not in t and "\\" not in t]
+    out = {}
+    for i in range(0, len(ok), 50):
+        for b in wdqs_ask("SELECT ?t ?s WHERE { VALUES ?t { %s } ?a schema:name ?t ; schema:about ?s ; schema:isPartOf <https://en.wikipedia.org/> }"
+                          % " ".join('"%s"@en' % t for t in ok[i:i + 50]), folder):
+            out[b["t"]["value"]] = b["s"]["value"].rsplit("/", 1)[-1]
+    return out
+
+
 def HOT_FETCH(params):
     """one request to Wikidata's API (the tests replace this)"""
     url = "https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode(dict(params, format="json", maxlag=5))
@@ -1910,11 +2066,11 @@ class WikidataHot(Dataset):
         return [("%s %s rank %05d-%05d" % (ed, find, off + 1, off + self.PAGE), "hot#%s#%d" % (find, off))
                 for off in range(0, self.depth, self.PAGE) for find in self.finds]
 
-    def _get(self, params, state):
+    def _get(self, params, state, tries=5):
         last = state.get("_last", 0)
         if last and time.time() - last < self.GAP_S:
             time.sleep(self.GAP_S - (time.time() - last))
-        for attempt in range(5):
+        for attempt in range(tries):
             try:
                 slot = self._turn()
                 try:
@@ -1930,8 +2086,9 @@ class WikidataHot(Dataset):
             except urllib.error.HTTPError as e:
                 if e.code not in REFUSED + (502, 504):
                     raise
-                time.sleep(max(10 * (attempt + 1), _retry_after(e)))
-        raise Busy("Wikidata asked us to slow down; this hot lattice continues on the next run")
+                if attempt + 1 < tries:
+                    time.sleep(min(20, max(3 * (attempt + 1), _retry_after(e))))
+        raise Busy("Wikidata's records service asked us to slow down (HTTP 429)")
 
     API_AT_ONCE = 3                                   # every lattice together: at most this many requests to Wikidata at a time
 
@@ -1949,15 +2106,46 @@ class WikidataHot(Dataset):
             time.sleep(0.2)
         return None
 
+    def _api(self, params, state):
+        """the records service, ONE try: a refusal is remembered for a quarter of an hour (every agent then reads through the
+        query service) and raised as Refused — nobody waits minutes on a service that has said no"""
+        if api_refused(getattr(self, "folder", None)):
+            raise Refused("refused recently")
+        try:
+            return self._get(params, state, tries=2)
+        except Busy as e:
+            api_refused_set(getattr(self, "folder", None), str(e))
+            raise Refused(str(e))
+
+    def _entities(self, ids, state):
+        """the whole records of these items, from the records service or — when it refuses — the query service"""
+        ids = [q for q in ids if q]
+        out = {}
+        try:
+            for i in range(0, len(ids), self.PAGE):
+                out.update(self._api({"action": "wbgetentities", "ids": "|".join(ids[i:i + self.PAGE]),
+                                      "props": "labels|descriptions|aliases|claims|sitelinks", "languages": "en|mul"}, state).get("entities") or {})
+            state["_via"] = "records service"
+            return out
+        except Refused:
+            pass
+        out = {}
+        for i in range(0, len(ids), self.PAGE):
+            out.update(wdqs_entities(ids[i:i + self.PAGE], getattr(self, "folder", None)))
+        state["_via"] = "query service"
+        return out
+
     def rows(self, part, url, state):
         _, find, off = url.split("#")
-        r = self._get({"action": "query", "list": "search", "srsearch": "haswbstatement:" + find, "srnamespace": 0, "srlimit": self.PAGE,
-                       "sroffset": int(off), "srsort": "incoming_links_desc", "srprop": ""}, state)
+        try:
+            r = self._api({"action": "query", "list": "search", "srsearch": "haswbstatement:" + find, "srnamespace": 0, "srlimit": self.PAGE,
+                           "sroffset": int(off), "srsort": "incoming_links_desc", "srprop": ""}, state)
+        except Refused:                                    # this ranking exists only in the records service: wait for it
+            raise Busy("Wikidata's records service is refusing this computer; this lattice waits (the icons are read through the query service meanwhile)")
         ids = [h["title"] for h in (r.get("query") or {}).get("search", []) if str(h.get("title", "")).startswith("Q")]
         if not ids:
             return iter(())
-        ents = (self._get({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels|descriptions|aliases|claims|sitelinks",
-                           "languages": "en|mul"}, state).get("entities") or {})
+        ents = self._entities(ids, state)
         rows = [ents[q] for q in ids if q in ents and "missing" not in ents[q]]
         self._name_values(rows, state)
         METER.start(len(rows), "rows")
@@ -1984,13 +2172,16 @@ class WikidataHot(Dataset):
         if refs:
             refs -= set(wd_labels(self.folder, list(refs)))
         want = sorted(refs)
-        for i in range(0, len(want), 50):
-            r = self._get({"action": "wbgetentities", "ids": "|".join("Q%d" % q for q in want[i:i + 50]), "props": "labels", "languages": "en|mul"}, state)
-            for q, e in (r.get("entities") or {}).items():
-                L = e.get("labels") or {}
-                lab = (L.get("en") or L.get("mul") or {}).get("value")
-                if lab and q[1:].isdigit():
-                    state["_labelbuf"].append((int(q[1:]), lab))
+        try:
+            for i in range(0, len(want), 50):
+                r = self._api({"action": "wbgetentities", "ids": "|".join("Q%d" % q for q in want[i:i + 50]), "props": "labels", "languages": "en|mul"}, state)
+                for q, e in (r.get("entities") or {}).items():
+                    L = e.get("labels") or {}
+                    lab = (L.get("en") or L.get("mul") or {}).get("value")
+                    if lab and q[1:].isdigit():
+                        state["_labelbuf"].append((int(q[1:]), lab))
+        except Refused:
+            state["_labelbuf"].extend(wdqs_labels(want, getattr(self, "folder", None)).items())
         state["_known"] |= refs
         self.lane._flush(state)
 
@@ -2055,12 +2246,14 @@ class WikidataDemand(WikidataHot):
 
     def rows(self, part, url, state):
         subject = url.split("#", 1)[1]
-        r = self._get({"action": "wbsearchentities", "search": subject, "language": "en", "uselang": "en", "type": "item", "limit": 7}, state)
-        ids = [h["id"] for h in r.get("search") or [] if str(h.get("id", "")).startswith("Q")]
+        try:
+            r = self._api({"action": "wbsearchentities", "search": subject, "language": "en", "uselang": "en", "type": "item", "limit": 7}, state)
+            ids = [h["id"] for h in r.get("search") or [] if str(h.get("id", "")).startswith("Q")]
+        except Refused:
+            ids = wdqs_find(subject, self.folder)
         rows = []
         if ids:
-            ents = (self._get({"action": "wbgetentities", "ids": "|".join(ids), "props": "labels|descriptions|aliases|claims|sitelinks",
-                               "languages": "en|mul"}, state).get("entities") or {})
+            ents = self._entities(ids, state)
             rows = [ents[q] for q in ids if q in ents and "missing" not in ents[q]]
             self._name_values(rows, state)
             self._learn(rows)
@@ -2148,16 +2341,24 @@ class WikidataMostRead(WikidataHot):
         if not chunk:
             return iter(())
         by_title = {t.replace("_", " "): v for t, v in chunk}
-        ents = (self._get({"action": "wbgetentities", "sites": "enwiki", "titles": "|".join(by_title), "props": "labels|descriptions|aliases|claims|sitelinks",
-                           "languages": "en|mul"}, state).get("entities") or {})
         rows = []
-        for q, e in ents.items():
-            if "missing" in e or not str(q).startswith("Q"):
-                continue
-            title = ((e.get("sitelinks") or {}).get("enwiki") or {}).get("title")
-            if title in by_title:
-                state["_viewbuf"].append((int(q[1:]), by_title[title]))
-            rows.append(e)
+        try:
+            ents = (self._api({"action": "wbgetentities", "sites": "enwiki", "titles": "|".join(by_title), "props": "labels|descriptions|aliases|claims|sitelinks",
+                               "languages": "en|mul"}, state).get("entities") or {})
+            for q, e in ents.items():
+                if "missing" in e or not str(q).startswith("Q"):
+                    continue
+                title = ((e.get("sitelinks") or {}).get("enwiki") or {}).get("title")
+                if title in by_title:
+                    state["_viewbuf"].append((int(q[1:]), by_title[title]))
+                rows.append(e)
+        except Refused:                                    # titles and records through the query service
+            q_of = wdqs_titles(list(by_title), self.folder)
+            ents = wdqs_entities(list(q_of.values()), self.folder)
+            for title, q in q_of.items():
+                if q in ents:
+                    state["_viewbuf"].append((int(q[1:]), by_title[title]))
+                    rows.append(ents[q])
         self._name_values(rows, state)
         METER.start(len(rows), "rows")
         return self._each(rows, state)
@@ -2469,11 +2670,8 @@ class WikidataDomain(WikidataHot):
     def rows(self, part, url, state):
         start = int(url.split("#")[1])
         ids = self._ids()["ids"][start:start + self.BATCH]
-        rows = []
-        for i in range(0, len(ids), self.PAGE):
-            ents = (self._get({"action": "wbgetentities", "ids": "|".join("Q%d" % q for q in ids[i:i + self.PAGE]),
-                               "props": "labels|descriptions|aliases|claims|sitelinks", "languages": "en|mul"}, state).get("entities") or {})
-            rows += [e for e in ents.values() if "missing" not in e]
+        ents = self._entities(["Q%d" % q for q in ids], state)
+        rows = [ents[k] for k in ("Q%d" % q for q in ids) if k in ents and "missing" not in ents[k]]
         self._name_values(rows, state)
         METER.start(len(rows), "rows")
         return self._each(rows, state)
@@ -2496,6 +2694,40 @@ class WikidataIcons(WikidataDomain):
         return super().prepare(run)
 
 
+SEED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hot_seed.json")
+
+
+def seed_load():
+    """the icons list that ships inside QueryBook (tools/build_hot_seed.py): {"made", "ids": [...], "sets": {...}} or None"""
+    d = _read_json(SEED_FILE, None)
+    return d if isinstance(d, dict) and d.get("ids") else None
+
+
+class WikidataSeed(WikidataDomain):
+    """1.44 — the hot list, IMMEDIATELY. Listing an icons set from Wikidata takes 5 to 15 minutes, two sets at a time: on a
+    new start the hot list spent its first half hour asking who is famous and read nobody ("Who are the Beatles?" — no
+    record). The answer to that question is shipped inside QueryBook: the icons of every set, ranked, listed when this
+    version was built. This dataset reads their records straight away — the first 250 within the first minute — and the
+    icons sets then list themselves afresh in their own time."""
+    BATCH = 250
+
+    def __init__(self):
+        self.name, self.key = "seed", "hot-seed"
+        self.tier, self.title_short, self.roots, self.depth, self.finds = 0, "the icons list shipped with QueryBook", (), 0, ()
+        self.title = "Icons — the list shipped with QueryBook, read at once"
+        self.why = "the best-known teams, athletes, bands, screen stars, leaders, places and events, listed in advance so reading starts immediately"
+        self.approx = "about 60,000 subjects"
+
+    def _ids(self):
+        d = seed_load() or {"ids": [], "made": "none"}
+        return {"ids": d["ids"], "edition": "seed " + str(d.get("made"))}
+
+    def parts(self):
+        d = self._ids()
+        n = len(d["ids"])
+        return [("%s icons %07d-%07d of %07d" % (d["edition"], i + 1, min(n, i + self.BATCH), n), "domain#%d" % i) for i in range(0, n, self.BATCH)]
+
+
 def wd_views(commons_folder, qids):
     """{Q-number: Wikipedia page views, added up over the months sampled} for the items among the most read"""
     want, out = sorted(set(qids)), {}
@@ -2516,7 +2748,7 @@ def wd_views(commons_folder, qids):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(),) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataMostRead(),) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataMostRead(),) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -3630,6 +3862,10 @@ class _Stop(Exception):
     pass
 
 
+class Refused(Exception):
+    """Wikidata's records service said no; the caller reads another way"""
+
+
 class Busy(Exception):
     """the publisher asked us to slow down: the dataset pauses (what is saved stays saved) and resumes on the next run"""
 
@@ -3729,6 +3965,16 @@ def _agent_main(commons_folder, key, max_rows, result_path):
     os.replace(result_path + ".tmp", result_path)
 
 
+HOT_WAIT_S = 30 * 60               # the hot list making no progress this long: the other datasets may run meanwhile
+HOT_RETRY_S = 120                  # a hot set that was refused or interrupted is tried again this soon
+
+
+def hot_first(key):
+    """the sets everything else waits for: the icons, what people read, the hot lattices (not the demand agent, which is
+    always on, and not the complete domains — millions of records over days — which run after, beside the rest)"""
+    return key.startswith("hot-") and key != "hot-demand" and not key.startswith("hot-all-")
+
+
 def next_try(r, fails):
     """seconds until a dataset is started again, from how it ended (None: not again in this run)"""
     st = (r or {}).get("state")
@@ -3758,6 +4004,9 @@ class Supervisor:
         self.running = {}                                    # dataset → {proc, started, result, last progress, last change}
         self.events = []
         self.hold = set()                                    # 1.38: datasets having facts added back from another copy right now
+        self.hot_done = set()                                # 1.44: hot sets finished in this run
+        self.hot_moved, self.hot_bump = None, False          # …and when one of them last made progress (the supervisor's clock)
+        self.hot_state = {}
         self.res_dir = os.path.join(commons_folder, FOLDER, "_results")
         os.makedirs(self.res_dir, exist_ok=True)
 
@@ -3797,6 +4046,13 @@ class Supervisor:
         ok = r.get("state") in ("done",)
         self.fails[key] = 0 if ok or r.get("new") or r.get("written") else self.fails[key] + 1   # staged facts are progress too
         wait = next_try(r, max(0, self.fails[key] - 1))
+        if hot_first(key):                               # 1.44: the hot list
+            if ok:
+                self.hot_done.add(key)
+            elif wait is not None:
+                wait = min(wait, HOT_RETRY_S)            # refused or interrupted: tried again in two minutes, not fifteen
+            if ok or r.get("new") or r.get("written"):
+                self.hot_bump = True
         if wait is None:
             self.queue.pop(key, None)
         else:
@@ -3827,6 +4083,8 @@ class Supervisor:
             if a:
                 prog = (a.get("meter"), a.get("rows"), a.get("filing"))      # 1.35.2: a filing advancing is progress
                 if prog != info["progress"]:
+                    if hot_first(key) and info["progress"] is not None:      # a real step, not a restarted agent's first reading
+                        self.hot_moved = now
                     info["progress"], info["changed"], info["waiting_since"] = prog, now, None
                 elif a.get("waiting"):                   # waiting on purpose (filing, a connection) is not a stall…
                     info["waiting_since"] = info.get("waiting_since") or now
@@ -3861,11 +4119,32 @@ class Supervisor:
             if key not in self.hold:
                 self._finish(key, None, "resting until %s — it ran for hours without one new fact, so other datasets take its place (the facts so far are kept)"
                              % time.strftime("%H:%M", time.localtime(rested[key])))
+        # 1.44 — THE HOT LIST FIRST. Until every icons set, the most-read lattice and every hot lattice has finished, nothing
+        # else is started: the dump lanes and the other datasets wait (they used to take any slot a hot set left for a
+        # moment, and with a billion facts to re-read they then filled the machine while the hot list crawled). One way
+        # out: the hot list standing still for 30 minutes (Wikidata refusing every request) — then the others may run, so
+        # harvesting never stops altogether, and they step aside again as soon as a hot set moves.
+        if self.hot_moved is None or self.hot_bump:
+            self.hot_moved, self.hot_bump = now, False
+        hot_left = [k for k in self.keys if hot_first(k) and k not in self.hot_done and k not in farmed and k not in rested
+                    and (k in self.running or k in self.queue)]
+        valve = bool(hot_left) and now - self.hot_moved >= HOT_WAIT_S
+        waiting = [k for k in self.queue if not k.startswith("hot-") and k not in self.running]
+        self.hot_state = {"left": hot_left, "done": len(self.hot_done), "others_waiting": len(waiting) if hot_left and not valve else 0,
+                          "valve": valve, "of": len([k for k in self.keys if hot_first(k)])}
+        if hot_left and not valve:                        # the others that were running step aside
+            for key in [k for k in self.running if not k.startswith("hot-")]:
+                info = self.running[key]
+                self.kill(info["proc"].pid)
+                info["proc"].join(10)
+                self._finish(key, None, "waiting for the hot list (what people ask about is harvested first) — it resumes where it stopped")
         free = self.agents - len(self.running)
         for key in sorted((k for k, t in self.queue.items() if t <= now and k not in self.running and k not in farmed and k not in rested),
                           key=lambda k: self.keys.index(k)):
             if free <= 0:
                 break
+            if hot_left and not valve and not key.startswith("hot-"):
+                continue
             self.launch(key)
             free -= 1
 
@@ -3910,7 +4189,7 @@ def run(commons_folder, keys=None, agents=4, max_rows=None, until=None):
         try:
             with open(hb + ".tmp", "w") as f:
                 json.dump({"heartbeat": time.time(), "pid": os.getpid(), "version": VERSION, "agents": agents, "datasets": keys,
-                           "note": note, "running": sorted(sup.running), "restoring": rnote.get("text") if rnote.get("on") else "", "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
+                           "note": note, "running": sorted(sup.running), "restoring": rnote.get("text") if rnote.get("on") else "", "hot": sup.hot_state, "waiting": {k: round(t - time.time()) for k, t in sup.queue.items()
                                                                                   if k not in sup.running and t > time.time()},
                            "events": sup.events[-60:]}, f)
             _replace(hb + ".tmp", hb)
@@ -4372,6 +4651,18 @@ def status_cached(commons_folder, commons=None, max_age=10.0):
         _STATUS_LOCK.release()
 
 
+def hot_line(rs):
+    """the hot list in a sentence, from the runner's heartbeat"""
+    h = rs.get("hot") or {}
+    if not h.get("left"):
+        return " The hot list (icons, most-read, lattices) is complete; everything else is harvesting." if h.get("of") and h.get("done") else ""
+    if h.get("valve"):
+        return (" Hot list: %d of %d sets done, but it has not moved for 30 minutes (Wikidata is refusing requests), so the other datasets run "
+                "meanwhile and step aside when it moves again." % (h.get("done") or 0, h.get("of") or 0))
+    return " Hot list first: %d of %d sets done, %d running or due; the other %d datasets wait until it is finished." % (
+        h.get("done") or 0, h.get("of") or 0, len(h["left"]), h.get("others_waiting") or 0)
+
+
 def headline(st):
     """the harvest in one sentence: what it is doing, how fast (the last 10 minutes), and the main reason when it is slow"""
     rs = st.get("runner") or {}
@@ -4392,7 +4683,7 @@ def headline(st):
     if not fpm and wd.get("text") and (wd.get("dry_s") or 0) >= 600:
         run_ = [d for d in st["datasets"] if d.get("state") == "running"]
         busy_ = "; ".join("%s (%s)" % (d["key"], d.get("doing") or "reading") for d in run_[:4])
-        return {"state": wd.get("state") or "dry", "text": wd["text"] + ((" Busy now: %s%s." % (busy_, " and %d more" % (len(run_) - 4) if len(run_) > 4 else "")) if busy_ else "")
+        return {"state": wd.get("state") or "dry", "text": wd["text"] + hot_line(rs) + ((" Busy now: %s%s." % (busy_, " and %d more" % (len(run_) - 4) if len(run_) > 4 else "")) if busy_ else "")
                 + ((" In the background: %s." % rs["restoring"]) if rs.get("restoring") else "")}
     direct = [d["key"] for d in st["datasets"] if d["state"] == "running" and not d.get("working_copy") and st.get("working_copies")]
     why = ""
@@ -4409,6 +4700,7 @@ def headline(st):
                   "(the servers allow only a few at a time) or still finishing their first batch." % (len(idle), len(running))
     if rs.get("restoring"):
         why += " In the background: %s (that one dataset waits; the others harvest)." % rs["restoring"]
+    why = hot_line(rs) + why
     return {"state": "harvesting", "text": "Harvesting: %s facts a minute (last 10 minutes).%s" % (format(fpm, ","), why)}
 
 
@@ -6165,9 +6457,10 @@ def self_test():
                           "American television host (1901–1974)"),
             "Q334634": ent("Q334634", "Los Angeles Dodgers", {"P31": [item("Q13027888")]}, 70, "baseball team in Los Angeles, California", ("LA Dodgers",)),
             "Q777001": ent("Q777001", "Dodgers", {"P31": [item("Q11424")]}),
+            "Q1299": ent("Q1299", "The Beatles", {"P31": [item("Q215380")]}, 150, "English rock band"),
         }
         LABELS = {"Q5": "human", "Q10871364": "baseball player", "Q809892": "baseball card", "Q947873": "television presenter",
-                  "Q13027888": "baseball team", "Q11424": "film"}
+                  "Q13027888": "baseball team", "Q11424": "film", "Q215380": "musical group"}
         asked_ = []
 
         def fake_wd(params):
@@ -6329,7 +6622,7 @@ def self_test():
                set(ICONS) == {"sports-teams", "athletes", "music", "screen", "leaders-writers", "places-landmarks", "culture-events"}
                and _ks.order(["hot-all-actors", "hot-places", "hot-most-read", "wikidata-dump-1", "hot-top-sports-teams", "hot-demand"], cf)
                == ["hot-demand", "hot-top-sports-teams", "hot-most-read", "hot-places", "hot-all-actors", "wikidata-dump-1"]
-               and list(catalog())[:2] == ["hot-demand", "hot-top-sports-teams"])
+               and list(catalog())[:3] == ["hot-demand", "hot-seed", "hot-top-sports-teams"])
             # 1.43 part of a name: "Dodgers" is the Los Angeles Dodgers, not an obscure thing called just "Dodgers"
             fd = find_entities(cf, "dodgers")
             jd = _sense.answer_for("What are the Dodgers", "Dodgers", fd["entities"], fd["facts"])
@@ -6350,6 +6643,95 @@ def self_test():
             ok("1.43: records read before the word index existed are put into it once (from their fame, labels and other names)",
                n_before > 0 and gone_ == [] and back_ >= 3 and [e_["subject"] for e_ in find_entities(cf, "angeles dodgers")["entities"]]
                == ["Los Angeles Dodgers (Q334634)"] and index_names(cf) == 0, (n_before, gone_, back_))
+            # 1.44 the hot list at once: the icons list shipped with QueryBook is read straight away, no listing first
+            import tempfile as _tf2
+            seed_was = SEED_FILE
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [1299, 83807]}, f)
+                globals()["SEED_FILE"] = sf_
+                seed_parts = WikidataSeed().parts()
+                rs_ = run_dataset(cf, "hot-seed")
+                fbt = find_entities(cf, "Beatles")                  # as the Ask box asks: "Who are the Beatles?" -> "Beatles"
+                jbt = _sense.answer_for("Who are the Beatles?", "Beatles", fbt["entities"], fbt["facts"])
+            finally:
+                globals()["SEED_FILE"] = seed_was
+                for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(shard_path(cf, "hot-seed") + ext):
+                        os.remove(shard_path(cf, "hot-seed") + ext)
+            ok("1.44: the icons list shipped inside QueryBook is read at once (no half hour of asking Wikidata who is famous first), and "
+               "it is the first thing started after the demand agent", rs_["state"] == "done"
+               and seed_parts == [("seed 2026-11-13 icons 0000001-0000002 of 0000002", "domain#0")]
+               and _ks.order(["hot-top-music", "wikidata-dump-1", "hot-seed", "hot-demand"], cf)[:3] == ["hot-demand", "hot-seed", "hot-top-music"]
+               and list(catalog())[:2] == ["hot-demand", "hot-seed"] and hot_first("hot-seed") and not hot_first("hot-demand")
+               and not hot_first("hot-all-actors") and not hot_first("wikidata-dump-1"), (rs_, seed_parts))
+            # 1.44 the records service refuses (HTTP 429): the same records are read through the query service
+            hot_was, wdqs_was, pause_was, asked_w = HOT_FETCH, WDQS_FETCH, WDQS_PAUSE_S, []
+
+            def _no(params):
+                raise urllib.error.HTTPError("https://www.wikidata.org/w/api.php", 429, "Too Many Requests", {}, None)
+
+            def _wdqs(sparql):
+                asked_w.append(sparql)
+                u = lambda q: {"type": "uri", "value": WD_E + q}
+                if "ORDER BY DESC(?n)" in sparql:
+                    return [{"s": u("Q1299"), "n": {"value": "246"}}] if '"The Beatles"@en' in sparql else []
+                if "wikibase:sitelinks ?n" in sparql:
+                    return [{"s": u("Q1299"), "l": {"value": "The Beatles"}, "d": {"value": "English rock band"}, "n": {"value": "246"}}]
+                if "skos:altLabel ?a" in sparql:
+                    return [{"s": u("Q1299"), "a": {"value": "Fab Four"}}]
+                if "BestRank" in sparql:
+                    return [{"s": u("Q1299"), "pd": {"value": WD_D + "P571"}, "t": {"value": "1960-01-01T00:00:00Z"}, "prec": {"value": "9"}}]
+                if "STRSTARTS" in sparql:
+                    return [{"s": u("Q1299"), "p": {"value": WD_D + "P31"}, "o": u("Q215380")},
+                            {"s": u("Q1299"), "p": {"value": WD_D + "P571"}, "o": {"type": "literal", "value": "1960-01-01T00:00:00Z", "datatype": "http://www.w3.org/2001/XMLSchema#dateTime"}},
+                            {"s": u("Q1299"), "p": {"value": WD_D + "P856"}, "o": {"type": "uri", "value": "https://www.thebeatles.com/"}}]
+                if "rdfs:label ?l" in sparql:
+                    return [{"s": u("Q215380"), "l": {"value": "musical group"}}]
+                return []
+
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [1299]}, f)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, WDQS_FETCH=_wdqs, WDQS_PAUSE_S=0)
+                rw_ = run_dataset(cf, "hot-seed")
+                refused_ = api_refused(cf)
+                fw_ = find_entities(cf, "Beatles")
+                ew_ = wdqs_entities(["Q1299"])["Q1299"]
+                found_w = wdqs_find("Beatles")
+                calls = {"n": 0}
+
+                def _flaky(sparql):
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        raise urllib.error.HTTPError("https://query.wikidata.org/sparql", 502, "Bad Gateway", {}, None)
+                    return []
+                globals()["WDQS_FETCH"] = _flaky
+                flaky_ = wdqs_ask("SELECT 1")
+            finally:
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, WDQS_PAUSE_S=pause_was)
+                for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                    if os.path.exists(shard_path(cf, "hot-seed") + ext):
+                        os.remove(shard_path(cf, "hot-seed") + ext)
+                if os.path.exists(os.path.join(cf, FOLDER, API_REFUSED_NAME)):
+                    os.remove(os.path.join(cf, FOLDER, API_REFUSED_NAME))
+            ok("1.44: Wikidata's records service refuses this computer (HTTP 429) — the hot list reads the same records through the query "
+               "service instead of waiting: the band is in the store with its kind, its founding year at its own precision, its other "
+               "name and its fame; the refusal is remembered so no agent asks again for a quarter of an hour; a passing 502 is retried",
+               rw_["state"] == "done" and rw_["new"] > 0 and refused_ and not api_refused(cf)
+               and [e_["subject"] for e_ in fw_["entities"]] == ["The Beatles (Q1299)"] and fw_["entities"][0]["fame"] == 246
+               and any(f_["predicate"] == "instance of" and "musical group" in f_["object"] for f_ in fw_["facts"])
+               and any(f_["predicate"] == "inception" and f_["object"] == "1960" for f_ in fw_["facts"])
+               and [c["mainsnak"]["datavalue"]["type"] for c in ew_["claims"]["P571"]] == ["time"] and "P856" not in ew_["claims"]
+               and found_w == ["Q1299"] and flaky_ == [] and calls["n"] == 2, (rw_, refused_, fw_["entities"], [f_ for f_ in fw_["facts"]][:6], found_w, calls))
+            ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
+               "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
+               and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")
+               and [e_["subject"] for e_ in fbt["entities"]] == ["The Beatles (Q1299)"] and fbt["entities"][0]["exact"]
+               and jbt["entity"]["kind"] == "organization" and jbt["said"] == "The Beatles — English rock band." and not jbt["missing"],
+               (name_forms("Beatles"), fbt["entities"], jbt["said"]))
             # WHO is meant: the man and the card are both in the store now
             fb = find_entities(cf, "babe ruth")                 # typed in lower case
             jb = _sense.answer_for("Who was Babe Ruth?", "Babe Ruth", fb["entities"], fb["facts"])
@@ -6690,6 +7072,34 @@ def _supervisor_tests():
            both5 == ["j", "l"] and held5 == ["l"] and still5 == ["l"] and endj and "added back" in endj[0]["why"]
            and sorted(sup5.running) == ["j", "l"], (both5, held5, still5, sorted(sup5.running), endj[:1]))
         sup5.stop_all(grace=0)
+        # 1.44: the hot list first — nothing else starts until it is finished; if it stands still 30 min the others may run
+        script.update({"hot-places": "work", "hot-events": "done", "m": "work", "n": "work"})
+        sup6 = Supervisor(cf, ["hot-places", "hot-events", "m", "n"], 4, mp=MP, kill=kill)
+        sup6.check(CLOCK[0])
+        CLOCK[0] += 5; sup6.check(CLOCK[0])
+        first6, state6 = sorted(sup6.running), dict(sup6.hot_state)
+        script["hot-places"] = "stall"                      # Wikidata refuses: the hot set stands still
+        for _ in range(8):
+            CLOCK[0] += 300; sup6.check(CLOCK[0])
+        valve6, open6 = sup6.hot_state.get("valve"), sorted(k_ for k_ in sup6.running if not k_.startswith("hot-"))
+        script["hot-places"] = "work"                       # it moves again: the others step aside
+        for _ in range(3):
+            CLOCK[0] += 130; sup6.check(CLOCK[0])
+        back6 = sorted(sup6.running)
+        aside6 = [e for e in sup6.events if e["what"] == "ended" and e["dataset"] in ("m", "n") and "hot list" in e["why"]]
+        kill(sup6.running["hot-places"]["proc"].pid) if "hot-places" in sup6.running else None
+        script["hot-places"] = "done"
+        for _ in range(4):
+            CLOCK[0] += 130; sup6.check(CLOCK[0])
+        ok("1.44 supervisor: the hot list first — while a hot set is unfinished no other dataset is started (they wait, and the page "
+           "says how many); a hot set that is refused is retried within 2 minutes; only when the hot list has stood still for 30 minutes "
+           "may the others run, and they step aside the moment it moves; when it is finished, everything else harvests",
+           first6 == ["hot-places"] and state6["others_waiting"] == 2 and state6["done"] == 1 and state6["of"] == 2 and valve6 and open6 == ["m", "n"]
+           and back6 == ["hot-places"] and len(aside6) >= 2 and sorted(k_ for k_ in sup6.running if not k_.startswith("hot-")) == ["m", "n"]
+           and not sup6.hot_state["left"] and "Hot list first: 1 of 2 sets done" in hot_line({"hot": state6})
+           and next_try({"dataset": "x", "state": "paused"}, 4) == BACKOFF_S[-1],
+           (first6, state6, valve6, open6, back6, len(aside6), sorted(sup6.running), sup6.hot_state))
+        sup6.stop_all(grace=0)
         ok("the data drive unplugged: the dataset is looked for again every minute (not given up)",
            next_try(_agent((os.path.join(cf, "no-such-drive"), "a", None)), 4) == DRIVE_RETRY_S)
         # re-routes between the internal drive (working copies) and the data drive

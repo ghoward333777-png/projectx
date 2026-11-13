@@ -139,7 +139,12 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   The user's priority is types and iconic subjects "in line with culture" — incoming-link counts are NOT fame.
 - People say part of a name ("the Dodgers"): `wd_names` word index + `by_part_of_name`; an exact name is only an edge, fame
   outweighs it. A prefix-only search result is never an answer: say so and queue the subject.
-- Harvest order: `hot-demand`, then `hot-top-*` icons, then `hot-most-read`, then the hot lattices (best-known items of each kind,
+- The hot list first — the user's order ("Prioritize the hot list - so it builds immediately - and other harvest domains wait"):
+  `hot-seed` reads the icons list shipped in `apps/_core/hot_seed.json` (rebuild with `tools/build_hot_seed.py`) from the first
+  minute; `Supervisor.hot_first` starts no other dataset while the hot list has work (valve: 30 min without a new hot fact).
+  When the records service refuses (429) records come through the query service (`wdqs_entities`). Names are tried with and
+  without "The" (`name_forms`). Do not loosen any of these.
+- Harvest order: `hot-demand`, `hot-seed`, then `hot-top-*` icons, then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
 - Complete domains (`DOMAINS`, `WikidataDomain`, keys `hot-all-*`) — the user's strategy: until the store is mature, harvest
   100% of chosen domains in tiers (1 public-facing people, 2 key jobs in critical fields, 3 other well-known fields), after
