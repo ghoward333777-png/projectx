@@ -40,7 +40,9 @@ class LibraryTest(unittest.TestCase):
         self.assertFalse(any("darwin" in i for i in ids))               # the user's decision: no Darwin
         self.assertEqual(sum(1 for b in books if b["kind"] == "fiction"), 10)
         for b in books:
-            self.assertIn("Not endorsed by Project Gutenberg", b["provenance"]["rights"], b["id"])
+            # every edition names its source and says the source does not endorse it (two Bibles come from eBible.org)
+            self.assertRegex(b["provenance"]["rights"], r"Not endorsed by (Project Gutenberg|eBible\.org)", b["id"])
+            self.assertIn("ublic domain", b["provenance"]["rights"], b["id"])
             self.assertGreater(b["units"], 1000, b["id"])
             text = gzip.open(os.path.join(LIB, b["id"], "text.txt.gz")).read().decode("utf-8")
             self.assertNotIn("*** START OF THE PROJECT GUTENBERG", text, b["id"])   # the edition carries no PG licence or trademark text
