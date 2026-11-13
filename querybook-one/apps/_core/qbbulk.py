@@ -21,7 +21,7 @@ links (a source page per fact, where there is one); slots (recurring-event editi
 
 Run: python qbbulk.py run --commons <shared folder> [--datasets a,b] [--agents 4] [--max-rows N]
 """
-import bz2, csv, datetime, gzip, hashlib, io, json, operator, os, re, shutil, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile, zlib
+import bz2, csv, datetime, gzip, hashlib, http.client, io, json, operator, os, re, shutil, sqlite3, sys, tarfile, time, urllib.error, urllib.parse, urllib.request, zipfile, zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qbcore as core  # noqa: E402
@@ -1905,8 +1905,11 @@ def WDQS_FETCH(sparql):
     """one query to the query service, typed answers: the list of bindings (the tests replace this)"""
     req = urllib.request.Request("https://query.wikidata.org/sparql", data=urllib.parse.urlencode({"query": sparql}).encode(),
                                  headers={"User-Agent": UA, "Accept": "application/sparql-results+json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read())["results"]["bindings"]
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read())["results"]["bindings"]
+    except http.client.HTTPException as e:
+        raise ValueError("connection dropped: %s" % type(e).__name__)
 
 
 def wdqs_ask(sparql, folder=None):
@@ -1955,8 +1958,11 @@ def ENTITY_FETCH(qid):
     """one whole record from Wikidata's per-record address (Special:EntityData — not the records service: it answered
     here while that one refused). The record as the records service gives it, or None. (The tests replace this.)"""
     req = urllib.request.Request("https://www.wikidata.org/wiki/Special:EntityData/%s.json" % qid, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        ents = json.loads(r.read()).get("entities") or {}
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            ents = json.loads(r.read()).get("entities") or {}
+    except http.client.HTTPException as e:
+        raise ValueError("connection dropped: %s" % type(e).__name__)
     return next(iter(ents.values()), None)
 
 
@@ -2567,8 +2573,11 @@ def DOMAIN_QUERY(sparql):
     """one query to Wikidata's query service: [[cell, ...], ...] without the header row (the tests replace this)"""
     req = urllib.request.Request(WDQS, data=urllib.parse.urlencode({"query": sparql}).encode(),
                                  headers={"User-Agent": UA, "Accept": "text/tab-separated-values"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        lines = r.read().decode("utf-8", "replace").split("\n")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            lines = r.read().decode("utf-8", "replace").split("\n")
+    except http.client.HTTPException as e:               # the connection dropped mid-answer: a failed query, not a crash
+        raise OSError("connection dropped: %s" % type(e).__name__)
     return [ln.split("\t") for ln in lines[1:] if ln.strip()]
 
 
