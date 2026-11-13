@@ -52,6 +52,7 @@ querybook-one/apps/language/qbbooks.py
 querybook-one/apps/language/qbcompose.py
 querybook-one/apps/language/sense.py
 querybook-one/apps/language/qbrelevance.py
+querybook-one/apps/language/hot_seed.json
 querybook-one/apps/language/ui/qb.css
 querybook-one/apps/language/ui/qb.js
 querybook-one/apps/stem/qbcore.py
@@ -88,6 +89,7 @@ querybook-one/apps/stem/qbbooks.py
 querybook-one/apps/stem/qbcompose.py
 querybook-one/apps/stem/sense.py
 querybook-one/apps/stem/qbrelevance.py
+querybook-one/apps/stem/hot_seed.json
 querybook-one/apps/stem/ui/qb.css
 querybook-one/apps/stem/ui/qb.js
 querybook-one/apps/facts/qbcore.py
@@ -124,6 +126,7 @@ querybook-one/apps/facts/qbbooks.py
 querybook-one/apps/facts/qbcompose.py
 querybook-one/apps/facts/sense.py
 querybook-one/apps/facts/qbrelevance.py
+querybook-one/apps/facts/hot_seed.json
 querybook-one/apps/facts/ui/qb.css
 querybook-one/apps/facts/ui/qb.js
 querybook-one/apps/control/qbcore.py
@@ -160,6 +163,7 @@ querybook-one/apps/control/qbbooks.py
 querybook-one/apps/control/qbcompose.py
 querybook-one/apps/control/sense.py
 querybook-one/apps/control/qbrelevance.py
+querybook-one/apps/control/hot_seed.json
 querybook-one/apps/control/ui/qb.css
 querybook-one/apps/control/ui/qb.js
 querybook-one/apps/video/qbcore.py
@@ -196,6 +200,7 @@ querybook-one/apps/video/qbbooks.py
 querybook-one/apps/video/qbcompose.py
 querybook-one/apps/video/sense.py
 querybook-one/apps/video/qbrelevance.py
+querybook-one/apps/video/hot_seed.json
 querybook-one/apps/video/ui/qb.css
 querybook-one/apps/video/ui/qb.js
 querybook-one/apps/video/hybrid_video.py
