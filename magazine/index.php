@@ -12,6 +12,7 @@ require_once __DIR__ . '/MagazineAuth.php';
 require_once __DIR__ . '/BotShield.php';
 require_once __DIR__ . '/MagazineMarkup.php';
 require_once __DIR__ . '/MagazineShop.php';
+require_once __DIR__ . '/MagazineArt.php';
 
 const PER_PAGE = 12;
 
@@ -331,11 +332,13 @@ $shieldFields = static function () use ($shield): string {
 $card = static function (array $a, bool $lead = false) use ($store): string {
     $d = $store->department($a['dept']);
     $link = url(['p' => 'article', 'a' => $a['slug']]);
-    return '<article class="card' . ($lead ? ' lead' : '') . '"><a class="kicker" href="' . e(url(['p' => 'department', 'd' => $a['dept']])) . '">' . e($d['name'] ?? '') . '</a>'
+    $n = (int) ($d['number'] ?? 1);
+    return '<article class="card' . ($lead ? ' lead' : '') . '"><a class="thumb" href="' . e($link) . '" tabindex="-1" aria-hidden="true">' . MagazineArt::cover($n) . '</a><div class="card-body">'
+        . '<a class="kicker" href="' . e(url(['p' => 'department', 'd' => $a['dept']])) . '"><span class="chip dc-' . $n . '"></span>' . e($d['name'] ?? '') . '</a>'
         . '<h3><a href="' . e($link) . '">' . e($a['title']) . '</a></h3>'
         . ($a['dek'] !== '' ? '<p class="dek">' . e($a['dek']) . '</p>' : '')
         . '<p class="meta">' . e($a['author_name']) . ' · <time datetime="' . date('c', $a['publish_at']) . '">' . when($a['publish_at']) . '</time>'
-        . ($a['video'] !== '' ? ' · Video' : '') . '</p></article>';
+        . ($a['video'] !== '' ? ' · Video' : '') . '</p></div></article>';
 };
 
 $pager = static function (int $total, array $params): string {
@@ -416,13 +419,13 @@ if ($page === 'article') {
                 <p class="notice"><?= $article['status'] === 'draft' ? 'Draft: only editors can see this.' : 'Scheduled for ' . e(date('F j, Y H:i', $article['publish_at'])) . ' (' . e($config['timezone']) . '). Only editors can see it until then.' ?></p>
             <?php endif; ?>
             <header>
-                <a class="kicker" href="<?= e(url(['p' => 'department', 'd' => $article['dept']])) ?>"><?= e($d['name']) ?></a>
+                <a class="kicker" href="<?= e(url(['p' => 'department', 'd' => $article['dept']])) ?>"><span class="chip dc-<?= $d['number'] ?>"></span><?= e($d['name']) ?></a>
                 <h1><?= e($article['title']) ?></h1>
                 <?php if ($article['dek'] !== ''): ?><p class="dek"><?= e($article['dek']) ?></p><?php endif; ?>
                 <p class="meta">By <?= e($article['author_name']) ?> · <time datetime="<?= date('c', $article['publish_at']) ?>"><?= when($article['publish_at']) ?></time>
                     <?php if ($staff): ?> · <a href="<?= e(url(['p' => 'write', 'id' => $article['id']])) ?>">Edit</a><?php endif; ?></p>
             </header>
-            <?= $article['video'] !== '' ? MagazineMarkup::youtubeEmbed($article['video']) : '' ?>
+            <?= $article['video'] !== '' ? MagazineMarkup::youtubeEmbed($article['video']) : '<div class="hero">' . MagazineArt::cover($d['number']) . '</div>' ?>
             <div class="prose"><?= MagazineMarkup::render($article['body']) ?></div>
             <?= $shareBar($canonical, $article['title']) ?>
         </article>
@@ -473,6 +476,7 @@ if ($page === 'department') {
         $all = $store->liveArticles($d['slug']);
         $current = max(1, (int) ($_GET['page'] ?? 1));
         ?>
+        <div class="dept-banner"><?= MagazineArt::cover($d['number'], $d['name'] . ' department artwork') ?></div>
         <header class="dept-head">
             <p class="dept-number">Department <?= sprintf('%02d', $d['number']) ?> of 20</p>
             <h1><?= e($d['name']) ?></h1>
@@ -503,7 +507,7 @@ if ($page === 'home') {
     <h2 class="rule" id="departments">The 20 departments</h2>
     <ol class="dept-grid">
         <?php foreach ($departments as $d): ?>
-            <li><a href="<?= e(url(['p' => 'department', 'd' => $d['slug']])) ?>"><span class="n"><?= sprintf('%02d', $d['number']) ?></span>
+            <li><a href="<?= e(url(['p' => 'department', 'd' => $d['slug']])) ?>"><span class="tile-art"><?= MagazineArt::cover($d['number']) ?></span>
                 <strong><?= e($d['name']) ?></strong><span><?= e($d['tagline']) ?></span></a></li>
         <?php endforeach; ?>
     </ol>
@@ -720,7 +724,9 @@ http_response_code($status);
     <meta property="og:title" content="<?= e($title) ?>">
     <meta property="og:description" content="<?= e($description) ?>">
     <meta property="og:url" content="<?= e($canonical) ?>">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="<?= e(base_url($config)) ?>assets/og.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
     <link rel="alternate" type="application/rss+xml" title="<?= e($config['site_name']) ?>" href="<?= e(url(['p' => 'feed'])) ?>">
     <link rel="stylesheet" href="assets/magazine.css">
     <script src="assets/magazine.js" defer></script>
@@ -741,7 +747,8 @@ http_response_code($status);
             <?php endif; ?>
         </nav>
     </div>
-    <a class="nameplate" href="<?= e(url()) ?>"><?= e($config['site_name']) ?></a>
+    <?php $dot = strrpos($config['site_name'], '.'); ?>
+    <a class="nameplate" href="<?= e(url()) ?>" aria-label="<?= e($config['site_name']) ?>"><?= MagazineArt::mark() ?><span><?= e($dot ? substr($config['site_name'], 0, $dot) : $config['site_name']) ?><?php if ($dot): ?><span class="tld"><?= e(substr($config['site_name'], $dot)) ?></span><?php endif; ?></span></a>
     <p class="tagline"><?= e($config['tagline']) ?></p>
     <nav class="sections" aria-label="Departments">
         <?php foreach ($departments as $d): ?>
@@ -749,6 +756,7 @@ http_response_code($status);
         <?php endforeach; ?>
     </nav>
 </header>
+<div class="spectrum" aria-hidden="true"><?php foreach ($departments as $d): ?><a class="dc-<?= $d['number'] ?>" href="<?= e(url(['p' => 'department', 'd' => $d['slug']])) ?>" tabindex="-1" title="<?= e($d['name']) ?>"></a><?php endforeach; ?></div>
 <main>
     <?php if ($notice !== null): ?><p class="notice"><?= e($notice) ?></p><?php endif; ?>
     <?= $content ?>

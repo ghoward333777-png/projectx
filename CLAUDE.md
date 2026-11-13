@@ -75,3 +75,6 @@ departments in `magazine/departments.php` are permanent: keep their slugs and or
 each keeps a mission paragraph. Every public form goes through `BotShield::check()` and a
 CSRF token; all article/comment output is escaped through `MagazineMarkup`. Shop links are
 restricted to PayPal and Amazon hosts. `tests/magazine-contract.php` covers all of this.
+Department covers are inline SVG from `MagazineArt` (no inline styles: the CSP forbids them).
+`bin/build-magazine-installer.php` packs the site into the one-file `install.php` owners upload;
+it must never include `config.php` or anything under `data/`.

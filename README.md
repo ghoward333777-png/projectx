@@ -335,3 +335,8 @@ php -S 127.0.0.1:8083 -t magazine
   A future publish date schedules an article, so a backlog can release one a day.
 - **Shop**: products check out on PayPal or link to Amazon with your Associates tag.
 - Data lives in `magazine/data/` (flat files, guarded against direct download). Back it up.
+- **Artwork**: every department has its own inline-SVG cover (`MagazineArt`), used on cards,
+  department banners, and article heroes; `assets/og.png` is the share image.
+- **Easy install**: `php bin/build-magazine-installer.php install.php` builds a single file.
+  Upload it to the web folder, open it in a browser, fill in the form; it unpacks the site,
+  creates the administrator, and deletes itself. Re-run a newer one to update and keep content.

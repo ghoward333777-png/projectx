@@ -7,6 +7,8 @@ require_once __DIR__ . '/../magazine/MagazineAuth.php';
 require_once __DIR__ . '/../magazine/BotShield.php';
 require_once __DIR__ . '/../magazine/MagazineMarkup.php';
 require_once __DIR__ . '/../magazine/MagazineShop.php';
+require_once __DIR__ . '/../magazine/MagazineArt.php';
+require_once __DIR__ . '/../bin/build-magazine-installer.php';
 
 function contract_check(bool $condition, string $message): void
 {
@@ -174,6 +176,26 @@ contract_check(count($products) === 2 && str_contains($products[1]['url'], 'tag=
 $shop->deleteProduct($products[0]['id']);
 contract_check(count($shop->products()) === 1, 'products must be removable');
 contract_check(throws(fn () => $shop->saveSettings(['amazon_tag' => 'bad tag!'])), 'malformed Associates tags must be refused');
+
+// ---- artwork ----
+$covers = [];
+for ($n = 1; $n <= 20; $n++) {
+    $cover = MagazineArt::cover($n);
+    contract_check(str_starts_with($cover, '<svg') && str_ends_with($cover, '</svg>') && !str_contains($cover, '{'), "department {$n} must have finished cover art");
+    contract_check(!str_contains($cover, 'style=') && !str_contains($cover, '<script'), 'cover art must not need inline styles or scripts');
+    $covers[] = $cover;
+}
+contract_check(count(array_unique($covers)) === 20, 'every department must have its own artwork');
+contract_check(str_contains(MagazineArt::cover(3, 'A <label>'), 'aria-label="A &lt;label&gt;"'), 'cover labels must be escaped');
+
+// ---- one-file installer ----
+$installer = $dir . '/install.php';
+$packed = build_magazine_installer($installer);
+$source = (string) file_get_contents($installer);
+contract_check($packed >= 13 && str_contains($source, "'index.php' =>") && str_contains($source, "'assets/magazine.css' =>") && str_contains($source, "'MagazineArt.php' =>"), 'the installer must carry every site file');
+contract_check(!str_contains($source, "'config.php' =>") && !str_contains($source, '@@FILES@@'), 'the installer must never carry a live config');
+exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($installer) . ' 2>&1', $lint, $code);
+contract_check($code === 0, 'the built installer must be valid PHP');
 
 // ---- clean up ----
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
