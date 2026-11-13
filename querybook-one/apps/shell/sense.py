@@ -217,6 +217,124 @@ def a_an(phrase: str) -> str:
     return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
 
 
+# ---- what a person is BEST KNOWN as. A record lists every occupation a person ever had, in no order of importance: Boris Vian
+# is "prose writer, poet, engineer"; Ronald Reagan is "actor, politician, trade unionist ..."; Arnold Schwarzenegger a
+# bodybuilder, actor, politician and businessman. Four signs, all from the person's own facts, say which one the world knows:
+#   1. the one-line description names it ("American television host") — written by people to say who this is: the strongest;
+#   2. the record backs it up: teams and a sport for an athlete, positions held for a politician, instruments and labels for
+#      a musician, awards and notable works whose names say the field;
+#   3. the highest office outranks an occupation: a head of state is known as that;
+#   4. the order the record lists them in — the weakest sign, a tie-break.
+# (family, words in an occupation or description, predicates that back it up, words in awards / works / positions that back it up)
+ROLES: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
+    ("leader", ("politician", "statesman", "stateswoman", "president", "prime minister", "monarch", "king", "queen", "emperor", "senator",
+                "governor", "chancellor", "dictator", "head of state", "pope", "mayor", "diplomat"),
+     ("position held", "member of political party", "candidacy in election", "noble title"), ("president", "prime minister", "chancellor", "king", "queen", "emperor", "pope", "governor", "senator")),
+    ("athlete", ("player", "athlete", "footballer", "boxer", "swimmer", "driver", "golfer", "wrestler", "runner", "cyclist", "skater",
+                 "gymnast", "sprinter", "pitcher", "quarterback", "cricketer", "jockey", "skier"),
+     ("member of sports team", "sport", "league or competition", "league", "position played on team / speciality", "drafted by", "sports discipline competed in"),
+     ("most valuable player", "olympic", "hall of fame", "world cup", "ballon", "heisman", "wimbledon")),
+    ("musician", ("singer", "musician", "songwriter", "composer", "rapper", "guitarist", "pianist", "drummer", "conductor", "band",
+                  "vocalist", "violinist", "disc jockey", "record producer"),
+     ("instrument", "record label", "voice type", "discography", "member of"), ("grammy", "rock and roll hall of fame", "brit award", "music")),
+    ("actor", ("actor", "actress", "film director", "director", "filmmaker", "screenwriter", "film producer"),
+     ("filmography",), ("academy award", "oscar", "emmy", "golden globe", "screen actors", "bafta", "tony award", "film")),
+    ("presenter", ("presenter", "host", "broadcaster", "comedian", "announcer", "entertainer", "journalist", "anchor", "columnist"),
+     ("presenter",), ("show", "peabody", "pulitzer", "television")),
+    ("writer", ("writer", "author", "novelist", "poet", "playwright", "essayist", "dramatist", "historian", "philosopher"),
+     ("notable work", "literary movement", "writing language"), ("literature", "booker", "pulitzer", "hugo award", "book")),
+    ("scientist", ("physicist", "chemist", "mathematician", "scientist", "biologist", "inventor", "engineer", "astronomer", "physician",
+                   "economist", "psychologist", "computer scientist", "astronaut", "explorer", "naturalist"),
+     ("doctoral advisor", "doctoral student", "field of work", "academic degree", "astronaut mission", "doctoral thesis"),
+     ("nobel prize in physics", "nobel prize in chemistry", "physiology or medicine", "fields medal", "turing award", "royal society", "medal")),
+    ("soldier", ("officer", "general", "soldier", "commander", "admiral", "military"),
+     ("military rank", "military branch", "conflict", "participated in conflict", "commander of (DEPRECATED)", "military or police rank"), ("medal of honor", "victoria cross", "war")),
+    ("religious figure", ("prophet", "priest", "theologian", "bishop", "rabbi", "preacher", "apostle", "saint", "missionary", "monk", "imam", "religious"),
+     ("religion or worldview", "religious order", "canonization status", "feast day", "consecrator"), ("saint",)),
+    ("business figure", ("entrepreneur", "businessperson", "businessman", "businesswoman", "executive", "investor", "industrialist", "banker", "magnate", "founder"),
+     ("net worth", "owner of", "chief executive officer", "founded by"), ("forbes", "business")),
+    ("artist", ("painter", "sculptor", "artist", "architect", "photographer", "designer", "illustrator", "cartoonist", "model"),
+     ("movement", "has works in the collection", "artist files at"), ("art", "pritzker")),
+)
+HIGH_OFFICE = ("president of", "prime minister", "king of", "queen of", "emperor", "pope", "chancellor of", "monarch of", "head of state", "sultan", "tsar")
+
+
+def role_family(occupation: str) -> int:
+    """which family an occupation belongs to (its place in ROLES), or -1"""
+    o = occupation.lower()
+    for i, (_name, words, _preds, _signs) in enumerate(ROLES):
+        if any(w in o for w in words):
+            return i
+    return -1
+
+
+def known_for(facts: list[dict]) -> dict:
+    """the occupation a person is best known for, from the person's own facts. Returns {"best": str, "role": str, "also":
+    [...], "ranked": [{"occupation", "score", "signs": [...]}], "why": str}; best is "" when no occupation is recorded.
+    role: the highest office held, when the person is known as a leader ("President of the United States")."""
+    jobs = several(facts, "occupation", 40)
+    desc = first(facts, "description").lower()
+    preds: dict[str, int] = {}
+    named: list[str] = []                                 # the names of awards, works and offices: they say the field
+    for f in facts:
+        p = str(f.get("predicate") or "").lower()
+        preds[p] = preds.get(p, 0) + 1
+        if p in ("award received", "nominated for", "notable work", "position held", "winner of", "member of"):
+            named.append(clean(f.get("object")).lower())
+    offices = several(facts, "position held", 40)
+    high = next((o for o in offices if any(h in o.lower() for h in HIGH_OFFICE)), "")
+    # 1. where the description names each occupation: word for word, by a telling word of it ("television host" for
+    #    "television presenter"), or by a word of the same line of work. The description's own order ranks them.
+    spot: list[tuple[int, float]] = []
+    for job in jobs:
+        fam = role_family(job)
+        at, strength = (desc.find(job.lower()) if desc else -1), 3.0
+        if at < 0 and desc:
+            words = [w for w in job.lower().split() if len(w) > 3 and w in desc]
+            if words:
+                at, strength = desc.find(words[0]), 2.0
+        if at < 0 and fam >= 0 and desc:
+            hits = [desc.find(w) for w in ROLES[fam][1] if w in desc]
+            if hits:
+                at, strength = min(hits), 1.0
+        spot.append((at, strength))
+    order = sorted({a for a, _ in spot if a >= 0})
+    ranked: list[dict] = []
+    for i, job in enumerate(jobs):
+        fam = role_family(job)
+        signs: list[str] = []
+        score = max(0.0, 10.0 - 2.0 * i)                  # 4. the record's own order: a tie-break
+        at, strength = spot[i]
+        if at >= 0:                                       # 1. the description names it; the earlier it does, the more so
+            score += 300.0 - 25.0 * order.index(at) + 5.0 * strength
+            signs.append("its description says so")
+        if fam >= 0:
+            backed = sum(preds.get(p, 0) for p in ROLES[fam][2]) + sum(1 for n in named if any(w in n for w in ROLES[fam][3]))
+            if backed:                                    # 2. the record backs it up (never more than one place in the description)
+                score += min(20.0, 4.0 * backed) if at >= 0 else min(60.0, 12.0 * backed)
+                signs.append("%d fact%s of the record back it up" % (backed, "" if backed == 1 else "s"))
+            if high and ROLES[fam][0] == "leader":        # 3. the highest office
+                score += 20.0 if order else 80.0
+                signs.append("held high office: " + high)
+        ranked.append({"occupation": job, "score": round(score, 1), "signs": signs})
+    ranked.sort(key=lambda r: (-float(r["score"]), jobs.index(str(r["occupation"]))))
+    if not ranked:
+        return {"best": "", "role": high, "also": [], "ranked": [], "why": ""}
+    top = ranked[0]
+    role = high if high and role_family(str(top["occupation"])) >= 0 and ROLES[role_family(str(top["occupation"]))][0] == "leader" else ""
+    why = "best known as %s" % a_an(str(top["occupation"]))
+    if top["signs"]:
+        why += " (" + "; ".join(top["signs"]) + ")"
+    elif len(ranked) > 1:
+        why += " (listed first in the record; nothing else in it tells the occupations apart)"
+    also: list[str] = []                                  # the other roles, without variants of one already said ("film actor")
+    for r in ranked[1:]:
+        o = str(r["occupation"])
+        if not any(x.lower() in o.lower() for x in [str(top["occupation"])] + also) and len(also) < 5:
+            also.append(o)
+    return {"best": top["occupation"], "role": role, "also": also, "ranked": ranked[:8], "why": why}
+
+
 def identity(subject: str, facts: list[dict], kind: str) -> str:
     """who or what it is, in a sentence or two, from its own facts — its description when the store holds one, else built
     from what it is an instance of, what it does, and its dates and places. Nothing is added that a fact does not say."""
@@ -225,10 +343,14 @@ def identity(subject: str, facts: list[dict], kind: str) -> str:
     if kind == "human":
         born, died = first(facts, "date of birth"), first(facts, "date of death")
         span = (" (%s–%s)" % (year(born), year(died))) if year(born) and year(died) else (" (born %s)" % year(born)) if year(born) else ""
-        jobs = several(facts, "occupation")
+        known = known_for(facts)
+        jobs = ([str(known["best"])] + [str(x) for x in known["also"]])[:3] if known["best"] else []
         nat = first(facts, "country of citizenship")
         what = desc or (", ".join(jobs) + (" from " + nat if nat else "") if jobs else "")
         out = name + span + (" — " + what if what else "") + "."
+        if known["best"] and known["also"]:               # several occupations: say which one the world knows
+            out += " Best known as %s%s; also %s." % (a_an(str(known["role"] or known["best"])) if not known["role"] else str(known["role"]),
+                                                     "", ", ".join(str(x) for x in known["also"][:4]))
         bp, dp = first(facts, "place of birth"), first(facts, "place of death")
         if born:
             out += " Born %s%s." % (born, " in " + bp if bp else "")
@@ -275,4 +397,5 @@ def answer_for(question: str, subject: str, entities: list[dict], facts: list[di
     if pick["only_about"] or (want and pick["kind"] not in want and pick["kind"] in ABOUT_KINDS):
         missing = ("QueryBook holds %s named “%s”, but no record of the %s itself yet." % (
             KIND_WORD.get(pick["kind"], "a thing"), clean(pick["subject"]), "person" if "human" in want else "subject"))
-    return {"entity": pick, "facts": mine, "said": said, "missing": missing}
+    known = known_for(mine) if pick["kind"] == "human" else {}
+    return {"entity": pick, "facts": mine, "said": said, "missing": missing, "known_for": known}

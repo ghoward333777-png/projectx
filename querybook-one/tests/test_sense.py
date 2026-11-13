@@ -179,6 +179,46 @@ class PartOfANameTest(unittest.TestCase):
         self.assertEqual(r2["subject"], "Dodgers (Q2)")
 
 
+class KnownForTest(unittest.TestCase):
+    """several occupations: the one the person is best known for, from the person's own facts"""
+
+    @staticmethod
+    def facts(rows):
+        return [{"subject": "X (Q1)", "predicate": p, "object": o} for p, o in rows]
+
+    def test_the_description_names_it(self):
+        k = sense.known_for(self.facts([("description", "American television host (1901-1974)"), ("occupation", "journalist"),
+                                        ("occupation", "television presenter"), ("occupation", "columnist"), ("occupation", "actor")]))
+        self.assertEqual(k["best"], "television presenter")
+        self.assertIn("description", k["why"])
+        self.assertEqual(k["also"][0], "journalist")
+
+    def test_high_office_outranks_an_earlier_career(self):
+        rows = [("description", "president of the United States from 1981 to 1989"), ("occupation", "actor"), ("occupation", "politician"),
+                ("occupation", "screenwriter"), ("position held", "Governor of California"), ("position held", "President of the United States")]
+        k = sense.known_for(self.facts(rows))
+        self.assertEqual((k["best"], k["role"]), ("politician", "President of the United States"))
+        said = sense.identity("Ronald Reagan (Q9960)", self.facts(rows), "human")
+        self.assertIn("Best known as President of the United States; also actor", said)
+
+    def test_the_record_backs_it_up_when_no_description(self):
+        k = sense.known_for(self.facts([("occupation", "baseball player"), ("occupation", "actor"), ("occupation", "basketball player"),
+                                        ("occupation", "entrepreneur"), ("member of sports team", "Chicago Bulls"), ("sport", "basketball"),
+                                        ("award received", "NBA Most Valuable Player Award")]))
+        self.assertIn(k["best"], ("baseball player", "basketball player"))     # the athlete, not the actor or the entrepreneur
+        self.assertNotIn(k["best"], ("actor", "entrepreneur"))
+
+    def test_order_in_the_description(self):
+        k = sense.known_for(self.facts([("description", "Austrian-American actor, businessman, bodybuilder and politician"),
+                                        ("occupation", "bodybuilder"), ("occupation", "politician"), ("occupation", "actor")]))
+        self.assertEqual(k["best"], "actor")
+
+    def test_one_occupation_or_none_is_said_plainly(self):
+        self.assertEqual(sense.known_for(self.facts([("occupation", "poet")]))["best"], "poet")
+        self.assertEqual(sense.known_for([])["best"], "")
+        self.assertNotIn("Best known", sense.identity("X (Q1)", self.facts([("occupation", "poet")]), "human"))
+
+
 class PrefixOnlyTest(AskTest):
     def test_names_that_only_begin_with_the_words_are_not_an_answer(self):
         Panel.demand = []

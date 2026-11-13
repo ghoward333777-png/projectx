@@ -47,7 +47,7 @@ import qbgather
 
 APP_ID = "control"
 APP_NAME = "QueryBook Control Panel"
-VERSION = "1.45.0"
+VERSION = "1.46.0"
 PORT = 8100
 program_dir = HERE
 
@@ -103,7 +103,8 @@ class Panel:
             r = qbrelevance.last(self.commons.folder)
             return {"result": r, "summary": qbrelevance.summary(r), "running": qbrelevance.running(self.commons.folder),
                     "demand": qbbulk.demand_list(self.commons.folder)[-60:], "learned": qbbulk.demand_learned(self.commons.folder),
-                    "domains": qbbulk.domains_report(self.commons.folder)}
+                    "domains": qbbulk.domains_report(self.commons.folder),
+                    "categories": qbbulk.icon_categories(), "circle": qbbulk.circle_status(self.commons.folder)}
 
         @self.api.post("/api/relevance/run")
         def relevance_run(p):

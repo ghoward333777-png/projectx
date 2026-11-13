@@ -148,7 +148,11 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   in halving batches (`wdqs_entities`). The query service alone lost most facts of famous subjects — never make it the first.
 - One name of an item must hold EVERY word asked, short words too (`wd_names`), and a full name matched exactly outweighs fame
   (`sense.choose`): "Ed Sullivan" was answered with Boris Vian (pen name Vernon Sullivan).
-- Harvest order: `hot-demand`, `hot-seed`, then `hot-top-*` icons, then `hot-most-read`, then the hot lattices (best-known items of each kind,
+- Network of nets — the user's design: `hot-circle` reads everything a hot record is tied to (`CIRCLE_TIES`), then their ties,
+  three rings out (`CIRCLE_RINGS`), most tied-to first, in waves. It is NOT in the hot-first gate (it never ends) and complete
+  domains do not feed it. Icons are segmented into `ICON_CATEGORIES` (the user's list) and chosen by fame AND by leadership,
+  wealth and influence (`government-leadership`, `wealth-technology`, `news-media`). Keep all of it.
+- Harvest order: `hot-demand`, `hot-seed`, then `hot-top-*` icons, `hot-circle`, then `hot-most-read`, then the hot lattices (best-known items of each kind,
   most linked-to first), then everything else. Keep `qbkeystone.order` putting `hot-*` first.
 - Complete domains (`DOMAINS`, `WikidataDomain`, keys `hot-all-*`) — the user's strategy: until the store is mature, harvest
   100% of chosen domains in tiers (1 public-facing people, 2 key jobs in critical fields, 3 other well-known fields), after
@@ -159,6 +163,18 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Answers go through `find_entities` + `sense.answer_for`: the kind of each match, the kind the question expects, the thing
   itself above things made about it (a card, a film, an award), fame, identifiers last. Never return "the first match".
 - When nothing (or only a thing-about) is held, say so and queue the subject (`/api/bulk/demand`). Never pretend.
+
+### Top Americans 1400–2026 — the user's plan (`docs/querybook-rebuild/top-americans-1400-2026.md`)
+
+- The specification for the American Historical People Graph: five inclusion classes (American-associated ≠ American-born ≠
+  U.S. citizen), eleven eras with era-normalised prominence, six scores stored APART from facts, per-fact confidence, the
+  identity chain QB-PER → QID → LCNAF → VIAF, a source and licence ledger on every ingestion job, eight phases. Read it before
+  building anything about people, rankings or prominence; its sections 12–13 say what exists and what does not.
+- A ranking is an analytical output, never a fact. Never rank by raw present-day popularity alone. Never scrape ranking or
+  celebrity sites; record a source's licence from its own page before ingesting it.
+- A person has several roles: `sense.known_for` (`ROLES`) finds the best known from the person's own facts — the description's
+  order first, then facts that back a role up, the highest office, the record's order last. Keep "also" roles; never reduce a
+  person to one profession.
 
 ### Lip-sync and talking faces — the user's decision (do not change)
 

@@ -387,6 +387,9 @@ function akAnswer(r) {
     // 1.6: which thing was meant, and what kind of thing it is (sense.py) — and, when QueryBook lacks it, that it is being fetched
     r.entity && r.entity.subject ? el("p", { class: "small muted" }, "Understood as: " + r.entity.why + "." +
       ((r.entity.ranked || []).length > 1 ? " Also by this name: " + r.entity.ranked.slice(1, 5).map(x => (x.what || x.kind)).filter(Boolean).join("; ") + "." : "")) : null,
+    // 1.7.6: several occupations — which one the person is best known for, and why
+    r.known_for && r.known_for.best && (r.known_for.also || []).length ? el("p", { class: "small muted" },
+      "Roles: " + r.known_for.why + ". Also: " + r.known_for.also.join(", ") + ".") : null,
     r.missing ? el("p", { class: "note" }, r.missing + (r.learning ? " " + r.learning : "")) : null,
     el("div", { class: "small muted", style: "margin-top:6px" },
       `Topic: ${r.topic} · shown as ${akFormatName(fmt)}${r.register !== "plain" ? " · tone: " + r.register : ""} · asked: ${(r.asked || []).map(nameOf).join(", ") || "nothing"}` +

@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.45.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.46.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1257,6 +1257,16 @@ class WikidataDump(Dataset):
         if buf:
             db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
             buf.clear()
+        cb = state.get("_circlebuf")
+        if cb:                                           # 1.46: the circle of what was read (how many point to it, its nearest ring)
+            db.execute("CREATE TABLE IF NOT EXISTS circle (q INTEGER PRIMARY KEY, n INTEGER NOT NULL, ring INTEGER NOT NULL)")
+            db.executemany("INSERT INTO circle(q, n, ring) VALUES(?, 1, ?) ON CONFLICT(q) DO UPDATE SET n = n + 1, ring = min(ring, excluded.ring)", cb)
+            cb.clear()
+        rb = state.get("_readbuf")
+        if rb:
+            db.execute("CREATE TABLE IF NOT EXISTS circle_read (q INTEGER PRIMARY KEY)")
+            db.executemany("INSERT OR IGNORE INTO circle_read(q) VALUES(?)", rb)
+            rb.clear()
         fb, ab = state.get("_famebuf"), state.get("_aliasbuf")
         if fb:
             db.executemany("INSERT OR REPLACE INTO fame(q, links) VALUES(?, ?)", fb)
@@ -1579,7 +1589,7 @@ def dump_coverage(commons_folder):
 
 
 def _label_dbs(commons_folder):
-    for key in ["hot-demand", "hot-seed"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
+    for key in ["hot-demand", "hot-seed", "hot-circle"] + ["hot-top-" + n for n in ICONS] + ["hot-most-read"] + ["hot-" + n for n in HOT] + ["hot-all-" + n for n in DOMAINS] + ["wikidata-dump-%d" % lane for lane in range(1, WikidataDump.LANES + 1)] + ["wikidata-lattice"]:
         p = shard_path(commons_folder, key) + ".labels"
         if os.path.exists(p):
             yield p
@@ -2246,6 +2256,28 @@ class WikidataHot(Dataset):
         finally:
             self.lane._flush(state)                        # fame, other names and labels of this batch are kept
 
+    CIRCLE_RING = 0                                    # the records this dataset reads are the centre of the net (None: not part of it)
+
+    def _circle_note(self, ents, state):
+        """1.46 the network of nets: who and what each record read is tied to — family, partners, members, founders, those it
+        followed and those who followed it, its places, its events, its works — is noted with the ring it stands on (an
+        icon's circle is ring 1, their circle ring 2, ...). hot-circle reads them, the most tied-to of the nearest ring first."""
+        ring0 = self.CIRCLE_RING
+        if ring0 is None:
+            return
+        rings = state.get("_rings") or {}
+        buf = state.setdefault("_circlebuf", [])
+        for e in ents:
+            q = str(e.get("id") or "")
+            ring = rings.get(int(q[1:]), ring0) if q[1:].isdigit() else ring0
+            if ring >= CIRCLE_RINGS:
+                continue
+            for pid in CIRCLE_TIES:
+                for st in (e.get("claims") or {}).get(pid) or ():
+                    v = ((st.get("mainsnak") or {}).get("datavalue") or {}).get("value")
+                    if isinstance(v, dict) and str(v.get("id", "")).startswith("Q") and v["id"][1:].isdigit() and v["id"] != q:
+                        buf.append((int(v["id"][1:]), ring + 1))
+
     def _name_values(self, ents, state):
         """the labels of the items these records point to (a birthplace, an occupation, a spouse), so their values read as
         names: those no label file holds yet are asked for, 50 at a time, and kept"""
@@ -2256,6 +2288,7 @@ class WikidataHot(Dataset):
                     v = ((st.get("mainsnak") or {}).get("datavalue") or {}).get("value")
                     if isinstance(v, dict) and str(v.get("id", "")).startswith("Q"):
                         refs.add(int(v["id"][1:]))
+        self._circle_note(ents, state)
         refs -= state["_known"]
         if refs:
             refs -= set(wd_labels(self.folder, list(refs)))
@@ -2563,7 +2596,57 @@ ICONS = {
         ("P31", "Q3658341", "literary character", False, 500, "", 0), ("P31", "Q7725634", "literary work", False, 2000, "", 20),
         ("P31", "Q3305213", "painting", False, 500, "", 15), ("P31", "Q7889", "video game", False, 800, "", 20),
         ("P31", "Q482994", "album", False, 800, "", 20), ("P31", "Q7366", "song", False, 800, "", 20))),
+    # 1.46 — the user: "Use influence, wealth, leadership as a basis of identifying more ICONs."
+    "government-leadership": (0, "Leadership: heads of state and of government of every country, Nobel laureates, judges, diplomats, commanders", (
+        ("P39", "Q48352", "head of state", True, 2500, "", 0), ("P39", "Q2285706", "head of government", True, 2500, "", 0),
+        ("P166", "Q7191", "Nobel Prize", True, 1200, "", 0), ("P106", "Q16533", "judge", False, 500, "", 0),
+        ("P106", "Q193391", "diplomat", False, 500, "", 0), ("P106", "Q189290", "military officer", False, 800, "", 0))),
+    "wealth-technology": (0, "Wealth and technology: everyone whose fortune is on record, chief executives, engineers, programmers, companies, software, websites", (
+        ("P31", "Q5", "human", False, 2500, "wdt:P2218 ?worth ; ", 0),         # (P2218: net worth, checked) — wealth
+        ("P106", "Q484876", "chief executive officer", False, 800, "", 0), ("P106", "Q82594", "computer scientist", False, 800, "", 0),
+        ("P106", "Q5482740", "programmer", False, 500, "", 0), ("P106", "Q81096", "engineer", False, 800, "", 0),
+        ("P31", "Q891723", "public company", False, 1500, "", 15), ("P31", "Q7397", "software", False, 800, "", 15),
+        ("P31", "Q35127", "website", False, 800, "", 15))),
+    "news-media": (0, "Influence: journalists, news presenters, newspapers, magazines, broadcasters and television stations", (
+        ("P106", "Q1930187", "journalist", False, 2500, "", 0), ("P106", "Q270389", "news presenter", False, 500, "", 0),
+        ("P31", "Q11032", "newspaper", False, 800, "", 10), ("P31", "Q41298", "magazine", False, 800, "", 10),
+        ("P31", "Q15265344", "broadcaster", False, 500, "", 10), ("P31", "Q1616075", "television station", False, 500, "", 10))),
 }
+# 1.46 — the user: "Segment ICONs into categories - government, religion, literature, culture, news, entertainment, music,
+# technology, etc." Every kind an icons set asks for belongs to one category (by its code; a set's own default otherwise).
+ICON_CATEGORIES = ("Government and leadership", "Religion", "Literature", "Culture and history", "News and media", "Entertainment",
+                   "Music", "Sports", "Science and technology", "Business and wealth", "Arts", "Places")
+ICON_SET_CATEGORY = {"sports-teams": "Sports", "athletes": "Sports", "music": "Music", "screen": "Entertainment",
+                     "leaders-writers": "Government and leadership", "places-landmarks": "Places", "culture-events": "Culture and history",
+                     "faith-thought-science": "Science and technology", "arts-business-works": "Arts",
+                     "government-leadership": "Government and leadership", "wealth-technology": "Business and wealth", "news-media": "News and media"}
+ICON_CATEGORY = {
+    "Q36180": "Literature", "Q7725634": "Literature", "Q3658341": "Literature",
+    "Q20643955": "Religion", "Q42857": "Religion", "Q178885": "Religion", "Q19546": "Religion", "Q179461": "Religion", "Q1234713": "Religion",
+    "Q9174": "Religion", "Q1445650": "Culture and history", "Q22988604": "Culture and history",
+    "Q4964182": "Culture and history", "Q11900058": "Culture and history", "Q1402561": "Government and leadership",
+    "Q188094": "Business and wealth", "Q131524": "Business and wealth", "Q43845": "Business and wealth", "Q4830453": "Business and wealth",
+    "Q891723": "Business and wealth", "Q484876": "Business and wealth", "Q5": "Business and wealth",
+    "Q82594": "Science and technology", "Q5482740": "Science and technology", "Q81096": "Science and technology",
+    "Q7397": "Science and technology", "Q35127": "Science and technology", "Q11344": "Science and technology", "Q634": "Science and technology",
+    "Q12136": "Science and technology", "Q7889": "Entertainment", "Q482994": "Music", "Q7366": "Music", "Q36834": "Music", "Q34379": "Music",
+    "Q349": "Sports", "Q167170": "Sports", "Q3918": "Places", "Q33506": "Places"}
+
+
+def icon_category(set_name, root_item):
+    return ICON_CATEGORY.get(root_item) or ICON_SET_CATEGORY.get(set_name) or "Culture and history"
+
+
+def icon_categories():
+    """{category: [the kinds asked for under it]} over every icons set, in the user's order"""
+    out = {c: [] for c in ICON_CATEGORIES}
+    for name, (_tier, _title, roots) in ICONS.items():
+        for r in roots:
+            kind = "people whose fortune is on record" if r[1] == "Q5" else r[2]
+            out.setdefault(icon_category(name, r[1]), []).append(kind)
+    return out
+
+
 WDQS = "https://query.wikidata.org/sparql"
 DOMAIN_PAUSE_S = 2.0               # between two queries (the query service allows one client a share of its time)
 DOMAIN_SLOW_S = 45                 # the query service cuts an answer off at 60 s and sends what it had: slower than this is not trusted
@@ -2735,7 +2818,8 @@ def domains_report(commons_folder):
         for name, (tier, title, _roots) in table.items():
             d = domain_load(commons_folder, name, kind) or {}
             out.append({"name": name, "tier": tier, "title": title, "people": d.get("people"), "read": d.get("read"),
-                        "roots": d.get("roots") or [], "key": prefix + name, "culture": d.get("culture")})
+                        "roots": d.get("roots") or [], "key": prefix + name, "culture": d.get("culture"),
+                        "categories": sorted({icon_category(name, r[1]) for r in _roots}) if kind == "icons" else []})
     return out
 
 
@@ -2743,6 +2827,7 @@ class WikidataDomain(WikidataHot):
     """ONE complete domain: everyone in it, the best known first, each person's whole record."""
     BATCH = 500                                        # people per part (ten requests of 50)
     TABLE, KIND = DOMAINS, "domain"
+    CIRCLE_RING = None                                 # a complete domain is millions of people: not the centre of the net
 
     def __init__(self, name):
         self.name = name
@@ -2790,6 +2875,7 @@ class WikidataIcons(WikidataDomain):
     """ONE icons set: the best known of each type it names, weighted for the user's culture — read before anything else."""
     BATCH = 250
     TABLE, KIND = ICONS, "icons"
+    CIRCLE_RING = 0
 
     def __init__(self, name):
         super().__init__(name)
@@ -2812,6 +2898,123 @@ def seed_load():
     return d if isinstance(d, dict) and d.get("ids") else None
 
 
+# ---- 1.46: the network of nets. The user: "Add every relative, friend, associate, partner, subordinate, successor, etc - of an
+# ICON - and do the same thing with their circle. Expand the lattice net - to a network of nets."
+# The ties followed (every code's label checked against Wikidata):
+CIRCLE_TIES = (
+    # family and companions
+    "P26", "P40", "P22", "P25", "P3373", "P451", "P1038", "P1290", "P53", "P3342",
+    # partners, teachers and pupils, those before and after
+    "P1327", "P2652", "P737", "P1066", "P802", "P184", "P185", "P1365", "P1366", "P155", "P156",
+    # who leads, founded, owns or belongs
+    "P112", "P169", "P488", "P286", "P1037", "P3320", "P2828", "P6", "P35", "P527", "P463", "P54", "P127", "P1830", "P749", "P355",
+    # who made it and who is in it
+    "P175", "P161", "P57", "P50", "P86", "P58", "P162", "P371", "P676", "P84", "P170", "P725", "P674", "P176", "P178", "P123",
+    # places
+    "P19", "P20", "P119", "P551", "P159", "P276", "P115", "P740", "P937", "P36", "P840", "P915",
+    # events, works, honours, schools, employers, offices
+    "P1344", "P710", "P793", "P607", "P800", "P166", "P1411", "P108", "P69", "P102", "P39", "P264", "P361", "P118", "P179",
+    "P138", "P144", "P941", "P1441", "P449", "P272")
+CIRCLE_RINGS = 3                   # an icon's circle, their circle, and theirs
+CIRCLE_WAVE = 5000                 # subjects listed at a time: the net is looked at again when they are read
+CIRCLE_AGAIN_S = 300
+
+
+def circle_wave(commons_folder, limit=None):
+    """the next subjects of the net: {"ids": [...], "rings": {q: ring}, "waiting": n} — tied to something already read, not
+    read themselves; the nearest ring first, in it the one most records point to"""
+    tied, read = {}, set()
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+        except sqlite3.Error:
+            continue
+        try:
+            for q, n, ring in db.execute("SELECT q, n, ring FROM circle"):
+                e = tied.get(q)
+                tied[q] = (n + (e[0] if e else 0), min(ring, e[1]) if e else ring)
+        except sqlite3.Error:
+            pass
+        for sql in ("SELECT q FROM circle_read", "SELECT q FROM fame"):
+            try:
+                read.update(q for q, in db.execute(sql))
+            except sqlite3.Error:
+                pass
+        db.close()
+    left = sorted((q for q in tied if q not in read), key=lambda q: (tied[q][1], -tied[q][0], q))
+    ids = left[:limit or CIRCLE_WAVE]
+    return {"ids": ids, "rings": {q: tied[q][1] for q in ids}, "waiting": len(left), "read": len(read)}
+
+
+def circle_status(commons_folder):
+    w = circle_wave(commons_folder, 1)
+    return {"waiting": w["waiting"], "read": w["read"]}
+
+
+class WikidataCircle(WikidataDomain):
+    """the network of nets: everything the icons are tied to, then everything THOSE are tied to — never finished, only
+    further out. Each wave is the 5,000 most tied-to subjects of the nearest unread ring."""
+    BATCH = 250
+    CIRCLE_RING = 1
+
+    def __init__(self):
+        self.name, self.key = "circle", "hot-circle"
+        self.tier, self.title_short, self.roots, self.depth, self.finds = 0, "the circles of the icons", (), 0, ()
+        self.title = "Network of nets — the circles of the icons, and their circles"
+        self.why = ("every relative, partner, member, founder, successor, place, event and work an icon is tied to; then the same "
+                    "for each of those — fame spreading outward ring by ring")
+        self.approx = "grows as it reads: three rings out from about 63,000 icons"
+
+    def _ids(self):
+        d = getattr(self, "_disc", None)
+        if d:
+            return d
+        path = domain_path(self.folder, "circle", "circle")
+        d = domain_load(self.folder, "circle", "circle")
+        if d and d.get("ids"):                           # a wave not read to its end is finished first
+            w = circle_wave(self.folder, 1)
+            done = set()
+            for p in _label_dbs(self.folder):
+                try:
+                    db = _ro(p)
+                    done.update(q for q, in db.execute("SELECT q FROM circle_read"))
+                    db.close()
+                except sqlite3.Error:
+                    pass
+            if all(q in done for q in d["ids"]):
+                d = None
+        if not d or not d.get("ids"):
+            import gzip
+            n = int((d or domain_load(self.folder, "circle", "circle") or {}).get("wave") or 0) + 1
+            w = circle_wave(self.folder)
+            d = {"ids": w["ids"], "rings": {str(q): r for q, r in w["rings"].items()}, "wave": n, "edition": "wave %06d" % n,
+                 "waiting": w["waiting"]}
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with gzip.open(path + ".tmp", "wt", encoding="utf-8") as f:
+                json.dump(d, f)
+            _replace(path + ".tmp", path)
+        self._disc = d
+        return d
+
+    def parts(self):
+        d = self._ids()
+        n = len(d["ids"])
+        return [("%s the circles %05d-%05d of %05d" % (d["edition"], i + 1, min(n, i + self.BATCH), n), "domain#%d" % i)
+                for i in range(0, n, self.BATCH)]
+
+    def rows(self, part, url, state):
+        start = int(url.split("#")[1])
+        d = self._ids()
+        ids = d["ids"][start:start + self.BATCH]
+        state["_rings"] = {q: int((d.get("rings") or {}).get(str(q), 1)) for q in ids}
+        state.setdefault("_readbuf", []).extend((q,) for q in ids)      # asked for: not listed again, found or not
+        ents = self._entities(["Q%d" % q for q in ids], state)
+        rows = [ents[k] for k in ("Q%d" % q for q in ids) if k in ents and "missing" not in ents[k]]
+        self._name_values(rows, state)
+        METER.start(len(rows), "rows")
+        return self._each(rows, state)
+
+
 class WikidataSeed(WikidataDomain):
     """1.44 — the hot list, IMMEDIATELY. Listing an icons set from Wikidata takes 5 to 15 minutes, two sets at a time: on a
     new start the hot list spent its first half hour asking who is famous and read nobody ("Who are the Beatles?" — no
@@ -2819,6 +3022,7 @@ class WikidataSeed(WikidataDomain):
     version was built. This dataset reads their records straight away — the first 250 within the first minute — and the
     icons sets then list themselves afresh in their own time."""
     BATCH = 250
+    CIRCLE_RING = 0
 
     def __init__(self):
         self.name, self.key = "seed", "hot-seed"
@@ -2857,7 +3061,7 @@ def wd_views(commons_folder, qids):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataMostRead(),) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -4081,7 +4285,7 @@ HOT_RETRY_S = 120                  # a hot set that was refused or interrupted i
 def hot_first(key):
     """the sets everything else waits for: the icons, what people read, the hot lattices (not the demand agent, which is
     always on, and not the complete domains — millions of records over days — which run after, beside the rest)"""
-    return key.startswith("hot-") and key != "hot-demand" and not key.startswith("hot-all-")
+    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle") and not key.startswith("hot-all-")
 
 
 def next_try(r, fails):
@@ -4089,6 +4293,8 @@ def next_try(r, fails):
     st = (r or {}).get("state")
     if (r or {}).get("dataset") == "hot-demand" and st in ("done", "paused"):
         return 120                               # 1.40: the demand agent looks at its queue every two minutes
+    if (r or {}).get("dataset") == "hot-circle" and st in ("done", "paused"):
+        return CIRCLE_AGAIN_S                    # 1.46: the net has no end: the next wave is listed five minutes after the last
     if st == "done":
         return RECHECK_DONE_S
     if st == "stopped" and "Control Panel" in str(r.get("why") or ""):
@@ -6729,7 +6935,11 @@ def self_test():
             ok("1.43 icons: the sets asked for — teams, athletes, music, screen, leaders, places, culture — start before everything but the "
                "demand agent, then what people read, the lattices, and the complete domains tier by tier",
                set(ICONS) == {"sports-teams", "athletes", "music", "screen", "leaders-writers", "places-landmarks", "culture-events",
-                              "faith-thought-science", "arts-business-works"}
+                              "faith-thought-science", "arts-business-works", "government-leadership", "wealth-technology", "news-media"}
+               and set(ICON_SET_CATEGORY) == set(ICONS) and all(v in ICON_CATEGORIES for v in list(ICON_CATEGORY.values()) + list(ICON_SET_CATEGORY.values()))
+               and all(icon_categories()[c] for c in ICON_CATEGORIES) and "head of state" in icon_categories()["Government and leadership"]
+               and "journalist" in icon_categories()["News and media"] and "people whose fortune is on record" in icon_categories()["Business and wealth"]
+               and "human biblical figure" in icon_categories()["Religion"] and "writer" in icon_categories()["Literature"]
                and _ks.order(["hot-all-actors", "hot-places", "hot-most-read", "wikidata-dump-1", "hot-top-sports-teams", "hot-demand"], cf)
                == ["hot-demand", "hot-top-sports-teams", "hot-most-read", "hot-places", "hot-all-actors", "wikidata-dump-1"]
                and list(catalog())[:3] == ["hot-demand", "hot-seed", "hot-top-sports-teams"])
@@ -6889,6 +7099,54 @@ def self_test():
                and jes["entity"]["subject"] == "Ed Sullivan (Q83807)" and "Boris" not in jes["said"]
                and "Boris Vian (Q156213)" in [e_["subject"] for e_ in fsu["entities"]]
                and [e_["subject"] for e_ in fvs["entities"]] == ["Boris Vian (Q156213)"], (re_, fes["entities"], jes.get("said"), fsu["entities"], fvs["entities"]))
+            # 1.46 the network of nets: an icon's circle, then that circle's circle
+            def _tie(e, pid, q):
+                e["claims"].setdefault(pid, []).append({"rank": "normal", "mainsnak": {"datavalue": {"type": "wikibase-entityid", "value": {"id": q}}}})
+                return e
+            net_ = {"Q1299": _tie(_tie(_rec("Q1299", "The Beatles", "English rock band", 246, [], "Q215380"), "P527", "Q1203"), "P740", "Q24826"),
+                    "Q1203": _tie(_rec("Q1203", "John Lennon", "English musician (1940-1980)", 230, [], "Q177220"), "P26", "Q117012"),
+                    "Q24826": _rec("Q24826", "Liverpool", "city in England", 190, [], "Q515"),
+                    "Q117012": _tie(_rec("Q117012", "Yoko Ono", "Japanese artist", 120, [], "Q483501"), "P40", "Q311238"),
+                    "Q311238": _tie(_rec("Q311238", "Sean Lennon", "American musician", 50, [], "Q177220"), "P26", "Q999999")}
+            asked_net = []
+
+            def _net(q):
+                asked_net.append(q)
+                return net_.get(q)
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [1299]}, f)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, ENTITY_FETCH=_net, ENTITY_PAUSE_S=0, WDQS_FETCH=lambda sparql: [])
+                run_dataset(cf, "hot-seed")
+                w1 = circle_wave(cf)
+                c1 = run_dataset(cf, "hot-circle")
+                w2 = circle_wave(cf)
+                c2 = run_dataset(cf, "hot-circle")
+                c3 = run_dataset(cf, "hot-circle")
+                w4 = circle_wave(cf)
+                fjl, fyo, fsl = find_entities(cf, "John Lennon"), find_entities(cf, "Yoko Ono"), find_entities(cf, "Sean Lennon")
+            finally:
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
+                for k_ in ("hot-seed", "hot-circle"):
+                    for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                        if os.path.exists(shard_path(cf, k_) + ext):
+                            os.remove(shard_path(cf, k_) + ext)
+                for f_ in (os.path.join(cf, FOLDER, API_REFUSED_NAME), domain_path(cf, "circle", "circle")):
+                    if os.path.exists(f_):
+                        os.remove(f_)
+            ok("1.46: the network of nets — the Beatles are read; John Lennon (a member) and Liverpool (where they formed) are their "
+               "circle and are read next; Yoko Ono (his wife) is the circle's circle and is read after; Sean Lennon is the third ring; "
+               "his own ties are beyond the third ring and are not followed. Nothing is listed twice. The net runs beside the other "
+               "harvests (it has no end, so nothing waits for it) and starts right after the icons",
+               sorted(w1["ids"]) == [1203, 24826] and set(w1["rings"].values()) == {1} and c1["state"] == "done" and c1["new"] > 0
+               and w2["ids"] == [117012] and w2["rings"] == {117012: 2} and c2["state"] == "done"
+               and [e_["subject"] for e_ in fjl["entities"]] == ["John Lennon (Q1203)"] and [e_["subject"] for e_ in fyo["entities"]] == ["Yoko Ono (Q117012)"]
+               and [e_["subject"] for e_ in fsl["entities"]] == ["Sean Lennon (Q311238)"] and w4["ids"] == [] and "Q999999" not in asked_net
+               and asked_net.count("Q1203") == 1 and not hot_first("hot-circle")
+               and next_try({"dataset": "hot-circle", "state": "done"}, 0) == CIRCLE_AGAIN_S
+               and _ks.order(["hot-most-read", "hot-circle", "hot-top-music", "hot-seed"], cf) == ["hot-seed", "hot-top-music", "hot-circle", "hot-most-read"],
+               (w1, c1, w2, c2, c3, w4, asked_net, fjl["entities"], fyo["entities"], fsl["entities"]))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

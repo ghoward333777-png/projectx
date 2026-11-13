@@ -219,6 +219,7 @@ def answer(question: str, urls: dict[str, str]) -> dict:
             judged = sense.answer_for(intent["question"], intent["subject"], bulk["entities"], bfacts)
             out["entity"] = judged["entity"]
             out["missing"] = judged["missing"]
+            out["known_for"] = judged.get("known_for") or {}
             if judged["said"] and not intent["hints"] and not out["short"] and not judged["missing"]:
                 out["short"] = judged["said"]
             out["identity"] = judged["said"]

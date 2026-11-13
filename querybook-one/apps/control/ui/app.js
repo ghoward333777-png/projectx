@@ -726,9 +726,11 @@ async function drawRelevance(force) {
     (wait.length ? " (" + wait.slice(-6).map(d => esc(d.subject)).join(", ") + (wait.length > 6 ? "…" : "") + ")" : "") + "." +
     (learned.length ? " It has learned that questions land most in: " + learned.map(([k, n]) => esc(k) + " (" + n + ")").join(", ") + " — those lattices are harvested first." : "") + `</p>
     <details><summary><b>Icons and complete domains</b> — tier 0: the best known of each type people ask about (teams, athletes, bands, screen, leaders, landmarks), weighted for your culture; tiers 1–3: 100% of the people in whole fields</summary>
+      <p class="small"><b>Network of nets</b> — everyone and everything an icon is tied to (family, partners, members, founders, successors, places, events, works), then the same for each of those, three rings out: <b>${QB.num((j.circle || {}).waiting || 0)}</b> waiting to be read.</p>
+      <p class="small"><b>Icons by category</b> — ` + Object.entries(j.categories || {}).map(([c, kinds]) => `<b>${esc(c)}</b>: ${kinds.map(esc).join(", ")}`).join(". ") + `.</p>
       <table><tr><th>Tier</th><th>Domain</th><th>People listed</th><th>Left out</th></tr>` +
       (j.domains || []).map(d => { const out = (d.roots || []).filter(r => !r.used);
-        return `<tr><td>${d.tier}</td><td>${esc(d.title)}</td><td>${d.people == null ? '<span class="muted">not listed yet</span>' : "<b>" + QB.num(d.people) + "</b>"}</td>
+        return `<tr><td>${d.tier}</td><td>${esc(d.title)}${(d.categories || []).length ? `<div class="small muted">${d.categories.map(esc).join(" · ")}</div>` : ""}</td><td>${d.people == null ? '<span class="muted">not listed yet</span>' : "<b>" + QB.num(d.people) + "</b>"}</td>
           <td class="small">${out.length ? out.map(r => esc(r.expected) + ": " + esc(r.why || "")).join("<br>") : ""}</td></tr>`; }).join("") + `</table>
       <p class="small muted">Tier 0: the icons, read before anything else. Tier 1: people who face the public. Tier 2: people in key jobs of critical fields. Tier 3: people in other well-known fields. Each domain is listed from Wikidata afresh every month and read in batches (see “batches done” in the table of datasets below).</p></details>
     <div class="row"><button class="btn secondary" id="rv-run">${j.running ? "Testing…" : "Run the relevance test now"}</button></div>`;
