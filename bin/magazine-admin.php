@@ -14,7 +14,7 @@ declare(strict_types=1);
 // The app normally sits beside this folder as magazine/; on a host where its contents were
 // uploaded straight into the web root, public_html/ is found instead (or set MAGAZINE_APP_DIR).
 $app = null;
-foreach (array_filter([getenv('MAGAZINE_APP_DIR') ?: null, __DIR__ . '/../magazine', __DIR__ . '/../public_html']) as $candidate) {
+foreach (array_filter([getenv('MAGAZINE_APP_DIR') ?: null, __DIR__ . '/../magazine', __DIR__ . '/../public_html', __DIR__ . '/../htdocs']) as $candidate) {
     if (is_file($candidate . '/MagazineStore.php')) {
         $app = $candidate;
         break;

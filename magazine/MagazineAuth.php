@@ -92,7 +92,7 @@ final class MagazineAuth
         if (strlen($password) < self::MIN_PASSWORD || strlen($password) > 200) {
             throw new DomainException('Passwords must be at least ' . self::MIN_PASSWORD . ' characters.');
         }
-        // Native email addresses are unverified, so they never receive a staff role automatically.
+        // New native accounts start as readers; the site owner promotes them (admin_emails or the CLI).
         $user = $this->store->createUser([
             'name' => $name,
             'email' => $email,

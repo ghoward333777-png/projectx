@@ -101,6 +101,11 @@ $shield = new BotShield($store, $config);
 $shop = new MagazineShop($store);
 $auth->startSession();
 $me = $auth->user();
+// The owner lists their own address in config.php after registering; that account becomes an administrator.
+if ($me !== null && $me['role'] !== 'admin' && in_array($me['email'], array_map([MagazineStore::class, 'normalizeEmail'], (array) $config['admin_emails']), true)) {
+    $store->updateUser($me['id'], ['role' => 'admin']);
+    $me['role'] = 'admin';
+}
 $staff = MagazineAuth::isStaff($me);
 $admin = $me !== null && $me['role'] === 'admin';
 $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');

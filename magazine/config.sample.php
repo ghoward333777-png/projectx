@@ -19,7 +19,8 @@ return [
     'google_client_id' => '',
     'google_client_secret' => '',
 
-    // People who become administrators when they sign in with Google using these addresses.
+    // Administrators. Register on the site FIRST, then put the address you registered with here,
+    // e.g. ['you@example.com']. That account gets the Newsroom the next time it loads a page.
     'admin_emails' => [],
 
     // Optional second anti-robot layer: Cloudflare Turnstile keys (https://dash.cloudflare.com → Turnstile).
