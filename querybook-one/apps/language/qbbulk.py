@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.46.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.47.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1257,6 +1257,12 @@ class WikidataDump(Dataset):
         if buf:
             db.executemany("INSERT OR REPLACE INTO labels(q, label) VALUES(?, ?)", buf)
             buf.clear()
+        dmb = state.get("_demandbuf")
+        if dmb:                                          # 1.47: demand measurements, one row per subject and period
+            db.execute("CREATE TABLE IF NOT EXISTS demand (q INTEGER NOT NULL, period TEXT NOT NULL, views INTEGER NOT NULL, rank INTEGER NOT NULL, "
+                       "source TEXT NOT NULL DEFAULT 'wikimedia-pageviews-top/en.wikipedia/all-access', PRIMARY KEY (q, period)) WITHOUT ROWID")
+            db.executemany("INSERT OR REPLACE INTO demand(q, period, views, rank) VALUES(?, ?, ?, ?)", dmb)
+            dmb.clear()
         cb = state.get("_circlebuf")
         if cb:                                           # 1.46: the circle of what was read (how many point to it, its nearest ring)
             db.execute("CREATE TABLE IF NOT EXISTS circle (q INTEGER PRIMARY KEY, n INTEGER NOT NULL, ring INTEGER NOT NULL)")
@@ -1797,6 +1803,11 @@ def find_entities(commons_folder, text, top=5, per=400):
              "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias")),
              "by_part_of_name": bool(e.get("part")), "exact": not e.get("alias") and not e.get("part")} for s_, e in found.items()]
     # best known first: what people read (page views), then how widely it is written about (Wikipedias), then how much is held
+    if qn_of and any(e["views"] for e in ents):         # 1.47: how each one's demand behaves (lasting, or a week in the news)
+        series, sampled = wd_demand(commons_folder, [qn_of[e["subject"]] for e in ents if e["views"] and e["subject"] in qn_of])
+        for e in ents:
+            if qn_of.get(e["subject"]) in series:
+                e["demand"] = demand_class(series[qn_of[e["subject"]]], sampled)
     ents.sort(key=lambda e: (-(e["views"] or 0), -(e["fame"] or 0), -e["facts"], e["subject"]))
     cat = catalog()
     facts = []
@@ -2462,6 +2473,9 @@ class WikidataMostRead(WikidataHot):
         if not chunk:
             return iter(())
         by_title = {t.replace("_", " "): v for t, v in chunk}
+        rank_of = {t.replace("_", " "): int(off) + i + 1 for i, (t, _v) in enumerate(chunk)}
+        period = "%04d-%02d" % key
+        db_ = state.setdefault("_demandbuf", [])          # 1.47: the measurement itself, by period — never added up, never overwritten
         rows = []
         try:
             ents = (self._api({"action": "wbgetentities", "sites": "enwiki", "titles": "|".join(by_title), "props": "labels|descriptions|aliases|claims|sitelinks",
@@ -2472,6 +2486,7 @@ class WikidataMostRead(WikidataHot):
                 title = ((e.get("sitelinks") or {}).get("enwiki") or {}).get("title")
                 if title in by_title:
                     state["_viewbuf"].append((int(q[1:]), by_title[title]))
+                    db_.append((int(q[1:]), period, by_title[title], rank_of[title]))
                 rows.append(e)
         except Refused:                                    # titles and records through the query service
             q_of = wdqs_titles(list(by_title), self.folder)
@@ -2479,6 +2494,7 @@ class WikidataMostRead(WikidataHot):
             for title, q in q_of.items():
                 if q in ents:
                     state["_viewbuf"].append((int(q[1:]), by_title[title]))
+                    db_.append((int(q[1:]), period, by_title[title], rank_of[title]))
                     rows.append(ents[q])
         self._name_values(rows, state)
         METER.start(len(rows), "rows")
@@ -2728,7 +2744,7 @@ def domain_discover(name, query=None, pause=None, table=None, folder=None, cultu
     got = query("SELECT ?i ?l WHERE { VALUES ?i { %s } ?i rdfs:label ?l FILTER(LANG(?l) = \"en\") }" % " ".join(sorted({"wd:" + r[1] for r in roots})))
     labels = {_qn(r[0]): r[1].strip().strip('"').rsplit('"@', 1)[0] for r in got if len(r) > 1 and _qn(r[0])}
 
-    def people(prop, classes, extra, least, ranked_only):
+    def people(prop, classes, extra, least, ranked_only, again=False):
         """{item: fame} for these kinds; splits on trouble"""
         t0 = time.time()
         vals = " ".join("wd:Q%d" % c for c in classes)
@@ -2746,6 +2762,8 @@ def domain_discover(name, query=None, pause=None, table=None, folder=None, cultu
             out.update(people(prop, classes[half:], extra, least, ranked_only))
             return out
         if ranked_only:
+            if not again:                               # one kind, one failure: asked once more before it is called too large
+                return people(prop, classes, extra, least, ranked_only, True)
             raise LookupError("too many to rank")
         rows = query("SELECT ?p WHERE { ?p wdt:%s wd:Q%d }" % (prop, classes[0]))      # the plain list: complete, fame unknown
         return {_qn(r[0]): 0 for r in rows if _qn(r[0])}
@@ -3057,6 +3075,86 @@ def wd_views(commons_folder, qids):
         except sqlite3.Error:
             continue
     return out
+
+
+# ---- 1.47: demand intelligence, first slice (the user's Wikipedia Demand Intelligence design). A measurement is kept as it
+# was taken — subject, period, views, rank, source — so "who was read most in 2025" and "who has been read for ten years" are
+# both answerable, and a week in the news is told from lasting interest. These are OBSERVED METRICS: not facts about the
+# subject, not what readers typed, and never a measure of importance or truth.
+DEMAND_MODEL = "WDIE-1.0"
+DEMAND_CLASSES = ("evergreen", "recurring", "rising", "falling", "event spike", "seen once")
+
+
+def demand_class(series, sampled):
+    """how a subject's demand behaves, from its measurements: series = [(period "YYYY-MM", views, rank), ...] (the months it was
+    among the 1,000 most read), sampled = how many months were looked at. Returns {"class", "months", "sampled", "total", "peak",
+    "peak_period", "first", "last", "best_rank", "model"} — the numbers the label rests on are returned with it."""
+    rows = sorted(series)
+    n = len(rows)
+    if not n:
+        return {"class": "", "months": 0, "sampled": sampled, "total": 0, "peak": 0, "peak_period": "", "first": "", "last": "",
+                "best_rank": None, "model": DEMAND_MODEL}
+    total = sum(v for _p, v, _r in rows)
+    peak_p, peak = max(((p, v) for p, v, _r in rows), key=lambda x: x[1])
+    share = n / max(1, sampled)
+    third = max(1, n // 3)
+    early, late = sum(v for _p, v, _r in rows[:third]) / third, sum(v for _p, v, _r in rows[-third:]) / third
+    if n == 1:
+        cls = "seen once"
+    elif share >= 0.6:
+        cls = "evergreen"
+    elif n <= 3 and peak >= 0.6 * total:
+        cls = "event spike"
+    elif n >= 4 and late >= 2 * early:
+        cls = "rising"
+    elif n >= 4 and early >= 2 * late:
+        cls = "falling"
+    else:
+        cls = "recurring"
+    return {"class": cls, "months": n, "sampled": sampled, "total": total, "peak": peak, "peak_period": peak_p, "first": rows[0][0],
+            "last": rows[-1][0], "best_rank": min(r for _p, _v, r in rows), "model": DEMAND_MODEL}
+
+
+def wd_demand(commons_folder, qids=None, top=None):
+    """({Q-number: [(period, views, rank), ...]}, months sampled) — for these items, or (qids None) for the `top` subjects that
+    were among the most read in the most months"""
+    out, periods = {}, set()
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+        except sqlite3.Error:
+            continue
+        try:
+            periods.update(x for x, in db.execute("SELECT DISTINCT period FROM demand"))
+            if qids is None:
+                want = [q for q, in db.execute("SELECT q FROM demand GROUP BY q ORDER BY count(*) DESC, sum(views) DESC LIMIT ?", (top or 100,))]
+            else:
+                want = sorted(set(qids))
+            for i in range(0, len(want), 500):
+                chunk = want[i:i + 500]
+                for q, per, v, r in db.execute("SELECT q, period, views, rank FROM demand WHERE q IN (%s)" % ",".join("?" * len(chunk)), chunk):
+                    out.setdefault(q, []).append((per, v, r))
+        except sqlite3.Error:
+            pass
+        db.close()
+    return out, len(periods)
+
+
+def demand_report(commons_folder, top=40):
+    """for the page: the subjects read most persistently, each with its demand class and the numbers behind it, and how many
+    subjects fall in each class. Observed page-view measurements only (source and model named)."""
+    series, sampled = wd_demand(commons_folder, None, 2000)
+    rows = [dict(demand_class(s_, sampled), q=q) for q, s_ in series.items()]
+    counts = {}
+    for r in rows:
+        counts[r["class"]] = counts.get(r["class"], 0) + 1
+    rows.sort(key=lambda r: (-r["months"], -r["total"], r["q"]))
+    rows = rows[:top]
+    labels = wd_labels(commons_folder, [r["q"] for r in rows]) if rows else {}
+    for r in rows:
+        r["subject"] = labels.get(r["q"]) or "Q%d" % r["q"]
+    return {"sampled": sampled, "classes": counts, "top": rows, "model": DEMAND_MODEL,
+            "source": "Wikimedia page views: the 1,000 most-read English Wikipedia articles of each sampled month"}
 
 
 def catalog():
@@ -7147,6 +7245,19 @@ def self_test():
                and next_try({"dataset": "hot-circle", "state": "done"}, 0) == CIRCLE_AGAIN_S
                and _ks.order(["hot-most-read", "hot-circle", "hot-top-music", "hot-seed"], cf) == ["hot-seed", "hot-top-music", "hot-circle", "hot-most-read"],
                (w1, c1, w2, c2, c3, w4, asked_net, fjl["entities"], fyo["entities"], fsl["entities"]))
+            # 1.47 demand measured by period and classified, the numbers kept with the label
+            S12 = 20
+            ev = demand_class([("2025-%02d" % m, 900000, 40) for m in range(1, 13)] + [("2024-%02d" % m, 800000, 55) for m in range(1, 5)], S12)
+            sp = demand_class([("2025-03", 9000000, 3), ("2025-04", 400000, 700)], S12)
+            ri = demand_class([("2025-01", 100000, 900), ("2025-02", 120000, 800), ("2025-03", 150000, 700), ("2025-04", 400000, 200),
+                               ("2025-05", 500000, 150), ("2025-06", 700000, 90)], S12)
+            ok("1.47: demand is kept as measured — subject, period, views, rank — and classified from those numbers: sixteen of twenty "
+               "months is evergreen, one huge month and a tail is an event spike, a steady climb is rising; the numbers come back with "
+               "the label, and nothing is called important or true because it is read",
+               ev["class"] == "evergreen" and ev["months"] == 16 and ev["best_rank"] == 40 and sp["class"] == "event spike"
+               and sp["peak_period"] == "2025-03" and ri["class"] == "rising" and demand_class([("2025-01", 5, 999)], S12)["class"] == "seen once"
+               and demand_class([], S12)["class"] == "" and all(c["model"] == DEMAND_MODEL for c in (ev, sp, ri))
+               and all(c["class"] in DEMAND_CLASSES for c in (ev, sp, ri)), (ev, sp, ri))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

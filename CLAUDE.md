@@ -176,6 +176,16 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   order first, then facts that back a role up, the highest office, the record's order last. Keep "also" roles; never reduce a
   person to one profession.
 
+### Knowledge Demand Engine — the user's design (`docs/querybook-rebuild/knowledge-demand-engine.md`)
+
+- Principle: harvest by demonstrated demand, validate by authoritative evidence. Four records never mixed: observed metric,
+  observed navigation, inferred intent (always labelled), verified fact (the only UFCS assertion). Demand never raises
+  confidence, importance or truth.
+- Built (1.47): demand measurements by period, never added up or overwritten (`demand` table, `wd_demand`), classified with
+  the numbers behind the label (`demand_class`, model `WDIE-1.0` — a change of rules is a new model version).
+- Not built: see its section 11 (qualifiers/references on facts, clickstream, coverage auditor, source ledger, outside
+  sensors). No new source is ingested before its licence is recorded from the source's own page.
+
 ### Lip-sync and talking faces — the user's decision (do not change)
 
 - Lip-sync is done by the **talking clips**: Gemini first, and when Gemini cannot, the chosen voice (e.g. ElevenLabs)
