@@ -244,6 +244,12 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - A document = a form (genre) × a field (`FIELDS`: citation system and evidence standard) × a style. All three are rows in
   `tools/build_genres.py`. The aim is universal coverage: add rows, never special cases. A field's citation system is never a
   licence to invent a source. No source is marked learned unless a page of it really was.
+- Shipped learning: `apps/shell/genres_learned.json` is made ONLY by `tools/build_learned.py` from readers' output (the gate:
+  known genre and layer, no seven-word run of the page, page hashed and not kept). Never hand-edit it, never add a rule from
+  memory, never mark a source read that was not. A site that tells AI crawlers to stay out (UNC did) is not read.
+- Fill Dates (`qbbulk.fill_dates`, `/api/bulk/fill-dates`, the button on a fact in the Ask page): reads one subject's record
+  from the source its facts cite and adds dates, rank and sources beside the facts. It never adds a fact and never supplies a
+  date the source does not state; a fact with none says "no date in the source".
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 

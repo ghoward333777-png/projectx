@@ -230,13 +230,23 @@ class Assist:
         if getattr(self, "_genres", None) is None:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres.json"), encoding="utf-8") as f:
                 lib = writing.load_genres(f.read())
-            for rec in self.shipped_learned() + self.learned.load():   # what was learned from sources joins the genre it is about
+            mine = {r.get("id") for r in self.learned.load()}
+            for rec in self.learned.load() + self.shipped_learned():   # what was learned from sources joins the genre it is about (the user's own first)
                 for u in rec.get("units") or []:
                     for gid in ([u["genre"]] if u.get("genre") in lib["genres"] else list(lib["genres"]) if u.get("genre") == "any" and u.get("layer") in writing.LAYERS[:2] else []):
                         g = lib["genres"][gid]
-                        g.setdefault("learned", []).append(dict(u, source=rec.get("source") or rec.get("url"), url=rec.get("url")))
+                        g.setdefault("learned", []).append(dict(u, source=("you: " if rec.get("id") in mine else "") + (rec.get("source") or rec.get("url")),
+                                                                 url=rec.get("url")))
                         if rec.get("url") not in g["provenance"]["sources"]:
                             g["provenance"]["sources"].append(rec.get("url"))
+            for g in lib["genres"].values():                 # the rules about this very genre first, the sources taking turns; general advice after
+                own = [u for u in g.get("learned") or [] if u.get("genre") == g["id"]]
+                by_src: dict = {}
+                for u in own:
+                    by_src.setdefault(u["source"], []).append(u)
+                turn = [by_src[k][i] for i in range(max((len(v) for v in by_src.values()), default=0)) for k in sorted(by_src) if i < len(by_src[k])]
+                if g.get("learned"):
+                    g["learned"] = turn + [u for u in g["learned"] if u.get("genre") != g["id"]]
             for g in lib["genres"].values():
                 if g.get("learned"):
                     g["provenance"]["status"] = "first draft from general knowledge, with %d rules learned from %d source page%s" % (

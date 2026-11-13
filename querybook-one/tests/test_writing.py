@@ -1,6 +1,7 @@
 """QueryBook's writing skills (apps/shell/writing.py, genres.json, assist.py) — the user's Writing Skills Plan.
 Phase 0: the topic-comment tagger against a hand-labelled sample, the framework classifier, the four checks.
 The genre library: 38 complete records in 7 families. The machine: brief -> genre -> blueprint -> draft -> critique."""
+import json
 import os
 import subprocess
 import sys
@@ -95,7 +96,7 @@ class GenreLibraryTest(unittest.TestCase):
             self.assertTrue(all(s["name"] and s["move"] for s in g["sections"]), g["id"])
             self.assertTrue(all(g["frameworks"][k].split()[0] in ("theme", "index", "linking", "constant") for k in ("document", "section", "paragraph")), g["id"])
             self.assertLess(g["register"]["words"][0], g["register"]["words"][1])
-            self.assertIn("sources have not been learned from yet", g["provenance"]["status"])    # said until a source has been learned from
+            self.assertIn("first draft from general knowledge", g["provenance"]["status"])        # said plainly on every record
             for fm in g["failures"]:                                                # a named check is one the critic can run
                 if fm["check"]:
                     self.assertIsNotNone(W.run_check(fm["check"], "Some text. More text.", W.blueprint(g, ""))["why"])
@@ -160,7 +161,7 @@ class MachineTest(unittest.TestCase):
         r = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team asking them to finish the stock count by Friday", "option": ""})
         self.assertEqual((r["by"], r["genre"], r["stage"], r["can_draft"]), ("rules", "memo", "plan", False))
         self.assertIn("4. Action — say who must do what by when", r["text"])
-        self.assertIn("sources have not been learned from yet", r["note"])
+        self.assertIn("first draft from general knowledge", r["note"])
 
     def test_no_genre_named_is_asked_for_not_guessed(self):
         r = self.a.run({"task": "write.doc", "text": "something about dogs", "option": ""})
@@ -198,8 +199,28 @@ class MachineTest(unittest.TestCase):
         self.assertGreaterEqual(len(c["styles"]), 12)
         self.assertGreaterEqual(len(c["fields"]), 40)
         self.assertEqual(sum(1 for x in c["sources"] if x["wave"] == 6), 10)       # the ten legal sources, universities and public repositories
-        self.assertTrue(all(x["status"].startswith("listed") for x in c["sources"]))   # none is claimed as learned
+        with open(os.path.join(ROOT, "apps", "shell", "genres_learned.json"), encoding="utf-8") as f:
+            shipped = json.load(f)
+        read = {p["source"] for p in shipped["pages"]}
+        for x in c["sources"]:                                                     # a source is called learned only if a page of it really was
+            self.assertEqual(x["status"].startswith("learned from"), x["id"] in read, x["id"])
+            self.assertEqual(x["rules"] > 0, x["id"] in read, x["id"])
+        self.assertEqual(c["learned"]["rules"], sum(len(p["units"]) for p in shipped["pages"]))
         self.assertIn("write.doc", [t["id"] for cap in c["capabilities"] for t in cap["tasks"]])
+
+    def test_what_ships_as_learned_passed_the_gate(self):
+        with open(os.path.join(ROOT, "apps", "shell", "genres_learned.json"), encoding="utf-8") as f:
+            shipped = json.load(f)
+        for pg in shipped["pages"]:
+            self.assertIn(pg["source"], LIB["sources"])
+            self.assertTrue(pg["url"].startswith("http"), pg["source"])
+            self.assertEqual(len(pg["page_hash"]), 64)
+            self.assertNotIn("text", pg)                                           # no passage of a page is kept
+            for u in pg["units"]:
+                self.assertTrue(u["genre"] in LIB["genres"] or u["genre"] == "any", u)
+                self.assertIn(u["layer"], W.LAYERS)
+                self.assertLessEqual(len(u["rule"].split()), 45, u["rule"])
+        self.assertEqual(len({(p["source"], p["url"]) for p in shipped["pages"]}), len(shipped["pages"]))   # a page is learned once
 
 
 class CoordinationTest(unittest.TestCase):
@@ -264,7 +285,7 @@ class CoordinationTest(unittest.TestCase):
         self.assertIn("already been learned", again["text"])
         plan = self.a.run({"task": "write.doc", "text": "A white paper on hand hygiene", "option": "white-paper"})
         self.assertIn("Establish what inaction costs the reader", plan["text"])
-        self.assertIn("1 rules learned from 1 source page", plan["note"])
+        self.assertRegex(plan["note"], r"\d+ rules learned from \d+ source pages?")
 
     def test_a_page_the_site_forbids_is_not_read(self):
         self.a.robots_allow = lambda url: False

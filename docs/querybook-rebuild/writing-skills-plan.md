@@ -81,10 +81,46 @@ Georgetown's transactional guides and the SEC handbook; a dedicated contract-dra
 | 4 | **Plan it** → the plan is shown first → **Write it to this plan** → the draft, judged → **Revise to my notes**, as often as wanted | `assist.write_document` (`stage`), `ui/capspage.js` |
 | 5 | **Learn my style**: 14 measured habits from a sample of 150 words or more, saved as numbers (no sentence kept); 12 QueryBook templates; one list; the drafter is told the targets and the critic measures the distance | `writing.style_profile`, `style_distance`, `style_brief`, `STYLES` |
 
-Still true: no source has been learned from yet — learning needs an AI key and is started by the user, a page at a
-time. New York Times book categories are not yet a table of their own: eight book forms exist (proposal, non-fiction,
+(Superseded: see "Source learning — first pass done" below.) New York Times book categories are not yet a table of their own: eight book forms exist (proposal, non-fiction,
 how-to, memoir, biography, picture book, young adult, textbook chapter) and the list of that newspaper's categories
 should be taken from its own page, not from memory.
+
+## Source learning — first pass done (2026-11-13, window 1.8.2)
+
+The user: "Start source learning on all sources now." Six readers (models, in the build session) took the register in
+parallel. For each source: find one to three guide pages on the source's own site, read the site's robots rules, read
+the page, restate its advice as rules in their own words. `tools/build_learned.py` is the gate: a known genre and layer,
+no run of seven of the page's words, the page hashed and not kept. Result: **817 rules from 69 pages of 32 sources**, in
+`apps/shell/genres_learned.json`. They join each genre's record (its own rules first, the sources taking turns) and
+appear in the plan and in the drafter's instructions. The page texts were deleted after hashing.
+
+Not read — and nothing was written for them from memory:
+
+| Source | Why |
+|---|---|
+| ams | Not read: the AMS site refused automated access. The statement page on www.ametsoc.org (Best Practices for Publicly Sharing Weather Information Via Social Media) returned |
+| harvard | Not read: writingcenter.fas.harvard.edu returned HTTP 403 (Access Denied) to every request, including robots.txt and two guide pages (/strategies-essay-writing and /thesi |
+| melbourne | blocked: the site answered every request (robots.txt and two guide pages) with an anti-bot challenge page (HTTP 403), from both curl and the web fetch tool; not bypassed, |
+| michigan-sweetland | blocked: the site answered every request (robots.txt and two guide pages) with an anti-bot challenge page (HTTP 403), from both curl and the web fetch tool; not bypassed, |
+| monash | Not read. www.monash.edu answered HTTP 403 with a bot challenge page for robots.txt and for one Excel at Writing guide page (two attempts, two tools); the block was not b |
+| purdue-owl | Not read. owl.purdue.edu could not be reached from this session: curl failed TLS verification (the server's certificate chain could not be verified; verification was not  |
+| scribbr | Not read: www.scribbr.com robots.txt allows the guide pages, but the site returned HTTP 403 (a Cloudflare bot challenge) for two guide pages (/dissertation/literature-rev |
+| stagemilk | Not read: www.stagemilk.com returned HTTP 403 for both pages tried (how-to-write-a-monologue and what-is-a-monologue). robots.txt allowed them; no bypass attempted. |
+| stc | Not read. https://www.stc.org/ and one other page (https://www.stc.org/about-stc/defining-technical-communication/) both returned only a placeholder saying the website is |
+| uagc | Not read. https://writingcenter.uagc.edu/writing-white-paper (robots.txt allows it) redirected twice to a Cloudflare Turnstile challenge page (/challenge?destination=/wri |
+| unc | Not read, by choice of the reader - needs the caller's decision. writingcenter.unc.edu/robots.txt allows 'User-agent: *' (empty Disallow for content pages), so the brief' |
+
+Two points for the user:
+
+- **UNC's site allows general automated readers but names AI crawlers (including Anthropic's) as not allowed.** The
+  reader therefore did not read it. STC's site carries a "no AI training" signal. Both were respected. If the user
+  wants those sources, the honest routes are to ask the site, or to enter the rules by hand from their own reading.
+- Sites that answered with a bot challenge (Harvard, Monash, Melbourne, Michigan, Scribbr, UAGC, StageMilk, AMS) may
+  load normally from the user's own computer: "Learn from a source" in the window reads one page at a time there.
+
+Thin or off-target: Yale's law page had no writing advice, so a Poorvu page on writing public comments was used;
+Maryland's guides are behind a login, so only its public seminar-paper criteria were read; Stanford's page read was on
+citation only; Poynter yielded five rules. The licence terms of each site are still to be recorded from its own page.
 
 ## Built first (window 1.7.9)
 
@@ -109,7 +145,7 @@ accused person guilty; an official weather warning is given as issued.
 
 | Item | Note |
 |---|---|
-| **The genre records are a first draft from general knowledge.** | No source has been learned from yet. Every record and every document says so until one has. |
+| The genre records' skeletons are a first draft from general knowledge | Learned rules now sit beside them; the skeletons (sections, moves, register) have not yet been rewritten from the learned rules |
 | Source learning, all five waves | Not started |
 | Phase 0 exit test | The tagger scores 27 or more of 28 on a sample — but the sample was labelled by the same hand that wrote the rules. Agreement with another person's labels is still to be measured |
 | Theme preview as a paragraph class | Checked at document level only |
