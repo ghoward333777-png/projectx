@@ -35,7 +35,58 @@ document by plan → draft → critique → revise. It does not learn by imitati
 7. **Roadmap**: phase 0 grammar (source-free) → 1 core genres → 2 technical and business → 3 academic and journalism →
    4 fiction → 5 scale.
 
-## Built (window 1.7.9)
+## The user's decisions (2026-11-13) and the aim
+
+"Our plan is to build a machine - and everything must coordinate with the user."
+
+| # | Decision | What it means here |
+|---|---|---|
+| 1 | Do all genres; order is not important; this is one-time machine learning | No phase ordering by genre. The library holds every form as a row |
+| 2 | All sources — eventually hundreds, learned once | A source register; a page is learned from once and never again |
+| 3 | The top 10 legal sources, from top universities and law repositories | Found by search on 2026-11-13 and listed in the register (wave "Legal — the ten") |
+| 4 | Users review as composition begins and progresses; no separate review needed at this stage | The machine works in steps the user sees: plan → draft → the user's notes → revised draft |
+| 5 | Adapt to the user's style, or apply a template from a growing library | Style is measured from the user's own writing, or chosen from templates; both live in one list |
+
+The aim: "all genres, all New York Times Book genres, all academic disciplines, all topics - universally … the most
+authoritative and skilled writing engine in the AI industry." The design answer is that a document is a **form** (genre)
+written in a **field** (discipline or topic) in a **style**, and all three are data rows.
+
+### The ten legal sources
+
+| Source | Kind |
+|---|---|
+| Georgetown Law Writing Center — guides and handouts (already in the plan) | University |
+| Columbia Law School Writing Center — legal writing resources | University |
+| Duke Law — legal writing resources | University |
+| Yale (Poorvu Center) — writing resources for law students | University |
+| University of Maryland Carey Law — Legal Writing Center | University |
+| CUNY School of Law — Legal Writing Center | University |
+| Cornell Legal Information Institute — Wex and the introduction to legal citation | University law repository |
+| U.S. Securities and Exchange Commission — A Plain English Handbook | Government |
+| Office of the Federal Register — plain language and drafting legal documents | Government |
+| UK Office of the Parliamentary Counsel — drafting guidance | Government |
+
+(U.S. Courts' "essentials for drafting clear legal rules" is listed as well.) Harvard, Stanford and Berkeley were
+searched for and no public writing-guide page was confirmed, so they are not listed. Contract drafting is covered by
+Georgetown's transactional guides and the SEC handbook; a dedicated contract-drafting source is still wanted.
+
+## Built since (window 1.8.0)
+
+| Decision | What exists | Where |
+|---|---|---|
+| 1 | 71 genres in 10 families (added: everyday and professional, teaching and learning, books) | `tools/build_genres.py` |
+| aim | 42 fields in 8 groups, each with its customary citation system and standard of evidence; a field reaches the writer and the critic | `FIELDS`, `writing.with_field_and_style` |
+| 2, 3 | Register of 44 sources in 6 waves, none claimed as learned | `SOURCES`, shown under "Learn from a source" |
+| 2 | **Learn from a source**: one page; robots rules read first; a model restates the advice as rules; any rule repeating seven of the page's words in a row is dropped; saved with address, date and page hash; a page is never learned twice; learned rules join their genre's record and its provenance | `assist.learn_source`, `writing.keep_units` |
+| 4 | **Plan it** → the plan is shown first → **Write it to this plan** → the draft, judged → **Revise to my notes**, as often as wanted | `assist.write_document` (`stage`), `ui/capspage.js` |
+| 5 | **Learn my style**: 14 measured habits from a sample of 150 words or more, saved as numbers (no sentence kept); 12 QueryBook templates; one list; the drafter is told the targets and the critic measures the distance | `writing.style_profile`, `style_distance`, `style_brief`, `STYLES` |
+
+Still true: no source has been learned from yet — learning needs an AI key and is started by the user, a page at a
+time. New York Times book categories are not yet a table of their own: eight book forms exist (proposal, non-fiction,
+how-to, memoir, biography, picture book, young adult, textbook chapter) and the list of that newspaper's categories
+should be taken from its own page, not from memory.
+
+## Built first (window 1.7.9)
 
 | Plan item | What exists | Where |
 |---|---|---|
@@ -58,7 +109,7 @@ accused person guilty; an official weather warning is given as issued.
 
 | Item | Note |
 |---|---|
-| **The genre records are a first draft from general knowledge.** | No source has been collected. Each site's terms must be checked first. Every record and every document says so. No person has reviewed them (the plan's step 6). |
+| **The genre records are a first draft from general knowledge.** | No source has been learned from yet. Every record and every document says so until one has. |
 | Source learning, all five waves | Not started |
 | Phase 0 exit test | The tagger scores 27 or more of 28 on a sample — but the sample was labelled by the same hand that wrote the rules. Agreement with another person's labels is still to be measured |
 | Theme preview as a paragraph class | Checked at document level only |
@@ -70,10 +121,11 @@ accused person guilty; an official weather warning is given as issued.
 | Per-user style; one house voice | The plan's open decision |
 | Thesis-scale planning | A chapter's blueprint exists; nothing holds a preview across chapters |
 
-## The plan's decisions, still open
+## Next, in the order that adds most
 
-1. Confirm the first 10 genres for phase 1.
-2. Approve the added fiction sources, or supply preferred ones.
-3. Choose a second legal source for contract drafting.
-4. Decide who reviews genre records before use.
-5. One house voice, or adapt to each user's style.
+1. Learn from the sources: wave by wave, a page at a time (needs the user's AI key).
+2. Verify a draft's claims against QueryBook's facts sentence by sentence, as Book Query does.
+3. Rewrite operations for layers 1 and 2, so the rules can repair a sentence themselves.
+4. A whole-book planner: a preview held across chapters, and a story bible for fiction.
+5. The benchmark set and blind comparison — the measure of "most skilled".
+6. Fields and book categories from authoritative lists (library classifications; the newspaper's own category page).

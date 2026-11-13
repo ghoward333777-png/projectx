@@ -96,6 +96,8 @@ class Assist:
         self.keys, self.urls, self.ask_fn, self.check_fn = keys, urls, ask_fn, check_fn
         self.workflows = Store(folder, "workflows")
         self.projects = Store(folder, "projects")
+        self.user_styles = Store(folder, "styles")          # the user's own styles, measured from their samples (the growing library)
+        self.learned = Store(folder, "learned")             # rules learned from sources, once: QueryBook's words, the page's address
 
     # ---------------------------------------------------------------- what is available
     def status(self) -> dict:
@@ -106,20 +108,132 @@ class Assist:
 
     def catalogue(self) -> dict:
         lib = self.genres()
+        done = {r.get("source"): 0 for r in self.learned.load()}
+        for r in self.learned.load():
+            done[r.get("source")] += len(r.get("units") or [])
         return {"capabilities": caps.CAPABILITIES, "steps": caps.STEPS, "ai": self.status(), "labels": LABELS,
-                "genres": [{"id": g["id"], "name": g["name"], "family": g["family"]} for g in lib["genres"].values()],
-                "families": lib["families"], "genres_status": lib["status"]}
+                "genres": [{"id": g["id"], "name": g["name"], "family": g["family"], "learned": len(g.get("learned") or [])} for g in lib["genres"].values()],
+                "families": lib["families"], "genres_status": lib["status"],
+                "styles": [{"id": x["id"], "name": x["name"], "about": x.get("about", ""), "by": x.get("by", "")} for x in self.styles().values()],
+                "fields": list(lib["fields"].values()),
+                "sources": [dict(x, rules=done.get(x["id"], 0), status="learned from: %d rules" % done[x["id"]] if x["id"] in done else x["status"])
+                            for x in lib["sources"].values()]}
+
+    def styles(self) -> dict:
+        """the style library: QueryBook's templates and the user's own styles"""
+        out = dict(self.genres()["styles"])
+        for r in self.user_styles.load():
+            out[r["id"]] = r
+        return out
+
+    def learn_style(self, sample: str, name: str) -> dict:
+        prof = writing.style_profile(sample)
+        if not prof["enough"]:
+            return {"by": "rules", "text": "That sample has %d words. QueryBook needs at least %d words of your own writing to measure a style — a page or more is better."
+                    % (prof["words"], writing.STYLE_MIN_WORDS)}
+        name = " ".join(name.split())[:40] or "My style %d" % (len(self.user_styles.load()) + 1)
+        rec = {"id": "user-" + uuid.uuid4().hex[:8], "name": name, "about": "Measured from %d words of the user's own writing." % prof["words"],
+               "by": "you", "profile": {f: prof[f] for f in writing.STYLE_FEATURES}, "made": time.strftime("%Y-%m-%d")}
+        rows = [r for r in self.user_styles.load() if r.get("name") != name] + [rec]
+        self.user_styles.save(rows)
+        near = sorted(((writing.style_distance(rec["profile"], t["profile"])["distance"], t["name"]) for t in self.genres()["styles"].values()))[:2]
+        return {"by": "rules", "style": rec, "text": "Saved as “%s”. It is now in the style list.\n\n%s\n\nNearest templates: %s." % (
+            name, writing.style_brief(rec), ", ".join("%s (distance %s)" % (n, d) for d, n in near)),
+            "note": "A style is kept as numbers measured from your sample — sentence length and variety, word choice, I and you, questions, contractions. None of your sentences is stored."}
+
+    FETCH_MAX = 600000
+
+    def fetch_page(self, url: str) -> str:
+        req = urllib.request.Request(url, headers={"User-Agent": "QueryBook/1 (writing-skills learner; one page at a time)"})
+        with urllib.request.urlopen(req, timeout=40) as r:
+            return r.read(self.FETCH_MAX).decode("utf-8", "replace")
+
+    def robots_allow(self, url: str) -> bool:
+        import urllib.robotparser
+        import urllib.parse
+        u = urllib.parse.urlsplit(url)
+        rp = urllib.robotparser.RobotFileParser("%s://%s/robots.txt" % (u.scheme, u.netloc))
+        try:
+            rp.read()
+        except (OSError, ValueError):
+            return True                                      # no robots file could be read: nothing forbids the page
+        return rp.can_fetch("QueryBook", url)
+
+    def learn_source(self, url: str, source_id: str, use_ai: bool) -> dict:
+        """one page of one source -> rule units in QueryBook's own words, kept with the page's address; learned once"""
+        lib = self.genres()
+        url = url.strip()
+        if not re.match(r"^https?://[^\s/]+\.[^\s/]+", url):
+            return {"by": "rules", "text": "Give the address of one page of the source (https://…)."}
+        if any(r.get("url") == url for r in self.learned.load()):
+            return {"by": "rules", "text": "That page has already been learned from. Sources are learned once."}
+        if not self.can_ai(use_ai):
+            return {"by": "rules", "text": "Learning from a source needs an AI key (Control Panel → Harvesting → API keys): a model reads the page and restates its advice "
+                    "as rules in its own words; QueryBook then drops any rule that repeats the page's wording."}
+        if not self.robots_allow(url):
+            return {"by": "rules", "text": "That site's robots rules do not allow this page to be read by a program, so QueryBook has not read it."}
+        try:
+            page = writing.page_text(self.fetch_page(url))
+        except (OSError, ValueError) as e:
+            return {"by": "rules", "text": "The page could not be read (%s)." % e}
+        if len(page.split()) < 80:
+            return {"by": "rules", "text": "That page has too little text to learn from."}
+        ids = sorted(lib["genres"])
+        schema = {"type": "object", "additionalProperties": False, "required": ["units"], "properties": {"units": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False, "required": ["genre", "layer", "section", "rule", "reason", "failure"], "properties": {
+                "genre": {"type": "string", "enum": ids + ["any"]}, "layer": {"type": "string", "enum": list(writing.LAYERS)}, "section": {"type": "string"},
+                "rule": {"type": "string"}, "reason": {"type": "string"}, "failure": {"type": "string"}}}}}}
+        system = ("You read a PAGE of writing advice and restate each piece of advice as a rule IN YOUR OWN WORDS. Never copy a phrase of five or more words from "
+                  "the page. For each rule give: the kind of document it is about (one of the listed ids, or 'any' for advice on all writing), the skill layer, "
+                  "the section of the document it concerns (or an empty string), the rule as an instruction, the reason for it, and the failure it prevents. "
+                  "Give at most 25 rules, the most useful first. Give only advice the page actually gives.")
+        try:
+            j, provider = self.model(system, "PAGE:\n" + page[:30000], schema)
+        except (RuntimeError, OSError, ValueError) as e:
+            return {"by": "rules", "text": "The AI could not read the page (%s). Nothing was learned." % e}
+        res = writing.keep_units([u for u in j.get("units") or [] if isinstance(u, dict)], page, ids)
+        if not res["kept"]:
+            return {"by": provider, "text": "No usable rule came from that page. Nothing was saved."}
+        import hashlib
+        rec = {"id": uuid.uuid4().hex[:10], "source": source_id if source_id in lib["sources"] else "", "url": url, "retrieved": time.strftime("%Y-%m-%d"),
+               "page_hash": hashlib.sha256(page.encode("utf-8")).hexdigest(), "by": provider, "units": res["kept"]}
+        self.learned.save(self.learned.load() + [rec])
+        self._genres = None                                  # the records are rebuilt with what was learned
+        name = lib["sources"].get(source_id, {}).get("name") or url
+        lines = ["%d rules learned from %s." % (len(res["kept"]), name), ""]
+        lines += ["• [%s%s] %s" % (lib["genres"][u["genre"]]["name"] if u["genre"] in lib["genres"] else "all writing", " — " + u["section"] if u["section"] else "", u["rule"])
+                  for u in res["kept"]]
+        if res["dropped"]:
+            lines += ["", "%d left out: %s." % (len(res["dropped"]), "; ".join(sorted({w for _r, w in res["dropped"]})))]
+        return {"by": provider, "text": "\n".join(lines), "learned": len(res["kept"]),
+                "note": "Rules are kept in QueryBook's own words with the page's address and the date. No passage of the page is kept. Record the site's licence terms before relying on it widely."}
 
     # ---------------------------------------------------------------- writing (writing.py: the grammar, the genre library, the critic)
     def genres(self) -> dict:
         if getattr(self, "_genres", None) is None:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres.json"), encoding="utf-8") as f:
-                self._genres = writing.load_genres(f.read())
+                lib = writing.load_genres(f.read())
+            for rec in self.learned.load():                   # what was learned from sources joins the genre it is about
+                for u in rec.get("units") or []:
+                    for gid in ([u["genre"]] if u.get("genre") in lib["genres"] else list(lib["genres"]) if u.get("genre") == "any" and u.get("layer") in writing.LAYERS[:2] else []):
+                        g = lib["genres"][gid]
+                        g.setdefault("learned", []).append(dict(u, source=rec.get("source") or rec.get("url"), url=rec.get("url")))
+                        if rec.get("url") not in g["provenance"]["sources"]:
+                            g["provenance"]["sources"].append(rec.get("url"))
+            for g in lib["genres"].values():
+                if g.get("learned"):
+                    g["provenance"]["status"] = "first draft from general knowledge, with %d rules learned from %d source page%s" % (
+                        len(g["learned"]), len(g["provenance"]["sources"]), "" if len(g["provenance"]["sources"]) == 1 else "s")
+            self._genres = lib
         return self._genres
 
-    def write_document(self, brief: str, genre_id: str, use_ai: bool) -> dict:
-        """the writing machine: brief -> genre -> blueprint -> bind facts -> draft -> critique -> one revision.
+    def write_document(self, brief: str, genre_id: str, use_ai: bool, body: dict) -> dict:
+        """the writing machine, in steps the user reviews: PLAN (brief -> genre -> blueprint) -> DRAFT (facts bound, drafted,
+        judged, sent back once) -> REVISE (the user's notes applied, judged again), as many times as the user likes.
         The draft is a model's (labelled); the blueprint and the critic are QueryBook's rules and judge by the same record."""
+        stage = str(body.get("stage") or "plan")
+        field = self.genres()["fields"].get(str(body.get("field") or ""), {})
+        style = self.styles().get(str(body.get("style") or ""), {})
         lib = self.genres()
         pick = {"id": genre_id, "why": "chosen", "blend": ""} if genre_id in lib["genres"] else writing.select_genre(brief, lib)
         if not pick["id"]:
@@ -127,10 +241,16 @@ class Assist:
             return {"by": "rules", "text": "What kind of document should this be? Choose one above, or name it in the brief.\n\nQueryBook can plan and check: " + names + ".",
                     "note": "The brief does not name a kind of document, and QueryBook does not guess one."}
         g = lib["genres"][pick["id"]]
-        bp = writing.blueprint(g, brief)
+        bp = writing.with_field_and_style(writing.blueprint(g, brief), field, style)
         plan = writing.blueprint_text(bp)
         out = {"genre": g["id"], "genre_name": g["name"], "blueprint": bp, "blueprint_text": plan, "blend": pick["blend"],
-               "record_status": g["provenance"]["status"]}
+               "record_status": g["provenance"]["status"], "stage": stage, "field": field.get("id", ""), "style": style.get("id", "")}
+        status = "This kind of document's record is a %s." % g["provenance"]["status"]
+        if stage == "plan":                                  # the user reviews the plan before a word is drafted
+            return dict(out, by="rules", text=plan, can_draft=self.can_ai(use_ai),
+                        note=("This is the plan. Read it; change the brief, the kind, the field or the style if it is not what you want; then have it written. "
+                              if self.can_ai(use_ai) else "This is the plan to write from. No AI key is saved, so QueryBook cannot draft it: write to the plan, "
+                              "then use “Check a draft”. ") + status)
         facts: list[dict] = []
         if not bp["fiction"]:                                # bind facts: what QueryBook holds on the subject, for the draft to stand on
             try:
@@ -140,7 +260,6 @@ class Assist:
                 facts = []
         fact_lines = ["%s — %s: %s" % (modes.clean(f.get("subject")), f.get("predicate") or "", modes.fact_value(f)) for f in facts]
         out["facts"] = fact_lines
-        status = "This genre's record is a %s." % g["provenance"]["status"]
         if not self.can_ai(use_ai):
             return dict(out, by="rules", text=plan, note="No AI key is saved, so this is the plan to write from: the sections in order, what each must "
                         "do, and the register. Write to it, then use “Check a draft” to have it judged. " + status)
@@ -149,6 +268,19 @@ class Assist:
                   + (" This is fiction: invent the story from the brief's premise, and keep its own facts consistent." if bp["fiction"] else ""))
         user = "BLUEPRINT:\n%s\n\nBRIEF:\n%s\n\nFACTS:\n%s" % (writing.writer_brief(bp), brief[:6000], "\n".join(fact_lines) or "(none held)")
         try:
+            if stage == "revise":                            # the user's own notes on the draft they have read
+                notes, old = str(body.get("notes") or "").strip(), str(body.get("draft") or "").strip()
+                if not notes or not old:
+                    raise ValueError("say what to change, and keep the draft on the page")
+                j, provider = self.model(system + " You are revising the DRAFT to the person's NOTES: do what the notes ask, keep everything else, stay within the blueprint.",
+                                         user + "\n\nDRAFT:\n" + old[:30000] + "\n\nNOTES:\n" + notes[:4000], TEXT_SCHEMA)
+                draft = str(j.get("text") or "").strip()
+                if not draft:
+                    raise RuntimeError("empty result")
+                crit = writing.critique(draft, bp)
+                return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=0, can_draft=True,
+                            note="Revised to your notes. " + ("The critic passes it. " if crit["passed"] else "The critic finds %d thing%s to fix (below). "
+                                                                 % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status)
             j, provider = self.model(system, user, TEXT_SCHEMA)
             draft = str(j.get("text") or "").strip()
             if not draft:
@@ -164,22 +296,23 @@ class Assist:
                     c2 = writing.critique(again, bp)
                     if len(c2["revise"]) <= len(crit["revise"]):
                         draft, crit = again, c2
-            return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=rounds,
+            return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=rounds, can_draft=True,
                         note=("The critic passed it at all five layers. " if crit["passed"] else "The critic still finds %d thing%s to fix (listed below). "
                               % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status
                         + (" Checks left for a person: %d." % len(crit["for_a_person"]) if crit["for_a_person"] else ""))
         except (RuntimeError, OSError, ValueError) as e:
             return dict(out, by="rules", text=plan, note="The AI could not draft this (%s), so this is the plan to write from. %s" % (e, status))
 
-    def check_draft(self, text: str, genre_id: str) -> dict:
+    def check_draft(self, text: str, genre_id: str, body: dict) -> dict:
         lib = self.genres()
         g = lib["genres"].get(genre_id)
         bp = writing.blueprint(g, "") if g else writing.plain_blueprint()
+        bp = writing.with_field_and_style(bp, lib["fields"].get(str(body.get("field") or ""), {}), self.styles().get(str(body.get("style") or ""), {}))
         bp["asks"] = []
         crit = writing.critique(text, bp)
         return {"by": "rules", "critique": crit, "text": writing.critique_text(crit), "genre": genre_id,
                 "note": ("Judged as %s. " % writing.a_an(g["name"]) if g else "No kind of document chosen, so only the grammar is judged (sentence flow and paragraph "
-                         "pattern). Choose a kind above for all five layers. ") + ("This genre's record is a %s." % g["provenance"]["status"] if g else "")}
+                         "pattern). Choose a kind above for all five layers. ") + ("This kind of document's record is a %s." % g["provenance"]["status"] if g else "")}
 
     # ---------------------------------------------------------------- the model
     def model(self, system: str, user: str, schema: dict) -> tuple[dict, str]:
@@ -222,9 +355,13 @@ class Assist:
         if not text:
             raise ValueError("There is nothing to work on yet — type or paste something first.")
         if task == "write.doc":
-            r = self.write_document(text, option, use_ai)
+            r = self.write_document(text, option, use_ai, body)
         elif task == "write.check":
-            r = self.check_draft(text, option)
+            r = self.check_draft(text, option, body)
+        elif task == "write.style":
+            r = self.learn_style(text, str(body.get("name") or ""))
+        elif task == "write.learn":
+            r = self.learn_source(text, option, use_ai)
         elif task == "write.grammar":
             paras = [p for p in writing.paragraphs(text) if len(writing.sentences(p)) >= 2][:12]
             r = {"by": "rules", "text": "\n\n".join("Paragraph %d\n%s" % (i + 1, writing.explain(p)) for i, p in enumerate(paras))

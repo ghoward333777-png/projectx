@@ -84,16 +84,18 @@ class GrammarTest(unittest.TestCase):
 
 
 class GenreLibraryTest(unittest.TestCase):
-    def test_thirty_eight_complete_records_in_seven_families(self):
-        self.assertEqual(len(LIB["genres"]), 38)
-        self.assertEqual([f["id"] for f in LIB["families"]], ["academic", "business", "technical", "analytical", "legal", "journalism", "fiction"])
+    def test_complete_records_in_every_family(self):
+        self.assertGreaterEqual(len(LIB["genres"]), 71)
+        self.assertEqual({f["id"] for f in LIB["families"]}, {"academic", "business", "technical", "analytical", "legal", "journalism", "fiction",
+                                                              "everyday", "learning", "books"})
+        self.assertEqual({g["family"] for g in LIB["genres"].values()}, {f["id"] for f in LIB["families"]})
         for g in LIB["genres"].values():
             for field in ("purpose", "reader", "evidence"):
                 self.assertTrue(g[field], (g["id"], field))
             self.assertTrue(all(s["name"] and s["move"] for s in g["sections"]), g["id"])
             self.assertTrue(all(g["frameworks"][k].split()[0] in ("theme", "index", "linking", "constant") for k in ("document", "section", "paragraph")), g["id"])
             self.assertLess(g["register"]["words"][0], g["register"]["words"][1])
-            self.assertIn("not yet reviewed", g["provenance"]["status"])           # said on every record until a person has reviewed it
+            self.assertIn("sources have not been learned from yet", g["provenance"]["status"])    # said until a source has been learned from
             for fm in g["failures"]:                                                # a named check is one the critic can run
                 if fm["check"]:
                     self.assertIsNotNone(W.run_check(fm["check"], "Some text. More text.", W.blueprint(g, ""))["why"])
@@ -156,9 +158,9 @@ class MachineTest(unittest.TestCase):
 
     def test_without_a_key_the_plan_is_given_and_nothing_is_invented(self):
         r = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team asking them to finish the stock count by Friday", "option": ""})
-        self.assertEqual((r["by"], r["genre"]), ("rules", "memo"))
+        self.assertEqual((r["by"], r["genre"], r["stage"], r["can_draft"]), ("rules", "memo", "plan", False))
         self.assertIn("4. Action — say who must do what by when", r["text"])
-        self.assertIn("not yet reviewed", r["note"])
+        self.assertIn("sources have not been learned from yet", r["note"])
 
     def test_no_genre_named_is_asked_for_not_guessed(self):
         r = self.a.run({"task": "write.doc", "text": "something about dogs", "option": ""})
@@ -172,7 +174,10 @@ class MachineTest(unittest.TestCase):
             return ({"text": MEMO} if "DRAFT:" in user else {"text": "Hello team.\n\nThings are happening. Bananas are yellow. The audit is a thing."}), "claude"
         self.a.keys = lambda: {"anthropic": "k"}
         self.a.model = model
-        r = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team asking them to finish the stock count by Friday", "option": "memo"})
+        brief = "A memo to the warehouse team asking them to finish the stock count by Friday"
+        plan = self.a.run({"task": "write.doc", "text": brief, "option": "memo"})
+        self.assertEqual((plan["stage"], plan["by"], plan["can_draft"], len(calls)), ("plan", "rules", True, 0))   # the person sees the plan first
+        r = self.a.run({"task": "write.doc", "text": brief, "option": "memo", "stage": "draft"})
         self.assertEqual((r["by"], r["rounds"], len(calls)), ("claude", 1, 2))
         self.assertTrue(r["critique"]["passed"])
         self.assertIn("LIST (fix each)", calls[1])
@@ -188,9 +193,84 @@ class MachineTest(unittest.TestCase):
 
     def test_the_catalogue_offers_the_genres(self):
         c = self.a.catalogue()
-        self.assertEqual(len(c["genres"]), 38)
+        self.assertEqual(len(c["genres"]), len(LIB["genres"]))
         self.assertEqual(len(c["capabilities"]), 12)
+        self.assertGreaterEqual(len(c["styles"]), 12)
+        self.assertGreaterEqual(len(c["fields"]), 40)
+        self.assertEqual(sum(1 for x in c["sources"] if x["wave"] == 6), 10)       # the ten legal sources, universities and public repositories
+        self.assertTrue(all(x["status"].startswith("listed") for x in c["sources"]))   # none is claimed as learned
         self.assertIn("write.doc", [t["id"] for cap in c["capabilities"] for t in cap["tasks"]])
+
+
+class CoordinationTest(unittest.TestCase):
+    """the user's decisions of 2026-11-13: review as the document is composed; the user's style or a template; sources learned once"""
+
+    def setUp(self):
+        self.a = assist.Assist(tempfile.mkdtemp(), lambda: {"anthropic": "k"}, lambda: {}, lambda body, urls: {"sections": []}, lambda text, urls: {})
+        self.seen = []
+
+        def model(system, user, schema):
+            self.seen.append((system, user))
+            return {"text": MEMO}, "claude"
+        self.a.model = model
+
+    def test_the_persons_notes_revise_the_draft(self):
+        r = self.a.run({"task": "write.doc", "text": "A memo about the stock count", "option": "memo", "stage": "revise", "draft": MEMO, "notes": "Make the opening shorter."})
+        self.assertEqual((r["by"], r["stage"]), ("claude", "revise"))
+        self.assertIn("NOTES:\nMake the opening shorter.", self.seen[-1][1])
+        self.assertIn("Revised to your notes", r["note"])
+
+    def test_field_and_style_reach_the_writer_and_the_critic(self):
+        r = self.a.run({"task": "write.doc", "text": "A research paper on sleep and memory", "option": "research-paper", "field": "psychology",
+                        "style": "academic", "stage": "draft"})
+        brief = self.seen[0][1]
+        self.assertIn("Field: Psychology", brief)
+        self.assertIn("APA", brief)
+        self.assertIn("never invent one", brief)                                   # a citation system is not a licence to invent sources
+        self.assertIn("Style — Academic", brief)
+        checks = [c["check"] for L in r["critique"]["layers"] for c in L["checks"]]
+        self.assertIn("style", checks)
+        self.assertIn("the field's conventions (Psychology)", checks)
+
+    def test_a_style_is_measured_from_the_users_own_writing_and_kept_as_numbers(self):
+        sample = ("I think we should go. It's late, and you know it. Why wait? We've done what we came for. Let's not push our luck — not tonight. I mean it.\n\n") * 7
+        r = self.a.run({"task": "write.style", "text": sample, "name": "Mine"})
+        st = r["style"]
+        self.assertEqual((st["name"], st["by"]), ("Mine", "you"))
+        self.assertEqual(set(st["profile"]), set(W.STYLE_FEATURES))
+        self.assertNotIn("push our luck", str(self.a.user_styles.load()))           # no sentence of the sample is stored
+        self.assertIn("Mine", [x["name"] for x in self.a.catalogue()["styles"]])
+        self.assertIn("at least 150 words", self.a.run({"task": "write.style", "text": "Too short.", "name": "x"})["text"])
+        formal = "The committee considered the proposal at length and concluded that the anticipated expenditure could not be justified; accordingly, it was declined. " * 12
+        self.assertFalse(W.style_check(formal, st)["ok"])
+        self.assertTrue(W.style_check(sample, st)["ok"])
+
+    def test_a_source_is_learned_once_in_querybooks_own_words(self):
+        page = "<html><body><p>" + "A white paper should begin by stating the problem and what it costs the reader to ignore it before any solution is offered. " * 12 + "</p></body></html>"
+        self.a.fetch_page = lambda url: page
+        self.a.robots_allow = lambda url: True
+        self.a.model = lambda system, user, schema: ({"units": [
+            {"genre": "white-paper", "layer": "document structure", "section": "Problem", "rule": "Establish what inaction costs the reader before you propose anything.",
+             "reason": "A reader who does not feel the cost has no reason to read on.", "failure": "A solution with no problem"},
+            {"genre": "white-paper", "layer": "document structure", "section": "", "rule": "A white paper should begin by stating the problem and what it costs the reader to ignore it",
+             "reason": "", "failure": ""}]}, "claude")
+        r = self.a.run({"task": "write.learn", "text": "https://example.org/white-papers", "option": "george-mason"})
+        self.assertEqual(r["learned"], 1)                                          # the rule that repeated the page's wording was dropped
+        self.assertIn("repeats the source's own words", r["text"])
+        rec = self.a.learned.load()[0]
+        self.assertEqual((rec["source"], rec["url"]), ("george-mason", "https://example.org/white-papers"))
+        self.assertNotIn("should begin by stating the problem", str(rec))           # no passage of the page is kept
+        again = self.a.run({"task": "write.learn", "text": "https://example.org/white-papers", "option": "george-mason"})
+        self.assertIn("already been learned", again["text"])
+        plan = self.a.run({"task": "write.doc", "text": "A white paper on hand hygiene", "option": "white-paper"})
+        self.assertIn("Establish what inaction costs the reader", plan["text"])
+        self.assertIn("1 rules learned from 1 source page", plan["note"])
+
+    def test_a_page_the_site_forbids_is_not_read(self):
+        self.a.robots_allow = lambda url: False
+        self.a.fetch_page = lambda url: self.fail("the page must not be fetched")
+        r = self.a.run({"task": "write.learn", "text": "https://example.org/x", "option": ""})
+        self.assertIn("robots rules do not allow", r["text"])
 
 
 if __name__ == "__main__":

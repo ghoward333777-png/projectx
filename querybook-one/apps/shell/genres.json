@@ -1,6 +1,6 @@
 {
- "version": "genres-0.1",
- "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+ "version": "genres-0.2",
+ "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
  "families": [
   {
    "id": "academic",
@@ -31,6 +31,24 @@
    "name": "Legal",
    "framework": "theme preview in a fixed form (issue, rule, application, conclusion)",
    "demand": "Defined terms, jurisdiction, no ambiguity"
+  },
+  {
+   "id": "everyday",
+   "name": "Everyday and professional",
+   "framework": "most important first",
+   "demand": "A reader with little time and no duty to read"
+  },
+  {
+   "id": "learning",
+   "name": "Teaching and learning",
+   "framework": "theme preview",
+   "demand": "A learner who must be able to do something afterwards"
+  },
+  {
+   "id": "books",
+   "name": "Books",
+   "framework": "theme preview for non-fiction; linking for narrative",
+   "demand": "Holding a reader across many chapters"
   },
   {
    "id": "journalism",
@@ -116,7 +134,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -201,7 +219,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -269,7 +287,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -317,7 +335,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -386,7 +404,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -452,7 +470,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -527,7 +545,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -588,7 +606,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -672,7 +690,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -716,7 +734,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -793,7 +811,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -864,7 +882,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -949,7 +967,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1018,7 +1036,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1092,7 +1110,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1149,7 +1167,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1223,7 +1241,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1287,7 +1305,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1362,7 +1380,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1436,7 +1454,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1507,7 +1525,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1577,7 +1595,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1660,7 +1678,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1736,7 +1754,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1810,7 +1828,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1894,7 +1912,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -1977,7 +1995,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2056,7 +2074,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2142,7 +2160,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2217,7 +2235,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2289,7 +2307,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2363,7 +2381,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2426,7 +2444,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2496,7 +2514,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2557,7 +2575,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2618,7 +2636,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2683,7 +2701,7 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
@@ -2755,10 +2773,3207 @@
     }
    ],
    "provenance": {
-    "status": "first draft from general knowledge of the genre — not yet reconciled with sources, not yet reviewed by a person",
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
     "sources": [],
     "variants": []
    }
+  },
+  {
+   "id": "email",
+   "name": "email",
+   "also": [
+    "e-mail"
+   ],
+   "family": "everyday",
+   "purpose": "get one thing done by message",
+   "reader": "a busy person who decides in seconds whether to act",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Subject",
+     "move": "say the point in the subject line",
+     "required": true
+    },
+    {
+     "name": "Opening",
+     "move": "say why you are writing and what you want, at once",
+     "required": true
+    },
+    {
+     "name": "Details",
+     "move": "give only what the reader needs to act",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what happens next and by when, then sign off",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     50,
+     300
+    ]
+   },
+   "evidence": "names, dates and amounts are exact",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The request is not in the opening",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "letter",
+   "name": "letter",
+   "also": [
+    "formal letter",
+    "business letter"
+   ],
+   "family": "everyday",
+   "purpose": "put something on record, politely and clearly",
+   "reader": "a named person or office",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Heading",
+     "move": "the sender's address, the date, the recipient's name and address",
+     "required": true
+    },
+    {
+     "name": "Opening",
+     "move": "say why you are writing",
+     "required": true
+    },
+    {
+     "name": "Body",
+     "move": "give the facts or the request in order",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what you would like to happen, then sign off",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "polite",
+    "hedging": "none",
+    "words": [
+     120,
+     500
+    ]
+   },
+   "evidence": "dates, references and amounts are exact",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The purpose is not in the opening",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "cover-letter",
+   "name": "cover letter",
+   "also": [
+    "application letter",
+    "covering letter"
+   ],
+   "family": "everyday",
+   "purpose": "win an interview for a named job",
+   "reader": "a recruiter with a pile of applications",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "name the job and say in a sentence why you fit it",
+     "required": true
+    },
+    {
+     "name": "Evidence",
+     "move": "give two or three things you have done that this job needs, with results",
+     "required": true
+    },
+    {
+     "name": "Fit",
+     "move": "say why this employer",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "ask for the interview and say how to reach you",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "professional",
+    "hedging": "none",
+    "words": [
+     200,
+     400
+    ]
+   },
+   "evidence": "every claim about yourself is true and specific",
+   "constraints": [
+    "Nothing about your experience is invented or inflated"
+   ],
+   "failures": [
+    {
+     "failure": "Empty or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "resume",
+   "name": "résumé",
+   "also": [
+    "resume",
+    "cv",
+    "curriculum vitae"
+   ],
+   "family": "everyday",
+   "purpose": "show at a glance that a person is qualified",
+   "reader": "a recruiter who gives it under a minute",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Contact",
+     "move": "name and how to reach you",
+     "required": true
+    },
+    {
+     "name": "Summary",
+     "move": "say in two lines what you do and your strongest result",
+     "required": true
+    },
+    {
+     "name": "Experience",
+     "move": "list each role, newest first, with what you achieved",
+     "required": true
+    },
+    {
+     "name": "Education",
+     "move": "list qualifications, newest first",
+     "required": true
+    },
+    {
+     "name": "Skills",
+     "move": "list the skills the job asks for",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "terse",
+    "hedging": "none",
+    "words": [
+     250,
+     800
+    ]
+   },
+   "evidence": "dates, titles and results are true and checkable",
+   "constraints": [
+    "Nothing is invented: no role, date, title or result"
+   ],
+   "failures": [
+    {
+     "failure": "Empty or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "press-release",
+   "name": "press release",
+   "also": [
+    "news release",
+    "media release"
+   ],
+   "family": "everyday",
+   "purpose": "give journalists a story they can use as it stands",
+   "reader": "a journalist deciding in one paragraph",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Headline",
+     "move": "say the news in plain words",
+     "required": true
+    },
+    {
+     "name": "Lead",
+     "move": "say who is doing what, when and where, and why it matters",
+     "required": true
+    },
+    {
+     "name": "Details",
+     "move": "give the facts that support it",
+     "required": true
+    },
+    {
+     "name": "Quotation",
+     "move": "give one named person's words",
+     "required": true
+    },
+    {
+     "name": "About",
+     "move": "say who the organisation is",
+     "required": true
+    },
+    {
+     "name": "Contact",
+     "move": "say whom to call",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     250,
+     600
+    ]
+   },
+   "evidence": "every fact is true and attributable; the quotation was really said and approved",
+   "constraints": [
+    "Nothing is claimed that the organisation cannot support"
+   ],
+   "failures": [
+    {
+     "failure": "The first sentence does not carry the news",
+     "check": "lead_5w"
+    },
+    {
+     "failure": "Promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "speech",
+   "name": "speech",
+   "also": [
+    "talk",
+    "address",
+    "toast",
+    "eulogy"
+   ],
+   "family": "everyday",
+   "purpose": "move a listening audience to feel, understand or act",
+   "reader": "people who hear it once and cannot re-read",
+   "headed": false,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "win attention and say what the speech is about",
+     "required": true
+    },
+    {
+     "name": "Preview",
+     "move": "tell them the points to come",
+     "required": true
+    },
+    {
+     "name": "Points",
+     "move": "make each point with a story or example, and say when you move on",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "return to the opening and leave one line to remember",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "spoken",
+    "hedging": "none",
+    "words": [
+     300,
+     2500
+    ]
+   },
+   "evidence": "stories and figures are true; quotations are exact and credited",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Sentences too long to say aloud",
+     "check": ""
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "blog-post",
+   "name": "blog post",
+   "also": [
+    "blog",
+    "article",
+    "web article"
+   ],
+   "family": "everyday",
+   "purpose": "give a web reader something useful or interesting enough to finish",
+   "reader": "a reader who arrived by search and may leave at once",
+   "headed": false,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Title",
+     "move": "say what the reader will get",
+     "required": true
+    },
+    {
+     "name": "Opening",
+     "move": "say the point and why it matters to this reader",
+     "required": true
+    },
+    {
+     "name": "Sections",
+     "move": "develop it under plain subheadings",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what to do or think next",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "conversational",
+    "hedging": "some",
+    "words": [
+     500,
+     1800
+    ]
+   },
+   "evidence": "facts are linked or sourced",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "The point is not near the top",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "op-ed",
+   "name": "op-ed",
+   "also": [
+    "opinion piece",
+    "opinion article",
+    "editorial",
+    "column"
+   ],
+   "family": "everyday",
+   "purpose": "persuade the public of one opinion on a matter in the news",
+   "reader": "a general reader who may disagree",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Hook",
+     "move": "tie the subject to something happening now",
+     "required": true
+    },
+    {
+     "name": "Position",
+     "move": "state the opinion plainly",
+     "required": true
+    },
+    {
+     "name": "Reasons",
+     "move": "give the evidence, strongest last",
+     "required": true
+    },
+    {
+     "name": "The other side",
+     "move": "state the best objection and answer it",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what should be done",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     600,
+     900
+    ]
+   },
+   "evidence": "facts are accurate and sourced; opinion is marked as opinion",
+   "constraints": [
+    "Facts are accurate; any interest the writer has is declared"
+   ],
+   "failures": [
+    {
+     "failure": "The position is not stated early",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "newsletter",
+   "name": "newsletter",
+   "also": [],
+   "family": "everyday",
+   "purpose": "keep a group informed and wanting the next issue",
+   "reader": "members or customers who chose to receive it",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Top story",
+     "move": "lead with the most useful item",
+     "required": true
+    },
+    {
+     "name": "Items",
+     "move": "give each further item its own short section",
+     "required": true
+    },
+    {
+     "name": "Dates",
+     "move": "list what is coming",
+     "required": true
+    },
+    {
+     "name": "Contact",
+     "move": "say how to reply or unsubscribe",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "friendly",
+    "hedging": "none",
+    "words": [
+     300,
+     1200
+    ]
+   },
+   "evidence": "dates, names and links are right",
+   "constraints": [],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "announcement",
+   "name": "announcement",
+   "also": [
+    "notice"
+   ],
+   "family": "everyday",
+   "purpose": "tell people one thing that affects them",
+   "reader": "everyone it affects",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Headline",
+     "move": "say what is happening",
+     "required": true
+    },
+    {
+     "name": "What",
+     "move": "say what is changing or happening",
+     "required": true
+    },
+    {
+     "name": "When and where",
+     "move": "give the date, time and place",
+     "required": true
+    },
+    {
+     "name": "Who",
+     "move": "say whom it affects",
+     "required": true
+    },
+    {
+     "name": "What to do",
+     "move": "say what the reader should do next",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     60,
+     300
+    ]
+   },
+   "evidence": "date, time and place are exact",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "What is happening is not said at once",
+     "check": "conclusion_first"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "minutes",
+   "name": "meeting minutes",
+   "also": [
+    "minutes"
+   ],
+   "family": "everyday",
+   "purpose": "record what a meeting decided and who will do what",
+   "reader": "members, including those who were absent",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Heading",
+     "move": "the meeting, date, place and who attended",
+     "required": true
+    },
+    {
+     "name": "Items",
+     "move": "for each item, say what was discussed in a line and what was decided",
+     "required": true
+    },
+    {
+     "name": "Actions",
+     "move": "list each action with its owner and date",
+     "required": true
+    },
+    {
+     "name": "Next meeting",
+     "move": "give the date",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     1500
+    ]
+   },
+   "evidence": "decisions and names are recorded as they were",
+   "constraints": [
+    "Decisions are recorded as made, not as the writer would have wished"
+   ],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "agenda",
+   "name": "agenda",
+   "also": [
+    "meeting agenda"
+   ],
+   "family": "everyday",
+   "purpose": "let people prepare for a meeting and keep it on time",
+   "reader": "the people attending",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Heading",
+     "move": "the meeting, date, time and place",
+     "required": true
+    },
+    {
+     "name": "Items",
+     "move": "list each item with its purpose, owner and time allowed",
+     "required": true
+    },
+    {
+     "name": "Papers",
+     "move": "say what to read beforehand",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "terse",
+    "hedging": "none",
+    "words": [
+     60,
+     400
+    ]
+   },
+   "evidence": "times add up; names are right",
+   "constraints": [],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "job-description",
+   "name": "job description",
+   "also": [
+    "job posting",
+    "job advert"
+   ],
+   "family": "everyday",
+   "purpose": "attract the right applicants and tell them truthfully what the job is",
+   "reader": "someone deciding whether to apply",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Title and summary",
+     "move": "say what the job is and why it exists",
+     "required": true
+    },
+    {
+     "name": "Responsibilities",
+     "move": "list what the person will do",
+     "required": true
+    },
+    {
+     "name": "Requirements",
+     "move": "list what is truly needed, apart from what is merely welcome",
+     "required": true
+    },
+    {
+     "name": "Terms",
+     "move": "say pay, hours, place and how to apply",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     250,
+     700
+    ]
+   },
+   "evidence": "pay, hours and requirements are true",
+   "constraints": [
+    "Requirements are those the job needs: none excludes people for reasons the job does not need"
+   ],
+   "failures": [
+    {
+     "failure": "Empty or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "faq",
+   "name": "FAQ",
+   "also": [
+    "frequently asked questions",
+    "q&a"
+   ],
+   "family": "everyday",
+   "purpose": "answer the questions people really ask, where they can find them",
+   "reader": "someone with one question",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Questions",
+     "move": "put each question as the reader would ask it, most asked first",
+     "required": true
+    },
+    {
+     "name": "Answers",
+     "move": "answer each in the first sentence, then add what is needed",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     2000
+    ]
+   },
+   "evidence": "answers are correct and current",
+   "constraints": [],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "product-description",
+   "name": "product description",
+   "also": [],
+   "family": "everyday",
+   "purpose": "tell a buyer what a thing is, what it does for them and whether it fits",
+   "reader": "a shopper comparing",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "What it is",
+     "move": "say what the product is and whom it is for",
+     "required": true
+    },
+    {
+     "name": "Benefits",
+     "move": "say what it does for the buyer",
+     "required": true
+    },
+    {
+     "name": "Details",
+     "move": "give the facts — size, materials, what is in the box",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     60,
+     300
+    ]
+   },
+   "evidence": "every claim about the product is true and can be shown",
+   "constraints": [
+    "No claim about the product is false or cannot be supported"
+   ],
+   "failures": [
+    {
+     "failure": "Empty or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "readme",
+   "name": "README",
+   "also": [
+    "read me"
+   ],
+   "family": "technical",
+   "purpose": "let a newcomer understand a project and get it running",
+   "reader": "a developer seeing the project for the first time",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "What it is",
+     "move": "say what the project does and for whom",
+     "required": true
+    },
+    {
+     "name": "Install",
+     "move": "give the steps to install it",
+     "required": true
+    },
+    {
+     "name": "Use",
+     "move": "show the simplest working example",
+     "required": true
+    },
+    {
+     "name": "Configure",
+     "move": "list the settings that matter",
+     "required": false
+    },
+    {
+     "name": "Help and licence",
+     "move": "say where to ask and under what licence it is",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     150,
+     1500
+    ]
+   },
+   "evidence": "every command was run as written",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Steps are not numbered",
+     "check": "steps_numbered"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "release-notes",
+   "name": "release notes",
+   "also": [
+    "changelog",
+    "change log"
+   ],
+   "family": "technical",
+   "purpose": "tell users what changed and what they must do",
+   "reader": "a user deciding whether and how to update",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say the version and the most important change",
+     "required": true
+    },
+    {
+     "name": "New",
+     "move": "list what was added",
+     "required": true
+    },
+    {
+     "name": "Changed",
+     "move": "list what behaves differently",
+     "required": true
+    },
+    {
+     "name": "Fixed",
+     "move": "list what was repaired",
+     "required": true
+    },
+    {
+     "name": "Action needed",
+     "move": "say what the user must do",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "terse",
+    "hedging": "none",
+    "words": [
+     80,
+     800
+    ]
+   },
+   "evidence": "each change is real and described as the user will see it",
+   "constraints": [
+    "A change that can break the user's work is stated first, not buried"
+   ],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "lab-report",
+   "name": "lab report",
+   "also": [
+    "laboratory report"
+   ],
+   "family": "learning",
+   "purpose": "record an experiment so that it can be judged and repeated",
+   "reader": "a teacher or fellow student",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Aim",
+     "move": "say what the experiment set out to find",
+     "required": true
+    },
+    {
+     "name": "Method",
+     "move": "say what was done, exactly",
+     "required": true
+    },
+    {
+     "name": "Results",
+     "move": "give the measurements, with units",
+     "required": true
+    },
+    {
+     "name": "Discussion",
+     "move": "say what the results mean and how sure they are",
+     "required": true
+    },
+    {
+     "name": "Conclusion",
+     "move": "answer the aim",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "formal",
+    "hedging": "some",
+    "words": [
+     400,
+     2500
+    ]
+   },
+   "evidence": "measurements are reported as taken, with units and uncertainty",
+   "constraints": [
+    "Results are reported as measured: none is altered or left out to fit"
+   ],
+   "failures": [
+    {
+     "failure": "Results have no stated basis",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "lesson-plan",
+   "name": "lesson plan",
+   "also": [],
+   "family": "learning",
+   "purpose": "let a teacher run a lesson that gets learners to a stated goal",
+   "reader": "the teacher, or a substitute",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Objective",
+     "move": "say what learners will be able to do by the end",
+     "required": true
+    },
+    {
+     "name": "Materials",
+     "move": "list what is needed",
+     "required": true
+    },
+    {
+     "name": "Steps",
+     "move": "give the activities in order, with the time for each",
+     "required": true
+    },
+    {
+     "name": "Check",
+     "move": "say how the teacher will know the objective was met",
+     "required": true
+    },
+    {
+     "name": "Follow-up",
+     "move": "give homework or the next lesson",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     200,
+     1200
+    ]
+   },
+   "evidence": "times add up to the lesson; materials are complete",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Steps are not numbered",
+     "check": "steps_numbered"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "study-guide",
+   "name": "study guide",
+   "also": [
+    "revision guide",
+    "summary notes"
+   ],
+   "family": "learning",
+   "purpose": "let a learner review a subject and test themselves",
+   "reader": "a learner before an exam",
+   "headed": true,
+   "frameworks": {
+    "document": "index",
+    "section": "index",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Overview",
+     "move": "name the subject and its parts",
+     "required": true
+    },
+    {
+     "name": "Key ideas",
+     "move": "explain each part briefly, with one example",
+     "required": true
+    },
+    {
+     "name": "Terms",
+     "move": "define the terms to know",
+     "required": true
+    },
+    {
+     "name": "Questions",
+     "move": "give questions to test understanding",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     300,
+     3000
+    ]
+   },
+   "evidence": "every statement matches the source being studied",
+   "constraints": [],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "personal-statement",
+   "name": "personal statement",
+   "also": [
+    "statement of purpose",
+    "admissions essay"
+   ],
+   "family": "learning",
+   "purpose": "show a selector who the applicant is and why they should be chosen",
+   "reader": "an admissions reader with many to read",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "begin with something specific that shows why this subject",
+     "required": true
+    },
+    {
+     "name": "Evidence",
+     "move": "show what you have done, and what you learned from it",
+     "required": true
+    },
+    {
+     "name": "Fit",
+     "move": "say why this course or place",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what you will do with it",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "personal",
+    "hedging": "none",
+    "words": [
+     400,
+     1000
+    ]
+   },
+   "evidence": "everything said about yourself is true",
+   "constraints": [
+    "Nothing is invented, and the words are the applicant's own"
+   ],
+   "failures": [
+    {
+     "failure": "Empty or promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "grant-proposal",
+   "name": "grant proposal",
+   "also": [
+    "grant application",
+    "funding application"
+   ],
+   "family": "business",
+   "purpose": "win funding by showing the work matters, can be done and is worth the cost",
+   "reader": "reviewers scoring against the funder's criteria",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Summary",
+     "move": "say the need, the work, the result and the amount",
+     "required": true
+    },
+    {
+     "name": "Need",
+     "move": "show the problem with evidence",
+     "required": true
+    },
+    {
+     "name": "Aims",
+     "move": "state what the work will achieve, measurably",
+     "required": true
+    },
+    {
+     "name": "Method",
+     "move": "say how it will be done, by whom and when",
+     "required": true
+    },
+    {
+     "name": "Budget",
+     "move": "give the cost, itemised and justified",
+     "required": true
+    },
+    {
+     "name": "Evaluation",
+     "move": "say how success will be measured",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "future",
+    "formality": "professional",
+    "hedging": "none",
+    "words": [
+     1000,
+     6000
+    ]
+   },
+   "evidence": "need and capacity are supported by evidence with sources",
+   "constraints": [
+    "Costs, capacity and results are stated truthfully"
+   ],
+   "failures": [
+    {
+     "failure": "The ask is not stated at the start",
+     "check": "conclusion_first"
+    },
+    {
+     "failure": "Evidence is not sourced",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "obituary",
+   "name": "obituary",
+   "also": [],
+   "family": "journalism",
+   "purpose": "record a life and tell the community of a death",
+   "reader": "family, friends and the public",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Announcement",
+     "move": "say who has died, when, where and at what age",
+     "required": true
+    },
+    {
+     "name": "Life",
+     "move": "tell the life in order — birth, family, work, what they were known for",
+     "required": true
+    },
+    {
+     "name": "Survivors",
+     "move": "name the close family",
+     "required": true
+    },
+    {
+     "name": "Service",
+     "move": "give the arrangements",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "respectful",
+    "hedging": "none",
+    "words": [
+     150,
+     800
+    ]
+   },
+   "evidence": "names, dates and places are confirmed with the family or record",
+   "constraints": [
+    "Every fact is confirmed; the cause of death is given only with the family's agreement"
+   ],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "social-post",
+   "name": "social media post",
+   "also": [
+    "social post",
+    "tweet",
+    "caption"
+   ],
+   "family": "everyday",
+   "purpose": "say one thing so that people stop, read and respond",
+   "reader": "someone scrolling past",
+   "headed": false,
+   "frameworks": {
+    "document": "constant theme",
+    "section": "constant theme",
+    "paragraph": "constant theme"
+   },
+   "sections": [
+    {
+     "name": "Hook",
+     "move": "say the point in the first line",
+     "required": true
+    },
+    {
+     "name": "Body",
+     "move": "add the one thing that makes it worth reading",
+     "required": true
+    },
+    {
+     "name": "Call",
+     "move": "say what to do — reply, read, come",
+     "required": false
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "conversational",
+    "hedging": "none",
+    "words": [
+     10,
+     120
+    ]
+   },
+   "evidence": "what is said is true; links go where they say",
+   "constraints": [
+    "Nothing false is stated as fact"
+   ],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "poem",
+   "name": "poem",
+   "also": [
+    "verse"
+   ],
+   "family": "fiction",
+   "purpose": "make an experience felt through image, sound and line",
+   "reader": "a reader who will read it more than once",
+   "headed": false,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening image",
+     "move": "begin in something seen, heard or felt",
+     "required": true
+    },
+    {
+     "name": "Development",
+     "move": "let each image or turn of thought lead to the next",
+     "required": true
+    },
+    {
+     "name": "Turn",
+     "move": "let the poem change direction",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "end on an image or line that stays, not an explanation",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "poetic",
+    "hedging": "free",
+    "words": [
+     20,
+     400
+    ]
+   },
+   "evidence": "true to its own images; nothing is explained that the images already say",
+   "constraints": [],
+   "failures": [],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "book-proposal",
+   "name": "book proposal",
+   "also": [
+    "nonfiction book proposal"
+   ],
+   "family": "books",
+   "purpose": "persuade a publisher that a book should exist and that this author should write it",
+   "reader": "an agent or editor deciding in minutes",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Overview",
+     "move": "say what the book is, why now and why you",
+     "required": true
+    },
+    {
+     "name": "Readers",
+     "move": "say who will buy it and how many there are",
+     "required": true
+    },
+    {
+     "name": "Competing books",
+     "move": "name the nearest books and how this one differs",
+     "required": true
+    },
+    {
+     "name": "Author",
+     "move": "say why you are the person to write it",
+     "required": true
+    },
+    {
+     "name": "Chapter outline",
+     "move": "give each chapter in a paragraph",
+     "required": true
+    },
+    {
+     "name": "Sample",
+     "move": "include one finished chapter",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "professional",
+    "hedging": "none",
+    "words": [
+     2500,
+     12000
+    ]
+   },
+   "evidence": "figures about readers and competing books are real and sourced",
+   "constraints": [
+    "Sales figures and credentials are true"
+   ],
+   "failures": [
+    {
+     "failure": "Promotional wording",
+     "check": "no_vague_praise"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "nonfiction-chapter",
+   "name": "non-fiction book chapter",
+   "also": [
+    "nonfiction chapter",
+    "book chapter"
+   ],
+   "family": "books",
+   "purpose": "carry one stage of a book's argument or story and make the reader want the next",
+   "reader": "a general reader who chose the book",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Opening",
+     "move": "begin with a scene, a question or a claim that earns attention",
+     "required": true
+    },
+    {
+     "name": "Promise",
+     "move": "say what this chapter will show",
+     "required": true
+    },
+    {
+     "name": "Body",
+     "move": "develop it in sections, each leading to the next",
+     "required": true
+    },
+    {
+     "name": "Evidence",
+     "move": "ground each claim in a source, a case or a person",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "say what has been shown and open the next chapter's question",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "narrative",
+    "hedging": "some",
+    "words": [
+     3000,
+     8000
+    ]
+   },
+   "evidence": "every fact, figure and quotation has a source in the notes",
+   "constraints": [
+    "Nothing is presented as fact that is not sourced; people are quoted accurately"
+   ],
+   "failures": [
+    {
+     "failure": "Sources are not given",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "how-to-chapter",
+   "name": "how-to book chapter",
+   "also": [
+    "advice chapter",
+    "self-help chapter"
+   ],
+   "family": "books",
+   "purpose": "get a reader to do one thing differently",
+   "reader": "a reader who wants a result, not a theory",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "The problem",
+     "move": "name the difficulty as the reader feels it",
+     "required": true
+    },
+    {
+     "name": "The principle",
+     "move": "give the one idea that solves it",
+     "required": true
+    },
+    {
+     "name": "The method",
+     "move": "give the steps to apply it",
+     "required": true
+    },
+    {
+     "name": "Example",
+     "move": "show someone doing it",
+     "required": true
+    },
+    {
+     "name": "Do this now",
+     "move": "give one action to take today",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "second",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     2000,
+     6000
+    ]
+   },
+   "evidence": "advice rests on stated evidence or experience; health, legal or money advice says to consult a professional",
+   "constraints": [
+    "Advice on health, law or money says plainly that it does not replace a professional"
+   ],
+   "failures": [
+    {
+     "failure": "Steps are not numbered",
+     "check": "steps_numbered"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "memoir-chapter",
+   "name": "memoir chapter",
+   "also": [
+    "memoir",
+    "autobiography chapter"
+   ],
+   "family": "books",
+   "purpose": "let a reader live through part of a real life and understand it",
+   "reader": "a general reader",
+   "headed": true,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Scene",
+     "move": "begin inside a moment",
+     "required": true
+    },
+    {
+     "name": "Then",
+     "move": "let the events unfold in order",
+     "required": true
+    },
+    {
+     "name": "Reflection",
+     "move": "say what the writer understands now that they did not then",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "end on a change, not a summary",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "past",
+    "formality": "narrative",
+    "hedging": "free",
+    "words": [
+     2000,
+     7000
+    ]
+   },
+   "evidence": "true as the writer remembers it; other people are treated fairly",
+   "constraints": [
+    "It is the writer's own life and it is told truthfully; living people are treated fairly"
+   ],
+   "failures": [
+    {
+     "failure": "Nothing changes by the end",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "biography-chapter",
+   "name": "biography chapter",
+   "also": [
+    "biography"
+   ],
+   "family": "books",
+   "purpose": "tell part of another person's life accurately and vividly",
+   "reader": "a general reader",
+   "headed": true,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Setting",
+     "move": "place the person in a time and place",
+     "required": true
+    },
+    {
+     "name": "Events",
+     "move": "tell what happened, in order, from the record",
+     "required": true
+    },
+    {
+     "name": "Character",
+     "move": "show the person through what they did and said",
+     "required": true
+    },
+    {
+     "name": "Meaning",
+     "move": "say what this period made of them",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "narrative",
+    "hedging": "some",
+    "words": [
+     3000,
+     8000
+    ]
+   },
+   "evidence": "every event and quotation comes from a cited record or interview",
+   "constraints": [
+    "Nothing is invented: no scene, thought or quotation without a source"
+   ],
+   "failures": [
+    {
+     "failure": "Sources are not given",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "picture-book",
+   "name": "children's picture book",
+   "also": [
+    "picture book",
+    "children's story",
+    "childrens book"
+   ],
+   "family": "books",
+   "purpose": "give a young child a story to hear and see, again and again",
+   "reader": "a child of three to seven, and the adult reading aloud",
+   "headed": true,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Meet",
+     "move": "introduce one character with one want",
+     "required": true
+    },
+    {
+     "name": "Try",
+     "move": "let them try and fail, three times or so",
+     "required": true
+    },
+    {
+     "name": "Turn",
+     "move": "let them find their own way",
+     "required": true
+    },
+    {
+     "name": "Home",
+     "move": "end safe, with a line worth repeating",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "past",
+    "formality": "simple",
+    "hedging": "free",
+    "words": [
+     200,
+     800
+    ]
+   },
+   "evidence": "consistent with the pictures; every word a small child can follow by ear",
+   "constraints": [
+    "Suitable for a young child: nothing frightening is left unresolved"
+   ],
+   "failures": [
+    {
+     "failure": "Nothing changes for the character",
+     "check": "scene_turns"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "young-adult-chapter",
+   "name": "young adult novel chapter",
+   "also": [
+    "ya chapter",
+    "young adult chapter",
+    "middle grade chapter"
+   ],
+   "family": "books",
+   "purpose": "carry a young reader through a story that takes them seriously",
+   "reader": "a reader of twelve to eighteen",
+   "headed": true,
+   "frameworks": {
+    "document": "linking",
+    "section": "linking",
+    "paragraph": "linking"
+   },
+   "sections": [
+    {
+     "name": "Hook",
+     "move": "begin with the character in trouble or in doubt",
+     "required": true
+    },
+    {
+     "name": "Scenes",
+     "move": "let each scene raise the stakes",
+     "required": true
+    },
+    {
+     "name": "Voice",
+     "move": "keep close to what the character thinks and notices",
+     "required": true
+    },
+    {
+     "name": "Close",
+     "move": "end on a decision or a discovery",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "first",
+    "tense": "present",
+    "formality": "narrative",
+    "hedging": "free",
+    "words": [
+     1500,
+     5000
+    ]
+   },
+   "evidence": "consistent with the story bible",
+   "constraints": [],
+   "failures": [
+    {
+     "failure": "Nothing changes by the end of the chapter",
+     "check": "scene_turns"
+    },
+    {
+     "failure": "No one speaks",
+     "check": "dialogue_present"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  },
+  {
+   "id": "textbook-chapter",
+   "name": "textbook chapter",
+   "also": [
+    "textbook section",
+    "course chapter"
+   ],
+   "family": "books",
+   "purpose": "teach a body of knowledge so that a student can use it",
+   "reader": "a student meeting the subject for the first time",
+   "headed": true,
+   "frameworks": {
+    "document": "theme preview",
+    "section": "index",
+    "paragraph": "index"
+   },
+   "sections": [
+    {
+     "name": "Objectives",
+     "move": "say what the student will be able to do",
+     "required": true
+    },
+    {
+     "name": "Concepts",
+     "move": "explain each idea in order, each with a worked example",
+     "required": true
+    },
+    {
+     "name": "Summary",
+     "move": "restate the main points",
+     "required": true
+    },
+    {
+     "name": "Key terms",
+     "move": "define them",
+     "required": true
+    },
+    {
+     "name": "Exercises",
+     "move": "give problems that test each objective",
+     "required": true
+    }
+   ],
+   "register": {
+    "person": "third",
+    "tense": "present",
+    "formality": "plain",
+    "hedging": "none",
+    "words": [
+     3000,
+     10000
+    ]
+   },
+   "evidence": "every statement matches the accepted knowledge of the field, with sources for data",
+   "constraints": [
+    "Content is accurate to the field's accepted knowledge"
+   ],
+   "failures": [
+    {
+     "failure": "Sources for data are not given",
+     "check": "citations"
+    }
+   ],
+   "provenance": {
+    "status": "first draft from general knowledge of the genre — the sources have not been learned from yet",
+    "sources": [],
+    "variants": []
+   }
+  }
+ ],
+ "styles": [
+  {
+   "id": "plain",
+   "name": "Plain",
+   "about": "Short common words, one idea to a sentence, nothing ornamental.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 14,
+    "sentence_spread": 6,
+    "short_sentences": 0.25,
+    "long_sentences": 0.05,
+    "word_letters": 4.4,
+    "long_words": 0.08,
+    "first_person": 0.005,
+    "second_person": 0.01,
+    "questions": 0.02,
+    "contractions": 0.004,
+    "hedges": 0.003,
+    "dashes": 0.03,
+    "semicolons": 0.0,
+    "paragraph_sentences": 4
+   }
+  },
+  {
+   "id": "formal",
+   "name": "Formal",
+   "about": "Measured and impersonal, exact words, no contractions.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 23,
+    "sentence_spread": 8,
+    "short_sentences": 0.05,
+    "long_sentences": 0.35,
+    "word_letters": 5.3,
+    "long_words": 0.22,
+    "first_person": 0.0,
+    "second_person": 0.0,
+    "questions": 0.0,
+    "contractions": 0.0,
+    "hedges": 0.008,
+    "dashes": 0.03,
+    "semicolons": 0.12,
+    "paragraph_sentences": 5
+   }
+  },
+  {
+   "id": "conversational",
+   "name": "Conversational",
+   "about": "As one person talking to another: you, contractions, a question now and then.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 13,
+    "sentence_spread": 7,
+    "short_sentences": 0.35,
+    "long_sentences": 0.04,
+    "word_letters": 4.2,
+    "long_words": 0.06,
+    "first_person": 0.03,
+    "second_person": 0.03,
+    "questions": 0.1,
+    "contractions": 0.03,
+    "hedges": 0.006,
+    "dashes": 0.15,
+    "semicolons": 0.0,
+    "paragraph_sentences": 3
+   }
+  },
+  {
+   "id": "executive",
+   "name": "Executive",
+   "about": "The conclusion first, short paragraphs, no hedging, every word working.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 15,
+    "sentence_spread": 5,
+    "short_sentences": 0.2,
+    "long_sentences": 0.03,
+    "word_letters": 4.8,
+    "long_words": 0.14,
+    "first_person": 0.012,
+    "second_person": 0.004,
+    "questions": 0.01,
+    "contractions": 0.0,
+    "hedges": 0.001,
+    "dashes": 0.02,
+    "semicolons": 0.0,
+    "paragraph_sentences": 3
+   }
+  },
+  {
+   "id": "journalistic",
+   "name": "Journalistic",
+   "about": "Most important first, short sentences and paragraphs, concrete nouns and active verbs.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 18,
+    "sentence_spread": 7,
+    "short_sentences": 0.15,
+    "long_sentences": 0.12,
+    "word_letters": 4.7,
+    "long_words": 0.12,
+    "first_person": 0.0,
+    "second_person": 0.0,
+    "questions": 0.01,
+    "contractions": 0.002,
+    "hedges": 0.003,
+    "dashes": 0.06,
+    "semicolons": 0.0,
+    "paragraph_sentences": 2
+   }
+  },
+  {
+   "id": "academic",
+   "name": "Academic",
+   "about": "Careful claims, hedged where the evidence is uncertain, long sentences held together by structure.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 26,
+    "sentence_spread": 9,
+    "short_sentences": 0.03,
+    "long_sentences": 0.45,
+    "word_letters": 5.5,
+    "long_words": 0.26,
+    "first_person": 0.004,
+    "second_person": 0.0,
+    "questions": 0.01,
+    "contractions": 0.0,
+    "hedges": 0.015,
+    "dashes": 0.04,
+    "semicolons": 0.15,
+    "paragraph_sentences": 6
+   }
+  },
+  {
+   "id": "technical",
+   "name": "Technical",
+   "about": "Exact and consistent: one name for one thing, short declarative sentences, no flourish.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 16,
+    "sentence_spread": 5,
+    "short_sentences": 0.18,
+    "long_sentences": 0.06,
+    "word_letters": 5.0,
+    "long_words": 0.18,
+    "first_person": 0.0,
+    "second_person": 0.008,
+    "questions": 0.0,
+    "contractions": 0.0,
+    "hedges": 0.002,
+    "dashes": 0.01,
+    "semicolons": 0.02,
+    "paragraph_sentences": 4
+   }
+  },
+  {
+   "id": "persuasive",
+   "name": "Persuasive",
+   "about": "Direct address, rhythm, short sentences for weight, a question to carry the reader.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 15,
+    "sentence_spread": 9,
+    "short_sentences": 0.32,
+    "long_sentences": 0.08,
+    "word_letters": 4.5,
+    "long_words": 0.1,
+    "first_person": 0.02,
+    "second_person": 0.02,
+    "questions": 0.12,
+    "contractions": 0.01,
+    "hedges": 0.001,
+    "dashes": 0.12,
+    "semicolons": 0.02,
+    "paragraph_sentences": 3
+   }
+  },
+  {
+   "id": "storyteller",
+   "name": "Storyteller",
+   "about": "Scene and movement: varied sentences, concrete detail, the voice of someone telling it.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 16,
+    "sentence_spread": 11,
+    "short_sentences": 0.3,
+    "long_sentences": 0.15,
+    "word_letters": 4.3,
+    "long_words": 0.07,
+    "first_person": 0.015,
+    "second_person": 0.002,
+    "questions": 0.05,
+    "contractions": 0.012,
+    "hedges": 0.004,
+    "dashes": 0.2,
+    "semicolons": 0.04,
+    "paragraph_sentences": 5
+   }
+  },
+  {
+   "id": "warm",
+   "name": "Warm and personal",
+   "about": "Kind and direct, as to someone known: I and you, plain words, nothing stiff.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 14,
+    "sentence_spread": 6,
+    "short_sentences": 0.28,
+    "long_sentences": 0.04,
+    "word_letters": 4.2,
+    "long_words": 0.05,
+    "first_person": 0.035,
+    "second_person": 0.03,
+    "questions": 0.04,
+    "contractions": 0.02,
+    "hedges": 0.006,
+    "dashes": 0.1,
+    "semicolons": 0.0,
+    "paragraph_sentences": 3
+   }
+  },
+  {
+   "id": "legal-formal",
+   "name": "Legal formal",
+   "about": "Precise and unambiguous: defined terms used unchanged, complete sentences, no figure of speech.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 28,
+    "sentence_spread": 10,
+    "short_sentences": 0.02,
+    "long_sentences": 0.5,
+    "word_letters": 5.4,
+    "long_words": 0.24,
+    "first_person": 0.0,
+    "second_person": 0.0,
+    "questions": 0.0,
+    "contractions": 0.0,
+    "hedges": 0.002,
+    "dashes": 0.02,
+    "semicolons": 0.2,
+    "paragraph_sentences": 4
+   }
+  },
+  {
+   "id": "instructional",
+   "name": "Instructional",
+   "about": "The reader is doing the task now: one action to a sentence, you, the present tense.",
+   "by": "QueryBook",
+   "profile": {
+    "sentence_words": 12,
+    "sentence_spread": 4,
+    "short_sentences": 0.35,
+    "long_sentences": 0.01,
+    "word_letters": 4.5,
+    "long_words": 0.09,
+    "first_person": 0.0,
+    "second_person": 0.035,
+    "questions": 0.01,
+    "contractions": 0.004,
+    "hedges": 0.001,
+    "dashes": 0.02,
+    "semicolons": 0.0,
+    "paragraph_sentences": 3
+   }
+  }
+ ],
+ "sources": [
+  {
+   "id": "purdue-owl",
+   "name": "Purdue Online Writing Lab",
+   "wave": 1,
+   "wave_name": "Broad base",
+   "families": [
+    "academic",
+    "business",
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "unc",
+   "name": "UNC Writing Center",
+   "wave": 1,
+   "wave_name": "Broad base",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "monash",
+   "name": "Monash — Excel at Writing",
+   "wave": 1,
+   "wave_name": "Broad base",
+   "families": [
+    "academic",
+    "business"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "uw-madison",
+   "name": "UW–Madison Writer's Handbook",
+   "wave": 1,
+   "wave_name": "Broad base",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "georgetown-law",
+   "name": "Georgetown Law Writing Center — guides and handouts",
+   "wave": 1,
+   "wave_name": "Broad base",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.law.georgetown.edu/academics/academic-resources/the-writing-center/guides-and-handouts/",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "iet",
+   "name": "IET technical report guide",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "google-tw",
+   "name": "Google Technical Writing",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "microsoft-style",
+   "name": "Microsoft Writing Style Guide",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "digital-gov",
+   "name": "Digital.gov",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical",
+    "everyday"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "plain-language-center",
+   "name": "Center for Plain Language",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "business",
+    "everyday"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "nngroup",
+   "name": "Nielsen Norman Group",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical",
+    "everyday"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "stc",
+   "name": "Society for Technical Communication",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "george-mason",
+   "name": "George Mason University — white-paper guide",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "business"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "uagc",
+   "name": "UAGC — white-paper guide",
+   "wave": 2,
+   "wave_name": "Technical and business",
+   "families": [
+    "business"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "harvard",
+   "name": "Harvard College Writing Center",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "manchester-phrasebank",
+   "name": "Manchester Academic Phrasebank (rules only: no phrases are kept)",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "usc",
+   "name": "USC research guides",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "toronto",
+   "name": "University of Toronto writing advice",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "scribbr",
+   "name": "Scribbr",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "texas-am",
+   "name": "Texas A&M University Writing Center",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "mit",
+   "name": "MIT writing resources",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic",
+    "technical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "stanford-hume",
+   "name": "Stanford Hume Center",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "michigan-sweetland",
+   "name": "Michigan Sweetland Center",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "melbourne",
+   "name": "University of Melbourne",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "sydney",
+   "name": "University of Sydney",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "queensland",
+   "name": "University of Queensland",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic",
+    "analytical"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "edinburgh",
+   "name": "University of Edinburgh",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "oxford",
+   "name": "University of Oxford",
+   "wave": 3,
+   "wave_name": "Academic depth",
+   "families": [
+    "academic"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "poynter",
+   "name": "Poynter",
+   "wave": 4,
+   "wave_name": "Journalism",
+   "families": [
+    "journalism"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "media-helping-media",
+   "name": "Media Helping Media",
+   "wave": 4,
+   "wave_name": "Journalism",
+   "families": [
+    "journalism"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "journalism-university",
+   "name": "Journalism University",
+   "wave": 4,
+   "wave_name": "Journalism",
+   "families": [
+    "journalism"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "ams",
+   "name": "American Meteorological Society",
+   "wave": 4,
+   "wave_name": "Journalism",
+   "families": [
+    "journalism"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "stagemilk",
+   "name": "StageMilk",
+   "wave": 5,
+   "wave_name": "Fiction and dramatic",
+   "families": [
+    "fiction"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "gutenberg-fiction",
+   "name": "Project Gutenberg fiction (public domain) — exemplars to tag, not advice",
+   "wave": 5,
+   "wave_name": "Fiction and dramatic",
+   "families": [
+    "fiction"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "columbia-law",
+   "name": "Columbia Law School Writing Center — legal writing resources",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.law.columbia.edu/academics/experiential/legal-writing/writing-center/legal-writing-resources",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "duke-law",
+   "name": "Duke Law — legal writing resources",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://law.duke.edu/study/legalwriting/resources",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "yale-law",
+   "name": "Yale (Poorvu Center) — writing resources for law students",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://poorvucenter.yale.edu/writing/writing-resources-for-graduate-students/writing-resources-for-law-students",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "cornell-lii",
+   "name": "Cornell Legal Information Institute — Wex and the introduction to legal citation",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "maryland-law",
+   "name": "University of Maryland Carey Law — Legal Writing Center",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://law.umaryland.edu/academics/advising--support/legal-writing-center/",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "cuny-law",
+   "name": "CUNY School of Law — Legal Writing Center, student resources",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.law.cuny.edu/academics/academic-resources-support/legal-writing-center/student-resources/",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "sec-plain-english",
+   "name": "U.S. Securities and Exchange Commission — A Plain English Handbook",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal",
+    "business"
+   ],
+   "url": "https://www.sec.gov/pdf/handbook.pdf",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "federal-register",
+   "name": "Office of the Federal Register — plain language and drafting legal documents",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.archives.gov/federal-register/write/plain-language",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "uk-opc",
+   "name": "UK Office of the Parliamentary Counsel — drafting guidance",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.gov.uk/government/collections/the-office-of-the-parliamentary-counsel-guidance",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  },
+  {
+   "id": "us-courts-drafting",
+   "name": "U.S. Courts — essentials for drafting clear legal rules",
+   "wave": 6,
+   "wave_name": "Legal — the ten",
+   "families": [
+    "legal"
+   ],
+   "url": "https://www.uscourts.gov/node/62078/",
+   "status": "listed — not yet learned from",
+   "licence": "to be recorded from the site's own page when it is learned from"
+  }
+ ],
+ "fields": [
+  {
+   "id": "general",
+   "name": "General",
+   "group": "General",
+   "citation": "name the source in the sentence",
+   "evidence": "named, checkable sources"
+  },
+  {
+   "id": "literature",
+   "name": "Literature",
+   "group": "Humanities",
+   "citation": "MLA",
+   "evidence": "close reading of the text, quoted exactly"
+  },
+  {
+   "id": "history",
+   "name": "History",
+   "group": "Humanities",
+   "citation": "Chicago notes and bibliography",
+   "evidence": "primary sources, weighed against each other"
+  },
+  {
+   "id": "philosophy",
+   "name": "Philosophy",
+   "group": "Humanities",
+   "citation": "Chicago or MLA",
+   "evidence": "argument: premises stated, objections answered"
+  },
+  {
+   "id": "religion",
+   "name": "Religion and theology",
+   "group": "Humanities",
+   "citation": "Chicago; scripture by book, chapter and verse",
+   "evidence": "texts and their interpretation, traditions named"
+  },
+  {
+   "id": "languages",
+   "name": "Languages and linguistics",
+   "group": "Humanities",
+   "citation": "APA or the Unified Style Sheet for Linguistics",
+   "evidence": "examples from the language, glossed"
+  },
+  {
+   "id": "classics",
+   "name": "Classics",
+   "group": "Humanities",
+   "citation": "Chicago; ancient works by standard book and line",
+   "evidence": "ancient texts and material evidence"
+  },
+  {
+   "id": "art-history",
+   "name": "Art history",
+   "group": "Humanities",
+   "citation": "Chicago",
+   "evidence": "the work itself, described and compared"
+  },
+  {
+   "id": "music",
+   "name": "Music",
+   "group": "Arts",
+   "citation": "Chicago",
+   "evidence": "the score or recording, cited by bar or time"
+  },
+  {
+   "id": "film-media",
+   "name": "Film and media studies",
+   "group": "Arts",
+   "citation": "MLA or Chicago",
+   "evidence": "the work, cited by scene or time"
+  },
+  {
+   "id": "psychology",
+   "name": "Psychology",
+   "group": "Social sciences",
+   "citation": "APA",
+   "evidence": "empirical studies: method, sample and effect reported"
+  },
+  {
+   "id": "sociology",
+   "name": "Sociology",
+   "group": "Social sciences",
+   "citation": "ASA",
+   "evidence": "empirical data and stated theory"
+  },
+  {
+   "id": "anthropology",
+   "name": "Anthropology",
+   "group": "Social sciences",
+   "citation": "Chicago author-date",
+   "evidence": "fieldwork and ethnographic record"
+  },
+  {
+   "id": "political-science",
+   "name": "Political science",
+   "group": "Social sciences",
+   "citation": "APSA",
+   "evidence": "data, cases and stated theory"
+  },
+  {
+   "id": "economics",
+   "name": "Economics",
+   "group": "Social sciences",
+   "citation": "Chicago author-date",
+   "evidence": "data and models, assumptions stated"
+  },
+  {
+   "id": "education",
+   "name": "Education",
+   "group": "Social sciences",
+   "citation": "APA",
+   "evidence": "studies of learners, context described"
+  },
+  {
+   "id": "geography",
+   "name": "Geography",
+   "group": "Social sciences",
+   "citation": "APA or Harvard",
+   "evidence": "spatial data and maps, sources named"
+  },
+  {
+   "id": "communication",
+   "name": "Communication and journalism",
+   "group": "Social sciences",
+   "citation": "APA; AP style for news",
+   "evidence": "attributed sources"
+  },
+  {
+   "id": "law",
+   "name": "Law",
+   "group": "Professions",
+   "citation": "The Bluebook (US); OSCOLA (UK)",
+   "evidence": "authority: statute, case and regulation, pinpoint cited"
+  },
+  {
+   "id": "business",
+   "name": "Business and management",
+   "group": "Professions",
+   "citation": "APA or Harvard",
+   "evidence": "data, cases and financial records"
+  },
+  {
+   "id": "accounting-finance",
+   "name": "Accounting and finance",
+   "group": "Professions",
+   "citation": "APA or Harvard",
+   "evidence": "financial statements and standards"
+  },
+  {
+   "id": "marketing",
+   "name": "Marketing",
+   "group": "Professions",
+   "citation": "APA or Harvard",
+   "evidence": "market data and customer research"
+  },
+  {
+   "id": "medicine",
+   "name": "Medicine",
+   "group": "Health",
+   "citation": "AMA or Vancouver",
+   "evidence": "clinical evidence, level of evidence stated"
+  },
+  {
+   "id": "nursing",
+   "name": "Nursing",
+   "group": "Health",
+   "citation": "APA",
+   "evidence": "clinical evidence and practice guidelines"
+  },
+  {
+   "id": "public-health",
+   "name": "Public health",
+   "group": "Health",
+   "citation": "AMA or Vancouver",
+   "evidence": "population data and studies"
+  },
+  {
+   "id": "biology",
+   "name": "Biology",
+   "group": "Sciences",
+   "citation": "CSE",
+   "evidence": "experiment and observation, methods repeatable"
+  },
+  {
+   "id": "chemistry",
+   "name": "Chemistry",
+   "group": "Sciences",
+   "citation": "ACS",
+   "evidence": "experimental data with conditions and uncertainty"
+  },
+  {
+   "id": "physics",
+   "name": "Physics",
+   "group": "Sciences",
+   "citation": "AIP or APS",
+   "evidence": "measurement and derivation, uncertainty stated"
+  },
+  {
+   "id": "mathematics",
+   "name": "Mathematics",
+   "group": "Sciences",
+   "citation": "AMS",
+   "evidence": "proof"
+  },
+  {
+   "id": "statistics",
+   "name": "Statistics",
+   "group": "Sciences",
+   "citation": "APA or ASA",
+   "evidence": "data, method and uncertainty"
+  },
+  {
+   "id": "earth-science",
+   "name": "Earth and environmental science",
+   "group": "Sciences",
+   "citation": "AGU or APA",
+   "evidence": "field and instrument data"
+  },
+  {
+   "id": "astronomy",
+   "name": "Astronomy",
+   "group": "Sciences",
+   "citation": "AAS",
+   "evidence": "observation and model"
+  },
+  {
+   "id": "computer-science",
+   "name": "Computer science",
+   "group": "Engineering and technology",
+   "citation": "IEEE or ACM",
+   "evidence": "proof, experiment or working system, reproducible"
+  },
+  {
+   "id": "engineering",
+   "name": "Engineering",
+   "group": "Engineering and technology",
+   "citation": "IEEE",
+   "evidence": "calculation, test and standard"
+  },
+  {
+   "id": "architecture",
+   "name": "Architecture and design",
+   "group": "Engineering and technology",
+   "citation": "Chicago",
+   "evidence": "the built work, drawings and codes"
+  },
+  {
+   "id": "agriculture",
+   "name": "Agriculture",
+   "group": "Sciences",
+   "citation": "CSE or APA",
+   "evidence": "trials and field data"
+  },
+  {
+   "id": "sport",
+   "name": "Sport and exercise science",
+   "group": "Health",
+   "citation": "APA",
+   "evidence": "measured performance and studies"
+  },
+  {
+   "id": "cooking",
+   "name": "Food and cooking",
+   "group": "Everyday",
+   "citation": "name the source in the sentence",
+   "evidence": "tested quantities, times and temperatures"
+  },
+  {
+   "id": "travel",
+   "name": "Travel",
+   "group": "Everyday",
+   "citation": "name the source in the sentence",
+   "evidence": "first-hand visit, dated"
+  },
+  {
+   "id": "technology",
+   "name": "Consumer technology",
+   "group": "Everyday",
+   "citation": "link to the source",
+   "evidence": "tested behaviour and specifications"
+  },
+  {
+   "id": "personal-finance",
+   "name": "Personal finance",
+   "group": "Everyday",
+   "citation": "name the source in the sentence",
+   "evidence": "figures with dates and sources; not personal advice"
+  },
+  {
+   "id": "parenting",
+   "name": "Parenting and family",
+   "group": "Everyday",
+   "citation": "name the source in the sentence",
+   "evidence": "named research and experience, kept apart"
   }
  ]
 }

@@ -236,7 +236,14 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   four checks, the blueprint and the five-layer critic. It invents nothing and marks what it cannot tell as unsure.
 - Genres are DATA: edit `tools/build_genres.py`, run it (its `--check` is in the tests). A new genre is a new row, never a
   change to the writer. Rules are in QueryBook's own words; keep no source passages. A record's provenance must stay honest:
-  "first draft … not yet reviewed" until sources are reconciled and a person has reviewed it.
+  "first draft … the sources have not been learned from yet" until a page of a source really has been.
+- The user's decisions (2026-11-13): all genres, any order; all sources, each page learned ONCE (`assist.learn_source`: robots rules
+  first, rules in QueryBook's words, a rule repeating the page's wording is dropped, no passage kept); the user reviews AS the
+  document is composed (plan → draft → their notes → revision — never skip the plan step); style is the user's own, measured
+  from their sample as numbers (`style_profile`; no sentence stored), or a template from the growing library (`STYLES`).
+- A document = a form (genre) × a field (`FIELDS`: citation system and evidence standard) × a style. All three are rows in
+  `tools/build_genres.py`. The aim is universal coverage: add rows, never special cases. A field's citation system is never a
+  licence to invent a source. No source is marked learned unless a page of it really was.
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 

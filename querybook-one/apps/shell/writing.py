@@ -275,7 +275,9 @@ def check_preview(text: str) -> dict:
 def load_genres(raw: str) -> dict:
     """genres.json -> {"families": [...], "genres": {id: record}}"""
     d = json.loads(raw)
-    return {"families": d["families"], "genres": {g["id"]: g for g in d["genres"]}, "status": d.get("status", ""), "version": d.get("version", "")}
+    return {"families": d["families"], "genres": {g["id"]: g for g in d["genres"]}, "status": d.get("status", ""), "version": d.get("version", ""),
+            "styles": {x["id"]: x for x in d.get("styles") or []}, "sources": {x["id"]: x for x in d.get("sources") or []},
+            "fields": {x["id"]: x for x in d.get("fields") or []}}
 
 
 def select_genre(brief: str, library: dict) -> dict:
@@ -310,6 +312,17 @@ def brief_gaps(brief: str) -> list[str]:
     return gaps
 
 
+def with_field_and_style(bp: dict, field: dict, style: dict) -> dict:
+    """the blueprint for a document written in a FIELD and a STYLE (either may be empty): the field brings its citation
+    system and its standard of evidence; the style brings the habits the draft is asked to come near"""
+    out = dict(bp)
+    if field:
+        out["field"] = field
+    if style:
+        out["style"] = style
+    return out
+
+
 def blueprint(genre: dict, brief: str) -> dict:
     """the plan a draft is written against and judged by: sections in order with the move each must make, the framework at
     document, section and paragraph scale, the fixed terms the preview will promise, register, evidence, hard constraints"""
@@ -319,7 +332,7 @@ def blueprint(genre: dict, brief: str) -> dict:
     return {"genre": genre["id"], "name": genre["name"], "family": genre["family"], "purpose": genre["purpose"], "reader": genre["reader"],
             "frameworks": genre["frameworks"], "sections": secs, "fixed_terms": terms, "register": genre["register"],
             "evidence": genre["evidence"], "constraints": genre.get("constraints") or [], "failure_modes": genre.get("failures") or [],
-            "headed": bool(genre.get("headed", True)),
+            "headed": bool(genre.get("headed", True)), "learned": list(genre.get("learned") or []),
             "asks": brief_gaps(brief), "fiction": genre["family"] == "fiction"}
 
 
@@ -348,6 +361,14 @@ def writer_brief(bp: dict) -> str:
     lines.append("Sentences: open each on something the reader already holds, and put what is new at the end. Name the whole before its parts.")
     for c in bp["constraints"]:
         lines.append("Hard rule: %s." % c)
+    f = bp.get("field")
+    if f:
+        lines.append("Field: %s. Evidence in this field: %s. Cite in the field's customary way (%s) only where the brief or the facts give a source; never invent one."
+                     % (f["name"], f["evidence"], f["citation"]))
+    for u in (bp.get("learned") or [])[:12]:
+        lines.append("Learned rule%s: %s" % (" (%s)" % u["section"] if u.get("section") else "", u["rule"]))
+    if bp.get("style"):
+        lines.append(style_brief(bp["style"]))
     return "\n".join(lines)
 
 
@@ -372,6 +393,12 @@ def blueprint_text(bp: dict) -> str:
               "Evidence: %s" % bp["evidence"]]
     if bp["constraints"]:
         lines += ["Cannot be traded away:"] + ["  • " + c for c in bp["constraints"]]
+    if bp.get("field"):
+        lines.append("Field: %s — evidence: %s; cited in %s." % (bp["field"]["name"], bp["field"]["evidence"], bp["field"]["citation"]))
+    if bp.get("style"):
+        lines.append("Style: %s%s" % (bp["style"]["name"], " — " + bp["style"]["about"] if bp["style"].get("about") else ""))
+    if bp.get("learned"):
+        lines += ["Rules learned from sources:"] + ["  • %s  [%s]" % (u["rule"], u.get("source", "")) for u in bp["learned"][:12]]
     if bp["asks"]:
         lines += ["", "The brief does not say: " + "; ".join(bp["asks"]) + "."]
     return "\n".join(lines)
@@ -542,6 +569,9 @@ def critique(text: str, bp: dict) -> dict:
     hd = len(HEDGE.findall(text))
     if r.get("hedging") == "none" and sents:
         c4.append({"check": "hedging", "ok": hd <= max(1, len(sents) // 10), "why": "%d hedges in %d sentences" % (hd, len(sents))})
+    if bp.get("style") and n >= STYLE_MIN_WORDS:
+        sc = style_check(text, bp["style"])
+        c4.append({"check": "style", "ok": sc["ok"], "why": sc["why"]})
     c4.append({"check": "pitched for the reader", "ok": None, "why": "for a person: would %s find it pitched correctly?" % bp["reader"]})
     layers.append({"layer": LAYERS[3], "checks": c4})
     # 5 domain convention: the genre's own failure modes, each a named check
@@ -551,6 +581,9 @@ def critique(text: str, bp: dict) -> dict:
         c5.append({"check": fm["failure"], "ok": res["ok"], "why": res["why"]})
     for c in bp.get("constraints") or []:
         c5.append({"check": "hard constraint: " + c, "ok": None, "why": "for an expert to confirm before use"})
+    if bp.get("field"):
+        c5.append({"check": "the field's conventions (%s)" % bp["field"]["name"], "ok": None,
+                   "why": "for a person: are sources cited in %s, and is the evidence of the kind the field accepts (%s)?" % (bp["field"]["citation"], bp["field"]["evidence"])})
     layers.append({"layer": LAYERS[4], "checks": c5})
     revise: list[str] = []
     for L in (layers[2], layers[4], layers[3], layers[1], layers[0]):          # structure first: a planning failure costs most
@@ -579,3 +612,127 @@ def explain(paragraph: str) -> str:
         rel = {"same": "same subject", "linked": "picks up the last sentence", "member": "a part of the whole", "": "new subject"}.get(t.get("relation", ""), "") if i else "opens the paragraph"
         lines.append("%d. [%s] %s%s  ⟶  %s" % (i + 1, rel, (t["frame"] + ", ") if t["frame"] else "", t["topic"], t["comment"] or "(no verb found)"))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------------------------- style: measured, then matched
+# The user's decision: "adapt to user's style or apply a style template - based on a growing library of style templates."
+# A style is held as NUMBERS measured from text, never as borrowed sentences: how long the sentences run and how much they
+# vary, how often the writer says I or you, asks a question, contracts, hedges, reaches for a long word, uses a dash or a
+# semicolon. A profile is measured from a sample; a template is a profile with a name. The drafter is told the targets in
+# plain words; the critic measures the draft and says which habits are furthest off.
+STYLE_FEATURES = ("sentence_words", "sentence_spread", "short_sentences", "long_sentences", "word_letters", "long_words", "first_person",
+                  "second_person", "questions", "contractions", "hedges", "dashes", "semicolons", "paragraph_sentences")
+STYLE_SCALE = {"sentence_words": 8.0, "sentence_spread": 6.0, "short_sentences": 0.2, "long_sentences": 0.2, "word_letters": 0.6, "long_words": 0.1,
+               "first_person": 0.03, "second_person": 0.03, "questions": 0.1, "contractions": 0.03, "hedges": 0.02, "dashes": 0.3, "semicolons": 0.15,
+               "paragraph_sentences": 3.0}
+STYLE_SAY = {"sentence_words": "sentence length", "sentence_spread": "variety of sentence length", "short_sentences": "share of short sentences",
+             "long_sentences": "share of long sentences", "word_letters": "word length", "long_words": "share of long words",
+             "first_person": "use of I and we", "second_person": "use of you", "questions": "questions", "contractions": "contractions",
+             "hedges": "hedging", "dashes": "dashes", "semicolons": "semicolons", "paragraph_sentences": "sentences to a paragraph"}
+CONTRACTION = re.compile(r"\b\w+(?:n't|'re|'ve|'ll|'d|'m)\b|\b(?:it|that|there|he|she|what|who|let)'s\b", re.I)
+STYLE_MIN_WORDS = 150
+
+
+def style_profile(text: str) -> dict:
+    """the measurable habits of a text: {"words", "enough": bool, feature: number ...}. Rates are per word or per sentence."""
+    t = text.replace("’", "'")
+    paras = [p for p in paragraphs(t) if not re.match(r"^#{1,6}\s", p)]
+    sents = [s for p in paras for s in sentences(p)]
+    words = [w for w in WORD.findall(t) if not w[0].isdigit()]
+    n, ns = max(1, len(words)), max(1, len(sents))
+    lens = [len(WORD.findall(s)) for s in sents] or [0]
+    mean = sum(lens) / len(lens)
+    spread = (sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5
+    return {"words": len(words), "enough": len(words) >= STYLE_MIN_WORDS,
+            "sentence_words": round(mean, 1), "sentence_spread": round(spread, 1),
+            "short_sentences": round(sum(1 for x in lens if x <= 8) / len(lens), 3), "long_sentences": round(sum(1 for x in lens if x >= 25) / len(lens), 3),
+            "word_letters": round(sum(len(w) for w in words) / n, 2), "long_words": round(sum(1 for w in words if len(w) >= 9) / n, 3),
+            "first_person": round(len(FIRST_PERSON.findall(t)) / n, 4), "second_person": round(len(SECOND_PERSON.findall(t)) / n, 4),
+            "questions": round(sum(1 for s in sents if s.rstrip("\"'”)").endswith("?")) / ns, 3),
+            "contractions": round(len(CONTRACTION.findall(t)) / n, 4), "hedges": round(len(HEDGE.findall(t)) / n, 4),
+            "dashes": round(len(re.findall(r"\s[—–-]{1,2}\s|—", t)) / ns, 3), "semicolons": round(t.count(";") / ns, 3),
+            "paragraph_sentences": round(len(sents) / max(1, len(paras)), 1)}
+
+
+def style_distance(a: dict, b: dict) -> dict:
+    """how far one profile is from another: {"distance": 0 = the same habits, about 1 = a different writer, "furthest":
+    [(feature, a's value, b's value), ...]} — each habit weighed on its own scale"""
+    gaps = sorted(((min(3.0, abs(float(a.get(f, 0)) - float(b.get(f, 0))) / STYLE_SCALE[f]), f) for f in STYLE_FEATURES), reverse=True)
+    dist = (sum(g * g for g, _f in gaps) / len(gaps)) ** 0.5
+    return {"distance": round(dist, 2), "furthest": [(f, a.get(f, 0), b.get(f, 0)) for g, f in gaps[:4] if g >= 0.75]}
+
+
+def style_brief(style: dict) -> str:
+    """a style's targets in plain words, for whoever drafts"""
+    p = style["profile"]
+    bits = ["Style — %s." % style["name"]]
+    if style.get("about"):
+        bits.append(style["about"])
+    bits.append("Sentences average about %d words%s." % (round(p["sentence_words"]), ", and vary a good deal: mix short ones with long" if p["sentence_spread"] >= 9
+                                                         else ", fairly even in length" if p["sentence_spread"] <= 5 else ""))
+    if p["short_sentences"] >= 0.3:
+        bits.append("Use short sentences often.")
+    if p["long_sentences"] <= 0.05:
+        bits.append("Avoid sentences over 25 words.")
+    bits.append("Prefer %s words." % ("short, common" if p["word_letters"] <= 4.5 else "exact, even when long" if p["word_letters"] >= 5.2 else "plain"))
+    bits.append("Say I or we freely." if p["first_person"] >= 0.02 else "Do not say I or we." if p["first_person"] <= 0.002 else "Say I or we sparingly.")
+    if p["second_person"] >= 0.015:
+        bits.append("Speak to the reader as you.")
+    bits.append("Use contractions." if p["contractions"] >= 0.012 else "Do not use contractions." if p["contractions"] <= 0.002 else "Use few contractions.")
+    if p["questions"] >= 0.08:
+        bits.append("Ask the reader a question now and then.")
+    if p["hedges"] <= 0.003:
+        bits.append("State things without hedging.")
+    if p["dashes"] >= 0.2:
+        bits.append("Dashes are part of the voice.")
+    bits.append("Paragraphs run about %d sentences." % max(1, round(p["paragraph_sentences"])))
+    return " ".join(bits)
+
+
+def style_check(text: str, style: dict) -> dict:
+    """a draft measured against the style it was asked to follow"""
+    d = style_distance(style_profile(text), style["profile"])
+    ok = d["distance"] <= 1.0
+    far = "; ".join("%s is %s (the style: %s)" % (STYLE_SAY[f], a, b) for f, a, b in d["furthest"])
+    return {"ok": ok, "distance": d["distance"],
+            "why": "close to “%s” (distance %s)" % (style["name"], d["distance"]) if ok else "not yet in “%s” (distance %s): %s" % (style["name"], d["distance"], far or "many small differences")}
+
+
+# ---------------------------------------------------------------------------------------------- learning from a source, once
+def page_text(html: str) -> str:
+    """a web page as plain text: scripts, styles and tags removed"""
+    t = re.sub(r"(?is)<(script|style|nav|footer|header|noscript)\b.*?</\1>", " ", html)
+    t = re.sub(r"(?s)<[^>]+>", " ", t)
+    for a, b in (("&amp;", "&"), ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&#39;", "'"), ("&rsquo;", "'"), ("&ldquo;", '"'), ("&rdquo;", '"')):
+        t = t.replace(a, b)
+    return " ".join(t.split())
+
+
+def copies(rule: str, page: str, run: int = 7) -> bool:
+    """does a rule repeat a run of the page's own words? (rules are kept in QueryBook's words; a rule that copies is dropped)"""
+    w = [x.lower() for x in WORD.findall(rule)]
+    low = " ".join(x.lower() for x in WORD.findall(page))
+    return any(" ".join(w[i:i + run]) in low for i in range(0, max(0, len(w) - run + 1)))
+
+
+def keep_units(units: list[dict], page: str, genre_ids: list[str]) -> dict:
+    """the rule units worth keeping from what was extracted: {"kept": [...], "dropped": [(rule, why), ...]}"""
+    kept: list[dict] = []
+    dropped: list[tuple[str, str]] = []
+    for u in units:
+        rule = " ".join(str(u.get("rule") or "").split())
+        gid = str(u.get("genre") or "")
+        if len(rule.split()) < 4:
+            dropped.append((rule, "too short to be a rule"))
+        elif gid not in genre_ids and gid != "any":
+            dropped.append((rule, "names no known kind of document"))
+        elif copies(rule, page):
+            dropped.append((rule, "repeats the source's own words"))
+        elif any(rule.lower() == k["rule"].lower() for k in kept):
+            dropped.append((rule, "said twice"))
+        else:
+            layer = str(u.get("layer") or "")
+            kept.append({"genre": gid, "layer": layer if layer in LAYERS else "", "section": " ".join(str(u.get("section") or "").split())[:60],
+                         "rule": rule[:300], "reason": " ".join(str(u.get("reason") or "").split())[:300],
+                         "failure": " ".join(str(u.get("failure") or "").split())[:200]})
+    return {"kept": kept, "dropped": dropped}
