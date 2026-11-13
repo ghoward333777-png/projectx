@@ -4,3 +4,4 @@ __pycache__/
 config.json
 # the window's own saved files when no data folder is set (watches, workflows, projects)
 shell/shell/
+_core/hot_seed.json.part
