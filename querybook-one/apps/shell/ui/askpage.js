@@ -451,7 +451,7 @@ function akSection(s, fmt) {
       el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Subject"), el("th", {}, "What"), el("th", {}, "Value"), el("th", {}, "Where it came from")),
         rows.map(f => el("tr", {}, el("td", {}, akName(f.subject)), el("td", {}, f.predicate || ""),
           el("td", {}, akLink(f.object || f.statement || ""), f.date ? el("div", { class: "small muted" }, f.date) : null,
-            akWhen(f) ? el("div", { class: "small muted" }, akWhen(f)) : null),
+            akWhen(f) ? el("div", { class: "small muted" }, akWhen(f)) : null, akFill(f)),
           el("td", {}, f.link ? el("a", { href: f.link, target: "_blank", rel: "noopener" }, f.where || "source") : (f.where || ""),
             f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
             f.provenance ? el("div", { class: "small muted" }, f.provenance) : null,
@@ -489,6 +489,25 @@ function akWhen(f) {
   Object.entries(f.qualifiers || {}).slice(0, 3).forEach(([k, vs]) => bits.push(k + ": " + vs.map(akName).join(", ")));
   if (f.rank === "preferred") bits.push("preferred value");
   return bits.join(" · ");
+}
+// 1.8.1 Fill Dates: a fact whose record was never read for its dates gets the button; it reads the subject's record from the
+// source the fact cites and adds dates, rank and sources to all of that subject's facts. A fact the source gives no date for
+// then says so. Nothing is supplied that the source does not state.
+function akFill(f) {
+  const m = String(f.subject || "").match(/\((Q\d+)\)$/);
+  if (!m || f.start || f.end || f.at) return null;
+  if (f.context_read === true) return el("div", { class: "small muted" }, "no date in the source");
+  if (f.context_read !== false) return null;
+  const note = el("span", { class: "small muted" });
+  const btn = el("button", { type: "button", class: "btn ghost small", title: "Read this subject's dates and sources from the record its facts cite", onclick: async () => {
+    btn.disabled = true; btn.textContent = "Reading the source…";
+    try {
+      const r = await akPost("/api/shell/fill-dates", { qid: m[1] });
+      if (r.ok) { note.textContent = " " + r.why; btn.remove(); const q = (AK.last && AK.last.question) || document.getElementById("askinput").value; if (q) akAsk(q); }
+      else { note.textContent = " " + (r.why || "The dates could not be read."); btn.disabled = false; btn.textContent = "Fill Dates"; }
+    } catch (e) { note.textContent = " " + e.message; btn.disabled = false; btn.textContent = "Fill Dates"; }
+  } }, "Fill Dates");
+  return el("div", {}, btn, note);
 }
 function akSources(srcs) {
   return srcs.slice(0, 2).map((x, i) => { const name = akName(x["stated in"] || x.title || x["imported from"] || (x.url ? "web page" : "source"));

@@ -36,6 +36,9 @@ function cpDraw() {
     el("h2", {}, CP.textgen ? "✍️ AI text gen" : "✨ AI Capabilities"),
     el("p", { class: "muted" }, CP.textgen ? "Any kind of document, planned from its own record and checked at five layers: sentence flow, paragraph pattern, structure, register and the rules of its field."
       : "Twelve things QueryBook can do for you. Pick one."),
+    CP.textgen ? el("p", { class: "small muted" }, `Library: ${(CP.cat.genres || []).length} kinds of document, ${(CP.cat.fields || []).length} fields, ${(CP.cat.styles || []).length} styles. ` +
+      ((CP.cat.learned || {}).rules ? `Learned from sources: ${CP.cat.learned.rules} rules from ${CP.cat.learned.pages} pages of ${CP.cat.learned.sources} sources (in QueryBook's own words; no passage kept).`
+        : "Nothing has been learned from a source yet.")) : null,
     el("div", { class: "small muted bqai" }, ai.claude || ai.gemini
       ? el("label", {}, el("input", { type: "checkbox", checked: CP.ai, onchange: e => { CP.ai = e.target.checked; cpSave("qb:caps:ai", CP.ai ? "1" : "0"); } }),
           ` Use ${ai.claude ? "Claude" : "Gemini"} (${ai.model}) for writing, summaries and plans. Every result says who made it. Off: QueryBook's own rules only.`)
@@ -108,7 +111,8 @@ function cpInput(c, t) {
   const fieldPick = t.option === "genre" ? pickOf("Field", "field", "Not chosen", CP.cat.fields || [], r => r.group) : null;
   const naming = t.option === "name" ? el("label", { class: "small" }, "Call it ", el("input", { type: "text", value: CP.styleName || "", placeholder: "My style", style: "width:14em",
     oninput: e => { CP.styleName = e.target.value; } })) : null;
-  const sourcePick = t.option === "source" ? pickOf("Source", "source", "Another source", CP.cat.sources || [], r => r.wave_name) : null;
+  const sourcePick = t.option === "source" ? pickOf("Source", "source", "Another source",
+    (CP.cat.sources || []).map(x => Object.assign({}, x, { name: x.name + (x.rules ? ` — ${x.rules} rules learned` : "") })), r => r.wave_name) : null;
   // a kind of document (the genre library): chosen here, or left to the brief to name
   const genre = t.option === "genre" ? el("label", { class: "small" }, "Kind of document ", el("select", { onchange: e => { CP.genre = e.target.value; } },
     el("option", { value: "", selected: !CP.genre }, t.id === "write.check" ? "Not chosen — judge the grammar only" : "Named in my brief"),

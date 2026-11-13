@@ -31,7 +31,7 @@ import qbdump  # noqa: E402  (download once, read locally: the Wikidata dump on 
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.48.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.49.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1831,6 +1831,7 @@ def find_entities(commons_folder, text, top=5, per=400):
     for e in ents[:top]:
         got = 0
         ctx_of = wd_context(commons_folder, qn_of[e["subject"]]) if e["subject"] in qn_of else {}
+        read_ = context_read(commons_folder, qn_of[e["subject"]]) if e["subject"] in qn_of else False
         for key in dict.fromkeys(e["stores"]):
             ds = cat[key]
             try:
@@ -1846,6 +1847,7 @@ def find_entities(commons_folder, text, top=5, per=400):
                     c_ = ctx_of.get((pr, o))
                     if c_:                               # 1.48: when it held, its rank, where it is stated
                         f_.update({k: v for k, v in c_.items() if v})
+                    f_["context_read"] = read_           # 1.49: False -> its dates have never been read: "Fill Dates" is offered
                     facts.append(f_)
                     got += 1
             except sqlite3.Error:
@@ -3257,6 +3259,69 @@ def context_status(commons_folder):
         db.close()
     st["records"], st["waiting"] = len(read), len(famous - read)
     return st
+
+
+def context_read(commons_folder, qnum):
+    """has this item's record been read WITH its context (dates, sources, rank)? — then a fact of it without a date has
+    none in the source, and the page says so instead of offering to fill it"""
+    for p in _label_dbs(commons_folder):
+        try:
+            db = _ro(p)
+            hit = db.execute("SELECT 1 FROM context_done WHERE q = ?", (qnum,)).fetchone()
+            db.close()
+            if hit:
+                return True
+        except sqlite3.Error:
+            continue
+    return False
+
+
+def fill_dates(commons_folder, qid):
+    """1.49 — the "Fill Dates" button. The user: "Add the dates by referencing the citations or sources - retroactively … on
+    missing fact." One subject's record is read again from the source its facts cite (its Wikidata record), and the dates,
+    qualifiers, rank and sources of every statement are added beside the facts already held. No fact is added or changed.
+    Returns {"ok", "subject", "facts": statements of the record, "dated", "sourced", "why"}. A statement the source gives no
+    date for stays without one: nothing is supplied."""
+    m = re.fullmatch(r"Q(\d+)", (qid or "").strip())
+    if not m:
+        return {"ok": False, "why": "This fact does not come from a Wikidata record, so there is no record to read its dates from."}
+    qn = int(m.group(1))
+
+    class _Run:
+        folder = commons_folder
+    ds = WikidataContext()
+    try:
+        state = ds.prepare(_Run)
+    except (sqlite3.Error, OSError) as e:
+        return {"ok": False, "why": "The store could not be opened to add the dates (%s)." % e}
+    try:
+        try:
+            ents = ds._entities([qid], state)
+        except (Busy, Refused, urllib.error.URLError, OSError, ValueError) as e:
+            return {"ok": False, "why": "The source could not be reached just now (%s). Nothing was changed — try again in a minute." % str(e)[:120]}
+        e = ents.get(qid)
+        if e is None:
+            return {"ok": False, "why": "The source could not be read just now. Nothing was changed — try again in a minute."}
+        if "missing" in e:
+            return {"ok": False, "why": "The source no longer has a record under %s." % qid}
+        if e.get("_partial"):
+            return {"ok": False, "why": "Only the short form of the record could be read just now, and it carries no dates. Nothing was changed — try again in a minute."}
+        facts = ds.lane.entity_facts(e, state)
+        rows = list(state["_ctxbuf"])
+        state.setdefault("_ctxdone", []).append((qn,))
+        ds._name_values([e], state)                       # (the names of the items its qualifiers and sources point to)
+        ds.lane._flush(state)
+        state["_labeldb"].commit()
+        lab = ((e.get("labels") or {}).get("en") or {}).get("value") or qid
+        dated = sum(1 for r in rows if r[4] or r[5] or r[6])
+        return {"ok": True, "subject": "%s (%s)" % (lab, qid), "facts": len(facts), "dated": dated, "sourced": sum(1 for r in rows if r[8]),
+                "why": "%d of this record's %d facts have a date in the source, and %d name where they are stated. The rest have no date in the source." % (
+                    dated, len(facts), sum(1 for r in rows if r[8]))}
+    finally:
+        try:
+            state["_labeldb"].close()
+        except sqlite3.Error:
+            pass
 
 
 CONTEXT_FAME = 5                   # the backfill re-reads what is written about in at least this many Wikipedias (the rest: section "plan")
@@ -6418,6 +6483,11 @@ def add_routes(api, commons, program_dir):
     def bulk_demand_list(p):
         return {"demand": demand_list(commons.folder)[-200:], "learned": demand_learned(commons.folder)}
 
+    @api.post("/api/bulk/fill-dates")
+    def bulk_fill_dates(p):
+        """1.49: the Fill Dates button — one subject's dates, rank and sources read from the record its facts cite"""
+        return fill_dates(commons.folder, str(p.get("qid") or ""))
+
     @api.get("/api/bulk/entity")
     def bulk_entity(p):
         """1.40: who or what is meant by a name — the best-known match first, with all its facts"""
@@ -7534,6 +7604,40 @@ def self_test():
                and (again.get("start"), again.get("end")) == ("1981", "1989") and wv2["ids"] == [] and not hot_first("hot-context")
                and catalog()["hot-context"].no_new_facts_expected and next_try({"dataset": "hot-context", "state": "done"}, 0) == CIRCLE_AGAIN_S,
                (bare, wv, x2, again, wv2))
+            # 1.49 the Fill Dates button: one subject's dates read from the record its facts cite
+            try:
+                sf_ = os.path.join(_tf2.mkdtemp(), "hot_seed.json")
+                with open(sf_, "w") as f:
+                    json.dump({"made": "2026-11-13", "ids": [9960]}, f)
+                globals().update(SEED_FILE=sf_, HOT_FETCH=_no, ENTITY_FETCH=lambda q: {"Q9960": rr}.get(q), ENTITY_PAUSE_S=0, WDQS_FETCH=lambda sparql: [])
+                run_dataset(cf, "hot-seed")
+                ldb = sqlite3.connect(shard_path(cf, "hot-seed") + ".labels")
+                ldb.execute("DELETE FROM context"); ldb.execute("DELETE FROM context_done"); ldb.commit(); ldb.close()
+                before_ = find_entities(cf, "Ronald Reagan")
+                n_before_ = before_["entities"][0]["facts"]
+                fd_ = fill_dates(cf, "Q9960")
+                after_ = find_entities(cf, "Ronald Reagan")
+                pres_ = next(f_ for f_ in after_["facts"] if f_["predicate"] == "position held" and "Q11696" in f_["object"])
+                globals()["ENTITY_FETCH"] = lambda q: _no({})
+                down_ = fill_dates(cf, "Q9960")
+                bad_ = fill_dates(cf, "PubChem CID 5")
+            finally:
+                globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
+                for k_ in ("hot-seed", "hot-context"):
+                    for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
+                        if os.path.exists(shard_path(cf, k_) + ext):
+                            os.remove(shard_path(cf, k_) + ext)
+                if os.path.exists(os.path.join(cf, FOLDER, API_REFUSED_NAME)):
+                    os.remove(os.path.join(cf, FOLDER, API_REFUSED_NAME))
+            ok("1.49: Fill Dates — a fact held without its dates is marked as never read for them; the button reads that subject's "
+               "record from the source its facts cite and adds the dates, rank and sources beside the facts: the presidency gains 1981 "
+               "to 1989 and where it is stated; no fact is added or changed; a fact the source gives no date for is then shown as such, "
+               "not offered again; when the source cannot be reached nothing is changed and it says so; a fact with no record says so",
+               all(f_["context_read"] is False and not f_.get("start") for f_ in before_["facts"]) and fd_["ok"] and fd_["dated"] == 2 and fd_["sourced"] == 1
+               and (pres_.get("start"), pres_.get("end")) == ("1981", "1989") and pres_["context_read"] is True
+               and after_["entities"][0]["facts"] == n_before_ and all(f_["context_read"] for f_ in after_["facts"])
+               and not down_["ok"] and "Nothing was changed" in down_["why"] and not bad_["ok"] and "does not come from a Wikidata record" in bad_["why"],
+               (fd_, pres_, down_, bad_, n_before_, after_["entities"][0]["facts"]))
             ok("1.44: “Who are the Beatles?” — the Ask box drops “the”, the record is “The Beatles”: every name is tried with and without "
                "its article, and the band is found and said to be a band", name_forms("Beatles")[:2] == ["Beatles", "The Beatles"]
                and "Beatles" in name_forms("the beatles") and "The Beatles" in name_forms("the beatles")

@@ -34,7 +34,7 @@ import caps
 import qbcompose
 import modes
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -630,6 +630,11 @@ def make_handler(shell: Shell):
                     return self.send(200, book_ask(shell, body))
                 if u.path == "/api/shell/say":
                     return self.send(200, say(body, shell.urls()))
+                if u.path == "/api/shell/fill-dates":       # 1.8.1: the Fill Dates button on a fact — the Control Panel's engine does the reading
+                    base = (shell.urls().get("control") or "").rstrip("/")
+                    if not base:
+                        return self.send(200, {"ok": False, "why": "The Control Panel is not running, so the dates cannot be read just now."})
+                    return self.send(200, ask._post(base + "/api/bulk/fill-dates", {"qid": str(body.get("qid") or "")}, timeout=90))
                 if u.path == "/api/shell/caps/run":
                     return self.send(200, shell.assist.run(body))
                 return self.send(404, {"error": "not found"})

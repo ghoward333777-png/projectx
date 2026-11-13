@@ -108,16 +108,33 @@ class Assist:
 
     def catalogue(self) -> dict:
         lib = self.genres()
-        done = {r.get("source"): 0 for r in self.learned.load()}
-        for r in self.learned.load():
+        every = self.shipped_learned() + self.learned.load()
+        done = {r.get("source"): 0 for r in every}
+        pages_of = {r.get("source"): 0 for r in every}
+        for r in every:
             done[r.get("source")] += len(r.get("units") or [])
+            pages_of[r.get("source")] += 1
         return {"capabilities": caps.CAPABILITIES, "steps": caps.STEPS, "ai": self.status(), "labels": LABELS,
                 "genres": [{"id": g["id"], "name": g["name"], "family": g["family"], "learned": len(g.get("learned") or [])} for g in lib["genres"].values()],
                 "families": lib["families"], "genres_status": lib["status"],
                 "styles": [{"id": x["id"], "name": x["name"], "about": x.get("about", ""), "by": x.get("by", "")} for x in self.styles().values()],
                 "fields": list(lib["fields"].values()),
-                "sources": [dict(x, rules=done.get(x["id"], 0), status="learned from: %d rules" % done[x["id"]] if x["id"] in done else x["status"])
-                            for x in lib["sources"].values()]}
+                "sources": [dict(x, rules=done.get(x["id"], 0), pages=pages_of.get(x["id"], 0),
+                                 status="learned from: %d rules from %d page%s" % (done[x["id"]], pages_of[x["id"]], "" if pages_of[x["id"]] == 1 else "s")
+                                 if x["id"] in done else "not read: " + self._not_read[x["id"]] if x["id"] in self._not_read else x["status"])
+                            for x in lib["sources"].values()],
+                "learned": {"rules": sum(done.values()), "pages": len(every), "sources": len([k for k in done if k])}}
+
+    def shipped_learned(self) -> list:
+        """the rules QueryBook ships with: learned from the register's sources in a build session (tools/build_learned.py)"""
+        if getattr(self, "_shipped", None) is None:
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres_learned.json"), encoding="utf-8") as f:
+                    d = json.load(f)
+                self._shipped, self._not_read = list(d.get("pages") or []), {r["source"]: r["why"] for r in d.get("not_read") or []}
+            except (OSError, ValueError, KeyError):
+                self._shipped, self._not_read = [], {}
+        return self._shipped
 
     def styles(self) -> dict:
         """the style library: QueryBook's templates and the user's own styles"""
@@ -165,7 +182,7 @@ class Assist:
         url = url.strip()
         if not re.match(r"^https?://[^\s/]+\.[^\s/]+", url):
             return {"by": "rules", "text": "Give the address of one page of the source (https://…)."}
-        if any(r.get("url") == url for r in self.learned.load()):
+        if any(r.get("url") == url for r in self.shipped_learned() + self.learned.load()):
             return {"by": "rules", "text": "That page has already been learned from. Sources are learned once."}
         if not self.can_ai(use_ai):
             return {"by": "rules", "text": "Learning from a source needs an AI key (Control Panel → Harvesting → API keys): a model reads the page and restates its advice "
@@ -213,7 +230,7 @@ class Assist:
         if getattr(self, "_genres", None) is None:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres.json"), encoding="utf-8") as f:
                 lib = writing.load_genres(f.read())
-            for rec in self.learned.load():                   # what was learned from sources joins the genre it is about
+            for rec in self.shipped_learned() + self.learned.load():   # what was learned from sources joins the genre it is about
                 for u in rec.get("units") or []:
                     for gid in ([u["genre"]] if u.get("genre") in lib["genres"] else list(lib["genres"]) if u.get("genre") == "any" and u.get("layer") in writing.LAYERS[:2] else []):
                         g = lib["genres"][gid]
