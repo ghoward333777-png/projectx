@@ -27,7 +27,10 @@ CAPABILITIES: list[dict] = [
                {"id": "sum.points", "name": "Key points", "input": "text"},
                {"id": "sum.line", "name": "One sentence", "input": "text"}]},
     {"id": "write", "n": 3, "icon": "✍️", "name": "Write / Create", "about": "Say what you need and get a draft.",
-     "tasks": [{"id": "write.doc", "name": "Any document", "input": "brief", "option": "genre",
+     "tasks": [{"id": "write.wizard", "name": "🧭 Document wizard", "input": "brief",
+                "about": "Six short steps: what kind of document, what it is for and who reads it, how long, in what style, in what voice and tone, and "
+                         "what only you know. Then you see the plan before a word is written."},
+               {"id": "write.doc", "name": "Any document", "input": "brief", "option": "genre",
                 "placeholder": "A white paper for hospital managers on why hand-hygiene audits save money, about 2,000 words",
                 "about": "Any kind of document in the library, in any field and style. You see the plan first, then the draft (checked at five layers), then revise it with your own notes."},
                {"id": "write.check", "name": "Check a draft", "input": "text", "option": "genre",

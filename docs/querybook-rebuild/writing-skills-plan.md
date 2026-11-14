@@ -254,3 +254,25 @@ Purdue OWL (28) — 90 rules, through the same gate as before. Not learned from:
 be had, so the copy check could not be made honestly), Quill and Write & Improve (tools: their public pages give no writing
 advice), Class Central (refused automated readers), Coursera (teaching needs an account). Google Docs outline view is a tip
 about a tool, not a source. Shipped total: 907 rules from 78 pages of 35 sources.
+
+## The document wizard (shell 1.12.0)
+
+The user (2026-11-14): "a user-friendly wizard for generating documents; allowing users to define what type of document, their
+goal, length, style, voice, tone, etc. — using best practices and proven approaches to composition."
+
+AI text gen opens on **🧭 Document wizard** (`cpWizard` in `ui/capspage.js`). Seven steps, in the order a writer works:
+
+1. **Type** — find it by name across the 917 types, or browse by area. Required; never guessed.
+2. **Goal** — what it is about (required), its purpose (the 20 purposes), what the reader should do afterwards, who the reader is,
+   what it must and must not do.
+3. **Length** — six plain presets or an exact word count; how much detail.
+4. **Style** — one of the templates, by kind, or the type's own; the field.
+5. **Voice & tone** — point of view, tone, formality, feeling, humour, certainty, reader level, sentences, contractions, how to
+   open and end.
+6. **Your material** — what only the writer knows, with the interview questions as prompts.
+7. **Plan & write** — a summary with a Change button on every line; the plan is shown before a word is written; then the draft
+   (checked by the critic, VOICE and the settings), then revision to the writer's notes.
+
+Only steps 1 and 2 are required; anything skipped follows the type. Each step carries one line of composition practice (purpose
+and reader before words; length is a decision; plan, draft, revise). The wizard sets the same state as "Any document", so the
+two always agree, and choices are remembered between visits. It adds no new server code: it drives `write.doc`.

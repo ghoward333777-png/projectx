@@ -53,7 +53,7 @@ function cpDraw() {
 /* AI text gen (the rail, beside Language and Translate): the Write capability opened on the writing machine */
 function textGenView() {
   CP.textgen = true; CP.cap = "write";
-  if (!CP.task.write || !/^write\.(doc|check|analyze|voice|story_check|styles|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
+  if (!CP.task.write || !/^write\.(wizard|doc|check|analyze|voice|story_check|styles|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.wizard";
   const v = capsView();
   if (CP.cat) cpDraw();
   return v;
@@ -73,10 +73,11 @@ function cpPanel(c) {
   else if (t.id === "wf.run" || t.id === "wf.edit") box.append(cpWorkflow(t));
   else if (t.id === "proj.list") box.append(cpProjectList());
   else if (t.id === "write.styles") box.append(cpStyleLibrary(c));
+  else if (t.id === "write.wizard") box.append(cpWizard(c));
   else box.append(cpInput(c, t));
   if (CP.err) box.append(el("p", { class: "note" }, CP.err));
   const r = CP.result[t.id];
-  if (r && !t.opens && c.id !== "chat") box.append(cpResult(t, r));
+  if (r && !t.opens && c.id !== "chat" && t.id !== "write.wizard") box.append(cpResult(t, r));
   return box;
 }
 
@@ -162,6 +163,123 @@ function cpStyleLibrary(c) {
         r.for ? el("p", { class: "small muted", style: "margin:4px 0" }, "Good for: " + r.for) : null,
         r.asks ? el("details", { class: "small" }, el("summary", {}, "What it asks of the writer"), el("p", { class: "small muted" }, r.asks)) : null,
         el("button", { type: "button", class: "btn" + (r.id === CP.style ? "" : " ghost"), onclick: () => use(r.id) }, r.id === CP.style ? "In use — write with it →" : "Use this style")))))));
+}
+
+/* ------------------------------------------------------------------ the document wizard
+   Six short steps in the order a writer works: the kind of document, its goal and reader, its length, its style, its voice and
+   tone, the writer's own material — then the plan, shown before a word is written, then the draft and the writer's notes on it.
+   Every step can be skipped except the first two; anything left alone follows the type. It sets the same things the
+   "Any document" page does, so the two always agree. */
+const WZ_STEPS = ["Type", "Goal", "Length", "Style", "Voice & tone", "Your material", "Plan & write"];
+const WZ_LENGTHS = [["A few lines", 80], ["Half a page", 200], ["One page", 400], ["Two pages", 800], ["A long read", 1500], ["A chapter", 3000]];
+function wzState() {
+  if (!CP.wz) { try { CP.wz = JSON.parse(akLoad("qb:caps:wizard", "") || "{}"); } catch (e) { CP.wz = {}; } CP.wz.step = CP.wz.step || 0; }
+  return CP.wz;
+}
+function wzSave() { const w = Object.assign({}, CP.wz); cpSave("qb:caps:wizard", JSON.stringify(w)); }
+function wzTypes() { return ((CP.cat.doctypes || {}).domains || []).flatMap(d => d.families.flatMap(f => f.types.map(x => Object.assign({ area: d.name, n: d.n }, x)))); }
+function wzBrief(w) {
+  return [w.about || "", w.reader ? "Reader: " + w.reader + "." : "", w.goal ? "What it must achieve: " + w.goal + "." : "",
+    w.must ? "It must include: " + w.must + "." : "", w.avoid ? "It must not: " + w.avoid + "." : ""].filter(Boolean).join("\n");
+}
+function cpWizard(c) {
+  const w = wzState(), types = wzTypes(), chosen = types.find(x => x.id === CP.doctype), docTask = c.tasks.find(x => x.id === "write.doc");
+  const go = n => { w.step = Math.max(0, Math.min(WZ_STEPS.length - 1, n)); CP.err = ""; wzSave(); cpDraw(); };
+  const setCtl = (k, v) => { if (v) CP.controls[k] = v; else delete CP.controls[k]; cpSave("qb:caps:controls", JSON.stringify(CP.controls)); };
+  const pick = (k, label, hint) => el("label", { class: "wzfield" }, el("span", {}, label), el("select", { onchange: e => { setCtl(k, e.target.value); } },
+    el("option", { value: "", selected: !CP.controls[k] }, hint || "As usual for the type"), (CP.cat.controls[k] || []).map(v => el("option", { value: v, selected: CP.controls[k] === v }, v))));
+  const text = (k, label, ph, rows) => el("label", { class: "wzfield" }, el("span", {}, label),
+    rows ? el("textarea", { class: "aktext", rows, placeholder: ph, oninput: e => { w[k] = e.target.value; wzSave(); } }, w[k] || "")
+      : el("input", { type: "text", class: "akinput", value: w[k] || "", placeholder: ph, oninput: e => { w[k] = e.target.value; wzSave(); } }));
+  const tip = s => el("p", { class: "wztip" }, "✎ " + s);
+  const ready = [!!CP.doctype, !!(w.about || "").trim(), true, true, true, true, true];
+  const bar = el("div", { class: "wzbar" }, WZ_STEPS.map((name, i) => el("button", { type: "button", class: "wzdot" + (i === w.step ? " on" : "") + (i < w.step ? " done" : ""),
+    disabled: i > w.step && !(ready[0] && ready[1]) && i > 1, onclick: () => go(i) }, el("b", {}, String(i + 1)), " " + name)));
+  let body;
+  if (w.step === 0) {
+    const q = (w.find || "").trim().toLowerCase();
+    const hits = q.length >= 2 ? types.filter(x => x.name.toLowerCase().includes(q)).slice(0, 24) : [];
+    const dom = ((CP.cat.doctypes || {}).domains || []).find(d => String(d.n) === String(CP.area));
+    const choose = x => { CP.doctype = x.id; CP.area = String(x.n); cpSave("qb:caps:doctype", CP.doctype); cpSave("qb:caps:area", CP.area); w.find = ""; CP.err = ""; wzSave(); cpDraw(); };
+    body = el("div", {}, el("h3", {}, "What kind of document is it?"),
+      tip("Everything else follows from the kind: its parts, its reader's expectations and its rules. QueryBook never guesses it."),
+      chosen ? el("p", { class: "wzchosen" }, "Chosen: ", el("b", {}, chosen.name), " — " + chosen.area + (chosen.full ? "  ★ full record" : chosen.parts ? `  · ${chosen.parts} expected parts` : "  · a general shape")) : null,
+      el("label", { class: "wzfield" }, el("span", {}, "Find it by name"), el("input", { type: "text", class: "akinput", value: w.find || "", placeholder: "memo, press release, lab report, motion, short story…",
+        oninput: e => { w.find = e.target.value; const pos = e.target.selectionStart; cpDraw(); const f = CP.root.querySelector(".wzfind input"); if (f) { f.focus(); f.setSelectionRange(pos, pos); } } })),
+      hits.length ? el("div", { class: "wzhits" }, hits.map(x => el("button", { type: "button", class: "chip btnchip" + (x.id === CP.doctype ? " on" : ""), onclick: () => choose(x) }, x.name + (x.full ? " ★" : ""), el("span", { class: "muted" }, " · " + x.area)))) : q.length >= 2 ? el("p", { class: "small muted" }, "No type of that name. Try another word, or browse by area below.") : null,
+      el("div", { class: "akline" }, el("label", { class: "wzfield" }, el("span", {}, "…or browse: area"), el("select", { onchange: e => { CP.area = e.target.value; cpSave("qb:caps:area", CP.area); cpDraw(); } },
+        el("option", { value: "", selected: !CP.area }, "Choose the area…"), ((CP.cat.doctypes || {}).domains || []).map(d => el("option", { value: d.n, selected: String(d.n) === String(CP.area) }, d.name))))),
+      dom ? el("div", { class: "wzhits" }, dom.families.flatMap(f => [f.name ? el("span", { class: "small muted wzfam" }, f.name + ":") : null,
+        ...f.types.map(x => el("button", { type: "button", class: "chip btnchip" + (x.id === CP.doctype ? " on" : ""), onclick: () => choose(Object.assign({ n: dom.n }, x)) }, x.name + (x.full ? " ★" : "")))])) : null);
+    body.querySelector("label.wzfield").classList.add("wzfind");
+  } else if (w.step === 1) {
+    body = el("div", {}, el("h3", {}, "What is it for, and who will read it?"),
+      tip("Purpose and reader come before words. A document that knows its one job and its one reader is half written."),
+      text("about", "What is it about? (required)", "Ask the landlord to fix the heating this week — it has been off since Monday", 3),
+      el("label", { class: "wzfield" }, el("span", {}, "Its goal"), el("select", { onchange: e => { CP.purpose = e.target.value; } },
+        el("option", { value: "", selected: !CP.purpose }, "As usual for the type"), ((CP.cat.doctypes || {}).purposes || []).map(x => el("option", { value: x, selected: x === CP.purpose }, x)))),
+      text("goal", "What should the reader do, know or feel afterwards?", "Send someone by Friday, and confirm the day"),
+      text("reader", "Who is the reader?", "My landlord — busy, not unfriendly, has ignored one email"),
+      text("must", "Anything it must include?", "The dates, my flat number, the earlier email"),
+      text("avoid", "Anything it must not do?", "Threaten, or sound angry"));
+  } else if (w.step === 2) {
+    const cur = Number(CP.controls.words || 0);
+    body = el("div", {}, el("h3", {}, "How long?"), tip("Length is a decision, not an outcome. Shorter is harder and usually better: every paragraph must earn its place."),
+      el("div", { class: "wzhits" }, el("button", { type: "button", class: "chip btnchip" + (!cur ? " on" : ""), onclick: () => { setCtl("words", ""); cpDraw(); } }, "As usual for the type"),
+        WZ_LENGTHS.map(([name, n]) => el("button", { type: "button", class: "chip btnchip" + (cur === n ? " on" : ""), onclick: () => { setCtl("words", String(n)); cpDraw(); } }, `${name} · about ${n} words`))),
+      el("label", { class: "wzfield" }, el("span", {}, "…or an exact number of words"), el("input", { type: "number", min: 0, step: 50, style: "width:9em", value: cur || "", oninput: e => setCtl("words", e.target.value) })),
+      pick("detail", "How much detail?"));
+  } else if (w.step === 3) {
+    const rows = CP.cat.styles || [], groups = [...new Set(rows.map(r => r.group))], st = rows.find(r => r.id === CP.style);
+    body = el("div", {}, el("h3", {}, "In what style?"), tip("A style is a set of habits — sentence length, word choice, how directly it speaks. Pick one template, or measure your own in “Learn my style”."),
+      el("p", { class: "wzchosen" }, st ? ["Chosen: ", el("b", {}, st.name), " — " + st.about] : "No template chosen: the type's own usual style."),
+      el("div", { class: "wzhits" }, el("button", { type: "button", class: "chip btnchip" + (!CP.style ? " on" : ""), onclick: () => { CP.style = ""; cpSave("qb:caps:style", ""); cpDraw(); } }, "The type's own")),
+      groups.map(g => el("div", { class: "wzhits" }, el("span", { class: "small muted wzfam" }, g + ":"), rows.filter(r => r.group === g).map(r =>
+        el("button", { type: "button", class: "chip btnchip" + (r.id === CP.style ? " on" : ""), title: r.about + (r.for ? " — good for: " + r.for : ""), onclick: () => { CP.style = r.id; cpSave("qb:caps:style", r.id); cpDraw(); } }, r.name)))),
+      el("label", { class: "wzfield" }, el("span", {}, "Field (sets the evidence standard and how sources are cited)"), el("select", { onchange: e => { CP.field = e.target.value; } },
+        el("option", { value: "", selected: !CP.field }, "Not chosen"), (CP.cat.fields || []).map(r => el("option", { value: r.id, selected: r.id === CP.field }, r.name)))));
+  } else if (w.step === 4) {
+    body = el("div", {}, el("h3", {}, "In what voice and tone?"), tip("Voice is who is speaking; tone is how they feel about the reader and the subject. Set only what matters to you — the rest follows the type and the style."),
+      el("div", { class: "wzgrid" }, pick("person", "Who speaks (point of view)"), pick("tone", "Tone"), pick("tone2", "A second tone", "None"), pick("formality", "Formality"),
+        pick("feeling", "Feeling"), pick("humour", "Humour"), pick("certainty", "Certainty"), pick("reading", "Reader level"), pick("sentences", "Sentences"),
+        pick("contractions", "Contractions (don't, it's)"), pick("opening", "Open with"), pick("ending", "End with")));
+  } else if (w.step === 5) {
+    body = el("div", {}, el("h3", {}, "What do only you know?"), tip("This is what keeps it from reading like anyone's. Facts, names, numbers, what you saw, what you believe and why — a few rough lines are enough. Nothing is invented beyond it."),
+      el("textarea", { class: "aktext", rows: 7, placeholder: "What happened, in your words. The details you remember. What you think and why. The sources you trust (paste them).",
+        oninput: e => { CP.own = e.target.value; } }, CP.own || ""),
+      el("details", { class: "small" }, el("summary", {}, "Questions that help (answer any)"), el("ol", { class: "small" },
+        ["What did you personally see or do?", "What happened as a result?", "What did you believe at first, and what changed your mind?", "What do others usually miss?",
+          "Which details do you still remember — a place, a number, a sentence someone said?", "Most people believe … ; I believe … ; my evidence is … ; the strongest objection is …"].map(x => el("li", {}, x)))));
+  } else {
+    const r = CP.result["write.doc"], st = (CP.cat.styles || []).find(x => x.id === CP.style), ctl = Object.keys(CP.controls || {}).filter(k => CP.controls[k]);
+    const row = (k, v, step) => el("tr", {}, el("td", { class: "muted" }, k), el("td", {}, v), el("td", {}, el("button", { type: "button", class: "btn ghost wzedit", onclick: () => go(step) }, "Change")));
+    const plan = async () => {
+      if (!CP.doctype) { CP.err = "Choose the kind of document first (step 1)."; return go(0); }
+      if (!(w.about || "").trim()) { CP.err = "Say what it is about first (step 2)."; return go(1); }
+      CP.text["write.doc"] = wzBrief(w);
+      await cpDo("write.doc", { task: "write.doc", text: CP.text["write.doc"], option: "", doctype: CP.doctype, purpose: CP.purpose || "", style: CP.style || "", field: CP.field || "",
+        controls: CP.controls || {}, own: CP.own || "", stage: "plan" });
+    };
+    body = el("div", {}, el("h3", {}, "Review, then plan and write"), tip("Plan first, then draft, then revise with your own notes. You approve the plan before a word is written."),
+      el("table", { class: "wzsum" }, row("Type", chosen ? chosen.name + " — " + chosen.area : "not chosen", 0), row("About", (w.about || "not said").slice(0, 140), 1),
+        row("Goal", [CP.purpose, w.goal].filter(Boolean).join(" — ") || "as usual for the type", 1), row("Reader", w.reader || "the type's usual reader", 1),
+        row("Length", CP.controls.words ? "about " + CP.controls.words + " words" : "as usual for the type", 2), row("Style", st ? st.name : "the type's own", 3),
+        row("Voice & tone", ctl.filter(k => k !== "words").map(k => ((CP.cat.control_names || {})[k] || k) + ": " + CP.controls[k]).join("; ") || "as usual for the type", 4),
+        row("Your material", (CP.own || "").trim() ? (CP.own.trim().split(/\s+/).length + " words of your own") : "none given — the draft can only use the brief and QueryBook's facts", 5)),
+      el("div", { class: "akline" }, el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: plan }, CP.busy ? "Working…" : r ? "Make the plan again" : "Make the plan"),
+        el("button", { type: "button", class: "btn ghost", onclick: () => { CP.wz = { step: 0 }; CP.controls = {}; CP.own = ""; CP.purpose = ""; CP.style = ""; CP.doctype = ""; delete CP.result["write.doc"];
+          ["controls", "style", "doctype", "wizard"].forEach(k => cpSave("qb:caps:" + k, k === "controls" ? "{}" : "")); cpDraw(); } }, "Start a new document")),
+      r && docTask ? cpResult(docTask, r) : null);
+  }
+  return el("div", { class: "wizard" }, bar, body,
+    w.step < WZ_STEPS.length - 1 ? el("div", { class: "akline wznav" },
+      w.step > 0 ? el("button", { type: "button", class: "btn ghost", onclick: () => go(w.step - 1) }, "← Back") : null,
+      el("button", { type: "button", class: "btn", onclick: () => {
+        if (w.step === 0 && !CP.doctype) { CP.err = "Choose the kind of document to go on."; return cpDraw(); }
+        if (w.step === 1 && !(w.about || "").trim()) { CP.err = "Say in a line what it is about to go on."; return cpDraw(); }
+        go(w.step + 1); } }, w.step >= 2 ? "Next →  (or skip)" : "Next →"),
+      w.step >= 2 ? el("button", { type: "button", class: "btn ghost", onclick: () => go(WZ_STEPS.length - 1) }, "Skip to the plan") : null) :
+      el("div", { class: "akline wznav" }, el("button", { type: "button", class: "btn ghost", onclick: () => go(w.step - 1) }, "← Back")));
 }
 
 async function cpDo(key, body) {

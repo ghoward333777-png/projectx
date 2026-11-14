@@ -217,3 +217,19 @@ ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0
 .ctlbox{border:1px solid rgba(47,91,183,.25);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .ctlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 12px;margin:8px 0}
 .ctlgrid select{max-width:100%}
+
+.wizard h3{margin:14px 0 4px}
+.wzbar{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.wzdot{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:999px;padding:5px 12px;font:inherit;font-size:.86rem;cursor:pointer;color:inherit}
+.wzdot b{display:inline-block;min-width:1.3em;text-align:center;border-radius:999px;background:rgba(0,0,0,.08);margin-right:2px}
+.wzdot.on{background:var(--accent,#2f5bb7);color:#fff;border-color:transparent}.wzdot.on b{background:rgba(255,255,255,.25)}
+.wzdot.done b{background:#1f7a4d;color:#fff}.wzdot:disabled{opacity:.45;cursor:default}
+.wztip{background:rgba(47,91,183,.07);border-radius:8px;padding:7px 10px;margin:6px 0 10px;font-size:.9rem}
+.wzfield{display:block;margin:8px 0}.wzfield>span{display:block;font-size:.86rem;font-weight:600;margin-bottom:3px}
+.wzfield select,.wzfield input[type=text]{width:100%;max-width:640px}
+.wzgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 16px}
+.wzhits{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;align-items:center}.wzfam{margin-right:2px}
+.wzchosen{background:rgba(31,122,77,.09);border-radius:8px;padding:6px 10px}
+.wzsum{border-collapse:collapse;width:100%;margin:8px 0}.wzsum td{padding:5px 8px;border-bottom:1px solid rgba(0,0,0,.07);vertical-align:top;font-size:.92rem}
+.wzsum td:first-child{white-space:nowrap;width:8.5em}.wzedit{padding:2px 10px;font-size:.8rem}
+.wznav{margin-top:12px;border-top:1px solid rgba(0,0,0,.08);padding-top:10px}

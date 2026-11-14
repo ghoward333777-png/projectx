@@ -309,6 +309,9 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   controls (`CONTROLS`: tone, point of view, formality, length … — they override the type; measurable ones are checked), the style
   template library (42 templates in 7 kinds, by manner, never a named author), `essay_audit` (five structural elements). The aim
   is text that reads as the person's own, not generic AI writing: add controls and templates as rows, never remove one.
+- The page opens on the 🧭 Document wizard (`cpWizard`, task `write.wizard`): Type → Goal → Length → Style → Voice & tone → Your
+  material → Plan & write. Only Type and Goal are required; the plan is always shown before drafting. It drives `write.doc` and
+  shares its state with "Any document" — keep both, and keep the wizard first.
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 
