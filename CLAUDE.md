@@ -164,6 +164,9 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   a letter or two away are looked for (`wd_names_near`, `FAMOUS_FAME`) and the best known goes FIRST — and the person is ASKED
   ("Did you mean the well-known …?" — `did_you_mean`; "No" re-asks with `exact`, `find_entities(near=False)`). Never swap
   silently. A namesake nobody has heard of never outranks the famous person; an unresolved newspaper name never does.
+- The spelling tool (1.53, `spelling_suggestions`, `/api/bulk/suggest`, `/api/shell/suggest`, the line under the Ask box): well-known
+  names a letter or two away are OFFERED while a name is typed. It never changes the text, never sends the question; a click
+  uses a spelling, "×" keeps what was typed. No suggestion for a name that is well known as typed. Keep it optional.
 - Answers go through `find_entities` + `sense.answer_for`: the kind of each match, the kind the question expects, the thing
   itself above things made about it (a card, a film, an award), fame, identifiers last. Never return "the first match".
 - When nothing (or only a thing-about) is held, say so and queue the subject (`/api/bulk/demand`). Never pretend.

@@ -201,3 +201,9 @@ ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0
 .hvpill.bad { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .hvbanner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 9px 16px; background: var(--bad-bg); color: var(--bad); border-bottom: 1px solid var(--bad); font-size: 14px; }
 .hvbanner .btn { margin-left: auto; }
+
+/* 1.8.6 spelling suggestions under the Ask box: offered, never applied */
+.askbox { position: relative; }
+.asksuggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 10px; background: var(--card, #fff); border: 1px solid var(--line, #d9dee7); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+.asksuggest[hidden] { display: none; }

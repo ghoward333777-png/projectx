@@ -102,6 +102,32 @@ function waitingView(a, p) {
 function nameOf(s) { return { stem: "STEM", language: "Language", history: "History & News", commons: "Shared facts", bulk: "Bulk datasets" }[s] || s; }
 document.getElementById("askform").addEventListener("submit", e => { e.preventDefault(); ask(document.getElementById("askinput").value); });
 
+/* 1.8.6 the spelling tool: while a name is being typed, well-known names a letter or two away are OFFERED under the box.
+   Nothing is changed unless the person clicks one; "×" puts the offer away for this text. */
+let suggestTimer = null, suggestFor = "", suggestOff = "";
+function drawSuggest(r, asked) {
+  const box = document.getElementById("asksuggest");
+  const list = (r && r.suggestions) || [];
+  if (!list.length || asked !== document.getElementById("askinput").value.trim() || asked === suggestOff) { box.hidden = true; box.replaceChildren(); return; }
+  box.replaceChildren(el("span", { class: "small muted" }, "Spelling? "),
+    ...list.map(x => el("button", { type: "button", class: "chip btnchip", title: "Use this spelling", onclick: () => {
+      const inp = document.getElementById("askinput"); inp.value = x.question || x.name; box.hidden = true; inp.focus(); } }, x.name)),
+    el("button", { type: "button", class: "chipx", title: "Keep what I typed", onclick: () => { suggestOff = asked; box.hidden = true; } }, "×"));
+  box.hidden = false;
+}
+document.getElementById("askinput").addEventListener("input", e => {
+  const asked = e.target.value.trim();
+  clearTimeout(suggestTimer);
+  if (asked.length < 4) { drawSuggest(null, asked); return; }
+  suggestTimer = setTimeout(async () => {
+    if (asked === suggestFor) return;
+    suggestFor = asked;
+    try { const r = await (await fetch("/api/shell/suggest?q=" + encodeURIComponent(asked))).json(); drawSuggest(r, asked); }
+    catch (err) { /* the offer is optional: no suggestion is shown */ }
+  }, 600);
+});
+document.getElementById("askform").addEventListener("submit", () => { document.getElementById("asksuggest").hidden = true; });
+
 /* ------------------------------------------------------------------ status */
 async function refresh() {
   try {

@@ -34,7 +34,7 @@ import caps
 import qbcompose
 import modes
 
-VERSION = "1.8.5"
+VERSION = "1.8.6"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -556,6 +556,17 @@ def make_handler(shell: Shell):
                     return self.send(200, ask.answer(q.get("q", ""), shell.urls()))
                 if u.path == "/api/shell/modes":
                     return self.send(200, {"inputs": modes.INPUTS, "modes": modes.MODES, "formats": modes.FORMATS, "registers": modes.REGISTERS})
+                if u.path == "/api/shell/suggest":          # 1.8.6: spelling suggestions for the name in a question — offered, never applied
+                    asked = str(q.get("q", ""))[:300]
+                    subj = ask.understand(asked).get("subject") or ""
+                    base = (shell.urls().get("control") or "").rstrip("/")
+                    if not base or len(subj) < 4:
+                        return self.send(200, {"typed": subj, "suggestions": []})
+                    r = ask._get(base + "/api/bulk/suggest?" + urllib.parse.urlencode({"q": subj, "top": 4}), timeout=8)
+                    for x in r.get("suggestions") or []:      # the whole question with the name respelled, ready to use if the person wants it
+                        i = asked.lower().find(subj.lower())
+                        x["question"] = (asked[:i] + x["name"] + asked[i + len(subj):]) if i >= 0 else x["name"]
+                    return self.send(200, r)
                 if u.path == "/api/shell/harvest":         # the harvest in one line, for the header (1.6)
                     base = (shell.urls().get("control") or "").rstrip("/")
                     if not base:

@@ -32,7 +32,7 @@ import qbnews  # noqa: E402  (names in the news: the extractor of the news latti
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.52.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.53.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -1884,6 +1884,13 @@ def wd_names_near(commons_folder, text, limit=SPELL_TOP):
                                                    (lo, hi, len(w) - lim, len(w) + lim))]
                     scored = sorted((edit_distance(w, x, lim), x) for x in cand if x != w)
                     near += [x for d, x in scored if d <= lim][:SPELL_NEAR]
+                    # 1.53: the FIRST letter wrong, missing or one too many ("Ebraham", "braham", "Aabraham"): the 53 spellings
+                    # that differ only there are asked for by name
+                    abc = "abcdefghijklmnopqrstuvwxyz"
+                    first = [c + w[1:] for c in abc if c != w[0]] + [c + w for c in abc] + ([w[1:]] if len(w) > 3 else [])
+                    for i in range(0, len(first), 40):
+                        chunk = first[i:i + 40]
+                        near += [x for x, in db.execute("SELECT DISTINCT word FROM names WHERE word IN (%s)" % ",".join("?" * len(chunk)), chunk) if x not in near]
                 got = set()
                 for x in near:
                     got.update(q for q, in db.execute("SELECT q FROM names WHERE word = ? LIMIT 20000", (x,)))
@@ -1918,6 +1925,33 @@ def wd_names_near(commons_folder, text, limit=SPELL_TOP):
         db.close()
     ranked = sorted(best.items(), key=lambda kv: (kv[1][0], -kv[1][2], kv[0]))
     return [(q, v[1], v[0]) for q, v in ranked[:limit]]
+
+
+def spelling_suggestions(commons_folder, text, limit=5):
+    """1.53 — the spelling tool: well-known names a letter or two from what was typed, offered and never imposed.
+    {"typed", "known": is what was typed itself a well-known name?, "suggestions": [{"name", "what", "letters_off"}]}.
+    Nothing is suggested for a name that is well known as typed."""
+    typed = " ".join((text or "").split())
+    out = {"typed": typed, "known": False, "suggestions": []}
+    if len(typed) < 4:
+        return out
+    exact = set()
+    for f in dict.fromkeys(x.casefold() for x in name_forms(typed)):
+        exact.update(wd_alias(commons_folder, f))
+    exact.update(q for q in wd_names(commons_folder, typed)[:200])
+    if exact and max(wd_fame(commons_folder, list(exact)).values(), default=0) >= FAMOUS_FAME:
+        out["known"] = True
+        return out
+    near = wd_names_near(commons_folder, typed, limit)
+    labs = wd_labels(commons_folder, [q for q, _n, _o in near]) if near else {}
+    seen = []
+    for q, nm, off in near:
+        name = labs.get(q) or nm
+        if name.casefold() == typed.casefold() or name in seen:
+            continue
+        seen.append(name)
+        out["suggestions"].append({"name": name, "qid": "Q%d" % q, "letters_off": off})
+    return out
 
 
 ENT_SUBJECT = re.compile(r"^(.*) \(Q(\d+)\)$")
@@ -6710,6 +6744,11 @@ def add_routes(api, commons, program_dir):
     def bulk_demand_list(p):
         return {"demand": demand_list(commons.folder)[-200:], "learned": demand_learned(commons.folder)}
 
+    @api.get("/api/bulk/suggest")
+    def bulk_suggest(p):
+        """1.53: spelling suggestions for a name — well-known names a letter or two away; offered, never applied"""
+        return spelling_suggestions(commons.folder, p.get("q") or "", int(p.get("top") or 5))
+
     @api.post("/api/bulk/fill-dates")
     def bulk_fill_dates(p):
         """1.49: the Fill Dates button — one subject's dates, rank and sources read from the record its facts cite"""
@@ -7932,6 +7971,10 @@ def self_test():
                 f3 = find_entities(cf, "Michael Jackson")           # spelled right: the singer, not the clerk of the same name
                 j3 = _sense.answer_for("Who is Michael Jackson?", "Michael Jackson", f3["entities"], f3["facts"])
                 f4 = find_entities(cf, "Zebulon Quartermain")       # near nothing well known: nothing is assumed
+                f5 = find_entities(cf, "Ebraham Lincoln")           # 1.53: the first letter wrong
+                f6 = find_entities(cf, "braham Lincoln")            # ... and missing
+                sg1, sg2, sg3 = spelling_suggestions(cf, "Abraham Lincon"), spelling_suggestions(cf, "Michael Jackson"), spelling_suggestions(cf, "Zebulon Quartermain")
+                sg4 = spelling_suggestions(cf, "Micheal Jakson")
             finally:
                 globals().update(SEED_FILE=seed_was, HOT_FETCH=hot_was, WDQS_FETCH=wdqs_was, ENTITY_FETCH=ent_was, ENTITY_PAUSE_S=epause_was)
                 for ext in ("", "-wal", "-shm", ".labels", ".labels-wal", ".labels-shm", ".progress"):
@@ -7939,6 +7982,14 @@ def self_test():
                         os.remove(shard_path(cf, "hot-seed") + ext)
                 if os.path.exists(os.path.join(cf, FOLDER, API_REFUSED_NAME)):
                     os.remove(os.path.join(cf, FOLDER, API_REFUSED_NAME))
+            ok("1.53: the first letter wrong or missing is caught too (“Ebraham Lincoln”, “braham Lincoln”); and the spelling tool "
+               "offers well-known names a letter or two away without applying any: “Abraham Lincon” -> Abraham Lincoln; a name well "
+               "known as typed gets no suggestion; a name near nothing gets none",
+               [e_["subject"] for e_ in f5["entities"]][:1] == ["Abraham Lincoln (Q91)"] and [e_["subject"] for e_ in f6["entities"]][:1] == ["Abraham Lincoln (Q91)"]
+               and [x["name"] for x in sg1["suggestions"]] == ["Abraham Lincoln"] and sg1["suggestions"][0]["letters_off"] == 1 and not sg1["known"]
+               and sg2["known"] and sg2["suggestions"] == [] and sg3["suggestions"] == [] and not sg3["known"]
+               and [x["name"] for x in sg4["suggestions"]] == ["Michael Jackson"],
+               ([e_["subject"] for e_ in f5["entities"]], [e_["subject"] for e_ in f6["entities"]], sg1, sg2, sg3, sg4))
             ok("1.52: the famous one is meant — “Abraham Lincon” (misspelt, and an obscure man really bears that name) is answered with "
                "the president, first, said to be assumed from the spelling; “Micheal Jakson” finds the singer; spelled correctly, the singer "
                "comes before a clerk of the same name; “No, exactly what I typed” gives only the name as typed; a name near nothing well "
