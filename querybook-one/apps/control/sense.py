@@ -234,6 +234,55 @@ TRUTH_WHY = {"verified": "checked and confirmed", "corroborated": "two or more i
 TRUTH_WEIGHT = {"verified": 1.0, "corroborated": 0.9, "computed": 1.0, "sourced": 0.75, "reported": 0.4, "unsourced": 0.2, "disputed": 0.3, "rejected": 0.0}
 
 
+# ---- the four states on hardware. A state is TWO BITS: one says "there is evidence FOR", the other "there is evidence AGAINST".
+#     undetermined 00 (neither)   true 10 (for only)   false 01 (against only)   conflicting 11 (both)
+# This is the four-valued logic of Belnap, and it is what a binary processor already does well: two facts' evidence is combined
+# by one bitwise OR (for + against = conflicting; anything + nothing = itself), so a 64-bit word holds 32 fact states and one
+# instruction combines 32 of them. It also matches four-state logic in hardware description: 00 is the undriven line (Z),
+# 11 is two drivers in disagreement (X). On a device whose cell holds four levels, one cell holds one state — the same code,
+# one digit instead of two; with more levels a cell can hold the backing as well (eight backings = three bits, BACKING_CODE).
+STATE_CODE = {"undetermined": 0b00, "false": 0b01, "true": 0b10, "conflicting": 0b11}
+CODE_STATE = {v: k for k, v in STATE_CODE.items()}
+BACKINGS = ("unsourced", "reported", "sourced", "disputed", "rejected", "corroborated", "computed", "verified")   # three bits
+BACKING_CODE = {b: i for i, b in enumerate(BACKINGS)}
+
+
+def state_code(state: str) -> int:
+    """the two-bit code of a state (for-bit, against-bit); an unknown state is undetermined"""
+    return STATE_CODE.get(state, 0)
+
+
+def combine(a: str, b: str) -> str:
+    """two states of one statement from different evidence, joined: the evidence bits are OR-ed. true + false = conflicting;
+    undetermined + anything = that thing; conflicting stays conflicting. Order does not matter and repeating changes nothing."""
+    return CODE_STATE[state_code(a) | state_code(b)]
+
+
+def pack_states(states: list[str]) -> int:
+    """many states in one integer, two bits each, the first state in the lowest bits (32 states to a 64-bit word)"""
+    word = 0
+    for i, st in enumerate(states):
+        word |= state_code(st) << (2 * i)
+    return word
+
+
+def unpack_states(word: int, n: int) -> list[str]:
+    return [CODE_STATE[(word >> (2 * i)) & 0b11] for i in range(n)]
+
+
+def combine_packed(a: int, b: int) -> int:
+    """every state of one packed word joined with the same position of another: ONE bitwise OR for all of them"""
+    return a | b
+
+
+def count_packed(word: int, n: int) -> dict:
+    """how many of the n packed states stand in each of the four states"""
+    out = {s_: 0 for s_ in TRUTH_STATES}
+    for st in unpack_states(word, n):
+        out[st] += 1
+    return out
+
+
 def independent_sources(fact: dict) -> int:
     """how many different sources a fact's own record names (the work it is stated in, else the address's site)"""
     seen: list[str] = []
@@ -258,13 +307,14 @@ def truth_state(fact: dict) -> dict:
         backing = "unsourced"
     if fact.get("disputed") in (1, True, "1", "true") and backing != "rejected":
         backing = "disputed"                             # marked as contradicted by another record: conflicting, whatever its backing
-    return {"state": TRUTH_OF[backing], "backing": backing, "why": TRUTH_WHY[backing], "weight": TRUTH_WEIGHT[backing]}
+    return {"state": TRUTH_OF[backing], "backing": backing, "why": TRUTH_WHY[backing], "weight": TRUTH_WEIGHT[backing],
+            "code": STATE_CODE[TRUTH_OF[backing]]}
 
 
 def rate(fact: dict) -> dict:
     """the fact with its rating: state (one of the four), backing, weight and why — every fact unit carries these"""
     t = truth_state(fact)
-    return dict(fact, state=t["state"], backing=t["backing"], weight=t["weight"], state_why=t["why"])
+    return dict(fact, state=t["state"], backing=t["backing"], weight=t["weight"], state_why=t["why"], state_code=t["code"])
 
 
 def rate_all(facts: list[dict]) -> list[dict]:

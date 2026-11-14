@@ -204,6 +204,12 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   History & News, the Ask box (`ask.answer`, with a `states` tally). Weights (`TRUTH_WEIGHT`): verified 1.0, computed 1.0,
   corroborated 0.9, sourced 0.75, reported 0.4, disputed 0.3, unsourced 0.2, rejected 0.0. A new place that returns facts
   must rate them; a fact with nothing recorded is undetermined, never assumed true.
+- On hardware (1.56): a state is TWO BITS — confirming evidence exists / found wrong — undetermined 00, false 01, true 10,
+  conflicting 11 (`STATE_CODE`); evidence from separate records is joined by bitwise OR (`combine`, `pack_states`: 32 states to a
+  64-bit word). Needs only a binary processor; on a four-level device one digit holds a state. Never change the codes.
+- The documents follow the code: `querybook/` on this branch holds Bible Pass 121 (Chapter 132), Registry v72 (features 408–422),
+  the provisional (FIG. 60–61, claims 375–386) — all built from `querybook/docs/source/fsu_text.py`, additions only, with
+  changes-highlighted versions in yellow. A change to the fact unit is written there once and every document rebuilt.
 - IDENTITY is a separate field: resolved / unresolved / ambiguous / conflicting. A newspaper name is TRUE as printed and
   UNRESOLVED as to who: the "we don't know" zone. It is shown apart from a known person of the same name and never merged by name.
 

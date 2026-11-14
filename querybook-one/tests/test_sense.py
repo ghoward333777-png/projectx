@@ -274,6 +274,27 @@ class StatesTest(unittest.TestCase):
         self.assertTrue(all(f["state"] in sense.TRUTH_STATES and "weight" in f for f in rows))
         self.assertEqual(sense.tally(rows), {"true": 1, "false": 1, "undetermined": 2, "conflicting": 1})
 
+    def test_the_four_states_are_two_bits_and_evidence_combines_by_or(self):
+        self.assertEqual(sense.STATE_CODE, {"undetermined": 0b00, "false": 0b01, "true": 0b10, "conflicting": 0b11})
+        self.assertEqual(sense.combine("true", "false"), "conflicting")              # evidence for + evidence against
+        self.assertEqual(sense.combine("undetermined", "true"), "true")              # nothing + something = that thing
+        self.assertEqual(sense.combine("true", "true"), "true")
+        self.assertEqual(sense.combine("conflicting", "undetermined"), "conflicting")
+        for a in sense.TRUTH_STATES:
+            for b in sense.TRUTH_STATES:
+                self.assertEqual(sense.combine(a, b), sense.combine(b, a))           # order does not matter
+                self.assertEqual(sense.combine(sense.combine(a, b), b), sense.combine(a, b))   # repeating changes nothing
+        states = ["true", "false", "undetermined", "conflicting"] * 8                # 32 states
+        word = sense.pack_states(states)
+        self.assertLess(word, 1 << 64)                                               # 32 fact states in one 64-bit word
+        self.assertEqual(sense.unpack_states(word, 32), states)
+        other = sense.pack_states(["false"] * 32)
+        joined = sense.unpack_states(sense.combine_packed(word, other), 32)          # one OR joins all 32
+        self.assertEqual(joined, [sense.combine(x, "false") for x in states])
+        self.assertEqual(sense.count_packed(word, 32), {"true": 8, "false": 8, "undetermined": 8, "conflicting": 8})
+        self.assertEqual(len(sense.BACKINGS), 8)                                     # the backing fits three bits
+        self.assertEqual(sense.rate({"status": "verified"})["state_code"], 0b10)
+
     def test_a_newspaper_name_is_true_as_printed_and_unresolved_as_to_who(self):
         f = {"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”", "status": "reported"}
         self.assertEqual(sense.identity_state("Harvey Jordan", [f])["state"], "unresolved")
